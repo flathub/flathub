@@ -2,6 +2,7 @@ Flathub
 -------
 
 Flathub is the central place for building and hosting flatpak builds.
+Go to http://flathub.org/builds/#/ to see Flathub in action.
 
 Building applications
 ---------------------
@@ -36,7 +37,7 @@ All applications in flathub should ship with appstream data.
 Using the flathub repository
 ----------------------------
 
-To install applications that are hosted on flathub, use the following:
+To install applications that are hosted on Flathub, use the following:
 ```
 flatpak remote-add flathub http://flathub.org/repo/flathub.flatpakrepo
 flatpak --user install flathub org.gnome.Recipes
