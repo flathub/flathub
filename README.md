@@ -1,4 +1,10 @@
-This is where the magic happens.
+Flathub
+-------
+
+Flathub is the central place for building and hosting flatpak builds.
+
+Building applications
+---------------------
 
 Application manifests should go in their own branches, named after the application ID.
 
@@ -20,6 +26,19 @@ Flathub always builds in the flatpak branchname "stable", and it always passes -
 so you don't need to specify a branch key. But if you do (not recommended), it must be "stable".
 
 Flathub requires that you build against an sdk that is itself hosted on Flathub. The same goes for
-sdk extensions that may be required to build your application.
-
+sdk extensions that may be required to build your application. The easiest way to see what runtimes
+are currently available is to install the flathub remote and use
+```
+flatpak remote-ls --runtime flathub
+```
 All applications in flathub should ship with appstream data.
+
+Using the flathub repository
+----------------------------
+
+To install applications that are hosted on flathub, use the following:
+```
+flatpak remote-add flathub http://flathub.org/repo/flathub.flatpakrepo
+flatpak --user install flathub org.gnome.Recipes
+```
+
