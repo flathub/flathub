@@ -19,4 +19,7 @@ You can also use only a commit, but specifying a tag name if there is one is goo
 Flathub always builds in the flatpak branchname "stable", and it always passes --default-name=stable,
 so you don't need to specify a branch key. But if you do (not recommended), it must be "stable".
 
+Flathub requires that you build against an sdk that is itself hosted on Flathub. The same goes for
+sdk extensions that may be required to build your application.
+
 All applications in flathub should ship with appstream data.
