@@ -2,7 +2,7 @@ Flathub
 -------
 
 Flathub is the central place for building and hosting Flatpak builds.
-Go to http://flathub.org/builds/#/ to see Flathub in action.
+Go to http://flathub.org/builds/ to see Flathub in action.
 
 Building applications
 ---------------------
@@ -26,4 +26,3 @@ To install applications that are hosted on Flathub, use the following:
 flatpak remote-add flathub http://flathub.org/repo/flathub.flatpakrepo
 flatpak --user install flathub org.gnome.Recipes
 ```
-
