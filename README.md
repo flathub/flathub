@@ -23,6 +23,6 @@ Using the Flathub repository
 
 To install applications that are hosted on Flathub, use the following:
 ```
-flatpak remote-add flathub http://flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak --user install flathub org.gnome.Recipes
 ```
