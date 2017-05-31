@@ -1,0 +1,677 @@
+--- plib-1.8.4/src/pw/pw.h.fs	2004-04-07 01:45:19.000000000 +0200
++++ plib-1.8.4/src/pw/pw.h	2006-05-17 16:03:09.000000000 +0200
+@@ -54,6 +54,11 @@
+ void pwSetCursor     ( int c ) ;
+ void pwCleanup       () ;
+ void pwSetAutoRepeatKey ( bool enable ) ;
++void pwSetResizable ( bool enable ) ;
++void pwSetCursorEx ( int wm, int fs ) ;
++void pwSetFullscreen () ;
++void pwSetWindowed () ;
++void pwToggleFullscreen () ;
+ 
+ #define PW_CURSOR_NONE    0
+ #define PW_CURSOR_RIGHT   1
+--- plib-1.8.4/src/pw/pwX11.cxx.fs	2004-04-07 01:45:19.000000000 +0200
++++ plib-1.8.4/src/pw/pwX11.cxx	2006-05-17 16:06:07.000000000 +0200
+@@ -74,14 +74,31 @@
+ 
+ #endif
+ 
+-static bool initialised    = false ;
++/* For XF86VIDMODE Support */
++#ifdef XF86VIDMODE
++#include <X11/extensions/xf86vmode.h>   
++
++static struct xf86vidmode_data {
++  int vidmode_available;
++  XF86VidModeModeInfo orig_mode;
++  int orig_viewport_x;
++  int orig_viewport_y;
++} XF86VidModeData = { 1, { 0 }, 0, 0 };
++
++static void xf86_vidmode_init () ;
++#endif
++
+ static bool insideCallback = false ;
++static bool resizable      = true;
++static bool mouse_grabbed  = false;
++static bool keyb_grabbed = false;
+ static int modifiers   = 0 ;
+ static int origin [2]  = {   0,   0 } ;
+ static int size   [2]  = { 640, 480 } ;
+ static int currScreen  = 0 ;
+ static int currConnect = 0 ;
+-static int currCursor  = PW_CURSOR_LEFT ;
++static int wmCursor    = PW_CURSOR_LEFT ;
++static int fsCursor    = PW_CURSOR_LEFT ;
+ 
+ static pwResizeCB     *resizeCB = NULL ;
+ static pwExitCB       *exitCB   = NULL ;
+@@ -92,12 +110,17 @@
+ static Display     *currDisplay = NULL ;
+ static XVisualInfo *visualInfo  = NULL ;
+ static Window       currHandle  ;
++static Window       wmWindow    ;
++static Window       fsWindow    = None ;
+ static GLXContext   currContext ;
+ static Window       rootWindow  ;
+ static Atom         delWinAtom  ;
++static XTextProperty *titlePropertyPtr = NULL;
+ 
+ static bool autoRepeat = false ;
+ 
++static void getEvents ();
++
+ void pwSetAutoRepeatKey ( bool enable )
+ {
+   autoRepeat = enable ;
+@@ -181,6 +204,41 @@
+ }
+ 
+ 
++static void pwRealSetResizable ( bool enable, int width, int height )
++{
++  XSizeHints         sizeHints ;
++  XWMHints             wmHints ;
++
++  resizable = enable;
++
++  if (resizable)
++    sizeHints.flags     = USSize;
++  else
++    sizeHints.flags     = PSize | PMinSize | PMaxSize;;
++
++  if ( origin[0] >= 0 && origin[1] >= 0 )
++    sizeHints.flags |= USPosition ;
++
++  sizeHints.x           = origin[0] ;
++  sizeHints.y           = origin[1] ;
++  sizeHints.width       = width ;
++  sizeHints.height      = height ;
++  sizeHints.min_width   = width ;
++  sizeHints.min_height  = height ;
++  sizeHints.base_width  = width ;
++  sizeHints.base_height = height ;
++  sizeHints.max_width   = width ;
++  sizeHints.max_height  = height ;
++
++  wmHints.flags         = StateHint;
++  wmHints.initial_state = NormalState ;
++
++  XSetWMProperties ( currDisplay, wmWindow,
++	                  titlePropertyPtr, titlePropertyPtr, 0, 0,
++                          &sizeHints, &wmHints, NULL ) ;
++}
++
++
+ void pwInit ( int multisample, int num_samples )
+ {
+   pwInit ( 0, 0, -1, -1, multisample, "NoName", FALSE, num_samples ) ;
+@@ -191,7 +249,7 @@
+                       pwMousePosFunc *mp, pwResizeCB *rcb,
+                       pwExitCB *ecb )
+ {
+-  if ( ! initialised )
++  if ( ! currDisplay )
+   {
+     fprintf ( stderr, "PW: You must not call pwSetCallbacks before pwInit.\n");
+     exit ( 1 ) ;
+@@ -228,6 +286,7 @@
+   {
+     fprintf ( stderr, "PW: GLX extension not available on display '%s'?!?",
+                                              XDisplayName ( displayName ) ) ;
++    XCloseDisplay ( currDisplay ) ;
+     exit ( 1 ) ;
+   }
+ 
+@@ -235,6 +294,11 @@
+   rootWindow   = RootWindow       ( currDisplay, currScreen ) ;
+   currConnect  = ConnectionNumber ( currDisplay ) ;
+   delWinAtom   = XInternAtom      ( currDisplay, "WM_DELETE_WINDOW", 0 ) ;
++  fsWindow     = None;
++  
++#ifdef XF86VIDMODE
++  xf86_vidmode_init () ;
++#endif
+ 
+   if ( w == -1 ) w = DisplayWidth  ( currDisplay, currScreen ) ;
+   if ( h == -1 ) h = DisplayHeight ( currDisplay, currScreen ) ;
+@@ -244,10 +308,8 @@
+   size   [ 0 ] = w ;
+   size   [ 1 ] = h ;
+ 
++  static XTextProperty titleProperty ;
+   XSetWindowAttributes attribs ;
+-  XTextProperty   textProperty ;
+-  XSizeHints         sizeHints ;
+-  XWMHints             wmHints ;
+   unsigned int            mask ;
+   PixelFormat               pf ;
+ 
+@@ -280,6 +342,7 @@
+     if ( visualInfo == NULL )
+     {
+       fprintf ( stderr, "PW: Unable to open a suitable graphics window,\n" ) ;
++      XCloseDisplay ( currDisplay ) ;
+       exit ( 1 ) ;
+     }
+   }
+@@ -300,7 +363,12 @@
+ 
+   mask = CWBackPixmap | CWBorderPixel | CWColormap | CWEventMask;
+ 
+-  currHandle = XCreateWindow ( currDisplay, rootWindow,
++  wmWindow = XCreateWindow ( currDisplay, rootWindow,
++                           x, y, w, h, 0, visualInfo->depth,
++                           InputOutput, visualInfo->visual,
++                           mask, &attribs ) ;
++
++  currHandle = XCreateWindow ( currDisplay, wmWindow,
+                            x, y, w, h, 0, visualInfo->depth,
+                            InputOutput, visualInfo->visual,
+                            mask, &attribs ) ;
+@@ -315,19 +383,6 @@
+     fprintf ( stderr,"PW: That may be bad for performance." ) ;
+   }
+ 
+-  sizeHints.flags = 0 ;
+-
+-  if ( x >= 0 && y >= 0 )
+-    sizeHints.flags |= USPosition ;
+-
+-  sizeHints.flags |= USSize ;
+-
+-  sizeHints.x      = x ; sizeHints.y      = y ;
+-  sizeHints.width  = w ; sizeHints.height = h ;
+-
+-  wmHints.flags = StateHint;
+-  wmHints.initial_state = NormalState ;
+-
+   PropMotifWmHints hints  ;
+   Atom prop_t ;
+   Atom prop   ;
+@@ -338,17 +393,17 @@
+   prop_t = prop = XInternAtom ( currDisplay, "_MOTIF_WM_HINTS", True ) ;
+ 
+   if ( prop != 0 )
+-    XChangeProperty ( currDisplay, currHandle, prop, prop_t, 32,
++    XChangeProperty ( currDisplay, wmWindow, prop, prop_t, 32,
+                       PropModeReplace, (unsigned char *) &hints,
+                       PROP_MOTIF_WM_HINTS_ELEMENTS) ;
+ 
+-  XStringListToTextProperty ( (char **) &title, 1, &textProperty ) ;
++  if (XStringListToTextProperty ( (char **) &title, 1, &titleProperty ) )
++    titlePropertyPtr = &titleProperty;
+ 
+-  XSetWMProperties ( currDisplay, currHandle,
+-	                  &textProperty, &textProperty, 0, 0,
+-                          &sizeHints, &wmHints, NULL ) ;
+-  XSetWMProtocols  ( currDisplay, currHandle, &delWinAtom  , 1 );
++  pwRealSetResizable   ( true, w, h );
++  XSetWMProtocols  ( currDisplay, wmWindow, &delWinAtom  , 1 );
+   XMapWindow       ( currDisplay, currHandle ) ;
++  XMapWindow       ( currDisplay, wmWindow ) ;
+   glXMakeCurrent   ( currDisplay, currHandle, currContext ) ;
+ 
+   pwSetCursor ( PW_CURSOR_LEFT ) ;
+@@ -357,13 +412,14 @@
+   glHint ( GL_MULTISAMPLE_FILTER_HINT_NV, multisample ) ;
+ #endif
+ 
++  atexit( pwCleanup ) ;
++
+   kbCB     = NULL ;
+   msCB     = NULL ;
+   mpCB     = NULL ;
+   resizeCB = NULL ;
+   exitCB   = defaultExitFunc ;
+ 
+-  initialised = true ;
+   insideCallback = false ;
+ 
+   glClear ( GL_COLOR_BUFFER_BIT ) ;
+@@ -373,6 +429,14 @@
+ }
+ 
+ 
++void pwSetResizable ( bool enable )
++{
++  /* Make sure we get any last resize events before doing this */
++  getEvents();
++  pwRealSetResizable ( enable, size[0], size[1] ) ;
++}
++
++
+ void pwGetSize ( int *w, int *h )
+ {
+   if ( w ) *w = size[0] ;
+@@ -380,17 +444,19 @@
+ }
+ 
+ 
+-void pwSetCursor ( int c )
++void pwRealSetCursor ( int c )
+ {
++  int newCursor;
++
+   switch ( c )
+   {
+-    case PW_CURSOR_RIGHT  : currCursor = XC_right_ptr      ; break ;
+-    case PW_CURSOR_LEFT   : currCursor = XC_left_ptr       ; break ;
+-    case PW_CURSOR_QUERY  : currCursor = XC_question_arrow ; break ;
+-    case PW_CURSOR_AIM    : currCursor = XC_target         ; break ;
+-    case PW_CURSOR_CIRCLE : currCursor = XC_circle         ; break ;
+-    case PW_CURSOR_WAIT   : currCursor = XC_watch          ; break ;
+-    case PW_CURSOR_CROSS  : currCursor = XC_crosshair      ; break ;
++    case PW_CURSOR_RIGHT  : newCursor = XC_right_ptr      ; break ;
++    case PW_CURSOR_LEFT   : newCursor = XC_left_ptr       ; break ;
++    case PW_CURSOR_QUERY  : newCursor = XC_question_arrow ; break ;
++    case PW_CURSOR_AIM    : newCursor = XC_target         ; break ;
++    case PW_CURSOR_CIRCLE : newCursor = XC_circle         ; break ;
++    case PW_CURSOR_WAIT   : newCursor = XC_watch          ; break ;
++    case PW_CURSOR_CROSS  : newCursor = XC_crosshair      ; break ;
+ 
+     case PW_CURSOR_NONE  :
+     default:
+@@ -406,36 +472,231 @@
+                         XCreatePixmapCursor ( currDisplay,
+                             pix, pix, &bcol, &bcol, 0, 0 ) ) ;
+         XFreePixmap   ( currDisplay, pix ) ;
+-
+-        currCursor = 0 ;
+       }
+       return ;
+   }
+  
+   XDefineCursor( currDisplay, currHandle,
+-                 XCreateFontCursor ( currDisplay, currCursor ) ) ;
++                 XCreateFontCursor ( currDisplay, newCursor ) ) ;
+ }
+ 
+ 
+-void pwSetSize ( int w, int h )
++void pwSetCursor ( int c )
++{
++  pwRealSetCursor (c);
++  wmCursor = c;
++  fsCursor = c;
++}
++
++
++void pwSetCursorEx ( int wm, int fs )
+ {
++  if (fsWindow == None)
++    pwRealSetCursor (wm);
++  else
++    pwRealSetCursor (fs);
++  wmCursor = wm;
++  fsCursor = fs;
++}
++
++
++#ifdef XF86VIDMODE      
++static void
++xf86_vidmode_init ( void )
++{
++  int i,j;
++  XF86VidModeModeLine *l = (XF86VidModeModeLine *)((char *)
++    &XF86VidModeData.orig_mode + sizeof XF86VidModeData.orig_mode.dotclock);
++  
++  if (!XF86VidModeQueryVersion(currDisplay, &i, &j))
++    XF86VidModeData.vidmode_available = 0;
++  else if (!XF86VidModeQueryExtension(currDisplay, &i, &j))
++    XF86VidModeData.vidmode_available = 0;
++  else if (!XF86VidModeGetModeLine(currDisplay, currScreen,
++            (int *)&XF86VidModeData.orig_mode.dotclock, l))
++    XF86VidModeData.vidmode_available = 0;
++  else if (!XF86VidModeGetViewPort(currDisplay, currScreen,
++            &XF86VidModeData.orig_viewport_x,
++            &XF86VidModeData.orig_viewport_y))
++    XF86VidModeData.vidmode_available = 0;
++  
++  if (!XF86VidModeData.vidmode_available)
++    fprintf(stderr, "Warning: XF86VidMode not available\n");
++}
++
++
++/* qsort comparison function for sorting the modes */
++static int cmpmodes(const void *va, const void *vb)
++{
++    const XF86VidModeModeInfo *a = *(const XF86VidModeModeInfo **)va;
++    const XF86VidModeModeInfo *b = *(const XF86VidModeModeInfo **)vb;
++    if ( a->hdisplay == b->hdisplay )
++        return b->vdisplay - a->vdisplay;  
++    else
++        return b->hdisplay - a->hdisplay;
++}
++
++
++static void pwXf86VmSetFullScreenResolution (int desired_width,
++  int desired_height, int &result_width, int &result_height)
++{
++  int i;
++  XF86VidModeModeLine mode ; /* = { .hdisplay = 0, .privsize = 0 } ; */
++  XF86VidModeModeInfo **modes;
++  int mode_count;
++  
++  /* C++ can't do struct initialization by struct member name? */
++  mode.hdisplay = 0;
++  mode.privsize = 0;
++
++  if ( ! XF86VidModeData.vidmode_available )
++    return;
++  
++  /* Try to switch video mode. This must be done after the pointer is
++     grabbed, because otherwise it can be outside the window negating the
++     XF86VidModeSetViewPort. */
++  if (XF86VidModeGetModeLine(currDisplay, currScreen, &i, &mode))
++  {
++    result_width  = mode.hdisplay;
++    result_height = mode.vdisplay;
++  }
++    
++  /* Get list of modelines.  */
++  if (!XF86VidModeGetAllModeLines(currDisplay, currScreen, &mode_count, &modes))
++          mode_count = 0;
++     
++  /* Search for an exact matching video mode.  */
++  for (i = 0; i < mode_count; i++) {
++     if ((modes[i]->hdisplay == desired_width) && 
++         (modes[i]->vdisplay == desired_height))
++       break;
++  }
++
++  /* Search for a non exact match (smallest bigger res). */
++  if (i == mode_count) {
++    int best_width = 0, best_height = 0;
++    qsort(modes, mode_count, sizeof(void *), cmpmodes);
++    for (i = mode_count-1; i > 0; i--) {
++       if ( ! best_width ) {
++          if ( (modes[i]->hdisplay >= desired_width) &&
++               (modes[i]->vdisplay >= desired_height) ) {
++             best_width = modes[i]->hdisplay;
++             best_height = modes[i]->vdisplay;
++          }
++       } else {
++          if ( (modes[i]->hdisplay != best_width) ||
++               (modes[i]->vdisplay != best_height) ) {
++             i++;
++             break;
++          }
++       }
++    }
++  }
++      
++  /* Switch video mode.  */
++  if ((i >= 0) &&
++      ((modes[i]->hdisplay != mode.hdisplay) ||
++       (modes[i]->vdisplay != mode.vdisplay)) &&
++      XF86VidModeSwitchToMode(currDisplay, currScreen, modes[i]))
++  {
++    result_width  = modes[i]->hdisplay;
++    result_height = modes[i]->vdisplay;
++  }
++  
++  /* Lock mode switching.  */
++  XF86VidModeLockModeSwitch(currDisplay, currScreen, True);
++         
++  /* Set viewport. */
++  XF86VidModeSetViewPort(currDisplay, currScreen, 0, 0);
++
++  /* clean up */
++  if (mode.privsize)
++    XFree(mode.c_private);
++
++  if (mode_count)
++  {
++    for (i = 0; i < mode_count; i++)
++      if (modes[i]->privsize)
++        XFree(modes[i]->c_private);
++    XFree(modes);
++  }
++}
++
++
++static void pwXf86VmRestoreOriginalResolution ( )
++{
++  int i;
++  XF86VidModeModeLine mode;
++
++  if ( ! XF86VidModeData.vidmode_available )
++    return;
++  
++  /* Unlock mode switching.  */
++  XF86VidModeLockModeSwitch(currDisplay, currScreen, False);
++
++  if (!XF86VidModeGetModeLine(currDisplay, currScreen, &i, &mode) ||
++      (mode.hdisplay != XF86VidModeData.orig_mode.hdisplay) ||
++      (mode.vdisplay != XF86VidModeData.orig_mode.vdisplay))
++  {
++    if (!XF86VidModeSwitchToMode(currDisplay, currScreen,
++          &XF86VidModeData.orig_mode))
++      fprintf(stderr, "XF86VidMode couldnot restore original resolution\n");
++  }
++  if (XF86VidModeData.orig_viewport_x || XF86VidModeData.orig_viewport_y)
++  {
++    if (!XF86VidModeSetViewPort(currDisplay, currScreen,
++          XF86VidModeData.orig_viewport_x,
++          XF86VidModeData.orig_viewport_y))
++      fprintf(stderr, "XF86VidMode couldnot restore original viewport\n");
++  }
++}
++#endif
++
++
++void 
++pwSetSize ( int w, int h )
++{
++  bool notResizable = !resizable;
++  
++  if (notResizable)
++    pwRealSetResizable ( true, w, h );
++
+   XResizeWindow ( currDisplay, currHandle, w, h ) ;
+-  XFlush        ( currDisplay ) ;
++  XResizeWindow ( currDisplay, wmWindow, w, h ) ;
++
++  if (notResizable)
++    pwRealSetResizable ( false, w, h );
++
++#ifdef XF86VIDMODE      
++  if (fsWindow != None)
++  {
++    int screen_w = 0, screen_h ;
++    pwXf86VmSetFullScreenResolution ( w, h, screen_w, screen_h ) ;
++    /* check pwXf86VmSetFullScreenResolution didn't fail completly. */
++    if (screen_w)
++    {
++      /* Center the window */
++      XMoveWindow ( currDisplay, currHandle, ( screen_w - w ) / 2,
++                   ( screen_h - h ) / 2 ) ;
++    }
++  }
++#endif
++
++  XFlush ( currDisplay );
+ }
+ 
+ 
+ void pwSetOrigin ( int x, int y )
+ {
+-  XMoveWindow ( currDisplay, currHandle, x, y ) ;
++  XMoveWindow ( currDisplay, wmWindow, x, y ) ;
+   XFlush      ( currDisplay ) ;
+ }
+ 
+ 
+ void pwSetSizeOrigin ( int x, int y, int w, int h )
+ {
+-  XMoveWindow   ( currDisplay, currHandle, x, y ) ;
+-  XResizeWindow ( currDisplay, currHandle, w, h ) ;
+-  XFlush        ( currDisplay ) ;
++  XMoveWindow   ( currDisplay, wmWindow, x, y ) ;
++  pwSetSize     ( w, h );
+ }
+ 
+ 
+@@ -474,7 +735,11 @@
+     switch ( event.type )
+     {
+       case ClientMessage   : (*exitCB)() ; break ;
+-      case DestroyNotify   : (*exitCB)() ; break ;
++
++      case DestroyNotify   : 
++        if ( event.xdestroywindow.window == wmWindow )
++          (*exitCB)() ;
++        break ;
+ 
+       case ConfigureNotify :
+         if ( currHandle == event.xconfigure.window &&
+@@ -605,7 +870,7 @@
+ 
+ void pwSwapBuffers ()
+ {
+-  if ( ! initialised )
++  if ( ! currDisplay )
+   {
+     fprintf ( stderr, "PLIB/PW: FATAL - Application called pwSwapBuffers"
+                       " before pwInit.\n" ) ;
+@@ -635,15 +900,133 @@
+ #endif
+ 
+ 
++void pwSetFullscreen ()
++{
++  XEvent event;
++  XSetWindowAttributes setattr;
++  /* local width and height vars used for fullscreen window size and for
++     storing the video_mode size which is then used to center the window */
++  int fs_width  = DisplayWidth(currDisplay, currScreen);
++  int fs_height = DisplayHeight(currDisplay, currScreen);
++
++  /* Grab the keyboard */
++  if (XGrabKeyboard(currDisplay, rootWindow, False, GrabModeAsync,
++        GrabModeAsync, CurrentTime) != GrabSuccess)
++  {
++    fprintf(stderr, "Error can not grab keyboard, not going fullscreen\n");
++    return;
++  }
++  keyb_grabbed = true;
++  
++  /* Create the fullscreen window */
++  setattr.override_redirect = True;
++  setattr.background_pixel = XBlackPixel(currDisplay, currScreen);
++  setattr.border_pixel = XBlackPixel(currDisplay, currScreen);
++  setattr.event_mask = StructureNotifyMask;
++  setattr.colormap = XCreateColormap ( currDisplay, rootWindow,
++                                       visualInfo->visual, AllocNone ) ;
++  fsWindow = XCreateWindow(currDisplay, rootWindow,
++                               0, 0, fs_width, fs_height, 0,
++                               visualInfo->depth, InputOutput,
++                               visualInfo->visual, CWOverrideRedirect |
++                               CWBackPixel | CWColormap | CWBorderPixel |
++                               CWEventMask, &setattr);
++
++  /* Map the fullscreen window */
++  XMapRaised(currDisplay, fsWindow);
++  /* wait until we are mapped. (shamelessly borrowed from SDL) */
++  do {
++    XMaskEvent(currDisplay, StructureNotifyMask, &event); 
++  } while ( (event.type != MapNotify) || 
++            (event.xmap.event != fsWindow) );
++  /* Make sure we got to the top of the window stack */
++  XRaiseWindow(currDisplay, fsWindow);
++  
++  /* Reparent the real window */
++  XReparentWindow(currDisplay, currHandle, fsWindow, 0, 0);
++
++  /* Grab the mouse.  */
++  if (XGrabPointer(currDisplay, currHandle, False,
++        PointerMotionMask | ButtonPressMask | ButtonReleaseMask,
++        GrabModeAsync, GrabModeAsync, currHandle, None,
++        CurrentTime) == GrabSuccess)
++    mouse_grabbed = true;
++  else
++    fprintf(stderr, "Warning can not grab mouse\n");
++
++  /* Make sure we get any last resize events before using size[] */
++  getEvents();
++
++#ifdef XF86VIDMODE
++  /* Switch resolution */
++  pwXf86VmSetFullScreenResolution (size[0], size[1], fs_width, fs_height);
++#endif
++  
++  /* Center the window (if nescesarry) */
++  if ((fs_width != size[0]) || (fs_height != size[1]))
++    XMoveWindow(currDisplay, currHandle, (fs_width - size[0]) / 2,
++                 (fs_height - size[1]) / 2);
++                 
++  /* And last set the cursor */
++  pwRealSetCursor (fsCursor);
++}
++
++
++void pwSetWindowed ()
++{
++  if (mouse_grabbed) {
++    XUngrabPointer(currDisplay, CurrentTime);
++    mouse_grabbed = false;
++  }
++  if (keyb_grabbed) {
++    XUngrabKeyboard(currDisplay, CurrentTime);
++    keyb_grabbed = false;
++  }
++
++#ifdef XF86VIDMODE
++  /* Switch resolution */
++  pwXf86VmRestoreOriginalResolution ( ) ;
++#endif
++
++  /* Reparent the real window! */
++  XReparentWindow(currDisplay, currHandle, wmWindow, 0, 0);
++  XUnmapWindow(currDisplay, fsWindow);
++  XDestroyWindow(currDisplay, fsWindow);
++  fsWindow = None;
++
++  /* And last set the cursor */
++  pwRealSetCursor (wmCursor);
++}
++
++
++void pwToggleFullscreen ()
++{
++  if (fsWindow == None)
++    pwSetFullscreen () ;
++  else
++    pwSetWindowed () ;
++}
++
++
+ void pwCleanup ()
+ {
+-  if ( ! initialised )
+-    fprintf ( stderr, "PLIB/PW: WARNING - Application called pwCleanup"
+-                      " before pwInit.\n" ) ;
++  if ( ! currDisplay )
++    return;
++
++  if ( titlePropertyPtr )
++  {
++    XFree ( titlePropertyPtr->value ) ;
++    titlePropertyPtr = NULL;
++  }
++
++  if ( fsWindow != None )
++    pwSetWindowed ( ) ;
+ 
+   glXDestroyContext ( currDisplay, currContext ) ;
+   XDestroyWindow    ( currDisplay, currHandle  ) ;
+-  XFlush            ( currDisplay ) ;
++  XDestroyWindow    ( currDisplay, wmWindow    ) ;
++  XCloseDisplay     ( currDisplay ) ;
++  currDisplay = NULL;
+ }
+ 
+ 
