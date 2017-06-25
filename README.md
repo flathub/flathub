@@ -16,7 +16,7 @@ file at the toplevel.
 Hosted builds should be stable releases, not development snapshots, so please use tarballs or git tags, not just
 the tip of a branch.
 
-More detailed requirements can be found in the [Review Guidelines](https://github.com/flatpak/flathub/wiki/Review-Guidelines)
+More detailed requirements can be found in the [Review Guidelines](https://github.com/flathub/flathub/wiki/Review-Guidelines)
 
 Using the Flathub repository
 ----------------------------
