@@ -25,7 +25,7 @@
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
-    fprintf(stderr, "slitpelf: missing arguments");
+    fprintf(stderr, "splitelf: missing arguments");
     return 1;
   }
   int infd = open(argv[1], O_RDONLY);
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
     perror("splitelf");
     return 1;
   } else if (r != sizeof(Elf64_Ehdr)) {
-    fprintf(stderr, "slitpelf: not enough bytes in elf header");
+    fprintf(stderr, "splitelf: not enough bytes in elf header");
     return 1;
   }
   off_t elf_size = (off_t)(header.e_shoff + header.e_shentsize*header.e_shnum);
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
     perror("splitelf");
     return 1;
   } else if (seeked != elf_size) {
-    fprintf(stderr, "slitpelf: not enough bytes in elf");
+    fprintf(stderr, "splitelf: not enough bytes in elf");
     return 1;
   }
   while (1) {
