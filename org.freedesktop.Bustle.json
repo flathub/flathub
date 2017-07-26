@@ -1,0 +1,252 @@
+{
+    "app-id": "org.freedesktop.Bustle",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "3.24",
+    "sdk": "org.gnome.Sdk",
+    /* Use writable-sdk to install Haskell Platform to usr rather than app:
+     * it's only needed to build Bustle, not to run it. All Haskell libraries
+     * and the runtime system are statically linked into the bustle binary.
+     * The only shared library it needs which is not part of the GNOME SDK
+     * is libpcap, which is installed to app.
+     */
+    "writable-sdk": true,
+    "command": "bustle",
+    "finish-args": [
+        "--socket=x11",
+        "--socket=wayland",
+        "--socket=system-bus",
+        "--socket=session-bus",
+        "--share=ipc",
+        /* No support for GtkFileChooserNative in gtk2hs, so the options are:
+         * 1. Use hidden GtkFileChooserButtons and fake clicks on them
+         * 2. Just expose the host FS
+         */
+        "--filesystem=host"
+    ],
+    "build-options": {
+        "strip": false,
+        "no-debuginfo": true
+    },
+    "cleanup": [
+        "*.a", "*.h",
+        "/share/man/man?/pcap*",
+        "/bin/pcap-config"
+    ],
+    "modules": [
+        /* Why not start your day with a 259MB tarball? */
+        {
+            "name": "haskell-platform",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://www.haskell.org/platform/download/8.0.2/haskell-platform-8.0.2-unknown-posix--full-x86_64.tar.gz",
+                    "sha256": "c68a6f278a192d5000e8feefb0e63cef1bd441d02b846029840b98a5fa3ee31a",
+                    /* there are no leading compoments in this file; so the default of 1 makes tar silently extract no files! */
+                    "strip-components": 0
+                },
+                {
+                    "type": "file",
+                    "path": "activate-hs.patch"
+                }
+            ],
+            "buildsystem": "simple",
+            "build-commands": [
+                /* Can't just run install-haskell-platform.sh because it calls
+                 * activate-hs which, in its pristine form, explicitly checks
+                 * for UID 0. We know better -- we have permission to write
+                 * everywhere -- so patch out this check.
+                 */
+                "tar -C / -xf hp-usr-local.tar.gz",
+                "patch /usr/local/haskell/ghc-8.0.2-x86_64/bin/activate-hs activate-hs.patch",
+                "/usr/local/haskell/ghc-8.0.2-x86_64/bin/activate-hs --verbose --prefix /usr"
+            ]
+        },
+
+        /* pcap dependencies begin here */
+        {
+            "name": "libpcap",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/the-tcpdump-group/libpcap.git",
+                    /* master as of 2017-07-24, new enough for dbus message size changes */
+                    "commit": "c955dc6facab1cca6b5b82c9274f295a58065ba0"
+                }
+            ]
+        },
+        {
+            "name": "pcap",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/pcap-0.4.5.2/pcap-0.4.5.2.tar.gz",
+                    "sha256": "e7e92e6ff4bffa22102335a38dabb97fd0771fdf3b75d45cd7c1708c85e1cd5f"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ]
+        },
+
+        /* gtk2hs dependencies begin here */
+        {
+            "name": "hashtables",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/hashtables-1.2.1.1/hashtables-1.2.1.1.tar.gz",
+                    "sha256": "227f554a93310645c654254659969b347de3d1bf3d98901dbb5c113ece72e951"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+        {
+            "name": "utf8-string",
+            "sources": [
+                /* latest release doesn't install on HP 8.0.2!
+                 * Issue #21 on github glguy utf8-string.
+                 * (If I include the bug URL here, flatpak-builder chokes on
+                 * the forward slashes. Apparently comments are only supported
+                 * by accident because json-glib uses GScanner which doesn't
+                 * let you turn off comment support.
+                 */
+                {
+                    "type": "git",
+                    "url": "https://github.com/glguy/utf8-string.git",
+                    "commit": "58f5636d419e942784996d117bc5ee00a2ecdabc"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+        {
+            "name": "gtk2hs",
+            "sources": [
+                {
+                    /* Installing from Git saves us listing each subpackage separately. */
+                    "type": "git",
+                    "url": "https://github.com/gtk2hs/gtk2hs",
+                    /* No tags? Great! Just pick today's HEAD. */
+                    "commit": "21d3a12a82756d04066e5e4198b35097012ee65b"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            /* Makefile interprets build-% as cabal install % */
+            "make-args": [
+                "build-tools",
+                "build-glib",
+                "build-gio",
+                "build-cairo",
+                "build-pango",
+                "build-gtk" /* this is the gtk3 version */
+            ],
+            "no-autogen": true
+        },
+
+        /* dbus dependencies begin here */
+        {
+            "name": "xml-types",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/xml-types-0.3.6/xml-types-0.3.6.tar.gz",
+                    "sha256": "9937d440072552c03c6d8ad79f61e61467dc28dcd5adeaad81038b9b94eef8c9"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+        {
+            "name": "libxml-sax",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/libxml-sax-0.7.5/libxml-sax-0.7.5.tar.gz",
+                    "sha256": "99141784cc0d6c5749f0df618b2d46922391eede09f4f9ccfc36fb58a9c16d51"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+        {
+            "name": "cereal",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/cereal-0.5.4.0/cereal-0.5.4.0.tar.gz",
+                    "sha256": "daca6c5aeff21ca233bebe006c158b0e4421b239c722768b568fca9b32cafee7"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+        {
+            "name": "dbus",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://hackage.haskell.org/package/dbus-0.10.13/dbus-0.10.13.tar.gz",
+                    "sha256": "aa94aefba8a0be240faddec88442afd8db1fa4e994423d474b112ec1c67e7aca"
+                },
+                {
+                    "type": "file",
+                    "path": "Makefile"
+                }
+            ],
+            "no-autogen": true
+        },
+
+        /* for the man page! */
+        {
+            "name": "help2man",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "http://ftpmirror.gnu.org/help2man/help2man-1.47.4.tar.xz",
+                    "sha256": "d4ecf697d13f14dd1a78c5995f06459bff706fd1ce593d1c02d81667c0207753"
+                }
+            ],
+            "build-options":{
+                "prefix": "/usr"
+            }
+        },
+
+        /* fired up! ready to go! */
+        {
+            "name": "bustle",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://anongit.freedesktop.org/git/bustle.git",
+                    "branch": "bustle-0.6"
+                }
+            ],
+            /* TODO: get -j in here too */
+            "buildsystem": "simple",
+            "build-commands": [
+                "make install PREFIX=/app DESTDIR=/",
+                "cabal install --prefix=/app --flags=-hgettext"
+            ]
+        }
+    ]
+}
