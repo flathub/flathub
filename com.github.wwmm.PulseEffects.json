@@ -1,0 +1,259 @@
+{
+  "app-id": "com.github.wwmm.PulseEffects",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "3.24",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": ["org.freedesktop.Sdk.Extension.gfortran-62"],
+  "command": "pulseeffects",
+  "rename-desktop-file": "pulseeffects.desktop",
+  "rename-icon": "pulseeffects",
+  "finish-args": [
+    "--socket=wayland",
+    "--socket=pulseaudio",
+    "--own-name=com.github.wwmm.pulseeffects",
+    /* X11 + XShm access */
+    "--share=ipc", "--socket=x11",
+    /* Access dconf*/
+    "--env=DCONF_USER_CONFIG_DIR=.config/dconf",
+    "--filesystem=xdg-run/dconf",
+    "--filesystem=~/.config/dconf:ro",
+    "--talk-name=ca.desrt.dconf",
+    /* Use newer gi overrides with python-gobject from runtime */
+    "--env=PYTHONPATH=/app/lib/python3.5/site-packages"
+  ],
+  "cleanup": [
+    "/include",
+    "/lib/*.la",
+    "/lib/girepository-1.0",
+    "/lib/gstreamer-1.0/*.la",
+    "/lib/pkgconfig",
+    "/share/gir-1.0",
+    "/share/gstreamer-1.0",
+    "/share/gtk-doc"
+  ],
+  "modules": [
+    {
+      "name": "pulseeffects",
+      "buildsystem": "simple",
+      "build-commands": [
+        "python3 setup.py install --prefix=/app --root=/ --optimize=1"
+      ],
+      "sources": [{
+        "type": "git",
+        "url": "https://github.com/wwmm/pulseeffects.git",
+        "branch": "v2.1.2",
+        "commit": "c68daa9b028c775b416914597a7c30c42bceb2c4"
+      }],
+      "post-install": [
+        "find share -type f -exec install -D -m644 '{}' '/app/{}' \\;",
+        "glib-compile-schemas /app/share/glib-2.0/schemas"
+      ],
+      "modules": [
+        {
+          "name": "gfortran",
+          "buildsystem": "simple",
+          "build-commands": ["/usr/lib/sdk/gfortran-62/install.sh"]
+        },
+        {
+          "name": "lapack",
+          "buildsystem": "cmake",
+          "builddir": true,
+          "config-opts": [
+            "-DCMAKE_INSTALL_PREFIX=/app",
+            "-DCMAKE_INSTALL_LIBDIR=lib",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DBUILD_SHARED_LIBS=ON",
+            "-DBUILD_TESTING=OFF",
+            "-DCMAKE_Fortran_COMPILER=/usr/lib/sdk/gfortran-62/bin/gfortran",
+            "-DLAPACKE=ON",
+            "-DCBLAS=ON"
+          ],
+          "sources": [{
+            "type": "archive",
+            "url": "http://www.netlib.org/lapack/lapack-3.7.1.tgz",
+            "sha256": "f6c53fd9f56932f3ddb3d5e24c1c07e4cd9b3b08e7f89de9c867125eecc9a1c8"
+          }]
+        },
+        {
+          "name": "numpy",
+          "buildsystem": "simple",
+          "build-commands": [
+            "PATH=$PATH:/usr/lib/sdk/gfortran-62/bin python3 setup.py build -j 0",
+            "python3 setup.py install --prefix=/app --root=/ --optimize=1"
+          ],
+          "build-options": {
+            "env": { "ATLAS": "None", "BLAS": "/app/lib", "LAPACK": "/app/lib" }
+          },
+          "sources": [{
+            "type": "archive",
+            "url": "https://github.com/numpy/numpy/releases/download/v1.13.1/numpy-1.13.1.tar.gz",
+            "sha256": "de020ec06f1e9ce1115a50161a38bf8d4c2525379900f9cb478cc613a1e7cd93"
+          }],
+          "cleanup": ["*.h", "/bin", "libnpymath.a", "*/core/include"]
+        },
+        {
+          "name": "scipy",
+          "buildsystem": "simple",
+          "build-commands": [
+            "PATH=$PATH:/usr/lib/sdk/gfortran-62/bin python3 setup.py build",
+            "python3 setup.py install --prefix=/app --root=/ --optimize=1"
+          ],
+          "build-options": {
+            "ldflags": "-shared",
+            "env": { "ATLAS": "None", "BLAS": "/app/lib", "LAPACK": "/app/lib" }
+          },
+          "sources": [{
+            "type": "archive",
+            "url": "https://github.com/scipy/scipy/releases/download/v0.19.1/scipy-0.19.1.tar.xz",
+            "sha256": "0dca04c4860afdcb066cab4fd520fcffa8c85e9a7b5aa37a445308e899d728b3"
+          }]
+        },
+        {
+          "name": "ladspa-sdk",
+          "make-args": ["targets"],
+          "make-install-args": [
+            "INSTALL_BINARY_DIR=/app/bin",
+            "INSTALL_INCLUDE_DIR=/app/include",
+            "INSTALL_PLUGINS_DIR=/app/lib/ladspa"
+          ],
+          "no-autogen": true,
+          "subdir": "src",
+          "sources": [
+            {
+              "type": "archive",
+              "url": "http://www.ladspa.org/download/ladspa_sdk_1.13.tgz",
+              "sha256": "b5ed3f4f253a0f6c1b7a1f4b8cf62376ca9f51d999650dd822650c43852d306b"
+            },
+            {
+              "type": "patch",
+              "path": "ladspa-sdk-fix-memleak.patch",
+              "strip-components": 0
+            },
+            {
+              "type": "shell",
+              "commands": ["sed -i 's|mkdirhier|mkdir -p|' src/makefile"]
+            }
+          ],
+          "cleanup": ["/bin"]
+        },
+        {
+          "name": "gstreamer",
+          "config-opts": [
+            "--enable-debug",
+            "--disable-benchmarks",
+            "--disable-check",
+            "--disable-examples",
+            "--disable-tests",
+            "--disable-tools"
+          ],
+          "sources": [{
+            "type": "archive",
+            "url": "https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.12.1.tar.xz",
+            "sha256": "9044b9d8b3ff44457fa9e36faa59c56684b587b34dee449bfe15ec0c32a3a6d2"
+          }],
+          "cleanup": ["/lib/*.h", "/libexec", "/share/aclocal", "/share/bash-completion"]
+        },
+        {
+          "name": "gstreamer-plugins-base",
+          "config-opts": [
+            "--enable-experimental",
+            "--enable-orc",
+            "--disable-examples"
+          ],
+          "sources": [{
+            "type": "archive",
+            "url": "https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.12.1.tar.xz",
+            "sha256": "0cce9fadb574a840b3c9d31b69faf57aad6c5543c3b134a7b935de866c9e0465"
+          }],
+          "cleanup": ["/bin", "/share/man"]
+        },
+        {
+          "name": "gstreamer-plugins-good",
+          "config-opts": [
+            "--enable-cairo",
+            "--enable-experimental",
+            "--enable-orc" ,
+            "--disable-aalib",
+            "--disable-examples",
+            "--disable-jack",
+            "--disable-libcaca",
+            "--disable-monoscope",
+            "--with-default-visualizer=autoaudiosink"
+          ],
+          "sources": [{
+            "type": "archive",
+            "url": "https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.12.1.tar.xz",
+            "sha256": "121e8e46a7f0e622f09ec9be012607b89d737dd72d48b0f2f0680821ae2cf54b"
+          }]
+        },
+        {
+          "name": "gstreamer-plugins-bad",
+          "config-opts": [
+            "--enable-experimental",
+            "--enable-orc",
+            "--disable-examples"
+          ],
+          "sources": [{
+            "type": "archive",
+            "url": "https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.12.1.tar.xz",
+            "sha256": "7def8049d1c44e50199023159dfada60af58fd503ef58a020b79044bda705b97"
+          }],
+          "cleanup": ["/lib/gstreamer-1.0/include"]
+        },
+        {
+          "name": "swh-plugins",
+          "config-opts": ["--prefix=/app"],
+          "sources": [{
+            "type": "git",
+            "url": "https://github.com/swh/ladspa.git",
+            "branch": "v0.4.17",
+            "commit": "8b50f3434b8b30dff16020d17608ced9ee04477b"
+          }],
+          "cleanup": ["/share"],
+          "modules": [
+            {
+              "name": "fftw",
+              "config-opts": [
+                "--prefix=/app",
+                "--disable-doc",
+                "--enable-float"
+              ],
+              "build-options": {
+                "arch": {
+                  "x86_64": {
+                    "cflags": "-fPIC",
+                    "cxxflags": "-fPIC"
+                  }
+                }
+              },
+              "sources": [{
+                "type": "archive",
+                "url": "http://www.fftw.org/fftw-3.3.6-pl2.tar.gz",
+                "sha256": "a5de35c5c824a78a058ca54278c706cdf3d4abba1c56b63531c2cb05f5d57da2"
+              }],
+              "cleanup": ["*"]
+            }
+          ]
+        },
+        {
+          "name": "gst-python",
+          "config-opts": [
+            "--prefix=/app",
+            "--with-pygi-overrides-dir=/app/lib/python3.5/site-packages/gi/overrides"
+          ],
+          "build-options": { "env": { "PYTHON": "python3" } },
+          "sources": [{
+            "type": "archive",
+            "url": "https://gstreamer.freedesktop.org/src/gst-python/gst-python-1.12.1.tar.xz",
+            "sha256": "1721be4f201eb0a73075dd7d39bf2251798124cb948440d4cf4f02d6fa0078a1"
+          }],
+          "post-install": [
+            /* Use newer gi overrides with python-gobject from runtime */
+            "cp -ru /usr/lib/python3.5/site-packages/gi /app/lib/python3.5/site-packages"
+          ],
+          "cleanup": ["_gi_gst.la"]
+        }
+      ]
+    }
+  ]
+}
