@@ -1,6 +1,8 @@
-# Scribus nightly Flatpak repo
+# Scribus Flatpak
 
 You will need Flatpak [installed](http://flatpak.org/getting.html).
+
+Currently only a nightly version is available.
 
 You can install Scribus either by clicking on [this](http://drjurf.tk/scribus-flatpak/scribus-nightly.flatpakref) link, or running:
 
