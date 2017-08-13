@@ -1,11 +1,20 @@
 # Scribus Flatpak
 
-You will need Flatpak [installed](http://flatpak.org/getting.html).
+This repository hosts unofficial Flatpak manifests for Scribus. Currently only
+a nightly version is available. You can find the list of known issues [here][0].
+Testing & contributions welcome!
 
-Currently only a nightly version is available.
+## Installation
 
-You can install Scribus either by clicking on [this](http://drjurf.tk/scribus-flatpak/scribus-nightly.flatpakref) link, or running:
+You will need Flatpak [installed][1].
+
+You can install Scribus either by clicking on [this][2] link, or running:
 
     flatpak install http://drjurf.tk/scribus-flatpak/scribus-nightly.flatpakref
 
-Source code is located on [Github](https://github.com/jurf/scribus-flatpak). Contributions welcome.
+You can find the source code on [Github][3].
+
+[0]: https://github.com/jurf/scribus-flatpak/issues
+[1]: http://flatpak.org/getting.html
+[2]: http://drjurf.tk/scribus-flatpak/scribus-nightly.flatpakref
+[3]: https://github.com/jurf/scribus-flatpak
