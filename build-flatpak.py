@@ -4,6 +4,8 @@ from subprocess import call
 from optparse import OptionParser
 import os
 
+gpg_key = '43998AD0A6FC78823E7BBEFDFCBDD9236E1A33FF'
+
 
 # Quick ’n’ dirty build mode, suitable for testing
 def build_debug(branch, appid):
@@ -19,15 +21,16 @@ def build_release(branch, appid):
     call(['flatpak-builder',
           '--force-clean',
           '--ccache',
-          '--gpg-sign=43998AD0A6FC78823E7BBEFDFCBDD9236E1A33FF',
+          '--gpg-sign=%s' % gpg_key,
           '--gpg-homedir=gpg',
           '--repo=repo',
           'appdir-%s' % branch,
           '%s/%s.json' % (branch, appid)])
 
-    call(['flatpak build-update-repo',
+    call(['flatpak',
+          'build-update-repo',
           '--generate-static-deltas',
-          '--gpg-sign=43998AD0A6FC78823E7BBEFDFCBDD9236E1A33FF',
+          '--gpg-sign=%s' % gpg_key,
           '--gpg-homedir=gpg',
           'repo'])
 
@@ -61,8 +64,8 @@ def main():
                " the correct location?"))
 
     elif os.path.isdir('./.flatpak-builder/build'):
-        call(['rm', '-rf',
-              './.flatpak-builder/build'])
+        print("Emptying build dir")
+        call(['rm', '-rf', './.flatpak-builder/build'])
 
     # Build according to chosen mode
     if not options.release:
