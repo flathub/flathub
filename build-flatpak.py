@@ -16,7 +16,7 @@ def build_debug(branch, appid):
           '%s/%s.json' % (branch, appid)])
 
 
-# Full-blown repo build, along with GPG and deltas
+# Full-blown repo build, along with GPG, deltas and upload
 def build_release(branch, appid):
     call(['flatpak-builder',
           '--force-clean',
@@ -33,6 +33,27 @@ def build_release(branch, appid):
           '--gpg-sign=%s' % gpg_key,
           '--gpg-homedir=gpg',
           'repo'])
+
+    os.chdir("repo/")
+
+    call(['git',
+          'add',
+          '--all'])
+
+    call(['git',
+          'commit',
+          '--amend',
+          '--no-edit'])
+
+    call(['git',
+          'gc'])
+
+    call(['git',
+          'push',
+          '--force'])
+
+    call(['git',
+          'gc'])
 
 
 def main():
