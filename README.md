@@ -1,5 +1,6 @@
 # Obtaining the source archive
 
+```
 hg clone http://www.octave.org/hg/octave
 cd octave
 ./bootstrap
@@ -7,3 +8,4 @@ cd octave
 make
 make dist
 cp octave-4.3.0+.tar.gz ..
+```
