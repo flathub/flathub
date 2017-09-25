@@ -1,6 +1,5 @@
 {
     "id": "org.telegram.desktop",
-    "branch": "master",
     "runtime": "org.kde.Platform",
     "runtime-version": "5.9",
     "sdk": "org.kde.Sdk",
@@ -12,10 +11,9 @@
                      "--share=network",
                      "--socket=x11",
                      "--socket=pulseaudio",
-                     "--filesystem=home",
-                     "--filesystem=/tmp", /* To access socket to avoid multiple instances */
                      "--talk-name=org.kde.StatusNotifierWatcher",
                      "--env=QT_QPA_PLATFORM=flatpak",
+                     "--env=TMPDIR=XDG_CACHE_HOME",
                      "--device=dri" ],
     "cleanup": [ "/cache",
                  "/man",
@@ -66,6 +64,7 @@
                           "sed 's/LIBM=\"-lm\"/LIBM=\" -lm\"/g' -i configure",
                           "sed 's/LIBS=\"-lm  $LIBS\"/LIBS=\" -lm  $LIBS\"/g' -i configure",
                           "sed 's/LIBS=\"-lmw  $LIBS\"/LIBS=\" -lmw  $LIBS\"/g' -i configure"
+
                     ]
                 }
             ]
@@ -182,54 +181,52 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/FFmpeg/FFmpeg/archive/n3.3.2.tar.gz",
-                    "sha256": "823706ca36c1cce60926eeaca670321deb86a0f342f60b5168a8aaf6c5bf0d6b"
+                    "url": "https://github.com/FFmpeg/FFmpeg/archive/n3.3.4.tar.gz",
+                    "sha256": "91452df51865842ae85db48470fddfcd4dc8ad9ab14f2bf7f1ebd0ec225e8c85"
                 }
             ]
         },
         {
             "name": "gyp",
-            "no-autogen": true,
+            "buildsystem": "simple",
             "sources": [
                 {
                     "type": "git",
                     "url": "https://chromium.googlesource.com/external/gyp"
-                },
-                {
-                    "type": "shell",
-                    "commands": [
-                        "python2 setup.py install --prefix=/app"
-                    ]
-                },
-                {
-                    "type": "shell",
-                    "commands": [
-                        "echo '# Empty makefile\n\nall:\n\techo \"Using an empty makefile doing nothing\"\n\ninstall:\n\techo \"Using an empty makefile doing nothing\"' > Makefile"
-                    ]
                 }
+            ],
+            "build-commands": [
+                "python2 setup.py install --prefix=/app"
             ]
         },
         {
             "name": "telegram-desktop",
-            "no-autogen": true,
+            "buildsystem": "simple",
+             "build-commands": [
+                "sed -i s/org.telegram.desktop/org.telegram.desktop.desktop/ lib/xdg/telegramdesktop.appdata.xml",
+                "gyp -Gconfig=Release --depth=Telegram/gyp --generator-output=../.. -Goutput_dir=out Telegram/gyp/Telegram.gyp --format=cmake",
+                "NUM=$((`wc -l < out/Release/CMakeLists.txt` - 2)); sed -i \"$NUM r CMakeLists.inj\" out/Release/CMakeLists.txt",
+                "cd out/Release && cmake . -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=None",
+                "cd out/Release && make"
+            ],
             "post-install": [
-                "strip -s \"out/Release/Telegram\"",
+                "strip -s out/Release/Telegram",
 
-                "install -dm755 \"/app/bin\"",
-                "install -m755 \"out/Release/Telegram\" \"/app/bin/telegram-desktop\"",
+                "install -dm755 /app/bin",
+                "install -m755 out/Release/Telegram /app/bin/telegram-desktop",
 
-                "install -d \"/app/share/applications\"",
-                "install -m644 \"lib/xdg/telegramdesktop.desktop\" \"/app/share/applications/telegramdesktop.desktop\"",
+                "install -d /app/share/applications",
+                "install -m644 lib/xdg/telegramdesktop.desktop /app/share/applications/telegramdesktop.desktop",
 
-                "install -d \"/app/share/appdata\"",
-                "install -m644 \"lib/xdg/telegramdesktop.appdata.xml\" \"/app/share/appdata/telegramdesktop.appdata.xml\"",
+                "install -d /app/share/appdata",
+                "install -m644 lib/xdg/telegramdesktop.appdata.xml /app/share/appdata/telegramdesktop.appdata.xml",
 
-                "install -d \"/app/share/kservices5\"",
-                "install -m644 \"lib/xdg/tg.protocol\" \"/app/share/kservices5/tg.protocol\"",
+                "install -d /app/share/kservices5",
+                "install -m644 lib/xdg/tg.protocol /app/share/kservices5/tg.protocol",
 
                 "for icon_size in 16 32 48 64 128 256 512; do
-                     install -d \"/app/share/icons/hicolor/${icon_size}x${icon_size}/apps\"
-                     install -m644 \"Telegram/Resources/art/icon${icon_size}.png\" \"/app/share/icons/hicolor/${icon_size}x${icon_size}/apps/telegram-desktop.png\"
+                     install -d /app/share/icons/hicolor/${icon_size}x${icon_size}/apps
+                     install -m644 Telegram/Resources/art/icon${icon_size}.png /app/share/icons/hicolor/${icon_size}x${icon_size}/apps/telegram-desktop.png
                  done"
             ],
             "sources": [
@@ -265,22 +262,6 @@
                 {
                     "type": "file",
                     "path": "CMakeLists.inj"
-                },
-                {
-                    "type": "shell",
-                    "commands": [
-                        "sed -i s/org.telegram.desktop/org.telegram.desktop.desktop/ lib/xdg/telegramdesktop.appdata.xml",
-                        "echo '# Empty makefile\n\nall:\n\techo \"Using an empty makefile doing nothing\"\n\ninstall:\n\techo \"Using an empty makefile doing nothing\"' > Makefile"
-                    ]
-                },
-                {
-                    "type": "shell",
-                    "commands": [
-                        "gyp -Gconfig=Release --depth=Telegram/gyp --generator-output=../.. -Goutput_dir=out Telegram/gyp/Telegram.gyp --format=cmake",
-                        "NUM=$((`wc -l < out/Release/CMakeLists.txt` - 2)); sed -i \"$NUM r CMakeLists.inj\" out/Release/CMakeLists.txt",
-                        "cd out/Release && cmake . -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=None",
-                        "cd out/Release && make"
-                    ]
                 }
             ]
         }
