@@ -1,0 +1,340 @@
+diff --git a/Telegram/SourceFiles/main.cpp b/Telegram/SourceFiles/main.cpp
+index 6cd942e..d720d61 100644
+--- a/Telegram/SourceFiles/main.cpp
++++ b/Telegram/SourceFiles/main.cpp
+@@ -35,6 +35,9 @@ int main(int argc, char *argv[]) {
+ 		return psCleanup();
+ 	}
+
++	// I don't know why path is not in QT_PLUGIN_PATH by default
++	QCoreApplication::addLibraryPath("/usr/lib/plugins");
++
+ 	// both are finished in Application::closeApplication
+ 	Logs::start(); // must be started before Platform is started
+ 	Platform::start(); // must be started before QApplication is created
+diff --git a/Telegram/SourceFiles/qt_static_plugins.cpp b/Telegram/SourceFiles/qt_static_plugins.cpp
+index b975c7a8..f2f876b3 100644
+--- a/Telegram/SourceFiles/qt_static_plugins.cpp
++++ b/Telegram/SourceFiles/qt_static_plugins.cpp
+@@ -28,13 +28,4 @@ Q_IMPORT_PLUGIN(QWebpPlugin)
+ Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin)
+ Q_IMPORT_PLUGIN(QGenericEnginePlugin)
+ #elif defined Q_OS_LINUX // Q_OS_WIN | Q_OS_MAC
+-Q_IMPORT_PLUGIN(QWebpPlugin)
+-Q_IMPORT_PLUGIN(QXcbIntegrationPlugin)
+-Q_IMPORT_PLUGIN(QConnmanEnginePlugin)
+-Q_IMPORT_PLUGIN(QGenericEnginePlugin)
+-Q_IMPORT_PLUGIN(QNetworkManagerEnginePlugin)
+-Q_IMPORT_PLUGIN(QComposePlatformInputContextPlugin)
+-Q_IMPORT_PLUGIN(QIbusPlatformInputContextPlugin)
+-Q_IMPORT_PLUGIN(QFcitxPlatformInputContextPlugin)
+-Q_IMPORT_PLUGIN(QHimePlatformInputContextPlugin)
+ #endif // Q_OS_WIN | Q_OS_MAC | Q_OS_LINUX
+diff --git a/Telegram/SourceFiles/stdafx.cpp b/Telegram/SourceFiles/stdafx.cpp
+index e7f5b54..fe92aed 100644
+--- a/Telegram/SourceFiles/stdafx.cpp
++++ b/Telegram/SourceFiles/stdafx.cpp
+@@ -21,3 +21,67 @@ Copyright (c) 2014-2017 John Preston, https://desktop.telegram.org
+ #include "stdafx.h"
+
+ // Precompiled header helper.
++
++/* This file contains some code from Qt source to ensure successful build.
++ * TODO: find a dynamic library with these symbols.
++ */
++
++/* Debian maintainer: this function is taken from qfiledialog.cpp */
++/*
++    Makes a list of filters from ;;-separated text.
++    Used by the mac and windows implementations
++*/
++QStringList qt_make_filter_list(const QString &filter)
++{
++    QString f(filter);
++
++    if (f.isEmpty())
++        return QStringList();
++
++    QString sep(QLatin1String(";;"));
++    int i = f.indexOf(sep, 0);
++    if (i == -1) {
++        if (f.indexOf(QLatin1Char('\n'), 0) != -1) {
++            sep = QLatin1Char('\n');
++            i = f.indexOf(sep, 0);
++        }
++    }
++
++    return f.split(sep);
++}
++
++/* Debian maintainer: this constructor is taken from qtextengine.cpp for TextPainter::drawLine */
++QTextItemInt::QTextItemInt(const QGlyphLayout &g, QFont *font, const QChar *chars_, int numChars, QFontEngine *fe, const QTextCharFormat &format)
++    : flags(0), justified(false), underlineStyle(QTextCharFormat::NoUnderline), charFormat(format),
++      num_chars(numChars), chars(chars_), logClusters(0), f(font),  glyphs(g), fontEngine(fe)
++{
++}
++
++/* Debian maintainer: this method is also taken from qtextengine.cpp */
++// Fix up flags and underlineStyle with given info
++void QTextItemInt::initWithScriptItem(const QScriptItem &si)
++{
++    // explicitly initialize flags so that initFontAttributes can be called
++    // multiple times on the same TextItem
++    flags = 0;
++    if (si.analysis.bidiLevel %2)
++        flags |= QTextItem::RightToLeft;
++    ascent = si.ascent;
++    descent = si.descent;
++
++    if (charFormat.hasProperty(QTextFormat::TextUnderlineStyle)) {
++        underlineStyle = charFormat.underlineStyle();
++    } else if (charFormat.boolProperty(QTextFormat::FontUnderline)
++               || f->d->underline) {
++        underlineStyle = QTextCharFormat::SingleUnderline;
++    }
++
++    // compat
++    if (underlineStyle == QTextCharFormat::SingleUnderline)
++        flags |= QTextItem::Underline;
++
++    if (f->d->overline || charFormat.fontOverline())
++        flags |= QTextItem::Overline;
++    if (f->d->strikeOut || charFormat.fontStrikeOut())
++        flags |= QTextItem::StrikeOut;
++}
+diff --git a/Telegram/SourceFiles/ui/text/text_block.cpp b/Telegram/SourceFiles/ui/text/text_block.cpp
+index f89644e..35230cf 100644
+--- a/Telegram/SourceFiles/ui/text/text_block.cpp
++++ b/Telegram/SourceFiles/ui/text/text_block.cpp
+@@ -330,7 +330,7 @@ TextBlock::TextBlock(const style::font &font, const QString &str, QFixed minResi
+ 		SignalHandlers::setCrashAnnotationRef("CrashString", &part);
+
+ 		QStackTextEngine engine(part, blockFont->f);
+-		QTextLayout layout(&engine);
++		QTextLayout layout(part, blockFont->f);
+ 		layout.beginLayout();
+ 		layout.createLine();
+
+diff --git a/Telegram/gyp/Telegram.gyp b/Telegram/gyp/Telegram.gyp
+index 80160d1..bd5dd44 100644
+--- a/Telegram/gyp/Telegram.gyp
++++ b/Telegram/gyp/Telegram.gyp
+@@ -87,17 +87,15 @@
+       'AL_ALEXT_PROTOTYPES',
+       'TGVOIP_USE_CXX11_LIB',
+       '<!@(python -c "for s in \'<(build_defines)\'.split(\',\'): print(s)")',
++      '__STDC_FORMAT_MACROS', 'TDESKTOP_DISABLE_AUTOUPDATE',
++      'TDESKTOP_DISABLE_CRASH_REPORTS',
++      'TDESKTOP_DISABLE_REGISTER_CUSTOM_SCHEME',
++      'TDESKTOP_DISABLE_UNITY_INTEGRATION',
+     ],
+
+     'include_dirs': [
+       '<(src_loc)',
+       '<(SHARED_INTERMEDIATE_DIR)',
+-      '<(libs_loc)/breakpad/src',
+-      '<(libs_loc)/lzma/C',
+-      '<(libs_loc)/libexif-0.6.20',
+-      '<(libs_loc)/zlib-1.2.8',
+-      '<(libs_loc)/ffmpeg',
+-      '<(libs_loc)/openal-soft/include',
+       '<(libs_loc)/opus/include',
+       '<(minizip_loc)',
+       '<(sp_media_key_tap_loc)',
+diff --git a/Telegram/gyp/qt.gypi b/Telegram/gyp/qt.gypi
+index 81c13a1..0477f03 100644
+--- a/Telegram/gyp/qt.gypi
++++ b/Telegram/gyp/qt.gypi
+@@ -27,25 +27,22 @@
+               [ 'build_macold', {
+                 'qt_version%': '5.3.2',
+               }, {
+-                'qt_version%': '5.6.2',
++                'qt_version%': '5.9.1',
+               }]
+             ],
+           },
+           'qt_libs': [
+-            'qwebp',
+             'Qt5PrintSupport',
+-            'Qt5PlatformSupport',
+             'Qt5Network',
+             'Qt5Widgets',
+             'Qt5Gui',
+-            'qtharfbuzzng',
+           ],
+           'qt_version%': '<(qt_version)',
+           'conditions': [
+             [ 'build_macold', {
+               'linux_path_qt%': '/usr/local/macold/Qt-<(qt_version)',
+             }, {
+-              'linux_path_qt%': '/usr/local/tdesktop/Qt-<(qt_version)',
++              'linux_path_qt%': '/usr/lib',
+             }]
+           ]
+         },
+@@ -85,19 +82,14 @@
+             ],
+           }],
+           [ 'build_linux', {
+-            'qt_lib_prefix': 'lib',
+-            'qt_lib_debug_postfix': '.a',
+-            'qt_lib_release_postfix': '.a',
++            'qt_lib_prefix': '',
++            'qt_lib_debug_postfix': '',
++            'qt_lib_release_postfix': '',
+             'qt_libs': [
+-              'qxcb',
+               'Qt5XcbQpa',
+-              'qconnmanbearer',
+-              'qgenericbearer',
+-              'qnmbearer',
+               '<@(qt_libs)',
+               'Qt5DBus',
+               'Qt5Core',
+-              'qtpcre',
+               'Xi',
+               'Xext',
+               'Xfixes',
+@@ -110,7 +102,6 @@
+               'xcb-shm',
+               'xcb-xfixes',
+               'xcb-render',
+-              'xcb-static',
+             ],
+           }],
+         ],
+@@ -142,9 +133,9 @@
+     'qt_moc_list_sources_arg': '--moc-prefix SHARED_INTERMEDIATE_DIR/<(_target_name)/moc/moc_',
+
+     'linux_path_xkbcommon%': '/usr/local',
+-    'linux_lib_ssl%': '/usr/local/ssl/lib/libssl.a',
+-    'linux_lib_crypto%': '/usr/local/ssl/lib/libcrypto.a',
+-    'linux_lib_icu%': '/usr/lib/libicutu.a /usr/lib/libicui18n.a /usr/lib/libicuuc.a /usr/lib/libicudata.a',
++    'linux_lib_ssl%': 'ssl',
++    'linux_lib_crypto%': 'crypto',
++    'linux_lib_icu%': 'icutu icui18n icuuc icudata',
+   },
+
+   'configurations': {
+@@ -193,13 +184,13 @@
+   },
+
+   'include_dirs': [
+-    '<(qt_loc)/include',
+-    '<(qt_loc)/include/QtCore',
+-    '<(qt_loc)/include/QtGui',
+-    '<(qt_loc)/include/QtCore/<(qt_version)',
+-    '<(qt_loc)/include/QtGui/<(qt_version)',
+-    '<(qt_loc)/include/QtCore/<(qt_version)/QtCore',
+-    '<(qt_loc)/include/QtGui/<(qt_version)/QtGui',
++    '/usr/include/'
++    '/usr/include/QtCore',
++    '/usr/include/QtGui',
++    '/usr/include/QtCore/<(qt_version)/',
++    '/usr/include/QtGui/<(qt_version)/',
++    '/usr/include/QtCore/<(qt_version)/QtCore',
++    '/usr/include/QtGui/<(qt_version)/QtGui',
+   ],
+   'library_dirs': [
+     '<(qt_loc)/lib',
+@@ -220,11 +220,8 @@
+         '<(qt_loc)/plugins/platforminputcontexts',
+       ],
+       'libraries': [
+-        '<(linux_path_xkbcommon)/lib/libxkbcommon.a',
+         '<@(qt_libs_release)',
+-        '<(linux_lib_ssl)',
+-        '<(linux_lib_crypto)',
+-        '<!@(python -c "for s in \'<(linux_lib_icu)\'.split(\' \'): print(s)")',
++        '-lcrypto',
+         '-lxcb',
+         '-lX11',
+         '-lX11-xcb',
+@@ -235,10 +223,11 @@
+         'pthread',
+       ],
+       'include_dirs': [
+-        '<(qt_loc)/mkspecs/linux-g++',
++        '/app/include/opus',
++        '/usr/lib/mkspecs/linux-g++',
++        '/usr/include/QtCore'
+       ],
+       'ldflags': [
+-        '-static-libstdc++',
+         '-pthread',
+         '-g',
+         '-rdynamic',
+diff --git a/Telegram/gyp/settings_linux.gypi b/Telegram/gyp/settings_linux.gypi
+index fde88dc..39e7634 100644
+--- a/Telegram/gyp/settings_linux.gypi
++++ b/Telegram/gyp/settings_linux.gypi
+@@ -61,7 +61,6 @@
+       ],
+       'defines': [
+         '_REENTRANT',
+-        'QT_STATICPLUGIN',
+         'QT_PLUGIN',
+       ],
+       'cflags_c': [
+diff --git a/Telegram/gyp/telegram_linux.gypi b/Telegram/gyp/telegram_linux.gypi
+index 2c464928..ecd67b5f 100644
+--- a/Telegram/gyp/telegram_linux.gypi
++++ b/Telegram/gyp/telegram_linux.gypi
+@@ -50,27 +50,25 @@
+       '<(linux_path_va)/lib',
+       '<(linux_path_vdpau)/lib',
+       '<(linux_path_breakpad)/lib',
++      '/usr/lib',
++      '/app/lib',
+     ],
+     'libraries': [
+-      'breakpad_client',
+-      'composeplatforminputcontextplugin',
+-      'ibusplatforminputcontextplugin',
+-      'fcitxplatforminputcontextplugin',
+-      'himeplatforminputcontextplugin',
+-      'liblzma.a',
+-      'libopenal.a',
+-      'libavformat.a',
+-      'libavcodec.a',
+-      'libswresample.a',
+-      'libswscale.a',
+-      'libavutil.a',
+-      'libopus.a',
+-      'libva-x11.a',
+-      'libva-drm.a',
+-      'libva.a',
+-      'libvdpau.a',
+-      'libdrm.a',
+-      'libz.a',
++      'lzma',
++      'openal',
++      'avformat',
++      'avcodec',
++      'swresample',
++      'swscale',
++      'avutil',
++      'opus',
++      'va-x11',
++      'va-drm',
++      'va',
++      'vdpau',
++      'drm',
++      'z',
++      'webp',
+ #      '<!(pkg-config 2> /dev/null --libs <@(pkgconfig_libs))',
+     ],
+     'cflags_cc': [
+diff --git a/Telegram/ThirdParty/libtgvoip/libtgvoip.gyp b/Telegram/ThirdParty/libtgvoip/libtgvoip.gyp
+index 91697a2..069f60d 100644
+--- a/Telegram/ThirdParty/libtgvoip/libtgvoip.gyp
++++ b/Telegram/ThirdParty/libtgvoip/libtgvoip.gyp
+@@ -18,6 +18,7 @@
+         'include_dirs': [
+           '<(tgvoip_src_loc)/webrtc_dsp',
+           '<(linux_path_opus_include)',
++          '/app/include/opus',
+         ],
+         'direct_dependent_settings': {
+           'include_dirs': [
