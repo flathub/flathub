@@ -1,0 +1,93 @@
+Description: Fix build for various architectures
+ * Turn off errors on big endian
+ * Remove the build_config.h file
+   - Some macros are moved to the basic_types.h file
+   - The ARCH_CPU_32_BITS macro is replaced with _LP64 and others
+Author: Nicholas Guriev <guriev-ns@ya.ru>
+Bug: https://github.com/telegramdesktop/tdesktop/issues/3167
+Bug-Debian: https://bugs.debian.org/859057
+Last-Update: 2017-08-03
+
+--- a/Telegram/SourceFiles/config.h
++++ b/Telegram/SourceFiles/config.h
+@@ -255,7 +255,7 @@
+ #endif
+ 
+ #if Q_BYTE_ORDER == Q_BIG_ENDIAN
+-#error "Only little endian is supported!"
++#warning "Be aware, only little endian is supported!"
+ #endif // Q_BYTE_ORDER == Q_BIG_ENDIAN
+ 
+ #ifndef BETA_VERSION_MACRO
+--- a/Telegram/SourceFiles/core/basic_types.h
++++ b/Telegram/SourceFiles/core/basic_types.h
+@@ -25,15 +25,11 @@
+ #include <memory>
+ #include <ctime>
+ 
+-#include "base/build_config.h"
+-
+ template <typename Type>
+ using not_null = gsl::not_null<Type>;
+ 
+ // Custom libc++ build used for old OS X versions already has this.
+-#ifndef OS_MAC_OLD
+-
+-#if defined COMPILER_CLANG || defined COMPILER_GCC
++#if !defined OS_MAC_OLD && (defined __GNUC__ || defined __clang__)
+ namespace std {
+ 
+ template <typename T>
+@@ -45,9 +41,7 @@ template <typename T>
+ void as_const(const T&&) = delete;
+ 
+ } // namespace std
+-#endif // COMPILER_CLANG || COMPILER_GCC
+-
+-#endif // OS_MAC_OLD
++#endif
+ 
+ #include "base/ordered_set.h"
+ 
+@@ -63,3 +57,17 @@ using float64 = double;
+ 
+ #define qsl(s) QStringLiteral(s)
+ #define qstr(s) QLatin1String(s, sizeof(s) - 1)
++
++#if defined(__GNUC__) || defined(__clang__)
++#define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
++#else
++#define WARN_UNUSED_RESULT
++#endif
++
++#if defined(__GNUC__)
++#define FORCE_INLINE inline __attribute__((always_inline))
++#elif defined(_MSC_VER)
++#define FORCE_INLINE __forceinline
++#else
++#define FORCE_INLINE inline
++#endif
+--- a/Telegram/SourceFiles/ui/animation.h
++++ b/Telegram/SourceFiles/ui/animation.h
+@@ -171,9 +171,10 @@ FORCE_INLINE int interpolate(int a, int
+ 	return qRound(a + float64(b - a) * b_ratio);
+ }
+ 
+-#ifdef ARCH_CPU_32_BITS
++#if !(defined _LP64 || defined _M_X64 || defined _M_ARM64 || defined _M_ALPHA)
++// _LP64 is defined by GCC, others by MSVC
+ #define SHIFTED_USE_32BIT
+-#endif // ARCH_CPU_32_BITS
++#endif
+ 
+ #ifdef SHIFTED_USE_32BIT
+ 
+--- a/Telegram/gyp/telegram_sources.txt
++++ b/Telegram/gyp/telegram_sources.txt
+@@ -1,6 +1,5 @@
+ <(src_loc)/base/algorithm.h
+ <(src_loc)/base/assertion.h
+-<(src_loc)/base/build_config.h
+ <(src_loc)/base/flags.h
+ <(src_loc)/base/flat_map.h
+ <(src_loc)/base/flat_set.h
