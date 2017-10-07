@@ -1,0 +1,54 @@
+--- a/pjnath/src/pjnath/turn_session.c	2016-09-19 18:21:09.073614574 -0400
++++ b/pjnath/src/pjnath/turn_session.c	2016-09-19 18:21:30.648631620 -0400
+@@ -653,3 +653,3 @@
+ 
+-	cnt = PJ_TURN_MAX_DNS_SRV_CNT;
++	cnt = 1;
+ 	ai = (pj_addrinfo*)
+--- a/pjnath/src/pjnath/ice_strans.c	2016-09-19 18:36:04.180104330 -0400
++++ b/pjnath/src/pjnath/ice_strans.c	2016-09-19 18:37:10.614136809 -0400
+@@ -1304,2 +1304,5 @@
+ 
++		if (!comp->turn[n].sock)
++			continue;
++
+ 	    /* Gather remote addresses for this component */
+@@ -1995,4 +1998,37 @@
+         sess_init_update(comp->ice_st);
+
++    } else if ((old_state == PJ_TURN_STATE_RESOLVING || old_state == PJ_TURN_STATE_ALLOCATING) &&
++               new_state >= PJ_TURN_STATE_DEALLOCATING)
++    {
++        pj_ice_sess_cand *cand = NULL;
++        unsigned i;
++
++        /* DNS resolution has failed! */
++        ++comp->turn[tp_idx].err_cnt;
++
++        /* Unregister ourself from the TURN relay */
++        pj_turn_sock_set_user_data(turn_sock, NULL);
++        comp->turn[tp_idx].sock = NULL;
++
++        /* Wait until initialization completes */
++        pj_grp_lock_acquire(comp->ice_st->grp_lock);
++
++        /* Find relayed candidate in the component */
++        for (i=0; i<comp->cand_cnt; ++i) {
++            if (comp->cand_list[i].type == PJ_ICE_CAND_TYPE_RELAYED &&
++                comp->cand_list[i].transport_id == data->transport_id)
++            {
++                cand = &comp->cand_list[i];
++                break;
++            }
++        }
++        pj_assert(cand != NULL);
++
++        pj_grp_lock_release(comp->ice_st->grp_lock);
++
++        cand->status = old_state == PJ_TURN_STATE_RESOLVING ? PJ_ERESOLVE : PJ_EINVALIDOP;
++
++        sess_init_update(comp->ice_st);
++
+     } else if (new_state >= PJ_TURN_STATE_DEALLOCATING) {
+         pj_turn_session_info info;
+
