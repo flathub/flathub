@@ -43,6 +43,7 @@ make_install
 
 cd "${TOP}/${client}"
 mkdir -p ${BUILDDIR}
-cd ${BUILDDIR}cmake .. -DCMAKE_INSTALL_PREFIX="/app" $static
+cd ${BUILDDIR}
+cmake .. -DCMAKE_INSTALL_PREFIX="/app" $static
 make -j${proc}
 make_install
