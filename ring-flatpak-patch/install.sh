@@ -3,13 +3,6 @@
 # Build and install to a local prefix under this repository.
 export OSTYPE
 
-# Flags:
-
-  # -g: install globally instead for all users
-  # -s: link everything statically, no D-Bus communication. More likely to work!
-  # -c: client to build
-  # -p: number of processors to use
-
 set -ex
 
 make_install() {
@@ -19,6 +12,8 @@ make_install() {
 TOP=`pwd`
 INSTALL="/app"
 BUILDDIR="build"
+client="client-gnome"
+proc=`grep -m 1 'cpu cores' /proc/cpuinfo | awk '{split($0,a,": "); print(a[2]);}'`
 
 cd "${TOP}/daemon"
 DAEMON="$(pwd)"
