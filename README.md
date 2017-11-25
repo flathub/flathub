@@ -1,6 +1,3 @@
-thunderbird-flatpak
-===================
-
 Resources to build Mozilla Thunderbird as a flatpak.
 
 Requirements:
