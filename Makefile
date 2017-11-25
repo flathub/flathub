@@ -1,4 +1,3 @@
-BUILDER_OPTIONS = --force-clean --ccache --require-changes
 TARGET_REPO = repo
 FLATPAK_BUILDER = $(shell which flatpak-builder)
 MANIFEST = org.mozilla.Thunderbird.json
