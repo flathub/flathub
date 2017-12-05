@@ -1,0 +1,897 @@
+From 9a7bd89fd15be9af3b676cd1d7a28338e6c8cd15 Mon Sep 17 00:00:00 2001
+From: Michael Steinberg <michsteinb@gmail.com>
+Date: Tue, 5 Jul 2016 00:14:32 +0200
+Subject: [PATCH 1/3] boost::context fixes to make it compatible with boost
+ 1.61
+
+(cherry picked from commit 06d4894fdbeb00727cdcc667b8899ad73d8eb1c2)
+---
+ common/tool/tool_manager.cpp    |   6 +-
+ include/tool/coroutine.h        | 162 ++++++++++++++++++++++++++--------------
+ include/tool/tool_base.h        |   7 +-
+ include/tool/tool_interactive.h |   3 +-
+ 4 files changed, 116 insertions(+), 62 deletions(-)
+
+diff --git a/common/tool/tool_manager.cpp b/common/tool/tool_manager.cpp
+index 447ab99..a198c69 100644
+--- a/common/tool/tool_manager.cpp
++++ b/common/tool/tool_manager.cpp
+@@ -528,7 +528,7 @@ void TOOL_MANAGER::dispatchInternal( const TOOL_EVENT& aEvent )
+         }
+     }
+ 
+-    BOOST_FOREACH( TOOL_STATE* st, m_toolState | boost::adaptors::map_values )
++    for( TOOL_STATE* st : ( m_toolState | boost::adaptors::map_values ) )
+     {
+         // no state handler in progress - check if there are any transitions (defined by
+         // Go() method that match the event.
+@@ -542,11 +542,11 @@ void TOOL_MANAGER::dispatchInternal( const TOOL_EVENT& aEvent )
+                     if( st->cofunc )
+                         st->Push();
+ 
++                    st->cofunc = new COROUTINE<int, const TOOL_EVENT&>( tr.second );
++
+                     // as the state changes, the transition table has to be set up again
+                     st->transitions.clear();
+ 
+-                    st->cofunc = new COROUTINE<int, const TOOL_EVENT&>( tr.second );
+-
+                     // got match? Run the handler.
+                     st->cofunc->Call( aEvent );
+ 
+diff --git a/include/tool/coroutine.h b/include/tool/coroutine.h
+index c7eaf5f..e21e18f 100644
+--- a/include/tool/coroutine.h
++++ b/include/tool/coroutine.h
+@@ -3,6 +3,7 @@
+  *
+  * Copyright (C) 2013 CERN
+  * @author Tomasz Wlostowski <tomasz.wlostowski@cern.ch>
++ * Copyright (C) 2016 KiCad Developers, see AUTHORS.txt for contributors.
+  *
+  * This program is free software; you can redistribute it and/or
+  * modify it under the terms of the GNU General Public License
+@@ -27,10 +28,14 @@
+ 
+ #include <cstdlib>
+ 
+-#include <boost/context/fcontext.hpp>
+ #include <boost/version.hpp>
++#include <type_traits>
+ 
+-#include "delegate.h"
++#if BOOST_VERSION <= 106000
++#include <boost/context/fcontext.hpp>
++#else
++#include <boost/context/execution_context.hpp>
++#endif
+ 
+ /**
+  *  Class COROUNTINE.
+@@ -53,13 +58,12 @@
+  *  See coroutine_example.cpp for sample code.
+  */
+ 
+-template <class ReturnType, class ArgType>
++template <typename ReturnType, typename ArgType>
+ class COROUTINE
+ {
+ public:
+     COROUTINE() :
+-        m_saved( NULL ), m_self( NULL ), m_stack( NULL ), m_stackSize( c_defaultStackSize ),
+-        m_running( false )
++        COROUTINE( nullptr )
+     {
+     }
+ 
+@@ -69,8 +73,7 @@ public:
+      */
+     template <class T>
+     COROUTINE( T* object, ReturnType(T::* ptr)( ArgType ) ) :
+-        m_func( object, ptr ), m_self( NULL ), m_saved( NULL ), m_stack( NULL ),
+-        m_stackSize( c_defaultStackSize ), m_running( false )
++        COROUTINE( std::bind( ptr, object, std::placeholders::_1 ) )
+     {
+     }
+ 
+@@ -78,9 +81,15 @@ public:
+      * Constructor
+      * Creates a coroutine from a delegate object
+      */
+-    COROUTINE( DELEGATE<ReturnType, ArgType> aEntry ) :
+-        m_func( aEntry ), m_saved( NULL ), m_self( NULL ), m_stack( NULL ),
+-        m_stackSize( c_defaultStackSize ), m_running( false )
++    COROUTINE( std::function<ReturnType(ArgType)> aEntry ) :
++        m_func( std::move( aEntry ) ),
++        m_running( false ),
++#if BOOST_VERSION <= 106000
++        m_stack( nullptr ),
++        m_stackSize( c_defaultStackSize ),
++#endif
++        m_caller( nullptr ),
++        m_callee( nullptr )
+     {
+         // Avoid not initialized members, and make static analysers quiet
+         m_args = 0;
+@@ -89,18 +98,26 @@ public:
+ 
+     ~COROUTINE()
+     {
+-        if( m_saved )
+-            delete m_saved;
+-
+ #if BOOST_VERSION >= 105600
+-        if( m_self )
+-            delete m_self;
++        delete m_callee;
+ #endif
+ 
++#if BOOST_VERSION <= 106000
++        delete m_caller;
++
+         if( m_stack )
+             free( m_stack );
++#endif
+     }
+ 
++private:
++#if BOOST_VERSION <= 106000
++    using context_type = boost::context::fcontext_t;
++#else
++    using context_type = boost::context::execution_context<COROUTINE*>;
++#endif
++
++public:
+     /**
+      * Function Yield()
+      *
+@@ -110,7 +127,12 @@ public:
+      */
+     void Yield()
+     {
+-        jump( m_self, m_saved, 0 );
++#if BOOST_VERSION <= 106000
++        jump( m_callee, m_caller, false );
++#else
++        auto result = (*m_caller)( this );
++        *m_caller = std::move( std::get<0>( result ) );
++#endif
+     }
+ 
+     /**
+@@ -122,7 +144,11 @@ public:
+     void Yield( ReturnType& aRetVal )
+     {
+         m_retVal = aRetVal;
+-        jump( m_self, m_saved, 0 );
++#if BOOST_VERSION <= 106000
++        jump( m_callee, m_caller, false );
++#else
++        m_caller( this );
++#endif
+     }
+ 
+     /**
+@@ -130,9 +156,9 @@ public:
+      *
+      * Defines the entry point for the coroutine, if not set in the constructor.
+      */
+-    void SetEntry( DELEGATE<ReturnType, ArgType> aEntry )
++    void SetEntry( std::function<ReturnType(ArgType)> aEntry )
+     {
+-        m_func = aEntry;
++        m_func = std::move( aEntry );
+     }
+ 
+     /* Function Call()
+@@ -143,6 +169,10 @@ public:
+      */
+     bool Call( ArgType aArgs )
+     {
++        assert( m_callee == NULL );
++        assert( m_caller == NULL );
++
++#if BOOST_VERSION <= 106000
+         // fixme: Clean up stack stuff. Add a guard
+         m_stack = malloc( c_defaultStackSize );
+ 
+@@ -151,22 +181,32 @@ public:
+ 
+         // correct the stack size
+         m_stackSize -= ( (size_t) m_stack + m_stackSize - (size_t) sp );
+-
+-        assert( m_self == NULL );
+-        assert( m_saved == NULL );
++#endif
+ 
+         m_args = &aArgs;
+-#if BOOST_VERSION >= 105600
+-        m_self = new boost::context::fcontext_t();
+-        *m_self = boost::context::make_fcontext( sp, m_stackSize, callerStub );
++
++#if BOOST_VERSION < 105600
++        m_callee = boost::context::make_fcontext( sp, m_stackSize, callerStub );
++#elif BOOST_VERSION <= 106000
++        m_callee = new context_type( boost::context::make_fcontext( sp, m_stackSize, callerStub ) );
+ #else
+-        m_self = boost::context::make_fcontext( sp, m_stackSize, callerStub );
++        m_callee = new context_type( std::allocator_arg_t(),
++                    boost::context::fixedsize_stack( c_defaultStackSize ), &COROUTINE::callerStub );
++#endif
++
++#if BOOST_VERSION <= 106000
++        m_caller = new context_type();
+ #endif
+-        m_saved = new boost::context::fcontext_t();
+ 
+         m_running = true;
++
+         // off we go!
+-        jump( m_saved, m_self, reinterpret_cast<intptr_t>( this ) );
++#if BOOST_VERSION <= 106000
++        jump( m_caller, m_callee, reinterpret_cast<intptr_t>( this ) );
++#else
++        auto result = (*m_callee)( this );
++        *m_callee = std::move( std::get<0>( result ) );
++#endif
+         return m_running;
+     }
+ 
+@@ -179,7 +219,12 @@ public:
+      */
+     bool Resume()
+     {
+-        jump( m_saved, m_self, 0 );
++#if BOOST_VERSION <= 106000
++        jump( m_caller, m_callee, false );
++#else
++        auto result = (*m_callee)( this );
++        *m_callee = std::move( std::get<0>( result ) );
++#endif
+ 
+         return m_running;
+     }
+@@ -208,61 +253,66 @@ private:
+     static const int c_defaultStackSize = 2000000;    // fixme: make configurable
+ 
+     /* real entry point of the coroutine */
++#if BOOST_VERSION <= 106000
+     static void callerStub( intptr_t aData )
++#else
++    static context_type callerStub( context_type caller, COROUTINE* cor )
++#endif
+     {
+         // get pointer to self
++#if BOOST_VERSION <= 106000
+         COROUTINE<ReturnType, ArgType>* cor = reinterpret_cast<COROUTINE<ReturnType, ArgType>*>( aData );
++#else
++        cor->m_caller = &caller;
++#endif
+ 
+         // call the coroutine method
+-        cor->m_retVal = cor->m_func( *cor->m_args );
++        cor->m_retVal = cor->m_func( *( cor->m_args ) );
+         cor->m_running = false;
+ 
+         // go back to wherever we came from.
+-        jump( cor->m_self, cor->m_saved, 0 );    // reinterpret_cast<intptr_t>( this ));
++#if BOOST_VERSION <= 106000
++        jump( cor->m_callee, cor->m_caller, 0 );
++#else
++        return caller;
++#endif
+     }
+ 
+     ///> Wrapper for jump_fcontext to assure compatibility between different boost versions
+-    static inline intptr_t jump(boost::context::fcontext_t* aOld, boost::context::fcontext_t* aNew,
++#if BOOST_VERSION <= 106000
++    static inline intptr_t jump( context_type* aOld, context_type* aNew,
+                                 intptr_t aP, bool aPreserveFPU = true )
+     {
+-#if BOOST_VERSION >= 105600
+-        return boost::context::jump_fcontext( aOld, *aNew, aP, aPreserveFPU );
+-#else
++#if BOOST_VERSION < 105600
+         return boost::context::jump_fcontext( aOld, aNew, aP, aPreserveFPU );
++#else
++        return boost::context::jump_fcontext( aOld, *aNew, aP, aPreserveFPU );
+ #endif
+     }
++#endif
+ 
+-    template <typename T>
+-    struct strip_ref
+-    {
+-        typedef T result;
+-    };
++    std::function<ReturnType(ArgType)> m_func;
+ 
+-    template <typename T>
+-    struct strip_ref<T&>
+-    {
+-        typedef T result;
+-    };
++    bool m_running;
+ 
+-    DELEGATE<ReturnType, ArgType> m_func;
++#if BOOST_VERSION <= 106000
++    ///< coroutine stack
++    void* m_stack;
++
++    size_t m_stackSize;
++#endif
+ 
+     ///< pointer to coroutine entry arguments. Stripped of references
+     ///< to avoid compiler errors.
+-    typename strip_ref<ArgType>::result* m_args;
++    typename std::remove_reference<ArgType>::type* m_args;
++
+     ReturnType m_retVal;
+ 
+     ///< saved caller context
+-    boost::context::fcontext_t* m_saved;
++    context_type* m_caller;
+ 
+     ///< saved coroutine context
+-    boost::context::fcontext_t* m_self;
+-
+-    ///< coroutine stack
+-    void* m_stack;
+-
+-    size_t m_stackSize;
+-
+-    bool m_running;
++    context_type* m_callee;
+ };
+ 
+ #endif
+diff --git a/include/tool/tool_base.h b/include/tool/tool_base.h
+index 584a979..3bef987 100644
+--- a/include/tool/tool_base.h
++++ b/include/tool/tool_base.h
+@@ -3,6 +3,7 @@
+  *
+  * Copyright (C) 2013 CERN
+  * @author Tomasz Wlostowski <tomasz.wlostowski@cern.ch>
++ * Copyright (C) 2016 KiCad Developers, see AUTHORS.txt for contributors.
+  *
+  * This program is free software; you can redistribute it and/or
+  * modify it under the terms of the GNU General Public License
+@@ -31,7 +32,7 @@
+ #include <tool/tool_event.h>
+ #include <tool/tool_settings.h>
+ 
+-#include <tool/delegate.h>
++#include <functional>
+ 
+ class EDA_ITEM;
+ class TOOL_MANAGER;
+@@ -53,7 +54,9 @@ enum TOOL_TYPE
+ 
+ /// Unique identifier for tools
+ typedef int TOOL_ID;
+-typedef DELEGATE<int, const TOOL_EVENT&> TOOL_STATE_FUNC;
++
++using TOOL_STATE_FUNC = std::function<int(const TOOL_EVENT&)>;
++
+ 
+ /**
+  * Class TOOL_BASE
+diff --git a/include/tool/tool_interactive.h b/include/tool/tool_interactive.h
+index 17d2de7..240eb58 100644
+--- a/include/tool/tool_interactive.h
++++ b/include/tool/tool_interactive.h
+@@ -3,6 +3,7 @@
+  *
+  * Copyright (C) 2013 CERN
+  * @author Tomasz Wlostowski <tomasz.wlostowski@cern.ch>
++ * Copyright (C) 2016 KiCad Developers, see AUTHORS.txt for contributors.
+  *
+  * This program is free software; you can redistribute it and/or
+  * modify it under the terms of the GNU General Public License
+@@ -113,7 +114,7 @@ template <class T>
+ void TOOL_INTERACTIVE::Go( int (T::* aStateFunc)( const TOOL_EVENT& ),
+                            const TOOL_EVENT_LIST& aConditions )
+ {
+-    TOOL_STATE_FUNC sptr( static_cast<T*>( this ), aStateFunc );
++    TOOL_STATE_FUNC sptr = std::bind( aStateFunc, static_cast<T*>( this ), std::placeholders::_1 );
+ 
+     goInternal( sptr, aConditions );
+ }
+-- 
+2.9.3
+
+From 157c499b031659b895c1a7fef056d02a94bce0b3 Mon Sep 17 00:00:00 2001
+From: decimad <michsteinb@gmail.com>
+Date: Tue, 5 Jul 2016 18:02:50 +0200
+Subject: [PATCH 2/3] use a guarded stack for coroutines in boost version 1.61
+
+(cherry picked from commit 78bc3c65de6c03d19be9902327d08cd4d87c229c)
+---
+ include/tool/coroutine.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/tool/coroutine.h b/include/tool/coroutine.h
+index e21e18f..8e472ca 100644
+--- a/include/tool/coroutine.h
++++ b/include/tool/coroutine.h
+@@ -35,6 +35,7 @@
+ #include <boost/context/fcontext.hpp>
+ #else
+ #include <boost/context/execution_context.hpp>
++#include <boost/context/protected_fixedsize_stack.hpp>
+ #endif
+ 
+ /**
+@@ -191,7 +192,7 @@ public:
+         m_callee = new context_type( boost::context::make_fcontext( sp, m_stackSize, callerStub ) );
+ #else
+         m_callee = new context_type( std::allocator_arg_t(),
+-                    boost::context::fixedsize_stack( c_defaultStackSize ), &COROUTINE::callerStub );
++                    boost::context::protected_fixedsize_stack( c_defaultStackSize ), &COROUTINE::callerStub );
+ #endif
+ 
+ #if BOOST_VERSION <= 106000
+-- 
+2.9.3
+
+From 418c62f03d9bd81881a17c9cca9c30f839d23e3a Mon Sep 17 00:00:00 2001
+From: decimad <michsteinb@gmail.com>
+Date: Tue, 2 Aug 2016 11:39:39 +0200
+Subject: [PATCH 3/3] Refactor coroutine to improve readability and removed
+ unnecessary heap allocations. Added documentation/links to various boost doc
+ revisions.
+
+(cherry picked from commit 18b7dbf4d166fcb7da10ced72268a77f02448188)
+---
+ include/tool/coroutine.h | 221 +++++++++++++++++++++++++----------------------
+ include/tool/delegate.h  | 100 ---------------------
+ 2 files changed, 120 insertions(+), 201 deletions(-)
+ delete mode 100644 include/tool/delegate.h
+
+diff --git a/include/tool/coroutine.h b/include/tool/coroutine.h
+index 8e472ca..70ef6cb 100644
+--- a/include/tool/coroutine.h
++++ b/include/tool/coroutine.h
+@@ -31,7 +31,7 @@
+ #include <boost/version.hpp>
+ #include <type_traits>
+ 
+-#if BOOST_VERSION <= 106000
++#if BOOST_VERSION < 106100
+ #include <boost/context/fcontext.hpp>
+ #else
+ #include <boost/context/execution_context.hpp>
+@@ -39,6 +39,44 @@
+ #endif
+ 
+ /**
++ * Note: in the history of boost, two changes to the context interface happened.
++ * [1.54, 1.56)
++ * http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/context/boost_fcontext.html
++ *       intptr_t    jump_fcontext(
++ *                       fcontext_t* ofc,
++ *                       fcontext_t const* nfc,
++ *                       intptr_t vp,
++ *                       bool preserve_fpu = true
++ *                   );
++ *
++ *       fcontext_t* make_fcontext(
++ *                       void* sp,
++ *                       std::size_t size,
++ *                       void (*fn)(intptr_t)
++ *                   );
++ *
++ * [1.56, 1.61)
++ * http://www.boost.org/doc/libs/1_56_0/libs/context/doc/html/context/context/boost_fcontext.html
++ *       intptr_t    jump_fcontext(
++ *                       fcontext_t* ofc,
++ *                       fcontext_t nfc,            <-----
++ *                       intptr_t vp,
++ *                       bool preserve_fpu = true
++ *                   );
++ *
++ *       fcontext_t  make_fcontext(                 <-----
++ *                       void* sp,
++ *                       std::size_t size,
++ *                       void(*fn)(intptr_t)
++ *                   );
++ *
++ * [1.61, oo)
++ * http://www.boost.org/doc/libs/1_61_0/libs/context/doc/html/context/ecv2.html
++ *       fcontext_t is hidden away behind the boost::execution_context(_v2) and the stack is created on behalf of
++ *       the user.
++ */
++
++/**
+  *  Class COROUNTINE.
+  *  Implements a coroutine. Wikipedia has a good explanation:
+  *
+@@ -73,7 +111,7 @@ public:
+      * Creates a coroutine from a member method of an object
+      */
+     template <class T>
+-    COROUTINE( T* object, ReturnType(T::* ptr)( ArgType ) ) :
++    COROUTINE( T* object, ReturnType(T::*ptr)( ArgType ) ) :
+         COROUTINE( std::bind( ptr, object, std::placeholders::_1 ) )
+     {
+     }
+@@ -85,34 +123,20 @@ public:
+     COROUTINE( std::function<ReturnType(ArgType)> aEntry ) :
+         m_func( std::move( aEntry ) ),
+         m_running( false ),
+-#if BOOST_VERSION <= 106000
+-        m_stack( nullptr ),
+-        m_stackSize( c_defaultStackSize ),
++        m_args( 0 ),
++#if BOOST_VERSION < 106100 // -> m_callee = void* or void**
++        m_callee( nullptr ),
+ #endif
+-        m_caller( nullptr ),
+-        m_callee( nullptr )
++        m_retVal( 0 )
+     {
+-        // Avoid not initialized members, and make static analysers quiet
+-        m_args = 0;
+-        m_retVal = 0;
+     }
+ 
+     ~COROUTINE()
+     {
+-#if BOOST_VERSION >= 105600
+-        delete m_callee;
+-#endif
+-
+-#if BOOST_VERSION <= 106000
+-        delete m_caller;
+-
+-        if( m_stack )
+-            free( m_stack );
+-#endif
+     }
+ 
+ private:
+-#if BOOST_VERSION <= 106000
++#if BOOST_VERSION < 106100
+     using context_type = boost::context::fcontext_t;
+ #else
+     using context_type = boost::context::execution_context<COROUTINE*>;
+@@ -128,12 +152,7 @@ public:
+      */
+     void Yield()
+     {
+-#if BOOST_VERSION <= 106000
+-        jump( m_callee, m_caller, false );
+-#else
+-        auto result = (*m_caller)( this );
+-        *m_caller = std::move( std::get<0>( result ) );
+-#endif
++        jumpOut();
+     }
+ 
+     /**
+@@ -145,11 +164,20 @@ public:
+     void Yield( ReturnType& aRetVal )
+     {
+         m_retVal = aRetVal;
+-#if BOOST_VERSION <= 106000
+-        jump( m_callee, m_caller, false );
+-#else
+-        m_caller( this );
+-#endif
++        jumpOut();
++    }
++
++    /**
++    * Function Resume()
++    *
++    * Resumes execution of a previously yielded coroutine.
++    * @return true, if the coroutine has yielded again and false if it has finished its
++    * execution (returned).
++    */
++    bool Resume()
++    {
++        jumpIn();
++        return m_running;
+     }
+ 
+     /**
+@@ -170,62 +198,37 @@ public:
+      */
+     bool Call( ArgType aArgs )
+     {
+-        assert( m_callee == NULL );
+-        assert( m_caller == NULL );
++        assert( m_func );
++        assert( !m_callee );
++
++        m_args = &aArgs;
++
++#if BOOST_VERSION < 106100
++        assert( m_stack == nullptr );
+ 
+-#if BOOST_VERSION <= 106000
+         // fixme: Clean up stack stuff. Add a guard
+-        m_stack = malloc( c_defaultStackSize );
++        size_t stackSize = c_defaultStackSize;
++        m_stack.reset( new char[stackSize] );
+ 
+         // align to 16 bytes
+-        void* sp = (void*) ( ( ( (ptrdiff_t) m_stack ) + m_stackSize - 0xf ) & ( ~0x0f ) );
++        void* sp = (void*) ( ( ( (ptrdiff_t) m_stack.get() ) + stackSize - 0xf ) & ( ~0x0f ) );
+ 
+         // correct the stack size
+-        m_stackSize -= ( (size_t) m_stack + m_stackSize - (size_t) sp );
+-#endif
+-
+-        m_args = &aArgs;
++        stackSize -= size_t( ( (ptrdiff_t) m_stack.get() + stackSize) - (ptrdiff_t) sp );
+ 
+-#if BOOST_VERSION < 105600
+-        m_callee = boost::context::make_fcontext( sp, m_stackSize, callerStub );
+-#elif BOOST_VERSION <= 106000
+-        m_callee = new context_type( boost::context::make_fcontext( sp, m_stackSize, callerStub ) );
++        m_callee = boost::context::make_fcontext( sp, stackSize, callerStub );
+ #else
+-        m_callee = new context_type( std::allocator_arg_t(),
+-                    boost::context::protected_fixedsize_stack( c_defaultStackSize ), &COROUTINE::callerStub );
+-#endif
+-
+-#if BOOST_VERSION <= 106000
+-        m_caller = new context_type();
++        m_callee = context_type(
++            std::allocator_arg_t(),
++            boost::context::protected_fixedsize_stack( c_defaultStackSize ),
++            &COROUTINE::callerStub
++        );
+ #endif
+ 
+         m_running = true;
+ 
+         // off we go!
+-#if BOOST_VERSION <= 106000
+-        jump( m_caller, m_callee, reinterpret_cast<intptr_t>( this ) );
+-#else
+-        auto result = (*m_callee)( this );
+-        *m_callee = std::move( std::get<0>( result ) );
+-#endif
+-        return m_running;
+-    }
+-
+-    /**
+-     * Function Resume()
+-     *
+-     * Resumes execution of a previously yielded coroutine.
+-     * @return true, if the coroutine has yielded again and false if it has finished its
+-     * execution (returned).
+-     */
+-    bool Resume()
+-    {
+-#if BOOST_VERSION <= 106000
+-        jump( m_caller, m_callee, false );
+-#else
+-        auto result = (*m_callee)( this );
+-        *m_callee = std::move( std::get<0>( result ) );
+-#endif
++        jumpIn();
+ 
+         return m_running;
+     }
+@@ -254,66 +257,82 @@ private:
+     static const int c_defaultStackSize = 2000000;    // fixme: make configurable
+ 
+     /* real entry point of the coroutine */
+-#if BOOST_VERSION <= 106000
++#if BOOST_VERSION < 106100
+     static void callerStub( intptr_t aData )
+-#else
+-    static context_type callerStub( context_type caller, COROUTINE* cor )
+-#endif
+     {
+         // get pointer to self
+-#if BOOST_VERSION <= 106000
+-        COROUTINE<ReturnType, ArgType>* cor = reinterpret_cast<COROUTINE<ReturnType, ArgType>*>( aData );
++        COROUTINE* cor = reinterpret_cast<COROUTINE*>( aData );
++
++        // call the coroutine method
++        cor->m_retVal = cor->m_func( *(cor->m_args) );
++        cor->m_running = false;
++
++        // go back to wherever we came from.
++        cor->jumpOut();
++    }
+ #else
+-        cor->m_caller = &caller;
+-#endif
++    /* real entry point of the coroutine */
++    static context_type callerStub( context_type caller, COROUTINE* cor )
++    {
++        cor->m_caller = std::move( caller );
+ 
+         // call the coroutine method
+-        cor->m_retVal = cor->m_func( *( cor->m_args ) );
++        cor->m_retVal = cor->m_func( *(cor->m_args) );
+         cor->m_running = false;
+ 
+         // go back to wherever we came from.
+-#if BOOST_VERSION <= 106000
+-        jump( cor->m_callee, cor->m_caller, 0 );
++        return std::move( cor->m_caller );
++    }
++#endif
++
++    void jumpIn()
++    {
++#if BOOST_VERSION < 105600
++        boost::context::jump_fcontext( &m_caller, m_callee, reinterpret_cast<intptr_t>(this) );
++#elif BOOST_VERSION < 106100
++        boost::context::jump_fcontext( &m_caller, m_callee, reinterpret_cast<intptr_t>(this) );
+ #else
+-        return caller;
++        auto result = m_callee( this );
++        m_callee = std::move( std::get<0>( result ) );
+ #endif
+     }
+ 
+-    ///> Wrapper for jump_fcontext to assure compatibility between different boost versions
+-#if BOOST_VERSION <= 106000
+-    static inline intptr_t jump( context_type* aOld, context_type* aNew,
+-                                intptr_t aP, bool aPreserveFPU = true )
++    void jumpOut()
+     {
+ #if BOOST_VERSION < 105600
+-        return boost::context::jump_fcontext( aOld, aNew, aP, aPreserveFPU );
++        boost::context::jump_fcontext( m_callee, &m_caller, 0 );
++#elif BOOST_VERSION < 106100
++        boost::context::jump_fcontext( &m_callee, m_caller, 0 );
+ #else
+-        return boost::context::jump_fcontext( aOld, *aNew, aP, aPreserveFPU );
++        auto result = m_caller( nullptr );
++        m_caller = std::move( std::get<0>( result ) );
+ #endif
+     }
+-#endif
+ 
+     std::function<ReturnType(ArgType)> m_func;
+ 
+     bool m_running;
+ 
+-#if BOOST_VERSION <= 106000
++#if BOOST_VERSION < 106100
+     ///< coroutine stack
+-    void* m_stack;
+-
+-    size_t m_stackSize;
++    std::unique_ptr<char[]> m_stack;
+ #endif
+ 
+     ///< pointer to coroutine entry arguments. Stripped of references
+     ///< to avoid compiler errors.
+     typename std::remove_reference<ArgType>::type* m_args;
+ 
+-    ReturnType m_retVal;
+-
+     ///< saved caller context
+-    context_type* m_caller;
++    context_type m_caller;
+ 
+     ///< saved coroutine context
++#if BOOST_VERSION < 105600
+     context_type* m_callee;
++#else
++    context_type m_callee;
++#endif
++
++    ReturnType m_retVal;
+ };
+ 
+ #endif
+diff --git a/include/tool/delegate.h b/include/tool/delegate.h
+deleted file mode 100644
+index a350dec..0000000
+--- a/include/tool/delegate.h
++++ /dev/null
+@@ -1,100 +0,0 @@
+-/*
+- * This program source code file is part of KiCad, a free EDA CAD application.
+- *
+- * Copyright (C) 2013 CERN
+- * @author Tomasz Wlostowski <tomasz.wlostowski@cern.ch>
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License
+- * as published by the Free Software Foundation; either version 2
+- * of the License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, you may find one here:
+- * http://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+- * or you may search the http://www.gnu.org website for the version 2 license,
+- * or you may write to the Free Software Foundation, Inc.,
+- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
+- */
+-
+-#ifndef __DELEGATE_H
+-#define __DELEGATE_H
+-
+-
+-/**
+- * class DELEGATE
+- * A trivial delegate (pointer to member method of an object) pattern implementation.
+- * Check delegate_example.cpp for a coding sample.
+- */
+-
+-template <class ReturnType, class Arg>
+-class DELEGATE
+-{
+-public:
+-    typedef ReturnType (DELEGATE<ReturnType, Arg>::* MemberPointer)( Arg );
+-    typedef ReturnType  _ReturnType;
+-    typedef Arg         _ArgType;
+-
+-    DELEGATE()
+-    {
+-    }
+-
+-    template <class T>
+-    DELEGATE( T* aObject, ReturnType(T::* aPtr)( Arg ) )
+-    {
+-        m_ptr = reinterpret_cast<MemberPointer>( aPtr );
+-        m_object = reinterpret_cast<void*>( aObject );
+-    };
+-
+-
+-    ReturnType operator()( Arg aA ) const
+-    {
+-        DELEGATE<ReturnType, Arg>* casted = reinterpret_cast<DELEGATE<ReturnType, Arg>*>( m_object );
+-        return (casted->*m_ptr)( aA );
+-    }
+-
+-private:
+-    MemberPointer m_ptr;
+-    void* m_object;
+-};
+-
+-/**
+- * Class DELEGATE0
+- * Same as DELEGATE, but with no arguments.
+- */
+-template <class ReturnType>
+-class DELEGATE0
+-{
+-public:
+-    typedef ReturnType ( DELEGATE0<ReturnType>::* MemberPointer )();
+-    typedef ReturnType _ReturnType;
+-
+-    DELEGATE0()
+-    {
+-    }
+-
+-    template <class T>
+-    DELEGATE0( T* aObject, ReturnType(T::* aPtr)() )
+-    {
+-        m_ptr = reinterpret_cast<MemberPointer>( aPtr );
+-        m_object = reinterpret_cast<void*>( aObject );
+-    };
+-
+-
+-    ReturnType operator()() const
+-    {
+-        DELEGATE0<ReturnType>* casted = reinterpret_cast<DELEGATE0<ReturnType>*>( m_object );
+-        return ( casted->*m_ptr )();
+-    }
+-
+-private:
+-    MemberPointer m_ptr;
+-    void* m_object;
+-};
+-
+-#endif
+-- 
+2.9.3
+
