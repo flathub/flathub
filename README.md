@@ -11,7 +11,7 @@ flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install flathub org.gnome.Recipes
 ```
 
-For more information and more applications see https://flathub.org/apps.html
+For more information and more applications see https://flathub.org
 
 Contributing to Flathub
 -----------------------
