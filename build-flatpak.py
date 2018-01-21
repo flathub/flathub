@@ -17,7 +17,7 @@ def build_debug(branch, appid):
 
 
 # Full-blown repo build, along with GPG, deltas and upload
-def build_release(branch, appid):
+def build_release(branch, no_push, appid):
     call(['flatpak-builder',
           '--force-clean',
           '--ccache',
@@ -33,6 +33,9 @@ def build_release(branch, appid):
           '--gpg-sign=%s' % gpg_key,
           '--gpg-homedir=gpg',
           'repo'])
+
+    if no_push:
+        return
 
     os.chdir("repo/")
 
@@ -62,6 +65,8 @@ def main():
     parser = OptionParser(usage=usage)
     parser.add_option('-r', '--release', action='store_true',
                       help="export build to repository")
+    parser.add_option('-n', '--no-push', action='store_true',
+                      help="don’t push the repo")
     parser.add_option('-b', '--branch', default='stable',
                       help=("which branch to use, manifests are expected"
                             " to be stored in BRANCH/APPID.json format"
@@ -92,6 +97,7 @@ def main():
     if not options.release:
         build_debug(options.branch, args[0])
     else:
-        build_release(options.branch, args[0])
+        build_release(options.branch, options.no_push, args[0])
+
 
 main()
