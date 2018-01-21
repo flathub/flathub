@@ -16,7 +16,7 @@ or using the command line:
     flatpak install http://drjurf.tk/scribus-flatpak/scribus-nightly.flatpakref
 
 (The development version is no longer available pre-built, it was too
-resource-heavy to maintain both versions, but you can still build it.)
+resource-heavy to maintain both versions, but you can still build it yourself.)
 
 You can find the source code on [GitHub][3].
 
