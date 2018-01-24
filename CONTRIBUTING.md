@@ -1,6 +1,6 @@
 ### Submitting a new package
 
-If you are submitting a new package please read the [package guidelines](https://github.com/flathub/flathub/wiki/Package-Guidelines) in the wiki.
+If you are submitting a new package please read the [app submission](https://github.com/flathub/flathub/wiki/App-Submission) and [package guidelines](https://github.com/flathub/flathub/wiki/Package-Guidelines) pages in the wiki.
 
 Also double-check that your PR is against the `new-pr` branch.
 
