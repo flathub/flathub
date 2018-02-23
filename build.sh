@@ -1,3 +1,4 @@
+set -e
 export PATH=$PATH:~/.bin
 mv gulp-electron-cache /tmp/
 mv .electron .bin ~/
