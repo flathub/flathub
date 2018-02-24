@@ -12,7 +12,7 @@ pushd vscode-ripgrep-0.7.1-patch.0.1
     yarn link
     echo > dist/postinstall.js
     mkdir bin
-    unzip ../misc/ripgrep-0.7.1-patch.1-linux-x64.zip rg -d bin/
+    unzip ../misc/ripgrep-0.7.1-patch.1-linux-$(node -e 'console.log(process.arch)').zip rg -d bin/
 popd
 tar -xzvf yarn-mirror/vscode-1.0.1.tgz
 mv package vscode-1.0.1
@@ -38,7 +38,7 @@ pushd vscode
     rm node_modules/vscode-ripgrep
     cp -r ../vscode-ripgrep-0.7.1-patch.0.1 node_modules/vscode-ripgrep
     echo "/// <reference types='@types/node'/>" > extensions/emmet/src/typings/refs.d.ts
-    node_modules/.bin/gulp vscode-linux-x64-min --max_old_space_size=4096
+    node_modules/.bin/gulp vscode-linux-$(node -e 'console.log(process.arch)')-min --max_old_space_size=4096
 popd
-mv VSCode-linux-x64 /app/
-ln -s ../VSCode-linux-x64/code-oss /app/bin/code-oss
+mv VSCode-linux-$(node -e 'console.log(process.arch)') /app/
+ln -s ../VSCode-linux-$(node -e 'console.log(process.arch)')/code-oss /app/bin/code-oss
