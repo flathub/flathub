@@ -38,7 +38,7 @@ pushd vscode
     rm node_modules/vscode-ripgrep
     cp -r ../vscode-ripgrep-0.7.1-patch.0.1 node_modules/vscode-ripgrep
     echo "/// <reference types='@types/node'/>" > extensions/emmet/src/typings/refs.d.ts
-    node_modules/.bin/gulp vscode-linux-$(node -e 'console.log(process.arch)')-min --max_old_space_size=4096
+    node_modules/.bin/gulp vscode-linux-$(node -e 'console.log(process.arch)')-min $(((FLATPAK_ARCH == 'x86_64')) && echo '--max_old_space_size=4096')
 popd
 mv VSCode-linux-$(node -e 'console.log(process.arch)') /app/
 ln -s ../VSCode-linux-$(node -e 'console.log(process.arch)')/code-oss /app/bin/code-oss
