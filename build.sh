@@ -13,6 +13,7 @@ pushd vscode-ripgrep-0.7.1-patch.0.1
     echo > dist/postinstall.js
     mkdir bin
     unzip ../misc/ripgrep-0.7.1-patch.1-linux-$(node -e 'console.log(process.arch)').zip rg -d bin/
+    chmod 755 bin/rg
 popd
 tar -xzvf yarn-mirror/vscode-1.0.1.tgz
 mv package vscode-1.0.1
