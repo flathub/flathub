@@ -40,5 +40,5 @@ pushd vscode
     echo "/// <reference types='@types/node'/>" > extensions/emmet/src/typings/refs.d.ts
     node_modules/.bin/gulp vscode-linux-$(node -e 'console.log(process.arch)')-min $([ $FLATPAK_ARCH == 'x86_64' ] && echo '--max_old_space_size=4096')
 popd
-mv VSCode-linux-$(node -e 'console.log(process.arch)') /app/
-ln -s ../VSCode-linux-$(node -e 'console.log(process.arch)')/code-oss /app/bin/code-oss
+mv -T VSCode-linux-$(node -e 'console.log(process.arch)') /app/share/code-oss
+ln -s ../share/code-oss/bin/code-oss /app/bin/code-oss
