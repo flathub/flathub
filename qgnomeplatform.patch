@@ -1,0 +1,57 @@
+diff --git a/src/gnomehintssettings.cpp b/src/gnomehintssettings.cpp
+index 3708a5c..10f9fc3 100644
+--- a/src/gnomehintssettings.cpp
++++ b/src/gnomehintssettings.cpp
+@@ -52,8 +52,30 @@ GnomeHintsSettings::GnomeHintsSettings()
+     : QObject(0)
+     , m_gtkThemeDarkVariant(false)
+     , m_palette(nullptr)
+-    , m_settings(g_settings_new("org.gnome.desktop.interface"))
+ {
++    bool inSandbox = false;
++    if (!qEnvironmentVariableIsEmpty("XDG_RUNTIME_DIR")) {
++        const QString runtimeDir = qgetenv("XDG_RUNTIME_DIR");
++        if (!runtimeDir.isEmpty()) {
++            inSandbox = QFileInfo::exists(runtimeDir + QLatin1String("/flatpak-info"));
++        }
++    }
++
++    if (inSandbox) {
++        if (qEnvironmentVariableIsSet("GIO_EXTRA_MODULES")) {
++            m_gioExtraModules = qgetenv("GIO_EXTRA_MODULES");
++            QString gioExtraModules = QStringLiteral("%1:%2").arg(m_gioExtraModules).arg(QStringLiteral("/usr/share/runtime/lib/plugins/QGnomePlatform/lib/gio/modules"));
++            qputenv("GIO_EXTRA_MODULES", gioExtraModules.toUtf8());
++        } else {
++            qputenv("GIO_EXTRA_MODULES", QByteArray("/usr/share/runtime/lib/plugins/QGnomePlatform/lib/gio/modules"));
++        }
++
++        GSettingsSchemaSource *schema = g_settings_schema_source_new_from_directory("/usr/share/runtime/lib/plugins/QGnomePlatform/share/glib-2.0/schemas/", g_settings_schema_source_get_default(), true, nullptr);
++        m_settings = g_settings_new_full(g_settings_schema_source_lookup(schema, "org.gnome.desktop.interface", true), nullptr, nullptr);
++    } else {
++        m_settings = g_settings_new("org.gnome.desktop.interface");
++    }
++
+     gtk_init(nullptr, nullptr);
+ 
+     // Set log handler to suppress false GtkDialog warnings
+@@ -161,6 +183,8 @@ GnomeHintsSettings::GnomeHintsSettings()
+ 
+ GnomeHintsSettings::~GnomeHintsSettings()
+ {
++    qputenv("GIO_EXTRA_MODULES", m_gioExtraModules.toUtf8());
++
+     qDeleteAll(m_fonts);
+     delete m_palette;
+ }
+diff --git a/src/gnomehintssettings.h b/src/gnomehintssettings.h
+index ab3e09e..b4adf7a 100644
+--- a/src/gnomehintssettings.h
++++ b/src/gnomehintssettings.h
+@@ -88,6 +88,7 @@ protected:
+ private:
+     QStringList xdgIconThemePaths() const;
+ 
++    QString m_gioExtraModules;
+     gboolean m_gtkThemeDarkVariant;
+     gchar *m_gtkTheme;
+     QPalette *m_palette;
