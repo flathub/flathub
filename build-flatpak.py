@@ -13,19 +13,20 @@ def build_debug(branch, appid):
           '--force-clean',
           '--ccache',
           'appdir-%s' % branch,
-          '%s/%s.json' % (branch, appid)])
+          '%s-%s.json' % (appid, branch)])
 
 
 # Full-blown repo build, along with GPG, deltas and upload
 def build_release(branch, no_push, appid):
     call(['flatpak-builder',
           '--force-clean',
+          '--delete-build-dirs',
           '--ccache',
           '--gpg-sign=%s' % gpg_key,
           '--gpg-homedir=gpg',
           '--repo=repo',
           'appdir-%s' % branch,
-          '%s/%s.json' % (branch, appid)])
+          '%s-%s.json' % (appid, branch)])
 
     call(['flatpak',
           'build-update-repo',
@@ -45,18 +46,16 @@ def build_release(branch, no_push, appid):
 
     call(['git',
           'commit',
-          '--amend',
-          '--no-edit'])
+          '--message=Add new build'])
 
     call(['git',
-          'gc'])
-
-    call(['git',
+          'lfs',
           'push',
-          '--force'])
+          'origin',
+          'master'])
 
     call(['git',
-          'gc'])
+          'push'])
 
 
 def main():
@@ -67,7 +66,7 @@ def main():
                       help="export build to repository")
     parser.add_option('-n', '--no-push', action='store_true',
                       help="don’t push the repo")
-    parser.add_option('-b', '--branch', default='stable',
+    parser.add_option('-b', '--branch', default='master',
                       help=("which branch to use, manifests are expected"
                             " to be stored in BRANCH/APPID.json format"
                             " [default: %default]"))
@@ -83,15 +82,11 @@ def main():
     elif args_len > 1:
         parser.error("building more than one app is unsupported")
 
-    # Clean .flatpak-builder to avoid running out of disk space
+    # Check if in correct directory
     if not os.path.isdir('./.flatpak-builder'):
         print(("WARNING: the .flatpak-builder direcory was not found,"
                " are you sure you are launching the script from"
                " the correct location?"))
-
-    elif os.path.isdir('./.flatpak-builder/build'):
-        print("Emptying build dir")
-        call(['rm', '-rf', './.flatpak-builder/build'])
 
     # Build according to chosen mode
     if not options.release:
