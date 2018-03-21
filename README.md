@@ -1,8 +1,10 @@
 # Scribus Flatpak
 
+[![pipeline status](https://gitlab.com/jurf/scribus-flatpak-repo/badges/master/pipeline.svg)](https://gitlab.com/jurf/scribus-flatpak-repo/commits/master)
+
 This repository hosts unofficial Flatpak manifests for Scribus. A development
 and a nightly version is available, with the latter being available pre-built.
-You can find the list of known issues [here][0]. Testing & contributions
+You can find the list of known issues [here][0]. Testing and contributions
 welcome!
 
 ## Installation
