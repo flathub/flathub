@@ -38,7 +38,10 @@ def build_release(branch, no_push, appid):
     if no_push:
         return
 
-    os.chdir("repo/")
+    os.chdir('repo/')
+
+    if not os.path.isdir('./.git'):
+        raise ValueError('not a git repository')
 
     call(['git',
           'add',
