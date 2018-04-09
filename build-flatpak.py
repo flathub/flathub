@@ -61,10 +61,20 @@ def build_release(branch, no_push, appid):
           'push'])
 
 
+def run(branch, appid):
+    call(['flatpak-builder',
+          '--run',
+          'appdir-%s' % branch,
+          '%s-%s.json' % (appid, branch),
+          'scribus'])
+
+
 def main():
     # Feed the options manager
     usage = "usage: %prog [options] APPID"
     parser = OptionParser(usage=usage)
+    parser.add_option('-R', '--run', action='store_true',
+                      help="run the app from the app dir")
     parser.add_option('-r', '--release', action='store_true',
                       help="export build to repository")
     parser.add_option('-n', '--no-push', action='store_true',
@@ -75,6 +85,10 @@ def main():
                             " [default: %default]"))
 
     (options, args) = parser.parse_args()
+
+    if options.run:
+        run(options.branch, args[0])
+        return
 
     # Check if APPID is supplied
     args_len = len(args)
