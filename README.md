@@ -3,7 +3,7 @@
 [GtkRadiant project website](http://icculus.org/mailman/listinfo/gtkradiant)
  
 ## Building
- Install flatpak-builder then run:
+ Install flatpak-builder 0.10.10+ (svn support required) then run:
 
 ```
  flatpak-builder --force-clean --disable-updates --repo=gtkradiant-repo gtkradiant io.github.TTimo.GtkRadiant.json
