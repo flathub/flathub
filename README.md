@@ -1,6 +1,6 @@
 # GtkRadiant Flatpak build manifest
  
-[GtkRadiant project website](http://icculus.org/mailman/listinfo/gtkradiant)
+[GtkRadiant project website](https://icculus.org/gtkradiant/)
  
 ## Building
  Install flatpak-builder 0.10.10+ (svn support required) then run:
