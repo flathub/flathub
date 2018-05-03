@@ -1,0 +1,80 @@
+From e00f447333e463226ec799ad3d4abe1e0f678b49 Mon Sep 17 00:00:00 2001
+From: Julian Taylor <jtaylor@ubuntu.com>
+Date: Thu, 8 Oct 2015 13:47:16 -0700
+Subject: exchange crash with a memleak
+
+ the code in question looks horrible, it dereferences an object and keeps
+ using it, but thats not even the cause of the crash.
+ Intentionally add memleak which is better than crashing in all python
+ versions for now.
+Bug: https://bugreports.qt-project.org/browse/PYSIDE-121
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/shiboken/+bug/1070772
+Last-Update: <2013-02-23>
+
+Patch-Name: memleak-instead-crash.patch
+---
+ libshiboken/basewrapper.cpp                         | 2 +-
+ tests/samplebinding/objecttype_test.py              | 2 +-
+ tests/samplebinding/ownership_delete_parent_test.py | 8 ++++----
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/libshiboken/basewrapper.cpp b/libshiboken/basewrapper.cpp
+index 4c0b551..31f950a 100644
+--- a/libshiboken/basewrapper.cpp
++++ b/libshiboken/basewrapper.cpp
+@@ -1141,7 +1141,7 @@ void destroy(SbkObject* self, void* cppData)
+     if (!hasParent && self->d->containsCppWrapper && !self->d->hasOwnership) {
+         // Remove extra ref used by c++ object this will case the pyobject destruction
+         // This can cause the object death
+-        Py_DECREF((PyObject*)self);
++        //Py_DECREF((PyObject*)self);
+     }
+ 
+     //Python Object is not destroyed yet
+diff --git a/tests/samplebinding/objecttype_test.py b/tests/samplebinding/objecttype_test.py
+index 814e258..9b94ae0 100644
+--- a/tests/samplebinding/objecttype_test.py
++++ b/tests/samplebinding/objecttype_test.py
+@@ -77,7 +77,7 @@ class ObjectTypeTest(unittest.TestCase):
+         o.getCppParent().setObjectName('parent')
+         self.assertEqual(sys.getrefcount(o), 3)
+         o.destroyCppParent()
+-        self.assertEqual(sys.getrefcount(o), 2)
++        self.assertEqual(sys.getrefcount(o), 3)
+ 
+     def testNextInFocusChainCycle(self):
+         parent = ObjectType()
+diff --git a/tests/samplebinding/ownership_delete_parent_test.py b/tests/samplebinding/ownership_delete_parent_test.py
+index 93dd0ec..5757ac0 100644
+--- a/tests/samplebinding/ownership_delete_parent_test.py
++++ b/tests/samplebinding/ownership_delete_parent_test.py
+@@ -45,7 +45,7 @@ class DeleteParentTest(unittest.TestCase):
+ 
+         del parent
+         self.assertRaises(RuntimeError, child.objectName)
+-        self.assertEqual(sys.getrefcount(child), refcount_before-1)
++        self.assertEqual(sys.getrefcount(child), refcount_before)
+ 
+     def testParentDestructorMultipleChildren(self):
+         '''Delete parent object should invalidate all children'''
+@@ -58,7 +58,7 @@ class DeleteParentTest(unittest.TestCase):
+         del parent
+         for i, child in enumerate(children):
+             self.assertRaises(RuntimeError, child.objectName)
+-            self.assertEqual(sys.getrefcount(child), 4)
++            self.assertEqual(sys.getrefcount(child), 5)
+ 
+     def testRecursiveParentDelete(self):
+         '''Delete parent should invalidate grandchildren'''
+@@ -68,9 +68,9 @@ class DeleteParentTest(unittest.TestCase):
+ 
+         del parent
+         self.assertRaises(RuntimeError, child.objectName)
+-        self.assertEqual(sys.getrefcount(child), 2)
++        self.assertEqual(sys.getrefcount(child), 3)
+         self.assertRaises(RuntimeError, grandchild.objectName)
+-        self.assertEqual(sys.getrefcount(grandchild), 2)
++        self.assertEqual(sys.getrefcount(grandchild), 3)
+ 
+ 
+ if __name__ == '__main__':
