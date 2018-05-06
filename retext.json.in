@@ -1,0 +1,679 @@
+{
+    "app-id": "me.mitya57.ReText",
+    //"branch": "stable",
+    // https://github.com/flathub/io.qt.qtwebkit.BaseApp
+    // https://github.com/flathub/io.qt.qtwebkit.BaseApp/blob/master/io.qt.qtwebkit.BaseApp.json
+    "base": "io.qt.qtwebkit.BaseApp",
+	"base-version": "stable",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "5.9",
+    //"runtime-version": "5.10",
+    "sdk": "org.kde.Sdk",
+    "command": "retext",
+    "rename-icon": "retext",
+    //"rename-desktop-file": "me.mitya57.ReText.desktop",
+    //"rename-appdata-file": "me.mitya57.ReText.appdata.xml",
+    "finish-args": [
+        // X11 + XShm access
+        "--share=ipc",
+        "--socket=x11",
+        // Wayland access
+        "--socket=wayland",
+        // Play sounds
+        //"--socket=pulseaudio",
+        //"--socket=system-bus",
+        //"--socket=session-bus",
+        // Needs to talk to the network
+        "--share=network",
+        //"--filesystem=home",
+        //"--filesystem=/run/media",
+        //"--filesystem=/tmp",
+        "--filesystem=host",
+        // Needed for dconf to work
+        "--filesystem=xdg-run/dconf", "--filesystem=~/.config/dconf:ro",
+        //"--filesystem=xdg-run/dconf", "--filesystem=~/.config/dconf:rw",
+        "--talk-name=ca.desrt.dconf", "--env=DCONF_USER_CONFIG_DIR=.config/dconf",
+        // Notifications
+        //"--talk-name=org.freedesktop.Notifications",
+        //"--talk-name=org.freedesktop.secrets",
+        //"--system-talk-name=org.freedesktop.GeoClue2",
+        // https://github.com/lirios/browser/issues/77
+        // https://lists.freedesktop.org/archives/flatpak/2017-June/000722.html
+        "--env=QTWEBENGINE_DISABLE_SANDBOX=1",
+        "--env=QT_XCB_FORCE_SOFTWARE_OPENGL=1",
+        // Available platform plugins are: eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, xcb.
+        //"--env=QT_QPA_PLATFORM=flatpak",
+        //"--env=PYTHONPATH=/app/lib/python3/dist-packages",
+        //"--env=LC_ALL=C",
+        //"--device=all",
+        // OpenGL access
+        "--device=dri"
+    ],
+    "build-options" : {
+        "cflags": "-O2 -g -Wno-deprecated-declarations -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+        "cxxflags": "-O2 -g -Wno-deprecated-declarations -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+        "ldflags": "-fstack-protector-strong -Wl,-z,relro,-z,now",
+        "env": {
+            "V": "1"
+        }
+    },
+    "modules": [
+        {
+            "name": "xmlstarlet",
+            "config-opts": [
+                // We don't need it after complete build
+                "--prefix=/app/opt/xmlstarlet",
+                "--exec-prefix=/app/opt/xmlstarlet",
+                "--disable-static-libs",
+                "--with-libxml-libs-prefix=/usr/lib",
+                "--with-libxml-include-prefix=/usr/include/libxml2"
+            ],
+            // remove configure script to run autoreconf
+            //"rm-configure": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "http://downloads.sourceforge.net/xmlstar/xmlstarlet-1.6.1.tar.gz",
+                    "sha256": "15d838c4f3375332fd95554619179b69e4ec91418a3a5296e7c631b7ed19e7ca"
+                },
+                // checking for xml2-config... /bin/xml2-config
+                // ERROR: /usr/bin/xml2-config should not be used, use an alternative such as pkg-config
+                // configure: error: xmlstarlet needs at least libxml version 2.6.27 (http://www.xmlsoft.org/)
+                // Error: module xmlstarlet: Child process exited with code 1
+                // checking for xslt-config... /bin/xslt-config
+                // ERROR: /usr/bin/xslt-config should not be used, use an alternative such as pkg-config
+                // configure: error: xmlstarlet needs at least libxslt version 1.1.9 (http://www.xmlsoft.org/)
+                // Error: module xmlstarlet: Child process exited with code 1
+                {
+                    "type": "shell",
+                    "commands": [
+                        "sed -r -i 's/^([[:blank:]]*XSTAR_LIB_CHECK[[:blank:]]*\\(\\[LIBXML\\],[[:blank:]]*\\[)xml2-config(\\]\\))/\\1pkg-config libxml-2.0\\2/' 'configure.ac';",
+                        "sed -r -i 's/^([[:blank:]]*XSTAR_LIB_CHECK[[:blank:]]*\\(\\[LIBXSLT\\],[[:blank:]]*\\[)xslt-config(\\]\\))/\\1pkg-config libxslt\\2/' 'configure.ac';",
+                        "grep -Ei 'XSTAR_LIB_CHECK' 'configure.ac' || :;"
+                    ]
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "sed -r -i 's/^(\\[LIBXML_REQUIRED_VERSION=)/#\\1/' 'configure.ac';",
+                        "sed -r -i 's/^(\\[LIBXSLT_REQUIRED_VERSION=)/#\\1/' 'configure.ac';",
+                        "grep -Ei '_REQUIRED_VERSION' 'configure.ac' || :;"
+                    ]
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "autoreconf -i;"
+                    ]
+                }
+            ],
+            "post-install": [
+                // symlink
+                "echo 'post-install: symlink';",
+                "[[ -f '/app/opt/xmlstarlet/bin/xmlstarlet' ]] || ln -s 'xml' '/app/opt/xmlstarlet/bin/xmlstarlet';"
+            ],
+            "cleanup": [
+                "/opt/xmlstarlet/share/doc",
+                "/opt/xmlstarlet/share/man"
+            ]
+        },
+        {
+            "name": "imagemagick",
+            "config-opts": [
+                // We don't need it after complete build
+                "--prefix=/app/opt/imagemagick",
+                "--exec-prefix=/app/opt/imagemagick",
+                "--with-rsvg",
+                "--disable-static"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    //"url": "https://www.imagemagick.org/download/ImageMagick-6.9.9-41.tar.xz",
+                    //"sha256": "35b52173c240f81654368a5c453614f572fcb44132531a8fa4538e2d304adfd3"
+                    "url": "https://www.imagemagick.org/download/ImageMagick-6.9.9-42.tar.xz",
+                    "sha256": "873654cd55792cdaa9c3ee35f63e389fedfb3d34685a1f77d6b81e5c578ae527"
+                }
+            ],
+            "cleanup": [
+                "/opt/imagemagick/share/doc",
+                "/opt/imagemagick/share/man"
+            ]
+        },
+        // The "buildsystem": "cmake-ninja" isn't available in flatpak 0.8.x in EL7 7.5
+        // https://github.com/flatpak/flatpak/issues/461
+        // https://github.com/matthiasclasen/flatpak/commit/75ae3d946e9787af3fb3281aedcb19358eb5bcfb
+        // see also: "base": "io.qt.qtwebkit.BaseApp"
+        /*{
+            //"name": "qtwebkit",
+            "name": "qt5-webkit",
+            //"buildsystem": "cmake-ninja",
+            "buildsystem": "cmake",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_INSTALL_LIBDIR=lib",
+                "-DPORT=Qt",
+                "-DENABLE_API_TESTS=OFF",
+                "-DENABLE_INSPECTOR_UI=OFF",
+                "-DENABLE_LEGACY_WEB_AUDIO=OFF",
+                "-DENABLE_MEDIA_SOURCE=OFF",
+                "-DENABLE_NETSCAPE_PLUGIN_API=OFF",
+                "-DENABLE_PRINT_SUPPORT=OFF",
+                "-DENABLE_SAMPLING_PROFILER=OFF",
+                "-DENABLE_SPELLCHECK=OFF",
+                "-DENABLE_VIDEO=OFF",
+                "-DENABLE_WEBKIT2=OFF",
+                "-DENABLE_WEB_AUDIO=OFF",
+                "-DUSE_GSTREAMER=OFF"
+            ],
+            "post-install": [
+                "mv /app/mkspecs /app/lib;"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/annulen/webkit/releases/download/qtwebkit-5.212.0-alpha2/qtwebkit-5.212.0-alpha2.tar.xz",
+                    "sha256": "f8f901de567e11fc5659402b6b827eac75505ff9c5072d8e919aa306003f8f8a"
+                }
+            ]
+        },//*/
+        /*"qtwebkit.json",//*/
+        /*{
+            //"name": "sip",
+            "name": "python3-sip",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 configure.py --bindir=/app/bin --destdir=/app/lib/python3/dist-packages --incdir=/app/include/python3 --sipdir=/app/share/sip --stubsdir=/app/lib/python3/dist-packages;",
+            //    "make -j `nproc`;",
+            //    "make install;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    //"url": "https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.6/sip-4.19.6.tar.gz",
+                    //"sha256": "9dda27ae181bea782ebc8768d29f22f85ab6e5128ee3ab21f491febad707925a"
+                    "url": "https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.8/sip-4.19.8.tar.gz",
+                    "sha256": "7eaf7a2ea7d4d38a56dd6d2506574464bddf7cf284c960801679942377c297bc"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 configure.py --bindir=/app/bin --destdir=/app/lib/python3/dist-packages --incdir=/app/include/python3 --sipdir=/app/share/sip --stubsdir=/app/lib/python3/dist-packages; make -j `nproc`; make install;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        {
+            //"name": "pyqt5",
+            "name": "python3-qt5",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "QMAKEPATH=/app/lib python3 configure.py PREFIX=/app --verbose --confirm-license --sip-incdir=/app/include/python3 --bindir=/app/bin --destdir=/app/lib/python3/dist-packages --designer-plugindir=/app/lib/plugins/designer --qml-plugindir=/app/lib/plugins/PyQt5 --sipdir=/app/share/sip --stubsdir=/app/lib/python3/dist-packages/PyQt5;",
+            //    "make -j `nproc`",
+            //    "make install"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    //"url": "https://sourceforge.net/projects/pyqt/files/PyQt5/PyQt-5.9.2/PyQt5_gpl-5.9.2.tar.gz",
+                    //"sha256": "c190dac598c97b0113ca5e7a37c71c623f02d1d713088addfacac4acfa4b8394"
+                    "url": "https://sourceforge.net/projects/pyqt/files/PyQt5/PyQt-5.10.1/PyQt5_gpl-5.10.1.tar.gz",
+                    "sha256": "9932e971e825ece4ea08f84ad95017837fa8f3f29c6b0496985fa1093661e9ef"
+                },
+{
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tQMAKEPATH=/app/lib python3 configure.py PREFIX=/app --verbose --confirm-license --sip-incdir=/app/include/python3 --bindir=/app/bin --destdir=/app/lib/python3/dist-packages --designer-plugindir=/app/lib/plugins/designer --qml-plugindir=/app/lib/plugins/PyQt5 --sipdir=/app/share/sip --stubsdir=/app/lib/python3/dist-packages/PyQt5; make -j `nproc`; make install;\n' > makefile;"
+                    ]
+                }
+            ],
+            "cleanup": [
+                "/bin"
+            ]
+        },//*/
+        {
+            //"name": "pyqt5",
+            "name": "python3-qt5",
+            // The "buildsystem": "simple" and "build-commands": [ ] are not available in flatpak 0.8.x in EL7 7.5
+            // Flatpak package will be updated in EL7 7.6, probably in Q1-Q2 2019
+            // https://bugzilla.redhat.com/show_bug.cgi?id=1570030
+            // The alternative is to use "no-autogen": true and "type": "shell" as one of sources.
+            // https://github.com/flatpak/flatpak/issues/134#issuecomment-275045036
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "pip3 install --prefix=/app PyQt5-*.whl;"
+            //],
+            "no-autogen": true,
+            "modules": [
+                {
+                    //"name": "sip",
+                    "name": "python3-sip",
+                    //"buildsystem":"simple",
+                    //"build-commands": [
+                    //    "pip3 install --prefix=/app sip-*.whl;"
+                    //],
+                    "no-autogen": true,
+                    "sources": [
+                        {
+                            "type":"file",
+                            "url":"https://pypi.python.org/packages/6b/46/2869369c8ec634ec9dc714b84834e9264acbe87eb7492328efccfa0c855e/sip-4.19.8-cp35-cp35m-manylinux1_x86_64.whl",
+                            "sha256":"e72955e12f4fccf27aa421be383453d697b8a44bde2cc26b08d876fd492d0174"
+                        },
+                        {
+                            "type": "shell",
+                            "commands": [
+                                "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app sip-*.whl;\n' > makefile;"
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://pypi.python.org/packages/e4/15/4e2e49f64884edbab6f833c6fd3add24d7938f2429aec1f2883e645d4d8f/PyQt5-5.10.1-5.10.1-cp35.cp36.cp37.cp38-abi3-manylinux1_x86_64.whl",
+                    "sha256": "1e652910bd1ffd23a3a48c510ecad23a57a853ed26b782cd54b16658e6f271ac"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app PyQt5-*.whl;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        /*{
+            //"name": "docutils",
+            "name": "python3-docutils",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://pypi.python.org/packages/84/f4/5771e41fdf52aabebbadecc9381d11dea0fa34e4759b4071244fa094804c/docutils-0.14.tar.gz",
+                    "sha256": "51e64ef2ebfb29cae1faa133b3710143496eca21c530f3f71424d77687764274"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ]
+        },//*/
+        {
+            //"name": "docutils",
+            "name": "python3-docutils",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "pip3 install --prefix=/app docutils-*.whl;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://pypi.python.org/packages/36/fa/08e9e6e0e3cbd1d362c3bbee8d01d0aedb2155c4ac112b19ef3cae8eed8d/docutils-0.14-py3-none-any.whl",
+                    "sha256": "02aec4bd92ab067f6ff27a38a38a41173bf01bed8f89157768c1573f53e474a6"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app docutils-*.whl;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        {
+            //"name": "pyenchant",
+            "name": "python3-pyenchant",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "modules": [
+                {
+                    // enchant from org.gnome.Sdk
+                    // https://github.com/GNOME/gnome-sdk-images/blob/master/org.gnome.Sdk.json.in
+                    "name": "enchant",
+                    "config-opts": ["--disable-static", "--with-myspell-dir=/usr/share/hunspell"],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://www.abisource.com/downloads/enchant/1.6.0/enchant-1.6.0.tar.gz",
+                            "sha256": "2fac9e7be7e9424b2c5570d8affe568db39f7572c10ed48d4e13cddf03f7097f"
+                        },
+                        {
+                            "type": "shell",
+                            "commands": [
+                                "cp -f /usr/share/gnu-config/config.sub .;",
+                                "cp -f /usr/share/gnu-config/config.guess .;"
+                            ]
+                        }
+                   ]
+                }
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://pypi.python.org/packages/9e/54/04d88a59efa33fefb88133ceb638cdf754319030c28aadc5a379d82140ed/pyenchant-2.0.0.tar.gz",
+                    "sha256": "fc31cda72ace001da8fe5d42f11c26e514a91fa8c70468739216ddd8de64e2a0"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        /*{
+            //"name": "Markdown",
+            "name": "python3-markdown",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://pypi.python.org/packages/b3/73/fc5c850f44af5889192dff783b7b0d8f3fe8d30b65c8e3f78f8f0265fecf/Markdown-2.6.11.tar.gz",
+                    "sha256": "a856869c7ff079ad84a3e19cd87a64998350c2b94e9e08e44270faef33400f81"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ]
+        },//*/
+        {
+            //"name": "Markdown",
+            "name": "python3-markdown",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "pip3 install --prefix=/app Markdown-*.whl;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://pypi.python.org/packages/6d/7d/488b90f470b96531a3f5788cf12a93332f543dbab13c423a5e7ce96a0493/Markdown-2.6.11-py2.py3-none-any.whl",
+                    "sha256": "9ba587db9daee7ec761cfc656272be6aabe2ed300fece21208e4aab2e457bc8f"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app Markdown-*.whl;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        /*{
+            //"name": "python-markdown-math",
+            "name": "python3-markdown-math",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://pypi.python.org/packages/62/a0/721bb6542cf4b48d6016a79786fb6d68b7a1368ec89ee6e30377d578457d/python-markdown-math-0.5.tar.gz",
+                    "sha256": "8f8803c92ac0847d18bd82a51fdb6acec90b2b54a4990650e627a0d4d3a78445"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ]
+        },//*/
+        {
+            //"name": "python-markdown-math",
+            "name": "python3-markdown-math",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "pip3 install --prefix=/app python_markdown_math-*.whl;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://pypi.python.org/packages/67/40/dcee47c6be5218a4c740e7404089885d384c878987ec8d790ea291bf685d/python_markdown_math-0.5-py2.py3-none-any.whl",
+                    "sha256": "2c3225794b40375445d1949e427ee549edfcc0a534740b3245ff70f177c40f1e"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app python_markdown_math-*.whl;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        /*{
+            //"name": "Markups",
+            "name": "python3-markups",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://pypi.python.org/packages/2f/35/5eda745b115048ddd7ae7e66ba49862ec9d6fd12b3cd4ff0810b9a213c10/Markups-3.0.0.tar.gz",
+                    "sha256": "1ea19458dfca6a4562044e701aa8698089a0c659fc535689ed260f89a04f8d39"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ]
+        },//*/
+        {
+            //"name": "Markups",
+            "name": "python3-markups",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "pip3 install --prefix=/app Markups-*.whl;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://pypi.python.org/packages/56/c0/d77c6af4f43c00268372fcbaee715dc798ce70c6c6a93ae30bec32af94ed/Markups-3.0.0-py2.py3-none-any.whl",
+                    "sha256": "dd00c7f082d375bb63d6eb6873b1f984c9b474829a3ff1f9518202c64538d539"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpip3 install --prefix=/app Markups-*.whl;\n' > makefile;"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "retext",
+            //"buildsystem": "simple",
+            //"build-commands": [
+            //    "python3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            //],
+            "no-autogen": true,
+            "sources": [
+                {
+                    "type": "archive",
+                    //"url": "https://github.com/retext-project/retext/archive/7.0.0.tar.gz",
+                    //"sha256": "7df3fcdad1d1f9a046ae33591b54dd7a6894de64eb0370f2dabf4cd75eb66586"
+                    //"url": "https://github.com/retext-project/retext/archive/7.0.1.tar.gz",
+                    //"sha256": "c32ccdbcf31094258c792bc0589ff3ff212dea85466d776b7f60fa7b39da4b6c"
+                    "url": "https://pypi.python.org/packages/2a/ba/581591a8a8d48d02236b57633ae5f55247424885e143fe1d21fba904a1ed/ReText-7.0.1.tar.gz",
+                    "sha256": "f5a2dbfb32b96423fd3e5ef00488440c36a2bcecbc6356f5c17674b265316eea"
+                },
+                {
+                    "type": "archive",
+                    "url": "https://github.com/mquinson/po4a/archive/v0.52.tar.gz",
+                    "sha256": "547c410ad3bb8e5fd3939a6acdd39713529187be05fca7235095d57d3f0c6cfc",
+                    "strip-components": 0
+                },
+                // https://koji.fedoraproject.org/koji/buildinfo?buildID=941463
+                // The template for man page translations can be created with this command:
+                // po4a-updatepo -v -M utf-8 -f man -m retext.1 -p retext-man.pot
+                // English man pages are taken from the Debian package.
+                {
+                    "type": "file",
+                    //"url": "https://mariobl.fedorapeople.org/Retext/retext-man-de.po",
+                    "path": "retext-man-de.po",
+                    "sha256": "9b00b30a693a3023b2f5619ab0586ddf9bd8f5bc9b75c2dabd5d6493558bb6f7"
+                },
+                {
+                    "type": "file",
+                    //"url": "https://mariobl.fedorapeople.org/Retext/retext.1",
+                    "path": "retext.1",
+                    "sha256": "300f04c1f808f63351b16ed0fa0f2d01b857c4d096ed71dcf54ab95281727d9a"
+                },
+                // Disable external web renderer due instability.
+                // https://github.com/retext-project/retext/issues/359
+                // [0506/073402.338198:WARNING:stack_trace_posix.cc(648)] Failed to open file: /tmp/.glvaG1Tp (deleted)
+                // Error: No such file or directory
+                // [3:29:0506/073402.410560:FATAL:udev_loader.cc(38)] Check failed: false. 
+                // https://bugs.archlinux.org/task/57152
+                // https://github.com/spyder-ide/spyder/issues/6471
+                // https://github.com/qutebrowser/qutebrowser/issues/3459
+                // https://github.com/qutebrowser/qutebrowser/issues/3511
+                // https://bugreports.qt.io/browse/QTBUG-67023
+                // https://bugreports.qt.io/browse/QTBUG-65682
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'disabling external renderer';",
+                        "cp 'ReText/window.py' 'ReText/window.py.bak';",
+                        "cp 'ReText/tab.py' 'ReText/tab.py.bak';",
+                        "sed -r -i 's/^([[:blank:]]*)(menuEdit\\.addAction\\(self\\.(actionWebKit|actionWebEngine)\\))([[:blank:]]*)$/\\1pass #\\2\\4/' 'ReText/window.py';",
+                        "sed -r -i 's/^([[:blank:]]*)(globalSettings\\.(useWebKit|useWebEngine)[[:blank:]]*=[[:blank:]]*)(enable)([[:blank:]]*)$/\\1\\2False\\5/' 'ReText/window.py';",
+                        "sed -r -i 's/^(([[:blank:]]*)(if ReTextWebKitPreview and globalSettings\\.useWebKit:)([[:blank:]]*))$/\\2return ReTextPreview\\(self\\)\\n\\1/' 'ReText/tab.py';",
+                        //"grep -HE 'WebKit|WebEngine' 'ReText/window.py' 'ReText/tab.py';",
+                        "echo 'ReText/window.py';",
+                        "diff 'ReText/window.py.bak' 'ReText/window.py' -C 4 || :;",
+                        "echo 'ReText/tab.py';",
+                        "diff 'ReText/tab.py.bak' 'ReText/tab.py' -C 4 || :;",
+                        "rm -f 'ReText/window.py.bak' 'ReText/tab.py.bak';"
+                    ]
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "echo 'all:\n\ninstall:\n\tpython3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;\n' > makefile;"
+                    ]
+                }
+            ],
+            "post-install": [
+                // manuals
+                "echo 'post-install: manuals';",
+                "mkdir -p '/app/share/man/man1'; install -p -m 0644 'retext.1' '/app/share/man/man1/';",
+                "appname='retext';
+                mkdir -p 'man/de';
+                perllib_path=\"$( find po4a-*/lib -mindepth 0 -maxdepth 0 -xtype d | sort -V | head -n 1 )\";
+                echo \"${perllib_path}\";
+                PERLLIB=\"${perllib_path}\" ./po4a-0.52/po4a-updatepo -v -M utf-8 -f man -m 'retext.1' -p 'retext-man-de.po';
+                PERLLIB=\"${perllib_path}\" ./po4a-0.52/po4a-translate -M utf-8 -f man --option groff_code=verbatim -m 'retext.1' -p 'retext-man-de.po' -l \"man/de/${appname}.1\";
+                mkdir -p '/app/share/man/de/man1';
+                install -p -m 0644 \"man/de/${appname}.1\" '/app/share/man/de/man1/';",
+                // icons
+                "echo 'post-install: icons';",
+                "appname='retext';
+                imagemagick_home='/app/opt/imagemagick';
+                imagemagick_lib=\"${imagemagick_home}/lib\";
+                imagemagick_bin=\"${imagemagick_home}/bin\";
+                if [[ -n \"${LD_LIBRARY_PATH}\" ]]; then
+                  LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH}:${imagemagick_lib}\";
+                else
+                  LD_LIBRARY_PATH=\"${imagemagick_lib}\";
+                fi;
+                export LD_LIBRARY_PATH;
+                if [[ -n \"${PATH}\" ]]; then
+                  PATH=\"${PATH}:${imagemagick_bin}\";
+                else
+                  PATH=\"${imagemagick_bin}\";
+                fi;
+                export PATH;
+                icon='icons/retext.svg';
+                for s in {16,22,24,32,48,64,72,96,128,192,256,512}; do
+                    size=\"${s}x${s}\";
+                    echo \"- ${size}\";
+                    mkdir -p \"icons/${size}/\";
+                    convert -background none -density 1024 -resize \"${size}\" \"${icon}\" \"icons/${size}/${appname}.png\";
+                done;
+                find 'icons' -mindepth 2 -maxdepth 2 -xtype f -name \"${appname}.png\" | sort -V | xargs -I{} dirname '{}' | xargs -I{} basename '{}' | while read -r size; do
+                    install -p -D -m 0644 \"icons/${size}/${appname}.png\" \"/app/share/icons/hicolor/${size}/apps/${appname}.png\";
+                done;
+                install -p -D -m 0644 \"${icon}\" \"/app/share/icons/hicolor/scalable/apps/${appname}.svg\"",
+                // desktop files
+                "echo 'post-install: desktop files';",
+                "desktop-file-edit --set-key=Icon --set-value='me.mitya57.ReText' data/*.desktop;",
+                "desktop-file-install --dir='/app/share/applications' data/*.desktop;",
+                // metainfo/appdata - https://fedoraproject.org/wiki/Packaging:AppData
+                "echo 'post-install: metainfo/appdata';",
+                "[[ -d /app/share/metainfo ]] || mv /app/share/appdata /app/share/metainfo;",
+                "echo 'updating release info';
+                xmlstarlet_home='/app/opt/xmlstarlet';
+                xmlstarlet_bin=\"${xmlstarlet_home}/bin\";
+                if [[ -n \"${PATH}\" ]]; then
+                  PATH=\"${PATH}:${xmlstarlet_bin}\";
+                else
+                  PATH=\"${xmlstarlet_bin}\";
+                fi;
+                export PATH;
+                app_version=\"$( grep -Ei \"^[[:blank:]]*VERSION[[:blank:]]*=[[:blank:]]*'([^']*)'*[[:blank:]]*$\" 'setup.py' 2>/dev/null | tail -n 1 2>/dev/null | sed -re \"s/^[[:blank:]]*VERSION[[:blank:]]*=[[:blank:]]*'([^']*)'*[[:blank:]]*$/\\1/\" 2>/dev/null )\";
+                app_date=\"$( date --reference 'changelog.md' -u '+%Y-%m-%d' 2>/dev/null )\";
+                find '/app/share/metainfo' -mindepth 1 -maxdepth 1 -xtype f -name '*.appdata.xml' | sort -V | while read -r filename; do
+                    if [[ -n \"${app_version}\" && -n \"${app_date}\" ]]; then
+                        xmlstarlet sel -t -v '/component/releases/release/@version' \"${filename}\";
+                        if [[ \"${?}\" -ne \"0\" ]]; then
+                            xmlstarlet ed --inplace -d '/component/releases' -s '/component' -t elem -n 'releases' -s '/component/releases' -t elem -n 'release' -s '/component/releases/release' -t attr -n 'date' -v \"${app_date}\" -s '/component/releases/release' -t attr -n 'version' -v \"${app_version}\" \"${filename}\";
+                            xmlstarlet sel -t -c '/component/releases/release' \"${filename}\" | sed -re 's/$/\\n/' || :;
+                        fi
+                    fi;
+                    app_id=\"$( xmlstarlet sel -t -v '/component/id' \"${filename}\" 2>/dev/null | head -n 1 2>/dev/null )\";
+                    if [[ -n \"${app_id}\" ]]; then
+                        xmlstarlet sel -t -v '/component/launchable' \"${filename}\";
+                        if [[ \"${?}\" -ne \"0\" ]]; then
+                            xmlstarlet ed --inplace -d '/component/launchable' -s '/component' -t elem -n 'launchable' -v \"${app_id}\" -s '/component/launchable' -t attr -n 'type' -v 'desktop-id' \"${filename}\";
+                            xmlstarlet sel -t -c '/component/launchable' \"${filename}\" | sed -re 's/$/\\n/' || :;
+                        fi
+                    fi;
+                done;",
+                // validate data
+                "echo 'post-install: validate data';",
+                "cat /app/share/applications/*.desktop;",
+                "desktop-file-validate /app/share/applications/*.desktop || :;",
+                "cat /app/share/metainfo/*.appdata.xml;",
+                "appstream-util validate-relax --nonet /app/share/metainfo/*.appdata.xml || :;"
+            ]
+        }
+    ],
+    "cleanup": [
+        //"/cache",
+        "/include",
+        "/lib/pkgconfig",
+        "/share/cmake",
+        "/man",
+        "/share/man",
+        "/lib/systemd",
+        "/opt",
+        "*.la",
+        "*.a"
+    ]
+}
+
