@@ -114,6 +114,16 @@ It is possible to install **flatpak** (and **flatpak-builder**) >= *0.10.x* from
 * [scx/flatpak](https://copr.fedorainfracloud.org/coprs/scx/flatpak/)
 * [amigadave/flatpak-epel7](https://copr.fedorainfracloud.org/coprs/scx/flatpak/)
 
+### How to create module manifest for a PIP package?
+
+You can use [Flatpak PIP Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip) from [Flatpak Builder Tools](https://github.com/flatpak/flatpak-builder-tools) repository.
+
+Please remember to enable **rh-python36** on EL7.
+
+```
+scl enable rh-python36 bash
+```
+
 ### Are you the author of ReText?
 
 No, I only created flatpak package for it.
