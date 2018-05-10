@@ -1,12 +1,13 @@
 #!/bin/bash
 
-JDURL="http://installer.jdownloader.org/JDownloader.jar"
 JDDIR=$XDG_DATA_HOME/jdownloader
-JDJAR=$JDDIR/JDownloader.jar
+JDSETUP=$XDG_CACHE_HOME/JD2Setup.sh
 
-if [ ! -f $JDJAR ]; then
-    mkdir -p $JDDIR
-    curl $JDURL -o $JDJAR --stderr - | zenity --progress --text="Downloading JDownloader.jar" --pulsate --no-cancel --auto-close
+if [ ! -f $JDDIR/JDownloader.jar ]; then
+    install -Dm755 /app/extra/JD2Setup.sh $JDSETUP
+    $JDSETUP -q -dir $JDDIR | zenity --progress --text="Installing JDownloader" --pulsate --no-cancel --auto-close
+    rm $JDSETUP
+    zenity --info --text "Download directory: $HOME/JDownloader" --no-wrap --title "JDownloader"
 fi
 
-java -jar $JDJAR
+$JDDIR/JDownloader2
