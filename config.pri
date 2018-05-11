@@ -1,22 +1,9 @@
-boost: LIBS += -lboost_serialization
+boost-serialization-lib: LIBS += -lboost_serialization
+boost: LIBS += -lboost_thread -lboost_system
 expat: LIBS += -lexpat
 expat: PKGCONFIG -= expat
-INCLUDEPATH+=/app/include
-LIBS+="-L/app/lib"
-
-pyside {
-PKGCONFIG -= pyside
-INCLUDEPATH += $$system(pkg-config --variable=includedir pyside)
-INCLUDEPATH += $$system(pkg-config --variable=includedir pyside)/QtCore
-INCLUDEPATH += $$system(pkg-config --variable=includedir pyside)/QtGui
-INCLUDEPATH += $$system(pkg-config --variable=includedir QtGui)
-}
-shiboken {
-PKGCONFIG -= shiboken
-INCLUDEPATH += $$system(pkg-config --variable=includedir shiboken)
-}
-
-QMAKE_LFLAGS += -Wl,-rpath,\\\$\$ORIGIN/../lib
-
-# Mocha compat
-LIBS += -lGLU
+cairo: PKGCONFIG -= cairo
+pyside: PYSIDE_PKG_CONFIG_PATH = $$system($$PYTHON_CONFIG --prefix)/lib/pkgconfig:$$(PKG_CONFIG_PATH)
+pyside: PKGCONFIG += pyside
+pyside: INCLUDEPATH += $$system(env PKG_CONFIG_PATH=$$PYSIDE_PKG_CONFIG_PATH pkg-config --variable=includedir pyside)/QtCore
+pyside: INCLUDEPATH += $$system(env PKG_CONFIG_PATH=$$PYSIDE_PKG_CONFIG_PATH pkg-config --variable=includedir pyside)/QtGui
