@@ -1,6 +1,6 @@
 TARGET_REPO = repo
 FLATPAK_BUILDER = $(shell which flatpak-builder)
-MANIFEST = org.virt-manger.virt-viewer.json
+MANIFEST = org.virt_manger.virt-viewer.json
 
 all: build
 
