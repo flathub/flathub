@@ -1,0 +1,237 @@
+Make XaraLX compile with libpng 1.5.
+Author: Sławomir Nizio <slawomir.nizio at sabayon.org>
+
+diff --git a/wxOil/outptpng.cpp b/wxOil/outptpng.cpp
+index 8c5268d..34c4791 100755
+--- a/wxOil/outptpng.cpp
++++ b/wxOil/outptpng.cpp
+@@ -555,49 +555,54 @@ TRACEUSER( "Jonathan", _T("PNG write: Width = %d Height = %d\n"),Width,Height);
+ 		//png_set_compression_window_bits(png_ptr, 15);
+ 		//png_set_compression_method(png_ptr, 8);
+ 
+-		info_ptr->valid	= 0;	// - this describes which optional chunks to write to the
++								// - this describes which optional chunks to write to the
+ 								// file.  Note that if you are writing a
+ 								// PNG_COLOR_TYPE_PALETTE file, the PLTE chunk is not
+ 								// optional, but must still be marked for writing.  To
+ 								// mark chunks for writing, OR valid with the 
+ 								// appropriate PNG_INFO_<chunk name> define.
+ 		// Set the file information here
+-		info_ptr->width = Width;	// - holds the width of the file
+-		info_ptr->height = Height;	// - holds the height of the file
++
++		png_uint_32 _width, _height;
++		int _bit_depth, _color_type, _interlace_type, _unit_type;
++
++		_width = Width;
++		_height = Height;
+ 		
+ 		// resolution of image
+-		info_ptr->valid |= PNG_INFO_pHYs;
+-		info_ptr->x_pixels_per_unit = pInfo->biXPelsPerMeter;
+-		info_ptr->y_pixels_per_unit = pInfo->biYPelsPerMeter;
+-		info_ptr->phys_unit_type = 1;	// meter
+-TRACEUSER( "Jonathan", _T("PNG write: X,y dpi = %d %d\n"),info_ptr->x_pixels_per_unit, info_ptr->y_pixels_per_unit);
++		_unit_type = 1; // meter
++
++TRACEUSER( "Jonathan", _T("PNG write: X,y dpi = %d %d\n"), pInfo->biXPelsPerMeter, pInfo->biYPelsPerMeter);
+ 		if (InterlaceState)
+-			info_ptr->interlace_type = 1;	// - currently 0 for none, 1 for interlaced
++			_interlace_type = 1;	// - currently 0 for none, 1 for interlaced
+ 		else
+-			info_ptr->interlace_type = 0;	// - currently 0 for none, 1 for interlaced
++			_interlace_type = 0;	// - currently 0 for none, 1 for interlaced
+ 
+ 		BitsPerPixel				= pInfo->biBitCount;
+ TRACEUSER( "Jonathan", _T("PNG write: Bitdepth = %d\n"),BitsPerPixel);
+-		info_ptr->palette			= NULL;
+-		info_ptr->num_palette		= 0;
++		png_colorp _palette			= NULL;
++		int _num_palette			= 0;
+ 		//info_ptr->trans_values	= 0;	// - transparent pixel for non-paletted images
+-		info_ptr->trans				= NULL;	// - array of transparent entries for paletted images
+-		info_ptr->num_trans			= 0;	// - number of transparent entries
++		png_bytep _trans_alpha		= 0;
++		int _num_trans				= 0;
+ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 		if ( BitsPerPixel <= 8 )
+ 		{
+-			info_ptr->bit_depth = BitsPerPixel;	// - holds the bit depth of one of the image channels
+-			info_ptr->color_type = PNG_COLOR_TYPE_PALETTE;	// - describes the channels and what they mean
++			_bit_depth = BitsPerPixel;
++			_color_type = PNG_COLOR_TYPE_PALETTE; // - describes the channels and what they mean
+ 												// see the PNG_COLOR_TYPE_ defines for more information
+ 			// set the palette if there is one
+-			info_ptr->valid |= PNG_INFO_PLTE;
+ 			INT32 PaletteEntries = pInfo->biClrUsed;
+-			info_ptr->palette = (png_color_struct *)CCMalloc(PaletteEntries * sizeof (png_color));
+-			if (info_ptr->palette == NULL)
++			_palette = (png_color_struct *)CCMalloc(PaletteEntries * sizeof (png_color));
++			if (_palette == NULL)
+ 				File->GotError( _R(IDS_OUT_OF_MEMORY) );
+ 			
+-			info_ptr->num_palette = PaletteEntries;
+-			png_color_struct * pPNGPalette = info_ptr->palette;
++			_num_palette = PaletteEntries;
++			png_color_struct * pPNGPalette = _palette;
++
++			png_set_IHDR (png_ptr, info_ptr, _width, _height, _bit_depth, _color_type,
++				_interlace_type, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
++
+ 			// ... set palette colors ...
+ 	 		if (pQuadPalette && PaletteEntries > 0)
+ 			{
+@@ -625,7 +630,15 @@ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 			}
+ 			else
+ 				File->GotError(_R(IDS_PNG_ERR_WRITE_PALETTE));
+-			
++
++			png_set_PLTE(png_ptr, info_ptr, _palette, _num_palette);
++			/*
++			 * Although documentation says otherwise, I can free palette
++			 * memory here since libpng-1.0.9beta7...
++			 */
++			CCFree(_palette);
++			_palette = NULL;
++
+ 			// Now check to see if transparency is present or not
+ 			if (TransparentColour >= 0 && TransparentColour <= PaletteEntries )
+ 			{
+@@ -634,13 +647,12 @@ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 				// We will only create as many as we require, i.e. up to the transparent colour entry
+ 				// rather a full palettes worth
+ 				INT32 NumEntries = TransparentColour + 1;
+-				info_ptr->trans				= (png_byte *)CCMalloc(NumEntries * sizeof (png_byte));	
+-				if (info_ptr->trans)
++				_trans_alpha					= (png_byte *)CCMalloc(NumEntries * sizeof (png_byte));
++				if (_trans_alpha)
+ 				{
+ 					// Set the number of transparent entries
+-					info_ptr->num_trans			= NumEntries;
+-					png_byte * pTransEntry		= info_ptr->trans;
+-					info_ptr->valid |= PNG_INFO_tRNS;
++					_num_trans						= NumEntries;
++					png_byte * pTransEntry		= _trans_alpha;
+ 					for (INT32 i = 0; i < TransparentColour; i++)
+ 					{
+ 						*pTransEntry = 255;	// set it fully opaque
+@@ -648,14 +660,23 @@ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 					}
+ 					// We should now be at the transparent entry so set it fully transparent
+ 					*pTransEntry = 0;
++
++					png_set_tRNS(png_ptr, info_ptr, _trans_alpha, _num_trans, NULL);
++					CCFree(_trans_alpha);
++					_trans_alpha = NULL;
+ 				}
++
+ 			}
+ 		}
+ 		else if (BitsPerPixel == 24) 
+ 		{
+ 			// We must be 24 bpp
+-			info_ptr->bit_depth = BitsPerPixel/3;	// - holds the bit depth of one of the image channels
+-			info_ptr->color_type = PNG_COLOR_TYPE_RGB;	// - describes the channels and what they mean
++			_bit_depth = BitsPerPixel/3;
++			_color_type = PNG_COLOR_TYPE_RGB;
++
++			png_set_IHDR (png_ptr, info_ptr, _width, _height, _bit_depth, _color_type,
++				_interlace_type, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
++
+ 			// optional significant bit chunk
+ 			//info_ptr->valid |= PNG_INFO_sBIT;
+ 			// otherwise, if we are dealing with a color image then
+@@ -668,8 +689,11 @@ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 		else if (BitsPerPixel == 32) 
+ 		{
+ 			// We must be a 32 bpp
+-			info_ptr->bit_depth = BitsPerPixel/4;	// - holds the bit depth of one of the image channels
+-			info_ptr->color_type = PNG_COLOR_TYPE_RGB_ALPHA;	// - describes the channels and what they mean
++			_bit_depth = BitsPerPixel/4;	// - holds the bit depth of one of the image channels
++			_color_type = PNG_COLOR_TYPE_RGB_ALPHA;	// - describes the channels and what they mean
++
++			png_set_IHDR (png_ptr, info_ptr, _width, _height, _bit_depth, _color_type,
++				_interlace_type, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+ 			// optional significant bit chunk
+ 			//info_ptr->valid |= PNG_INFO_sBIT;
+ 			// otherwise, if we are dealing with a color image then
+@@ -687,16 +711,17 @@ TRACEUSER( "Jonathan", _T("PNG write: TransColour = %d\n"),TransparentColour);
+ 		else
+ 			ERROR2(FALSE,"OutputPNG::OutputPNGHeader Unknown bit depth");
+ 
+-TRACEUSER( "Jonathan", _T("PNG write: bit_depth = %d color_type = %d\n"),info_ptr->bit_depth,info_ptr->color_type);
++TRACEUSER( "Jonathan", _T("PNG write: bit_depth = %d color_type = %d\n"),_bit_depth,_color_type);
+ 
++		png_set_pHYs(png_ptr, info_ptr, pInfo->biXPelsPerMeter, pInfo->biYPelsPerMeter, _unit_type);
+ 		// Could use:-
+ 		// if we are dealing with a grayscale image then
+ 		//info_ptr->sig_bit.gray = true_bit_depth;
+ 
+ 		// gamma		- the gamma the file is written at
+-		info_ptr->hist			= NULL;	// - histogram of palette
+-		info_ptr->text			= NULL;	// - text comments in the file.
+-		info_ptr->num_text		= 0;	// - number of comments
++		//info_ptr->hist			= NULL;	// - histogram of palette
++		//info_ptr->text			= NULL;	// - text comments in the file.
++		//info_ptr->num_text		= 0;	// - number of comments
+ 
+ 		// optional gamma chunk is strongly suggested if you have any guess
+ 		// as to the correct gamma of the image
+@@ -708,8 +733,10 @@ TRACEUSER( "Jonathan", _T("PNG write: bit_depth = %d color_type = %d\n"),info_pt
+ 		// write the file information
+ 		png_write_info(png_ptr, info_ptr);
+ 
+-TRACEUSER( "Jonathan", _T("PNG write: pixel_depth %d channels %d\n"),png_ptr->pixel_depth, png_ptr->channels);
+-TRACEUSER( "Jonathan", _T("PNG write: rowbytes %d color_type %d\n"),png_ptr->rowbytes, png_ptr->color_type);
++		int _channels = png_get_channels (png_ptr, info_ptr);
++		int _pixel_depth = _channels * _bit_depth;
++TRACEUSER( "Jonathan", _T("PNG write: pixel_depth %d channels %d\n"),_pixel_depth, _channels);
++TRACEUSER( "Jonathan", _T("PNG write: rowbytes %d color_type %d\n"),png_get_rowbytes(png_ptr,info_ptr), _color_type);
+ 		// Set up the transformations you want.
+ 		// Note: that these are all optional.  Only call them if you want them
+ 
+@@ -775,21 +802,6 @@ BOOL OutputPNG::CleanUpPngStructures()
+ 	// If our structures are present then clean them out
+ 	if (png_ptr)
+ 	{
+-		if (info_ptr)
+-		{
+-			// They do not seem to have catered for the palette and transparency structures
+-			if (info_ptr->palette)
+-			{
+-				CCFree(info_ptr->palette);
+-				info_ptr->palette = NULL;
+-			}
+-			if (info_ptr->trans)
+-			{
+-				CCFree(info_ptr->trans);
+-				info_ptr->trans = NULL;
+-			}
+-		}
+-
+ 		// clean up after the write, and free any memory allocated
+         png_destroy_write_struct(&png_ptr, &info_ptr);
+ 		png_ptr = NULL;
+diff --git a/wxOil/pngutil.cpp b/wxOil/pngutil.cpp
+index 080aba5..e851a8e 100644
+--- a/wxOil/pngutil.cpp
++++ b/wxOil/pngutil.cpp
+@@ -477,7 +477,7 @@ BOOL PNGUtil::ReadFromFile( CCLexFile *File, LPBITMAPINFO *Info, LPBYTE *Bits,
+ 			)
+ 		{
+ 			// Palette is at info_ptr->palette
+-			INT32 PaletteSize = 1 << info_ptr->bit_depth;
++			INT32 PaletteSize = 1 << png_get_bit_depth(png_ptr, info_ptr);
+ 			// Read in palette into the palette of the DIB
+ 			LPRGBQUAD lpPalette = (*Info)->bmiColors;
+ 			TRACEUSER( "Jonathan", _T("PNG read: allocate palette and copy size %d\n"),PaletteSize);
+@@ -497,7 +497,7 @@ BOOL PNGUtil::ReadFromFile( CCLexFile *File, LPBITMAPINFO *Info, LPBYTE *Bits,
+ 		{
+ 			// We have a greyscale image and so generate a greyscale palette
+ 			// Palette is at info_ptr->palette
+-			INT32 PaletteSize = 1 << info_ptr->bit_depth;
++			INT32 PaletteSize = 1 << png_get_bit_depth(png_ptr, info_ptr);
+ 			TRACEUSER( "Jonathan", _T("PNG read: Greyscale, so set up a greyscale palette for the DIB size %d\n"),PaletteSize);
+ 			// Read in palette into the palette of the DIB
+ 			LPRGBQUAD lpPalette = (*Info)->bmiColors;
