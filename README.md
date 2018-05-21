@@ -12,7 +12,7 @@ Edit 2 files.
 1. `net.hachune.mikutter.git-source.json`  
    Update `"tag"` field.
 2. `net.hachune.mikutter.appdata.xml`  
-   Prepend new `<release/>` element to `<releases>`.
+   Prepend new `<release/>` element to `<releases>`. See https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#tag-releases . To test appstream file, run `appstream-util validate-strict net.hachune.mikutter.appdata.xml`.
 
 ### Update RubyGems dependencies
 ```bash
