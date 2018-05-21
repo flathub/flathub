@@ -24,6 +24,9 @@ bundle package # cache gems in vendor/cache
 ruby path/to/flatpak_rubygems_generator.rb --source net.hachune.mikutter.git-source.json -o net.hachune.mikutter.rubygems-module.json # update json
 ```
 
+### See also
+- [App Requirements · flathub/flathub Wiki](https://github.com/flathub/flathub/wiki/App-Requirements)
+
 BUILD
 -----
 ```bash
