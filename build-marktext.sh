@@ -11,8 +11,16 @@ if [ -d "squashfs-root" ]; then
     rm -rf squashfs-root
 fi
 
-mkdir -p /app/marktext
+# Install desktop file and icons
+install -Dm644 resources/linux/marktext.desktop /app/share/applications/marktext.desktop
+install -Dm644 resources/linux/marktext.appdata.xml /app/share/appdata/marktext.appdata.xml
+for IMG_SIZE in 16 24 32 48 64 128 256 512; do
+    IMG_NAME=${IMG_SIZE}x${IMG_SIZE}
+    install -Dm644 resources/icons/${IMG_NAME}/marktext.png /app/share/icons/hicolor/${IMG_NAME}/apps/marktext.png
+done
 
+# Extract application
+mkdir -p /app/marktext
 ./${APPIMAGE_NAME} --appimage-extract
 
 if [ -f "$APPIMAGE_UPDATE_FILE" ]; then
