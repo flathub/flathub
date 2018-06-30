@@ -11,5 +11,5 @@ filename_json="${flatpak_id}.json"
 
 rm -rf "${dirname_build}"
 mkdir -p "${dirname_build}"
-flatpak-builder "${dirname_build}" "${filename_json}" # --install-deps-from=flathub
+flatpak-builder "${dirname_build}" "${filename_json}" # --install-deps-from="flathub"
 
