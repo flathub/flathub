@@ -1,0 +1,168 @@
+{
+    "name": "retext",
+    //"buildsystem": "simple",
+    //"build-commands": [
+    //    "python3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+    //],
+    "no-autogen": true,
+    "sources": [
+        {
+            "type": "archive",
+            //"url": "https://github.com/retext-project/retext/archive/7.0.0.tar.gz",
+            //"sha256": "7df3fcdad1d1f9a046ae33591b54dd7a6894de64eb0370f2dabf4cd75eb66586"
+            //"url": "https://github.com/retext-project/retext/archive/7.0.1.tar.gz",
+            //"sha256": "c32ccdbcf31094258c792bc0589ff3ff212dea85466d776b7f60fa7b39da4b6c"
+            "url": "https://pypi.python.org/packages/2a/ba/581591a8a8d48d02236b57633ae5f55247424885e143fe1d21fba904a1ed/ReText-7.0.1.tar.gz",
+            "sha256": "f5a2dbfb32b96423fd3e5ef00488440c36a2bcecbc6356f5c17674b265316eea"
+        },
+        {
+            "type": "archive",
+            "url": "https://github.com/mquinson/po4a/archive/v0.52.tar.gz",
+            "sha256": "547c410ad3bb8e5fd3939a6acdd39713529187be05fca7235095d57d3f0c6cfc",
+            "strip-components": 0
+        },
+        // https://koji.fedoraproject.org/koji/buildinfo?buildID=941463
+        // The template for man page translations can be created with this command:
+        // po4a-updatepo -v -M utf-8 -f man -m retext.1 -p retext-man.pot
+        // English man pages are taken from the Debian package.
+        {
+            "type": "file",
+            //"url": "https://mariobl.fedorapeople.org/Retext/retext-man-de.po",
+            "path": "retext-man-de.po",
+            "sha256": "9b00b30a693a3023b2f5619ab0586ddf9bd8f5bc9b75c2dabd5d6493558bb6f7"
+        },
+        {
+            "type": "file",
+            //"url": "https://mariobl.fedorapeople.org/Retext/retext.1",
+            "path": "retext.1",
+            "sha256": "300f04c1f808f63351b16ed0fa0f2d01b857c4d096ed71dcf54ab95281727d9a"
+        },
+        // Disable external web renderer due instability.
+        // https://github.com/retext-project/retext/issues/359
+        // [0506/073402.338198:WARNING:stack_trace_posix.cc(648)] Failed to open file: /tmp/.glvaG1Tp (deleted)
+        // Error: No such file or directory
+        // [3:29:0506/073402.410560:FATAL:udev_loader.cc(38)] Check failed: false. 
+        // https://bugs.archlinux.org/task/57152
+        // https://github.com/spyder-ide/spyder/issues/6471
+        // https://github.com/qutebrowser/qutebrowser/issues/3459
+        // https://github.com/qutebrowser/qutebrowser/issues/3511
+        // https://bugreports.qt.io/browse/QTBUG-67023
+        // https://bugreports.qt.io/browse/QTBUG-65682
+        // [3:24:0507/024650.994409:FATAL:resource_scheduler.cc(733)] Check failed: client_map_.empty().
+        // https://bugreports.qt.io/browse/QTBUG-59765
+        // https://bugreports.qt.io/browse/QTBUG-56441
+        // https://bugreports.qt.io/browse/QTBUG-50160
+        {
+            "type": "shell",
+            "commands": [
+                "echo 'disabling external renderer';",
+                "cp 'ReText/window.py' 'ReText/window.py.bak';",
+                "cp 'ReText/tab.py' 'ReText/tab.py.bak';",
+                "sed -r -i 's/^([[:blank:]]*)(menuEdit\\.addAction\\(self\\.(actionWebKit|actionWebEngine)\\))([[:blank:]]*)$/\\1pass #\\2\\4/' 'ReText/window.py';",
+                "sed -r -i 's/^([[:blank:]]*)(globalSettings\\.(useWebKit|useWebEngine)[[:blank:]]*=[[:blank:]]*)(enable)([[:blank:]]*)$/\\1\\2False\\5/' 'ReText/window.py';",
+                "sed -r -i 's/^(([[:blank:]]*)(if ReTextWebKitPreview and globalSettings\\.useWebKit:)([[:blank:]]*))$/\\2return ReTextPreview\\(self\\)\\n\\1/' 'ReText/tab.py';",
+                //"grep -HE 'WebKit|WebEngine' 'ReText/window.py' 'ReText/tab.py';",
+                "echo 'ReText/window.py';",
+                "diff 'ReText/window.py.bak' 'ReText/window.py' -C 4 || :;",
+                "echo 'ReText/tab.py';",
+                "diff 'ReText/tab.py.bak' 'ReText/tab.py' -C 4 || :;",
+                "rm -f 'ReText/window.py.bak' 'ReText/tab.py.bak';"
+            ]
+        },
+        {
+            "type": "file",
+            "path": "empty-Makefile",
+            "dest-filename": "Makefile",
+            "sha256": "700c973913ef94b5b9762617abb2b9be2e9b04b8a3e5ae98906f8299b826f9d4"
+        },
+        {
+            "type": "shell",
+            "commands": [
+                "python3 setup.py build; python3 setup.py install -O1 --skip-build --prefix=/app --root=/;"
+            ]
+        }
+    ],
+    "post-install": [
+        // manuals
+        "echo 'post-install: manuals';",
+        "mkdir -p '/app/share/man/man1'; install -p -m 0644 'retext.1' '/app/share/man/man1/';",
+        "appname='retext';
+        mkdir -p 'man/de';
+        perllib_path=\"$( find po4a-*/lib -mindepth 0 -maxdepth 0 -xtype d | sort -V | head -n 1 )\";
+        echo \"${perllib_path}\";
+        PERLLIB=\"${perllib_path}\" ./po4a-0.52/po4a-updatepo -v -M utf-8 -f man -m 'retext.1' -p 'retext-man-de.po';
+        PERLLIB=\"${perllib_path}\" ./po4a-0.52/po4a-translate -M utf-8 -f man --option groff_code=verbatim -m 'retext.1' -p 'retext-man-de.po' -l \"man/de/${appname}.1\";
+        mkdir -p '/app/share/man/de/man1';
+        install -p -m 0644 \"man/de/${appname}.1\" '/app/share/man/de/man1/';",
+        // icons
+        "echo 'post-install: icons';",
+        "appname='retext';
+        imagemagick_home='/app/opt/imagemagick';
+        imagemagick_lib=\"${imagemagick_home}/lib\";
+        imagemagick_bin=\"${imagemagick_home}/bin\";
+        if [[ -n \"${LD_LIBRARY_PATH}\" ]]; then
+          LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH}:${imagemagick_lib}\";
+        else
+          LD_LIBRARY_PATH=\"${imagemagick_lib}\";
+        fi;
+        export LD_LIBRARY_PATH;
+        if [[ -n \"${PATH}\" ]]; then
+          PATH=\"${PATH}:${imagemagick_bin}\";
+        else
+          PATH=\"${imagemagick_bin}\";
+        fi;
+        export PATH;
+        icon='icons/retext.svg';
+        for s in {16,22,24,32,48,64,72,96,128,192,256,512}; do
+            size=\"${s}x${s}\";
+            echo \"- ${size}\";
+            mkdir -p \"icons/${size}/\";
+            convert -background none -density 1024 -resize \"${size}\" \"${icon}\" \"icons/${size}/${appname}.png\";
+        done;
+        find 'icons' -mindepth 2 -maxdepth 2 -xtype f -name \"${appname}.png\" | sort -V | xargs -I{} dirname '{}' | xargs -I{} basename '{}' | while read -r size; do
+            install -p -D -m 0644 \"icons/${size}/${appname}.png\" \"/app/share/icons/hicolor/${size}/apps/${appname}.png\";
+        done;
+        install -p -D -m 0644 \"${icon}\" \"/app/share/icons/hicolor/scalable/apps/${appname}.svg\"",
+        // desktop files
+        "echo 'post-install: desktop files';",
+        "desktop-file-edit --set-key=Icon --set-value='me.mitya57.ReText' data/*.desktop;",
+        "desktop-file-install --dir='/app/share/applications' data/*.desktop;",
+        // metainfo/appdata - https://fedoraproject.org/wiki/Packaging:AppData
+        "echo 'post-install: metainfo/appdata';",
+        "[[ -d /app/share/metainfo ]] || mv /app/share/appdata /app/share/metainfo;",
+        "echo 'updating release info';
+        xmlstarlet_home='/app/opt/xmlstarlet';
+        xmlstarlet_bin=\"${xmlstarlet_home}/bin\";
+        if [[ -n \"${PATH}\" ]]; then
+          PATH=\"${PATH}:${xmlstarlet_bin}\";
+        else
+          PATH=\"${xmlstarlet_bin}\";
+        fi;
+        export PATH;
+        app_version=\"$( grep -Ei \"^[[:blank:]]*VERSION[[:blank:]]*=[[:blank:]]*'([^']*)'*[[:blank:]]*$\" 'setup.py' 2>/dev/null | tail -n 1 2>/dev/null | sed -re \"s/^[[:blank:]]*VERSION[[:blank:]]*=[[:blank:]]*'([^']*)'*[[:blank:]]*$/\\1/\" 2>/dev/null )\";
+        app_date=\"$( date --reference 'changelog.md' -u '+%Y-%m-%d' 2>/dev/null )\";
+        find '/app/share/metainfo' -mindepth 1 -maxdepth 1 -xtype f -name '*.appdata.xml' | sort -V | while read -r filename; do
+            if [[ -n \"${app_version}\" && -n \"${app_date}\" ]]; then
+                xmlstarlet sel -t -v '/component/releases/release/@version' \"${filename}\";
+                if [[ \"${?}\" -ne \"0\" ]]; then
+                    xmlstarlet ed --inplace -d '/component/releases' -s '/component' -t elem -n 'releases' -s '/component/releases' -t elem -n 'release' -s '/component/releases/release' -t attr -n 'date' -v \"${app_date}\" -s '/component/releases/release' -t attr -n 'version' -v \"${app_version}\" \"${filename}\";
+                    xmlstarlet sel -t -c '/component/releases/release' \"${filename}\" | sed -re 's/$/\\n/' || :;
+                fi
+            fi;
+            app_id=\"$( xmlstarlet sel -t -v '/component/id' \"${filename}\" 2>/dev/null | head -n 1 2>/dev/null )\";
+            if [[ -n \"${app_id}\" ]]; then
+                xmlstarlet sel -t -v '/component/launchable' \"${filename}\";
+                if [[ \"${?}\" -ne \"0\" ]]; then
+                    xmlstarlet ed --inplace -d '/component/launchable' -s '/component' -t elem -n 'launchable' -v \"${app_id}\" -s '/component/launchable' -t attr -n 'type' -v 'desktop-id' \"${filename}\";
+                    xmlstarlet sel -t -c '/component/launchable' \"${filename}\" | sed -re 's/$/\\n/' || :;
+                fi
+            fi;
+        done;",
+        // validate data
+        "echo 'post-install: validate data';",
+        "cat /app/share/applications/*.desktop;",
+        "desktop-file-validate /app/share/applications/*.desktop || :;",
+        "cat /app/share/metainfo/*.appdata.xml;",
+        "appstream-util validate-relax --nonet /app/share/metainfo/*.appdata.xml || :;"
+    ]
+}
