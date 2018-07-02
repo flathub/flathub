@@ -45,7 +45,7 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.kde.Sdk//5.9
+$ flatpak install flathub org.kde.Sdk//5.11
 ```
 
 ```
