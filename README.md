@@ -80,7 +80,7 @@ $ ./flatpak_run.bash
 
 ### Which JSON file I should use?
 
-* input file: `widelands.json.in` (with comments)
+* input file: `org.widelands.widelands.json.in` (with comments)
 * output file: `org.widelands.widelands.json` (without comments)
 
 Comments are not allowed in JSON files.
