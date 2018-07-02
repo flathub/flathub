@@ -49,7 +49,7 @@ $ flatpak install flathub org.kde.Sdk//5.11
 ```
 
 ```
-$ flatpak install flathub io.qt.qtwebkit.BaseApp
+$ flatpak install flathub org.kde.Platform//5.11
 ```
 
 ### Build
@@ -74,7 +74,7 @@ $ ./flatpak_run.bash
 
 ### Which JSON file I should use?
 
-* input file: `retext.json.in` (with comments)
+* input file: `me.mitya57.ReText.json.in` (with comments)
 * output file: `me.mitya57.ReText.json` (without comments)
 
 Comments are not allowed in JSON files.
