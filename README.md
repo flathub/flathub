@@ -80,7 +80,7 @@ $ ./flatpak_run.bash
 
 ### Which JSON file I should use?
 
-* input file: `notepadqq.json.in` (with comments)
+* input file: `com.notepadqq.Notepadqq.json.in` (with comments)
 * output file: `com.notepadqq.Notepadqq.json` (without comments)
 
 Comments are not allowed in JSON files.
