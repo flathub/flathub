@@ -6,7 +6,6 @@ source './notepadqq_setup.bash';
 echo 'edit desktop';
 filename="support_files/shortcuts/${app_name}.desktop";
 desktop-file-edit --set-key='Icon' --set-value="${app_name}" "${filename}";
-desktop-file-edit --remove-key=OnlyShowIn "${filename}";
 echo;
 
 echo 'edit appdata';
