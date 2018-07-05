@@ -91,7 +91,7 @@ Comments are not allowed in JSON files.
 
 ### Why not use an RPM package?
 
-I already provided a [repo](https://copr.fedorainfracloud.org/coprs/scx/notepadqq/) with RPM packages.
+I already provided a [repo](https://copr.fedorainfracloud.org/coprs/scx/notepadqq/) with RPM packages. You may also be interested in my [test repo](https://copr.fedorainfracloud.org/coprs/scx/notepadqq-git/).
 
 ### Why I can't open any file?
 
