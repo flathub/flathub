@@ -1,3 +1,3 @@
 #!/bin/sh
 
-exec "/app/The Plan.x86" "$@"
+exec "/app/extra/The Plan.x86" "$@"
