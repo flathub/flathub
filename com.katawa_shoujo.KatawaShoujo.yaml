@@ -1,0 +1,130 @@
+app-id: com.katawa_shoujo.KatawaShoujo
+runtime: org.freedesktop.Platform
+runtime-version: '1.6'
+sdk: org.freedesktop.Sdk
+command: KatawaShoujo.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --persist=.renpy
+cleanup:
+  - /include
+
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.0.0.json
+
+  - name: cython
+    buildsystem: simple
+    build-commands:
+      - python2 setup.py install --prefix=/app
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/cython/cython/archive/0.28.4.tar.gz
+        sha256: bccc9aa050ea02595b2440188813b936eaf345e85fb9692790cecfe095cf91aa
+
+  - name: pygame-sdl2
+    buildsystem: simple
+    build-commands:
+      - python2 setup.py build
+      - python2 setup.py install --root=/ --prefix=/app --optimize=1
+    ensure-writable:
+        - easy-install.pth
+    sources:
+      - type: git
+        url: https://github.com/renpy/pygame_sdl2.git
+        commit: 795941ac518fdb6cc23e086224877f79477aace8
+
+  - name: opus
+    sources:
+      - type: archive
+        url: https://archive.mozilla.org/pub/opus/opus-1.2.1.tar.gz
+        sha256: cfafd339ccd9c5ef8d6ab15d7e1a412c054bf4cb4ecbbbcc78c12ef2def70732
+      - type: script
+        commands:
+          - autoreconf -fiv
+        dest-filename: autogen.sh
+
+  - name: x264
+    config-opts:
+      - --disable-cli
+      - --enable-shared
+    sources:
+      - type: archive
+        url: https://download.videolan.org/x264/snapshots/x264-snapshot-20171223-2245-stable.tar.bz2
+        sha256: ee4ba2c3d1caf786ad66d3fa86bdc368a8f827318788a62a9c8444b2c35816bf
+
+  - name: fribidi
+    sources:
+      - type: archive
+        url: https://github.com/fribidi/fribidi/releases/download/v1.0.3/fribidi-1.0.3.tar.bz2
+        sha256: 8d214b17b6eedcb416e53142c196c2896b9a685fca2a5bddc098a73d2b02ce12
+
+  - name: ffmpeg
+    config-opts:
+      - --enable-gpl
+      - --disable-static
+      - --enable-shared
+      - --disable-doc
+      - --disable-ffplay
+      - --disable-ffprobe
+      - --enable-libopus
+      - --enable-libvpx
+      - --enable-libx264
+    post-install:
+      - chrpath -d /app/bin/ffmpeg
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-4.0.1.tar.xz
+        sha256: 605f5c01c60db35d3b617a79cabb2c7032412be243554602eeed1b628125c0ee
+
+  - name: renpy
+    buildsystem: simple
+    build-options:
+      env:
+        RENPY_DEPS_INSTALL: "/app::/usr"
+    build-commands:
+      - python2 module/setup.py build
+      - python2 module/setup.py install --prefix=/app --optimize=1
+      - install -dm755 /app/share/renpy
+      - cp -r doc gui launcher renpy renpy.py templates /app/share/renpy/
+      - install -Dm755 renpy.sh /app/bin/renpy
+    sources:
+      - type: archive
+        url: https://www.renpy.org/dl/6.99.14.3/renpy-6.99.14.3-source.tar.bz2
+        sha256: e37450d8baf201df2da71db3cc196af8b22377a92f0c06eb72f632ba964fc296
+      - type: script
+        commands:
+          - python2 /app/share/renpy/renpy.py "$@"
+        dest-filename: renpy.sh
+
+  - name: KatawaShoujo
+    buildsystem: simple
+    build-commands:
+      - cp -R game /app/game
+      - cp -R localizations /app/localizations
+      - install -Dm755 launcher.sh /app/bin/KatawaShoujo.sh
+      - install -Dm644 com.katawa_shoujo.KatawaShoujo.appdata.xml /app/share/appdata/com.katawa_shoujo.KatawaShoujo.appdata.xml
+      - install -Dm644 com.katawa_shoujo.KatawaShoujo.desktop /app/share/applications/com.katawa_shoujo.KatawaShoujo.desktop
+      - install -Dm644 icon512x512.png /app/share/icons/hicolor/512x512/apps/com.katawa_shoujo.KatawaShoujo.png
+    sources:
+      - type: archive
+        url: http://dl.katawa-shoujo.com/gold_1.3.1/[4ls]_katawa_shoujo_1.3.1-[linux-x86][18161880].tar.bz2
+        sha256: ec5a05cfcf1d5981ecdbfa71904c279a215e79bdfeb256b2ad6927109a0007da
+      - type: script
+        dest-filename: launcher.sh
+        commands:
+          - renpy /app/game
+      - type: file
+        path: com.katawa_shoujo.KatawaShoujo.appdata.xml
+      - type: file
+        path: com.katawa_shoujo.KatawaShoujo.desktop
+      - type: file
+        path: icon512x512.png
