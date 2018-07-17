@@ -1,0 +1,108 @@
+id: re.iosphe.kcc
+branch: stable
+runtime: org.kde.Platform
+runtime-version: '5.9'
+sdk: org.kde.Sdk
+command: kcc
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  # Required for kindlegen which is 32bit
+  - --allow=multiarch
+  - --env=PATH=/app/extra/bin:/app/bin:/usr/bin
+  - --filesystem=host
+modules:
+  - name: pyqt5
+    config-opts:
+      - --disable-static
+      - --enable-x11
+    cleanup:
+      - /bin
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py --assume-shared --confirm-license --no-designer-plugin --no-qml-plugin
+        --sysroot=/app -w --sip=/app/bin/sip --sip-incdir=/app/include -verbose QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.5m/'
+        QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.5m/'
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/pyqt/files/PyQt5/PyQt-5.9.2/PyQt5_gpl-5.9.2.tar.gz
+        sha256: c190dac598c97b0113ca5e7a37c71c623f02d1d713088addfacac4acfa4b8394
+    modules:
+      - name: sip
+        buildsystem: simple
+        build-commands:
+          - python3 configure.py --bindir=/app/bin --destdir=/app/lib/python3.5/site-packages
+            --incdir=/app/include --pyidir=/app/lib/python3.5/site-packages --sipdir=/app/share/sip
+          - make -j $FLATPAK_BUILDER_N_JOBS
+          - make install
+        cleanup:
+          - /bin
+          - /include
+        sources:
+          - type: archive
+            url: https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.7/sip-4.19.7.tar.gz
+            sha256: 25b50d29dd4b72965e7980c41e3320e460eff481a177beeddebf8c3be84b8cde
+
+  - python3-python-slugify.json
+  - python3-psutil.json
+  - python3-raven.json
+  - python3-pillow.json
+
+  - name: unrar
+    no-autogen: true
+    make-install-args: [DESTDIR=/app]
+    sources:
+      - type: archive
+        url: https://www.rarlab.com/rar/unrarsrc-5.6.5.tar.gz
+        sha256: eba36a421bf41491818dee9507d934064622bc0bd9db6bbb8422a4706f200898 
+
+  - name: p7zip
+    no-autogen: true
+    make-args: [7za]
+    make-install-args: [DEST_HOME=/app]
+    cleanup:
+      - /man
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/p7zip/files/p7zip/16.02/p7zip_16.02_src_all.tar.bz2
+        sha256: 5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f
+
+  - name: kcc
+    buildsystem: simple
+    build-commands:
+      - sed -i "s/'PyQt5>=5.6.0',//" setup.py
+      - pip3 install --no-deps --prefix=$FLATPAK_DEST .
+      - install -Dm644 icons/comic2ebook.png /app/share/icons/hicolor/256x256/apps/re.iosphe.kcc.png
+      - install -Dm644 re.iosphe.kcc.appdata.xml /app/share/metainfo/re.iosphe.kcc.appdata.xml
+      - install -Dm644 re.iosphe.kcc.desktop /app/share/applications/re.iosphe.kcc.desktop
+      - install apply_extra /app/bin/apply_extra
+    sources:
+      - type: archive
+        url: https://github.com/ciromattia/kcc/archive/5.4.5.tar.gz
+        sha256: ceae876fbe91fe3b9293dda3c6cc00a856d8f4e270127fa5a72195f8c6ea14e0
+      - type: file
+        path: re.iosphe.kcc.appdata.xml
+      - type: file
+        path: re.iosphe.kcc.desktop
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar -xf kindlegen.tar.gz
+          - install -D kindlegen /app/extra/bin/kindlegen
+          - rm EULA* KindleGen* kindlegen* manual.html
+      - type: extra-data
+        only-arches: [i386, x86_64]
+        filename: kindlegen.tar.gz
+        url: https://kindlegen.s3.amazonaws.com/kindlegen_linux_2.6_i386_v2_9.tar.gz
+        sha256: 9828db5a2c8970d487ada2caa91a3b6403210d5d183a7e3849b1b206ff042296
+        size: 10813137
