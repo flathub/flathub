@@ -1,6 +1,6 @@
 #!/bin/env bash
 
-APP_ID=com.github.Nheko
+APP_ID=io.github.mujx.Nheko
 
 install -dm755 /app/bin/
 install -dm755 /app/lib/
