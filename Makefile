@@ -4,7 +4,7 @@ build:
 		--ccache \
 		--require-changes \
 		--repo=repo \
-		app io.github.mujx.Nheko
+		app io.github.mujx.Nheko.json
 
 install-repo:
 	flatpak --user remote-add --if-not-exists --no-gpg-verify local-nheko ./repo
