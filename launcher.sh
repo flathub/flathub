@@ -4,7 +4,7 @@ datadir=/app/data
 userdir=~/.elc
 serverfile=servers.lst
 inifile=el.ini
-exename=/app/bin/el.x86.linux.bin
+exename=/app/bin/el.linux.bin
 
 mkdir -p $userdir || exit
 
