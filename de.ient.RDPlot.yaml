@@ -1,0 +1,137 @@
+app-id: de.ient.RDPlot
+runtime: org.kde.Platform
+runtime-version: '5.9'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.gfortran-62
+command: rdplot
+finish-args:
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+# does not help either:  
+#  - --env=PYTHONPATH=/app/lib/python3.5/site-packages  
+build-options:
+  append-path: "/usr/lib/sdk/gfortran-62/bin"
+cleanup:  # might not be required, copied from com.endlessm.photos
+  - "/include"
+  - "/lib/pkgconfig"
+  - "/share/aclocal"
+  - "/share/doc"
+  - "/share/gir-1.0"
+  - "*.la"
+modules:
+  - name: gfortran
+    buildsystem: simple
+    build-commands:
+    - "/usr/lib/sdk/gfortran-62/install.sh"
+
+  - name: pyqt5
+    config-opts:
+    - "--disable-static"
+    - "--enable-x11"
+    no-autogen: true
+    buildsystem: simple
+    build-commands:
+    - python3 configure.py --assume-shared --confirm-license --no-designer-plugin --no-qml-plugin
+      --sysroot=/app -w --sip=/app/bin/sip --sip-incdir=/app/include -verbose QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.5m/'
+      QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.5m/'
+    - make -j `nproc`
+    - make install DESTDIR=/app
+    sources:
+    - type: archive
+      url: https://sourceforge.net/projects/pyqt/files/PyQt5/PyQt-5.9.2/PyQt5_gpl-5.9.2.tar.gz
+      sha256: c190dac598c97b0113ca5e7a37c71c623f02d1d713088addfacac4acfa4b8394
+    modules:
+    - name: sip
+      sources:
+      - type: archive
+        url: https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.7/sip-4.19.7.tar.gz
+        sha256: 25b50d29dd4b72965e7980c41e3320e460eff481a177beeddebf8c3be84b8cde
+      buildsystem: simple
+      build-commands:
+      - python3 configure.py --bindir=/app/bin --destdir=/app/lib/python3.5/site-packages
+        --incdir=/app/include --pyidir=/app/lib/python3.5/site-packages --sipdir=/app/share/sip
+      - make
+      - make install
+      cleanup:
+      - "/bin"
+      - "/include"
+
+
+  - name: lapack
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+    - "-DCMAKE_BUILD_TYPE=Release"
+    - "-DBUILD_SHARED_LIBS=ON"
+    - "-DBUILD_TESTING=OFF"
+    - "-DCMAKE_Fortran_COMPILER=/usr/lib/sdk/gfortran-62/bin/gfortran"
+    - "-DLAPACKE=ON"
+    - "-DCBLAS=ON"
+    sources:
+    - type: archive
+      url: http://www.netlib.org/lapack/lapack-3.8.0.tar.gz
+      sha512: 17786cb7306fccdc9b4a242de7f64fc261ebe6a10b6ec55f519deb4cb673cb137e8742aa5698fd2dc52f1cd56d3bd116af3f593a01dcf6770c4dcc86c50b2a7f
+    cleanup:
+    - "/lib/cmake"
+  - name: python3-numpy
+    buildsystem: simple
+    build-commands:
+    - python3 setup.py build -j 0
+    - python3 setup.py install --prefix=/app --root=/ --optimize=1
+    build-options:
+      env:
+        ATLAS: None
+        BLAS: "/app/lib"
+        LAPACK: "/app/lib"
+    cleanup:
+    - "/bin"
+    sources:
+    - type: archive
+      url: https://pypi.python.org/packages/0b/66/86185402ee2d55865c675c06a5cfef742e39f4635a4ce1b1aefd20711c13/numpy-1.14.2.zip
+      sha256: facc6f925c3099ac01a1f03758100772560a0b020fb9d70f210404be08006bcb
+  - name: python3-scipy
+    buildsystem: simple
+    build-commands:
+    - python3 setup.py build -j 0
+    - python3 setup.py install --prefix=/app --root=/ --optimize=1
+    build-options:
+      env:
+        ATLAS: None
+        BLAS: "/app/lib"
+        LAPACK: "/app/lib"
+        LDFLAGS: "-shared"
+    sources:
+    - type: archive
+      url: https://pypi.python.org/packages/bd/f4/3882758754dc083fea6ea66a6e8ceef55e7df173d06a12a074612958800f/scipy-1.0.1.tar.gz
+      sha256: 8739c67842ed9a1c34c62d6cca6301d0ade40d50ef14ba292bd331f0d6c940ba
+
+  - python3-setuptools-scm.json
+  - python3-GitPython.json
+  - python3-cycler.json
+  - python3-matplotlib.json
+  - python3-matplotlib2tikz.json
+  - python3-py.json
+  - python3-tabulate.json
+  - python3-mpldatacursor.json
+  - python3-xmltodict.json
+  - python3-jsonpickle.json
+
+
+
+  - name: RDPlot
+    buildsystem: simple
+    sources:
+      - type: git
+        branch: master
+        url: 	https://github.com/IENT/RDPlot.git
+
+# does not help either:
+#    build-options:
+#      env:
+#        PYTHONPATH: /app/lib/python3.5/site-packages      
+    build-commands:
+      - echo "v1.2.0-3-gbe9a987"  > version.txt # workaround for letting setup.py know version
+      - python3 setup.py install --prefix=/app --root=/
+      
