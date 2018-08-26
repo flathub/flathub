@@ -21,7 +21,7 @@ git checkout X.Y.Z # checkout correct revision
 rm -rf vendor/cache
 bundle install
 bundle package # cache gems in vendor/cache
-ruby path/to/flatpak_rubygems_generator.rb --source net.hachune.mikutter.git-source.json -o net.hachune.mikutter.rubygems-module.json # update json
+ruby flatpak_rubygems_generator.rb --source net.hachune.mikutter.git-source.json -o net.hachune.mikutter.rubygems-module.json # update json
 ```
 
 ### See also
