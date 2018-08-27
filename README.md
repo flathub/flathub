@@ -16,12 +16,12 @@ Edit 2 files.
 
 ### Update RubyGems dependencies
 ```bash
-# pwd is repository root
+# pwd is mikutter repository root
 git checkout X.Y.Z # checkout correct revision
 rm -rf vendor/cache
 bundle install
 bundle package # cache gems in vendor/cache
-ruby flatpak_rubygems_generator.rb --source net.hachune.mikutter.git-source.json -o net.hachune.mikutter.rubygems-module.json # update json
+ruby path/to/flatpak_rubygems_generator.rb --source path/to/net.hachune.mikutter.git-source.json -o path/to/net.hachune.mikutter.rubygems-module.json # update json
 ```
 
 ### See also
@@ -30,19 +30,19 @@ ruby flatpak_rubygems_generator.rb --source net.hachune.mikutter.git-source.json
 BUILD
 -----
 ```bash
-# pwd is deployment/flatpak
+# pwd is flatpak repository root
 flatpak install flathub org.gnome.Platform//3.28 org.gnome.Sdk//3.28
-flatpak-builder build-dir net.hachune.mikutter.json
+flatpak-builder build-dir net.hachune.mikutter.yaml
 # to rebuild
-flatpak-builder --force-clean build-dir net.hachune.mikutter.json
+flatpak-builder --force-clean build-dir net.hachune.mikutter.yaml
 ```
 
 TEST
 ----
 ```bash
-flatpak-builder --run build-dir net.hachune.mikutter.json mikutter
+flatpak-builder --run build-dir net.hachune.mikutter.yaml mikutter
 # setting up repo and run in **production environment**
-flatpak-builder --repo=local-repo-dir --force-clean build-dir net.hachune.mikutter.json
+flatpak-builder --repo=local-repo-dir --force-clean build-dir net.hachune.mikutter.yaml
 flatpak --user remote-add --no-gpg-verify local-repo local-repo-dir
 flatpak --user install local-repo net.hachune.mikutter
 flatpak run net.hachune.mikutter
