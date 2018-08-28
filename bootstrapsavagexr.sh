@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-VERSION="0.6.0"
+VERSION="0.7.0"
 #
 # Newerth's Savage XR "Battle for Newerth" unofficial Flatpak Bootstrap (installer/update/runner).
 # By C.I.A. June 2018.
@@ -27,12 +27,10 @@ INSTALL_LOCATION="${HOME}/.var/app/org.newerth.savagexr/data"
 #
 # ----------------------------------------------------------------------
 #
-# Savage XR Installer name and sha256sum may change in future and need updating..
+# Savage XR Installer is now downloaded during the Flatpak install.
 #
 INSTALLER_NAME="xr_setup-1.0-cl_lin_prod.bin"
-INSTALLER_SHA256="f9ee596b0a02af69bdca1c51b1a2984edd012f34fb217a20378156ad3f55e380"
-INSTALLER="${INSTALL_LOCATION}/${INSTALLER_NAME}"
-INSTALLER_DOWNLOAD_URL="http://www.newerth.com/?id=downloads&op=downloadFile&file=${INSTALLER_NAME}&mirrorid=2"
+INSTALLER="/app/extra/${INSTALLER_NAME}"
 #
 # Installer directory name is where the Savage XR installer will install to by default, can't be changed.
 INSTALLER_DIR_NAME="savage-xr"
@@ -89,39 +87,6 @@ exitScript(){
 	
 	read -p "Press any key to exit..." -n1 -s
 	exit 1
-}
-
-#
-# ----------------------------------------------------------------------
-# downloadInstaller() Download the Savage XR installer and run it.
-# Stops script upon error and exits.
-#
-downloadInstaller(){
-	banner "Downloading the Savage XR installer, please wait...."
-
-	wget --output-document="${INSTALLER}" "${INSTALLER_DOWNLOAD_URL}"
-
-	# Check that wget did not error..
-	#
-	if [ $? -ne 0 ]; then
-		banner "An ERROR occurred whilst fetching the installer." "Removing remains of installer file (if it was downloaded at all)...."
-		rm "${INSTALLER}"
-
-		exitScript
-	fi
-
-	# SHA256 check for download corruption (more common than you think...)
-	#
-	echo "${INSTALLER_SHA256}  ${INSTALLER}" | sha256sum --check
-
-	if [ $? -ne 0 ]; then
-		banner "An ERROR occurred whilst fetching the installer." "SHA256 Checksum mismatch, can occur if download got corrupted" "Removing remains of installer file...."
-		rm "${INSTALLER}"
-
-		exitScript
-	fi
-
-	chmod +x "${INSTALLER}"
 }
 
 #
@@ -258,17 +223,6 @@ main(){
 	welcome
 	restoreSavagePreferences
 
-	echo "${INSTALLER_SHA256}  ${INSTALLER}" | sha256sum --check
-
-	if [ $? -ne 0 ]; then
-		banner "An ERROR occurred, ${INSTALLER} did not match SHA256 checksum." "Suspect install script was perviously terminated manually" "Removing previous remains of installer file and shall download again..."
-		rm "${INSTALLER}"
-	fi
-
-	if [ ! -f "${INSTALLER}" ]; then
-		downloadInstaller
-	fi
-	
 	if [ ! -d "${INSTALL_LOCATION}/${INSTALLER_DIR_NAME}" ] || [ ! -f "${INSTALL_LOCATION}/${INSTALLER_DIR_NAME}/${SAVAGE_UPDATER}" ]; then
 		runInstaller
 		turnOffAutoStart
