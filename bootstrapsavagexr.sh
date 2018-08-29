@@ -1,4 +1,3 @@
-#!/bin/bash
 #
 VERSION="0.7.0"
 #
@@ -38,6 +37,7 @@ INSTALLER_DIR_LOCATION="~/${INSTALLER_DIR_NAME}"
 #
 # Savage legacy preference directory, which cannot be relocated from ${HOME}.
 # Not sure if its used for preferences any more but log files do get dump here.
+# Now preserved via --persist option in the Manifest.
 PREFERENCE_DIR=".savage"
 #
 #
@@ -132,29 +132,6 @@ echo "Removing: '${INSTALL_LOCATION}/${INSTALLER_DIR_NAME}/${sLibraryName}'"
 
 #
 # ----------------------------------------------------------------------
-# restoreSavagePreferences() There is a hidden ~/.savage directory which
-# contains persistent data logs and preferences, which would be lost on exist.
-# Not uber needed, but just in case...
-#
-restoreSavagePreferences(){
-	banner "Restoring Savage preference/log directory."
-
-	# Make symbolic link from where Savage XR defaults its install directory
-	# to where it can persisted in flatpak, which is a stupidly long path that the
-	# user will no doubt get wrong, hence the symbolic link.
-	#
-	if [ ! -d "${INSTALL_LOCATION}/${PREFERENCE_DIR}" ]; then
-		mkdir "${INSTALL_LOCATION}/${PREFERENCE_DIR}"
-	fi
-
-	cd ~
-	if [ ! -d "${PREFERENCE_DIR}" ]; then
-		ln -s -T "${INSTALL_LOCATION}/${PREFERENCE_DIR}" "${PREFERENCE_DIR}"
-	fi
-}
-
-#
-# ----------------------------------------------------------------------
 # turnOffAutoStart() Stop AutoUpdater from starting automatically Savage XR after update,
 # by changing config param in au.cfg.
 #
@@ -221,7 +198,6 @@ welcome(){
 main(){
 
 	welcome
-	restoreSavagePreferences
 
 	if [ ! -d "${INSTALL_LOCATION}/${INSTALLER_DIR_NAME}" ] || [ ! -f "${INSTALL_LOCATION}/${INSTALLER_DIR_NAME}/${SAVAGE_UPDATER}" ]; then
 		runInstaller
