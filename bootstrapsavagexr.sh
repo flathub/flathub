@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 VERSION="0.7.0"
 #
