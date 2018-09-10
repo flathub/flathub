@@ -1,0 +1,239 @@
+# Copyright (C) 2007  Marcel Unbehaun <frostworks@gmx.de>
+# Distributed under the same license as the original software. See debian/copyright.
+
+--- bulletml.orig/src/bulletmlparser.h
++++ bulletml/src/bulletmlparser.h
+@@ -70,11 +70,10 @@
+     bool isHorizontal_;
+ 
+ protected:
+-	/// ˆêŽž“I‚È“±“ü
+-	void setName(const std::string& name) { name_ = name; }
+-	std::string name_;
++	void setName(const char* name) { name_ = name; }
++	const char* name_;
+ public:
+-	DECLSPEC const std::string& getName() const { return name_; }
++	DECLSPEC const char* getName() const { return name_; }
+ 
+ };
+ 
+--- bulletml.orig/src/bulletmlparser-tinyxml.cpp
++++ bulletml/src/bulletmlparser-tinyxml.cpp
+@@ -5,8 +5,8 @@
+ 
+ #include <string>
+ 
+-BulletMLParserTinyXML::BulletMLParserTinyXML(const std::string& filename)
+-    : xmlFile_(filename), curNode_(0)
++BulletMLParserTinyXML::BulletMLParserTinyXML(const char* filename)
++    : curNode_(0)
+ {
+ 	setName(filename);
+ }
+@@ -71,7 +71,7 @@
+ }
+ 
+ void BulletMLParserTinyXML::parse() {
+-    TiXmlDocument doc(xmlFile_.c_str());
++    TiXmlDocument doc(name_);
+     doc.LoadFile();
+ 	parseImpl(doc);
+ }
+--- bulletml.orig/src/bulletmlparser-tinyxml.h
++++ bulletml/src/bulletmlparser-tinyxml.h
+@@ -16,12 +16,12 @@
+ 
+ class BulletMLParserTinyXML : public BulletMLParser {
+ public:
+-    DECLSPEC BulletMLParserTinyXML(const std::string& filename);
++    DECLSPEC BulletMLParserTinyXML(const char* filename);
+     DECLSPEC virtual ~BulletMLParserTinyXML();
+ 
+     DECLSPEC virtual void parse();
+ 
+-protected:
++private:
+ 	void parseImpl(TiXmlDocument& doc);
+ 
+ protected:
+@@ -29,7 +29,6 @@
+     void translateNode(TiXmlNode* node);
+ 
+ private:
+-    std::string xmlFile_;
+     BulletMLNode* curNode_;
+ };
+ 
+--- bulletml.orig/src/bulletmlparser-xerces.cpp
++++ bulletml/src/bulletmlparser-xerces.cpp
+@@ -19,9 +19,9 @@
+ 	BulletMLParserXercesSAXHandler(BulletMLParserXerces* parser);
+ 
+ 	virtual void characters(const XMLCh* const chars,
+-											  const unsigned int length);
++							const unsigned int length);
+ 	virtual void startElement(const XMLCh* const name,
+-												AttributeList& attributes);
++							  AttributeList& attributes);
+ 	virtual void endElement(const XMLCh* const name);
+ 
+ 	virtual void error(const SAXParseException& e) {
+@@ -94,8 +94,7 @@
+ 	curNode_ = curNode_->getParent();
+ }
+ 
+-BulletMLParserXerces::BulletMLParserXerces(const std::string& filename)
+-    : xmlFile_(filename)
++BulletMLParserXerces::BulletMLParserXerces(const char* filename)
+ {
+ 	setName(filename);
+ }
+@@ -117,7 +116,7 @@
+ 		parser->setDocumentHandler(&handler);
+ 		parser->setErrorHandler(&handler);
+ 
+-		parser->parse(xmlFile_.c_str());
++		parser->parse(name_);
+ 
+ 		parser.reset(0);
+ 	}
+--- bulletml.orig/src/bulletmlparser-xerces.h
++++ bulletml/src/bulletmlparser-xerces.h
+@@ -8,18 +8,14 @@
+ 
+ #ifdef USE_XERCES
+ 
+-#include <string>
+-
+ class BulletMLParserXerces : public BulletMLParser {
+ public:
+-    explicit BulletMLParserXerces(const std::string& filename);
++    explicit BulletMLParserXerces(const char* filename);
+     virtual ~BulletMLParserXerces();
+ 
+     virtual void parse();
+ 
+ private:
+-    std::string xmlFile_;
+-
+ 	friend class BulletMLParserXercesSAXHandler;
+ };
+ 
+--- bulletml.orig/src/bulletmlparser-ygg.cpp
++++ bulletml/src/bulletmlparser-ygg.cpp
+@@ -63,8 +63,8 @@
+ 	curNode_->setValue(trimString(text.get_text()));
+ }
+ 
+-BulletMLParserYggdrasil::BulletMLParserYggdrasil(const std::string& filename)
+-    : xmlFile_(filename), curNode_(0)
++BulletMLParserYggdrasil::BulletMLParserYggdrasil(const char* filename)
++    : curNode_(0)
+ {
+ 	setName(filename);
+ }
+@@ -72,7 +72,8 @@
+ BulletMLParserYggdrasil::~BulletMLParserYggdrasil() {}
+ 
+ void BulletMLParserYggdrasil::parse() {
+-	sox_file(xmlFile_).read(this);
++	std::string f(name_);
++	sox_file(f).read(this);
+ }
+ 
+ std::string BulletMLParserYggdrasil::trimString(const std::string& str) {
+--- bulletml.orig/src/bulletmlparser-ygg.h
++++ bulletml/src/bulletmlparser-ygg.h
+@@ -24,7 +24,7 @@
+ 	void catch_text(yggdrasil::ygg_node text);
+ 
+ public:
+-    DECLSPEC explicit BulletMLParserYggdrasil(const std::string& filename);
++    DECLSPEC explicit BulletMLParserYggdrasil(const char* filename);
+     DECLSPEC virtual ~BulletMLParserYggdrasil();
+ 
+     DECLSPEC virtual void parse();
+@@ -33,7 +33,6 @@
+ 	std::string trimString(const std::string& str);
+ 
+ private:
+-    std::string xmlFile_;
+     class BulletMLNode* curNode_;
+ };
+ 
+--- bulletml.orig/src/bulletmlrunnerimpl.cpp
++++ bulletml/src/bulletmlrunnerimpl.cpp
+@@ -25,8 +25,7 @@
+ 	&BulletMLRunnerImpl::runVanish
+ };
+ 
+-double BulletMLRunnerImpl::getDirection(BulletMLNode* dirNode,
+-                                        bool prevChange) {
++double BulletMLRunnerImpl::getDirection(BulletMLNode* dirNode) {
+     double dir;
+ 
+     bool isDefault = true;
+@@ -64,7 +63,7 @@
+     while (dir > 360) dir -= 360;
+     while (dir < 0) dir += 360;
+ 
+-    if (prevChange) prevDir_ = dir;
++    prevDir_ = dir;
+ 
+     return dir;
+ }
+@@ -119,12 +118,7 @@
+ 	act_ = node_[0];
+ }
+ 
+-BulletMLRunnerImpl::~BulletMLRunnerImpl() {
+-	while (!repeatStack_.empty()) {
+-		delete repeatStack_.top();
+-		repeatStack_.pop();
+-	}
+-}
++BulletMLRunnerImpl::~BulletMLRunnerImpl() {}
+ 
+ double BulletMLRunnerImpl::getNumberContents(const BulletMLNode* node) {
+     assert(node);
+@@ -404,7 +398,7 @@
+ 	BulletMLNode::Type type = dirNode->getType();
+ 
+ 	double dir;
+-	if (type != BulletMLNode::sequence) dir = getDirection(dirNode, false);
++	if (type != BulletMLNode::sequence) dir = getDirection(dirNode);
+ 	else dir = getNumberContents(dirNode);
+ 
+ 	calcChangeDirection(dir, term, type == BulletMLNode::sequence);
+--- bulletml.orig/src/bulletmlrunnerimpl.h
++++ bulletml/src/bulletmlrunnerimpl.h
+@@ -136,7 +136,7 @@
+     double getNumberContents(const BulletMLNode* node);
+     std::vector<double>* getParameters();
+     double getSpeed(BulletMLNode* spdNode);
+-	double getDirection(BulletMLNode* dirNode, bool prevChange = true);
++    double getDirection(BulletMLNode* dirNode);
+ 
+ private:
+ private:
+--- bulletml.orig/src/calc.yy
++++ bulletml/src/calc.yy
+@@ -16,7 +16,7 @@
+ #include "formula.h"
+ #include "formula-variables.h"
+ 
+-int yyerror(char* s);
++int yyerror(const char* s);
+ int yylex();
+ 
+ const char* yyinStr;
+@@ -148,7 +148,7 @@
+ 	return c;
+ }
+ 
+-int yyerror(char* s) {
++int yyerror(const char* s) {
+ 	printf("yyerror: %s\n", s);
+ 	return 0;
+ }
