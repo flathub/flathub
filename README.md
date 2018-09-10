@@ -25,6 +25,14 @@ To compile Lutris as a Flatpak, you'll need both [Flatpak](https://flatpak.org/)
   flatpak run org.lutris.Lutris
   ```
 
+## Clean up
+
+```
+flatpak uninstall --user org.lutris.Lutris
+rm -rf ~/.var/app/org.lutris.Lutris .flatpak-builder
+flatpak remote-delete lutris
+```
+
 ## Development
 
 The Python packages are built with https://github.com/flatpak/flatpak-builder-tools/tree/master/pip
