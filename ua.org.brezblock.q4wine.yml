@@ -1,0 +1,144 @@
+id: ua.org.brezblock.q4wine
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: 5.15-21.08
+base: org.winehq.Wine
+base-version: stable-21.08
+command: q4wine
+rename-icon: q4wine
+rename-desktop-file: q4wine.desktop
+finish-args:
+  - --allow=devel # For Wine crash handling
+  - --allow=multiarch
+  - --device=all
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib32/gstreamer-1.0:/app/lib/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib:/app/lib32/wine/wined3d:/app/lib/wine/wined3d
+  - --env=WINEPREFIX=/var/data/wine
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  - --persist=.wine
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --talk-name=org.freedesktop.Notifications
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /share/doc
+  - /share/man
+inherit-extensions:
+  - org.freedesktop.Platform.Compat.i386
+  - org.freedesktop.Platform.ffmpeg_full.i386
+  - org.freedesktop.Platform.ffmpeg-full
+  - org.freedesktop.Platform.GL32
+  - org.freedesktop.Platform.VAAPI.Intel.i386
+  - org.winehq.Wine.DLLs
+  - org.winehq.Wine.gecko
+  - org.winehq.Wine.mono
+add-extensions:
+  com.valvesoftware.Steam.Utility:
+    subdirectories: true
+    directory: utils
+    versions: stable;beta;test;master
+    add-ld-path: lib
+    merge-dirs: share/vulkan/explicit_layer.d;share/vulkan/implicit_layer.d;
+    no-autodownload: true
+    autodelete: false
+
+modules:
+  - name: q4wine
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DLIBS_ENTRY_PATH=/app/lib
+      - -DWITH_DBUS=ON
+    post-install:
+      # Add appstream metadata manifest for Linux
+      # https://github.com/brezerk/q4wine/pull/194
+      - install -Dm644 -t /app/share/appdata/ ${FLATPAK_ID}.appdata.xml
+    sources:
+      - type: git
+        url: https://github.com/brezerk/q4wine.git
+        tag: v1.3.13
+        commit: 6b9831ce41841b1e08fa43f7214f3829b8952171
+      - type: file
+        path: ua.org.brezblock.q4wine.appdata.xml
+    modules:
+
+      - name: fuseiso
+        sources:
+          - type: archive
+            url: https://downloads.sourceforge.net/fuseiso/fuseiso-20070708.tar.bz2
+            sha256: 8b242e077d66cd20900c59c905ff90b4c934b0613dd5a20facb0b1260ac5fd88
+        modules:
+
+          - name: libfuse
+            config-opts:
+              - --enable-lib
+            build-options:
+              env:
+                MOUNT_FUSE_PATH: /app/bin
+                INIT_D_PATH: /app/etc/init.d
+            sources:
+              - type: archive
+                url: https://github.com/libfuse/libfuse/archive/fuse-2.9.8.tar.gz
+                sha256: ceadc28f033b29d7aa1d7c3a5a267d51c2b572ed4e7346e0f9e24f4f5889debb
+              - type: shell
+                commands:
+                  - ./makeconf.sh
+            cleanup:
+              - /etc
+              - /include
+              - /lib/pkgconfig
+
+      - name: icoutils
+        sources:
+          - type: archive
+            url: http://savannah.nongnu.org/download/icoutils/icoutils-0.32.3.tar.bz2
+            sha256: 17abe02d043a253b68b47e3af69c9fc755b895db68fdc8811786125df564c6e0
+
+  - name: konsole
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/KDE/konsole/archive/v21.12.3.tar.gz
+        sha256: fb35afb4b647c99545a601374146a0447bfdf4245a9a227336e7c474fb0f1881
+    cleanup:
+      - /share/applications
+      - /share/khotkeys
+      - /share/knotifications5
+      - /share/kservices5
+      - /share/kservicetypes5
+      - /share/metainfo
+
+  - name: q4wine-app-environment
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/utils /app/share/vulkan
+      - ln -srv /app/{utils/,}share/vulkan/explicit_layer.d
+      - ln -srv /app/{utils/,}share/vulkan/implicit_layer.d
+      - install -Dm755 pkexec.sh /app/bin/pkexec
+      - install -Dm755 sudo.sh /app/bin/sudo
+    sources:
+      - type: script
+        dest-filename: pkexec.sh
+        commands:
+          - |
+            zenity --error --no-wrap \
+                   --title="Command unavailable" \
+                   --text="Running $0 is not possible in flatpak sandbox; command was: $*"
+            exit 1
+      - type: script
+        dest-filename: sudo.sh
+        commands:
+          - |
+            echo "Running sudo is not possible in flatpak sandbox; command was: $*" > /dev/stderr
+            exit 1
