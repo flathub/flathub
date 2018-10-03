@@ -1,0 +1,54 @@
+From be99d14fb8b7d0efb9883bc2b2d05f190691a486 Mon Sep 17 00:00:00 2001
+From: Pier Luigi Fiorini <pierluigi.fiorini@liri.io>
+Date: Wed, 24 May 2017 08:01:46 +0200
+Subject: [PATCH] File existance check on Flatpak and OSTree
+
+OSTree uses mtime 0 for all checkouts in order to maximize sharing of objects.
+(i.e. two identical source files with different mtimes should result in the
+same hardlinked file in the ostree checkout)
+
+However Qbs thinks the file doesn't exist with mtime 0 so we need to rely
+on a different way for Flatpak builds.
+
+This patch is also useful to systems using OSTree in general.
+---
+ src/lib/corelib/tools/fileinfo.cpp | 6 ++++--
+ src/lib/corelib/tools/fileinfo.h   | 1 +
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/lib/corelib/tools/fileinfo.cpp b/src/lib/corelib/tools/fileinfo.cpp
+index 5f0ed5d8..a5dfb353 100644
+--- a/src/lib/corelib/tools/fileinfo.cpp
++++ b/src/lib/corelib/tools/fileinfo.cpp
+@@ -331,12 +331,14 @@ QString applicationDirPath()
+ FileInfo::FileInfo(const QString &fileName)
+ {
+     if (stat(fileName.toLocal8Bit(), &m_stat) == -1)
+-        m_stat.st_mtime = 0;
++        m_exists = false;
++    else
++        m_exists = true;
+ }
+ 
+ bool FileInfo::exists() const
+ {
+-    return m_stat.st_mtime != 0;
++    return m_exists;
+ }
+ 
+ FileTime FileInfo::lastModified() const
+diff --git a/src/lib/corelib/tools/fileinfo.h b/src/lib/corelib/tools/fileinfo.h
+index da2500ad..e6159108 100644
+--- a/src/lib/corelib/tools/fileinfo.h
++++ b/src/lib/corelib/tools/fileinfo.h
+@@ -94,6 +94,7 @@ private:
+ #   error unknown platform
+ #endif
+     InternalStatType m_stat;
++    bool m_exists;
+ };
+ 
+ bool removeFileRecursion(const QFileInfo &f, QString *errorMessage);
+-- 
+2.13.0
+
