@@ -1,0 +1,116 @@
+id: io.github.arunsivaramanneo.GPUViewer
+runtime: org.gnome.Platform
+sdk: org.gnome.Sdk
+runtime-version: 3.30
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+command: gpu-viewer
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+modules:
+  - name: gpu-viewer
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/{bin,share}
+      - cp -a . /app/share/gpu-viewer
+      - install -Dm755 gpu-viewer.sh /app/bin/gpu-viewer
+      - install -Dm644 Images/GPU_Viewer.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 gpu-viewer.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --remove-key=Terminal  --remove-key=version /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Terminal --set-value=false /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Exec --set-value=gpu-viewer /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Icon --set-value=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: archive
+        url: "https://github.com/arunsivaramanneo/GPU-Viewer/archive/v1.14.tar.gz"
+        sha256: e81804dca0576cb7d3ccda78f3b34aeb3b16c99110a41b60b0c661737dbc609b
+      - type: script
+        dest-filename: gpu-viewer.sh
+        commands:
+          - cd /app/share/gpu-viewer/Files
+          - exec python3 ./GPUViewer.py $@
+    modules:
+      - name: vulkan-tools
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DGLSLANG_INSTALL_DIR=/app
+          - -DVULKAN_HEADERS_INSTALL_DIR=/app
+          - -DCMAKE_BUILD_TYPE=Release
+        sources:
+          - type: archive
+            url: "https://github.com/KhronosGroup/Vulkan-Tools/archive/sdk-1.1.82.0.tar.gz"
+            sha256: 22e5e5dfd47535e1664458ee59706abcaace96575d1a3d7fa9ae779a9e83b89c
+        modules:
+          - name: glslang
+            buildsystem: cmake-ninja
+            config-opts:
+              - -DBUILD_SHARED_LIBS=ON
+            sources:
+              - type: archive
+                url: "https://github.com/KhronosGroup/glslang/archive/7.9.2888.tar.gz"
+                sha256: cb66779d0e6b5f07f0445bd58289a24e56e12693e71d75c8fae3db31ffacaf8c
+
+          - name: vulkan-headers
+            buildsystem: cmake-ninja
+            sources:
+              - type: archive
+                url: "https://github.com/KhronosGroup/Vulkan-Headers/archive/sdk-1.1.82.0.tar.gz"
+                sha256: df73da07d547cfbe88a797802401ea8225e4844e13d4fde52a7cb6e00e5179e5
+
+      - name: mesa-demos
+        config-opts:
+          - --bindir=/app/lib/mesa-demos
+        post-install:
+          - mv -v /app/lib/mesa-demos/*info /app/bin/
+          - rm -r /app/lib/mesa-demos
+        sources:
+          - type: archive
+            url: "https://mesa.freedesktop.org/archive/demos/8.3.0/mesa-demos-8.3.0.tar.bz2"
+            sha256: c173154bbd0d5fb53d732471984def42fb1b14ac85fcb834138fb9518b3e0bef
+        modules:
+          - shared-modules/glew/glew.json
+          - shared-modules/glu/glu-9.0.0.json
+
+          - name: freeglut
+            buildsystem: cmake-ninja
+            config-opts:
+              - -DCMAKE_INSTALL_LIBDIR=/app/lib
+              - -DOpenGL_GL_PREFERENCE=LEGACY
+            sources:
+              - type: archive
+                url: "https://datapacket.dl.sourceforge.net/project/freeglut/freeglut/3.0.0/freeglut-3.0.0.tar.gz"
+                sha256: 2a43be8515b01ea82bcfa17d29ae0d40bd128342f0930cd1f375f1ff999f76a2
+
+      - name: clinfo
+        buildsystem: simple
+        build-commands:
+          - make -j $FLATPAK_BUILDER_N_JOBS
+          - install -Dm755 -t /app/bin/ clinfo
+        sources:
+          - type: archive
+            url: "https://github.com/Oblomov/clinfo/archive/2.2.18.04.06.tar.gz"
+            sha256: f77021a57b3afcdebc73107e2254b95780026a9df9aa4f8db6aff11c03f0ec6c
+        modules:
+          - name: ocl-icd
+            sources:
+              - type: archive
+                url: "https://github.com/OCL-dev/ocl-icd/archive/v2.2.12.tar.gz"
+                sha256: 17500e5788304eef5b52dbe784cec197bdae64e05eecf38317840d2d05484272
+              - type: script
+                dest-filename: autogen.sh
+                commands:
+                  - autoreconf -fiv
+          - name: opencl-headers
+            buildsystem: simple
+            build-commands:
+              - cp -av opencl22/CL /app/include
+            sources:
+              - type: git
+                url: "https://github.com/KhronosGroup/OpenCL-Headers.git"
+                commit: e986688daf750633898dfd3994e14a9e618f2aa5
