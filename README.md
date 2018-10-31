@@ -54,19 +54,19 @@ $ flatpak install flathub org.freedesktop.Platform//18.08
 ### Build
 
 ```
-$ ./flatpak_build.bash
+$ mkdir -p build && flatpak-builder "build" "org.widelands.widelands.yaml" --force-clean --install-deps-from="flathub"
 ```
 
 ### Test
 
 ```
-$ ./flatpak_shell.bash
+$ flatpak-builder --run "build" "org.widelands.widelands.yaml" "sh"
 ```
 
 ### Run
 
 ```
-$ ./flatpak_run.bash
+$ flatpak-builder --run "build" "org.widelands.widelands.yaml" "widelands"
 ```
 
 ## FAQ
