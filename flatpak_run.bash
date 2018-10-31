@@ -7,8 +7,7 @@ cd "${workspace}"
 [[ -x "./flatpak_setup.bash" ]] && source "./flatpak_setup.bash" || { echo "Failed to initialize script." >&2; exit 1; }
 
 dirname_build="build"
-filename_json="${flatpak_id}.json"
 command_exec="${flatpak_exec}"
 
-flatpak-builder --run "${dirname_build}" "${filename_json}" "${command_exec}"
+flatpak-builder --run "${dirname_build}" "${flatpak_manifest}" "${command_exec}"
 

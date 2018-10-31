@@ -7,9 +7,8 @@ cd "${workspace}"
 [[ -x "./flatpak_setup.bash" ]] && source "./flatpak_setup.bash" || { echo "Failed to initialize script." >&2; exit 1; }
 
 dirname_build="build"
-filename_json="${flatpak_id}.json"
 
-rm -rf "${dirname_build}"
+#rm -rf "${dirname_build}"
 mkdir -p "${dirname_build}"
-flatpak-builder "${dirname_build}" "${filename_json}" # --install-deps-from="flathub"
+flatpak-builder "${dirname_build}" "${flatpak_manifest}" --force-clean --install-deps-from="flathub"
 

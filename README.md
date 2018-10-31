@@ -14,12 +14,11 @@ This repo is about the flatpak package.
 
 * [flatpak](https://github.com/flatpak/flatpak)
 * [flatpak-builder](https://github.com/flatpak/flatpak-builder)
-* [strip-json-comments](https://github.com/sindresorhus/strip-json-comments)
 
 For EL7:
 
 ```
-# yum install 'flatpak' 'flatpak-builder' 'nodejs-strip-json-comments'
+# yum install 'flatpak' 'flatpak-builder'
 ```
 
 You may also wish to install the `xdg-desktop-portal*` packages:
@@ -45,20 +44,14 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.freedesktop.Sdk//1.6
+$ flatpak install flathub org.freedesktop.Sdk//18.08
 ```
 
 ```
-$ flatpak install flathub org.freedesktop.Platform//1.6
+$ flatpak install flathub org.freedesktop.Platform//18.08
 ```
 
 ### Build
-
-```
-$ ./flatpak_create.bash
-```
-
-or just:
 
 ```
 $ ./flatpak_build.bash
@@ -77,13 +70,6 @@ $ ./flatpak_run.bash
 ```
 
 ## FAQ
-
-### Which JSON file I should use?
-
-* input file: `org.widelands.widelands.json.in` (with comments)
-* output file: `org.widelands.widelands.json` (without comments)
-
-Comments are not allowed in JSON files.
 
 ### Does the game have access to the host file system?
 
