@@ -3,6 +3,8 @@ PROJECT ?= tv.kodi.Kodi
 
 build:
 	flatpak-builder build-dir $(PROJECT).json --repo=repo --force-clean --ccache 2>&1 | tee -a build.log
+build-i386:
+	flatpak-builder build-dir $(PROJECT).json --repo=repo --force-clean --ccache --arch=i386 2>&1 | tee -a build-i386.log
 flatpak:
 	flatpak build-bundle repo $(PROJECT).flatpak $(PROJECT)
 install:
