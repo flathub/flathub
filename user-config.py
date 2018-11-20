@@ -1,0 +1,7 @@
+INTERNAL_EXPAT=False
+INTERNAL_LUA=False
+DESTDIR="/app"
+LOCALEDIR="/app/share/locale"
+ENABLE_NLS=True
+DEBUG=True
+USE_GTK3=False
