@@ -44,11 +44,11 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.freedesktop.Sdk//18.08
+$ flatpak install flathub org.freedesktop.Sdk//1.6
 ```
 
 ```
-$ flatpak install flathub org.freedesktop.Platform//18.08
+$ flatpak install flathub org.freedesktop.Platform//1.6
 ```
 
 ### Build
