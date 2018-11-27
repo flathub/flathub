@@ -51,6 +51,14 @@ $ flatpak install flathub org.freedesktop.Sdk//1.6
 $ flatpak install flathub org.freedesktop.Platform//1.6
 ```
 
+```
+$ git submodule init
+```
+
+```
+$ git submodule update
+```
+
 ### Build
 
 ```
