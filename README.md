@@ -6,7 +6,7 @@
 
 [Homepage](http://www.xaraxtreme.org)
 
-This repo is about flatpak package.
+This repo is about the flatpak package.
 
 ## Instructions
 
@@ -14,12 +14,11 @@ This repo is about flatpak package.
 
 * [flatpak](https://github.com/flatpak/flatpak)
 * [flatpak-builder](https://github.com/flatpak/flatpak-builder)
-* [strip-json-comments](https://github.com/sindresorhus/strip-json-comments)
 
 For EL7:
 
 ```
-# yum install 'flatpak' 'flatpak-builder' 'nodejs-strip-json-comments'
+# yum install 'flatpak' 'flatpak-builder'
 ```
 
 You may also wish to install the `xdg-desktop-portal*` packages:
@@ -45,51 +44,34 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.gnome.Sdk//3.28
+$ flatpak install flathub org.freedesktop.Sdk//18.08
 ```
 
 ```
-$ flatpak install flathub org.gnome.Platform//3.28
+$ flatpak install flathub org.freedesktop.Platform//18.08
 ```
 
 ### Build
 
 ```
-$ ./flatpak_create.bash
-```
-
-or just:
-
-```
-$ ./flatpak_build.bash
+$ mkdir -p build && flatpak-builder "build" "org.xaraxtreme.XaraLX.yaml" --force-clean --install-deps-from="flathub"
 ```
 
 ### Test
 
 ```
-$ ./flatpak_shell.bash
+$ flatpak-builder --run "build" "org.xaraxtreme.XaraLX.yaml" "sh"
 ```
 
 ### Run
 
 ```
-$ ./flatpak_run.bash
+$ flatpak-builder --run "build" "org.xaraxtreme.XaraLX.yaml" "xaralx"
 ```
 
+See also: [Building your first Flatpak](http://docs.flatpak.org/en/latest/first-build.html)
+
 ## FAQ
-
-### Which JSON file I should use?
-
-* input file: `xaralx.json.in` (with comments)
-* output file: `org.xaraxtreme.XaraLX.json` (without comments)
-
-Comments are not allowed in JSON files.
-
-### It is so huge (flatpak manifest, of course)!
-
-Yeah, just like my ego! :smirk:
-
-But honestly, the development of this program stopped in 2007. It is not easy to maintain a package for such old software without a lot of patches and hooks. However, it is still a great app, and in some aspects, superior to [Inkscape](https://inkscape.org/en).
 
 ### Does flatpak-ed XaraLX run as superuser?
 

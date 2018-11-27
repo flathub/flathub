@@ -1,0 +1,164 @@
+name: xaralx
+no-autogen: true
+config-opts:
+  - --enable-unicode
+  - --enable-xarlib
+  - --enable-filters
+build-options:
+  # error: ISO C++ forbids comparison between pointer and integer [-fpermissive]
+  cflags: -fno-strict-aliasing 
+  cxxflags: -fno-strict-aliasing -fpermissive
+  ldflags: -lgobject-2.0
+sources:
+  # Source0
+  - type: archive
+    url: http://archive.ubuntu.com/ubuntu/pool/multiverse/x/xaralx/xaralx_0.7r1785.orig.tar.gz
+    sha256: ab2620253b0f7ae83f27e9ac4314b71fa78367e6fe442fdcd37fb6a61da53972
+  # Source1
+  # from OpenSuse
+  - type: file
+    path: XARFormatDocument.pdf
+  # Source2
+  # from https://translations.launchpad.net/xaralx
+  - type: archive
+    path: XaraLX-i18n-0.7r1785.tar.gz
+    strip-components: 0
+    dest: po
+  # Source3
+  - type: file
+    path: xaralx.desktop
+  # Source4
+  - type: file
+    path: xaralx.appdata.xml
+  # Source5
+  - type: file
+    path: xaralx.svg
+  # Patch1
+  - type: patch
+    path: xaralx-abuild.patch
+  # Patch2
+  - type: patch
+    path: xaralx-0.7r1785-missing-declaration.patch
+  # Patch3
+  - type: patch
+    path: xaralx-0.7_p1785-pragma-gentoo.patch
+  # Patch4
+  - type: patch
+    path: xaralx-gsocket.patch
+  # Patch5
+  - type: patch
+    path: xaralx-0.7_p1785-libpng15-gentoo.patch
+  # Patch6
+  - type: patch
+    path: xaralx-30_gtk_wxwidgets_symbol_clash-deb.patch
+  # Patch7
+  - type: patch
+    path: xaralx-50_update_imagemagick_version_parser-deb.patch
+  # Patch8
+  - type: patch
+    path: xaralx-add-linker-flags-deb-mga-el.patch
+  # Patch9
+  - type: patch
+    path: xaralx-wxOil-wxHandleFatalError.patch
+    strip-components: 0
+  # Patch10
+  - type: patch
+    path: xaralx-pragma.patch
+    strip-components: 0
+  # Patch11
+  - type: patch
+    path: xaralx-0.7_p1785-automake-init.patch
+  # fix locales
+  # string "800_by_600_drawing.xar" must not be translated
+  - type: shell
+    commands:
+      - echo 'fix locales';
+        sed -i 's|msgstr "800 на 600 drawing.xar"|msgstr ""|g' "po/ru.po";
+  # fix configure: xml2
+  # bug in Freedesktop 1.6 runtime
+  - type: shell
+    commands:
+      - >
+        echo 'fix configure: xml2';
+        find * -xtype f \( -name "configure" -o -name "configure.in" -o -name "output.0" -o -name "output.1" \) | sort -V | while read -r filename; do
+        sed -i -r 's/^([[:blank:]]*XML2CONFIG=)(xml2-config)([[:blank:]]*)$/\1"pkg-config libxml-2.0"\3/' "${filename}";
+        sed -i -r 's/([[:blank:]]*|^)(test "\$xml2version" -lt )([0-9]+)([^0-9]|$)/\1\20\4/g' "${filename}";
+        done;
+  # autogen
+  - type: shell
+    commands:
+      - echo 'autogen';
+        cp -p /usr/share/automake-*/config.{sub,guess} .;
+        ./autogen.sh;
+  # autoreconf
+  - type: shell
+    commands:
+      - echo 'autoreconf';
+        pushd "filters/SVGFilter";
+        autoreconf -f -i;
+        popd;
+  # compile locales
+  - type: shell
+    commands:
+      - echo 'compile locales';
+        pushd "po";
+        for f in *.po; do
+        t="${f#xaralx-}";
+        msgfmt -v -o "${t%.po}.mo" "${f}";
+        done;
+        popd;
+  # create icons
+  - type: shell
+    commands:
+      - echo 'create icons';
+        icon="xaralx.svg";
+        for s in {16,22,24,32,48,64,72,96,128,192,256,512}; do
+        size="${s}x${s}";
+        mkdir -p "icons/${size}/";
+        rsvg-convert "${icon}" -w "${s}" -h "${s}" -a -f png -o "icons/${size}/xaralx.png";
+        done;
+post-install:
+  # install locales by hand
+  - echo 'install locales';
+    pushd "po";
+    for f in *.mo; do
+    install -pD -m644 "${f}" "${FLATPAK_DEST}/share/locale/${f%.mo}/LC_MESSAGES/XaraLX.mo";
+    done;
+    popd;
+  # install additional files
+  - echo 'install additional files';
+  - ( cd "${FLATPAK_DEST}/bin" && ln -s "XaraLX" "xara" && ln -s "XaraLX" "xaralx"; )
+  - ( cd "${FLATPAK_DEST}/share" && ln -s "xaralx" "XaraLX"; )
+  # "${FLATPAK_DEST}/share/xaralx/doc/xaralx/" is used by the application for online help
+  - ( cd "${FLATPAK_DEST}/share/xaralx" && ln -s "${FLATPAK_DEST}/share/doc/xaralx/help" "doc"; )
+  - install -D -m 644 "doc/en/LICENSE" "${FLATPAK_DEST}/share/doc/xaralx/help/LICENSE";
+  - install -m 644 "XARFormatDocument.pdf" "${FLATPAK_DEST}/share/doc/xaralx";
+  - cp -a "Designs" "TextDesigns" "Templates" "filters/SVGFilter"/{tests,images,openclipart,samples} "testfiles" "${FLATPAK_DEST}/share/xaralx";
+  - cat "doc/en/xaralxHelp.tar.gz" | ( cd "${FLATPAK_DEST}/share/doc/xaralx/help" ; tar zxvf -; )
+  - find "${FLATPAK_DEST}/share/doc" -type f -print0 | xargs -0 sed -i 's/\r$//';
+  - find "${FLATPAK_DEST}/share" "${FLATPAK_DEST}/share/doc" -type f -print0 | xargs -0 chmod 644;
+  - perl -ape 's{((src|document.location\\s+)=.?\")}{$1help/}g;' < "${FLATPAK_DEST}/share/doc/xaralx/help/xaralx.htm" > "${FLATPAK_DEST}/share/doc/xaralx/help.html";
+  - install -m 644 "COPYING" "LICENSE" "README" "MTRand.txt" "doc/gifutil.txt" "doc/XSVG.txt" "${FLATPAK_DEST}/share/doc/xaralx/";
+  - install -D -m 644 "doc/xaralx.1" "${FLATPAK_DEST}/share/man/man1/xaralx.1";
+  - ( cd "${FLATPAK_DEST}/share/man/man1" && ln -s "xaralx.1" "XaraLX.1" && ln -s "xaralx.1" "xara.1"; )
+  - chmod 755 "${FLATPAK_DEST}/share/xaralx/tests/makerandom.sh";
+  # install appdata, desktop and icon file
+  - install -p -D -m 0644 "xaralx.appdata.xml" "${FLATPAK_DEST}/share/metainfo/xaralx.appdata.xml";
+  - install -p -D -m 0644 "xaralx.desktop" "${FLATPAK_DEST}/share/applications/xaralx.desktop";
+  - install -p -D -m 0644 "xaralx.png" "${FLATPAK_DEST}/share/pixmaps/xaralx.png";
+  # install icons
+  - echo 'install icons';
+    find "icons" -mindepth 2 -maxdepth 2 -type f -name "xaralx.png" | sort -V | xargs -I{} dirname '{}' | xargs -I{} basename '{}' | while read -r size; do
+    install -p -D -m 0644 "icons/${size}/xaralx.png" "${FLATPAK_DEST}/share/icons/hicolor/${size}/apps/xaralx.png";
+    done;
+  # install docs
+  - echo 'install docs';
+    install -d "${FLATPAK_DEST}/share/doc/xaralx";
+    install -p -m 0644 "ABOUT-NLS" "INSTALL" "${FLATPAK_DEST}/share/doc/xaralx/";
+    install -p -m 0644 "Pragmas.txt" "${FLATPAK_DEST}/share/doc/xaralx/";
+    install -p -m 0644 "ChangeLog" "Doxyfile" "NEWS" "portnotes" "${FLATPAK_DEST}/share/doc/xaralx/";
+  # install licenses
+  - echo 'install licenses';
+    install -d "${FLATPAK_DEST}/share/licenses/xaralx";
+    install -p -m 0644 "COPYING" "LICENSE" "GPL" "${FLATPAK_DEST}/share/licenses/xaralx/";
+    install -p -m 0644 "libs/LIBS-LICENSE" "${FLATPAK_DEST}/share/licenses/xaralx/";
