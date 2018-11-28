@@ -8,18 +8,17 @@ Notepadqq is a text editor designed by developers, for developers.
 
 This repo is about flatpak package.
 
-## instructions
+## Instructions
 
 ### Requirements
 
 * [flatpak](https://github.com/flatpak/flatpak)
 * [flatpak-builder](https://github.com/flatpak/flatpak-builder)
-* [strip-json-comments](https://github.com/sindresorhus/strip-json-comments)
 
 For EL7:
 
 ```
-# yum install 'flatpak' 'flatpak-builder' 'nodejs-strip-json-comments'
+# yum install 'flatpak' 'flatpak-builder'
 ```
 
 You may also wish to install the `xdg-desktop-portal*` packages:
@@ -45,45 +44,56 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.kde.Sdk//5.9
+$ flatpak install flathub org.kde.Sdk//5.11
 ```
 
 ```
-$ flatpak install flathub io.qt.qtwebkit.BaseApp
+$ flatpak install flathub org.kde.Platform//5.11
+```
+
+```
+$ flatpak install flathub io.qt.qtwebkit.BaseApp//5.11
 ```
 
 ### Build
 
 ```
-$ ./flatpak_create.bash
+$ mkdir -p build && flatpak-builder "build" "com.notepadqq.Notepadqq.yaml" --force-clean --install-deps-from="flathub"
 ```
 
-or just:
+### Install
 
 ```
-$ ./flatpak_build.bash
+$ flatpak-builder --repo=repo --force-clean build com.notepadqq.Notepadqq.yaml
 ```
 
-### Test
+```
+$ flatpak --user remote-add --no-gpg-verify notepadqq repo
+```
 
 ```
-$ ./flatpak_shell.bash
+$ flatpak --user install notepadqq com.notepadqq.Notepadqq
 ```
 
 ### Run
 
 ```
-$ ./flatpak_run.bash
+$ flatpak run com.notepadqq.Notepadqq
 ```
 
+### Uninstall
+
+```
+$ flatpak --user uninstall com.notepadqq.Notepadqq
+```
+
+```
+$ flatpak --user remote-delete notepadqq
+```
+
+See also: [Building your first Flatpak](http://docs.flatpak.org/en/latest/first-build.html)
+
 ## FAQ
-
-### Which JSON file I should use?
-
-* input file: `notepadqq.json.in` (with comments)
-* output file: `com.notepadqq.Notepadqq.json` (without comments)
-
-Comments are not allowed in JSON files.
 
 ### Does flatpak-ed Notepadqq run as superuser?
 
