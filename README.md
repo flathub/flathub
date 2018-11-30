@@ -1,28 +1,27 @@
 # retext-flatpak
 
-ReText is a simple but powerful text editor for Markdown and reStructuredText.
+**ReText** is a simple but powerful text editor for Markdown and reStructuredText.
 
 ![retext-flatpak screenshot](retext-flatpak.png)
 
 [Homepage](https://github.com/retext-project/retext)
 
-This repo is about flatpak package.
+This repo is about the flatpak package.
 
-## Instruction
+## Instructions
 
 ### Requirements
 
 * [flatpak](https://github.com/flatpak/flatpak)
 * [flatpak-builder](https://github.com/flatpak/flatpak-builder)
-* [strip-json-comments](https://github.com/sindresorhus/strip-json-comments)
 
 For EL7:
 
 ```
-# yum install 'flatpak' 'flatpak-builder' 'nodejs-strip-json-comments'
+# yum install 'flatpak' 'flatpak-builder'
 ```
 
-You may also want to install the `xdg-desktop-portal*` packages:
+You may also wish to install the `xdg-desktop-portal*` packages:
 
 ```
 # yum install 'xdg-desktop-portal*'
@@ -35,7 +34,7 @@ See also:
 ### Adding repository
 
 ```
-$ flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+$ flatpak remote-add --if-not-exists "flathub" "https://dl.flathub.org/repo/flathub.flatpakrepo"
 ```
 
 See also:
@@ -45,39 +44,58 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install flathub org.kde.Sdk//5.11
+$ flatpak install "flathub" "org.kde.Sdk//5.11"
 ```
 
 ```
-$ flatpak install flathub org.kde.Platform//5.11
+$ flatpak install "flathub" "org.kde.Platform//5.11"
 ```
 
 ### Build
 
 ```
-$ ./flatpak_create.bash
+$ mkdir -p "build" && flatpak-builder "build" "me.mitya57.ReText.yaml" --force-clean --install-deps-from="flathub"
 ```
 
 ### Test
 
 ```
-$ ./flatpak_shell.bash
+$ flatpak-builder --run "build" "me.mitya57.ReText.yaml" "sh"
+```
+
+### Install
+
+```
+$ flatpak-builder --repo="repo" --force-clean "build" "me.mitya57.ReText.yaml"
+```
+
+```
+$ flatpak --user remote-add --no-gpg-verify "retext" "repo"
+```
+
+```
+$ flatpak --user install "retext" "me.mitya57.ReText"
 ```
 
 ### Run
 
 ```
-$ ./flatpak_run.bash
+$ flatpak run "me.mitya57.ReText"
 ```
 
+### Uninstall
+
+```
+$ flatpak --user uninstall "me.mitya57.ReText"
+```
+
+```
+$ flatpak --user remote-delete "retext"
+```
+
+See also: [Building your first Flatpak](http://docs.flatpak.org/en/latest/first-build.html)
+
 ## FAQ
-
-### Which JSON file I should use?
-
-* input file: `me.mitya57.ReText.json.in` (with comments)
-* output file: `me.mitya57.ReText.json` (without comments)
-
-Comments are not allowed in JSON files.
 
 ### Does flatpak-ed ReText run as superuser?
 
@@ -93,27 +111,6 @@ This is not always possible. For example, for EL7:
 * **python3-qt5** package depends on **python3-sip** package. The **sip** package is available in EL7, but without **python3** support.
 * **python-qt5** requires **sip** >= *4.18*, but EL7 provides only *4.14.6* version. The **sip** package in EL7 has not been updated since the system was released (in 2014).
 
-### Why don't you use new features in Flatpak Manifest (JSON) file?
-
-Because **flatpak-builder** *0.8.x* (latest version available in EL7) doesn't support them. For example:
-
-* `"buildsystem": "simple"` and `build-commands: []`
-* `"buildsystem": "cmake-ninja"`
-
-It is possible to install flatpak-builder (CLI tool, IDE for GNOME in another thing) from flathub. However, it requires **flatpak** >= *0.10.0*
-
-```
-$ flatpak install flathub org.flatpak.Builder
-error: app/org.flatpak.Builder/x86_64/stable needs a later flatpak version (0.10.0)
-```
-
-The **flatpak** (and **flatpak-builder**) >= *0.10.4* will be available in [EL 7.6](https://bugzilla.redhat.com/show_bug.cgi?id=1570030), probably in Q1-Q2 [2019](https://en.wikipedia.org/wiki/Red_Hat_Enterprise_Linux#RHEL_7).
-
-It is possible to install **flatpak** (and **flatpak-builder**) >= *0.10.x* from a [COPR](https://copr.fedorainfracloud.org/) repo, but it will replace packages from main repo.
-
-* [scx/flatpak](https://copr.fedorainfracloud.org/coprs/scx/flatpak/)
-* [amigadave/flatpak-epel7](https://copr.fedorainfracloud.org/coprs/scx/flatpak/)
-
 ### How to create module manifest for a PIP package?
 
 You can use [Flatpak PIP Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip) from [Flatpak Builder Tools](https://github.com/flatpak/flatpak-builder-tools) repository.
@@ -126,7 +123,7 @@ scl enable rh-python36 bash
 
 ### Are you the author of ReText?
 
-No, I only created flatpak package for it.
+No, I only created the flatpak package for it.
 
 See also:
 
