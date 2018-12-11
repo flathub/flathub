@@ -1,0 +1,58 @@
+name: hardinfo
+buildsystem: cmake-ninja
+builddir: true
+#config-opts:
+#  # currently disabled due to very limited functionality
+#  - -DHARDINFO_GTK3=1
+sources:
+  # Source0
+  # The last stable version was released on April 6, 2009.
+  # However, this program is actively developed on GitHub.
+  - type: git
+    url: https://github.com/lpereira/hardinfo.git
+    branch: master
+    commit: d1ef46fab73865986e6d3e320bd578dba7cf76f6
+  # Source1
+  - type: file
+    path: hardinfo.appdata.xml
+  # Access flatpak utils
+  - type: shell
+    commands:
+      - echo 'fix path list in hardinfo/util.c';
+        sed -i -re 's|("/bin")|"/app/bin", \1|' "hardinfo/util.c";
+  # Access /etc from the host
+  - type: shell
+    commands:
+      - echo 'fix path to /etc';
+        find * -xtype f -iname '*.c' | while read -r file; do
+        sed -i -re 's|(")(/etc)|\1/var/run/host\2|' "${file}";
+        done;
+  # Access host commands
+  - type: script
+    commands:
+      - flatpak-spawn --host "$( basename "${0}" )" "${@}";
+    dest-filename: command.sh
+post-install:
+  # install utils
+  # Full list: {apcaccess,glxinfo,last,locale,lsb_release,lsmod,lspci,lsusb,modinfo,net,netstat,route,xdpyinfo,xrandr}
+  # - glxinfo is provided by mesa-utils module
+  # - lspci is provided by pciutils module
+  # - xdpyinfo is provided by xdpyinfo module
+  # - xrandr is provided by xrandr module
+  # Moreover, below we have programs directly in the Freedesktop runtime:
+  # - last
+  # - locale
+  # However, they are useless under the sandbox.
+  - echo 'install utils';
+    for command in {apcaccess,last,locale,lsb_release,lsmod,lsusb,modinfo,net,netstat,route}; do
+    install -p -D -m 0755 "../command.sh" "${FLATPAK_DEST}/bin/${command}";
+    done;
+  # install appdata file
+  - echo 'install appdata file';
+    install -p -D -m 0644 "../hardinfo.appdata.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml";
+  # install docs
+  - echo 'install docs';
+    install -p -D -m 0644 "../AUTHORS.md" "../CONTRIBUTING" "../TODO" "../README.md" -t "${FLATPAK_DEST}/share/doc/hardinfo/";
+  # install licenses
+  - echo 'install licenses';
+    install -p -D -m 0644 "../LICENSE" -t "${FLATPAK_DEST}/share/licenses/hardinfo/";
