@@ -1,0 +1,104 @@
+From 74910a23a261657180af3480b8c5912258253e5f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jonah=20Br=C3=BCchert?= <jbb.prv@gmx.de>
+Date: Mon, 10 Dec 2018 20:38:26 +0100
+Subject: [PATCH 3/8] Use libpoppler instead of raw xpdf
+
+---
+ src/pdf/XPDFRenderer.cpp | 33 +++++++++++++++++++++++----------
+ src/pdf/XPDFRenderer.h   |  8 ++++----
+ 2 files changed, 27 insertions(+), 14 deletions(-)
+
+diff --git a/src/pdf/XPDFRenderer.cpp b/src/pdf/XPDFRenderer.cpp
+index a3e828e4..583882aa 100644
+--- a/src/pdf/XPDFRenderer.cpp
++++ b/src/pdf/XPDFRenderer.cpp
+@@ -32,6 +32,7 @@
+ #include <QtGui>
+ 
+ #include <frameworks/UBPlatformUtils.h>
++#include <poppler/cpp/poppler-version.h>
+ 
+ #include "core/memcheck.h"
+ 
+@@ -51,7 +52,7 @@ XPDFRenderer::XPDFRenderer(const QString &filename, bool importingFile)
+         globalParams->setupBaseFonts(QFile::encodeName(UBPlatformUtils::applicationResourcesDirectory() + "/" + "fonts").data());
+     }
+ 
+-    mDocument = new PDFDoc(new GString(filename.toLocal8Bit()), 0, 0, 0); // the filename GString is deleted on PDFDoc desctruction
++    mDocument = new PDFDoc(new GooString(filename.toLocal8Bit()), 0, 0, 0); // the filename GString is deleted on PDFDoc desctruction
+     sInstancesCount.ref();
+ }
+ 
+@@ -99,16 +100,28 @@ QString XPDFRenderer::title() const
+ {
+     if (isValid())
+     {
++#if POPPLER_VERSION_MAJOR > 0 || POPPLER_VERSION_MINOR >= 55
++        Object pdfInfo = mDocument->getDocInfo();
++#else
+         Object pdfInfo;
+         mDocument->getDocInfo(&pdfInfo);
++#endif
+         if (pdfInfo.isDict())
+         {
+-            Object title;
+             Dict *infoDict = pdfInfo.getDict();
+-            if (infoDict->lookup((char*)"Title", &title)->isString())
++#if POPPLER_VERSION_MAJOR > 0 || POPPLER_VERSION_MINOR >= 55
++            Object title = infoDict->lookup((char*)"Title");
++#else
++            Object title;
++            infoDict->lookup((char*)"Title", &title);
++#endif
++            if (title.isString())
+             {
+-                GString *gstring = title.getString();
+-                return QString(gstring->getCString());
++#if POPPLER_VERSION_MAJOR > 0 || POPPLER_VERSION_MINOR >= 72
++                return QString(title.getString()->c_str());
++#else
++                return QString(title.getString()->getCString());
++#endif
+             }
+         }
+     }
+@@ -172,12 +185,12 @@ QImage* XPDFRenderer::createPDFImage(int pageNumber, qreal xscale, qreal yscale,
+         SplashColor paperColor = {0xFF, 0xFF, 0xFF}; // white
+         if(mSplash)
+             delete mSplash;
+-        mSplash = new SplashOutputDev(splashModeRGB8, 1, gFalse, paperColor);
+-        mSplash->startDoc(mDocument->getXRef());
++        mSplash = new SplashOutputDev(splashModeRGB8, 1, false, paperColor);
++        mSplash->startDoc(mDocument);
+         int rotation = 0; // in degrees (get it from the worldTransform if we want to support rotation)
+-        GBool useMediaBox = gFalse;
+-        GBool crop = gTrue;
+-        GBool printing = gFalse;
++        bool useMediaBox = false;
++        bool crop = true;
++        bool printing = false;
+         mSliceX = 0.;
+         mSliceY = 0.;
+ 
+diff --git a/src/pdf/XPDFRenderer.h b/src/pdf/XPDFRenderer.h
+index 8ab200bc..003a2055 100644
+--- a/src/pdf/XPDFRenderer.h
++++ b/src/pdf/XPDFRenderer.h
+@@ -36,10 +36,10 @@
+ #include "globals/UBGlobals.h"
+ 
+ THIRD_PARTY_WARNINGS_DISABLE
+-#include <xpdf/Object.h>
+-#include <xpdf/GlobalParams.h>
+-#include <xpdf/SplashOutputDev.h>
+-#include <xpdf/PDFDoc.h>
++#include <poppler/Object.h>
++#include <poppler/GlobalParams.h>
++#include <poppler/SplashOutputDev.h>
++#include <poppler/PDFDoc.h>
+ THIRD_PARTY_WARNINGS_ENABLE
+ 
+ class PDFDoc;
+-- 
+2.19.2
+

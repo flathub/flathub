@@ -1,0 +1,127 @@
+From 7ad72ebdab252adb320bf2da082f0b3b823d0750 Mon Sep 17 00:00:00 2001
+From: Antoine Belvire <antoine.belvire@opensuse.org>
+Date: Thu, 11 Jan 2018 19:02:25 +0100
+Subject: [PATCH 1/8] Add compatibility with OpenSSL 1.1
+
+OpenSSL 1.1 has a new API. This commit allows to compile against it, as well
+as it keeps compatibility with previous versions of OpenSSL.
+
+Fixes #89.
+---
+ src/frameworks/UBCryptoUtils.cpp | 35 ++++++++++++++++++++++++++++++++
+ src/frameworks/UBCryptoUtils.h   |  5 +++++
+ 2 files changed, 40 insertions(+)
+
+diff --git a/src/frameworks/UBCryptoUtils.cpp b/src/frameworks/UBCryptoUtils.cpp
+index ca66a3d6..45f7d203 100644
+--- a/src/frameworks/UBCryptoUtils.cpp
++++ b/src/frameworks/UBCryptoUtils.cpp
+@@ -63,6 +63,10 @@ UBCryptoUtils::UBCryptoUtils(QObject * pParent)
+ UBCryptoUtils::~UBCryptoUtils()
+ {
+     // TODO UB 4.x aes destroy
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    EVP_CIPHER_CTX_free(mAesEncryptContext);
++    EVP_CIPHER_CTX_free(mAesDecryptContext);
++#endif
+ }
+ 
+ 
+@@ -74,18 +78,30 @@ QString UBCryptoUtils::symetricEncrypt(const QString& clear)
+     int paddingLength = 0;
+     unsigned char *ciphertext = (unsigned char *)malloc(cipheredLength);
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_EncryptInit_ex(mAesEncryptContext, NULL, NULL, NULL, NULL)){
++#else
+     if(!EVP_EncryptInit_ex(&mAesEncryptContext, NULL, NULL, NULL, NULL)){
++#endif
+         free(ciphertext);
+         return QString();
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_EncryptUpdate(mAesEncryptContext, ciphertext, &cipheredLength, (unsigned char *)clearData.data(), clearData.length())){
++#else
+     if(!EVP_EncryptUpdate(&mAesEncryptContext, ciphertext, &cipheredLength, (unsigned char *)clearData.data(), clearData.length())){
++#endif
+         free(ciphertext);
+         return QString();
+     }
+ 
+     /* update ciphertext with the final remaining bytes */
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_EncryptFinal_ex(mAesEncryptContext, ciphertext + cipheredLength, &paddingLength)){
++#else
+     if(!EVP_EncryptFinal_ex(&mAesEncryptContext, ciphertext + cipheredLength, &paddingLength)){
++#endif
+         free(ciphertext);
+         return QString();
+     }
+@@ -106,17 +122,29 @@ QString UBCryptoUtils::symetricDecrypt(const QString& encrypted)
+     int paddingLength = 0;
+     unsigned char *plaintext = (unsigned char *)malloc(encryptedLength);
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_DecryptInit_ex(mAesDecryptContext, NULL, NULL, NULL, NULL)){
++#else
+     if(!EVP_DecryptInit_ex(&mAesDecryptContext, NULL, NULL, NULL, NULL)){
++#endif
+         free(plaintext);
+         return QString();
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_DecryptUpdate(mAesDecryptContext, plaintext, &encryptedLength, (const unsigned char *)encryptedData.data(), encryptedData.length())){
++#else
+     if(!EVP_DecryptUpdate(&mAesDecryptContext, plaintext, &encryptedLength, (const unsigned char *)encryptedData.data(), encryptedData.length())){
++#endif
+         free(plaintext);
+         return QString();
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    if(!EVP_DecryptFinal_ex(mAesDecryptContext, plaintext + encryptedLength, &paddingLength)){
++#else
+     if(!EVP_DecryptFinal_ex(&mAesDecryptContext, plaintext + encryptedLength, &paddingLength)){
++#endif
+         free(plaintext);
+         return QString();
+     }
+@@ -146,8 +174,15 @@ void UBCryptoUtils::aesInit()
+         return;
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++    mAesEncryptContext = EVP_CIPHER_CTX_new();
++    EVP_EncryptInit_ex(mAesEncryptContext, EVP_aes_256_cbc(), NULL, key, iv);
++    mAesDecryptContext = EVP_CIPHER_CTX_new();
++    EVP_DecryptInit_ex(mAesDecryptContext, EVP_aes_256_cbc(), NULL, key, iv);
++#else
+     EVP_CIPHER_CTX_init(&mAesEncryptContext);
+     EVP_EncryptInit_ex(&mAesEncryptContext, EVP_aes_256_cbc(), NULL, key, iv);
+     EVP_CIPHER_CTX_init(&mAesDecryptContext);
+     EVP_DecryptInit_ex(&mAesDecryptContext, EVP_aes_256_cbc(), NULL, key, iv);
++#endif
+ }
+diff --git a/src/frameworks/UBCryptoUtils.h b/src/frameworks/UBCryptoUtils.h
+index 2d057426..50930f3c 100644
+--- a/src/frameworks/UBCryptoUtils.h
++++ b/src/frameworks/UBCryptoUtils.h
+@@ -60,8 +60,13 @@ class UBCryptoUtils : public QObject
+ 
+         void aesInit();
+ 
++#if OPENSSL_VERSION_NUMBER >= 10100000L
++        EVP_CIPHER_CTX *mAesEncryptContext;
++        EVP_CIPHER_CTX *mAesDecryptContext;
++#else
+         EVP_CIPHER_CTX mAesEncryptContext;
+         EVP_CIPHER_CTX mAesDecryptContext;
++#endif
+ 
+ };
+ 
+-- 
+2.19.2
+
