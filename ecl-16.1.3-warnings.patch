@@ -1,0 +1,247 @@
+--- src/c/alloc_2.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/alloc_2.d	2017-02-23 11:33:47.926290573 -0700
+@@ -760,8 +760,10 @@ to_bitmap(void *x, void *y)
+ void
+ init_alloc(void)
+ {
++#ifdef GBC_BOEHM_PRECISE
+   union cl_lispunion o;
+   struct ecl_cons c;
++#endif
+   int i;
+   if (alloc_initialized) return;
+   alloc_initialized = TRUE;
+--- src/c/cinit.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/cinit.d	2017-02-23 11:33:47.927290568 -0700
+@@ -171,6 +171,7 @@ static cl_object si_simple_toplevel ()
+       ecl_prin1(sentence, output);
+     }
+   } ECL_CATCH_ALL_END;
++  return ECL_NIL;
+ }
+ 
+ int
+--- src/c/compiler.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/compiler.d	2017-02-23 11:33:47.927290568 -0700
+@@ -3102,7 +3102,7 @@ si_valid_function_name_p(cl_object name)
+ cl_object
+ si_make_lambda(cl_object name, cl_object rest)
+ {
+-  cl_object lambda;
++  cl_object lambda = ECL_NIL;
+   const cl_env_ptr the_env = ecl_process_env();
+   volatile cl_compiler_env_ptr old_c_env = the_env->c_env;
+   struct cl_compiler_env new_c_env;
+--- src/c/ffi.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/ffi.d	2017-02-23 11:33:47.927290568 -0700
+@@ -676,7 +676,7 @@ si_load_foreign_module(cl_object filenam
+ #if !defined(ENABLE_DLOPEN)
+   FEerror("SI:LOAD-FOREIGN-MODULE does not work when ECL is statically linked", 0);
+ #else
+-  cl_object output;
++  cl_object output = ECL_NIL;
+ 
+ # ifdef ECL_THREADS
+   mp_get_lock(1, ecl_symbol_value(@'mp::+load-compile-lock+'));
+--- src/c/ffi/libraries.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/ffi/libraries.d	2017-02-23 11:33:47.927290568 -0700
+@@ -284,7 +284,6 @@ cl_object
+ ecl_library_open(cl_object filename, bool force_reload) {
+   cl_object block;
+   bool self_destruct = 0;
+-  char *filename_string;
+ 
+   /* Coerces to a file name but does not merge with cwd */
+   filename = coerce_to_physical_pathname(filename);
+--- src/c/file.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/file.d	2017-02-23 11:34:20.968112017 -0700
+@@ -1100,7 +1100,7 @@ static int
+ utf_8_encoder(cl_object stream, unsigned char *buffer, ecl_character c)
+ {
+   int nbytes;
+-  if (c < 0) {
++  if (c < 0 || c > 0x1FFFFFL) {
+     nbytes = 0;
+   } else if (c <= 0x7F) {
+     buffer[0] = c;
+@@ -1115,7 +1115,7 @@ utf_8_encoder(cl_object stream, unsigned
+     buffer[1] = (c & 0x3f) | 0x80; c >>= 6;
+     buffer[0] = c | 0xE0;
+     nbytes = 3;
+-  } else if (c <= 0x1FFFFFL) {
++  } else {
+     buffer[3] = (c & 0x3f) | 0x80; c >>= 6;
+     buffer[2] = (c & 0x3f) | 0x80; c >>= 6;
+     buffer[1] = (c & 0x3f) | 0x80; c >>= 6;
+@@ -1626,7 +1626,7 @@ ecl_make_string_input_stream(cl_object s
+   strm->stream.flags = ECL_STREAM_DEFAULT_FORMAT;
+   strm->stream.byte_size = 8;
+ #else
+-  if (ECL_BASE_STRING_P(strng) == t_base_string) {
++  if (ECL_BASE_STRING_P(strng)) {
+     strm->stream.format = @':latin-1';
+     strm->stream.flags = ECL_STREAM_LATIN_1;
+     strm->stream.byte_size = 8;
+@@ -5126,7 +5126,7 @@ ecl_open_stream(cl_object fn, enum ecl_s
+     FEerror("Illegal stream mode ~S", 1, ecl_make_fixnum(smm));
+   }
+   if (flags & ECL_STREAM_C_STREAM) {
+-    FILE *fp;
++    FILE *fp = NULL;
+     safe_close(f);
+     /* We do not use fdopen() because Windows seems to
+      * have problems with the resulting streams. Furthermore, even for
+--- src/cmp/cmpcatch.lsp.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/cmp/cmpcatch.lsp	2017-02-23 10:09:52.183082215 -0700
+@@ -76,6 +76,7 @@
+     (let ((*unwind-exit* (cons 'FRAME *unwind-exit*))
+           (*destination* 'VALUES))
+       (c2expr* form))
++    (wt-nl "  next_fr = NULL;")
+     (wt-nl "}")
+     (wt-nl "ecl_frs_pop(cl_env_copy);")
+     ;; Here we save the values of the form which might have been
+--- src/cmp/cmptop.lsp.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/cmp/cmptop.lsp	2017-02-23 11:33:47.928290563 -0700
+@@ -438,7 +438,7 @@
+     (wt-nl "volatile cl_object lex" *level* "[" *max-lex* "];"))
+ 
+   (unless (eq closure-type 'CLOSURE)
+-    (wt-nl "cl_object " *volatile* "env0;"))
++    (wt-nl "cl_object " *volatile* "env0 = ECL_NIL;"))
+ 
+   (when  (plusp *max-env*)
+     ;; Closure structure has to be marked volatile or else GCC may
+--- src/cmp/cmpwt.lsp.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/cmp/cmpwt.lsp	2017-02-23 10:09:52.197082134 -0700
+@@ -105,10 +105,10 @@
+                     (*wt-data-column* 80)
+                     (s (with-output-to-string (stream)
+                          (wt-filtered-data string stream))))
+-               (format stream "static const struct ecl_base_string ~A[] = {
++               (format stream "static const struct ecl_base_string ~A[] = { {
+         (int8_t)t_base_string, 0, ecl_aet_bc, 0,
+         ECL_NIL, (cl_index)~D, (cl_index)~D,
+-        (ecl_base_char*)~A };~%"
++        (ecl_base_char*)~A } };~%"
+                        name *wt-string-size* *wt-string-size* s)
+                name))
+            (output-c-strings (strings stream)
+--- src/c/numbers/ceiling.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/numbers/ceiling.d	2017-02-23 11:33:47.928290563 -0700
+@@ -138,7 +138,7 @@ ecl_ceiling2(cl_object x, cl_object y)
+     }
+ #endif
+     default:
+-      (void)0; /*Never reached */
++      __builtin_unreachable(); /*Never reached */
+     }
+     break;
+   case t_bignum:
+@@ -184,7 +184,7 @@ ecl_ceiling2(cl_object x, cl_object y)
+     }
+ #endif
+     default:
+-      (void)0; /*Never reached */
++      __builtin_unreachable(); /*Never reached */
+     }
+     break;
+   case t_ratio:
+--- src/c/num_log.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/num_log.d	2017-02-23 11:33:47.929290557 -0700
+@@ -476,7 +476,7 @@ cl_object
+ si_bit_array_op(cl_object o, cl_object x, cl_object y, cl_object r)
+ {
+   cl_fixnum i, j, n, d;
+-  cl_object r0;
++  cl_object r0 = ECL_NIL;
+   bit_operator op;
+   bool replace = FALSE;
+   int xi, yi, ri;
+--- src/c/printer/float_to_digits.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/printer/float_to_digits.d	2017-02-23 11:33:47.929290557 -0700
+@@ -176,7 +176,6 @@ change_precision(float_approx *approx, c
+     {
+       cl_object e1 = cl_expt(PRINT_BASE, position);
+       cl_object e2 = ecl_divide(e1, ecl_make_fixnum(2));
+-      cl_object e3 = cl_expt(PRINT_BASE, k); 
+       if (ecl_greatereq(ecl_plus(approx->r, ecl_times(approx->s, e1)),
+                         ecl_times(approx->s, e2)))
+         position = ecl_one_minus(position);
+--- src/c/serialize.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/serialize.d	2017-02-23 11:33:47.929290557 -0700
+@@ -114,7 +114,7 @@ fix_to_ptr(cl_object ptr)
+ static cl_object
+ enqueue(pool_t pool, cl_object what)
+ {
+-  cl_object record, index;
++  cl_object index;
+   if (ECL_FIXNUMP(what) || ECL_CHARACTERP(what) || what == OBJNULL) {
+     return what;
+   }
+--- src/c/unixfsys.d.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/c/unixfsys.d	2017-02-23 11:33:47.929290557 -0700
+@@ -478,7 +478,9 @@ ecl_file_len(int f)
+ 
+ @(defun rename-file (oldn newn &key (if_exists @':error'))
+   cl_object old_filename, new_filename, old_truename, new_truename;
++#ifdef ECL_MS_WINDOWS_HOST
+   int error;
++#endif
+   @
+ 
+   /* 1) Get the old filename, and complain if it has wild components,
+@@ -682,7 +684,10 @@ ecl_homedir_pathname(cl_object user)
+ {
+   cl_index i;
+   cl_object namestring;
+-  const char *h, *d;
++  const char *h;
++#ifdef ECL_MS_WINDOWS_HOST
++  const char *d;
++#endif
+   if (!Null(user)) {
+ #ifdef HAVE_PWD_H
+     struct passwd *pwent = NULL;
+--- src/h/ecl-inl.h.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/h/ecl-inl.h	2017-02-23 10:09:52.199082122 -0700
+@@ -119,10 +119,10 @@
+         static const cl_object name = (cl_object)(& name ## _data)
+ 
+ #define ecl_def_ct_vector(name,type,raw,len,static,const)               \
+-        static const struct ecl_vector name ## _data = {                 \
++        static const struct ecl_vector name ## _data = {                \
+                 (int8_t)t_vector, 0, (type), 0,                         \
+-                ECL_NIL, (cl_index)(len), (cl_index)(len),                 \
+-                ecl_cast_ptr(cl_object*,raw), 0 };                      \
++                ECL_NIL, (cl_index)(len), (cl_index)(len),              \
++                { ecl_cast_ptr(cl_object*,raw) }, 0 };                  \
+         static const cl_object name = (cl_object)(& name ## _data)
+ 
+ #ifdef ECL_SSE2
+--- src/h/stacks.h.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/h/stacks.h	2017-02-23 10:09:52.199082122 -0700
+@@ -390,7 +390,7 @@ extern ECL_API ecl_frame_ptr _ecl_frs_pu
+         } else {
+ 
+ #define ECL_UNWIND_PROTECT_EXIT \
+-        __unwinding=0; } \
++        __unwinding=0; __next_fr=NULL; } \
+         ecl_frs_pop(__the_env); \
+         __nr = ecl_stack_push_values(__the_env);
+ 
+--- src/Makefile.in.orig	2016-12-19 03:25:00.000000000 -0700
++++ src/Makefile.in	2017-02-23 12:18:42.610641001 -0700
+@@ -134,9 +134,9 @@ c/ecl/external.h: $(top_srcdir)/h/extern
+ # rsync updates of the source tree.
+ $(srcdir)/c/symbols_list2.h: $(srcdir)/c/symbols_list.h Makefile
+ 	cat $(srcdir)/c/symbols_list.h | \
+-	sed -e 's%{\([A-Z ]*.*".*"\),[^,]*,[ ]*NULL,.*}%{\1,NULL}%g' \
+-	    -e 's%{\([A-Z ]*.*".*"\),[^,]*,[ ]*\([^,]*\),.*}%{\1,"\2"}%g' \
+-	    -e 's%{NULL.*%{NULL,NULL}};%' | \
++	sed -e 's%{{\([A-Z ]*.*".*"\),[^,]*,[ ]*NULL,.*}}%{\1,NULL}%g' \
++	    -e 's%{{\([A-Z ]*.*".*"\),[^,]*,[ ]*\([^,]*\),.*}}%{\1,"\2"}%g' \
++	    -e 's%{{NULL.*%{NULL,NULL}};%' | \
+ 	sed -e 's%"\(IF_[A-Z0-9]*\)(\([^)]*\))"%\1("\2")%g' > tmp.h
+ 	mv tmp.h $@
+ 
