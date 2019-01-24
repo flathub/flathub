@@ -1,0 +1,78 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index db1d772..3e54b0d 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -36,7 +36,3 @@ gettext-rs = { version="0.4", features=["gettext-system"] }
+ crossbeam-deque = "0.7"
+ crossbeam-channel = "0.3"
+ human-panic = "1"
+-
+-[profile.release]
+-lto = true
+-codegen-units = 1
+diff --git a/src/main.rs b/src/main.rs
+index a2a0150..2d9649b 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -91,7 +91,7 @@ use gio::{ApplicationExt, ApplicationExtManual, ApplicationFlags, FileExt};
+ use glib::MainContext;
+ use gtk::Application;
+ use human_panic::setup_panic;
+-use log::{debug, info, warn};
++use log::{debug, error, info, warn};
+ use serde_json::{json, Value};
+ use std::cell::RefCell;
+ use std::env::args;
+@@ -128,7 +128,7 @@ fn main() {
+     application.connect_startup(clone!(shared_queue, core => move |application| {
+         debug!("{}", gettext("Starting gxi"));
+ 
+-        let xi_config = Config::new();
++        let (config_dir, xi_config) = Config::new();
+ 
+         // No need to gettext this, gettext doesn't work yet
+         match TextDomain::new("gxi")
+@@ -145,10 +145,8 @@ fn main() {
+             Err(TextDomainError::InvalidLocale(locale)) => warn!("Invalid locale {}", locale),
+         }
+ 
+-        let mut xi_config_dir = xi_config.path.clone();
+-        // Remove the file name from the config dir string (e.g. /home/rasmus/.config/gxi/preferences.xiconfig -> /home/rasmus/.config/gxi)
+-        xi_config_dir.truncate(xi_config_dir.rfind('/').unwrap_or_else(|| panic!("{}", gettext("Failed to set config dir!"))));
+-        core.client_started(&xi_config_dir, include_str!(concat!(env!("OUT_DIR"), "/plugin-dir.in")));
++        error!("config {}", &config_dir);
++        core.client_started(&config_dir, include_str!(concat!(env!("OUT_DIR"), "/plugin-dir.in")));
+ 
+         MainWin::new(
+             application,
+diff --git a/src/pref_storage.rs b/src/pref_storage.rs
+index ce3e0c2..882c145 100644
+--- a/src/pref_storage.rs
++++ b/src/pref_storage.rs
+@@ -69,7 +69,7 @@ impl Default for XiConfig {
+ }
+ 
+ impl Config {
+-    pub fn new() -> Self {
++    pub fn new() -> (String, Self) {
+         if let Some(user_config_dir) = dirs::config_dir() {
+             let config_dir = user_config_dir.join("gxi");
+             std::fs::create_dir_all(&config_dir)
+@@ -131,7 +131,7 @@ impl Config {
+                 xi_config
+             };
+ 
+-            xi_config
++            (format!("{:?}", config_dir), xi_config)
+         } else {
+             error!(
+                 "{}",
+@@ -163,7 +163,7 @@ impl Config {
+                 .save()
+                 .unwrap_or_else(|e| error!("{}", e.to_string()));
+ 
+-            xi_config
++            (format!("{:?}", config_dir), xi_config)
+         }
+     }
+ 
