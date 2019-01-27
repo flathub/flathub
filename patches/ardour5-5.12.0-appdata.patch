@@ -1,0 +1,228 @@
+From 8263dacdbd61cda253df68a15c60487e630b7391 Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@tiptoe.de>
+Date: Sat, 13 Aug 2016 14:38:28 +0200
+Subject: [PATCH 1/3] AppData release tags need a date to be valid
+
+Or a timestamp, but that's deprecated. Create it from the last commit,
+store it in/retrieve it from revision.cc and substitute it in the
+template.
+
+https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#tag-releases
+---
+ gtk2_ardour/ardour.appdata.xml.in.in |  2 +-
+ gtk2_ardour/wscript                  |  1 +
+ wscript                              | 44 ++++++++++++++++++++++++------------
+ 3 files changed, 32 insertions(+), 15 deletions(-)
+
+diff --git a/gtk2_ardour/ardour.appdata.xml.in.in b/gtk2_ardour/ardour.appdata.xml.in.in
+index 1b2b940fb..9b8421a29 100644
+--- a/gtk2_ardour/ardour.appdata.xml.in.in
++++ b/gtk2_ardour/ardour.appdata.xml.in.in
+@@ -5,7 +5,7 @@
+   <project_license>GPL-2.0+</project_license>
+   <name>Ardour</name>
+   <releases>
+-    <release version="@VERSION@" />
++    <release version="@VERSION@" date="@DATE@" />
+   </releases>
+   <summary>Digital Audio Workstation</summary>
+   <description>
+diff --git a/gtk2_ardour/wscript b/gtk2_ardour/wscript
+index d3824a0a6..67837fbe5 100644
+--- a/gtk2_ardour/wscript
++++ b/gtk2_ardour/wscript
+@@ -830,6 +830,7 @@ def build(bld):
+                     'ARDOUR_EXEC' : str (bld.env['lwrcase_dirname']),
+                     'ARDOUR_ICON' : str (bld.env['lwrcase_dirname']),
+                     'VERSION': str (bld.env['VERSION']),
++                    'DATE': str (bld.env['DATE']),
+     }
+ 
+     if bld.env['FREEDESKTOP']:
+diff --git a/wscript b/wscript
+index 4b5acb0ad..45e546108 100644
+--- a/wscript
++++ b/wscript
+@@ -147,25 +147,35 @@ clang_darwin_dict['cxx-strict'] = [ '-ansi', '-Wnon-virtual-dtor', '-Woverloaded
+ clang_darwin_dict['full-optimization'] = [ '-O3', '-ffast-math']
+ compiler_flags_dictionaries['clang-darwin'] = clang_darwin_dict;
+ 
+-def fetch_git_revision ():
+-    cmd = "git describe HEAD | sed 's/^[A-Za-z0-9]*+//'"
+-    output = subprocess.Popen(cmd, shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0].splitlines()
+-    rev = output[0].decode ('utf-8')
+-    return rev
++def fetch_git_revision_date ():
++    cmd = ["git", "describe", "HEAD"]
++    output = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0].splitlines()
++    rev = re.sub(r"^[A-Za-z0-9]*\+", "", output[0].decode('utf-8'))
++
++    cmd = ["git", "log", "-1", "--pretty=format:%ci", "HEAD"]
++    output = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0].splitlines()
++    date = output[0].decode('utf-8').split(None, 2)[0]
++
++    return rev, date
+ 
+-def fetch_tarball_revision ():
++def fetch_tarball_revision_date():
+     if not os.path.exists ('libs/ardour/revision.cc'):
+         print ('This tarball was not created correctly - it is missing libs/ardour/revision.cc')
+         sys.exit (1)
+     with open('libs/ardour/revision.cc', 'rb') as f:
+         content = f.readlines()
+         remove_punctuation_map = dict((ord(char), None) for char in '";')
+-        return content[1].decode('utf-8').strip().split(' ')[7].translate (remove_punctuation_map)
++        raw_line_tokens = content[1].decode('utf-8').strip().split(' ')
++
++        rev = raw_line_tokens[7].translate(remove_punctuation_map)
++        date = raw_line_tokens[12].translate(remove_punctuation_map)
++
++        return rev, date
+ 
+ if os.path.isdir (os.path.join(os.getcwd(), '.git')):
+-    rev = fetch_git_revision ()
++    rev, rev_date = fetch_git_revision_date()
+ else:
+-    rev = fetch_tarball_revision ()
++    rev, rev_date = fetch_tarball_revision_date()
+ 
+ #
+ # rev is now of the form MAJOR.MINOR[-rcX]-rev-commit
+@@ -279,7 +289,7 @@ def fetch_gcc_version (CC):
+ def create_stored_revision():
+     rev = ""
+     if os.path.exists('.git'):
+-        rev = fetch_git_revision();
++        rev, rev_date = fetch_git_revision_date();
+         print("Git version: " + rev + "\n")
+     elif os.path.exists('libs/ardour/revision.cc'):
+         print("Using packaged revision")
+@@ -290,12 +300,16 @@ def create_stored_revision():
+ 
+     try:
+         #
+-        # if you change the format of this, be sure to fix fetch_tarball_revision() above
+-        # so that  it still works.
++        # if you change the format of this, be sure to fix fetch_tarball_revision_date()
++        # above so that  it still works.
+         #
+         text =  '#include "ardour/revision.h"\n'
+-        text += 'namespace ARDOUR { const char* revision = \"%s\"; }\n' % rev
+-        print('Writing revision info to libs/ardour/revision.cc using ' + rev)
++        text += (
++            'namespace ARDOUR { '
++                'const char* revision = \"%s\"; '
++                'const char* date = \"%s\"; }\n'
++        ) % (rev, rev_date)
++        print('Writing revision info to libs/ardour/revision.cc using ' + rev + ', ' + rev_date)
+         o = open('libs/ardour/revision.cc', 'w')
+         o.write(text)
+         o.close()
+@@ -1319,6 +1333,8 @@ const char* const ardour_config_info = "\\n\\
+ def build(bld):
+     create_stored_revision()
+ 
++    bld.env['DATE'] = rev_date
++
+     # add directories that contain only headers, to workaround an issue with waf
+ 
+     if not bld.is_defined('USE_EXTERNAL_LIBS'):
+-- 
+2.13.5
+
+
+From 96fb9a6d5e57d50d3afe26a94dd6aee9596c3e6b Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@tiptoe.de>
+Date: Thu, 6 Oct 2016 09:49:00 +0200
+Subject: [PATCH 2/3] generate revision.cc with one item per line
+
+---
+ wscript | 16 +++++++++-------
+ 1 file changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/wscript b/wscript
+index 45e546108..4c761709d 100644
+--- a/wscript
++++ b/wscript
+@@ -165,10 +165,12 @@ def fetch_tarball_revision_date():
+     with open('libs/ardour/revision.cc', 'rb') as f:
+         content = f.readlines()
+         remove_punctuation_map = dict((ord(char), None) for char in '";')
+-        raw_line_tokens = content[1].decode('utf-8').strip().split(' ')
+ 
+-        rev = raw_line_tokens[7].translate(remove_punctuation_map)
+-        date = raw_line_tokens[12].translate(remove_punctuation_map)
++        raw_line_tokens = content[2].decode('utf-8').strip().split(' ')
++        rev = raw_line_tokens[4].translate(remove_punctuation_map)
++
++        raw_line_tokens = content[3].decode('utf-8').strip().split(' ')
++        date = raw_line_tokens[4].translate(remove_punctuation_map)
+ 
+         return rev, date
+ 
+@@ -305,10 +307,10 @@ def create_stored_revision():
+         #
+         text =  '#include "ardour/revision.h"\n'
+         text += (
+-            'namespace ARDOUR { '
+-                'const char* revision = \"%s\"; '
+-                'const char* date = \"%s\"; }\n'
+-        ) % (rev, rev_date)
++            'namespace ARDOUR {\n'
++            '    const char* revision = \"%s\";\n'
++            '    const char* date = \"%s\";\n'
++            '}\n') % (rev, rev_date)
+         print('Writing revision info to libs/ardour/revision.cc using ' + rev + ', ' + rev_date)
+         o = open('libs/ardour/revision.cc', 'w')
+         o.write(text)
+-- 
+2.13.5
+
+
+From 047c612be873bb3c8a4f735ffec1d44280c55a6a Mon Sep 17 00:00:00 2001
+From: Guido Aulisi <guido.aulisi@gmail.com>
+Date: Sun, 21 May 2017 12:31:12 +0200
+Subject: [PATCH 3/3] AppData: 'revision' in revision.cc is expected in the 2nd
+ line
+
+Signed-off-by: Nils Philippsen <nils@tiptoe.de>
+---
+ wscript | 15 ++++++---------
+ 1 file changed, 6 insertions(+), 9 deletions(-)
+
+diff --git a/wscript b/wscript
+index 4c761709d..80382d87b 100644
+--- a/wscript
++++ b/wscript
+@@ -166,11 +166,9 @@ def fetch_tarball_revision_date():
+         content = f.readlines()
+         remove_punctuation_map = dict((ord(char), None) for char in '";')
+ 
+-        raw_line_tokens = content[2].decode('utf-8').strip().split(' ')
+-        rev = raw_line_tokens[4].translate(remove_punctuation_map)
+-
+-        raw_line_tokens = content[3].decode('utf-8').strip().split(' ')
+-        date = raw_line_tokens[4].translate(remove_punctuation_map)
++        raw_line_tokens = content[1].decode('utf-8').strip().split(' ')
++        rev = raw_line_tokens[7].translate(remove_punctuation_map)
++        date = raw_line_tokens[12].translate(remove_punctuation_map)
+ 
+         return rev, date
+ 
+@@ -307,10 +305,9 @@ def create_stored_revision():
+         #
+         text =  '#include "ardour/revision.h"\n'
+         text += (
+-            'namespace ARDOUR {\n'
+-            '    const char* revision = \"%s\";\n'
+-            '    const char* date = \"%s\";\n'
+-            '}\n') % (rev, rev_date)
++            'namespace ARDOUR { const char* revision = \"%s\"; '
++            'const char* date = \"%s\"; }\n'
++        ) % (rev, rev_date)
+         print('Writing revision info to libs/ardour/revision.cc using ' + rev + ', ' + rev_date)
+         o = open('libs/ardour/revision.cc', 'w')
+         o.write(text)
+-- 
+2.13.5
+
