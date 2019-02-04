@@ -1,0 +1,136 @@
+diff -Naur gImageReader-3.3.0.orig/gtk/data/appmenu2.ui gImageReader-3.3.0/gtk/data/appmenu2.ui
+--- gImageReader-3.3.0.orig/gtk/data/appmenu2.ui	1970-01-01 01:00:00.000000000 +0100
++++ gImageReader-3.3.0/gtk/data/appmenu2.ui	2019-02-02 16:45:14.237768682 +0100
+@@ -0,0 +1,36 @@
++<?xml version="1.0"?>
++<interface>
++	<!-- interface-requires gtk+ 3.0 -->
++	<menu id="appmenu2">
++		<section>
++			<item>
++				<attribute name="label" translatable="yes">Redetect Languages</attribute>
++				<attribute name="action">app.redetectLangs</attribute>
++			</item>
++			<!--
++			<item>
++				<attribute name="label" translatable="yes">Manage Languages</attribute>
++				<attribute name="action">app.manageLangs</attribute>
++			</item>
++			-->
++			<item>
++				<attribute name="label" translatable="yes">Preferences</attribute>
++				<attribute name="action">app.preferences</attribute>
++			</item>
++		</section>
++		<section>
++			<item>
++				<attribute name="label" translatable="yes">Help</attribute>
++				<attribute name="action">app.help</attribute>
++			</item>
++			<item>
++				<attribute name="label" translatable="yes">About</attribute>
++				<attribute name="action">app.about</attribute>
++			</item>
++			<item>
++				<attribute name="label" translatable="yes">Quit</attribute>
++				<attribute name="action">app.quit</attribute>
++			</item>
++		</section>
++	</menu>
++</interface>
+diff -Naur gImageReader-3.3.0.orig/gtk/data/gimagereader.gresource.xml gImageReader-3.3.0/gtk/data/gimagereader.gresource.xml
+--- gImageReader-3.3.0.orig/gtk/data/gimagereader.gresource.xml	2018-09-26 23:06:06.000000000 +0200
++++ gImageReader-3.3.0/gtk/data/gimagereader.gresource.xml	2019-02-02 16:42:41.940986759 +0100
+@@ -4,6 +4,7 @@
+ 		<file preprocess="xml-stripblanks" compressed="true">CrashHandler.ui</file>
+ 		<file preprocess="xml-stripblanks" compressed="true">MainWindow.ui</file>
+ 		<file preprocess="xml-stripblanks" compressed="true">appmenu.ui</file>
++		<file preprocess="xml-stripblanks" compressed="true">appmenu2.ui</file>
+ 		<file preprocess="xml-stripblanks" compressed="true">ConfigDialog.ui</file>
+ 		<file preprocess="xml-stripblanks" compressed="true">TessdataManager.ui</file>
+ 		<file preprocess="xml-stripblanks" compressed="true">OutputEditorText.ui</file>
+diff -Naur gImageReader-3.3.0.orig/gtk/src/Application.hh gImageReader-3.3.0/gtk/src/Application.hh
+--- gImageReader-3.3.0.orig/gtk/src/Application.hh	2018-09-26 23:06:06.000000000 +0200
++++ gImageReader-3.3.0/gtk/src/Application.hh	2019-02-03 02:26:26.986349967 +0100
+@@ -42,28 +42,31 @@
+ 
+ 		add_action("redetectLangs", [this] { m_mainWindow->redetectLanguages(); });
+ 		add_action("manageLangs", [this] { m_mainWindow->manageLanguages(); });
+-		add_action("preferences", [this] { m_mainWindow->showConfig(); });
++		add_action("preferences", [this] { m_mainWindow->showConfig(); setup_menu(); });
+ 		add_action("help", [this] { m_mainWindow->showHelp(); });
+ 		add_action("about", [this] { m_mainWindow->showAbout(); });
+ 		add_action("quit", [this] { on_quit(); });
+ 
+ 		Glib::RefPtr<Gtk::Builder> appMenuBuilder = Gtk::Builder::create_from_resource("/org/gnome/gimagereader/appmenu.ui");
+-		Glib::RefPtr<Gio::MenuModel> menuModel = Glib::RefPtr<Gio::MenuModel>::cast_static(appMenuBuilder->get_object("appmenu"));
++		Glib::RefPtr<Gtk::Builder> appMenuBuilder2 = Gtk::Builder::create_from_resource("/org/gnome/gimagereader/appmenu2.ui");
++		m_menu_model_1 = Glib::RefPtr<Gio::MenuModel>::cast_static(appMenuBuilder->get_object("appmenu"));
++		m_menu_model_2 = Glib::RefPtr<Gio::MenuModel>::cast_static(appMenuBuilder2->get_object("appmenu2"));
+ 
+-		bool appMenu = false;
++		m_app_menu = false;
+ #if GTK_CHECK_VERSION(3,14,0)
+-		appMenu = prefers_app_menu();
++		m_app_menu = prefers_app_menu();
+ #endif
+-		if(appMenu) {
+-			set_app_menu(menuModel);
++		if(m_app_menu) {
++			set_app_menu(m_menu_model_1);
+ 		}
+ 
+ 		g_assert(m_mainWindow == nullptr);
+ 		m_mainWindow = new MainWindow();
+ 		CONNECT(m_mainWindow->getWindow(), hide, [this] { on_quit(); });
+-		if(!appMenu) {
+-			m_mainWindow->setMenuModel(menuModel);
++		if(!m_app_menu) {
++			m_mainWindow->setMenuModel(m_menu_model_1);
+ 		}
++		setup_menu();
+ 		add_window(*m_mainWindow->getWindow());
+ 		m_mainWindow->getWindow()->show();
+ 	}
+@@ -81,8 +84,30 @@
+ 		}
+ 	}
+ 
++	void setup_menu(Glib::RefPtr<Gio::MenuModel>& menuModel) {
++		if (m_app_menu) {
++			set_app_menu(menuModel);
++		} else {
++			if (m_mainWindow != nullptr) {
++				m_mainWindow->setMenuModel(menuModel);
++			}
++		}
++	}
++
++	void setup_menu() {
++		if (m_mainWindow != nullptr && m_mainWindow->getConfig()->useSystemDataLocations()) {
++			setup_menu(m_menu_model_2);
++		} else {
++			setup_menu(m_menu_model_1);
++		}
++	}
++
+ 	MainWindow* m_mainWindow = nullptr;
+ 	ClassData m_classdata;
++
++	bool m_app_menu = false;
++	Glib::RefPtr<Gio::MenuModel> m_menu_model_1;
++	Glib::RefPtr<Gio::MenuModel> m_menu_model_2;
+ };
+ 
+ #endif // APPLICATION_HPP
+diff -Naur gImageReader-3.3.0.orig/po/POTFILES.in gImageReader-3.3.0/po/POTFILES.in
+--- gImageReader-3.3.0.orig/po/POTFILES.in	2018-09-26 23:06:06.000000000 +0200
++++ gImageReader-3.3.0/po/POTFILES.in	2019-02-02 16:42:35.621912823 +0100
+@@ -2,6 +2,7 @@
+ 
+ data/gimagereader.desktop.in
+ [type: gettext/glade]gtk/data/appmenu.ui
++[type: gettext/glade]gtk/data/appmenu2.ui
+ [type: gettext/glade]gtk/data/ConfigDialog.ui
+ [type: gettext/glade]gtk/data/CrashHandler.ui
+ [type: gettext/glade]gtk/data/MainWindow.ui

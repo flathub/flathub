@@ -1,0 +1,47 @@
+From 718d428984e3a84fda521c0f5e6d975c7390af2b Mon Sep 17 00:00:00 2001
+From: Marek Kasik <mkasik@redhat.com>
+Date: Fri, 6 Apr 2018 15:06:46 +0200
+Subject: [PATCH] cairo: Fix tiling patterns when pattern cell is too far
+
+Rendering of tiling pattern which has pattern matrix moving pattern cell
+far away can fail on allocation of memory. This commit solves the issue by
+modifying of cairo pattern matrix so that its offset is closer to the path
+filled by the pattern.
+
+https://bugs.freedesktop.org/show_bug.cgi?id=105905
+---
+ poppler/CairoOutputDev.cc | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/poppler/CairoOutputDev.cc b/poppler/CairoOutputDev.cc
+index 631ab27b..b2e730bf 100644
+--- a/poppler/CairoOutputDev.cc
++++ b/poppler/CairoOutputDev.cc
+@@ -915,6 +915,8 @@ GBool CairoOutputDev::tilingPatternFill(GfxState *state, Gfx *gfxA, Catalog *cat
+   StrokePathClip *strokePathTmp;
+   bool adjusted_stroke_width_tmp;
+   cairo_pattern_t *maskTmp;
++  double xoffset, yoffset;
++  double det;
+ 
+   width = bbox[2] - bbox[0];
+   height = bbox[3] - bbox[1];
+@@ -976,6 +978,15 @@ GBool CairoOutputDev::tilingPatternFill(GfxState *state, Gfx *gfxA, Catalog *cat
+   if (cairo_pattern_status (pattern))
+     return false;
+ 
++  det = pmat[0] * pmat[3] - pmat[1] * pmat[2];
++  if (fabs(det) < 0.000001)
++    return false;
++
++  xoffset = round ((pmat[3] * pmat[4] - pmat[2] * pmat[5]) / (xStep * det));
++  yoffset = - round ((pmat[1] * pmat[4] - pmat[0] * pmat[5]) / (yStep * det));
++  pattern_matrix.x0 -= xoffset * pattern_matrix.xx * xStep + yoffset * pattern_matrix.xy * yStep;
++  pattern_matrix.y0 -= xoffset * pattern_matrix.yx * xStep + yoffset * pattern_matrix.yy * yStep;
++
+   state->getUserClipBBox(&xMin, &yMin, &xMax, &yMax);
+   cairo_rectangle (cairo, xMin, yMin, xMax - xMin, yMax - yMin);
+ 
+-- 
+2.14.3
+
