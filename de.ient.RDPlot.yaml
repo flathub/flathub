@@ -1,22 +1,93 @@
 app-id: de.ient.RDPlot
 runtime: org.kde.Platform
-runtime-version: '5.10'
+runtime-version: '5.11'
 sdk: org.kde.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.gfortran-62
 command: rdplot
 finish-args:
-  - --socket=wayland
-  - --socket=x11
   - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=host
+  - --filesystem=xdg-config/kdeglobals:ro
+  - --env=PYTHONPATH=/app/lib/python3/dist-packages
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/aclocal
+  - /share/pkgconfig
+  - /share/info
+  - /share/man
+  - /cmake
+  - '*.a'
+  - '*.la'
+  - '*.cmake'
+
+
+
 build-options:
   append-path: "/usr/lib/sdk/gfortran-62/bin"
+#  env:
+#    PYTHON: "/usr/bin/python3"
+#    PIP: "/usr/bin/pip3"
+#    PYTHONPATH: /app/lib/python3.5/site-packages	
+
 modules:
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --bindir=/app/bin
+        --destdir=/app/lib/python3/dist-packages
+        --incdir=/app/include/python3
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3/dist-packages
+        --sip-module=PyQt5.sip
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /bin
+    sources:
+ #     - type: archive
+ #       url: https://downloads.sourceforge.net/projects/pyqt/sip/sip-4.19.13/sip-4.19.13.tar.gz
+ #       sha256: e353a7056599bf5fbd5d3ff9842a6ab2ea3cf4e0304a0f925ec5862907c0d15e
+      - type: archive
+        path: sip-4.19.13.tar.gz
+        sha256: e353a7056599bf5fbd5d3ff9842a6ab2ea3cf4e0304a0f925ec5862907c0d15e
+
+  - name: pyqt
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --confirm-license
+        --sip-incdir=/app/include/python3
+        --bindir=/app/bin
+        --destdir=/app/lib/python3/dist-packages
+        --designer-plugindir=/app/lib/plugins/designer
+        --qml-plugindir=/app/lib/plugins/PyQt5
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3/dist-packages/PyQt5
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /bin
+    sources:
+#      - type: archive
+#        url: https://downloads.sourceforge.net/projects/pyqt/PyQt5/PyQt-5.11.3/PyQt5_gpl-5.11.3.tar.gz
+#        sha256: c9b57d15601d436faf35dacf8e0acefa220194829a653e771e80b189b3261073
+      - type: archive
+        path: PyQt5_gpl-5.11.3.tar.gz
+        sha256: c9b57d15601d436faf35dacf8e0acefa220194829a653e771e80b189b3261073
+
+
   - name: gfortran
     buildsystem: simple
     build-commands:
       - "/usr/lib/sdk/gfortran-62/install.sh"
-
   - name: lapack
     buildsystem: cmake
     builddir: true
@@ -37,7 +108,7 @@ modules:
   - name: python3-numpy
     buildsystem: simple
     build-commands:
-      - python3 setup.py build -j $FLATPAK_BUILDER_N_JOBS
+      - python3 setup.py build -j 0
       - python3 setup.py install --prefix=/app --root=/ --optimize=1
     build-options:
       env:
@@ -105,25 +176,46 @@ modules:
   #       url: https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.8/sip-4.19.8.tar.gz
   #       sha256: 7eaf7a2ea7d4d38a56dd6d2506574464bddf7cf284c960801679942377c297bc
   
+  # - name: sip
+  #   sources:
+  #     - type: archive
+  #       url: https://src.fedoraproject.org/repo/pkgs/rpms/sip/sip-4.19.12.tar.gz/sha512/9b9680172357aaf4a1ebc3bf1f4d2badaaa8643e50665fed6e17d27283a499ceac56c4f1db190de4d9516c8f0f794159485cc6f8fd68daafcbe1ccac85161972/sip-4.19.12.tar.gz
+  #       sha256: 24617fc31b983df075500ecac0e99d2fb48bf63ba82d4a17518659e571923822
+  #     - type: file
+  #       path: sip-configure
+  #       dest-filename: configure
+  #   cleanup:
+  #     - "/bin"
+  #     - "/include"
+  
+  # - name: pyqt
+  #   sources:
+  #     - type: archive
+  #       url: https://src.fedoraproject.org/repo/pkgs/rpms/python-qt5/PyQt5_gpl-5.10.1.tar.gz/sha512/04cd0292f7a088f9c0d088d7c73ec96cfc40253f771dfdf194eb92be7635e6fcaf04863fa24215e9c34a096658549bb2feeb8d8fdca1e39ed87f0256ef0f790b/PyQt5_gpl-5.10.1.tar.gz
+  #       sha256: 9932e971e825ece4ea08f84ad95017837fa8f3f29c6b0496985fa1093661e9ef
+  #     - type: file
+  #       path: pyqt-configure
+  #       dest-filename: configure
+  #   cleanup:
+  #     - "/bin"
 
+  # - name: sip # for pyqt
+  #   buildsystem: simple
+  #   build-commands:
+  #     - pip3 install --prefix=/app sip-4.19.8-cp35-cp35m-manylinux1_x86_64.whl
+  #   sources:
+  #     - type: file
+  #       url: https://files.pythonhosted.org/packages/6b/46/2869369c8ec634ec9dc714b84834e9264acbe87eb7492328efccfa0c855e/sip-4.19.8-cp35-cp35m-manylinux1_x86_64.whl
+  #       sha256: e72955e12f4fccf27aa421be383453d697b8a44bde2cc26b08d876fd492d0174
 
-  - name: sip # for pyqt
-    buildsystem: simple
-    build-commands:
-      - pip3 install --prefix=/app sip-4.19.8-cp35-cp35m-manylinux1_x86_64.whl
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/6b/46/2869369c8ec634ec9dc714b84834e9264acbe87eb7492328efccfa0c855e/sip-4.19.8-cp35-cp35m-manylinux1_x86_64.whl
-        sha256: e72955e12f4fccf27aa421be383453d697b8a44bde2cc26b08d876fd492d0174
-
-  - name: PyQt5-wheel
-    buildsystem: simple
-    build-commands:
-      - pip3 install --prefix=/app PyQt5-5.10.1-5.10.1-cp35.cp36.cp37.cp38-abi3-manylinux1_x86_64.whl
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/e4/15/4e2e49f64884edbab6f833c6fd3add24d7938f2429aec1f2883e645d4d8f/PyQt5-5.10.1-5.10.1-cp35.cp36.cp37.cp38-abi3-manylinux1_x86_64.whl
-        sha256: 1e652910bd1ffd23a3a48c510ecad23a57a853ed26b782cd54b16658e6f271ac
+  # - name: PyQt5-wheel
+  #   buildsystem: simple
+  #   build-commands:
+  #     - pip3 install --prefix=/app PyQt5-5.10.1-5.10.1-cp35.cp36.cp37.cp38-abi3-manylinux1_x86_64.whl
+  #   sources:
+  #     - type: file
+  #       url: https://files.pythonhosted.org/packages/e4/15/4e2e49f64884edbab6f833c6fd3add24d7938f2429aec1f2883e645d4d8f/PyQt5-5.10.1-5.10.1-cp35.cp36.cp37.cp38-abi3-manylinux1_x86_64.whl
+  #       sha256: 1e652910bd1ffd23a3a48c510ecad23a57a853ed26b782cd54b16658e6f271ac
 
 
   - python3-setuptools-scm.json
@@ -144,8 +236,10 @@ modules:
     buildsystem: simple
     sources:
       - type: git
-        url: https://github.com/IENT/RDPlot.git
-        commit: 3c8a530e2c2c5d1119b1374015b0f8cfe2879127
+#        url: https://github.com/IENT/RDPlot.git
+        path: /home/sauer/Software/rd-plot-gui
+#        commit: 3c8a530e2c2c5d1119b1374015b0f8cfe2879127
+        branch: flatpak-dev
       - type: file
         path: de.ient.RDPlot.desktop
       - type: file
@@ -159,6 +253,6 @@ modules:
       - install -Dm644 src/rdplot/logo/PLOT128.png    /app/share/icons/hicolor/128x128/apps/de.ient.RDPlot.png
       - install -Dm644 src/rdplot/logo/PLOT256.png    /app/share/icons/hicolor/256x256/apps/de.ient.RDPlot.png
       - install -Dm644 src/rdplot/logo/PLOT512.png    /app/share/icons/hicolor/512x512/apps/de.ient.RDPlot.png
-      - install -Dm644 src/rdplot/logo/PLOT1024.png   /app/share/icons/hicolor/1024x1024/apps/de.ient.RDPlot.png
+#      - install -Dm644 src/rdplot/logo/PLOT1024.png   /app/share/icons/hicolor/1024x1024/apps/de.ient.RDPlot.png
       - install -Dm644 de.ient.RDPlot.desktop         /app/share/applications/de.ient.RDPlot.desktop
       - install -Dm644 de.ient.RDPlot.appdata.xml     /app/share/metainfo/de.ient.RDPlot.appdata.xml
