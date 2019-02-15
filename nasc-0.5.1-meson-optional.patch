@@ -1,0 +1,423 @@
+From 989bff9a4cff609d98e564e33e1016762633ffde Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Fri, 15 Feb 2019 21:39:55 +0100
+Subject: [PATCH] Port to Meson
+
+Based on #98
+https://github.com/parnold-x/nasc/pull/98
+
+Fixes:
+1. Fix dependencies for libqalculatenasc
+https://github.com/parnold-x/nasc/pull/98#issuecomment-438664227
+
+2. Remove header files from meson.build
+https://github.com/parnold-x/nasc/pull/98#discussion_r234801513
+
+3. Get rid of get_option('prefix') from install_dir
+https://github.com/parnold-x/nasc/pull/98#discussion_r239734092
+
+4. Make Meson optional
+Do not remove CMake
+---
+ README.md                    |  16 ++++-
+ compile_meson.txt            |   3 +
+ data/meson.build             |  32 ++++++++++
+ debian_meson/changelog       |   8 +++
+ debian_meson/compat          |   1 +
+ debian_meson/control         |  22 +++++++
+ debian_meson/copyright       |  24 ++++++++
+ debian_meson/rules           |  13 ++++
+ debian_meson/source/format   |   1 +
+ icons/meson.build            |   9 +++
+ libqalculatenasc/meson.build |  10 ++++
+ meson.build                  | 113 +++++++++++++++++++++++++++++++++++
+ meson/post_install.py        |  22 +++++++
+ recompile_meson.sh           |   8 +++
+ 14 files changed, 279 insertions(+), 3 deletions(-)
+ create mode 100644 compile_meson.txt
+ create mode 100644 data/meson.build
+ create mode 100644 debian_meson/changelog
+ create mode 100644 debian_meson/compat
+ create mode 100644 debian_meson/control
+ create mode 100644 debian_meson/copyright
+ create mode 100644 debian_meson/rules
+ create mode 100644 debian_meson/source/format
+ create mode 100644 icons/meson.build
+ create mode 100644 libqalculatenasc/meson.build
+ create mode 100644 meson.build
+ create mode 100644 meson/post_install.py
+ create mode 100644 recompile_meson.sh
+
+diff --git a/README.md b/README.md
+index e9ab024..5289ab3 100644
+--- a/README.md
++++ b/README.md
+@@ -32,11 +32,21 @@ Dependencies:
+ * libqalculate
+ * gtksourceview-3.0 
+ * gthread-2.0
+- 
+-then build with:
+- 
++
++Supported build systems:
++* cmake 2.8
++* meson
++
++### Building with cmake
+ ```
+ mkdir build/ && cd build
+ cmake -DCMAKE_INSTALL_LIBDIR=/usr/lib -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+ make && sudo make install
+ ```
++
++### Building with meson
++```
++meson build --prefix=/usr
++cd build
++ninja && sudo ninja install
++```
+diff --git a/compile_meson.txt b/compile_meson.txt
+new file mode 100644
+index 0000000..35c6d5b
+--- /dev/null
++++ b/compile_meson.txt
+@@ -0,0 +1,3 @@
++meson build --prefix=/usr
++
++ninja -C build
+diff --git a/data/meson.build b/data/meson.build
+new file mode 100644
+index 0000000..0f7eb87
+--- /dev/null
++++ b/data/meson.build
+@@ -0,0 +1,32 @@
++install_data(
++    meson.project_name() + '.appdata.xml',
++    install_dir: join_paths(get_option('datadir'), 'metainfo')
++)
++
++install_data(
++    meson.project_name() + '.desktop',
++    install_dir: join_paths(get_option('datadir'), 'applications')
++)
++
++install_data(
++    meson.project_name() + '.gschema.xml',
++    install_dir: schemadir,
++)
++
++#install_data(
++#    'datasets/country.xml',
++#    'datasets/datasetsNasc.xml',
++#    install_dir: join_paths(get_option('datadir'), 'qalculate')
++#)
++
++install_data(
++    'styles/def.lang',
++    'styles/language.dtd',
++    'styles/language.rng',
++    'styles/language2.rng',
++    'styles/nasc.lang',
++    'styles/nasc.xml',
++    'styles/styles.rng',
++    install_dir: style_dir
++)
++
+diff --git a/debian_meson/changelog b/debian_meson/changelog
+new file mode 100644
+index 0000000..2f62c82
+--- /dev/null
++++ b/debian_meson/changelog
+@@ -0,0 +1,8 @@
++com.github.parnold-x.nasc (0.4) UNSTABLE; urgency=low
++
++  * update appdata.xml
++  * Move to github
++  * Redesign
++  * Initial release.
++
++ -- Peter Arnold <parnold1@gmail.com>  Wed, 03 May 2017 22:31:16 +0100
+diff --git a/debian_meson/compat b/debian_meson/compat
+new file mode 100644
+index 0000000..f599e28
+--- /dev/null
++++ b/debian_meson/compat
+@@ -0,0 +1 @@
++10
+diff --git a/debian_meson/control b/debian_meson/control
+new file mode 100644
+index 0000000..1658b4f
+--- /dev/null
++++ b/debian_meson/control
+@@ -0,0 +1,22 @@
++Source: com.github.parnold-x.nasc
++Section: misc
++Priority: optional
++Maintainer: Peter Arnold <parnold1@gmail.com>
++Build-Depends: meson,
++               debhelper (>= 10.5.1),
++               libgcc1,
++               libqalculate-dev,
++               libgee-0.8-dev,
++               libsoup2.4-dev,
++               libglib2.0-dev (>= 2.29.0),
++               libgranite-dev (>= 0.3.0),
++               libgtk-3-dev (>=3.12),
++               libgtksourceview-3.0-dev (>=3.10),
++               valac
++Standards-Version: 4.1.1
++
++Package: com.github.parnold-x.nasc
++Architecture: any
++Depends: ${misc:Depends}, ${shlibs:Depends}, libqalculate-dev
++Pre-Depends: dpkg (>= 1.15.6)
++Description: Do maths like a normal person.
+diff --git a/debian_meson/copyright b/debian_meson/copyright
+new file mode 100644
+index 0000000..97afda9
+--- /dev/null
++++ b/debian_meson/copyright
+@@ -0,0 +1,24 @@
++Format: http://dep.debian.net/deps/dep5
++Upstream-Name: NaSC
++Source: https://github.com/parnold-x/nasc/tree/master
++
++Files: *
++Copyright: 2015 Peter Arnold
++License: GPL-3.0+
++
++License: GPL-3.0+
++ This program is free software: you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation, either version 3 of the License, or
++ (at your option) any later version.
++ .
++ This package is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ GNU General Public License for more details.
++ .
++ You should have received a copy of the GNU General Public License
++ along with this program. If not, see <http://www.gnu.org/licenses/>.
++ .
++ On Debian systems, the complete text of the GNU General
++ Public License version 3 can be found in "/usr/share/common-licenses/GPL-3".
+diff --git a/debian_meson/rules b/debian_meson/rules
+new file mode 100644
+index 0000000..f82cad8
+--- /dev/null
++++ b/debian_meson/rules
+@@ -0,0 +1,13 @@
++#!/usr/bin/make -f
++# -*- makefile -*-
++# Sample debian/rules that uses debhelper.
++# This file was originally written by Joey Hess and Craig Small.
++# As a special exception, when this file is copied by dh-make into a
++# dh-make output file, you may use that output file without restriction.
++# This special exception was added by Craig Small in version 0.37 of dh-make.
++
++# Uncomment this to turn on verbose mode.
++#export DH_VERBOSE=1
++
++%:
++	dh $@ --buildsystem=meson
+diff --git a/debian_meson/source/format b/debian_meson/source/format
+new file mode 100644
+index 0000000..89ae9db
+--- /dev/null
++++ b/debian_meson/source/format
+@@ -0,0 +1 @@
++3.0 (native)
+diff --git a/icons/meson.build b/icons/meson.build
+new file mode 100644
+index 0000000..937c56e
+--- /dev/null
++++ b/icons/meson.build
+@@ -0,0 +1,9 @@
++sizes = ['16', '24', '32', '48', '64', '128']
++
++foreach size : sizes
++    install_data(
++        join_paths(size, meson.project_name() + '.svg'),
++        install_dir: join_paths(iconsdir, 'hicolor', size + 'x' + size, 'apps')
++    )
++endforeach
++
+diff --git a/libqalculatenasc/meson.build b/libqalculatenasc/meson.build
+new file mode 100644
+index 0000000..f2aab9d
+--- /dev/null
++++ b/libqalculatenasc/meson.build
+@@ -0,0 +1,10 @@
++libqalculatenasc = static_library(
++    'libqalculatenasc',
++
++    'QalculateNasc.cc',
++
++    dependencies: [
++        dependency('cln'),
++        dependency('libqalculate'),
++    ],
++)
+diff --git a/meson.build b/meson.build
+new file mode 100644
+index 0000000..9f124d9
+--- /dev/null
++++ b/meson.build
+@@ -0,0 +1,113 @@
++project(
++    'com.github.parnold-x.nasc',
++    'vala', 'c', 'cpp',
++    version: '0.5.0',
++    default_options: ['cpp_std=c++11']
++)
++
++gettext_name = 'nasc'
++
++# check vala compiler version
++if meson.get_compiler('vala').version().version_compare('<0.28.0')
++    error('vala compiler version 0.28.0 or newer is required.')
++endif
++
++pkg_data_dir = join_paths(
++    get_option('prefix'),
++    get_option('datadir'),
++    'nasc'
++)
++
++style_dir = join_paths(
++    get_option('prefix'),
++    get_option('datadir'),
++    'qalculate',
++    'styles'
++)
++
++add_project_arguments(
++    '-DGETTEXT_PACKAGE="@0@"'.format(gettext_name),
++    language: ['c', 'cpp']
++)
++
++conf_data = configuration_data()
++conf_data.set('DATADIR', join_paths(get_option('prefix'), get_option('datadir')))
++conf_data.set('STYLEDIR', style_dir)
++conf_data.set('PKGDATADIR', pkg_data_dir)
++conf_data.set('GETTEXT_PACKAGE', gettext_name)
++conf_data.set('RELEASE_NAME', meson.project_name())
++conf_data.set('VERSION', meson.project_version())
++conf_data.set('VERSION_INFO', 'Release')
++
++config_header = configure_file(
++    input: 'src/config.vala.in',
++    output: 'config.vala',
++    configuration: conf_data
++)
++
++# build libqalculatenasc static library
++subdir('libqalculatenasc')
++
++# build com.github.parnold-x.nasc binary
++executable(
++    meson.project_name(),
++
++    'src/Calculator.vala',
++    'src/Controller.vala',
++    'src/HelpBox.vala',
++    'src/InputView.vala',
++    'src/ListFooter.vala',
++    'src/MainWindow.vala',
++    'src/Nasc.vala',
++    'src/NascSettings.vala',
++    'src/OpenBox.vala',
++    'src/PasteBinDialog.vala',
++    'src/PeriodicTable.vala',
++    'src/ResultBoxWidget.vala',
++    'src/ResultLine.vala',
++    'src/ResultView.vala',
++    'src/Tutorial.vala',
++
++    config_header,
++
++    include_directories: [
++        include_directories('libqalculatenasc')
++    ],
++
++    dependencies: [
++        dependency('gee-0.8'),
++        dependency('glib-2.0'),
++        dependency('granite'),
++        dependency('gtk+-3.0'),
++        dependency('gtksourceview-3.0', version: '>=3.10'),
++        dependency('libsoup-2.4'),
++        meson.get_compiler('vala').find_library('posix'),
++        meson.get_compiler('vala').find_library('QalculateNasc', dirs: [join_paths(meson.current_source_dir(), 'vapi')])
++    ],
++
++    link_with: libqalculatenasc,
++
++    install: true
++)
++
++# set up post-install script
++
++# FIXME: meson#4070
++# python = import('python')
++# python3 = python.find_installation('python3')
++
++python3 = find_program('python3')
++
++schemadir = join_paths(get_option('prefix'), get_option('datadir'), 'glib-2.0', 'schemas')
++iconsdir = join_paths(get_option('prefix'), get_option('datadir'), 'icons')
++
++meson.add_install_script(
++    python3.path(),
++    join_paths(meson.current_source_dir(), 'meson', 'post_install.py'),
++    '--schemadir', schemadir,
++    '--iconsdir', iconsdir,
++)
++
++subdir('data')
++subdir('icons')
++
+diff --git a/meson/post_install.py b/meson/post_install.py
+new file mode 100644
+index 0000000..1fa7d29
+--- /dev/null
++++ b/meson/post_install.py
+@@ -0,0 +1,22 @@
++import argparse
++import os
++import subprocess
++
++parser = argparse.ArgumentParser()
++parser.add_argument("--schemadir", action="store", required=True)
++parser.add_argument("--iconsdir", action="store", required=True)
++
++args = vars(parser.parse_args())
++
++schemadir = args["schemadir"]
++iconsdir = args["iconsdir"]
++
++hicolordir = os.path.join(iconsdir, 'hicolor')
++
++if not os.environ.get('DESTDIR'):
++    print('Compiling gsettings schemas ...')
++    subprocess.run(['glib-compile-schemas', schemadir])
++
++    print('Compiling icon cache ...')
++    subprocess.run(['gtk-update-icon-cache', hicolordir])
++
+diff --git a/recompile_meson.sh b/recompile_meson.sh
+new file mode 100644
+index 0000000..26bd631
+--- /dev/null
++++ b/recompile_meson.sh
+@@ -0,0 +1,8 @@
++#!/usr/bin/bash
++
++rm -rf build
++
++meson build --prefix=/usr
++
++ninja -C build
++
