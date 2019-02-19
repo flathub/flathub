@@ -17,3 +17,5 @@ Contributing to Flathub
 -----------------------
 
 For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
+
+***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub/linux-store-frontend*
