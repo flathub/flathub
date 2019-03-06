@@ -1,0 +1,123 @@
+{
+  "app-id": "io.github.liberodark.OpenDrive",
+  "base": "io.atom.electron.BaseApp",
+  "base-version": "18.08",
+  "command": "odrive",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "18.08",
+  "sdk": "org.freedesktop.Sdk",
+  "separate-locales": false,
+  "finish-args": [
+    "--device=dri",
+    "--env=DCONF_USER_CONFIG_DIR=.config/dconf",
+    "--env=XDG_CURRENT_DESKTOP=Unity",
+    "--filesystem=~/.config/dconf:ro",
+    "--filesystem=home",
+    "--filesystem=xdg-run/dconf",
+    "--share=ipc",
+    "--share=network",
+    "--socket=x11",
+    "--talk-name=ca.desrt.dconf",
+    "--talk-name=com.canonical.AppMenu.Registrar",
+    "--talk-name=org.freedesktop.Notifications",
+    "--talk-name=org.kde.StatusNotifierWatcher"
+  ],
+  "modules": [
+    {
+      "name": "nodejs",
+      "cleanup": ["*"],
+      "sources": [
+        {
+          "type": "archive",
+          "sha256": "413e0086bd3abde2dfdd3a905c061a6188cc0faceb819768a53ca9c6422418b4",
+          "url": "https://nodejs.org/dist/v8.15.1/node-v8.15.1.tar.gz"
+        }
+      ]
+    },
+    {
+      "name": "yarn",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/share/yarn/",
+        "cp -a * /app/share/yarn/",
+        "ln -s /app/share/yarn/bin/yarn /app/bin/yarn",
+        "ln -s /app/share/yarn/bin/yarnpkg /app/bin/yarnpkg"
+      ],
+      "cleanup": ["*"],
+      "sources": [
+        {
+          "type": "archive",
+          "sha256": "6cfe82e530ef0837212f13e45c1565ba53f5199eec2527b85ecbcd88bf26821d",
+          "url": "https://github.com/yarnpkg/yarn/releases/download/v1.3.2/yarn-v1.3.2.tar.gz"
+        }
+      ]
+    },
+    {
+      "name": "odrive",
+      "buildsystem": "simple",
+      "build-options": {
+        "env": {
+          "ELECTRON_CACHE": "/run/build/odrive/electron-cache",
+          "electron_config_cache": "/run/build/odrive/electron-cache",
+          "JOBS": "max"
+        },
+        "arch": {
+          "x86_64": { "env": { "earch": "x64", "suffix": "" } },
+          "i386": { "env": { "earch": "ia32", "suffix": "-ia32" } },
+          "arm": { "env": { "earch": "armv7l", "suffix": "-armv7l" } },
+          "aarch64": { "env": { "earch": "arm64", "suffix": "-arm64" } }
+        }
+      },
+      "build-commands": [
+        "yarn --cwd /run/build/odrive/main --offline install",
+        "yarn --cwd /run/build/odrive/main --offline run release-linux --${earch} --dir",
+        "cp -r main/dist/linux${suffix}-unpacked /app/OpenDrive",
+        "for size in 32 48 64 128 256 512; do rsvg-convert -f png -h ${size} -w ${size} -o ${size}.png main/public/images/logo.svg; install -D -m644 ${size}.png /app/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png; done",
+        "install -D -m0755 odrive.sh /app/bin/odrive",
+        "install -D -m0644 -t /app/share/applications/ ${FLATPAK_ID}.desktop",
+        "install -D -m0644 -t /app/share/metainfo/ ${FLATPAK_ID}.appdata.xml"
+      ],
+      "sources": [
+        "generated-sources.json",
+        {
+          "type": "shell",
+          "dest": "electron-cache",
+          "only-arches": [ "arm" ],
+          "commands": [
+            "for f in electron-*-linux-arm.zip; do  ln -s $f ${f/arm/armv7l}; done"
+          ]
+        },
+        {
+          "type": "archive",
+          "dest": "main",
+          "sha256": "f2aa90455dc29bddbe683bef1b13e23c886a78db0b6f7d02f5bb766ac19d70a9",
+          "url": "https://github.com/liberodark/ODrive/archive/0.2.1.tar.gz"
+        },
+        {
+          "type": "file",
+          "dest": "main",
+          "path": "yarn.lock"
+        },
+        {
+          "type": "file",
+          "dest": "main",
+          "dest-filename": ".yarnrc",
+          "path": "yarnrc"
+        },
+        {
+          "type": "file",
+          "path": "io.github.liberodark.OpenDrive.appdata.xml"
+        },
+        {
+          "type": "file",
+          "path": "io.github.liberodark.OpenDrive.desktop"
+        },
+        {
+          "type": "script",
+          "commands": ["exec env TMPDIR=${XDG_CACHE_HOME}/tmp/ /app/OpenDrive/odrive \"$@\""],
+          "dest-filename": "odrive.sh"
+        }
+      ]
+    }
+  ]
+}
