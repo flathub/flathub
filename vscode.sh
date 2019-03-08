@@ -68,3 +68,5 @@ done
 zenity --error --no-wrap --title='Visual Studio Code is not installed' \
   --text="Visual Studio Code is required to edit scripts with the Unity Hub Flatpak, please \
 install it from Flathub."
+gdbus call -e -d org.gnome.Software -o /org/gnome/Software/SearchProvider  \
+  -m org.gnome.Shell.SearchProvider2.LaunchSearch '["com.visualstudio.code"]' 1
