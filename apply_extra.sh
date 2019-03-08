@@ -8,7 +8,6 @@ rm -rf squashfs-root *.AppImage
 sed -i -f - resources/app.asar <<'EOF'
 s|${os\.homedir()}/\.local/share|${process.env.UNITY_DATADIR}|g;
 s|path\.parse(folder)\.root|path.parse(folder).dir |g;
-s/data => data.project_versions/dt => dt.project_versions||[]/g;
 EOF
 rm AppRun
 mkdir -p export/share/applications
