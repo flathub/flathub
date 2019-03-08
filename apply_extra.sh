@@ -5,10 +5,9 @@ mv squashfs-root/* .
 rm -rf squashfs-root *.AppImage
 # asar is a binary archive format, so the replacement string *must* be the same length
 # as the original.
-sed -i -f - resources/app.asar <<'EOF'
-s|${os\.homedir()}/\.local/share|${process.env.UNITY_DATADIR}|g;
-s|path\.parse(folder)\.root|path.parse(folder).dir |g;
-EOF
+patch-resources resources/app.asar
+# sed -i -f - resources/app.asar <<'EOF'
+# EOF
 rm AppRun
 mkdir -p export/share/applications
 sed '/X-AppImage/d;s/Exec=AppRun/Exec=start-unityhub/;s/Icon=unityhub/Icon=com.unity.UnityHub/' \
