@@ -5,6 +5,8 @@ import re, sys
 
 
 replacements = (
+    # Uncomment to force-enable debug logging
+    # (re.compile(re.escape(b'if (app.argv.debugMode)')), b'if (true)'),
     (re.compile(re.escape(b'${os.homedir()}/.local/share')), b'${process.env.UNITY_DATADIR}'),
     (re.compile(re.escape(b'path.parse(folder).root')), b'path.parse(folder).dir'),
     (re.compile(b'getDiskRootPath\(folder\)\s+{.*?return.*?}', re.DOTALL),
