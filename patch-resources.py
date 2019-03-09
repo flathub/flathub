@@ -1,14 +1,26 @@
 #!/usr/bin/python3
 
+# patch-resources will patch the Unity Hub resources file to fix some bugs that are necessary for
+# it to function as a Flatpak.
+
+# The resources file is, as other Electron apps, an asar, so the replacement string *must* be the
+# same length as the original. In the below replacements sequence, if the replacement string is
+# shorter than the match, it will be padded with spaces.
+
 
 import re, sys
 
 
 replacements = (
-    # Uncomment to force-enable debug logging
+    # Uncomment to force-enable debug logging.
     # (re.compile(re.escape(b'if (app.argv.debugMode)')), b'if (true)'),
+
+    # Make Unity Hub respect the XDG dirs (UNITY_DATADIR is set in start-unityhub).
     (re.compile(re.escape(b'${os.homedir()}/.local/share')), b'${process.env.UNITY_DATADIR}'),
-    (re.compile(re.escape(b'path.parse(folder).root')), b'path.parse(folder).dir'),
+
+    # Unity Hub has a rather nasty bug where it unconditionally checks the rootfs for disk
+    # space, even if what it's checking for doesn't actually go there. This patches around
+    # that, ensuring that space calculations will be for the proper path.
     (re.compile(b'getDiskRootPath\(folder\)\s+{.*?return.*?}', re.DOTALL),
         b'''getDiskRootPath(f) {
     let p = f;
@@ -36,7 +48,6 @@ with open(sys.argv[1], 'r+b') as fp:
                                                                 replacement)
 
                 replacement = replacement.ljust(len(match.group()))
-                # print(f'[{replacement.decode("utf-8")}]')
 
                 pos = fp.tell()
                 fp.seek(pos - (2048 - match.start()))
