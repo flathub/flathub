@@ -22,6 +22,33 @@ target_port=$((56000 + target_pid))
 unity_pid=$(pidof Unity)
 unity_port=$((56000 + unity_pid % 1000))
 
+not_installed() {
+  local appid="$1"
+  local title="$2"
+  local text="$3"
+  local runtime_branch="$4"
+  local on_flathub_web="$5"
+
+  local has_software
+  gdbus introspect -e -d org.gnome.Software -o /org/gnome/Software >/dev/null 2>&1 && \
+    has_software=1
+
+  if [[ -n "$has_software" || -n "$on_flathub_web" ]]; then
+    if zenity --question --no-wrap --title="$title" \
+              --text=$"$text\nWould you like to install it?"; then
+      if [[ -n "$has_software" ]]; then
+        gdbus call -e -d org.gnome.Software -o /org/gnome/Software -m org.gtk.Actions.Activate \
+          search "[<'$appid'>, <'$runtime_branch'>]" '[]'
+      else
+        xdg-open https://flathub.org/apps/search/$appid
+      fi
+    fi
+  else
+    zenity --warning --no-wrap --title="$title" \
+      --text=$"$text\nPlease install it from Flathub."
+  fi
+}
+
 read -r -d '' start_vscode <<'EOF'
 target_pid="$1"
 shift
@@ -57,7 +84,25 @@ kill $(jobs -p)
 EOF
 
 for ref in com.visualstudio.code.oss com.visualstudio.code; do
-  if $flatpak info -m $ref >/dev/null 2>&1; then
+  sdk_arch_branch=$($flatpak info --show-sdk $ref 2>/dev/null | sed 's|^[^/]*/||')
+  if [[ -n "$sdk_arch_branch" ]]; then
+    dotnet=$($flatpak info org.freedesktop.Sdk.Extension.dotnet/$sdk_arch_branch 2>/dev/null)
+    mono=$($flatpak info org.freedesktop.Sdk.Extension.mono5/$sdk_arch_branch 2>/dev/null)
+
+    if [[ -z "$dotnet" || -z "$mono" ]]; then
+      if [[ -z "$dotnet" && -z "$mono" ]]; then
+        ref=org.freedesktop.Sdk.Extension
+      elif [[ -z "$dotnet" ]]; then
+        ref=org.freedesktop.Sdk.Extension.dotnet
+      elif [[ -z "$mono" ]]; then
+        ref=org.freedesktop.Sdk.Extension.mono5
+      fi
+
+      not_installed $ref 'dotnet and mono5 SDK extensions are required' \
+        'The dotnet and mono5 SDK extensions are required for the Unity debugger to work.' \
+        $(echo "$sdk_arch_branch" | cut -d/ -f2) ''
+    fi
+
     socat TCP-LISTEN:$target_port,fork,reuseaddr TCP:localhost:$unity_port &
     $flatpak run --command=bash $ref -c "$start_vscode" -- "$target_pid" "$@"
     kill $(jobs -p)
@@ -65,8 +110,5 @@ for ref in com.visualstudio.code.oss com.visualstudio.code; do
   fi
 done
 
-zenity --error --no-wrap --title='Visual Studio Code is not installed' \
-  --text="Visual Studio Code is required to edit scripts with the Unity Hub Flatpak, please \
-install it from Flathub."
-gdbus call -e -d org.gnome.Software -o /org/gnome/Software/SearchProvider  \
-  -m org.gnome.Shell.SearchProvider2.LaunchSearch '["com.visualstudio.code"]' 1
+not_installed com.visualstudio.code 'Visual Studio Code is required' \
+  'Visual Studio Code is required to edit Unity scripts.' '' 1
