@@ -1,0 +1,138 @@
+name: XnRetro
+buildsystem: simple
+sources:
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnRetro-101-linux.tgz
+    sha256: 8ccbd02f24d56a217182e6d6389e5cc15405596a3068e578759cba33bb2fc916
+    strip-components: 0
+    only-arches: ['i386']
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnRetro-101-linux-x64.tgz
+    sha256: e06f6d588568fb45d2980dac2205920250b33f03837e5522a3f0737345584958
+    strip-components: 0
+    only-arches: ['x86_64']
+  # For missing dependencies
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnConvert-151-linux.tgz
+    sha256: 6dbb7d33f2fb974d3bdd3dd7f83ca43da5645a0c2b7ace03b154b7caba55b021
+    strip-components: 0
+    only-arches: ['i386']
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnConvert-151-linux-x64.tgz
+    sha256: 98947433c114d53013a45c24ad573287f00eaccd182aed58632be2a517af2f4f
+    strip-components: 0
+    only-arches: ['x86_64']
+  - type: patch
+    path: xnretro-1.01-wrapper.patch
+    strip-components: 0
+  # Hi-res icon
+  - type: file
+    path: app-xnretro-512.png
+    #url: https://www.xnview.com/assets/img/app-xnretro-512.png
+    #sha256: 35dd9d3397ea8ce0b56e42b2c1c2c6073ffef0a0dcc562a5940d85e995cec921
+  # Keywords from gThumb
+  # https://koji.fedoraproject.org/koji/buildinfo?buildID=1183283
+  - type: file
+    path: XnRetro-desktop.txt
+  # AppData file
+  - type: file
+    path: com.xnview.XnRetro.appdata.xml
+build-commands:
+  - |
+    ln -s /usr/lib/*-linux-gnu*/libcrypto.so.1.0.0 "${FLATPAK_DEST}/lib/libcrypto.so";
+    ln -s /usr/lib/*-linux-gnu*/libssl.so.1.0.0 "${FLATPAK_DEST}/lib/libssl.so";
+  - |
+    find "XnRetro" -xtype f -executable \( -iname '*.jpg' -o -iname '*.png' -o -iname '*.txt' -o -iname '*.zip' \) -exec chmod -x {} +;
+    cp -a "XnRetro" "${FLATPAK_DEST}/";
+    ln -s "${FLATPAK_DEST}/XnRetro/xnretro.sh" "${FLATPAK_DEST}/bin/xnretro";
+  # QLibraryPrivate::loadPlugin failed on "/app/XnRetro/lib/imageformats/libqsvg.so" : "Cannot load library /app/XnRetro/lib/imageformats/libqsvg.so: (libQtSvg.so.4: cannot open shared object file: No such file or directory)" 
+  # "Cannot load library /app/XnRetro/lib/imageformats/libqsvg.so: (libQtSvg.so.4: cannot open shared object file: No such file or directory)" 
+  - |
+    for file in "XnConvert/lib"/{libQt*.so.4*,libphonon.so.4}; do
+      [[ -f "${file}" ]] || continue;
+      f="$( basename "${file}" )";
+      [[ ! -f "${FLATPAK_DEST}/XnRetro/lib/${f}" ]] || continue;
+      cp -a "${file}" "${FLATPAK_DEST}/XnRetro/lib/";
+    done;
+  - |
+    for file in "${FLATPAK_DEST}/lib"/{libQt*.so.4*,libphonon.so.4}; do
+      [[ -f "${file}" ]] || continue;
+      f="$( basename "${file}" )";
+      ln -sf "${file}" "${FLATPAK_DEST}/XnRetro/lib/";
+    done;
+  # "The plugin '/app/XnRetro/lib/imageformats/libqgif.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqico.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqjpeg.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqmng.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqsvg.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqtga.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  # "The plugin '/app/XnRetro/lib/imageformats/libqtiff.so' uses incompatible Qt library. Expected build key "i386 linux g++-4 full-config", got "x86_64 linux g++-4 full-config""
+  - |
+    for file in "${FLATPAK_DEST}/lib/qt4/plugins/imageformats"/libq*.so; do
+      [[ -f "${file}" ]] || continue;
+      f="$( basename "${file}" )";
+      ln -sf "${file}" "${FLATPAK_DEST}/XnRetro/lib/imageformats/";
+    done;
+  - |
+    for file in "${FLATPAK_DEST}/lib/qt4/plugins/codecs"/libq*.so; do
+      [[ -f "${file}" ]] || continue;
+      f="$( basename "${file}" )";
+      ln -sf "${file}" "${FLATPAK_DEST}/XnRetro/lib/codecs/";
+    done;
+  - |
+    for file in "XnRetro"/*.png; do
+      install -p -D -m 0644 "${file}" -t "${FLATPAK_DEST}/share/pixmaps/";
+    done;
+  - |
+    icon_in="app-xnretro-512.png";
+    icon_out="${FLATPAK_ID}.png";
+    for s in {16,22,24,32,36,48,64,72,96,128,192,256}; do
+      convert -background none -density 1024 -resize "${s}x${s}" "${icon_in}" "${icon_out}";
+      install -p -D -m 0644 "${icon_out}" -t "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/";
+    done;
+    install -p -D -m 0644 "${icon_in}" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${icon_out}";
+  - > 
+    desktop-file-edit
+    --set-key="Name" --set-value="XnRetro"
+    --set-key="GenericName" --set-value="Image Enhancer"
+    --set-key="Comment" --set-value="Create stunning images with vintage or instant effect"
+    --set-key="TryExec" --set-value="xnretro"
+    --set-key="Exec" --set-value="xnretro %F"
+    --set-key="Icon" --set-value="${FLATPAK_ID}"
+    --set-key="StartupWMClass" --set-value="XnRetro"
+    --set-key="Terminal" --set-value="false"
+    --add-category="RasterGraphics"
+    --add-category="2DGraphics"
+    --add-category="Photography"
+    --add-category="Qt"
+    --add-mime-type="image/bmp"
+    --add-mime-type="image/g3fax"
+    --add-mime-type="image/gif"
+    --add-mime-type="image/jpeg"
+    --add-mime-type="image/pcx"
+    --add-mime-type="image/png"
+    --add-mime-type="image/svg+xml"
+    --add-mime-type="image/tiff"
+    --add-mime-type="image/x-compressed-xcf"
+    --add-mime-type="image/x-fits"
+    --add-mime-type="image/x-icon"
+    --add-mime-type="image/x-portable-anymap"
+    --add-mime-type="image/x-portable-bitmap"
+    --add-mime-type="image/x-portable-graymap"
+    --add-mime-type="image/x-portable-pixmap"
+    --add-mime-type="image/x-psd"
+    --add-mime-type="image/x-sgi"
+    --add-mime-type="image/x-tga"
+    --add-mime-type="image/x-wmf"
+    --add-mime-type="image/x-xbitmap"
+    --add-mime-type="image/x-xcf"
+    --add-mime-type="image/x-xpixmap"
+    --add-mime-type="image/x-xwindowdump"
+    --remove-key="Name[en_US]"
+    "XnRetro/XnRetro.desktop";
+    cat "XnRetro-desktop.txt" >> "XnRetro/XnRetro.desktop";
+    install -p -D -m 0644 "XnRetro/XnRetro.desktop" -t "${FLATPAK_DEST}/share/applications/";
+  - install -p -D -m 0644 "${FLATPAK_ID}.appdata.xml" -t "${FLATPAK_DEST}/share/appdata/";
+post-install:
+  - install -p -D -m 0644 "XnRetro"/*.txt -t "${FLATPAK_DEST}/share/doc/XnRetro/";
+  - install -p -D -m 0644 "XnRetro/license.txt" -t "${FLATPAK_DEST}/share/licenses/XnRetro/";
