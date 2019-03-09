@@ -44,11 +44,11 @@ See also:
 ### Prepare
 
 ```
-$ flatpak install "flathub" "org.freedesktop.Sdk//18.08"
+$ flatpak install "flathub" "org.freedesktop.Sdk/i386/18.08"
 ```
 
 ```
-$ flatpak install "flathub" "org.freedesktop.Platform//18.08"
+$ flatpak install "flathub" "org.freedesktop.Platform/i386/18.08"
 ```
 
 ```
@@ -62,7 +62,7 @@ $ git submodule update
 ### Build
 
 ```
-$ flatpak-builder "build" "com.xnview.XnRetro.yaml" --force-clean --install-deps-from="flathub"
+$ flatpak-builder --arch=i386 "build" "com.xnview.XnRetro.yaml" --force-clean --install-deps-from="flathub"
 ```
 
 ### Test
@@ -80,7 +80,7 @@ $ flatpak-builder --run "build" "com.xnview.XnRetro.yaml" "xnretro"
 ### Install
 
 ```
-$ flatpak-builder --repo="repo" --force-clean "build" "com.xnview.XnRetro.yaml"
+$ flatpak-builder --arch=i386 --repo="repo" --force-clean "build" "com.xnview.XnRetro.yaml"
 ```
 
 ```
