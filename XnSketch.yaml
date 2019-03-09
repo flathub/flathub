@@ -1,0 +1,124 @@
+name: XnSketch
+buildsystem: simple
+sources:
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnSketch-118-linux.tgz
+    sha256: bfc35afc4e333db3cc298bffda1f35beca45e8b1b693bc9a45c5bceb161ceae2
+    strip-components: 0
+    only-arches: ['i386']
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnSketch-118-linux-x64.tgz
+    sha256: 15273b7e38bcac2b4a34034e383547243b3d086ac57259629e49afabe4adace5
+    strip-components: 0
+    only-arches: ['x86_64']
+  # For missing dependencies
+  # /app/XnSketch/XnSketch: error while loading shared libraries: libicui18n.so.54: cannot open shared object file: No such file or directory
+  # QLibraryPrivate::loadPlugin failed on "/app/XnSketch/lib/imageformats/libqsvg.so" : "Cannot load library /app/XnSketch/lib/imageformats/libqsvg.so: (libQt5Svg.so.5: cannot open shared object file: No such file or directory)"
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnConvert-173-linux.tgz
+    sha256: 4a75dadb22020ed58a7e08e9d522fc3aa8e9f52bd7a4e0bc384774d685d8b01e
+    strip-components: 0
+    only-arches: ['i386']
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnConvert-173-linux-x64.tgz
+    sha256: fbaf9e284de0973b0338f88ecda525eb5ec4b02f7b6d1305f4dc472aad2778ad
+    strip-components: 0
+    only-arches: ['x86_64']
+  # Segmentation fault (core dumped)
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnViewMP-083-linux.tgz
+    sha256: 95eac6b118d49e6baaa61e82516004b84ca90adda186e18a5cbd8c2bf2e88235
+    strip-components: 0
+    only-arches: ['i386']
+  - type: archive
+    url: https://download.xnview.com/old_versions/XnViewMP-083-linux-x64.tgz
+    sha256: d4bbc01ca8248e28b36f051aa427f9c9257367284a1130e473c280b66d466d0c
+    strip-components: 0
+    only-arches: ['x86_64']
+  - type: patch
+    path: xnsketch-1.18-wrapper.patch
+    strip-components: 0
+  # Hi-res icon
+  - type: file
+    path: app-xnsketch-512.png
+    #url: https://www.xnview.com/assets/img/app-xnsketch-512.png
+    #sha256: c77e00aa8cb833097911088f26af7a16a55ff14f0424ecf8b06d67019b353e04
+  # Keywords from gThumb
+  # https://koji.fedoraproject.org/koji/buildinfo?buildID=1183283
+  - type: file
+    path: XnSketch-desktop.txt
+  # AppData file
+  - type: file
+    path: com.xnview.XnSketch.appdata.xml
+build-commands:
+  - |
+    find "XnSketch" -xtype f -executable \( -iname '*.jpg' -o -iname '*.png' -o -iname '*.txt' -o -iname '*.zip' \) -exec chmod -x {} +;
+    cp -a "XnSketch" "${FLATPAK_DEST}/";
+    ln -s "${FLATPAK_DEST}/XnSketch/xnsketch.sh" "${FLATPAK_DEST}/bin/xnsketch";
+  - cp -a "XnConvert/lib"/libicu*.so* "${FLATPAK_DEST}/XnSketch/lib/";
+  - |
+    for file in "XnConvert/lib"/libQt5*.so*; do
+      [[ -f "${file}" ]] || continue;
+      f="$( basename "${file}" )";
+      [[ ! -f "${FLATPAK_DEST}/XnSketch/lib/${f}" ]] || continue;
+      cp -a "${file}" "${FLATPAK_DEST}/XnSketch/lib/";
+    done;
+  - |
+    install -d "${FLATPAK_DEST}/XnSketch/lib/imageformats/";
+    cp -a "XnView/lib/imageformats"/*.so* "${FLATPAK_DEST}/XnSketch/lib/imageformats/";
+  - |
+    for file in "XnSketch"/*.png; do
+      install -p -D -m 0644 "${file}" -t "${FLATPAK_DEST}/share/pixmaps/";
+    done;
+  - |
+    icon_in="app-xnsketch-512.png";
+    icon_out="${FLATPAK_ID}.png";
+    for s in {16,22,24,32,36,48,64,72,96,128,192,256}; do
+      convert -background none -density 1024 -resize "${s}x${s}" "${icon_in}" "${icon_out}";
+      install -p -D -m 0644 "${icon_out}" -t "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/";
+    done;
+    install -p -D -m 0644 "${icon_in}" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${icon_out}";
+  - > 
+    desktop-file-edit
+    --set-key="Name" --set-value="XnSketch"
+    --set-key="GenericName" --set-value="Image Enhancer"
+    --set-key="Comment" --set-value="Turn your photos into cartoon or sketch images"
+    --set-key="TryExec" --set-value="xnsketch"
+    --set-key="Exec" --set-value="xnsketch %F"
+    --set-key="Icon" --set-value="${FLATPAK_ID}"
+    --set-key="StartupWMClass" --set-value="XnSketch"
+    --set-key="Terminal" --set-value="false"
+    --add-category="RasterGraphics"
+    --add-category="2DGraphics"
+    --add-category="Photography"
+    --add-category="Qt"
+    --add-mime-type="image/bmp"
+    --add-mime-type="image/g3fax"
+    --add-mime-type="image/gif"
+    --add-mime-type="image/jpeg"
+    --add-mime-type="image/pcx"
+    --add-mime-type="image/png"
+    --add-mime-type="image/svg+xml"
+    --add-mime-type="image/tiff"
+    --add-mime-type="image/x-compressed-xcf"
+    --add-mime-type="image/x-fits"
+    --add-mime-type="image/x-icon"
+    --add-mime-type="image/x-portable-anymap"
+    --add-mime-type="image/x-portable-bitmap"
+    --add-mime-type="image/x-portable-graymap"
+    --add-mime-type="image/x-portable-pixmap"
+    --add-mime-type="image/x-psd"
+    --add-mime-type="image/x-sgi"
+    --add-mime-type="image/x-tga"
+    --add-mime-type="image/x-wmf"
+    --add-mime-type="image/x-xbitmap"
+    --add-mime-type="image/x-xcf"
+    --add-mime-type="image/x-xpixmap"
+    --add-mime-type="image/x-xwindowdump"
+    "XnSketch/XnSketch.desktop";
+    cat "XnSketch-desktop.txt" >> "XnSketch/XnSketch.desktop";
+    install -p -D -m 0644 "XnSketch/XnSketch.desktop" -t "${FLATPAK_DEST}/share/applications/";
+  - install -p -D -m 0644 "${FLATPAK_ID}.appdata.xml" -t "${FLATPAK_DEST}/share/appdata/";
+post-install:
+  - install -p -D -m 0644 "XnSketch"/*.txt -t "${FLATPAK_DEST}/share/doc/XnSketch/";
+  - install -p -D -m 0644 "XnSketch/license.txt" -t "${FLATPAK_DEST}/share/licenses/XnSketch/";
