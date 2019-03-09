@@ -19,7 +19,7 @@ flatpak='flatpak-spawn --host flatpak'
 
 target_pid=$((4 + RANDOM % 100))
 target_port=$((56000 + target_pid))
-unity_pid=$(pidof Unity)
+unity_pid=$PPID
 unity_port=$((56000 + unity_pid % 1000))
 
 not_installed() {
@@ -74,9 +74,6 @@ if code --list-extensions | grep ms-vscode.csharp >/dev/null &&
     --text="omnisharp.useGlobalMono should be set to \"never\" to avoid errors when started
 from within Unity Editor."
 fi
-
-echo $target_pid | tee /tmp/vsc-unity.log
-ps -A | tee -a /tmp/vsc-unity.log
 
 code "$@"
 while ps -A | grep -q code; do sleep 5; done
