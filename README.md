@@ -9,8 +9,8 @@ To compile Lutris as a Flatpak, you'll need both [Flatpak](https://flatpak.org/)
 1. Add the platform dependencies...
   ```
   flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-  flatpak install --user flathub org.gnome.Sdk//3.30
-  flatpak install --user flathub org.gnome.Platform//3.30
+  flatpak install --user flathub org.gnome.Sdk//3.32
+  flatpak install --user flathub org.gnome.Platform//3.32
   ```
 
 2. Compile and install the Flatpak...
