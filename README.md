@@ -1,3 +1,3 @@
 ## VLC dependency
 
-Since Netease Cloud Music depends on libvlc, this manafest is based on the manifest of VLC.
+Since Netease Cloud Music depends on libvlc whilch is the main part of vlc, Netease Cloud Music is based on org.videolan.VLC.
