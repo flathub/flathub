@@ -1,6 +1,6 @@
-# Lutris Flatpak
+# Lutris on Flatpak
 
-An attempt at getting Lutris to run as a [Flatpak](https://flatpak.org/).
+[Lutris](https://lutris.net) is an Open Source gaming platform for Linux. It installs and launches games so you can start playing without the hassle of setting up your games. This repository allows installing Lutris through [Flatpak](https://flatpak.org).
 
 ## Build
 
@@ -35,4 +35,4 @@ flatpak remote-delete lutris
 
 ## Development
 
-The Python packages are built with https://github.com/flatpak/flatpak-builder-tools/tree/master/pip
+- Python packages are built with [Flatpak PIP Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip)
