@@ -28,8 +28,8 @@ To compile Lutris as a Flatpak, you'll need both [Flatpak](https://flatpak.org/)
 ## Clean up
 
 ```
-flatpak uninstall --user org.lutris.Lutris
-rm -rf ~/.var/app/org.lutris.Lutris .flatpak-builder
+flatpak uninstall --user net.lutris.Lutris
+rm -rf ~/.var/app/net.lutris.Lutris .flatpak-builder
 flatpak remote-delete lutris
 ```
 
