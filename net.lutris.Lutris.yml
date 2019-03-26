@@ -1,76 +1,205 @@
----
-app-id: net.lutris.Lutris
-runtime: org.gnome.Platform
-runtime-version: '3.32'
+id: net.lutris.Lutris
 sdk: org.gnome.Sdk
+runtime: org.gnome.Platform
+runtime-version: "3.32"
 command: lutris
-rename-appdata-file: net.lutris.Lutris.appdata.xml
 rename-icon: lutris
+copy-icon: true
 finish-args:
-- "--socket=x11"
-- "--socket=wayland"
-- "--socket=pulseaudio"
-- "--socket=system-bus"
-- "--socket=session-bus"
-- "--share=ipc"
-- "--share=network"
-- "--device=all"
-- "--filesystem=host"
-- "--allow=multiarch"
-- "--talk-name=org.freedesktop.Flatpak"
-- "--talk-name=org.gnome.SettingsDaemon"
-- "--talk-name=org.gnome.SettingsDaemon.MediaKeys"
-- "--system-talk-name=org.freedesktop.NetworkManager"
-- "--talk-name=org.kde.StatusNotifierWatcher"
-- "--system-talk-name=org.freedesktop.UPower"
-- "--filesystem=home:ro"
-- "--filesystem=~/.var/app/com.valvesoftware.Steam:ro"
-
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=all
+  - --share=network
+  - --allow=multiarch
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gnome.Mutter.DisplayConfig
+  - --talk-name=ca.desrt.dconf
+  - --filesystem=xdg-run/dconf
+  - --filesystem=xdg-config/dconf:ro
+  - --filesystem=~/Games:create
+  - --filesystem=xdg-data/Steam:ro
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:ro
 add-extensions:
   org.freedesktop.Platform.Compat.i386:
     directory: lib/i386-linux-gnu
-    version: '18.08'
+    version: "18.08"
 
   org.freedesktop.Platform.Compat.i386.Debug:
     directory: lib/debug/lib/i386-linux-gnu
-    version: '18.08'
+    version: "18.08"
     no-autodownload: true
 
   org.freedesktop.Platform.GL32:
     directory: lib/i386-linux-gnu/GL
-    version: '1.4'
-    versions: 18.08;1.4
+    version: "1.4"
+    versions: "18.08;1.4"
     subdirectories: true
     no-autodownload: true
     autodelete: false
     add-ld-path: lib
-    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors
     download-if: active-gl-driver
     enable-if: active-gl-driver
 
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /share/man
+  - /share/help
+cleanup-commands:
+  - python3 -m compileall /app/lib
 modules:
-- name: gnome-desktop
-  buildsystem: meson
-  sources:
-  - type: archive
-    url: "https://download.gnome.org/sources/gnome-desktop/3.32/gnome-desktop-3.32.0.tar.xz"
-    sha256: a6393dc5fc29fc0652ac84c73b3da205d0b0168128c4cf6d27797a08f3d07b54
-- name: psmisc
-  sources:
-  - type: archive
-    url: https://gitlab.com/psmisc/psmisc/-/archive/v23.2/psmisc-v23.2.tar.gz
-    sha256: 03533fc0c19c16073d2ebbcbb2ad4e1d870467aa1b91663f57c4a1437ff78e9f
-- python3-pillow.yaml
-- python3-requests.yaml
-- python3-PyYAML.yaml
-- python3-PyGObject.yaml
-- python3-evdev.yaml
-- name: lutris
-  sources:
-  - type: git
-    url: https://github.com/lutris/lutris.git
-    branch: v0.5.1.2
-    commit: d5c2bd942e6818c168336b460845a12f2f2e5fdb
-  buildsystem: simple
-  build-commands:
-  - pip3 install --prefix=/app .
+
+  - name: lutris
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    post-install:
+      - desktop-file-edit --set-key=X-Flatpak-RenamedFrom --set-value="lutris.desktop;" /app/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: git
+        url: "https://github.com/lutris/lutris.git"
+        tag: v0.5.1.2
+      - type: patch
+        path: patches/0001-Add-flatpak-ed-Steam-data-dir.patch
+      - type: patch
+        path: patches/0002-Use-xdg-open-to-run-Steam-games-if-running-in-flatpa.patch
+    modules:
+
+      - name: gnome-desktop
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: "https://download.gnome.org/sources/gnome-desktop/3.32/gnome-desktop-3.32.0.tar.xz"
+            sha256: a6393dc5fc29fc0652ac84c73b3da205d0b0168128c4cf6d27797a08f3d07b54
+
+      - name: python-evdev
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py install --prefix=/app --root=/
+        sources:
+          - type: archive
+            url: "https://github.com/gvalkov/python-evdev/archive/v1.1.2.tar.gz"
+            sha256: 4403d4ee2d9682d17d292d5cfe0781d9ebfe119c7bb0f631fb59de3003bad49d
+
+      - name: PyYAML
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py install --prefix=/app --root=/
+        sources:
+          - type: archive
+            url: "https://github.com/yaml/pyyaml/archive/4.2b2.tar.gz"
+            sha256: 2d3ccbb9705eceaf36e495cfaba30277a59aa3f0a5e3c8cfffe760d89625e3d2
+
+      - name: python-requests
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py install --prefix=/app --root=/
+        sources:
+          - type: archive
+            url: "https://github.com/requests/requests/archive/v2.21.0.tar.gz"
+            sha256: 9f9a50b5f64f4569704b9c5e618b957109e3486256453c9016c6dbfa10570761
+        modules:
+
+          - name: python-urllib3
+            buildsystem: simple
+            build-commands:
+              - python3 setup.py install --prefix=/app --root=/
+            sources:
+              - type: archive
+                url: "https://github.com/urllib3/urllib3/archive/1.24.1.tar.gz"
+                sha256: 28e9d2476aab8d06752ef465b692832efc5d095d3a3128efd773c056ff04e5a0
+
+          - name: python-chardet
+            buildsystem: simple
+            build-commands:
+              - python3 setup.py install --prefix=/app --root=/
+            sources:
+              - type: archive
+                url: "https://github.com/chardet/chardet/archive/3.0.4.tar.gz"
+                sha256: d5620025cfca430f6c2e28ddbc87c3c66a5c82fa65570ae975c92911c2190189
+
+          - name: python-certifi
+            buildsystem: simple
+            build-commands:
+              - python3 setup.py install --prefix=/app --root=/
+            sources:
+              - type: archive
+                url: "https://github.com/certifi/python-certifi/archive/2018.11.29.tar.gz"
+                sha256: 294a8e507557adfa1b6c11d59ce51607f09a63d00fe3e94e5c8ce5aa544d8e37
+
+          - name: python-idna
+            buildsystem: simple
+            build-commands:
+              - python3 setup.py install --prefix=/app --root=/
+            sources:
+              - type: archive
+                url: "https://github.com/kjd/idna/archive/v2.8.tar.gz"
+                sha256: db438aeba52c606cf1dd9671cb746377b4baeaea923397152e91576e8404d87a
+
+      - name: Pillow
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py build -j $FLATPAK_BUILDER_N_JOBS
+          - python3 setup.py install --prefix=/app --root=/
+        sources:
+          - type: archive
+            url: "https://github.com/python-pillow/Pillow/archive/5.4.1.tar.gz"
+            sha256: d233c2e63414535281c572d2b4debd7de8a205b341ffc7db0f48f3f4d199fbc0
+
+  - name: lutris-app-environment
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+
+  - name: hwdata
+    config-opts:
+      - --datarootdir=/app/share
+    sources:
+      - type: archive
+        url: "https://github.com/vcrhonek/hwdata/archive/v0.321.tar.gz"
+        sha256: ad2eb9dc146285792922c292a240eea84fda0284ccf560202dfc8f1096dbc61d
+
+  - name: pciutils
+    no-autogen: true
+    make-args:
+      - SHAREDIR=/app/share/hwdata
+      - OPT=-O2 -g
+    make-install-args:
+      - PREFIX=/app
+      - SBINDIR=/app/bin
+      - SHAREDIR=/app/share/hwdata
+      - MANDIR=/app/share/man
+    sources:
+      - type: archive
+        url: "https://mirrors.edge.kernel.org/pub/software/utils/pciutils/pciutils-3.6.2.tar.gz"
+        sha256: d5f9254f27bbda8243b345633e980144e6bd2af9c786bb8a152b904530aef599
+
+  - name: usbutils
+    config-opts:
+      - --datadir=/app/share/hwdata
+      - --sbindir=/app/bin
+    sources:
+      - type: archive
+        url: "https://mirrors.edge.kernel.org/pub/linux/utils/usb/usbutils/usbutils-007.tar.xz"
+        sha256: 7593a01724bbc0fd9fe48e62bc721ceb61c76654f1d7b231b3c65f6dfbbaefa4
+    modules:
+
+      - name: libusb
+        config-opts:
+          - --disable-udev
+        sources:
+          - type: archive
+            url: "https://github.com//libusb/libusb/releases/download/v1.0.22/libusb-1.0.22.tar.bz2"
+            sha256: 75aeb9d59a4fdb800d329a545c2e6799f732362193b465ea198f2aa275518157
+
+  - name: xrandr
+    sources:
+      - type: archive
+        url: "https://xorg.freedesktop.org/archive/individual/app/xrandr-1.5.0.tar.bz2"
+        sha256: c1cfd4e1d4d708c031d60801e527abc9b6d34b85f2ffa2cadd21f75ff38151cd
