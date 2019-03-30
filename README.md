@@ -15,7 +15,7 @@ To compile Lutris as a Flatpak, you'll need both [Flatpak](https://flatpak.org/)
 
 2. Compile and install the Flatpak...
   ```
-  flatpak-builder --user --repo=lutris --force-clean build-dir net.lutris.Lutris.yaml
+  flatpak-builder --user --repo=lutris --force-clean build-dir net.lutris.Lutris.yml
   flatpak remote-add --user lutris lutris --no-gpg-verify
   flatpak install --user lutris net.lutris.Lutris
   ```
