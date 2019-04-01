@@ -32,7 +32,3 @@ flatpak uninstall --user net.lutris.Lutris
 rm -rf ~/.var/app/net.lutris.Lutris .flatpak-builder
 flatpak remote-delete lutris
 ```
-
-## Development
-
-- Python packages are built with [Flatpak PIP Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip)
