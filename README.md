@@ -9,8 +9,8 @@ To compile Lutris as a Flatpak, you'll need both [Flatpak](https://flatpak.org/)
 1. Add the platform dependencies...
   ```
   flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-  flatpak install --user flathub org.gnome.Sdk//3.32
-  flatpak install --user flathub org.gnome.Platform//3.32
+  flatpak install --user flathub org.freedesktop//18.08
+  flatpak install --user flathub org.freedesktop.Platform//18.08
   ```
 
 2. Compile and install the Flatpak...
@@ -32,7 +32,3 @@ flatpak uninstall --user net.lutris.Lutris
 rm -rf ~/.var/app/net.lutris.Lutris .flatpak-builder
 flatpak remote-delete lutris
 ```
-
-## Development
-
-- Python packages are built with [Flatpak PIP Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip)
