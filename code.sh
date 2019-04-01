@@ -4,8 +4,10 @@ set -e
 
 FIRST_RUN="${XDG_CONFIG_HOME}/flatpak-vscode-first-run"
 
-[ ! -f ${FIRST_RUN} ] && export WARNING_FILE="/app/share/vscode/flatpak-warning.txt"
-touch ${FIRST_RUN}
+if [ ! -f ${FIRST_RUN} ]; then
+  WARNING_FILE="/app/share/vscode/flatpak-warning.txt"
+  touch ${FIRST_RUN}
+fi
 
 for D in /usr/lib/sdk/*; do
   [ -f "${D}/enable.sh" ] && . "${D}/enable.sh"
