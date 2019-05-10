@@ -1,17 +1,11 @@
-# Installation
+## File locations
+The files created by mprime are saved under
+`/home/<user>/.var/app/org.mersenne.mprime/data/`, where `<user>` is your
+username.
 
-## Installing:
-```
-flatpak-builder builddir org.mersenne.mprime.yml --force-clean --install --user
-```
-
-## Running:
-```
-flatpak run org.mersenne.mprime
-```
-
-## Running as a daemon (systemd):
-__WARNING: Currently with this daemon implementation, there's no way to
+# Running as a daemon
+## with systemd:
+__WARNING: Currently with this daemon implementation, there's no way to gracefully
 stop mprime. Stopping this daemon will result in some work
 lost (before the last checkpoint).__
 
@@ -55,8 +49,3 @@ systemctl stop mprime.service
 ```
 journalctl -fu mprime
 ```
-
-## File locations
-The files created by mprime are saved under
-`/home/<user>/.var/app/org.mersenne.mprime/data/`, where `<user>` is your
-username.
