@@ -1,0 +1,179 @@
+From 24d05111dba3f0942d09402a6be9c41037b6b1a1 Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Wed, 10 Apr 2019 12:17:28 +0300
+Subject: [PATCH 1/5] Add a check for Flatpak environment
+
+---
+ lutris/util/linux.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/lutris/util/linux.py b/lutris/util/linux.py
+index f1630e35..1df8ace3 100644
+--- a/lutris/util/linux.py
++++ b/lutris/util/linux.py
+@@ -108,6 +108,8 @@ class LinuxSystem:
+     required_components = ["OPENGL", "VULKAN"]
+     optional_components = ["WINE", "GAMEMODE"]
+ 
++    flatpak_info_path="/.flatpak-info"
++
+     def __init__(self):
+         for key in ("COMMANDS", "TERMINALS"):
+             self._cache[key] = {}
+@@ -204,6 +206,11 @@ def get_arch():
+             return "armv7"
+         logger.warning("Unsupported architecture %s", machine)
+ 
++    @property
++    def is_flatpak(self):
++        """Check is we are running inside Flatpak sandbox"""
++        return os.path.exists(self.flatpak_info_path)
++
+     @property
+     def runtime_architectures(self):
+         """Return the architectures supported on this machine"""
+
+From e0afd2d43db61e56f102162c9c22806ec9ae309f Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Wed, 10 Apr 2019 13:49:54 +0300
+Subject: [PATCH 2/5] Use xdg-open to run Steam games within flatpak
+
+---
+ lutris/runners/steam.py | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/lutris/runners/steam.py b/lutris/runners/steam.py
+index 62f961b2..10a44e25 100644
+--- a/lutris/runners/steam.py
++++ b/lutris/runners/steam.py
+@@ -189,6 +189,9 @@ def steam_data_dir(self):
+                 return path[: -len("SteamApps")]
+ 
+     def get_executable(self):
++        if system.LINUX_SYSTEM.is_flatpak:
++            # Use xdg-open for Steam URIs in Flatpak
++            return system.find_executable("xdg-open")
+         if self.runner_config.get("lsi_steam") and system.find_executable("lsi-steam"):
+             return system.find_executable("lsi-steam")
+         runner_executable = self.runner_config.get("runner_executable")
+@@ -209,6 +212,8 @@ def working_dir(self):
+     def launch_args(self):
+         """Provide launch arguments for Steam"""
+         args = [self.get_executable()]
++        if system.LINUX_SYSTEM.is_flatpak:
++            return args
+         if self.runner_config.get("start_in_big_picture"):
+             args.append("-bigpicture")
+         return args + shlex.split(self.runner_config.get("args") or "")
+@@ -324,9 +329,14 @@ def play(self):
+         else:
+             # Start through steam
+ 
++            command = self.launch_args
++            if system.LINUX_SYSTEM.is_flatpak:
++                return {
++                    "command": command + ["steam://rungameid/%s" % self.appid],
++                    "env": self.get_env(),
++                }
+             # Get current steam pid to act as the root pid instead of lutris
+             self.original_steampid = get_steam_pid()
+-            command = self.launch_args
+             if game_args:
+                 for arg in shlex.split(game_args):
+                     command.append(arg)
+
+From ef7cf42ac2dcfd9400392f1bd4a827986afd036e Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Wed, 10 Apr 2019 14:14:28 +0300
+Subject: [PATCH 3/5] Disable running Steam itself within flatpak
+
+---
+ lutris/runners/steam.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/lutris/runners/steam.py b/lutris/runners/steam.py
+index 10a44e25..696ea7bc 100644
+--- a/lutris/runners/steam.py
++++ b/lutris/runners/steam.py
+@@ -41,7 +41,6 @@ class steam(Runner):
+     human_name = "Steam"
+     platforms = ["Linux"]
+     runner_executable = "steam"
+-    runnable_alone = True
+     game_options = [
+         {
+             "option": "appid",
+@@ -143,6 +142,10 @@ def __init__(self, config=None):
+         self.no_game_remove_warning = True
+         self.original_steampid = None
+ 
++    @property
++    def runnable_alone(self):
++        return not system.LINUX_SYSTEM.is_flatpak
++
+     @property
+     def appid(self):
+         return self.game_config.get("appid") or ""
+
+From b69fdd744c27d30a796a85108152c74a84b533c1 Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Sat, 4 May 2019 16:19:41 +0300
+Subject: [PATCH 4/5] Suppress wine dependency warning for flatpak
+
+---
+ lutris/game.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/lutris/game.py b/lutris/game.py
+index 0374a7b8..c0e76ce1 100644
+--- a/lutris/game.py
++++ b/lutris/game.py
+@@ -18,6 +18,7 @@
+ from lutris.command import MonitoredCommand
+ from lutris.gui import dialogs
+ from lutris.util.timer import Timer
++from lutris.util.linux import LINUX_SYSTEM
+ 
+ 
+ HEARTBEAT_DELAY = 2000
+@@ -243,7 +244,7 @@ def prelaunch(self):
+                 dialogs.ErrorDialog(
+                     "Runtime currently updating", "Game might not work as expected"
+                 )
+-        if "wine" in self.runner_name and not wine.get_system_wine_version():
++        if "wine" in self.runner_name and not wine.get_system_wine_version() and not LINUX_SYSTEM.is_flatpak:
+ 
+             # TODO find a reference to the root window or better yet a way not
+             # to have Gtk dependent code in this class.
+
+From 279dca3d094f41df222717a2c19a73e0daa4df1d Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Sat, 4 May 2019 16:42:45 +0300
+Subject: [PATCH 5/5] Don't use command variable
+
+---
+ lutris/runners/steam.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/lutris/runners/steam.py b/lutris/runners/steam.py
+index 696ea7bc..191bdfd5 100644
+--- a/lutris/runners/steam.py
++++ b/lutris/runners/steam.py
+@@ -332,14 +332,15 @@ def play(self):
+         else:
+             # Start through steam
+ 
+-            command = self.launch_args
+             if system.LINUX_SYSTEM.is_flatpak:
+                 return {
+-                    "command": command + ["steam://rungameid/%s" % self.appid],
++                    "command": self.launch_args + ["steam://rungameid/%s" % self.appid],
+                     "env": self.get_env(),
+                 }
++
+             # Get current steam pid to act as the root pid instead of lutris
+             self.original_steampid = get_steam_pid()
++            command = self.launch_args
+             if game_args:
+                 for arg in shlex.split(game_args):
+                     command.append(arg)
