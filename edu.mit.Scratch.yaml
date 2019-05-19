@@ -1,0 +1,91 @@
+app-id: edu.mit.Scratch
+runtime: org.freedesktop.Platform
+runtime-version: '18.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '18.08'
+separate-locales: false
+command: scratch-desktop
+finish-args:
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=x11'
+  - '--socket=pulseaudio'
+  - '--device=dri'
+  - '--filesystem=home'
+  - '--talk-name=org.freedesktop.Notifications'
+modules:
+  - name: node
+    cleanup:
+      - /bin/node
+      - /bin/npm
+      - /bin/npx
+      - /include
+      - /lib/node_modules
+      - /share
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v10.15.3/node-v10.15.3.tar.gz
+        sha256: db460a63d057ac015b75bb6a879fcbe2fefaaf22afa4b6f6445b9db61ce2270d
+
+  - name: scratch-desktop
+    buildsystem: simple
+    build-options:
+      env:
+        ELECTRON_CACHE: '/run/build/scratch-desktop/flatpak-node/electron-cache'
+    build-commands:
+      # (> is used to avoid some quoting issues.)
+
+      # Initial setup.
+      - 'flatpak-node/patch.sh'
+      - 'npm install --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+
+      # Install scratch-gui's dependencies (most of this hackage is needed because scratch-gui
+      # itself has no package-lock.json), and build it.
+      - 'cp scratch-gui-package-lock.json node_modules/scratch-gui/package-lock.json'
+      - 'flatpak-node/patch/node_modules/scratch-gui.sh'
+      - 'cd node_modules/scratch-gui; TMPDIR=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/tmp npm install --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      - 'cd node_modules/scratch-gui && BUILD_MODE=dist npm run build'
+
+      # Some patching before build:
+      # Make the fetch command a no-op.
+      - >
+        sed -i 's/"fetch": ".*"/"fetch": ":"/' package.json
+      # Avoid running 'electron --version' (which will fail because of lack of $DISPLAY).
+      - >
+        sed -i 's^electronVersion = .*^electronVersion = "v"+require("./node_modules/electron/package.json").version;^' webpack.makeConfig.js
+
+      # Build scratch-desktop.
+      - 'npm run dist:dir'
+      - 'cp -r dist/linux-unpacked /app/scratch'
+
+      # Scale down the SVG from 1024x1024.
+      - 'mkdir -p /app/share/icons/hicolor/scalable/apps'
+      - 'rsvg-convert -f svg -w 512 -h 512 -o /app/share/icons/hicolor/scalable/apps/edu.mit.Scratch.svg src/icon/ScratchDesktop.svg
+      '
+      - 'install -Dm 755 scratch-desktop.sh /app/bin/scratch-desktop'
+    sources:
+      - type: git
+        url: https://github.com/LLK/scratch-desktop.git
+        tag: v1.2.1
+      - type: file
+        path: scratch-desktop/node_modules/scratch-gui/package-lock.json
+        dest-filename: scratch-gui-package-lock.json
+      - generated-sources.json
+      - asset-sources.json
+      - type: script
+        dest-filename: scratch-desktop.sh
+        commands:
+          - 'cd /app/scratch'
+          - './scratch-desktop'
+
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 644 edu.mit.Scratch.appdata.xml /app/share/metainfo/edu.mit.Scratch.appdata.xml'
+      - 'install -Dm 644 edu.mit.Scratch.desktop /app/share/applications/edu.mit.Scratch.desktop'
+    sources:
+      - type: file
+        path: edu.mit.Scratch.appdata.xml
+      - type: file
+        path: edu.mit.Scratch.desktop
