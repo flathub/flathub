@@ -1,0 +1,71 @@
+app-id: com.github.nihui.waifu2x-ncnn-vulkan
+
+runtime: org.freedesktop.Platform
+runtime-version: '18.08'
+sdk: org.freedesktop.Sdk
+
+command: waifu2x
+
+finish-args:
+  - --device=dri
+  - --filesystem=xdg-pictures
+
+cleanup:
+  - '*.a'
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.a
+
+modules:
+# ncnn version requirement from waifu2x README.md
+  - name: ncnn
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      env:
+        VULKAN_SDK: /app/1.1.106.0/x86_64
+    config-opts:
+      - -DNCNN_VULKAN=ON
+    sources:
+      - type: git
+        url: https://github.com/Tencent/ncnn.git
+        commit: 07260527fc62af13d8f2f117fa6e95fb1837eb3d
+    modules:
+      - name: protobuf
+        sources:
+          - type: archive
+            url: https://github.com/protocolbuffers/protobuf/releases/download/v3.7.1/protobuf-all-3.7.1.tar.gz
+            sha256: c10ef8d8ad5a9e5f850483051b7f9ee2c8bb3ca2e0e16a4cf105bd1321afb2d6
+      - name: vulkan-sdk
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app
+          - tar -x -f vulkan*.gz -C /app
+        sources:
+          - type: file
+            url: https://sdk.lunarg.com/sdk/download/1.1.106.0/linux/vulkansdk-linux-x86_64-1.1.106.0.tar.gz
+            sha256: 78739f6418f10bc9784743ab3d297b278106663256fe8b7482edfea6c65c7ec3
+
+  - name: waifu2x-ncnn-vulkan
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      env:
+        VULKAN_SDK: /app/1.1.106.0/x86_64
+    sources:
+      - type: archive
+        url: https://github.com/nihui/waifu2x-ncnn-vulkan/archive/20190421.tar.gz
+        sha256: 1e6172693d32aaa706d87f68404313d2c56366308fd83fac9b9a96206e2a4c32
+      - type: patch
+        path: waifu2x-cmakepatch.patch
+      - type: shell
+        commands:
+          - sed -i 's/models\-cunet/\/app\/share\/models\-cunet/' waifu2x.cpp
+    modules:
+      - name: appdata
+        buildsystem: simple
+        build-commands:
+          - install -t "${FLATPAK_DEST}/share/appdata" -Dm644 com.github.nihui.waifu2x-ncnn-vulkan.appdata.xml
+        sources:
+          - type: file
+            path: com.github.nihui.waifu2x-ncnn-vulkan.appdata.xml
