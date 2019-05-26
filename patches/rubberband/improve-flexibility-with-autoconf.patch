@@ -1,0 +1,1182 @@
+From ed84ba82deb53f2403e7a7d120dbece208abc533 Mon Sep 17 00:00:00 2001
+From: AsavarTzeth <asavartzeth@gmail.com>
+Date: Sat, 23 Feb 2019 08:16:00 +0100
+Subject: [PATCH] Improve flexibility with autoconf
+
+Add easy-to-use options to configure.ac that simplify configuration
+of compile-time features.
+
+While building specific a target is possible, the configure script
+dependency checks and the Makefile install target remain inflexible.
+Any serious customization requires patching of both configure.ac,
+Makefile.in, followed by a configure rebuild.
+
+By introducing conditions and configure flags everything can be made
+both simpler and more modular, while hopefully removing and need for
+related downstream patches.
+
+Some noteworthy changes:
+
+- Add modular install targets which can either be used directly, or
+  based upon conditions set by the configure script.
+
+- Add --with-jni flag, thus removing an additional "make jni"
+  invocation. One might expect "jni" to be included in the "all" target.
+  But just in case, if jni.h is not found configure will act as before
+  and ignore it.
+
+- Fix make install target assuming that jni target is built, even though
+  it is not a part of the "all" target.
+
+- Add jdk to travis so that the jni target can now be tested by the ci.
+  According to travis documentation $JAVA_HOME should be set
+  appropriately, presumably by the "jdk" addon.
+
+- Add --enable-static and --enable-shared flags. This only affects the
+  main librubberband library. All other libraries are still always
+  dynamic/shared.
+
+  It can be used alone or in combination with other flags. For example
+  to build only librubberband.so, or only librubberband.a, or neither
+  if only the plugins are required.
+
+- Make all header and dependency checks properly handle things if a
+  dependency is not found. Currently all checks always soft fail, which
+  will instead cause make to fail.
+
+- Add --disable-program flag, which is useful when only libraries are
+  required.
+
+- Add --with-fft=[PKG] flag which makes it very simple to set which fft
+  library to use.
+
+- Add --with-resampler=[PKG] flag which makes it very simple to set
+  which resampler library to use.
+
+- Add --disable-threading flag.
+
+- Use a program variable for all file installations, and set it to use
+  the install command by default. This is adheres to best practices,
+  such as allowing a user to override the command if necessary.
+
+- Declare .PHONY targets, which brings a slight increase in reliability
+  and performance. It improves clarity if nothing else.
+---
+ .hgignore    |   1 +
+ .travis.yml  |   3 +-
+ Makefile.in  | 129 +++++++++++---
+ configure    | 495 ++++++++++++++++++++++++++++++++++-----------------
+ configure.ac | 162 +++++++++++++++--
+ 5 files changed, 584 insertions(+), 206 deletions(-)
+
+diff --git a/.hgignore b/.hgignore
+index 2aef9ed..8517ecf 100644
+--- a/.hgignore
++++ b/.hgignore
+@@ -13,6 +13,7 @@ obj/*
+ *.orig
+ *.log
+ *.bak
++*.pc
+ config.status
+ doc/html
+ *.rej
+diff --git a/.travis.yml b/.travis.yml
+index 1ddce82..f957a51 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -19,7 +19,8 @@ addons:
+       - libfftw3-dev
+       - vamp-plugin-sdk
+       - ladspa-sdk
+-      
++  jdk: openjdk8
++
+ before_install:
+   - if [[ "$TRAVIS_OS_NAME" = "osx" ]] ; then brew update ; brew install libsndfile ; fi
+ 
+diff --git a/Makefile.in b/Makefile.in
+index 3a70a71..ef3d4ee 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -2,13 +2,13 @@
+ PREFIX		:= @prefix@
+ CXX		:= @CXX@
+ CC		:= @CC@
+-CXXFLAGS	:= -DHAVE_LIBSAMPLERATE -DHAVE_FFTW3 -DFFTW_DOUBLE_ONLY -DNO_THREAD_CHECKS -DUSE_PTHREADS -DNO_TIMING -DNDEBUG -I. -Isrc -Irubberband @CXXFLAGS@ @SRC_CFLAGS@ @SNDFILE_CFLAGS@ @FFTW_CFLAGS@ @Vamp_CFLAGS@ $(OPTFLAGS)
++CXXFLAGS	:= @DEFS@ -DNO_THREAD_CHECKS -DNO_TIMING -DNDEBUG -I. -Isrc -Irubberband @CXXFLAGS@ $(OPTFLAGS)
+ CFLAGS		:= @CFLAGS@ $(OPTFLAGS)
+-LDFLAGS		:= @LDFLAGS@ -lpthread $(LDFLAGS)
++LDFLAGS		:= @LDFLAGS@ @PTHREAD_LIBS@ $(LDFLAGS)
+ 
+-JNI_CXXFLAGS	:= -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux
+-JAVAC		:= $(JAVA_HOME)/bin/javac
+-JAR		:= $(JAVA_HOME)/bin/jar
++JNI_CXXFLAGS	:= @JNI_CPPFLAGS@
++JAVAC		:= @JAVA_HOME@/bin/javac
++JAR		:= @JAVA_HOME@/bin/jar
+ 
+ LIBRARY_LIBS		:= @SRC_LIBS@ @FFTW_LIBS@ 
+ PROGRAM_LIBS		:= @SNDFILE_LIBS@ $(LIBRARY_LIBS)
+@@ -17,6 +17,9 @@ LADSPA_PLUGIN_LIBS	:= $(LIBRARY_LIBS)
+ 
+ MKDIR			:= mkdir
+ AR			:= ar
++INSTALL			:= install
++INSTALL_DATA		:= $(INSTALL) -m 644
++INSTALL_PROGRAM		:= $(INSTALL)
+ 
+ INSTALL_BINDIR		:= $(PREFIX)/bin
+ INSTALL_INCDIR		:= $(PREFIX)/include/rubberband
+@@ -45,7 +48,51 @@ JAR_TARGET		:= lib/$(JARNAME)
+ VAMP_TARGET    		:= lib/vamp-rubberband$(DYNAMIC_EXTENSION)
+ LADSPA_TARGET  		:= lib/ladspa-rubberband$(DYNAMIC_EXTENSION)
+ 
+-all:	bin lib $(PROGRAM_TARGET) $(STATIC_TARGET) $(DYNAMIC_TARGET) $(VAMP_TARGET) $(LADSPA_TARGET)
++OPT_TARGETS		:=
++OPT_INSTALL		:=
++
++USE_PROGRAM		:= @USE_PROGRAM@
++USE_STATIC		:= @USE_STATIC@
++USE_DYNAMIC		:= @USE_DYNAMIC@
++HAVE_JNI_H		:= @HAVE_JNI_H@
++HAVE_Vamp		:= @HAVE_Vamp@
++HAVE_LADSPA_H		:= @HAVE_LADSPA_H@
++USE_KISSFFT		:= @USE_KISSFFT@
++USE_SPEEX		:= @USE_SPEEX@
++
++ifeq ($(USE_PROGRAM), 1)
++OPT_TARGETS		+= program
++OPT_INSTALL		+= install_program
++endif
++
++ifeq ($(USE_STATIC), 1)
++OPT_TARGETS		+= static
++OPT_INSTALL		+= install_static
++endif
++
++ifeq ($(USE_DYNAMIC), 1)
++OPT_TARGETS		+= dynamic
++OPT_INSTALL		+= install_dynamic
++endif
++
++ifeq ($(HAVE_JNI_H), 1)
++OPT_TARGETS		+= jni
++OPT_INSTALL		+= install_jni
++endif
++
++ifeq ($(HAVE_Vamp), 1)
++OPT_TARGETS		+= vamp
++OPT_INSTALL		+= install_vamp
++endif
++
++ifeq ($(HAVE_LADSPA_H), 1)
++OPT_TARGETS		+= ladspa
++OPT_INSTALL		+= install_ladspa
++endif
++
++.PHONY: all static dynamic library jni program vamp ladspa
++
++all:	bin lib $(OPT_TARGETS)
+ 
+ static:		$(STATIC_TARGET)
+ dynamic:	$(DYNAMIC_TARGET)
+@@ -128,6 +175,17 @@ LADSPA_SOURCES := \
+ 	ladspa/RubberBandPitchShifter.cpp \
+ 	ladspa/libmain.cpp
+ 
++ifeq ($(USE_KISSFFT), 1)
++LIBRARY_SOURCES	+= \
++	src/kissfft/kiss_fft.c \
++	src/kissfft/kiss_fftr.c
++endif
++
++ifeq ($(USE_SPEEX), 1)
++LIBRARY_SOURCES += \
++	src/speex/resample.c
++endif
++
+ LIBRARY_OBJECTS := $(LIBRARY_SOURCES:.cpp=.o)
+ LIBRARY_OBJECTS := $(LIBRARY_OBJECTS:.c=.o)
+ JNI_OBJECT	:= $(JNI_SOURCE:.cpp=.o)
+@@ -166,31 +224,52 @@ bin:
+ lib:
+ 	$(MKDIR) $@
+ 
+-install:	all
++.PHONY: install install_program install_static install_dynamic install_lib_common \
++	install_jni install_vamp install_ladspa
++
++install:		all $(OPT_INSTALL)
++
++install_program:	program
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_BINDIR)
++	$(INSTALL_PROGRAM) $(PROGRAM_TARGET) $(DESTDIR)$(INSTALL_BINDIR)
++
++install_lib_common:
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_INCDIR)
++	$(MKDIR) -p $(DESTDIR)$(INSTALL_PKGDIR)
++	$(INSTALL_DATA) $(PUBLIC_INCLUDES) $(DESTDIR)$(INSTALL_INCDIR)
++	sed "s,%PREFIX%,$(PREFIX)," rubberband.pc.in > rubberband.pc
++	$(INSTALL_DATA) rubberband.pc $(DESTDIR)$(INSTALL_PKGDIR)
++
++install_static:		static install_lib_common
++	$(MKDIR) -p $(DESTDIR)$(INSTALL_LIBDIR)
++	$(INSTALL_PROGRAM) $(STATIC_TARGET) $(DESTDIR)$(INSTALL_LIBDIR)
++
++install_dynamic:	dynamic install_lib_common
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_LIBDIR)
++	$(INSTALL_PROGRAM) $(DYNAMIC_TARGET) \
++		$(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION)
++	ln -sf $(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION) \
++		$(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_ABI_VERSION)
++	ln -sf $(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION) \
++		$(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION)
++
++install_jni:		jni
++	$(MKDIR) -p $(DESTDIR)$(INSTALL_LIBDIR)
++	$(INSTALL_PROGRAM) $(JNI_TARGET) $(DESTDIR)$(INSTALL_LIBDIR)/$(JNINAME)$(DYNAMIC_EXTENSION)
++
++install_vamp:		vamp
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_VAMPDIR)
++	$(INSTALL_PROGRAM) $(VAMP_TARGET) $(DESTDIR)$(INSTALL_VAMPDIR)
++	$(INSTALL_DATA) vamp/vamp-rubberband.cat $(DESTDIR)$(INSTALL_VAMPDIR)
++
++install_ladspa: 	ladspa
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_LADSPADIR)
+ 	$(MKDIR) -p $(DESTDIR)$(INSTALL_LRDFDIR)
+-	$(MKDIR) -p $(DESTDIR)$(INSTALL_PKGDIR)
+-	cp $(PROGRAM_TARGET) $(DESTDIR)$(INSTALL_BINDIR)
+-	cp $(PUBLIC_INCLUDES) $(DESTDIR)$(INSTALL_INCDIR)
+-	cp $(STATIC_TARGET) $(DESTDIR)$(INSTALL_LIBDIR)
+-	rm -f $(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_ABI_VERSION)
+-	rm -f $(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION)
+-	rm -f $(DESTDIR)$(INSTALL_LIBDIR)/$(JNINAME)$(DYNAMIC_EXTENSION)
+-	cp $(DYNAMIC_TARGET) $(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION)
+-	ln -s $(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION) $(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_ABI_VERSION)
+-	ln -s $(LIBNAME)$(DYNAMIC_EXTENSION).$(DYNAMIC_FULL_VERSION) $(DESTDIR)$(INSTALL_LIBDIR)/$(LIBNAME)$(DYNAMIC_EXTENSION)
+-	cp -f $(JNI_TARGET) $(DESTDIR)$(INSTALL_LIBDIR)/$(JNINAME)$(DYNAMIC_EXTENSION)
+-	cp $(VAMP_TARGET) $(DESTDIR)$(INSTALL_VAMPDIR)
+-	cp vamp/vamp-rubberband.cat $(DESTDIR)$(INSTALL_VAMPDIR)
+-	cp $(LADSPA_TARGET) $(DESTDIR)$(INSTALL_LADSPADIR)
+-	cp ladspa/ladspa-rubberband.cat $(DESTDIR)$(INSTALL_LADSPADIR)
+-	cp ladspa/ladspa-rubberband.rdf $(DESTDIR)$(INSTALL_LRDFDIR)
+-	sed "s,%PREFIX%,$(PREFIX)," rubberband.pc.in \
+-	  > $(DESTDIR)$(INSTALL_PKGDIR)/rubberband.pc
++	$(INSTALL_PROGRAM) $(LADSPA_TARGET) $(DESTDIR)$(INSTALL_LADSPADIR)
++	$(INSTALL_DATA) ladspa/ladspa-rubberband.cat $(DESTDIR)$(INSTALL_LADSPADIR)
++	$(INSTALL_DATA) ladspa/ladspa-rubberband.rdf $(DESTDIR)$(INSTALL_LRDFDIR)
++
++.PHONY: clean distclean depend
+ 
+ clean:
+ 	rm -f $(LIBRARY_OBJECTS) $(JNI_OBJECT) $(JAVA_OBJECT) $(PROGRAM_OBJECTS) $(LADSPA_OBJECTS) $(VAMP_OBJECTS)
+diff --git a/configure b/configure
+index f801d1c..5a3bf93 100755
+--- a/configure
++++ b/configure
+@@ -624,17 +624,28 @@ ac_includes_default="\
+ 
+ ac_subst_vars='LTLIBOBJS
+ LIBOBJS
++USE_DYNAMIC
++USE_STATIC
++HAVE_LADSPA_H
++HAVE_JNI_H
++JNI_CPPFLAGS
++JAVA_HOME
++PTHREAD_LIBS
++HAVE_Vamp
+ Vamp_LIBS
+ Vamp_CFLAGS
+-FFTW_LIBS
+-FFTW_CFLAGS
++USE_PROGRAM
+ SNDFILE_LIBS
+ SNDFILE_CFLAGS
+-SRC_LIBS
+-SRC_CFLAGS
++USE_KISSFFT
++FFTW_LIBS
++FFTW_CFLAGS
++USE_SPEEX
+ PKG_CONFIG_LIBDIR
+ PKG_CONFIG_PATH
+ PKG_CONFIG
++SRC_LIBS
++SRC_CFLAGS
+ EGREP
+ GREP
+ CPP
+@@ -689,6 +700,15 @@ SHELL'
+ ac_subst_files=''
+ ac_user_opts='
+ enable_option_checking
++with_resampler
++with_fft
++enable_program
++with_vamp
++enable_threading
++with_jni
++with_ladspa
++enable_static
++enable_shared
+ '
+       ac_precious_vars='build_alias
+ host_alias
+@@ -702,17 +722,18 @@ CCC
+ CC
+ CFLAGS
+ CPP
++SRC_CFLAGS
++SRC_LIBS
+ PKG_CONFIG
+ PKG_CONFIG_PATH
+ PKG_CONFIG_LIBDIR
+-SRC_CFLAGS
+-SRC_LIBS
+-SNDFILE_CFLAGS
+-SNDFILE_LIBS
+ FFTW_CFLAGS
+ FFTW_LIBS
++SNDFILE_CFLAGS
++SNDFILE_LIBS
+ Vamp_CFLAGS
+-Vamp_LIBS'
++Vamp_LIBS
++JAVA_HOME'
+ 
+ 
+ # Initialize some variables set by options.
+@@ -1318,6 +1339,25 @@ if test -n "$ac_init_help"; then
+    esac
+   cat <<\_ACEOF
+ 
++Optional Features:
++  --disable-option-checking  ignore unrecognized --enable/--with options
++  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
++  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
++  --disable-program       do not build the rubberband program [default=no]
++  --disable-threading     disable the use of multithreading
++  --enable-static         build static libraries [default=yes]
++  --enable-shared         build shared libraries [default=yes]
++
++Optional Packages:
++  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
++  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
++  --with-resampler=[PKG]  resampler library [samplerate|resample|speex]
++                          [default=samplerate]
++  --with-fft=[PKG]        fft library [fftw3|kissfft|builtin] [default=fftw3]
++  --without-vamp          do not build vamp plugins [default=no]
++  --with-jni              build java library [default=auto]
++  --without-ladspa        do not build ladspa plugins [default=no]
++
+ Some influential environment variables:
+   CXX         C++ compiler command
+   CXXFLAGS    C++ compiler flags
+@@ -1329,21 +1369,22 @@ Some influential environment variables:
+   CC          C compiler command
+   CFLAGS      C compiler flags
+   CPP         C preprocessor
++  SRC_CFLAGS  C compiler flags for SRC, overriding pkg-config
++  SRC_LIBS    linker flags for SRC, overriding pkg-config
+   PKG_CONFIG  path to pkg-config utility
+   PKG_CONFIG_PATH
+               directories to add to pkg-config's search path
+   PKG_CONFIG_LIBDIR
+               path overriding pkg-config's built-in search path
+-  SRC_CFLAGS  C compiler flags for SRC, overriding pkg-config
+-  SRC_LIBS    linker flags for SRC, overriding pkg-config
++  FFTW_CFLAGS C compiler flags for FFTW, overriding pkg-config
++  FFTW_LIBS   linker flags for FFTW, overriding pkg-config
+   SNDFILE_CFLAGS
+               C compiler flags for SNDFILE, overriding pkg-config
+   SNDFILE_LIBS
+               linker flags for SNDFILE, overriding pkg-config
+-  FFTW_CFLAGS C compiler flags for FFTW, overriding pkg-config
+-  FFTW_LIBS   linker flags for FFTW, overriding pkg-config
+   Vamp_CFLAGS C compiler flags for Vamp, overriding pkg-config
+   Vamp_LIBS   linker flags for Vamp, overriding pkg-config
++  JAVA_HOME   location of java development kit
+ 
+ Use these variables to override the choices made by `configure' or to help
+ it to find libraries and programs with nonstandard names/locations.
+@@ -3728,6 +3769,18 @@ $as_echo "#define AC_APPLE_UNIVERSAL_BUILD 1" >>confdefs.h
+ 
+ 
+ 
++# Check whether --with-resampler was given.
++if test "${with_resampler+set}" = set; then :
++  withval=$with_resampler;
++else
++  with_resampler=samplerate
++fi
++
++
++
++
++
++
+ 
+ 
+ 
+@@ -3844,10 +3897,12 @@ $as_echo "no" >&6; }
+ 		PKG_CONFIG=""
+ 	fi
+ fi
++case "x$with_resampler" in #(
++  xsamplerate) :
+ 
+ pkg_failed=no
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for samplerate" >&5
+-$as_echo_n "checking for samplerate... " >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SRC" >&5
++$as_echo_n "checking for SRC... " >&6; }
+ 
+ if test -n "$SRC_CFLAGS"; then
+     pkg_cv_SRC_CFLAGS="$SRC_CFLAGS"
+@@ -3887,7 +3942,7 @@ fi
+ 
+ 
+ if test $pkg_failed = yes; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+ 
+ if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+@@ -3903,56 +3958,82 @@ fi
+ 	# Put the nasty error message in config.log where it belongs
+ 	echo "$SRC_PKG_ERRORS" >&5
+ 
+-	as_fn_error $? "Package requirements (samplerate) were not met:
+-
+-$SRC_PKG_ERRORS
+-
+-Consider adjusting the PKG_CONFIG_PATH environment variable if you
+-installed software in a non-standard prefix.
+-
+-Alternatively, you may set the environment variables SRC_CFLAGS
+-and SRC_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details." "$LINENO" 5
++	as_fn_error $? "libsamplerate could not be found!" "$LINENO" 5
+ elif test $pkg_failed = untried; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+-	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+-is in your PATH or set the PKG_CONFIG environment variable to the full
+-path to pkg-config.
+-
+-Alternatively, you may set the environment variables SRC_CFLAGS
+-and SRC_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details.
+-
+-To get pkg-config, see <http://pkg-config.freedesktop.org/>.
+-See \`config.log' for more details" "$LINENO" 5; }
++	as_fn_error $? "libsamplerate could not be found!" "$LINENO" 5
+ else
+ 	SRC_CFLAGS=$pkg_cv_SRC_CFLAGS
+ 	SRC_LIBS=$pkg_cv_SRC_LIBS
+         { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
++	$as_echo "#define HAVE_LIBSAMPLERATE 1" >>confdefs.h
++
++
++
++
++fi
++   ;; #(
++  xresample) :
++    for ac_header in libresample.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "libresample.h" "ac_cv_header_libresample_h" "$ac_includes_default"
++if test "x$ac_cv_header_libresample_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_LIBRESAMPLE_H 1
++_ACEOF
++ $as_echo "#define HAVE_LIBRESAMPLE 1" >>confdefs.h
++
++     SRC_LIBS="-lresample"
+ 
++
++else
++  as_fn_error $? "libresample.h could not be found!" "$LINENO" 5
+ fi
+ 
++done
++
++   ;; #(
++  xspeex) :
++    $as_echo "#define USE_SPEEX 1" >>confdefs.h
++
++   USE_SPEEX=1
++ ;; #(
++  *) :
++    as_fn_error $? "invalid resampler library: \"$with_resampler\"\
++   valid options: [samplerate|resample|speex]" "$LINENO" 5 ;;
++esac
++
++
++
++
++
++# Check whether --with-fft was given.
++if test "${with_fft+set}" = set; then :
++  withval=$with_fft;
++else
++  with_fft=fftw3
++fi
+ 
+ 
++case "x$with_fft" in #(
++  xfftw3) :
+ 
+ pkg_failed=no
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sndfile" >&5
+-$as_echo_n "checking for sndfile... " >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for FFTW" >&5
++$as_echo_n "checking for FFTW... " >&6; }
+ 
+-if test -n "$SNDFILE_CFLAGS"; then
+-    pkg_cv_SNDFILE_CFLAGS="$SNDFILE_CFLAGS"
++if test -n "$FFTW_CFLAGS"; then
++    pkg_cv_FFTW_CFLAGS="$FFTW_CFLAGS"
+  elif test -n "$PKG_CONFIG"; then
+     if test -n "$PKG_CONFIG" && \
+-    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"sndfile\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "sndfile") 2>&5
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fftw3\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "fftw3") 2>&5
+   ac_status=$?
+   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+   test $ac_status = 0; }; then
+-  pkg_cv_SNDFILE_CFLAGS=`$PKG_CONFIG --cflags "sndfile" 2>/dev/null`
++  pkg_cv_FFTW_CFLAGS=`$PKG_CONFIG --cflags "fftw3" 2>/dev/null`
+ 		      test "x$?" != "x0" && pkg_failed=yes
+ else
+   pkg_failed=yes
+@@ -3960,16 +4041,16 @@ fi
+  else
+     pkg_failed=untried
+ fi
+-if test -n "$SNDFILE_LIBS"; then
+-    pkg_cv_SNDFILE_LIBS="$SNDFILE_LIBS"
++if test -n "$FFTW_LIBS"; then
++    pkg_cv_FFTW_LIBS="$FFTW_LIBS"
+  elif test -n "$PKG_CONFIG"; then
+     if test -n "$PKG_CONFIG" && \
+-    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"sndfile\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "sndfile") 2>&5
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fftw3\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "fftw3") 2>&5
+   ac_status=$?
+   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+   test $ac_status = 0; }; then
+-  pkg_cv_SNDFILE_LIBS=`$PKG_CONFIG --libs "sndfile" 2>/dev/null`
++  pkg_cv_FFTW_LIBS=`$PKG_CONFIG --libs "fftw3" 2>/dev/null`
+ 		      test "x$?" != "x0" && pkg_failed=yes
+ else
+   pkg_failed=yes
+@@ -3981,7 +4062,7 @@ fi
+ 
+ 
+ if test $pkg_failed = yes; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+ 
+ if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+@@ -3990,63 +4071,70 @@ else
+         _pkg_short_errors_supported=no
+ fi
+         if test $_pkg_short_errors_supported = yes; then
+-	        SNDFILE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "sndfile" 2>&1`
++	        FFTW_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "fftw3" 2>&1`
+         else
+-	        SNDFILE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "sndfile" 2>&1`
++	        FFTW_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "fftw3" 2>&1`
+         fi
+ 	# Put the nasty error message in config.log where it belongs
+-	echo "$SNDFILE_PKG_ERRORS" >&5
+-
+-	as_fn_error $? "Package requirements (sndfile) were not met:
+-
+-$SNDFILE_PKG_ERRORS
+-
+-Consider adjusting the PKG_CONFIG_PATH environment variable if you
+-installed software in a non-standard prefix.
++	echo "$FFTW_PKG_ERRORS" >&5
+ 
+-Alternatively, you may set the environment variables SNDFILE_CFLAGS
+-and SNDFILE_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details." "$LINENO" 5
++	as_fn_error $? "fftw3 not found!" "$LINENO" 5
+ elif test $pkg_failed = untried; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+-	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+-is in your PATH or set the PKG_CONFIG environment variable to the full
+-path to pkg-config.
+-
+-Alternatively, you may set the environment variables SNDFILE_CFLAGS
+-and SNDFILE_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details.
+-
+-To get pkg-config, see <http://pkg-config.freedesktop.org/>.
+-See \`config.log' for more details" "$LINENO" 5; }
++	as_fn_error $? "fftw3 not found!" "$LINENO" 5
+ else
+-	SNDFILE_CFLAGS=$pkg_cv_SNDFILE_CFLAGS
+-	SNDFILE_LIBS=$pkg_cv_SNDFILE_LIBS
++	FFTW_CFLAGS=$pkg_cv_FFTW_CFLAGS
++	FFTW_LIBS=$pkg_cv_FFTW_LIBS
+         { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
++	$as_echo "#define HAVE_FFTW3 1" >>confdefs.h
++
++     $as_echo "#define FFTW_DOUBLE_ONLY 1" >>confdefs.h
++
++
++
+ 
+ fi
++   ;; #(
++  xkissfft) :
++    $as_echo "#define USE_KISSFFT 1" >>confdefs.h
++
++   USE_KISSFFT=1
++ ;; #(
++  xbuiltin) :
++    $as_echo "#define USE_BUILTIN_FFT 1" >>confdefs.h
++ ;; #(
++  *) :
++    as_fn_error $? "invalid fft library: \"$with_fft\"\
++   valid options: [fftw3|kissfft|builtin]" "$LINENO" 5 ;;
++esac
+ 
+ 
+ 
+ 
++# Check whether --enable-program was given.
++if test "${enable_program+set}" = set; then :
++  enableval=$enable_program;
++fi
++
++
++if test "x$enable_program" != xno; then :
++
+ pkg_failed=no
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for fftw3" >&5
+-$as_echo_n "checking for fftw3... " >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SNDFILE" >&5
++$as_echo_n "checking for SNDFILE... " >&6; }
+ 
+-if test -n "$FFTW_CFLAGS"; then
+-    pkg_cv_FFTW_CFLAGS="$FFTW_CFLAGS"
++if test -n "$SNDFILE_CFLAGS"; then
++    pkg_cv_SNDFILE_CFLAGS="$SNDFILE_CFLAGS"
+  elif test -n "$PKG_CONFIG"; then
+     if test -n "$PKG_CONFIG" && \
+-    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fftw3\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "fftw3") 2>&5
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"sndfile\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "sndfile") 2>&5
+   ac_status=$?
+   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+   test $ac_status = 0; }; then
+-  pkg_cv_FFTW_CFLAGS=`$PKG_CONFIG --cflags "fftw3" 2>/dev/null`
++  pkg_cv_SNDFILE_CFLAGS=`$PKG_CONFIG --cflags "sndfile" 2>/dev/null`
+ 		      test "x$?" != "x0" && pkg_failed=yes
+ else
+   pkg_failed=yes
+@@ -4054,16 +4142,16 @@ fi
+  else
+     pkg_failed=untried
+ fi
+-if test -n "$FFTW_LIBS"; then
+-    pkg_cv_FFTW_LIBS="$FFTW_LIBS"
++if test -n "$SNDFILE_LIBS"; then
++    pkg_cv_SNDFILE_LIBS="$SNDFILE_LIBS"
+  elif test -n "$PKG_CONFIG"; then
+     if test -n "$PKG_CONFIG" && \
+-    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fftw3\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "fftw3") 2>&5
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"sndfile\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "sndfile") 2>&5
+   ac_status=$?
+   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+   test $ac_status = 0; }; then
+-  pkg_cv_FFTW_LIBS=`$PKG_CONFIG --libs "fftw3" 2>/dev/null`
++  pkg_cv_SNDFILE_LIBS=`$PKG_CONFIG --libs "sndfile" 2>/dev/null`
+ 		      test "x$?" != "x0" && pkg_failed=yes
+ else
+   pkg_failed=yes
+@@ -4075,7 +4163,7 @@ fi
+ 
+ 
+ if test $pkg_failed = yes; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+ 
+ if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+@@ -4084,77 +4172,47 @@ else
+         _pkg_short_errors_supported=no
+ fi
+         if test $_pkg_short_errors_supported = yes; then
+-	        FFTW_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "fftw3" 2>&1`
++	        SNDFILE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "sndfile" 2>&1`
+         else
+-	        FFTW_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "fftw3" 2>&1`
++	        SNDFILE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "sndfile" 2>&1`
+         fi
+ 	# Put the nasty error message in config.log where it belongs
+-	echo "$FFTW_PKG_ERRORS" >&5
+-
+-	as_fn_error $? "Package requirements (fftw3) were not met:
+-
+-$FFTW_PKG_ERRORS
+-
+-Consider adjusting the PKG_CONFIG_PATH environment variable if you
+-installed software in a non-standard prefix.
++	echo "$SNDFILE_PKG_ERRORS" >&5
+ 
+-Alternatively, you may set the environment variables FFTW_CFLAGS
+-and FFTW_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details." "$LINENO" 5
++	as_fn_error $? "sndfile not found: --disable-program to disable" "$LINENO" 5
+ elif test $pkg_failed = untried; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+-	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+-is in your PATH or set the PKG_CONFIG environment variable to the full
+-path to pkg-config.
+-
+-Alternatively, you may set the environment variables FFTW_CFLAGS
+-and FFTW_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details.
+-
+-To get pkg-config, see <http://pkg-config.freedesktop.org/>.
+-See \`config.log' for more details" "$LINENO" 5; }
++	as_fn_error $? "sndfile not found: --disable-program to disable" "$LINENO" 5
+ else
+-	FFTW_CFLAGS=$pkg_cv_FFTW_CFLAGS
+-	FFTW_LIBS=$pkg_cv_FFTW_LIBS
++	SNDFILE_CFLAGS=$pkg_cv_SNDFILE_CFLAGS
++	SNDFILE_LIBS=$pkg_cv_SNDFILE_LIBS
+         { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
+-
+-fi
++	$as_echo "#define SNDFILE_CFLAGS 1" >>confdefs.h
+ 
+ 
++     USE_PROGRAM=1
+ 
+-for ac_header in ladspa.h
+-do :
+-  ac_fn_c_check_header_mongrel "$LINENO" "ladspa.h" "ac_cv_header_ladspa_h" "$ac_includes_default"
+-if test "x$ac_cv_header_ladspa_h" = xyes; then :
+-  cat >>confdefs.h <<_ACEOF
+-#define HAVE_LADSPA_H 1
+-_ACEOF
+ 
+ fi
++fi
+ 
+-done
+ 
+-for ac_header in pthread.h
+-do :
+-  ac_fn_c_check_header_mongrel "$LINENO" "pthread.h" "ac_cv_header_pthread_h" "$ac_includes_default"
+-if test "x$ac_cv_header_pthread_h" = xyes; then :
+-  cat >>confdefs.h <<_ACEOF
+-#define HAVE_PTHREAD_H 1
+-_ACEOF
+ 
+-fi
+ 
+-done
++
++# Check whether --with-vamp was given.
++if test "${with_vamp+set}" = set; then :
++  withval=$with_vamp;
++fi
+ 
+ 
++if test "x$with_vamp" != xno; then :
+ 
+ pkg_failed=no
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for vamp-sdk" >&5
+-$as_echo_n "checking for vamp-sdk... " >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for Vamp" >&5
++$as_echo_n "checking for Vamp... " >&6; }
+ 
+ if test -n "$Vamp_CFLAGS"; then
+     pkg_cv_Vamp_CFLAGS="$Vamp_CFLAGS"
+@@ -4194,7 +4252,7 @@ fi
+ 
+ 
+ if test $pkg_failed = yes; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+ 
+ if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+@@ -4210,40 +4268,145 @@ fi
+ 	# Put the nasty error message in config.log where it belongs
+ 	echo "$Vamp_PKG_ERRORS" >&5
+ 
+-	as_fn_error $? "Package requirements (vamp-sdk) were not met:
+-
+-$Vamp_PKG_ERRORS
+-
+-Consider adjusting the PKG_CONFIG_PATH environment variable if you
+-installed software in a non-standard prefix.
+-
+-Alternatively, you may set the environment variables Vamp_CFLAGS
+-and Vamp_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details." "$LINENO" 5
++	as_fn_error $? "vamp-sdk not found: --without-vamp to disable" "$LINENO" 5
+ elif test $pkg_failed = untried; then
+-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ $as_echo "no" >&6; }
+-	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+-is in your PATH or set the PKG_CONFIG environment variable to the full
+-path to pkg-config.
+-
+-Alternatively, you may set the environment variables Vamp_CFLAGS
+-and Vamp_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details.
+-
+-To get pkg-config, see <http://pkg-config.freedesktop.org/>.
+-See \`config.log' for more details" "$LINENO" 5; }
++	as_fn_error $? "vamp-sdk not found: --without-vamp to disable" "$LINENO" 5
+ else
+ 	Vamp_CFLAGS=$pkg_cv_Vamp_CFLAGS
+ 	Vamp_LIBS=$pkg_cv_Vamp_LIBS
+         { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
++	$as_echo "#define Vamp_CFLAGS 1" >>confdefs.h
++
++
++     HAVE_Vamp=1
++
+ 
+ fi
++fi
++
++# Check whether --enable-threading was given.
++if test "${enable_threading+set}" = set; then :
++  enableval=$enable_threading;
++fi
++
++
++if test "x$enable_threading" != xno; then :
++  for ac_header in pthread.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "pthread.h" "ac_cv_header_pthread_h" "$ac_includes_default"
++if test "x$ac_cv_header_pthread_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_PTHREAD_H 1
++_ACEOF
++ $as_echo "#define USE_PTHREADS 1" >>confdefs.h
++
++     PTHREAD_LIBS="-lpthread"
+ 
+ 
++else
++  as_fn_error $? "pthread.h not found: --disable-threading to disable" "$LINENO" 5
++fi
++
++done
++
++
++else
++  $as_echo "#define NO_THREADING 1" >>confdefs.h
++
++   $as_echo "#define NO_THREAD_CHECKS 1" >>confdefs.h
++
++fi
++
++
++
++
++# Check whether --with-jni was given.
++if test "${with_jni+set}" = set; then :
++  withval=$with_jni;
++fi
++
++
++if test "x$with_jni" != xno; then :
++  JNI_CPPFLAGS="-I$JAVA_HOME/include/ -I$JAVA_HOME/include/linux/"
++   CPPFLAGS="$CPPFLAGS $JNI_CPPFLAGS"
++   for ac_header in jni.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "jni.h" "ac_cv_header_jni_h" "$ac_includes_default"
++if test "x$ac_cv_header_jni_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_JNI_H 1
++_ACEOF
++ have_jni=yes
++else
++  have_jni=no
++fi
++
++done
++
++fi
++
++if test "x$have_jni" = xyes; then :
++
++
++   HAVE_JNI_H=1
++
++
++else
++  if test "x$with_jni" = xyes; then
++    as_fn_error $? "--with-jni was given, but jni.h was not found
++                  is \$JAVA_HOME set correctly?" "$LINENO" 5
++   fi
++fi
++
++
++# Check whether --with-ladspa was given.
++if test "${with_ladspa+set}" = set; then :
++  withval=$with_ladspa;
++fi
++
++
++if test "x$with_ladspa" != xno; then :
++  for ac_header in ladspa.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "ladspa.h" "ac_cv_header_ladspa_h" "$ac_includes_default"
++if test "x$ac_cv_header_ladspa_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_LADSPA_H 1
++_ACEOF
++ HAVE_LADSPA_H=1
++
++else
++  as_fn_error $? "ladspa.h not found: --without-ladspa to disable" "$LINENO" 5
++fi
++
++done
++
++fi
++
++# Check whether --enable-static was given.
++if test "${enable_static+set}" = set; then :
++  enableval=$enable_static;
++fi
++
++
++if test "x$enable_static" != xno; then :
++  USE_STATIC=1
++
++fi
++
++# Check whether --enable-shared was given.
++if test "${enable_shared+set}" = set; then :
++  enableval=$enable_shared;
++fi
++
++
++if test "x$enable_shared" != xno; then :
++  USE_DYNAMIC=1
++
++fi
+ 
+ if test "x$GCC" = "xyes"; then
+   case " $CFLAGS " in
+diff --git a/configure.ac b/configure.ac
+index eef571b..56d4b1e 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -7,24 +7,158 @@ AC_PROG_CC
+ AC_HEADER_STDC
+ AC_C_BIGENDIAN
+ 
+-PKG_CHECK_MODULES([SRC],[samplerate])
+-AC_SUBST(SRC_CFLAGS)
+-AC_SUBST(SRC_LIBS)
++dnl Resampler library option (default: libsamplerate)
++AC_ARG_VAR(SRC_CFLAGS, [C compiler flags for SRC, overriding pkg-config])
++AC_ARG_VAR(SRC_LIBS, [linker flags for SRC, overriding pkg-config])
+ 
+-PKG_CHECK_MODULES([SNDFILE],[sndfile])
+-AC_SUBST(SNDFILE_CFLAGS)
+-AC_SUBST(SNDFILE_LIBS)
++AC_ARG_WITH([resampler],
++  [AS_HELP_STRING([--with-resampler=@<:@PKG@:>@],
++  [resampler library @<:@samplerate|resample|speex@:>@
++   @<:@default=samplerate@:>@])],
++  [], [with_resampler=samplerate])
+ 
+-PKG_CHECK_MODULES([FFTW],[fftw3])
+-AC_SUBST(FFTW_CFLAGS)
+-AC_SUBST(FFTW_LIBS)
++AS_CASE("x$with_resampler",
++  [xsamplerate],
++  [PKG_CHECK_MODULES([SRC],[samplerate],
++    [AC_DEFINE([HAVE_LIBSAMPLERATE], [1])
++     AC_SUBST(SRC_CFLAGS)
++     AC_SUBST(SRC_LIBS)
++    ],
++    [AC_MSG_ERROR([libsamplerate could not be found!])])
++  ],
++  [xresample],
++  [AC_CHECK_HEADERS([libresample.h],
++    [AC_DEFINE([HAVE_LIBRESAMPLE], [1])
++     AC_SUBST([SRC_LIBS], ["-lresample"])
++    ],
++    [AC_MSG_ERROR([libresample.h could not be found!])])
++  ],
++  [xspeex],
++  [AC_DEFINE([USE_SPEEX], [1])
++   AC_SUBST([USE_SPEEX], [1])],
++  [AC_MSG_ERROR([invalid resampler library: "$with_resampler"\
++   valid options: @<:@samplerate|resample|speex@:>@])])
+ 
+-AC_CHECK_HEADERS(ladspa.h)
+-AC_CHECK_HEADERS(pthread.h)
++dnl FFT library option (default: fftw3)
++AC_ARG_VAR(FFTW_CFLAGS, [C compiler flags for FFTW, overriding pkg-config])
++AC_ARG_VAR(FFTW_LIBS, [linker flags for FFTW, overriding pkg-config])
+ 
+-PKG_CHECK_MODULES([Vamp],[vamp-sdk])
+-AC_SUBST(Vamp_CFLAGS)
+-AC_SUBST(Vamp_LIBS)
++AC_ARG_WITH([fft],
++  [AS_HELP_STRING([--with-fft=@<:@PKG@:>@],
++    [fft library @<:@fftw3|kissfft|builtin@:>@ @<:@default=fftw3@:>@])],
++  [], [with_fft=fftw3])
++
++AS_CASE("x$with_fft",
++  [xfftw3],
++  [PKG_CHECK_MODULES([FFTW],[fftw3],
++    [AC_DEFINE([HAVE_FFTW3], [1])
++     AC_DEFINE([FFTW_DOUBLE_ONLY], [1])
++     AC_SUBST(FFTW_CFLAGS)
++     AC_SUBST(FFTW_LIBS)
++    ],
++    [AC_MSG_ERROR([fftw3 not found!])])
++  ],
++  [xkissfft],
++  [AC_DEFINE([USE_KISSFFT], [1])
++   AC_SUBST(USE_KISSFFT, [1])],
++  [xbuiltin],
++  [AC_DEFINE([USE_BUILTIN_FFT], [1])],
++  [AC_MSG_ERROR([invalid fft library: "$with_fft"\
++   valid options: @<:@fftw3|kissfft|builtin@:>@])])
++
++dnl Option for disabling program build (default: enabled)
++AC_ARG_VAR(SNDFILE_CFLAGS, [C compiler flags for SNDFILE, overriding pkg-config])
++AC_ARG_VAR(SNDFILE_LIBS, [linker flags for SNDFILE, overriding pkg-config])
++
++AC_ARG_ENABLE([program],
++  [AS_HELP_STRING([--disable-program],
++    [do not build the rubberband program @<:@default=no@:>@])])
++
++AS_IF([test "x$enable_program" != xno],
++  [PKG_CHECK_MODULES([SNDFILE], [sndfile],
++    [AC_DEFINE(SNDFILE_CFLAGS)
++     AC_SUBST(SNDFILE_LIBS)
++     AC_SUBST(USE_PROGRAM, [1])
++    ],
++    [AC_MSG_ERROR([sndfile not found: --disable-program to disable])])])
++
++dnl Optional vamp plugins (default: enabled)
++AC_ARG_VAR(Vamp_CFLAGS, [C compiler flags for Vamp, overriding pkg-config])
++AC_ARG_VAR(Vamp_LIBS, [linker flags for Vamp, overriding pkg-config])
++
++AC_ARG_WITH([vamp],
++  [AS_HELP_STRING([--without-vamp],
++    [do not build vamp plugins @<:@default=no@:>@])])
++
++AS_IF([test "x$with_vamp" != xno],
++  [PKG_CHECK_MODULES([Vamp], [vamp-sdk],
++    [AC_DEFINE(Vamp_CFLAGS)
++     AC_SUBST(Vamp_LIBS)
++     AC_SUBST(HAVE_Vamp, [1])
++    ],
++    [AC_MSG_ERROR([vamp-sdk not found: --without-vamp to disable])])])
++
++dnl Option that disables threading (default: enabled)
++AC_ARG_ENABLE([threading],
++  [AS_HELP_STRING([--disable-threading],
++    [disable the use of multithreading])])
++
++AS_IF([test "x$enable_threading" != xno],
++  [AC_CHECK_HEADERS(pthread.h,
++    [AC_DEFINE(USE_PTHREADS, [1])
++     AC_SUBST(PTHREAD_LIBS, ["-lpthread"])
++    ],
++    [AC_MSG_ERROR([pthread.h not found: --disable-threading to disable])])
++  ],
++  [AC_DEFINE(NO_THREADING, [1])
++   AC_DEFINE(NO_THREAD_CHECKS, [1])])
++
++dnl Optional java support (default: enabled if jni.h is found)
++AC_ARG_VAR(JAVA_HOME, [location of java development kit])
++
++AC_ARG_WITH([jni],
++  [AS_HELP_STRING([--with-jni],
++    [build java library @<:@default=auto@:>@])])
++
++AS_IF([test "x$with_jni" != xno],
++  [JNI_CPPFLAGS="-I$JAVA_HOME/include/ -I$JAVA_HOME/include/linux/"
++   CPPFLAGS="$CPPFLAGS $JNI_CPPFLAGS"
++   AC_CHECK_HEADERS(jni.h, [have_jni=yes], [have_jni=no])])
++
++AS_IF([test "x$have_jni" = xyes],
++  [AC_SUBST(JNI_CPPFLAGS)
++   AC_SUBST(JAVA_HOME)
++   AC_SUBST(HAVE_JNI_H, [1])
++  ],
++  [if test "x$with_jni" = xyes; then
++    AC_MSG_ERROR([--with-jni was given, but jni.h was not found
++                  is \$JAVA_HOME set correctly?])
++   fi])
++
++dnl Optional ladspa plugins (default: enabled)
++AC_ARG_WITH([ladspa],
++  [AS_HELP_STRING([--without-ladspa],
++    [do not build ladspa plugins @<:@default=no@:>@])])
++
++AS_IF([test "x$with_ladspa" != xno],
++  [AC_CHECK_HEADERS(ladspa.h,
++    [AC_SUBST(HAVE_LADSPA_H, [1])],
++    [AC_MSG_ERROR([ladspa.h not found: --without-ladspa to disable])])])
++
++dnl Options for enabling or disabling static & shared libraries
++AC_ARG_ENABLE([static],
++  [AS_HELP_STRING([--enable-static],
++    [build static libraries @<:@default=yes@:>@])])
++
++AS_IF([test "x$enable_static" != xno],
++  [AC_SUBST(USE_STATIC, [1])])
++
++AC_ARG_ENABLE([shared],
++  [AS_HELP_STRING([--enable-shared],
++    [build shared libraries @<:@default=yes@:>@])])
++
++AS_IF([test "x$enable_shared" != xno],
++  [AC_SUBST(USE_DYNAMIC, [1])])
+ 
+ changequote(,)dnl
+ if test "x$GCC" = "xyes"; then
+-- 
+2.21.0
+
