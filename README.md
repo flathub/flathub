@@ -8,6 +8,6 @@
   update-package-info.py) to create the needed package-lock.json.
 - Run:
 
-    flatpak-node-generator.py npm scratch-desktop/package-lock.json -P -R scratch-\*/package-lock.json
+    flatpak-node-generator.py npm scratch-desktop/package-lock.json -P -R scratch-\*/package-lock.json -s
 
   afterwards to regenerate the npm package sources.
