@@ -7,6 +7,7 @@ sdk: org.freedesktop.Sdk
 command: teams-for-linux
 separate-locales: false
 rename-desktop-file: teams-for-linux.desktop
+rename-appdata-file: teams-for-linux.appdata.xml
 rename-icon: teams-for-linux
 finish-args:
   - --share=ipc
@@ -15,24 +16,74 @@ finish-args:
   - --socket=pulseaudio
   - --share=network
   - --device=all
+  - --filesystem=home
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --talk-name=ca.desrt.dconf
   - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=XDG_CURRENT_DESKTOP=Unity
   - --talk-name=org.gtk.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.gnome.GConf
+build-options:
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+
 modules:
-  - name: teams
+  - name: nodejs
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v10.15.3/node-v10.15.3.tar.gz
+        sha256: db460a63d057ac015b75bb6a879fcbe2fefaaf22afa4b6f6445b9db61ce2270d
+    cleanup:
+      - "*"
+
+  - name: yarn
     buildsystem: simple
     build-commands:
-      - ar x teams-for-linux_0.3.0_amd64.deb
-      - tar -xf data.tar.xz
-      - cp -r opt/ usr/* /app
-      - rm -rf /app/share/icons/hicolor/1024x1024
-      - sed -i 's+Exec="/opt/Teams for Linux/teams-for-linux"+Exec="/app/bin/teams-for-linux"+' /app/share/applications/teams-for-linux.desktop
-      - ln -s /app/opt/Teams\ for\ Linux/teams-for-linux /app/bin/teams-for-linux
-      - install -Dm644 com.github.IsmaelMartinez.teams_for_linux.appdata.xml -t /app/share/metainfo 
+      - mkdir -p /app/share/yarn/
+      - cp -a * /app/share/yarn/
+      - ln -s /app/share/yarn/bin/yarn /app/bin/yarn
+      - ln -s /app/share/yarn/bin/yarnpkg /app/bin/yarnpkg
     sources:
-      - type: file
-        url: https://github.com/IsmaelMartinez/teams-for-linux/releases/download/v0.3.0/teams-for-linux_0.3.0_amd64.deb
-        sha256: 060c7cb8f74a302c69ca1bddb71d11f0c258e4f3f0dd2b877c46dd300a721023
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.16.0/yarn-v1.16.0.tar.gz
+        sha256: df202627d9a70cf09ef2fb11cb298cb619db1b958590959d6f6e571b50656029
+    cleanup:
+      - "*"
+
+  - name: teams-for-linux
+    buildsystem: simple
+    build-commands:
+      - yarn --offline --ignore-scripts install
+      - yarn --offline --ignore-scripts run dist:linux dir -c.npmRebuild=false
+      - cp -r dist/linux-unpacked /app/teams-for-linux
+      - ln -s /app/teams-for-linux/teams-for-linux /app/bin/teams-for-linux
+      - | 
+          for icon in $(ls --ignore '1024*' -v1 build/icons/)
+          do
+            mkdir -p /app/share/icons/hicolor/$(basename -s '.png' $icon)/apps/
+            install -Dm644 build/icons/$icon /app/share/icons/hicolor/$(basename -s '.png' $icon)/apps/teams-for-linux.png
+          done
+      - install -Dm644 teams-for-linux.appdata.xml -t /app/share/metainfo
+      - install -Dm644 teams-for-linux.desktop -t /app/share/applications
+    build-options:
+      env:
+        ELECTRON_CACHE: /run/build/teams-for-linux/electron-cache/
+        electron_config_cache: /run/build/teams-for-linux/electron-cache/
+        PATH: /app/bin:/run/build/teams-for-linux/node_modules/.bin:/bin
+    sources:
+      - generated-sources.json
+      - type: git
+        url: https://github.com/IsmaelMartinez/teams-for-linux.git
+        tag: v0.3.0
       - type: file
         path: com.github.IsmaelMartinez.teams_for_linux.appdata.xml
+        dest-filename: teams-for-linux.appdata.xml
+      - type: file
+        path: com.github.IsmaelMartinez.teams_for_linux.desktop
+        dest-filename: teams-for-linux.desktop
+      - type: file
+        dest-filename: .yarnrc
+        path: yarnrc
