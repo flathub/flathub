@@ -2,7 +2,7 @@ id: org.winehq.Wine
 branch: "4.8-staging"
 sdk: org.freedesktop.Sdk
 runtime: org.freedesktop.Platform
-runtime-version: "18.08"
+runtime-version: "19.08"
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -28,7 +28,7 @@ add-extensions:
   org.freedesktop.Platform.GL32:
     directory: lib/i386-linux-gnu/GL
     version: "1.4"
-    versions: "18.08;1.6;1.4"
+    versions: "19.08;1.6;1.4"
     subdirectories: true
     no-autodownload: true
     autodelete: false
@@ -37,13 +37,19 @@ add-extensions:
     download-if: active-gl-driver
     enable-if: active-gl-driver
 
-  org.winehq.Wine.Compat32:
-    directory: lib32
-    add-ld-path: lib
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
 
-  org.winehq.Wine.Compat32.Debug:
-    directory: lib/debug/lib32
-    no-autodownload: true
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  append-ld-library-path: /usr/lib/i386-linux-gnu
+  append-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
+
 cleanup:
   - "*.a"
   - "*.la"
@@ -59,7 +65,7 @@ modules:
         x86_64:
           config-opts:
             - --enable-win64
-    config-opts:
+    config-opts: &wine_common_opts
       - --libdir=/app/lib
       - --disable-win16
       - --disable-tests
@@ -67,7 +73,7 @@ modules:
       - --with-pulse
       - --with-dbus
       - --without-hal
-    make-install-args:
+    make-install-args: &wine_common_make_install_args
       - LDCONFIG=/bin/true
       - STRIP=/bin/true
       - UPDATE_DESKTOP_DATABASE=/bin/true
@@ -76,15 +82,12 @@ modules:
         case $FLATPAK_ARCH in
           x86_64)
             mv $FLATPAK_DEST/bin/wineserver{,64}
-            ln -s wineserver64 $FLATPAK_DEST/bin/wineserver.arch
           ;;
           i386)
             mv $FLATPAK_DEST/bin/wineserver{,32}
-            ln -s wineserver32 $FLATPAK_DEST/bin/wineserver.arch
           ;;
         esac
-      - ln -s $FLATPAK_DEST/bin/wineserver.arch $FLATPAK_DEST/bin/wineserver
-    sources:
+    sources: &wine_sources
       - type: archive
         url: "https://dl.winehq.org/wine/source/4.x/wine-4.8.tar.xz"
         sha256: 48b9ab1c1277e13eede66e1af1f9f885cb8b4c5cb53eea6ebbfe10bc06dfa135
@@ -98,7 +101,7 @@ modules:
     modules:
 
       - name: vkd3d
-        sources:
+        sources: &vkd3d_sources
           - type: archive
             url: "https://dl.winehq.org/vkd3d/source/vkd3d-1.1.tar.xz"
             sha256: 495adc61cc80c65d54b2f5b52092ea05d3797cc2c17a610f0fc98457d2f56ab6
@@ -111,18 +114,39 @@ modules:
                 url: "https://github.com/KhronosGroup/SPIRV-Headers.git"
                 commit: 8bea0a266ac9b718aa0818d9e3a47c0b77c2cb23
 
-      - shared-modules/glu/glu-9.0.0.json
-     
-      - shared-modules/udev/udev-175.json
+  - name: wine-32bit
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      #FIXME: remove it once the cross-linker if fixed
+      ldflags: -Wl,-rpath-link,/usr/lib/i386-linux-gnu/pulseaudio
+    config-opts: *wine_common_opts
+    make-install-args: *wine_common_make_install_args
+    post-install:
+      - mv $FLATPAK_DEST/bin/wineserver{,32}
+    sources: *wine_sources
+    modules:
 
-      - name: FAudio
-        buildsystem: cmake-ninja
-        config-opts:
-          - -DFFMPEG=ON
-        sources:
-          - type: archive
-            url: "https://github.com/FNA-XNA/FAudio/archive/19.02.tar.gz"
-            sha256: 514dd03672aa0241a7eee29e207a594e86cc9954940205489a8299cd1395ffaf
+      - name: vkd3d-32bit
+        build-options:
+          arch:
+            x86_64: *compat_i386_opts
+        sources: *vkd3d_sources
+
+  - name: wineserver
+    buildsystem: simple
+    build-commands:
+      - |
+        case $FLATPAK_ARCH in
+          x86_64)
+            ln -s wineserver64 $FLATPAK_DEST/bin/wineserver
+          ;;
+          i386)
+            ln -s wineserver32 $FLATPAK_DEST/bin/wineserver
+          ;;
+        esac
 
   - name: compat32
     only-arches:
@@ -130,6 +154,7 @@ modules:
     buildsystem: simple
     build-commands:
       - mkdir -p /app/lib/i386-linux-gnu
-      - mkdir -p /app/lib32
-      - ln -s ../lib32/bin/wine /app/bin/wine
-      - ln -s ../lib32/bin/wine-preloader /app/bin/wine-preloader
+      - install -Dm644 ld.so.conf -t /app/etc/
+    sources:
+      - type: file
+        path: ld.so.conf
