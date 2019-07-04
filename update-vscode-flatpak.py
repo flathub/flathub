@@ -28,7 +28,7 @@ ARCHES = {'x64': -2, 'ia32': -1}
 
 for arch, pos in ARCHES.items():
     source_entry = data['modules'][-1]['sources'][pos]
-    source_entry['url'] = 'https://vscode-update.azurewebsites.net/' + VERSION + '/linux-deb-' + arch + '/stable'
+    source_entry['url'] = 'https://update.code.visualstudio.com/' + VERSION + '/linux-deb-' + arch + '/stable'
     FILENAME = 'code_' + VERSION + '_' + arch + '.deb'
     subprocess.call(['curl', '-R', '-L', '-o', FILENAME, '-C', '-', source_entry['url']])
     source_entry['sha256'] = subprocess.check_output(['sha256sum', FILENAME]).decode("utf-8").split(None, 1)[0]
