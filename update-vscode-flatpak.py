@@ -24,7 +24,7 @@ if VERSION in data['modules'][-1]['sources'][-1]['url']:
     print('No update needed. Current version: ' + VERSION)
     sys.exit()
 
-ARCHES = {'x64': -2, 'ia32': -1}
+ARCHES = {'x64': -1}
 
 for arch, pos in ARCHES.items():
     source_entry = data['modules'][-1]['sources'][pos]
