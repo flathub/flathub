@@ -1,51 +1,14 @@
-id: org.winehq.Wine
-sdk: org.freedesktop.Sdk
-runtime: org.freedesktop.Platform
-runtime-version: "19.08beta"
-finish-args:
-  - --share=ipc
-  - --socket=x11
-  - --socket=wayland
-  - --device=all
-  - --socket=pulseaudio
-  - --share=network
-  - --allow=multiarch
-  - --allow=devel
-  - --env=WINEPREFIX=/var/data/wine
-command: wine
-rename-desktop-file: wine.desktop
-
-add-extensions:
-  org.freedesktop.Platform.Compat.i386:
-    directory: lib/i386-linux-gnu
-    version: "19.08beta"
-
-  org.freedesktop.Platform.Compat.i386.Debug:
-    directory: lib/debug/lib/i386-linux-gnu
-    version: "19.08beta"
-    no-autodownload: true
-
-  org.freedesktop.Platform.GL32:
-    directory: lib/i386-linux-gnu/GL
-    version: "1.4"
-    versions: "19.08beta;1.6;1.4"
-    subdirectories: true
-    no-autodownload: true
-    autodelete: false
-    add-ld-path: lib
-    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;
-    download-if: active-gl-driver
-    enable-if: active-gl-driver
-
-  org.winehq.Wine.gecko:
-    directory: share/wine/gecko
-
-  org.winehq.Wine.mono:
-    directory: share/wine/mono
+id: net.lutris.Lutris.Runner.Wine
+sdk: org.freedesktop.Sdk//19.08beta
+runtime: net.lutris.Lutris
+build-extension: true
 
 sdk-extensions:
   - org.freedesktop.Sdk.Compat.i386
   - org.freedesktop.Sdk.Extension.toolchain-i386
+
+build-options:
+  prefix: /app/runners/Wine
 
 x-compat-i386-opts: &compat_i386_opts
   prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
@@ -54,7 +17,7 @@ x-compat-i386-opts: &compat_i386_opts
   env:
     CC: i686-unknown-linux-gnu-gcc
     CXX: i686-unknown-linux-gnu-g++
-  libdir: /app/lib32
+  libdir: /app/runners/Wine/lib32
 
 cleanup:
   - "*.a"
@@ -89,7 +52,7 @@ modules:
         x86_64:
           config-opts:
             - --enable-win64
-          libdir: /app/lib
+          libdir: /app/runners/Wine/lib
     config-opts: &wine_common_opts
       - --disable-win16
       - --disable-tests
@@ -113,140 +76,9 @@ modules:
           ;;
         esac
     sources: &wine_sources
-      - type: archive
-        url: "https://dl.winehq.org/wine/source/4.x/wine-4.11.tar.xz"
-        sha256: 2e515766d59d3afdfd5f8d0eb29eb1d1d4ae84969c0a7a7eb4427feb2977bee6
-      - type: archive
-        url: "https://github.com/wine-staging/wine-staging/archive/v4.11.tar.gz"
-        sha256: b51f70d25c89279bb3752938d9fb4f3f281742f642bf139703768cc524c6fde0
-        dest: staging
-      - type: shell
-        commands:
-          - ./staging/patches/patchinstall.sh DESTDIR="$(pwd)" --all
-            -W xaudio2-revert
-            -W xaudio2_CommitChanges
-            -W xaudio2_7-CreateFX-FXEcho
-            -W xaudio2_7-WMA_support
-    modules:
-
-      - name: vkd3d
-        sources: &vkd3d_sources
-          - type: archive
-            url: "https://dl.winehq.org/vkd3d/source/vkd3d-1.1.tar.xz"
-            sha256: 495adc61cc80c65d54b2f5b52092ea05d3797cc2c17a610f0fc98457d2f56ab6
-        modules:
-
-          - name: SPIRV-Headers
-            buildsystem: cmake-ninja
-            sources:
-              - type: git
-                url: "https://github.com/KhronosGroup/SPIRV-Headers.git"
-                commit: 8bea0a266ac9b718aa0818d9e3a47c0b77c2cb23
-
-      - name: openldap
-        config-opts: &openldap_config_opts
-          - --disable-static
-          - --disable-slapd
-          - --disable-slurpd
-          - --disable-bdb
-          - --disable-hdb
-        cleanup: &openldap_cleanup
-          - /bin
-        sources: &openldap_sources
-          - type: archive
-            url: "https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-2.4.47.tgz"
-            sha256: f54c5877865233d9ada77c60c0f69b3e0bfd8b1b55889504c650047cc305520b
-
-      - name: glu
-        config-opts: &glu_config_opts
-          - --disable-static
-        sources: &glu_sources
-          - type: archive
-            url: "https://mesa.freedesktop.org/archive/glu/glu-9.0.0.tar.bz2"
-            sha256: 1f7ad0d379a722fcbd303aa5650c6d7d5544fde83196b42a73d1193568a4df12
-
-      - name: eudev
-        cleanup: &eudev_cleanup
-          - /bin
-          - /sbin
-          - /lib*/udev
-        post-install:
-          - udevadm hwdb --update
-        sources: &eudev_sources
-          - type: archive
-            url: "https://github.com/gentoo/eudev/archive/v3.2.7.tar.gz"
-            sha256: ce2fda4dea129bbcf824c947aab23504bcd26911481b47dbaf10646f723083a4
-
-      - name: OpenCL
-        buildsystem: simple
-        build-commands:
-          - cp -av CL $FLATPAK_DEST/include/
-        sources:
-          - type: git
-            url: "https://github.com/KhronosGroup/OpenCL-Headers.git"
-            commit: c5a4bbeabb10d8ed3d1c651b93aa31737bc473dd
-
-      - name: libpcap
-        config-opts: &libpcap_config_opts
-          - --enable-ipv6
-        sources: &libcap_sources
-          - type: archive
-            url: "https://www.tcpdump.org/release/libpcap-1.9.0.tar.gz"
-            sha256: 2edb88808e5913fdaa8e9c1fcaf272e19b2485338742b5074b9fe44d68f37019
-
-      - name: v4l2-utils
-        config-opts: &v4l2_config_opts
-          - --disable-v4l-utils
-          - --disable-qv4l2
-          - --disable-qvidcap
-        sources: &v4l2_sources
-          - type: archive
-            url: "https://linuxtv.org/downloads/v4l-utils/v4l-utils-1.16.6.tar.bz2"
-            sha256: f9dac1878e3d5636eab7f56bb209fdfc66b94ee8a2aae54dcb4282fe63a678ae
-
-      - name: libgphoto2
-        sources: &libgphoto2_sources
-          - type: archive
-            url: "https://github.com/gphoto/libgphoto2/archive/libgphoto2-2_5_23-release.tar.gz"
-            sha256: 8de52fd997aceda895abad5d8d95a888bce24a1c739079cff64dae1da7039dde
-          - type: script
-            dest-filename: autogen.sh
-            commands:
-              - autoreconf -ifv
-
-      - name: libcapi20
-        sources: &libcapi20_sources
-          - type: archive
-            url: "http://deb.debian.org/debian/pool/main/libc/libcapi20-3/libcapi20-3_3.27.orig.tar.bz2"
-            md5: 439620a9221c0222c35fb3e7a3973700
-
-      - name: gsm
-        build-options:
-          make-install-args:
-            - GSM_INSTALL_LIB=/app/lib
-        make-install-args: &gsm_make_install_args
-          - INSTALL_ROOT=/app
-          - GSM_INSTALL_INC=/app/include
-        no-autogen: true
-        cleanup: &gsm_cleanup
-          - /bin
-        sources: &gsm_sources
-          - type: archive
-            url: "http://www.quut.com/gsm/gsm-1.0.18.tar.gz"
-            sha256: 04f68087c3348bf156b78d59f4d8aff545da7f6e14f33be8f47d33f4efae2a10
-          - type: patch
-            path: patches/gsm-makefile.patch
-
-      - name: FAudio
-        buildsystem: cmake-ninja
-        config-opts: &faudio_config_opts
-          - -DFFMPEG=ON
-        sources: &faudio_sources
-          - type: archive
-            url: "https://github.com/FNA-XNA/FAudio/archive/19.06.07.tar.gz"
-            sha256: 3a062ac74e787d2c50a5d178e9021ca4b2d4dddbbea6d36b82c767eb7f957128
-          - type: patch
-            path: patches/faudio-sdl2-use-pkg-config.patch
+      - type: git
+        url: "https://github.com/lutris/wine.git"
+        branch: tkg
 
   # 32-bit compatibility build
 
@@ -261,96 +93,18 @@ modules:
     post-install:
       - mv $FLATPAK_DEST/bin/wineserver{,32}
     sources: *wine_sources
-    modules:
-
-      - name: vkd3d-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        sources: *vkd3d_sources
-
-      - name: openldap-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        config-opts: *openldap_config_opts
-        cleanup: *openldap_cleanup
-        sources: *openldap_sources
-
-      - name: glu-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        config-opts: *glu_config_opts
-        sources: *glu_sources
-
-      - name: eudev-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        cleanup: *eudev_cleanup
-        sources: *eudev_sources
-
-      - name: libpcap-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        config-opts: *libpcap_config_opts
-        sources: *libcap_sources
-
-      - name: v4l2-utils-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        config-opts: *v4l2_config_opts
-        sources: *v4l2_sources
-
-      - name: libgphoto2-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        sources: *libgphoto2_sources
-
-      - name: libcapi20-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        sources: *libcapi20_sources
-
-      - name: gsm-32bit
-        build-options:
-          make-install-args:
-            - GSM_INSTALL_LIB=/app/lib32
-        make-install-args: *gsm_make_install_args
-        no-autogen: true
-        cleanup: *gsm_cleanup
-        sources: *gsm_sources
-
-      - name: FAudio-32bit
-        build-options:
-          arch:
-            x86_64: *compat_i386_opts
-        buildsystem: cmake-ninja
-        config-opts: *faudio_config_opts
-        sources: *faudio_sources
 
   # Common stuff
 
   - name: environment
     buildsystem: simple
     build-commands:
-      - mkdir -p $FLATPAK_DEST/share/wine/{gecko,mono}
       - |
         case $FLATPAK_ARCH in
           x86_64)
             ln -s wineserver64 $FLATPAK_DEST/bin/wineserver
-            mkdir -p $FLATPAK_DEST/lib/i386-linux-gnu
-            install -Dm644 ld.so.conf -t $FLATPAK_DEST/etc/
           ;;
           i386)
             ln -s wineserver32 $FLATPAK_DEST/bin/wineserver
           ;;
         esac
-    sources:
-      - type: file
-        path: ld.so.conf
