@@ -1,9 +1,9 @@
-# Flathub
+# Flathub - bitwig-studio branch
 
-Flathub is the central place for building and hosting Flatpak builds.
+This is the `bitwig-studio` branch for flathub.
 
-Using the Flathub repository
-----------------------------
+How to use Flathub Applications
+-------------------------------
 
 To install applications that are hosted on Flathub, use the following:
 ```
