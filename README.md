@@ -1,6 +1,4 @@
-# Flathub - bitwig-studio branch
-
-This is the `bitwig-studio` branch for flathub.
+# Flathub - org.gtk.Gtk3theme.Adementary
 
 How to use Flathub Applications
 -------------------------------
