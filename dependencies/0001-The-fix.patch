@@ -1,0 +1,319 @@
+From d37a09e68b218c13f8cf8d44fb44246419cf102c Mon Sep 17 00:00:00 2001
+From: gasinvein <gasinvein@gmail.com>
+Date: Wed, 10 Jul 2019 20:56:52 +0300
+Subject: [PATCH] The fix - drop useless things - base on Electron2 BaseApp -
+ use versioned download url - use extra-data, add apply_extra - fix license
+ information - fix appdata file source
+
+---
+ com.termius.termius.appdata.xml               |  2 +-
+ com.termius.termius.desktop                   |  8 --
+ com.termius.termius.yml                       | 90 +++++++++----------
+ .../fuse-2.9.2-namespace-conflict-fix.patch   | 21 -----
+ ...fuse-disable-sys-mount-under-flatpak.patch | 26 ------
+ dependencies/fusermount-wrapper.sh            |  9 --
+ dependencies/libfuse.json                     | 29 ------
+ dependencies/openssh.json                     | 11 ---
+ dependencies/openssl.json                     | 16 ----
+ 9 files changed, 43 insertions(+), 169 deletions(-)
+ delete mode 100644 com.termius.termius.desktop
+ delete mode 100644 dependencies/fuse-2.9.2-namespace-conflict-fix.patch
+ delete mode 100644 dependencies/fuse-disable-sys-mount-under-flatpak.patch
+ delete mode 100644 dependencies/fusermount-wrapper.sh
+ delete mode 100644 dependencies/libfuse.json
+ delete mode 100644 dependencies/openssh.json
+ delete mode 100644 dependencies/openssl.json
+
+diff --git a/com.termius.termius.appdata.xml b/com.termius.termius.appdata.xml
+index 8f6d456..d76484b 100644
+--- a/com.termius.termius.appdata.xml
++++ b/com.termius.termius.appdata.xml
+@@ -3,7 +3,7 @@
+ <component>
+  <id>com.termius.termius.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+- <project_license>MIT</project_license>
++ <project_license>LicenseRef-proprietary=https://termius.com/terms-of-use</project_license>
+  <name>Termius</name>
+  <summary>Termius is the SSH client that works on Desktop and Mobile. </summary>
+  <description>
+diff --git a/com.termius.termius.desktop b/com.termius.termius.desktop
+deleted file mode 100644
+index c1570ee..0000000
+--- a/com.termius.termius.desktop
++++ /dev/null
+@@ -1,8 +0,0 @@
+-[Desktop Entry]
+-Name=Terminus
+-Comment=Desktop SSH Client
+-Type=Application
+-Categories=Application
+-Exec=/app/opt/Termius/termius-app
+-Terminal=false
+-Icon=com.termius.termius.png
+diff --git a/com.termius.termius.yml b/com.termius.termius.yml
+index 4e024fb..c8b6ea6 100644
+--- a/com.termius.termius.yml
++++ b/com.termius.termius.yml
+@@ -1,10 +1,13 @@
+ app-id: com.termius.termius
+ 
+-runtime: org.gnome.Platform
+-runtime-version: "3.32"
+-sdk: org.gnome.Sdk
++runtime: org.freedesktop.Platform
++runtime-version: "18.08"
++sdk: org.freedesktop.Sdk
+ 
+-command: /app/opt/Termius/termius-app
++base: org.electronjs.Electron2.BaseApp
++base-version: "18.08"
++
++command: termius-app
+ 
+ finish-args:
+   # X11/Wayland
+@@ -23,57 +26,48 @@ finish-args:
+   - --own-name=org.KDE.*
+ 
+ modules:
+-  #- dependencies/openssl.json
+-  #- dependencies/openssh.json
+-  #- dependencies/libfuse.json
+ 
+-  - name: terminus
++  - name: termius
+     buildsystem: simple
+     build-commands:
+-        - ar x Termius.deb
+-        - tar -xvf data.tar.xz
+-        - mkdir -p /app/usr/
+-        - mv opt /app/
+-        - mv etc /app/
+-        - mkdir -p /app/share/icons/hicolor/24x24/apps/
+-        - mkdir -p /app/share/icons/hicolor/32x32/apps/
+-        - mkdir -p /app/share/icons/hicolor/48x48/apps/
+-        - mkdir -p /app/share/icons/hicolor/64x64/apps/
+-        - mkdir -p /app/share/icons/hicolor/128x128/apps/
+-        - mkdir -p /app/share/icons/hicolor/256x256/apps/
+-        - mkdir -p /app/share/icons/hicolor/512x512/apps/
+-        - mv usr/share/icons/hicolor/24x24/apps/termius-app.png /app/share/icons/hicolor/24x24/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/32x32/apps/termius-app.png /app/share/icons/hicolor/32x32/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/48x48/apps/termius-app.png /app/share/icons/hicolor/48x48/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/64x64/apps/termius-app.png /app/share/icons/hicolor/64x64/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/128x128/apps/termius-app.png /app/share/icons/hicolor/128x128/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/256x256/apps/termius-app.png /app/share/icons/hicolor/256x256/apps/com.termius.termius.png
+-        - mv usr/share/icons/hicolor/512x512/apps/termius-app.png /app/share/icons/hicolor/512x512/apps/com.termius.termius.png
+-        - install -D com.termius.termius.appdata.xml /app/share/metainfo/com.termius.termius.appdata.xml
+-        - install -D com.termius.termius.desktop  /app/share/applications/com.termius.termius.desktop
+-        #- chmod +x /app/opt/Termius/termius-app
+-    
+-    cleanup:
+-      #- /app/share/applications/termius-app.desktop
++        - install -Dm755 termius-app.sh /app/bin/termius-app
++        - install -Dm755 apply_extra.sh /app/bin/apply_extra
++        - install -Dm644 ${FLATPAK_ID}.appdata.xml -t /app/share/appdata/
++        - install -Dm755 /usr/bin/desktop-file-edit -t /app/bin/
++        - install -Dm755 /usr/bin/ar -t /app/bin/
++        - install -Dm755 /usr/lib/$(gcc -print-multiarch)/libbfd-*.so -t /app/lib/
++        - install -Dm644 ${FLATPAK_ID}.appdata.xml -t /app/share/appdata
+     sources:
+         - type: file
+-          url: https://raw.githubusercontent.com/liberodark/flathub/com.termius.termius/com.termius.termius.appdata.xml
+-          sha256: 5f3b164b364b1fbc15cf228266c0f3872f8d28c21350a613daec6e2a52f14375
++          path: com.termius.termius.appdata.xml
+ 
+-        - type: file
+-          url: https://raw.githubusercontent.com/liberodark/flathub/com.termius.termius/com.termius.termius.desktop
+-          sha256: 5dbc21ec5c4c960a7760cae7ada3099e68d0eb03a722ae428d7edb959ceffd05
++        - type: extra-data
++          only-arches:
++            - "x86_64"
++          filename: termius.deb
++          url: https://deb.termius.com/pool/main/t/termius-app/termius-app_4.7.2_amd64.deb
++          sha256: 57dd27dbbe351d5f8539c0bac4db1e6f84b88c2de02a11d32f3e5f0474c3309b
++          size: 51892710
+ 
+         - type: script
++          dest-filename: apply_extra.sh
+           commands:
+-             Yes. This is dirty. The tarball contains a Firefox profile directory which Firefox expects to be able to write...
+-             The tmp directory is, at least when following this manifest and not overwriting the settings, a tmpfs, so we can (or have to) copy over everytime we launch.
+-            - cp -ar --reflink=auto /app/opt/Termius /tmp/
+-            - cd /tmp/
+-            - cd Termius
+-            - ./termius-app
+-          dest-filename: launch.sh
++            - FLATPAK_ID=com.termius.termius
++            - set -e
++            - ar p termius.deb data.tar.xz | tar -xJf -
++            - mv opt/Termius ./
++            - mkdir -p export/share
++            - mv usr/share/{icons,applications} export/share
++            - rename termius-app ${FLATPAK_ID}
++                export/share/icons/hicolor/*/*/*.png
++                export/share/applications/*.desktop
++            - desktop-file-edit
++                --set-key=Exec --set-value=termius-app
++                --set-key=Icon --set-value=${FLATPAK_ID}
++                export/share/applications/${FLATPAK_ID}.desktop
++            - rm -r termius.deb usr opt etc
+ 
+-        - type: file
+-          url: https://www.termius.com/download/linux/Termius.deb
+-          sha256: 57dd27dbbe351d5f8539c0bac4db1e6f84b88c2de02a11d32f3e5f0474c3309b
++        - type: script
++          dest-filename: termius-app.sh
++          commands:
++            - exec /app/extra/Termius/termius-app "$@"
+diff --git a/dependencies/fuse-2.9.2-namespace-conflict-fix.patch b/dependencies/fuse-2.9.2-namespace-conflict-fix.patch
+deleted file mode 100644
+index ae67e7d..0000000
+--- a/dependencies/fuse-2.9.2-namespace-conflict-fix.patch
++++ /dev/null
+@@ -1,21 +0,0 @@
+-diff -up fuse-2.9.2/include/fuse_kernel.h.conflictfix fuse-2.9.2/include/fuse_kernel.h
+---- fuse-2.9.2/include/fuse_kernel.h.conflictfix	2013-06-26 09:31:57.862198038 -0400
+-+++ fuse-2.9.2/include/fuse_kernel.h	2013-06-26 09:32:19.679198365 -0400
+-@@ -88,12 +88,16 @@
+- #ifndef _LINUX_FUSE_H
+- #define _LINUX_FUSE_H
+- 
+--#include <sys/types.h>
+-+#ifdef __linux__
+-+#include <linux/types.h>
+-+#else
+-+#include <stdint.h>
+- #define __u64 uint64_t
+- #define __s64 int64_t
+- #define __u32 uint32_t
+- #define __s32 int32_t
+- #define __u16 uint16_t
+-+#endif
+- 
+- /*
+-  * Version negotiation:
+diff --git a/dependencies/fuse-disable-sys-mount-under-flatpak.patch b/dependencies/fuse-disable-sys-mount-under-flatpak.patch
+deleted file mode 100644
+index 9c2f65e..0000000
+--- a/dependencies/fuse-disable-sys-mount-under-flatpak.patch
++++ /dev/null
+@@ -1,26 +0,0 @@
+-From 1ec935f4abecd08957affc7b21bae6bf5be78931 Mon Sep 17 00:00:00 2001
+-From: Christian Hergert <chergert@redhat.com>
+-Date: Thu, 12 Apr 2018 01:47:57 -0700
+-Subject: [PATCH] libfuse: disable sys mount under flatpak
+-
+----
+- lib/mount.c | 3 +++
+- 1 file changed, 3 insertions(+)
+-
+-diff --git a/lib/mount.c b/lib/mount.c
+-index 7a18c11..1667db2 100644
+---- a/lib/mount.c
+-+++ b/lib/mount.c
+-@@ -392,6 +392,9 @@ static int fuse_mount_sys(const char *mnt, struct mount_opts *mo,
+- 	int fd;
+- 	int res;
+- 
+-+	/* disable in flatpak */
+-+	return -2;
+-+
+- 	if (!mnt) {
+- 		fprintf(stderr, "fuse: missing mountpoint parameter\n");
+- 		return -1;
+--- 
+-2.17.0.rc2
+-
+diff --git a/dependencies/fusermount-wrapper.sh b/dependencies/fusermount-wrapper.sh
+deleted file mode 100644
+index 24bfa9d..0000000
+--- a/dependencies/fusermount-wrapper.sh
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#!/bin/sh
+-
+-if [ -z "$_FUSE_COMMFD" ]; then
+-    FD_ARGS=
+-else
+-    FD_ARGS="--env=_FUSE_COMMFD=${_FUSE_COMMFD} --forward-fd=${_FUSE_COMMFD}"
+-fi
+-
+-exec flatpak-spawn --host --forward-fd=1 --forward-fd=2 --forward-fd=3 $FD_ARGS fusermount "$@"
+diff --git a/dependencies/libfuse.json b/dependencies/libfuse.json
+deleted file mode 100644
+index f74516a..0000000
+--- a/dependencies/libfuse.json
++++ /dev/null
+@@ -1,29 +0,0 @@
+-{
+-    "name" : "libfuse",
+-    "config-opts" : [
+-        "UDEV_RULES_PATH=/app/etc/udev/rules.d",
+-        "INIT_D_PATH=/app/etc/init.d"
+-    ],
+-    "post-install": [
+-        "install -m a+rx fusermount-wrapper.sh /app/bin/fusermount"
+-    ],
+-    "sources" : [
+-        {
+-            "type" : "archive",
+-            "url" : "https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz",
+-            "sha256" : "d0e69d5d608cc22ff4843791ad097f554dd32540ddc9bed7638cc6fea7c1b4b5"
+-        },
+-        {
+-            "type" : "patch",
+-            "path" : "fuse-2.9.2-namespace-conflict-fix.patch"
+-        },
+-        {
+-            "type" : "patch",
+-            "path" : "fuse-disable-sys-mount-under-flatpak.patch"
+-        },
+-        {
+-            "type" : "file",
+-            "path" : "fusermount-wrapper.sh"
+-        }
+-    ]
+-}
+diff --git a/dependencies/openssh.json b/dependencies/openssh.json
+deleted file mode 100644
+index d2c3821..0000000
+--- a/dependencies/openssh.json
++++ /dev/null
+@@ -1,11 +0,0 @@
+-{
+-    "name": "openssh",
+-    "config-opts": ["--without-pie"],
+-    "sources": [
+-        {
+-            "type": "archive",
+-            "url": "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-7.9p1.tar.gz",
+-            "sha256": "6b4b3ba2253d84ed3771c8050728d597c91cfce898713beb7b64a305b6f11aad"
+-        }
+-    ]
+-}
+diff --git a/dependencies/openssl.json b/dependencies/openssl.json
+deleted file mode 100644
+index 688056e..0000000
+--- a/dependencies/openssl.json
++++ /dev/null
+@@ -1,16 +0,0 @@
+-{
+-    "name": "openssl",
+-    "buildsystem": "simple",
+-    "build-commands": [
+-        "./config --prefix=/app --openssldir=/app/ssl shared zlib",
+-        "make -j $FLATPAK_BUILDER_N_JOBS",
+-        "make install"
+-    ],
+-    "sources": [
+-            {
+-                "type": "archive",
+-                "url": "https://www.openssl.org/source/openssl-1.1.1b.tar.gz",
+-                "sha256": "5c557b023230413dfb0756f3137a13e6d726838ccd1430888ad15bfb2b43ea4b"
+-            }
+-    ]
+-}
+-- 
+2.21.0
+
