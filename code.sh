@@ -17,5 +17,9 @@ if [[ -d /usr/lib/sdk/node10 ]]; then
   . /usr/lib/sdk/node10/enable.sh
 fi
 
+if [[ -d /usr/lib/sdk/php73 ]]; then
+  . /usr/lib/sdk/php73/enable.sh
+fi
+
 exec env PATH="${PATH}:${XDG_DATA_HOME}/node_modules/bin" \
   /app/extra/vscode/bin/code --extensions-dir=${XDG_DATA_HOME}/vscode/extensions "$@" ${WARNING_FILE}
