@@ -15,5 +15,5 @@ For more information and more applications see https://flathub.org
 
 Contributing to Flathub
 -----------------------
-
+ 
 For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
