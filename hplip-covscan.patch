@@ -1,0 +1,701 @@
+diff --git a/Makefile.am b/Makefile.am
+index 62a25d3..2c4d6f8 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -3,7 +3,7 @@
+ #
+ #  (c) 2004-2015 Copyright HP Development Company, LP
+ #  Author: David Suffield, Naga Samrat Chowdary Narla, Sarbeswar Meher
+-INCLUDES = -Iip -Iio/hpmud -Iscan/sane -Iprnt/hpijs -Icommon/
++INCLUDES = -Iip -Iio/hpmud -Iscan/sane -Iprnt/hpijs -Icommon/ -Iprotocol
+ CFLAGS+= -DCONFDIR=\"$(hplip_confdir)\"
+ CXXFLAGS+= -DCONFDIR=\"$(hplip_confdir)\"
+ 
+@@ -304,7 +304,7 @@ dist_pcard_DATA = pcard/__init__.py pcard/photocard.py
+ pcardextdir = $(pyexecdir)
+ pcardext_LTLIBRARIES = pcardext.la
+ pcardext_la_LDFLAGS = -module -avoid-version
+-pcardext_la_SOURCES = pcard/pcardext/pcardext.c pcard/fat.c
++pcardext_la_SOURCES = pcard/pcardext/pcardext.c pcard/fat.c pcard/pcardext/pcardext.h
+ pcardext_la_CFLAGS = -I$(PYTHONINCLUDEDIR)
+ 
+ # prnt
+@@ -316,7 +316,7 @@ lib_LTLIBRARIES += libhpipp.la
+ #hpipp_LTLIBRARIES = hpipp.la
+ #hpipp_la_LDFLAGS = -module -avoid-version
+ libhpipp_la_SOURCES = protocol/hp_ipp.c protocol/hp_ipp.h protocol/hp_ipp_i.h
+-libhpipp_la_CFLAGS = -DCONFDIR=\"$(hplip_confdir)\"
++libhpipp_la_CFLAGS = -DCONFDIR=\"$(hplip_confdir)\" -D_GNU_SOURCE
+ libhpipp_la_LDFLAGS = -version-info 0:1:0
+ libhpipp_la_LIBADD = libhpmud.la
+ 
+diff --git a/common/utils.c b/common/utils.c
+index d8ecee9..def4e47 100644
+--- a/common/utils.c
++++ b/common/utils.c
+@@ -1,5 +1,9 @@
++#ifndef _GNU_SOURCE
++#define _GNU_SOURCE
++#endif
++
+ #include "utils.h"
+-#include "string.h"
++#include <string.h>
+ #include <dlfcn.h>
+ #include <sys/stat.h>
+ #include <errno.h>
+diff --git a/io/hpmud/hpmud.c b/io/hpmud/hpmud.c
+index 0eb6fff..358f279 100644
+--- a/io/hpmud/hpmud.c
++++ b/io/hpmud/hpmud.c
+@@ -759,6 +759,7 @@ enum HPMUD_RESULT hpmud_get_dstat(HPMUD_DEVICE dd, struct hpmud_dstat *ds)
+    }
+ 
+    strncpy(ds->uri, msp->device[dd].uri, sizeof(ds->uri));
++   ds->uri[sizeof(ds->uri)-1] = '\0';
+    ds->io_mode = msp->device[dd].io_mode;
+    ds->channel_cnt = msp->device[dd].channel_cnt;
+    ds->mlc_up = msp->device[dd].mlc_up;
+diff --git a/io/hpmud/jd.c b/io/hpmud/jd.c
+index 06f5072..20df27a 100644
+--- a/io/hpmud/jd.c
++++ b/io/hpmud/jd.c
+@@ -31,6 +31,7 @@
+ #endif
+ 
+ #include <signal.h>
++#include <stdlib.h>
+ #include "hpmud.h"
+ #include "hpmudi.h"
+ 
+diff --git a/io/hpmud/model.c b/io/hpmud/model.c
+index 4ea8990..a917d69 100644
+--- a/io/hpmud/model.c
++++ b/io/hpmud/model.c
+@@ -117,6 +117,7 @@ static int ReadConfig()
+       if (rcbuf[0] == '[')
+       {
+          strncpy(section, rcbuf, sizeof(section)); /* found new section */
++         section[sizeof(section)-1] = '\0';
+          continue;
+       }
+ 
+@@ -125,6 +126,7 @@ static int ReadConfig()
+       if ((strncasecmp(section, "[dirs]", 6) == 0) && (strcasecmp(key, "home") == 0))
+       {
+          strncpy(homedir, value, sizeof(homedir));
++         homedir[sizeof(homedir)-1] = '\0';
+          break;  /* done */
+       }
+    }
+diff --git a/io/hpmud/musb.c b/io/hpmud/musb.c
+index 6e99c15..755493e 100644
+--- a/io/hpmud/musb.c
++++ b/io/hpmud/musb.c
+@@ -775,7 +775,7 @@ static int device_id(int fd, unsigned char *buffer, int size)
+         len = size-1;   /* leave byte for zero termination */
+     if (len > 2)
+         len -= 2;
+-    memcpy(buffer, buffer+2, len);    /* remove length */
++    memmove(buffer, buffer+2, len);    /* remove length */
+     buffer[len]=0;
+     DBG("read actual device_id successfully fd=%d len=%d\n", fd, len);
+ 
+diff --git a/io/hpmud/pp.c b/io/hpmud/pp.c
+index 74c5fdc..021d627 100644
+--- a/io/hpmud/pp.c
++++ b/io/hpmud/pp.c
+@@ -632,7 +632,7 @@ static int device_id(int fd, char *buffer, int size)
+       len = size-1;   /* leave byte for zero termination */
+    if (len > 2)
+       len -= 2;
+-   memcpy(buffer, buffer+2, len);    /* remove length */
++   memmove(buffer, buffer+2, len);    /* remove length */
+    buffer[len]=0;
+ 
+    DBG("read actual device_id successfully fd=%d len=%d\n", fd, len);
+diff --git a/pcard/fat.c b/pcard/fat.c
+index caa383f..e1425c0 100644
+--- a/pcard/fat.c
++++ b/pcard/fat.c
+@@ -519,14 +519,17 @@ int FatFreeSpace(void)
+ 
+ int FatDiskAttributes( PHOTO_CARD_ATTRIBUTES * pa )
+ {
+-    strncpy( pa->OEMID, bpb.OEMID, 8 );
++    strncpy(pa->OEMID, bpb.OEMID, sizeof(pa->OEMID));
++    pa->OEMID[sizeof(pa->OEMID)-1] = '\0';
+     pa->BytesPerSector = bpb.BytesPerSector;
+     pa->SectorsPerCluster = bpb.SectorsPerCluster;
+     pa->ReservedSectors = bpb.ReservedSectors;
+     pa->SectorsPerFat = bpb.SectorsPerFat;
+     pa->RootEntries = bpb.RootEntries;
+-    strncpy( pa->SystemID, (char *)bpb.SystemID, 8 );
+-    strncpy( pa->VolumeLabel, (char *)bpb.VolumeLabel, 11 );
++    strncpy(pa->SystemID, (char *)bpb.SystemID, sizeof(pa->SystemID));
++    pa->SystemID[sizeof(pa->SystemID)-1] = '\0';
++    strncpy(pa->VolumeLabel, (char *)bpb.VolumeLabel, sizeof(pa->VolumeLabel));
++    pa->VolumeLabel[sizeof(pa->VolumeLabel)-1] = '\0';
+     pa->WriteProtect = da.WriteProtect;
+     
+     return 0;
+@@ -741,6 +744,7 @@ int FatSetCWD(char *dir)
+       return 1;
+ 
+    strncpy(cwd.Name, fa.Name, sizeof(cwd.Name));
++   cwd.Name[sizeof(cwd.Name)-1] = '\0';
+    cwd.StartSector = ConvertClusterToSector(fa.StartCluster);
+    cwd.CurrSector = cwd.StartSector;
+    cwd.StartCluster = fa.StartCluster;
+diff --git a/prnt/hpcups/genPCLm.cpp b/prnt/hpcups/genPCLm.cpp
+index c0cdc73..4db4bde 100644
+--- a/prnt/hpcups/genPCLm.cpp
++++ b/prnt/hpcups/genPCLm.cpp
+@@ -1237,11 +1237,16 @@ void PCLmGenerator::writeJobTicket()
+ 	char orientation[256];
+ 	char duplex[256];
+ 	char colorthemes[256];
+-	strncpy(colorthemes,getColorThemesString(m_pPCLmSSettings->colorTheme),256);
+-	strncpy(inputBin,getInputBinString(m_pPCLmSSettings->userInputBin),256);
+-	strncpy(outputBin,getOutputBin(m_pPCLmSSettings->userOutputBin),256);
+-	strncpy(orientation,getOrientationString(m_pPCLmSSettings->userOrientation),256);
+-	strncpy(duplex,getDuplexString(currDuplexDisposition),256);
++	strncpy(colorthemes,getColorThemesString(m_pPCLmSSettings->colorTheme), sizeof(colorthemes));
++	colorthemes[sizeof(colorthemes)-1] = '\0';
++	strncpy(inputBin,getInputBinString(m_pPCLmSSettings->userInputBin), sizeof(inputBin));
++	inputBin[sizeof(inputBin)-1] = '\0';
++	strncpy(outputBin,getOutputBin(m_pPCLmSSettings->userOutputBin), sizeof(outputBin));
++	outputBin[sizeof(outputBin)-1] = '\0';
++	strncpy(orientation,getOrientationString(m_pPCLmSSettings->userOrientation), sizeof(orientation));
++	orientation[sizeof(orientation)-1] = '\0';
++	strncpy(duplex,getDuplexString(currDuplexDisposition), sizeof(duplex));
++	duplex[sizeof(duplex)-1] = '\0';
+ 
+ 	snprintf(pOutStr,OUT_STR_SIZE,"%%  genPCLm (Ver: %f)\n",PCLM_Ver); writeStr2OutBuff(pOutStr);
+ 	snprintf(pOutStr,OUT_STR_SIZE,"%%============= Job Ticket =============\n"); writeStr2OutBuff(pOutStr);
+@@ -1635,7 +1640,10 @@ int  PCLmGenerator::StartPage(PCLmPageSetup *PCLmPageContent, void **pOutBuffer,
+ 	}
+ 
+ 	if(strlen(PCLmPageContent->mediaSizeName))
+-		strncpy(currMediaName,PCLmPageContent->mediaSizeName,256);
++	{
++		strncpy(currMediaName,PCLmPageContent->mediaSizeName, sizeof(currMediaName));
++		currMediaName[sizeof(currMediaName)-1] = '\0';
++	}
+ 
+ 	currStripHeight=PCLmPageContent->stripHeight;
+ 	if(!currStripHeight)
+diff --git a/prnt/hpijs/context2.cpp b/prnt/hpijs/context2.cpp
+index c3df482..19490b1 100644
+--- a/prnt/hpijs/context2.cpp
++++ b/prnt/hpijs/context2.cpp
+@@ -1302,6 +1302,7 @@ DRIVER_ERROR PrintContext::SelectDevice
+ 	if(0 == strnlen((const char *)pSS->strDevID, DevIDBuffSize))
+ 	{
+ 		strncpy((char *)pSS->strDevID,szDeviceId,DevIDBuffSize);
++		pSS->strDevID[sizeof(pSS->strDevID)-1] = '\0';
+ 	}
+     thePrinter = pPFI->CreatePrinter (pSS, familyHandle);
+     if (thePrinter->constructor_error != NO_ERROR)
+diff --git a/prnt/hpijs/systemservices.cpp b/prnt/hpijs/systemservices.cpp
+index 95f5a64..f5b4bb5 100644
+--- a/prnt/hpijs/systemservices.cpp
++++ b/prnt/hpijs/systemservices.cpp
+@@ -396,7 +396,10 @@ void SystemServices::AdjustIO(IO_MODE IM, const char* model)
+     IOMode.bDevID =IM.bDevID  && IOMode.bDevID;
+ 
+     if (model)
++    {
+         strncpy(strModel,model, sizeof(strModel));
++        strModel[sizeof(strModel)-1] = '\0';
++    }
+ }
+ 
+ APDK_END_NAMESPACE
+diff --git a/prnt/hpps/hppsfilter.c b/prnt/hpps/hppsfilter.c
+index 5879a70..d246041 100644
+--- a/prnt/hpps/hppsfilter.c
++++ b/prnt/hpps/hppsfilter.c
+@@ -230,13 +230,13 @@ static void WriteHeader(char **argument)
+     /*		Writing Header Information
+     argument[1] = JOB ID , argument[2]= USERNAME,  argument[3] = TITLE		*/
+     hpwrite("\x1b%-12345X@PJL JOBNAME=", strlen("\x1b%-12345X@PJL JOBNAME="));
+-    sprintf(buffer, "hplip_%s_%s\x0a", argument[2], argument[1]);
++    snprintf(buffer, MAX_BUFFER-1, "hplip_%s_%s\x0a", argument[2], argument[1]);
+     hpwrite(buffer, strlen(buffer));
+     memset(buffer, 0, sizeof(buffer));
+-    sprintf(buffer, "@PJL SET USERNAME=\"%s\"\x0a", argument[2]);
++    snprintf(buffer, MAX_BUFFER-1, "@PJL SET USERNAME=\"%s\"\x0a", argument[2]);
+     hpwrite(buffer, strlen(buffer));
+     memset(buffer, 0, sizeof(buffer));
+-    sprintf(buffer, "@PJL SET JOBNAME=\"%s\"\x0a", argument[3]);
++    snprintf(buffer, MAX_BUFFER-1, "@PJL SET JOBNAME=\"%s\"\x0a", argument[3]);
+     hpwrite(buffer, strlen(buffer));
+     fprintf(stderr, "HP PS filter func = WriteHeader           : WRITING PJL HEADER INFO\n");
+     return;
+diff --git a/protocol/discovery/mdns.c b/protocol/discovery/mdns.c
+index abca295..8dd6fa5 100644
+--- a/protocol/discovery/mdns.c
++++ b/protocol/discovery/mdns.c
+@@ -31,6 +31,10 @@
+ #include <netinet/in.h>
+ #include <netdb.h>
+ #include <arpa/inet.h>
++#include <unistd.h>
++#include <ctype.h>
++#include <stdio.h>
++#include <stdlib.h>
+ #include "mdns.h"
+ 
+ /* Convert "www.google.com" to "3www6google3com". */
+diff --git a/protocol/hp_ipp.h b/protocol/hp_ipp.h
+index 3853f84..de76202 100644
+--- a/protocol/hp_ipp.h
++++ b/protocol/hp_ipp.h
+@@ -166,5 +166,10 @@ int     getCupsPrinters(printer_t **printer_list);
+ HPIPP_RESULT parseResponseHeader(char* header, int *content_length, int *chunked, int* header_size);
+ HPIPP_RESULT prepend_http_header(raw_ipp *raw_request);
+ enum HPMUD_RESULT sendUSBRequest(char *buf, int size, raw_ipp *responseptr, char * device_uri);
++void _releaseCupsInstance();
++int addCupsPrinter(char *name, char *device_uri, char *location, char *ppd_file, char *model, char *info);
++int delCupsPrinter(char *pr_name);
++int setDefaultCupsPrinter(char *pr_name);
++int controlCupsPrinter(char *pr_name, int op);
+ 
+ # endif //_IPP_H
+diff --git a/scan/sane/bb_ledm.c b/scan/sane/bb_ledm.c
+index b233d1e..7ba0edf 100644
+--- a/scan/sane/bb_ledm.c
++++ b/scan/sane/bb_ledm.c
+@@ -26,6 +26,7 @@
+ # include "http.h"
+ # include "xml.h"
+ # include <stdlib.h>
++# include <unistd.h>
+ 
+ # include <stdint.h>
+ 
+diff --git a/scan/sane/common.h b/scan/sane/common.h
+index 0f67542..e496a74 100644
+--- a/scan/sane/common.h
++++ b/scan/sane/common.h
+@@ -36,7 +36,7 @@
+ #define _STRINGIZE(x) #x
+ #define STRINGIZE(x) _STRINGIZE(x)
+ 
+-#define BUG(args...) {syslog(LOG_ERR, __FILE__ " " STRINGIZE(__LINE__) ": " args); DBG(2, __FILE__ " " STRINGIZE(__LINE__) ": " args);}
++#define BUG_SCAN(args...) {syslog(LOG_ERR, __FILE__ " " STRINGIZE(__LINE__) ": " args); DBG(2, __FILE__ " " STRINGIZE(__LINE__) ": " args);}
+ #define BUG_DUMP(data, size) bugdump((data), (size))
+ #define BUG_SZ(args...) {syslog(LOG_ERR, args); DBG(2, args);}
+ 
+diff --git a/scan/sane/escl.c b/scan/sane/escl.c
+index af45bff..4f59b21 100644
+--- a/scan/sane/escl.c
++++ b/scan/sane/escl.c
+@@ -795,7 +795,7 @@ SANE_Status escl_control_option(SANE_Handle handle, SANE_Int option, SANE_Action
+   //DBG8("escl_control_option (option=%s) action=%d\n", ps->option[option].name, action);
+   if (stat != SANE_STATUS_GOOD)
+   {
+-     BUG("control_option failed: option=%s action=%s\n", ps->option[option].name, action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
++     BUG_SCAN("control_option failed: option=%s action=%s\n", ps->option[option].name, action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
+   }
+ 
+    return stat;
+@@ -1102,7 +1102,7 @@ void escl_close(SANE_Handle handle)
+ 
+   if (ps == NULL || ps != session)
+   {
+-    BUG("invalid sane_close\n");
++    BUG_SCAN("invalid sane_close\n");
+     return;
+   }
+ 
+diff --git a/scan/sane/hpaio.c b/scan/sane/hpaio.c
+index ae34cfb..ffde2ad 100644
+--- a/scan/sane/hpaio.c
++++ b/scan/sane/hpaio.c
+@@ -41,6 +41,7 @@
+ #include "soap.h"
+ #include "soapht.h"
+ #include "marvell.h"
++#include "mdns.h"
+ #include "hpaio.h"
+ #include "ledm.h"
+ #include "sclpml.h"
+diff --git a/scan/sane/http.c b/scan/sane/http.c
+index 800df91..45668cd 100644
+--- a/scan/sane/http.c
++++ b/scan/sane/http.c
+@@ -36,6 +36,7 @@
+ #include <string.h>
+ #include <syslog.h>
+ #include <ctype.h>
++#include <unistd.h>
+ #include "hpmud.h"
+ #include "http.h"
+ 
+diff --git a/scan/sane/io.c b/scan/sane/io.c
+index 4508458..7bbddea 100755
+--- a/scan/sane/io.c
++++ b/scan/sane/io.c
+@@ -50,7 +50,7 @@ int __attribute__ ((visibility ("hidden"))) InitDbus(void)
+     
+    if (dbus_error_is_set(&dbus_err))
+    { 
+-      BUG("dBus Connection Error (%s)!\n", dbus_err.message); 
++      BUG_SCAN("dBus Connection Error (%s)!\n", dbus_err.message); 
+       dbus_error_free(&dbus_err); 
+    }
+ 
+@@ -79,7 +79,7 @@ int __attribute__ ((visibility ("hidden"))) SendScanEvent(char *device_uri, int
+ 
+     if (NULL == msg)
+     {
+-        BUG("dbus message is NULL!\n");
++        BUG_SCAN("dbus message is NULL!\n");
+         return 0;
+     }
+ 
+@@ -94,7 +94,7 @@ int __attribute__ ((visibility ("hidden"))) SendScanEvent(char *device_uri, int
+ 
+     if (!dbus_connection_send(dbus_conn, msg, NULL))
+     {
+-        BUG("dbus message send failed!\n");
++        BUG_SCAN("dbus message send failed!\n");
+         return 0;
+     }
+ 
+diff --git a/scan/sane/ledm.c b/scan/sane/ledm.c
+index 9a1ff02..07ab5b0 100644
+--- a/scan/sane/ledm.c
++++ b/scan/sane/ledm.c
+@@ -802,7 +802,7 @@ SANE_Status ledm_control_option(SANE_Handle handle, SANE_Int option, SANE_Action
+ 
+   if (stat != SANE_STATUS_GOOD)
+   {
+-     BUG("control_option failed: option=%s action=%s\n", ps->option[option].name, action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
++     BUG_SCAN("control_option failed: option=%s action=%s\n", ps->option[option].name, action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
+   }
+ 
+    return stat;
+@@ -1067,7 +1067,7 @@ void ledm_close(SANE_Handle handle)
+ 
+   if (ps == NULL || ps != session)
+   {
+-    BUG("invalid sane_close\n");
++    BUG_SCAN("invalid sane_close\n");
+     return;
+   }
+ 
+diff --git a/scan/sane/marvell.c b/scan/sane/marvell.c
+index ad267a3..236f7c9 100644
+--- a/scan/sane/marvell.c
++++ b/scan/sane/marvell.c
+@@ -134,7 +134,7 @@ static int get_ip_data(struct marvell_session *ps, SANE_Byte *data, SANE_Int max
+ 
+    if (!ps->ip_handle)
+    {
+-      BUG("invalid ipconvert state\n");
++      BUG_SCAN("invalid ipconvert state\n");
+       goto bugout;
+    }
+    
+@@ -335,7 +335,7 @@ static struct marvell_session *create_session()
+ 
+    if ((ps = malloc(sizeof(struct marvell_session))) == NULL)
+    {
+-      BUG("malloc failed: %m\n");
++      BUG_SCAN("malloc failed: %m\n");
+       return NULL;
+    }
+    memset(ps, 0, sizeof(struct marvell_session));
+@@ -402,7 +402,7 @@ SANE_Status marvell_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (session)
+    {
+-      BUG("session in use\n");
++      BUG_SCAN("session in use\n");
+       return SANE_STATUS_DEVICE_BUSY;
+    }
+       
+@@ -431,7 +431,7 @@ SANE_Status marvell_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (hpmud_open_device(session->uri, ma.mfp_mode, &session->dd) != HPMUD_R_OK)
+    {
+-      BUG("unable to open device %s\n", session->uri);
++      BUG_SCAN("unable to open device %s\n", session->uri);
+       goto bugout;
+ 
+       free(session);
+@@ -441,7 +441,7 @@ SANE_Status marvell_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (hpmud_open_channel(session->dd, HPMUD_S_MARVELL_SCAN_CHANNEL, &session->cd) != HPMUD_R_OK)
+    {
+-      BUG("unable to open %s channel %s\n", HPMUD_S_MARVELL_SCAN_CHANNEL, session->uri);
++      BUG_SCAN("unable to open %s channel %s\n", HPMUD_S_MARVELL_SCAN_CHANNEL, session->uri);
+       stat = SANE_STATUS_DEVICE_BUSY;
+       goto bugout;
+    }
+@@ -554,7 +554,7 @@ void marvell_close(SANE_Handle handle)
+ 
+    if (ps == NULL || ps != session)
+    {
+-      BUG("invalid sane_close\n");
++      BUG_SCAN("invalid sane_close\n");
+       return;
+    }
+ 
+@@ -849,7 +849,7 @@ SANE_Status marvell_control_option(SANE_Handle handle, SANE_Int option, SANE_Act
+                stat = SANE_STATUS_GOOD;
+                break;
+             }
+-            BUG("value=%d brymin=%d brymax=%d\n", *int_value, ps->bryRange.min, ps->bryRange.max);
++            BUG_SCAN("value=%d brymin=%d brymax=%d\n", *int_value, ps->bryRange.min, ps->bryRange.max);
+          }
+          else
+          {  /* Set default. */
+@@ -866,7 +866,7 @@ SANE_Status marvell_control_option(SANE_Handle handle, SANE_Int option, SANE_Act
+ 
+    if (stat != SANE_STATUS_GOOD)
+    {
+-      BUG("control_option failed: option=%s action=%s\n", ps->option[option].name, 
++      BUG_SCAN("control_option failed: option=%s action=%s\n", ps->option[option].name, 
+                   action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
+    }
+ 
+@@ -905,7 +905,7 @@ SANE_Status marvell_start(SANE_Handle handle)
+    
+    if (set_extents(ps))
+    {
+-      BUG("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
++      BUG_SCAN("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
+          ps->currentTlx, ps->currentTly, ps->currentBrx, ps->currentBry, ps->min_width, ps->min_height, ps->tlxRange.max, ps->tlyRange.max);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+@@ -963,7 +963,7 @@ SANE_Status marvell_start(SANE_Handle handle)
+    /* Open image processor. */
+    if ((ret = ipOpen(pXform-xforms, xforms, 0, &ps->ip_handle)) != IP_DONE)
+    {
+-      BUG("unable open image processor: err=%d\n", ret);
++      BUG_SCAN("unable open image processor: err=%d\n", ret);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+    }
+@@ -1023,7 +1023,7 @@ SANE_Status marvell_read(SANE_Handle handle, SANE_Byte *data, SANE_Int maxLength
+ 
+    if(ret & (IP_INPUT_ERROR | IP_FATAL_ERROR))
+    {
+-      BUG("ipConvert error=%x\n", ret);
++      BUG_SCAN("ipConvert error=%x\n", ret);
+       goto bugout;
+    }
+ 
+diff --git a/scan/sane/sclpml.c b/scan/sane/sclpml.c
+index 9a5975f..dc8b32c 100644
+--- a/scan/sane/sclpml.c
++++ b/scan/sane/sclpml.c
+@@ -30,6 +30,7 @@
+ #include <unistd.h>
+ #include <fcntl.h>
+ #include <string.h>
++#include <sys/time.h>
+ #include "sane.h"
+ #include "saneopts.h"
+ #include "common.h"
+@@ -2090,7 +2091,7 @@ void sclpml_close(SANE_Handle handle)
+     DBG(8, "sane_hpaio_close(): %s %d\n", __FILE__, __LINE__); 
+     if (hpaio == NULL || hpaio != session)
+     {
+-      BUG("invalid sane_close\n");
++      BUG_SCAN("invalid sane_close\n");
+       return;
+      }
+ 
+diff --git a/scan/sane/soap.c b/scan/sane/soap.c
+index 07106fe..0d22e52 100644
+--- a/scan/sane/soap.c
++++ b/scan/sane/soap.c
+@@ -142,7 +142,7 @@ static int get_ip_data(struct soap_session *ps, SANE_Byte *data, SANE_Int maxLen
+ 
+    if (!ps->ip_handle)
+    {
+-      BUG("invalid ipconvert state\n");
++      BUG_SCAN("invalid ipconvert state\n");
+       goto bugout;
+    }      
+ 
+@@ -219,7 +219,7 @@ static struct soap_session *create_session()
+ 
+    if ((ps = malloc(sizeof(struct soap_session))) == NULL)
+    {
+-      BUG("malloc failed: %m\n");
++      BUG_SCAN("malloc failed: %m\n");
+       return NULL;
+    }
+    memset(ps, 0, sizeof(struct soap_session));
+@@ -418,7 +418,7 @@ SANE_Status soap_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (session)
+    {
+-      BUG("session in use\n");
++      BUG_SCAN("session in use\n");
+       return SANE_STATUS_DEVICE_BUSY;
+    }
+ 
+@@ -434,7 +434,7 @@ SANE_Status soap_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (hpmud_open_device(session->uri, ma.mfp_mode, &session->dd) != HPMUD_R_OK)
+    {
+-      BUG("unable to open device %s\n", session->uri);
++      BUG_SCAN("unable to open device %s\n", session->uri);
+       goto bugout;
+ 
+       free(session);
+@@ -519,7 +519,7 @@ void soap_close(SANE_Handle handle)
+ 
+    if (ps == NULL || ps != session)
+    {
+-      BUG("invalid sane_close\n");
++      BUG_SCAN("invalid sane_close\n");
+       return;
+    }
+ 
+@@ -824,7 +824,7 @@ SANE_Status soap_control_option(SANE_Handle handle, SANE_Int option, SANE_Action
+ 
+    if (stat != SANE_STATUS_GOOD)
+    {
+-      BUG("control_option failed: option=%s action=%s\n", ps->option[option].name, 
++      BUG_SCAN("control_option failed: option=%s action=%s\n", ps->option[option].name, 
+                   action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
+    }
+ 
+@@ -862,7 +862,7 @@ SANE_Status soap_start(SANE_Handle handle)
+    ps->user_cancel = 0;
+    if (set_extents(ps))
+    {
+-      BUG("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
++      BUG_SCAN("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
+          ps->currentTlx, ps->currentTly, ps->currentBrx, ps->currentBry, ps->min_width, ps->min_height, ps->tlxRange.max, ps->tlyRange.max);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+@@ -913,7 +913,7 @@ SANE_Status soap_start(SANE_Handle handle)
+    /* Open image processor. */
+    if ((ret = ipOpen(pXform-xforms, xforms, 0, &ps->ip_handle)) != IP_DONE)
+    {
+-      BUG("unable open image processor: err=%d\n", ret);
++      BUG_SCAN("unable open image processor: err=%d\n", ret);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+    }
+@@ -955,7 +955,7 @@ SANE_Status soap_start(SANE_Handle handle)
+ 
+          if (ret & (IP_INPUT_ERROR | IP_FATAL_ERROR | IP_DONE))
+          {
+-            BUG("ipConvert error=%x\n", ret);
++            BUG_SCAN("ipConvert error=%x\n", ret);
+             stat = SANE_STATUS_IO_ERROR;
+             goto bugout;
+          }
+@@ -1007,7 +1007,7 @@ SANE_Status soap_read(SANE_Handle handle, SANE_Byte *data, SANE_Int maxLength, S
+ 
+    if(ret & (IP_INPUT_ERROR | IP_FATAL_ERROR))
+    {
+-      BUG("ipConvert error=%x\n", ret);
++      BUG_SCAN("ipConvert error=%x\n", ret);
+       goto bugout;
+    }
+ 
+diff --git a/scan/sane/soapht.c b/scan/sane/soapht.c
+index 269ab21..139100d 100644
+--- a/scan/sane/soapht.c
++++ b/scan/sane/soapht.c
+@@ -136,7 +136,7 @@ static int get_ip_data(struct soap_session *ps, SANE_Byte *data, SANE_Int maxLen
+ 
+    if (!ps->ip_handle)
+    {
+-      BUG("invalid ipconvert state\n");
++      BUG_SCAN("invalid ipconvert state\n");
+       goto bugout;
+    }      
+ 
+@@ -435,7 +435,7 @@ static struct soap_session *create_session()
+ 
+    if ((ps = malloc(sizeof(struct soap_session))) == NULL)
+    {
+-      BUG("malloc failed: %m\n");
++      BUG_SCAN("malloc failed: %m\n");
+       return NULL;
+    }
+    memset(ps, 0, sizeof(struct soap_session));
+@@ -459,7 +459,7 @@ SANE_Status soapht_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (session)
+    {
+-      BUG("session in use\n");
++      BUG_SCAN("session in use\n");
+       return SANE_STATUS_DEVICE_BUSY;
+    }
+ 
+@@ -475,7 +475,7 @@ SANE_Status soapht_open(SANE_String_Const device, SANE_Handle *handle)
+ 
+    if (hpmud_open_device(session->uri, ma.mfp_mode, &session->dd) != HPMUD_R_OK)
+    {
+-      BUG("unable to open device %s\n", session->uri);
++      BUG_SCAN("unable to open device %s\n", session->uri);
+       goto bugout;
+ 
+       free(session);
+@@ -554,7 +554,7 @@ void soapht_close(SANE_Handle handle)
+ 
+    if (ps == NULL || ps != session)
+    {
+-      BUG("invalid sane_close\n");
++      BUG_SCAN("invalid sane_close\n");
+       return;
+    }
+ 
+@@ -904,7 +904,7 @@ SANE_Status soapht_control_option(SANE_Handle handle, SANE_Int option, SANE_Acti
+ 
+    if (stat != SANE_STATUS_GOOD)
+    {
+-      BUG("control_option failed: option=%s action=%s\n", ps->option[option].name, 
++      BUG_SCAN("control_option failed: option=%s action=%s\n", ps->option[option].name, 
+                   action==SANE_ACTION_GET_VALUE ? "get" : action==SANE_ACTION_SET_VALUE ? "set" : "auto");
+    }
+ 
+@@ -946,7 +946,7 @@ SANE_Status soapht_start(SANE_Handle handle)
+   
+    if (set_extents(ps))
+    {
+-      BUG("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
++      BUG_SCAN("invalid extents: tlx=%d brx=%d tly=%d bry=%d minwidth=%d minheight%d maxwidth=%d maxheight=%d\n",
+          ps->currentTlx, ps->currentTly, ps->currentBrx, ps->currentBry, ps->min_width, ps->min_height, ps->tlxRange.max, ps->tlyRange.max);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+@@ -1032,7 +1032,7 @@ SANE_Status soapht_start(SANE_Handle handle)
+    /* Open image processor. */
+    if ((ret = ipOpen(pXform-xforms, xforms, 0, &ps->ip_handle)) != IP_DONE)
+    {
+-      BUG("unable open image processor: err=%d\n", ret);
++      BUG_SCAN("unable open image processor: err=%d\n", ret);
+       stat = SANE_STATUS_INVAL;
+       goto bugout;
+    }
+@@ -1075,7 +1075,7 @@ SANE_Status soapht_start(SANE_Handle handle)
+ 
+          if (ret & (IP_INPUT_ERROR | IP_FATAL_ERROR | IP_DONE))
+          {
+-            BUG("ipConvert error=%x\n", ret);
++            BUG_SCAN("ipConvert error=%x\n", ret);
+             stat = SANE_STATUS_IO_ERROR;
+             goto bugout;
+          }
+@@ -1124,7 +1124,7 @@ SANE_Status soapht_read(SANE_Handle handle, SANE_Byte *data, SANE_Int maxLength,
+ 
+    if(ret & (IP_INPUT_ERROR | IP_FATAL_ERROR))
+    {
+-      BUG("ipConvert error=%x\n", ret);
++      BUG_SCAN("ipConvert error=%x\n", ret);
+       goto bugout;
+    }
+ 

@@ -1,0 +1,128 @@
+name: hpaio
+config-opts:
+  - --disable-static
+  - --disable-doc-build
+  - --disable-hpijs-install
+  - --disable-hpcups-install
+  - --disable-new-hpcups
+  - --disable-hpps-install
+  - --disable-gui-build
+  - --disable-fax-build
+  - --disable-cups11-build
+  - --disable-foomatic-ppd-install
+  - --disable-foomatic-drv-install
+  - --disable-cups-drv-install
+  - --disable-cups-ppd-install
+  - --disable-foomatic-rip-hplip-install
+  - --disable-qt5
+  - --disable-qt4
+  - --disable-qt3
+  - --enable-network-build
+  - --enable-pp-build
+  - --enable-scan-build
+  - --with-pic
+  # even with disabled CUPS build, it will try to create these dirs
+  # and fail because of read-only file system
+  - --with-cupsfilterdir=/app/lib/cups/filter
+  - --with-cupsbackenddir=/app/lib/cups/backend
+build-options:
+  cflags: -I/app/include/libusb-1.0
+sources:
+  - type: archive
+    url: https://downloads.sourceforge.net/sourceforge/hplip/hplip-3.19.6.tar.gz
+    sha256: fcdaedee9ed17d2e70f3aff9558a452d99443d1b93d6623132faf3f3ae61d66d
+  # patches for HPAIO from Fedora
+  - type: patch
+    path: hplip-no-asm.patch
+  - type: patch
+    path: hplip-scan-tmp.patch
+  - type: patch
+    path: hplip-avahi-parsing.patch
+  - type: patch
+    path: hplip-silence-ioerror.patch
+  - type: patch
+    path: hplip-3165-sourceoption.patch
+  # m278-m281 doesn't work correctly again
+  - type: patch
+    path: hplip-colorlaserjet-mfp-m278-m281.patch
+  - type: patch
+    path: hplip-error-print.patch
+  - type: patch
+    path: hplip-wifisetup.patch
+  # pgp.mit.edu keyserver got bad connection,
+  # so we need to have pool of keyservers to choose
+  # (Bz#1641100, launchpad#1799212)
+  # https://bugzilla.redhat.com/show_bug.cgi?id=1641100
+  # https://bugs.launchpad.net/hplip/+bug/1799212
+  - type: patch
+    path: hplip-keyserver.patch
+  # hp-setup crashed when user wanted to define a path to PPD file. It was due
+  # byte + string variables incompatibility and it is fixed by decoding the 
+  # bytes-like variable
+  # part of https://bugzilla.redhat.com/show_bug.cgi?id=1666076
+  # reported upstream https://bugs.launchpad.net/hplip/+bug/1814272
+  - type: patch
+    path: hplip-add-ppd-crash.patch
+  # change in 3.18.9 in scanext.c caused broken scanning for HP LaserJet 3052. Since I cannot figure
+  # it out what author wanted by the change (it sets option number 9 to true, but different handles
+  # have different options, so I'm not sure what author wanted to set).
+  # Remove the change for now, it works for user and me.
+  - type: patch
+    path: hplip-hplj-3052.patch
+  # hpmud parses mdns txt record badly
+  # upstream tickets:
+  # https://bugs.launchpad.net/hplip/+bug/1797501
+  # https://bugs.launchpad.net/hplip/+bug/1817214
+  # https://bugs.launchpad.net/hplip/+bug/1821932
+  # with no response from upstream
+  # Patch taken from Debian https://lists.debian.org/debian-printing/2018/11/msg00049.html
+  - type: patch
+    path: hplip-hpmud-string-parse.patch
+  # Part of https://bugzilla.redhat.com/show_bug.cgi?id=1694663
+  # It was found out that specific device needs plugin for scanning
+  # Reported upstream as https://bugs.launchpad.net/hplip/+bug/1822762
+  - type: patch
+    path: hplip-m278-m281-needs-plugin.patch
+  # Fixing the issues found by coverity scan
+  # reported upstream https://bugs.launchpad.net/hplip/+bug/1808145
+  - type: patch
+    path: hplip-covscan.patch
+  # Segfault during logging to syslog because argument are switched
+  # bugzilla https://bugzilla.redhat.com/show_bug.cgi?id=1727162
+  # upstream https://bugs.launchpad.net/hplip/+bug/1837846
+  - type: patch
+    path: hplip-logging-segfault.patch
+  # work-around Makefile.am imperfections
+  - type: patch
+    path: hplip-3.19.6-automake-foreign.patch
+  # Fix cups_drv.inc
+  # /usr/bin/install: will not overwrite just-created '/app/share/ppd/HP/apollo-2100.ppd.gz' with 'ppd/hpcups/apollo-2100.ppd.gz'
+  # make[1]: *** [Makefile:8325: install-dist_ppdDATA] Error 1
+  # https://bugs.launchpad.net/hplip/+bug/1778612/comments/2
+  # https://launchpadlibrarian.net/375997667/null_ppd_list_delete.patch
+  - type: patch
+    path: hplip-null-ppd-list-delete.patch
+  # fix halpredir and rulessystemdir
+  # /usr/bin/mkdir: cannot create directory ‘/usr/share/hal’: Read-only file system
+  # /usr/bin/install: cannot create regular file '/usr/lib/systemd/system/hplip-printer@.service': Read-only file system
+  - type: shell
+    commands:
+      - sed -i -re '/^[[:blank:]]*(@HPLIP_BUILD_TRUE@)?halpredir[[:blank:]]*=/s!/usr/share/!$(datadir)/!' "Makefile"*;
+      - sed -i -re '/^[[:blank:]]*(@HPLIP_BUILD_TRUE@)?rulessystemdir[[:blank:]]*=/s!/usr/lib/!$(libdir)/!' "Makefile"*;
+  - type: shell
+    commands:
+      - cp -p /usr/share/automake-*/config.{sub,guess} .;
+      - autoreconf -vfi;
+post-install:
+  - |
+    if [[ ! -f "${FLATPAK_DEST}/etc/hp/hplip.conf" ]]; then
+      install -p -D -m 0644 "hplip.conf" -t "${FLATPAK_DEST}/etc/hp/";
+    fi;
+  - echo 'hpaio' > "hpaio";
+    install -p -D -m 0644 "hpaio" -t "${FLATPAK_DEST}/etc/sane.d/dll.d/";
+  - install -p -D -m 0644 "COPYING" -t "${FLATPAK_DEST}/share/licenses/hpaio/";
+modules:
+  - net-snmp.yaml
+cleanup:
+  - /lib/cups
+  - /share/ppd

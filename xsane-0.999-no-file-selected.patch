@@ -1,0 +1,91 @@
+From 2f7abcaa7ad39f118b2f49fdcba9c90b37b3d972 Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@redhat.com>
+Date: Fri, 5 Jul 2013 16:15:55 +0200
+Subject: [PATCH] patch: no-file-selected
+
+Squashed commit of the following:
+
+commit f887550276e324151947960292a7266c71aeb573
+Author: Pavel Polischouk <pavel.polischouk@gmail.com>
+Date:   Fri Nov 25 23:55:49 2011 -0500
+
+    fix changing working directory (#621778)
+
+    The patch checks the value returned by xsane_back_gtk_get_filename. In
+    most places it will check the result properly (taking 0 for success),
+    except one case where it takes 0 for an error, and this happens in
+    xsane_browse_filename_callback (xsane-front-gtk.c). The new code would
+    abort copying the filename into preferences structure if 0 was returned,
+    and that's the OK case. I'm very curious how wonderfully it would blow
+    up if an actual error was returned, but that's a different story.
+
+commit 2c02ddd8282fa231107d8860aee4d92bdb5cb8e8
+Author: Nils Philippsen <nils@redhat.com>
+Date:   Fri Nov 19 12:25:54 2010 +0100
+
+    don't crash if no files are selected (#608047)
+---
+ src/xsane-back-gtk.c  | 20 ++++++++++++++++----
+ src/xsane-front-gtk.c |  6 +++++-
+ 2 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/src/xsane-back-gtk.c b/src/xsane-back-gtk.c
+index bca9eb2..6ef1506 100644
+--- a/src/xsane-back-gtk.c
++++ b/src/xsane-back-gtk.c
+@@ -1111,6 +1111,11 @@ static void xsane_back_gtk_filetype2_callback(GtkWidget *widget, gpointer data)
+ 
+   chooser_filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(filechooser));
+ 
++  if (!chooser_filename)
++  {
++    return;
++  }
++
+   if ((new_filetype) && (*new_filetype))
+   {
+     extension = strrchr(chooser_filename, '.');
+@@ -1505,12 +1510,19 @@ int xsane_back_gtk_get_filename(const char *label, const char *default_name, siz
+ #endif
+ 
+     chooser_filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(filechooser));
+-    strncpy(filename, chooser_filename, max_len - 1);
+-    g_free(chooser_filename);
++    if (chooser_filename)
++    {
++      strncpy(filename, chooser_filename, max_len - 1);
++      g_free(chooser_filename);
+ 
+-    filename[max_len - 1] = '\0';
++      filename[max_len - 1] = '\0';
+ 
+-    ok = TRUE;
++      ok = TRUE;
++    }
++    else
++    {
++      ok = FALSE;
++    }
+   }
+ 
+   gtk_widget_destroy(filechooser);
+diff --git a/src/xsane-front-gtk.c b/src/xsane-front-gtk.c
+index 4c973fb..7bb49b0 100644
+--- a/src/xsane-front-gtk.c
++++ b/src/xsane-front-gtk.c
+@@ -1333,7 +1333,11 @@ static void xsane_browse_filename_callback(GtkWidget *widget, gpointer data)
+   snprintf(windowname, sizeof(windowname), "%s %s %s", xsane.prog_name, WINDOW_OUTPUT_FILENAME, xsane.device_text);
+ 
+   umask((mode_t) preferences.directory_umask); /* define new file permissions */    
+-  xsane_back_gtk_get_filename(windowname, filename, sizeof(filename), filename, &preferences.filetype, &preferences.cms_function, XSANE_FILE_CHOOSER_ACTION_SELECT_SAVE, show_extra_widgets, XSANE_FILE_FILTER_ALL | XSANE_FILE_FILTER_IMAGES, XSANE_FILE_FILTER_IMAGES);
++  if (xsane_back_gtk_get_filename(windowname, filename, sizeof(filename), filename, &preferences.filetype, &preferences.cms_function, XSANE_FILE_CHOOSER_ACTION_SELECT_SAVE, show_extra_widgets, XSANE_FILE_FILTER_ALL | XSANE_FILE_FILTER_IMAGES, XSANE_FILE_FILTER_IMAGES) < 0)
++  {
++    xsane_set_sensitivity(TRUE);
++    return;
++  }
+   umask(XSANE_DEFAULT_UMASK); /* define new file permissions */    
+ 
+   if (preferences.filename)
+-- 
+1.8.3.1
+

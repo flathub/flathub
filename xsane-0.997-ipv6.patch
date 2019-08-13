@@ -1,0 +1,148 @@
+From a2ef22d59904d5e53c3d58093b561fa1ab7127a6 Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@redhat.com>
+Date: Thu, 16 Aug 2012 10:58:54 +0200
+Subject: [PATCH] patch: ipv6
+
+Squashed commit of the following:
+
+commit 9f9d5c46fdef5ba7baccb81ab8170cfc24797de6
+Author: Nils Philippsen <nils@redhat.com>
+Date:   Fri Nov 19 12:27:42 2010 +0100
+
+    support IPv6 (#198422)
+---
+ src/xsane-save.c | 96 ++++++++++++++++++++++++++++++++++++--------------------
+ 1 file changed, 62 insertions(+), 34 deletions(-)
+
+diff --git a/src/xsane-save.c b/src/xsane-save.c
+index 84f5d59..87ef685 100644
+--- a/src/xsane-save.c
++++ b/src/xsane-save.c
+@@ -29,6 +29,8 @@
+ #include <time.h>
+ #include <sys/wait.h> 
+ 
++#include <glib.h>
++
+ /* the following test is always false */
+ #ifdef _native_WIN32
+ # include <winsock.h>
+@@ -7488,55 +7490,81 @@ void write_email_attach_file(int fd_socket, char *boundary, FILE *infile, char *
+ /* returns fd_socket if sucessfull, < 0 when error occured */
+ int open_socket(char *server, int port)
+ {
+- int fd_socket;
+- struct sockaddr_in sin;
+- struct hostent *he;
++ int fd_socket, e;
++
++ struct addrinfo *ai_list, *ai;
++ struct addrinfo hints;
++ gchar *port_s;
++ gint connected;
++
++  memset(&hints, '\0', sizeof(hints));
++  hints.ai_flags = AI_ADDRCONFIG;
++  hints.ai_socktype = SOCK_STREAM;
++
++  port_s = g_strdup_printf("%d", port);
++  e = getaddrinfo(server, port_s, &hints, &ai_list);
++  g_free(port_s);
+ 
+-  he = gethostbyname(server);
+-  if (!he)
++  if (e != 0)
+   {
+-    DBG(DBG_error, "open_socket: Could not get hostname of \"%s\"\n", server);
++    DBG(DBG_error, "open_socket: Could not lookup \"%s\"\n", server);
+    return -1;
+   }
+-  else
++
++  connected = 0;
++  for (ai = ai_list; ai != NULL && !connected; ai = ai->ai_next)
+   {
+-    DBG(DBG_info, "open_socket: connecting to \"%s\" = %d.%d.%d.%d\n",
+-        he->h_name,
+-        (unsigned char) he->h_addr_list[0][0],
+-        (unsigned char) he->h_addr_list[0][1],
+-        (unsigned char) he->h_addr_list[0][2],
+-        (unsigned char) he->h_addr_list[0][3]);
+-  }
++    gchar hostname[NI_MAXHOST];
++    gchar hostaddr[NI_MAXHOST];
++
++    /* If all else fails */
++    strncpy(hostname, "(unknown name)", NI_MAXHOST-1);
++    strncpy(hostaddr, "(unknown address)", NI_MAXHOST-1);
++
++    /* Determine canonical name and IPv4/IPv6 address */
++    (void) getnameinfo(ai->ai_addr, ai->ai_addrlen, hostname, sizeof(hostname),
++                       NULL, 0, 0);
++    (void) getnameinfo(ai->ai_addr, ai->ai_addrlen, hostaddr, sizeof(hostaddr),
++                       NULL, 0, NI_NUMERICHOST);
++
++    DBG(DBG_info, "open_socket: connecting to \"%s\" (\"%s\"): %s\n",
++        server, hostname, hostaddr);
+  
+-  if (he->h_addrtype != AF_INET)
+-  {
+-    DBG(DBG_error, "open_socket: Unknown address family: %d\n", he->h_addrtype);
+-   return -1;
+-  }
++    if ((ai->ai_family != AF_INET) && (ai->ai_family != AF_INET6))
++    {
++      DBG(DBG_error, "open_socket: Unknown address family: %d\n", ai->ai_family);
++      continue;
++    }
+ 
+-  fd_socket = socket(AF_INET, SOCK_STREAM, 0);
++    fd_socket = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+ 
+-  if (fd_socket < 0)
+-  {
+-    DBG(DBG_error, "open_socket: Could not create socket: %s\n", strerror(errno));
+-   return -1;
+-  }
++    if (fd_socket < 0)
++    {
++      DBG(DBG_error, "open_socket: Could not create socket: %s\n", strerror(errno));
++      continue;
++    }
+ 
+-/*  setsockopt (dev->ctl, level, TCP_NODELAY, &on, sizeof (on)); */
++    /*  setsockopt (dev->ctl, level, TCP_NODELAY, &on, sizeof (on)); */
+ 
+-  sin.sin_port = htons(port);
+-  sin.sin_family = AF_INET;
+-  memcpy(&sin.sin_addr, he->h_addr_list[0], he->h_length);
++    if (connect(fd_socket, ai->ai_addr, ai->ai_addrlen) != 0)
++    {
++      DBG(DBG_error, "open_socket: Could not connect with port %d of socket: %s\n", port, strerror(errno));
++      continue;
++    }
++
++    /* All went well */
++    connected = 1;
++  }
+ 
+-  if (connect(fd_socket, &sin, sizeof(sin)))
++  if (!connected)
+   {
+-    DBG(DBG_error, "open_socket: Could not connect with port %d of socket: %s\n", ntohs(sin.sin_port), strerror(errno));
+-   return -1;
++    DBG(DBG_info, "open_socket: Could not connect to any address");
++    return -1;
+   }
+ 
+-  DBG(DBG_info, "open_socket: Connected with port %d\n", ntohs(sin.sin_port));
++  DBG(DBG_info, "open_socket: Connected with port %d\n", port);
+ 
+- return fd_socket;
++  return fd_socket;
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+-- 
+1.7.11.4
+

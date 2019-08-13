@@ -1,0 +1,199 @@
+diff -urNp b/agent/mibgroup/hardware/fsys/fsys_mntctl.c net-snmp-5.8/agent/mibgroup/hardware/fsys/fsys_mntctl.c
+--- b/agent/mibgroup/hardware/fsys/fsys_mntctl.c	2018-07-18 16:12:20.674499629 +0200
++++ net-snmp-5.8/agent/mibgroup/hardware/fsys/fsys_mntctl.c	2018-07-18 16:15:46.782859398 +0200
+@@ -43,8 +43,9 @@ _fsys_type( int type)
+ 
+         case  MNT_NFS:
+         case  MNT_NFS3:
+-        case  MNT_AUTOFS:
+             return NETSNMP_FS_TYPE_NFS;
++        case  MNT_AUTOFS:
++            return NETSNMP_FS_TYPE_AUTOFS;
+ 
+     /*
+      *  The following code covers selected filesystems
+@@ -156,10 +157,12 @@ netsnmp_fsys_arch_load( void )
+ 
+         /*
+          *  Optionally skip retrieving statistics for remote mounts
++         *  AUTOFS is skipped by default
+          */
+-        if ( (entry->flags & NETSNMP_FS_FLAG_REMOTE) &&
++        if ( ((entry->flags & NETSNMP_FS_FLAG_REMOTE) &&
+             netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
+-                                   NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES))
++                                   NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES)) ||
++              entry->type == (NETSNMP_FS_TYPE_AUTOFS))
+             continue;
+ 
+         if ( statfs( entry->path, &stat_buf ) < 0 ) {
+diff -urNp b/agent/mibgroup/hardware/fsys/fsys_mntent.c net-snmp-5.8/agent/mibgroup/hardware/fsys/fsys_mntent.c
+--- b/agent/mibgroup/hardware/fsys/fsys_mntent.c	2018-07-18 16:12:20.674499629 +0200
++++ net-snmp-5.8/agent/mibgroup/hardware/fsys/fsys_mntent.c	2018-07-18 16:15:46.782859398 +0200
+@@ -150,6 +150,13 @@ _fsys_type( char *typename )
+               !strcmp(typename, MNTTYPE_LOFS))
+        return NETSNMP_FS_TYPE_OTHER;
+ 
++    /* Detection of AUTOFS.
++     * This file system will be ignored by default
++     */ 
++    else if ( !strcmp(typename, MNTTYPE_AUTOFS))
++        return NETSNMP_FS_TYPE_AUTOFS;
++
++
+     /*    
+      *  All other types are silently skipped
+      */
+@@ -239,6 +246,10 @@ netsnmp_fsys_arch_load( void )
+                                    NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES))
+             continue;
+ 
++        /* Skip AUTOFS enteries */
++        if ( entry->type == (NETSNMP_FS_TYPE_AUTOFS))
++            continue;
++
+ #ifdef irix6
+         if ( NSFS_STATFS( entry->path, &stat_buf, sizeof(struct statfs), 0) < 0 )
+ #else
+diff -urNp b/agent/mibgroup/hardware/fsys/mnttypes.h net-snmp-5.8/agent/mibgroup/hardware/fsys/mnttypes.h
+--- b/agent/mibgroup/hardware/fsys/mnttypes.h	2018-07-18 16:12:20.674499629 +0200
++++ net-snmp-5.8/agent/mibgroup/hardware/fsys/mnttypes.h	2018-07-18 16:15:46.782859398 +0200
+@@ -165,6 +165,9 @@
+ #ifndef MNTTYPE_APP
+ #define MNTTYPE_APP      "app"
+ #endif
++#ifndef MNTTYPE_AUTOFS
++#define MNTTYPE_AUTOFS   "autofs"
++#endif
+ #ifndef MNTTYPE_DEVPTS
+ #define MNTTYPE_DEVPTS   "devpts"
+ #endif
+diff -urNp b/agent/mibgroup/host/hr_filesys.c net-snmp-5.8/agent/mibgroup/host/hr_filesys.c
+--- b/agent/mibgroup/host/hr_filesys.c	2018-07-18 16:12:20.668499652 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hr_filesys.c	2018-07-18 16:15:46.783859399 +0200
+@@ -834,6 +834,27 @@ Check_HR_FileSys_NFS (void)
+     return 0;		/* no NFS file system */
+ }
+ 
++/* This function checks whether current file system is an AutoFs
++ * HRFS_entry must be valid prior to calling this function
++ * return 1 if AutoFs, 0 otherwise
++ */
++int
++Check_HR_FileSys_AutoFs (void)
++{
++#if HAVE_GETFSSTAT
++    if ( HRFS_entry->HRFS_type != NULL && 
++#if defined(MNTTYPE_AUTOFS)
++        !strcmp( HRFS_entry->HRFS_type, MNTTYPE_AUTOFS)
++#else
++        !strcmp( HRFS_entry->HRFS_type, "autofs")
++#endif
++        )
++#endif /* HAVE_GETFSSTAT */
++        return 1;  /* AUTOFS */
++
++    return 0; /* no AUTOFS */
++}
++
+ void
+ End_HR_FileSys(void)
+ {
+diff -urNp b/agent/mibgroup/host/hr_filesys.h net-snmp-5.8/agent/mibgroup/host/hr_filesys.h
+--- b/agent/mibgroup/host/hr_filesys.h	2018-07-18 16:12:20.669499648 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hr_filesys.h	2018-07-18 16:15:46.784859400 +0200
+@@ -10,6 +10,7 @@ extern void     Init_HR_FileSys(void);
+ extern FindVarMethod var_hrfilesys;
+ extern int      Get_Next_HR_FileSys(void);
+ extern int      Check_HR_FileSys_NFS(void);
++extern int      Check_HR_FileSys_AutoFs(void);
+ 
+ extern int      Get_FSIndex(char *);
+ extern long     Get_FSSize(char *);     /* Temporary */
+diff -urNp b/agent/mibgroup/host/hrh_filesys.c net-snmp-5.8/agent/mibgroup/host/hrh_filesys.c
+--- b/agent/mibgroup/host/hrh_filesys.c	2018-07-18 16:12:20.668499652 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hrh_filesys.c	2018-07-18 16:15:46.785859402 +0200
+@@ -429,3 +429,9 @@ Check_HR_FileSys_NFS (void)
+ {
+     return (HRFS_entry->flags & NETSNMP_FS_FLAG_REMOTE) ? 1 : 0;
+ }
++
++int
++Check_HR_FileSys_AutoFs (void)
++{
++    return (HRFS_entry->type == (NETSNMP_FS_TYPE_AUTOFS)) ? 1 : 0;
++}
+diff -urNp b/agent/mibgroup/host/hrh_filesys.h net-snmp-5.8/agent/mibgroup/host/hrh_filesys.h
+--- b/agent/mibgroup/host/hrh_filesys.h	2018-07-18 16:12:20.669499648 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hrh_filesys.h	2018-07-18 16:15:46.785859402 +0200
+@@ -10,6 +10,7 @@ extern void     Init_HR_FileSys(void);
+ extern FindVarMethod var_hrhfilesys;
+ extern int      Get_Next_HR_FileSys(void);
+ extern int      Check_HR_FileSys_NFS(void);
++extern int	Check_HR_FileSys_AutoFs(void);
+ 
+ extern int      Get_FSIndex(char *);
+ extern long     Get_FSSize(char *);     /* Temporary */
+diff -urNp b/agent/mibgroup/host/hrh_storage.c net-snmp-5.8/agent/mibgroup/host/hrh_storage.c
+--- b/agent/mibgroup/host/hrh_storage.c	2018-07-18 16:12:20.668499652 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hrh_storage.c	2018-07-18 16:15:46.786859402 +0200
+@@ -367,9 +367,10 @@ really_try_next:
+         store_idx = name[ HRSTORE_ENTRY_NAME_LENGTH ];
+         if (HRFS_entry &&
+ 	    store_idx > NETSNMP_MEM_TYPE_MAX &&
+-            netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
++            ((netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
+                                    NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) &&
+-            Check_HR_FileSys_NFS())
++            Check_HR_FileSys_NFS()) ||
++            Check_HR_FileSys_AutoFs()))
+             return NULL;
+         if (store_idx <= NETSNMP_MEM_TYPE_MAX ) {
+ 	    mem = (netsnmp_memory_info*)ptr;
+@@ -508,7 +509,8 @@ Get_Next_HR_Store(void)
+ 		if (HRS_index >= 0) {
+ 			if (!(netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, 
+ 							NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) && 
+-						Check_HR_FileSys_NFS())) {
++						Check_HR_FileSys_NFS()) &&
++                         !Check_HR_FileSys_AutoFs()) {
+ 				return HRS_index + NETSNMP_MEM_TYPE_MAX;	
+ 			}
+ 		} else {
+diff -urNp b/agent/mibgroup/host/hr_storage.c net-snmp-5.8/agent/mibgroup/host/hr_storage.c
+--- b/agent/mibgroup/host/hr_storage.c	2018-07-18 16:12:20.670499644 +0200
++++ net-snmp-5.8/agent/mibgroup/host/hr_storage.c	2018-07-18 16:15:46.786859402 +0200
+@@ -540,9 +540,10 @@ really_try_next:
+ 
+         store_idx = name[ HRSTORE_ENTRY_NAME_LENGTH ];
+         if (store_idx > NETSNMP_MEM_TYPE_MAX ) {
+-            if ( netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
++            if ( (netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
+                                         NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) &&
+-                 Check_HR_FileSys_NFS())
++                 Check_HR_FileSys_NFS()) ||
++                 Check_HR_FileSys_AutoFs())
+                 return NULL;  /* or goto try_next; */
+ 	    if (HRFS_statfs(HRFS_entry->HRFS_mount, &stat_buf) < 0) {
+ 		snmp_log_perror(HRFS_entry->HRFS_mount);
+@@ -683,7 +684,8 @@ Get_Next_HR_Store(void)
+ 		if (HRS_index >= 0) {
+ 			if (!(netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, 
+ 							NETSNMP_DS_AGENT_SKIPNFSINHOSTRESOURCES) && 
+-						Check_HR_FileSys_NFS())) {
++						Check_HR_FileSys_NFS()) &&
++                            !Check_HR_FileSys_AutoFs()) {
+ 				return HRS_index + NETSNMP_MEM_TYPE_MAX;	
+ 			}
+ 		} else {
+diff -urNp b/include/net-snmp/agent/hardware/fsys.h net-snmp-5.8/include/net-snmp/agent/hardware/fsys.h
+--- b/include/net-snmp/agent/hardware/fsys.h	2018-07-18 16:12:20.649499726 +0200
++++ net-snmp-5.8/include/net-snmp/agent/hardware/fsys.h	2018-07-18 16:19:33.994918912 +0200
+@@ -41,6 +41,7 @@ typedef struct netsnmp_fsys_info_s netsn
+ #define NETSNMP_FS_TYPE_SYSFS	   (4 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT)
+ #define NETSNMP_FS_TYPE_TMPFS	   (5 | _NETSNMP_FS_TYPE_LOCAL)
+ #define NETSNMP_FS_TYPE_USBFS	   (6 | _NETSNMP_FS_TYPE_LOCAL)
++#define NETSNMP_FS_TYPE_AUTOFS     (7 | _NETSNMP_FS_TYPE_LOCAL | _NETSNMP_FS_TYPE_SKIP_BIT)
+ 
+ #define NETSNMP_FS_FLAG_ACTIVE   0x01
+ #define NETSNMP_FS_FLAG_REMOTE   0x02

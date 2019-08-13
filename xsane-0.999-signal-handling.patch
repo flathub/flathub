@@ -1,0 +1,242 @@
+From 3b5d3b7e1f320b0bfbe48024a586c0a22375aa2d Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@redhat.com>
+Date: Thu, 3 Jul 2014 10:38:03 +0200
+Subject: [PATCH] patch: signal-handling
+
+Squashed commit of the following:
+
+commit 1e9e8cf5edc469114c8eadf46817cd5c1261b35c
+Author: Nils Philippsen <nils@redhat.com>
+Date:   Thu Jul 3 10:14:52 2014 +0200
+
+    don't use g_unix_open_pipe(), g_unix_fd_add()
+
+    These functions have only recently been added to glib. Use pipe()/
+    fcntl() and g_io_channel_unix_new()/g_io_add_watch() instead which are
+    available in the minimum glib version needed for gtk+-2.x.
+
+commit acbdf3f693d3d2a78ee7490ca1bf76957daf00cf
+Author: Nils Philippsen <nils@redhat.com>
+Date:   Thu Mar 13 13:38:12 2014 +0100
+
+    separate signal handlers in top and bottom half
+
+    This is to avoid race-conditions occurring when a signal is received
+    while the signal handler is not yet finished. It also avoids calling
+    non-reentrant functions from a signal handler. The top half (the real
+    signal handler) just writes a character into a pipe which gets picked up
+    and serviced by the bottom half from the normal event loop, this
+    serializes things and makes using non-reentrant functions safe.
+---
+ src/xsane.c | 151 ++++++++++++++++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 136 insertions(+), 15 deletions(-)
+
+diff --git a/src/xsane.c b/src/xsane.c
+index 2b9211b..fc2ebbe 100644
+--- a/src/xsane.c
++++ b/src/xsane.c
+@@ -47,6 +47,7 @@
+ #endif
+ 
+ #include <sys/wait.h>
++#include <glib-unix.h>
+ 
+ #include <stdarg.h>
+ 
+@@ -121,6 +122,7 @@ static const Preferences_medium_t pref_default_medium[]=
+ 
+ int DBG_LEVEL = 0;
+ static guint xsane_resolution_timer = 0;
++static int xsane_signal_pipe[2];
+ 
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+ 
+@@ -161,8 +163,11 @@ void xsane_pref_save(void);
+ static int xsane_pref_restore(void);
+ static void xsane_pref_save_media(void);
+ static void xsane_pref_restore_media(void);
+-static RETSIGTYPE xsane_quit_handler(int signal);
+-static RETSIGTYPE xsane_sigchld_handler(int signal);
++static RETSIGTYPE xsane_signal_handler_top_half(int signal);
++static gboolean xsane_signal_handler_bottom_half(GIOChannel *source,
++                                                 GIOCondition condition,
++                                                 gpointer user_data);
++static void xsane_sigchld_handler(void);
+ static void xsane_quit(void);
+ static void xsane_exit(void);
+ static gint xsane_standard_option_win_delete(GtkWidget *widget, gpointer data);
+@@ -2296,16 +2301,119 @@ static void xsane_pref_restore_media(void)
+ 
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+ 
+-static RETSIGTYPE xsane_quit_handler(int signal)
++static RETSIGTYPE xsane_signal_handler_top_half(int signal)
+ {
+-  DBG(DBG_proc, "xsane_quit_handler\n");
++  const char *msg_func = "xsane_signal_handler_top_half(): ";
++  const char *msg_short_write = "Short write() while processing signal.\n";
++  const char *msg_err = "Error during write().\n";
++  char sig_char;
++  ssize_t written;
++  int errno_saved = errno;
+ 
+-  xsane_quit();
++  switch (signal)
++  {
++    case SIGTERM:
++      sig_char = 't';
++      break;
++    case SIGINT:
++      sig_char = 'i';
++      break;
++    case SIGHUP:
++      sig_char = 'h';
++      break;
++    case SIGCHLD:
++      sig_char = 'c';
++      break;
++    default:
++      sig_char = '?';
++      break;
++  }
++
++  if ((written = write(xsane_signal_pipe[1], &sig_char, 1)) <= 0)
++  {
++    /* At this point, all bets are off. Salvage what we can. */
++
++    const char *msg = (written == 0) ? msg_short_write : msg_err;
++
++    if ((write(STDERR_FILENO, msg_func, strlen(msg_func)) < 0) ||
++        (write(STDERR_FILENO, msg, strlen(msg)) < 0))
++    {
++      /* This is really a no-op, but at this point it doesn't really matter
++       * anymore if the writes succeeded or not. */
++      goto bail_out;
++    }
++
++bail_out:
++    /* Ignore SIGCHLD errors, zombie processes don't hurt that much. */
++    if (signal != SIGCHLD)
++    {
++      struct SIGACTION act;
++      memset(&act, 0, sizeof(act));
++      act.sa_handler = SIG_DFL;
++      sigaction(signal, &act, NULL);
++      raise(signal);
++    }
++  }
++
++  errno = errno_saved;
++}
++
++static gboolean xsane_signal_handler_bottom_half(GIOChannel *source,
++                                                 GIOCondition condition,
++                                                 gpointer user_data)
++{
++  char sig_char;
++  ssize_t readlen;
++
++  DBG(DBG_proc, "xsane_signal_handler_bottom_half\n");
++
++  while ((readlen = read(xsane_signal_pipe[0], &sig_char, 1)) != 0)
++  {
++    if (readlen < 0)
++    {
++      if (errno == EINTR)
++      {
++        /* if interrupted by signal, just repeat reading */
++        continue;
++      }
++      else
++      {
++        break;
++      }
++    }
++
++    switch (sig_char)
++    {
++      case 't':
++      case 'i':
++      case 'h':
++        xsane_quit();
++        break;
++      case 'c':
++        xsane_sigchld_handler();
++        break;
++      default:
++        DBG(DBG_error,
++            "Don't know how to cope with character-encoded signal: '%c'\n",
++            sig_char);
++        break;
++    }
++  }
++
++  /* previous invocation might have read more than it should, so ignore
++   * EAGAIN/EWOULDBLOCK */
++  if (readlen < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
++  {
++    DBG(DBG_error, "Error while reading from pipe: %d '%s'\n", errno,
++        strerror(errno));
++  }
++
++  return TRUE;
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+ 
+-static RETSIGTYPE xsane_sigchld_handler(int signal)
++static void xsane_sigchld_handler(void)
+ {
+  int status;
+  XsaneChildprocess **childprocess_listptr = &xsane.childprocess_list;
+@@ -6026,6 +6134,8 @@ void xsane_interface(int argc, char **argv)
+ {
+  struct SIGACTION act;
+ 
++  GIOChannel *gio_pipe_read;
++
+   DBG(DBG_proc, "xsane_interface\n");
+ 
+   xsane.info_label = NULL;
+@@ -6069,18 +6179,29 @@ void xsane_interface(int argc, char **argv)
+     }
+   }
+ 
++  if ((pipe(xsane_signal_pipe) == -1) ||
++      (fcntl(xsane_signal_pipe[0], F_SETFD, FD_CLOEXEC) == -1) ||
++      (fcntl(xsane_signal_pipe[0], F_SETFL, O_NONBLOCK) == -1) ||
++      (fcntl(xsane_signal_pipe[1], F_SETFD, FD_CLOEXEC) == -1) ||
++      (fcntl(xsane_signal_pipe[1], F_SETFL, O_NONBLOCK) == -1) ||
++      !(gio_pipe_read = g_io_channel_unix_new(xsane_signal_pipe[0])) ||
++      !g_io_add_watch(gio_pipe_read, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_PRI,
++          xsane_signal_handler_bottom_half, NULL))
++  {
++    DBG(DBG_error,
++        "Couldn't create signal handling pipe, set flags on it or install\n"
++        "bottom half of handler.\n");
++    exit(1);
++  }
++
+   /* define SIGTERM, SIGINT, SIGHUP-handler to make sure that e.g. all temporary files are deleted */
+   /* when xsane gets such a signal */
+   memset(&act, 0, sizeof(act));
+-  act.sa_handler = xsane_quit_handler;
+-  sigaction(SIGTERM, &act, 0);
+-  sigaction(SIGINT,  &act, 0);
+-  sigaction(SIGHUP,  &act, 0);
+-
+-  /* add a signal handler that cleans up zombie child processes */
+-  memset(&act, 0, sizeof(act));
+-  act.sa_handler = xsane_sigchld_handler;
+-  sigaction(SIGCHLD, &act, 0);
++  act.sa_handler = xsane_signal_handler_top_half;
++  sigaction(SIGTERM, &act, NULL);
++  sigaction(SIGINT,  &act, NULL);
++  sigaction(SIGHUP,  &act, NULL);
++  sigaction(SIGCHLD, &act, NULL);
+ 
+   gtk_main();
+   sane_exit();
+-- 
+1.9.3
+

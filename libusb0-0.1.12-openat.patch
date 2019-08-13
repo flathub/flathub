@@ -1,0 +1,114 @@
+diff -up libusb-0.1.12/configure.in.openat libusb-0.1.12/configure.in
+--- libusb-0.1.12/configure.in.openat	2006-03-04 03:53:04.000000000 +0100
++++ libusb-0.1.12/configure.in	2007-09-04 08:41:04.000000000 +0200
+@@ -188,6 +188,7 @@ AC_CHECK_HEADERS(values.h, AC_DEFINE_UNQ
+ 
+ # Check for some functions
+ AC_CHECK_FUNCS(memmove)
++AC_CHECK_FUNCS(openat)
+ 
+ if test "$os_support" = "bsd"; then
+   AC_MSG_CHECKING(if dev/usb/usb.h uses new naming convention)
+diff -up libusb-0.1.12/linux.c.openat libusb-0.1.12/linux.c
+--- libusb-0.1.12/linux.c.openat	2006-03-04 03:52:46.000000000 +0100
++++ libusb-0.1.12/linux.c	2007-09-04 08:40:27.000000000 +0200
+@@ -341,12 +341,10 @@ int usb_os_find_busses(struct usb_bus **
+       continue;
+     }
+ 
+-    bus = malloc(sizeof(*bus));
++    bus = calloc(1, sizeof(*bus));
+     if (!bus)
+       USB_ERROR(-ENOMEM);
+ 
+-    memset((void *)bus, 0, sizeof(*bus));
+-
+     strncpy(bus->dirname, entry->d_name, sizeof(bus->dirname) - 1);
+     bus->dirname[sizeof(bus->dirname) - 1] = 0;
+ 
+@@ -367,6 +365,9 @@ int usb_os_find_devices(struct usb_bus *
+ {
+   struct usb_device *fdev = NULL;
+   DIR *dir;
++#ifdef HAVE_OPENAT
++  int dfd;
++#endif
+   struct dirent *entry;
+   char dirpath[PATH_MAX + 1];
+ 
+@@ -376,37 +377,54 @@ int usb_os_find_devices(struct usb_bus *
+   if (!dir)
+     USB_ERROR_STR(-errno, "couldn't opendir(%s): %s", dirpath,
+ 	strerror(errno));
++#ifdef HAVE_OPENAT
++  dfd = dirfd (dir);
++#endif
+ 
+   while ((entry = readdir(dir)) != NULL) {
+     unsigned char device_desc[DEVICE_DESC_LENGTH];
++#ifndef HAVE_OPENAT
+     char filename[PATH_MAX + 1];
++#endif
+     struct usb_device *dev;
+     struct usb_connectinfo connectinfo;
+     int i, fd, ret;
+ 
++#ifdef _DIRENT_HAVE_D_TYPE
++    /* If we know this is a directory don't bother any further.  */
++    if (entry->d_type == DT_DIR)
++      continue;
++#endif
++
+     /* Skip anything starting with a . */
+     if (entry->d_name[0] == '.')
+       continue;
+ 
+-    dev = malloc(sizeof(*dev));
++    dev = calloc(1, sizeof(*dev));
+     if (!dev)
+       USB_ERROR(-ENOMEM);
+ 
+-    memset((void *)dev, 0, sizeof(*dev));
+-
+     dev->bus = bus;
+ 
+     strncpy(dev->filename, entry->d_name, sizeof(dev->filename) - 1);
+     dev->filename[sizeof(dev->filename) - 1] = 0;
+ 
++#ifdef HAVE_OPENAT
++    fd = openat(dfd, entry->d_name, O_RDWR);
++#else
+     snprintf(filename, sizeof(filename) - 1, "%s/%s", dirpath, entry->d_name);
+     fd = open(filename, O_RDWR);
++#endif
+     if (fd < 0) {
++#ifdef HAVE_OPENAT
++      fd = openat(dfd, entry->d_name, O_RDONLY);
++#else
+       fd = open(filename, O_RDONLY);
++#endif
+       if (fd < 0) {
+         if (usb_debug >= 2)
+-          fprintf(stderr, "usb_os_find_devices: Couldn't open %s\n",
+-                  filename);
++          fprintf(stderr, "usb_os_find_devices: Couldn't open %s/%s\n",
++                  dirpath, entry->d_name);
+ 
+         free(dev);
+         continue;
+@@ -453,14 +471,11 @@ int usb_os_find_devices(struct usb_bus *
+       /* Silent since we'll try again later */
+       goto err;
+ 
+-    dev->config = (struct usb_config_descriptor *)malloc(dev->descriptor.bNumConfigurations * sizeof(struct usb_config_descriptor));
++    dev->config = (struct usb_config_descriptor *)calloc(dev->descriptor.bNumConfigurations, sizeof(struct usb_config_descriptor));
+     if (!dev->config)
+       /* Silent since we'll try again later */
+       goto err;
+ 
+-    memset(dev->config, 0, dev->descriptor.bNumConfigurations *
+-          sizeof(struct usb_config_descriptor));
+-
+     for (i = 0; i < dev->descriptor.bNumConfigurations; i++) {
+       unsigned char buffer[8], *bigbuffer;
+       struct usb_config_descriptor config;

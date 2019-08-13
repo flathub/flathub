@@ -1,0 +1,101 @@
+From 6dee7eadd1b7352ec503ea04fa1639d4a93f370b Mon Sep 17 00:00:00 2001
+From: Nils Philippsen <nils@redhat.com>
+Date: Thu, 16 Aug 2012 11:18:31 +0200
+Subject: [PATCH] patch: close-fds
+
+Squashed commit of the following:
+
+commit 4fdedd3a8b66fb42b2d4dde62df28c78571c1c5d
+Author: Nils Philippsen <nils@redhat.com>
+Date:   Fri Nov 19 12:15:58 2010 +0100
+
+    don't leak file descriptors to help browser process (#455450)
+---
+ src/xsane.c | 43 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/src/xsane.c b/src/xsane.c
+index 775610e..1c5d61d 100644
+--- a/src/xsane.c
++++ b/src/xsane.c
+@@ -48,6 +48,8 @@
+ 
+ #include <sys/wait.h>
+ 
++#include <stdarg.h>
++
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+ 
+ struct option long_options[] =
+@@ -3684,6 +3686,41 @@ static void xsane_show_gpl(GtkWidget *widget, gpointer data)
+ 
+ /* ---------------------------------------------------------------------------------------------------------------------- */
+ 
++static void xsane_close_fds_for_exec(signed int first_fd_to_leave_open, ...)
++{
++ int open_max;
++ signed int i;
++
++ va_list ap;
++ unsigned char *close_fds;
++
++  open_max = (int) sysconf (_SC_OPEN_MAX);
++
++  close_fds = malloc (open_max);
++
++  memset (close_fds, 1, open_max);
++
++  va_start (ap, first_fd_to_leave_open);
++
++  for (i = first_fd_to_leave_open; i >= 0; i = va_arg (ap, signed int)) {
++    if (i < open_max)
++      close_fds[i] = 0;
++  }
++
++  va_end (ap);
++
++  DBG(DBG_info, "closing unneeded file descriptors\n");
++
++  for (i = 0; i < open_max; i++) {
++    if (close_fds[i])
++      close (i);
++  }
++
++  free (close_fds);
++}
++
++/* ---------------------------------------------------------------------------------------------------------------------- */
++
+ static void xsane_show_doc_via_nsr(GtkWidget *widget, gpointer data) /* show via netscape remote */
+ {
+  char *name = (char *) data;
+@@ -3736,6 +3773,8 @@ static void xsane_show_doc_via_nsr(GtkWidget *widget, gpointer data) /* show via
+         ipc_file = fdopen(xsane.ipc_pipefd[1], "w");
+       }
+ 
++      xsane_close_fds_for_exec (1, 2, xsane.ipc_pipefd[1], -1);
++
+       DBG(DBG_info, "trying to change user id for new subprocess:\n");
+       DBG(DBG_info, "old effective uid = %d\n", (int) geteuid());
+       setuid(getuid());
+@@ -3778,6 +3817,8 @@ static void xsane_show_doc_via_nsr(GtkWidget *widget, gpointer data) /* show via
+         ipc_file = fdopen(xsane.ipc_pipefd[1], "w");
+       }
+ 
++      xsane_close_fds_for_exec (1, 2, xsane.ipc_pipefd[1], -1);
++
+       DBG(DBG_info, "trying to change user id for new subprocess:\n");
+       DBG(DBG_info, "old effective uid = %d\n", (int) geteuid());
+       setuid(getuid());
+@@ -3899,6 +3940,8 @@ static void xsane_show_doc(GtkWidget *widget, gpointer data)
+         ipc_file = fdopen(xsane.ipc_pipefd[1], "w");
+       }
+ 
++      xsane_close_fds_for_exec (1, 2, xsane.ipc_pipefd[1], -1);
++
+       DBG(DBG_info, "trying to change user id for new subprocess:\n");
+       DBG(DBG_info, "old effective uid = %d\n", (int) geteuid());
+       setuid(getuid());
+-- 
+1.7.11.4
+

@@ -1,0 +1,51 @@
+From a9e8373030b39aadfc33af67443085df83e9e344 Mon Sep 17 00:00:00 2001
+From: Daniel Berrange <berrange@redhat.com>
+Date: Wed, 14 Aug 2013 16:00:56 +0200
+Subject: [libusb-compat PATCH] Link with -znodelete to disallow unloading
+
+Since libusb-0.1 did not have any init / exit function, code using the
+libusb-0.1 API will not call libusb_exit.
+
+Now, libgphoto uses libusb and will dlopen() and dlclose() it. Unfortunately
+since there is no way to ensure libusb_close() is called, when libgphoto
+dlcloses the libusb.so library, the thread from libusbx.so will not be
+stopped. So a thread will remain running, executing code from a memory
+region that has now been freed. Crash-tastic results ensue.
+
+I don't see a good way to fix this from libusb or libusbx, given the need to
+preserve the existing API of libusb.
+
+If, however, we link libusb.so using  -znodelete, we will prevent it from
+ever being unloaded, despite the dlclose() calls. This is not ideal, but
+better than allowing it to be unloaded which is a guaranteed crash.
+
+Signed-off-by: Hans de Goede <hdegoede@redhat.com>
+---
+ libusb/Makefile.am | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libusb/Makefile.am b/libusb/Makefile.am
+index 33a609a..a20fdb5 100644
+--- a/libusb/Makefile.am
++++ b/libusb/Makefile.am
+@@ -5,5 +5,5 @@ libusb_la_SOURCES = core.c usbi.h
+ libusb_la_CFLAGS = -fvisibility=hidden $(AM_CFLAGS) $(LIBUSB_1_0_CFLAGS)
+ libusb_la_LIBADD = $(LIBUSB_1_0_LIBS)
+ libusb_la_LDFLAGS = -version-info $(LT_MAJOR):$(LT_REVISION):$(LT_AGE) \
+-	-release 0.1
++	-release 0.1 -Wl,-z -Wl,nodelete
+ 
+--- libusb-compat-0.1.5.orig/libusb/Makefile.in	2013-05-21 00:40:35.000000000 +0100
++++ libusb-compat-0.1.5.orig/libusb/Makefile.in	2013-08-13 22:20:32.831532426 +0100
+@@ -297,7 +297,7 @@ libusb_la_SOURCES = core.c usbi.h
+ libusb_la_CFLAGS = -fvisibility=hidden $(AM_CFLAGS) $(LIBUSB_1_0_CFLAGS)
+ libusb_la_LIBADD = $(LIBUSB_1_0_LIBS)
+ libusb_la_LDFLAGS = -version-info $(LT_MAJOR):$(LT_REVISION):$(LT_AGE) \
+-	-release 0.1
++	-release 0.1 -Wl,-z -Wl,nodelete
+ 
+ all: all-am
+ 
+-- 
+1.8.3.1
+
