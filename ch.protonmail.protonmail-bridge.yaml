@@ -1,10 +1,9 @@
 app-id: ch.protonmail.protonmail-bridge
-runtime: org.freedesktop.Platform
-sdk: org.freedesktop.Sdk
-runtime-version: "18.08"
-command: protonmail-bridge
-rename-desktop-file: ProtonMail_Bridge.desktop
-rename-icon: ProtonMail_Bridge
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: "5.12"
+command: launcher.sh
+separate-locales: false
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -13,7 +12,6 @@ finish-args:
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Notifications
 modules:
-
   - name: libsecret
     sources:
       - type: archive
@@ -29,25 +27,42 @@ modules:
       - /include
       - /lib/*.la
       - /lib/pkgconfig
-
   - name: protonmail-bridge
     buildsystem: simple
     build-commands:
-      - ar x protonmail-bridge_1.2.0-1_amd64.deb
-      - rm -f protonmail-bridge_1.2.0-1_amd64.deb
-      - tar -xf data.tar.xz
-      - rm -f data.tar.xz
-      - mv usr/lib/* /app/lib/
-      - mv usr/share/* /app/share/
-      - rm -rf usr
-      - ln -s /app/lib/protonmail/bridge/protonmail-bridge /app/bin/protonmail-bridge
-      - install -Dp -m 644 /app/share/icons/protonmail/ProtonMail_Bridge.svg /app/share/icons/hicolor/scalable/apps/ProtonMail_Bridge.svg
+      - install -Dp -m 755 apply_extra /app/bin/apply_extra
+      - install -Dp -m 755 launcher.sh /app/bin/launcher.sh
+      - install -Dp /usr/bin/ar /app/bin/ar
       - install -Dp -m 644 ch.protonmail.protonmail-bridge.appdata.xml /app/share/metainfo/ch.protonmail.protonmail-bridge.appdata.xml
+      - cp /usr/bin/ar /app/bin
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && cp /usr/lib/${ARCH_TRIPLE}/libbfd-*.so /app/lib
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && ln -s /usr/lib/${ARCH_TRIPLE}/libcurl.so.4.5.0 /app/lib/libcurl-gnutls.so.4
     sources:
-      - type: file
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - ar x protonmail-bridge.deb
+          - rm -f protonmail-bridge.deb
+          - tar -xf data.tar.xz
+          - rm -f control.tar.xz data.tar.xz debian-binary
+          - mv usr/* .
+          - rmdir usr
+          - sed -i s/Icon=.*/Icon=ch.protonmail.protonmail-bridge/ share/applications/ProtonMail_Bridge.desktop
+          - sed -i '$d' share/applications/ProtonMail_Bridge.desktop
+          - echo 'StartupWMClass=Protonmail Bridge' >> share/applications/ProtonMail_Bridge.desktop
+          - install -Dp -m 744 lib/protonmail/bridge/protonmail-bridge export/bin/protonmail-bridge
+          - install -Dp -m 644 share/applications/ProtonMail_Bridge.desktop export/share/applications/ch.protonmail.protonmail-bridge.desktop
+          - install -Dp -m 644 share/icons/protonmail/ProtonMail_Bridge.svg export/share/icons/hicolor/scalable/apps/ch.protonmail.protonmail-bridge.svg
+          - for file in $(ls lib/protonmail/bridge/lib); do install -Dm644 lib/protonmail/bridge/lib/$file export/lib/$file; done
+          - rm -rf bin _gpgorigin  lib  share
+      - type: script
+        dest-filename: launcher.sh
+        commands:
+          - 'exec "/app/extra/export/bin/protonmail-bridge" "$@"'
+      - type: extra-data
+        filename: protonmail-bridge.deb
+        size: 36634946
         url: https://protonmail.com/download/beta/protonmail-bridge_1.2.0-1_amd64.deb
-        sha256: 4150c290c681d2fe15e3e676aff13c413ea536c1a285c148fd532d34769c7bcb
+        sha256: 0b5e1ad0c3b9fb54cdc87332ae3222769ed6068059301a2c290dd37d4459cb13
       - type: file
         path: ch.protonmail.protonmail-bridge.appdata.xml
-    cleanup:
-      - /app/share/icons/protonmail
