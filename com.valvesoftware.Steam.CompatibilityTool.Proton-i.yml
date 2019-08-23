@@ -1,0 +1,211 @@
+id: com.valvesoftware.Steam.CompatibilityTool.Proton-i
+runtime: com.valvesoftware.Steam
+sdk: org.freedesktop.Sdk//19.08beta
+build-extension: true
+appstream-compose: false
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+
+build-options:
+  prefix: /app/compatibilitytools.d/Proton-i
+  strip: true
+
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+  append-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: ccache i686-unknown-linux-gnu-gcc
+    CXX: ccache i686-unknown-linux-gnu-g++
+  libdir: /app/compatibilitytools.d/Proton-i/lib32
+
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /lib32/pkgconfig
+  - /lib/cmake
+  - /lib32/cmake
+  - /share/man
+
+  - /bin/function_grep.pl
+  - /bin/widl
+  - /bin/winebuild
+  - /bin/winecpp
+  - /bin/winedump
+  - /bin/wineg++
+  - /bin/winegcc
+  - /bin/winemaker
+  - /bin/wmc
+  - /bin/wrc
+
+  - /lib/wine/*.def
+  - /lib32/wine/*.def
+modules:
+
+  - name: wine
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - --enable-win64
+          libdir: /app/compatibilitytools.d/Proton-i/lib
+    config-opts: &wine_common_opts
+      - --disable-win16
+      - --disable-tests
+      - --with-x
+      - --with-pulse
+      - --with-dbus
+      - --without-hal
+      - --without-oss
+    make-install-args: &wine_common_make_install_args
+      - LDCONFIG=/bin/true
+      - STRIP=/bin/true
+      - UPDATE_DESKTOP_DATABASE=/bin/true
+    post-install:
+      - |
+        case $FLATPAK_ARCH in
+          x86_64)
+            mv $FLATPAK_DEST/bin/wineserver{,64}
+          ;;
+          i386)
+            mv $FLATPAK_DEST/bin/wineserver{,32}
+          ;;
+        esac
+    sources: &wine_sources
+      - type: archive
+        url: "https://github.com/imaami/wine/archive/proton-i-4.13-3.tar.gz"
+        sha256: 34a994af83297b32268c3093903e88783d4bd8e14d1b918c97dcfdf65122b864
+
+  - name: wine-32bit
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      config-opts:
+        - --bindir=/app/compatibilitytools.d/Proton-i/bin32
+    config-opts: *wine_common_opts
+    make-install-args: *wine_common_make_install_args
+    post-install:
+      - mv $FLATPAK_DEST/bin32/wineserver $FLATPAK_DEST/bin/wineserver32
+      - mv $FLATPAK_DEST/bin32/{wine,wine-preloader} $FLATPAK_DEST/bin/
+    cleanup:
+      - /bin32
+    sources: *wine_sources
+
+
+  - name: lsteamclient
+    subdir: lsteamclient
+    build-options:
+      prepend-path: /app/compatibilitytools.d/Proton-i/bin
+      cxxflags: -Wno-attributes
+    buildsystem: simple
+    build-commands:
+      - winemaker
+        --nosource-fix
+        --nolower-include
+        --nodlls
+        --nomsvcrt
+        --dll
+        -DSTEAM_API_EXPORTS
+        -Dprivate=public -Dprotected=public
+        .
+      - make -j${FLATPAK_BUILDER_N_JOBS}
+    post-install:
+      - install -Dm755 lsteamclient.dll.so -t ${FLATPAK_DEST}/lib/wine/
+    sources: &proton_sources
+      - type: archive
+        url: "https://github.com/imaami/Proton/archive/proton-i-4.13-3.tar.gz"
+        sha256: 8b524f22a8569af24dbcf9054309bb096ccf3a2ad5355c20b15e2f685277034d
+
+  - name: lsteamclient-32bit
+    subdir: lsteamclient
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      prepend-path: /app/compatibilitytools.d/Proton-i/bin32
+      cxxflags: -Wno-attributes
+    buildsystem: simple
+    build-commands:
+      - winemaker
+        --wine32
+        --nosource-fix
+        --nolower-include
+        --nodlls
+        --nomsvcrt
+        --dll
+        -DSTEAM_API_EXPORTS
+        -Dprivate=public -Dprotected=public
+        .
+      - make CC="winegcc -m32" CXX="wineg++ -m32" -j${FLATPAK_BUILDER_N_JOBS}
+    post-install:
+      - install -Dm755 lsteamclient.dll.so -t ${FLATPAK_DEST}/lib32/wine/
+    sources: *proton_sources
+
+
+  - name: steam_helper-32bit
+    subdir: steam_helper
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      prepend-path: /app/compatibilitytools.d/Proton-i/bin32
+    buildsystem: simple
+    build-commands:
+      - winemaker
+        --wine32
+        --nosource-fix
+        --nolower-include
+        --nodlls
+        --nomsvcrt
+        --guiexe
+        -I/app/compatibilitytools.d/Proton-i/include
+        -I/app/compatibilitytools.d/Proton-i/include/wine
+        -I/app/compatibilitytools.d/Proton-i/include/wine/windows
+        -I/app/compatibilitytools.d/Proton-i/include/wine/msvcrt
+        -I../lsteamclient/steamworks_sdk_142
+        -L.
+        -L/app/compatibilitytools.d/Proton-i/lib32
+        -L/app/compatibilitytools.d/Proton-i/lib32/wine
+        -lsteam_api
+        .
+      - make CC="winegcc -m32" CXX="wineg++ -m32"
+    post-install:
+      - install -Dm755 libsteam_api.so ${FLATPAK_DEST}/lib32/
+      - install -Dm755 steam_helper.exe.so ${FLATPAK_DEST}/lib32/wine/steam.exe.so
+      - install -Dm755 steam_helper.exe ${FLATPAK_DEST}/lib32/wine/fakedlls/steam.exe
+    sources: *proton_sources
+
+
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - |
+        case $FLATPAK_ARCH in
+          x86_64)
+            ln -s wineserver64 $FLATPAK_DEST/bin/wineserver
+          ;;
+          i386)
+            ln -s wineserver32 $FLATPAK_DEST/bin/wineserver
+          ;;
+        esac
+      - install -Dm755 wrapper.sh ${FLATPAK_DEST}/wrapper
+      - install -Dm644 compatibilitytool.vdf toolmanifest.vdf -t ${FLATPAK_DEST}/
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak ${FLATPAK_ID}
+    sources:
+      - type: file
+        path: wrapper.sh
+      - type: file
+        path: compatibilitytool.vdf
+      - type: file
+        path: toolmanifest.vdf
+      - type: file
+        path: com.valvesoftware.Steam.CompatibilityTool.Proton-i.metainfo.xml
