@@ -1,0 +1,123 @@
+app-id: com.github.micahflee.torbrowser-launcher
+runtime: org.kde.Platform
+runtime-version: '5.12'
+sdk: org.kde.Sdk
+separate-locales: false
+command: torbrowser-launcher
+rename-desktop-file: torbrowser.desktop
+rename-appdata-file: torbrowser.appdata.xml
+rename-icon: torbrowser
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --persist=.config/torbrowser
+  - --persist=.local/share/torbrowser
+  - --filesystem=xdg-download
+modules:
+  - shared-modules/dbus-glib/dbus-glib-0.110.json
+
+  - name: python3-sip
+    buildsystem: simple
+    build-commands:
+        - python3 configure.py
+          --bindir=/app/bin
+          --destdir=/app/lib/python3.7/site-packages
+          --incdir=/app/include/python3.7
+          --sipdir=/app/share/sip
+          --stubsdir=/app/lib/python3.7/site-packages
+          --sip-module=PyQt5.sip
+        - make -j $FLATPAK_BUILDER_N_JOBS
+        - make install
+    cleanup:
+        - /bin
+    sources:
+        - type: archive
+          url: https://www.riverbankcomputing.com/static/Downloads/sip/4.19.18/sip-4.19.18.tar.gz
+          sha256: c0bd863800ed9b15dcad477c4017cdb73fa805c25908b0240564add74d697e1e
+
+  - name: python3-pyqt
+    buildsystem: simple
+    build-commands:
+        - QMAKEPATH=/app/lib python3 configure.py
+          --confirm-license
+          --sip-incdir=/app/include/python3.7
+          --bindir=/app/bin
+          --destdir=/app/lib/python3.7/site-packages
+          --designer-plugindir=/app/lib/plugins/designer
+          --qml-plugindir=/app/lib/plugins/PyQt5
+          --sipdir=/app/share/sip
+          --stubsdir=/app/lib/python3.7/site-packages/PyQt5
+        - make -j $FLATPAK_BUILDER_N_JOBS
+        - make install
+    cleanup:
+        - /bin
+    sources:
+        - type: archive
+          url: https://www.riverbankcomputing.com/static/Downloads/PyQt5/5.12.2/PyQt5_gpl-5.12.2.tar.gz
+          sha256: c565829e77dc9c281aa1a0cdf2eddaead4e0f844cbaf7a4408441967f03f5f0f
+
+  - name: SWIG
+    config-opts:
+        - --without-boost
+        - --without-alllang
+    cleanup:
+        - /bin
+        - /share/swig
+    sources:
+        - type: archive
+          url: https://sourceforge.net/projects/swig/files/swig/swig-4.0.1/swig-4.0.1.tar.gz
+          sha256: 7a00b4d0d53ad97a14316135e2d702091cd5f193bb58bcfcd8bc59d41e7887a9
+
+  - name: gpgme
+    config-opts:
+        - --enable-languages=python
+    sources:
+        - type: archive
+          url: https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-1.13.1.tar.bz2
+          sha256: c4e30b227682374c23cddc7fdb9324a99694d907e79242a25a4deeedb393be46
+
+  - name: python3-requests
+    buildsystem: simple
+    build-commands:
+        - "pip3 install --no-index --find-links=\"file://${PWD}\" --prefix=/app requests"
+    sources:
+        - type: file
+          url: https://files.pythonhosted.org/packages/ad/13/eb56951b6f7950cadb579ca166e448ba77f9d24efc03edd7e55fa57d04b7/idna-2.8.tar.gz
+          sha256: c357b3f628cf53ae2c4c05627ecc484553142ca23264e593d327bcde5e9c3407
+        - type: file
+          url: https://files.pythonhosted.org/packages/52/2c/514e4ac25da2b08ca5a464c50463682126385c4272c18193876e91f4bc38/requests-2.21.0.tar.gz
+          sha256: 502a824f31acdacb3a35b6690b5fbf0bc41d63a24a45c4004352b0242707598e
+        - type: file
+          url: https://files.pythonhosted.org/packages/55/54/3ce77783acba5979ce16674fc98b1920d00b01d337cfaaf5db22543505ed/certifi-2018.11.29.tar.gz
+          sha256: 47f9c83ef4c0c621eaef743f133f09fa8a74a9b75f037e8624f83bd1b6626cb7
+        - type: file
+          url: https://files.pythonhosted.org/packages/b1/53/37d82ab391393565f2f831b8eedbffd57db5a718216f82f1a8b4d381a1c1/urllib3-1.24.1.tar.gz
+          sha256: de9529817c93f27c8ccbfead6985011db27bd0ddfcdb2d86f3f663385c6a9c22
+        - type: file
+          url: https://files.pythonhosted.org/packages/fc/bb/a5768c230f9ddb03acc9ef3f0d4a3cf93462473795d18e9535498c8f929d/chardet-3.0.4.tar.gz
+          sha256: 84ab92ed1c4d4f16916e05906b6b75a6c0fb5db821cc65e70cbd64a3e2a5eaae
+
+  - name: torbrowser-launcher
+    buildsystem: simple
+    sources:
+        - type: archive
+          url: https://github.com/micahflee/torbrowser-launcher/archive/v0.3.2.tar.gz
+          sha256: 25ad4b0c70579628bf18f4cdcd18ac303fe4f7f1c590cc48df2a87651c92991c
+        - type: patch
+          path: remove-absolute-paths.patch
+        - type: patch
+          path: use-standard-icon-location.patch
+        - type: patch
+          path: use-correct-desktop-id-in-AppData.patch
+        - type: patch
+          path: change-gpg-binary-name.patch
+        - type: patch
+          path: use-correct-sys-prefix.patch
+    build-commands:
+        - "python3 setup.py install --prefix=/app --root=/ --optimize=1"
+    post-install:
+        - "sed -i 's:Icon=torbrowser:Icon=com.github.micahflee.torbrowser-launcher:' /app/share/applications/torbrowser-settings.desktop"
+        - "mv /app/share/applications/torbrowser-settings.desktop /app/share/applications/com.github.micahflee.torbrowser-launcher.settings.desktop"
