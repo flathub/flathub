@@ -10,6 +10,5 @@ Reminders for later consideration.
 - TODO? Extract gdata as shared-module? (shared with Evolution)
 - TODO? Extract libical as shared-module? (shared with Evolution)
 - TODO: create .desktop file.
-- TODO: create screenshots.
 - TODO: Align exact versions of dependencies with packaging instructions for debian/ubuntu by Claws-Mail developers.
 - TODO: Investigate if building for i386 is possible.
