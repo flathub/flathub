@@ -6,6 +6,8 @@ The flathub recipe for building Claws-mail as a flatpak distributable package.
 
 Reminders for later consideration.
 
+- TODO: Check if we can integrate with NetworkManager. This feature is now disabled.
+- TODO: Figure out if we can be selective with persisting if `Mailbox` directories can be created at arbitrary locations. Otherwise transition to exposing full home directory.
 - TODO: Recommendations for `error: 'org.claws-mail.Claws-Mail' is not a valid application name: Only last name segment can contain -`
 - TODO? Extract bogofilter as shared-module? (shared with Evolution)
 - TODO? Extract gdata as shared-module? (shared with Evolution)
