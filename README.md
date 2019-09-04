@@ -2,7 +2,7 @@
 
 The flathub recipe for building Claws-mail as a flatpak distributable package.
 
-Local build: `flatpak-builder --user --install --force-clean build org.clawsmail.Claws-Mail.json`
+Local build: `flatpak-builder --user --install --force-clean build org.claws_mail.Claws-Mail.json`
 
 ## TODO
 
