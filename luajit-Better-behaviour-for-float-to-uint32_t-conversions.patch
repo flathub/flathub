@@ -1,0 +1,39 @@
+From f2779155495aee6583abaff4700a7acda80864ef Mon Sep 17 00:00:00 2001
+From: Siddhesh Poyarekar <siddhesh@sourceware.org>
+Date: Thu, 28 Mar 2019 10:50:23 +0530
+Subject: [PATCH 72/72] Better behaviour for float to uint32_t conversions
+
+This is the uint32_t part of the float to unsigned int conversions for
+the interpreter.  The cast ends up working correctly for x86 but not
+for aarch64 since fcvtzu sets the result to zero on negative inputs.
+Work slightly harder to make sure that negative number inputs behave
+like x86.
+
+This fixes the interpreter but not the JIT compiler, which errors out
+during the narrowing pass.
+---
+ src/lj_cconv.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/lj_cconv.c b/src/lj_cconv.c
+index 13b8230..bf8f8e8 100644
+--- a/src/lj_cconv.c
++++ b/src/lj_cconv.c
+@@ -196,7 +196,13 @@ void lj_cconv_ct_ct(CTState *cts, CType *d, CType *s,
+       else if (dsize == 2) *(int16_t *)dp = (int16_t)i;
+       else *(int8_t *)dp = (int8_t)i;
+     } else if (dsize == 4) {
+-      *(uint32_t *)dp = (uint32_t)n;
++      /* Undefined behaviour. This is deliberately not a full check because we
++       * don't want to slow down compliant code. */
++      lua_assert(n >= -2147483649.0);
++      if (n > -1.0)
++        *(uint32_t *)dp = (uint32_t)n;
++      else
++        *(uint32_t *)dp = (uint32_t)(int32_t)n;
+     } else if (dsize == 8) {
+       if (!(dinfo & CTF_UNSIGNED))
+ 	*(int64_t *)dp = (int64_t)n;
+-- 
+2.20.1
+

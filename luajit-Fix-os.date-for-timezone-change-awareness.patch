@@ -1,0 +1,36 @@
+From 372bb8b22546663ba57e69fad75c97cfd004ac63 Mon Sep 17 00:00:00 2001
+From: Vivien HENRIET <bubuabu@bubuabu.org>
+Date: Wed, 30 Jan 2019 23:44:51 +0100
+Subject: [PATCH 66/72] Fix os.date() for timezone change awareness
+
+On POSIX target, system timezone change are not taken into account.
+To reproduce,
+1. call os.date()
+2. change your timezone
+3. call os.date() within the same luajit instance
+
+On POSIX target, os.date use localtime_r to retrieve time.
+On other target, the function localtime is used. But there is a behaviour
+diference between these two function. localtime acts as if it called tzset
+which localtime_r don't.
+
+To fix the issue tzset is called before localtime_r.
+---
+ src/lib_os.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/lib_os.c b/src/lib_os.c
+index ffbc3fd..09dc737 100644
+--- a/src/lib_os.c
++++ b/src/lib_os.c
+@@ -185,6 +185,7 @@ LJLIB_CF(os_date)
+ #endif
+   } else {
+ #if LJ_TARGET_POSIX
++    tzset();
+     stm = localtime_r(&t, &rtm);
+ #else
+     stm = localtime(&t);
+-- 
+2.20.1
+

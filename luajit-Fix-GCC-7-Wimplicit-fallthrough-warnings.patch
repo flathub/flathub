@@ -1,0 +1,291 @@
+commit 0bf46e1edf94c43795b5e491efe682ab70974ce7
+Merge: 74c544d d4ee803
+Author: Mike Pall <mike>
+Date:   Mon Jan 29 13:19:30 2018 +0100
+
+    Merge branch 'master' into v2.1
+
+From d4ee80342770d1281e2ce877f8ae8ab1d99e6528 Mon Sep 17 00:00:00 2001
+From: Mike Pall <mike>
+Date: Mon, 29 Jan 2018 13:06:13 +0100
+Subject: [PATCH 32/72] Fix GCC 7 -Wimplicit-fallthrough warnings.
+
+---
+ dynasm/dasm_arm.h  |  2 ++
+ dynasm/dasm_mips.h |  1 +
+ dynasm/dasm_ppc.h  |  1 +
+ dynasm/dasm_x86.h  | 14 ++++++++++++--
+ src/lj_asm.c       |  3 ++-
+ src/lj_cparse.c    | 10 ++++++++++
+ src/lj_err.c       |  1 +
+ src/lj_opt_sink.c  |  2 +-
+ src/lj_parse.c     |  3 ++-
+ src/luajit.c       |  1 +
+ 10 files changed, 33 insertions(+), 5 deletions(-)
+
+diff --git a/dynasm/dasm_arm.h b/dynasm/dasm_arm.h
+index a43f7c6..1d404cc 100644
+--- a/dynasm/dasm_arm.h
++++ b/dynasm/dasm_arm.h
+@@ -254,6 +254,7 @@ void dasm_put(Dst_DECL, int start, ...)
+       case DASM_IMMV8:
+ 	CK((n & 3) == 0, RANGE_I);
+ 	n >>= 2;
++	/* fallthrough */
+       case DASM_IMML8:
+       case DASM_IMML12:
+ 	CK(n >= 0 ? ((n>>((ins>>5)&31)) == 0) :
+@@ -371,6 +372,7 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	  break;
+ 	case DASM_REL_LG:
+ 	  CK(n >= 0, UNDEF_LG);
++	  /* fallthrough */
+ 	case DASM_REL_PC:
+ 	  CK(n >= 0, UNDEF_PC);
+ 	  n = *DASM_POS2PTR(D, n) - (int)((char *)cp - base) - 4;
+diff --git a/dynasm/dasm_mips.h b/dynasm/dasm_mips.h
+index 7eac669..46af034 100644
+--- a/dynasm/dasm_mips.h
++++ b/dynasm/dasm_mips.h
+@@ -350,6 +350,7 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	  break;
+ 	case DASM_REL_LG:
+ 	  CK(n >= 0, UNDEF_LG);
++	  /* fallthrough */
+ 	case DASM_REL_PC:
+ 	  CK(n >= 0, UNDEF_PC);
+ 	  n = *DASM_POS2PTR(D, n);
+diff --git a/dynasm/dasm_ppc.h b/dynasm/dasm_ppc.h
+index 6110361..81b9a76 100644
+--- a/dynasm/dasm_ppc.h
++++ b/dynasm/dasm_ppc.h
+@@ -350,6 +350,7 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	  break;
+ 	case DASM_REL_LG:
+ 	  CK(n >= 0, UNDEF_LG);
++	  /* fallthrough */
+ 	case DASM_REL_PC:
+ 	  CK(n >= 0, UNDEF_PC);
+ 	  n = *DASM_POS2PTR(D, n) - (int)((char *)cp - base);
+diff --git a/dynasm/dasm_x86.h b/dynasm/dasm_x86.h
+index f9260b0..8ae911d 100644
+--- a/dynasm/dasm_x86.h
++++ b/dynasm/dasm_x86.h
+@@ -194,12 +194,13 @@ void dasm_put(Dst_DECL, int start, ...)
+       switch (action) {
+       case DASM_DISP:
+ 	if (n == 0) { if (mrm < 0) mrm = p[-2]; if ((mrm&7) != 5) break; }
+-      case DASM_IMM_DB: if (((n+128)&-256) == 0) goto ob;
++	/* fallthrough */
++      case DASM_IMM_DB: if (((n+128)&-256) == 0) goto ob; /* fallthrough */
+       case DASM_REL_A: /* Assumes ptrdiff_t is int. !x64 */
+       case DASM_IMM_D: ofs += 4; break;
+       case DASM_IMM_S: CK(((n+128)&-256) == 0, RANGE_I); goto ob;
+       case DASM_IMM_B: CK((n&-256) == 0, RANGE_I); ob: ofs++; break;
+-      case DASM_IMM_WB: if (((n+128)&-256) == 0) goto ob;
++      case DASM_IMM_WB: if (((n+128)&-256) == 0) goto ob; /* fallthrough */
+       case DASM_IMM_W: CK((n&-65536) == 0, RANGE_I); ofs += 2; break;
+       case DASM_SPACE: p++; ofs += n; break;
+       case DASM_SETLABEL: b[pos-2] = -0x40000000; break;  /* Neg. label ofs. */
+@@ -323,11 +324,14 @@ int dasm_link(Dst_DECL, size_t *szp)
+ 	  pos += 2;
+ 	  break;
+ 	}
++	  /* fallthrough */
+ 	case DASM_SPACE: case DASM_IMM_LG: case DASM_VREG: p++;
++	  /* fallthrough */
+ 	case DASM_DISP: case DASM_IMM_S: case DASM_IMM_B: case DASM_IMM_W:
+ 	case DASM_IMM_D: case DASM_IMM_WB: case DASM_IMM_DB:
+ 	case DASM_SETLABEL: case DASM_REL_A: case DASM_IMM_PC: pos++; break;
+ 	case DASM_LABEL_LG: p++;
++	  /* fallthrough */
+ 	case DASM_LABEL_PC: b[pos++] += ofs; break; /* Fix label offset. */
+ 	case DASM_ALIGN: ofs -= (b[pos++]+ofs)&*p++; break; /* Adjust ofs. */
+ 	case DASM_EXTERN: p += 2; break;
+@@ -385,12 +389,15 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	    if (mrm != 5) { mm[-1] -= 0x80; break; } }
+ 	  if (((n+128) & -256) != 0) goto wd; else mm[-1] -= 0x40;
+ 	}
++	  /* fallthrough */
+ 	case DASM_IMM_S: case DASM_IMM_B: wb: dasmb(n); break;
+ 	case DASM_IMM_DB: if (((n+128)&-256) == 0) {
+ 	    db: if (!mark) mark = cp; mark[-2] += 2; mark = NULL; goto wb;
+ 	  } else mark = NULL;
++	  /* fallthrough */
+ 	case DASM_IMM_D: wd: dasmd(n); break;
+ 	case DASM_IMM_WB: if (((n+128)&-256) == 0) goto db; else mark = NULL;
++	  /* fallthrough */
+ 	case DASM_IMM_W: dasmw(n); break;
+ 	case DASM_VREG: {
+ 	  int t = *p++;
+@@ -397,6 +404,7 @@
+ 	}
+ 	case DASM_REL_LG: p++; if (n >= 0) goto rel_pc;
+ 	  b++; n = (int)(ptrdiff_t)D->globals[-n];
++	  /* fallthrough */
+ 	case DASM_REL_A: rel_a:
+ 	  n -= (unsigned int)(ptrdiff_t)(cp+4); goto wd; /* !x64 */
+ 	case DASM_REL_PC: rel_pc: {
+@@ -407,6 +415,7 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	}
+ 	case DASM_IMM_LG:
+ 	  p++; if (n < 0) { n = (int)(ptrdiff_t)D->globals[-n]; goto wd; }
++	  /* fallthrough */
+ 	case DASM_IMM_PC: {
+ 	  int *pb = DASM_POS2PTR(D, n);
+ 	  n = *pb < 0 ? pb[1] : (*pb + (int)(ptrdiff_t)base);
+@@ -427,6 +436,7 @@ int dasm_encode(Dst_DECL, void *buffer)
+ 	case DASM_EXTERN: n = DASM_EXTERN(Dst, cp, p[1], *p); p += 2; goto wd;
+ 	case DASM_MARK: mark = cp; break;
+ 	case DASM_ESC: action = *p++;
++	  /* fallthrough */
+ 	default: *cp++ = action; break;
+ 	case DASM_SECTION: case DASM_STOP: goto stop;
+ 	}
+diff --git a/src/lj_asm.c b/src/lj_asm.c
+index 02714d4..dd7186f 100644
+--- a/src/lj_asm.c
++++ b/src/lj_asm.c
+@@ -2136,6 +2136,7 @@ static void asm_setup_regsp(ASMState *as)
+     case IR_SNEW: case IR_XSNEW: case IR_NEWREF: case IR_BUFPUT:
+       if (REGARG_NUMGPR < 3 && as->evenspill < 3)
+ 	as->evenspill = 3;  /* lj_str_new and lj_tab_newkey need 3 args. */
++      /* fallthrough */
+ #if LJ_TARGET_X86 && LJ_HASFFI
+       if (0) {
+     case IR_CNEW:
+@@ -2176,7 +2177,7 @@ static void asm_setup_regsp(ASMState *as)
+ 	continue;
+ #endif
+       }
+-      /* fallthrough for integer POW */
++      /* fallthrough */ /* for integer POW */
+     case IR_DIV: case IR_MOD:
+       if (!irt_isnum(ir->t)) {
+ 	ir->prev = REGSP_HINT(RID_RET);
+diff --git a/src/lj_cparse.c b/src/lj_cparse.c
+index 2ba50a7..f111537 100644
+--- a/src/lj_cparse.c
++++ b/src/lj_cparse.c
+@@ -590,28 +590,34 @@ static void cp_expr_infix(CPState *cp, CPValue *k, int pri)
+ 	k->id = k2.id > k3.id ? k2.id : k3.id;
+ 	continue;
+       }
++      /* fallthrough */
+     case 1:
+       if (cp_opt(cp, CTOK_OROR)) {
+ 	cp_expr_sub(cp, &k2, 2); k->i32 = k->u32 || k2.u32; k->id = CTID_INT32;
+ 	continue;
+       }
++      /* fallthrough */
+     case 2:
+       if (cp_opt(cp, CTOK_ANDAND)) {
+ 	cp_expr_sub(cp, &k2, 3); k->i32 = k->u32 && k2.u32; k->id = CTID_INT32;
+ 	continue;
+       }
++      /* fallthrough */
+     case 3:
+       if (cp_opt(cp, '|')) {
+ 	cp_expr_sub(cp, &k2, 4); k->u32 = k->u32 | k2.u32; goto arith_result;
+       }
++      /* fallthrough */
+     case 4:
+       if (cp_opt(cp, '^')) {
+ 	cp_expr_sub(cp, &k2, 5); k->u32 = k->u32 ^ k2.u32; goto arith_result;
+       }
++      /* fallthrough */
+     case 5:
+       if (cp_opt(cp, '&')) {
+ 	cp_expr_sub(cp, &k2, 6); k->u32 = k->u32 & k2.u32; goto arith_result;
+       }
++      /* fallthrough */
+     case 6:
+       if (cp_opt(cp, CTOK_EQ)) {
+ 	cp_expr_sub(cp, &k2, 7); k->i32 = k->u32 == k2.u32; k->id = CTID_INT32;
+@@ -620,6 +626,7 @@ static void cp_expr_infix(CPState *cp, CPValue *k, int pri)
+ 	cp_expr_sub(cp, &k2, 7); k->i32 = k->u32 != k2.u32; k->id = CTID_INT32;
+ 	continue;
+       }
++      /* fallthrough */
+     case 7:
+       if (cp_opt(cp, '<')) {
+ 	cp_expr_sub(cp, &k2, 8);
+@@ -654,6 +661,7 @@ static void cp_expr_infix(CPState *cp, CPValue *k, int pri)
+ 	k->id = CTID_INT32;
+ 	continue;
+       }
++      /* fallthrough */
+     case 8:
+       if (cp_opt(cp, CTOK_SHL)) {
+ 	cp_expr_sub(cp, &k2, 9); k->u32 = k->u32 << k2.u32;
+@@ -666,6 +674,7 @@ static void cp_expr_infix(CPState *cp, CPValue *k, int pri)
+ 	  k->u32 = k->u32 >> k2.u32;
+ 	continue;
+       }
++      /* fallthrough */
+     case 9:
+       if (cp_opt(cp, '+')) {
+ 	cp_expr_sub(cp, &k2, 10); k->u32 = k->u32 + k2.u32;
+@@ -675,6 +684,7 @@ static void cp_expr_infix(CPState *cp, CPValue *k, int pri)
+       } else if (cp_opt(cp, '-')) {
+ 	cp_expr_sub(cp, &k2, 10); k->u32 = k->u32 - k2.u32; goto arith_result;
+       }
++      /* fallthrough */
+     case 10:
+       if (cp_opt(cp, '*')) {
+ 	cp_expr_unary(cp, &k2); k->u32 = k->u32 * k2.u32; goto arith_result;
+diff --git a/src/lj_err.c b/src/lj_err.c
+index 54f42c3..13a1ded 100644
+--- a/src/lj_err.c
++++ b/src/lj_err.c
+@@ -153,6 +153,7 @@ static void *err_unwind(lua_State *L, void *stopcf, int errcode)
+     case FRAME_CONT:  /* Continuation frame. */
+       if (frame_iscont_fficb(frame))
+ 	goto unwind_c;
++      /* fallthrough */
+     case FRAME_VARG:  /* Vararg frame. */
+       frame = frame_prevd(frame);
+       break;
+diff --git a/src/lj_opt_sink.c b/src/lj_opt_sink.c
+index 6a00d04..4efe395 100644
+--- a/src/lj_opt_sink.c
++++ b/src/lj_opt_sink.c
+@@ -100,8 +100,8 @@ static void sink_mark_ins(jit_State *J)
+ 	   (LJ_32 && ir+1 < irlast && (ir+1)->o == IR_HIOP &&
+ 	    !sink_checkphi(J, ir, (ir+1)->op2))))
+ 	irt_setmark(ir->t);  /* Mark ineligible allocation. */
+-      /* fallthrough */
+ #endif
++      /* fallthrough */
+     case IR_USTORE:
+       irt_setmark(IR(ir->op2)->t);  /* Mark stored value. */
+       break;
+diff --git a/src/lj_parse.c b/src/lj_parse.c
+index 9e5976f..6785495 100644
+--- a/src/lj_parse.c
++++ b/src/lj_parse.c
+@@ -2696,7 +2696,8 @@ static int parse_stmt(LexState *ls)
+       lj_lex_next(ls);
+       parse_goto(ls);
+       break;
+-    }  /* else: fallthrough */
++    }
++    /* fallthrough */
+   default:
+     parse_call_assign(ls);
+     break;
+diff --git a/src/luajit.c b/src/luajit.c
+index 9e15b26..0e18dc5 100644
+--- a/src/luajit.c
++++ b/src/luajit.c
+@@ -419,6 +419,7 @@ static int collectargs(char **argv, int *flags)
+       break;
+     case 'e':
+       *flags |= FLAGS_EXEC;
++      /* fallthrough */
+     case 'j':  /* LuaJIT extension */
+     case 'l':
+       *flags |= FLAGS_OPTION;
+-- 
+2.20.1
+

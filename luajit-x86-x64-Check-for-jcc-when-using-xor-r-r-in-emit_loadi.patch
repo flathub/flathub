@@ -1,0 +1,33 @@
+From fb5e522fbc0750c838ef6a926b11c5d870826183 Mon Sep 17 00:00:00 2001
+From: Mike Pall <mike>
+Date: Sun, 20 May 2018 12:40:33 +0200
+Subject: [PATCH 40/72] x86/x64: Check for jcc when using xor r,r in
+ emit_loadi().
+
+Thanks to Peter Cawley.
+---
+ src/lj_emit_x86.h | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/lj_emit_x86.h b/src/lj_emit_x86.h
+index bcceb93..9c371a9 100644
+--- a/src/lj_emit_x86.h
++++ b/src/lj_emit_x86.h
+@@ -268,10 +268,12 @@ static void emit_movmroi(ASMState *as, Reg base, int32_t ofs, int32_t i)
+ /* mov r, i / xor r, r */
+ static void emit_loadi(ASMState *as, Reg r, int32_t i)
+ {
+-  /* XOR r,r is shorter, but modifies the flags. This is bad for HIOP. */
++  /* XOR r,r is shorter, but modifies the flags. This is bad for HIOP/jcc. */
+   if (i == 0 && !(LJ_32 && (IR(as->curins)->o == IR_HIOP ||
+ 			    (as->curins+1 < as->T->nins &&
+-			     IR(as->curins+1)->o == IR_HIOP)))) {
++			     IR(as->curins+1)->o == IR_HIOP))) &&
++		!((*as->mcp == 0x0f && (as->mcp[1] & 0xf0) == XI_JCCn) ||
++		  (*as->mcp & 0xf0) == XI_JCCs)) {
+     emit_rr(as, XO_ARITH(XOg_XOR), r, r);
+   } else {
+     MCode *p = as->mcp;
+-- 
+2.20.1
+

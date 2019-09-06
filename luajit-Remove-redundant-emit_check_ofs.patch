@@ -1,0 +1,50 @@
+From 1fae7b08e319ba4028d303b09de72b026109a269 Mon Sep 17 00:00:00 2001
+From: Siddhesh Poyarekar <siddhesh@gotplt.org>
+Date: Fri, 22 Feb 2019 19:05:38 +0000
+Subject: [PATCH 62/72] Remove redundant emit_check_ofs
+
+Even if the offset is a constant, it is not 32-bit since it failed
+that check earlier before it came here.  The code is thus useless and
+hence removed.  This also fixes inconsistencies with op1/op2 renaming
+that were introduced in PR #438.  They were never triggered because
+the code path is effectively dead for arm64.
+---
+ src/lj_asm_arm64.h | 15 +--------------
+ 1 file changed, 1 insertion(+), 14 deletions(-)
+
+diff --git a/src/lj_asm_arm64.h b/src/lj_asm_arm64.h
+index ce49cde..c214e10 100644
+--- a/src/lj_asm_arm64.h
++++ b/src/lj_asm_arm64.h
+@@ -298,27 +298,14 @@ static void asm_fusexref(ASMState *as, A64Ins ai, Reg rd, IRRef ref,
+ 	IRRef ref1 = ir->op1;
+ 	IRRef ref2 = ir->op2;
+ 	Reg rn;
+-	IRIns *irr;
+-	uint32_t m;
+ 
+ 	if (irref_isk(ir->op1)) {
+ 	  ref1 = ir->op2;
+ 	  ref2 = ir->op1;
+ 	}
+ 	rn = ra_alloc1(as, ref1, allow);
+-	irr = IR(ref2);
+-	if (irr+1 == ir && !ra_used(irr) &&
+-	    irr->o == IR_ADD && irref_isk(irr->op2)) {
+-	  ofs = sizeof(GCstr) + IR(irr->op2)->i;
+-	  if (emit_checkofs(ai, ofs)) {
+-	    Reg rm = ra_alloc1(as, irr->op1, rset_exclude(allow, rn));
+-	    m = A64F_M(rm) | A64F_EX(A64EX_SXTW);
+-	    goto skipopm;
+-	  }
+-	}
+-	m = asm_fuseopm(as, 0, ref2, rset_exclude(allow, rn));
++	uint32_t m = asm_fuseopm(as, 0, ref2, rset_exclude(allow, rn));
+ 	ofs = sizeof(GCstr);
+-      skipopm:
+ 	emit_lso(as, ai, rd, rd, ofs);
+ 	emit_dn(as, A64I_ADDx^m, rd, rn);
+ 	return;
+-- 
+2.20.1
+

@@ -1,0 +1,57 @@
+From 850f8c59d3d04a9847f21f32a6c36d8269b5b6b1 Mon Sep 17 00:00:00 2001
+From: Mike Pall <mike>
+Date: Mon, 2 Oct 2017 23:10:56 +0200
+Subject: [PATCH 18/72] LJ_GC64: Make ASMREF_L references 64 bit.
+
+Reported by Yichun Zhang.
+---
+ src/lj_asm.c      | 1 +
+ src/lj_ir.h       | 4 +++-
+ src/lj_opt_sink.c | 1 +
+ 3 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/lj_asm.c b/src/lj_asm.c
+index d961927..753fe6b 100644
+--- a/src/lj_asm.c
++++ b/src/lj_asm.c
+@@ -2015,6 +2015,7 @@ static void asm_setup_regsp(ASMState *as)
+     ir->prev = REGSP_INIT;
+     if (irt_is64(ir->t) && ir->o != IR_KNULL) {
+ #if LJ_GC64
++      /* The false-positive of irt_is64() for ASMREF_L (REF_NIL) is OK here. */
+       ir->i = 0;  /* Will become non-zero only for RIP-relative addresses. */
+ #else
+       /* Make life easier for backends by putting address of constant in i. */
+diff --git a/src/lj_ir.h b/src/lj_ir.h
+index 34c2785..8057a75 100644
+--- a/src/lj_ir.h
++++ b/src/lj_ir.h
+@@ -377,10 +377,12 @@ typedef struct IRType1 { uint8_t irt; } IRType1;
+ #define irt_isint64(t)		(irt_typerange((t), IRT_I64, IRT_U64))
+ 
+ #if LJ_GC64
++/* Include IRT_NIL, so IR(ASMREF_L) (aka REF_NIL) is considered 64 bit. */
+ #define IRT_IS64 \
+   ((1u<<IRT_NUM)|(1u<<IRT_I64)|(1u<<IRT_U64)|(1u<<IRT_P64)|\
+    (1u<<IRT_LIGHTUD)|(1u<<IRT_STR)|(1u<<IRT_THREAD)|(1u<<IRT_PROTO)|\
+-   (1u<<IRT_FUNC)|(1u<<IRT_CDATA)|(1u<<IRT_TAB)|(1u<<IRT_UDATA))
++   (1u<<IRT_FUNC)|(1u<<IRT_CDATA)|(1u<<IRT_TAB)|(1u<<IRT_UDATA)|\
++   (1u<<IRT_NIL))
+ #elif LJ_64
+ #define IRT_IS64 \
+   ((1u<<IRT_NUM)|(1u<<IRT_I64)|(1u<<IRT_U64)|(1u<<IRT_P64)|(1u<<IRT_LIGHTUD))
+diff --git a/src/lj_opt_sink.c b/src/lj_opt_sink.c
+index 929ccb6..a16d112 100644
+--- a/src/lj_opt_sink.c
++++ b/src/lj_opt_sink.c
+@@ -219,6 +219,7 @@ static void sink_sweep_ins(jit_State *J)
+   for (ir = IR(J->cur.nk); ir < irbase; ir++) {
+     irt_clearmark(ir->t);
+     ir->prev = REGSP_INIT;
++    /* The false-positive of irt_is64() for ASMREF_L (REF_NIL) is OK here. */
+     if (irt_is64(ir->t) && ir->o != IR_KNULL)
+       ir++;
+   }
+-- 
+2.20.1
+

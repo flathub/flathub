@@ -1,0 +1,77 @@
+From 70e65633d892765bcbaad3493e5b690abd5402f2 Mon Sep 17 00:00:00 2001
+From: Siddhesh Poyarekar <siddhesh@sourceware.org>
+Date: Thu, 28 Mar 2019 09:19:34 +0530
+Subject: [PATCH 71/72] aarch64: better float to unsigned int conversion
+
+A straight float to unsigned conversion has a limited range of (-1.0,
+UTYPE_MAX) which should be fine in general but for the sake of
+consistency across the interpreter and the JIT compiler, it is
+necessary to work a wee bit harder to expand this range to (TYPE_MIN,
+UTYPE_MAX), which can be done with a simple range check.  This adds a
+couple of branches but only one of the branches should have a
+noticeable performance impact on most processors with branch
+predictors, and that too only if the input number varies wildly in
+range.
+
+This currently works only for 64-bit conversions, 32-bit is still WIP.
+---
+ src/lj_asm_arm64.h    | 30 ++++++++++++++++++++++--------
+ src/lj_target_arm64.h |  1 +
+ 2 files changed, 23 insertions(+), 8 deletions(-)
+
+diff --git a/src/lj_asm_arm64.h b/src/lj_asm_arm64.h
+index 42a4fae..c72144a 100644
+--- a/src/lj_asm_arm64.h
++++ b/src/lj_asm_arm64.h
+@@ -594,14 +594,28 @@ static void asm_conv(ASMState *as, IRIns *ir)
+     } else {
+       Reg left = ra_alloc1(as, lref, RSET_FPR);
+       Reg dest = ra_dest(as, ir, RSET_GPR);
+-      A64Ins ai = irt_is64(ir->t) ?
+-	(st == IRT_NUM ?
+-	 (irt_isi64(ir->t) ? A64I_FCVT_S64_F64 : A64I_FCVT_U64_F64) :
+-	 (irt_isi64(ir->t) ? A64I_FCVT_S64_F32 : A64I_FCVT_U64_F32)) :
+-	(st == IRT_NUM ?
+-	 (irt_isint(ir->t) ? A64I_FCVT_S32_F64 : A64I_FCVT_U32_F64) :
+-	 (irt_isint(ir->t) ? A64I_FCVT_S32_F32 : A64I_FCVT_U32_F32));
+-      emit_dn(as, ai, dest, (left & 31));
++
++      A64Ins ai_signed = st == IRT_NUM ?
++        (irt_is64(ir->t) ? A64I_FCVT_S64_F64 : A64I_FCVT_S32_F64) :
++        (irt_is64(ir->t) ? A64I_FCVT_S64_F32 : A64I_FCVT_S32_F32);
++
++      if (irt_isi64(ir->t) || irt_isint(ir->t))
++        emit_dn(as, ai_signed, dest, (left & 31));
++      else {
++        A64Ins ai_unsigned = st == IRT_NUM ?
++          (irt_is64(ir->t) ? A64I_FCVT_U64_F64 : A64I_FCVT_U32_F64) :
++          (irt_is64(ir->t) ? A64I_FCVT_U64_F32 : A64I_FCVT_U32_F32);
++
++        MCLabel l_done = emit_label(as);
++        emit_dn(as, ai_unsigned, dest, (left & 31));
++        MCLabel l_signed = emit_label(as);
++	emit_jmp(as, l_done);
++        emit_dn(as, ai_signed, dest, (left & 31));
++        /* The valid range for float to unsigned int conversion is (-1.0,
++           UINT{,64}_MAX-1), but we just compare with 0 to save a load. */
++        emit_cond_branch(as, CC_PL, l_signed);
++        emit_nm(as, st == IRT_NUM ? A64I_FCMPZd : A64I_FCMPZs, left & 31, 0);
++      }
+     }
+   } else if (st >= IRT_I8 && st <= IRT_U16) { /* Extend to 32 bit integer. */
+     Reg dest = ra_dest(as, ir, RSET_GPR);
+diff --git a/src/lj_target_arm64.h b/src/lj_target_arm64.h
+index a207a2b..2f8357f 100644
+--- a/src/lj_target_arm64.h
++++ b/src/lj_target_arm64.h
+@@ -279,6 +279,7 @@ typedef enum A64Ins {
+   A64I_STPs = 0x2d000000,
+   A64I_STPd = 0x6d000000,
+   A64I_FCMPd = 0x1e602000,
++  A64I_FCMPZs = 0x1e202008,
+   A64I_FCMPZd = 0x1e602008,
+   A64I_FCSELd = 0x1e600c00,
+   A64I_FRINTMd = 0x1e654000,
+-- 
+2.20.1
+

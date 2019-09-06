@@ -1,0 +1,79 @@
+From f733297499f72ea11c166f6be23751a7b002c51c Mon Sep 17 00:00:00 2001
+From: wangqr <wangqr@wangqr.tk>
+Date: Sat, 18 May 2019 20:10:32 -0400
+Subject: [PATCH] Rewrite encoding detection
+
+Now feeds all data to uchardet, when uchardet is available. The file
+size limit is removed.
+
+When uchardet is not available, we look for UTF-8 BOM.
+This should make loading UTF-8-BOM files faster.
+Because Aegisub always save file in UTF-8-BOM, this should also
+guarentee Aegisub will load large (>100MB) file saved by itself.
+
+See Aegisub/Aegisub#110
+---
+ libaegisub/common/charset.cpp | 42 ++++++++++++++++-------------------
+ 1 file changed, 19 insertions(+), 23 deletions(-)
+
+diff --git a/libaegisub/common/charset.cpp b/libaegisub/common/charset.cpp
+index 1addb90ee..5ca248b9e 100644
+--- a/libaegisub/common/charset.cpp
++++ b/libaegisub/common/charset.cpp
+@@ -29,37 +29,33 @@ namespace agi { namespace charset {
+ std::string Detect(agi::fs::path const& file) {
+ 	agi::read_file_mapping fp(file);
+ 
+-	// If it's over 100 MB it's either binary or big enough that we won't
+-	// be able to do anything useful with it anyway
+-	if (fp.size() > 100 * 1024 * 1024)
+-		return "binary";
+-
+-	uint64_t binaryish = 0;
+-
+ #ifdef WITH_UCHARDET
+ 	agi::scoped_holder<uchardet_t> ud(uchardet_new(), uchardet_delete);
+ 	for (uint64_t offset = 0; offset < fp.size(); ) {
+-		auto read = std::min<uint64_t>(4096, fp.size() - offset);
++		auto read = std::min<uint64_t>(65536, fp.size() - offset);
+ 		auto buf = fp.read(offset, read);
+ 		uchardet_handle_data(ud, buf, read);
+-		uchardet_data_end(ud);
+-		if (*uchardet_get_charset(ud))
+-			return uchardet_get_charset(ud);
+-
+ 		offset += read;
+-
+-		// A dumb heuristic to detect binary files
+-		for (size_t i = 0; i < read; ++i) {
+-			if ((unsigned char)buf[i] < 32 && (buf[i] != '\r' && buf[i] != '\n' && buf[i] != '\t'))
+-				++binaryish;
+-		}
+-
+-		if (binaryish > offset / 8)
+-			return "binary";
+ 	}
+-	return uchardet_get_charset(ud);
++	uchardet_data_end(ud);
++	std::string encoding = uchardet_get_charset(ud);
++	return encoding.empty() ? "binary" : encoding;
+ #else
+-	auto read = std::min<uint64_t>(4096, fp.size());
++
++	// Look for utf-8 BOM
++	if (fp.size() >= 3) {
++		const char* buf = fp.read(0, 3);
++		if (!strncmp(buf, "\xef\xbb\xbf", 3))
++			return "utf-8";
++	}
++
++	// If it's over 100 MB it's either binary or big enough that we won't
++	// be able to do anything useful with it anyway
++	if (fp.size() > 100 * 1024 * 1024)
++		return "binary";
++
++	uint64_t binaryish = 0;
++	auto read = std::min<uint64_t>(65536, fp.size());
+ 	auto buf = fp.read(0, read);
+ 	for (size_t i = 0; i < read; ++i) {
+ 		if ((unsigned char)buf[i] < 32 && (buf[i] != '\r' && buf[i] != '\n' && buf[i] != '\t'))

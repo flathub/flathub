@@ -1,0 +1,62 @@
+From e99ac1bc2df5c1d138bbc98d35d1a1892144cf2b Mon Sep 17 00:00:00 2001
+From: Sameera Deshpande <sameera.deshpande@linaro.org>
+Date: Fri, 15 Feb 2019 07:46:16 +0530
+Subject: [PATCH 65/72] Add support for FNMADD and FNMSUB.
+
+---
+ src/lj_asm_arm64.h | 32 +++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/src/lj_asm_arm64.h b/src/lj_asm_arm64.h
+index a826687..470e65d 100644
+--- a/src/lj_asm_arm64.h
++++ b/src/lj_asm_arm64.h
+@@ -344,6 +344,35 @@ static int asm_fusemadd(ASMState *as, IRIns *ir, A64Ins ai, A64Ins air)
+   return 0;
+ }
+ 
++/* Fuse FP neg-multiply-add/sub. */
++static int asm_fusenmadd(ASMState *as, IRIns *ir, A64Ins ai, A64Ins air)
++{
++  IRRef ref = ir->op1;
++  IRIns *irn = IR(ref);
++  if (irn->o != IR_ADD && irn->o != IR_SUB)
++    return 0;
++
++  if (!mayfuse(as, ref))
++    return 0;
++
++  IRRef lref = irn->op1, rref = irn->op2;
++  IRIns *irm;
++  if (lref != rref &&
++      ((mayfuse(as, lref) && (irm = IR(lref), irm->o == IR_MUL) &&
++       ra_noreg(irm->r)) ||
++       (mayfuse(as, rref) && (irm = IR(rref), irm->o == IR_MUL) &&
++       (rref = lref, ra_noreg(irm->r))))) {
++    Reg dest = ra_dest(as, ir, RSET_FPR);
++    Reg add = ra_hintalloc(as, rref, dest, RSET_FPR);
++    Reg left = ra_alloc2(as, irm,
++			 rset_exclude(rset_exclude(RSET_FPR, dest), add));
++    Reg right = (left >> 8); left &= 255;
++    emit_dnma(as, (irn->o == IR_ADD ? ai : air), (dest & 31), (left & 31), (right & 31), (add & 31));
++    return 1;
++  }
++  return 0;
++}
++
+ /* Fuse BAND + BSHL/BSHR into UBFM. */
+ static int asm_fuseandshift(ASMState *as, IRIns *ir)
+ {
+@@ -1481,7 +1510,8 @@ static void asm_mod(ASMState *as, IRIns *ir)
+ static void asm_neg(ASMState *as, IRIns *ir)
+ {
+   if (irt_isnum(ir->t)) {
+-    asm_fpunary(as, ir, A64I_FNEGd);
++    if (!asm_fusenmadd(as, ir, A64I_FNMADDd))
++      asm_fpunary(as, ir, A64I_FNEGd);
+     return;
+   }
+   asm_intneg(as, ir);
+-- 
+2.20.1
+

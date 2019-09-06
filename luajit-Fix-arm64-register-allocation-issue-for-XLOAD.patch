@@ -1,0 +1,49 @@
+From ec0d8427ade9346d356623072fcb91c2d11e3bda Mon Sep 17 00:00:00 2001
+From: Patrick Galizia <pgalizia.qdt@qualcommdatacenter.com>
+Date: Wed, 28 Nov 2018 14:14:35 -0500
+Subject: [PATCH 61/72] Fix arm64 register allocation issue for XLOAD.
+
+For arm64, it's possible for both IRRefs to fail asm_isk32(), but
+one of them pass irref_isk().  Add a secondary check for the latter
+call if both asm_isk32() calls fail.
+---
+ src/lj_asm_arm64.h | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/src/lj_asm_arm64.h b/src/lj_asm_arm64.h
+index 045f260..ce49cde 100644
+--- a/src/lj_asm_arm64.h
++++ b/src/lj_asm_arm64.h
+@@ -295,9 +295,18 @@ static void asm_fusexref(ASMState *as, A64Ins ai, Reg rd, IRRef ref,
+       } else if (asm_isk32(as, ir->op1, &ofs)) {
+ 	ref = ir->op2;
+       } else {
+-	Reg rn = ra_alloc1(as, ir->op1, allow);
+-	IRIns *irr = IR(ir->op2);
++	IRRef ref1 = ir->op1;
++	IRRef ref2 = ir->op2;
++	Reg rn;
++	IRIns *irr;
+ 	uint32_t m;
++
++	if (irref_isk(ir->op1)) {
++	  ref1 = ir->op2;
++	  ref2 = ir->op1;
++	}
++	rn = ra_alloc1(as, ref1, allow);
++	irr = IR(ref2);
+ 	if (irr+1 == ir && !ra_used(irr) &&
+ 	    irr->o == IR_ADD && irref_isk(irr->op2)) {
+ 	  ofs = sizeof(GCstr) + IR(irr->op2)->i;
+@@ -307,7 +316,7 @@ static void asm_fusexref(ASMState *as, A64Ins ai, Reg rd, IRRef ref,
+ 	    goto skipopm;
+ 	  }
+ 	}
+-	m = asm_fuseopm(as, 0, ir->op2, rset_exclude(allow, rn));
++	m = asm_fuseopm(as, 0, ref2, rset_exclude(allow, rn));
+ 	ofs = sizeof(GCstr);
+       skipopm:
+ 	emit_lso(as, ai, rd, rd, ofs);
+-- 
+2.20.1
+

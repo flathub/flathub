@@ -1,0 +1,824 @@
+From a6879cb3982f02744dd77b6663ae6bc14162e652 Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Sat, 19 Dec 2015 10:43:32 -0800
+Subject: [PATCH 02/13] Makefile: ensure we always install the symlink for
+ "luajit".
+
+---
+ Makefile | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 923bf72b..f4b84081 100644
+--- a/Makefile
++++ b/Makefile
+@@ -130,13 +130,8 @@ install: $(LUAJIT_BIN)
+ 	  $(RM) $(FILE_PC).tmp
+ 	cd src && $(INSTALL_F) $(FILES_INC) $(INSTALL_INC)
+ 	cd src/jit && $(INSTALL_F) $(FILES_JITLIB) $(INSTALL_JITLIB)
++	$(SYMLINK) $(INSTALL_TNAME) $(INSTALL_TSYM)
+ 	@echo "==== Successfully installed LuaJIT $(VERSION) to $(PREFIX) ===="
+-	@echo ""
+-	@echo "Note: the development releases deliberately do NOT install a symlink for luajit"
+-	@echo "You can do this now by running this command (with sudo):"
+-	@echo ""
+-	@echo "  $(SYMLINK) $(INSTALL_TNAME) $(INSTALL_TSYM)"
+-	@echo ""
+ 
+ 
+ uninstall:
+-- 
+2.21.0
+
+
+From e29e78dd64573947777e8ca7741d46d1c0ba2f7b Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Tue, 14 Mar 2017 14:26:48 -0700
+Subject: [PATCH 03/13] optimize: lj_str_new: tests the full hash value before
+ doing the full string comparison on hash collisions. thanks Shuxin Yang for
+ the patch.
+
+---
+ src/lj_str.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lj_str.c b/src/lj_str.c
+index 264dedc1..f1b5fb5d 100644
+--- a/src/lj_str.c
++++ b/src/lj_str.c
+@@ -152,7 +152,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
+   if (LJ_LIKELY((((uintptr_t)str+len-1) & (LJ_PAGESIZE-1)) <= LJ_PAGESIZE-4)) {
+     while (o != NULL) {
+       GCstr *sx = gco2str(o);
+-      if (sx->len == len && str_fastcmp(str, strdata(sx), len) == 0) {
++      if (sx->len == len && sx->hash == h && str_fastcmp(str, strdata(sx), len) == 0) {
+ 	/* Resurrect if dead. Can only happen with fixstring() (keywords). */
+ 	if (isdead(g, o)) flipwhite(o);
+ 	return sx;  /* Return existing string. */
+@@ -162,7 +162,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
+   } else {  /* Slow path: end of string is too close to a page boundary. */
+     while (o != NULL) {
+       GCstr *sx = gco2str(o);
+-      if (sx->len == len && memcmp(str, strdata(sx), len) == 0) {
++      if (sx->len == len && sx->hash == h && memcmp(str, strdata(sx), len) == 0) {
+ 	/* Resurrect if dead. Can only happen with fixstring() (keywords). */
+ 	if (isdead(g, o)) flipwhite(o);
+ 	return sx;  /* Return existing string. */
+-- 
+2.21.0
+
+
+From 555ee4e814f799937ca505423fc05c0b0402f81c Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <yichun@openresty.com>
+Date: Tue, 15 Jan 2019 12:17:50 -0800
+Subject: [PATCH 04/13] bugfix: fixed assertion failure "lj_record.c:92:
+ rec_check_slots: Assertion `nslots <= 250' failed" found by stressing our
+ edgelang compiler.
+
+---
+ src/lj_record.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/lj_record.c b/src/lj_record.c
+index 7f37d6c6..4a50de1b 100644
+--- a/src/lj_record.c
++++ b/src/lj_record.c
+@@ -1860,6 +1860,8 @@ static void rec_varg(jit_State *J, BCReg dst, ptrdiff_t nresults)
+       lj_trace_err_info(J, LJ_TRERR_NYIBC);
+     }
+   }
++  if (J->baseslot + J->maxslot >= LJ_MAX_JSLOTS)
++    lj_trace_err(J, LJ_TRERR_STACKOV);
+ }
+ 
+ /* -- Record allocations -------------------------------------------------- */
+-- 
+2.21.0
+
+
+From 58e9941b6268202f7953a5534e0c662ad90b2510 Mon Sep 17 00:00:00 2001
+From: doujiang24 <doujiang24@gmail.com>
+Date: Sun, 12 Mar 2017 21:04:50 +0800
+Subject: [PATCH 05/13] feature: added the bytecode option `L` to display lua
+ source line numbers.
+
+Signed-off-by: Yichun Zhang (agentzh) <agentzh@gmail.com>
+---
+ src/jit/bc.lua     | 20 +++++++++++++-------
+ src/jit/bcsave.lua | 11 ++++++++---
+ src/lib_jit.c      |  6 ++++++
+ 3 files changed, 27 insertions(+), 10 deletions(-)
+
+diff --git a/src/jit/bc.lua b/src/jit/bc.lua
+index 193cf01f..80f92689 100644
+--- a/src/jit/bc.lua
++++ b/src/jit/bc.lua
+@@ -63,15 +63,21 @@ local function ctlsub(c)
+ end
+ 
+ -- Return one bytecode line.
+-local function bcline(func, pc, prefix)
+-  local ins, m = funcbc(func, pc)
++local function bcline(func, pc, prefix, lineinfo)
++  local ins, m, l = funcbc(func, pc, lineinfo and 1 or 0)
+   if not ins then return end
+   local ma, mb, mc = band(m, 7), band(m, 15*8), band(m, 15*128)
+   local a = band(shr(ins, 8), 0xff)
+   local oidx = 6*band(ins, 0xff)
+   local op = sub(bcnames, oidx+1, oidx+6)
+-  local s = format("%04d %s %-6s %3s ",
+-    pc, prefix or "  ", op, ma == 0 and "" or a)
++  local s
++  if lineinfo then
++    s = format("%04d %7s %s %-6s %3s ",
++      pc, "["..l.."]", prefix or "  ", op, ma == 0 and "" or a)
++  else
++    s = format("%04d %s %-6s %3s ",
++      pc, prefix or "  ", op, ma == 0 and "" or a)
++  end
+   local d = shr(ins, 16)
+   if mc == 13*128 then -- BCMjump
+     return format("%s=> %04d\n", s, pc+d-0x7fff)
+@@ -124,20 +130,20 @@ local function bctargets(func)
+ end
+ 
+ -- Dump bytecode instructions of a function.
+-local function bcdump(func, out, all)
++local function bcdump(func, out, all, lineinfo)
+   if not out then out = stdout end
+   local fi = funcinfo(func)
+   if all and fi.children then
+     for n=-1,-1000000000,-1 do
+       local k = funck(func, n)
+       if not k then break end
+-      if type(k) == "proto" then bcdump(k, out, true) end
++      if type(k) == "proto" then bcdump(k, out, true, lineinfo) end
+     end
+   end
+   out:write(format("-- BYTECODE -- %s-%d\n", fi.loc, fi.lastlinedefined))
+   local target = bctargets(func)
+   for pc=1,1000000000 do
+-    local s = bcline(func, pc, target[pc] and "=>")
++    local s = bcline(func, pc, target[pc] and "=>", lineinfo)
+     if not s then break end
+     out:write(s)
+   end
+diff --git a/src/jit/bcsave.lua b/src/jit/bcsave.lua
+index 2553d97e..9c6146c2 100644
+--- a/src/jit/bcsave.lua
++++ b/src/jit/bcsave.lua
+@@ -23,6 +23,7 @@ local function usage()
+   io.stderr:write[[
+ Save LuaJIT bytecode: luajit -b[options] input output
+   -l        Only list bytecode.
++  -L        Only list bytecode with lineinfo.
+   -s        Strip debug info (default).
+   -g        Keep debug info.
+   -n name   Set module name (default: auto-detect from input name).
+@@ -575,9 +576,9 @@ end
+ 
+ ------------------------------------------------------------------------------
+ 
+-local function bclist(input, output)
++local function bclist(input, output, lineinfo)
+   local f = readfile(input)
+-  require("jit.bc").dump(f, savefile(output, "w"), true)
++  require("jit.bc").dump(f, savefile(output, "w"), true, lineinfo)
+ end
+ 
+ local function bcsave(ctx, input, output)
+@@ -604,6 +605,7 @@ local function docmd(...)
+   local arg = {...}
+   local n = 1
+   local list = false
++  local lineinfo = false
+   local ctx = {
+     strip = true, arch = jit.arch, os = string.lower(jit.os),
+     type = false, modname = false,
+@@ -617,6 +619,9 @@ local function docmd(...)
+ 	local opt = string.sub(a, m, m)
+ 	if opt == "l" then
+ 	  list = true
++	elseif opt == "L" then
++	  list = true
++	  lineinfo = true
+ 	elseif opt == "s" then
+ 	  ctx.strip = true
+ 	elseif opt == "g" then
+@@ -645,7 +650,7 @@ local function docmd(...)
+   end
+   if list then
+     if #arg == 0 or #arg > 2 then usage() end
+-    bclist(arg[1], arg[2] or "-")
++    bclist(arg[1], arg[2] or "-", lineinfo)
+   else
+     if #arg ~= 2 then usage() end
+     bcsave(ctx, arg[1], arg[2])
+diff --git a/src/lib_jit.c b/src/lib_jit.c
+index 6e265fdb..6972550b 100644
+--- a/src/lib_jit.c
++++ b/src/lib_jit.c
+@@ -224,6 +224,7 @@ LJLIB_CF(jit_util_funcbc)
+ {
+   GCproto *pt = check_Lproto(L, 0);
+   BCPos pc = (BCPos)lj_lib_checkint(L, 2);
++  int lineinfo = lj_lib_optint(L, 3, 0);
+   if (pc < pt->sizebc) {
+     BCIns ins = proto_bc(pt)[pc];
+     BCOp op = bc_op(ins);
+@@ -231,6 +232,11 @@ LJLIB_CF(jit_util_funcbc)
+     setintV(L->top, ins);
+     setintV(L->top+1, lj_bc_mode[op]);
+     L->top += 2;
++    if (lineinfo) {
++      setintV(L->top, lj_debug_line(pt, pc));
++      L->top += 1;
++      return 3;
++    }
+     return 2;
+   }
+   return 0;
+-- 
+2.21.0
+
+
+From a61c93d0784c532db4ec0797475a0e0ad93dda4c Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <yichun@openresty.com>
+Date: Wed, 27 Feb 2019 17:20:19 -0800
+Subject: [PATCH 06/13] bugfix: ffi.C.FUNC(): it lacked a write barrier which
+ might lead to use-after-free issues and memory corruptions.
+
+Fix #42.
+---
+ src/lj_clib.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/lj_clib.c b/src/lj_clib.c
+index f016b06b..a8672052 100644
+--- a/src/lj_clib.c
++++ b/src/lj_clib.c
+@@ -384,6 +384,7 @@ TValue *lj_clib_index(lua_State *L, CLibrary *cl, GCstr *name)
+       cd = lj_cdata_new(cts, id, CTSIZE_PTR);
+       *(void **)cdataptr(cd) = p;
+       setcdataV(L, tv, cd);
++      lj_gc_anybarriert(L, cl->cache);
+     }
+   }
+   return tv;
+-- 
+2.21.0
+
+
+From 3086b483e76ad12ae0a0dfab60960c1175b69dab Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Thu, 15 May 2014 16:03:29 -0700
+Subject: [PATCH 07/13] feature: added internal memory-buffer-based trace
+ entry/exit/start-recording event logging, mainly for debugging bugs in the
+ JIT compiler. it requires -DLUA_USE_TRACE_LOGS when building.
+
+---
+ src/lj_debug.c  | 125 ++++++++++++++++++++++++++++++++++++++++++++++++
+ src/lj_debug.h  |  11 +++++
+ src/lj_trace.c  |   9 ++++
+ src/vm_x86.dasc |  24 ++++++++++
+ 4 files changed, 169 insertions(+)
+
+diff --git a/src/lj_debug.c b/src/lj_debug.c
+index 959dc289..7f4f793a 100644
+--- a/src/lj_debug.c
++++ b/src/lj_debug.c
+@@ -697,3 +697,128 @@ LUALIB_API void luaL_traceback (lua_State *L, lua_State *L1, const char *msg,
+   lua_concat(L, (int)(L->top - L->base) - top);
+ }
+ 
++#ifdef LUA_USE_TRACE_LOGS
++
++#include "lj_dispatch.h"
++
++#define MAX_TRACE_EVENTS  64
++
++enum {
++    LJ_TRACE_EVENT_ENTER,
++    LJ_TRACE_EVENT_EXIT,
++    LJ_TRACE_EVENT_START
++};
++
++typedef struct {
++    int              event;
++    unsigned         traceno;
++    unsigned         exitno;
++    int              directexit;
++    const BCIns     *ins;
++    lua_State       *thread;
++    GCfunc          *fn;
++} lj_trace_event_record_t;
++
++static lj_trace_event_record_t lj_trace_events[MAX_TRACE_EVENTS];
++
++static int  rb_start = 0;
++static int  rb_end = 0;
++static int  rb_full = 0;
++
++static void
++lj_trace_log_event(lj_trace_event_record_t *rec)
++{
++  lj_trace_events[rb_end] = *rec;
++
++  if (rb_full) {
++    rb_end++;
++    if (rb_end == MAX_TRACE_EVENTS) {
++      rb_end = 0;
++    }
++    rb_start = rb_end;
++
++  } else {
++    rb_end++;
++    if (rb_end == MAX_TRACE_EVENTS) {
++      rb_end = 0;
++      rb_full = MAX_TRACE_EVENTS;
++    }
++  }
++}
++
++static GCfunc*
++lj_debug_top_frame_fn(lua_State *L, const BCIns *pc)
++{
++  int size;
++  cTValue *frame;
++
++  frame = lj_debug_frame(L, 0, &size);
++  if (frame == NULL) {
++    return NULL;
++  }
++
++  return frame_func(frame);
++}
++
++void
++lj_log_trace_start_record(lua_State *L, unsigned traceno, const BCIns *pc,
++  GCfunc *fn)
++{
++  lj_trace_event_record_t  r;
++
++  r.event = LJ_TRACE_EVENT_START;
++  r.thread = L;
++  r.ins = pc;
++  r.traceno = traceno;
++  r.fn = fn;
++
++  lj_trace_log_event(&r);
++}
++
++void
++lj_log_trace_entry(lua_State *L, unsigned traceno, const BCIns *pc)
++{
++  lj_trace_event_record_t  r;
++
++  r.event = LJ_TRACE_EVENT_ENTER;
++  r.thread = L;
++  r.ins = pc;
++  r.traceno = traceno;
++  r.fn = lj_debug_top_frame_fn(L, pc);
++
++  lj_trace_log_event(&r);
++}
++
++static void
++lj_log_trace_exit_helper(lua_State *L, int vmstate, const BCIns *pc, int direct)
++{
++  if (vmstate >= 0) {
++    lj_trace_event_record_t  r;
++
++    jit_State *J = L2J(L);
++
++    r.event = LJ_TRACE_EVENT_EXIT;
++    r.thread = L;
++    r.ins = pc;
++    r.traceno = vmstate;
++    r.exitno = J->exitno;
++    r.directexit = direct;
++    r.fn = lj_debug_top_frame_fn(L, pc);
++
++    lj_trace_log_event(&r);
++  }
++}
++
++void
++lj_log_trace_normal_exit(lua_State *L, int vmstate, const BCIns *pc)
++{
++  lj_log_trace_exit_helper(L, vmstate, pc, 0);
++}
++
++void
++lj_log_trace_direct_exit(lua_State *L, int vmstate, const BCIns *pc)
++{
++  lj_log_trace_exit_helper(L, vmstate, pc, 1);
++}
++
++#endif  /* LUA_USE_TRACE_LOGS */
+diff --git a/src/lj_debug.h b/src/lj_debug.h
+index 5917c00b..82f53bda 100644
+--- a/src/lj_debug.h
++++ b/src/lj_debug.h
+@@ -62,4 +62,15 @@ enum {
+   VARNAME__MAX
+ };
+ 
++#ifdef LUA_USE_TRACE_LOGS
++LJ_FUNC void LJ_FASTCALL lj_log_trace_direct_exit(lua_State *L,
++  int vmstate, const BCIns *pc);
++LJ_FUNC void LJ_FASTCALL lj_log_trace_normal_exit(lua_State *L,
++  int vmstate, const BCIns *pc);
++LJ_FUNC void LJ_FASTCALL lj_log_trace_entry(lua_State *L,
++  unsigned traceno, const BCIns *pc);
++LJ_FUNC void LJ_FASTCALL lj_log_trace_start_record(lua_State *L, unsigned traceno,
++  const BCIns *pc, GCfunc *fn);
++#endif
++
+ #endif
+diff --git a/src/lj_trace.c b/src/lj_trace.c
+index d85b47f8..c2f0d8cf 100644
+--- a/src/lj_trace.c
++++ b/src/lj_trace.c
+@@ -404,6 +404,9 @@ static void trace_start(jit_State *J)
+ {
+   lua_State *L;
+   TraceNo traceno;
++#ifdef LUA_USE_TRACE_LOGS
++  const BCIns *pc = J->pc;
++#endif
+ 
+   if ((J->pt->flags & PROTO_NOJIT)) {  /* JIT disabled for this proto? */
+     if (J->parent == 0 && J->exitno == 0) {
+@@ -462,6 +465,9 @@ static void trace_start(jit_State *J)
+     }
+   );
+   lj_record_setup(J);
++#ifdef LUA_USE_TRACE_LOGS
++  lj_log_trace_start_record(L, (unsigned) J->cur.traceno, pc, J->fn);
++#endif
+ }
+ 
+ /* Stop tracing. */
+@@ -890,6 +896,9 @@ int LJ_FASTCALL lj_trace_exit(jit_State *J, void *exptr)
+       }
+     }
+   }
++#ifdef LUA_USE_TRACE_LOGS
++  lj_log_trace_normal_exit(L, (int) T->traceno, pc);
++#endif
+   /* Return MULTRES or 0. */
+   ERRNO_RESTORE
+   switch (bc_op(*pc)) {
+diff --git a/src/vm_x86.dasc b/src/vm_x86.dasc
+index 211ae7b9..66377cd5 100644
+--- a/src/vm_x86.dasc
++++ b/src/vm_x86.dasc
+@@ -2919,6 +2919,19 @@ static void build_subroutines(BuildCtx *ctx)
+   |  mov r13, TMPa
+   |  mov r12, TMPQ
+   |.endif
++#ifdef LUA_USE_TRACE_LOGS
++  |  mov FCARG1, SAVE_L
++  |  mov L:FCARG1->base, BASE
++  |  mov RB, RD     // Save RD
++  |  mov TMP1, PC  // Save PC
++  |  mov CARG3d, PC   // CARG3d == BASE
++  |  mov FCARG2, dword [DISPATCH+DISPATCH_GL(vmstate)]
++  |  call extern lj_log_trace_direct_exit@8
++  |  mov PC, TMP1
++  |  mov RD, RB
++  |  mov RB, SAVE_L
++  |  mov BASE, L:RB->base
++#endif
+   |  test RD, RD; js >9			// Check for error from exit.
+   |  mov L:RB, SAVE_L
+   |  mov MULTRES, RD
+@@ -5260,6 +5273,17 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
+   case BC_JLOOP:
+     |.if JIT
+     |  ins_AD	// RA = base (ignored), RD = traceno
++#ifdef LUA_USE_TRACE_LOGS
++    |  mov L:RB, SAVE_L
++    |  mov L:RB->base, BASE  // Save BASE
++    |  mov TMP1, RD     // Save RD
++    |  mov CARG3d, PC  // CARG3d == BASE
++    |  mov FCARG2, RD
++    |  mov FCARG1, RB
++    |  call extern lj_log_trace_entry@8
++    |  mov RD, TMP1
++    |  mov BASE, L:RB->base
++#endif
+     |  mov RA, [DISPATCH+DISPATCH_J(trace)]
+     |  mov TRACE:RD, [RA+RD*4]
+     |  mov RDa, TRACE:RD->mcode
+-- 
+2.21.0
+
+
+From 00a5957d632f1715fdc88c1a3fe7cc355f5a13cb Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Wed, 21 May 2014 16:05:13 -0700
+Subject: [PATCH 08/13] bugfix: fixed build regression on i386 introduced by
+ the LUA_USE_TRACE_LOGS feature.
+
+---
+ src/vm_x86.dasc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/vm_x86.dasc b/src/vm_x86.dasc
+index 66377cd5..50210010 100644
+--- a/src/vm_x86.dasc
++++ b/src/vm_x86.dasc
+@@ -2920,6 +2920,7 @@ static void build_subroutines(BuildCtx *ctx)
+   |  mov r12, TMPQ
+   |.endif
+ #ifdef LUA_USE_TRACE_LOGS
++  |.if X64
+   |  mov FCARG1, SAVE_L
+   |  mov L:FCARG1->base, BASE
+   |  mov RB, RD     // Save RD
+@@ -2931,6 +2932,7 @@ static void build_subroutines(BuildCtx *ctx)
+   |  mov RD, RB
+   |  mov RB, SAVE_L
+   |  mov BASE, L:RB->base
++  |.endif
+ #endif
+   |  test RD, RD; js >9			// Check for error from exit.
+   |  mov L:RB, SAVE_L
+@@ -5274,6 +5276,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
+     |.if JIT
+     |  ins_AD	// RA = base (ignored), RD = traceno
+ #ifdef LUA_USE_TRACE_LOGS
++    |.if X64
+     |  mov L:RB, SAVE_L
+     |  mov L:RB->base, BASE  // Save BASE
+     |  mov TMP1, RD     // Save RD
+@@ -5283,6 +5286,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
+     |  call extern lj_log_trace_entry@8
+     |  mov RD, TMP1
+     |  mov BASE, L:RB->base
++    |.endif
+ #endif
+     |  mov RA, [DISPATCH+DISPATCH_J(trace)]
+     |  mov TRACE:RD, [RA+RD*4]
+-- 
+2.21.0
+
+
+From 7950afe36eadad8b529f4aa90b303861619a2322 Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Sat, 7 Jun 2014 13:41:24 -0700
+Subject: [PATCH 09/13] fixed compilation errors on Solaris when
+ -DLUA_USE_TRACE_LOGS is enabled.
+
+---
+ src/lj_debug.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lj_debug.c b/src/lj_debug.c
+index 7f4f793a..b93b69d3 100644
+--- a/src/lj_debug.c
++++ b/src/lj_debug.c
+@@ -760,7 +760,7 @@ lj_debug_top_frame_fn(lua_State *L, const BCIns *pc)
+   return frame_func(frame);
+ }
+ 
+-void
++LJ_FUNC void LJ_FASTCALL
+ lj_log_trace_start_record(lua_State *L, unsigned traceno, const BCIns *pc,
+   GCfunc *fn)
+ {
+@@ -775,7 +775,7 @@ lj_log_trace_start_record(lua_State *L, unsigned traceno, const BCIns *pc,
+   lj_trace_log_event(&r);
+ }
+ 
+-void
++LJ_FUNC void LJ_FASTCALL
+ lj_log_trace_entry(lua_State *L, unsigned traceno, const BCIns *pc)
+ {
+   lj_trace_event_record_t  r;
+@@ -809,13 +809,13 @@ lj_log_trace_exit_helper(lua_State *L, int vmstate, const BCIns *pc, int direct)
+   }
+ }
+ 
+-void
++LJ_FUNC void LJ_FASTCALL
+ lj_log_trace_normal_exit(lua_State *L, int vmstate, const BCIns *pc)
+ {
+   lj_log_trace_exit_helper(L, vmstate, pc, 0);
+ }
+ 
+-void
++LJ_FUNC void LJ_FASTCALL
+ lj_log_trace_direct_exit(lua_State *L, int vmstate, const BCIns *pc)
+ {
+   lj_log_trace_exit_helper(L, vmstate, pc, 1);
+-- 
+2.21.0
+
+
+From bd304a366be2ffb10eec6aeba390595232958320 Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <agentzh@gmail.com>
+Date: Tue, 27 May 2014 12:37:13 -0700
+Subject: [PATCH 10/13] feature: jit.dump: output Lua source location after
+ every BC.
+
+---
+ src/jit/dump.lua | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/jit/dump.lua b/src/jit/dump.lua
+index 2bea652b..ef0dca61 100644
+--- a/src/jit/dump.lua
++++ b/src/jit/dump.lua
+@@ -591,6 +591,9 @@ local function dump_record(tr, func, pc, depth, callee)
+   if pc >= 0 then
+     line = bcline(func, pc, recprefix)
+     if dumpmode.H then line = gsub(line, "[<>&]", html_escape) end
++    if pc > 0 then
++      line = sub(line, 1, -2) .. "       (" .. fmtfunc(func, pc) .. ")\n"
++    end
+   else
+     line = "0000 "..recprefix.." FUNCC      \n"
+     callee = func
+-- 
+2.21.0
+
+
+From cce112ca4fdde7d1ca5963c50d0621fb2e526524 Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <yichun@openresty.com>
+Date: Fri, 5 Apr 2019 12:38:40 -0700
+Subject: [PATCH 11/13] feature: luajit -bl: dump the constant tables (KGC and
+ KN) for each lua proto object as well.
+
+---
+ src/jit/bc.lua | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/src/jit/bc.lua b/src/jit/bc.lua
+index 80f92689..9fee4cda 100644
+--- a/src/jit/bc.lua
++++ b/src/jit/bc.lua
+@@ -141,6 +141,38 @@ local function bcdump(func, out, all, lineinfo)
+     end
+   end
+   out:write(format("-- BYTECODE -- %s-%d\n", fi.loc, fi.lastlinedefined))
++
++  for n=-1,-1000000000,-1 do
++    local kc = funck(func, n)
++    if not kc then break end
++
++    local typ = type(kc)
++    if typ == "string" then
++      kc = format(#kc > 40 and '"%.40s"~' or '"%s"', gsub(kc, "%c", ctlsub))
++      out:write(format("KGC    %d    %s\n", -(n + 1), kc))
++    elseif typ == "proto" then
++      local fi = funcinfo(kc)
++      if fi.ffid then
++	kc = vmdef.ffnames[fi.ffid]
++      else
++	kc = fi.loc
++      end
++      out:write(format("KGC    %d    %s\n", -(n + 1), kc))
++    elseif typ == "table" then
++      out:write(format("KGC    %d    table\n", -(n + 1)))
++    else
++      -- error("unknown KGC type: " .. typ)
++    end
++  end
++
++  for n=1,1000000000 do
++    local kc = funck(func, n)
++    if not kc then break end
++    if type(kc) == "number" then
++      out:write(format("KN    %d    %s\n", n, kc))
++    end
++  end
++
+   local target = bctargets(func)
+   for pc=1,1000000000 do
+     local s = bcline(func, pc, target[pc] and "=>", lineinfo)
+-- 
+2.21.0
+
+
+From 7d5f5be581ed392059601168a95068e026765aa0 Mon Sep 17 00:00:00 2001
+From: "Yichun Zhang (agentzh)" <yichun@openresty.com>
+Date: Fri, 17 May 2019 14:49:48 -0700
+Subject: [PATCH 13/13] bugfix: thanks Julien Desgats for the report and Peter
+ Cawley for the patch.
+
+The test covering this bug was submitted to the openresty/luajit2-test-suite
+repo as commit ce2c916d55.
+---
+ src/lj_tab.c | 81 ++++++++++++++++++++++++++++++++++------------------
+ 1 file changed, 53 insertions(+), 28 deletions(-)
+
+diff --git a/src/lj_tab.c b/src/lj_tab.c
+index c51666d3..ff216f3c 100644
+--- a/src/lj_tab.c
++++ b/src/lj_tab.c
+@@ -474,6 +474,7 @@ TValue *lj_tab_newkey(lua_State *L, GCtab *t, cTValue *key)
+     lua_assert(freenode != &G(L)->nilnode);
+     collide = hashkey(t, &n->key);
+     if (collide != n) {  /* Colliding node not the main node? */
++      Node *nn;
+       while (noderef(collide->next) != n)  /* Find predecessor. */
+ 	collide = nextnode(collide);
+       setmref(collide->next, freenode);  /* Relink chain. */
+@@ -483,39 +484,63 @@ TValue *lj_tab_newkey(lua_State *L, GCtab *t, cTValue *key)
+       freenode->next = n->next;
+       setmref(n->next, NULL);
+       setnilV(&n->val);
+-      /* Rechain pseudo-resurrected string keys with colliding hashes. */
+-      while (nextnode(freenode)) {
+-	Node *nn = nextnode(freenode);
+-	if (tvisstr(&nn->key) && !tvisnil(&nn->val) &&
+-	    hashstr(t, strV(&nn->key)) == n) {
+-	  freenode->next = nn->next;
+-	  nn->next = n->next;
+-	  setmref(n->next, nn);
+-	  /*
+-	  ** Rechaining a resurrected string key creates a new dilemma:
+-	  ** Another string key may have originally been resurrected via
+-	  ** _any_ of the previous nodes as a chain anchor. Including
+-	  ** a node that had to be moved, which makes them unreachable.
+-	  ** It's not feasible to check for all previous nodes, so rechain
+-	  ** any string key that's currently in a non-main positions.
+-	  */
+-	  while ((nn = nextnode(freenode))) {
+-	    if (tvisstr(&nn->key) && !tvisnil(&nn->val)) {
+-	      Node *mn = hashstr(t, strV(&nn->key));
+-	      if (mn != freenode) {
+-		freenode->next = nn->next;
+-		nn->next = mn->next;
+-		setmref(mn->next, nn);
++      /*
++      ** Nodes after n might have n as their main node, and need rechaining
++      ** back onto n. We make use of the following property of tables: for all
++      ** nodes m, at least one of the following four statements is true:
++      **  1. tvisnil(&m->key)  NB: tvisnil(&m->val) is a stronger statement
++      **  2. tvisstr(&m->key)
++      **  3. tvisstr(&main(m)->key)
++      **  4. main(m) == main(main(m))
++      ** Initially, we need to rechain any nn which has main(nn) == n. As
++      ** main(n) != n (because collide != n earlier), main(nn) == n requires
++      ** either statement 2 or statement 3 to be true about nn.
++      */
++      if (!tvisstr(&n->key)) {
++	/* Statement 3 is not true, so only need to consider string keys. */
++	while ((nn = nextnode(freenode))) {
++	  if (tvisstr(&nn->key) && !tvisnil(&nn->val) &&
++	      hashstr(t, strV(&nn->key)) == n) {
++	    goto rechain;
++	  }
++	  freenode = nn;
++	}
++      } else {
++	/* Statement 3 is true, so need to consider all types of key. */
++	while ((nn = nextnode(freenode))) {
++	  if (!tvisnil(&nn->val) && hashkey(t, &nn->key) == n) {
++	  rechain:
++	    freenode->next = nn->next;
++	    nn->next = n->next;
++	    setmref(n->next, nn);
++	    /*
++	    ** Rechaining one node onto n creates a new dilemma: we now need
++	    ** to rechain any nn which has main(nn) == n OR has main(nn) equal
++	    ** to any node which has already been rechained. Furthermore, at
++	    ** least one of n and n->next will have a string key, so all types
++	    ** of nn key need to be considered. Rather than testing whether
++	    ** main(nn) definitely _is_ in the new chain, we test whether it
++	    ** might _not_ be in the old chain, and if so re-link it into
++	    ** the correct chain.
++	    */
++	    while ((nn = nextnode(freenode))) {
++	      if (!tvisnil(&nn->val)) {
++		Node *mn = hashkey(t, &nn->key);
++		if (mn != freenode && mn != nn) {
++		  freenode->next = nn->next;
++		  nn->next = mn->next;
++		  setmref(mn->next, nn);
++		} else {
++		  freenode = nn;
++		}
+ 	      } else {
+ 		freenode = nn;
+ 	      }
+-	    } else {
+-	      freenode = nn;
+ 	    }
++	    break;
++	  } else {
++	    freenode = nn;
+ 	  }
+-	  break;
+-	} else {
+-	  freenode = nn;
+ 	}
+       }
+     } else {  /* Otherwise use free node. */
+-- 
+2.21.0
+

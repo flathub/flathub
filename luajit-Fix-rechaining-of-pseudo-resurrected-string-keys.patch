@@ -1,0 +1,52 @@
+From 046129dbdda5261c1b17469a2895a113d14c070a Mon Sep 17 00:00:00 2001
+From: Mike Pall <mike>
+Date: Tue, 27 Feb 2018 23:02:23 +0100
+Subject: [PATCH 34/72] Fix rechaining of pseudo-resurrected string keys.
+
+This is a serious bug. But extremely hard to reproduce, so it went
+undetected for 8 years. One needs two resurrections with different
+main nodes, which are both in a hash chain which gets relinked on
+key insertion where the colliding node is in a non-main position. Phew.
+
+Thanks to lbeiming.
+---
+ src/lj_tab.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/src/lj_tab.c b/src/lj_tab.c
+index 50f447e..f2f3c0b 100644
+--- a/src/lj_tab.c
++++ b/src/lj_tab.c
+@@ -457,6 +457,29 @@ TValue *lj_tab_newkey(lua_State *L, GCtab *t, cTValue *key)
+ 	  freenode->next = nn->next;
+ 	  nn->next = n->next;
+ 	  setmref(n->next, nn);
++	  /*
++	  ** Rechaining a resurrected string key creates a new dilemma:
++	  ** Another string key may have originally been resurrected via
++	  ** _any_ of the previous nodes as a chain anchor. Including
++	  ** a node that had to be moved, which makes them unreachable.
++	  ** It's not feasible to check for all previous nodes, so rechain
++	  ** any string key that's currently in a non-main positions.
++	  */
++	  while ((nn = nextnode(freenode))) {
++	    if (tvisstr(&nn->key) && !tvisnil(&nn->val)) {
++	      Node *mn = hashstr(t, strV(&nn->key));
++	      if (mn != freenode) {
++		freenode->next = nn->next;
++		nn->next = mn->next;
++		setmref(mn->next, nn);
++	      } else {
++		freenode = nn;
++	      }
++	    } else {
++	      freenode = nn;
++	    }
++	  }
++	  break;
+ 	} else {
+ 	  freenode = nn;
+ 	}
+-- 
+2.20.1
+
