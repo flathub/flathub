@@ -1,0 +1,121 @@
+app-id: com.gitlab.davem.ClamTk
+runtime: org.freedesktop.Platform
+runtime-version: '18.08'
+sdk: org.freedesktop.Sdk
+command: clamtk
+rename-icon: clamtk
+copy-icon: true
+finish-args:
+  - '--filesystem=host'
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=x11'
+  - '--socket=wayland'
+  - '--filesystem=xdg-run/dconf'
+  - '--filesystem=~/.config/dconf:ro'
+  - '--talk-name=ca.desrt.dconf'
+  - '--env=DCONF_USER_CONFIG_DIR=.config/dconf'
+modules:
+  # Based on https://github.com/flathub/io.github.Hexchat.Plugin.Perl
+  - name: perl
+    no-autogen: true
+    config-opts:
+      - '-des'
+      - '-Duseshrplib'
+    build-options:
+      cflags: '-fPIC'
+      ldflags: '-fpic'
+    sources:
+      - type: archive
+        url: https://www.cpan.org/src/5.0/perl-5.30.0.tar.gz
+        sha256: 851213c754d98ccff042caa40ba7a796b2cee88c5325f121be5cbb61bbf975f2
+      - type: shell
+        commands:
+          - 'ln -s configure{.gnu,}'
+    post-install:
+      - 'chmod -R u+w /app/lib/perl5'
+    cleanup:
+      - '/bin/corelist'
+      - '/bin/cpan'
+      - '/bin/enc2xs'
+      - '/bin/encguess'
+      - '/bin/h2ph'
+      - '/bin/h2xs'
+      - '/bin/instmodsh'
+      - '/bin/json_pp'
+      - '/bin/libnetcfg'
+      - '/bin/perlbug'
+      - '/bin/perldoc'
+      - '/bin/perlivp'
+      - '/bin/perlthanks'
+      - '/bin/piconv'
+      - '/bin/pl2pm'
+      - '/bin/pod*'
+      - '/bin/prove'
+      - '/bin/ptar*'
+      - '/bin/shasum'
+      - '/bin/splain'
+      - '/bin/xsubpp'
+      - '/bin/zipdetails'
+      - '/include'
+      - '/man'
+      - '*.pod'
+
+  - name: perl-libs
+    buildsystem: simple
+    build-commands:
+      - 'perl-libs/install.sh'
+    post-install:
+      - 'chmod -Rf u+w /app/lib/perl5/site_perl'
+    sources:
+      - generated-sources.json
+    cleanup:
+      - '/bin'
+      - '/man'
+
+  - name: clamav
+    config-opts:
+      - '--disable-clamav'
+      - '--disable-clamdtop'
+      - '--disable-llvm'
+      - '--with-dbdir=/var/data/clamav'
+      - '--with-systemdsystemunitdir=no'
+    sources:
+      - type: archive
+        url: https://www.clamav.net/downloads/production/clamav-0.101.4.tar.gz
+        sha256: 0bf094f0919d158a578421d66bc2569c8c8181233ba162bb51722f98c802bccd
+    post-install:
+      - 'sed "s/^Example/#Example/" /app/etc/freshclam.conf.sample > /app/etc/freshclam.conf'
+    cleanup:
+      - '/bin/clamav-config'
+      - '/bin/clambc'
+      - '/bin/clamconf'
+      - '/include'
+      - '*.conf.sample'
+
+  - name: clamtk
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 755 clamtk /app/bin/clamtk'
+      - |
+        sitelib=$(perl -e 'use Config; print $Config{installsitelib};')
+        install -d $sitelib
+        cp -r lib $sitelib/ClamTk
+      - 'install -Dm 644 clamtk.desktop /app/share/applications/com.gitlab.davem.ClamTk.desktop'
+      - 'install -Dm 644 images/clamtk.png /app/share/icons/hicolor/128x128/apps/clamtk.png'
+      - 'install -Dm 644 com.gitlab.davem.ClamTk.appdata.xml /app/share/metainfo/com.gitlab.davem.ClamTk.appdata.xml'
+      - 'for mo in po/*.mo; do install -Dm 644 $mo /app/share/locale/$(basename $mo .mo)/LC_MESSAGES/clamtk.mo; done'
+    sources:
+      - type: archive
+        url: https://bitbucket.org/davem_/clamtk-gtk3/downloads/clamtk-6.01.tar.xz
+        sha256: 10d60d10c2a0247252929d34ed17477beced67577f042275f85fad434746083c
+      - type: patch
+        path: 0001-Use-usr-bin-env-in-the-clamtk-hashbang.patch
+      - type: patch
+        path: 0002-Various-Flatpak-specific-config-path-changes.patch
+      - type: patch
+        path: 0003-Migrate-away-from-deprecated-icon-names.patch
+      - type: patch
+        path: 0004-Remove-app-auto-update-functionality-for-the-Flatpak.patch
+      - type: file
+        path: com.gitlab.davem.ClamTk.appdata.xml
