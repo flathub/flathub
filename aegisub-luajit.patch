@@ -1,66 +1,26 @@
-diff -Naur Aegisub.orig/automation/Makefile Aegisub/automation/Makefile
---- Aegisub.orig/automation/Makefile	2019-09-02 10:05:32.129969717 +0200
-+++ Aegisub/automation/Makefile	2019-09-02 10:50:18.689017377 +0200
-@@ -12,10 +12,16 @@
- $(DESTDIR)$(P_DATA)/automation/%: $(d)%
- 	$(MKDIR_INSTALL)
- 
--aegisub-lua_OBJ := $(d)tests/aegisub.o $(TOP)lib/libaegisub.a $(TOP)lib/libluabins.a $(LIBS_LUA)
-+aegisub-lua_OBJ := $(d)tests/aegisub.o $(TOP)lib/libaegisub.a $(TOP)lib/libluabins.a
- aegisub-lua_CPPFLAGS := $(CPPFLAGS_BOOST) $(CFLAGS_LUA) -I$(TOP)libaegisub/include -I$(TOP)src $(CXXFLAGS_WX)
- aegisub-lua_LIBS := $(LIBS_WX) $(LIBS_BOOST) $(LIBS_ICU) $(LIBS_PTHREAD)
- 
-+ifeq (no, $(SYSTEM_LUAJIT))
-+aegisub-lua_OBJ += $(LIBS_LUA)
-+else
-+aegisub-lua_LIBS += $(LIBS_LUA)
-+endif
-+
- PROGRAM += $(d)aegisub-lua
- 
- test-automation: $(PROGRAM)
-diff -Naur Aegisub.orig/configure.ac Aegisub/configure.ac
---- Aegisub.orig/configure.ac	2019-09-02 10:05:32.160970021 +0200
-+++ Aegisub/configure.ac	2019-09-02 10:29:33.619427536 +0200
-@@ -429,13 +429,15 @@
-       [AC_SUBST([LUAJIT_CFLAGS], ['-I$(TOP)vendor/luajit/include'])
-        AC_SUBST([LUAJIT_LIBS], ['$(TOP)vendor/luajit/src/libluajit.a'])])
- 
-+AC_SUBST(with_system_luajit)
-+
- # We also need a Lua binary to run part of the build system
- # Which version doesn't matter as the scripts are portable between them
--AC_CHECK_PROGS([LUA], [lua luajit lua5.3 lua-5.3 lua5.2 lua-5.2 lua5.1 lua-5.1])
-+AC_PATH_PROGS([LUA], [luajit lua lua5.3 lua-5.3 lua5.2 lua-5.2 lua5.1 lua-5.1])
- 
- # If the user doesn't have an installed copy of Lua, just use the one built
- # as part of building LuaJIT
--AS_IF([test -z $LUA], [LUA="$srcdir/vendor/luajit/src/host/minilua"])
-+AS_IF([test -z $LUA], [LUA='$(TOP)vendor/luajit/src/host/minilua'])
- 
- ######################################################
- # Debugging support
-diff -Naur Aegisub.orig/header.mk Aegisub/header.mk
---- Aegisub.orig/header.mk	2019-09-02 10:05:32.172970138 +0200
-+++ Aegisub/header.mk	2019-09-02 10:10:07.683712563 +0200
-@@ -12,8 +12,11 @@
- 	src \
- 	tests \
- 	tools \
--	vendor/luabins \
--	vendor/luajit
-+	vendor/luabins
-+
-+ifeq (no, $(SYSTEM_LUAJIT))
-+subdirs += vendor/luajit
-+endif
- 
- subdirs := $(addprefix $(TOP),$(addsuffix /Makefile,$(subdirs)))
- 
-diff -Naur Aegisub.orig/Makefile.inc.in Aegisub/Makefile.inc.in
---- Aegisub.orig/Makefile.inc.in	2019-09-02 10:05:32.129969717 +0200
-+++ Aegisub/Makefile.inc.in	2019-09-02 10:35:49.901228138 +0200
-@@ -9,6 +9,7 @@
+From a95b4c7875a45a67aab0af44869b8b852d4c31f8 Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Sat, 7 Sep 2019 22:35:09 +0200
+Subject: [PATCH] Fix system luajit
+
+http://devel.aegisub.org/ticket/1904
+http://devel.aegisub.org/ticket/1913
+http://devel.aegisub.org/ticket/1922
+---
+ Makefile.inc.in       | 13 +++++++++++++
+ automation/Makefile   |  8 +++++++-
+ configure.ac          |  6 ++++--
+ header.mk             |  7 +++++--
+ src/Makefile          |  7 +++++++
+ src/libresrc/Makefile |  4 ++++
+ tools/Makefile        |  2 ++
+ 7 files changed, 42 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile.inc.in b/Makefile.inc.in
+index a8c0e0c48..63726d639 100644
+--- a/Makefile.inc.in
++++ b/Makefile.inc.in
+@@ -9,6 +9,7 @@ HAVE_OPENAL     = @with_openal@
  HAVE_OSS        = @with_oss@
  HAVE_PORTAUDIO  = @with_portaudio@
  HAVE_UCHARDET   = @with_uchardet@
@@ -68,7 +28,7 @@ diff -Naur Aegisub.orig/Makefile.inc.in Aegisub/Makefile.inc.in
  
  ##############
  # BUILD OUTPUT
-@@ -79,7 +80,11 @@
+@@ -79,7 +80,11 @@ CFLAGS_ICONV       = @ICONV_CFLAGS@
  CFLAGS_ICU         = @ICU_I18N_CFLAGS@
  CFLAGS_LIBASS      = @LIBASS_CFLAGS@
  CFLAGS_LIBPULSE    = @LIBPULSE_CFLAGS@
@@ -80,7 +40,7 @@ diff -Naur Aegisub.orig/Makefile.inc.in Aegisub/Makefile.inc.in
  CFLAGS_OPENAL      = @OPENAL_CFLAGS@
  CFLAGS_OSS         = @OSS_CFLAGS@
  CFLAGS_PORTAUDIO   = @PORTAUDIO_CFLAGS@
-@@ -97,14 +102,22 @@
+@@ -97,14 +102,22 @@ LIBS_ICONV         = @ICONV_LIBS@
  LIBS_ICU           = @ICU_UC_LIBS@ @ICU_I18N_LIBS@
  LIBS_LIBASS        = @LIBASS_LIBS@
  LIBS_LIBPULSE      = @LIBPULSE_LIBS@
@@ -103,26 +63,74 @@ diff -Naur Aegisub.orig/Makefile.inc.in Aegisub/Makefile.inc.in
  endif
  
  FONTCONFIG_CONF_DIR = @FONTCONFIG_CONF_DIR@
-diff -Naur Aegisub.orig/src/libresrc/Makefile Aegisub/src/libresrc/Makefile
---- Aegisub.orig/src/libresrc/Makefile	2019-09-02 10:05:32.269971089 +0200
-+++ Aegisub/src/libresrc/Makefile	2019-09-02 10:30:30.630003366 +0200
-@@ -10,7 +10,11 @@
+diff --git a/automation/Makefile b/automation/Makefile
+index 76c7dd992..658f9c008 100644
+--- a/automation/Makefile
++++ b/automation/Makefile
+@@ -12,10 +12,16 @@ DATA_AUTOMATION_INSTALLED = $(addprefix $(DESTDIR)$(P_DATA)/automation/, $(DATA_
+ $(DESTDIR)$(P_DATA)/automation/%: $(d)%
+ 	$(MKDIR_INSTALL)
  
- $(resrc_OBJ): $(d)default_config.h $(d)bitmap.h $(d)default_config.cpp $(d)bitmap.cpp
+-aegisub-lua_OBJ := $(d)tests/aegisub.o $(TOP)lib/libaegisub.a $(TOP)lib/libluabins.a $(LIBS_LUA)
++aegisub-lua_OBJ := $(d)tests/aegisub.o $(TOP)lib/libaegisub.a $(TOP)lib/libluabins.a
+ aegisub-lua_CPPFLAGS := $(CPPFLAGS_BOOST) $(CFLAGS_LUA) -I$(TOP)libaegisub/include -I$(TOP)src $(CXXFLAGS_WX)
+ aegisub-lua_LIBS := $(LIBS_WX) $(LIBS_BOOST) $(LIBS_ICU) $(LIBS_PTHREAD)
  
 +ifeq (no, $(SYSTEM_LUAJIT))
- RESPACK := cd $(TOP)src/libresrc; $(BIN_LUA) $(TOP)tools/respack.lua
++aegisub-lua_OBJ += $(LIBS_LUA)
 +else
-+RESPACK := cd $(TOP)src/libresrc; luajit $(TOP)tools/respack.lua
++aegisub-lua_LIBS += $(LIBS_LUA)
++endif
++
+ PROGRAM += $(d)aegisub-lua
+ 
+ test-automation: $(PROGRAM)
+diff --git a/configure.ac b/configure.ac
+index 58dc23f8d..31a2e4711 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -429,13 +429,15 @@ AS_IF([test $with_system_luajit = no],
+       [AC_SUBST([LUAJIT_CFLAGS], ['-I$(TOP)vendor/luajit/include'])
+        AC_SUBST([LUAJIT_LIBS], ['$(TOP)vendor/luajit/src/libluajit.a'])])
+ 
++AC_SUBST(with_system_luajit)
++
+ # We also need a Lua binary to run part of the build system
+ # Which version doesn't matter as the scripts are portable between them
+-AC_CHECK_PROGS([LUA], [lua luajit lua5.3 lua-5.3 lua5.2 lua-5.2 lua5.1 lua-5.1])
++AC_PATH_PROGS([LUA], [luajit lua lua5.3 lua-5.3 lua5.2 lua-5.2 lua5.1 lua-5.1])
+ 
+ # If the user doesn't have an installed copy of Lua, just use the one built
+ # as part of building LuaJIT
+-AS_IF([test -z $LUA], [LUA="$srcdir/vendor/luajit/src/host/minilua"])
++AS_IF([test -z $LUA], [LUA='$(TOP)vendor/luajit/src/host/minilua'])
+ 
+ ######################################################
+ # Debugging support
+diff --git a/header.mk b/header.mk
+index 613b38ff1..8edb48edc 100644
+--- a/header.mk
++++ b/header.mk
+@@ -12,8 +12,11 @@ subdirs := \
+ 	src \
+ 	tests \
+ 	tools \
+-	vendor/luabins \
+-	vendor/luajit
++	vendor/luabins
++
++ifeq (no, $(SYSTEM_LUAJIT))
++subdirs += vendor/luajit
 +endif
  
- $(d)bitmap.cpp: $(d)bitmap.h
- $(d)default_config.cpp: $(d)default_config.h
-diff -Naur Aegisub.orig/src/Makefile Aegisub/src/Makefile
---- Aegisub.orig/src/Makefile	2019-09-02 10:56:26.446741883 +0200
-+++ Aegisub/src/Makefile	2019-09-02 10:55:42.936301226 +0200
-@@ -198,10 +198,17 @@
- $(d)subtitles_provider_libass.o_FLAGS   := $(CFLAGS_LIBASS) -Wno-narrowing
+ subdirs := $(addprefix $(TOP),$(addsuffix /Makefile,$(subdirs)))
+ 
+diff --git a/src/Makefile b/src/Makefile
+index 38a809c06..9623ca9a5 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -198,10 +198,17 @@ $(d)subtitles_provider.o_FLAGS          := $(CFLAGS_LIBASS)
+ $(d)subtitles_provider_libass.o_FLAGS   := $(CFLAGS_LIBASS) -Wno-c++11-narrowing
  $(d)text_file_reader.o_FLAGS            := -D_X86_
  $(d)video_provider_manager.o_FLAGS      := $(CFLAGS_FFMS2)
 +ifeq (no, $(SYSTEM_LUAJIT))
@@ -139,10 +147,27 @@ diff -Naur Aegisub.orig/src/Makefile Aegisub/src/Makefile
  
  $(src_OBJ): $(d)libresrc/bitmap.h $(d)libresrc/default_config.h
  
-diff -Naur Aegisub.orig/tools/Makefile Aegisub/tools/Makefile
---- Aegisub.orig/tools/Makefile	2019-09-02 10:05:32.293971324 +0200
-+++ Aegisub/tools/Makefile	2019-09-02 10:23:58.569045427 +0200
-@@ -12,6 +12,8 @@
+diff --git a/src/libresrc/Makefile b/src/libresrc/Makefile
+index 8b6d19595..6a46186b1 100644
+--- a/src/libresrc/Makefile
++++ b/src/libresrc/Makefile
+@@ -10,7 +10,11 @@ resrc_OBJ := \
+ 
+ $(resrc_OBJ): $(d)default_config.h $(d)bitmap.h $(d)default_config.cpp $(d)bitmap.cpp
+ 
++ifeq (no, $(SYSTEM_LUAJIT))
+ RESPACK := cd $(TOP)src/libresrc; $(BIN_LUA) $(TOP)tools/respack.lua
++else
++RESPACK := cd $(TOP)src/libresrc; luajit $(TOP)tools/respack.lua
++endif
+ 
+ $(d)bitmap.cpp: $(d)bitmap.h
+ $(d)default_config.cpp: $(d)default_config.h
+diff --git a/tools/Makefile b/tools/Makefile
+index de6166a1e..e17eaa260 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -12,6 +12,8 @@ repack-thes-dict_CPPFLAGS := -I$(TOP) -I$(TOP)libaegisub/include $(CFLAGS_ICU)
  
  PROGRAM += $(d)repack-thes-dict
  

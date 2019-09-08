@@ -1,0 +1,125 @@
+From 18b8b1c1d5a6acc29a7221f99ef47d9f0f5338d4 Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Sun, 8 Sep 2019 06:02:02 +0200
+Subject: [PATCH 1/2] Integrate AppData file with build system
+
+---
+ Makefile.inc.in           |  1 +
+ configure.ac              |  8 ++++++++
+ packages/desktop/Makefile | 11 +++++++++++
+ po/make_pot.sh            |  4 ++++
+ 4 files changed, 24 insertions(+)
+
+diff --git a/Makefile.inc.in b/Makefile.inc.in
+index a8c0e0c48..7a994bb8b 100644
+--- a/Makefile.inc.in
++++ b/Makefile.inc.in
+@@ -54,6 +54,7 @@ P_BINDIR      = @bindir@
+ P_DATAROOT    = @datarootdir@
+ P_LOCALE      = @localedir@
+ 
++P_APPDATA     = @P_APPDATA@
+ P_DESKTOP     = @P_DESKTOP@
+ P_ICON        = @P_ICON@
+ P_DATA        = $(P_DATAROOT)/aegisub/
+diff --git a/configure.ac b/configure.ac
+index 58dc23f8d..930ee1489 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -54,6 +54,13 @@ AEGISUB_CATALOG="aegisub"
+ AC_SUBST(AEGISUB_CATALOG)
+ AC_DEFINE_UNQUOTED([AEGISUB_CATALOG], ["${AEGISUB_CATALOG}"], [Name of the Aegisub gettext catalog])
+ 
++# Handle location of appdata files: https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#spec-component-location
++AC_ARG_WITH(appdata-dir,
++            AS_HELP_STRING([--with-appdata-dir=PATH],[appdata file locations [PREFIX/share/metainfo]]))
++
++P_APPDATA=${with_appdata_dir:-$datarootdir/metainfo}
++AC_SUBST(P_APPDATA)
++
+ # Handle location of desktop files: http://freedesktop.org/wiki/Specifications/desktop-entry-spec
+ AC_ARG_WITH(desktop-dir,
+             AS_HELP_STRING([--with-desktop-dir=PATH],[desktop file locations [PREFIX/share/applications]]))
+@@ -564,6 +571,7 @@ DEFAULT_PLAYER_AUDIO=${DEFAULT_PLAYER_AUDIO:-NONE}
+ # Files that need substitution.
+ AC_CONFIG_FILES([
+ packages/desktop/aegisub.desktop.template
++packages/desktop/aegisub.appdata.xml.template
+ src/libresrc/default_config_platform.json
+ tools/osx-bundle.sed
+ Makefile.inc
+diff --git a/packages/desktop/Makefile b/packages/desktop/Makefile
+index 47a21a63a..b41a91569 100644
+--- a/packages/desktop/Makefile
++++ b/packages/desktop/Makefile
+@@ -10,15 +10,26 @@ DESKTOP_FILE_INSTALLED = $(DESTDIR)$(P_DESKTOP)/$(notdir $(DESKTOP_FILE))
+ 
+ DISTCLEANFILES += $(DESKTOP_FILE)
+ 
++APPDATA_FILE := $(d)aegisub.appdata.xml
++APPDATA_FILE_PO := $(d)../../po
++APPDATA_FILE_INSTALLED = $(DESTDIR)$(P_APPDATA)/$(notdir $(APPDATA_FILE))
++
++DISTCLEANFILES += $(APPDATA_FILE)
++
+ %.desktop: %.desktop.template $(DESKTOP_FILE_PO)
+ 	intltool-merge --quiet --desktop-style $(DESKTOP_FILE_PO) $< $@
+ 
++%.appdata.xml: %.appdata.xml.template $(APPDATA_FILE_PO)
++	intltool-merge --quiet --xml-style $(APPDATA_FILE_PO) $< $@
++
+ $(ICONS_INSTALLED)png: $(d)%.png	; $(MKDIR_INSTALL)
+ $(ICONS_INSTALLED)svg: $(d)%.svg	; $(MKDIR_INSTALL)
+ $(DESKTOP_FILE_INSTALLED): $(DESKTOP_FILE)	; $(MKDIR_INSTALL)
++$(APPDATA_FILE_INSTALLED): $(APPDATA_FILE)	; $(MKDIR_INSTALL)
+ 
+ ifneq (yes, $(BUILD_DARWIN))
+ install: \
++	$(APPDATA_FILE_INSTALLED) \
+ 	$(DESKTOP_FILE_INSTALLED) \
+ 	$(patsubst %.png, $(ICONS_INSTALLED)png, $(patsubst %.svg, $(ICONS_INSTALLED)svg, $(notdir $(ICONS))))
+ endif
+diff --git a/po/make_pot.sh b/po/make_pot.sh
+index e05252f28..cea125f78 100755
+--- a/po/make_pot.sh
++++ b/po/make_pot.sh
+@@ -46,6 +46,10 @@ do
+     | maybe_append
+ done
+ 
++for i in 'name' 'summary' 'p' 'li' 'caption'; do
++  xmlstarlet sel -t -v "//_$i" ../packages/desktop/aegisub.appdata.xml.template.in | jq -R .
++done | nl -v0 -w1 -s'|' | sed -re 's/^/aegisub.appdata.xml|/' | maybe_append
++
+ grep '^_[A-Za-z0-9]*=.*' ../packages/win_installer/fragment_strings.iss.in | while read line
+ do
+   echo "$line" \
+
+From acefe5d4d528beb9512236f6ed864edc173a161d Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Sun, 8 Sep 2019 06:39:02 +0200
+Subject: [PATCH 1/2] make_pot.sh: Check presence of xmlstarlet and jq
+
+---
+ po/make_pot.sh | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/po/make_pot.sh b/po/make_pot.sh
+index cea125f78..d504152ec 100755
+--- a/po/make_pot.sh
++++ b/po/make_pot.sh
+@@ -46,9 +46,11 @@ do
+     | maybe_append
+ done
+ 
+-for i in 'name' 'summary' 'p' 'li' 'caption'; do
+-  xmlstarlet sel -t -v "//_$i" ../packages/desktop/aegisub.appdata.xml.template.in | jq -R .
+-done | nl -v0 -w1 -s'|' | sed -re 's/^/aegisub.appdata.xml|/' | maybe_append
++if which xmlstarlet >/dev/null 2>&1 && which jq >/dev/null 2>&1; then
++  for i in 'name' 'summary' 'p' 'li' 'caption'; do
++    xmlstarlet sel -t -v "//_$i" ../packages/desktop/aegisub.appdata.xml.template.in | jq -R .
++  done | nl -v0 -w1 -s'|' | sed -re 's/^/aegisub.appdata.xml|/' | maybe_append
++fi
+ 
+ grep '^_[A-Za-z0-9]*=.*' ../packages/win_installer/fragment_strings.iss.in | while read line
+ do
