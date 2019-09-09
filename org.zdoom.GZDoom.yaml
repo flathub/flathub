@@ -1,0 +1,131 @@
+app-id: org.zdoom.GZDoom
+runtime: org.gnome.Platform
+sdk: org.gnome.Sdk
+runtime-version: "3.32"
+command: gzdoom.sh
+rename-icon: gzdoom
+
+finish-args:
+- --device=dri
+- --socket=wayland
+- --socket=fallback-x11
+- --socket=x11
+- --share=ipc
+- --socket=pulseaudio
+
+# For SSGL
+- --talk-name=org.gnome.GConf
+#- --filesystem=xdg-run/dconf
+#- --filesystem=~/.config/dconf:ro
+#- --talk-name=ca.desrt.dconf
+#- --env=DCONF_USER_CONFIG_DIR=.config/dconf
+
+#based on GZDoom
+- --env=DOOMWADDIR=/app/share/games/doom
+- --persist=.config/gzdoom
+- --persist=.config/SSGL
+
+cleanup:
+- /app/include
+- /app/lib/*.a
+- /app/lib/*.la
+- /app/lib/pkgconfig
+
+modules:
+
+- name: ncurses
+  no-autogen: true
+  config-opts:
+  - --prefix=/app
+  make-install-args:
+  - install.libs
+  cleanup:
+  - /bin
+  - /include
+  - /share/man
+  - "/lib/*.a"
+  - "/lib/*.la"
+  sources:
+  - type: archive
+    url: http://ftp.gnu.org/gnu/ncurses/ncurses-6.1.tar.gz
+    sha256: aa057eeeb4a14d470101eff4597d5833dcef5965331be3528c08d99cebaa0d17
+
+- name: fluidsynth
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DLIB_SUFFIX=
+  # https://lists.nongnu.org/archive/html/fluid-dev/2010-10/msg00057.html
+  - -DCMAKE_EXE_LINKER_FLAGS=-lncurses
+  - -DCMAKE_SHARED_LINKER_FLAGS=-lncurses
+  sources:
+  - type: archive
+    url: https://github.com/FluidSynth/fluidsynth/archive/v1.1.11.tar.gz
+    sha256: da8878ff374d12392eecf87e96bad8711b8e76a154c25a571dd8614d1af80de8
+
+# This builds both the application code and
+# the custom game data
+- name: gzdoom
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DSEND_ANON_STATS=OFF
+  # Required when targeting 32-bit x86
+  - -DCMAKE_CXX_FLAGS="-msse3"
+  sources:
+  - type: archive
+    url: https://github.com/coelckers/gzdoom/archive/g4.2.0.tar.gz
+    sha256: 9d781e868f32ad53aa262691f76cab09b12661ababd2b7f5735fe852ab74d566
+  - type: file
+    url: https://github.com/coelckers/gzdoom/raw/g4.2.0/soundfont/gzdoom.sf2
+    sha256: fca3e514b635a21789d4224e84865d2954a2a914d46b64aa8219ddb565c44869
+  - type: shell
+    commands:
+    - install -Dm 644 gzdoom.sf2 /app/share/sounds/sf2/gzdoom.sf2
+
+- name: freefiles
+  buildsystem: simple
+  sources:
+  - type: archive
+    url: https://github.com/freedoom/freedoom/releases/download/v0.11.3/freedoom-0.11.3.zip
+    sha256: 28a5eafbb1285b78937bd408fcdd8f25f915432340eee79da692eae83bce5e8a
+  build-commands:
+  - ls -la
+  - install -Dm 644 freedoom2.wad /app/share/games/doom
+  - install -Dm 644 freedoom1.wad /app/share/games/doom
+  - ls -la /app/share/games/doom
+
+- name: shareware
+  buildsystem: simple
+  sources:
+  - type: extra-data
+    filename: doom1.wad
+    url: http://distro.ibiblio.org/pub/linux/distributions/slitaz/sources/packages/d/doom1.wad
+    strip-components: 0
+    sha256: 1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771
+    size: 4196020
+  build-commands:
+  - ls -la
+  - #install -Dm 644 doom1.wad /app/share/games/doom
+
+- name: launcher
+  buildsystem: simple
+  sources:
+  - type: script
+    commands:
+    - gzdoom +fluid_patchset /app/share/sounds/sf2/gzdoom.sf2 -file lights.pk3 brightmaps.pk3  $@
+    dest-filename: gzdoom.sh
+  - type: file
+    path: org.zdoom.GZDoom.desktop
+  - type: file
+    path: org.zdoom.GZDoom.appdata.xml
+  - type: file
+    path: gzdoom.png
+  build-commands:
+  - install -D gzdoom.sh /app/bin/gzdoom.sh
+  - install -Dm 644 org.zdoom.GZDoom.desktop -t /app/share/applications
+  - install -Dm 644 org.zdoom.GZDoom.appdata.xml -t /app/share/appdata
+  - install -Dm 644 gzdoom.png /app/share/icons/hicolor/48x48/apps/gzdoom.png
+  - install -Dm 644 gzdoom.png /app/share/icons/hicolor/64x64/apps/gzdoom.png
+  - install -Dm 644 gzdoom.png /app/share/icons/hicolor/128x128/apps/gzdoom.png
+
