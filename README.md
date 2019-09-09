@@ -38,7 +38,7 @@ Reminders for later consideration.
 
 <!-- NOTES
 
-Local build: `flatpak-builder --user --install --force-clean build org.claws_mail.Claws-Mail.json`
+Local build: `flatpak-builder --sandbox --user --install --force-clean build org.claws_mail.Claws-Mail.json`
 - Verify appdata.xml: `flatpak run org.freedesktop.appstream-glib validate org.claws_mail.Claws-Mail.appdata.xml`
 
 ## References
