@@ -29,6 +29,7 @@ Plug-ins:
 
 Reminders for later consideration.
 
+- FIXME: add screenshots in prescribed resolution.
 - FIXME: add `cleanup` sections to modules.
 - FIXME: align exact versions of dependencies with packaging instructions for debian/ubuntu by Claws-Mail developers.
 - FIXME: create .desktop file.
@@ -45,4 +46,5 @@ Local build: `flatpak-builder --sandbox --user --install --force-clean build org
 
 - [Flatpak manifest permissions](http://docs.flatpak.org/en/latest/sandbox-permissions.html)
 - [AppStream metadata (appdata.xml)](https://www.freedesktop.org/software/appstream/docs/sect-Metadata-Application.html)
+
 -->
