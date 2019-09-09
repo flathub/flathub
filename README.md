@@ -2,6 +2,29 @@
 
 The flathub recipe for building [Claws-Mail](https://claws-mail.org) as a flatpak distributable package.
 
+## Dependencies
+
+The dependencies are as follows. In addition, the dependencies are in-order in the [Claws-Mail manifest](org.claws_mail.Claws-Mail.json).
+
+Claws-Mail:
+- libetpan
+
+Plug-ins:
+- TNEF
+  - libytnef
+- PDF-viewer
+  - libpoppler
+    - libopenjpeg
+- VCalendar
+  - libical
+- Lite HTML-viewer
+  - libgumbo
+- GData
+  - liboauth
+  - libuhttpmock
+- Bogofilter
+  - bogofilter (cli filter binary)
+
 ## TODO
 
 Reminders for later consideration.
