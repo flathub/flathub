@@ -23,12 +23,13 @@ Plug-ins:
   - liboauth
   - libuhttpmock
 - Bogofilter
-  - bogofilter (cli filter binary)
+  - bogofilter (cli filter application)
 
 ## TODO
 
 Reminders for later consideration.
 
+- FIXME: add `cleanup` sections to modules.
 - FIXME: align exact versions of dependencies with packaging instructions for debian/ubuntu by Claws-Mail developers.
 - FIXME: create .desktop file.
 - FIXME: update URLs for screenshots to newly created `flathub/org.claws_mail.Claws-Mail` repository upon creation.
