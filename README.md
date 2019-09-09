@@ -35,12 +35,13 @@ Reminders for later consideration.
 - TODO: Check if we can integrate with NetworkManager. This feature is now disabled.
 - TODO: Investigate if building for i386 is possible.
 
-## Notes
+<!-- NOTES
 
-- Local build: `flatpak-builder --user --install --force-clean build org.claws_mail.Claws-Mail.json`
+Local build: `flatpak-builder --user --install --force-clean build org.claws_mail.Claws-Mail.json`
 - Verify appdata.xml: `flatpak run org.freedesktop.appstream-glib validate org.claws_mail.Claws-Mail.appdata.xml`
 
 ## References
 
 - [Flatpak manifest permissions](http://docs.flatpak.org/en/latest/sandbox-permissions.html)
 - [AppStream metadata (appdata.xml)](https://www.freedesktop.org/software/appstream/docs/sect-Metadata-Application.html)
+-->
