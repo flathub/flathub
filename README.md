@@ -4,7 +4,7 @@
 ### Install pre-requisite
 ```
 $ flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-$ flatpak install flathub org.freedesktop.Platform//18.08 org.freedesktop.Sdk//18.08 --system
+$ flatpak install flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08 --system
 ```
 ### Build + Install
 ```
