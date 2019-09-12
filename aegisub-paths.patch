@@ -1,0 +1,245 @@
+From 1f5c641b542c71bb71a384e92cf726921987d9ec Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Thu, 12 Sep 2019 04:30:39 +0200
+Subject: [PATCH 1/2] Fix paths
+
+ - Allow to use a custom path for dictionaries
+ - Respect the XDG Base Directory Specification
+---
+ Makefile.inc.in          |  4 ++-
+ configure.ac             | 57 +++++++++++++++++++++++++++++----
+ libaegisub/unix/path.cpp | 69 ++++++++++++++++++++++++++++++++++------
+ 3 files changed, 114 insertions(+), 16 deletions(-)
+
+diff --git a/Makefile.inc.in b/Makefile.inc.in
+index a8c0e0c48..1e52cf547 100644
+--- a/Makefile.inc.in
++++ b/Makefile.inc.in
+@@ -56,7 +56,9 @@ P_LOCALE      = @localedir@
+ 
+ P_DESKTOP     = @P_DESKTOP@
+ P_ICON        = @P_ICON@
+-P_DATA        = $(P_DATAROOT)/aegisub/
++P_DATA        = $(P_DATAROOT)/aegisub
++
++P_DICTIONARY  = @P_DICTIONARY@
+ 
+ ###############
+ # LIBRARY FLAGS
+diff --git a/configure.ac b/configure.ac
+index 58dc23f8d..74d7096a0 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -68,6 +68,15 @@ AC_ARG_WITH(icon-dir,
+ P_ICON=${with_icon_dir:-$datarootdir/icons}
+ AC_SUBST(P_ICON)
+ 
++# Handle location of dictionaries: https://github.com/hunspell/hunspell/blob/v1.7.0/src/tools/hunspell.cxx#L119
++AC_ARG_WITH(dict-dir,
++            AS_HELP_STRING([--with-dict-dir=PATH],[dictionary locations [/usr/share/hunspell]]))
++
++P_DICTIONARY=${with_dict_dir:-/usr/share/hunspell}
++AC_SUBST(P_DICTIONARY)
++
++AC_DEFINE_UNQUOTED([P_DICTIONARY], ["${P_DICTIONARY}"], [Location of dictionaries])
++
+ # Install prefix
+ # If a user doesn't supply --prefix then it is set to NONE so we
+ # set it to $ac_default_prefix if it hasn't been supplied.
+@@ -91,6 +100,41 @@ AS_IF([test x$use_build_credit = xyes],
+   ]),
+   [AC_MSG_RESULT([no])])
+ 
++####################
++# XDG dirs support
++####################
++# If enabled, Aegisub will try to use XDG compatible base directories.
++# https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
++# https://developer.gnome.org/basedir-spec/
++xdg_dirs_level_default=3
++
++xdg_dirs_level_default_disabled=0
++xdg_dirs_level_default_enabled=$(( xdg_dirs_level_default > 1 ? xdg_dirs_level_default : 1 ))
++
++AC_ARG_ENABLE(xdg-dirs,
++  [AS_HELP_STRING([--disable-xdg-dirs],[Disable compatibility with XDG dirs.])
++AS_HELP_STRING([--enable-xdg-dirs],[Enable compatibility with XDG dirs.])
++AS_HELP_STRING([--enable-xdg-dirs=LEVEL],[Specify the LEVEL of compatibility with XDG dirs:])
++  AS_HELP_STRING([],[0: none (disabled)])
++  AS_HELP_STRING([],[1: +XDG_CONFIG_HOME])
++  AS_HELP_STRING([],[2: +XDG_DATA_HOME])
++  AS_HELP_STRING([],[3: +XDG_CACHE_HOME])],
++  [case "${enableval}" in
++         no)  xdg_dirs_level=${xdg_dirs_level_default_disabled} ;;
++    [[0-3]])  xdg_dirs_level=${enableval} ;;
++        yes)  xdg_dirs_level=${xdg_dirs_level_default_enabled} ;;
++          *)  AC_MSG_ERROR(Unknown argument to --enable-xdg-dirs: ${enableval}) ;;
++  esac],
++  [xdg_dirs_level=${xdg_dirs_level_default}]
++)
++
++case "${xdg_dirs_level}" in
++    0)  AC_DEFINE([XDG_DIRS], 0, [XDG dirs: none (disabled)]) ;;
++    1)  AC_DEFINE([XDG_DIRS], 1, [XDG dirs: XDG_CONFIG_HOME]) ;;
++    2)  AC_DEFINE([XDG_DIRS], 2, [XDG dirs: XDG_CONFIG_HOME, XDG_DATA_HOME]) ;;
++    3)  AC_DEFINE([XDG_DIRS], 3, [XDG dirs: XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME]) ;;
++esac
++
+ ####################
+ # Check for programs
+ ####################
+@@ -605,12 +649,13 @@ AC_MSG_RESULT([
+ Configure settings
+   Install prefix:        $prefix
+   Revision:              $BUILD_GIT_VERSION_STRING
+-  Debug                  $enable_debug
+-  CFLAGS                 $CFLAGS
+-  CXXFLAGS               $CXXFLAGS
+-  CPPFLAGS               $CPPFLAGS
+-  LDFLAGS                $LDFLAGS
+-  LIBS                   $LIBS
++  XDG dirs support:      level ${xdg_dirs_level:-0}
++  Debug:                 $enable_debug
++  CFLAGS:                $CFLAGS
++  CXXFLAGS:              $CXXFLAGS
++  CPPFLAGS:              $CPPFLAGS
++  LDFLAGS:               $LDFLAGS
++  LIBS:                  $LIBS
+ 
+ Default Settings
+   Audio Player:          $DEFAULT_PLAYER_AUDIO
+diff --git a/libaegisub/unix/path.cpp b/libaegisub/unix/path.cpp
+index 0541e0dbe..fa1d5c1d2 100644
+--- a/libaegisub/unix/path.cpp
++++ b/libaegisub/unix/path.cpp
+@@ -26,34 +26,85 @@ namespace {
+ #ifndef __APPLE__
+ std::string home_dir() {
+ 	const char *env = getenv("HOME");
+-	if (env) return env;
++	if (env && *env) return env;
+ 
+ 	if ((env = getenv("USER")) || (env = getenv("LOGNAME"))) {
+-		if (passwd *user_info = getpwnam(env))
+-			return user_info->pw_dir;
++		if (passwd *user_info = getpwnam(env)) {
++			const char *pw_dir = user_info->pw_dir;
++			if (pw_dir && *pw_dir)
++				return user_info->pw_dir;
++		}
+ 	}
+ 
+ 	throw agi::EnvironmentError("Could not get home directory. Make sure HOME is set.");
+ }
++
++std::string xdg_config_dir() {
++	const char *env = getenv("XDG_CONFIG_HOME");
++	if (env && *env) return env;
++
++	agi::fs::path home = home_dir();
++	return (home/".config").string();
++}
++
++std::string xdg_data_dir() {
++	const char *env = getenv("XDG_DATA_HOME");
++	if (env && *env) return env;
++
++	agi::fs::path home = home_dir();
++	return (home/".local/share").string();
++}
++
++std::string xdg_cache_dir() {
++	const char *env = getenv("XDG_CACHE_HOME");
++	if (env && *env) return env;
++
++	agi::fs::path home = home_dir();
++	return (home/".cache").string();
++}
+ #endif
+ }
+ 
+ namespace agi {
+ void Path::FillPlatformSpecificPaths() {
+ #ifndef __APPLE__
++	std::string dir = "aegisub";
++#if defined(XDG_DIRS) && XDG_DIRS >= 1
++	agi::fs::path xdg_config = xdg_config_dir();
++	SetToken("?user", xdg_config/dir);
++#if XDG_DIRS >= 2
++	agi::fs::path xdg_data = xdg_data_dir();
++	SetToken("?local", xdg_data/dir);
++#else
++	SetToken("?local", xdg_config/dir);
++#endif
++#else
++    dir = "." + dir;
+ 	agi::fs::path home = home_dir();
+-	SetToken("?user", home/".aegisub");
+-	SetToken("?local", home/".aegisub");
++	SetToken("?user", home/dir);
++	SetToken("?local", home/dir);
++#endif
+ 	SetToken("?data", P_DATA);
++#ifdef P_DICTIONARY
++	SetToken("?dictionary", P_DICTIONARY);
++#else
+ 	SetToken("?dictionary", "/usr/share/hunspell");
++#endif
+ #else
++	std::string dir = "Aegisub";
+ 	agi::fs::path app_support = agi::util::GetApplicationSupportDirectory();
+-	SetToken("?user", app_support/"Aegisub");
+-	SetToken("?local", app_support/"Aegisub");
+-	SetToken("?data", agi::util::GetBundleSharedSupportDirectory());
+-	SetToken("?dictionary", agi::util::GetBundleSharedSupportDirectory() + "/dictionaries");
++	SetToken("?user", app_support/dir);
++	SetToken("?local", app_support/dir);
++	agi::fs::path shared_support = agi::util::GetBundleSharedSupportDirectory();
++	SetToken("?data", shared_support);
++	SetToken("?dictionary", shared_support/"dictionaries");
+ #endif
++#if !defined(__APPLE__) && defined(XDG_DIRS) && XDG_DIRS >= 3
++	agi::fs::path xdg_cache = xdg_cache_dir();
++	SetToken("?temp", xdg_cache);
++#else
+ 	SetToken("?temp", boost::filesystem::temp_directory_path());
++#endif
+ }
+ 
+ }
+
+From 3e2c406477ea870b1c41b6ea85761dde6081c9d6 Mon Sep 17 00:00:00 2001
+From: scx <scx.mail@gmail.com>
+Date: Thu, 12 Sep 2019 05:04:56 +0200
+Subject: [PATCH 2/2] Print platform specific paths
+
+---
+ libaegisub/common/path.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/libaegisub/common/path.cpp b/libaegisub/common/path.cpp
+index cca7302cc..7a7cc8926 100644
+--- a/libaegisub/common/path.cpp
++++ b/libaegisub/common/path.cpp
+@@ -18,6 +18,8 @@
+ 
+ #include "libaegisub/fs.h"
+ 
++#include <iostream>
++
+ #include <boost/algorithm/string/predicate.hpp>
+ #include <boost/range/distance.hpp>
+ 
+@@ -58,6 +60,12 @@ Path::Path() {
+ 	static_assert(sizeof(paths) / sizeof(paths[0]) == sizeof(tokens) / sizeof(tokens[0]),
+ 		"Token and path arrays need to be the same size");
+ 	FillPlatformSpecificPaths();
++	std::cout << "Paths:" << std::endl;
++	std::cout << "?user: " << Decode("?user") << std::endl;
++	std::cout << "?local: " << Decode("?local") << std::endl;
++	std::cout << "?data: " << Decode("?data") << std::endl;
++	std::cout << "?dictionary: " << Decode("?dictionary") << std::endl;
++	std::cout << "?temp: " << Decode("?temp") << std::endl;
+ }
+ 
+ fs::path Path::Decode(std::string const& path) const {

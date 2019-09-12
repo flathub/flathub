@@ -1,39 +1,7 @@
-From 3502fd112c06d38ec17d6f9d5035ab56203c355d Mon Sep 17 00:00:00 2001
-From: wangqr <wangqr@wangqr.tk>
-Date: Sat, 18 May 2019 20:10:32 -0400
-Subject: [PATCH 1/2] Detect UTF-8 BOM when loading ass file
-
-This should make loading UTF-8-BOM files faster.
-This also guarentee Aegisub will load large ass saved by itself.
-
-See Aegisub/Aegisub#110
----
- libaegisub/common/charset.cpp | 7 +++++++
- 1 file changed, 7 insertions(+)
-
-diff --git a/libaegisub/common/charset.cpp b/libaegisub/common/charset.cpp
-index 1addb90ee..e2af284b9 100644
---- a/libaegisub/common/charset.cpp
-+++ b/libaegisub/common/charset.cpp
-@@ -29,6 +29,13 @@ namespace agi { namespace charset {
- std::string Detect(agi::fs::path const& file) {
- 	agi::read_file_mapping fp(file);
- 
-+	// Look for utf-8 BOM
-+	if (fp.size() >= 3) {
-+		const char* buf = fp.read(0, 3);
-+		if (!strncmp(buf, "\xef\xbb\xbf", 3))
-+			return "utf-8";
-+	}
-+
- 	// If it's over 100 MB it's either binary or big enough that we won't
- 	// be able to do anything useful with it anyway
- 	if (fp.size() > 100 * 1024 * 1024)
-
 From f733297499f72ea11c166f6be23751a7b002c51c Mon Sep 17 00:00:00 2001
 From: wangqr <wangqr@wangqr.tk>
 Date: Sat, 18 May 2019 20:10:32 -0400
-Subject: [PATCH 2/2] Rewrite encoding detection
+Subject: [PATCH 1/3] Rewrite encoding detection
 
 Now feeds all data to uchardet, when uchardet is available. The file
 size limit is removed.
@@ -49,12 +17,12 @@ See Aegisub/Aegisub#110
  1 file changed, 19 insertions(+), 23 deletions(-)
 
 diff --git a/libaegisub/common/charset.cpp b/libaegisub/common/charset.cpp
-index e2af284b9..d52bf3e09 100644
+index 1addb90ee..5ca248b9e 100644
 --- a/libaegisub/common/charset.cpp
 +++ b/libaegisub/common/charset.cpp
-@@ -36,37 +36,33 @@ std::string Detect(agi::fs::path const& file) {
- 			return "utf-8";
- 	}
+@@ -29,37 +29,33 @@ namespace agi { namespace charset {
+ std::string Detect(agi::fs::path const& file) {
+ 	agi::read_file_mapping fp(file);
  
 -	// If it's over 100 MB it's either binary or big enough that we won't
 -	// be able to do anything useful with it anyway
@@ -109,3 +77,57 @@ index e2af284b9..d52bf3e09 100644
  	auto buf = fp.read(0, read);
  	for (size_t i = 0; i < read; ++i) {
  		if ((unsigned char)buf[i] < 32 && (buf[i] != '\r' && buf[i] != '\n' && buf[i] != '\t'))
+
+From d6ddea0f6577df319b5f2cbd2a54d5206693f752 Mon Sep 17 00:00:00 2001
+From: wangqr <wangqr@wangqr.tk>
+Date: Sun, 16 Jun 2019 19:14:10 -0400
+Subject: [PATCH 2/3] Detect EBML magic number to skip encoding detection for MKV
+
+MKV loads slow after f733297499f72ea11c166f6be23751a7b002c51c
+---
+ libaegisub/common/charset.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/libaegisub/common/charset.cpp b/libaegisub/common/charset.cpp
+index 5ca248b9e..4a9d40f47 100644
+--- a/libaegisub/common/charset.cpp
++++ b/libaegisub/common/charset.cpp
+@@ -29,6 +29,14 @@ namespace agi { namespace charset {
+ std::string Detect(agi::fs::path const& file) {
+ 	agi::read_file_mapping fp(file);
+ 
++	// FIXME: Dirty hack for Matroska. These 4 bytes are the magic
++	// number of EBML which is used by mkv and webm
++	if (fp.size() >= 4) {
++		const char* buf = fp.read(0, 4);
++		if (!strncmp(buf, "\x1a\x45\xdf\xa3", 4))
++			return "binary";
++	}
++
+ #ifdef WITH_UCHARDET
+ 	agi::scoped_holder<uchardet_t> ud(uchardet_new(), uchardet_delete);
+ 	for (uint64_t offset = 0; offset < fp.size(); ) {
+
+From fbca22229524210c3c9ae0f2bb423d405065d8f0 Mon Sep 17 00:00:00 2001
+From: wangqr <wangqr@wangqr.tk>
+Date: Mon, 2 Sep 2019 14:25:52 -0400
+Subject: [PATCH 3/3] Treat empty file as ascii
+
+---
+ libaegisub/common/charset.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/libaegisub/common/charset.cpp b/libaegisub/common/charset.cpp
+index 4a9d40f47..322430556 100644
+--- a/libaegisub/common/charset.cpp
++++ b/libaegisub/common/charset.cpp
+@@ -29,6 +29,9 @@ namespace agi { namespace charset {
+ std::string Detect(agi::fs::path const& file) {
+ 	agi::read_file_mapping fp(file);
+ 
++	// FIXME: It is an empty file. Treat as ascii
++	if (fp.size() == 0) return "ascii";
++
+ 	// FIXME: Dirty hack for Matroska. These 4 bytes are the magic
+ 	// number of EBML which is used by mkv and webm
+ 	if (fp.size() >= 4) {
