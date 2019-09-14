@@ -1,0 +1,131 @@
+app-id: com.etlegacy.ETL
+branch: stable
+
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+
+rename-desktop-file: etlegacy.desktop
+rename-icon: etl
+
+command: etl
+
+finish-args:
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --allow=multiarch
+  - --persist=.etlegacy
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
+    
+modules:
+  - shared-modules/glu/glu-9.0.0.json
+  - shared-modules/glew/glew.json
+  - shared-modules/lua5.3/lua-5.3.5.json
+
+  - name: minizip
+    config-opts:
+      # Need to build as a share library or minizip wont link with etl (ET Legacy Client) correctly, 
+      # Will case `undefined reference to symbol 'inflateEnd'` on libcurl.so & libz.so
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/nmoinvaz/minizip/archive/2.7.4.tar.gz
+        sha256: 3e7ec0b5fe49cc334faaa0520da5026ff01a607291e2510bf2804607c143a053
+
+  - name: jansson
+    sources:
+      - type: archive
+        url: http://www.digip.org/jansson/releases/jansson-2.11.tar.gz
+        sha256: 6e85f42dabe49a7831dbdd6d30dca8a966956b51a9a50ed534b82afc3fa5b2f4
+    
+  - name: etlegacy
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_LIBRARY_PATH=/app/lib
+      - -DCMAKE_INCLUDE_PATH=/app/include
+      - -DINSTALL_DEFAULT_BASEDIR=/app/lib/etlegacy
+      - -DINSTALL_DEFAULT_BINDIR=bin
+      - -DINSTALL_DEFAULT_MODDIR=lib/etlegacy
+      - -DBUNDLED_LIBS=0
+      - -DBUILD_SERVER=1
+      - -DBUILD_CLIENT=1
+      - -DBUILD_MOD=1
+      - -DBUILD_MOD_PK3=1
+      - -DBUILD_PAK3_PK3=1
+      - -DFEATURE_OMNIBOT=0
+      - -DFEATURE_AUTOUPDATE=0
+      - -DINSTALL_OMNIBOT=0
+      - -DINSTALL_GEOIP=0
+      - -DINSTALL_WOLFADMIN=0
+    build-options:
+      arch:
+        x86_64:
+          env:
+            LDFLAGS: -ldl -lmvec -lm
+          config-opts:
+            - -DCROSS_COMPILE32=0
+        i386:
+          env:
+            LDFLAGS: -ldl -lm
+          config-opts:
+            - -DCROSS_COMPILE32=1
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/etlegacy/etlegacy/archive/v2.76.tar.gz
+        sha256: 8bb8e9785e3be983a331c39298c1451cf805299560c769d59b9f04ae51912ee1
+      - type: patch
+        path: etlegacy-mkdir-legacy.patch
+    post-install:
+      - install -d /app/lib/etlegacy/etmain/
+      - ln -s /app/extra/pak0.pk3 /app/lib/etlegacy/legacy/pak0.pk3
+      - ln -s /app/extra/pak1.pk3 /app/lib/etlegacy/legacy/pak1.pk3
+      - ln -s /app/extra/pak2.pk3 /app/lib/etlegacy/legacy/pak2.pk3
+
+  - name: enemy-territory
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/bin
+      - install apply_extra ${FLATPAK_DEST}/bin
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - mkdir -p enemy-territory
+          - unzip -o enemy-territory.zip
+          - chmod +x et*.run
+          - ./et*.run --noexec --nox11 --target enemy-territory/
+          - install -Dm644 enemy-territory/etmain/{pak0,pak1,pak2}.pk3 .
+          - rm -rf enemy-territory/
+          - rm enemy-territory.zip
+          - rm et260b.x86_keygen_V03.run
+          - rm "README FIRST ! IMPORTANT.txt"
+      - type: extra-data
+        url: https://cdn.splashdamage.com/downloads/games/wet/et260b.x86_full.zip
+        sha256: 2a8fef8e8558efffcad658bb9a8b12df8740418b3514142350eba3b7641eb3e0
+        size: 275647724
+        filename: enemy-territory.zip
+
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 com.etlegacy.ETL.appdata.xml /app/share/appdata/com.etlegacy.ETL.appdata.xml
+    sources:
+      - type: file
+        path: com.etlegacy.ETL.appdata.xml
+
