@@ -25,22 +25,27 @@ Plug-ins:
 - Bogofilter
   - bogofilter (cli filter application)
 
+Disabled plug-ins:
+- Dillo
+- BSFilter
+- Perl
+
 ## TODO
 
 Reminders for later consideration.
 
 - FIXME: add screenshots in prescribed resolution.
-- FIXME: add `cleanup` sections to modules.
 - FIXME: align exact versions of dependencies with packaging instructions for debian/ubuntu by Claws-Mail developers.
 - FIXME: create .desktop file.
 - FIXME: update URLs for screenshots to newly created `flathub/org.claws_mail.Claws-Mail` repository upon creation.
+- TODO: Look into whether or not _bsfilter_ plug-in is operational.
+- TODO: Look into whether or not _dillo_ plug-in is operational.
+- TODO: Look into whether or not _perl_ plug-in is operational.
+- TODO: Check if we can skip building documentation for _gdata_ dependency.
 - TODO: Check if we can integrate with NetworkManager. This feature is now disabled.
 - TODO: Investigate if building for i386 is possible.
 
 <!-- NOTES
-
-Local build: `flatpak-builder --sandbox --user --install --force-clean build org.claws_mail.Claws-Mail.json`
-- Verify appdata.xml: `flatpak run org.freedesktop.appstream-glib validate org.claws_mail.Claws-Mail.appdata.xml`
 
 ## References
 
