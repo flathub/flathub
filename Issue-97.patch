@@ -1,0 +1,212 @@
+From 2b2cd552fef268c1dcfe60b54f758bd88fd0b303 Mon Sep 17 00:00:00 2001
+From: aaSokolov <aaSokolov@ntoire-polus.ru>
+Date: Mon, 19 Aug 2019 19:20:03 +0300
+Subject: [PATCH] Issue #97: I hide the "Programs" page and "Temporary dir"
+ edit on preferences dialog.
+
+---
+ CMakeLists.txt                    |  4 +++
+ gui/configdialog/configdialog.cpp | 58 ++++++++++++++++++-------------
+ gui/configdialog/configdialog.h   |  2 +-
+ gui/configdialog/configdialog.ui  |  9 ++++-
+ 4 files changed, 47 insertions(+), 26 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f1befdc..6ce826f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -273,6 +273,10 @@ if ( MAC_BUNDLE )
+ 
+ endif()
+ 
++if (FLATPAK_BUNDLE)
++	add_definitions(-DFLATPAK_BUNDLE=Yes)
++endif()
++
+ add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES} ${QM_FILES} ${QRC_SOURCES} ${ENGINES_CPP} ${ENGINES_H} ${RESOURCES} ${TRANSLATORS_INFO_QRC})
+ target_link_libraries(${PROJECT_NAME} ${LIBRARIES} ${QT_LIBRARIES} Qt5::Widgets Qt5::Network)
+ 
+diff --git a/gui/configdialog/configdialog.cpp b/gui/configdialog/configdialog.cpp
+index dcfce68..e33a6dc 100644
+--- a/gui/configdialog/configdialog.cpp
++++ b/gui/configdialog/configdialog.cpp
+@@ -98,30 +98,19 @@ ConfigDialog::ConfigDialog(QWidget *parent) :
+ 
+     this->setMinimumSize(this->size());
+ 
+-    int width = settings->value(Settings::ConfigureDialog_Width).toInt();
+-    int height = settings->value(Settings::ConfigureDialog_Height).toInt();
+-    resize(width, height);
+-
+-
+     generalPage->setWindowTitle(tr("General configuration"));
+     programsPage->setWindowTitle(tr("Full path of the external applications"));
+ 
+     connect(pages, SIGNAL(currentChanged(int)), this, SLOT(setPage(int)));
+ 
+     initGeneralPage();
+-    initTabPages();
++    int width = settings->value(Settings::ConfigureDialog_Width).toInt();
++    int height = settings->value(Settings::ConfigureDialog_Height).toInt();
++    resize(width, height);
+ 
+-#ifdef MAC_BUNDLE
+-    pages->removeTab(pages->indexOf(programsPage));
+-#else
++    initFormatPages();
+     initPrograms();
+-#endif
+-
+-#ifdef MAC_UPDATER
+     initUpdatePage();
+-#else
+-    pages->removeTab(pages->indexOf(updatePage));
+-#endif
+ 
+     pages->setCurrentIndex(0);
+     load();
+@@ -173,6 +162,12 @@ ConfigDialog::~ConfigDialog()
+  ************************************************/
+ void ConfigDialog::initGeneralPage()
+ {
++#ifdef FLATPAK_BUNDLE
++    tmpDirLabel->hide();
++    tmpDirEdit->hide();
++    tmpDirButton->hide();
++#endif
++
+     tmpDirButton->setIcon(Icon("folder"));
+     connect(tmpDirButton, SIGNAL(clicked()), this, SLOT(tmpDirShowDialog()));
+ 
+@@ -202,7 +197,7 @@ void ConfigDialog::initGeneralPage()
+ /************************************************
+ 
+  ************************************************/
+-void ConfigDialog::initTabPages()
++void ConfigDialog::initFormatPages()
+ {
+     int n = 1;
+     foreach(OutFormat *format, OutFormat::allFormats())
+@@ -223,6 +218,12 @@ void ConfigDialog::initTabPages()
+ /************************************************
+ 
+  ************************************************/
++#if defined(MAC_BUNDLE) || defined(FLATPAK_BUNDLE)
++void ConfigDialog::initPrograms()
++{
++    pages->removeTab(pages->indexOf(programsPage));
++}
++#else
+ void ConfigDialog::initPrograms()
+ {
+     QStringList progs = QStringList::fromSet(settings->programs());
+@@ -242,14 +243,14 @@ void ConfigDialog::initPrograms()
+         row++;
+     }
+ }
+-
++#endif
+ 
+ /************************************************
+  *
+  ************************************************/
++#ifdef MAC_UPDATER
+ void ConfigDialog::initUpdatePage()
+ {
+-#ifdef MAC_UPDATER
+     connect(updateNowBtn, &QPushButton::clicked,
+             [this]() {
+                 Updater::sharedUpdater().checkForUpdatesInBackground();
+@@ -257,10 +258,13 @@ void ConfigDialog::initUpdatePage()
+             });
+ 
+     updateLastUpdateLbl();
+-
+-#endif
+ }
+-
++#else
++void ConfigDialog::initUpdatePage()
++{
++    pages->removeTab(pages->indexOf(updatePage));
++}
++#endif
+ 
+ /************************************************
+ 
+@@ -409,7 +413,6 @@ void ConfigDialog::load()
+ {
+     EncoderConfigPage::loadWidget("Tags/DefaultCodepage",  codePageComboBox);
+     EncoderConfigPage::loadWidget("Encoder/ThreadCount",   threadsCountSpin);
+-    EncoderConfigPage::loadWidget("Encoder/TmpDir",        tmpDirEdit);
+     EncoderConfigPage::loadWidget("PerTrackCue/Create",    perTrackCueCheck);
+     EncoderConfigPage::loadWidget("PerTrackCue/Pregap",    preGapComboBox);
+     perTrackCueFormatEdit->setEditText(settings->value(Settings::PerTrackCue_FileName).toString());
+@@ -427,7 +430,11 @@ void ConfigDialog::load()
+         edit->setText(settings->value("Programs/" + edit->programName()).toString());
+ 
+ #ifdef MAC_UPDATER
+-   autoUpdateCbk->setChecked(Updater::sharedUpdater().automaticallyChecksForUpdates());
++    autoUpdateCbk->setChecked(Updater::sharedUpdater().automaticallyChecksForUpdates());
++#endif
++
++#ifndef FLATPAK_BUNDLE
++    EncoderConfigPage::loadWidget("Encoder/TmpDir",        tmpDirEdit);
+ #endif
+ }
+ 
+@@ -439,7 +446,6 @@ void ConfigDialog::write()
+ {
+     EncoderConfigPage::writeWidget("Tags/DefaultCodepage",  codePageComboBox);
+     EncoderConfigPage::writeWidget("Encoder/ThreadCount",   threadsCountSpin);
+-    EncoderConfigPage::writeWidget("Encoder/TmpDir",        tmpDirEdit);
+     EncoderConfigPage::writeWidget("PerTrackCue/Create",    perTrackCueCheck);
+     EncoderConfigPage::writeWidget("PerTrackCue/Pregap",    preGapComboBox);
+ 
+@@ -461,6 +467,10 @@ void ConfigDialog::write()
+     Updater::sharedUpdater().setAutomaticallyChecksForUpdates(
+         autoUpdateCbk->isChecked());
+ #endif
++
++#ifndef FLATPAK_BUNDLE
++    EncoderConfigPage::writeWidget("Encoder/TmpDir",        tmpDirEdit);
++#endif
+ }
+ 
+ 
+diff --git a/gui/configdialog/configdialog.h b/gui/configdialog/configdialog.h
+index 3692c77..0a0cd33 100644
+--- a/gui/configdialog/configdialog.h
++++ b/gui/configdialog/configdialog.h
+@@ -55,7 +55,7 @@ private:
+     ~ConfigDialog();
+ 
+     void initGeneralPage();
+-    void initTabPages();
++    void initFormatPages();
+     void initPrograms();
+     void initUpdatePage();
+ 
+diff --git a/gui/configdialog/configdialog.ui b/gui/configdialog/configdialog.ui
+index 0725b1a..c44a3d1 100644
+--- a/gui/configdialog/configdialog.ui
++++ b/gui/configdialog/configdialog.ui
+@@ -123,7 +123,14 @@
+             </widget>
+            </item>
+            <item row="2" column="1">
+-            <widget class="CodePageComboBox" name="codePageComboBox"/>
++            <widget class="CodePageComboBox" name="codePageComboBox">
++             <property name="sizePolicy">
++              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
++               <horstretch>0</horstretch>
++               <verstretch>0</verstretch>
++              </sizepolicy>
++             </property>
++            </widget>
+            </item>
+           </layout>
+          </item>
+-- 
+2.21.0
+
