@@ -1,0 +1,93 @@
+app-id: uk.co.powdertoy.tpt
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+command: powder
+rename-icon: powder
+rename-desktop-file: powder.desktop
+rename-appdata-file: powder.appdata.xml
+finish-args:
+  - "--share=ipc"
+  - "--socket=x11"
+  - "--device=dri"
+  - "--socket=wayland"
+  - "--share=network"
+  - "--persist=."
+
+modules:
+  - SDL-2.0.10.json
+
+  - name: lua51
+    sources:
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.1.5.tar.gz
+        sha256: 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333
+      - type: patch
+        path: lua51-cflags.patch
+      - type: patch
+        path: lua51-prefix.patch
+      - type: patch
+        path: lua51-so.patch
+      - type: shell
+        commands:
+          - sed -e 's:llua:llua5.1:' -e 's:/include:/include/lua5.1:' -i etc/lua.pc
+          - sed -r -e '/^LUA_(SO|A|T)=/ s/lua/lua5.1/' -e '/^LUAC_T=/ s/luac/luac5.1/' -i src/Makefile
+          - mv doc/lua.1 doc/lua5.1.1
+          - mv doc/luac.1 doc/luac5.1.1
+    cleanup:
+      - /bin
+      - /include
+      - /lib/*.a
+      - /lib/*.la
+      - /lib/pkgconfig
+      - /share/man
+    buildsystem: simple
+    build-commands:
+      - make CFLAGS='-O2 -Wall -fPIC' linux
+      - make TO_BIN='lua5.1 luac5.1' TO_LIB='liblua5.1.a liblua5.1.so liblua5.1.so.5.1
+        liblua5.1.so.5.1.5' INSTALL_TOP='/app' INSTALL_INC='/app/include/lua5.1' TO_MAN='lua5.1.1
+        luac5.1.1' INSTALL_MAN='/app/share/man/man1' install
+      - install -Dm0644 etc/lua.pc /app/lib/pkgconfig/lua51.pc
+
+  - name: scons
+    buildsystem: simple
+    cleanup: '*'
+    build-commands:
+      - python3.7 setup.py install --prefix=/app
+    sources:
+      - type: archive
+        url: http://prdownloads.sourceforge.net/scons/scons-3.1.1.tar.gz
+        sha256: 4cea417fdd7499a36f407923d03b4b7000b0f9e8fd7b31b316b9ce7eba9143a5
+  
+  - name: fftw3f
+    no-autogen: true
+    config-opts:
+    - --enable-shared
+    - --enable-threads
+    - --enable-float
+    sources:
+    - type: archive
+      url: http://www.fftw.org/fftw-3.3.8.tar.gz
+      sha256: 6113262f6e92c5bd474f2875fa1b01054c4ad5040f6b0da7c03c98821d9ae303
+
+  - name: powder
+    buildsystem: simple
+    build-commands: 
+      - CPPDEFINES="NO_INSTALL_CHECK" CPPPATH='/app/include/' LIBPATH='/app/lib' python3.7 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA --release -j"${FLATPAK_BUILDER_N_JOBS}" prefix="${FLATPAK_DEST}"
+      - install -Dm755 build/powder64 /app/bin/powder
+      - install -Dm644 resources/powder.desktop -t /app/share/applications
+      - install -Dm644 powder.appdata.xml /app/share/metainfo/powder.appdata.xml
+      - install -Dm644 resources/icon/powder-16.png /app/share/icons/hicolor/16x16/apps/powder.png
+      - install -Dm644 resources/icon/powder-24.png /app/share/icons/hicolor/24x24/apps/powder.png
+      - install -Dm644 resources/icon/powder-32.png /app/share/icons/hicolor/32x32/apps/powder.png
+      - install -Dm644 resources/icon/powder-48.png /app/share/icons/hicolor/48x48/apps/powder.png
+      - install -Dm644 resources/icon/powder-256.png /app/share/icons/hicolor/256x256/apps/powder.png
+      
+    sources:
+      - type: git
+        url: https://github.com/The-Powder-Toy/The-Powder-Toy.git
+        tag: v94.1
+        commit: 768202ca9b2dce6c1abd4f24bea4b0de5ef1eae9
+        disable-fsckobjects: true 
+      - type: file
+        path: "powder.appdata.xml"
