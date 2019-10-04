@@ -1,8 +1,8 @@
-# SDK Extension for OpenJDK 12
+# SDK Extension for OpenJDK 13
 
-This extension contains the OpenJDK 12 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
+This extension contains the OpenJDK 13 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
 
-OpenJDK 12 is the current latest (non-LTS) version.
+OpenJDK 13 is the current latest (non-LTS) version.
 
 For the current long-term support (LTS) version, see the [OpenJDK 11](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk11) extension.
 
