@@ -11,6 +11,12 @@ flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install flathub org.gnome.Recipes
 ```
 
+To install applications from the beta branch, use the following:
+```
+flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
+flatpak install flathub-beta org.godotengine.Godot
+```
+
 For more information and more applications see https://flathub.org
 
 Contributing to Flathub
