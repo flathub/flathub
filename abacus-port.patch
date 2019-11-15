@@ -1,0 +1,146 @@
+diff --git a/AbacusActivity.py b/AbacusActivity.py
+index d1cecf0..23e93ca 100644
+--- a/AbacusActivity.py
++++ b/AbacusActivity.py
+@@ -18,15 +18,15 @@
+ 
+ 
+ import gi
++import json
+ gi.require_version('Gtk', '3.0')
++from gi.repository import GLib
+ from gi.repository import Gtk
+ from gi.repository import Gdk
+ from gi.repository import GObject
+ 
+-from sugar3.activity import activity
+ from sugar3 import profile
+ from sugar3.graphics.toolbarbox import ToolbarBox
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.toolbarbox import ToolbarButton
+ from sugar3.graphics.toolbutton import ToolButton
+@@ -41,6 +41,9 @@ from abacus_window import Abacus, Custom, MAX_RODS, MAX_TOP, MAX_BOT
+ from toolbar_utils import separator_factory, radio_factory, label_factory, \
+     button_factory, spin_factory
+ 
++from sugarapp.widgets import SugarCompatibleActivity
++from sugarapp.widgets import ExtendedActivityToolbarButton
++
+ 
+ NAMES = {
+     # TRANS: http://en.wikipedia.org/wiki/Suanpan (Chinese abacus)
+@@ -68,7 +71,7 @@ NAMES = {
+ }
+ 
+ 
+-class AbacusActivity(activity.Activity):
++class AbacusActivity(SugarCompatibleActivity):
+ 
+     def __init__(self, handle):
+         ''' Initiate activity. '''
+@@ -87,7 +90,7 @@ class AbacusActivity(activity.Activity):
+ 
+         toolbox = ToolbarBox()
+ 
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         toolbox.toolbar.insert(activity_button, 0)
+         activity_button.show()
+ 
+@@ -218,35 +221,11 @@ class AbacusActivity(activity.Activity):
+ 
+         self._setting_up = False
+ 
+-        # Read the current mode from the Journal
+-        if 'rods' in self.metadata:
+-            self._rods_spin.set_value(int(self.metadata['rods']))
+-        if 'top' in self.metadata:
+-            self._top_spin.set_value(int(self.metadata['top']))
+-        if 'bottom' in self.metadata:
+-            self._bottom_spin.set_value(int(self.metadata['bottom']))
+-        if 'factor' in self.metadata:
+-            self._value_spin.set_value(int(self.metadata['factor']))
+-        if 'base' in self.metadata:
+-            self._base_spin.set_value(int(self.metadata['base']))
+-        if 'abacus' in self.metadata:
+-            if self.metadata['abacus'] in self.abacus_buttons:
+-                _logger.debug('restoring %s', self.metadata['abacus'])
+-                if self.metadata['abacus'] == 'custom':
+-                    self._custom_cb()
+-                self.abacus_buttons[self.metadata['abacus']].set_active(True)
+-            else:  # Default is Chinese
+-                self.abacus_buttons['suanpan'].set_active(True)
+-
+-            if 'value' in self.metadata:
+-                _logger.debug('restoring value %s', self.metadata['value'])
+-                self.abacus.mode.set_value(self.metadata['value'])
+-                self.abacus.mode.label(self.abacus.generate_label())
+-
+         self.abacus.init()
+ 
+         # Start with abacus toolbar expanded and suanpan as default
+         self.abacus_toolbar_button.set_expanded(True)
++        self.abacus_buttons['suanpan'].set_active(True)
+ 
+     def _add_abacus_button(self, name, group):
+         self.abacus_buttons[name] = radio_factory(
+@@ -363,17 +342,48 @@ class AbacusActivity(activity.Activity):
+             self.abacus.mode.label(self.abacus.generate_label())
+         return
+ 
++    def _restore_value_cb(self, metadata):
++        if 'value' in metadata:
++            _logger.debug('restoring value %s', metadata['value'])
++            self.abacus.mode.set_value(metadata['value'])
++            self.abacus.mode.label(self.abacus.generate_label())
++
++    def _restore_abacus_cb(self, metadata):
++        if metadata['abacus'] in self.abacus_buttons:
++            if metadata['abacus'] == 'custom':
++                self._custom_cb()
++            self.abacus_buttons[metadata['abacus']].set_active(True)
++        GLib.idle_add(self._restore_value_cb, metadata)
++
++    def read_file(self, file_path):
++        with open(file_path, 'r') as save_file:
++            data = save_file.read()
++            metadata = json.loads(data)
++
++        if 'rods' in metadata:
++            self._rods_spin.set_value(int(metadata['rods']))
++        if 'top' in metadata:
++            self._top_spin.set_value(int(metadata['top']))
++        if 'bottom' in metadata:
++            self._bottom_spin.set_value(int(metadata['bottom']))
++        if 'factor' in metadata:
++            self._value_spin.set_value(int(metadata['factor']))
++        if 'base' in metadata:
++            self._base_spin.set_value(int(metadata['base']))
++        if 'abacus' in metadata:
++            GLib.idle_add(self._restore_abacus_cb, metadata)
++
+     def write_file(self, file_path):
+-        ''' Write the bead positions to the Journal '''
+-        _logger.debug('Saving current abacus to Journal: %s %s' % (
+-            self.abacus.mode.name, self.abacus.mode.value(True)))
+-        self.metadata['abacus'] = self.abacus.mode.name
+-        self.metadata['value'] = self.abacus.mode.value(True)
+-        self.metadata['rods'] = str(self._rods_spin.get_value_as_int())
+-        self.metadata['top'] = str(self._top_spin.get_value_as_int())
+-        self.metadata['bottom'] = str(self._bottom_spin.get_value_as_int())
+-        self.metadata['factor'] = str(self._value_spin.get_value_as_int())
+-        self.metadata['base'] = str(self._base_spin.get_value_as_int())
++        metadata = {}
++        metadata['abacus'] = self.abacus.mode.name
++        metadata['value'] = self.abacus.mode.value(True)
++        metadata['rods'] = str(self._rods_spin.get_value_as_int())
++        metadata['top'] = str(self._top_spin.get_value_as_int())
++        metadata['bottom'] = str(self._bottom_spin.get_value_as_int())
++        metadata['factor'] = str(self._value_spin.get_value_as_int())
++        metadata['base'] = str(self._base_spin.get_value_as_int())
++        with open(file_path, 'w') as save_file:
++            save_file.write(json.dumps(metadata))
+ 
+ 
+ def add_spinner_and_label(default_value, min_value, max_value,
