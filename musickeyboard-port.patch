@@ -1,0 +1,98 @@
+diff --git a/activity.py b/activity.py
+index 5b8de76..166025a 100644
+--- a/activity.py
++++ b/activity.py
+@@ -22,6 +22,7 @@ import time
+ import math
+ import os
+ import signal
++import shutil
+ import tempfile
+ 
+ import gi
+@@ -36,7 +37,6 @@ from gi.repository import GObject
+ from gi.repository import Pango
+ 
+ from sugar3.activity import activity
+-from sugar3.datastore import datastore
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics.toolbarbox import ToolbarButton
+@@ -47,7 +47,6 @@ from sugar3.graphics.palette import Palette
+ from sugar3.graphics.palettemenu import PaletteMenuItem
+ from sugar3.graphics.palette import ToolInvoker
+ from sugar3.graphics.toolbarbox import ToolbarBox
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.graphics.radiotoolbutton import RadioToolButton
+ from sugar3.graphics import style
+ from sugar3.graphics.alert import NotifyAlert
+@@ -69,6 +68,10 @@ from RythmGenerator import generator
+ 
+ from draw_piano import PianoKeyboard, LETTERS_TO_KEY_CODES
+ 
++from sugarapp.widgets import SugarCompatibleActivity
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import DesktopSaveChooser
++
+ DRUMCOUNT = 6
+ PLAYER_TEMPO = 95
+ PLAYER_TEMPO_LOWER = 30
+@@ -448,11 +451,11 @@ def set_palette_list(instrument_list):
+         return grid
+ 
+ 
+-class SimplePianoActivity(activity.Activity):
++class SimplePianoActivity(SugarCompatibleActivity):
+     """SimplePianoActivity class as specified in activity.info"""
+ 
+     def __init__(self, handle):
+-        activity.Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self.close)
+         Gst.init(None)
+ 
+@@ -476,7 +479,7 @@ class SimplePianoActivity(activity.Activity):
+         self.rythmInstrument = 'drum1kick'
+         # toolbar with the new toolbar redesign
+         toolbar_box = ToolbarBox()
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         toolbar_box.toolbar.insert(activity_button, 0)
+         toolbar_box.toolbar.set_style(Gtk.ToolbarStyle.BOTH_HORIZ)
+ 
+@@ -925,21 +928,20 @@ class SimplePianoActivity(activity.Activity):
+         bus.remove_signal_watch()
+         pipe.set_state(Gst.State.NULL)
+ 
+-        title = '%s saved as audio' % self.metadata['title']
+-
+-        jobject = datastore.create()
+-        jobject.metadata['title'] = title
+-        jobject.metadata['keep'] = '0'
+-        jobject.metadata['mime_type'] = 'audio/ogg'
+-        jobject.file_path = self._ogg_tempfile.name
+-        datastore.write(jobject)
++        chooser = DesktopSaveChooser(self, filename='untitled.ogg')
++        filename = chooser.get_filename()
++        if filename:
++            shutil.copyfile(self._ogg_tempfile.name, filename)
+ 
+         self._wav_tempfile.close()
+         self._ogg_tempfile.close()
+ 
++        if not filename:
++            return False
++
+         alert = NotifyAlert(10)
+         alert.props.title = _('Audio recorded')
+-        alert.props.msg = _('The audio file was saved in the Journal')
++        alert.props.msg = filename
+         alert.connect('response', self.__alert_response_cb)
+         self.add_alert(alert)
+ 
+@@ -1184,4 +1186,4 @@ class SimplePianoActivity(activity.Activity):
+ 
+     def close(self, skip_save=False):
+         self.csnd.stop()  # without which Csound will segfault
+-        activity.Activity.close(self, skip_save=skip_save)
++        SugarCompatibleActivity.close(self, skip_save=skip_save)
