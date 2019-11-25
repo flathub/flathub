@@ -10,8 +10,8 @@ flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flat
 flatpak install flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08
 
 # Build the package
-flatpak-builder --ccache --repo=flatpak_repo build --force-clean org.splash.Splash.json
-flatpak build-bundle flatpak_repo splash.flatpak org.splash.Splash
+flatpak-builder --ccache --repo=flatpak_repo build --force-clean com.gitlab.sat_metalab.Splash.json
+flatpak build-bundle flatpak_repo splash.flatpak com.gitlab.sat_metalab.Splash
 
 # Install it
 flatpak install --user splash.flatpak
