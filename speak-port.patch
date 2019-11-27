@@ -1,0 +1,115 @@
+From bf83cc98ce957150b29468ee243eb96eccd19d28 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <martin.abente.lahaye@gmail.com>
+Date: Wed, 27 Nov 2019 18:59:07 -0300
+Subject: [PATCH 1/6] port
+
+---
+ activity.py | 37 +++++++++++++++++++------------------
+ brain.py    |  8 +++++---
+ 2 files changed, 24 insertions(+), 21 deletions(-)
+
+diff --git a/activity.py b/activity.py
+index 04f489c..87b1d6e 100644
+--- a/activity.py
++++ b/activity.py
+@@ -82,6 +82,9 @@ from faceselect import FaceSelector
+ 
+ import espeak
+ 
++from sugarapp.widgets import SugarCompatibleActivity
++from sugarapp.widgets import DesktopOpenChooser
++
+ SERVICE = 'org.sugarlabs.Speak'
+ IFACE = SERVICE
+ PATH = '/org/sugarlabs/Speak'
+@@ -155,7 +158,7 @@ def _is_tablet_mode():
+     return False
+ 
+ 
+-class SpeakActivity(activity.Activity):
++class SpeakActivity(SugarCompatibleActivity):
+     def __init__(self, handle):
+         super(SpeakActivity, self).__init__(handle)
+ 
+@@ -317,6 +320,8 @@ class SpeakActivity(activity.Activity):
+         else:
+             # we are creating the activity
+             self.connect('shared', self._shared_cb)
++        # hide chat mode since it won't work
++        self._mode_chat.hide()
+ 
+     def _toolbar_expanded(self):
+         if self._activity_button.is_expanded():
+@@ -739,23 +744,19 @@ class SpeakActivity(activity.Activity):
+         return facebar
+ 
+     def _photo_face_cb(self, widget):
+-        chooser = ObjectChooser(parent=self,
+-                                what_filter=mime.GENERIC_TYPE_IMAGE)
+-
+-        result = chooser.run()
+-        if result == Gtk.ResponseType.ACCEPT:
+-            jobject = chooser.get_selected_object()
+-            if jobject and jobject.file_path:
+-                selector = FaceSelector(jobject.file_path)
+-                selector.connect('face-processed',
+-                                 self._photo_face_processed_cb)
+-                selector.connect('cancel', self._photo_face_cancel_cb)
+-                self._notebook.append_page(selector, Gtk.Label(''))
+-                selector.show()
+-
+-                num = self._notebook.page_num(selector)
+-                self._notebook.set_current_page(num)
+-        chooser.destroy()
++        chooser = DesktopOpenChooser(self.get_toplevel())
++        chooser.add_filter('.png', 'png')
++
++        filename = chooser.get_filename()
++        selector = FaceSelector(filename)
++        selector.connect('face-processed',
++                         self._photo_face_processed_cb)
++        selector.connect('cancel', self._photo_face_cancel_cb)
++        self._notebook.append_page(selector, Gtk.Label(''))
++        selector.show()
++
++        num = self._notebook.page_num(selector)
++        self._notebook.set_current_page(num)
+ 
+     def _photo_face_processed_cb(self, widget, *face_data):
+         lighter = style.Color(self._colors[_lighter_color(self._colors)])
+diff --git a/brain.py b/brain.py
+index b88dd02..1470273 100644
+--- a/brain.py
++++ b/brain.py
+@@ -19,6 +19,7 @@
+ #     License along with HablarConSara.activity.  If not, see
+ #     <http://www.gnu.org/licenses/>.
+ 
++import os
+ import time
+ from gettext import gettext as _
+ 
+@@ -64,8 +65,7 @@ _kernel_voice = None
+ 
+ 
+ def _get_age():
+-    settings = Gio.Settings('org.sugarlabs.user')
+-    birth_timestamp = settings.get_int('birth-timestamp')
++    birth_timestamp = None
+     if birth_timestamp is None or birth_timestamp == 0:
+         return 8
+     else:
+@@ -122,7 +122,9 @@ def load(activity, voice, sorry=None):
+                 activity.face.say_notification(warning)
+                 return
+ 
+-            kernel.loadBrain(brain['brain'])
++            filepath = os.path.dirname(os.path.abspath(__file__))
++            filename = os.path.join(filepath, brain['brain'])
++            kernel.loadBrain(filename)
+             for name, value in brain['predicates'].items():
+                 kernel.setBotPredicate(name, value)
+ 
+-- 
+2.19.1
+
