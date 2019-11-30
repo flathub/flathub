@@ -1,0 +1,143 @@
+app-id: org.tug.texworks
+runtime: org.kde.Platform
+runtime-version: '5.12'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.texlive
+command: texworks
+rename-desktop-file: texworks.desktop
+rename-appdata-file: texworks.appdata.xml
+rename-icon: TeXworks
+finish-args:
+#  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=host
+  - --env=TEXMFCACHE=$XDG_CACHE_HOME
+  - --env=SESSION_MANAGER= # required to avoid Qt warning
+  - --env=PATH=/app/texlive/bin/x86_64-linux:/app/bin:/usr/bin # required to find texlive binaries
+modules:
+  - name: texlive
+    buildsystem: simple
+    build-commands:
+      # Don't use /usr/lib/sdk/texlive/install.sh as that copies everthing into
+      # /app rather than a subdirectory, causing massive clutter of that folder
+      - install -d /app/texlive
+      - cp -ra /usr/lib/sdk/texlive/* /app/texlive
+
+  - name: openjpeg # required by poppler
+    sources:
+      - type: archive
+        url: https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz
+        sha256: 3dc787c1bb6023ba846c2a0d9b1f6e179f1cd255172bde9eb75b01f1e6c7d71a
+    buildsystem: cmake-ninja
+    cleanup:
+      - /bin
+      - /include
+      - /lib/openjpeg-*
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /lib/*.la
+      - /share/man
+
+  - name: poppler # PDF rendering library used by TeXworks
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-0.74.0.tar.xz
+        sha256: 92e09fd3302567fd36146b36bb707db43ce436e8841219025a82ea9fb0076b2f
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_GOBJECT_INTROSPECTION=OFF
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /lib/*.la
+      - /share/man
+
+  - name: poppler-data # Encoding data for CJK documents
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-data-0.4.9.tar.gz
+        sha256: 1f9c7e7de9ecd0db6ab287349e31bf815ca108a5a175cf906a90163bdbe32012
+    buildsystem: simple
+    build-commands:
+      - make prefix=/app install
+    cleanup:
+      - /share/pkgconfig
+
+  - name: hunspell # Spell checking library used by TeXworks
+    sources:
+      - type: archive
+        url: https://github.com/hunspell/hunspell/archive/v1.7.0.tar.gz
+        sha256: bb27b86eb910a8285407cf3ca33b62643a02798cf2eef468c0a74f6c3ee6bc8a
+    buildsystem: simple
+    build-commands:
+      - autoreconf -vfi
+      - ./configure --prefix=/app
+      - make -j
+      - make install
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /lib/*.la
+      - /share/man
+
+  - name: libreoffice-dictionaries # Spell checking dictionaries
+    sources:
+      - type: archive
+        url: https://github.com/LibreOffice/dictionaries/archive/libreoffice-6.2.2.2.tar.gz
+        sha256: 986ab865496435689e8a712e0378cb1855f98eafa3182d46e1444bfe6148e423
+    buildsystem: simple
+    build-commands:
+      # Only install languages the TeXworks UI has been translated to
+      - for LANG in af ar ca cs de en es fr it nl pl pt ru sl tr; do
+          for DIC in $(find . -iname "${LANG}*.dic"); do
+            AFF="$(dirname "${DIC}")/$(basename "${DIC}" ".dic").aff";
+            if [ ! -f "${AFF}" ]; then continue; fi;
+            echo "Installing $(basename ${DIC} .dic)";
+            install -D -t /app/share/hunspell "${DIC}";
+            install -D -t /app/share/hunspell "${AFF}";
+          done;
+        done
+
+  - shared-modules/lua5.3/lua-5.3.5.json # Required for TeXworks's lua scripting plugin
+
+  - name: manual # The TeXworks manual
+    sources:
+      - type: archive
+        url: https://github.com/TeXworks/manual/releases/download/2019-03-16/TeXworks-manual-html.zip
+        sha256: 34ed73d0996dd15bf8c2844712ac882be2901257dfb6f31df0b5adb0f2c4ff18
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/doc/texworks-help
+      - cp -ra * /app/share/doc/texworks-help
+
+  - name: icons # as per flathub's app requirements
+    sources:
+      - type: file
+        path: TeXworks-64.png
+      - type: file
+        path: TeXworks-128.png
+    buildsystem: simple
+    build-commands:
+      - install -D TeXworks-64.png /app/share/icons/hicolor/64x64/apps/TeXworks.png
+      - install -D TeXworks-128.png /app/share/icons/hicolor/128x128/apps/TeXworks.png
+
+  - name: texworks
+    sources:
+      - type: git
+        url: https://github.com/TeXworks/texworks.git
+        tag: release-0.6.3
+        commit: a2470cac986bab5c971ab80799b4c98cc055a6f7
+      - type: patch
+        path: texworks.patch
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DTW_BUILD_ID=flatpak
+      - -DTeXworks_ICON_DIR=/share/icons/hicolor/512x512/apps
+      - -DTeXworks_DIC_DIR=/app/share/hunspell
