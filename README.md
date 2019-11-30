@@ -29,4 +29,3 @@ flatpak --user install org.genivi.DLTViewer.flatpak
 flatpak run org.genivi.DLTViewer
 ```
 
-The DLT-Viewer obtained by using Flatpak is sandboxed. For example, it doesn't have access to the host file system. The only way to access to a file is through the File Chooser [Portal](http://docs.flatpak.org/en/latest/desktop-integration.html#portals) which requires user interaction.
