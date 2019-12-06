@@ -1,0 +1,349 @@
+Author: Alberto Garcia <berto@igalia.com>
+Subject: Add command-line option to select the audio driver
+Origin: https://sourceforge.net/p/fuse-emulator/fuse/ci/77cbcec86714959938eb657c9628efa00f17a3d7
+diff --git a/Makefile.am b/Makefile.am
+index c10b7d81..6fdb3454 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -62,10 +62,13 @@ fuse_LDADD = \
+              $(GTK_LIBS) \
+              $(GLIB_LIBS) \
+              $(PNG_LIBS) \
+-             $(SDL_LIBS) \
+              $(X_LIBS) \
+              $(XML_LIBS)
+ 
++if USE_SDL
++fuse_LDADD += $(SDL_LIBS)
++endif
++
+ fuse_DEPENDENCIES =
+ 
+ EXTRA_fuse_SOURCES =
+@@ -87,9 +90,12 @@ AM_CPPFLAGS = \
+               $(LIBSPECTRUM_CFLAGS) \
+               $(XML_CFLAGS) \
+               -DFUSEDATADIR="\"${pkgdatadir}\"" \
+-              $(SDL_CFLAGS) \
+               $(PNG_CFLAGS)
+ 
++if USE_SDL
++AM_CPPFLAGS += $(SDL_CFLAGS)
++endif
++
+ AM_CFLAGS = $(WARN_CFLAGS) $(PTHREAD_CFLAGS)
+ 
+ noinst_HEADERS = bitmap.h \
+diff --git a/configure.ac b/configure.ac
+index 03186432..3a3da88a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -278,6 +278,8 @@ if test -z "$UI"; then
+ fi
+ 
+ dnl Look for SDL (default=no)
++SDL_VERSION=1.2.4
++AM_PATH_SDL($SDL_VERSION, sdl_available=yes, sdl_available=no)
+ if test -z "$UI"; then
+   AC_MSG_CHECKING(whether SDL UI requested)
+   AC_ARG_WITH(sdl,
+@@ -286,13 +288,15 @@ if test -z "$UI"; then
+   sdl=no)
+   AC_MSG_RESULT($sdl)
+   if test "$sdl" = yes; then
+-    SDL_VERSION=1.2.4
+-    AM_PATH_SDL($SDL_VERSION,
+-		AC_DEFINE([UI_SDL], 1, [Defined if the SDL UI in use])
+-		AC_DEFINE([USE_WIDGET], 1,
+-		          [Defined if we're using a widget-based UI])
+-		UI=sdl; WIDGET=widget,
+-                AC_MSG_ERROR([SDL version $SDL_VERSION not found]))
++    if test "$sdl_available" = yes; then
++      AC_DEFINE([UI_SDL], 1, [Defined if the SDL UI in use])
++      AC_DEFINE([USE_WIDGET], 1, [Defined if we're using a widget-based UI])
++      UI=sdl
++      WIDGET=widget
++      use_sdl=yes
++    else
++      AC_MSG_ERROR([SDL version $SDL_VERSION not found])
++    fi
+   fi
+ fi
+ 
+@@ -504,46 +508,26 @@ AS_IF([test "$ac_cv_sizeof_long" -ge 8],
+   [AC_MSG_RESULT([default])]
+ )
+ 
++
++dnl Create the list of available audio drivers.
++dnl Drivers are added to this list in order of preference, so the
++dnl first one will be selected unless one is chosen explicitly.
++audio_driver_list=""
++
+ dnl Check if a version of libasound which supplies pcm is available
+-AC_MSG_CHECKING(whether ALSA requested)
+-AC_ARG_WITH(alsa,
+-[  --without-alsa          don't use libasound (ALSA)],
+-if test "$withval" = no; then libasound=no; else libasound=yes; fi,
+-libasound=yes)
+-AC_MSG_RESULT($libasound)
+-if test "$libasound" = yes; then
+-  AC_CHECK_LIB( asound, snd_pcm_hw_params_set_period_size_near,
+-    [AC_CHECK_HEADER(
+-      alsa/asoundlib.h,
+-      [alsa_available=yes],
+-      [AC_MSG_WARN(alsa/asoundlib.h not found - no ALSA output)]
+-    )],
+-    [AC_MSG_WARN(snd_pcm_hw_params_set_period_size_near not found - no ALSA output)]
+-  )
+-fi
+-
+-dnl Check if a version of libao which supplies ao_open_live is available
+-AC_MSG_CHECKING(whether libao requested)
+-AC_ARG_WITH(libao,
+-[  --with-libao            use libao for sound output],
+-if test "$withval" = no; then libao=no; else libao=yes; fi,
+-libao=no)
+-AC_MSG_RESULT($libao)
+-if test "$libao" = yes; then
+-  AC_CHECK_LIB( ao, ao_open_live,
+-    [AC_CHECK_HEADER(
+-      ao/ao.h,
+-      [ao_available=yes],
+-      [AC_MSG_WARN(ao/ao.h not found - no libao sound output)]
+-    )],
+-    [AC_MSG_WARN(ao_open_live not found - no libao sound output)]
+-  )
+-fi
++AC_CHECK_LIB( asound, snd_pcm_hw_params_set_period_size_near,
++  [AC_CHECK_HEADER(
++    alsa/asoundlib.h,
++    [audio_driver_list="$audio_driver_list alsa"],
++    [AC_MSG_WARN(alsa/asoundlib.h not found - no ALSA output)]
++  )],
++  [AC_MSG_WARN(snd_pcm_hw_params_set_period_size_near not found - no ALSA output)]
++)
+ 
+ dnl Check if DirectSound is available
+ AC_CHECK_HEADER(
+   dsound.h,
+-  [dxsound_available=yes],,
++  [audio_driver_list="$audio_driver_list directsound"],,
+   [#define DIRECTSOUND_VERSION 0x0700
+    #include <windows.h>
+    #include <mmsystem.h>]
+@@ -552,64 +536,128 @@ AC_CHECK_HEADER(
+ dnl Check if MS Windows Multimedia API sound is available
+ AC_CHECK_HEADER(
+   mmsystem.h,
+-  [win32sound_available=yes],,
++  [audio_driver_list="$audio_driver_list win32sound"],,
+   [#include <windows.h>]
+ )
+ 
++dnl SDL audio
++if test "$sdl_available" = "yes"; then
++  dnl Default to SDL audio if we're using the SDL UI
++  if test "$UI" = sdl; then
++    audio_driver_list="sdl $audio_driver_list"
++  else
++    audio_driver_list="$audio_driver_list sdl"
++  fi
++fi
++
++dnl Check if a version of libao which supplies ao_open_live is available
++AC_CHECK_LIB( ao, ao_open_live,
++  [AC_CHECK_HEADER(
++    ao/ao.h,
++    [audio_driver_list="$audio_driver_list libao"],
++    [AC_MSG_WARN(ao/ao.h not found - no libao sound output)]
++  )],
++  [AC_MSG_WARN(ao_open_live not found - no libao sound output)]
++)
++
++dnl Solaris and HP/UX
++if test "$ac_cv_header_dsound_h" = yes; then
++  audio_driver_list="$audio_driver_list solaris hpux"
++fi
++
++dnl Open sound system
++if test "$ac_cv_header_sys_soundcard_h" = yes; then
++  audio_driver_list="$audio_driver_list oss"
++fi
++
++dnl OpenBSD audio
++if test "$ac_cv_header_sys_audioio_h" = yes; then
++  audio_driver_list="$audio_driver_list openbsd"
++fi
++
+ dnl Check if CoreAudio is available
+ AC_CHECK_HEADER(
+   AudioToolbox/AudioToolbox.h,
+-  [coreaudio_available=yes],,
++  [audio_driver_list="$audio_driver_list coreaudio"],,
+ )
+ 
+-dnl
+-dnl Decide which sound routines to use
+-dnl
++dnl Nintendo Wii
++if test "$wii" = yes; then
++  audio_driver_list="$audio_driver_list wii"
++fi
+ 
+-AC_MSG_CHECKING(which sound routines to use)
+-if test "$UI" = sdl; then
+-  SOUND_LIBADD='sound/sdlsound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
+-  audio_driver="SDL"
+-elif test "$dxsound_available" = yes; then
+-  SOUND_LIBADD='sound/dxsound.$(OBJEXT)' SOUND_LIBS='-ldsound -lole32 -ldxguid'
+-  audio_driver="DirectX"
+-  AC_DEFINE([DIRECTSOUND_VERSION], 0x0700, [DirectX 7 or higher is required])
+-elif test "$win32sound_available" = yes; then
+-  SOUND_LIBADD='sound/win32sound.$(OBJEXT)' SOUND_LIBS='-lwinmm'
+-  audio_driver="win32sound"
+-elif test "$alsa_available" = yes; then
+-  SOUND_LIBADD='sound/alsasound.$(OBJEXT)' SOUND_LIBS='-lasound'
+-  audio_driver="ALSA"
+-elif test "$ao_available" = yes; then
+-  SOUND_LIBADD='sound/aosound.$(OBJEXT)' SOUND_LIBS='-lao'
+-  audio_driver="libao"
+-elif test "$ac_cv_header_dsound_h" = yes; then
+-  # Later selection between these two
+-  SOUND_LIBADD='sound/sunsound.$(OBJEXT) sound/hpsound.$(OBJEXT)' SOUND_LIBS=''
+-  audio_driver="Solaris or HP/UX"
+-elif test "$ac_cv_header_sys_soundcard_h" = yes; then
+-  SOUND_LIBADD='sound/osssound.$(OBJEXT)' SOUND_LIBS=''
+-  audio_driver="OSS"
+-elif test "$ac_cv_header_sys_audioio_h" = yes; then
+-  dnl OpenBSD
+-  SOUND_LIBADD='sound/sunsound.$(OBJEXT)' SOUND_LIBS=''
+-  audio_driver="OpenBSD"
+-elif test "$coreaudio_available" = yes; then
+-  SOUND_LIBADD='sound/coreaudiosound.$(OBJEXT)' SOUND_LIBS='-framework CoreAudio -framework AudioUnit' sound_fifo=yes
+-  audio_driver="CoreAudio"
+-elif test "$wii" = yes; then
+-  SOUND_LIBADD='sound/wiisound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
+-  audio_driver="Wii"
++dnl No audio driver - this is the last one of the list
++audio_driver_list="$audio_driver_list null"
++
++dnl Configure option to select an audio driver
++AC_MSG_CHECKING(which audio driver to use)
++AC_ARG_WITH(audio-driver,
++[  --with-audio-driver=DRV select audio driver (default=auto)],
++audio_driver=$withval, audio_driver=auto)
++
++dnl See if the selected audio driver is available
++audio_driver_found=no
++for drv in $audio_driver_list; do
++    dnl If audio_driver is auto then select the first one from the list
++    if test "$audio_driver" = "auto"; then
++       audio_driver=$drv
++    fi
++
++    dnl If the selected driver is on the list then stop searching
++    if test "$audio_driver" = "$drv"; then
++       audio_driver_found=yes
++       break
++    fi
++done
++
++if test $audio_driver_found = "yes"; then
++   AC_MSG_RESULT($audio_driver)
+ else
+-  SOUND_LIBADD='sound/nullsound.$(OBJEXT)' SOUND_LIBS=''
+-  audio_driver="none"
++   AC_MSG_ERROR([requested audio driver $audio_driver not found.
++Available drivers: $audio_driver_list])
+ fi
+ 
+-AC_MSG_RESULT($audio_driver)
+-if test "$audio_driver" = "none"; then
+-  AC_DEFINE([NO_SOUND], 1, [Defined if no sound code is present])
+-  AC_MSG_WARN(No sound library has been found)
+-fi
++dnl
++dnl Add the necessary options for the selected audio driver
++dnl
++case $audio_driver in
++  sdl)
++    SOUND_LIBADD='sound/sdlsound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
++    use_sdl=yes
++    ;;
++  directsound)
++    SOUND_LIBADD='sound/dxsound.$(OBJEXT)' SOUND_LIBS='-ldsound -lole32 -ldxguid'
++    AC_DEFINE([DIRECTSOUND_VERSION], 0x0700, [DirectX 7 or higher is required])
++    ;;
++  win32sound)
++    SOUND_LIBADD='sound/win32sound.$(OBJEXT)' SOUND_LIBS='-lwinmm'
++    ;;
++  alsa)
++    SOUND_LIBADD='sound/alsasound.$(OBJEXT)' SOUND_LIBS='-lasound'
++    ;;
++  libao)
++    SOUND_LIBADD='sound/aosound.$(OBJEXT)' SOUND_LIBS='-lao'
++    ;;
++  solaris | openbsd)
++    SOUND_LIBADD='sound/sunsound.$(OBJEXT)' SOUND_LIBS=''
++    ;;
++  hpux)
++    SOUND_LIBADD='sound/hpsound.$(OBJEXT)' SOUND_LIBS=''
++    ;;
++  oss)
++    SOUND_LIBADD='sound/osssound.$(OBJEXT)' SOUND_LIBS=''
++    ;;
++  coreaudio)
++    SOUND_LIBADD='sound/coreaudiosound.$(OBJEXT)' SOUND_LIBS='-framework CoreAudio -framework AudioUnit' sound_fifo=yes
++    ;;
++  wii)
++    SOUND_LIBADD='sound/wiisound.$(OBJEXT)' SOUND_LIBS='' sound_fifo=yes
++    ;;
++  null)
++    SOUND_LIBADD='sound/nullsound.$(OBJEXT)' SOUND_LIBS=''
++    AC_DEFINE([NO_SOUND], 1, [Defined if no sound code is present])
++    ;;
++esac
+ 
+ if test "$sound_fifo" = yes; then
+   dnl Strange construct used here as += doesn't seem to work on OS X
+@@ -669,12 +717,14 @@ if test "$stick" = yes; then
+       if test "$libjsw" = yes; then
+         AC_MSG_RESULT([no, use libjsw])
+       else
+-        AC_MSG_RESULT(yes)
+-        SDL_VERSION=1.2.4
+-        AM_PATH_SDL($SDL_VERSION,		    
+-          AC_DEFINE([USE_JOYSTICK], 1, [Defined if we're using hardware joysticks]),
++        if test "$sdl_available" = yes; then
++          AC_MSG_RESULT(yes)
++          AC_DEFINE([USE_JOYSTICK], 1, [Defined if we're using hardware joysticks])
++          use_sdl=yes
++        else
+           AC_MSG_WARN([SDL version $SDL_VERSION not found - joystick support disabled])
+-          stick=no)
++          stick=no
++        fi
+       fi
+       ;;
+     wii)
+@@ -848,6 +898,9 @@ AM_CONDITIONAL(COMPAT_UNIX, test "$COMPAT_OSNAME" = 'unix')
+ AM_CONDITIONAL(COMPAT_WII, test "$COMPAT_OSNAME" = 'wii')
+ AM_CONDITIONAL(COMPAT_WIN32, test "$COMPAT_OSNAME" = 'win32')
+ 
++dnl This tells the Makefile to use SDL_CFLAGS and SDL_LIBS during the build
++AM_CONDITIONAL(USE_SDL, test "$use_sdl" = "yes")
++
+ dnl Decide whether to install desktop and mime files
+ AC_ARG_ENABLE(desktop-integration,
+ AS_HELP_STRING([--enable-desktop-integration], [add menu entry and file associations]),
+@@ -960,7 +1013,8 @@ fi
+ echo "zlib support: ${zlib}"
+ echo "libxml2 support: ${libxml2}"
+ echo "libpng support: ${libpng}"
+-echo "Audio driver: ${audio_driver}"
++echo "Available audio drivers: ${audio_driver_list}"
++echo "Selected audio driver: ${audio_driver}"
+ echo "Spectranet support: ${build_spectranet}"
+ echo "SpeccyBoot support: ${linux_tap:-no}"
+ echo "Desktop integration: ${desktopintegration}"
