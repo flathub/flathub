@@ -1,0 +1,189 @@
+--- a/src/MACLib/APECompress.cpp
++++ b/src/MACLib/APECompress.cpp
+@@ -116,7 +116,7 @@ int CAPECompress::AddData(unsigned char
+             return ERROR_UNDEFINED;
+         
+         // calculate how many bytes to copy and add that much to the buffer
+-        int nBytesToProcess = min(nBytesAvailable, nBytes - nBytesDone);
++        int nBytesToProcess = min_macro(nBytesAvailable, nBytes - nBytesDone);
+         memcpy(pBuffer, &pData[nBytesDone], nBytesToProcess);
+                         
+         // unlock the buffer (fail if not successful)
+@@ -161,7 +161,7 @@ int CAPECompress::ProcessBuffer(BOOL bFi
+         
+         while ((m_nBufferTail - m_nBufferHead) >= nThreshold)
+         {
+-            int nFrameBytes = min(m_spAPECompressCreate->GetFullFrameBytes(), m_nBufferTail - m_nBufferHead);
++            int nFrameBytes = min_macro(m_spAPECompressCreate->GetFullFrameBytes(), m_nBufferTail - m_nBufferHead);
+             
+             if (nFrameBytes == 0)
+                 break;
+--- a/src/MACLib/APEDecompress.cpp
++++ b/src/MACLib/APEDecompress.cpp
+@@ -36,8 +36,8 @@ CAPEDecompress::CAPEDecompress(int * pEr
+     m_nErrorDecodingCurrentFrameOutputSilenceBlocks = 0;
+ 
+     // set the "real" start and finish blocks
+-    m_nStartBlock = (nStartBlock < 0) ? 0 : min(nStartBlock, GetInfo(APE_INFO_TOTAL_BLOCKS));
+-    m_nFinishBlock = (nFinishBlock < 0) ? GetInfo(APE_INFO_TOTAL_BLOCKS) : min(nFinishBlock, GetInfo(APE_INFO_TOTAL_BLOCKS));
++    m_nStartBlock = (nStartBlock < 0) ? 0 : min_macro(nStartBlock, GetInfo(APE_INFO_TOTAL_BLOCKS));
++    m_nFinishBlock = (nFinishBlock < 0) ? GetInfo(APE_INFO_TOTAL_BLOCKS) : min_macro(nFinishBlock, GetInfo(APE_INFO_TOTAL_BLOCKS));
+     m_bIsRanged = (m_nStartBlock != 0) || (m_nFinishBlock != GetInfo(APE_INFO_TOTAL_BLOCKS));
+ }
+ 
+@@ -85,7 +85,7 @@ int CAPEDecompress::GetData(char * pBuff
+ 
+     // cap
+     int nBlocksUntilFinish = m_nFinishBlock - m_nCurrentBlock;
+-    const int nBlocksToRetrieve = min(nBlocks, nBlocksUntilFinish);
++    const int nBlocksToRetrieve = min_macro(nBlocks, nBlocksUntilFinish);
+     
+     // get the data
+     unsigned char * pOutputBuffer = (unsigned char *) pBuffer;
+@@ -99,7 +99,7 @@ int CAPEDecompress::GetData(char * pBuff
+ 
+         // analyze how much to remove from the buffer
+         const int nFrameBufferBlocks = m_nFrameBufferFinishedBlocks;
+-        nBlocksThisPass = min(nBlocksLeft, nFrameBufferBlocks);
++        nBlocksThisPass = min_macro(nBlocksLeft, nFrameBufferBlocks);
+ 
+         // remove as much as possible
+         if (nBlocksThisPass > 0)
+@@ -179,7 +179,7 @@ int CAPEDecompress::FillFrameBuffer()
+         if (m_nErrorDecodingCurrentFrameOutputSilenceBlocks > 0)
+         {
+             // output silence
+-            int nOutputSilenceBlocks = min(m_nErrorDecodingCurrentFrameOutputSilenceBlocks, nBlocksLeft);
++            int nOutputSilenceBlocks = min_macro(m_nErrorDecodingCurrentFrameOutputSilenceBlocks, nBlocksLeft);
+             unsigned char cSilence = (GetInfo(APE_INFO_BITS_PER_SAMPLE) == 8) ? 127 : 0;
+             for (int z = 0; z < nOutputSilenceBlocks * m_nBlockAlign; z++)
+             {
+@@ -204,7 +204,7 @@ int CAPEDecompress::FillFrameBuffer()
+         // analyze
+         int nFrameOffsetBlocks = m_nCurrentFrameBufferBlock % GetInfo(APE_INFO_BLOCKS_PER_FRAME);
+         int nFrameBlocksLeft = nFrameBlocks - nFrameOffsetBlocks;
+-        int nBlocksThisPass = min(nFrameBlocksLeft, nBlocksLeft);
++        int nBlocksThisPass = min_macro(nFrameBlocksLeft, nBlocksLeft);
+ 
+         // start the frame if we need to
+         if (nFrameOffsetBlocks == 0)
+--- a/src/MACLib/APESimple.cpp
++++ b/src/MACLib/APESimple.cpp
+@@ -251,7 +251,7 @@ int __stdcall GetChecksum(CIO * pIO, APE
+     nBytesRead = 1;
+     while ((nBytesLeft > 0) && (nBytesRead > 0))
+     {
+-        int nBytesToRead = min(16384, nBytesLeft);
++        int nBytesToRead = min_macro(16384, nBytesLeft);
+         if (pIO->Read(spBuffer, nBytesToRead, &nBytesRead) != ERROR_SUCCESS)
+             return ERROR_IO_READ;
+ 
+--- a/src/MACLib/APETag.cpp
++++ b/src/MACLib/APETag.cpp
+@@ -15,7 +15,7 @@ CAPETagField::CAPETagField(const str_utf
+     memcpy(m_spFieldNameUTF16, pFieldName, (wcslen(pFieldName) + 1) * sizeof(str_utf16));
+     
+     // data (we'll always allocate two extra bytes and memset to 0 so we're safely NULL terminated)
+-    m_nFieldValueBytes = max(nFieldBytes, 0);
++    m_nFieldValueBytes = max_macro(nFieldBytes, 0);
+     m_spFieldValue.Assign(new char [m_nFieldValueBytes + 2], TRUE);
+     memset(m_spFieldValue, 0, m_nFieldValueBytes + 2);
+     if (m_nFieldValueBytes > 0)
+--- a/src/MACLib/BitArray.cpp
++++ b/src/MACLib/BitArray.cpp
+@@ -113,7 +113,7 @@ int CBitArray::OutputBitArray(BOOL bFina
+         m_nCurrentBitIndex = (m_nCurrentBitIndex & 31);
+         
+         // zero the rest of the memory (may not need the +1 because of frame byte alignment)
+-        memset(&m_pBitArray[1], 0, min(nBytesToWrite + 1, BIT_ARRAY_BYTES - 1));
++        memset(&m_pBitArray[1], 0, min_macro(nBytesToWrite + 1, BIT_ARRAY_BYTES - 1));
+     }
+     
+     // return a success
+@@ -233,7 +233,7 @@ int CBitArray::EncodeValue(int nEncode,
+     nEncode = (nEncode > 0) ? nEncode * 2 - 1 : -nEncode * 2;
+ 
+     // figure the pivot value
+-    int nPivotValue = max(BitArrayState.nKSum / 32, 1);
++    int nPivotValue = max_macro(BitArrayState.nKSum / 32, 1);
+     int nOverflow = nEncode / nPivotValue;
+     int nBase = nEncode - (nOverflow * nPivotValue);
+ 
+--- a/src/MACLib/MACProgressHelper.cpp
++++ b/src/MACLib/MACProgressHelper.cpp
+@@ -27,7 +27,7 @@ void CMACProgressHelper::UpdateProgress(
+         m_nCurrentStep = nCurrentStep;
+ 
+     // figure the percentage done
+-    float fPercentageDone = float(m_nCurrentStep) / float(max(m_nTotalSteps, 1));
++    float fPercentageDone = float(m_nCurrentStep) / float(max_macro(m_nTotalSteps, 1));
+     int nPercentageDone = (int) (fPercentageDone * 1000 * 100);
+     if (nPercentageDone > 100000) nPercentageDone = 100000;
+ 
+--- a/src/MACLib/Prepare.cpp
++++ b/src/MACLib/Prepare.cpp
+@@ -176,9 +176,9 @@ int CPrepare::Prepare(const unsigned cha
+ 
+             if (LPeak == 0) { *pSpecialCodes |= SPECIAL_FRAME_LEFT_SILENCE; }
+             if (RPeak == 0) { *pSpecialCodes |= SPECIAL_FRAME_RIGHT_SILENCE; }
+-            if (max(LPeak, RPeak) > *pPeakLevel) 
++            if (max_macro(LPeak, RPeak) > *pPeakLevel)
+             {
+-                *pPeakLevel = max(LPeak, RPeak);
++                *pPeakLevel = max_macro(LPeak, RPeak);
+             }
+ 
+             // check for pseudo-stereo files
+--- a/src/MACLib/UnBitArray.cpp
++++ b/src/MACLib/UnBitArray.cpp
+@@ -116,7 +116,7 @@ int CUnBitArray::DecodeValueRange(UNBIT_
+     if (m_nVersion >= 3990)
+     {
+         // figure the pivot value
+-        int nPivotValue = max(BitArrayState.nKSum / 32, 1);
++        int nPivotValue = max_macro(BitArrayState.nKSum / 32, 1);
+         
+         // get the overflow
+         int nOverflow = 0;
+--- a/src/Shared/CircleBuffer.cpp
++++ b/src/Shared/CircleBuffer.cpp
+@@ -45,7 +45,7 @@ int CCircleBuffer::Get(unsigned char * p
+ 
+     if (pBuffer != NULL && nBytes > 0)
+     {
+-        int nHeadBytes = min(m_nEndCap - m_nHead, nBytes);
++        int nHeadBytes = min_macro(m_nEndCap - m_nHead, nBytes);
+         int nFrontBytes = nBytes - nHeadBytes;
+ 
+         memcpy(&pBuffer[0], &m_pBuffer[m_nHead], nHeadBytes);
+@@ -72,7 +72,7 @@ void CCircleBuffer::Empty()
+ 
+ int CCircleBuffer::RemoveHead(int nBytes)
+ {
+-    nBytes = min(MaxGet(), nBytes);
++    nBytes = min_macro(MaxGet(), nBytes);
+     m_nHead += nBytes;
+     if (m_nHead >= m_nEndCap)
+         m_nHead -= m_nEndCap;
+@@ -81,7 +81,7 @@ int CCircleBuffer::RemoveHead(int nBytes
+ 
+ int CCircleBuffer::RemoveTail(int nBytes)
+ {
+-    nBytes = min(MaxGet(), nBytes);
++    nBytes = min_macro(MaxGet(), nBytes);
+     m_nTail -= nBytes;
+     if (m_nTail < 0)
+         m_nTail += m_nEndCap;
+--- a/src/Shared/NoWindows.h
++++ b/src/Shared/NoWindows.h
+@@ -41,8 +41,8 @@ typedef unsigned char       UCHAR;
+ typedef const wchar_t *     LPCWSTR;
+ 
+ #define ZeroMemory(POINTER, BYTES) memset(POINTER, 0, BYTES);
+-#define max(a,b)    (((a) > (b)) ? (a) : (b))
+-#define min(a,b)    (((a) < (b)) ? (a) : (b))
++#define max_macro(a,b)    (((a) > (b)) ? (a) : (b))
++#define min_macro(a,b)    (((a) < (b)) ? (a) : (b))
+ 
+ #define __stdcall
+ #define CALLBACK
