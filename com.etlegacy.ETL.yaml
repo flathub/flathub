@@ -1,6 +1,6 @@
 app-id: com.etlegacy.ETL
 runtime: org.freedesktop.Platform
-runtime-version: '18.08'
+runtime-version: '19.08'
 sdk: org.freedesktop.Sdk
 branch: stable
 
@@ -12,13 +12,17 @@ branch: stable
 # There is also a more controversial problem, relating to mods.
 # Many mods are made under a crappy non-GPL compatible SDK license which
 # means that those mods will forever remain closed source, 32bit only.
-# Good hope is that overtime, they will die, but until then, we better stick
+# Good hope is that overtime they will die, but until then, we better stick
 # to 32bit
 
 rename-desktop-file: etlegacy.desktop
 rename-icon: etl
 
 command: etl
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
 
 finish-args:
   - --socket=wayland
@@ -39,14 +43,90 @@ cleanup:
   - /share/pkgconfig
   - '*.a'
   - '*.la'
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '19.08'
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '19.08'
+    no-autodownload: true
+    
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 19.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+  prepend-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
     
 modules:
-  - shared-modules/glu/glu-9.0.0.json
-  - shared-modules/glew/glew.json
+  
+  - name: glu
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.1.tar.xz
+        sha256: fb5a4c2dd6ba6d1c21ab7c05129b0769544e1d68e1e3b0ffecb18e73c93055bc
+
+  # Info concerning glew 32bit
+  # https://stackoverflow.com/questions/15859031/glew-1-9-0-builds-a-64-bit-so-even-with-m32-argument
+
+  - name: glew
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    no-autogen: true
+    config-opts:
+      - -DCMAKE_C_FLAGS=-m32 -L/usr/X11R6/lib -L/usr/lib
+      - -DCMAKE_CXX_FLAGS=-m32 -L/usr/X11R6/lib -L/usr/lib
+      - -DCMAKE_LDF_FLAGS=-m32 -L/usr/X11R6/lib -L/usr/lib
+    make-args:
+      - GLEW_PREFIX=/app
+      - GLEW_DEST=/app
+      - LIBDIR=/app/lib32
+    make-install-args:
+      - GLEW_PREFIX=/app
+      - GLEW_DEST=/app
+      - LIBDIR=/app/lib32
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/glew/glew/2.1.0/glew-2.1.0.tgz
+        sha256: 04de91e7e6763039bc11940095cd9c7f880baba82196a7765f727ac05a993c95
+    post-install:
+      - file /app/lib32/libGLEW.so.2.1.0
+
   - shared-modules/lua5.3/lua-5.3.5.json
 
   - name: minizip
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
     config-opts:
+      - -DCMAKE_C_FLAGS=-L/lib/i386-linux-gnu -m32
+      - -DCMAKE_CXX_FLAGS=-L/lib/i386-linux-gnu -m32
+      - -DCMAKE_INCLUDE_PATH=/lib/i386-linux-gnu
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_LIBRARY_PATH=/lib/i386-linux-gnu
       # Need to build as a share library or minizip wont link with etl (ET Legacy Client) correctly, 
       # Will case `undefined reference to symbol 'inflateEnd'` on libcurl.so & libz.so
       - -DBUILD_SHARED_LIBS:BOOL=ON
@@ -57,21 +137,39 @@ modules:
         sha256: d9501b1048064855222a42264ce773eebc29bbad5bcadbbeb22db2c3e65ae447
 
   - name: jansson
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
     sources:
       - type: archive
         url: http://www.digip.org/jansson/releases/jansson-2.11.tar.gz
         sha256: 6e85f42dabe49a7831dbdd6d30dca8a966956b51a9a50ed534b82afc3fa5b2f4
     
   - name: etlegacy
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
     config-opts:
+      # Basic options
+      - -DCROSS_COMPILE32=1
       - -DCMAKE_BUILD_TYPE=Release
       - -DOpenGL_GL_PREFERENCE=GLVND
+      
+      # Target settings
       - -DCMAKE_INSTALL_PREFIX=/app
-      - -DCMAKE_LIBRARY_PATH=/app/bin
-      - -DCMAKE_INCLUDE_PATH=/app/bin
       - -DINSTALL_DEFAULT_BASEDIR=/app/bin
       - -DINSTALL_DEFAULT_BINDIR=bin
       - -DINSTALL_DEFAULT_MODDIR=bin
+      
+      # 32bit libs
+      - -DCMAKE_LIBRARY_PATH=/lib/i386-linux-gnu
+      - -DCMAKE_INCLUDE_PATH=/lib/i386-linux-gnu
+      
+      # Minizip locations
+      - -DMINIZIP_INCLUDE_DIRS=/app/include
+      - -DMINIZIP_LIBRARIES=/app/lib32/libminizip.so
+      
+      # Application options
       - -DBUNDLED_LIBS=0
       - -DBUILD_SERVER=1
       - -DBUILD_CLIENT=1
@@ -83,18 +181,6 @@ modules:
       - -DINSTALL_OMNIBOT=0
       - -DINSTALL_GEOIP=0
       - -DINSTALL_WOLFADMIN=0
-    build-options:
-      arch:
-#       x86_64:
-#         env:
-#           LDFLAGS: -ldl -lmvec -lm
-#         config-opts:
-#           - -DCROSS_COMPILE32=0
-        i386:
-          env:
-            LDFLAGS: -ldl -lm
-          config-opts:
-            - -DCROSS_COMPILE32=1
     buildsystem: cmake-ninja
     sources:
       - type: archive
