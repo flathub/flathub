@@ -1,0 +1,117 @@
+id: org.flathub.flatpak-external-data-checker
+sdk: org.gnome.Sdk
+runtime: org.gnome.Platform
+runtime-version: "3.34"
+finish-args:
+  - --share=network
+command: flatpak-external-data-checker
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+modules:
+
+  - name: flatpak-external-data-checker
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib /app/bin
+      - cp -ax . /app/lib/fedc
+      - ln -sr /app/{lib/fedc,bin}/flatpak-external-data-checker
+      - ln -sr /app/{lib/fedc,bin}/canonicalize-manifest
+    sources:
+      - type: git
+        url: "https://github.com/flathub/flatpak-external-data-checker.git"
+    modules:
+
+      - name: python-apt
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py build
+          - python3 setup.py install --prefix=/app --root=/
+        sources:
+          - type: archive
+            url: "http://deb.debian.org/debian/pool/main/p/python-apt/python-apt_1.8.4.tar.xz"
+            sha256: 7831b3fd0093af5b76393f0d2610cb76c1d44e7aa438837779f9355a9174a220
+        modules:
+
+          - name: apt
+            buildsystem: cmake-ninja
+            build-options:
+              env:
+                PERL5LIB: /app/lib/perl5/vendor_perl/5.30.0
+            config-opts:
+              - -DWITH_DOC:BOOL=OFF
+              - -DUSE_NLS:BOOL=OFF
+              - -DROOT_GROUP=root
+              - -DCMAKE_INSTALL_LOCALSTATEDIR:PATH=/var
+              - -DCMAKE_INSTALL_SYSCONFDIR:PATH=/etc
+            sources:
+              - type: archive
+                url: "http://deb.debian.org/debian/pool/main/a/apt/apt_1.8.4.tar.xz"
+                sha256: f40fe4475f3ab775a915569911326ff31c12c09eb8518bd82ba87aa570d6c43e
+              - type: shell
+                commands:
+                  - sed '/add_subdirectory(doc)/d' -i CMakeLists.txt
+            modules:
+
+              - name: lz4
+                no-autogen: true
+                make-install-args:
+                  - PREFIX=/app
+                  - LIBDIR=/app/lib
+                sources:
+                  - type: archive
+                    url: "https://github.com/lz4/lz4/archive/v1.9.2.tar.gz"
+                    sha256: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
+
+              - name: googletest
+                buildsystem: cmake-ninja
+                builddir: true
+                sources:
+                  - type: archive
+                    url: "https://github.com/google/googletest/archive/release-1.8.1.tar.gz"
+                    sha256: 9bf1fe5182a604b4135edc1a425ae356c9ad15e9b23f9f12a02e80184c3a249c
+                cleanup:
+                  - "*"
+              
+              - name: libdb
+                config-opts:
+                  - --enable-cxx
+                  - --enable-shared
+                  - --disable-static
+                  - --enable-dbm
+                  - --enable-stl
+                subdir: build_unix
+                sources:
+                  - type: archive
+                    url: "http://download.oracle.com/berkeley-db/db-5.3.28.tar.gz"
+                    sha256: e0a992d740709892e81f9d93f06daf305cf73fb81b545afe72478043172c3628
+                  - type: patch
+                    paths:
+                      - patches/db-5.3.28-atomic_compare_exchange.patch
+                  - type: script
+                    dest: build_unix
+                    dest-filename: configure
+                    commands:
+                      - exec ../dist/configure "$@"
+                cleanup:
+                  - /bin
+                  - /docs
+
+              - name: dpkg
+                build-options:
+                  ldflags: -ltinfo
+                config-opts:
+                  - --sbindir=/app/bin
+                  - --localstatedir=/var
+                sources:
+                  - type: archive
+                    url: "http://deb.debian.org/debian/pool/main/d/dpkg/dpkg_1.19.7.tar.xz"
+                    sha256: 4c27fededf620c0aa522fff1a48577ba08144445341257502e7730f2b1a296e8
+
+      - python3-ruamel.yaml.json
+      - python3-PyGithub.json
+      - python3-tenacity.json
