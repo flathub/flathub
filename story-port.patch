@@ -1,0 +1,306 @@
+From 9e35c2e5d38ceb7df3610dccad76e1771557607c Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <martin.abente.lahaye@gmail.com>
+Date: Wed, 11 Dec 2019 01:02:43 -0300
+Subject: [PATCH 1/4] port
+
+---
+ StoryActivity.py | 158 ++++++++++-------------------------------------
+ arecord.py       |   3 +-
+ exportpdf.py     |   2 -
+ 3 files changed, 33 insertions(+), 130 deletions(-)
+
+diff --git a/StoryActivity.py b/StoryActivity.py
+index 75c078a..16791f9 100644
+--- a/StoryActivity.py
++++ b/StoryActivity.py
+@@ -23,7 +23,6 @@ import random
+ 
+ from sugar3.activity import activity
+ from sugar3 import profile
+-from sugar3.datastore import datastore
+ from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+@@ -46,6 +45,9 @@ from gettext import gettext as _
+ 
+ from game import Game
+ 
++from sugarapp.widgets import DesktopSaveChooser
++from sugarapp.widgets import SugarCompatibleActivity
++
+ import logging
+ _logger = logging.getLogger('story-activity')
+ 
+@@ -58,7 +60,7 @@ IFACE = SERVICE
+ PATH = '/org/sugarlabs/StoryActivity'
+ 
+ 
+-class StoryActivity(activity.Activity):
++class StoryActivity(SugarCompatibleActivity):
+     ''' Storytelling game '''
+ 
+     def __init__(self, handle):
+@@ -77,7 +79,7 @@ class StoryActivity(activity.Activity):
+         else:
+             self._colors = ['#A0FFA0', '#FF8080']
+ 
+-        self._old_cursor = self.get_window().get_cursor()
++        self._old_cursor = None
+ 
+         self.tablet_mode = _is_tablet_mode()
+         self.recording = False
+@@ -179,7 +181,7 @@ class StoryActivity(activity.Activity):
+ 
+     def close(self, **kwargs):
+         aplay.close()
+-        activity.Activity.close(self, **kwargs)
++        SugarCompatibleActivity.close(self, **kwargs)
+ 
+     def _configure_cb(self, event):
+         self._canvas.set_size_request(int(Gdk.Screen.width()),
+@@ -299,23 +301,15 @@ class StoryActivity(activity.Activity):
+         self._game.set_speak_icon_state(False)
+ 
+     def _clear_audio_notes(self):
+-        dsobject = self._search_for_audio_note(self._uid, target=self._uid)
+-        if dsobject is not None:
+-            dsobject.metadata['tags'] = ''
+-            datastore.write(dsobject)
+-            dsobject.destroy()
+-
+         for i in range(9):
+-            target = '%s-%d' % (self._uid, i)
+-            dsobject = self._search_for_audio_note(self._uid, target=target)
+-            if dsobject is not None:
+-                dsobject.metadata['tags'] = ''
+-                datastore.write(dsobject)
+-                dsobject.destroy()
+-        self._game.set_play_icon_state(False)
++           path = os.path.join(self.datapath, str(i))
++           if os.path.exists(path):
++              os.unlink(path)
++           self._game.set_play_icon_state(False)
+ 
+     def check_audio_status(self):
+-        if self._search_for_audio_note(self._uid):
++        path = self._get_current_audio_path()
++        if os.path.exists(path):
+             self._game.set_play_icon_state(True)
+         else:
+             self._game.set_play_icon_state(False)
+@@ -327,12 +321,6 @@ class StoryActivity(activity.Activity):
+ 
+         toolbox = ToolbarBox()
+ 
+-        # Activity toolbar
+-        activity_button = ActivityToolbarButton(self)
+-
+-        toolbox.toolbar.insert(activity_button, 0)
+-        activity_button.show()
+-
+         self.set_toolbar_box(toolbox)
+         toolbox.show()
+         self.toolbar = toolbox.toolbar
+@@ -440,25 +428,6 @@ class StoryActivity(activity.Activity):
+             dot_list.append(int(dot))
+         self._game.restore_game(dot_list)
+ 
+-    def _search_for_audio_note(self, obj_id, target=None):
+-        ''' Look to see if there is already a sound recorded for this
+-        dsobject: the object id is stored in a tag in the audio file. '''
+-        dsobjects, nobjects = datastore.find({'mime_type': ['audio/ogg']})
+-        # Look for tag that matches the target object id
+-        if target is None:
+-            if self._game.get_mode() == 'array':
+-                target = obj_id
+-            else:
+-                target = '%s-%d' % (obj_id, self._game.current_image)
+-
+-        for dsobject in dsobjects:
+-            if 'tags' in dsobject.metadata and \
+-               target in dsobject.metadata['tags']:
+-                _logger.debug('Found audio note')
+-                self.metadata['dirty'] = 'True'
+-                return dsobject
+-        return None
+-
+     def _do_save_as_pdf_cb(self, button=None):
+         self._waiting_cursor()
+         self._notify_successful_save(title=_('Save as PDF'))
+@@ -466,23 +435,11 @@ class StoryActivity(activity.Activity):
+ 
+     def _save_as_pdf(self):
+         self.speak_text_cb()
+-        file_path = os.path.join(self.datapath, 'output.pdf')
+-        if 'description' in self.metadata:
+-            save_pdf(self, file_path, self._nick,
+-                     description=self.metadata['description'])
+-        else:
+-            save_pdf(self, file_path, self._nick)
+-
+-        dsobject = datastore.create()
+-        dsobject.metadata['title'] = '%s %s' % \
+-            (self.metadata['title'], _('PDF'))
+-        dsobject.metadata['icon-color'] = profile.get_color().to_string()
+-        dsobject.metadata['mime_type'] = 'application/pdf'
+-        dsobject.metadata['activity'] = 'org.laptop.sugar3.ReadActivity'
+-        dsobject.set_file_path(file_path)
+-        datastore.write(dsobject)
+-        dsobject.destroy()
+-        os.remove(file_path)
++        chooser = DesktopSaveChooser(self, filename=_('untitled.pdf'))
++        chooser.add_filter('.pdf', '.pdf')
++        filename = chooser.get_filename()
++        if filename:
++            save_pdf(self, filename, self._nick)
+ 
+         GObject.timeout_add(1000, self._remove_alert)
+ 
+@@ -493,28 +450,12 @@ class StoryActivity(activity.Activity):
+ 
+     def _save_as_image(self):
+         ''' Grab the current canvas and save it to the Journal. '''
+-        if self._uid is None:
+-            self._uid = generate_uid()
+-
+-        if self._game.get_mode() == 'array':
+-            target = self._uid
+-        else:
+-            target = '%s-%d' % (self._uid, self._game.current_image)
+-
+-        file_path = os.path.join(self.datapath, 'story.png')
+-        png_surface = self._game.export()
+-        png_surface.write_to_png(file_path)
+-
+-        dsobject = datastore.create()
+-        dsobject.metadata['title'] = '%s %s' % \
+-            (self.metadata['title'], _('image'))
+-        dsobject.metadata['icon-color'] = profile.get_color().to_string()
+-        dsobject.metadata['mime_type'] = 'image/png'
+-        dsobject.metadata['tags'] = target
+-        dsobject.set_file_path(file_path)
+-        datastore.write(dsobject)
+-        dsobject.destroy()
+-        os.remove(file_path)
++        chooser = DesktopSaveChooser(self, filename=_('untitled.png'))
++        chooser.add_filter('.png', '.png')
++        filename = chooser.get_filename()
++        if filename:
++            png_surface = self._game.export()
++            png_surface.write_to_png(filename)
+ 
+         GObject.timeout_add(1000, self._remove_alert)
+ 
+@@ -530,14 +471,15 @@ class StoryActivity(activity.Activity):
+             GObject.timeout_add(100, self._is_record_complete_timeout, cb)
+         else:  # Wasn't recording, so start
+             self._game.set_record_icon_state(True)
+-            self._arecord.record_audio()
++            self._arecord.record_audio(self._get_current_audio_path())
+             self.recording = True
+ 
+     def _is_record_complete_timeout(self, cb=None):
+         if not self._arecord.is_complete():
+             return True  # call back later
+-        self._save_recording()
+         self.unbusy()
++        self._game.set_play_icon_state(True)
++        self.metadata['dirty'] = 'True'
+         if cb is not None:
+             cb()
+         return False  # do not call back
+@@ -550,48 +492,9 @@ class StoryActivity(activity.Activity):
+             self._playback_recording()
+ 
+     def _playback_recording(self):
+-        path = os.path.join(self.datapath, 'output.ogg')
+-        if self._uid is not None:
+-            dsobject = self._search_for_audio_note(self._uid)
+-            if dsobject is not None:
+-                path = dsobject.file_path
+-        aplay.play(path)
+-
+-    def _save_recording(self):
+-        self.metadata['dirty'] = 'True'  # So we know that we've done work
+-        if os.path.exists(os.path.join(self.datapath, 'output.ogg')):
+-            _logger.debug('Saving recording to Journal...')
+-            if self._uid is None:
+-                self._uid = generate_uid()
+-
+-            if self._game.get_mode() == 'array':
+-                target = self._uid
+-            else:
+-                target = '%s-%d' % (self._uid, self._game.current_image)
+-
+-            dsobject = self._search_for_audio_note(target)
+-            if dsobject is None:
+-                dsobject = datastore.create()
+-
+-            dsobject.metadata['title'] = \
+-                _('audio note for %s') % (self.metadata['title'])
+-            dsobject.metadata['icon-color'] = profile.get_color().to_string()
+-            dsobject.metadata['mime_type'] = 'audio/ogg'
+-            if self._uid is not None:
+-                dsobject.metadata['tags'] = target
+-            dsobject.set_file_path(os.path.join(self.datapath, 'output.ogg'))
+-            datastore.write(dsobject)
+-            dsobject.destroy()
+-
+-            # Enable playback after record is finished
+-            self._game.set_play_icon_state(True)
+-
+-            self.metadata['dirty'] = 'True'
+-            # Always save an image with the recording.
+-            # self._do_save_as_image_cb()
+-        else:
+-            _logger.debug('Nothing to save...')
+-        return
++        path = self._get_current_audio_path()
++        if os.path.exists(path):
++            aplay.play(path)
+ 
+     def _notify_successful_save(self, title='', msg=''):
+         ''' Notify user when saves are completed '''
+@@ -607,6 +510,9 @@ class StoryActivity(activity.Activity):
+             self._alert = None
+         self._restore_cursor()
+ 
++    def _get_current_audio_path(self):
++        return  os.path.join(self.datapath, str(self._game.current_image))
++
+     # Collaboration-related methods
+ 
+     def _setup_presence_service(self):
+diff --git a/arecord.py b/arecord.py
+index 2aaa2ae..f7d7b19 100644
+--- a/arecord.py
++++ b/arecord.py
+@@ -35,11 +35,10 @@ class Arecord:
+         logger.debug('__init__')
+         self.activity = activity_obj
+ 
+-    def record_audio(self):
++    def record_audio(self, ogg):
+         logger.debug('record_audio')
+ 
+         # make a pipeline to record and encode audio to file
+-        ogg = os.path.join(self.activity.datapath, "output.ogg")
+         cmd = 'autoaudiosrc name=src ' \
+             '! audioconvert ' \
+             '! queue max-size-time=30000000000 ' \
+diff --git a/exportpdf.py b/exportpdf.py
+index 68aff9e..a37b4ae 100644
+--- a/exportpdf.py
++++ b/exportpdf.py
+@@ -49,8 +49,6 @@ def save_pdf(activity, tmp_file, nick, description=None):
+     else:
+         y = TOP_MARGIN
+ 
+-    show_text(cr, fd, activity.metadata['title'], head, LEFT_MARGIN, y,
+-              page_width, page_height)
+     y += 4 * head
+     show_text(cr, fd, nick, body, LEFT_MARGIN, y, page_width, page_height)
+     y += head
+-- 
+2.19.1
+
