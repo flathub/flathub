@@ -1,0 +1,162 @@
+From c30d89c4ad9f0ca2c15a1eb9d691bc84f65f01c7 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <martin.abente.lahaye@gmail.com>
+Date: Thu, 12 Dec 2019 13:41:10 -0300
+Subject: [PATCH 2/3] port
+
+---
+ activity.py | 66 ++++++++++++++++++++++++++++-------------------------
+ 1 file changed, 35 insertions(+), 31 deletions(-)
+
+diff --git a/activity.py b/activity.py
+index fcb57c0..779400c 100644
+--- a/activity.py
++++ b/activity.py
+@@ -39,7 +39,6 @@ from io import StringIO
+ from gettext import gettext as _
+ 
+ from sugar3.activity import activity
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.activity.widgets import ToolbarButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+@@ -51,7 +50,6 @@ from sugar3.graphics.objectchooser import ObjectChooser
+ from sugar3.graphics.style import Color
+ from sugar3.graphics.icon import Icon
+ from sugar3.graphics.alert import Alert
+-from sugar3.datastore import datastore
+ from sugar3.graphics import style
+ 
+ from fontcombobox import FontComboBox
+@@ -63,6 +61,12 @@ from readers import ClipboardReader
+ import charthelp
+ import chart as charts
+ 
++from sugarapp.widgets import DesktopOpenChooser
++from sugarapp.widgets import DesktopSaveChooser
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import SugarCompatibleActivity
++
++
+ # Mime types
+ _STOPWATCH_MIME_TYPE = 'application/x-stopwatch-activity'
+ _CSV_MIME_TYPE = 'text/csv'
+@@ -160,11 +164,11 @@ class ChartArea(Gtk.DrawingArea):
+             context.finish(False, False, time)
+ 
+ 
+-class ChartActivity(activity.Activity):
++class ChartActivity(SugarCompatibleActivity):
+ 
+     def __init__(self, handle):
+ 
+-        activity.Activity.__init__(self, handle, True)
++        SugarCompatibleActivity.__init__(self, handle, True)
+ 
+         self.max_participants = 1
+ 
+@@ -198,7 +202,7 @@ class ChartActivity(activity.Activity):
+ 
+         toolbarbox = ToolbarBox()
+ 
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         activity_btn_toolbar = activity_button.page
+ 
+         activity_btn_toolbar.title.connect('changed', self._set_chart_title)
+@@ -394,7 +398,7 @@ class ChartActivity(activity.Activity):
+         self._fullscreen_button.set_tooltip(_("Fullscreen"))
+         self._fullscreen_button.props.accelerator = '<Alt>Return'
+         self._fullscreen_button.connect('clicked', self.__fullscreen_cb)
+-        toolbarbox.toolbar.insert(self._fullscreen_button, -1)
++        #toolbarbox.toolbar.insert(self._fullscreen_button, -1)
+ 
+         charthelp.create_help(toolbarbox.toolbar)
+ 
+@@ -718,13 +722,13 @@ class ChartActivity(activity.Activity):
+ 
+     def unfullscreen(self):
+         self.box.show()
+-        activity.Activity.unfullscreen(self)
++        SugarCompatibleActivity.unfullscreen(self)
+         GObject.idle_add(self._render_chart)
+ 
+     def __fullscreen_cb(self, button):
+         self.box.hide()
+         self._render_chart(fullscreen=True)
+-        activity.Activity.fullscreen(self)
++        SugarCompatibleActivity.fullscreen(self)
+ 
+     def _render_chart(self, fullscreen=False):
+         if not self.chart_data:
+@@ -925,38 +929,34 @@ class ChartActivity(activity.Activity):
+         self.update_chart()
+ 
+     def __import_stopwatch_cb(self, widget):
+-        matches_mime_type, file_path, title = \
+-            self._object_chooser(_STOPWATCH_MIME_TYPE, _('StopWatch'))
+-
+-        if matches_mime_type:
+-            f = open(file_path)
++        chooser = DesktopOpenChooser(self)
++        chooser.add_filter('.stopwatch', 'Stopwatch')
++        filename = chooser.get_filename()
++        if not filename:
++            return
++        with open(filename, 'r') as f:
+             reader = StopWatchReader(f)
+             self._graph_from_reader(reader)
+ 
+-            f.close()
+-
+     def __import_measure_cb(self, widget, channel=1):
+-        matches_mime_type, file_path, title = \
+-            self._object_chooser(_CSV_MIME_TYPE, _('Measure'))
+-
+-        if matches_mime_type:
+-            f = open(file_path)
++        chooser = DesktopOpenChooser(self)
++        chooser.add_filter('.measure', 'Measure')
++        filename = chooser.get_filename()
++        if not filename:
++            return
++        with open(filename, 'r') as f:
+             reader = MeasureReader(f, channel)
+             self._graph_from_reader(reader)
+ 
+-            f.close()
+-
+     def _save_as_image(self, widget):
+         if self.current_chart:
+-            jobject = datastore.create()
+-
+-            jobject.metadata['title'] = self.metadata['title'] + " Image"
+-            jobject.metadata['mime_type'] = 'image/png'
+-
+-            self.current_chart.as_png(_CHART_FILE)
+-            jobject.set_file_path(_CHART_FILE)
+-
+-            datastore.write(jobject)
++            title = self.metadata['title'] + '.png'
++            chooser = DesktopSaveChooser(self, title)
++            chooser.add_filter('.png', 'PNG')
++            filename = chooser.get_filename()
++            if not filename:
++                return
++            self.current_chart.as_png(filename)
+ 
+     def load_from_file(self, f):
+         try:
+@@ -991,6 +991,10 @@ class ChartActivity(activity.Activity):
+         if self.y_label != '':
+             self.v_label.entry.set_text(self.y_label)
+ 
++        # clear current data
++        self.labels_and_values.model.clear()
++        self.chart_data = []
++
+         # load the data
+         for row in chart_data:
+             self._add_value(
+-- 
+2.19.1
+
