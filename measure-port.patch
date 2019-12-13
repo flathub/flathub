@@ -1,0 +1,222 @@
+From 6fd955ac19db8553d87a0ae5e52f0eb2889bd6ee Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <martin.abente.lahaye@gmail.com>
+Date: Fri, 13 Dec 2019 08:04:56 -0300
+Subject: [PATCH 1/5] port
+
+---
+ journal.py | 36 ++++++++------------------
+ measure.py | 74 ++++++++++++++++++++++--------------------------------
+ 2 files changed, 41 insertions(+), 69 deletions(-)
+
+diff --git a/journal.py b/journal.py
+index 7e5c1a5..4039902 100644
+--- a/journal.py
++++ b/journal.py
+@@ -28,9 +28,10 @@ import StringIO
+ import dbus
+ from gettext import gettext as _
+ 
+-from sugar3.datastore import datastore
+ from sugar3.graphics import style
+ 
++from sugarapp.widgets import DesktopSaveChooser
++
+ # Initialize logging.
+ import logging
+ log = logging.getLogger('measure-activity')
+@@ -84,10 +85,6 @@ class DataLogger():
+ 
+     def take_screenshot(self, capture_count=1):
+         ''' Take a screenshot and save to the Journal '''
+-        tmp_file_path = os.path.join(
+-            os.environ['SUGAR_ACTIVITY_ROOT'], 'instance',
+-            'screen_capture_' + str(capture_count) + '.png')
+-
+         window = self.activity.wave.get_window()
+         width, height = window.get_width(), window.get_height()
+         surface = Gdk.Window.create_similar_surface(window,
+@@ -96,26 +93,15 @@ class DataLogger():
+         cr = cairo.Context(surface)
+         Gdk.cairo_set_source_window(cr, window, 0, 0)
+         cr.paint()
+-        surface.write_to_png(tmp_file_path)
+-
+-        if os.path.exists(tmp_file_path):
+-            dsobject = datastore.create()
+-            try:
+-                dsobject.metadata['title'] = '%s %d' % (_('Waveform'),
+-                                                        capture_count)
+-                dsobject.metadata['keep'] = '0'
+-                dsobject.metadata['buddies'] = ''
+-                dsobject.metadata['preview'] = self._get_preview_data(surface)
+-                dsobject.metadata['icon-color'] = self.activity.icon_colors
+-                dsobject.metadata['mime_type'] = 'image/png'
+-                dsobject.set_file_path(tmp_file_path)
+-                datastore.write(dsobject)
+-            finally:
+-                dsobject.destroy()
+-                del dsobject
+-            os.remove(tmp_file_path)
+-            return True
+-        return False
++
++        name = _("Untitled") + '.png'
++        chooser = DesktopSaveChooser(self.activity, filename=name)
++        chooser.add_filter('.png', 'PNG')
++        filename = chooser.get_filename()
++        if not filename:
++            return False
++        surface.write_to_png(filename)
++        return True
+ 
+     def _get_preview_data(self, screenshot_surface):
+         screenshot_width = screenshot_surface.get_width()
+diff --git a/measure.py b/measure.py
+index dd230b7..b461916 100644
+--- a/measure.py
++++ b/measure.py
+@@ -28,8 +28,6 @@ import csv
+ 
+ from gettext import gettext as _
+ 
+-from sugar3.activity import activity
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.alert import Alert
+ from sugar3.graphics.icon import Icon
+@@ -37,7 +35,6 @@ from sugar3.graphics.toolbarbox import ToolbarBox
+ from sugar3.graphics.toolbarbox import ToolbarButton
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics import style
+-from sugar3.datastore import datastore
+ 
+ from sugar3 import profile
+ 
+@@ -51,6 +48,10 @@ from config import ICONS_DIR, INSTRUMENT_DICT
+ 
+ import logging
+ 
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import SugarCompatibleActivity
++
++
+ log = logging.getLogger('measure-activity')
+ log.setLevel(logging.DEBUG)
+ 
+@@ -126,7 +127,7 @@ def _get_hardware_model():
+     return model.split(' ')[0]
+ 
+ 
+-class MeasureActivity(activity.Activity):
++class MeasureActivity(SugarCompatibleActivity):
+     ''' Oscilloscope Sugar activity '''
+ 
+     def __init__(self, handle):
+@@ -136,7 +137,7 @@ class MeasureActivity(activity.Activity):
+         The rendering happens in drawwaveform.py
+         Logging is in journal.py '''
+ 
+-        activity.Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+ 
+         if Gst.version() == (1L, 0L, 10L, 0L):
+             return self._incompatible()
+@@ -224,7 +225,7 @@ class MeasureActivity(activity.Activity):
+ 
+         toolbox = ToolbarBox()
+ 
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         toolbox.toolbar.insert(activity_button, 0)
+         activity_button.show()
+ 
+@@ -390,63 +391,48 @@ class MeasureActivity(activity.Activity):
+                         notes += ' '
+                 self.metadata['%s%s' % (PREFIX, instrument)] = notes
+ 
+-        # FIXME: Don't use ""s around data
+-        if hasattr(self, 'data_logger') and \
+-                self.new_recording and \
+-                len(self.data_logger.data_buffer) > 0:
+-            # Append new data to Journal entry
+-            fd = open(file_path, 'ab')
++        if len(self.data_logger.data_buffer) > 0:
++            # Only write the last session
++            session = '%s: %d' % (_('Session'), self.session_id)
++            found = False
++
++            fd = open(file_path, 'wb')
+             writer = csv.writer(fd)
+-            # Also output to a separate file as a workaround to Ticket 2127
+-            # (the assumption being that this file will be opened by the user)
+-            tmp_data_file = os.path.join(os.environ['SUGAR_ACTIVITY_ROOT'],
+-                                         'instance', 'sensor_data' + '.csv')
+-            log.debug('saving sensor data to %s' % (tmp_data_file))
+-            if self._dsobject is None:  # first time, so create
+-                fd2 = open(tmp_data_file, 'wb')
+-            else:  # we've been here before, so append
+-                fd2 = open(tmp_data_file, 'ab')
+-            writer2 = csv.writer(fd2)
+-            # Pop data off start of buffer until it is empty
++            # Seek for the last session and save it
+             for i in range(len(self.data_logger.data_buffer)):
+-                datum = self.data_logger.data_buffer.pop(0)
++                datum = self.data_logger.data_buffer[i]
++                if datum == session:
++                    found = True
++                if not found:
++                    continue
+                 writer.writerow([datum])
+-                writer2.writerow([datum])
+             fd.close()
+-            fd2.close()
+ 
+-            # Set the proper mimetype
+-            self.metadata['mime_type'] = 'text/csv'
+-
+-            if os.path.exists(tmp_data_file):
+-                if self._dsobject is None:
+-                    self._dsobject = datastore.create()
+-                    self._dsobject.metadata['title'] = _('Measure Log')
+-                    self._dsobject.metadata['icon-color'] = self.icon_colors
+-                    self._dsobject.metadata['mime_type'] = 'text/csv'
+-                self._dsobject.set_file_path(tmp_data_file)
+-                datastore.write(self._dsobject)
+-                # remove(tmp_data_file)
++        # Set the proper mimetype
++        self.metadata['mime_type'] = 'text/csv'
+ 
+     def read_file(self, file_path):
+         ''' Read csv data from journal on start '''
+         reader = csv.reader(open(file_path, "rb"))
++        # Clear current session
++        self.session_id = 0
++        self.data_logger.data_buffer = []
+         # Count the number of sessions.
+         for row in reader:
+             if len(row) > 0:
+-                if row[0].find(_('Session')) != -1:
++                datum = row[0]
++                if datum.find(_('Session')) != -1:
+                     # log.debug('found a previously recorded session')
++                    # Reset session count as well
+                     self.session_id += 1
+-                elif row[0].find('abiword') != -1:
++                    datum = '%s: %d' % (_('Session'), self.session_id)
++                elif datum.find('abiword') != -1:
+                     # File has been opened by Write cannot be read by Measure
+                     # See Ticket 2127
+                     log.error('File was opened by Write: Measure cannot read')
+                     self.data_logger.data_buffer = []
+                     return
+-                self.data_logger.data_buffer.append(row[0])
+-        if self.session_id == 0:
+-            # log.debug('setting data_logger buffer to []')
+-            self.data_logger.data_buffer = []
++                self.data_logger.data_buffer.append(datum)
+ 
+     def _pause_play_cb(self, button=None):
+         ''' Callback for Pause Button '''
+-- 
+2.19.1
+
