@@ -13,12 +13,13 @@ sdk-extensions:
 
 build-options:
   prefix: /app/share/steam/compatibilitytools.d/Proton
-  append-path: /usr/lib/sdk/mingw-w64/bin
+  append-path: /usr/lib/sdk/mingw-w64/bin:/app/share/steam/compatibilitytools.d/Proton/bin
   strip: true
 
 x-compat-i386-opts: &compat_i386_opts
   prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
   ldflags: -L/app/lib32
+  prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin32
   append-path: /usr/lib/sdk/toolchain-i386/bin
   env:
     CC: ccache i686-unknown-linux-gnu-gcc
@@ -27,13 +28,13 @@ x-compat-i386-opts: &compat_i386_opts
 
 x-proton-source: &proton_source
   type: archive
-  url: "https://github.com/ValveSoftware/Proton/archive/proton-4.11-9.tar.gz"
-  sha256: fcb22ca0357ec65a0669d003fef772cfb739160d1a24e513da3e97c2cf9b0a9d
+  url: "https://github.com/ValveSoftware/Proton/archive/proton-4.11-10.tar.gz"
+  sha256: c0f598ac25fcf00c97edafcb2c2ec3e9f306d0a753c541b916161f26eceaa74b
 
 x-wine-source: &wine_source
   type: git
   url: "https://github.com/ValveSoftware/wine.git"
-  commit: 213905a322620eb326b655ab89fbca07316e6357
+  commit: ba4481a06ba4bd2495e5576a2819faa240b5e218
 
 cleanup:
   - "*.a"
@@ -60,8 +61,41 @@ cleanup:
   - /lib32/wine/*.def
 modules:
 
+  - name: wine-widl
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - --enable-win64
+    make-args:
+      - tools/widl
+    no-make-install: true
+    build-commands:
+      - install -Dm755 -t ${FLATPAK_DEST}/bin/ tools/widl/widl
+    sources:
+      - *wine_source
+
+  - name: vkd3d
+    config-opts: &vkd3d_config_opts
+      - --disable-tests
+    sources: &vkd3d_sources
+      - type: git
+        url: "https://github.com/ValveSoftware/vkd3d.git"
+        commit: 40e4a74c04ad8bc5bd5c0ead950990e735490c99
+
+  - name: vkd3d-32bit
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    config-opts: *vkd3d_config_opts
+    sources: *vkd3d_sources
+
+
   - name: wine
     build-options:
+      prepend-pkg-config-path: /app/share/steam/compatibilitytools.d/Proton/lib/pkgconfig
       arch:
         x86_64:
           config-opts:
@@ -85,6 +119,7 @@ modules:
     only-arches:
       - x86_64
     build-options:
+      prepend-pkg-config-path: /app/share/steam/compatibilitytools.d/Proton/lib32/pkgconfig
       arch:
         x86_64: *compat_i386_opts
       config-opts:
@@ -102,7 +137,6 @@ modules:
   - name: lsteamclient
     subdir: lsteamclient
     build-options:
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin
       cxxflags: -Wno-attributes
     buildsystem: simple
     build-commands:
@@ -133,7 +167,6 @@ modules:
     build-options:
       arch:
         x86_64: *compat_i386_opts
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin32
       cxxflags: -Wno-attributes
     buildsystem: simple
     build-commands:
@@ -179,7 +212,6 @@ modules:
     build-options:
       arch:
         x86_64: *compat_i386_opts
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin32
     buildsystem: simple
     build-commands:
       - winemaker
@@ -218,8 +250,6 @@ modules:
 
   - name: vrclient
     subdir: vrclient_x64/vrclient_x64
-    build-options:
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin
     buildsystem: simple
     build-commands:
       - winemaker
@@ -251,7 +281,6 @@ modules:
     build-options:
       arch:
         x86_64: *compat_i386_opts
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin32
     buildsystem: simple
     build-commands:
       - winemaker
@@ -293,7 +322,6 @@ modules:
   - name: dxvk
     buildsystem: meson
     build-options: &dxvk_64_build_options
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin
       config-opts:
         - --cross-file=../build-win64.txt
         - --libdir=lib/wine/dxvk
@@ -312,7 +340,6 @@ modules:
   - name: dxvk-32bit
     buildsystem: meson
     build-options: &dxvk_32_build_options
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin
       config-opts:
         - --cross-file=../build-win32.txt
         - --libdir=lib32/wine/dxvk
@@ -338,7 +365,7 @@ modules:
     sources: &d9vk_sources
       - type: git
         url: "https://github.com/Joshua-Ashton/d9vk.git"
-        tag: "0.30"
+        tag: "0.40-rc-p"
 
   - name: d9vk-32bit
     buildsystem: meson
@@ -362,7 +389,6 @@ modules:
 
   - name: default-prefix
     build-options:
-      prepend-path: /app/share/steam/compatibilitytools.d/Proton/bin
       env:
         WINEPREFIX: /app/share/steam/compatibilitytools.d/Proton/share/default_pfx
         LC_ALL: C
@@ -384,7 +410,7 @@ modules:
           toolmanifest.vdf
           proton_3.7_tracked_files
       - install -Dm644 dist.LICENSE ${FLATPAK_DEST}/LICENSE
-      - echo 4.11-9_flatpak > ${FLATPAK_DEST}/version
+      - echo 4.11-10_flatpak > ${FLATPAK_DEST}/version
       - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
       - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak ${FLATPAK_ID}
     sources:
