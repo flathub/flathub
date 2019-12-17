@@ -1,0 +1,67 @@
+app-id: org.godotengine.godot.BaseApp
+branch: '3.1'
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+command: godot-runner
+
+build-options:
+  arch:
+    x86_64:
+      env:
+        # Only enable link-time optimization when targeting x86_64
+        # (causes issues on other architectures)
+        SCONS_FLAGS_EXTRA: use_lto=yes
+
+  env:
+    # Will be appended to the version string displayed in the command-line help
+    BUILD_NAME: flathub
+
+    # SCons flags common to all builds
+    # Shouldn't be quoted when used as it's a single string, not an array
+    SCONS_FLAGS: >
+      platform=x11
+      CCFLAGS=-I/app/include
+      prefix=/app
+      unix_global_settings_path=/app
+      progress=no
+      builtin_freetype=no
+      builtin_libogg=no
+      builtin_libpng=no
+      builtin_libtheora=no
+      builtin_libvorbis=no
+      builtin_libwebp=no
+      builtin_libvpx=no
+      builtin_zlib=no
+      udev=no
+
+modules:
+  - shared-modules/glu/glu-9.json
+
+  - name: scons
+    buildsystem: simple
+    cleanup: ['*']
+
+    sources:
+      - type: archive
+        sha256: 4cea417fdd7499a36f407923d03b4b7000b0f9e8fd7b31b316b9ce7eba9143a5
+        url: https://downloads.sourceforge.net/project/scons/scons/3.1.1/scons-3.1.1.tar.gz
+
+    build-commands:
+      - python3 setup.py install --prefix=/app
+
+  - name: godot-runner
+    buildsystem: simple
+
+    sources:
+      - type: archive
+        sha256: fb85065c4430b8f43fa057f5348dacbb3975e2018cd722f97039293f1428d009
+        url: https://downloads.tuxfamily.org/godotengine/3.1.2/godot-3.1.2-stable.tar.xz
+
+      - type: patch
+        path: godot-i386-disable-O3.patch
+        only-arches: [i386]
+
+    build-commands:
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA tools=no target=release -j "$FLATPAK_BUILDER_N_JOBS"
+      - install -Dm755 bin/godot.x11.opt.* /app/bin/godot-runner
