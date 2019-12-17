@@ -1,0 +1,146 @@
+From 16e2734995c57e963de8fdab8ce305ef37966a48 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <tch@sugarlabs.org>
+Date: Wed, 18 Dec 2019 08:38:31 -0300
+Subject: [PATCH 1/2] fix-save
+
+---
+ ReadEtextsActivity.py | 58 ++++++++++++++++---------------------------
+ 1 file changed, 22 insertions(+), 36 deletions(-)
+
+diff --git a/ReadEtextsActivity.py b/ReadEtextsActivity.py
+index 5de0af0..85ede66 100644
+--- a/ReadEtextsActivity.py
++++ b/ReadEtextsActivity.py
+@@ -72,6 +72,7 @@ class Annotations():
+         self.notes = {0:''}
+         self.bookmarks = []
+         self.highlights = {0:  [] }
++        self.current_page = 0
+         self.pickle_file_name = pickle_file_name
+ 
+     def get_title(self):
+@@ -124,7 +125,13 @@ class Annotations():
+         self.highlights[page] = tuples_list
+         if tuples_list == []:
+             del self.highlights[page]
+-        
++
++    def get_current_page(self):
++        return self.current_page
++
++    def set_current_page(self, page):
++        self.current_page = page
++
+     def restore(self):
+         if os.path.exists(self.pickle_file_name):
+             pickle_input = open(self.pickle_file_name,  'rb')
+@@ -132,6 +139,7 @@ class Annotations():
+             self.bookmarks = pickle.load(pickle_input)
+             self.notes = pickle.load(pickle_input)
+             self.highlights = pickle.load(pickle_input)
++            self.current_page = pickle.load(pickle_input)
+             pickle_input.close()
+ 
+     def save(self):
+@@ -140,6 +148,7 @@ class Annotations():
+         pickle.dump(self.bookmarks,  pickle_output)
+         pickle.dump(self.notes,  pickle_output)
+         pickle.dump(self.highlights,  pickle_output)
++        pickle.dump(self.current_page,  pickle_output)
+         pickle_output.close()
+ 
+ class ReadHTTPRequestHandler(network.ChunkedGlibHTTPRequestHandler):
+@@ -288,8 +297,7 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+         self.underline_tag.set_property( 'foreground', 'black')
+         self.underline_tag.set_property( 'background', 'yellow')
+ 
+-        self.pickle_file_temp = os.path.join(self.get_activity_root(),  'instance', 'pkl%i' % time.time())
+-        self.annotations = Annotations(self.pickle_file_temp)
++        self.setup_annotations()
+ 
+         xopower.setup_idle_timeout()
+         if xopower.service_activated:
+@@ -824,6 +832,7 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+         self.current_page = page
+         self.update_nav_buttons()
+         self.page = page
++        self.annotations.set_current_page(page)
+ 
+     def show_page(self, page_number):
+         self.show_bookmark_state()
+@@ -948,38 +957,12 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+         partition_tuple = filename.rpartition('/')
+         return partition_tuple[2]
+ 
+-    def get_saved_page_number(self):
+-        title = self.metadata.get('title', '')
+-        if title == ''  or not title[len(title)- 1].isdigit():
+-            self.page = 0
+-        else:
+-            i = len(title) - 1
+-            page = ''
+-            while (title[i].isdigit() and i > 0):
+-                page = title[i] + page
+-                i = i - 1
+-            if title[i] == 'P':
+-                self.page = int(page) - 1
+-            else:
+-                # not a page number; maybe a volume number.
+-                self.page = 0
+-        
+-    def save_page_number(self):
+-        title = self.metadata.get('title', '')
+-        if title == ''  or not title[len(title)- 1].isdigit():
+-            title = title + ' P' +  str(self.page + 1)
+-        else:
+-            i = len(title) - 1
+-            while (title[i].isdigit() and i > 0):
+-                i = i - 1
+-            if title[i] == 'P':
+-                title = title[0:i] + 'P' + str(self.page + 1)
+-            else:
+-                title = title + ' P' + str(self.page + 1)
+-        self.metadata['title'] = title
+-
+     def load_document(self, filename):
+         "Read the Etext file"
++
++        # Reset annotations incase there might be not one to restore from
++        self.setup_annotations()
++
+         if zipfile.is_zipfile(filename):
+             self.zf = zipfile.ZipFile(filename, 'r')
+             self.book_files = self.zf.namelist()
+@@ -1035,8 +1018,8 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+         if self.is_received_document:
+             self.metadata['title'] = self.annotations.get_title()
+             self.metadata['title_set_by_user'] = '1'
+-            
+-        self.get_saved_page_number()
++
++        self.page = self.annotations.get_current_page()
+         self.show_page(self.page)
+         self.set_total_pages(pagecount + 1)
+         self.set_current_page(self.page)
+@@ -1049,6 +1032,10 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+             self.watch_for_tubes()
+             self.share_document()
+ 
++    def setup_annotations(self):
++        self.pickle_file_temp = os.path.join(self.get_activity_root(),  'instance', 'pkl%i' % time.time())
++        self.annotations = Annotations(self.pickle_file_temp)
++
+     def rewrite_zip(self):
+         if zipfile.is_zipfile(self.tempfile):
+             new_zipfile = os.path.join(self.get_activity_root(), 'instance',
+@@ -1100,7 +1087,6 @@ class ReadEtextsActivity(SugarCompatibleActivity):
+ 
+         self.metadata['activity'] = self.get_bundle_id()
+         self.metadata['mime_type'] = 'application/zip'
+-        self.save_page_number()
+ 
+     def can_close(self):
+         self.close_requested = True
+-- 
+2.23.0
+

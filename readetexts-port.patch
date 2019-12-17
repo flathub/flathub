@@ -1,0 +1,275 @@
+From f39738da07670521a5ef7bbc822844e651a5977c Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <tch@sugarlabs.org>
+Date: Tue, 17 Dec 2019 19:10:14 -0300
+Subject: [PATCH 2/3] port
+
+---
+ ReadEtextsActivity.py | 90 ++++++++++++++-----------------------------
+ readtoolbar.py        |  6 ---
+ speech.py             | 25 ------------
+ 3 files changed, 29 insertions(+), 92 deletions(-)
+
+diff --git a/ReadEtextsActivity.py b/ReadEtextsActivity.py
+index b623d59..5de0af0 100644
+--- a/ReadEtextsActivity.py
++++ b/ReadEtextsActivity.py
+@@ -22,17 +22,16 @@ import logging
+ import time
+ import zipfile
+ import gi
++import shutil
+ gi.require_version('Gtk', '3.0')
+ from gi.repository import Gtk
+ from gi.repository import Gdk
+ from sugar3.graphics import style
+ from sugar3 import profile
+-from sugar3.activity import activity
+-from sugar3.datastore import datastore
+ from sugar3.graphics.alert import NotifyAlert
+ from sugar3.graphics.toolbarbox import ToolbarBox
+ from sugar3.graphics.toolbarbox import ToolbarButton
+-from sugar3.activity.widgets import ActivityToolbarButton, StopButton
++from sugar3.activity.widgets import StopButton
+ from readtoolbar import ViewToolbar, EditToolbar,  BooksToolbar,  SpeechToolbar
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics.menuitem import MenuItem
+@@ -53,6 +52,9 @@ import pgconvert
+ import network
+ from readtoolbar import SpeechToolbar
+ 
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import SugarCompatibleActivity
++
+ PAGE_SIZE = 38
+ TOOLBAR_READ = 2
+ TOOLBAR_BOOKS = 3
+@@ -181,18 +183,17 @@ class ReadURLDownloader(network.GlibURLDownloader):
+ 
+ READ_STREAM_SERVICE = 'read-activity-http'
+ 
+-class ReadEtextsActivity(activity.Activity):
++class ReadEtextsActivity(SugarCompatibleActivity):
+     def __init__(self, handle):
+         "The entry point to the Activity"
+         Gdk.threads_init()
+         self.current_word = 0
+         self.word_tuples = []
+         
+-        activity.Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+         
+         self.fileserver = None
+         self.object_id = handle.object_id
+-        self.extra_journal_entry = None
+        
+         self.create_new_toolbar()
+         self.scrolled = Gtk.ScrolledWindow()
+@@ -306,7 +307,7 @@ class ReadEtextsActivity(activity.Activity):
+         self.tempfile = None
+         self.close_requested = False
+         self.connect("shared", self.shared_cb)
+-        h = hash(self._activity_id)
++        h = hash(self.get_bundle_id())
+         self.port = 1024 + (h % 64511)
+ 
+         self.is_received_document = False
+@@ -321,7 +322,8 @@ class ReadEtextsActivity(activity.Activity):
+                 self.connect("joined", self.joined_cb)
+         elif self.object_id is None:
+             # Not joining, not resuming
+-            f = open("help.txt","r")
++            script_dir = os.path.dirname(os.path.realpath(__file__))
++            f = open(os.path.join(script_dir, 'help.txt'), 'r')
+             line = ''
+             label_text = ''
+             while True:
+@@ -339,12 +341,12 @@ class ReadEtextsActivity(activity.Activity):
+ 
+     def close(self, **kwargs):
+         self.speech_toolbar.stop()
+-        activity.Activity.close(self, **kwargs)
++        SugarCompatibleActivity.close(self, **kwargs)
+  
+     def create_new_toolbar(self):
+         toolbar_box = ToolbarBox()
+ 
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         toolbar_box.toolbar.insert(activity_button, 0)
+         activity_button.show()
+ 
+@@ -938,7 +940,7 @@ class ReadEtextsActivity(activity.Activity):
+         """Load a file from the datastore on activity start"""
+         logger.debug('ReadEtextsActivity.read_file: %s', file_path)
+         tempfile = os.path.join(self.get_activity_root(),  'instance', 'tmp%i' % time.time())
+-        os.link(file_path,  tempfile)
++        shutil.copyfile(file_path, tempfile)
+         self.tempfile = tempfile
+         self.load_document(self.tempfile)
+ 
+@@ -1082,37 +1084,19 @@ class ReadEtextsActivity(activity.Activity):
+ 
+     def write_file(self, filename):
+         "Save meta data for the file."
+-        if self.is_received_document:
+-            # This document was given to us by someone, so we have
+-            # to save it to the Journal.
+-            self.etext_file.seek(0)
+-            filebytes = self.etext_file.read()
+-            print 'saving shared document'
+-            f = open(filename, 'wb')
+-            try:
+-                f.write(filebytes)
+-            finally:
+-                f.close()
+-        elif self.tempfile:
+-            if self.close_requested:
+-                textbuffer = self.annotation_textview.get_buffer()
+-                self.annotations.add_note(self.page,  textbuffer.get_text(textbuffer.get_start_iter(),  textbuffer.get_end_iter(), True))
+-                title = self.metadata.get('title', '')
+-                self.annotations.set_title(str(title))
+-                self.annotations.save()
+-                self.rewrite_zip()
+-                os.link(self.tempfile,  filename)
+-                logger.debug("Removing temp file %s because we will close", self.tempfile)
+-                os.unlink(self.tempfile)
+-                os.remove(self.pickle_file_temp)
+-                self.tempfile = None
+-                self.pickle_file_temp = None
+-        else:
+-            # skip saving empty file
+-            raise NotImplementedError
+-        # The last book we downloaded has 2 journal entries.  Delete the other one.
+-        if self.extra_journal_entry != None and self.close_requested:
+-            datastore.delete(self.extra_journal_entry.object_id)
++        if self.tempfile:
++            textbuffer = self.annotation_textview.get_buffer()
++            self.annotations.add_note(self.page,  textbuffer.get_text(textbuffer.get_start_iter(),  textbuffer.get_end_iter(), True))
++            title = self.metadata.get('title', '')
++            self.annotations.set_title(str(title))
++            self.annotations.save()
++            self.rewrite_zip()
++            shutil.copyfile(self.tempfile,  filename)
++
++        if self.close_requested:
++            # Remove all temporary files
++            instance_path = os.path.join(self.get_activity_root(), 'instance')
++            shutil.rmtree(instance_path, ignore_errors=True, onerror=None)
+ 
+         self.metadata['activity'] = self.get_bundle_id()
+         self.metadata['mime_type'] = 'application/zip'
+@@ -1146,7 +1130,8 @@ class ReadEtextsActivity(activity.Activity):
+             self.alert(_('Error'), _('You must enter at least one search word.'))
+             self.books_toolbar.search_entry.grab_focus()
+             return
+-        f = open('bookcatalog.txt', 'r')
++        script_dir = os.path.dirname(os.path.realpath(__file__))
++        f = open(os.path.join(script_dir, 'bookcatalog.txt'), 'r')
+         while f:
+             line = unicode(f.readline(), "iso-8859-1")
+             if not line:
+@@ -1257,30 +1242,13 @@ class ReadEtextsActivity(activity.Activity):
+         self.tempfile = tempfile
+         file_path = os.path.join(self.get_activity_root(), 'instance',
+                                     '%i' % time.time())
+-        os.link(tempfile, file_path)
++        shutil.copyfile(tempfile, file_path)
+         logger.debug("Got document %s (%s)", tempfile, suggested_name)
+         self.create_journal_entry(tempfile)
+         self.load_document(tempfile)
+ 
+     def create_journal_entry(self,  tempfile):
+         self.progressbar.hide()
+-        journal_entry = datastore.create()
+-        journal_title = self.selected_title
+-        if self.selected_author != ' ':
+-            journal_title = journal_title  + ', by ' + self.selected_author
+-        journal_entry.metadata['title'] = journal_title
+-        self.metadata['title'] = journal_title
+-        journal_entry.metadata['title_set_by_user'] = '1'
+-        journal_entry.metadata['activity'] = self.get_bundle_id()
+-        journal_entry.metadata['keep'] = '0'
+-        journal_entry.metadata['mime_type'] = 'application/zip'
+-        journal_entry.metadata['buddies'] = ''
+-        journal_entry.metadata['preview'] = ''
+-        journal_entry.metadata['icon-color'] = profile.get_color().to_string()
+-        journal_entry.metadata['tags'] = self.selected_author
+-        journal_entry.file_path = tempfile
+-        datastore.write(journal_entry)
+-        self.extra_journal_entry = journal_entry
+         self.alert(_('Success'), self.selected_title + _(' added to Journal.'))
+ 
+     def find_previous(self):
+diff --git a/readtoolbar.py b/readtoolbar.py
+index b80e39b..fd0165a 100644
+--- a/readtoolbar.py
++++ b/readtoolbar.py
+@@ -230,12 +230,6 @@ class ViewToolbar(Gtk.Toolbar):
+         self.insert(spacer, -1)
+         spacer.show()
+ 
+-        self.fullscreen = ToolButton('view-fullscreen')
+-        self.fullscreen.set_tooltip(_('Fullscreen'))
+-        self.fullscreen.connect('clicked', self.fullscreen_cb)
+-        self.insert(self.fullscreen, -1)
+-        self.fullscreen.show()
+-
+     def zoom_in_cb(self, button):
+         self.activity.font_increase()
+     
+diff --git a/speech.py b/speech.py
+index f89881e..d8c65b6 100644
+--- a/speech.py
++++ b/speech.py
+@@ -219,8 +219,6 @@ class SpeechManager(GObject.GObject):
+         self._rate = DEFAULT_RATE
+         self._is_playing = False
+         self._is_paused = False
+-        self._save_timeout_id = -1
+-        self.restore()
+ 
+     def enabled(self):
+         return _HAS_GST
+@@ -250,15 +248,9 @@ class SpeechManager(GObject.GObject):
+ 
+     def set_pitch(self, pitch):
+         self._pitch = pitch
+-        if self._save_timeout_id != -1:
+-            GLib.source_remove(self._save_timeout_id)
+-        self._save_timeout_id = GLib.timeout_add(_SAVE_TIMEOUT, self.save)
+ 
+     def set_rate(self, rate):
+         self._rate = rate
+-        if self._save_timeout_id != -1:
+-            GLib.source_remove(self._save_timeout_id)
+-        self._save_timeout_id = GLib.timeout_add(_SAVE_TIMEOUT, self.save)
+ 
+     def say_text(self, text, pitch=None, rate=None, lang_code=None):
+         if pitch is None:
+@@ -289,23 +281,6 @@ class SpeechManager(GObject.GObject):
+     def __primary_selection_cb(self, clipboard, text, user_data):
+         self.say_text(text)
+ 
+-    def save(self):
+-        self._save_timeout_id = -1
+-
+-        settings = Gio.Settings('org.sugarlabs.speech')
+-        settings.set_int('pitch', self._pitch)
+-        settings.set_int('rate', self._rate)
+-        logging.debug('saving speech configuration pitch %s rate %s',
+-                      self._pitch, self._rate)
+-        return False
+-
+-    def restore(self):
+-        settings = Gio.Settings('org.sugarlabs.speech')
+-        self._pitch = settings.get_int('pitch')
+-        self._rate = settings.get_int('rate')
+-        logging.debug('loading speech configuration pitch %s rate %s',
+-                      self._pitch, self._rate)
+-
+     def get_all_voices(self):
+         if self._player:
+             return self._player.get_all_voices()
+-- 
+2.23.0
+
