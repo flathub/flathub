@@ -1,0 +1,85 @@
+app-id: org.robocode.Robocode
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+command: robocode
+rename-appdata-file: robocode.appdata.xml
+rename-desktop-file: robocode.desktop
+rename-icon: robocode
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --env=PATH=/usr/bin:/app/bin:/app/jdk/bin
+  - --env=JAVA_HOME=/app/jdk
+  - --env=JAVA=/app/jdk/bin/java
+
+build-options:
+    env:
+        JAVA_HOME: /usr/lib/sdk/openjdk11/
+        ROBOCODE_VERSION: '1.9.3.7'
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/installjdk.sh
+
+  - name: robocode
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+    sources:
+      # Fetch project.
+      - type: file
+        url: https://netcologne.dl.sourceforge.net/project/robocode/robocode/1.9.3.7/robocode-1.9.3.7-setup.jar
+        sha256: 75632a88ec041ec0d4fe756fd8f7c82ebe4061aea4a8e7e123ae713a0ae44826
+        dest-filename: robocode.jar
+      # Extract project.
+      - type: shell
+        commands:
+          - mkdir -p ./robocode-setup
+          - mv ./robocode.jar ./robocode-setup/
+          - cd ./robocode-setup && /app/jdk/bin/jar xf ./robocode.jar
+      - type: patch
+        # We need to change the ROBOTPATH and WORKINGDIRECTORY for Robocode,
+        # otherwise it will attempt to write in the installation dir.
+        path: ./use-rw-dirs.patch
+      # Include the executable wrapper.
+      - type: file
+        path: robocode-wrapper.sh
+      # Install the project files.
+      - type: shell
+        commands:
+          - mkdir -p /app/share
+          - mkdir -p /app/bin
+          - install -m555 robocode-wrapper.sh /app/bin/robocode
+          - mv ./robocode-setup /app/share/robocode
+      # Install compiler properties for correctly setting them up for our env.
+      - type: file
+        path: compiler.properties
+      - type: shell
+        commands:
+          - sed s/@ROBOCODE_VERSION@/$ROBOCODE_VERSION/ ./compiler.properties > /app/share/robocode/compiler.properties
+      # Install AppData.
+      - type: file
+        path: robocode.appdata.xml
+      - type: shell
+        commands:
+          - install -Dm644 robocode.appdata.xml /app/share/appdata/robocode.appdata.xml
+      # Install icon.
+      - type: file
+        path: robocode.png
+      - type: shell
+        commands:
+          - install -Dm644 robocode.png /app/share/icons/hicolor/128x128/apps/robocode.png
+      # Install desktop file.
+      - type: file
+        path: robocode.desktop
+      - type: shell
+        commands:
+          - install -Dm644 robocode.desktop /app/share/applications/robocode.desktop
