@@ -1,0 +1,121 @@
+diff --git a/FractionBounceActivity.py b/FractionBounceActivity.py
+index 20baa05..49946af 100644
+--- a/FractionBounceActivity.py
++++ b/FractionBounceActivity.py
+@@ -31,6 +31,8 @@ from sugar3.graphics.radiotoolbutton import RadioToolButton
+ from sugar3.graphics.alert import NotifyAlert
+ from sugar3.graphics import style
+ 
++from sugarapp.widgets import SugarCompatibleActivity
++
+ from collabwrapper import CollabWrapper
+ 
+ from gettext import gettext as _
+@@ -58,7 +60,7 @@ BGDICT = {'grass': [_('grass'), 'grass_background.png'],
+           'custom': [_('user defined'), None]}
+ 
+ 
+-class FractionBounceActivity(activity.Activity):
++class FractionBounceActivity(SugarCompatibleActivity):
+ 
+     def __init__(self, handle):
+         ''' Initiate activity. '''
+@@ -172,7 +174,7 @@ class FractionBounceActivity(activity.Activity):
+     def close(self, **kwargs):
+         self._bounce_window.pause()
+         aplay.close()
+-        activity.Activity.close(self, **kwargs)
++        SugarCompatibleActivity.close(self, **kwargs)
+ 
+     def _configure_cb(self, event):
+         if Gdk.Screen.width() < 1024:
+@@ -415,12 +417,14 @@ class FractionBounceActivity(activity.Activity):
+         return canvas
+ 
+     def _load_bg_cb(self, widget, event, bg):
++        self._bg_palette.popdown(immediate=True)
+         if bg == 'custom':
+             chooser(self, 'Image', self._new_background_from_journal)
+         else:
+             self._bounce_window.set_background(BGDICT[bg][1])
+ 
+     def _load_ball_cb(self, widget, event, ball):
++        self._ball_palette.popdown(immediate=True)
+         if ball == 'custom':
+             chooser(self, 'Image', self._new_ball_from_journal)
+         else:
+@@ -442,8 +446,8 @@ class FractionBounceActivity(activity.Activity):
+     def _new_ball_from_journal(self, dsobject):
+         ''' Load an image from the Journal. '''
+         self._bounce_window.ball.new_ball_from_image(
+-            dsobject.file_path,
+-            os.path.join(activity.get_activity_root(), 'tmp', 'custom.png'))
++            dsobject,
++            os.path.join(activity.get_activity_root(), 'custom.png'))
+ 
+     def _new_background_from_journal(self, dsobject):
+         ''' Load an image from the Journal. '''
+diff --git a/bounce.py b/bounce.py
+index 2ffc8fb..e7a42e9 100644
+--- a/bounce.py
++++ b/bounce.py
+@@ -192,7 +192,7 @@ class Bounce():
+         width, height = self._calc_background_size()
+         for bg in list(self._backgrounds.keys()):
+             if bg == 'custom':
+-                path = self._custom_dsobject.file_path
++                path = self._custom_dsobject
+                 pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(
+                     path, width, height)
+             else:
+@@ -278,7 +278,7 @@ class Bounce():
+ 
+     def new_background_from_image(self, path, dsobject=None):
+         if path is None:
+-            path = dsobject.file_path
++            path = dsobject
+         width, height = self._calc_background_size()
+         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(
+             path, width, height)
+diff --git a/utils.py b/utils.py
+index 2ee22ea..4d116ae 100644
+--- a/utils.py
++++ b/utils.py
+@@ -15,29 +15,15 @@
+ 
+ from gi.repository import Gtk
+ 
+-from sugar3.graphics.objectchooser import ObjectChooser
+-try:
+-    from sugar3.graphics.objectchooser import FILTER_TYPE_GENERIC_MIME
+-except:
+-    FILTER_TYPE_GENERIC_MIME = 'generic_mime'
+-
++from sugarapp.widgets import DesktopOpenChooser
+ 
+ def chooser(parent_window, filter, action):
+     """ Choose an object from the datastore and take some action """
+     chooser = None
+-    try:
+-        chooser = ObjectChooser(parent=parent_window, what_filter=filter,
+-                                filter_type=FILTER_TYPE_GENERIC_MIME,
+-                                show_preview=True)
+-    except:
+-        chooser = ObjectChooser(parent=parent_window, what_filter=filter)
+-    if chooser is not None:
+-        try:
+-            result = chooser.run()
+-            if result == Gtk.ResponseType.ACCEPT:
+-                dsobject = chooser.get_selected_object()
+-                action(dsobject)
+-                dsobject.destroy()
+-        finally:
+-            chooser.destroy()
+-            del chooser
++    chooser = DesktopOpenChooser(parent_window)
++    chooser.add_filter('.png', 'Portable Network Graphics (.png)')
++    chooser.add_filter('.jpg', 'JPG Images (.jpg)')
++    chooser.add_filter('.jpeg', 'JPG Images (.jpeg)')
++    filepath = chooser.get_filename()
++    if filepath is not None:
++        action(filepath)
