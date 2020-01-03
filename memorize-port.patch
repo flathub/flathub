@@ -1,0 +1,140 @@
+From 53a2599d0a3cc21ff001ee64d6e3eb80fc52d975 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <tch@sugarlabs.org>
+Date: Fri, 3 Jan 2020 11:45:13 -0300
+Subject: [PATCH 1/5] port
+
+---
+ activity.py        | 15 +++++++--------
+ createcardpanel.py | 25 ++++++++++++++-----------
+ 2 files changed, 21 insertions(+), 19 deletions(-)
+
+diff --git a/activity.py b/activity.py
+index c0da4cc..9adc406 100644
+--- a/activity.py
++++ b/activity.py
+@@ -34,11 +34,9 @@ from gi.repository import Gtk
+ # activate threads for gst needs
+ GObject.threads_init()
+ 
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+ from sugar3.graphics.toggletoolbutton import ToggleToolButton
+-from sugar3.activity.activity import Activity
+ from sugar3.graphics import style
+ from sugar3 import profile
+ 
+@@ -52,6 +50,9 @@ import createcardpanel
+ import face
+ from collabwrapper import CollabWrapper
+ 
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import SugarCompatibleActivity
++
+ _MODE_PLAY = 1
+ _MODE_CREATE = 2
+ 
+@@ -64,17 +65,17 @@ changed_strings = [_('Play'), _('Create'), _('Game name:'), _('Equal pairs'),
+                    _('addition'), _('letters'), _('sounds')]
+ 
+ 
+-class MemorizeActivity(Activity):
++class MemorizeActivity(SugarCompatibleActivity):
+ 
+     def __init__(self, handle):
+-        Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+ 
+         self.play_mode = None
+ 
+         toolbar_box = ToolbarBox()
+         self.set_toolbar_box(toolbar_box)
+ 
+-        self.activity_button = ActivityToolbarButton(self)
++        self.activity_button = ExtendedActivityToolbarButton(self)
+         toolbar_box.toolbar.insert(self.activity_button, -1)
+ 
+         self._memorizeToolbarBuilder = \
+@@ -358,8 +359,6 @@ class MemorizeActivity(Activity):
+     def write_file(self, file_path):
+         logging.debug('WRITE_FILE is_demo %s', self.game.model.is_demo)
+         if self.game.model.is_demo:
+-            # if is a demo game only want keep the metadata
+-            self._jobject.set_file_path(None)
+             raise NotImplementedError
+             return
+         if self.cardlist.pair_list_modified:
+@@ -414,7 +413,7 @@ class MemorizeActivity(Activity):
+ 
+     def _complete_close(self):
+         self._remove_temp_files()
+-        Activity._complete_close(self)
++        SugarCompatibleActivity._complete_close(self)
+ 
+     def _remove_temp_files(self):
+         tmp_root = os.path.join(os.environ['SUGAR_ACTIVITY_ROOT'], 'instance')
+diff --git a/createcardpanel.py b/createcardpanel.py
+index 6275b72..bc67d77 100644
+--- a/createcardpanel.py
++++ b/createcardpanel.py
+@@ -34,10 +34,11 @@ from sugar3.graphics.icon import Icon
+ from sugar3.graphics.palette import Palette
+ from sugar3.graphics.toggletoolbutton import ToggleToolButton
+ from fontcombobox import FontButton
+-from port import chooser
+ 
+ import speak.face
+ 
++from sugarapp.widgets import DesktopOpenChooser
++
+ PAIR_SIZE = min(Gdk.Screen.width() // 4, Gdk.Screen.height() // 3)
+ 
+ 
+@@ -421,8 +422,7 @@ class CardEditor(Gtk.EventBox):
+         self.emit('has-picture', True)
+ 
+     def _load_image(self, widget):
+-        def load(jobject):
+-            origin_path = jobject.file_path
++        def load(origin_path):
+             self._game.model.mark_modified()
+             self._game.model.create_temp_directories()
+             destination_path = join(self._game.model.data['pathimg'],
+@@ -433,13 +433,14 @@ class CardEditor(Gtk.EventBox):
+             logging.debug('Picture Loaded: %s', destination_path)
+             self.emit('has-picture', True)
+ 
+-        chooser.pick(parent=self.get_toplevel(),
+-                     what=chooser.IMAGE,
+-                     cb=load)
++        chooser = DesktopOpenChooser(self.get_toplevel())
++        chooser.add_filter('.jpg', 'JPEG')
++        filename = chooser.get_filename()
++        if filename:
++            load(filename)
+ 
+     def _load_audio(self, widget):
+-        def load(jobject):
+-            origin_path = jobject.file_path
++        def load(origin_path):
+             self.set_speak(False)
+             self._game.model.mark_modified()
+             self._game.model.create_temp_directories()
+@@ -459,9 +460,11 @@ class CardEditor(Gtk.EventBox):
+             self.card.set_image_path(destination_path)
+             self.emit('has-sound', True)
+ 
+-        chooser.pick(parent=self.get_toplevel(),
+-                     what=chooser.AUDIO,
+-                     cb=load)
++        chooser = DesktopOpenChooser(self.get_toplevel())
++        chooser.add_filter('.ogg', 'OGG')
++        filename = chooser.get_filename()
++        if filename:
++            load(filename)
+ 
+     def _usespeak_cb(self, button):
+         self.card.change_speak(button.props.active)
+-- 
+2.23.0
+
