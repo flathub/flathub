@@ -8,4 +8,4 @@ install -Dm644 $FLATPAK_DEST/firestorm/firestorm_icon.png $FLATPAK_DEST/share/ic
 install -Dm644 org.firestormviewer.FirestormViewer-symbolic.svg $FLATPAK_DEST/share/icons/hicolor/symbolic/apps/org.firestormviewer.FirestormViewer-symbolic.svg
 install -Dm755 launch_url.sh $FLATPAK_DEST/firestorm/etc
 install -Dm644 org.firestormviewer.FirestormViewer.desktop $FLATPAK_DEST/share/applications/org.firestormviewer.FirestormViewer.desktop
-install -Dm644 org.firestormviewer.FirestormViewer.appdata.xml $FLATPAK_DEST/share/metainfo/org.firestormviewer.FirestormViewer.appdata.xml
+install -Dm644 org.firestormviewer.FirestormViewer.metainfo.xml $FLATPAK_DEST/share/metainfo/org.firestormviewer.FirestormViewer.metainfo.xml
