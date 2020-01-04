@@ -1,0 +1,357 @@
+diff -urNp c/agent/snmp_agent.c d/agent/snmp_agent.c
+--- c/agent/snmp_agent.c	2019-09-18 08:44:53.833601845 +0200
++++ d/agent/snmp_agent.c	2019-09-18 08:46:38.176595597 +0200
+@@ -1604,6 +1604,13 @@ free_agent_snmp_session(netsnmp_agent_se
+     
+     DEBUGMSGTL(("verbose:asp", "asp %p reqinfo %p freed\n",
+                 asp, asp->reqinfo));
++
++    /* Clean up securityStateRef here to prevent a double free */
++    if (asp->orig_pdu && asp->orig_pdu->securityStateRef)
++	snmp_free_securityStateRef(asp->orig_pdu);
++    if (asp->pdu && asp->pdu->securityStateRef)
++	snmp_free_securityStateRef(asp->pdu);
++
+     if (asp->orig_pdu)
+         snmp_free_pdu(asp->orig_pdu);
+     if (asp->pdu)
+diff -urNp c/include/net-snmp/pdu_api.h d/include/net-snmp/pdu_api.h
+--- c/include/net-snmp/pdu_api.h	2019-09-18 08:44:53.822601740 +0200
++++ d/include/net-snmp/pdu_api.h	2019-09-18 08:47:03.620838212 +0200
+@@ -19,6 +19,8 @@ NETSNMP_IMPORT
+ netsnmp_pdu    *snmp_fix_pdu(  netsnmp_pdu *pdu, int idx);
+ NETSNMP_IMPORT
+ void            snmp_free_pdu( netsnmp_pdu *pdu);
++NETSNMP_IMPORT
++void            snmp_free_securityStateRef( netsnmp_pdu *pdu);
+ 
+ #ifdef __cplusplus
+ }
+diff -urNp c/snmplib/snmp_api.c d/snmplib/snmp_api.c
+--- c/snmplib/snmp_api.c	2019-09-18 08:44:53.807601597 +0200
++++ d/snmplib/snmp_api.c	2019-09-18 08:53:19.937435576 +0200
+@@ -4012,7 +4012,12 @@ snmpv3_parse(netsnmp_pdu *pdu,
+ static void
+ free_securityStateRef(netsnmp_pdu* pdu)
+ {
+-    struct snmp_secmod_def *sptr = find_sec_mod(pdu->securityModel);
++    struct snmp_secmod_def *sptr;
++
++    if(!pdu->securityStateRef)
++       return;
++
++    sptr = find_sec_mod(pdu->securityModel);
+     if (sptr) {
+         if (sptr->pdu_free_state_ref) {
+             (*sptr->pdu_free_state_ref) (pdu->securityStateRef);
+@@ -4029,6 +4034,17 @@ free_securityStateRef(netsnmp_pdu* pdu)
+     pdu->securityStateRef = NULL;
+ }
+ 
++/*
++ * This function is here to provide a separate call to
++ * free the securityStateRef memory. This is needed to prevent
++ * a double free if this memory is freed in snmp_free_pdu.
++ */
++void
++snmp_free_securityStateRef(netsnmp_pdu* pdu)
++{
++   free_securityStateRef(pdu);
++}
++
+ #define ERROR_STAT_LENGTH 11
+ 
+ int
+diff -urNp c/snmplib/snmpusm.c d/snmplib/snmpusm.c
+--- c/snmplib/snmpusm.c	2019-09-18 08:44:53.802601550 +0200
++++ d/snmplib/snmpusm.c	2019-09-18 08:57:35.696872662 +0200
+@@ -299,16 +299,20 @@ usm_free_usmStateReference(void *old)
+ 
+     if (old_ref) {
+ 
+-        SNMP_FREE(old_ref->usr_name);
+-        SNMP_FREE(old_ref->usr_engine_id);
+-        SNMP_FREE(old_ref->usr_auth_protocol);
+-        SNMP_FREE(old_ref->usr_priv_protocol);
++        if (old_ref->usr_name_length)
++            SNMP_FREE(old_ref->usr_name);
++        if (old_ref->usr_engine_id_length)
++            SNMP_FREE(old_ref->usr_engine_id);
++        if (old_ref->usr_auth_protocol_length)
++            SNMP_FREE(old_ref->usr_auth_protocol);
++        if (old_ref->usr_priv_protocol_length)
++            SNMP_FREE(old_ref->usr_priv_protocol);
+ 
+-        if (old_ref->usr_auth_key) {
++        if (old_ref->usr_auth_key_length && old_ref->usr_auth_key) {
+             SNMP_ZERO(old_ref->usr_auth_key, old_ref->usr_auth_key_length);
+             SNMP_FREE(old_ref->usr_auth_key);
+         }
+-        if (old_ref->usr_priv_key) {
++        if (old_ref->usr_priv_key_length && old_ref->usr_priv_key) {
+             SNMP_ZERO(old_ref->usr_priv_key, old_ref->usr_priv_key_length);
+             SNMP_FREE(old_ref->usr_priv_key);
+         }
+@@ -1039,7 +1043,6 @@ usm_generate_out_msg(int msgProcModel,
+         if ((user = usm_get_user(secEngineID, secEngineIDLen, secName))
+             == NULL && secLevel != SNMP_SEC_LEVEL_NOAUTH) {
+             DEBUGMSGTL(("usm", "Unknown User(%s)\n", secName));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_UNKNOWNSECURITYNAME;
+         }
+ 
+@@ -1091,7 +1094,6 @@ usm_generate_out_msg(int msgProcModel,
+                                         thePrivProtocolLength) == 1) {
+         DEBUGMSGTL(("usm", "Unsupported Security Level (%d)\n",
+                     theSecLevel));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_USM_UNSUPPORTEDSECURITYLEVEL;
+     }
+ 
+@@ -1121,7 +1123,6 @@ usm_generate_out_msg(int msgProcModel,
+                          &msgAuthParmLen, &msgPrivParmLen, &otstlen,
+                          &seq_len, &msgSecParmLen) == -1) {
+         DEBUGMSGTL(("usm", "Failed calculating offsets.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_USM_GENERICERROR;
+     }
+ 
+@@ -1143,7 +1144,6 @@ usm_generate_out_msg(int msgProcModel,
+     ptr = *wholeMsg = globalData;
+     if (theTotalLength > *wholeMsgLen) {
+         DEBUGMSGTL(("usm", "Message won't fit in buffer.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_USM_GENERICERROR;
+     }
+ 
+@@ -1169,7 +1169,6 @@ usm_generate_out_msg(int msgProcModel,
+                                htonl(boots_uint), htonl(time_uint),
+                                &ptr[privParamsOffset]) == -1) {
+                 DEBUGMSGTL(("usm", "Can't set AES iv.\n"));
+-                usm_free_usmStateReference(secStateRef);
+                 return SNMPERR_USM_GENERICERROR;
+             }
+         }
+@@ -1185,7 +1184,6 @@ usm_generate_out_msg(int msgProcModel,
+                               &ptr[privParamsOffset])
+                  == -1)) {
+                 DEBUGMSGTL(("usm", "Can't set DES-CBC salt.\n"));
+-                usm_free_usmStateReference(secStateRef);
+                 return SNMPERR_USM_GENERICERROR;
+             }
+         }
+@@ -1198,7 +1196,6 @@ usm_generate_out_msg(int msgProcModel,
+                        &ptr[dataOffset], &encrypted_length)
+             != SNMP_ERR_NOERROR) {
+             DEBUGMSGTL(("usm", "encryption error.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_ENCRYPTIONERROR;
+         }
+ #ifdef NETSNMP_ENABLE_TESTING_CODE
+@@ -1226,7 +1223,6 @@ usm_generate_out_msg(int msgProcModel,
+         if ((encrypted_length != (theTotalLength - dataOffset))
+             || (salt_length != msgPrivParmLen)) {
+             DEBUGMSGTL(("usm", "encryption length error.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_ENCRYPTIONERROR;
+         }
+ 
+@@ -1362,7 +1358,6 @@ usm_generate_out_msg(int msgProcModel,
+ 
+         if (temp_sig == NULL) {
+             DEBUGMSGTL(("usm", "Out of memory.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_GENERICERROR;
+         }
+ 
+@@ -1376,7 +1371,6 @@ usm_generate_out_msg(int msgProcModel,
+             SNMP_ZERO(temp_sig, temp_sig_len);
+             SNMP_FREE(temp_sig);
+             DEBUGMSGTL(("usm", "Signing failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_AUTHENTICATIONFAILURE;
+         }
+ 
+@@ -1384,7 +1378,6 @@ usm_generate_out_msg(int msgProcModel,
+             SNMP_ZERO(temp_sig, temp_sig_len);
+             SNMP_FREE(temp_sig);
+             DEBUGMSGTL(("usm", "Signing lengths failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_AUTHENTICATIONFAILURE;
+         }
+ 
+@@ -1398,7 +1391,6 @@ usm_generate_out_msg(int msgProcModel,
+     /*
+      * endif -- create keyed hash 
+      */
+-    usm_free_usmStateReference(secStateRef);
+ 
+     DEBUGMSGTL(("usm", "USM processing completed.\n"));
+ 
+@@ -1548,7 +1540,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+         if ((user = usm_get_user(secEngineID, secEngineIDLen, secName))
+             == NULL && secLevel != SNMP_SEC_LEVEL_NOAUTH) {
+             DEBUGMSGTL(("usm", "Unknown User\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_UNKNOWNSECURITYNAME;
+         }
+ 
+@@ -1601,7 +1592,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+         DEBUGMSGTL(("usm", "Unsupported Security Level or type (%d)\n",
+                     theSecLevel));
+ 
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_USM_UNSUPPORTEDSECURITYLEVEL;
+     }
+ 
+@@ -1636,7 +1626,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+             DEBUGMSGTL(("usm",
+                         "couldn't malloc %d bytes for encrypted PDU\n",
+                         (int)ciphertextlen));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_MALLOC;
+         }
+ 
+@@ -1652,7 +1641,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                                htonl(boots_uint), htonl(time_uint),
+                                iv) == -1) {
+                 DEBUGMSGTL(("usm", "Can't set AES iv.\n"));
+-                usm_free_usmStateReference(secStateRef);
+                 SNMP_FREE(ciphertext);
+                 return SNMPERR_USM_GENERICERROR;
+             }
+@@ -1667,7 +1655,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                                              thePrivKeyLength - 8,
+                                              iv) == -1)) {
+                 DEBUGMSGTL(("usm", "Can't set DES-CBC salt.\n"));
+-                usm_free_usmStateReference(secStateRef);
+                 SNMP_FREE(ciphertext);
+                 return SNMPERR_USM_GENERICERROR;
+             }
+@@ -1686,7 +1673,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                        scopedPdu, scopedPduLen,
+                        ciphertext, &ciphertextlen) != SNMP_ERR_NOERROR) {
+             DEBUGMSGTL(("usm", "encryption error.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             SNMP_FREE(ciphertext);
+             return SNMPERR_USM_ENCRYPTIONERROR;
+         }
+@@ -1703,7 +1689,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                                        ciphertext, ciphertextlen);
+         if (rc == 0) {
+             DEBUGMSGTL(("usm", "Encryption failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             SNMP_FREE(ciphertext);
+             return SNMPERR_USM_ENCRYPTIONERROR;
+         }
+@@ -1743,7 +1728,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     DEBUGINDENTLESS();
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building privParams failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1766,7 +1750,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     DEBUGINDENTLESS();
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building authParams failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1789,7 +1772,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     DEBUGINDENTLESS();
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building authParams failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1805,7 +1787,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     if (rc == 0) {
+         DEBUGMSGTL(("usm",
+                     "building msgAuthoritativeEngineTime failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1821,7 +1802,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     if (rc == 0) {
+         DEBUGMSGTL(("usm",
+                     "building msgAuthoritativeEngineBoots failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1833,7 +1813,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     DEBUGINDENTLESS();
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building msgAuthoritativeEngineID failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1846,7 +1825,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                                      *offset - sp_offset);
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building usm security parameters failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1860,7 +1838,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+ 
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building msgSecurityParameters failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1870,7 +1847,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     while ((*wholeMsgLen - *offset) < globalDataLen) {
+         if (!asn_realloc(wholeMsg, wholeMsgLen)) {
+             DEBUGMSGTL(("usm", "building global data failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_TOO_LONG;
+         }
+     }
+@@ -1886,7 +1862,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+                                                ASN_CONSTRUCTOR), *offset);
+     if (rc == 0) {
+         DEBUGMSGTL(("usm", "building master packet sequence failed.\n"));
+-        usm_free_usmStateReference(secStateRef);
+         return SNMPERR_TOO_LONG;
+     }
+ 
+@@ -1904,7 +1879,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+ 
+         if (temp_sig == NULL) {
+             DEBUGMSGTL(("usm", "Out of memory.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_GENERICERROR;
+         }
+ 
+@@ -1915,14 +1889,12 @@ usm_rgenerate_out_msg(int msgProcModel,
+             != SNMP_ERR_NOERROR) {
+             SNMP_FREE(temp_sig);
+             DEBUGMSGTL(("usm", "Signing failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_AUTHENTICATIONFAILURE;
+         }
+ 
+         if (temp_sig_len != msgAuthParmLen) {
+             SNMP_FREE(temp_sig);
+             DEBUGMSGTL(("usm", "Signing lengths failed.\n"));
+-            usm_free_usmStateReference(secStateRef);
+             return SNMPERR_USM_AUTHENTICATIONFAILURE;
+         }
+ 
+@@ -1933,7 +1905,6 @@ usm_rgenerate_out_msg(int msgProcModel,
+     /*
+      * endif -- create keyed hash 
+      */
+-    usm_free_usmStateReference(secStateRef);
+     DEBUGMSGTL(("usm", "USM processing completed.\n"));
+     return SNMPERR_SUCCESS;
+ }                               /* end usm_rgenerate_out_msg() */
