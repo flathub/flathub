@@ -1,0 +1,262 @@
+From 3d5baa71f1f65f5084e430f6261ae88b1ae7acbc Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <tch@sugarlabs.org>
+Date: Thu, 9 Jan 2020 23:19:10 -0300
+Subject: [PATCH 1/4] port
+
+---
+ historietaactivity.py | 99 +++++++++++++------------------------------
+ toolbar.py            | 32 +++-----------
+ 2 files changed, 37 insertions(+), 94 deletions(-)
+
+diff --git a/historietaactivity.py b/historietaactivity.py
+index 0c33c84..cc189fc 100644
+--- a/historietaactivity.py
++++ b/historietaactivity.py
+@@ -22,7 +22,7 @@ from gi.repository import GdkPixbuf
+ from sugar3.activity import activity
+ from sugar3.graphics.toolbarbox import ToolbarBox, ToolbarButton
+ from sugar3.activity.widgets import StopButton
+-from sugar3.activity.widgets import ActivityToolbarButton
++
+ from sugar3.graphics.toggletoolbutton import ToggleToolButton
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.datastore import datastore
+@@ -40,6 +40,9 @@ from slideview import SlideView
+ from reorderwindow import ReorderView
+ from reorderwindow import ImageEditorView
+ 
++from sugarapp.widgets import ExtendedActivityToolbarButton
++from sugarapp.widgets import DesktopSaveChooser
++from sugarapp.widgets import SugarCompatibleActivity
+ 
+ DEFAULT_TIME = 10
+ MIN_TIME = 1
+@@ -99,19 +102,19 @@ class EmptyWidget(Gtk.EventBox):
+         self.emit('choose-image')
+ 
+ 
+-class HistorietaActivity(activity.Activity):
++class HistorietaActivity(SugarCompatibleActivity):
+ 
+     _EXPORT_FORMATS = [['image/png', _('Save as Image'), _('PNG'), ""]]
+ 
+     def __init__(self, handle):
+-        activity.Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+         self.set_title('FotoToon')
+ 
+         self._max_participants = 1
+         self.page = None
+ 
+         toolbar_box = ToolbarBox()
+-        activity_button = ActivityToolbarButton(self)
++        activity_button = ExtendedActivityToolbarButton(self)
+         activity_toolbar = activity_button.page
+         toolbar_box.toolbar.insert(activity_button, 0)
+ 
+@@ -260,7 +263,7 @@ class HistorietaActivity(activity.Activity):
+         self._notebook.append_page(self._slideview, None)
+         self._notebook.show_all()
+ 
+-        if self._jobject.file_path is None or self._jobject.file_path == '':
++        if not os.path.exists(self._get_autosave_filename()):
+             empty_widget = EmptyWidget()
+             empty_widget.connect('choose-image', self.__add_image)
+             self.set_canvas(empty_widget)
+@@ -329,6 +332,12 @@ class HistorietaActivity(activity.Activity):
+         return image_width, image_height
+ 
+     def write_image(self, button):
++        chooser = DesktopSaveChooser(self, filename=_("Untitled") + '.png')
++        chooser.add_filter('.png', 'PNG')
++        filename = chooser.get_filename()
++        if filename is None:
++            return
++
+         self._commit_all_changes()
+         # calculate image size
+         image_width, image_height = self._get_image_size()
+@@ -367,33 +376,7 @@ class HistorietaActivity(activity.Activity):
+ 
+             posi = posi + 1
+ 
+-        temp_file_name = os.path.join(self.get_activity_root(), 'instance',
+-                                      'tmp-%i.png' % time.time())
+-
+-        surface.write_to_png(temp_file_name)
+-
+-        self.dl_jobject = datastore.create()
+-
+-        self.dl_jobject.metadata['progress'] = '0'
+-        self.dl_jobject.metadata['keep'] = '0'
+-        self.dl_jobject.metadata['buddies'] = ''
+-        self.dl_jobject.metadata['icon-color'] = \
+-            profile.get_color().to_string()
+-        self.dl_jobject.metadata['mime_type'] = 'image/png'
+-
+-        self.dl_jobject.metadata['title'] = \
+-            self._jobject.metadata['title'] + " as image"
+-        self.dl_jobject.metadata['description'] = ""
+-        self.dl_jobject.metadata['progress'] = '100'
+-        self.dl_jobject.file_path = temp_file_name
+-
+-        self.dl_jobject.metadata['preview'] = \
+-            self._get_preview_image(temp_file_name)
+-
+-        datastore.write(self.dl_jobject, transfer_ownership=True)
+-        self._object_id = self.dl_jobject.object_id
+-        self._show_journal_alert(_('Success'),
+-                                 _('A image was created in the Journal'))
++        surface.write_to_png(filename)
+ 
+     def __image_order_cb(self, button):
+         reorderwin = ReorderView(self)
+@@ -404,15 +387,19 @@ class HistorietaActivity(activity.Activity):
+         editorwin.show_all()
+ 
+     def _save_as_pdf(self, widget):
+-        self._commit_all_changes()
++        chooser = DesktopSaveChooser(self, filename=_("Untitled") + '.pdf')
++        chooser.add_filter('.pdf', 'PDF')
++        filename = chooser.get_filename()
++        if filename is None:
++            return
+ 
+-        file_name = os.path.join(activity.get_activity_root(), 'instance',
+-                                 'tmp-%i.pdf' % time.time())
+-        file_obj = open(file_name, 'wb')
++        self._commit_all_changes()
+ 
+         page_width = self.page.boxs[1].width
+         page_height = self.page.boxs[1].height
+ 
++        file_obj = open(filename, 'wb')
++
+         surface = cairo.PDFSurface(file_obj, page_width, page_height)
+ 
+         context = cairo.Context(surface)
+@@ -433,29 +420,16 @@ class HistorietaActivity(activity.Activity):
+         surface.finish()
+         file_obj.close()
+ 
+-        jobject = datastore.create()
+-        jobject.metadata['icon-color'] = \
+-            profile.get_color().to_string()
+-        jobject.metadata['mime_type'] = 'application/pdf'
+-
+-        jobject.metadata['title'] = \
+-            self.metadata['title'] + " as book"
+-        jobject.file_path = file_name
+-
+-        # jobject.metadata['preview'] = \
+-        #    self._get_preview_image(file_name)
+-
+-        datastore.write(jobject, transfer_ownership=True)
+-        self._object_id = jobject.object_id
+-
+-        self._show_journal_alert(_('Success'),
+-                                 _('A PDF was created in the Journal'))
+-
+     def __save_as_ogg_cb(self, button):
++        chooser = DesktopSaveChooser(self, filename=_("Untitled") + '.ogv')
++        chooser.add_filter('.ogv', 'OGV')
++        filename = chooser.get_filename()
++        if filename is None:
++            return
++
+         self._commit_all_changes()
+ 
+         directory = tempfile.mkdtemp()
+-        output_path = os.path.join(directory, 'output.ogv')
+ 
+         first_box = self.page.boxs[1]
+         width = first_box.width
+@@ -482,7 +456,7 @@ class HistorietaActivity(activity.Activity):
+                 i += 1
+ 
+         pipeline_string = VIDEO_PIPELINE.format(
+-            os.path.join(directory, '%d.png'), framerate, output_path)
++            os.path.join(directory, '%d.png'), framerate, filename)
+         pipeline = Gst.parse_launch(pipeline_string)
+ 
+         pipeline.set_state(Gst.State.PLAYING)
+@@ -490,18 +464,6 @@ class HistorietaActivity(activity.Activity):
+             Gst.CLOCK_TIME_NONE, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+         pipeline.set_state(Gst.State.NULL)
+ 
+-        jobject = datastore.create()
+-        jobject.metadata['icon-color'] = profile.get_color().to_string()
+-        jobject.metadata['mime_type'] = 'video/ogg'
+-        jobject.metadata['title'] = \
+-            _('{} as a movie').format(self.metadata['title'])
+-        jobject.file_path = output_path
+-
+-        datastore.write(jobject, transfer_ownership=True)
+-        self._object_id = jobject.object_id
+-
+-        self._show_journal_alert(_('Success'),
+-                                 _('A movie was saved in the Journal'))
+         shutil.rmtree(directory)
+ 
+     def _show_journal_alert(self, title, msg):
+@@ -794,7 +756,6 @@ class ComicBox(Gtk.EventBox):
+             self.add_rectangulo(x, y)
+             self.title_globe = self.globos[0]
+             self.title_globe.texto.set_text(_('Title:'))
+-
+         self.draw_in_context(context)
+         return False
+ 
+diff --git a/toolbar.py b/toolbar.py
+index 32407af..2e2fe38 100644
+--- a/toolbar.py
++++ b/toolbar.py
+@@ -38,6 +38,8 @@ from fontcombobox import FontComboBox
+ from fontcombobox import FontSize
+ import globos
+ 
++from sugarapp.widgets import DesktopOpenChooser
++
+ 
+ # Class to manage the Text Color
+ class TextButtonColor(ColorToolButton):
+@@ -216,31 +218,11 @@ class GlobesManager():
+             self._page.table.remove(last_box)
+ 
+     def add_image(self):
+-        try:
+-            chooser = ObjectChooser(self._activity, what_filter='Image',
+-                                    filter_type=FILTER_TYPE_GENERIC_MIME,
+-                                    show_preview=True)
+-        except:
+-            # for compatibility with older versions
+-            chooser = ObjectChooser(self._activity, what_filter='Image')
+-
+-        try:
+-            result = chooser.run()
+-            if result == Gtk.ResponseType.ACCEPT:
+-                jobject = chooser.get_selected_object()
+-                if jobject and jobject.file_path:
+-                    logging.debug("imagen seleccionada: %s",
+-                                  jobject.file_path)
+-                    tempfile_name = \
+-                        os.path.join(activity.get_activity_root(),
+-                                     'instance', 'tmp%i' % time.time())
+-                    os.link(jobject.file_path, tempfile_name)
+-                    logging.debug("tempfile_name: %s", tempfile_name)
+-                    self._page.add_box_from_journal_image(tempfile_name)
+-                jobject.destroy()
+-        finally:
+-            chooser.destroy()
+-            del chooser
++        chooser = DesktopOpenChooser(self._activity)
++        chooser.add_filter('.png', 'PNG')
++        filename = chooser.get_filename()
++        if filename is not None:
++            self._page.add_box_from_journal_image(filename)
+ 
+ 
+ class TextToolbar(Gtk.Toolbar):
+-- 
+2.23.0
+

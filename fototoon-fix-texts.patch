@@ -1,0 +1,116 @@
+From e39842b5cf639ccac98e58077dc7444bc2f13d41 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <tch@sugarlabs.org>
+Date: Sat, 11 Jan 2020 21:58:22 -0300
+Subject: [PATCH 2/2] Fix text rendering
+
+In GTK3, the textview will only render what is visible
+on screen.
+
+For example, if the textview is contained in a scrolled
+window, textview.get_window will return a drawable that
+only shows the visible part of the textview.
+
+The most common symptom is getting black rectangles.
+
+One solution is to:
+1. Let the textview draw directly to the cached
+   text surface, and not through its window.
+2. Avoid race conditions between imprimir and
+   finalize_text methods, by setting textview
+   initial size.
+3. Explicitly draw the textview to the comic box
+   context.
+---
+ globos.py | 37 ++++++++++++++++++++++---------------
+ 1 file changed, 22 insertions(+), 15 deletions(-)
+
+diff --git a/globos.py b/globos.py
+index c47045d..a8c0087 100644
+--- a/globos.py
++++ b/globos.py
+@@ -830,7 +830,6 @@ class CuadroTexto:
+         self.textview.set_justification(Gtk.Justification.CENTER)
+         self.textview.modify_bg(Gtk.StateType.NORMAL,
+                                 style.COLOR_WHITE.get_gdk_color())
+-
+         self._textview_x = 0
+         self._textview_y = 0
+         self._box.fixed.put(self.textviewbox, 0, 0)
+@@ -838,6 +837,9 @@ class CuadroTexto:
+         self.textviewbox.connect(
+             'size_allocate', self._textview_size_allocate)
+ 
++        # avoid race condition between imprimir and _finalize_text methods
++        self.set_dimension(self.ancho, self.alto)
++
+     def move_textview(self, x, y):
+         if self._textview_x != x or self._textview_y != y:
+             self._textview_x = x
+@@ -878,19 +880,18 @@ class CuadroTexto:
+             GObject.idle_add(self._finalize_text)
+ 
+     def _finalize_text(self):
+-        textview = self.textview
+-        window = textview.get_window(Gtk.TextWindowType.TEXT)
++        alloc = Gdk.Rectangle()
++        alloc.width = self.ancho * 2
++        alloc.height = self.alto * 2
+ 
+-        # create a temporary surface with a print of the text in the textview
+-        tv_alloc = textview.get_allocation()
+         self._text_surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
+-                                                tv_alloc.width,
+-                                                tv_alloc.height)
+-        ctx = cairo.Context(self._text_surface)
+-        Gdk.cairo_set_source_window(ctx, window, 0, 0)
+-        ctx.paint()
++                                                alloc.width,
++                                                alloc.height)
++        context = cairo.Context(self._text_surface)
++
++        self.textview.size_allocate(alloc)
++        self.textview.draw(context)
+ 
+-        self.textviewbox.hide()
+         self._box.redraw()
+ 
+     def initialize_textview(self, ctx):
+@@ -907,16 +908,22 @@ class CuadroTexto:
+     def imprimir(self, ctx):
+         self._update_font()
+ 
++        x = self._globe.x - self.ancho
++        y = self._globe.y - self.alto
++
+         if not self._in_edition:
+             if self._text_surface is None:
+                 self.initialize_textview(ctx)
+             else:
+                 ctx.save()
+-                x = self._globe.x - self._text_surface.get_width() / 2
+-                y = self._globe.y - self._text_surface.get_height() // 2
+                 ctx.set_source_surface(self._text_surface, x, y)
+                 ctx.paint()
+                 ctx.restore()
++        else:
++            ctx.save()
++            ctx.translate(x, y)
++            self.textview.draw(ctx)
++            ctx.restore()
+ 
+     def mover_a(self, x, y):
+         "Mueve el centro del cuadro a la posicion (x,y)"
+@@ -936,8 +943,8 @@ class CuadroTexto:
+         """
+         self.ancho = ancho
+         self.alto = alto
+-        self.textviewbox.set_size_request(self.ancho * 2,
+-                                          self.alto * 2)
++        self.textview.set_size_request(self.ancho * 2,
++                                       self.alto * 2)
+ 
+     def _textview_size_allocate(self, widget, alloc):
+         # recalculate size and position with the real size allocated
+-- 
+2.23.0
+
