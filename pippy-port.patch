@@ -1,0 +1,506 @@
+From c3d4454c50443f0029e537ab0571d31f814c8b22 Mon Sep 17 00:00:00 2001
+From: Martin Abente Lahaye <martin.abente.lahaye@gmail.com>
+Date: Wed, 15 Jan 2020 13:01:17 -0300
+Subject: [PATCH 1/3] port
+
+---
+ activity.py   |   4 +-
+ icondialog.py |   4 +-
+ notebook.py   |   7 ++
+ pippy_app.py  | 312 +++++++++++++-------------------------------------
+ 4 files changed, 92 insertions(+), 235 deletions(-)
+
+diff --git a/activity.py b/activity.py
+index 9852917..9098819 100755
+--- a/activity.py
++++ b/activity.py
+@@ -38,8 +38,10 @@ from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.activity.widgets import StopButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+ 
++from sugarapp.widgets import SugarCompatibleActivity
+ 
+-class ViewSourceActivity(activity.Activity):
++
++class ViewSourceActivity(SugarCompatibleActivity):
+     """Activity subclass which handles the 'view source' key."""
+     def __init__(self, handle, **kwargs):
+         super(ViewSourceActivity, self).__init__(handle, **kwargs)
+diff --git a/icondialog.py b/icondialog.py
+index 2c4878f..773f638 100644
+--- a/icondialog.py
++++ b/icondialog.py
+@@ -20,7 +20,6 @@ import shutil
+ from gi.repository import Gtk
+ from gi.repository import Gdk
+ from gi.repository import GdkPixbuf
+-from jarabe.journal.model import get_documents_path
+ from sugar3.activity.activity import get_bundle_path
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+@@ -33,7 +32,8 @@ DEFAULT_ICON = os.path.join(get_bundle_path(), 'activity',
+ 
+ 
+ def get_document_icons():
+-    icons = os.listdir(get_documents_path())
++    # XXX get_documents_path disappeared
++    icons = []
+     icons_ = []
+     for icon in icons:
+         if icon.endswith('.svg'):
+diff --git a/notebook.py b/notebook.py
+index 2d974bc..e6eb935 100644
+--- a/notebook.py
++++ b/notebook.py
+@@ -391,8 +391,15 @@ class SourceNotebook(AddNotebook):
+             h()
+ 
+     def __tab_close(self, index):
++        # Remove all copies
++        page = self.get_nth_page(index)
++        label = self.get_tab_label(page)
++        self.activity._delete_current_source(label.get_text())
++
++        # Remove from UI
+         self.remove_page(index)
+         tab_object.pop(index)
++
+         # Hide close button if only one tab present
+         if self.get_n_pages() == 1:
+             only_widget = self.get_nth_page(0)
+diff --git a/pippy_app.py b/pippy_app.py
+index a6b59a8..65d91d8 100644
+--- a/pippy_app.py
++++ b/pippy_app.py
+@@ -74,8 +74,6 @@ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics.toolbarbox import ToolbarBox
+ from sugar3.activity.widgets import ActivityToolbarButton
+ 
+-from jarabe.view.customizebundle import generate_unique_id
+-
+ from activity import ViewSourceActivity
+ from activity import TARGET_TYPE_TEXT
+ 
+@@ -86,6 +84,9 @@ from icondialog import IconDialog
+ from notebook import SourceNotebook, tab_object
+ from toolbars import DevelopViewToolbar
+ 
++from sugarapp.widgets import DesktopOpenChooser
++from sugarapp.widgets import DesktopSaveChooser
++
+ import sound_check
+ import logging
+ 
+@@ -205,19 +206,22 @@ class PippyActivity(ViewSourceActivity):
+         activity_toolbar.insert(button, -1)
+         if not self._library_writable():
+             button.set_sensitive(False)
+-        button.show()
++        # XXX we can't write to this library anyway
++        #button.show()
+ 
+         button = ToolButton('pippy-export-example')
+         button.set_tooltip(_('Export as new Pippy example'))
+         button.connect('clicked', self._export_example_cb)
+         activity_toolbar.insert(button, -1)
+-        button.show()
++        # XXX disable until we figure out what's missing
++        #button.show()
+ 
+         button = ToolButton('pippy-create-bundle')
+         button.set_tooltip(_('Create a Sugar activity bundle'))
+         button.connect('clicked', self._create_bundle_cb)
+         activity_toolbar.insert(button, -1)
+-        button.show()
++        # XXX disable until we figure out what's missing
++        #button.show()
+ 
+         button = ToolButton('pippy-create-distutils')
+         # TRANS: A distutils package is used to distribute Python modules
+@@ -644,6 +648,17 @@ class PippyActivity(ViewSourceActivity):
+         self._reset_vte()
+         self._source_tabs.get_text_view().grab_focus()
+ 
++    def _delete_current_source(self, source_name):
++        directories = ['sources', 'tmp']
++        for directory in directories:
++            path = os.path.join(
++                self.get_activity_root(),
++                directory,
++                source_name)
++            if os.path.exists(path):
++                os.remove(path)
++                _logger.debug('removed source: %s' % path)
++
+     def _write_all_buffers(self, tmp_dir):
+         data = self._source_tabs.get_all_data()
+         zipdata = list(zip(data[0], data[1]))
+@@ -759,46 +774,30 @@ class PippyActivity(ViewSourceActivity):
+             self.add_alert(alert)
+ 
+     def _export_document_cb(self, __):
+-        self.copy()
+-        alert = NotifyAlert()
+-        alert.props.title = _('Saved')
+-        alert.props.msg = _('The document has been saved to journal.')
+-        alert.connect('response', lambda x, i: self.remove_alert(x))
+-        self.add_alert(alert)
++        name = self._source_tabs.get_current_file_name()
++        chooser = DesktopSaveChooser(self, name)
++        chooser.add_filter('.py', 'python')
++        filename = chooser.get_filename()
++        if not filename:
++            return
++
++        buffer = self._source_tabs.get_text_buffer()
++        content = buffer.get_text(
++            *buffer.get_bounds(),
++            include_hidden_chars=True)
++
++        with open(filename, 'w') as __file:
++            __file.write(content)
+ 
+     def _remove_alert_cb(self, alert, response_id):
+         self.remove_alert(alert)
+ 
+     def _import_py_cb(self, button):
+-        chooser = ObjectChooser()
+-        result = chooser.run()
+-        if result is Gtk.ResponseType.ACCEPT:
+-            dsitem = chooser.get_selected_object()
+-            if dsitem.metadata['mime_type'] != 'text/x-python':
+-                alert = NotifyAlert(5)
+-                alert.props.title = _('Error importing Python file')
+-                alert.props.msg = _('The file you selected is not a '
+-                                    'Python file.')
+-                alert.connect('response', self._remove_alert_cb)
+-                self.add_alert(alert)
+-            elif dsitem.object_id in self.session_data:
+-                alert = NotifyAlert(5)
+-                alert.props.title = _('Error importing Python file')
+-                alert.props.msg = _('The file you selected is already '
+-                                    'open')
+-                alert.connect('response', self._remove_alert_cb)
+-                self.add_alert(alert)
+-            else:
+-                name = dsitem.metadata['title']
+-                file_path = dsitem.get_file_path()
+-                content = open(file_path, 'r').read()
+-
+-                self._source_tabs.add_tab(name, content, None)
+-                self._source_tabs.set_current_label(name)
+-                self.session_data.append(dsitem.object_id)
+-                _logger.debug('after import py: %r' % self.session_data)
+-
+-        chooser.destroy()
++        chooser = DesktopOpenChooser(self)
++        chooser.add_filter('.py', 'python')
++        filename = chooser.get_filename()
++        if filename:
++             self._select_func_cb(filename)
+ 
+     def _create_bundle_cb(self, button):
+         from shutil import rmtree
+@@ -898,17 +897,8 @@ class PippyActivity(ViewSourceActivity):
+                 f.write(line)
+ 
+     def _export_distutils_cb(self, button):
+-        app_temp = os.path.join(self.get_activity_root(), 'instance')
+-        data = self._source_tabs.get_all_data()
+-        for filename, content in zip(data[0], data[1]):
+-            fileobj = open(os.path.join(app_temp, filename), 'w')
+-            fileobj.write(content)
+-            fileobj.close()
+-
+-        filenames = ','.join([("'" + name[:-3] + "'") for name in data[0]])
+-
+         title = self._pippy_instance.metadata['title']
+-        if title is _('Pippy Activity'):
++        if not title or title is _('Pippy Activity'):
+             alert = Alert()
+             alert.props.title = _('Save as distutils package error')
+             alert.props.msg = _('Please give your activity a meaningful '
+@@ -920,6 +910,21 @@ class PippyActivity(ViewSourceActivity):
+             self.add_alert(alert)
+             return
+ 
++        chooser = DesktopSaveChooser(self, title + '-1.0.tar.gz')
++        chooser.add_filter('.gz', 'gzip')
++        file_path = chooser.get_filename()
++        if not file_path:
++            return
++
++        app_temp = os.path.join(self.get_activity_root(), 'instance')
++        data = self._source_tabs.get_all_data()
++        for filename, content in zip(data[0], data[1]):
++            fileobj = open(os.path.join(app_temp, filename), 'w')
++            fileobj.write(content)
++            fileobj.close()
++
++        filenames = ','.join([("'" + name[:-3] + "'") for name in data[0]])
++
+         setup_script = DISTUTILS_SETUP_SCRIPT.format(modulename=title,
+                                                      filenames=filenames)
+         setupfile = open(os.path.join(app_temp, 'setup.py'), 'w')
+@@ -934,18 +939,9 @@ class PippyActivity(ViewSourceActivity):
+ 
+         # Hand off to journal
+         os.chmod(app_temp, 0o777)
+-        jobject = datastore.create()
+-        metadata = {
+-            'title': '%s distutils bundle' % title,
+-            'title_set_by_user': '1',
+-            'mime_type': 'application/x-gzip',
+-        }
+-        for k, v in list(metadata.items()):
+-            # The dict.update method is missing =(
+-            jobject.metadata[k] = v
+         tarname = 'dist/{modulename}-1.0.tar.gz'.format(modulename=title)
+-        jobject.file_path = os.path.join(app_temp, tarname)
+-        datastore.write(jobject)
++        tar_path = os.path.join(app_temp, tarname)
++        copy2(tar_path, file_path)
+ 
+     def _export_example_cb(self, button):
+         # Get the name of this pippy program.
+@@ -1067,96 +1063,31 @@ class PippyActivity(ViewSourceActivity):
+             return self._pippy_instance.get_object_id()
+ 
+     def write_file(self, file_path):
+-        pippy_id = self._get_pippy_object_id()
+         data = self._source_tabs.get_all_data()
+         zipped_data = list(zip(*data))
+         session_list = []
+-        app_temp = os.path.join(self.get_activity_root(), 'instance')
+-        tmpfile = os.path.join(app_temp, 'pippy-tempfile-storing.py')
++        sources = os.path.join(activity.get_activity_root(), 'sources')
++        os.makedirs(sources, exist_ok=True)
+         for zipdata, content in zip(zipped_data, self.session_data):
+             _logger.debug('Session data %r', content)
+             name, python_code, path, modified, editor_id = zipdata
+-            if content is not None and content == self._py_object_id:
+-                _logger.debug('saving to self')
+-                self.metadata['title'] = name
+-                self.metadata['mime_type'] = 'text/x-python'
+-                if pippy_id is not None:
+-                    self.metadata['pippy_instance'] = pippy_id
+-                __file = open(file_path, 'w')
+-                __file.write(python_code)
+-                __file.close()
+-                session_list.append([name, content])
+-            elif content is not None and content[0] != '/':
+-                _logger.debug('Saving an existing dsobject')
+-                dsobject = datastore.get(content)
+-                dsobject.metadata['title'] = name
+-                dsobject.metadata['mime_type'] = 'text/x-python'
+-                if pippy_id is not None:
+-                    dsobject.metadata['pippy_instance'] = pippy_id
+-                __file = open(tmpfile, 'w')
+-                __file.write(python_code)
+-                __file.close()
+-                dsobject.set_file_path(tmpfile)
+-                datastore.write(dsobject)
+-                session_list.append([name, dsobject.object_id])
+-            elif modified:
+-                _logger.debug('Creating new dsobj for modified code')
+-                if len(python_code) > 0:
+-                    dsobject = datastore.create()
+-                    dsobject.metadata['title'] = name
+-                    dsobject.metadata['mime_type'] = 'text/x-python'
+-                    if pippy_id is not None:
+-                        dsobject.metadata['pippy_instance'] = pippy_id
+-                    __file = open(tmpfile, 'w')
+-                    __file.write(python_code)
+-                    __file.close()
+-                    dsobject.set_file_path(tmpfile)
+-                    datastore.write(dsobject)
+-                    session_list.append([name, dsobject.object_id])
+-                    # If there are multiple Nones, we need to find
+-                    # the correct one.
+-                    if content is None and \
+-                       self.session_data.count(None) > 1:
+-                        i = zipped_data.index(zipdata)
+-                    else:
+-                        i = self.session_data.index(content)
+-                    self.session_data[i] = dsobject.object_id
+-            elif content is not None or path is not None:
+-                _logger.debug('Saving reference to sample file')
+-                if path is None:  # Should not happen, but just in case...
+-                    _logger.error('path is None.')
+-                    session_list.append([name, content])
+-                else:
+-                    session_list.append([name, path])
+-            else:  # Should not happen, but just in case...
+-                _logger.debug('Nothing to save in tab? %s %s %s %s' %
+-                              (str(name), str(python_code), str(path),
+-                               str(content)))
+-
+-        self._pippy_instance.metadata['mime_type'] = 'application/json'
++            _logger.debug('saving to self')
++            content_path = os.path.join(sources, name)
++            __file = open(content_path, 'w')
++            __file.write(python_code)
++            __file.close()
++            session_list.append([name, content, content_path])
++
+         pippy_data = json.dumps(session_list)
+ 
+-        # Override file path if we created a new Pippy instance
+-        if self._py_file_loaded_from_journal:
+-            file_path = os.path.join(app_temp, 'pippy-temp-instance-data')
+         _file = open(file_path, 'w')
+         _file.write(pippy_data)
+         _file.close()
+-        if self._py_file_loaded_from_journal:
+-            _logger.debug('setting pippy instance file_path to %s' %
+-                          file_path)
+-            self._pippy_instance.set_file_path(file_path)
+-            datastore.write(self._pippy_instance)
+ 
+         self._store_config()
+ 
+     def read_file(self, file_path):
+-        # Either we are opening Python code or a list of objects
+-        # stored (json-encoded) in a Pippy instance, or a shared
+-        # session.
+-
+         # Remove initial new/blank thing
+-        self.session_data = []
+         self._loaded_session = []
+         try:
+             self._source_tabs.remove_page(0)
+@@ -1165,109 +1096,26 @@ class PippyActivity(ViewSourceActivity):
+         except IndexError:
+             pass
+ 
+-        if self.metadata['mime_type'] == 'text/x-python':
+-            _logger.debug('Loading Python code')
+-            # Opening some Python code directly
+-            try:
+-                text = open(file_path).read()
+-            except:
+-                alert = NotifyAlert(10)
+-                alert.props.title = _('Error')
+-                alert.props.msg = _('Error reading data.')
+-
+-                def _remove_alert(alert, response_id):
+-                    self.remove_alert(alert)
+-
+-                alert.connect("response", _remove_alert)
+-                self.add_alert(alert)
+-                return
+-
+-            self._py_file_loaded_from_journal = True
++        _logger.debug('Loading Python code')
++        # Opening some Python code directly
++        try:
++            sessions = json.loads(open(file_path).read())
++        except:
++            return
+ 
++        for name, content, path in sessions:
++            with open(path, 'r') as __file:
++                text = __file.read()
+             # Discard the '#!/usr/bin/python3' and 'coding: utf-8' lines,
+             # if present
+             python_code = re.sub(r'^' + re.escape(PYTHON_PREFIX), '', text)
+-            name = self.metadata['title']
+-            self._loaded_session.append([name, python_code, None])
+-
+-            # Since we loaded Python code, we need to create (or
+-            # restore) a Pippy instance
+-            if 'pippy_instance' in self.metadata:
+-                _logger.debug('found a pippy instance: %s' %
+-                              self.metadata['pippy_instance'])
+-                try:
+-                    self._pippy_instance = datastore.get(
+-                        self.metadata['pippy_instance'])
+-                except:
+-                    _logger.debug('Cannot find old Pippy instance: %s')
+-                    self._pippy_instance = None
+-            if self._pippy_instance in [self, None]:
+-                self._pippy_instance = datastore.create()
+-                self._pippy_instance.metadata['title'] = self.metadata['title']
+-                self._pippy_instance.metadata['mime_type'] = 'application/json'
+-                self._pippy_instance.metadata['activity'] = 'org.laptop.Pippy'
+-                datastore.write(self._pippy_instance)
+-                self.metadata['pippy_instance'] = \
+-                    self._pippy_instance.get_object_id()
+-                _logger.debug('get_object_id %s' %
+-                              self.metadata['pippy_instance'])
+-
+-            # We need the Pippy file path so we can read the session data
+-            file_path = self._pippy_instance.get_file_path()
+-
+-            # Finally, add this Python object to the session data
+-            self._py_object_id = _find_object_id(self.metadata['activity_id'])
+-            self.session_data.append(self._py_object_id)
+-            _logger.debug('session_data: %s' % self.session_data)
+-
+-        if self.metadata['mime_type'] == 'application/json' or \
+-           self._pippy_instance != self:
+-            # Reading file list from Pippy instance
+-            _logger.debug('Loading Pippy instance')
+-            if len(file_path) == 0:
+-                return
+-            data = json.loads(open(file_path).read())
+-            for name, content in data:
+-                # content is either a datastore id or the path to some
+-                # sample code
+-                if content is not None and content[0] == '/':  # a path
+-                    try:
+-                        python_code = open(content).read()
+-                    except:
+-                        _logger.error('Could not open %s; skipping' % content)
+-                    path = content
+-                elif content != self._py_object_id:
+-                    try:
+-                        dsobject = datastore.get(content)
+-                        if 'mime_type' not in dsobject.metadata:
+-                            _logger.error(
+-                                'Warning: %s missing mime_type' % content)
+-                        elif dsobject.metadata['mime_type'] != 'text/x-python':
+-                            _logger.error(
+-                                'Warning: %s has unexpected mime_type %s' %
+-                                (content, dsobject.metadata['mime_type']))
+-                    except:
+-                        # Could be that the item has subsequently been
+-                        # deleted from the datastore, so we skip it.
+-                        _logger.error('Could not open %s; skipping' % content)
+-                        continue
+-                    try:
+-                        python_code = open(dsobject.get_file_path()).read()
+-                    except:
+-                        # Malformed bundle?
+-                        _logger.error('Could not open %s; skipping' %
+-                                      dsobject.get_file_path())
+-                        continue
+-                    path = None
+-
+-                # Queue up the creation of the tabs...
+-                # And add this content to the session data
+-                if content not in self.session_data:
+-                    self.session_data.append(content)
+-                    self._loaded_session.append([name, python_code, path])
++            self._loaded_session.append([name, text, path])
++
++        self._py_file_loaded_from_journal = True
+ 
+         for name, content, path in self._loaded_session:
+             self._source_tabs.add_tab(name, content, path)
++        self.session_data = self._loaded_session
+ 
+ # TEMPLATES AND INLINE FILES
+ ACTIVITY_INFO_TEMPLATE = '''
+@@ -1419,7 +1267,7 @@ def main():
+         'icon': icon,
+         'class': 'activity.VteActivity',
+         'bundle_id': ('org.sugarlabs.pippy.%s%d' %
+-                      (generate_unique_id(),
++                      ('random',
+                        int(round(uniform(1000, 9999), 0)))),
+         'mime_types': '',
+         'extra_info': '',
+-- 
+2.23.0
+
