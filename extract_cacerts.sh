@@ -36,7 +36,7 @@ for certificate in $(ls /etc/ssl/certs/*.pem) ; do
 	fprint=$(echo "$cert" | grep 'SHA1:' | cut -d' ' -f3)
 	alias=$(get_alias "$issuer")
 	echo "Adding $fprint ($alias)"
-	$jdk/bin/keytool -importcert -noprompt -alias $alias -storepass changeit -keystore cacerts -file $certificate
+	$jdk/bin/keytool -importcert -noprompt -alias $alias -storepass changeit -storetype JKS -keystore cacerts -file $certificate
 done
 
 rm $jdk/lib/security/cacerts
