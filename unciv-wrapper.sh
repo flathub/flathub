@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 UNCIVDIR=${XDG_DATA_HOME}/unciv
 
