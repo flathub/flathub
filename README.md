@@ -13,10 +13,10 @@ Example Visual Studio Code Configuration
 
 Includes
 
-* [php](https://php.net/) (7.4.1)
-* [composer](https://github.com/composer/composer) (1.9.1)
+* [php](https://php.net/) (7.4.2)
+* [composer](https://github.com/composer/composer) (1.9.2)
 * [apcu](https://pecl.php.net/package/APCu) (5.1.18)
-* [xdebug](https://xdebug.org/) (2.9.0)
+* [xdebug](https://xdebug.org/) (2.9.1)
 
 Each Flatpak can have its own custom php configuration files.
 e.g. for Visual Studio Code
