@@ -1,0 +1,357 @@
+app-id: org.octave.Octave_64_64
+runtime: org.kde.Sdk
+runtime-version: '5.14'
+sdk: org.kde.Sdk
+command: octave
+rename-icon: octave
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.openjdk11
+finish-args:
+- --socket=wayland
+- --socket=x11
+- --share=ipc
+- --device=dri
+- --socket=pulseaudio
+- --share=network
+- --filesystem=host
+- --filesystem=xdg-config/kdeglobals:ro # gives application access to kdeglobals
+- --talk-name=com.canonical.AppMenu.Registrar # gives application access to dbus menu
+- --talk-name=org.freedesktop.Flatpak # allows spawning processes on the host via flatpak-spawn --host
+- --env=PATH=/app/bin:/usr/bin:/app/jre/bin
+- --env=CPPFLAGS=-I/app/include # required for building some Octave forge packages
+- --env=LDFLAGS=-L/app/lib # required for building some Octave forge packages
+- --env=OCTAVE_HOME=/app
+cleanup:
+- /bin/*lpr*.sh
+- /bin/GraphicsMagick*config
+- /bin/fltk-config
+- /bin/gif2h5
+- /bin/glpsol
+- /bin/h5*
+- /bin/isympy
+- /bin/qconvex
+- /bin/qdelaunay
+- /bin/qhalf
+- /bin/qhull
+- /bin/qvoronoi
+- /bin/rbox
+- /com
+- /examples
+- /include/QSci
+- /lib/cmake
+- /lib/lib*.a
+- /lib/lib*.la
+- /lib/lib*.settings
+- /lib/libqhull_*
+- /lib/octave/*/lib*.la
+- /man
+- /share/applications/fluid.desktop
+- /share/doc
+- /share/fltk
+- /share/hdf5_examples
+- /share/man
+- /share/units/locale_map.txt
+- fluid
+- fluid.*
+build-options:
+  env:
+    PATH: /app/bin:/usr/bin:/usr/lib/sdk/openjdk11/bin
+    PYTHON: python3
+modules:
+
+# gfortran is part of the Freedesktop Sdk 18.08:
+# https://github.com/flathub/org.freedesktop.Sdk.Extension.gfortran-62/issues/3
+
+- name: openblas
+  no-autogen: true
+  make-args:
+  - DYNAMIC_ARCH=1
+  - FC=gfortran
+  - NO_CBLAS=1
+  - NO_LAPACKE=1
+  - USE_OPENMP=0    ## OpenMP off by default, this hack skips 'test_fork' which crashes on i386
+  - BINARY=64
+  - INTERFACE64=1
+  - CONSISTENT_FPCSR=1
+  make-install-args:
+  - PREFIX=/app
+  sources:
+  - type: archive
+    url: https://github.com/xianyi/OpenBLAS/archive/v0.3.6.tar.gz
+    sha256: e64c8fe083832ffbc1459ab6c72f71d53afd3b36e8497c922a15a06b72e9002f
+
+- shared-modules/glu/glu-9.json
+
+- name: fltk
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DOPTION_BUILD_SHARED_LIBS=ON
+  - -DFLTK_LIBDIR:PATH=lib
+  - -DOpenGL_GL_PREFERENCE=GLVND
+  build-options:
+    cflags: -fPIC
+    cxxflags: -fPIC
+  sources:
+  - type: archive
+    url: https://www.fltk.org/pub/fltk/1.3.5/fltk-1.3.5-source.tar.gz
+    sha256: 8729b2a055f38c1636ba20f749de0853384c1d3e9d1a6b8d4d1305143e115702
+  - type: patch
+    path: fltk-ninja-build-error.patch
+
+- name: gnuplot
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/gnuplot/files/gnuplot/5.2.6/gnuplot-5.2.6.tar.gz
+    sha256: 35dd8f013139e31b3028fac280ee12d4b1346d9bb5c501586d1b5a04ae7a94ee
+
+- name: ghostscript
+  config-opts:
+  - --disable-cups
+  build-options:
+    ldflags: -L/app/lib
+    arch:
+      aarch64:
+        cppflags: -DPNG_ARM_NEON_OPT=0
+  sources:
+  - type: archive
+    url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs926/ghostscript-9.26.tar.xz
+    sha256: 90ed475f37584f646e9ef829932b2525d5c6fc2e0147e8d611bc50aa0e718598
+    # newer libpng version required to build on ARM
+  - type: shell
+    commands:
+    - rm -rf libpng
+  - type: archive
+    url: https://sourceforge.net/projects/libpng/files/libpng16/1.6.36/libpng-1.6.36.tar.xz
+    sha256: eceb924c1fa6b79172fdfd008d335f0e59172a86a66481e09d4089df872aa319
+    dest: libpng
+
+- name: gl2ps
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DOpenGL_GL_PREFERENCE=GLVND
+  sources:
+  - type: archive
+    url: http://geuz.org/gl2ps/src/gl2ps-1.4.0.tgz
+    sha256: 03cb5e6dfcd87183f3b9ba3b22f04cd155096af81e52988cc37d8d8efe6cf1e2
+
+- name: qhull
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  sources:
+  - type: archive
+    url: https://github.com/qhull/qhull/archive/v7.3.0.tar.gz
+    sha256: 05a2311d8e6397c96802ee5a9d8db32b83dac7e42e2eb2cd81c5547c18e87de6
+
+- name: epstool
+  skip-arches:
+  - i386
+  - arm
+  - aarch64
+  no-autogen: true
+  no-parallel-make: true
+  make-install-args:
+  - EPSTOOL_BASE=/app
+  sources:
+  - type: archive
+    # upstream archive has broken permissions, cf. https://launchpad.net/ubuntu/+source/epstool/3.09-1
+    url: https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/epstool/3.09-1/epstool_3.09.orig.tar.xz
+    sha256: 1e85249d1a44f9418b1f95a3aebd8b0784dab8e49deb6417ac9b996ca08f6011
+
+- name: hdf5
+  no-autogen: true
+  sources:
+  - type: archive
+    url: https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.4/src/hdf5-1.10.4.tar.bz2
+    sha256: 1267ff06aaedc04ca25f7c6026687ea2884b837043431195f153401d942b28df
+
+- name: qrupdate
+  no-autogen: true
+  make-args:
+  - solib
+  - BLAS=-lopenblas
+  - LAPACK=
+  make-install-args:
+  - PREFIX=/app
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/qrupdate/files/qrupdate/1.2/qrupdate-1.1.2.tar.gz
+    sha256: e2a1c711dc8ebc418e21195833814cb2f84b878b90a2774365f0166402308e08
+  - type: shell
+    commands:
+    - sed -e 's|FFLAGS=-fimplicit-none -O3 -funroll-loops|FFLAGS=-fimplicit-none -O3 -funroll-loops -fdefault-integer-8 -L/app/lib|' -i Makeconf
+
+- name: suitesparse
+  make-args:
+  - UMFPACK_CONFIG=-D'LONGBLAS=long'
+  - CHOLMOD_CONFIG=-D'LONGBLAS=long'
+  - LAPACK=
+  - library
+  make-install-args:
+  - LAPACK=
+  - INSTALL_LIB=/app/lib
+  - INSTALL_INCLUDE=/app/include
+  - library
+  no-autogen: true
+  sources:
+  - type: archive
+    url: http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-5.4.0.tar.gz
+    sha256: 374dd136696c653e34ef3212dc8ab5b61d9a67a6791d5ec4841efb838e94dbd1
+  - type: patch
+    path: suitesparse-reduce-build.patch
+
+- name: glpk
+  sources:
+  - type: archive
+    url: https://ftpmirror.gnu.org/glpk/glpk-4.65.tar.gz
+    sha256: 4281e29b628864dfe48d393a7bedd781e5b475387c20d8b0158f329994721a10
+
+- name: portaudio
+  sources:
+  - type: archive
+    url: http://www.portaudio.com/archives/pa_stable_v190600_20161030.tgz
+    sha256: f5a21d7dcd6ee84397446fa1fa1a0675bb2e8a4a6dceb4305a8404698d8d1513
+
+- name: graphicsmagick
+  config-opts:
+  - --enable-shared
+  - --with-quantum-depth=16
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick/1.3.31/GraphicsMagick-1.3.31.tar.xz
+    sha256: 096bbb59d6f3abd32b562fc3b34ea90d88741dc5dd888731d61d17e100394278
+
+- name: arpack-ng
+  config-opts:
+  - INTERFACE64=1
+  sources:
+  - type: archive
+    url: https://github.com/opencollab/arpack-ng/archive/3.7.0.tar.gz
+    sha256: 972e3fc3cd0b9d6b5a737c9bf6fd07515c0d6549319d4ffb06970e64fa3cc2d6
+
+- name: fftw3
+  no-autogen: true
+  config-opts:
+  - --enable-shared
+  - --enable-threads
+  sources:
+  - type: archive
+    url: http://www.fftw.org/fftw-3.3.8.tar.gz
+    sha256: 6113262f6e92c5bd474f2875fa1b01054c4ad5040f6b0da7c03c98821d9ae303
+
+- name: fftw3f
+  no-autogen: true
+  config-opts:
+  - --enable-shared
+  - --enable-threads
+  - --enable-float
+  sources:
+  - type: archive
+    url: http://www.fftw.org/fftw-3.3.8.tar.gz
+    sha256: 6113262f6e92c5bd474f2875fa1b01054c4ad5040f6b0da7c03c98821d9ae303
+
+- name: qscintilla
+  buildsystem: simple
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/pyqt/files/QScintilla2/QScintilla-2.10.8/QScintilla_gpl-2.10.8.tar.gz
+    sha256: 46cd5b4e609ca5e13130ba8cc7028d44fd1dc5b037f97c492899006ed0c992eb
+  build-commands:
+  - sed -e 's|\(target.path\) = .*|\1 = /app/lib|' -i Qt4Qt5/qscintilla.pro
+  - sed -e 's|\(header.path\) = .*|\1 = /app/include|' -i Qt4Qt5/qscintilla.pro
+  - sed -e 's|\(trans.path\) = .*|\1 = /app/share/qt5/translations|' -i Qt4Qt5/qscintilla.pro
+  - sed -e 's|\(qsci.path\) = .*|\1 = /app/share/qt5|' -i Qt4Qt5/qscintilla.pro
+  - sed -e 's|\(features.path\) = .*|\1 = /app/lib/qt5/mkspecs/features|' -i Qt4Qt5/qscintilla.pro
+  - cd Qt4Qt5 && qmake && make install
+
+- name: sundials
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DKLU_ENABLE=ON
+  - -DKLU_INCLUDE_DIR:PATH=/app/include
+  - -DKLU_LIBRARY_DIR:PATH=/app/lib
+  builddir: true
+  sources:
+  - type: archive
+    url: https://github.com/LLNL/sundials/archive/v2.7.0.tar.gz
+    sha256: 2cbedd5b4063078c7b060b346a3150e31fc2e9fea336aeb930a7c6b556b123c8
+
+- name: openjdk
+  buildsystem: simple
+  build-commands:
+  - /usr/lib/sdk/openjdk11/install.sh
+
+- name: mpmath # dependency of sympy
+  buildsystem: simple
+  sources:
+  - type: archive
+    url: https://github.com/fredrik-johansson/mpmath/archive/1.1.0.tar.gz
+    sha256: 16c01d589bcb1be5cab3a07de2855b578e5fc4a7882fb61a15f2aaf118fdd06e
+  build-commands:
+  - python3 ./setup.py install --prefix=/app
+
+- name: sympy # dependency of the symbolic package
+  buildsystem: simple
+  sources:
+  - type: archive
+    url: https://github.com/sympy/sympy/archive/sympy-1.3.tar.gz
+    sha256: d73d8424f254640969dcb3d50f0a4b41857643fb592a1c3e0c545a9343571a70
+  build-commands:
+  - python3 ./setup.py install --prefix=/app
+
+- name: texinfo
+  config-opts:
+  - --disable-nls
+  sources:
+  - type: archive
+    url: https://ftpmirror.gnu.org/texinfo/texinfo-6.5.tar.xz
+    sha256: 77774b3f4a06c20705cc2ef1c804864422e3cf95235e965b1f00a46df7da5f62
+  - type: patch
+    path: texinfo-perl-528.patch
+
+- name: units # dependency of the miscellaneous package
+  config-opts:
+  - PYTHON=/usr/bin/python3
+  sources:
+  - type: archive
+    url: https://ftpmirror.gnu.org/units/units-2.19.tar.gz
+    sha256: 4262136bdfc152b63ff5a9b93a7d80ce18b5e8bebdcffddc932dda769e306556
+  - type: patch
+    path: units-install-info.patch
+  post-install:
+  - mv -f /app/com/units/currency.units /app/share/units/currency.units
+
+- name: zeromq # dependency of the zeromq package
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+  - -DWITH_DOC=OFF
+  sources:
+  - type: archive
+    url: https://github.com/zeromq/libzmq/archive/v4.3.0.tar.gz
+    sha256: 4bcd112222cc0e8083c81196f60b486d9a7d57f810b0121c478ee3aeac1c19a4
+
+- name: octave
+  build-options:
+    cflags: -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong -grecord-gcc-switches
+    cflags-override: true
+    cxxflags: -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong -grecord-gcc-switches
+    cxxflags-override: true
+    env:
+      QCOLLECTIONGENERATOR: qhelpgenerator-qt5 # workaround for https://savannah.gnu.org/bugs/?55187
+  config-opts:
+  - --disable-silent-rules
+  - --with-blas=openblas
+  - --with-java-homedir=/app/jre
+  - --with-java-includedir=/usr/lib/sdk/openjdk11/jvm/openjdk-11/include
+  - --enable-64
+  - F77_INTEGER_8_FLAG=-fdefault-integer-8
+  cleanup:
+  - /share/icons/hicolor/1024x1024 # workaround for https://savannah.gnu.org/bugs/?55836
+  sources:
+  - type: archive
+    url: https://ftpmirror.gnu.org/octave/octave-5.2.0.tar.xz
+    sha256: 2757b5cc1854c9326d6c99d2900c7cec2909ac7ed500212d170d0df592bfd26b
