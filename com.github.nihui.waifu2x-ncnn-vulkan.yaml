@@ -16,63 +16,62 @@ cleanup:
   - /lib/pkgconfig
   - /lib/*.a
   - /lib/*.la
-  - /vulkansdk
-  - /bin/protoc
 
 modules:
 # ncnn version requirement from waifu2x-ncnn-vulkan README.md
   - name: ncnn
     buildsystem: cmake
     builddir: true
-    build-options:
-      env:
-        VULKAN_SDK: /app/vulkansdk/x86_64
     config-opts:
       - -DNCNN_VULKAN=ON
+      - -DNCNN_BUILD_TOOLS=OFF
+    cleanup:
+      - '*'
     sources:
       - type: git
         url: https://github.com/Tencent/ncnn.git
-        commit: 8c537069875a28d5380c6bdcbf7964d73803b7b3
+        tag: '20200106'
+        commit: 6f2ef1932d717c45396f13a182dc347db74e9d1e
     modules:
       - name: protobuf
+        cleanup:
+          - '*'
         sources:
           - type: archive
-            url: https://github.com/protocolbuffers/protobuf/releases/download/v3.9.1/protobuf-all-3.9.1.tar.gz
-            sha256: 3040a5b946d9df7aa89c0bf6981330bf92b7844fd90e71b61da0c721e421a421
-      - name: vulkan-sdk
-        buildsystem: simple
-        build-commands:
-          - mkdir -p /app/vulkansdk
-          - tar -x --strip-components=1 -f vulkan*.gz -C /app/vulkansdk
+            url: https://github.com/protocolbuffers/protobuf/archive/v3.11.4.tar.gz
+            sha256: a79d19dcdf9139fa4b81206e318e33d245c4c9da1ffed21c87288ed4380426f9
+      - name: glslang
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DBUILD_SHARED_LIBS=OFF
+        cleanup:
+          - '*'
         sources:
-          - type: file
-            url: https://sdk.lunarg.com/sdk/download/1.1.108.0/linux/vulkansdk-linux-x86_64-1.1.108.0.tar.gz?Human=true
-            sha256: 686bce4d02875f40e0e88ffedfb5ba0f31ddff6403709fe41e15b2d94914d0ea
+          - type: archive
+            url: "https://github.com/KhronosGroup/glslang/archive/8.13.3559.tar.gz"
+            sha256: c58fdcf7e00943ba10f9ae565b2725ec9d5be7dab7c8e82cac72fcaa83c652ca
 
   - name: waifu2x-ncnn-vulkan
     buildsystem: cmake
     builddir: true
-    build-options:
-      env:
-        VULKAN_SDK: /app/vulkansdk/x86_64
+    subdir: 'src'
     sources:
       - type: archive
-        url: https://github.com/nihui/waifu2x-ncnn-vulkan/archive/20190712.tar.gz
-        sha256: 09f045f3a1f099513b571be216c14412c2f24b0ef2d252901bc262cd4b167ca0
+        url: https://github.com/nihui/waifu2x-ncnn-vulkan/archive/20200223.tar.gz
+        sha256: 38b8b14e8dd4960b41914e9988bb517456aef624f47d9c3d74a8072a27fefa8a
       - type: shell
         commands:
           - >
-            sed -r -i -e 's#(models-cunet)#/app/share/\1#'
-            -e 's#(models-upconv_7_anime_style_art_rgb)#/app/share/\1#' main.cpp
+            sed -r -i -e 's#(models-cunet)#/app/share/models/\1#'
+            -e 's#(models-upconv_7_anime_style_art_rgb)#/app/share/models/\1#'
+            -e 's#(models-upconv_7_photo)#/app/share/models/\1#' src/main.cpp
           - >
             sed -i -e '/# change these path to yours/d'
-            -e '/include_directories("\/home\/nihui\/osd\/ncnn\/build\/install\/include")/d'
-            -e '/link_directories("\/home\/nihui\/osd\/ncnn\/build\/install\/lib")/d' CMakeLists.txt
+            -e '#set(ncnn_DIR "/home/nihui/dev/ncnn/build/install/lib/cmake/ncnn")#d' src/CMakeLists.txt
           - >
             echo -e '\n
             install(TARGETS waifu2x-ncnn-vulkan DESTINATION bin)\n
-            install(DIRECTORY models-cunet DESTINATION share)\n
-            install(DIRECTORY models-upconv_7_anime_style_art_rgb DESTINATION share)' >> CMakeLists.txt
+            install(DIRECTORY ../models DESTINATION share)' >> src/CMakeLists.txt
     modules:
       - name: appdata
         buildsystem: simple
