@@ -1,0 +1,47 @@
+name: Flatpak build
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install flatpak-builder
+      run: |
+        set -e
+        sudo add-apt-repository -y ppa:alexlarsson/flatpak
+        sudo apt update -y
+        sudo apt install -y flatpak-builder
+
+    - name: Download flatpak SDK and sources
+      env:
+        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
+      run: |
+        set -e
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        flatpak-builder --install-deps-from=flathub --install-deps-only --user /dev/null ${FLATPAK_ID}.yml
+        flatpak-builder --download-only /dev/null ${FLATPAK_ID}.yml
+
+    - name: Build flatpak
+      env:
+        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
+      run: |
+        set -e
+        ostree --repo=build-repo init --mode=bare-user
+        flatpak-builder --sandbox --repo=build-repo build-dir ${FLATPAK_ID}.yml
+
+    - name: Create flatpak bundle
+      env:
+        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
+      run: |
+        flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo --runtime build-repo Proton.flatpak ${FLATPAK_ID} stable
+
+    - name: Upload bundle
+      uses: actions/upload-artifact@v1
+      with:
+        name: proton-flatpak-bundle
+        path: Proton.flatpak
