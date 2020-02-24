@@ -1,0 +1,77 @@
+app-id: org.freedesktop.Sdk.Extension.dmd
+branch: '19.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.ldc
+build-extension: true
+separate-locales: false
+appstream-compose: false
+build-options:
+  prefix: /usr/lib/sdk/dmd
+modules:
+  - name: dmd
+    buildsystem: simple
+    build-commands:
+      - make -C dmd -f posix.mak HOST_DMD=/usr/lib/sdk/ldc/bin/ldmd2 ENABLE_RELEASE=1 INSTALL_DIR=$PWD/stage install
+      - make -C druntime -f posix.mak HOST_DMD=/usr/lib/sdk/ldc/bin/ldmd2 ENABLE_RELEASE=1 INSTALL_DIR=$PWD/stage install
+      - make -C phobos -f posix.mak HOST_DMD=/usr/lib/sdk/ldc/bin/ldmd2 ENABLE_RELEASE=1 INSTALL_DIR=$PWD/stage install
+      - mkdir -p ${FLATPAK_DEST}/bin ${FLATPAK_DEST}/lib ${FLATPAK_DEST}/include/dmd/ ${FLATPAK_DEST}/dmd/
+      - mv $PWD/stage/linux/bin64/* ${FLATPAK_DEST}/bin
+      - mv $PWD/stage/linux/lib64/* ${FLATPAK_DEST}/lib
+      - mv $PWD/stage/src/druntime/import ${FLATPAK_DEST}/include/dmd/druntime
+      - mv $PWD/stage/src/phobos ${FLATPAK_DEST}/include/dmd/phobos
+      - mv dmd.conf ${FLATPAK_DEST}/bin
+    sources:
+      - type: archive
+        url: https://github.com/dlang/dmd/archive/v2.090.1.tar.gz
+        sha256: 99da763cdfdbabac54982c0fa9c6b6b17fb67138bf94722c43d6f1229f215fed
+        dest: dmd
+      - type: archive
+        url: https://github.com/dlang/druntime/archive/v2.090.1.tar.gz
+        sha256: 7cde74dd08090d05ef2331f1c21e6b5fa957eaa796db0c3e796850537cfd2279
+        dest: druntime
+      - type: archive
+        url: https://github.com/dlang/phobos/archive/v2.090.1.tar.gz
+        sha256: a122847dcf8de93ae52cb38450ecd9cc8a27fef529829d8f0b656669deee7adf
+        dest: phobos
+      - type: file
+        path: dmd.conf
+
+  - name: dub
+    buildsystem: simple
+    build-commands:
+      - DC=/usr/lib/sdk/dmd/bin/dmd GITVER="v1.19.0" ./build.sh
+      - install -s bin/dub /usr/lib/sdk/dmd/bin/
+    sources:
+      - type: archive
+        url: https://github.com/dlang/dub/archive/v1.19.0.zip
+        sha256: f7b9d71d51dafd1a4d153921eabf5e4cbac871ea14a1b65e643df15ec838bc33
+
+  - name: scripts
+    buildsystem: simple
+    build-commands:
+      - 'cp {install,enable}.sh /usr/lib/sdk/dmd'
+    sources:
+      - type: script
+        commands:
+          - 'export PATH="$PATH:/usr/lib/sdk/dmd/bin"'
+          - 'export LIBRARY_PATH="$LIBRARY_PATH:/usr/lib/sdk/dmd/lib"'
+          - 'export LD_LIBRARY_PATH="LD_LIBRARY_PATH:/usr/lib/sdk/dmd/lib"'
+        dest-filename: enable.sh
+      - type: script
+        commands:
+          - 'mkdir -p ${FLATPAK_DEST}/lib'
+          - 'cp -r /usr/lib/sdk/lib/libphobos2.so* ${FLATPAK_DEST}/lib/'
+        dest-filename: install.sh
+
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/metainfo
+      - cp ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak ${FLATPAK_ID}
+    sources:
+      - type: file
+        path: org.freedesktop.Sdk.Extension.dmd.metainfo.xml
