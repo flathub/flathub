@@ -1,6 +1,6 @@
 app-id: com.georgefb.haruna
 runtime: org.kde.Platform
-runtime-version: 5.14
+runtime-version: '5.14'
 sdk: org.kde.Sdk
 command: haruna
 finish-args: 
@@ -18,10 +18,135 @@ modules:
   - name: haruna
     buildsystem: cmake-ninja
     sources:
-     - type: git
-       url: https://github.com/g-fb/haruna
-       tag: 0.1.0
+     - type: archive
+       url: https://github.com/g-fb/haruna/archive/0.1.0.tar.gz
+       sha256: a6e35dc98480c3ba29a1555f6c7bfdf2ee7fc227cfbcdbe0a730a8a1440ed8da
     modules:
-      - kfilemetadata.yml
-      - libmpv.yml
-      - youtube-dl.yml
+#-----------------------------------------
+# libmpv
+#-----------------------------------------
+      - name: libmpv
+        cleanup: [ /include, /lib/pkgconfig, /share/man ]
+        buildsystem: simple
+        build-commands: [
+          python3 waf configure --prefix=/app --enable-libmpv-shared --disable-cplayer --disable-build-date --disable-oss-audio --disable-alsa,
+          python3 waf build,
+          python3 waf install
+          ]
+
+        sources: 
+          - type: archive
+            url: https://github.com/mpv-player/mpv/archive/v0.32.0.tar.gz
+            sha256: 9163f64832226d22e24bbc4874ebd6ac02372cd717bef15c28a0aa858c5fe592
+          - type: file
+            url: https://waf.io/waf-2.0.12
+            sha256: 0979ca87f45928e0d752049ab2f43be8551249be73dc5563b944ec54f8871d1f
+            dest-filename: waf
+
+        modules:
+#-----------------------------------------
+# luajit
+#-----------------------------------------
+          - name: luajit
+            no-autogen: true
+            cleanup: [ /bin, /lib/*.a, /include, /lib/pkgconfig, /share/man ]
+            sources: 
+            - type: archive
+              url: http://luajit.org/download/LuaJIT-2.1.0-beta3.tar.gz
+              sha256: 1ad2e34b111c802f9d0cdf019e986909123237a28c746b21295b63c9e785d9c3
+            - type: shell
+              commands: [ sed -i 's|/usr/local|/app|' ./Makefile ]
+
+#-----------------------------------------
+# libv4l2
+#-----------------------------------------
+          - name: libv4l2
+            cleanup: [ /sbin, /bin, /include, /lib/*.la, /lib/*/*.la, /lib*/*/*/*.la, /lib/pkgconfig, /share/man ]
+            config-opts: [ --disable-static, --disable-bpf, --with-udevdir=/app/lib/udev ]
+            sources: 
+            - type: archive
+              url: https://linuxtv.org/downloads/v4l-utils/v4l-utils-1.18.0.tar.bz2
+              sha256: 6cb60d822eeed20486a03cc23e0fc65956fbc1e85e0c1a7477f68bbd9802880d
+
+#-----------------------------------------
+# nv-codec-headers
+#-----------------------------------------
+          - name: nv-codec-headers
+            cleanup: ["*"]
+            no-autogen: true
+            make-install-args: [PREFIX=/app]
+            sources: 
+            - type: archive
+              url: https://github.com/FFmpeg/nv-codec-headers/archive/n9.1.23.1.tar.gz
+              sha256: 063f49838113c90504fd430377a6025478e2a454f812ce8a4da033e474727dc8
+
+#-----------------------------------------
+# ffmpeg
+#-----------------------------------------
+          - name: ffmpeg
+            cleanup: [ /include, /lib/pkgconfig, /share/ffmpeg/examples ]
+            config-opts: 
+            - --enable-shared
+            - --disable-static
+            - --enable-gnutls
+            - --disable-doc
+            - --disable-programs
+            - --disable-encoders
+            - --disable-muxers
+            - --enable-encoder=png
+            - --enable-libv4l2
+            - --enable-libdav1d
+            - --enable-libfontconfig
+            - --enable-libfreetype
+            - --enable-libopus
+            - --enable-librsvg
+            - --enable-libvpx
+            - --enable-libmp3lame
+            sources: 
+              - type: archive
+                url: https://ffmpeg.org/releases/ffmpeg-4.2.2.tar.bz2
+                sha256: b620d187c26f76ca19e74210a0336c3b8380b97730df5cdf45f3e69e89000e5c
+
+#-----------------------------------------
+# libass
+#-----------------------------------------
+          - name: libass
+            cleanup: [ /include, /lib/*.la, /lib/pkgconfig ]
+            config-opts: [ --disable-static ]
+            sources: 
+            - type: archive
+              url: https://github.com/libass/libass/archive/0.14.0.tar.gz
+              sha256: 82e70ee1f9afe2e54ab4bf6510b83bb563fcb2af978f0f9da82e2dbc9ae0fd72
+
+#-----------------------------------------
+# uchardet
+#-----------------------------------------
+          - name: uchardet
+            buildsystem: cmake-ninja
+            config-opts: [
+            -DCMAKE_BUILD_TYPE=Release,
+            -DBUILD_STATIC=0
+            ]
+            cleanup: [
+            /bin,
+            /include,
+            /lib/pkgconfig,
+            /share/man
+            ]
+            sources: 
+              - type: archive
+                url: https://gitlab.freedesktop.org/uchardet/uchardet/-/archive/v0.0.6/uchardet-v0.0.6.tar.gz
+                sha256: 040239afb6fe3ea44dc13da625517af57e55242db6f0f19bb5bf05bf35e95ffe
+
+#-----------------------------------------
+# youtube-dl
+#-----------------------------------------
+      - name: youtube-dl
+        no-autogen: true
+        no-make-install: true
+        make-args: [youtube-dl, PYTHON=/usr/bin/python3]
+        post-install: [install youtube-dl /app/bin]
+        sources: 
+        - type: archive
+          url: https://github.com/ytdl-org/youtube-dl/archive/2020.02.16.tar.gz
+          sha256: 192e813f6d1c6dc92185c70712754894de8dac3867fd158351df53526cbb4d97
