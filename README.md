@@ -1,4 +1,4 @@
-# Nomacs Image viewer Flatpak build
+# Flatpak for nomacs
 
 ![Screenshot](https://raw.githubusercontent.com/egrath/nomacs-flatpak/master/nomacs_screenshot_01.jpg)
 
