@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NAME=com.github.nomacs
+NAME=org.nomacs.ImageLounge
 ARCH=x86_64
 
 if [ $# -ge 1 ]; then
