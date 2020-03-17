@@ -4,6 +4,10 @@
 
 **Build it**
 ```
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+```
+
+```
 flatpak-builder --force-clean --install-deps-from=flathub --keep-build-dirs build com.github.nomacs.json
 ```
 
@@ -28,6 +32,12 @@ flatpak remote-add --no-gpg-verify --user nomacs-repository repo
 flatpak install --user --assumeyes nomacs-repository com.github.nomacs
 ```
 ... or use the software center if you prefer the graphical approach
+
+**Run nomacs**
+You're all set:
+```
+flatpak run com.github.nomacs
+```
 
 **Optionally, if you want to create a .flatpak**
 ```
