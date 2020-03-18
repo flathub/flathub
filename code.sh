@@ -9,7 +9,15 @@ if [ ! -f ${FIRST_RUN} ]; then
   touch ${FIRST_RUN}
 fi
 
-IFS=',' read -ra SDK <<< "$FLATPAK_ENABLE_SDK"
+if [ "$FLATPAK_ENABLE_SDK" = "*" ]; then
+  SDK=()
+  for d in /usr/lib/sdk/*; do
+    SDK+=("${d##*/}")
+  done
+else
+  IFS=',' read -ra SDK <<< "$FLATPAK_ENABLE_SDK"
+fi
+
 for i in "${SDK[@]}"; do
   if [[ -d /usr/lib/sdk/$i ]]; then
     if [[ -f /usr/lib/sdk/$i/enable.sh ]]; then
