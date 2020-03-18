@@ -4,6 +4,10 @@ set -e
 
 FIRST_RUN="${XDG_CONFIG_HOME}/flatpak-vscode-first-run"
 
+function msg() {
+  echo "flatpak-vscode: $*" >&2
+}
+
 if [ ! -f ${FIRST_RUN} ]; then
   WARNING_FILE="/app/share/vscode/flatpak-warning.txt"
   touch ${FIRST_RUN}
@@ -20,11 +24,14 @@ fi
 
 for i in "${SDK[@]}"; do
   if [[ -d /usr/lib/sdk/$i ]]; then
+    msg "Enabling SDK extension \"$i\""
     if [[ -f /usr/lib/sdk/$i/enable.sh ]]; then
       . /usr/lib/sdk/$i/enable.sh
     else
       export PATH=$PATH:/usr/lib/sdk/$i/bin
     fi
+  else
+    msg "Requested SDK extension \"$i\" is not installed"
   fi
 done
 
