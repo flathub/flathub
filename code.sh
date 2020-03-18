@@ -13,13 +13,13 @@ if [ ! -f ${FIRST_RUN} ]; then
   touch ${FIRST_RUN}
 fi
 
-if [ "$FLATPAK_ENABLE_SDK" = "*" ]; then
+if [ "$FLATPAK_ENABLE_SDK_EXT" = "*" ]; then
   SDK=()
   for d in /usr/lib/sdk/*; do
     SDK+=("${d##*/}")
   done
 else
-  IFS=',' read -ra SDK <<< "$FLATPAK_ENABLE_SDK"
+  IFS=',' read -ra SDK <<< "$FLATPAK_ENABLE_SDK_EXT"
 fi
 
 for i in "${SDK[@]}"; do
