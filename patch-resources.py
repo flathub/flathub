@@ -12,11 +12,8 @@ import re, sys
 
 
 replacements = (
-    # Make Substance install to the "extra" dir.
-    (re.compile(re.escape(br"'/opt/Allegorithmic/Substance_Designer',")), b"'/app/extra/Substance_Designer',"),
-    (re.compile(re.escape(br"'/opt/Allegorithmic/Substance_Painter',")), b"'/app/extra/Substance_Painter',"),
-    (re.compile(re.escape(br"'/opt/Allegorithmic/Substance_Alchemist',")), b"'/app/extra/Substance_Alchemist',"),
-    (re.compile(re.escape(br"defaultInstallPath = '/opt/Allegorithmic';")), b"defaultInstallPath = '/app/extra';"),
+    (re.compile(re.escape(br"/opt/Allegorithmic/")), b"/app/extra/"),
+    (re.compile(re.escape(br"/usr/bin/pkexec")), b"/app/bin/pkexec"),
 )
 
 
