@@ -29,31 +29,9 @@ x-compat-i386-opts: &compat_i386_opts
   libdir: /app/share/steam/compatibilitytools.d/Proton/lib32
 
 x-proton-source: &proton_source
-  type: archive
-  url: "https://github.com/ValveSoftware/Proton/archive/proton-5.0-5.tar.gz"
-  sha256: 639924609dae800e427b3293b19beb809ac0da1825870d6e2eb0b1e435ff3327
-
-x-proton-version: &proton_version 5.0-5
-
-x-wine-source: &wine_source
   type: git
-  url: &wine_git_url "https://github.com/ValveSoftware/wine.git"
-  commit: &wine_git_commit 26aac31031d97668b76f618f1c8ff9fc2d120d57
-
-x-vkd3d-source: &vkd3d_source
-  type: git
-  url: "https://github.com/ValveSoftware/vkd3d.git"
-  commit: f548d817e5cbeebf0c93f1e2cb2e033c58a9b110
-
-x-openvr-source: &openvr_source
-  type: git
-  url: "https://github.com/ValveSoftware/openvr.git"
-  commit: 52065df3d6f3af96300dac98cdf7397f26abfcd7
-
-x-dxvk-source: &dxvk_source
-  type: git
-  url: "https://github.com/ValveSoftware/dxvk.git"
-  commit: 3d52ab36ab6eca682a60bb870dae24532488c885
+  url: "https://github.com/ValveSoftware/Proton.git"
+  tag: proton-5.0-5
 
 cleanup:
   - "*.a"
@@ -81,6 +59,7 @@ cleanup:
 modules:
 
   - name: wine-widl
+    subdir: wine
     build-options:
       arch:
         x86_64:
@@ -92,15 +71,17 @@ modules:
     build-commands:
       - install -Dm755 -t ${FLATPAK_DEST}/bin/ tools/widl/widl
     sources:
-      - *wine_source
+      - *proton_source
 
   - name: vkd3d
+    subdir: vkd3d
     config-opts: &vkd3d_config_opts
       - --disable-tests
     sources: 
-      - *vkd3d_source
+      - *proton_source
 
   - name: vkd3d-32bit
+    subdir: vkd3d
     only-arches:
       - x86_64
     build-options:
@@ -108,10 +89,11 @@ modules:
         x86_64: *compat_i386_opts
     config-opts: *vkd3d_config_opts
     sources:
-    - *vkd3d_source
+    - *proton_source
 
 
   - name: wine
+    subdir: wine
     build-options:
       prepend-pkg-config-path: /app/share/steam/compatibilitytools.d/Proton/lib/pkgconfig
       arch:
@@ -133,9 +115,10 @@ modules:
       - UPDATE_DESKTOP_DATABASE=/bin/true
       - INSTALL_PROGRAM_FLAGS=-s
     sources:
-      - *wine_source
+      - *proton_source
 
   - name: wine-32bit
+    subdir: wine
     only-arches:
       - x86_64
     build-options:
@@ -152,7 +135,7 @@ modules:
     cleanup:
       - /bin32
     sources:
-      - *wine_source
+      - *proton_source
 
 
   - name: lsteamclient
@@ -181,10 +164,6 @@ modules:
       - install -Dm755 lsteamclient.dll.so -t ${FLATPAK_DEST}/lib/wine/
     sources: &lsteamclient_sources
       - *proton_source
-      - type: git
-        url: *wine_git_url
-        commit: *wine_git_commit
-        dest: wine
       - type: file
         path: winemaker-configure.sh
         dest: lsteamclient
@@ -261,12 +240,13 @@ modules:
 
 
   - name: openvr
+    subdir: openvr
     buildsystem: cmake-ninja
     post-install:
       - install -Dm755 bin/win64/openvr_api.dll ${FLATPAK_DEST}/lib/wine/dxvk/openvr_api_dxvk.dll
       - install -Dm755 bin/win32/openvr_api.dll ${FLATPAK_DEST}/lib32/wine/dxvk/openvr_api_dxvk.dll
     sources: 
-      - *openvr_source
+      - *proton_source
 
 
   - name: vrclient
@@ -335,6 +315,7 @@ modules:
 
 
   - name: dxvk
+    subdir: dxvk
     buildsystem: meson
     build-options: &dxvk_64_build_options
       config-opts:
@@ -350,12 +331,13 @@ modules:
       - -Denable_d3d10=true
       - -Denable_d3d11=true
     post-install:
-      - git describe --tags --long --always > ${FLATPAK_DEST}/lib/wine/dxvk/version
+      - cd ${FLATPAK_BUILDER_BUILDDIR}; git submodule status -- dxvk > ${FLATPAK_DEST}/lib/wine/dxvk/version
       - ln -s version ${FLATPAK_DEST}/lib/wine/dxvk/d9vk_version
     sources:
-      - *dxvk_source
+      - *proton_source
 
   - name: dxvk-32bit
+    subdir: dxvk
     buildsystem: meson
     build-options: &dxvk_32_build_options
       config-opts:
@@ -364,10 +346,10 @@ modules:
         - --bindir=lib32/wine/dxvk
     config-opts: *dxvk_config_opts
     post-install:
-      - git describe --tags --long --always > ${FLATPAK_DEST}/lib32/wine/dxvk/version
+      - cd ${FLATPAK_BUILDER_BUILDDIR}; git submodule status -- dxvk > ${FLATPAK_DEST}/lib32/wine/dxvk/version
       - ln -s version ${FLATPAK_DEST}/lib32/wine/dxvk/d9vk_version
     sources:
-      - *dxvk_source
+      - *proton_source
 
 
   - name: wine-mono-bin
@@ -410,9 +392,6 @@ modules:
 
 
   - name: proton
-    build-options:
-      env:
-        PROTON_VERSION: *proton_version
     buildsystem: simple
     build-commands:
       - install -Dm755 -t ${FLATPAK_DEST}/
@@ -425,6 +404,7 @@ modules:
           proton_3.7_tracked_files
       - install -Dm644 dist.LICENSE ${FLATPAK_DEST}/LICENSE
       - |
+        PROTON_VERSION=$(git describe --tags | sed 's/^proton-//')
         TIMESTAMP=$(date +%s)
         echo ${TIMESTAMP} proton_flatpak-${PROTON_VERSION} > ${FLATPAK_DEST}/version
         sed \
