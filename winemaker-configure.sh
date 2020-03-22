@@ -4,11 +4,8 @@ ARGS=()
 
 while (($#)); do
     case "$1" in
-        --prefix=*)
-            echo "ignoring --prefix= arg" >&2
-        ;;
-        --libdir=*)
-            echo "ignoring --libdir= arg" >&2
+        --prefix=*|--libdir=*)
+            echo "$0: ignoring arg: $1" >&2
         ;;
         *)
             ARGS+=("$1")
@@ -17,6 +14,6 @@ while (($#)); do
     shift
 done
 
-echo "winemaker args: ${ARGS[*]}" >&2
+echo "$0: winemaker args: ${ARGS[*]}" >&2
 
 exec winemaker "${ARGS[@]}"
