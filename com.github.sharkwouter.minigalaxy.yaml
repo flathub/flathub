@@ -13,14 +13,13 @@ x-compat-i386-opts: &compat_i386_opts
   ldflags: -L/app/lib32
   append-path: /usr/lib/sdk/toolchain-i386/bin
   env:
-    CC: i686-unknown-linux-gnu-gcc
-    CXX: i686-unknown-linux-gnu-g++
+    CC: ccache i686-unknown-linux-gnu-gcc
+    CXX: ccache i686-unknown-linux-gnu-g++
   libdir: /app/lib32
 
 add-extensions:
   org.gnome.Platform.Compat.i386:
     directory: lib/i386-linux-gnu
-    add-ld-path: "."
     version: "3.36"
 
   org.gnome.Platform.Compat.i386.Debug:
@@ -43,28 +42,84 @@ add-extensions:
 command: minigalaxy
 
 finish-args:
-- "--allow=multiarch"
-- "--device=all"
-- "--device=dri"
-- "--filesystem=~/GOG Games:create"
-- "--share=ipc"
-- "--share=network"
-- "--socket=pulseaudio"
-- "--socket=wayland"
-- "--socket=x11"
+  - "--allow=multiarch"
+  - "--device=all"
+  - "--device=dri"
+  - "--filesystem=~/GOG Games:create"
+  - "--share=ipc"
+  - "--share=network"
+  - "--socket=pulseaudio"
+  - "--socket=wayland"
+  - "--socket=x11"
 
 modules:
-- pypi-dependencies.json
-- name: minigalaxy
-  buildsystem: simple
-  build-commands:
-  - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
-    --no-deps .
-  sources:
-  - type: git
-    tag: flatpak-2
-    commit: e33e506f7755c1bd88668a1b9c263fc687f0617f
-    url: https://github.com/sharkwouter/minigalaxy/
+  - name: minigalaxy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        --no-deps .
+    sources:
+      - type: git
+        tag: flatpak-3
+        commit: 481405081742a9df032314acb3ac036598e4d7e2
+        url: https://github.com/sharkwouter/minigalaxy/
 
-cleanup-commands:
-  - mkdir -p /app{,/lib/debug}/lib/i386-linux-gnu
+  - pypi-dependencies.json
+
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app{,/lib/debug}/lib/i386-linux-gnu
+      - install -D -m 0644 ld.so.conf -t /app/etc
+    sources:
+      - type: file
+        path: ld.so.conf
+
+  # Must have libraries for most old games
+  - name: glu
+    config-opts: &glu_config_opts
+      - --disable-static
+    sources: &glu_sources
+      - type: archive
+        url: "https://mesa.freedesktop.org/archive/glu/glu-9.0.1.tar.xz"
+        sha256: fb5a4c2dd6ba6d1c21ab7c05129b0769544e1d68e1e3b0ffecb18e73c93055bc
+
+  - name: glu-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    config-opts: *glu_config_opts
+    sources: *glu_sources
+
+  - name: freeglut
+    buildsystem: cmake-ninja
+    sources: &freeglut_sources
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeglut/freeglut/3.2.1/freeglut-3.2.1.tar.gz
+        sha256: d4000e02102acaf259998c870e25214739d1f16f67f99cb35e4f46841399da68
+
+  - name: freeglut-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    buildsystem: cmake-ninja
+    sources: *freeglut_sources
+
+  - name: libcaca
+    config-opts: &libcaca_config_opts
+      - --disable-python
+      - --disable-ruby
+      - --disable-static
+    sources: &libcaca_sources
+      - type: archive
+        url: http://caca.zoy.org/files/libcaca/libcaca-0.99.beta19.tar.gz
+        sha256: 128b467c4ed03264c187405172a4e83049342cc8cc2f655f53a2d0ee9d3772f4
+
+  - name: libcaca-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      ldflags: -Wl,-z,relro,-z,now -Wl,--as-needed
+      ldflags-override: true
+    config-opts: *libcaca_config_opts
+    sources: *libcaca_sources
