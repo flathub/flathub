@@ -54,19 +54,27 @@ def multilibify(holder_object, holder_file, add=None, props=None):
         add = {v: True for v in VARIANTS.keys()}
     if props is None:
         props = {v: None for v in VARIANTS.keys()}
-    module_dir = os.path.dirname(holder_file)
+    holder_dir = os.path.dirname(holder_file)
 
     default_multilib = holder_object.pop(MULTILIB_PROP, True)
     for v in VARIANTS.keys():
         if props[v] is None:
             props[v] = holder_object.pop(VARIANTS[v]["prop"], {})
         if isinstance(props[v], str):
-            props[v] = load_dict_file(os.path.join(module_dir, props[v]))
+            props[v] = load_dict_file(os.path.join(holder_dir, props[v]))
     orig_modules = holder_object["modules"]
     modules = []
 
     for orig_module in orig_modules:
-        if not isinstance(orig_module, dict) or not orig_module.pop(MULTILIB_PROP, default_multilib):
+        if isinstance(orig_module, str):
+            module_path = os.path.join(holder_dir, orig_module)
+            orig_module = load_dict_file(os.path.join(holder_dir, orig_module))
+            for source in orig_module["sources"]:
+                if "path" in source:
+                    source_path = os.path.join(os.path.dirname(module_path), source["path"])
+                    source["path"] = os.path.relpath(source_path, holder_dir)
+
+        if not orig_module.pop(MULTILIB_PROP, default_multilib):
             modules.append(orig_module)
             continue
 
