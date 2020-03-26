@@ -1,0 +1,67 @@
+
+app-id: com.nordpass.NordPass
+base: org.electronjs.Electron2.BaseApp
+base-version: '19.08'
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+command: nordpass
+tags:
+  - proprietary
+finish-args:
+  - --socket=x11
+  - --device=dri
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: squashfs
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    sources:
+      - type: archive
+        url: https://github.com/plougher/squashfs-tools/archive/4.4.tar.gz
+        sha256: a7fa4845e9908523c38d4acf92f8a41fdfcd19def41bd5090d7ad767a6dc75c3
+      - type: patch
+        path: xz_support.patch
+
+  - shared-modules/libsecret/libsecret.json
+
+  - name: nordpass
+    buildsystem: simple
+    build-commands:
+      - install -D apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install nordpass "${FLATPAK_DEST}/bin/"
+    post-install:
+      - install -p -Dm644 "icon.png" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 nordpass.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 com.nordpass.NordPass.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: extra-data
+        filename: nordpass.snap
+        url: https://api.snapcraft.io/api/v1/snaps/download/00CQ2MvSr0Ex7zwdGhCYTa0ZLMw3H6hf_23.snap
+        sha256: 9b05211728caaabb170844aca43285079dea991358116ccb297840f84dde5464
+        size: 64237568
+        x-checker-data:
+          type: rotating-url
+          url: https://api.snapcraft.io/api/v1/snaps/download/00CQ2MvSr0Ex7zwdGhCYTa0ZLMw3H6hf_23.snap
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - unsquashfs nordpass.snap
+          - rm nordpass.snap
+          - mv squashfs-root nordpass
+      - type: script
+        dest-filename: nordpass
+        commands:
+          - TMPDIR=$XDG_CACHE_HOME /app/extra/nordpass/nordpass --no-sandbox "$@"
+      - type: file
+        path: com.nordpass.NordPass.metainfo.xml
+      - type: file
+        path: nordpass.desktop
+      - type: file
+        path: icon.png
