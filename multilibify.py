@@ -6,9 +6,16 @@ import os
 import argparse
 import yaml
 
-PROP_MULTILIB = "x-multilib"
-PROP_COMPAT = "x-compat32-module"
-PROP_NATIVE = "x-native-module"
+MULTILIB_PROP = "x-multilib"
+VARIANTS = {
+    "native": {
+        "prop": "x-native-module"
+    },
+    "compat": {
+        "prop": "x-compat32-module",
+        "name-suffix": "-32bit"
+    }
+}
 
 def load_dict_file(dict_file):
     with open(dict_file, "r") as f:
@@ -42,45 +49,42 @@ def merge_dicts(base_dict, update_dict, append_list=False):
             merged_dict[upd_key] = upd_val
     return merged_dict
 
-def multilibify(holder_object, holder_file, add_native=True, add_compat32=True, native_props=None, compat32_props=None):
+def multilibify(holder_object, holder_file, add=None, props=None):
+    if add is None:
+        add = {v: True for v in VARIANTS.keys()}
+    if props is None:
+        props = {v: None for v in VARIANTS.keys()}
     module_dir = os.path.dirname(holder_file)
 
-    default_multilib = holder_object.pop(PROP_MULTILIB, True)
-    if native_props is None:
-        native_props = holder_object.pop(PROP_NATIVE, {})
-        if isinstance(native_props, str):
-            native_props_file = os.path.join(module_dir, native_props)
-            native_props = load_dict_file(native_props_file)
-    if compat32_props is None:
-        compat32_props = holder_object.pop(PROP_COMPAT, {})
-        if isinstance(compat32_props, str):
-            compat32_props_file = os.path.join(module_dir, compat32_props)
-            compat32_props = load_dict_file(compat32_props_file)
+    default_multilib = holder_object.pop(MULTILIB_PROP, True)
+    for v in VARIANTS.keys():
+        if props[v] is None:
+            props[v] = holder_object.pop(VARIANTS[v]["prop"], {})
+        if isinstance(props[v], str):
+            props[v] = load_dict_file(os.path.join(module_dir, props[v]))
     orig_modules = holder_object["modules"]
     modules = []
 
     for orig_module in orig_modules:
-        if not isinstance(orig_module, dict) or not orig_module.pop(PROP_MULTILIB, default_multilib):
+        if not isinstance(orig_module, dict) or not orig_module.pop(MULTILIB_PROP, default_multilib):
             modules.append(orig_module)
             continue
 
-        module_native_props = orig_module.pop(PROP_NATIVE, {})
-        module_compat32_props = orig_module.pop(PROP_COMPAT, {})
+        module_props = {}
+        for v in VARIANTS.keys():
+            module_props[v] = orig_module.pop(VARIANTS[v]["prop"], {})
 
-        if add_native:
-            native_module = merge_dicts(orig_module, native_props)
-            native_module = merge_dicts(native_module, module_native_props)
-            if "modules" in native_module:
-                native_module = multilibify(native_module, holder_file, add_compat32=False, native_props=native_props)
-            modules.append(native_module)
-
-        if add_compat32:
-            compat32_module = merge_dicts(orig_module, compat32_props)
-            compat32_module = merge_dicts(compat32_module, module_compat32_props)
-            compat32_module["name"] = "{0}-32bit".format(orig_module["name"])
-            if "modules" in compat32_module:
-                compat32_module = multilibify(compat32_module, holder_file, add_native=False, compat32_props=compat32_props)
-            modules.append(compat32_module)
+        for v in VARIANTS.keys():
+            if not add[v]:
+                continue
+            new_module = merge_dicts(orig_module, props[v])
+            new_module = merge_dicts(new_module, module_props[v])
+            if "name-suffix" in VARIANTS[v]:
+                new_module["name"] = "{0}{1}".format(orig_module["name"], VARIANTS[v]["name-suffix"])
+            if "modules" in new_module:
+                submodule_add = {i: i == v for i in VARIANTS.keys()}
+                new_module = multilibify(new_module, holder_file, props=props, add=submodule_add)
+            modules.append(new_module)
 
     holder_object["modules"] = modules
     return holder_object
