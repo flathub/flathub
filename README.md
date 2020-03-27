@@ -37,9 +37,9 @@ The changelog is available at http://icanblink.com/changelog/
 ```bash
 sudo apt-get -y install flatpak flatpak-builder
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak -y install flathub org.kde.Platform//5.11
-flatpak -y install flathub org.kde.Sdk//5.11
-flatpak -y install flathub io.qt.qtwebkit.BaseApp//5.11
+flatpak -y install flathub org.kde.Platform//5.14
+flatpak -y install flathub org.kde.Sdk//5.14
+flatpak -y install flathub io.qt.qtwebkit.BaseApp//5.14
 
 # BUILD
 flatpak-builder --force-clean --repo=test-repo build-dir io.github.syco.blink.json
