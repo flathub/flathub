@@ -49,12 +49,14 @@ def merge_dicts(base_dict, update_dict, append_list=False):
             merged_dict[upd_key] = upd_val
     return merged_dict
 
-def multilibify(holder_object, holder_file, add=None, props=None):
+def multilibify(holder_object, holder_file, base_dir=None, add=None, props=None):
     if add is None:
         add = {v: True for v in VARIANTS.keys()}
     if props is None:
         props = {v: None for v in VARIANTS.keys()}
     holder_dir = os.path.dirname(holder_file)
+    if base_dir is None:
+        base_dir = holder_dir
 
     default_multilib = holder_object.pop(MULTILIB_PROP, True)
     for v in VARIANTS.keys():
@@ -66,13 +68,16 @@ def multilibify(holder_object, holder_file, add=None, props=None):
     modules = []
 
     for orig_module in orig_modules:
+        module_file = holder_file
+
         if isinstance(orig_module, str):
-            module_path = os.path.join(holder_dir, orig_module)
-            orig_module = load_dict_file(os.path.join(holder_dir, orig_module))
-            for source in orig_module["sources"]:
-                if "path" in source:
-                    source_path = os.path.join(os.path.dirname(module_path), source["path"])
-                    source["path"] = os.path.relpath(source_path, holder_dir)
+            module_file = os.path.join(holder_dir, orig_module)
+            orig_module = load_dict_file(module_file)
+
+        for source in orig_module["sources"]:
+            if "path" in source:
+                source_path = os.path.join(os.path.dirname(module_file), source["path"])
+                source["path"] = os.path.relpath(source_path, base_dir)
 
         if not orig_module.pop(MULTILIB_PROP, default_multilib):
             modules.append(orig_module)
@@ -91,7 +96,7 @@ def multilibify(holder_object, holder_file, add=None, props=None):
                 new_module["name"] = "{0}{1}".format(orig_module["name"], VARIANTS[v]["name-suffix"])
             if "modules" in new_module:
                 submodule_add = {i: i == v for i in VARIANTS.keys()}
-                new_module = multilibify(new_module, holder_file, props=props, add=submodule_add)
+                new_module = multilibify(new_module, module_file, base_dir, props=props, add=submodule_add)
             modules.append(new_module)
 
     holder_object["modules"] = modules
