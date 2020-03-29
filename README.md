@@ -59,3 +59,28 @@ sudo flatpak -y remove io.github.syco.blink
 
 ```
 
+## flatpak-pip-generator
+```bash
+git clone https://github.com/flatpak/flatpak-builder-tools.git /root/flatpak-builder-tools
+
+mkdir pip
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION pip --output pip/pip
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION setuptools --output pip/setuptools
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION wheel --output pip/wheel
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION Cython --output pip/Cython
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION cffi --output pip/cffi
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION dnspython --output pip/dnspython
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION gmpy2 --output pip/gmpy2
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION google-api-python-client --output pip/google-api-python-client
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION greenlet --output pip/greenlet
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION incremental --output pip/incremental
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION lxml --output pip/lxml
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION oauth2client --output pip/oauth2client
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION python-application --output pip/python-application
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION python-dateutil --output pip/python-dateutil
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION python-gnutls --output pip/python-gnutls
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION python-otr --output pip/python-otr
+/root/flatpak-builder-tools/pip/flatpak-pip-generator --python2 --no-build-isolation NO_BUILD_ISOLATION Twisted --output pip/Twisted
+
+```
+
