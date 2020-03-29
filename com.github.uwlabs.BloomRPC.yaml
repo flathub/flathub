@@ -4,42 +4,51 @@ runtime-version: '19.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '19.08' 
-command: bloomrpc
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node12
+command: run
 separate-locales: false
 finish-args:
   - --share=ipc
   - --socket=x11
   - --share=network
   - --filesystem=home
-
-# Rename to .deb-package names
-rename-desktop-file: bloomrpc.desktop
-rename-icon: bloomrpc
-
 modules:
-  - name: bloomrpc
+  - name: yarn
     sources:
-      - type: file
-        only-arches:
-          - x86_64
-        url: https://github.com/uw-labs/bloomrpc/releases/download/1.4.1/bloomrpc_1.4.1_amd64.deb
-        sha256: 3f8fa6ae110200d98fb54b55ad740ce64367cee9fdcb38c7eba1f0600e582851
-      - type: script
-        commands:
-          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-          - exec zypak-wrapper /app/BloomRPC/bloomrpc "$@"
-        dest-filename: bloomrpc.sh
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-v1.22.4.tar.gz
+        sha256: bc5316aa110b2f564a71a3d6e235be55b98714660870c5b6b2d2d3f12587fb58
     buildsystem: simple
     build-commands:
-      - ar -x bloomrpc*.deb
-      - tar -xf data.tar.xz
-      
+      - 'cp -a * /app'
+    cleanup:
+      - '*'
+
+  - name: bloomrpc
+    sources:
+      - type: git
+        url: http://github.com/uw-labs/bloomrpc
+        commit: afe9e60be6248be62c511d71d93fb25518d2e374
+      - generated-sources.json
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - /app/BloomRPC/bloomrpc
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node12/bin:/app/yarn/bin:/run/build/bloomrpc/flatpak-node/chromedriver'
+      env:
+        ELECTRON_CACHE: /run/build/bloomrpc/flatpak-node/electron-cache
+        CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
+        npm_config_nodedir: /usr/lib/sdk/node12
+    build-commands:
+      - 'HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
+      - yarn --offline
+      - sh flatpak-node/electron-builder-arch-args.sh
+      - yarn run --offline package -- $ELECTRON_BUILDER_ARCH_ARGS
       # Max icon size for Flatpaks are 512x512. Having bigger icons results in build error
-      - rm -rf usr/share/icons/hicolor/1024x1024 
-     
-      - cp -r opt/* usr/* $FLATPAK_DEST
-      - rm -rf opt usr bloomrpc*.deb control.tar.gz data.tar.xz debian-binary
-      - install bloomrpc.sh $FLATPAK_DEST/bin/bloomrpc
-      
-      # Edit the bloomrpc.desktop-file from the .deb-package to point to the correct executeable
-      - desktop-file-edit --set-key=Exec --set-value="bloomrpc %U" $FLATPAK_DEST/share/applications/bloomrpc.desktop
+      - rm -rf build/files/share/icons/hicolor/1024x1024
+      - cp -r build/files/* $FLATPAK_DEST
+      - install -Dm 755 run.sh $FLATPAK_DEST/bin/run
