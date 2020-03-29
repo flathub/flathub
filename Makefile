@@ -24,4 +24,3 @@ generate:
 	rm yarn.lock*; \
 
 .PHONY: build install run generate
-
