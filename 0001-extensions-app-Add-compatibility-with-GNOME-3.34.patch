@@ -1,0 +1,168 @@
+From 19bc7d4a29f8e06a60b5d4bc5472e36a357e028d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Florian=20M=C3=BCllner?= <fmuellner@gnome.org>
+Date: Tue, 31 Mar 2020 19:53:50 +0200
+Subject: [PATCH 1/2] extensions-app: Add compatibility with GNOME 3.34
+
+We are currently relying on 3.36 changes:
+
+ - the addition of the UserExtensionsEnabled property
+
+ - the separate org.gnome.Shell.Extensions name to expose
+   the interface
+
+In order to work with the previous stable release as well, we can
+fall back to connecting to gnome-shell itself and changing the
+underlying GSettings directly.
+---
+ subprojects/extensions-app/data/meson.build   |  2 +
+ .../data/org.gnome.Extensions.gschema.xml     | 12 +++++
+ subprojects/extensions-app/js/main.js         | 47 +++++++++++++++----
+ subprojects/extensions-app/meson.build        |  1 +
+ 4 files changed, 54 insertions(+), 8 deletions(-)
+ create mode 100644 subprojects/extensions-app/data/org.gnome.Extensions.gschema.xml
+
+diff --git a/subprojects/extensions-app/data/meson.build b/subprojects/extensions-app/data/meson.build
+index 0568fafc8..e9399e3b6 100644
+--- a/subprojects/extensions-app/data/meson.build
++++ b/subprojects/extensions-app/data/meson.build
+@@ -33,5 +33,7 @@ configure_file(
+   install_dir: servicedir,
+ )
+ 
++install_data(app_id + '.gschema.xml', install_dir: schemadir)
++
+ subdir('icons')
+ subdir('metainfo')
+diff --git a/subprojects/extensions-app/data/org.gnome.Extensions.gschema.xml b/subprojects/extensions-app/data/org.gnome.Extensions.gschema.xml
+new file mode 100644
+index 000000000..d70d4bd4c
+--- /dev/null
++++ b/subprojects/extensions-app/data/org.gnome.Extensions.gschema.xml
+@@ -0,0 +1,12 @@
++<schemalist>
++  <schema id="org.gnome.shell" path="/org/gnome/shell/">
++    <key name="disable-user-extensions" type="b">
++      <default>false</default>
++      <summary>Disable user extensions</summary>
++      <description>
++        Disable all extensions the user has enabled without affecting
++        the “enabled-extension” setting.
++      </description>
++    </key>
++  </schema>
++</schemalist>
+diff --git a/subprojects/extensions-app/js/main.js b/subprojects/extensions-app/js/main.js
+index 00b6c047d..1babc252c 100644
+--- a/subprojects/extensions-app/js/main.js
++++ b/subprojects/extensions-app/js/main.js
+@@ -47,6 +47,10 @@ class Application extends Gtk.Application {
+         return this._shellProxy;
+     }
+ 
++    get legacyMode() {
++        return this._legacyMode;
++    }
++
+     vfunc_activate() {
+         this._shellProxy.CheckForUpdatesRemote();
+         this._window.present();
+@@ -69,6 +73,13 @@ class Application extends Gtk.Application {
+         this._shellProxy = new GnomeShellProxy(Gio.DBus.session,
+             'org.gnome.Shell.Extensions', '/org/gnome/Shell/Extensions');
+ 
++        this._legacyMode = this._shellProxy.g_name_owner === null;
++
++        if (this._legacyMode) {
++            this._shellProxy = new GnomeShellProxy(Gio.DBus.session,
++                'org.gnome.Shell', '/org/gnome/Shell');
++        }
++
+         this._window = new ExtensionsWindow({ application: this });
+     }
+ });
+@@ -89,6 +100,10 @@ var ExtensionsWindow = GObject.registerClass({
+     _init(params) {
+         super._init(params);
+ 
++        this._settings = this.application.legacyMode
++            ? new Gio.Settings({ schema_id: 'org.gnome.shell' })
++            : null;
++
+         this._updatesCheckId = 0;
+ 
+         this._exporter = new Shew.WindowExporter({ window: this });
+@@ -111,7 +126,12 @@ var ExtensionsWindow = GObject.registerClass({
+         });
+         action.connect('activate', toggleState);
+         action.connect('change-state', (a, state) => {
+-            this._shellProxy.UserExtensionsEnabled = state.get_boolean();
++            const value = state.get_boolean();
++
++            if (this._settings)
++                this._settings.set_boolean('disable-user-extensions', !value);
++            else
++                this._shellProxy.UserExtensionsEnabled = value;
+         });
+         this.add_action(action);
+ 
+@@ -124,8 +144,13 @@ var ExtensionsWindow = GObject.registerClass({
+         this._shellProxy.connectSignal('ExtensionStateChanged',
+             this._onExtensionStateChanged.bind(this));
+ 
+-        this._shellProxy.connect('g-properties-changed',
+-            this._onUserExtensionsEnabledChanged.bind(this));
++        if (this._settings) {
++            this._settings.connect('changed::disable-user-extensions',
++                this._onUserExtensionsEnabledChanged.bind(this));
++        } else {
++            this._shellProxy.connect('g-properties-changed',
++                this._onUserExtensionsEnabledChanged.bind(this));
++        }
+         this._onUserExtensionsEnabledChanged();
+ 
+         this._scanExtensions();
+@@ -166,9 +191,13 @@ var ExtensionsWindow = GObject.registerClass({
+             }
+         }
+ 
+-        this._shellProxy.OpenExtensionPrefsRemote(uuid,
+-            this._exportedHandle,
+-            { modal: new GLib.Variant('b', true) });
++        if (this.application.legacyMode) {
++            this._shellProxy.LaunchExtensionPrefsRemote(uuid);
++        } else {
++            this._shellProxy.OpenExtensionPrefsRemote(uuid,
++                this._exportedHandle,
++                { modal: new GLib.Variant('b', true) });
++        }
+     }
+ 
+     _showAbout() {
+@@ -225,8 +254,10 @@ var ExtensionsWindow = GObject.registerClass({
+ 
+     _onUserExtensionsEnabledChanged() {
+         let action = this.lookup_action('user-extensions-enabled');
+-        action.set_state(
+-            new GLib.Variant('b', this._shellProxy.UserExtensionsEnabled));
++        const newState = this._settings
++            ? !this._settings.get_boolean('disable-user-extensions')
++            : this._shellProxy.UserExtensionsEnabled;
++        action.set_state(new GLib.Variant('b', newState));
+     }
+ 
+     _onExtensionStateChanged(proxy, senderName, [uuid, newState]) {
+diff --git a/subprojects/extensions-app/meson.build b/subprojects/extensions-app/meson.build
+index e26b5b20d..695226e12 100644
+--- a/subprojects/extensions-app/meson.build
++++ b/subprojects/extensions-app/meson.build
+@@ -34,6 +34,7 @@ icondir = join_paths(datadir, 'icons')
+ localedir = join_paths(datadir, 'locale')
+ metainfodir = join_paths(datadir, 'metainfo')
+ servicedir = join_paths(datadir, 'dbus-1', 'services')
++schemadir = join_paths(datadir, 'glib-2.0', 'schemas')
+ 
+ gjs = find_program('gjs')
+ appstream_util = find_program('appstream-util', required: false)
+-- 
+2.25.1
+
