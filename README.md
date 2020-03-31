@@ -42,20 +42,20 @@ flatpak -y install flathub org.kde.Sdk//5.14
 flatpak -y install flathub io.qt.qtwebkit.BaseApp//5.14
 
 # BUILD
-flatpak-builder --force-clean --repo=test-repo build-dir io.github.syco.blink.json
+flatpak-builder --force-clean --repo=test-repo build-dir com.icanblink.blink.json
 
 # TEST
 flatpak -y remote-add --no-gpg-verify test-repo test-repo
-flatpak -y --system install test-repo io.github.syco.blink
-flatpak run io.github.syco.blink
-flatpak -y remove io.github.syco.blink
+flatpak -y --system install test-repo com.icanblink.blink
+flatpak run com.icanblink.blink
+flatpak -y remove com.icanblink.blink
 
 # EXPORT
-flatpak build-bundle test-repo Blink-3.2.1.flatpak io.github.syco.blink
+flatpak build-bundle test-repo Blink-3.2.1.flatpak com.icanblink.blink
 
 # IMPORT
 sudo flatpak -y install Blink-3.2.1.flatpak
-sudo flatpak -y remove io.github.syco.blink
+sudo flatpak -y remove com.icanblink.blink
 
 ```
 
