@@ -2,9 +2,16 @@ name: Flatpak build
 
 on: [push]
 
+env:
+  FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
+  FP_BUNDLE: Proton-${{ github.run_id }}.flatpak
+  FP_BRANCH: stable
+  FP_BUILD_NAME: proton-flatpak
+  FP_BUILD_DIR: build-dir
+  FP_BUILD_REPO: build-repo
+
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -18,30 +25,32 @@ jobs:
         sudo apt install -y flatpak-builder
 
     - name: Download flatpak SDK and sources
-      env:
-        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
       run: |
         set -e
         flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         flatpak-builder --install-deps-from=flathub --install-deps-only --user /dev/null ${FLATPAK_ID}.yml
         flatpak-builder --download-only /dev/null ${FLATPAK_ID}.yml
 
+    - name: Prime ccache
+      uses: actions/cache@v1
+      with:
+        path: .flatpak-builder/ccache
+        key: flatpak-builder-ccache
+
     - name: Build flatpak
-      env:
-        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
       run: |
         set -e
-        ostree --repo=build-repo init --mode=bare-user
-        flatpak-builder --sandbox --repo=build-repo build-dir ${FLATPAK_ID}.yml
+        flatpak-builder --disable-updates --disable-download --ccache --sandbox ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
 
     - name: Create flatpak bundle
-      env:
-        FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
       run: |
-        flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo --runtime build-repo Proton.flatpak ${FLATPAK_ID} stable
+        set -e
+        ostree --repo=${FP_BUILD_REPO} init --mode=bare-user
+        flatpak-builder --export-only --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
+        flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo --runtime ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
 
     - name: Upload bundle
       uses: actions/upload-artifact@v1
       with:
-        name: proton-flatpak-bundle
-        path: Proton.flatpak
+        name: ${{ env.FP_BUILD_NAME }}-bundle-${{ github.run_id }}
+        path: ${{ env.FP_BUNDLE }}
