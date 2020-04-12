@@ -1,0 +1,46 @@
+app-id: net.veloren.veloren
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-nightly
+command: veloren-voxygen
+finish-args:
+  - "--device=all"
+  - "--device=dri"
+  - "--env=VELOREN_ASSETS=/app/share/veloren/assets"
+  - "--share=ipc"
+  - "--share=network"
+  - "--socket=pulseaudio"
+  - "--socket=wayland"
+  - "--socket=x11"
+build-options:
+  append-path: /usr/lib/sdk/rust-nightly/bin
+  env:
+    RUSTFLAGS: --remap-path-prefix =../
+    CARGO_HOME: /run/build/veloren/cargo
+modules:
+  - name: veloren
+    buildsystem: simple
+    build-commands:
+      # Unoptimize dev/debug builds to increase build time
+      - sed -i 's/opt-level = 3/opt-level = 0/' Cargo.toml
+      - sed -i 's/opt-level = 2/opt-level = 0/g' Cargo.toml
+
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -D -m 755 ./target/release/veloren-{voxygen,{server,chat}-cli} -t /app/bin/
+    post-install:
+      # Install assets
+      - mkdir -p /app/share/veloren/
+      - cp -ap assets/ /app/share/veloren/
+
+      # Install desktop file, icon and AppData manifest
+      - install -D -m 644 assets/voxygen/net.veloren.veloren.metainfo.xml -t /app/share/metainfo/
+      - install -D -m 644 assets/voxygen/net.veloren.veloren.desktop -t /app/share/applications/
+      - install -D -m 644 assets/voxygen/net.veloren.veloren.png -t /app/share/icons/hicolor/256x256/apps/
+    sources:
+      - type: git
+        commit: b751fcc3937d8205cb2261c056aed7ffba218151
+        url: https://gitlab.com/veloren/veloren
+      - generated-sources.json
