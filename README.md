@@ -1,7 +1,7 @@
-Linux Audio base application
-============================
+Linux Audio base extension
+==========================
 
-This is a base application for Flatpak Linux Audio app. The intent is
+This is a base extension for Flatpak Linux Audio app. The intent is
 to be the base for building Linux Audio plugins flatpaks.
 
 It currently supports:
@@ -97,6 +97,6 @@ Versions
 
 Versions have to match.
 
-| BaseApp | Freedesktop SDK |
+| Base    | Freedesktop SDK |
 +---------+-----------------+
 | 20.04   | 19.08           |
