@@ -1,6 +1,4 @@
 About Ardour plugins
 ====================
 
-Currently the package only supports LV2 plugins specifically built for
-Ardour flatpak.
-
+The package supports LV2, LADSPA, and Linux VST plugins built for Flatpak.
