@@ -2,57 +2,38 @@ Linux Audio base application
 ============================
 
 This is a base application for Flatpak Linux Audio app. The intent is
-to have a common base to provide Linux Audio plugins.
+to be the base for building Linux Audio plugins flatpaks.
 
 It currently supports:
 
 - LV2 as a `org.freedesktop.LinuxAudio.Lv2Plugin` extension.
 - DSSI as a `org.freedesktop.LinuxAudio.DssiPlugin` extension.
 - LADSPA as a `org.freedesktop.LinuxAudio.LadspaPlugin` extension.
+- VST (Linux) as a `org.freedesktop.LinuxAudio.VstPlugin` extension.
+- VST3 as a `org.freedesktop.LinuxAudio.Vst3Plugin` extension.
 
 Content
 -------
 
-The base app is uses the KDE runtime to provide Qt5, as Gtk3 is
-already part of freedesktop.org.
-
-It builds `gtkmm2` and the corresponding `gtk2`.
-
-It provide the following support libraries:
-
-- `jack2`
-- `lash`
-- `fluidsynth`
-- `liblo`
-
-For plugin support, it builds:
+The base app only provide the following to build plugins:
 
 - `lv2`
-- `liblo`
 - `dssi`
-- `ladspa`
-- `lrdf`
+
+LADSPA and VST don't need this, and some LV2 plugins don't need
+either.
 
 Application using audio plugins
 -------------------------------
 
-Your app support audio plugins? Build it using this BaseApp.
+Your app support audio plugins?
 
-The manifest must have the following:
-```
-"base": "org.freedesktop.LinuxAudio.BaseApp",
-"base-version": "20.04",
-"sdk": "org.kde.Sdk",
-"runtime": "org.kde.Platform",
-"runtime-version": "5.14",
-```
-
-And you must also add this extension point for LV2 plugins:
+Add the extension points for plugins. Below is an example for LV2 plugins:
 
 ```
 "add-extensions": {
   "org.freedesktop.LinuxAudio.Lv2Plugin": {
-    "directory": "extensions",
+    "directory": "extensions/Lv2Plugins",
     "add-ld-path": "lib",
     "merge-dirs": "lv2",
     "subdirectories": true,
@@ -61,6 +42,8 @@ And you must also add this extension point for LV2 plugins:
   }
 }
 ```
+
+Change the `directory` (the mount point) for each kind of plugins.
 
 For DSSI and LADSPA change the key and the `merge-dirs` to respectively:
 
@@ -75,27 +58,26 @@ And make sure the application find the LV2 plugins by putting the
 following finish argument:
 
 ```
-"--env=LV2_PATH=/app/extensions/lv2"
+"--env=LV2_PATH=/app/extensions/Lv2Plugins/lv2"
 ```
 
 For DSSI, LADSPA and VST it is the same change as above. It's actually
 recommended to add them all if you support LV2 as using a LV2 plugin
-like Carla, you can use the others format.
+like Carla, you can use the others formats.
 
-| Format     | Ext point name | dir    | env          |
-+------------+----------------+--------+--------------+
-| LV2        | Lv2Plugin      | lv2    | `LV2_PATH`   |
-| DSSI       | DssiPlugin     | dssi   | `DSSI_PATH`  |
-| LADSPA     | LadspaPlugin   | ladspa | `LADSPA_PATH`|
-| VST (Linux)| VstPlugin      | lxvst  | `LXVST_PATH` |
+The table below list things. The mount point is a sub directory to
+`/app/extensions`. The subdir is a subdirectory in the mount point
+that will have all the plugins as needed by the application host.
 
 
-Using the BaseApp for your application, if your application needs
-gtk2, remove it from the manifest. Remove lv2, liblo, dssi, ladspa,
-lrdf as well.
+| Format     | Ext point name | mount point | subdir | env          |
++------------+----------------+-------------+--------+--------------+
+| LV2        | Lv2Plugin      | Lv2Plugins  | lv2    | `LV2_PATH`   |
+| DSSI       | DssiPlugin     | DssiPlugins | dssi   | `DSSI_PATH`  |
+| LADSPA     | LadspaPlugin   | LaspaPlugins| ladspa | `LADSPA_PATH`|
+| VST (Linux)| VstPlugin      | VstPlugins  | lxvst  | `LXVST_PATH` and `VST_PATH` |
+| VST3       | Vst3Plugin     | Vst3Plugins | vst3   | `VST3_PATH`  |
 
-If you application need the GNOME platform (and build against it),
-there might be problems with plugins that use Qt5
 
 Plugins
 -------
@@ -107,6 +89,7 @@ LV2: `org.freedesktop.LinuxAudio.Lv2Plugin`
 DSSI: `org.freedesktop.LinuxAudio.DssiPlugin`
 LADSPA: `org.freedesktop.LinuxAudio.LadspaPlugin`
 VST: `org.freedesktop.LinuxAudio.VstPlugin`
+VST3: `org.freedesktop.LinuxAudio.Vst3Plugin`
 
 
 Versions
@@ -114,6 +97,6 @@ Versions
 
 Versions have to match.
 
-| BaseApp | KDE SDK |
-+---------+---------+
-| 20.04   | 5.14    |
+| BaseApp | Freedesktop SDK |
++---------+-----------------+
+| 20.04   | 19.08           |
