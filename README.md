@@ -6,22 +6,17 @@ to be the base for building Linux Audio plugins flatpaks.
 
 It currently supports:
 
-- LV2 as a `org.freedesktop.LinuxAudio.Lv2Plugin` extension.
-- DSSI as a `org.freedesktop.LinuxAudio.DssiPlugin` extension.
-- LADSPA as a `org.freedesktop.LinuxAudio.LadspaPlugin` extension.
-- VST (Linux) as a `org.freedesktop.LinuxAudio.VstPlugin` extension.
-- VST3 as a `org.freedesktop.LinuxAudio.Vst3Plugin` extension.
+- LV2 as a `org.freedesktop.LinuxAudio.Lv2Plugins` extension.
+- DSSI as a `org.freedesktop.LinuxAudio.DssiPlugins` extension.
+- LADSPA as a `org.freedesktop.LinuxAudio.LadspaPlugins` extension.
+- VST (Linux) as a `org.freedesktop.LinuxAudio.VstPlugins` extension.
+- VST3 as a `org.freedesktop.LinuxAudio.Vst3Plugins` extension.
 
 Content
 -------
 
-The base app only provide the following to build plugins:
-
-- `lv2`
-- `dssi`
-
-LADSPA and VST don't need this, and some LV2 plugins don't need
-either.
+This is empty, it only provide the needed declaration for the
+extension points.
 
 Application using audio plugins
 -------------------------------
@@ -32,7 +27,7 @@ Add the extension points for plugins. Below is an example for LV2 plugins:
 
 ```
 "add-extensions": {
-  "org.freedesktop.LinuxAudio.Lv2Plugin": {
+  "org.freedesktop.LinuxAudio.Lv2Plugins": {
     "directory": "extensions/Lv2Plugins",
     "add-ld-path": "lib",
     "merge-dirs": "lv2",
@@ -47,12 +42,12 @@ Change the `directory` (the mount point) for each kind of plugins.
 
 For DSSI and LADSPA change the key and the `merge-dirs` to respectively:
 
-For DSSI: `org.freedesktop.LinuxAudio.DssiPlugin` and `dssi`
+For DSSI: `org.freedesktop.LinuxAudio.DssiPlugins` and `dssi`
 
-For LADSPA: `org.freedesktop.LinuxAudio.LadspaPlugin` and `ladspa`
+For LADSPA: `org.freedesktop.LinuxAudio.LadspaPlugins` and `ladspa`
 
 For Linux VST (ie VST compiled for Linux, not those running with
-Wine): `org.freedesktop.LinuxAudio.LadspaPlugin` and `lxvst`.
+Wine): `org.freedesktop.LinuxAudio.LadspaPlugins` and `lxvst`.
 
 And make sure the application find the LV2 plugins by putting the
 following finish argument:
@@ -72,11 +67,11 @@ that will have all the plugins as needed by the application host.
 
 | Format     | Ext point name | mount point | subdir | env          |
 +------------+----------------+-------------+--------+--------------+
-| LV2        | Lv2Plugin      | Lv2Plugins  | lv2    | `LV2_PATH`   |
-| DSSI       | DssiPlugin     | DssiPlugins | dssi   | `DSSI_PATH`  |
-| LADSPA     | LadspaPlugin   | LaspaPlugins| ladspa | `LADSPA_PATH`|
-| VST (Linux)| VstPlugin      | VstPlugins  | lxvst  | `LXVST_PATH` and `VST_PATH` |
-| VST3       | Vst3Plugin     | Vst3Plugins | vst3   | `VST3_PATH`  |
+| LV2        | Lv2Plugins     | Lv2Plugins  | lv2    | `LV2_PATH`   |
+| DSSI       | DssiPlugins    | DssiPlugins | dssi   | `DSSI_PATH`  |
+| LADSPA     | LadspaPlugins  | LaspaPlugins| ladspa | `LADSPA_PATH`|
+| VST (Linux)| VstPlugins     | VstPlugins  | lxvst  | `LXVST_PATH` and `VST_PATH` |
+| VST3       | Vst3Plugins    | Vst3Plugins | vst3   | `VST3_PATH`  |
 
 
 Plugins
@@ -85,11 +80,11 @@ Plugins
 You want to provide a Plugin as a Flatpak package? Build a
 an extension, using the base app.
 
-LV2: `org.freedesktop.LinuxAudio.Lv2Plugin`
-DSSI: `org.freedesktop.LinuxAudio.DssiPlugin`
-LADSPA: `org.freedesktop.LinuxAudio.LadspaPlugin`
-VST: `org.freedesktop.LinuxAudio.VstPlugin`
-VST3: `org.freedesktop.LinuxAudio.Vst3Plugin`
+LV2: `org.freedesktop.LinuxAudio.Lv2Plugins`
+DSSI: `org.freedesktop.LinuxAudio.DssiPlugins`
+LADSPA: `org.freedesktop.LinuxAudio.LadspaPlugins`
+VST: `org.freedesktop.LinuxAudio.VstPlugins`
+VST3: `org.freedesktop.LinuxAudio.Vst3Plugins`
 
 
 Versions
@@ -99,4 +94,4 @@ Versions have to match.
 
 | Base    | Freedesktop SDK |
 +---------+-----------------+
-| 20.04   | 19.08           |
+| 19.08   | 19.08           |
