@@ -1,0 +1,186 @@
+app-id: io.github.maurycyliebner.enve
+default-branch: stable
+runtime: org.kde.Platform
+runtime-version: '5.14'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '5.14'
+command: enve
+rename-desktop-file: enve.desktop
+rename-icon: enve
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=host
+cleanup-commands:
+  - rm -rf /app/{include,sbin,share/{man,cmake},lib/{*.a,*.la,python2.7,mkspecs,pkgconfig,qt5/mkspecs,plugins/designer}}
+  - rm -rf /app/lib/x86_64-linux-gnu/{cmake,pkgconfig,*.la,*.prl}
+  - rm -rf /app/bin/{pip,pip2,pip2.7,pprof,python,python2,python2.7,smtpd.py}
+modules:
+
+- name: qscintilla
+  buildsystem: qmake
+  builddir: true
+  subdir: Qt4Qt5
+  config-opts:
+    - CONFIG+=release  
+  sources:
+    - type: archive
+      url: https://www.riverbankcomputing.com/static/Downloads/QScintilla/2.11.4/QScintilla-2.11.4.tar.gz
+      sha256: 723f8f1d1686d9fc8f204cd855347e984322dd5cd727891d324d0d7d187bee20
+    - type: shell
+      commands:
+        - sed -e 's|\(target.path\) = .*|\1 = /app/lib|'
+              -e 's|\(header.path\) = .*|\1 = /app/include|'
+              -e 's|\(trans.path\) = .*|\1 = /app/share/qt5/translations|'
+              -e 's|\(qsci.path\) = .*|\1 = /app/share/qt5|'
+              -e 's|\(features.path\) = .*|\1 = /app/lib/qt5/mkspecs/features|'
+              -i Qt4Qt5/qscintilla.pro
+
+- name: json-c
+  sources:
+    - type: archive
+      url: https://github.com/json-c/json-c/archive/json-c-0.13.1-20180305.tar.gz
+      sha256: 5d867baeb7f540abe8f3265ac18ed7a24f91fe3c5f4fd99ac3caba0708511b90
+
+- shared-modules/intltool/intltool-0.51.json
+
+- name: libmypaint
+  config-opts:
+    - --disable-gegl
+    - --disable-introspection
+  sources:
+    - type: archive
+      url: https://github.com/mypaint/libmypaint/releases/download/v1.5.1/libmypaint-1.5.1.tar.xz
+      sha256: aef8150a0c84ce2ff6fb24de8d5ffc564845d006f8bad7ed84ee32ed1dd90c2b
+
+- name: quazip
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+    - -DCMAKE_BUILD_TYPE=Release
+  sources:
+    - type: archive
+      url: https://github.com/stachenov/quazip/archive/v0.8.1.tar.gz
+      sha256: 4fda4d4248e08015b5090d0369ef9e68bdc4475aa12494f7c0f6d79e43270d14
+    - type: shell
+      commands:
+        - sed -i 's/QUAZIP_LIB_VERSION_SUFFIX 5/QUAZIP_LIB_VERSION_SUFFIX ""/' CMakeLists.txt
+
+- name: 'x264'
+  config-opts:
+    - --disable-cli
+    - --enable-shared
+  sources:
+    - type: archive
+      url: https://code.videolan.org/videolan/x264/-/archive/296494a4011f58f32adc54304a2654627558c59a/x264-296494a4011f58f32adc54304a2654627558c59a.tar.bz2
+      sha256: cee6ae0628e2176dda590e26e1778443efad245a27543052f43ec1b5b96cf09a
+
+- name: ffmpeg
+  config-opts:
+    - --enable-rpath
+    - --enable-gpl
+    - --disable-static
+    - --enable-shared
+    - --disable-doc
+    - --disable-programs
+    - --enable-libopus
+    - --enable-libvpx
+    - --enable-libx264
+  cleanup: [/share]
+  sources:
+    - type: archive
+      url: https://www.ffmpeg.org/releases/ffmpeg-4.2.2.tar.xz
+      sha256: cb754255ab0ee2ea5f66f8850e1bd6ad5cac1cd855d0a2f4990fb8c668b0d29c
+
+- name: gperftools
+  post-install:
+    - mkdir /app/gperftools_root
+    - cp -r * /app/gperftools_root
+  cleanup: [/gperftools_root]
+  sources:
+    - type: archive
+      url: https://github.com/gperftools/gperftools/releases/download/gperftools-2.7/gperftools-2.7.tar.gz
+      sha256: 1ee8c8699a0eff6b6a203e59b43330536b22bbcbe6448f54c7091e5efb0763c9
+    - type: patch
+      path: gperftools-enve-mod.patch
+
+- shared-modules/python2.7/python-2.7.json
+
+- name: gn
+  buildsystem: simple
+  build-commands:
+    - python2 build/gen.py
+    - ninja -C out
+    - install -D out/gn -t /app/bin
+  cleanup: ["*"]
+  sources:
+    - type: git
+      disable-shallow-clone: true
+      url: https://gn.googlesource.com/gn
+      commit: 4cd7fe1509f6e8b7a60430c6c19f2f03159d7889
+
+- name: skia
+  buildsystem: simple
+  build-commands:
+    - gn gen out/Release --args='is_official_build=true
+                                 is_debug=false
+                                 is_component_build=false
+                                 target_os="linux"
+                                 target_cpu="x64"
+                                 skia_use_dng_sdk=false
+                                 skia_use_system_libjpeg_turbo=false
+                                 skia_use_libwebp_decode=false
+                                 skia_use_libwebp_encode=false
+                                 skia_use_zlib=true'
+    - ninja -C out/Release skia
+    - mkdir /app/skia_root
+    - cp -r * /app/skia_root
+  cleanup: ["*"]
+  sources:
+    - type: git
+      dest: third_party/externals/sfntly
+      url: https://github.com/googlefonts/sfntly.git
+      commit: 1e7adf313bd9c488a70015f8df8782f7c65e9ce7
+    - type: archive
+      dest: third_party/externals/libjpeg-turbo
+      url: https://downloads.sourceforge.net/project/libjpeg-turbo/2.0.4/libjpeg-turbo-2.0.4.tar.gz
+      sha256: 33dd8547efd5543639e890efbf2ef52d5a21df81faf41bb940657af916a23406
+    - type: git
+      url: https://github.com/google/skia.git
+      commit: 76f4fff613b5ba4365d24dbd943a8ed47221f1e9
+
+- name: enve
+  buildsystem: simple
+  build-options:
+    env:
+      QMAKEPATH: /app/lib
+  build-commands:
+    - mkdir _build && cd _build &&
+      qmake -r .. CONFIG+=release
+                  CONFIG+=force_debug_info
+                  INCLUDEPATH+=/app/include/QtWebEngineWidgets
+                  INCLUDEPATH+=/app/skia_root
+                  INCLUDEPATH+=/app/gperftools_root/src
+                  LIBS+=-L/app/lib
+                  LIBS+=-L/app/skia_root/out/Release
+                  LIBS+=-L/app/gperftools_root &&
+      sed -e 's|/usr/lib/x86_64-linux-gnu/libQt5WebEngine|/app/lib/x86_64-linux-gnu/libQt5WebEngine|g'
+          -i src/app/Makefile &&
+      make -j $FLATPAK_BUILDER_N_JOBS &&
+      cp -v src/app/enve /app/bin &&
+      cp -v src/core/libenvecore.so.1 /app/lib
+    - install -Dm644 build/AppDir/usr/share/icons/hicolor/48x48/enve.png -t /app/share/icons/hicolor/48x48/apps
+    - install -Dm644 build/AppDir/usr/share/icons/hicolor/256x256/enve.png -t /app/share/icons/hicolor/256x256/apps
+    - install -Dm644 build/AppDir/usr/share/icons/hicolor/scalable/enve.svg -t /app/share/icons/hicolor/scalable/apps
+    - install -Dm644 build/AppDir/usr/share/applications/enve.desktop -t /app/share/applications
+    - install -Dm644 io.github.maurycyliebner.enve.metainfo.xml -t /app/share/metainfo
+  sources:
+    - type: file
+      path: io.github.maurycyliebner.enve.metainfo.xml
+    - type: git
+      # https://github.com/flatpak/flatpak-builder/issues/337
+      # disable-submodules: true
+      url: https://github.com/MaurycyLiebner/enve.git
