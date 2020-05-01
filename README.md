@@ -29,6 +29,7 @@ Add the extension points for plugins. Below is an example for LV2 plugins:
 "add-extensions": {
   "org.freedesktop.LinuxAudio.Lv2Plugins": {
     "directory": "extensions/Lv2Plugins",
+    "version": "19.08",
     "add-ld-path": "lib",
     "merge-dirs": "lv2",
     "subdirectories": true,
@@ -90,8 +91,8 @@ VST3: `org.freedesktop.LinuxAudio.Vst3Plugins`
 Versions
 --------
 
-Versions have to match.
-
-| Base    | Freedesktop SDK |
-+---------+-----------------+
-| 19.08   | 19.08           |
+The `version` specified for the extension point of the application has
+to match the underlying freedesktop SDK it uses and plugins are built
+using the `branch` with the same name. This allow ensuring the
+extensions are tied to the runtime and allow transitioning to a new
+runtime.
