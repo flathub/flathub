@@ -1,0 +1,37 @@
+From 2b3ee086bc8c35a01a3efddbb32708171e32d6bb Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@gmail.com>
+Date: Sun, 12 Apr 2020 08:09:16 +0100
+Subject: [PATCH] Avoid zero-length variable array in
+ EffectProcessor::process()
+
+If there are no inputs/outputs because no plugins have been
+instantiated, then we can safely skip effect plugin audio processing.
+Do that to avoid undefined behavior with zero-length variable length
+arrays.  This fixes stack corruption in Linux release builds (thanks to
+address sanitizer for detection the issue!).
+
+Signed-off-by: Stefan Hajnoczi <stefanha@gmail.com>
+---
+ qtclient/EffectProcessor.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/qtclient/EffectProcessor.cpp b/qtclient/EffectProcessor.cpp
+index 7fcf859..d3a5ebb 100644
+--- a/qtclient/EffectProcessor.cpp
++++ b/qtclient/EffectProcessor.cpp
+@@ -244,6 +244,12 @@ void EffectProcessor::fillVstEvents()
+
+ void EffectProcessor::process(float *buf, int ns)
+ {
++  // Skip if no processing is necessary.  The variable-length array below
++  // requires a non-zero length.
++  if (maxInputsOutputs == 0) {
++    return;
++  }
++
+   QMutexLocker locker(&pluginsLock);
+   int tempo = client->GetActualBPM();
+
+-- 
+2.25.3
+
