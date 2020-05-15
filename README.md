@@ -1,4 +1,4 @@
-# org.srb.SRB2Kart: Flatpak support
+# org.srb2.SRB2Kart: Flatpak support
 
 This a Flatpak manifest for the racing game Sonic Robo Blast 2 Kart.
 
