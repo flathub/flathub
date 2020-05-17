@@ -13,6 +13,7 @@ finish-args:
   - --share=network
   - --allow=multiarch
   - --allow=devel
+  - --env=WINEDLLPATH=/app/lib32/wine/dxvk:/app/lib/wine/dxvk
   - --env=WINEPREFIX=/var/data/wine
 command: wine
 rename-desktop-file: wine.desktop
@@ -88,6 +89,8 @@ modules:
             - --enable-win64
             - --with-mingw=ccache x86_64-w64-mingw32-gcc
           libdir: /app/lib
+      env:
+        LIBDIR: lib
     config-opts: &wine-config-opts
       - --disable-win16
       - --disable-tests
@@ -102,6 +105,17 @@ modules:
       - INSTALL_PROGRAM_FLAGS=-s
     post-install:
       - mkdir -p ${FLATPAK_DEST}/share/wine/{gecko,mono}
+      - &wine-post-install |
+        set -e
+        mkdir -p /app/$LIBDIR/wine/wined3d
+        for lib in dxgi d3d9 d3d10 d3d10core d3d10_1 d3d11; do
+          for ext in dll dll.so; do
+            lib_file=/app/$LIBDIR/wine/$lib.$ext
+            if [ -f $lib_file ]; then
+              mv -v $lib_file /app/$LIBDIR/wine/wined3d/
+            fi
+          done
+        done
     sources: &wine-sources
       - type: archive
         url: "https://dl.winehq.org/wine/source/5.x/wine-5.8.tar.xz"
@@ -125,13 +139,80 @@ modules:
       config-opts:
         - --bindir=${FLATPAK_DEST}/bin32
         - --with-mingw=ccache i686-w64-mingw32-gcc
+      env:
+        LIBDIR: lib32
     config-opts: *wine-config-opts
     make-install-args: *wine-make-install-args
     post-install:
       - mv ${FLATPAK_DEST}/bin32/wine{,-preloader} ${FLATPAK_DEST}/bin/
+      - *wine-post-install
     sources: *wine-sources
     cleanup:
       - /bin32
+
+  # DXVK
+
+  - name: dxvk
+    buildsystem: meson
+    build-options:
+      config-opts:
+        - --cross-file=../build-win64.txt
+        - --cross-file=../dxvk-ccache-win64.txt
+        - --libdir=lib/wine/dxvk
+        - --bindir=lib/wine/dxvk
+      env:
+        LIBDIR: lib
+    config-opts: &dxvk-config-opts
+      - --buildtype=release
+      - --strip
+      - -Denable_tests=false
+      - -Denable_dxgi=true
+      - -Denable_d3d9=true
+      - -Denable_d3d10=true
+      - -Denable_d3d11=true
+    post-install: &dxvk-post-install
+      - |
+        set -e
+        for lib in dxgi d3d9 d3d10 d3d10core d3d10_1 d3d11; do
+          winebuild --builtin /app/$LIBDIR/wine/dxvk/$lib.dll
+        done
+    sources: &dxvk-sources
+      - type: archive
+        url: "https://github.com/doitsujin/dxvk/archive/v1.7.tar.gz"
+        sha256: 94bec3219d35dbbcd03886d49cfbca8dfe8ef596931e7070a85ce394e6a88c3c
+      - type: file
+        path: dxvk-ccache-win32.txt
+      - type: file
+        path: dxvk-ccache-win64.txt
+    modules:
+
+      - name: glslang
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_SHARED_LIBS=ON
+          - -DCMAKE_SKIP_BUILD_RPATH=OFF
+          - -DCMAKE_INSTALL_RPATH=$ORIGIN:$ORIGIN/../lib
+          - -DENABLE_OPT=ON
+        sources:
+          - type: archive
+            url: "https://github.com/KhronosGroup/glslang/archive/8.13.3559.tar.gz"
+            sha256: c58fdcf7e00943ba10f9ae565b2725ec9d5be7dab7c8e82cac72fcaa83c652ca
+
+  - name: dxvk-32bit
+    buildsystem: meson
+    build-options:
+      prepend-path: /app/bin32
+      config-opts:
+        - --cross-file=../build-win32.txt
+        - --cross-file=../dxvk-ccache-win32.txt
+        - --libdir=lib32/wine/dxvk
+        - --bindir=lib32/wine/dxvk
+      env:
+        LIBDIR: lib32
+    config-opts: *dxvk-config-opts
+    post-install: *dxvk-post-install
+    sources: *dxvk-sources
 
   # Utils
 
