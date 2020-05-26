@@ -1,0 +1,1 @@
+## A system/status icon tray is required for this package to function correctly. 
