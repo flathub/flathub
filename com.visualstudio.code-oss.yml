@@ -1,0 +1,107 @@
+id: com.visualstudio.code-oss
+sdk: org.freedesktop.Sdk
+runtime: org.freedesktop.Sdk
+runtime-version: "19.08"
+base: org.electronjs.Electron2.BaseApp
+base-version: "19.08"
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --allow=devel
+  - --share=network
+command: /app/main/bin/code-oss
+#rename-desktop-file: code.desktop
+#rename-appdata-file: code.appdata.xml
+#rename-icon: code
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node10
+build-options:
+  append-path: /usr/lib/sdk/node10/bin
+modules:
+
+  - shared-modules/libsecret/libsecret.json
+
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/yarn/
+      - cp -a * /app/share/yarn/
+      - ln -s /app/share/yarn/bin/yarn /app/bin/yarn
+      - ln -s /app/share/yarn/bin/yarnpkg /app/bin/yarnpkg
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: "https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-v1.22.4.tar.gz"
+        sha256: bc5316aa110b2f564a71a3d6e235be55b98714660870c5b6b2d2d3f12587fb58
+
+  - name: vscode
+    build-options:
+      env:
+        TMPDIR: /run/build/vscode/flatpak-node/tmp
+        XDG_CACHE_HOME: /run/build/vscode/cache
+        ELECTRON_CACHE: /run/build/vscode/flatpak-node/electron-cache
+        electron_config_cache: /run/build/vscode/flatpak-node/electron-cache
+        npm_config_nodedir: /run/build/vscode/flatpak-node/node-gyp/electron-current
+        DEBUG: electron-rebuild,electron-builder
+        JOBS: max
+        VSCODE_QUALITY: stable
+      arch:
+        arm: { env: { earch: armv7l, suffix: "-armv7l" } }
+        aarch64: { env: { earch: arm64, suffix: "-arm64" } }
+        i386: { env: { earch: ia32, suffix: "-ia32" } }
+        x86_64: { env: { earch: x64, suffix: "" } }
+    buildsystem: simple
+    build-commands:
+      # Prepare
+      - |
+        set -e
+        mv product.json product.orig.json
+        jq "
+          .quality=\"${VSCODE_QUALITY}\" |
+          .commit=\"$(git rev-parse HEAD)\" |
+          .date=\"$(date -u +'%FT%TZ')\" |
+          .builtInExtensions=[]
+        " < product.orig.json > product.json
+        rm product.orig.json
+      # Build
+      - yarn --frozen-lockfile
+      - yarn run gulp vscode-linux-$earch-min
+      # Install
+      - cp -a ../VSCode-linux-$earch /app/main
+    subdir: main
+    sources:
+      - type: git
+        url: "https://github.com/microsoft/vscode.git"
+        tag: "1.45.1"
+        dest: main
+
+      - type: file
+        path: yarnrc
+        dest-filename: .yarnrc
+
+      - generated-sources.json
+
+      - type: archive
+        strip-components: 0
+        url: https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/764964/chrome-linux.zip
+        sha256: 1429c53ee19c61ca6a64dc46e4484b1c3a90935552335d81f1eaa9f3a711afec
+        dest: cache/ms-playwright/chromium-764964
+
+      - type: archive
+        strip-components: 0
+        url: https://playwright.azureedge.net/builds/firefox/1089/firefox-linux.zip
+        sha256: 542c85852fd16904e09fb3a33aedd12c00b1deaa6c9190d71ef670102ef1409d
+        dest: cache/ms-playwright/firefox-1089
+
+      - type: archive
+        strip-components: 0
+        url: https://playwright.azureedge.net/builds/webkit/1219/minibrowser-gtk-wpe.zip
+        sha256: ab73ee500a9b2c400f12f697e00260770ece4d38777dd18c42881859659081d0
+        dest: cache/ms-playwright/webkit-1219
+
+      - type: shell
+        commands:
+          - mkdir -p flatpak-node/tmp/gulp-electron-cache/atom
+          - ln -sr flatpak-node/electron-cache flatpak-node/tmp/gulp-electron-cache/atom/electron
