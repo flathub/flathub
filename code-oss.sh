@@ -64,5 +64,25 @@ for i in "${SDK[@]}"; do
   fi
 done
 
+msg "Setting up Node.js packages"
+export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npmrc"
+if [ ! -f "$NPM_CONFIG_USERCONFIG" ]; then
+cat <<EOF_NPM_CONFIG > "$NPM_CONFIG_USERCONFIG"
+prefix=\${XDG_DATA_HOME}/node
+init-module=\${XDG_CONFIG_HOME}/npm-init.js
+tmp=\${XDG_CACHE_HOME}/tmp
+EOF_NPM_CONFIG
+fi
+export PATH="$PATH:$XDG_DATA_HOME/node/bin"
+
+msg "Setting up Cargo packages"
+export CARGO_INSTALL_ROOT="$XDG_DATA_HOME/cargo"
+export CARGO_HOME="$CARGO_INSTALL_ROOT"
+export PATH="$PATH:$CARGO_INSTALL_ROOT/bin"
+
+msg "Setting up Python packages"
+export PYTHONUSERBASE="$XDG_DATA_HOME/python"
+export PATH="$PATH:$PYTHONUSERBASE/bin"
+
 export FLATPAK_VSCODE_ENV=1
 exec_vscode "$@"
