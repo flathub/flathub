@@ -46,7 +46,7 @@ gracefull_stop_service()
 	user_name=$1
 	home_path=`eval echo ~"$user_name"`
 	app_path="$home_path/.CloudStationBackup"
-	pid_file="$app_path/ui.pid"
+	pid_file="$app_path/daemon.pid"
 
 	if [ ! -f "$pid_file" ]; then
 		#not running
