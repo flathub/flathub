@@ -12,6 +12,7 @@ NAME_SHORT=$(get_field nameShort)
 NAME_LONG=$(get_field nameLong)
 EXEC=$NAME
 ICON=$NAME
+URLPROTOCOL=$(get_field urlProtocol)
 LICENSE=$(get_field licenseName)
 
 mkdir -p "${DATADIR}/applications"
@@ -21,6 +22,12 @@ sed \
   -e "s/@@EXEC@@/${EXEC}/g" \
   -e "s/@@ICON@@/${ICON}/g" \
   "${SRCDIR}/resources/linux/code.desktop" > "${DATADIR}/applications/${NAME}.desktop"
+sed \
+  -e "s/@@NAME_LONG@@/${NAME_LONG}/g" \
+  -e "s/@@EXEC@@/${EXEC}/g" \
+  -e "s/@@ICON@@/${ICON}/g" \
+  -e "s/@@URLPROTOCOL@@/${URLPROTOCOL}/g" \
+  "${SRCDIR}/resources/linux/code-url-handler.desktop" > "${DATADIR}/applications/${FLATPAK_ID}-url-handler.desktop"
 
 mkdir -p "${DATADIR}/appdata"
 sed \
