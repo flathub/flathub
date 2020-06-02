@@ -75,38 +75,3 @@ stop()
 {
 	gracefull_stop_service $USER
 }
-
-restart()
-{
-	stop
-	start
-}
-
-autostart()
-{
-	sleep 10
-	start
-}
-
-case $1 in
-	start)
-		start
-		exit $?
-	;;
-	autostart)
-		autostart
-		exit $?
-	;;
-	stop)
-		stop
-		exit $?
-	;;
-	restart)
-		restart
-		exit $?
-	;;
-	*)
-		start
-		exit $?
-	;;
-esac
