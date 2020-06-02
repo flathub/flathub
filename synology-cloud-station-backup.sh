@@ -59,16 +59,7 @@ gracefull_stop_service()
 
 start()
 {
-user_name=$1
-        home_path=`eval echo ~"$user_name"`
-        app_path="$home_path/.CloudStationBackup"
-        pid_file="$app_path/daemon.pid"
-
-        if [ ! -f "$pid_file" ]; then
-                # running
-        env "LD_LIBRARY_PATH=$LIB_PATH" "$BIN_PATH" &
-        return 0
-	fi
+	env "LD_LIBRARY_PATH=$LIB_PATH" "$BIN_PATH" &
 }
 
 stop()
