@@ -1,12 +1,13 @@
-name: Flatpak build
+name: Flatpak
 
 on: [push]
 
 env:
   FLATPAK_ID: com.valvesoftware.Steam.CompatibilityTool.Proton
-  FP_BUNDLE: Proton-${{ github.run_id }}.flatpak
+  IMAGE_NAME: proton
+  IMAGE_TAG: latest
+  FP_BUNDLE: proton-flatpak-oci-${{ github.run_id }}
   FP_BRANCH: stable
-  FP_BUILD_NAME: proton-flatpak
   FP_BUILD_DIR: build-dir
   FP_BUILD_REPO: build-repo
 
@@ -24,6 +25,11 @@ jobs:
         sudo apt update -y
         sudo apt install -y flatpak-builder
 
+    - name: Dump canonical manifest
+      run: |
+        set -e
+        flatpak-builder --show-manifest ${FLATPAK_ID}.yml > canonical-manifest.json
+
     - name: Download flatpak SDK and sources
       run: |
         set -e
@@ -31,26 +37,63 @@ jobs:
         flatpak-builder --install-deps-from=flathub --install-deps-only --user /dev/null ${FLATPAK_ID}.yml
         flatpak-builder --download-only /dev/null ${FLATPAK_ID}.yml
 
-    - name: Prime ccache
-      uses: actions/cache@v1
+    - name: Prime cache
+      uses: actions/cache@v2
       with:
-        path: .flatpak-builder/ccache
-        key: flatpak-builder-ccache
+        path: |
+          .flatpak-builder/ccache
+        key: flatpak-builder-${{ hashFiles('canonical-manifest.json') }}
+        restore-keys: |
+          flatpak-builder-
 
     - name: Build flatpak
       run: |
         set -e
         flatpak-builder --disable-updates --disable-download --ccache --sandbox ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
 
-    - name: Create flatpak bundle
+    - name: Create OCI bundle
       run: |
         set -e
         ostree --repo=${FP_BUILD_REPO} init --mode=bare-user
         flatpak-builder --export-only --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
-        flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo --runtime ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
+        flatpak build-bundle \
+          --oci \
+          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+          --runtime \
+          ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
 
     - name: Upload bundle
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ env.FP_BUILD_NAME }}-bundle-${{ github.run_id }}
+        name: ${{ env.FP_BUNDLE }}
         path: ${{ env.FP_BUNDLE }}
+
+  publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install libcontainers tools
+      run: |
+        set -e
+        . /etc/os-release
+        sudo sh -c "echo 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
+        curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+        sudo apt update -y
+        sudo apt install -y skopeo
+    
+    - name: Download bundle
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ env.FP_BUNDLE }}
+
+    - name: Publish OCI image
+      run: |
+        set -e
+        skopeo copy \
+          --dest-creds ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} \
+          oci:${FP_BUNDLE} \
+          docker://docker.pkg.github.com/$GITHUB_REPOSITORY/$IMAGE_NAME:$IMAGE_TAG
