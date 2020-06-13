@@ -14,9 +14,10 @@ def inspect(image_spec: str):
 def make_index(registry: str, images: list):
     index = {'Registry': registry, 'Results': []}
     for img_spec in images:
+        img_name = img_spec.split(':', 1)[0]
         image_url = urllib.parse.urlparse(urllib.parse.urljoin(registry, img_spec))
         index['Results'].append({
-            'Name': img_spec,
+            'Name': img_name,
             'Images': [
                 inspect(image_url._replace(scheme='docker').geturl())
             ]
