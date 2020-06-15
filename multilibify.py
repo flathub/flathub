@@ -102,14 +102,28 @@ def multilibify(holder_object, holder_file, base_dir=None, add=None, props=None)
     holder_object["modules"] = modules
     return holder_object
 
+def uncleanup(holder_object, uncleanup_regexps=None):
+    if uncleanup_regexps is None:
+        uncleanup_regexps = [re.compile(r) for r in UNCLEANUP_PATTERNS]
+    if "cleanup" in holder_object:
+        new_cleanup = []
+        for p in holder_object["cleanup"]:
+            if not any(r.match(p) for r in uncleanup_regexps):
+                new_cleanup.append(p)
+        holder_object["cleanup"] = new_cleanup
+    if "modules" in holder_object:
+        for module in holder_object["modules"]:
+            uncleanup(module, uncleanup_regexps)
+    return holder_object
+
 def main():
     parser = argparse.ArgumentParser("Make flatpak-builder modules multilib")
     parser.add_argument("source_manifest")
     parser.add_argument("target_manifest")
     args = parser.parse_args()
     holder_object = load_dict_file(args.source_manifest)
-    generated_manifest = multilibify(holder_object, args.source_manifest)
-    save_dict_file(generated_manifest, args.target_manifest)
+    multilibify(holder_object, args.source_manifest)
+    save_dict_file(holder_object, args.target_manifest)
 
 if __name__ == "__main__":
     main()
