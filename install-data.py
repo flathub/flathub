@@ -9,13 +9,13 @@ from xml.dom import minidom
 FLATPAK_ID = os.environ.get('FLATPAK_ID')
 
 EXTRA_DESCRIPTION = [
-"""This is the Open Source build of Visual Studio Code, packaged into a Flatpak. Some features are
-different from the proprietary version: There is no telemetry nor Twitter integration, and the
-logo is a different one without copyright issue. This OSS repackaging, as well as the proprietary
-repackaging in Flathub, are not supported by Microsoft.""",
-"""This OSS build is created due to the proprietarily licensed official binary. For more information,
-see https://github.com/flathub/com.visualstudio.code.oss/issues/6#issuecomment-380152999."""
+"""This open source build of Visual Studio Code is not supported by Microsoft.
+Issues should be reported through linked bug tracker."""
 ]
+
+EXTRA_URLS = {
+    'bugtracker': f'https://github.com/flathub/{FLATPAK_ID}/issues'
+}
 
 OARS_DATA = {
     'social-chat': 'intense',
@@ -65,6 +65,12 @@ def update_appdata(srcdir, appdata_path):
     release.setAttribute('date', date)
     releases.appendChild(release)
     component.appendChild(releases)
+
+    for url_type, url_href in EXTRA_URLS.items():
+        url = appdata.createElement('url')
+        url.setAttribute('type', url_type)
+        url.appendChild(appdata.createTextNode(url_href))
+        component.appendChild(url)
 
     content_rating = appdata.createElement('content_rating')
     content_rating.setAttribute('type', 'oars-1.1')
