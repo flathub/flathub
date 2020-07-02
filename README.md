@@ -5,10 +5,10 @@ I am not sure if I am supposed to use this app ID - I am not affiliated whith fr
 I am not very familiar with practices and conventions when it comes to building Flatpaks - that's the first I have ever built.
 
 # Why
-Recently I've got interested in music production, and started playing around with lmms and Ardour. Versions of both application shipped by my distribution of choice (Fedora) are outdated. So I've installed those from Flathub. Then I realised that I cannot use any plugins installed via OS packages. Also, while lmms bundles ZynAddSubfx - it's some ancient release with a truly horible UI.
+Recently I've got interested in music production, and started playing around with lmms and Ardour. Versions of both application shipped by my distribution of choice (Fedora) are outdated (and ZynAddSubFx with Fusion UI is not available at all). So I've installed those from Flathub. Then I realised that I cannot use any plugins installed via OS packages. Also, while lmms bundles ZynAddSubfx - it's some ancient release with a truly horible UI.
 Reading around a bit I found Linux Audio plugins in github, and realised that plugins too can be installed as Flatpaks. There's a decent collection of plugins available this way, however Zyn in missing. I've built Zyn-Fusion from source and decided to try to build a Flatpak.
 
-I firmly believe that technologies like Flatpak is the future of software distribution in Linux as it finally makes Linux somewhat civilised OS. User should be able to install latest and greatest software on the distribution of choice withoug going into two nights long hacking session, user should be able to have multiple versions of software without some horrible hacks, etc. I did spend couple of nights creating this working flatpak manifest, so you don't have to.
+I firmly believe that technologies like Flatpak are the future of software distribution in Linux as it finally makes Linux somewhat civilised OS. User should be able to install latest and greatest software on the distribution of choice withoug going into a week-long hacking session, user should be able to have multiple versions of software without some horrible hacks, etc. I did spend couple of nights creating this working flatpak manifest, so you don't have to.
 
 Next I intend to write a Flatpak manifest for the Calf Studio Gear Plugins.
 
