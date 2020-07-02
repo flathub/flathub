@@ -24,13 +24,13 @@ flatpak install org.freedesktop.LinuxAudio.BaseExtension//19.08
 
 * build the Flatpak:
 
-```flatpak-builder zyn-build --repo=zyn-fusion org.freedesktop.LinuxAudio.Lv2Plugins.ZynFusion.json```
+```flatpak-builder zyn-build --repo=zyn-fusion org.freedesktop.LinuxAudio.Plugins.ZynFusion.json```
 
 Repo and build directory here can be changed to whatever. All of the build is happening in the sandbox, nothing in your system is affected by it. You do not need and MUST not use sudo or any other priviledge escalation mechanism.
 
 * If you'd like to have a bundle (single Flatpak file), run:
 
-```flatpak build-bundle --runtime ./zyn-fusion/ zyn-fusion.flatpak org.freedesktop.LinuxAudio.Lv2Plugins.ZynFusion 19.08```
+```flatpak build-bundle --runtime ./zyn-fusion/ zyn-fusion.flatpak org.freedesktop.LinuxAudio.Plugins.ZynFusion 19.08```
 
 Here zyn-fusion should be whatever you used as a --repo flag for building. Name of the .flatpak file can be whatever.
 
