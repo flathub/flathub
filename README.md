@@ -15,9 +15,12 @@ Next I intend to write a Flatpak manifest for the Calf Studio Gear Plugins.
 # How
 * Obtain flatpak-builder - should be available in any modern distribution
 * Clone the repo
-* Install org.freedesktop.Sdk (branch 19.08) :
+* Install org.freedesktop.Sdk (branch 19.08) and org.freedesktop.LinuxAudio.BaseExtension :
 
-```flatpak install org.freedesktop.Sdk//19.08```
+```
+flatpak install org.freedesktop.Sdk//19.08
+flatpak install org.freedesktop.LinuxAudio.BaseExtension//19.08
+```
 
 * build the Flatpak:
 
