@@ -8,7 +8,7 @@ run_stamp="$XDG_DATA_HOME/flatpak-chrome-run-stamp"
 mimic_stamp="$XDG_DATA_HOME/flatpak-chrome-mimic-stamp"
 
 if [[ ! -f "$run_stamp" ]]; then
-  set /app/share/flatpak-chrome/first_run.html "$@"
+  set /app/share/flatpak-chrome/first_run.html chrome://welcome "$@"
   touch "$run_stamp"
 fi
 
