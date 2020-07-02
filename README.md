@@ -46,7 +46,7 @@ It ain't pretty. It has to build Python 2.7 because it is needed by Zest's build
 
 Couple dependencies are bundled (libmxml and Zest), probbably could be split into shared modules if any other stuff needs those.
 
-ZynAddSubFx standalone and VST plugins are also being build in the process, removed in the clean up stage.
+ZynAddSubFx standalone and VST plugins are also being built in the process, removed in the clean up stage.
 
 # Not Ideal
 
