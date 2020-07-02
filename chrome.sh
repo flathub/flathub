@@ -18,4 +18,12 @@ if [[ ! -f "$mimic_stamp" ]] && ! zypak-helper spawn-strategy-test; then
   touch "$mimic_stamp"
 fi
 
+if [[ -f "$XDG_CONFIG_HOME/chrome-flags.conf" ]]; then
+  IFS=$'\n'
+  flags=($(grep -v '^#' "$XDG_CONFIG_HOME/chrome-flags.conf"))
+  unset IFS
+
+  set -- "${flags[@]}" "$@"
+fi
+
 exec zypak-wrapper.sh /app/extra/chrome "$@"
