@@ -24,21 +24,29 @@ flatpak install org.freedesktop.LinuxAudio.BaseExtension//19.08
 
 * build the Flatpak:
 
-```flatpak-builder zyn-build --repo=zyn-fusion org.freedesktop.LinuxAudio.Plugins.ZynFusion.json```
+```
+flatpak-builder zyn-build --repo=zyn-fusion org.freedesktop.LinuxAudio.Plugins.ZynFusion.json
+```
 
 Repo and build directory here can be changed to whatever. All of the build is happening in the sandbox, nothing in your system is affected by it. You do not need and MUST not use sudo or any other priviledge escalation mechanism.
 
 * If you'd like to have a bundle (single Flatpak file), run:
 
-```flatpak build-bundle --runtime ./zyn-fusion/ zyn-fusion.flatpak org.freedesktop.LinuxAudio.Plugins.ZynFusion 19.08```
+```
+flatpak build-bundle --runtime ./zyn-fusion/ zyn-fusion.flatpak org.freedesktop.LinuxAudio.Plugins.ZynFusion 19.08
+```
 
 Here zyn-fusion should be whatever you used as a --repo flag for building. Name of the .flatpak file can be whatever.
 
 * Bundle can then be installed on any Linux computer like:
 
-```flatpak install zyn-fusion.flatpak```
+```
+flatpak install zyn-fusion.flatpak
+```
 
 Obviously - file name/path has to be correct.
+
+NOTE: As base extention moved from separate plugin types to unified, existing application installations may still have old plugin paths stored in configs. Going into application settings and restoring paths to defaults usualy fixes the problem.
 
 # Technical Stuff
 
@@ -46,7 +54,7 @@ It ain't pretty. It has to build Python 2.7 because it is needed by Zest's build
 
 Couple dependencies are bundled (libmxml and Zest), probbably could be split into shared modules if any other stuff needs those.
 
-ZynAddSubFx standalone and VST plugins are also being built in the process, removed in the clean up stage.
+ZynAddSubFx standalone is also being built in the process, removed in the clean up stage.
 
 # Not Ideal
 
