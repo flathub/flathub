@@ -46,7 +46,9 @@ flatpak install zyn-fusion.flatpak
 
 Obviously - file name/path has to be correct.
 
-NOTE: As base extention moved from separate plugin types to unified, existing application installations may still have old plugin paths stored in configs. Going into application settings and restoring paths to defaults usualy fixes the problem.
+**NOTE**: As base extention moved from separate plugin types to unified, existing application installations may still have old plugin paths stored in configs. Going into application settings and restoring paths to defaults usualy fixes the problem.
+
+**NOTE**: If banks are not showing up in the browser window, probably there is or was another: non-flatpak zynaddsubfx installation which creates ~/.zynaddsubfxXML.cfg and ~/.zynaddsubfx-bank-cache.xml files and it causes clashes. 
 
 # Technical Stuff
 
