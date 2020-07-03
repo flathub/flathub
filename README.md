@@ -1,5 +1,5 @@
 # Zyn-Fusion Flatpak
-This allows to build the amazing ZynAddSubFx software synthesizer (https://github.com/zynaddsubfx/zynaddsubfx) with Zyn-Fusion user interface as Lv2 plugin installable as a Flatpak. The Plugin can then be used in Flatpak builds of Ardour, LMMS (via Carla rack, in this case) and probably other Lv2 hosts. Those are available via Flathub. Seems to be working.
+This allows to build the amazing ZynAddSubFx software synthesizer (https://github.com/zynaddsubfx/zynaddsubfx) with Zyn-Fusion user interface as Lv2/VST plugins installable via the Flatpak. The Plugin can then be used in Flatpak builds of Ardour, LMMS (via Carla rack, in this case) and probably other Lv2 hosts. Those are available on the Flathub. Seems to be working.
 
 I am not sure if I am supposed to use this app ID - I am not affiliated whith freedesktop.org or Linux Audio Projects in any way. However, this is building using https://github.com/flathub/org.freedesktop.LinuxAudio.BaseExtension and in turn depends on org.freedesktop.Platform runtime.
 I am not very familiar with practices and conventions when it comes to building Flatpaks - that's the first I have ever built.
