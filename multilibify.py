@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import re
 import argparse
 import yaml
 
@@ -16,6 +17,15 @@ VARIANTS = {
         "name-suffix": "-32bit"
     }
 }
+
+UNCLEANUP_PATTERNS = [
+    r"^/include",
+    r"^/lib/.+/include",
+    r"^/lib/pkgconfig",
+    r"^/share/pkgconfig",
+    r"^/share/aclocal",
+    r"^/lib/cmake"
+]
 
 def load_dict_file(dict_file):
     with open(dict_file, "r") as f:
