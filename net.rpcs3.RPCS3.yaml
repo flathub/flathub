@@ -1,0 +1,159 @@
+id: "net.rpcs3.RPCS3"
+runtime: "org.kde.Platform"
+runtime-version: "5.14"
+sdk: "org.kde.Sdk"
+command: "rpcs3"
+rename-desktop-file: "rpcs3.desktop"
+rename-appdata-file: "rpcs3.appdata.xml"
+rename-icon: "rpcs3"
+finish-args:
+  - "--share=ipc"
+  - "--socket=wayland"
+  - "--socket=fallback-x11"
+  - "--socket=pulseaudio"
+  - "--share=network"
+  - "--device=all"
+  - "--filesystem=host:ro"
+  - "--talk-name=org.a11y.Bus"
+modules:
+  - "shared-modules/glu/glu-9.json"
+  - "shared-modules/glew/glew.json"
+
+  - name: "lynx"
+    config-opts:
+      - "--disable-addrlist-page"
+      - "--disable-alt-bindings"
+      - "--disable-bibp-urls"
+      - "--disable-config-info"
+      - "--disable-dired"
+      - "--disable-file-upload"
+      - "--disable-finger"
+      - "--disable-forms-options"
+      - "--disable-ftp"
+      - "--disable-gopher"
+      - "--disable-idna"
+      - "--disable-locale-charset"
+      - "--disable-long-list"
+      - "--disable-menu-options"
+      - "--disable-news"
+      - "--disable-parent-dir-refs"
+      - "--disable-partial"
+      - "--disable-persistent-cookies"
+      - "--disable-prettysrc"
+      - "--disable-progressbar"
+      - "--disable-read-eta"
+      - "--disable-rpath-hack"
+      - "--disable-scrollbar"
+      - "--disable-session-cache"
+      - "--disable-sessions"
+      - "--disable-source-cache"
+      - "--disable-trace"
+    cleanup:
+      - "*"
+    sources:
+      - type: "archive"
+        url: "https://invisible-mirror.net/archives/lynx/tarballs/lynx2.8.9rel.1.tar.bz2"
+        sha256: "387f193d7792f9cfada14c60b0e5c0bff18f227d9257a39483e14fa1aaf79595"
+
+  - name: "xmlto"
+    cleanup:
+      - "*"
+    sources:
+      - type: "archive"
+        url: "https://releases.pagure.org/xmlto/xmlto-0.0.28.tar.bz2"
+        sha256: "1130df3a7957eb9f6f0d29e4aa1c75732a7dfb6d639be013859b5c7ec5421276"
+
+  - name: "xdg-utils"
+    config-opts:
+      - "--prefix=/app"
+    cleanup:
+      - "/bin/xdg-desktop-menu"
+      - "/bin/xdg-desktop-icon"
+      - "/bin/xdg-icon-resource"
+      - "/bin/xdg-open"
+      - "/bin/xdg-email"
+      - "/bin/xdg-screensaver"
+      - "/bin/xdg-settings"
+      - "/share"
+    sources:
+      - type: "git"
+        url: "https://gitlab.freedesktop.org/xdg/xdg-utils.git"
+        tag: "v1.1.3"
+        commit: "159fc37075db2decf446f453fe1a796da6921aad"
+
+  - name: "libevdev"
+    buildsystem: "meson"
+    config-opts:
+      - "-Dtests=disabled"
+      - "-Ddocumentation=disabled"
+    cleanup:
+      - "/bin"
+      - "/include"
+      - "/lib/pkgconfig"
+      - "/share"
+    sources:
+      - type: "git"
+        url: "https://gitlab.freedesktop.org/libevdev/libevdev.git"
+        tag: "libevdev-1.9.0"
+        commit: "468760ba11438734912f793b1de00cb0f243497f"
+
+  - name: "rpcs3-llvm"
+    buildsystem: "cmake-ninja"
+    builddir: true
+    build-options:
+      cxxflags: "-msse -msse2"
+      env:
+        CC: "clang"
+        CXX: "clang++"
+    config-opts:
+      - "-DCMAKE_BUILD_TYPE=Release"
+      - "-DBUILD_SHARED_LIBS=OFF"
+      - "-DLLVM_CCACHE_BUILD=ON"
+      - "-DLLVM_TARGETS_TO_BUILD='X86'"
+      - "-DLLVM_BUILD_RUNTIME=OFF"
+      - "-DLLVM_BUILD_TOOLS=OFF"
+      - "-DLLVM_INCLUDE_DOCS=OFF"
+      - "-DLLVM_INCLUDE_EXAMPLES=OFF"
+      - "-DLLVM_INCLUDE_TESTS=OFF"
+      - "-DLLVM_INCLUDE_TOOLS=OFF"
+      - "-DLLVM_INCLUDE_UTILS=OFF"
+      - "-DLLVM_USE_INTEL_JITEVENTS=ON"
+      - "-DLLVM_ENABLE_Z3_SOLVER=OFF"
+      - "-DCMAKE_CXX_STANDARD=20"
+    cleanup:
+      - "/bin"
+      - "/include"
+      - "/lib/cmake"
+    sources:
+      - type: "git"
+        url: "https://github.com/RPCS3/llvm-mirror.git"
+        commit: "bb9faf3c8b4e0de05d07cbe623a1bf45874b5174"
+
+  - name: "rpcs3"
+    buildsystem: "cmake-ninja"
+    build-options:
+      cflags: "-fuse-linker-plugin -fuse-ld=gold"
+      cxxflags: "-fuse-linker-plugin -fuse-ld=gold"
+    config-opts:
+      - "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+      - "-DBUILD_LLVM_SUBMODULE=OFF"
+      - "-DUSE_NATIVE_INSTRUCTIONS=OFF"
+      - "-DUSE_PRECOMPILED_HEADERS=OFF"
+      - "-DUSE_SYSTEM_FFMPEG=ON"
+      - "-DUSE_SYSTEM_LIBPNG=ON"
+      - "-DUSE_SYSTEM_ZLIB=ON"
+      - "-DUSE_SYSTEM_CURL=ON"
+    post-install:
+      - |
+        set -eux;
+
+        sed -i 's|<id>RPCS3</id>|<id>net.rpcs3.RPCS3</id>|' ${FLATPAK_DEST}/share/metainfo/rpcs3.appdata.xml;
+
+        COMM_TAG="$(grep 'version{.*}' rpcs3/rpcs3_version.cpp | awk -F[\{,] '{printf "%d.%d.%d", $2, $3, $4}')";
+        COMM_COUNT="$(git rev-list --count HEAD)";
+        COMM_HASH="$(git rev-parse --short=8 HEAD)";
+        sed -i 's|</component>|<content_rating type="oars-1.1"/><releases><release date="'$(date '+%Y-%m-%d')'" version="'"${COMM_TAG}"'-'"${COMM_COUNT}"'-'"${COMM_HASH}"'"/></releases></component>|' ${FLATPAK_DEST}/share/metainfo/rpcs3.appdata.xml;
+    sources:
+      - type: "git"
+        url: "https://github.com/RPCS3/rpcs3.git"
+        commit: "05dc6ad610a5bf763285d0d357aaf2c298fc043e"
