@@ -34,7 +34,7 @@ x-compat-i386-opts: &compat_i386_opts
 x-proton-source: &proton_source
   type: git
   url: "https://github.com/ValveSoftware/Proton.git"
-  tag: proton-5.0-9
+  tag: proton-5.0-10-rc2
 
 cleanup:
   - "*.a"
@@ -61,18 +61,6 @@ cleanup:
   - /lib32/wine/*.def
 modules:
 
-  - name: Vulkan-Headers
-    subdir: Vulkan-Headers
-    buildsystem: cmake-ninja
-    sources: 
-      - *proton_source
-
-  - name: SPIRV-Headers
-    subdir: SPIRV-Headers
-    buildsystem: cmake-ninja
-    sources: 
-      - *proton_source
-
   - name: wine-widl
     subdir: wine
     build-options:
@@ -85,24 +73,6 @@ modules:
     no-make-install: true
     build-commands:
       - install -Dm755 -t ${FLATPAK_DEST}/bin/ tools/widl/widl
-    sources:
-      - *proton_source
-
-  - name: vkd3d
-    subdir: vkd3d
-    config-opts: &vkd3d_config_opts
-      - --disable-tests
-    sources: 
-      - *proton_source
-
-  - name: vkd3d-32bit
-    subdir: vkd3d
-    only-arches:
-      - x86_64
-    build-options:
-      arch:
-        x86_64: *compat_i386_opts
-    config-opts: *vkd3d_config_opts
     sources:
       - *proton_source
 
@@ -150,6 +120,8 @@ modules:
       - --with-dbus
       - --without-hal
       - --without-oss
+      #FIXME remove once vkd3d is removed from Steam bundle
+      - --without-vkd3d
     make-install-args: &wine_common_make_install_args
       - LDCONFIG=/bin/true
       - UPDATE_DESKTOP_DATABASE=/bin/true
@@ -354,6 +326,45 @@ modules:
         sha256: 4ecce011b73dd7196a5114f66776d5a4c4c3674fc9bc6f39ad3c1ee15a8abbe1
     cleanup:
       - "*"
+
+
+  - name: vkd3d-proton
+    subdir: vkd3d-proton
+    buildsystem: meson
+    build-options:
+      config-opts:
+        - --cross-file=../build-win64.txt
+        - --cross-file=../meson-ccache-mingw64.txt
+        - --libdir=lib/wine/vkd3d-proton
+        - --bindir=lib/wine/vkd3d-proton
+    config-opts: &vkd3d-proton-config-opts
+      - --buildtype=release
+      - --strip
+      - -Denable_standalone_d3d12=true
+    post-install:
+      - cd ${FLATPAK_BUILDER_BUILDDIR}; git submodule status -- vkd3d-proton > ${FLATPAK_DEST}/lib/wine/vkd3d-proton/version
+    sources: &vkd3d-proton-sources
+      - *proton_source
+      - type: file
+        dest: vkd3d-proton
+        path: meson-ccache-mingw32.txt
+      - type: file
+        dest: vkd3d-proton
+        path: meson-ccache-mingw64.txt
+
+  - name: vkd3d-proton-32bit
+    subdir: vkd3d-proton
+    buildsystem: meson
+    build-options:
+      config-opts:
+        - --cross-file=../build-win32.txt
+        - --cross-file=../meson-ccache-mingw32.txt
+        - --libdir=lib32/wine/vkd3d-proton
+        - --bindir=lib32/wine/vkd3d-proton
+    config-opts: *vkd3d-proton-config-opts
+    post-install:
+      - cd ${FLATPAK_BUILDER_BUILDDIR}; git submodule status -- vkd3d-proton > ${FLATPAK_DEST}/lib32/wine/vkd3d-proton/version
+    sources: *vkd3d-proton-sources
 
 
   - name: dxvk
