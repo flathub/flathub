@@ -23,32 +23,10 @@ To enable HDR mode, switch the "HDR signals" value to "Enable". By default, HDR 
 ![HDR_settings](./images/HDR_settings.png)
 
 
-# Installation
-
-Supported operating system:
-  - Linux 64-bit
-
-
-```sh
-$ # This item is under development
-```
-
-
 # Licence
 
 GNU GPL v.3
 See [LICENSE.md](https://github.com/CineEncoder/CineEncoder/blob/master/LICENSE)
 
 
-# Donate
 
-If you wish to support this project, you can make a donation for $0.5 or more via PayPal. Your contributions will help keep the project alive and support future development.
-
-[![PayPal](./images/PayPal.png)](https://paypal.me/KozhukharenkoOleg?locale.x=ru_RU)
-
-##### Bitcoin
-You can send bitcoins at this address or by scanning the QR code below:
-
-![Bitcoin](./images/Bitcoin.png)
-
-1PqFt976YQTJ9Js3xym5GjtPDfsjq98kN8
