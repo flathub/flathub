@@ -16,10 +16,6 @@ Cine Encoder for Linux is an application that allows you to convert media files 
 ![View](./images/View.png)
 
 
-# HDR Settings
-
-To enable HDR mode, switch the "HDR signals" value to "Enable". By default, HDR mode is disabled.
-
 ![HDR_settings](./images/HDR_settings.png)
 
 
