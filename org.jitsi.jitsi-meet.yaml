@@ -1,0 +1,60 @@
+---
+app-id: org.jitsi.jitsi-meet
+base: org.electronjs.Electron2.BaseApp
+base-version: '19.08'
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+command: jitsi-meet-run
+separate-locales: false
+tags: []
+finish-args:
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=x11
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: jitsi-meet
+    buildsystem: simple
+    build-commands:
+      - unappimage jitsi-meet-x86_64.AppImage
+      - rm jitsi-meet-x86_64.AppImage
+
+      - sed -e 's/Exec=.*/Exec=jitsi-meet-run/'
+            -e 's/Icon=.*/Icon=org.jitsi.jitsi-meet/'
+              squashfs-root/jitsi-meet.desktop > org.jitsi.jitsi-meet.desktop
+      - cp squashfs-root/jitsi-meet.png org.jitsi.jitsi-meet.png
+
+      - install -D jitsi-meet-run -t /app/bin
+      - install -Dm644 org.jitsi.jitsi-meet.appdata.xml -t /app/share/metainfo
+      - install -Dm644 org.jitsi.jitsi-meet.desktop -t /app/share/applications
+      - install -Dm644 org.jitsi.jitsi-meet.png -t /app/share/icons/hicolor/512x512/apps
+
+      - mv squashfs-root /app/bin/jitsi-meet
+    sources:
+      - type: script
+        dest-filename: jitsi-meet-run
+        commands:
+          - zypak-wrapper /app/bin/jitsi-meet/jitsi-meet "$@"
+      - type: file
+        path: org.jitsi.jitsi-meet.appdata.xml
+      - type: file
+        filename: jitsi-meet-x86_64.AppImage
+        url: https://github.com/jitsi/jitsi-meet-electron/releases/download/v2.3.1/jitsi-meet-x86_64.AppImage
+        sha256: fdb8b727b6eef7b8367ce0f7405073f6042c4cbd317bc5447c4a0f8e373dc829
+        size: 85745887
+      - type: shell
+        commands:
+          - sed -i '3i <releases><release version="2020-1.2" date="2020-04-22"/></releases>'
+            org.jitsi.jitsi-meet.appdata.xml
