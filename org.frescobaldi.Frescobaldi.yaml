@@ -1,158 +1,33 @@
 ---
 app-id: org.frescobaldi.Frescobaldi
 
-# Known Flatpak problems:
-# - Documentation browser is not working. See issue https://github.com/frescobaldi/frescobaldi/issues/919 (fixed in master).
-# - Clicking on the print button will crash the application. See issue https://github.com/frescobaldi/frescobaldi/issues/1221
+# TODO:
+# - QtWebEngine is not included in org.kde.Sdk, so Documentation
+# Browser is not working. Should I really use this?
+# https://github.com/flathub/io.qt.qtwebengine.BaseApp
+# - Cannot hear MIDI playback (handled by a user systemd service in the host).
+# - Check if MIDI input works.
 
 runtime: org.kde.Platform
-runtime-version: '5.13'
+runtime-version: '5.14'
 sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.texlive
 
 command: frescobaldi
-rename-desktop-file: frescobaldi.desktop
-rename-icon: frescobaldi
 
 finish-args:
+  - --filesystem=home
   - --share=ipc
   - --share=network
   - --device=all
   - --socket=pulseaudio
-  - --socket=wayland
   - --socket=x11
-  - --env=QT_QPA_PLATFORM=xcb
-  - --filesystem=host
+# See Wayland bugs:
+# https://github.com/frescobaldi/frescobaldi/issues?q=is%3Aissue+is%3Aopen+wayland+in%3Atitle
+#  - --socket=wayland
+#  - --env=QT_QPA_PLATFORM=xcb
 
 modules:
-# OpenJPEG is needed to build Poppler
-- name: openjpeg
-  buildsystem: cmake-ninja
-  config-opts:
-    - -DBUILD_CODEC=OFF
-  cleanup:
-  - /lib/openjpeg-2.3
-  sources:
-  - type: archive
-    url: https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz
-    sha256: 3dc787c1bb6023ba846c2a0d9b1f6e179f1cd255172bde9eb75b01f1e6c7d71a
-
-- name: poppler
-  buildsystem: cmake-ninja
-  config-opts:
-    - -DCMAKE_INSTALL_LIBDIR=/app/lib
-    - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
-  cleanup:
-    - /bin
-  sources:
-  - type: archive
-    url: https://poppler.freedesktop.org/poppler-0.80.0.tar.xz
-    sha256: 4d3ca6b79bc13b8e24092e34f83ef5f387f3bb0bbd7359a6c078e09c696d104f
-
-- name: sip
-  buildsystem: simple
-  build-commands:
-    - python3 configure.py
-      --bindir=/app/bin
-      --destdir=/app/lib/python3.7/site-packages
-      --incdir=/app/include
-      --sipdir=/app/share/sip
-      --stubsdir=/app/lib/python3.7/site-packages
-      --sip-module=PyQt5.sip
-    - make -j $FLATPAK_BUILDER_N_JOBS
-    - make install
-  sources:
-  - type: archive
-    url: https://www.riverbankcomputing.com/static/Downloads/sip/4.19.19/sip-4.19.19.tar.gz
-    sha256: 5436b61a78f48c7e8078e93a6b59453ad33780f80c644e5f3af39f94be1ede44
-  cleanup:
-    - /bin
-
-- name: pyqt5
-  config-opts:
-    - --disable-static
-    - --enable-x11
-  sources:
-  - type: archive
-    url: https://www.riverbankcomputing.com/static/Downloads/PyQt5/5.13.1/PyQt5_gpl-5.13.1.tar.gz
-    sha256: 54b7f456341b89eeb3930e786837762ea67f235e886512496c4152ebe106d4af
-  - type: script
-    commands:
-    - python3 configure.py
-      --assume-shared --confirm-license --no-designer-plugin
-      --no-qml-plugin --sysroot=/app --qsci-api --qsci-api-destdir=/app/qsci
-      --sipdir=/app/share/sip --sip=/app/bin/sip --sip-incdir=/app/include
-      QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/' QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
-    dest-filename: configure
-
-- name: python-ly
-  buildsystem: simple
-  build-commands:
-  - python3 setup.py install --prefix=/app
-  sources:
-  - type: archive
-    url: https://github.com/frescobaldi/python-ly/archive/v0.9.5.tar.gz
-    sha256: 11d2eb5c0f8726d4d8b48bfd104ba30bee1d3c64915028e6710e6e239d1f4c1f
-
-- name: python-poppler-qt5
-  buildsystem: simple
-  ensure-writable: [
-    "easy-install.pth"
-  ]
-  build-commands:
-  - python3 setup.py build
-  - python3 setup.py install
-    --prefix=/app
-    --install-lib=/app/lib/python3.7/site-packages
-  sources:
-  - type: archive
-    url: https://github.com/frescobaldi/python-poppler-qt5/archive/v0.74.0.tar.gz
-    sha256: 8e073ec496a1c39bbe14b53d70c0a8628b7ec3fe0f8db0709440a6a6b553109f
-
-- name: portmidi
-  buildsystem: cmake-ninja
-  config-opts:
-    - -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/app/lib
-    - -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=/app/lib
-    - -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/app/bin
-  sources:
-    - type: archive
-      url: https://sourceforge.net/projects/portmedia/files/portmidi/217/portmidi-src-217.zip
-      sha256: 08e9a892bd80bdb1115213fb72dc29a7bf2ff108b378180586aa65f3cfd42e0f
-    - type: patch
-      path: patches/portmidi-no-java.patch
-  cleanup:
-    - /bin
-    - /lib/pkgconfig
-    - /include
-    - '*.a'
-    - '*.la'
-
-- name: lilypond
-  buildsystem: simple
-  build-commands:
-  - sh lilypond-2.19.83-1.linux-64.sh --prefix /app
-  - chmod 755 /app/lilypond/usr/lib/libpython2.4.so.1.0
-  sources:
-  - type: file
-    url: http://lilypond.org/download/binaries/linux-64/lilypond-2.19.83-1.linux-64.sh
-    sha256: 5c109d578179e7247cff69caa43c7fba745265200f0ad1b890eb735f942cafdf
-
-- name: frescobaldi
-  buildsystem: simple
-  build-commands:
-    - python3 setup.py install --prefix=/app --root=/
-  sources:
-    - type: archive
-      url: https://github.com/frescobaldi/frescobaldi/releases/download/v3.0.0/frescobaldi-3.0.0.tar.gz
-      sha256: 5fa8e4e356cd7f0fb7b8e83870914423e7fec45fa6e0f8243d7946b9e4829895
-    - type: patch
-      path: patches/sip-fix.patch
-
-- name: appdata
-  buildsystem: simple
-  build-commands:
-    - mkdir -p /app/share/metainfo
-    - cp org.frescobaldi.Frescobaldi.metainfo.xml /app/share/metainfo
-  sources:
-  - type: file
-    path: org.frescobaldi.Frescobaldi.metainfo.xml
+  - lilypond.yaml
+  - frescobaldi.yaml

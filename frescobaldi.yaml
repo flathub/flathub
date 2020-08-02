@@ -1,0 +1,107 @@
+---
+name: frescobaldi
+buildsystem: simple
+build-commands:
+  - make -C linux
+  - python3 setup.py install --prefix=/app --root=/
+sources:
+  - type: archive
+    url: https://github.com/frescobaldi/frescobaldi/releases/download/v3.1.2/frescobaldi-3.1.2.tar.gz
+    sha256: 5c2cffb8282cd9faef1585808bd800d1eb3c0db4cc464a61ce8576dbf7ef9b20
+  - type: patch
+    path: patches/frescobaldi-fix-invalid-metainfo-file.patch # can be removed in next release
+
+modules:
+  # OpenJPEG is needed to build Poppler
+  - shared-modules/openjpeg/openjpeg.json
+
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib
+      - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-0.80.0.tar.xz
+        sha256: 4d3ca6b79bc13b8e24092e34f83ef5f387f3bb0bbd7359a6c078e09c696d104f
+
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --bindir=/app/bin
+        --destdir=/app/lib/python3.7/site-packages
+        --incdir=/app/include
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3.7/site-packages
+        --sip-module=PyQt5.sip
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://www.riverbankcomputing.com/static/Downloads/sip/4.19.19/sip-4.19.19.tar.gz
+        sha256: 5436b61a78f48c7e8078e93a6b59453ad33780f80c644e5f3af39f94be1ede44
+    cleanup:
+      - /bin
+
+  - name: pyqt5
+    config-opts:
+      - --disable-static
+      - --enable-x11
+    sources:
+      - type: archive
+        url: https://www.riverbankcomputing.com/static/Downloads/PyQt5/5.13.1/PyQt5_gpl-5.13.1.tar.gz
+        sha256: 54b7f456341b89eeb3930e786837762ea67f235e886512496c4152ebe106d4af
+      - type: script
+        commands:
+          - python3 configure.py --assume-shared --confirm-license --no-designer-plugin
+            --no-qml-plugin --sysroot=/app --qsci-api --qsci-api-destdir=/app/qsci
+            --sipdir=/app/share/sip --sip=/app/bin/sip --sip-incdir=/app/include
+            QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/'
+            QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
+        dest-filename: configure
+
+  - name: python-ly
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app
+    sources:
+      - type: archive
+        url: https://github.com/frescobaldi/python-ly/archive/v0.9.5.tar.gz
+        sha256: 11d2eb5c0f8726d4d8b48bfd104ba30bee1d3c64915028e6710e6e239d1f4c1f
+
+  - name: python-poppler-qt5
+    buildsystem: simple
+    ensure-writable: [
+      "easy-install.pth"
+    ]
+    build-commands:
+      - python3 setup.py build
+      - python3 setup.py install
+        --prefix=/app
+        --install-lib=/app/lib/python3.7/site-packages
+    sources:
+      - type: archive
+        url: https://github.com/frescobaldi/python-poppler-qt5/archive/v0.74.0.tar.gz
+        sha256: 8e073ec496a1c39bbe14b53d70c0a8628b7ec3fe0f8db0709440a6a6b553109f
+
+  - name: portmidi
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/app/bin
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/portmedia/files/portmidi/217/portmidi-src-217.zip
+        sha256: 08e9a892bd80bdb1115213fb72dc29a7bf2ff108b378180586aa65f3cfd42e0f
+      - type: patch
+        path: shared-modules/pygame/portmidi-no-java.patch
+    cleanup:
+      - /bin
+      - /lib/pkgconfig
+      - /include
+      - '*.a'
+      - '*.la'
