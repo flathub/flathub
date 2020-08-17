@@ -51,24 +51,13 @@ jobs:
     - name: Build flatpak
       run: |
         set -e
-        flatpak-builder --disable-updates --disable-download --ccache --sandbox ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
+        flatpak-builder --disable-updates --disable-download --ccache --sandbox --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
 
-    - name: Create OCI bundle
-      run: |
-        set -e
-        ostree --repo=${FP_BUILD_REPO} init --mode=bare-user
-        flatpak-builder --export-only --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
-        flatpak build-bundle \
-          --oci \
-          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-          --runtime \
-          ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
-
-    - name: Upload bundle
+    - name: Upload flatpak repo
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ env.FP_BUNDLE }}
-        path: ${{ env.FP_BUNDLE }}
+        name: ${{ env.FP_BUILD_REPO }}
+        path: ${{ env.FP_BUILD_REPO }}
 
   publish:
     if: github.ref == 'refs/heads/master'
@@ -87,10 +76,19 @@ jobs:
         sudo apt update -y
         sudo apt install -y skopeo
     
-    - name: Download bundle
+    - name: Download flatpak repo
       uses: actions/download-artifact@v1
       with:
-        name: ${{ env.FP_BUNDLE }}
+        name: ${{ env.FP_BUILD_REPO }}
+
+    - name: Create OCI bundle
+      run: |
+        set -e
+        flatpak build-bundle \
+          --oci \
+          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+          --runtime \
+          ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
 
     - name: Publish OCI image
       run: |
