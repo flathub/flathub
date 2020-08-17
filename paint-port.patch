@@ -1,0 +1,253 @@
+diff --git a/OficinaActivity.py b/OficinaActivity.py
+index f12b2a3..da463e6 100644
+--- a/OficinaActivity.py
++++ b/OficinaActivity.py
+@@ -72,15 +72,16 @@ from gi.repository import Gdk
+ import logging
+ import json
+ 
+-from sugar3.activity import activity
+ from sugar3.graphics import style
+ 
+ from Area import Area
+ from toolbox import DrawToolbarBox
+ import dialogs
+ 
++from sugarapp.widgets import SugarCompatibleActivity
+ 
+-class OficinaActivity(activity.Activity):
++
++class OficinaActivity(SugarCompatibleActivity):
+ 
+     def __init__(self, handle):
+         """Initialize the OficinaActivity object.
+@@ -89,7 +90,7 @@ class OficinaActivity(activity.Activity):
+             @param  handle
+ 
+         """
+-        activity.Activity.__init__(self, handle)
++        SugarCompatibleActivity.__init__(self, handle)
+         self.max_participants = 1
+ 
+         logging.debug('Starting Paint activity (Oficina)')
+@@ -174,68 +175,15 @@ class OficinaActivity(activity.Activity):
+             self.area.change_line_size(1)
+ 
+     def read_file(self, file_path):
+-        '''Read file from Sugar Journal.'''
+-        logging.debug('reading file %s, mimetype: %s, title: %s',
+-                      file_path, self.metadata['mime_type'],
+-                      self.metadata['title'])
+-
++        self.area.setup(self._width, self._height - style.GRID_CELL_SIZE)
+         self.area.load_from_file(file_path)
+-
+-        def size_allocate_cb(widget, allocation):
+-            self.fixed.disconnect(self._setup_handle)
+-            width = self.area.drawing_canvas_data.get_width()
+-            height = self.area.drawing_canvas_data.get_height()
+-            if self.area.drawing_canvas is None:
+-                self.area.setup(width, height)
+-            # The scrolled window is confused with a image of the same size
+-            # of the canvas when the toolbars popup and the scrolls
+-            # keep visible.
+-            if height > allocation.height or width > allocation.width:
+-                self.canvas.set_policy(Gtk.PolicyType.AUTOMATIC,
+-                                       Gtk.PolicyType.AUTOMATIC)
+-            else:
+-                self.canvas.set_policy(Gtk.PolicyType.NEVER,
+-                                       Gtk.PolicyType.AUTOMATIC)
+-
+-            self.center_area()
+-
+-        self.canvas.add_with_viewport(self.fixed)
+-        # to remove the border, we need set the shadowtype
+-        # in the viewport child of the scrolledwindow
+-        self.canvas.get_children()[0].set_shadow_type(Gtk.ShadowType.NONE)
+-        self.canvas.get_children()[0].set_border_width(0)
+-
+-        self.disconnect(self._setup_handle)
+-        self._setup_handle = self.fixed.connect('size_allocate',
+-                                                size_allocate_cb)
+-
+-        # disassociate with journal entry to avoid overwrite (SL #1771)
+-        if self.metadata['mime_type'] != "image/png":
+-            self._jobject.object_id = None
+-            last_point_posi = self.metadata['title'].rfind('.')
+-            if last_point_posi > -1:
+-                title = self.metadata['title'][0:last_point_posi] + '.png'
+-                self.metadata['title'] = title
+-            logging.error('title: %s', self.metadata['title'])
+-
+         if 'images' in self.metadata:
+             self._journal_images = json.loads(self.metadata['images'])
+ 
+     def write_file(self, file_path):
+-        '''Save file on Sugar Journal. '''
+-
+-        width, height = self.area.get_size_request()
+-
+-        logging.debug('writting %s w=%s h=%s' % (file_path, width, height))
+-        if self.area.text_in_progress:
+-            self.area.d.text(self.area, 0, 0)
+-
+-        self.area.getout()
++        self.area.end_selection()
+         self.area.drawing_canvas.write_to_png(file_path)
+-        self.metadata['mime_type'] = 'image/png'
+-        self.metadata['state'] = json.dumps(self.area.tool)
+         self.metadata['images'] = json.dumps(dialogs.get_journal_images())
+-        logging.debug('Wrote metadata[\'state\']: %s', self.metadata['state'])
+ 
+     def _get_area_displacement(self):
+         """Return the point to use as top left corner in order to move
+diff --git a/dialogs.py b/dialogs.py
+index 4d5cce5..0bd3208 100644
+--- a/dialogs.py
++++ b/dialogs.py
+@@ -16,7 +16,9 @@
+ from gettext import gettext as _
+ import os
+ import glob
++import shutil
+ 
++from gi.repository import GLib
+ from gi.repository import GObject
+ from gi.repository import Gtk
+ from gi.repository import Gdk
+@@ -32,6 +34,8 @@ try:
+ except:
+     FILTER_TYPE_GENERIC_MIME = 'generic_mime'
+ 
++from sugarapp.widgets import DesktopOpenChooser
++
+ STORE = None
+ JOURNAL_IMAGES = []
+ 
+@@ -159,36 +163,28 @@ class TuxStampDialog(_DialogWindow):
+         filepath = STORE.get(iter_, 1)[0]
+         if filepath == 'loadfromjournal':
+             self.hide()
+-            try:
+-                chooser = ObjectChooser(self._activity, what_filter='Image',
+-                                        filter_type=FILTER_TYPE_GENERIC_MIME,
+-                                        show_preview=True)
+-            except:
+-                # for compatibility with older versions
+-                chooser = ObjectChooser(self._activity, what_filter='Image')
++            chooser = DesktopOpenChooser(self._activity)
+ 
+             try:
+-                result = chooser.run()
+-                newfilepath = None
+-                if result == Gtk.ResponseType.ACCEPT:
+-                    jobject = chooser.get_selected_object()
+-                    if jobject and jobject.file_path:
+-                        newfilepath = jobject.file_path
+-                        object_id = str(jobject.object_id)
+-                        if object_id not in JOURNAL_IMAGES:
+-                            JOURNAL_IMAGES.append(object_id)
+-                            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(
+-                                newfilepath,
+-                                50,
+-                                50)
+-                            STORE.append([pixbuf, newfilepath])
++                filename = chooser.get_filename()
++                newfilepath = GLib.build_filenamev([
++                    GLib.get_user_data_dir(),
++                    os.path.basename(filename)])
++                shutil.copyfile(filename, newfilepath)
++
++                if newfilepath not in JOURNAL_IMAGES:
++                    JOURNAL_IMAGES.append(newfilepath)
++                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(
++                        newfilepath,
++                        50,
++                        50)
++                    STORE.append([pixbuf, newfilepath])
+             finally:
+                 if not newfilepath:
+                     self.show_all()
+                 else:
+                     self.emit('stamp-selected', newfilepath)
+                     self.destroy()
+-                chooser.destroy()
+                 del chooser
+         else:
+             self.emit('stamp-selected', filepath)
+diff --git a/toolbox.py b/toolbox.py
+index 2710d0e..1e8b0a2 100644
+--- a/toolbox.py
++++ b/toolbox.py
+@@ -73,11 +73,6 @@ from sugar3.graphics.toolcombobox import ToolComboBox
+ from sugar3.graphics.toolbutton import ToolButton
+ from sugar3.graphics.radiotoolbutton import RadioToolButton
+ from sugar3.graphics.toggletoolbutton import ToggleToolButton
+-from sugar3.graphics.objectchooser import ObjectChooser
+-try:
+-    from sugar3.graphics.objectchooser import FILTER_TYPE_GENERIC_MIME
+-except:
+-    FILTER_TYPE_GENERIC_MIME = 'generic_mime'
+ from widgets import ButtonStrokeColor
+ from sugar3.graphics.colorbutton import ColorToolButton
+ from sugar3.graphics.radiopalette import RadioPalette
+@@ -86,7 +81,6 @@ from sugar3.graphics.palettemenu import PaletteMenuItem
+ 
+ from sugar3.graphics import style
+ 
+-from sugar3.activity.widgets import ActivityToolbarButton
+ from sugar3.graphics.toolbarbox import ToolbarButton, ToolbarBox
+ from sugar3.activity.widgets import StopButton
+ 
+@@ -95,6 +89,9 @@ from fontcombobox import FontSize
+ 
+ from dialogs import TuxStampDialog
+ 
++from sugarapp.widgets import DesktopOpenChooser
++from sugarapp.widgets import ExtendedActivityToolbarButton
++
+ 
+ def add_menu(icon_name, tooltip, tool_name, button, activate_cb):
+     menu_item = PaletteMenuItem(icon_name=icon_name, text_label=tooltip)
+@@ -130,7 +127,7 @@ class DrawToolbarBox(ToolbarBox):
+ 
+         self._activity = activity
+         ToolbarBox.__init__(self)
+-        activity_button = ActivityToolbarButton(self._activity)
++        activity_button = ExtendedActivityToolbarButton(self._activity)
+         self.toolbar.insert(activity_button, -1)
+ 
+         self._activity.set_toolbar_box(self)
+@@ -853,26 +850,11 @@ class ImageToolbar(Gtk.Toolbar):
+         self._activity.area.mirror(widget, horizontal=False)
+ 
+     def insertImage(self, widget, activity):
+-
+-        try:
+-            chooser = ObjectChooser(self._activity, what_filter='Image',
+-                                    filter_type=FILTER_TYPE_GENERIC_MIME,
+-                                    show_preview=True)
+-        except:
+-            # for compatibility with older versions
+-            chooser = ObjectChooser(self._activity, what_filter='Image')
+-
+-        try:
+-            result = chooser.run()
+-            if result == Gtk.ResponseType.ACCEPT:
+-                logging.debug('ObjectChooser: %r',
+-                              chooser.get_selected_object())
+-                jobject = chooser.get_selected_object()
+-                if jobject and jobject.file_path:
+-                    self._activity.area.load_image(jobject.file_path)
+-        finally:
+-            chooser.destroy()
+-            del chooser
++        chooser = DesktopOpenChooser(activity)
++        chooser.add_filter('.png', 'PNG')
++        filename = chooser.get_filename()
++        if filename:
++            self._activity.area.load_image(filename)
+ 
+     # Make the colors be in grayscale
+     def grayscale(self, widget):
+
