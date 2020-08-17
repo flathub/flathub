@@ -12,6 +12,7 @@ env:
   FP_BRANCH: stable
   FP_BUILD_DIR: build-dir
   FP_BUILD_REPO: build-repo
+  FLAT_MANAGER_URL: https://flatpak.russianfedora.online
 
 jobs:
   build:
@@ -88,6 +89,35 @@ jobs:
       with:
         name: ${{ env.FP_BUILD_NAME }}-bundle-${{ github.run_id }}
         path: ${{ env.FP_BUNDLE }}
+
+  publish-ostree:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install flat-manager-client
+      run: |
+        set -e
+        sudo apt update -y
+        sudo apt install -y python3-aiohttp python3-tenacity python3-gi gir1.2-glib-2.0 gir1.2-ostree-1.0
+        wget https://github.com/flatpak/flat-manager/raw/0.3.7/flat-manager-client
+        chmod +x ./flat-manager-client
+
+    - name: Download flatpak repo
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ env.FP_BUILD_REPO }}
+
+    - name: Push flatpak repo
+      env:
+        REPO_TOKEN: ${{ secrets.FLATPAK_REPO_TOKEN }}
+      run: |
+        set -e
+        BUILD_URL="$(./flat-manager-client create "${FLAT_MANAGER_URL}" "${FP_BRANCH}")"
+        ./flat-manager-client push --commit --publish --wait --wait-update "${BUILD_URL}" "${FP_BUILD_REPO}"
 
   publish-oci:
     if: github.ref == 'refs/heads/master'
