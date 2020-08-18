@@ -1,0 +1,127 @@
+app-id: com.substance3d.launcher
+base: org.electronjs.Electron2.BaseApp
+base-version: '19.08'
+runtime: org.gnome.Platform
+runtime-version: '3.36'
+sdk: org.gnome.Sdk
+command: substance
+tags:
+  - proprietary
+finish-args:
+  - --socket=x11
+  - --device=dri
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-download
+  - --filesystem=host-etc
+  - --persist=.pki # Unnecessary?
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.Software
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=APPIMAGE=1
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+      - type: patch
+        path: xz_support.patch
+        
+  - shared-modules/intltool/intltool-0.51.json
+
+  - name: polkit
+    config-opts:
+    - "--disable-polkitd"
+    - "--disable-man-pages"
+    - "--disable-introspection"
+    - "--disable-examples"
+    - "--disable-gtk-doc"
+    - "--disable-libelogind"
+    - "--disable-libsystemd-login"
+    - "--with-systemdsystemunitdir=no"
+    - "--with-authdb=dummy"
+    - "--with-authfw=none"
+    rm-configure: true
+    cleanup:
+    - "/etc/pam.d"
+    - "/etc/dbus-1"
+    - "/share/dbus-1/system-services/*"
+    - "/share/polkit-1"
+    - "/lib/polkit-1"
+    sources:
+    - type: archive
+      url: https://www.freedesktop.org/software/polkit/releases/polkit-0.116.tar.gz
+      sha256: 88170c9e711e8db305a12fdb8234fac5706c61969b94e084d0f117d8ec5d34b1
+    - type: patch
+      path: polkit-build-Add-option-to-build-without-polkitd.patch
+    - type: file
+      path: polkit-autogen
+      dest-filename: autogen.sh
+
+  - shared-modules/libsecret/libsecret.json
+
+  - name: substance-launcher
+    buildsystem: simple
+    build-commands:
+      - install -D apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install -Dm 755 patch-resources.py /app/bin/patch-resources
+      - install substance "${FLATPAK_DEST}/bin/"
+    post-install:
+      - for s in {16,24,32,48,64,96,128,256,512}; do
+        install -p -Dm644 "icon${s}.png" "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png";
+        done;
+      - install -Dm644 com.substance3d.launcher.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 com.substance3d.launcher.appdata.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
+    sources:
+      - type: extra-data
+        filename: SubstanceLauncher.AppImage
+        url: https://download.substance3d.com/substance-launcher/linux/Substance+Launcher-1.5.2-beta.92.linux-x86_64.AppImage
+        sha256: 0522ee783e79c17f746df19713f98b2cb7b2047aa1e5872444c5b5eb4ee5188c
+        size: 133371661
+        x-checker-data:
+          type: rotating-url
+          url: https://leyfi.allegorithmic.com/softwares/5c8ba95a78f84c00173b0411/builds/beta/latest?platform=lin-rpm&download=1
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - unappimage SubstanceLauncher.AppImage
+          - rm SubstanceLauncher.AppImage
+          - mv squashfs-root substance
+          - patch-resources substance/resources/app.asar
+          - rm substance/AppRun
+      - type: file
+        path: patch-resources.py
+      - type: script
+        dest-filename: substance
+        commands:
+          - TMPDIR=$XDG_CACHE_HOME zypak-wrapper /app/extra/substance/substance "$@"
+      - type: file
+        path: com.substance3d.launcher.appdata.xml
+      - type: file
+        path: com.substance3d.launcher.desktop
+      - type: file
+        path: icons/icon16.png
+      - type: file
+        path: icons/icon24.png
+      - type: file
+        path: icons/icon32.png
+      - type: file
+        path: icons/icon48.png
+      - type: file
+        path: icons/icon64.png
+      - type: file
+        path: icons/icon96.png
+      - type: file
+        path: icons/icon128.png
+      - type: file
+        path: icons/icon256.png
+      - type: file
+        path: icons/icon512.png
