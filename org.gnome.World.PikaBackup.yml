@@ -1,0 +1,81 @@
+---
+app-id: org.gnome.World.PikaBackup
+command: pika-backup
+runtime: org.gnome.Platform
+runtime-version: "3.36"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+finish-args:
+  - --filesystem=host
+  - --share=network
+  - --socket=wayland
+  # X11
+  - --share=ipc
+  - --socket=fallback-x11
+  # SSH-keys etc
+  - --socket=ssh-auth
+  # secrete service (keyring)
+  - --talk-name=org.freedesktop.secrets
+  # gio::Device etc
+  - --talk-name=org.gtk.vfs.*
+  # fusermount
+  - --device=all
+  - --talk-name=org.freedesktop.Flatpak.*
+  # inhibit shutdown and sleep
+  - --system-talk-name=org.freedesktop.login1
+  # open folder in filebrowser, work around buggy OpenURI portal
+  # https://gitlab.gnome.org/World/pika-backup/-/issues/19
+  - --talk-name=org.freedesktop.FileManager1
+modules:
+
+  - name: borg
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links=. --prefix=/app setuptools_scm
+      - pip3 install --no-index --find-links=. --prefix=/app borgbackup
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/54/85/514ba3ca2a022bddd68819f187ae826986051d130ec5b972076e4f58a9f3/setuptools_scm-3.2.0.tar.gz
+        sha256: 52ab47715fa0fc7d8e6cd15168d1a69ba995feb1505131c3e814eb7087b57358
+      - type: file
+        url: https://files.pythonhosted.org/packages/97/68/27d96a12f54894223ad6676ce4d215ad61771e3e723580f3ee6e609e17b7/borgbackup-1.1.13.tar.gz
+        sha256: 164a8666a61071ce2fa6c60627c7646f12e3a8e74cd38f046be72f5ea91b3821
+
+  - name: fusermout
+    config-opts:
+      - MOUNT_FUSE_PATH=/app/bin
+    post-install:
+      - install fusermount-wrapper.sh /app/bin/fusermount
+    sources:
+      - type: archive
+        url: https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz
+        sha256: d0e69d5d608cc22ff4843791ad097f554dd32540ddc9bed7638cc6fea7c1b4b5
+      - type: patch
+        path: fuse-2.9.2-namespace-conflict-fix.patch
+      -
+        type: file
+        path: fusermount-wrapper.sh
+
+  - name: llfuse
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py build_ext --inplace
+      - python3 setup.py install --prefix=/app
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/75/b4/5248459ec0e7e1608814915479cb13e5baf89034b572e3d74d5c9219dd31/llfuse-1.3.6.tar.bz2
+        sha256: 31a267f7ec542b0cd62e0f1268e1880fdabf3f418ec9447def99acfa6eff2ec9
+
+  - name: pika-backup
+    buildsystem: meson
+    config-opts:
+      - "-Dprofile=release"
+    sources:
+      - type: archive
+        url: https://gitlab.gnome.org/World/pika-backup/uploads/3274b9544debdd5f571c743eab6752c3/pika-backup-0.1.0.tar.xz
+        sha256: 0be9693be49508b90c4b630e6b969709f4183ca440676b283e998c15b27b7895
+
