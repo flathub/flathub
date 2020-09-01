@@ -8,10 +8,11 @@ env:
   IMAGE_TAG: latest
   DOCKERHUB_USER: ${{ github.repository_owner }}
   DOCKERHUB_REPO: ${{ github.repository_owner }}/proton-flatpak
-  FP_BUNDLE: proton-flatpak-oci-${{ github.run_id }}
+  FP_BUNDLE: proton-flatpak-${{ github.run_id }}
   FP_BRANCH: stable
   FP_BUILD_DIR: build-dir
   FP_BUILD_REPO: build-repo
+  FLAT_MANAGER_URL: https://flatpak.russianfedora.online
 
 jobs:
   build:
@@ -51,26 +52,45 @@ jobs:
     - name: Build flatpak
       run: |
         set -e
-        flatpak-builder --disable-updates --disable-download --ccache --sandbox ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
+        flatpak-builder --disable-updates --disable-download --ccache --sandbox --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
 
-    - name: Create OCI bundle
+    - name: Upload flatpak repo
+      uses: actions/upload-artifact@v1
+      with:
+        name: ${{ env.FP_BUILD_REPO }}
+        path: ${{ env.FP_BUILD_REPO }}
+
+  publish-bundle:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install flatpak
       run: |
         set -e
-        ostree --repo=${FP_BUILD_REPO} init --mode=bare-user
-        flatpak-builder --export-only --repo=${FP_BUILD_REPO} ${FP_BUILD_DIR} ${FLATPAK_ID}.yml
-        flatpak build-bundle \
-          --oci \
-          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-          --runtime \
-          ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
+        sudo add-apt-repository -y ppa:alexlarsson/flatpak
+        sudo apt update -y
+        sudo apt install -y flatpak
 
-    - name: Upload bundle
+    - name: Download flatpak repo
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ env.FP_BUILD_REPO }}
+    
+    - name: Create flatpak bundle
+      run: |
+        set -e
+        flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo --runtime ${FP_BUILD_REPO} ${FP_BUNDLE}.flatpak ${FLATPAK_ID} ${FP_BRANCH}
+
+    - name: Upload flatpak bundle
       uses: actions/upload-artifact@v1
       with:
         name: ${{ env.FP_BUNDLE }}
-        path: ${{ env.FP_BUNDLE }}
+        path: ${{ env.FP_BUNDLE }}.flatpak
 
-  publish:
+  publish-ostree:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     needs: build
@@ -78,19 +98,60 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Install libcontainers tools
+    - name: Install flat-manager-client
+      run: |
+        set -e
+        sudo apt update -y
+        sudo apt install -y python3-pip python3-setuptools python3-gi gir1.2-glib-2.0 gir1.2-ostree-1.0 wget
+        sudo pip3 install aiohttp tenacity
+        wget https://github.com/flatpak/flat-manager/raw/0.3.7/flat-manager-client
+        chmod +x ./flat-manager-client
+
+    - name: Download flatpak repo
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ env.FP_BUILD_REPO }}
+
+    - name: Push flatpak repo
+      env:
+        REPO_TOKEN: ${{ secrets.FLATPAK_REPO_TOKEN }}
+      #XXX empty directories are lost, but libostree needs them
+      run: |
+        set -e
+        mkdir -p ${FP_BUILD_REPO}/{extensions,refs/{mirrors,remotes},state,tmp/cache}
+        BUILD_URL="$(./flat-manager-client create "${FLAT_MANAGER_URL}" "${FP_BRANCH}")"
+        ./flat-manager-client push --commit --publish --wait --wait-update "${BUILD_URL}" "${FP_BUILD_REPO}"
+
+  publish-oci:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install flatpak and libcontainers tools
       run: |
         set -e
         . /etc/os-release
         sudo sh -c "echo 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
         curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
         sudo apt update -y
-        sudo apt install -y skopeo
+        sudo apt install -y skopeo flatpak
     
-    - name: Download bundle
+    - name: Download flatpak repo
       uses: actions/download-artifact@v1
       with:
-        name: ${{ env.FP_BUNDLE }}
+        name: ${{ env.FP_BUILD_REPO }}
+
+    - name: Create OCI bundle
+      run: |
+        set -e
+        flatpak build-bundle \
+          --oci \
+          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+          --runtime \
+          ${FP_BUILD_REPO} ${FP_BUNDLE} ${FLATPAK_ID} ${FP_BRANCH}
 
     - name: Publish OCI image
       run: |
