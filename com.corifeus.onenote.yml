@@ -1,0 +1,71 @@
+app-id: com.corifeus.onenote
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+branch: stable
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: stable
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+build-options:
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node12
+modules:
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2020.02
+  - name: p3x-onenote
+    build-options:
+      append-path: /usr/lib/sdk/node12/bin
+      env:
+        # Need this for electron-download to find the cached electron binary
+        electron_config_cache: /run/build/p3x-onenote/npm-cache/electron_cache
+        ELECTRON_CACHE: /run/build/p3x-onenote/npm-cache
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/patrikx3/onenote.git
+        commit: dba0e5e
+        dest: main
+      - type: file
+        path: package-lock.json
+        dest: main/
+      - type: patch
+        path: package.patch
+        options:
+          - "-dmain"
+      - type: file
+        path: com.corifeus.onenote.desktop
+      - type: file
+        path: com.corifeus.onenote.png
+      - type: file
+        path: com.corifeus.onenote.appdata.xml
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - exec zypak-wrapper /app/main/p3x-onenote "$@"
+    build-commands:
+      # Install npm dependencies
+      - cd main/ && npm install --offline --cache=$FLATPAK_BUILDER_BUILDDIR/npm-cache
+      # Bundle app and dependencies
+      - cd main/ && npm run pack --cache=$FLATPAK_BUILDER_BUILDDIR/npm-cache
+      - cp -r main/dist/linux-*unpacked /app/main
+      # Install app wrapper
+      - install run.sh /app/bin/
+      # Install icon & .desktop
+      - install -Dm644 com.corifeus.onenote.png -t /app/share/icons/hicolor/256x256/apps/
+      - install -Dm644 com.corifeus.onenote.desktop -t /app/share/applications/
+      - install -Dm644 com.corifeus.onenote.appdata.xml -t /app/share/appdata/
