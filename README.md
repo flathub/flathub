@@ -5,7 +5,7 @@ Flatpak manifest for building DLT-Viewer
 
 ###### Install KDE platform and SDK
 ```
-flatpak install flathub org.kde.Platform//5.13 org.kde.Sdk//5.13
+flatpak install flathub org.kde.Platform//5.15 org.kde.Sdk//5.15
 ```
 
 ###### Build DLT-Viewer
