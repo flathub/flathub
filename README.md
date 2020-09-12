@@ -1,3 +1,6 @@
+## The LTR version of QGIS copied from https://github.com/flathub/org.qgis.qgis 
+The purpose of this repo is to maintain the LTR version of QGIS.
+
 # Flatpak QGIS packaging
 
 Just flatpak packaging for QGIS.
