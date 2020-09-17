@@ -23,12 +23,30 @@ To update it, run the following command in a terminal:
 flatpak update
 ```
 
+## Using an external script editor
+
+This version of Godot is built with special [permissions](https://github.com/flathub/org.godotengine.Godot/blob/394f81c3310b82f5069ea917bb21f49888f818c6/org.godotengine.Godot.yaml#L46) to be able to run commands on the host system outside of the sandbox via [flatpak-spawn](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn). This is done by prefixing the command with `flatpak-spawn --host`. For example, if you want to run `gnome-terminal` on the host system outside of the sandbox, you can do so by running `flatpak-spawn --host gnome-terminal`.
+
+To spawn an external editor in Godot, all command line arguments must be split from the commands path in the [external editor preferences](https://docs.godotengine.org/en/latest/getting_started/editor/external_editor.html) and because the command needs to be prefixed with `"flatpak-spawn --host"`, the **Exec Path** is replaced by `flatpak-spawn` and the **Exec Flags** are prefixed by `--host [command path]`.
+
+For example, for Visual Studio Code, where your [external editor preferences](https://docs.godotengine.org/en/3.2/getting_started/editor/external_editor.html) would *normally* look like this...
+
+```
+Exec Path:	code
+Exec Flags:	--reuse-window {project} --goto {file}:{line}:{col}
+```
+
+...it should look like this **inside the Flatpak sandbox**:
+
+```
+Exec Path:	flatpak-spawn
+Exec Flags:	--host code --reuse-window {project} --goto {file}:{line}:{col}
+```
+
 ## Limitations
 
 - No C#/Mono support
   ([#8](https://github.com/flathub/org.godotengine.Godot/issues/8)).
-- No support for external script editors
-  ([#55](https://github.com/flathub/org.godotengine.Godot/issues/55)).
 
 ## Building from source
 
