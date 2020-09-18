@@ -31,16 +31,16 @@ To spawn an external editor in Godot, all command line arguments must be split f
 
 For example, for Visual Studio Code, where your [external editor preferences](https://docs.godotengine.org/en/3.2/getting_started/editor/external_editor.html) would *normally* look like this...
 
-```
-Exec Path:	code
-Exec Flags:	--reuse-window {project} --goto {file}:{line}:{col}
+```text
+Exec Path:  code
+Exec Flags: --reuse-window {project} --goto {file}:{line}:{col}
 ```
 
 ...it should look like this **inside the Flatpak sandbox**:
 
-```
-Exec Path:	flatpak-spawn
-Exec Flags:	--host code --reuse-window {project} --goto {file}:{line}:{col}
+```text
+Exec Path:  flatpak-spawn
+Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 ```
 
 ## Limitations
@@ -57,7 +57,7 @@ then enter the following commands in a terminal:
 ```bash
 git clone --recursive https://github.com/flathub/org.godotengine.Godot.git
 cd org.godotengine.Godot/
-flatpak install --user flathub org.freedesktop.Sdk//19.08 -y
+flatpak install --user flathub org.freedesktop.Sdk//20.08 -y
 flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot.yaml
 ```
 
