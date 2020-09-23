@@ -17,13 +17,13 @@ touch ${DATADIR}/logs/fcade.log.2
 touch ${DATADIR}/logs/fcade.log.3
 
 # Create persistent ROM folders if they don't exist
-mkdir -p ~/ROMs/fbneo
-mkdir -p ~/ROMs/ggpofba
-mkdir -p ~/ROMs/snes9x
+mkdir -p ${DATADIR}/ROMs/fbneo
+mkdir -p ${DATADIR}/ROMs/ggpofba
+mkdir -p ${DATADIR}/ROMs/snes9x
 
 # Emulator config directory
-mkdir -p ~/config
-cp -n /app/extra/Fightcade/emulator/fbneo/config/fcadefbneo.default.ini ~/config/fcadefbneo.ini
+mkdir -p ${DATADIR}/config
+cp -n /app/fightcade/Fightcade/emulator/fbneo/config/fcadefbneo.default.ini ${DATADIR}/config/fcadefbneo.ini
 
 # Boot Fightcade frontend
-/app/bin/zypak-wrapper /app/extra/Fightcade/fc2-electron/fc2-electron
+/app/bin/zypak-wrapper /app/fightcade/Fightcade/fc2-electron/fc2-electron
