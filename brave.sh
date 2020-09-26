@@ -1,12 +1,8 @@
 #!/usr/bin/sh
 
-# File to determine if we already showed the mimic strategy warning before
-mimic_stamp="$XDG_DATA_HOME/flatpak-brave-mimic-stamp"
-if [ ! -f "$mimic_stamp" ] && ! zypak-helper spawn-strategy-test; then
-	zenity --info --title='Brave Flatpak' --no-wrap --text="$(< /app/share/flatpak-brave/mimic_warning.txt)"
-	> "$mimic_stamp"
-elif [ -f "$mimic_stamp" ] && zypak-helper spawn-strategy-test; then
-	rm -f "$mimic_stamp"
+# Show warning for people that don't have expose-pids support every time
+if ! zypak-helper spawn-strategy-test; then
+	set /app/share/flatpak-brave/mimic_warning.html chrome://welcome "$@"
 fi
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
