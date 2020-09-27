@@ -1,0 +1,125 @@
+app-id: com.github.Eloston.ungoogled-chromium
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: chromium
+separate-locales: false
+build-options:
+  no-debuginfo: true
+finish-args:
+  - '--device=all'
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=pulseaudio'
+  - '--socket=x11'
+  - '--env=GTK_PATH=/app/lib/gtkmodules'
+  - '--socket=cups'
+  - '--talk-name=org.freedesktop.FileManager1'
+  - '--talk-name=org.freedesktop.Notifications'
+  - '--talk-name=org.freedesktop.secrets'
+  - '--talk-name=org.gnome.SessionManager'
+  - '--own-name=org.mpris.MediaPlayer2.chromium.*'
+  - '--system-talk-name=org.freedesktop.Avahi'
+  - '--system-talk-name=org.freedesktop.GeoClue2'
+  - '--system-talk-name=org.freedesktop.UPower'
+  - '--filesystem=host-etc:ro'
+  - '--filesystem=xdg-download'
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/apple/cups/releases/download/v2.3.3/cups-2.3.3-source.tar.gz
+        sha256: 261fd948bce8647b6d5cb2a1784f0c24cc52b5c4e827b71d726020bcc502f3ee
+
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini'
+    sources:
+      - type: file
+        path: gtk-settings.ini
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        branch: master
+        commit: 61be988e5de65aaec4d562db3d9c9c74357f6b01
+        # tag: v2020.10beta.3
+      # - type: dir
+      #   path: ../../code/zypak
+
+  - name: ungoogled-chromium
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 755 chromium.sh /app/bin/chromium'
+      - 'install -Dm 755 update-desktop-database /app/bin/update-desktop-database'
+      - 'install -Dm 755 xdg-icon-resource /app/bin/xdg-icon-resource'
+      - 'install -Dm 755 xdg-desktop-menu /app/bin/xdg-desktop-menu'
+      - 'install -Dm 644 -t /app/share/flatpak-chromium mimic_warning.html'
+      - 'install -Dm 644 -t /app/share/applications com.github.Eloston.ungoogled-chromium.desktop'
+      - 'install -Dm 644 -t /app/share/metainfo com.github.Eloston.ungoogled-chromium.metainfo.xml'
+      - 'install -Dm 644 chromium.svg /app/share/icons/hicolor/scalable/apps/com.github.Eloston.ungoogled-chromium.svg'
+      - 'mkdir -p build/download_cache'
+      - './utils/downloads.py retrieve -c build/download_cache -i downloads.ini'
+      - './utils/downloads.py unpack -c build/download_cache -i downloads.ini -- build/src'
+      - './utils/prune_binaries.py build/src pruning.list'
+      - './utils/patches.py apply build/src patches'
+      - './utils/domain_substitution.py apply -r domain_regex.list -f domain_substitution.list -c build/domsubcache.tar.gz build/src'
+      - 'mkdir -p build/src/out/Default'
+      - 'cd build/src'
+      - './tools/gn/bootstrap/bootstrap.py --skip-generate-buildfiles -j4 -o out/Default/'
+      - 'mkdir -p build/src/out/Default'
+      - 'cp flags.gn build/src/out/Default/args.gn'
+      - 'cd build/src'
+      - './out/Default/gn gen out/Default --fail-on-unused-args'
+      - 'ninja -C out/Default chrome chromedriver chrome_sandbox'
+
+    sources:
+      - type: git
+        url: https://github.com/Eloston/ungoogled-chromium
+        tag: 85.0.4183.102-1
+      - type: file
+        url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.102.tar.xz
+        sha256: 8a68d474724a7a8acfc7742405942836f08e30e713f12f8c3ada46ee6a805e0c
+        size: 833172260
+        dest-filename: build/download_cache/chromium-85.0.4183.102.tar.xz
+      - type: file
+        path: chromium.sh
+      - type: file
+        path: com.github.Eloston.ungoogled-chromium.desktop
+      - type: file
+        path: com.github.Eloston.ungoogled-chromium.metainfo.xml
+      - type: file
+        path: mimic_warning.html
+      - type: script
+        dest-filename: update-desktop-database
+        commands:
+          - 'exit 0'
+      - type: file
+        path: xdg-desktop-menu
+      - type: file
+        path: xdg-icon-resource
+      - type: file
+        path: chromium.svg
