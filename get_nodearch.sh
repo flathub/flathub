@@ -7,5 +7,5 @@ case $(uname -m) in
     aarch64*) architecture="arm64" ;;
     armv8*) architecture="arm64" ;;
 esac
-mkdir third_party/node/linux/node-linux-$architecture/bin/
+mkdir -p third_party/node/linux/node-linux-$architecture/bin/
 ln -s /app/bin/node third_party/node/linux/node-linux-$architecture/bin/
