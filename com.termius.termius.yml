@@ -1,0 +1,72 @@
+app-id: com.termius.termius
+
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: stable
+
+command: termius-app
+
+finish-args:
+  # X11/Wayland
+  - --socket=x11
+  - --share=ipc
+  - --socket=wayland
+  - --device=dri
+  # Sync
+  - --share=network
+  # Filesystem access
+  - --filesystem=host
+  # Allow access to keyring
+  - --talk-name=org.freedesktop.secrets
+  # SSH
+  - --socket=ssh-auth
+
+modules:
+
+  - name: termius
+    buildsystem: simple
+    build-commands:
+        - install -Dm755 termius-app.sh /app/bin/termius-app
+        - install -Dm755 apply_extra.sh /app/bin/apply_extra
+        - install -Dm644 ${FLATPAK_ID}.appdata.xml -t /app/share/metainfo/
+        - install -Dm755 /usr/bin/desktop-file-edit -t /app/bin/
+        - install -Dm755 /usr/bin/ar -t /app/bin/
+        - install -Dm755 /usr/lib/$(gcc -print-multiarch)/libbfd-*.so -t /app/lib/
+        - install -Dm644 ${FLATPAK_ID}.appdata.xml -t /app/share/appdata
+    sources:
+        - type: file
+          path: com.termius.termius.appdata.xml
+
+        - type: extra-data
+          only-arches:
+            - "x86_64"
+          filename: termius.deb
+          url: https://deb.termius.com/pool/main/t/termius-app/termius-app_6.5.1_amd64.deb
+          sha256: 71b2566d9e2de81b43610bc4cae965b8333b8bf2d9f7915094e670471d1a1bfa
+          size: 60810734
+
+        - type: script
+          dest-filename: apply_extra.sh
+          commands:
+            - FLATPAK_ID=com.termius.termius
+            - set -e
+            - ar p termius.deb data.tar.xz | tar -xJf -
+            - mv opt/Termius ./
+            - mkdir -p export/share
+            - mv usr/share/{icons,applications} export/share
+            - rename termius-app ${FLATPAK_ID}
+                export/share/icons/hicolor/*/*/*.png
+                export/share/applications/*.desktop
+            - desktop-file-edit
+                --set-key=Exec --set-value=termius-app
+                --set-key=Icon --set-value=${FLATPAK_ID}
+                export/share/applications/${FLATPAK_ID}.desktop
+            - rm -r termius.deb usr opt etc
+
+        - type: script
+          dest-filename: termius-app.sh
+          commands:
+            - exec /app/extra/Termius/termius-app "$@"
