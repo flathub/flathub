@@ -2,8 +2,6 @@ app-id: io.github.narunlifescience.AlphaPlot
 runtime: org.kde.Platform
 runtime-version: "5.15"
 sdk: org.kde.Sdk
-base: io.qt.qtdatavis3d.BaseApp
-#base-version: "5.15"
 command: alphaplot
 rename-icon: alphaplot
 rename-desktop-file: alphaplot.desktop
@@ -11,41 +9,70 @@ finish-args:
   - --share=ipc
   - --socket=x11
   - --device=dri
-  - --filesystem=home
-  - --share=network
-  # Enable Wayland but keep X11 default for now
-  - --socket=wayland
-  - --env=QT_QPA_PLATFORM=xcb
-cleanup-commands:
-  - /app/cleanup-BaseApp.sh
+  - --env=SESSION_MANAGER= # required to avoid Qt warning
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-public-share
+cleanup:
+  - /include
+  - /lib/mkspecs
+  - /lib/pkgconfig
+  - /lib/*/cmake
+  - /lib/*/pkgconfig
+  - /share/aclocal
+  - /share/info
+  - /share/man
+  - "*.a"
+  - "*.la"
+  - "*.prl"
 modules:
-- name: gsl
-  cleanup:
-    - /bin
-  sources:
-    - type: archive
-      url: https://ftpmirror.gnu.org/gnu/gsl/gsl-2.6.tar.gz
-      sha256: b782339fc7a38fe17689cb39966c4d821236c28018b6593ddb6fd59ee40786a8
+  - name: gsl
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://ftpmirror.gnu.org/gnu/gsl/gsl-2.6.tar.gz
+        sha256: b782339fc7a38fe17689cb39966c4d821236c28018b6593ddb6fd59ee40786a8
 
-- shared-modules/glu/glu-9.json
+  - shared-modules/glu/glu-9.json
 
-- name: alphaplot
-  buildsystem: qmake
-  build-commands:
-      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
-  build-options:
-    env:
-      - QMAKEPATH=/app/lib
-  config-opts:
-    - QMAKE_INCDIR+=/app/include/QtDataVisualization
-  sources:
-    - type: git
-      url: https://github.com/narunlifescience/AlphaPlot.git
-      tag: 1.011
-      commit: 1bd069e30fb2ef2833b396ef8cb710a431bd8119
-    - type: patch
-      path: patches/app-path.patch
-    - type: patch
-      path: patches/QPainterPath.patch
-    - type: file
-      path: io.github.narunlifescience.AlphaPlot.metainfo.xml
+  - name: qt5-qtdatavis3d
+    buildsystem: qmake
+    cleanup:
+      - /bin
+    make-install-args:
+      - INSTALL_ROOT=/app/scratchdir
+    sources:
+      - type: archive
+        url: http://download.qt.io/archive/qt/5.15/5.15.1/submodules/qtdatavis3d-everywhere-src-5.15.1.tar.xz
+        sha256: 89ed596ea452a8dd8223d094690606bcccc92962776584aceefcc13f56538c06
+    post-install:
+      - cp -r /app/scratchdir/usr/* /app
+      - rm -rf /app/scratchdir
+      - ln -s /app/lib/*/*.so* /app/lib
+      - sed -e 's@$$QT_MODULE_LIB_BASE@/app/lib@' -i /app/lib/mkspecs/modules/*.pri
+
+  - name: alphaplot
+    buildsystem: qmake
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+    config-opts:
+      - QMAKE_INCDIR+=/app/include/QtDataVisualization
+    sources:
+      - type: git
+        url: https://github.com/narunlifescience/AlphaPlot.git
+        tag: 1.011
+        commit: 1bd069e30fb2ef2833b396ef8cb710a431bd8119
+      - type: patch
+        path: patches/app-path.patch
+      - type: patch
+        path: patches/QPainterPath.patch
+      - type: patch
+        path: patches/metainfo.patch
+    post-install:
+      - mkdir /app/share/metainfo
+      - cp /run/build/alphaplot/data/metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
