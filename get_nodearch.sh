@@ -8,4 +8,5 @@ case $(uname -m) in
     armv8*) architecture="arm64" ;;
 esac
 mkdir -p third_party/node/linux/node-linux-$architecture/bin/
-ln -s /app/bin/node third_party/node/linux/node-linux-$architecture/bin/
+abs_path=$(readlink -f ../../node-*-linux-$architecture/bin/node)
+ln -s $abs_path third_party/node/linux/node-linux-$architecture/bin/
