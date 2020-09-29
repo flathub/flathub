@@ -6,4 +6,4 @@ if ! zypak-helper spawn-strategy-test; then
 fi
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-exec zypak-wrapper.sh /app/share/chromium-browser/chrome-browser "$@"
+exec zypak-wrapper.sh /app/share/chromium-browser/chrome "$@"
