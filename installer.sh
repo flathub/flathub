@@ -14,9 +14,9 @@ sed -i "s|^CreateDesktopShortcuts=.*|CreateDesktopShortcuts=1|" "$FLATPAK_BUILDE
 
 # Link the binaries (can't use symlinks for Vivado and Vitis, as they require $0 to be set to the real binary path)
 mkdir -p /app/bin
-echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vivado/$VERSION/bin/vivado" > /app/bin/com.xilinx.Vivado
-echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vitis/$VERSION/bin/vitis" > /app/bin/com.xilinx.Vivado.Vitis
-echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vitis/$VERSION/bin/vitis_hls" > /app/bin/com.xilinx.Vivado.HLS
+echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vivado/$VERSION/bin/vivado $*" > /app/bin/com.xilinx.Vivado
+echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vitis/$VERSION/bin/vitis $*" > /app/bin/com.xilinx.Vivado.Vitis
+echo -e '#!'"/bin/sh\n\nexport LD_LIBRARY_PATH=/app/lib\nexec $PREFIX/Vitis/$VERSION/bin/vitis_hls $*" > /app/bin/com.xilinx.Vivado.HLS
 chmod 755 /app/bin/com.xilinx.Vivado
 chmod 755 /app/bin/com.xilinx.Vivado.Vitis
 chmod 755 /app/bin/com.xilinx.Vivado.HLS
