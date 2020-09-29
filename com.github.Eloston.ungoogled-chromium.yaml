@@ -26,11 +26,8 @@ finish-args:
   - '--filesystem=xdg-download'
 modules:
   - shared-modules/dbus-glib/dbus-glib-0.110.json
-
   - shared-modules/libsecret/libsecret.json
-
   - shared-modules/intltool/intltool-0.51.json
-
   - shared-modules/python2.7/python-2.7.json
 
   - name: nodejs
@@ -49,23 +46,6 @@ modules:
         # From https://nodejs.org/en/download/
         url: https://nodejs.org/dist/v12.18.4/node-v12.18.4.tar.gz
         sha256: a802d87e579e46fc52771ed6f2667048320caca867be3276f4c4f1bbb41389c3
-
-  - name: libgnome-keyring
-    config-opts: 
-      - '--disable-static'
-      - '--disable-gtk-doc'
-      - '--disable-coverage'
-      - '--disable-introspection'
-    sources:
-      - type: archive
-        # From https://download.gnome.org/sources/libgnome-keyring/
-        url: https://download.gnome.org/sources/libgnome-keyring/3.12/libgnome-keyring-3.12.0.tar.xz
-        sha256: c4c178fbb05f72acc484d22ddb0568f7532c409b0a13e06513ff54b91e947783
-      - type: shell
-        commands:
-          - 'autoreconf -fi'
-      - type: patch
-        path: libgnome-keyring-detect-gcrypt.patch
 
   - name: libcups
     make-args: [libs]
@@ -133,10 +113,20 @@ modules:
       - 'mkdir -p build/src/out/Default'
       - 'cp flags.gn build/src/out/Default/args.gn'
       - 'cat flatpak.gn >> build/src/out/Default/args.gn'
-      - 'cd build/src && bash ../../get_nodearch.sh'
-      - 'cd build/src && ./tools/gn/bootstrap/bootstrap.py --skip-generate-buildfiles -j4 -o out/Default/'
-      - 'cd build/src && ./out/Default/gn gen out/Default --fail-on-unused-args'
-      - 'cd build/src && ninja -C out/Default chrome chromedriver chrome_sandbox'
+      - |
+         cd build/src
+         export AR=llvm-ar
+         export NM=llvm-nm
+         export CC=clang
+         export CXX=clang++
+         export CFLAGS+="   -resource-dir=$("$CC" --print-resource-dir) -Wno-builtin-macro-redefined -Wno-unknown-warning-option"
+         export CXXFLAGS+=" -resource-dir=$("$CC" --print-resource-dir) -Wno-builtin-macro-redefined -Wno-unknown-warning-option"
+         export CPPFLAGS+=" -resource-dir=$("$CC" --print-resource-dir) -D__DATE__=  -D__TIME__=  -D__TIMESTAMP__="
+         mkdir -p third_party/node/linux/node-linux-x64/bin/ || exit 1
+         ln -sf /app/bin/node third_party/node/linux/node-linux-x64/bin/ || exit 1
+         ./tools/gn/bootstrap/bootstrap.py --skip-generate-buildfiles -j4 -o out/Default/ || exit 1
+         ./out/Default/gn gen out/Default --fail-on-unused-args || exit 1
+         ninja -C out/Default chrome chromedriver chrome_sandbox || exit 1
 
       # Installing ungoogled-chromium
       - 'install -Dm 755 chromium.sh /app/bin/chromium'
@@ -150,16 +140,14 @@ modules:
       - |
           cd build/src/out/Default/
           for x in chrome_100_percent.pak chrome_200_percent.pak resources.pak v8_context_snapshot.bin libEGL.so libGLESv2.so chromedriver icudtl.dat; do
-            cp $x /app/share/chromium-browser/
+            cp $x /app/share/chromium-browser/ || exit 1
           done
-          true
 
       - 'install -Dm644 -t /app/share/chromium-browser/locales build/src/out/Default/locales/*.pak'
       - 'install -Dm755 -t /app/share/chromium-browser/swiftshader build/src/out/Default/swiftshader/*.so || true'
 
       # Cleaning up
       - 'cd /app/bin/ && rm -rf node npm npx pip* python* smtpd.py || true'
-      - 'cd /app/include/ && rm -rf gnome-keyring* || true'
       - 'cd /app/lib/ && rm -rf libpython* node_modules python* || true'
 
     sources:
@@ -184,5 +172,3 @@ modules:
         path: chromium.svg
       - type: file
         path: flatpak.gn
-      - type: file
-        path: get_nodearch.sh
