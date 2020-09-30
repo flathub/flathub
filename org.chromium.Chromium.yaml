@@ -22,6 +22,12 @@ finish-args:
   - --own-name=org.mpris.MediaPlayer2.chromium.*
 
 add-extensions:
+  org.chromium.Chromium.Codecs:
+    directory: chromium/nonfree-codecs
+    add-ld-path: lib
+    bundle: true
+    autodelete: true
+
   org.chromium.Chromium.NativeMessagingHost:
     version: '1'
     directory: native-messaging-hosts
@@ -166,7 +172,13 @@ modules:
         treat_warnings_as_errors=false
         proprietary_codecs=true
         ffmpeg_branding="ChromeOS"
+        is_component_ffmpeg=true
         '
+      - mkdir -p out/ReleaseFree
+      - cp out/Release{,Free}/args.gn
+      - echo -e 'proprietary_codecs = false\nffmpeg_branding = "Chromium"' >> out/ReleaseFree/args.gn
+      - out/Release/gn gen out/ReleaseFree
+      - ninja -C out/ReleaseFree -j$FLATPAK_BUILDER_N_JOBS libffmpeg.so
       - >
         . /usr/lib/sdk/node12/enable.sh;
         . /usr/lib/sdk/openjdk11/enable.sh;
@@ -177,6 +189,9 @@ modules:
         cd out/Release && for path in chrome icudtl.dat *.so *.pak *.bin *.png locales MEIPreload; do
           cp -rv $path /app/chromium;
         done
+      # Place the proprietary libffmpeg in the extension path, then overwrite it with the free one.
+      - install -Dm 755 out/ReleaseFree/libffmpeg.so /app/chromium/libffmpeg.so
+      - install -Dm 755 out/Release/libffmpeg.so /app/chromium/nonfree-codecs/lib/libffmpeg.so
       - >-
         for size in 24 48 64 128 256; do
           install -Dm 644 chrome/app/theme/chromium/product_logo_$size.png /app/share/icons/hicolor/${size}x${size}/apps/org.chromium.Chromium.png;
