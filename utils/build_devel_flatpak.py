@@ -21,11 +21,11 @@ except ImportError:
     from pipes import quote
 
 RUNTIME_REPO = 'https://flathub.org/repo/flathub.flatpakrepo'
-APP_ID = 'com.google.Chromium'
+APP_ID = 'org.chromium.Chromium'
 
 
 def rewrite_manifest_and_get_env(manifest_file, new_manifest_file, out_dir):
-    # Keep in sync with com.google.Chromium.yaml
+    # Keep in sync with org.chromium.Chromium.yaml
     PATHS = [
         'chrome',
         'icudtl.dat',
