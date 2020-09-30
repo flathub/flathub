@@ -1,0 +1,448 @@
+From d9d888bd858bbfd0fa5d3c852060aebbf3c7d008 Mon Sep 17 00:00:00 2001
+From: Mario Sanchez Prada <mario@endlessm.com>
+Date: Tue, 17 Jul 2018 17:11:01 +0100
+Subject: [PATCH 3/4] ffmpeg: Enable support for using OpenH264 for H264
+ playback
+
+Enable the necessary bits to be able to build the Chrome configuration of
+the internal ffmpeg library so that it also builds the ff_libopenh264_decoder
+symbol, and add that to the list of codecs available in the "free" version.
+
+Since the current implementation of libopenh264.so contains only the base profile,
+we can't still enable it as the sole H264 decoder, so we keep the ff_h264_decoder
+around for now for the non-free version of the ffmpeg library, which should be at
+some point in the future replaced with the ff_libopenh264_decoder symbol there too.
+
+Last, note that this patch makes the internal ffmpeg build link against libopenh264.so,
+which will be present under /var/lib/codecs when the real implementation from Cisco is
+installed (i.e. by default on non-free images, via a downloader on free ones), as well
+as under /usr/lib/<multiarch>, as a "fake" version that is only there to satisfy the
+linkage requirements from Chromium and the GStreamer plugin.
+
+We initially wanted to make this dynamic (i.e. not linking) via dlopen() and dlsym(),
+but unfortunately that's not possible since Chromium's sandboxed nature would prevent
+that from happening, and also because GStreamer would blacklist the OpenH264 plugin
+if it can't find the library it links against... so we ended up with this idea of
+always shipping a dummy implementation in the OSTree that gets "overriden" by other
+one if present under /var/lib/codecs automagically, via the dynamic linker.
+
+https://phabricator.endlessm.com/T23345
+https://phabricator.endlessm.com/T30286
+---
+ third_party/ffmpeg/BUILD.gn                                 | 2 +-
+ .../ffmpeg/chromium/config/Chrome/linux/arm-neon/config.h   | 4 ++--
+ .../ffmpeg/chromium/config/Chrome/linux/arm/config.h        | 4 ++--
+ .../ffmpeg/chromium/config/Chrome/linux/arm64/config.h      | 4 ++--
+ .../ffmpeg/chromium/config/Chrome/linux/x64/config.asm      | 4 ++--
+ .../ffmpeg/chromium/config/Chrome/linux/x64/config.h        | 4 ++--
+ .../ffmpeg/chromium/config/Chromium/linux/arm-neon/config.h | 6 +++---
+ .../config/Chromium/linux/arm-neon/libavcodec/bsf_list.c    | 1 +
+ .../config/Chromium/linux/arm-neon/libavcodec/codec_list.c  | 1 +
+ .../ffmpeg/chromium/config/Chromium/linux/arm/config.h      | 6 +++---
+ .../config/Chromium/linux/arm/libavcodec/bsf_list.c         | 1 +
+ .../config/Chromium/linux/arm/libavcodec/codec_list.c       | 1 +
+ .../ffmpeg/chromium/config/Chromium/linux/arm64/config.h    | 6 +++---
+ .../config/Chromium/linux/arm64/libavcodec/bsf_list.c       | 1 +
+ .../config/Chromium/linux/arm64/libavcodec/codec_list.c     | 1 +
+ .../ffmpeg/chromium/config/Chromium/linux/x64/config.asm    | 4 ++--
+ .../ffmpeg/chromium/config/Chromium/linux/x64/config.h      | 6 +++---
+ .../config/Chromium/linux/x64/libavcodec/bsf_list.c         | 1 +
+ .../config/Chromium/linux/x64/libavcodec/codec_list.c       | 1 +
+ third_party/ffmpeg/chromium/scripts/build_ffmpeg.py         | 2 ++
+ third_party/ffmpeg/ffmpeg_generated.gni                     | 4 ++++
+ 21 files changed, 39 insertions(+), 25 deletions(-)
+
+diff --git a/third_party/ffmpeg/BUILD.gn b/third_party/ffmpeg/BUILD.gn
+index 7771777beec12..387216d9b1161 100755
+--- a/third_party/ffmpeg/BUILD.gn
++++ b/third_party/ffmpeg/BUILD.gn
+@@ -444,7 +444,7 @@ if (is_component_ffmpeg) {
+         ]
+       }
+       libs = [
+-        "fdk-aac",
++        "fdk-aac","openh264"
+       ]
+ 
+     } else if (is_win) {
+diff --git a/third_party/ffmpeg/chromium/config/Chrome/linux/arm-neon/config.h b/third_party/ffmpeg/chromium/config/Chrome/linux/arm-neon/config.h
+index d62f9bbed6b58..c1a48490b90a5 100644
+--- a/third_party/ffmpeg/chromium/config/Chrome/linux/arm-neon/config.h
++++ b/third_party/ffmpeg/chromium/config/Chrome/linux/arm-neon/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chrome/linux/arm/config.h b/third_party/ffmpeg/chromium/config/Chrome/linux/arm/config.h
+index 4788038f1cbcd..6f3c7ec0c6917 100644
+--- a/third_party/ffmpeg/chromium/config/Chrome/linux/arm/config.h
++++ b/third_party/ffmpeg/chromium/config/Chrome/linux/arm/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chrome/linux/arm64/config.h b/third_party/ffmpeg/chromium/config/Chrome/linux/arm64/config.h
+index 6df063be0c7b5..2a490f2092745 100644
+--- a/third_party/ffmpeg/chromium/config/Chrome/linux/arm64/config.h
++++ b/third_party/ffmpeg/chromium/config/Chrome/linux/arm64/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.asm b/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.asm
+index 2e53b405531ef..d7d1bbaeebd0c 100644
+--- a/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.asm
++++ b/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.asm
+@@ -453,7 +453,7 @@
+ %define CONFIG_LIBMP3LAME 0
+ %define CONFIG_LIBMYSOFA 0
+ %define CONFIG_LIBOPENCV 0
+-%define CONFIG_LIBOPENH264 0
++%define CONFIG_LIBOPENH264 1
+ %define CONFIG_LIBOPENJPEG 0
+ %define CONFIG_LIBOPENMPT 0
+ %define CONFIG_LIBOPUS 1
+@@ -1228,7 +1228,7 @@
+ %define CONFIG_XBIN_DECODER 0
+ %define CONFIG_IDF_DECODER 0
+ %define CONFIG_LIBAOM_AV1_DECODER 0
+-%define CONFIG_LIBOPENH264_DECODER 0
++%define CONFIG_LIBOPENH264_DECODER 1
+ %define CONFIG_H264_CUVID_DECODER 0
+ %define CONFIG_HEVC_CUVID_DECODER 0
+ %define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.h b/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.h
+index 53cfb248d13ff..a9f2d598ecff0 100644
+--- a/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.h
++++ b/third_party/ffmpeg/chromium/config/Chrome/linux/x64/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/config.h b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/config.h
+index 29c1e22d4856a..74c2cbee459c0 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/config.h
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -704,7 +704,7 @@
+ #define CONFIG_EXTRACT_EXTRADATA_BSF 0
+ #define CONFIG_FILTER_UNITS_BSF 0
+ #define CONFIG_H264_METADATA_BSF 0
+-#define CONFIG_H264_MP4TOANNEXB_BSF 0
++#define CONFIG_H264_MP4TOANNEXB_BSF 1
+ #define CONFIG_H264_REDUNDANT_PPS_BSF 0
+ #define CONFIG_HAPQA_EXTRACT_BSF 0
+ #define CONFIG_HEVC_METADATA_BSF 0
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/bsf_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/bsf_list.c
+index d31ece942a70d..d6f12718cfa3d 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/bsf_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/bsf_list.c
+@@ -1,3 +1,4 @@
+ static const AVBitStreamFilter * const bitstream_filters[] = {
++    &ff_h264_mp4toannexb_bsf,
+     &ff_null_bsf,
+     NULL };
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/codec_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/codec_list.c
+index e055ba6021a2e..4ebfb46b02456 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/codec_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm-neon/libavcodec/codec_list.c
+@@ -5,6 +5,7 @@ static const AVCodec * const codec_list[] = {
+     &ff_flac_decoder,
+     &ff_mp3_decoder,
+     &ff_libfdk_aac_decoder,
++    &ff_libopenh264_decoder,
+     &ff_vorbis_decoder,
+     &ff_pcm_alaw_decoder,
+     &ff_pcm_f32le_decoder,
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/config.h b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/config.h
+index 6423c1ee8218b..3dea0a01ee07a 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/config.h
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -704,7 +704,7 @@
+ #define CONFIG_EXTRACT_EXTRADATA_BSF 0
+ #define CONFIG_FILTER_UNITS_BSF 0
+ #define CONFIG_H264_METADATA_BSF 0
+-#define CONFIG_H264_MP4TOANNEXB_BSF 0
++#define CONFIG_H264_MP4TOANNEXB_BSF 1
+ #define CONFIG_H264_REDUNDANT_PPS_BSF 0
+ #define CONFIG_HAPQA_EXTRACT_BSF 0
+ #define CONFIG_HEVC_METADATA_BSF 0
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/bsf_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/bsf_list.c
+index d31ece942a70d..d6f12718cfa3d 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/bsf_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/bsf_list.c
+@@ -1,3 +1,4 @@
+ static const AVBitStreamFilter * const bitstream_filters[] = {
++    &ff_h264_mp4toannexb_bsf,
+     &ff_null_bsf,
+     NULL };
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/codec_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/codec_list.c
+index e055ba6021a2e..4ebfb46b02456 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/codec_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm/libavcodec/codec_list.c
+@@ -5,6 +5,7 @@ static const AVCodec * const codec_list[] = {
+     &ff_flac_decoder,
+     &ff_mp3_decoder,
+     &ff_libfdk_aac_decoder,
++    &ff_libopenh264_decoder,
+     &ff_vorbis_decoder,
+     &ff_pcm_alaw_decoder,
+     &ff_pcm_f32le_decoder,
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/config.h b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/config.h
+index 672696a42f4ec..791276612040a 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/config.h
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -704,7 +704,7 @@
+ #define CONFIG_EXTRACT_EXTRADATA_BSF 0
+ #define CONFIG_FILTER_UNITS_BSF 0
+ #define CONFIG_H264_METADATA_BSF 0
+-#define CONFIG_H264_MP4TOANNEXB_BSF 0
++#define CONFIG_H264_MP4TOANNEXB_BSF 1
+ #define CONFIG_H264_REDUNDANT_PPS_BSF 0
+ #define CONFIG_HAPQA_EXTRACT_BSF 0
+ #define CONFIG_HEVC_METADATA_BSF 0
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/bsf_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/bsf_list.c
+index d31ece942a70d..d6f12718cfa3d 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/bsf_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/bsf_list.c
+@@ -1,3 +1,4 @@
+ static const AVBitStreamFilter * const bitstream_filters[] = {
++    &ff_h264_mp4toannexb_bsf,
+     &ff_null_bsf,
+     NULL };
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/codec_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/codec_list.c
+index e055ba6021a2e..4ebfb46b02456 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/codec_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/arm64/libavcodec/codec_list.c
+@@ -5,6 +5,7 @@ static const AVCodec * const codec_list[] = {
+     &ff_flac_decoder,
+     &ff_mp3_decoder,
+     &ff_libfdk_aac_decoder,
++    &ff_libopenh264_decoder,
+     &ff_vorbis_decoder,
+     &ff_pcm_alaw_decoder,
+     &ff_pcm_f32le_decoder,
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.asm b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.asm
+index 834a9a50f7af1..10731c16afcd0 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.asm
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.asm
+@@ -453,7 +453,7 @@
+ %define CONFIG_LIBMP3LAME 0
+ %define CONFIG_LIBMYSOFA 0
+ %define CONFIG_LIBOPENCV 0
+-%define CONFIG_LIBOPENH264 0
++%define CONFIG_LIBOPENH264 1
+ %define CONFIG_LIBOPENJPEG 0
+ %define CONFIG_LIBOPENMPT 0
+ %define CONFIG_LIBOPUS 1
+@@ -1228,7 +1228,7 @@
+ %define CONFIG_XBIN_DECODER 0
+ %define CONFIG_IDF_DECODER 0
+ %define CONFIG_LIBAOM_AV1_DECODER 0
+-%define CONFIG_LIBOPENH264_DECODER 0
++%define CONFIG_LIBOPENH264_DECODER 1
+ %define CONFIG_H264_CUVID_DECODER 0
+ %define CONFIG_HEVC_CUVID_DECODER 0
+ %define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.h b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.h
+index a260aae634a3e..e72173be52370 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.h
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/config.h
+@@ -468,7 +468,7 @@
+ #define CONFIG_LIBMP3LAME 0
+ #define CONFIG_LIBMYSOFA 0
+ #define CONFIG_LIBOPENCV 0
+-#define CONFIG_LIBOPENH264 0
++#define CONFIG_LIBOPENH264 1
+ #define CONFIG_LIBOPENJPEG 0
+ #define CONFIG_LIBOPENMPT 0
+ #define CONFIG_LIBOPUS 1
+@@ -704,7 +704,7 @@
+ #define CONFIG_EXTRACT_EXTRADATA_BSF 0
+ #define CONFIG_FILTER_UNITS_BSF 0
+ #define CONFIG_H264_METADATA_BSF 0
+-#define CONFIG_H264_MP4TOANNEXB_BSF 0
++#define CONFIG_H264_MP4TOANNEXB_BSF 1
+ #define CONFIG_H264_REDUNDANT_PPS_BSF 0
+ #define CONFIG_HAPQA_EXTRACT_BSF 0
+ #define CONFIG_HEVC_METADATA_BSF 0
+@@ -1243,7 +1243,7 @@
+ #define CONFIG_XBIN_DECODER 0
+ #define CONFIG_IDF_DECODER 0
+ #define CONFIG_LIBAOM_AV1_DECODER 0
+-#define CONFIG_LIBOPENH264_DECODER 0
++#define CONFIG_LIBOPENH264_DECODER 1
+ #define CONFIG_H264_CUVID_DECODER 0
+ #define CONFIG_HEVC_CUVID_DECODER 0
+ #define CONFIG_HEVC_MEDIACODEC_DECODER 0
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/bsf_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/bsf_list.c
+index d31ece942a70d..d6f12718cfa3d 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/bsf_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/bsf_list.c
+@@ -1,3 +1,4 @@
+ static const AVBitStreamFilter * const bitstream_filters[] = {
++    &ff_h264_mp4toannexb_bsf,
+     &ff_null_bsf,
+     NULL };
+diff --git a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/codec_list.c b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/codec_list.c
+index e055ba6021a2e..4ebfb46b02456 100644
+--- a/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/codec_list.c
++++ b/third_party/ffmpeg/chromium/config/Chromium/linux/x64/libavcodec/codec_list.c
+@@ -5,6 +5,7 @@ static const AVCodec * const codec_list[] = {
+     &ff_flac_decoder,
+     &ff_mp3_decoder,
+     &ff_libfdk_aac_decoder,
++    &ff_libopenh264_decoder,
+     &ff_vorbis_decoder,
+     &ff_pcm_alaw_decoder,
+     &ff_pcm_f32le_decoder,
+diff --git a/third_party/ffmpeg/chromium/scripts/build_ffmpeg.py b/third_party/ffmpeg/chromium/scripts/build_ffmpeg.py
+index 9e2cc80d72e0b..f72366b71efa1 100755
+--- a/third_party/ffmpeg/chromium/scripts/build_ffmpeg.py
++++ b/third_party/ffmpeg/chromium/scripts/build_ffmpeg.py
+@@ -880,6 +880,8 @@ def ConfigureAndBuild(target_arch, target_os, host_os, host_arch, parallel_jobs,
+         '--enable-decoder=libfdk_aac',
+         '--enable-demuxer=aac',
+         '--enable-parser=aac',
++        '--enable-libopenh264',
++        '--enable-decoder=libopenh264',
+     ])
+ 
+   # Google Chrome & ChromeOS specific configuration.
+diff --git a/third_party/ffmpeg/ffmpeg_generated.gni b/third_party/ffmpeg/ffmpeg_generated.gni
+index 68030361f8cb7..58bf570d29c07 100644
+--- a/third_party/ffmpeg/ffmpeg_generated.gni
++++ b/third_party/ffmpeg/ffmpeg_generated.gni
+@@ -14,6 +14,7 @@ ffmpeg_asm_sources = []
+ 
+ use_linux_config = is_linux || is_fuchsia
+ 
++# EndlessOS: Modified to always build the FDK-AAC and OpenH264 decoders.
+ if ((is_android && current_cpu == "arm" && arm_use_neon) || (is_android && current_cpu == "arm64") || (is_android && current_cpu == "x64") || (is_android && current_cpu == "x86") || (is_mac) || (is_win) || (use_linux_config)) {
+   ffmpeg_c_sources += [
+     "libavcodec/ac3_parser.c",
+@@ -50,9 +51,12 @@ if ((is_android && current_cpu == "arm" && arm_use_neon) || (is_android && curre
+     "libavcodec/flac_parser.c",
+     "libavcodec/flacdata.c",
+     "libavcodec/golomb.c",
++    "libavcodec/h264_mp4toannexb_bsf.c",
+     "libavcodec/imgconvert.c",
+     "libavcodec/jni.c",
+     "libavcodec/libfdk-aacdec.c",
++    "libavcodec/libopenh264.c",
++    "libavcodec/libopenh264dec.c",
+     "libavcodec/libopus.c",
+     "libavcodec/libopusdec.c",
+     "libavcodec/mathtables.c",
+-- 
+2.26.2
+

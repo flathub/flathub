@@ -1,0 +1,1435 @@
+From 314e4ad20984ec5dc52cc81bc98b730e1fa3bed6 Mon Sep 17 00:00:00 2001
+From: Ryan Gonzalez <rymg19@gmail.com>
+Date: Tue, 17 Mar 2020 13:18:27 -0500
+Subject: [PATCH 01/11] Add Flatpak sandbox support
+
+---
+ .gitignore                                    |   1 +
+ base/process/kill.h                           |   4 +
+ base/process/kill_posix.cc                    |  13 +-
+ base/threading/thread_restrictions.h          |   6 +
+ .../sandbox_linux/nacl_sandbox_linux.cc       |   9 +
+ .../browser/child_process_launcher_helper.cc  |   7 +
+ .../browser/child_process_launcher_helper.h   |   4 +
+ .../child_process_launcher_helper_linux.cc    |  39 +-
+ .../zygote_host/zygote_host_impl_linux.cc     |  44 +-
+ .../zygote_host/zygote_host_impl_linux.h      |   1 +
+ content/common/child_process_host_impl.cc     |   8 +-
+ content/zygote/zygote_linux.cc                |   6 +-
+ content/zygote/zygote_linux.h                 |   2 +
+ content/zygote/zygote_main_linux.cc           |  16 +-
+ sandbox/linux/BUILD.gn                        |   7 +-
+ sandbox/linux/services/flatpak_sandbox.cc     | 682 ++++++++++++++++++
+ sandbox/linux/services/flatpak_sandbox.h      | 141 ++++
+ .../sandbox/linux/sandbox_linux.cc            |   7 +
+ .../sandbox/linux/sandbox_linux.h             |   7 +
+ 19 files changed, 975 insertions(+), 29 deletions(-)
+ create mode 100644 sandbox/linux/services/flatpak_sandbox.cc
+ create mode 100644 sandbox/linux/services/flatpak_sandbox.h
+
+diff --git a/.gitignore b/.gitignore
+index 982846bea82e9..5b9743293e0e5 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -60,6 +60,7 @@ v8.log
+ vs-chromium-project.txt
+ /.clangd/
+ /.clangd-index/
++/.flatpak-builder/
+ # Settings directories for eclipse
+ /.externalToolBuilders/
+ /.settings/
+diff --git a/base/process/kill.h b/base/process/kill.h
+index 70a04d97e5a73..03f34035e8f3d 100644
+--- a/base/process/kill.h
++++ b/base/process/kill.h
+@@ -100,6 +100,10 @@ BASE_EXPORT TerminationStatus GetTerminationStatus(ProcessHandle handle,
+                                                    int* exit_code);
+ 
+ #if defined(OS_POSIX)
++// Get the termination status that corresponds to a process's given
++// |exit_code|, which is the status set by waitpid.
++BASE_EXPORT TerminationStatus GetTerminationStatusForExitCode(int exit_code);
++
+ // Send a kill signal to the process and then wait for the process to exit
+ // and get the termination status.
+ //
+diff --git a/base/process/kill_posix.cc b/base/process/kill_posix.cc
+index af1f16f74d693..2b087107e5047 100644
+--- a/base/process/kill_posix.cc
++++ b/base/process/kill_posix.cc
+@@ -44,9 +44,14 @@ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+   }
+ 
+   *exit_code = status;
++  return GetTerminationStatusForExitCode(status);
++}
++
++}  // namespace
+ 
+-  if (WIFSIGNALED(status)) {
+-    switch (WTERMSIG(status)) {
++TerminationStatus GetTerminationStatusForExitCode(int exit_code) {
++  if (WIFSIGNALED(exit_code)) {
++    switch (WTERMSIG(exit_code)) {
+       case SIGABRT:
+       case SIGBUS:
+       case SIGFPE:
+@@ -69,14 +74,12 @@ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+     }
+   }
+ 
+-  if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
++  if (WIFEXITED(exit_code) && WEXITSTATUS(exit_code) != 0)
+     return TERMINATION_STATUS_ABNORMAL_TERMINATION;
+ 
+   return TERMINATION_STATUS_NORMAL_TERMINATION;
+ }
+ 
+-}  // namespace
+-
+ #if !defined(OS_NACL_NONSFI)
+ bool KillProcessGroup(ProcessHandle process_group_id) {
+   bool result = kill(-1 * process_group_id, SIGKILL) == 0;
+diff --git a/base/threading/thread_restrictions.h b/base/threading/thread_restrictions.h
+index 29a68a6b15bf1..87b371056012b 100644
+--- a/base/threading/thread_restrictions.h
++++ b/base/threading/thread_restrictions.h
+@@ -262,6 +262,10 @@ namespace resource_coordinator {
+ class TabManagerDelegate;
+ }
+ 
++namespace sandbox {
++class FlatpakSandbox;
++}
++
+ namespace service_manager {
+ class ServiceProcessLauncher;
+ }
+@@ -387,6 +391,7 @@ class BASE_EXPORT ScopedAllowBlocking {
+   friend class printing::LocalPrinterHandlerDefault;
+   friend class printing::PrintJobWorker;
+   friend class resource_coordinator::TabManagerDelegate;  // crbug.com/778703
++  friend class sandbox::FlatpakSandbox;
+   friend class web::WebSubThread;
+   friend class weblayer::BrowserContextImpl;
+   friend class weblayer::ContentBrowserClientImpl;
+@@ -454,6 +459,7 @@ class BASE_EXPORT ScopedAllowBaseSyncPrimitives {
+   friend class rlz_lib::FinancialPing;
+   friend class shell_integration_linux::
+       LaunchXdgUtilityScopedAllowBaseSyncPrimitives;
++  friend class sandbox::FlatpakSandbox;
+   friend class syncer::HttpBridge;
+   friend class syncer::GetLocalChangesRequest;
+   friend class syncer::ModelSafeWorker;
+diff --git a/components/nacl/loader/sandbox_linux/nacl_sandbox_linux.cc b/components/nacl/loader/sandbox_linux/nacl_sandbox_linux.cc
+index 13ac51c12fecc..d78a251416b10 100644
+--- a/components/nacl/loader/sandbox_linux/nacl_sandbox_linux.cc
++++ b/components/nacl/loader/sandbox_linux/nacl_sandbox_linux.cc
+@@ -29,6 +29,7 @@
+ #include "content/public/common/content_switches.h"
+ #include "sandbox/linux/seccomp-bpf/sandbox_bpf.h"
+ #include "sandbox/linux/services/credentials.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "sandbox/linux/services/namespace_sandbox.h"
+ #include "sandbox/linux/services/proc_util.h"
+ #include "sandbox/linux/services/resource_limits.h"
+@@ -127,6 +128,8 @@ void NaClSandbox::InitializeLayerOneSandbox() {
+   // Check that IsSandboxed() works. We should not be sandboxed at this point.
+   CHECK(!IsSandboxed()) << "Unexpectedly sandboxed!";
+ 
++  sandbox::FlatpakSandbox::SandboxLevel flatpak_sandbox_level = sandbox::FlatpakSandbox::GetInstance->GetSandboxLevel();
++
+   if (setuid_sandbox_client_->IsSuidSandboxChild()) {
+     setuid_sandbox_client_->CloseDummyFile();
+ 
+@@ -151,6 +154,12 @@ void NaClSandbox::InitializeLayerOneSandbox() {
+ 
+     CHECK(IsSandboxed());
+     layer_one_enabled_ = true;
++  } else if (flatpak_sandbox_level
++             != sandbox::FlatpakSandbox::SandboxLevel::kNone) {
++    CHECK(flatpak_sandbox_level
++          == sandbox::FlatpakSandbox::SandboxLevel::kRestricted);
++    // We intentionally don't call IsSandboxed() here, as Flatpak has already
++    // moved us to a new mount namespace, but /proc/self/exe is still accessible.
+   }
+ }
+ 
+diff --git a/content/browser/child_process_launcher_helper.cc b/content/browser/child_process_launcher_helper.cc
+index d71beb81dca80..6dba57e100c26 100644
+--- a/content/browser/child_process_launcher_helper.cc
++++ b/content/browser/child_process_launcher_helper.cc
+@@ -51,6 +51,10 @@ ChildProcessLauncherHelper::Process::Process(Process&& other)
+       ,
+       zygote(other.zygote)
+ #endif
++#if defined(OS_LINUX)
++      ,
++      flatpak_host_pid(other.flatpak_host_pid)
++#endif
+ {
+ }
+ 
+@@ -61,6 +65,9 @@ ChildProcessLauncherHelper::Process::Process::operator=(
+   process = std::move(other.process);
+ #if BUILDFLAG(USE_ZYGOTE_HANDLE)
+   zygote = other.zygote;
++#endif
++#if defined(OS_LINUX)
++  flatpak_host_pid = other.flatpak_host_pid;
+ #endif
+   return *this;
+ }
+diff --git a/content/browser/child_process_launcher_helper.h b/content/browser/child_process_launcher_helper.h
+index fa9c372a921c2..03b9cda5fbee1 100644
+--- a/content/browser/child_process_launcher_helper.h
++++ b/content/browser/child_process_launcher_helper.h
+@@ -90,6 +90,10 @@ class ChildProcessLauncherHelper :
+ #if BUILDFLAG(USE_ZYGOTE_HANDLE)
+     ZygoteHandle zygote = nullptr;
+ #endif  // BUILDFLAG(USE_ZYGOTE_HANDLE)
++
++#if defined(OS_LINUX)
++    base::ProcessId flatpak_host_pid = 0;
++#endif
+   };
+ 
+   ChildProcessLauncherHelper(
+diff --git a/content/browser/child_process_launcher_helper_linux.cc b/content/browser/child_process_launcher_helper_linux.cc
+index e63dfcf43147c..3bb5e6b01fc33 100644
+--- a/content/browser/child_process_launcher_helper_linux.cc
++++ b/content/browser/child_process_launcher_helper_linux.cc
+@@ -20,6 +20,7 @@
+ #include "content/public/common/sandboxed_process_launcher_delegate.h"
+ #include "content/public/common/zygote/sandbox_support_linux.h"
+ #include "content/public/common/zygote/zygote_handle.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "services/service_manager/sandbox/linux/sandbox_linux.h"
+ 
+ namespace content {
+@@ -99,16 +100,29 @@ ChildProcessLauncherHelper::LaunchProcessOnLauncherThread(
+   }
+ 
+   Process process;
+-  process.process = base::LaunchProcess(*command_line(), options);
+-  *launch_result = process.process.IsValid() ? LAUNCH_RESULT_SUCCESS
+-                                             : LAUNCH_RESULT_FAILURE;
++  if (sandbox::FlatpakSandbox::GetInstance()->GetSandboxLevel() !=
++      sandbox::FlatpakSandbox::SandboxLevel::kNone) {
++    auto* flatpak_sandbox = sandbox::FlatpakSandbox::GetInstance();
++    // Only the GPU process needs access to the Xorg display.
++    bool allow_x11 = GetProcessType() == switches::kGpuProcess;
++
++    base::ProcessId id =
++        flatpak_sandbox->LaunchProcess(*command_line(), options, allow_x11);
++    if (id != base::kNullProcessId) {
++      process.process = flatpak_sandbox->GetRelativePid(id);
++      process.flatpak_host_pid = id;
++    }
++  } else {
++    process.process = base::LaunchProcess(*command_line(), options);
++  }
++  *launch_result =
++      process.process.IsValid() ? LAUNCH_RESULT_SUCCESS : LAUNCH_RESULT_FAILURE;
+   return process;
+ }
+ 
+ void ChildProcessLauncherHelper::AfterLaunchOnLauncherThread(
+     const ChildProcessLauncherHelper::Process& process,
+-    const base::LaunchOptions& options) {
+-}
++    const base::LaunchOptions& options) {}
+ 
+ ChildProcessTerminationInfo ChildProcessLauncherHelper::GetTerminationInfo(
+     const ChildProcessLauncherHelper::Process& process,
+@@ -117,6 +131,15 @@ ChildProcessTerminationInfo ChildProcessLauncherHelper::GetTerminationInfo(
+   if (process.zygote) {
+     info.status = process.zygote->GetTerminationStatus(
+         process.process.Handle(), known_dead, &info.exit_code);
++  } else if (process.flatpak_host_pid) {
++    auto* flatpak_sandbox = sandbox::FlatpakSandbox::GetInstance();
++    if (known_dead) {
++      info.status = flatpak_sandbox->GetKnownDeadTerminationStatus(
++          process.flatpak_host_pid, &info.exit_code);
++    } else {
++      info.status = flatpak_sandbox->GetTerminationStatus(
++          process.flatpak_host_pid, &info.exit_code);
++    }
+   } else if (known_dead) {
+     info.status = base::GetKnownDeadTerminationStatus(process.process.Handle(),
+                                                       &info.exit_code);
+@@ -139,6 +162,12 @@ bool ChildProcessLauncherHelper::TerminateProcess(const base::Process& process,
+ void ChildProcessLauncherHelper::ForceNormalProcessTerminationSync(
+     ChildProcessLauncherHelper::Process process) {
+   DCHECK(CurrentlyOnProcessLauncherTaskRunner());
++  if (process.flatpak_host_pid) {
++    auto* flatpak_sandbox = sandbox::FlatpakSandbox::GetInstance();
++    flatpak_sandbox->ForceTermination(process.flatpak_host_pid);
++    return;
++  }
++
+   process.process.Terminate(service_manager::RESULT_CODE_NORMAL_EXIT, false);
+   // On POSIX, we must additionally reap the child.
+   if (process.zygote) {
+diff --git a/content/browser/zygote_host/zygote_host_impl_linux.cc b/content/browser/zygote_host/zygote_host_impl_linux.cc
+index ced1c83e82b75..a2177f9ccfb14 100644
+--- a/content/browser/zygote_host/zygote_host_impl_linux.cc
++++ b/content/browser/zygote_host/zygote_host_impl_linux.cc
+@@ -18,6 +18,7 @@
+ #include "build/build_config.h"
+ #include "content/common/zygote/zygote_commands_linux.h"
+ #include "sandbox/linux/services/credentials.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "sandbox/linux/services/namespace_sandbox.h"
+ #include "sandbox/linux/suid/client/setuid_sandbox_host.h"
+ #include "sandbox/linux/suid/common/sandbox.h"
+@@ -61,6 +62,7 @@ ZygoteHostImpl::ZygoteHostImpl()
+     : use_namespace_sandbox_(false),
+       use_suid_sandbox_(false),
+       use_suid_sandbox_for_adj_oom_score_(false),
++      use_flatpak_sandbox_(false),
+       sandbox_binary_(),
+       zygote_pids_lock_(),
+       zygote_pids_() {}
+@@ -99,9 +101,12 @@ void ZygoteHostImpl::Init(const base::CommandLine& command_line) {
+     sandbox_binary_ = setuid_sandbox_host->GetSandboxBinaryPath().value();
+   }
+ 
+-  if (!command_line.HasSwitch(
+-          service_manager::switches::kDisableNamespaceSandbox) &&
+-      sandbox::Credentials::CanCreateProcessInNewUserNS()) {
++  if (sandbox::FlatpakSandbox::GetInstance()->GetSandboxLevel() !=
++      sandbox::FlatpakSandbox::SandboxLevel::kNone) {
++    use_flatpak_sandbox_ = true;
++  } else if (!command_line.HasSwitch(
++                 service_manager::switches::kDisableNamespaceSandbox) &&
++             sandbox::Credentials::CanCreateProcessInNewUserNS()) {
+     use_namespace_sandbox_ = true;
+   } else if (!command_line.HasSwitch(
+                  service_manager::switches::kDisableSetuidSandbox) &&
+@@ -167,19 +172,28 @@ pid_t ZygoteHostImpl::LaunchZygote(
+     sandbox_host->SetupLaunchEnvironment();
+   }
+ 
+-  base::Process process =
+-      (is_sandboxed_zygote && use_namespace_sandbox_)
+-          ? sandbox::NamespaceSandbox::LaunchProcess(*cmd_line, options)
+-          : base::LaunchProcess(*cmd_line, options);
+-  CHECK(process.IsValid()) << "Failed to launch zygote process";
++  pid_t pid;
++  if (is_sandboxed_zygote && use_flatpak_sandbox_) {
++    pid = sandbox::FlatpakSandbox::GetInstance()->LaunchProcess(*cmd_line,
++                                                                options);
++    CHECK(pid != base::kNullProcessId) << "Failed to launch zygote process";
++    // Note that a relative PID is not manually resolved here,
++    // since it will be found regardless from the real_pid tests below.
++  } else {
++    base::Process process =
++        is_sandboxed_zygote && use_namespace_sandbox_
++            ? sandbox::NamespaceSandbox::LaunchProcess(*cmd_line, options)
++            : base::LaunchProcess(*cmd_line, options);
++    CHECK(process.IsValid()) << "Failed to launch zygote process";
++    pid = process.Pid();
++  }
+ 
+   dummy_fd.reset();
+   close(fds[1]);
+   control_fd->reset(fds[0]);
+ 
+-  pid_t pid = process.Pid();
+-
+-  if (is_sandboxed_zygote && (use_namespace_sandbox_ || use_suid_sandbox_)) {
++  if (is_sandboxed_zygote &&
++      (use_namespace_sandbox_ || use_suid_sandbox_ || use_flatpak_sandbox_)) {
+     // The namespace and SUID sandbox will execute the zygote in a new
+     // PID namespace, and the main zygote process will then fork from
+     // there. Watch now our elaborate dance to find and validate the
+@@ -205,9 +219,9 @@ pid_t ZygoteHostImpl::LaunchZygote(
+                               sizeof(kZygoteHelloMessage), &real_pid));
+     CHECK_GT(real_pid, 1);
+ 
+-    if (real_pid != pid) {
++    if (real_pid != pid && !use_flatpak_sandbox_) {
+       // Reap the sandbox.
+-      base::EnsureProcessGetsReaped(std::move(process));
++      base::EnsureProcessGetsReaped(base::Process(pid));
+     }
+     pid = real_pid;
+   }
+@@ -258,6 +272,10 @@ void ZygoteHostImpl::AdjustRendererOOMScore(base::ProcessHandle pid,
+     selinux_valid = true;
+   }
+ 
++  // Flatpaks cannot modify their OOM score.
++  if (use_flatpak_sandbox_)
++    return;
++
+   if (!use_suid_sandbox_for_adj_oom_score_) {
+     if (!base::AdjustOOMScore(pid, score))
+       PLOG(ERROR) << "Failed to adjust OOM score of renderer with pid " << pid;
+diff --git a/content/browser/zygote_host/zygote_host_impl_linux.h b/content/browser/zygote_host/zygote_host_impl_linux.h
+index 21b8323eb4965..c69d687f8e871 100644
+--- a/content/browser/zygote_host/zygote_host_impl_linux.h
++++ b/content/browser/zygote_host/zygote_host_impl_linux.h
+@@ -60,6 +60,7 @@ class CONTENT_EXPORT ZygoteHostImpl : public ZygoteHost {
+   bool use_namespace_sandbox_;
+   bool use_suid_sandbox_;
+   bool use_suid_sandbox_for_adj_oom_score_;
++  bool use_flatpak_sandbox_;
+   std::string sandbox_binary_;
+ 
+   // This lock protects the |zygote_pids_| set.
+diff --git a/content/common/child_process_host_impl.cc b/content/common/child_process_host_impl.cc
+index adc7c1e439327..be44587cb1e76 100644
+--- a/content/common/child_process_host_impl.cc
++++ b/content/common/child_process_host_impl.cc
+@@ -38,6 +38,7 @@
+ 
+ #if defined(OS_LINUX)
+ #include "base/linux_util.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #elif defined(OS_MACOSX)
+ #include "base/mac/foundation_util.h"
+ #include "content/common/mac_helpers.h"
+@@ -73,7 +74,12 @@ base::FilePath ChildProcessHost::GetChildPath(int flags) {
+ #if defined(OS_LINUX)
+   // Use /proc/self/exe rather than our known binary path so updates
+   // can't swap out the binary from underneath us.
+-  if (child_path.empty() && flags & CHILD_ALLOW_SELF)
++  // This is not needed for Flatpaks, where updates are going to be in
++  // a new hardlink tree.
++  if ((child_path.empty() &&
++       sandbox::FlatpakSandbox::GetInstance()->GetSandboxLevel()
++          == sandbox::FlatpakSandbox::SandboxLevel::kNone)
++      && flags & CHILD_ALLOW_SELF)
+     child_path = base::FilePath(base::kProcSelfExe);
+ #endif
+ 
+diff --git a/content/zygote/zygote_linux.cc b/content/zygote/zygote_linux.cc
+index 48ab8fce3e7ec..b8af257903ac7 100644
+--- a/content/zygote/zygote_linux.cc
++++ b/content/zygote/zygote_linux.cc
+@@ -115,7 +115,7 @@ bool Zygote::ProcessRequests() {
+   PCHECK(sigaddset(&sigset, SIGCHLD) == 0);
+   PCHECK(sigprocmask(SIG_BLOCK, &sigset, &orig_sigmask) == 0);
+ 
+-  if (UsingSUIDSandbox() || UsingNSSandbox()) {
++  if (UsingSUIDSandbox() || UsingNSSandbox() || UsingFlatpakSandbox()) {
+     // Let the ZygoteHost know we are ready to go.
+     // The receiving code is in
+     // content/browser/zygote_host/zygote_host_impl_linux.cc.
+@@ -221,6 +221,10 @@ bool Zygote::UsingNSSandbox() const {
+   return sandbox_flags_ & service_manager::SandboxLinux::kUserNS;
+ }
+ 
++bool Zygote::UsingFlatpakSandbox() const {
++  return sandbox_flags_ & service_manager::SandboxLinux::kFlatpak;
++}
++
+ bool Zygote::HandleRequestFromBrowser(int fd) {
+   std::vector<base::ScopedFD> fds;
+   char buf[kZygoteMaxMessageLength];
+diff --git a/content/zygote/zygote_linux.h b/content/zygote/zygote_linux.h
+index 8e451fa6afe51..f7a1dc3db1ee1 100644
+--- a/content/zygote/zygote_linux.h
++++ b/content/zygote/zygote_linux.h
+@@ -62,6 +62,8 @@ class Zygote {
+   bool UsingSUIDSandbox() const;
+   // Returns true if the NS sandbox is active.
+   bool UsingNSSandbox() const;
++  // Returns true if the Flatpak sandbox is active.
++  bool UsingFlatpakSandbox() const;
+ 
+   // ---------------------------------------------------------------------------
+   // Requests from the browser...
+diff --git a/content/zygote/zygote_main_linux.cc b/content/zygote/zygote_main_linux.cc
+index b7dc390c499f3..cd8b61497e086 100644
+--- a/content/zygote/zygote_main_linux.cc
++++ b/content/zygote/zygote_main_linux.cc
+@@ -33,6 +33,7 @@
+ #include "content/public/common/zygote/zygote_fork_delegate_linux.h"
+ #include "content/zygote/zygote_linux.h"
+ #include "sandbox/linux/services/credentials.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "sandbox/linux/services/init_process_reaper.h"
+ #include "sandbox/linux/services/libc_interceptor.h"
+ #include "sandbox/linux/services/namespace_sandbox.h"
+@@ -150,6 +151,7 @@ static void EnterNamespaceSandbox(service_manager::SandboxLinux* linux_sandbox,
+ 
+ static void EnterLayerOneSandbox(service_manager::SandboxLinux* linux_sandbox,
+                                  const bool using_layer1_sandbox,
++                                 const bool using_flatpak_sandbox,
+                                  base::OnceClosure post_fork_parent_callback) {
+   DCHECK(linux_sandbox);
+ 
+@@ -171,7 +173,8 @@ static void EnterLayerOneSandbox(service_manager::SandboxLinux* linux_sandbox,
+   } else if (sandbox::NamespaceSandbox::InNewUserNamespace()) {
+     EnterNamespaceSandbox(linux_sandbox, std::move(post_fork_parent_callback));
+   } else {
+-    CHECK(!using_layer1_sandbox);
++    // The Flatpak sandbox means that we're fully sandboxed from the start.
++    CHECK(!using_layer1_sandbox || using_flatpak_sandbox);
+   }
+ }
+ 
+@@ -195,8 +198,11 @@ bool ZygoteMain(
+       linux_sandbox->setuid_sandbox_client()->IsSuidSandboxChild();
+   const bool using_namespace_sandbox =
+       sandbox::NamespaceSandbox::InNewUserNamespace();
++  const bool using_flatpak_sandbox =
++      sandbox::FlatpakSandbox::GetInstance()->GetSandboxLevel()
++          == sandbox::FlatpakSandbox::SandboxLevel::kRestricted;
+   const bool using_layer1_sandbox =
+-      using_setuid_sandbox || using_namespace_sandbox;
++      using_setuid_sandbox || using_namespace_sandbox || using_flatpak_sandbox;
+ 
+   if (using_setuid_sandbox) {
+     linux_sandbox->setuid_sandbox_client()->CloseDummyFile();
+@@ -223,7 +229,7 @@ bool ZygoteMain(
+ 
+   // Turn on the first layer of the sandbox if the configuration warrants it.
+   EnterLayerOneSandbox(
+-      linux_sandbox, using_layer1_sandbox,
++      linux_sandbox, using_layer1_sandbox, using_flatpak_sandbox,
+       base::BindOnce(CloseFds, linux_sandbox->GetFileDescriptorsToClose()));
+ 
+   const int sandbox_flags = linux_sandbox->GetStatus();
+@@ -235,6 +241,10 @@ bool ZygoteMain(
+       !!(sandbox_flags & service_manager::SandboxLinux::kUserNS);
+   CHECK_EQ(using_namespace_sandbox, namespace_sandbox_engaged);
+ 
++  const bool flatpak_sandbox_engaged =
++      !!(sandbox_flags & service_manager::SandboxLinux::kFlatpak);
++  CHECK_EQ(using_flatpak_sandbox, flatpak_sandbox_engaged);
++
+   Zygote zygote(sandbox_flags, std::move(fork_delegates),
+                 base::GlobalDescriptors::Descriptor(
+                     static_cast<uint32_t>(service_manager::kSandboxIPCChannel),
+diff --git a/sandbox/linux/BUILD.gn b/sandbox/linux/BUILD.gn
+index 7d4d600c5ae6b..ac8d908d3ff35 100644
+--- a/sandbox/linux/BUILD.gn
++++ b/sandbox/linux/BUILD.gn
+@@ -318,6 +318,8 @@ if (is_linux) {
+ 
+ component("sandbox_services") {
+   sources = [
++    "services/flatpak_sandbox.cc",
++    "services/flatpak_sandbox.h",
+     "services/init_process_reaper.cc",
+     "services/init_process_reaper.h",
+     "services/proc_util.cc",
+@@ -352,7 +354,10 @@ component("sandbox_services") {
+ 
+   defines = [ "SANDBOX_IMPLEMENTATION" ]
+ 
+-  public_deps = [ "//sandbox:sandbox_export" ]
++  public_deps = [
++    "//sandbox:sandbox_export",
++    "//dbus",
++  ]
+   deps = [
+     "//base",
+     "//base/third_party/dynamic_annotations",
+diff --git a/sandbox/linux/services/flatpak_sandbox.cc b/sandbox/linux/services/flatpak_sandbox.cc
+new file mode 100644
+index 0000000000000..43f3473d54cc2
+--- /dev/null
++++ b/sandbox/linux/services/flatpak_sandbox.cc
+@@ -0,0 +1,682 @@
++// Copyright 2019 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "sandbox/linux/services/flatpak_sandbox.h"
++
++#include <signal.h>
++#include <sstream>
++#include <string>
++
++#include "base/bind.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/logging.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_util.h"
++#include "base/threading/scoped_blocking_call.h"
++#include "base/threading/sequenced_task_runner_handle.h"
++#include "base/threading/thread_restrictions.h"
++#include "dbus/bus.h"
++#include "dbus/message.h"
++#include "dbus/object_path.h"
++#include "dbus/object_proxy.h"
++#include "dbus/property.h"
++
++namespace sandbox {
++
++namespace {
++const base::FilePath kFlatpakAppPath("/app");
++const base::FilePath kFlatpakInfoPath("/.flatpak-info");
++
++const char kFlatpakPortalServiceName[] = "org.freedesktop.portal.Flatpak";
++const char kFlatpakPortalObjectPath[] = "/org/freedesktop/portal/Flatpak";
++const char kFlatpakPortalInterfaceName[] = "org.freedesktop.portal.Flatpak";
++
++#ifndef NDEBUG
++const char kDisableFullFlatpakSandbox[] = "disable-full-flatpak-sandbox";
++#endif
++
++struct PortalProperties : dbus::PropertySet {
++  dbus::Property<uint32_t> version;
++  dbus::Property<uint32_t> supports;
++
++  enum FlatpakPortalSupports {
++    kFlatpakPortal_ExposePids = 1 << 0,
++  };
++
++  explicit PortalProperties(dbus::ObjectProxy* object_proxy)
++      : dbus::PropertySet(object_proxy, kFlatpakPortalInterfaceName, {}) {
++    RegisterProperty("version", &version);
++    RegisterProperty("supports", &supports);
++  }
++
++  ~PortalProperties() override = default;
++};
++
++void WriteStringAsByteArray(dbus::MessageWriter* writer,
++                            const std::string& str) {
++  writer->AppendArrayOfBytes(reinterpret_cast<const uint8_t*>(str.c_str()),
++                             str.size() + 1);
++}
++
++void WriteFdPairMap(dbus::MessageWriter* writer, int source_fd, int dest_fd) {
++  dbus::MessageWriter entry_writer(nullptr);
++  writer->OpenDictEntry(&entry_writer);
++
++  entry_writer.AppendUint32(dest_fd);
++  entry_writer.AppendFileDescriptor(source_fd);
++
++  writer->CloseContainer(&entry_writer);
++}
++
++}  // namespace
++
++constexpr base::TimeDelta FlatpakSandbox::kDefaultKillDelay;
++
++enum FlatpakSpawnFlags {
++  kFlatpakSpawn_ClearEnvironment = 1 << 0,
++  kFlatpakSpawn_Latest = 1 << 1,
++  kFlatpakSpawn_Sandbox = 1 << 2,
++  kFlatpakSpawn_NoNetwork = 1 << 3,
++  kFlatpakSpawn_WatchBus = 1 << 4,
++  kFlatpakSpawn_ExposePids = 1 << 5,
++  kFlatpakSpawn_NotifyStart = 1 << 6,
++};
++
++enum FlatpakSpawnSandboxFlags {
++  kFlatpakSpawnSandbox_ShareDisplay = 1 << 0,
++  kFlatpakSpawnSandbox_ShareSound = 1 << 1,
++  kFlatpakSpawnSandbox_ShareGpu = 1 << 2,
++  kFlatpakSpawnSandbox_ShareSessionBus = 1 << 3,
++  kFlatpakSpawnSandbox_ShareA11yBus = 1 << 4,
++};
++
++FlatpakSandbox::FlatpakSandbox()
++    : bus_thread_("FlatpakPortalBus"), process_info_cv_(&process_info_lock_) {}
++
++// static
++FlatpakSandbox* FlatpakSandbox::GetInstance() {
++  static base::NoDestructor<FlatpakSandbox> instance;
++  return instance.get();
++}
++
++FlatpakSandbox::SandboxLevel FlatpakSandbox::GetSandboxLevel() {
++  if (sandbox_level_) {
++    return *sandbox_level_;
++  }
++
++  // XXX: These operations shouldn't actually have a major blocking time,
++  // as .flatpak-info is on a tmpfs.
++  base::ScopedAllowBlocking scoped_allow_blocking;
++
++  if (!base::PathExists(kFlatpakInfoPath)) {
++    sandbox_level_ = SandboxLevel::kNone;
++  } else {
++    // chrome has an INI parser, but sandbox can't depend on anything inside
++    // chrome, so the .flatpak-info INI is manually checked for the sandbox
++    // option.
++
++    std::string contents;
++    CHECK(ReadFileToString(kFlatpakInfoPath, &contents));
++    DCHECK(!contents.empty());
++
++    std::istringstream iss(contents);
++    std::string line;
++    bool in_instance = false;
++    while (std::getline(iss, line)) {
++      if (!line.empty() && line[0] == '[') {
++        DCHECK(line.back() == ']');
++
++        if (line == "[Instance]") {
++          DCHECK(!in_instance);
++          in_instance = true;
++        } else if (in_instance) {
++          // Leaving the Instance section, sandbox=true can't come now.
++          break;
++        }
++      } else if (in_instance && line == "sandbox=true") {
++        sandbox_level_ = SandboxLevel::kRestricted;
++        break;
++      }
++    }
++
++    if (!sandbox_level_) {
++      sandbox_level_ = SandboxLevel::kFlatpak;
++    }
++  }
++
++#ifndef NDEBUG
++  if (sandbox_level_ == SandboxLevel::kFlatpak &&
++      base::CommandLine::ForCurrentProcess()->HasSwitch(
++          kDisableFullFlatpakSandbox)) {
++    sandbox_level_ = SandboxLevel::kRestricted;
++  }
++#endif
++
++  return *sandbox_level_;
++}
++
++base::ProcessId FlatpakSandbox::LaunchProcess(
++    const base::CommandLine& cmdline,
++    const base::LaunchOptions& launch_options,
++    bool allow_x11 /*= false*/) {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++  base::ScopedAllowBaseSyncPrimitives allow_wait;
++
++  StartBusThread();
++
++  VLOG(1) << "Running via Flatpak: " << cmdline.GetCommandLineString();
++
++  DCHECK(GetSandboxLevel() != SandboxLevel::kNone);
++
++  // These options are not supported with the Flatpak sandbox.
++  DCHECK(launch_options.clone_flags == 0);
++  DCHECK(!launch_options.wait);
++  DCHECK(!launch_options.allow_new_privs);
++  DCHECK(launch_options.real_path.empty());
++  DCHECK(launch_options.pre_exec_delegate == nullptr);
++  DCHECK(launch_options.maximize_rlimits == nullptr);
++
++  base::ProcessId external_pid = base::kNullProcessId;
++  base::WaitableEvent event;
++
++  bus_thread_.task_runner()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&FlatpakSandbox::LaunchProcessOnBusThread,
++                     base::Unretained(this), base::Unretained(&external_pid),
++                     base::Unretained(&event), cmdline, launch_options,
++                     allow_x11));
++  event.Wait();
++
++  return external_pid;
++}
++
++base::Process FlatpakSandbox::GetRelativePid(base::ProcessId external_pid) {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++  base::ScopedAllowBaseSyncPrimitives allow_wait;
++
++  base::AutoLock locker(process_info_lock_);
++
++  for (;;) {
++    auto it = running_processes_.find(external_pid);
++    if (it == running_processes_.end()) {
++      // Process already died, most likely it never started.
++      // Collect / ignore its exit status.
++      if (exited_process_statuses_.erase(external_pid) == 0) {
++        ignore_status_.insert(external_pid);
++      }
++
++      LOG(INFO) << "Already died: " << external_pid;
++      return base::Process();
++    } else if (it->second == 0) {
++      // No relative PID is known yet.
++      VLOG(1) << "Waiting for " << external_pid;
++      process_info_cv_.Wait();
++      continue;
++    } else {
++      VLOG(1) << "Got " << external_pid << " => " << it->second;
++      return base::Process(it->second);
++    }
++  }
++}
++
++bool FlatpakSandbox::SendSignal(base::ProcessId external_pid,
++                                int signal,
++                                bool process_group /* = false*/) {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++  base::ScopedAllowBaseSyncPrimitives allow_wait;
++
++  StartBusThread();
++
++  bool success = false;
++  base::WaitableEvent event;
++
++  bus_thread_.task_runner()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&FlatpakSandbox::SendSignalOnBusThread,
++                     base::Unretained(this), base::Unretained(&success),
++                     base::Unretained(&event), external_pid, signal,
++                     process_group));
++  event.Wait();
++  return success;
++}
++
++base::TerminationStatus FlatpakSandbox::GetTerminationStatus(
++    base::ProcessId external_pid,
++    int* exit_code) {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++
++  base::AutoLock locker(process_info_lock_);
++
++  auto it = exited_process_statuses_.find(external_pid);
++  if (it == exited_process_statuses_.end()) {
++    if (running_processes_.find(external_pid) == running_processes_.end()) {
++      LOG(ERROR) << "PID " << external_pid << " is not currently tracked";
++    }
++
++    *exit_code = 0;
++    return base::TERMINATION_STATUS_STILL_RUNNING;
++  }
++
++  *exit_code = it->second;
++  exited_process_statuses_.erase(it);
++  return base::GetTerminationStatusForExitCode(*exit_code);
++}
++
++base::TerminationStatus FlatpakSandbox::GetKnownDeadTerminationStatus(
++    base::ProcessId external_pid,
++    int* exit_code) {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++
++  SendSignal(external_pid, SIGKILL);
++
++  base::AutoLock locker(process_info_lock_);
++
++  for (;;) {
++    auto it = exited_process_statuses_.find(external_pid);
++    if (it == exited_process_statuses_.end()) {
++      if (running_processes_.find(external_pid) == running_processes_.end()) {
++        LOG(ERROR) << "PID " << external_pid << " is not currently tracked";
++        *exit_code = 0;
++        return base::TERMINATION_STATUS_NORMAL_TERMINATION;
++      }
++
++      process_info_cv_.Wait();
++      continue;
++    } else {
++      *exit_code = it->second;
++      exited_process_statuses_.erase(it);
++      return base::GetTerminationStatusForExitCode(*exit_code);
++    }
++  }
++}
++
++void FlatpakSandbox::ForceTermination(
++    base::ProcessId external_pid,
++    base::TimeDelta kill_delay /* = kDefaultKillDelay*/) {
++  {
++    base::AutoLock locker(process_info_lock_);
++
++    if (running_processes_.find(external_pid) == running_processes_.end()) {
++      // Already died, don't bother signaling and just collect any statuses.
++      exited_process_statuses_.erase(external_pid);
++      return;
++    }
++
++    // Collect the process on death if this was SIGKILL.
++    if (kill_delay == base::TimeDelta::Min()) {
++      ignore_status_.insert(external_pid);
++    }
++  }
++
++  if (!SendSignal(external_pid,
++                  kill_delay != base::TimeDelta::Min() ? SIGTERM : SIGKILL)) {
++    DLOG(ERROR) << "Unable to terminate process with external PID "
++                << external_pid;
++  }
++
++  if (kill_delay != base::TimeDelta::Min()) {
++    bus_thread_.task_runner()->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(&FlatpakSandbox::ContinueForceTerminationOnBusThread,
++                       base::Unretained(this), external_pid),
++        kill_delay);
++  }
++}
++
++void FlatpakSandbox::StartBusThread() {
++  if (!bus_thread_.IsRunning()) {
++    base::Thread::Options options;
++    options.message_pump_type = base::MessagePumpType::IO;
++    CHECK(bus_thread_.StartWithOptions(options));
++
++    bus_thread_.task_runner()->PostTask(
++        FROM_HERE, base::BindOnce(&FlatpakSandbox::InitializeBusThread,
++                                  base::Unretained(this)));
++  }
++}
++
++dbus::Bus* FlatpakSandbox::AcquireBusFromBusThread() {
++  // Note that destruction of the bus is not a concern, because once the
++  // thread dies its bus connection will be terminated anyway and the
++  // portal will notice.
++  static base::NoDestructor<dbus::Bus*> bus([] {
++    dbus::Bus::Options options;
++    options.bus_type = dbus::Bus::SESSION;
++    options.connection_type = dbus::Bus::PRIVATE;
++    options.dbus_task_runner = base::SequencedTaskRunnerHandle::Get();
++
++    return new dbus::Bus(options);
++  }());
++
++  return *bus;
++}
++
++dbus::ObjectProxy* FlatpakSandbox::GetPortalObjectProxy() {
++  return AcquireBusFromBusThread()->GetObjectProxy(
++      kFlatpakPortalServiceName, dbus::ObjectPath(kFlatpakPortalObjectPath));
++}
++
++void FlatpakSandbox::InitializeBusThread() {
++  dbus::ObjectProxy* object_proxy = GetPortalObjectProxy();
++
++  PortalProperties properties(object_proxy);
++  properties.ConnectSignals();
++
++  CHECK(properties.GetAndBlock(&properties.version))
++      << "Failed to get portal version";
++  CHECK(properties.GetAndBlock(&properties.supports))
++      << "Failed to get portal supports";
++
++  if (properties.version.value() < 4) {
++    LOG(FATAL) << "Your Flatpak version is too old, please update it";
++  }
++
++  if (!(properties.supports.value() &
++        PortalProperties::kFlatpakPortal_ExposePids)) {
++    LOG(FATAL) << "Your Flatpak installation is setuid, which is not supported";
++  }
++
++  object_proxy->ConnectToSignal(
++      kFlatpakPortalInterfaceName, "SpawnStarted",
++      base::BindRepeating(&FlatpakSandbox::OnSpawnStartedSignal,
++                          base::Unretained(this)),
++      base::BindOnce(&FlatpakSandbox::OnSignalConnected,
++                     base::Unretained(this)));
++
++  object_proxy->ConnectToSignal(
++      kFlatpakPortalInterfaceName, "SpawnExited",
++      base::BindRepeating(&FlatpakSandbox::OnSpawnExitedSignal,
++                          base::Unretained(this)),
++      base::BindOnce(&FlatpakSandbox::OnSignalConnected,
++                     base::Unretained(this)));
++}
++
++void FlatpakSandbox::OnSignalConnected(const std::string& interface,
++                                       const std::string& signal,
++                                       bool connected) {
++  // It's not safe to spawn processes without being able to track their deaths.
++  CHECK(connected) << "Failed to connect to signal " << signal;
++}
++
++void FlatpakSandbox::OnSpawnStartedSignal(dbus::Signal* signal) {
++  dbus::MessageReader reader(signal);
++  uint32_t external_pid, relative_pid;
++
++  if (!reader.PopUint32(&external_pid) || !reader.PopUint32(&relative_pid)) {
++    LOG(ERROR) << "Invalid SpawnStarted signal";
++    return;
++  }
++
++  VLOG(1) << "Received SpawnStarted: " << external_pid << ' ' << relative_pid;
++
++  if (relative_pid == 0) {
++    // Process likely already died, so just wait for SpawnExited.
++    LOG(INFO) << "PID " << external_pid << " has no relative PID";
++    return;
++  }
++
++  base::AutoLock locker(process_info_lock_);
++
++  auto it = running_processes_.find(external_pid);
++  if (it == running_processes_.end()) {
++    LOG(ERROR) << "Process " << external_pid
++               << " is already dead or not tracked";
++    return;
++  }
++
++  it->second = relative_pid;
++
++  process_info_cv_.Broadcast();
++}
++
++void FlatpakSandbox::OnSpawnExitedSignal(dbus::Signal* signal) {
++  dbus::MessageReader reader(signal);
++  uint32_t external_pid, exit_status;
++
++  if (!reader.PopUint32(&external_pid) || !reader.PopUint32(&exit_status)) {
++    LOG(ERROR) << "Invalid SpawnExited signal";
++    return;
++  }
++
++  VLOG(1) << "Received SpawnExited: " << external_pid << ' ' << exit_status;
++
++  base::AutoLock locker(process_info_lock_);
++
++  auto it = ignore_status_.find(external_pid);
++  if (it == ignore_status_.end()) {
++    exited_process_statuses_[external_pid] = exit_status;
++  } else {
++    ignore_status_.erase(it);
++  }
++
++  running_processes_.erase(external_pid);
++
++  process_info_cv_.Broadcast();
++}
++
++void FlatpakSandbox::LaunchProcessOnBusThread(
++    base::ProcessId* out_external_pid,
++    base::WaitableEvent* event,
++    const base::CommandLine& cmdline,
++    const base::LaunchOptions& launch_options,
++    bool allow_x11) {
++  dbus::ObjectProxy* object_proxy = GetPortalObjectProxy();
++  dbus::MethodCall method_call(kFlatpakPortalInterfaceName, "Spawn");
++  dbus::MessageWriter writer(&method_call);
++
++  const base::FilePath& current_directory =
++      !launch_options.current_directory.empty()
++          ? launch_options.current_directory
++          // Change to /app since it's guaranteed to always be present in
++          // the sandbox.
++          : kFlatpakAppPath;
++  WriteStringAsByteArray(&writer, current_directory.value());
++
++  dbus::MessageWriter argv_writer(nullptr);
++  writer.OpenArray("ay", &argv_writer);
++
++  for (const std::string& arg : cmdline.argv()) {
++    WriteStringAsByteArray(&argv_writer, arg);
++  }
++
++#ifndef NDEBUG
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
++          kDisableFullFlatpakSandbox)) {
++    std::string arg = "--";
++    arg += kDisableFullFlatpakSandbox;
++    WriteStringAsByteArray(&argv_writer, arg);
++  }
++#endif
++
++  writer.CloseContainer(&argv_writer);
++
++  dbus::MessageWriter fds_writer(nullptr);
++  writer.OpenArray("{uh}", &fds_writer);
++
++  WriteFdPairMap(&fds_writer, STDIN_FILENO, STDIN_FILENO);
++  WriteFdPairMap(&fds_writer, STDOUT_FILENO, STDOUT_FILENO);
++  WriteFdPairMap(&fds_writer, STDERR_FILENO, STDERR_FILENO);
++
++  for (const auto& pair : launch_options.fds_to_remap) {
++    WriteFdPairMap(&fds_writer, pair.first, pair.second);
++  }
++
++  writer.CloseContainer(&fds_writer);
++
++  dbus::MessageWriter env_writer(nullptr);
++  writer.OpenArray("{ss}", &env_writer);
++
++  for (const auto& pair : launch_options.environment) {
++    dbus::MessageWriter entry_writer(nullptr);
++    env_writer.OpenDictEntry(&entry_writer);
++
++    entry_writer.AppendString(pair.first);
++    entry_writer.AppendString(pair.second);
++
++    env_writer.CloseContainer(&entry_writer);
++  }
++
++  writer.CloseContainer(&env_writer);
++
++  int spawn_flags = kFlatpakSpawn_Sandbox | kFlatpakSpawn_ExposePids |
++                    kFlatpakSpawn_NotifyStart;
++  int sandbox_flags = 0;
++
++#ifndef NDEBUG
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
++          kDisableFullFlatpakSandbox)) {
++    spawn_flags &= ~kFlatpakSpawn_Sandbox;
++  }
++#else
++#endif
++
++  if (launch_options.clear_environment) {
++    spawn_flags |= kFlatpakSpawn_ClearEnvironment;
++  }
++
++  if (launch_options.kill_on_parent_death) {
++    spawn_flags |= kFlatpakSpawn_WatchBus;
++  }
++
++  if (allow_x11) {
++    sandbox_flags |= kFlatpakSpawnSandbox_ShareDisplay;
++    sandbox_flags |= kFlatpakSpawnSandbox_ShareGpu;
++  }
++
++  writer.AppendUint32(spawn_flags);
++
++  dbus::MessageWriter options_writer(nullptr);
++  writer.OpenArray("{sv}", &options_writer);
++
++  if (sandbox_flags != 0) {
++    dbus::MessageWriter entry_writer(nullptr);
++    options_writer.OpenDictEntry(&entry_writer);
++
++    entry_writer.AppendString("sandbox-flags");
++
++    dbus::MessageWriter variant_writer(nullptr);
++    entry_writer.OpenVariant("u", &variant_writer);
++
++    variant_writer.AppendUint32(sandbox_flags);
++
++    entry_writer.CloseContainer(&variant_writer);
++    options_writer.CloseContainer(&entry_writer);
++  }
++
++  writer.CloseContainer(&options_writer);
++
++  object_proxy->CallMethodWithErrorResponse(
++      &method_call, dbus::ObjectProxy::TIMEOUT_INFINITE,
++      base::BindOnce(&FlatpakSandbox::OnLaunchProcessResponse,
++                     base::Unretained(this), base::Unretained(out_external_pid),
++                     base::Unretained(event)));
++}
++
++void FlatpakSandbox::OnLaunchProcessResponse(
++    base::ProcessId* out_external_pid,
++    base::WaitableEvent* event,
++    dbus::Response* response,
++    dbus::ErrorResponse* error_response) {
++  if (response) {
++    dbus::MessageReader reader(response);
++    uint32_t external_pid;
++    if (!reader.PopUint32(&external_pid)) {
++      LOG(ERROR) << "Invalid Spawn() response";
++    } else {
++      VLOG(1) << "Spawn() returned PID " << external_pid;
++      if (out_external_pid != nullptr) {
++        *out_external_pid = external_pid;
++      }
++
++      base::AutoLock locker(process_info_lock_);
++      running_processes_[external_pid] = 0;
++    }
++  } else if (error_response) {
++    std::string error_name = error_response->GetErrorName();
++    std::string error_message;
++    dbus::MessageReader reader(error_response);
++    reader.PopString(&error_message);
++
++    LOG(ERROR) << "Error calling Spawn(): " << error_name << ": "
++               << error_message;
++  } else {
++    LOG(ERROR) << "Unknown error occurred calling Spawn()";
++  }
++
++  if (event != nullptr) {
++    event->Signal();
++  }
++}
++
++void FlatpakSandbox::SendSignalOnBusThread(bool* out_success,
++                                           base::WaitableEvent* event,
++                                           base::ProcessId external_pid,
++                                           int signal,
++                                           bool process_group) {
++  dbus::ObjectProxy* object_proxy = GetPortalObjectProxy();
++
++  dbus::MethodCall method_call(kFlatpakPortalInterfaceName, "SpawnSignal");
++  dbus::MessageWriter writer(&method_call);
++
++  writer.AppendUint32(external_pid);
++  writer.AppendUint32(signal);
++  writer.AppendBool(process_group);
++
++  object_proxy->CallMethodWithErrorResponse(
++      &method_call, dbus::ObjectProxy::TIMEOUT_INFINITE,
++      base::BindOnce(&FlatpakSandbox::OnSendSignalResponse,
++                     base::Unretained(this), base::Unretained(out_success),
++                     base::Unretained(event)));
++}
++
++void FlatpakSandbox::OnSendSignalResponse(bool* out_success,
++                                          base::WaitableEvent* event,
++                                          dbus::Response* response,
++                                          dbus::ErrorResponse* error_response) {
++  if (response) {
++    if (out_success != nullptr) {
++      *out_success = true;
++    }
++  } else if (error_response) {
++    std::string error_name = error_response->GetErrorName();
++    std::string error_message;
++    dbus::MessageReader reader(error_response);
++    reader.PopString(&error_message);
++
++    LOG(ERROR) << "Error calling SendSignal(): " << error_name << ": "
++               << error_message;
++  } else {
++    LOG(ERROR) << "Unknown error occurred calling SendSignal()";
++  }
++
++  if (event != nullptr) {
++    event->Signal();
++  }
++}
++
++void FlatpakSandbox::ContinueForceTerminationOnBusThread(
++    base::ProcessId external_pid) {
++  bool do_kill = false;
++
++  {
++    base::AutoLock locker(process_info_lock_);
++
++    if (exited_process_statuses_.erase(external_pid) == 0) {
++      ignore_status_.insert(external_pid);
++      do_kill = true;
++    }
++  }
++
++  if (do_kill) {
++    SendSignalOnBusThread(nullptr, nullptr, external_pid, SIGKILL, false);
++  }
++}
++
++}  // namespace sandbox
+diff --git a/sandbox/linux/services/flatpak_sandbox.h b/sandbox/linux/services/flatpak_sandbox.h
+new file mode 100644
+index 0000000000000..5022d1282c84c
+--- /dev/null
++++ b/sandbox/linux/services/flatpak_sandbox.h
+@@ -0,0 +1,141 @@
++// Copyright 2019 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef SANDBOX_LINUX_SERVICES_FLATPAK_SANDBOX_H_
++#define SANDBOX_LINUX_SERVICES_FLATPAK_SANDBOX_H_
++
++#include "base/command_line.h"
++#include "base/compiler_specific.h"
++#include "base/macros.h"
++#include "base/no_destructor.h"
++#include "base/optional.h"
++#include "base/process/kill.h"
++#include "base/process/launch.h"
++#include "base/synchronization/condition_variable.h"
++#include "base/synchronization/lock.h"
++#include "base/synchronization/waitable_event.h"
++#include "base/threading/thread.h"
++#include "dbus/bus.h"
++#include "dbus/message.h"
++#include "sandbox/sandbox_export.h"
++
++namespace sandbox {
++
++// Manages the state of and access to the Flatpak sandbox.
++// Note that there is a distinction between external and internal PIDs:
++// - External PIDs are the PIDs relative to the world outside the sandbox.
++// - Internal PIDs are the PIDs relative to the current PID namespace.
++// Flatpak's sandbox APIs work primarily with external PIDs, and an
++// internal PID must be retrieved from the SpawnStarted signal before
++// it is known inside the sandbox's PID namespace.
++class SANDBOX_EXPORT FlatpakSandbox {
++ public:
++  static FlatpakSandbox* GetInstance();
++
++  static constexpr base::TimeDelta kDefaultKillDelay =
++      base::TimeDelta::FromSeconds(2);
++
++  // Represents the level of sandboxing inside a Flatpak. kNone means this is
++  // not a Flatpak, kFlatpak means it's inside a Flatpak sandbox, and
++  // kRestricted means that this is inside a nested Flatpak sandbox with most
++  // permissions revoked.
++  enum class SandboxLevel { kNone, kFlatpak, kRestricted };
++
++  // Get the current level of sandboxing in this Flatpak.
++  SandboxLevel GetSandboxLevel();
++
++  // Launch the given process inside of a Flatpak sandbox. If allow_x11 is true,
++  // then the process will be given access to the host's X11 display. On
++  // failure, returns kNullProcessId. Note that the return value is the PID
++  // relative to the host i.e. outside the sandbox, to get the internal one call
++  // GetRelativePid. This is the reason why a vanilla ProcessId is returned
++  // rather than a base::Process instance.
++  base::ProcessId LaunchProcess(const base::CommandLine& cmdline,
++                                const base::LaunchOptions& launch_options,
++                                bool allow_x11 = false);
++
++  // Given an external PID, find the PID that the given process appears as
++  // inside the current PID namespace. This will block and wait for the
++  // SpawnStarted signal to be emitted. If the process has already died
++  // or never was started, an invalid process will be returned.
++  base::Process GetRelativePid(base::ProcessId external_pid);
++
++  // Sends the given POSIX |signal| to the process with the given external
++  // PID. If |process_group| is true, then the signal will be sent to an
++  // entire process group.
++  bool SendSignal(base::ProcessId external_pid, int signal,
++                  bool process_group = false);
++
++  // Gets the termination status and exit code of the given process.
++  base::TerminationStatus GetTerminationStatus(base::ProcessId external_pid,
++                                               int* exit_code);
++  // Sends a kill signal to the given process, then waits for it to
++  // terminate and retrieves the termination status and exit code.
++  base::TerminationStatus GetKnownDeadTerminationStatus(
++      base::ProcessId external_pid, int* exit_code);
++
++  // Forces termination of the given process. SIGTERM will be sent and,
++  // if the process has not died by the time |kill_delay| has elapsed,
++  // then SIGKILL will be sent. The signal send is synchronous, but the
++  // delay is asynchronous.
++  // If |kill_delay| is base::TimeDelta::Min(), then SIGKILL will be
++  // sent the first time.
++  void ForceTermination(base::ProcessId external_pid,
++                        base::TimeDelta kill_delay = kDefaultKillDelay);
++
++ private:
++  friend class base::NoDestructor<FlatpakSandbox>;
++
++  FlatpakSandbox();
++  ~FlatpakSandbox();
++
++  DISALLOW_COPY_AND_ASSIGN(FlatpakSandbox);
++
++  void StartBusThread();
++  dbus::Bus* AcquireBusFromBusThread();
++  dbus::ObjectProxy* GetPortalObjectProxy();
++
++  void InitializeBusThread();
++  void OnSignalConnected(const std::string& interface, const std::string& signal,
++                         bool connected);
++  void OnSpawnStartedSignal(dbus::Signal* signal);
++  void OnSpawnExitedSignal(dbus::Signal* signal);
++
++  void LaunchProcessOnBusThread(base::ProcessId* out_external_pid,
++                                base::WaitableEvent* event,
++                                const base::CommandLine& cmdline,
++                                const base::LaunchOptions& launch_options,
++                                bool allow_x11);
++  void OnLaunchProcessResponse(base::ProcessId* out_external_pid,
++                               base::WaitableEvent* event,
++                               dbus::Response* response,
++                               dbus::ErrorResponse* error_response);
++
++  void SendSignalOnBusThread(bool* out_success, base::WaitableEvent* event,
++                             base::ProcessId external_pid, int signal,
++                             bool process_group);
++  void OnSendSignalResponse(bool* out_success, base::WaitableEvent* event,
++                            dbus::Response* response,
++                            dbus::ErrorResponse* error_response);
++
++  void ContinueForceTerminationOnBusThread(base::ProcessId external_pid);
++
++  base::Optional<SandboxLevel> sandbox_level_;
++  base::Thread bus_thread_;
++
++  base::Lock process_info_lock_;
++  // Note that broadcast is used in the source, because in general
++  // very few threads will be contending for the lock.
++  base::ConditionVariable process_info_cv_;
++  // Map of running external process IDs to their relative PIDs.
++  std::map<base::ProcessId, base::ProcessId> running_processes_;
++  // Map of a process that has exited to its waitpid status.
++  std::map<base::ProcessId, int> exited_process_statuses_;
++  // Processes should have their statuses ignored on exit.
++  std::set<base::ProcessId> ignore_status_;
++};
++
++}  // namespace sandbox
++
++#endif  // SANDBOX_LINUX_SERVICES_FLATPAK_SANDBOX_H_
+diff --git a/services/service_manager/sandbox/linux/sandbox_linux.cc b/services/service_manager/sandbox/linux/sandbox_linux.cc
+index 3848ab4916e6b..fa39090a9d681 100644
+--- a/services/service_manager/sandbox/linux/sandbox_linux.cc
++++ b/services/service_manager/sandbox/linux/sandbox_linux.cc
+@@ -32,6 +32,7 @@
+ #include "base/time/time.h"
+ #include "build/build_config.h"
+ #include "sandbox/constants.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "sandbox/linux/services/credentials.h"
+ #include "sandbox/linux/services/libc_interceptor.h"
+ #include "sandbox/linux/services/namespace_sandbox.h"
+@@ -195,6 +196,8 @@ void SandboxLinux::PreinitializeSandbox() {
+   const int yama_status = Yama::GetStatus();
+   yama_is_enforcing_ = (yama_status & Yama::STATUS_PRESENT) &&
+                        (yama_status & Yama::STATUS_ENFORCING);
++
++  flatpak_sandbox_level_ = sandbox::FlatpakSandbox::GetInstance()->GetSandboxLevel();
+   pre_initialized_ = true;
+ }
+ 
+@@ -233,6 +236,10 @@ int SandboxLinux::GetStatus() {
+         sandbox_status_flags_ |= kPIDNS;
+       if (sandbox::NamespaceSandbox::InNewNetNamespace())
+         sandbox_status_flags_ |= kNetNS;
++    } else if (flatpak_sandbox_level_
++               == sandbox::FlatpakSandbox::SandboxLevel::kRestricted) {
++      // Flatpak sandboxes always use new namespaces.
++      sandbox_status_flags_ |= kFlatpak | kPIDNS | kNetNS;
+     }
+ 
+     // We report whether the sandbox will be activated when renderers, workers
+diff --git a/services/service_manager/sandbox/linux/sandbox_linux.h b/services/service_manager/sandbox/linux/sandbox_linux.h
+index 6a17f9edb6311..27197e83e09be 100644
+--- a/services/service_manager/sandbox/linux/sandbox_linux.h
++++ b/services/service_manager/sandbox/linux/sandbox_linux.h
+@@ -12,6 +12,7 @@
+ #include "base/check_op.h"
+ #include "base/macros.h"
+ #include "base/posix/global_descriptors.h"
++#include "sandbox/linux/services/flatpak_sandbox.h"
+ #include "sandbox/linux/syscall_broker/broker_command.h"
+ #include "sandbox/linux/syscall_broker/broker_file_permission.h"
+ #include "services/service_manager/sandbox/export.h"
+@@ -88,6 +89,9 @@ class SERVICE_MANAGER_SANDBOX_EXPORT SandboxLinux {
+     // User namespace sandbox active.
+     kUserNS = 1 << 6,
+ 
++    // Flatpak sandbox active.
++    kFlatpak = 1 << 7,
++
+     // A flag that denotes an invalid sandbox status.
+     kInvalid = 1 << 31,
+   };
+@@ -282,6 +286,9 @@ class SERVICE_MANAGER_SANDBOX_EXPORT SandboxLinux {
+   bool seccomp_bpf_supported_;             // Accurate if pre_initialized_.
+   bool seccomp_bpf_with_tsync_supported_;  // Accurate if pre_initialized_.
+   bool yama_is_enforcing_;                 // Accurate if pre_initialized_.
++  // Accurate if pre_initialized_, used to save the state of the Flatpak sandbox, as once
++  // we're in the BPF sandbox any attempts to check the Flatpak state will cause EPERM errors.
++  sandbox::FlatpakSandbox::SandboxLevel flatpak_sandbox_level_;
+   bool initialize_sandbox_ran_;            // InitializeSandbox() was called.
+   std::unique_ptr<sandbox::SetuidSandboxClient> setuid_sandbox_client_;
+ #if BUILDFLAG(USING_SANITIZER)
+-- 
+2.26.2
+

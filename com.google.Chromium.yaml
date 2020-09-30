@@ -1,0 +1,222 @@
+app-id: com.google.Chromium
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: chromium
+finish-args:
+  - --require-version=1.8.2
+  - --filesystem=host-etc
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pulseaudio
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.Avahi
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.UPower
+  - --talk-name=org.gnome.SessionManager
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+
+add-extensions:
+  com.google.Chromium.NativeMessagingHost:
+    version: '1'
+    directory: native-messaging-hosts
+    merge-dirs: manifest
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+  com.google.Widevine:
+    version: '1'
+    directory: widevine
+    autodelete: true
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/apple/cups/releases/download/v2.3.3/cups-2.3.3-source.tar.gz
+        sha256: 261fd948bce8647b6d5cb2a1784f0c24cc52b5c4e827b71d726020bcc502f3ee
+
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini'
+    sources:
+      - type: file
+        path: gtk-settings.ini
+
+  # Based on https://github.com/flathub/shared-modules/blob/master/python2.7/python-2.7.json
+  - name: python2
+    config-opts:
+      - --enable-shared
+      - --with-ensurepip=yes
+      - --with-system-expat
+      - --with-system-ffi
+      - --with-dbmliborder=gdbm
+      - --enable-unicode=ucs4
+    build-options:
+      no-debuginfo: true
+    post-install:
+      - chmod 644 $FLATPAK_DEST/lib/libpython2.7.so.1.0
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+
+  - name: xcbproto
+    build-options:
+      env:
+        PYTHON: /app/bin/python2
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.14.tar.xz
+        sha256: 186a3ceb26f9b4a015f5a44dcc814c93033a5fc39684f36f1ecc79834416a605
+
+  - name: krb5
+    subdir: src
+    config-opts:
+      - --disable-static
+      - --disable-rpath
+    sources:
+      - type: archive
+        url: https://kerberos.org/dist/krb5/1.18/krb5-1.18.2.tar.gz
+        sha256: c6e4c9ec1a98141c3f5d66ddf1a135549050c9fab4e9a4620ee9b22085873ae0
+
+  - name: krb5-config
+    buildsystem: simple
+    build-commands:
+      - install -Dm 644 krb5.conf -t /app/etc
+    sources:
+      - type: file
+        path: krb5.conf
+
+  - name: extensions
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/native-messaging-hosts /app/widevine
+
+  - name: chromium
+    buildsystem: simple
+    build-options:
+      env:
+        CC: clang
+        CXX: clang++
+        AR: ar
+        NM: nm
+        CFLAGS: -Wno-unknown-warning-option -Wno-unknown-pragmas
+        CXXFLAGS: -Wno-unknown-warning-option -Wno-unknown-pragmas
+    build-commands:
+      # NOTE: zlib can be unbundled if we added Fedora's unmangling patches
+      # flac can likely be unbundled
+      - >-
+        build/linux/unbundle/replace_gn_files.py --system-libraries
+        libdrm libjpeg libpng libvpx libwebp libxml libxslt opus
+      # Avoid mangling issues
+      - rm third_party/libpng/*.h
+      # DO NOT REUSE THE BELOW API KEYS; these are for Flathub only.
+      # http://lists.debian.org/debian-legal/2013/11/msg00006.html
+      - >-
+        tools/gn/bootstrap/bootstrap.py -v --no-clean --gn-gen-args='
+        use_sysroot=false
+        custom_toolchain="//build/toolchain/linux/unbundle:default"
+        host_toolchain="//build/toolchain/linux/unbundle:default"
+        use_udev=false
+        use_lld=true
+        enable_nacl=false
+        blink_symbol_level=0
+        use_gnome_keyring=false
+        use_pulseaudio=true
+        clang_use_chrome_plugins=false
+        is_official_build=true
+        google_api_key="AIzaSyAL6fqCZVFhA7K_qBvz9GO5Z-V1JBcPO0A"
+        google_default_client_id="62778694883-t4a8bf01lumav756cl6ujhhrqsqselq9.apps.googleusercontent.com"
+        google_default_client_secret="eeHsihEqYjhD2zuIROjerl_7"
+        '
+      - . /usr/lib/sdk/openjdk11/enable.sh; ninja -C out/Release -j $FLATPAK_BUILDER_N_JOBS chrome
+      - mkdir -p /app/chromium
+      # Keep file names sync with build_devel_flatpak.py
+      - >-
+        cd out/Release && for path in chrome icudtl.dat *.so *.pak *.bin *.png locales MEIPreload; do
+          cp -rv $path /app/chromium;
+        done
+      - >-
+        for size in 24 48 64 128 256; do
+          install -Dm 644 chrome/app/theme/chromium/product_logo_$size.png /app/share/icons/hicolor/${size}x${size}/apps/com.google.Chromium.png;
+        done
+      - install -Dm 644 portal_error.txt -t /app/share/flatpak-chromium
+      - install -Dm 644 com.google.Chromium.desktop -t /app/share/applications
+      - install -Dm 644 com.google.Chromium.metainfo.xml -t /app/share/metainfo
+      - install -Dm 755 chromium.sh /app/bin/chromium
+    sources:
+      - type: archive
+        url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.121.tar.xz
+        sha256: e018547e54566410fb365d9f3dae10037c30fca5debe6ba8baceef3ad3b03d28
+      - type: patch
+        path: patches/0001-Add-Flatpak-sandbox-support.patch
+      - type: patch
+        path: patches/0002-Use-Flatpak-specific-configuration-paths.patch
+      - type: patch
+        path: patches/0003-Add-support-for-Flatpak-s-Widevine-location.patch
+      - type: patch
+        path: patches/0004-Import-chromium-71.0.3578.98-widevine-r3.patch.patch
+      - type: patch
+        path: patches/0005-Enable-Chromecast-by-default.patch
+      - type: patch
+        path: patches/0006-Don-t-ever-play-the-default-First-Run-experience.patch
+      - type: patch
+        path: patches/0007-x11-Set-_NET_WM_BYPASS_COMPOSITOR-for-fullscreen.patch
+      - type: patch
+        path: patches/0008-memory-Enable-the-tab-discards-feature.patch
+      - type: patch
+        path: patches/0009-Enable-VAVDA-VAVEA-and-VAJDA-on-linux-with-VAAPI-onl.patch
+      - type: patch
+        path: patches/0010-XDG-file-chooser-portal-support.patch
+      - type: patch
+        path: patches/0011-Add-memory-pressure-monitor-for-Linux.patch
+      - type: patch
+        path: patches/0001-ffmpeg-Use-royalty-free-libfdk-aac-for-AAC-playback.patch
+      - type: patch
+        path: patches/0002-ffmpeg-Handle-transient-decode-errors-arising-from-l.patch
+      - type: patch
+        path: patches/0003-ffmpeg-Enable-support-for-using-OpenH264-for-H264-pl.patch
+      - type: patch
+        path: patches/0004-ffmpeg-Don-t-lie-about-AAC-and-H264-decoders-when-no.patch
+      - type: file
+        path: com.google.Chromium.desktop
+      - type: file
+        path: com.google.Chromium.metainfo.xml
+      - type: file
+        path: chromium.sh
+      - type: file
+        path: portal_error.txt
