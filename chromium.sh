@@ -1,9 +1,30 @@
-#!/usr/bin/sh
+#!/bin/bash
 
-# Show warning for people that don't have expose-pids support every time
-if ! zypak-helper spawn-strategy-test; then
-	set /app/share/flatpak-chromium/mimic_warning.html chrome://welcome "$@"
+get_int32_property() {
+  gdbus call -e \
+    -d org.freedesktop.portal.Flatpak \
+    -o /org/freedesktop/portal/Flatpak \
+    -m org.freedesktop.DBus.Properties.Get \
+    org.freedesktop.portal.Flatpak "$1" \
+    | awk 'match($0, /uint32 ([0-9]+)/, m){print m[1];}'
+}
+
+# Check the portal version & make sure it supports expose-pids.
+if [[ $(get_int32_property version) -lt 4 || \
+      $(($(get_int32_property supports) & 1)) -eq 0 ]]; then
+  zenity --info --title='Chromium Flatpak' --no-wrap \
+    --text="$(< /app/share/flatpak-chromium/portal_error.txt)"
+  exit 1
+fi
+
+# Merge the flags.
+if [[ -f "$XDG_CONFIG_HOME/chromium-flags.conf" ]]; then
+  IFS=$'\n'
+  flags=($(grep -v '^#' "$XDG_CONFIG_HOME/chromium-flags.conf"))
+  unset IFS
+
+  set -- "${flags[@]}" "$@"
 fi
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-exec zypak-wrapper.sh /app/share/chromium-browser/chromium "$@"
+exec /app/share/chromium-browser/chromium "$@"
