@@ -7,7 +7,7 @@ separate-locales: false
 build-options:
   no-debuginfo: true
 finish-args:
-  - --require-version=1.8.2
+  - '--require-version=1.8.2'
   - '--device=all'
   - '--share=ipc'
   - '--share=network'
@@ -23,12 +23,48 @@ finish-args:
   - '--system-talk-name=org.freedesktop.Avahi'
   - '--system-talk-name=org.freedesktop.GeoClue2'
   - '--system-talk-name=org.freedesktop.UPower'
-  - '--filesystem=host-etc:ro'
+  - '--filesystem=host-etc'
   - '--filesystem=xdg-download'
+
+add-extensions:
+  com.google.Eloston.ungoogled-chromium.NativeMessagingHost:
+    version: '1'
+    directory: native-messaging-hosts
+    merge-dirs: manifest
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node12
+
 modules:
   - shared-modules/libsecret/libsecret.json
+
+  - name: extensions
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/native-messaging-hosts /app/widevine
+
+  # Based on https://github.com/flathub/shared-modules/blob/master/python2.7/python-2.7.json
+  - name: python2
+    config-opts:
+      - --enable-shared
+      - --with-ensurepip=yes
+      - --with-system-expat
+      - --with-system-ffi
+      - --with-dbmliborder=gdbm
+      - --enable-unicode=ucs4
+    build-options:
+      no-debuginfo: true
+    post-install:
+      - chmod 644 $FLATPAK_DEST/lib/libpython2.7.so.1.0
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
 
   - name: libcups
     make-args: [libs]
@@ -72,6 +108,12 @@ modules:
       #   path: ../../code/zypak
 
   - name: ungoogled-chromium
+  - buildsystem: simple
+      - type: git
+        url: https://github.com/Eloston/ungoogled-chromium
+        tag: 85.0.4183.121-1
+
+  - name: chromium
     buildsystem: simple
     build-options:
       env:
@@ -85,26 +127,16 @@ modules:
     build-commands:
       # Refer to https://github.com/Eloston/ungoogled-chromium/blob/master/docs/building.md
 
-      ## Step 1
-      - 'mkdir -p build/download_cache'
-      - 'mv chromium-*.tar.xz build/download_cache/'
-      - 'mv chromium-*.tar.xz.hashes build/download_cache/'
-      - './utils/downloads.py retrieve -c build/download_cache -i downloads.ini'
-      - './utils/downloads.py unpack -c build/download_cache -i downloads.ini -- build/src'
-
-      ## Step 2
-      - './utils/prune_binaries.py build/src pruning.list'
-
-      ## Step 3
-      - './utils/patches.py apply build/src patches'
+      - '../ungoogled-chromium/utils/prune_binaries.py ./ pruning.list'
+      - '../ungoogled-chromium/utils/patches.py apply ./ patches'
 
       ## Step 4
-      - './utils/domain_substitution.py apply -r domain_regex.list -f domain_substitution.list -c build/domsubcache.tar.gz build/src'
+      - '../ungoogled-chromium/utils/domain_substitution.py apply -r domain_regex.list -f domain_substitution.list -c ./domsubcache.tar.gz ./'
 
       ## Step 5 and 6
-      - 'mkdir -p build/src/out/Default'
-      - 'cp flags.gn build/src/out/Default/args.gn'
-      - 'cat flatpak.gn >> build/src/out/Default/args.gn'
+      - 'mkdir -p out/Default'
+      - 'cp flags.gn out/Default/args.gn'
+      - 'cat flatpak.gn >> out/Default/args.gn'
       - |
          architecture=""
          case $(uname -m) in
@@ -114,22 +146,22 @@ modules:
            i386) architecture="i386" ;;
            i686) architecture="i386" ;;
          esac
-         echo host_cpu=\"$architecture\" >> build/src/out/Default/args.gn
-         echo target_cpu=\"$architecture\" >> build/src/out/Default/args.gn
+         echo host_cpu=\"$architecture\" >> out/Default/args.gn
+         echo target_cpu=\"$architecture\" >> out/Default/args.gn
          case $architecture in
            arm64)
-             echo use_vaapi=true >> build/src/out/Default/args.gn ;;
+             echo use_vaapi=true >> out/Default/args.gn ;;
            x64)
-             echo use_vaapi=true >> build/src/out/Default/args.gn ;;
+             echo use_vaapi=true >> out/Default/args.gn ;;
            i386)
-             echo use_vaapi=true >> build/src/out/Default/args.gn ;;
+             echo use_vaapi=true >> out/Default/args.gn ;;
          esac
 
-      - 'cd build/src && mkdir -p third_party/node/linux/node-linux-x64/bin/'
-      - 'cd build/src && ln -sf /usr/lib/sdk/node12/bin/node third_party/node/linux/node-linux-x64/bin/'
-      - 'cd build/src && ./tools/gn/bootstrap/bootstrap.py -o out/Default/gn --skip-generate-buildfiles'
-      - 'cd build/src && ./out/Default/gn gen out/Default --script-executable=/usr/lib/sdk/node12/bin/python2'
-      - 'cd build/src && source /usr/lib/sdk/node12/enable.sh && ninja -C out/Default -j$FLATPAK_BUILDER_N_JOBS chrome'
+      - 'mkdir -p third_party/node/linux/node-linux-x64/bin/'
+      - 'ln -sf /usr/lib/sdk/node12/bin/node third_party/node/linux/node-linux-x64/bin/'
+      - './tools/gn/bootstrap/bootstrap.py -o out/Default/gn --skip-generate-buildfiles'
+      - './out/Default/gn gen out/Default --script-executable=/usr/lib/sdk/node12/bin/python2'
+      - 'ninja -C out/Default -j$FLATPAK_BUILDER_N_JOBS chrome'
 
       # Installing ungoogled-chromium
       - 'install -Dm 755 chromium.sh /app/bin/chromium'
@@ -138,26 +170,38 @@ modules:
       - 'install -Dm 644 -t /app/share/metainfo com.github.Eloston.ungoogled-chromium.metainfo.xml'
       - 'install -Dm 644 chromium.svg /app/share/icons/hicolor/scalable/apps/com.github.Eloston.ungoogled-chromium.svg'
       - 'mkdir -p /app/share/chromium-browser'
-      - 'install -D build/src/out/Default/chrome /app/share/chromium-browser/chromium'
+      - 'install -D out/Default/chrome /app/share/chromium-browser/chromium'
       - 'touch /app/share/chromium-browser/chrome-sandbox && chmod +x /app/share/chromium-browser/chrome-sandbox'
       - |
-          cd build/src/out/Default/
+          cd out/Default/
           for x in icudtl.dat *.so *.pak *.bin *.png locales MEIPreload; do
             cp $x /app/share/chromium-browser/ || true
           done
 
-      - 'install -Dm755 -t /app/share/chromium-browser/swiftshader build/src/out/Default/swiftshader/*.so || true'
+      - 'install -Dm755 -t /app/share/chromium-browser/swiftshader out/Default/swiftshader/*.so || true'
 
     sources:
-      - type: git
-        url: https://github.com/Eloston/ungoogled-chromium
-        tag: 85.0.4183.121-1
-      - type: file
+      - type: archive
         url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.121.tar.xz
         sha256: e018547e54566410fb365d9f3dae10037c30fca5debe6ba8baceef3ad3b03d28
-      - type: file
-        url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.121.tar.xz.hashes
-        sha256: 6fb77a7e32edf20f199fd0c92bbed340fbb6cc143621a0b28bdba2a40f86e9fd
+      - type: patch
+        path: patches/0001-Add-Flatpak-sandbox-support.patch
+      - type: patch
+        path: patches/0002-Use-Flatpak-specific-configuration-paths.patch
+      - type: patch
+        path: patches/0003-Add-support-for-Flatpak-s-Widevine-location.patch
+      - type: patch
+        path: patches/0004-Import-chromium-71.0.3578.98-widevine-r3.patch.patch
+      - type: patch
+        path: patches/0007-x11-Set-_NET_WM_BYPASS_COMPOSITOR-for-fullscreen.patch
+      - type: patch
+        path: patches/0008-memory-Enable-the-tab-discards-feature.patch
+      - type: patch
+        path: patches/0009-Enable-VAVDA-VAVEA-and-VAJDA-on-linux-with-VAAPI-onl.patch
+      - type: patch
+        path: patches/0010-XDG-file-chooser-portal-support.patch
+      - type: patch
+        path: patches/0011-Add-memory-pressure-monitor-for-Linux.patch
       - type: file
         path: chromium.sh
       - type: file
@@ -166,7 +210,5 @@ modules:
         path: com.github.Eloston.ungoogled-chromium.metainfo.xml
       - type: file
         path: mimic_warning.html
-      - type: file
-        path: chromium.svg
       - type: file
         path: flatpak.gn

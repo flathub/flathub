@@ -1,0 +1,178 @@
+From e2e1d388a7919e27811f46d52d161ee166bd9eaa Mon Sep 17 00:00:00 2001
+From: Mario Sanchez Prada <mario@endlessm.com>
+Date: Tue, 25 Oct 2016 16:57:00 +0000
+Subject: [PATCH 4/4] ffmpeg: Don't lie about AAC and H264 decoders when not
+ available
+
+On Endless OS, we always build with USE_PROPRIETARY_CODECS defined
+and then, depending on the version of libffmpeg.so that is loaded,
+some non-free codecs can be available other than free ones.
+
+The problem with this approach is that Chromium will internally
+report that all the proprietary codecs are available regardless
+of the version of libffmpeg.so that is being used so we need
+to add some extra checks in this case at least for the codecs
+that Endless OS would support in the non-free version of the OS),
+so that users unable to reproduce certain media formats will then
+be reported about it, so that they can decide whether to purchase
+codecs activation key to unlock that particular type of content.
+
+This patch double-checks whether the AAC and H264 decoders are really
+available at run-time before adding the related MIME type to the list
+of supported formats, so that we have a chance to let users know that
+they might need to upgrade to a non-free version of Endless OS.
+
+https://phabricator.endlessm.com/T15216
+https://phabricator.endlessm.com/T30286
+https://phabricator.endlessm.com/T30300
+---
+ media/base/mime_util_internal.cc | 97 +++++++++++++++++++++++++++++---
+ 1 file changed, 90 insertions(+), 7 deletions(-)
+
+diff --git a/media/base/mime_util_internal.cc b/media/base/mime_util_internal.cc
+index 30347811de02d..35cead5a9f243 100644
+--- a/media/base/mime_util_internal.cc
++++ b/media/base/mime_util_internal.cc
+@@ -29,6 +29,8 @@
+ #include "media/base/android/media_codec_util.h"  // nogncheck
+ #endif
+ 
++#include <dlfcn.h>
++
+ namespace media {
+ namespace internal {
+ 
+@@ -278,6 +280,68 @@ void MimeUtil::InitializeMimeTypeMaps() {
+   AddSupportedMediaFormats();
+ }
+ 
++/* On Endless OS, we always build with USE_PROPRIETARY_CODECS defined
++ * and then, depending on the version of libffmpeg.so that is loaded,
++ * some non-free codecs can be available other than free ones.
++ *
++ * The problem with this approach is that Chromium will internally
++ * report that all the proprietary codecs are available regardless
++ * of the version of libffmpeg.so that is being used so we need
++ * to add some extra checks in this case at least for the codecs
++ * that Endless OS would support in the non-free version of the OS),
++ * so that users unable to reproduce certain media formats will then
++ * be reported about it, so that they can decide whether to purchase
++ * codecs activation key to unlock that particular type of content.
++ */
++
++
++// Copied over from OpenH264's source code at codec/api/svc/codec_app_def.h
++// just to test the call to WelsGetDecoderCapability down below.
++typedef struct {
++  int iProfileIdc;     ///< profile_idc
++  int iProfileIop;     ///< profile-iop
++  int iLevelIdc;       ///< level_idc
++  int iMaxMbps;        ///< max-mbps
++  int iMaxFs;          ///< max-fs
++  int iMaxCpb;         ///< max-cpb
++  int iMaxDpb;         ///< max-dpb
++  int iMaxBr;          ///< max-br
++  bool bRedPicCap;     ///< redundant-pic-cap
++} SDecoderCapability;
++
++static void
++checkNonFreeMIMETypesOnEOS(bool& supports_h264, bool& supports_aac) {
++    /* Get a handle for the current process */
++    void *handle = dlopen(nullptr, RTLD_NOW);
++    if (!handle) {
++      DVLOG(4) << __FUNCTION__ << ": Unable to obtain handle for main process: " << dlerror();
++      return;
++    }
++
++    // Let's check what ffmpeg-based decoders are available.
++    supports_h264 = false;
++
++    if (dlsym(handle, "ff_h264_decoder") != nullptr) {
++      // For now, we prioritize ffmpeg's H264 decoder over Cisco's OpenH264 one.
++      supports_h264 = true;
++    } else {
++      int (*welsGetDecoderCapability) (SDecoderCapability*);
++      welsGetDecoderCapability = reinterpret_cast<int (*)(SDecoderCapability*)>(dlsym(handle, "WelsGetDecoderCapability"));
++      if (welsGetDecoderCapability) {
++        SDecoderCapability sDecCap;
++        int result = (*welsGetDecoderCapability)(&sDecCap);
++        // The real library will always return 0 (ERROR_NONE), while our
++        // own dummy library will return 3 (ERROR_API_FAILED) instead, and
++        // we only want to support H264 if it's the real one, of course.
++        supports_h264 = (result == 0);
++      }
++    }
++
++    supports_aac = (dlsym(handle, "ff_libfdk_aac_decoder") != nullptr);
++
++    dlclose(handle);
++}
++
+ // Each call to AddContainerWithCodecs() contains a media type
+ // (https://en.wikipedia.org/wiki/Media_type) and corresponding media codec(s)
+ // supported by these types/containers.
+@@ -313,11 +377,22 @@ void MimeUtil::AddSupportedMediaFormats() {
+   mp4_video_codecs.emplace(VP9);
+ 
+ #if BUILDFLAG(USE_PROPRIETARY_CODECS)
+-  const CodecSet aac{MPEG2_AAC, MPEG4_AAC, MPEG4_XHE_AAC};
++  bool supportsH264 = false;
++  bool supportsAAC = false;
++  checkNonFreeMIMETypesOnEOS(supportsH264, supportsAAC);
++
++  CodecSet aac;
++  if (supportsAAC) {
++    aac.emplace(MPEG2_AAC);
++    aac.emplace(MPEG4_AAC);
++    aac.emplace(MPEG4_XHE_AAC);
++  }
++
+   mp4_audio_codecs.insert(aac.begin(), aac.end());
+ 
+   CodecSet avc_and_aac(aac);
+-  avc_and_aac.emplace(H264);
++  if (supportsAAC && supportsH264)
++      avc_and_aac.emplace(H264);
+ 
+ #if BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+   mp4_audio_codecs.emplace(AC3);
+@@ -328,7 +403,9 @@ void MimeUtil::AddSupportedMediaFormats() {
+   mp4_audio_codecs.emplace(MPEG_H_AUDIO);
+ #endif  // BUILDFLAG(ENABLE_PLATFORM_MPEG_H_AUDIO)
+ 
+-  mp4_video_codecs.emplace(H264);
++  if (supportsH264)
++    mp4_video_codecs.emplace(H264);
++
+ #if BUILDFLAG(ENABLE_PLATFORM_HEVC)
+   mp4_video_codecs.emplace(HEVC);
+ #endif  // BUILDFLAG(ENABLE_PLATFORM_HEVC)
+@@ -362,15 +439,21 @@ void MimeUtil::AddSupportedMediaFormats() {
+   AddContainerWithCodecs("audio/mp3", implicit_codec);
+   AddContainerWithCodecs("audio/x-mp3", implicit_codec);
+   AddContainerWithCodecs("audio/mp4", mp4_audio_codecs);
+-  DCHECK(!mp4_video_codecs.empty());
+-  AddContainerWithCodecs("video/mp4", mp4_codecs);
++  if (supportsH264) {
++    DCHECK(!mp4_video_codecs.empty());
++    AddContainerWithCodecs("video/mp4", mp4_codecs);
++  }
+ 
+ #if BUILDFLAG(USE_PROPRIETARY_CODECS)
+   AddContainerWithCodecs("audio/aac", implicit_codec);  // AAC / ADTS.
+   // These strings are supported for backwards compatibility only and thus only
+   // support the codecs needed for compatibility.
+-  AddContainerWithCodecs("audio/x-m4a", aac);
+-  AddContainerWithCodecs("video/x-m4v", avc_and_aac);
++  if (supportsAAC) {
++    AddContainerWithCodecs("audio/x-m4a", aac);
++
++    if (supportsH264)
++      AddContainerWithCodecs("video/x-m4v", avc_and_aac);
++  }
+ 
+   CodecSet video_3gpp_codecs(aac);
+   video_3gpp_codecs.emplace(H264);
+-- 
+2.26.2
+

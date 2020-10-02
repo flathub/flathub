@@ -1,0 +1,94 @@
+From 905dce5bd41a3785e0215b3ff93a6d473e11bf95 Mon Sep 17 00:00:00 2001
+From: Mario Sanchez Prada <mario@endlessm.com>
+Date: Tue, 27 Oct 2015 09:56:28 +0000
+Subject: [PATCH 06/11] Don't ever play the default "First Run experience"
+
+We don't want to ever show the bubble overlay popping out of the address
+bar on the first run, nor the Getting Started webpage on a second tab.
+
+This change has the problem that it invalidates the master_preferences
+feature, as those get imported only during the first run, but it should
+be fine as we are not using that now (nor planning to use it in the near
+future) and that is a feature already on its way to being deprecated.
+
+[endlessm/eos-shell#5937]
+---
+ chrome/browser/first_run/first_run.cc         | 20 +++++--------------
+ .../ui/startup/startup_tab_provider.cc        |  6 ------
+ 2 files changed, 5 insertions(+), 21 deletions(-)
+
+diff --git a/chrome/browser/first_run/first_run.cc b/chrome/browser/first_run/first_run.cc
+index 194e5090ba071..2a061aa102482 100644
+--- a/chrome/browser/first_run/first_run.cc
++++ b/chrome/browser/first_run/first_run.cc
+@@ -67,7 +67,6 @@ namespace {
+ uint16_t g_auto_import_state = first_run::AUTO_IMPORT_NONE;
+ 
+ // Flags for functions of similar name.
+-bool g_should_show_welcome_page = false;
+ bool g_should_do_autofill_personal_data_manager_first_run = false;
+ 
+ // Indicates whether this is first run. Populated when IsChromeFirstRun
+@@ -304,15 +303,9 @@ void RegisterProfilePrefs(
+ }
+ 
+ bool IsChromeFirstRun() {
+-  if (g_first_run == internal::FIRST_RUN_UNKNOWN) {
+-    const base::CommandLine* command_line =
+-        base::CommandLine::ForCurrentProcess();
+-    g_first_run = internal::DetermineFirstRunState(
+-        internal::IsFirstRunSentinelPresent(),
+-        command_line->HasSwitch(switches::kForceFirstRun),
+-        command_line->HasSwitch(switches::kNoFirstRun));
+-  }
+-  return g_first_run == internal::FIRST_RUN_TRUE;
++  // We don't ever want a "First Run experience" to happen, so we
++  // just always return false.
++  return false;
+ }
+ 
+ #if defined(OS_MACOSX)
+@@ -329,7 +322,7 @@ bool IsMetricsReportingOptIn() {
+ }
+ 
+ void CreateSentinelIfNeeded() {
+-  if (IsChromeFirstRun())
++  if (!internal::IsFirstRunSentinelPresent())
+     internal::CreateSentinel();
+ 
+   // Causes the first run sentinel creation time to be read and cached, while
+@@ -349,13 +342,10 @@ void ResetCachedSentinelDataForTesting() {
+ }
+ 
+ void SetShouldShowWelcomePage() {
+-  g_should_show_welcome_page = true;
+ }
+ 
+ bool ShouldShowWelcomePage() {
+-  bool retval = g_should_show_welcome_page;
+-  g_should_show_welcome_page = false;
+-  return retval;
++  return false;
+ }
+ 
+ bool IsOnWelcomePage(content::WebContents* contents) {
+diff --git a/chrome/browser/ui/startup/startup_tab_provider.cc b/chrome/browser/ui/startup/startup_tab_provider.cc
+index 3e5b36df42984..c01e1107fad22 100644
+--- a/chrome/browser/ui/startup/startup_tab_provider.cc
++++ b/chrome/browser/ui/startup/startup_tab_provider.cc
+@@ -157,12 +157,6 @@ bool StartupTabProviderImpl::ShouldShowWelcomeForOnboarding(
+ StartupTabs StartupTabProviderImpl::GetStandardOnboardingTabsForState(
+     const StandardOnboardingTabsParams& params) {
+   StartupTabs tabs;
+-  if (CanShowWelcome(params.is_signin_allowed, params.is_supervised_user,
+-                     params.is_force_signin_enabled) &&
+-      ShouldShowWelcomeForOnboarding(params.has_seen_welcome_page,
+-                                     params.is_signed_in)) {
+-    tabs.emplace_back(GetWelcomePageUrl(!params.is_first_run), false);
+-  }
+   return tabs;
+ }
+ 
+-- 
+2.26.2
+

@@ -1,0 +1,650 @@
+From 92d31a68a6e0eb52f28897ec2e1fadff6bb582b8 Mon Sep 17 00:00:00 2001
+From: Kirill Ovchinnikov <kirill.ovchinn@gmail.com>
+Date: Thu, 27 Aug 2020 22:29:32 +0000
+Subject: [PATCH 11/11] Add memory pressure monitor for Linux.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This CL returns back MemoryPressureMonitor for Linux that was temporarily removed during memory subsystem changes.
+Based on the previous implementation with some refactoring.
+
+Bug: 463606
+Change-Id: I5e6fbf46c913a86c152faea7964288249cc04247
+Reviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/1386856
+Auto-Submit: Kirill Ovchinnikov <kirill.ovchinn@gmail.com>
+Commit-Queue: Lei Zhang <thestig@chromium.org>
+Reviewed-by: Lei Zhang <thestig@chromium.org>
+Reviewed-by: Avi Drissman <avi@chromium.org>
+Reviewed-by: Sébastien Marchand <sebmarchand@chromium.org>
+Reviewed-by: Brian Geffon <bgeffon@chromium.org>
+Cr-Commit-Position: refs/heads/master@{#802397}
+---
+ base/util/memory_pressure/BUILD.gn            |  11 +
+ .../system_memory_pressure_evaluator.cc       |   5 +
+ .../system_memory_pressure_evaluator_linux.cc | 157 +++++++++++
+ .../system_memory_pressure_evaluator_linux.h  | 112 ++++++++
+ ...emory_pressure_evaluator_linux_unittest.cc | 261 ++++++++++++++++++
+ content/browser/browser_main_loop.cc          |   3 +-
+ 6 files changed, 548 insertions(+), 1 deletion(-)
+ create mode 100644 base/util/memory_pressure/system_memory_pressure_evaluator_linux.cc
+ create mode 100644 base/util/memory_pressure/system_memory_pressure_evaluator_linux.h
+ create mode 100644 base/util/memory_pressure/system_memory_pressure_evaluator_linux_unittest.cc
+
+diff --git a/base/util/memory_pressure/BUILD.gn b/base/util/memory_pressure/BUILD.gn
+index 1765d89deaf15..1f9fbec5aca93 100644
+--- a/base/util/memory_pressure/BUILD.gn
++++ b/base/util/memory_pressure/BUILD.gn
+@@ -51,6 +51,13 @@ source_set("memory_pressure") {
+       "system_memory_pressure_evaluator_chromeos.h",
+     ]
+   }
++
++  if (is_linux && !is_chromeos) {
++    sources += [
++      "system_memory_pressure_evaluator_linux.cc",
++      "system_memory_pressure_evaluator_linux.h",
++    ]
++  }
+ }
+ 
+ source_set("unittests") {
+@@ -85,6 +92,10 @@ source_set("unittests") {
+   if (is_chromeos) {
+     sources += [ "system_memory_pressure_evaluator_chromeos_unittest.cc" ]
+   }
++
++  if (is_linux && !is_chromeos) {
++    sources += [ "system_memory_pressure_evaluator_linux_unittest.cc" ]
++  }
+ }
+ 
+ static_library("test_support") {
+diff --git a/base/util/memory_pressure/system_memory_pressure_evaluator.cc b/base/util/memory_pressure/system_memory_pressure_evaluator.cc
+index c624b928cb044..6dc9b8532b6ef 100644
+--- a/base/util/memory_pressure/system_memory_pressure_evaluator.cc
++++ b/base/util/memory_pressure/system_memory_pressure_evaluator.cc
+@@ -16,6 +16,8 @@
+ #include "base/util/memory_pressure/system_memory_pressure_evaluator_mac.h"
+ #elif defined(OS_WIN)
+ #include "base/util/memory_pressure/system_memory_pressure_evaluator_win.h"
++#elif defined(OS_LINUX) && !defined(OS_CHROMEOS)
++#include "base/util/memory_pressure/system_memory_pressure_evaluator_linux.h"
+ #endif
+ 
+ namespace util {
+@@ -42,6 +44,9 @@ SystemMemoryPressureEvaluator::CreateDefaultSystemEvaluator(
+ #elif defined(OS_WIN)
+   return std::make_unique<util::win::SystemMemoryPressureEvaluator>(
+       monitor->CreateVoter());
++#elif defined(OS_LINUX) && !defined(OS_CHROMEOS)
++  return std::make_unique<util::linux::SystemMemoryPressureEvaluator>(
++      monitor->CreateVoter());
+ #endif
+   return nullptr;
+ }
+diff --git a/base/util/memory_pressure/system_memory_pressure_evaluator_linux.cc b/base/util/memory_pressure/system_memory_pressure_evaluator_linux.cc
+new file mode 100644
+index 0000000000000..258d983e289e9
+--- /dev/null
++++ b/base/util/memory_pressure/system_memory_pressure_evaluator_linux.cc
+@@ -0,0 +1,157 @@
++// Copyright 2020 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "base/util/memory_pressure/system_memory_pressure_evaluator_linux.h"
++
++#include "base/bind.h"
++#include "base/process/process_metrics.h"
++#include "base/single_thread_task_runner.h"
++#include "base/task/post_task.h"
++#include "base/task/task_traits.h"
++#include "base/threading/sequenced_task_runner_handle.h"
++#include "base/time/time.h"
++#include "base/util/memory_pressure/multi_source_memory_pressure_monitor.h"
++
++namespace {
++
++constexpr int kKiBperMiB = 1024;
++
++int GetAvailableSystemMemoryMiB(const base::SystemMemoryInfoKB& mem_info) {
++  // Use 'available' metric if is is present,
++  // if no (kernels < 3.14), let's make a rough evaluation using free physical
++  // memory plus buffers and caches (that OS can free in case of low memory
++  // state)
++  int mem_available =
++      mem_info.available ? mem_info.available
++                         : (mem_info.free + mem_info.buffers + mem_info.cached);
++  // How much physical memory is actively available for use right now, in MBs.
++  return mem_available / kKiBperMiB;
++}
++
++}  // namespace
++
++namespace util {
++namespace linux {
++
++const base::TimeDelta SystemMemoryPressureEvaluator::kModeratePressureCooldown =
++    base::TimeDelta::FromSeconds(10);
++
++const int SystemMemoryPressureEvaluator::kDefaultModerateThresholdPc = 75;
++const int SystemMemoryPressureEvaluator::kDefaultCriticalThresholdPc = 85;
++
++SystemMemoryPressureEvaluator::SystemMemoryPressureEvaluator(
++    std::unique_ptr<MemoryPressureVoter> voter)
++    : util::SystemMemoryPressureEvaluator(std::move(voter)),
++      moderate_pressure_repeat_count_(0) {
++  if (InferThresholds())
++    StartObserving();
++}
++
++SystemMemoryPressureEvaluator::SystemMemoryPressureEvaluator(
++    int moderate_threshold_mb,
++    int critical_threshold_mb,
++    std::unique_ptr<MemoryPressureVoter> voter)
++    : util::SystemMemoryPressureEvaluator(std::move(voter)),
++      moderate_threshold_mb_(moderate_threshold_mb),
++      critical_threshold_mb_(critical_threshold_mb),
++      moderate_pressure_repeat_count_(0) {
++  DCHECK_GE(moderate_threshold_mb_, critical_threshold_mb_);
++  DCHECK_GT(critical_threshold_mb_, 0);
++  StartObserving();
++}
++
++void SystemMemoryPressureEvaluator::StartObserving() {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++  timer_.Start(
++      FROM_HERE, base::MemoryPressureMonitor::kUMAMemoryPressureLevelPeriod,
++      base::BindRepeating(&SystemMemoryPressureEvaluator::CheckMemoryPressure,
++                          base::Unretained(this)));
++}
++
++void SystemMemoryPressureEvaluator::StopObserving() {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++  // If StartObserving failed, StopObserving will still get called.
++  timer_.Stop();
++}
++
++bool SystemMemoryPressureEvaluator::GetSystemMemoryInfo(
++    base::SystemMemoryInfoKB* mem_info) {
++  return base::GetSystemMemoryInfo(mem_info);
++}
++
++void SystemMemoryPressureEvaluator::CheckMemoryPressure() {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++
++  // Get the previous pressure level and update the current one.
++  MemoryPressureLevel old_vote = current_vote();
++  SetCurrentVote(CalculateCurrentPressureLevel());
++
++  // |notify| will be set to true if MemoryPressureListeners need to be
++  // notified of a memory pressure level state change.
++  bool notify = false;
++  switch (current_vote()) {
++    case base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE:
++      break;
++
++    case base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE:
++      if (old_vote != current_vote()) {
++        // This is a new transition to moderate pressure so notify.
++        moderate_pressure_repeat_count_ = 0;
++        notify = true;
++      } else {
++        // Already in moderate pressure, only notify if sustained over the
++        // cooldown period.
++        const int kModeratePressureCooldownCycles =
++            kModeratePressureCooldown /
++            base::MemoryPressureMonitor::kUMAMemoryPressureLevelPeriod;
++        if (++moderate_pressure_repeat_count_ ==
++            kModeratePressureCooldownCycles) {
++          moderate_pressure_repeat_count_ = 0;
++          notify = true;
++        }
++      }
++      break;
++
++    case base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL:
++      // Always notify of critical pressure levels.
++      notify = true;
++      break;
++  }
++
++  SendCurrentVote(notify);
++}
++
++bool SystemMemoryPressureEvaluator::InferThresholds() {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++  base::SystemMemoryInfoKB mem_info;
++  if (!GetSystemMemoryInfo(&mem_info))
++    return false;
++  critical_threshold_mb_ =
++      mem_info.total * (100 - kDefaultCriticalThresholdPc) / 100 / kKiBperMiB;
++  moderate_threshold_mb_ =
++      mem_info.total * (100 - kDefaultModerateThresholdPc) / 100 / kKiBperMiB;
++  return true;
++}
++
++base::MemoryPressureListener::MemoryPressureLevel
++SystemMemoryPressureEvaluator::CalculateCurrentPressureLevel() {
++  base::SystemMemoryInfoKB mem_info;
++  if (GetSystemMemoryInfo(&mem_info)) {
++    // How much system memory is actively available for use right now, in MBs.
++    int available = GetAvailableSystemMemoryMiB(mem_info);
++
++    // Determine if the available memory is under critical memory pressure.
++    if (available <= critical_threshold_mb_)
++      return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL;
++
++    // Determine if the available memory is under moderate memory pressure.
++    if (available <= moderate_threshold_mb_)
++      return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE;
++  }
++  // No memory pressure was detected.
++  return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE;
++}
++
++}  // namespace linux
++}  // namespace util
+diff --git a/base/util/memory_pressure/system_memory_pressure_evaluator_linux.h b/base/util/memory_pressure/system_memory_pressure_evaluator_linux.h
+new file mode 100644
+index 0000000000000..0f5c43d80fc5e
+--- /dev/null
++++ b/base/util/memory_pressure/system_memory_pressure_evaluator_linux.h
+@@ -0,0 +1,112 @@
++// Copyright 2020 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef BASE_UTIL_MEMORY_PRESSURE_SYSTEM_MEMORY_PRESSURE_EVALUATOR_LINUX_H_
++#define BASE_UTIL_MEMORY_PRESSURE_SYSTEM_MEMORY_PRESSURE_EVALUATOR_LINUX_H_
++
++#include "base/memory/memory_pressure_listener.h"
++#include "base/process/process_metrics.h"
++#include "base/sequence_checker.h"
++#include "base/timer/timer.h"
++#include "base/util/memory_pressure/memory_pressure_voter.h"
++#include "base/util/memory_pressure/system_memory_pressure_evaluator.h"
++
++namespace util {
++namespace linux {
++
++// Linux memory pressure voter. Because there is no OS provided signal this
++// polls at a low frequency, and applies internal hysteresis.
++// TODO(https://crbug.com/1119396): use Pressure Stall Information (PSI) on
++// kernels >4.20.
++class SystemMemoryPressureEvaluator
++    : public util::SystemMemoryPressureEvaluator {
++ public:
++  using MemoryPressureLevel = base::MemoryPressureListener::MemoryPressureLevel;
++
++  // Constants governing the polling and hysteresis behaviour of the observer.
++  // The time which should pass between 2 successive moderate memory pressure
++  // signals.
++  static const base::TimeDelta kModeratePressureCooldown;
++
++  // Default minimum free memory thresholds, in percents.
++  static const int kDefaultModerateThresholdPc;
++  static const int kDefaultCriticalThresholdPc;
++
++  // Default constructor. Will choose thresholds automatically based on the
++  // actual amount of system memory.
++  explicit SystemMemoryPressureEvaluator(
++      std::unique_ptr<MemoryPressureVoter> voter);
++
++  // Constructor with explicit memory thresholds. These represent the amount of
++  // free memory below which the applicable memory pressure state engages.
++  SystemMemoryPressureEvaluator(int moderate_threshold_mb,
++                                int critical_threshold_mb,
++                                std::unique_ptr<MemoryPressureVoter> voter);
++
++  ~SystemMemoryPressureEvaluator() override = default;
++
++  SystemMemoryPressureEvaluator(const SystemMemoryPressureEvaluator&) = delete;
++  SystemMemoryPressureEvaluator& operator=(
++      const SystemMemoryPressureEvaluator&) = delete;
++
++  // Returns the moderate pressure level free memory threshold, in MB.
++  int moderate_threshold_mb() const { return moderate_threshold_mb_; }
++
++  // Returns the critical pressure level free memory threshold, in MB.
++  int critical_threshold_mb() const { return critical_threshold_mb_; }
++
++ protected:
++  // Internals are exposed for unittests.
++
++  // Starts observing the memory fill level. Calls to StartObserving should
++  // always be matched with calls to StopObserving.
++  void StartObserving();
++
++  // Stop observing the memory fill level. May be safely called if
++  // StartObserving has not been called. Must be called from the same thread on
++  // which the monitor was instantiated.
++  void StopObserving();
++
++  // Checks memory pressure, storing the current level, applying any hysteresis
++  // and emitting memory pressure level change signals as necessary. This
++  // function is called periodically while the monitor is observing memory
++  // pressure. Must be called from the same thread on which the monitor was
++  // instantiated.
++  void CheckMemoryPressure();
++
++  // Automatically infers threshold values based on system memory.
++  // Returns 'true' if succeeded.
++  bool InferThresholds();
++
++  // Calculates the current instantaneous memory pressure level. This does not
++  // use any hysteresis and simply returns the result at the current moment. Can
++  // be called on any thread.
++  MemoryPressureLevel CalculateCurrentPressureLevel();
++
++  // This is just a wrapper for base:: function;
++  // declared as virtual for unit testing
++  virtual bool GetSystemMemoryInfo(base::SystemMemoryInfoKB* mem_info);
++
++ private:
++  // Threshold amounts of available memory that trigger pressure levels
++  int moderate_threshold_mb_;
++  int critical_threshold_mb_;
++
++  // A periodic timer to check for memory pressure changes.
++  base::RepeatingTimer timer_;
++
++  // To slow down the amount of moderate pressure event calls, this gets used to
++  // count the number of events since the last event occurred. This is used by
++  // |CheckMemoryPressure| to apply hysteresis on the raw results of
++  // |CalculateCurrentPressureLevel|.
++  int moderate_pressure_repeat_count_;
++
++  // Ensures that this object is used from a single sequence.
++  SEQUENCE_CHECKER(sequence_checker_);
++};
++
++}  // namespace linux
++}  // namespace util
++
++#endif  // BASE_UTIL_MEMORY_PRESSURE_SYSTEM_MEMORY_PRESSURE_EVALUATOR_LINUX_H_
+diff --git a/base/util/memory_pressure/system_memory_pressure_evaluator_linux_unittest.cc b/base/util/memory_pressure/system_memory_pressure_evaluator_linux_unittest.cc
+new file mode 100644
+index 0000000000000..e5db67e87972b
+--- /dev/null
++++ b/base/util/memory_pressure/system_memory_pressure_evaluator_linux_unittest.cc
+@@ -0,0 +1,261 @@
++// Copyright 2020 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "base/util/memory_pressure/system_memory_pressure_evaluator_linux.h"
++
++#include "base/bind.h"
++#include "base/run_loop.h"
++#include "base/test/task_environment.h"
++#include "base/util/memory_pressure/multi_source_memory_pressure_monitor.h"
++#include "build/build_config.h"
++#include "testing/gmock/include/gmock/gmock.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++namespace util {
++namespace linux {
++
++namespace {
++
++struct PressureSettings {
++  int phys_left_mb;
++  base::MemoryPressureListener::MemoryPressureLevel level;
++};
++
++}  // namespace
++
++// This is outside of the anonymous namespace so that it can be seen as a friend
++// to the evaluator class.
++class TestSystemMemoryPressureEvaluator : public SystemMemoryPressureEvaluator {
++ public:
++  using SystemMemoryPressureEvaluator::CalculateCurrentPressureLevel;
++  using SystemMemoryPressureEvaluator::CheckMemoryPressure;
++
++  static const unsigned long kKiBperMiB = 1024;
++  static const unsigned long kMemoryTotalMb = 4096;
++
++  TestSystemMemoryPressureEvaluator(bool large_memory,
++                                    std::unique_ptr<MemoryPressureVoter> voter)
++      : SystemMemoryPressureEvaluator(std::move(voter)) {
++    // Generate a plausible amount of memory.
++    mem_status_.total = kMemoryTotalMb * kKiBperMiB;
++
++    // Rerun InferThresholds.
++    InferThresholds();
++    // Stop the timer.
++    StopObserving();
++  }
++
++  TestSystemMemoryPressureEvaluator(int system_memory_mb,
++                                    int moderate_threshold_mb,
++                                    int critical_threshold_mb)
++      : SystemMemoryPressureEvaluator(moderate_threshold_mb,
++                                      critical_threshold_mb,
++                                      nullptr) {
++    // Set the amount of system memory.
++    mem_status_.total = system_memory_mb * kKiBperMiB;
++
++    // Stop the timer.
++    StopObserving();
++  }
++
++  TestSystemMemoryPressureEvaluator(const TestSystemMemoryPressureEvaluator&) =
++      delete;
++  TestSystemMemoryPressureEvaluator& operator=(
++      const TestSystemMemoryPressureEvaluator&) = delete;
++
++  MOCK_METHOD1(OnMemoryPressure,
++               void(base::MemoryPressureListener::MemoryPressureLevel level));
++
++  // Sets up the memory status to reflect the provided absolute memory left.
++  void SetMemoryFree(int phys_left_mb) {
++    // ullTotalPhys is set in the constructor and not modified.
++
++    // Set the amount of available memory.
++    mem_status_.available = phys_left_mb * kKiBperMiB;
++    DCHECK_LT(mem_status_.available, mem_status_.total);
++  }
++
++  void SetNone() { SetMemoryFree(moderate_threshold_mb() + 1); }
++
++  void SetModerate() { SetMemoryFree(moderate_threshold_mb() - 1); }
++
++  void SetCritical() { SetMemoryFree(critical_threshold_mb() - 1); }
++
++  bool GetSystemMemoryInfo(base::SystemMemoryInfoKB* mem_info) override {
++    *mem_info = mem_status_;
++    return true;
++  }
++
++ private:
++  base::SystemMemoryInfoKB mem_status_;
++};
++
++class LinuxSystemMemoryPressureEvaluatorTest : public testing::Test {
++ protected:
++  void CalculateCurrentMemoryPressureLevelTest(
++      TestSystemMemoryPressureEvaluator* evaluator) {
++    int mod = evaluator->moderate_threshold_mb();
++    evaluator->SetMemoryFree(mod + 1);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE,
++              evaluator->CalculateCurrentPressureLevel());
++
++    evaluator->SetMemoryFree(mod);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++              evaluator->CalculateCurrentPressureLevel());
++
++    evaluator->SetMemoryFree(mod - 1);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++              evaluator->CalculateCurrentPressureLevel());
++
++    int crit = evaluator->critical_threshold_mb();
++    evaluator->SetMemoryFree(crit + 1);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++              evaluator->CalculateCurrentPressureLevel());
++
++    evaluator->SetMemoryFree(crit);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
++              evaluator->CalculateCurrentPressureLevel());
++
++    evaluator->SetMemoryFree(crit - 1);
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
++              evaluator->CalculateCurrentPressureLevel());
++  }
++
++  base::test::SingleThreadTaskEnvironment task_environment_{
++      base::test::SingleThreadTaskEnvironment::MainThreadType::UI};
++};
++
++// Tests the fundamental direct calculation of memory pressure with manually
++// specified threshold levels.
++TEST_F(LinuxSystemMemoryPressureEvaluatorTest,
++       CalculateCurrentMemoryPressureLevelCustom) {
++  static const int kSystemMb = 512;
++  static const int kModerateMb = 256;
++  static const int kCriticalMb = 128;
++
++  TestSystemMemoryPressureEvaluator evaluator(kSystemMb, kModerateMb,
++                                              kCriticalMb);
++
++  EXPECT_EQ(kModerateMb, evaluator.moderate_threshold_mb());
++  EXPECT_EQ(kCriticalMb, evaluator.critical_threshold_mb());
++
++  ASSERT_NO_FATAL_FAILURE(CalculateCurrentMemoryPressureLevelTest(&evaluator));
++}
++
++// This test tests the various transition states from memory pressure, looking
++// for the correct behavior on event reposting as well as state updates.
++TEST_F(LinuxSystemMemoryPressureEvaluatorTest, CheckMemoryPressure) {
++  MultiSourceMemoryPressureMonitor monitor;
++  monitor.ResetSystemEvaluatorForTesting();
++
++  // Large-memory.
++  testing::StrictMock<TestSystemMemoryPressureEvaluator> evaluator(
++      true, monitor.CreateVoter());
++
++  base::MemoryPressureListener listener(
++      FROM_HERE,
++      base::BindRepeating(&TestSystemMemoryPressureEvaluator::OnMemoryPressure,
++                          base::Unretained(&evaluator)));
++
++  // Checking the memory pressure at 0% load should not produce any
++  // events.
++  evaluator.SetNone();
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE,
++            evaluator.current_vote());
++
++  // Setting the memory level to 80% should produce a moderate pressure level.
++  EXPECT_CALL(
++      evaluator,
++      OnMemoryPressure(
++          base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE));
++  evaluator.SetModerate();
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++            evaluator.current_vote());
++  testing::Mock::VerifyAndClearExpectations(&evaluator);
++
++  // Check that the event gets reposted after a while.
++  const int kModeratePressureCooldownCycles =
++      evaluator.kModeratePressureCooldown /
++      base::MemoryPressureMonitor::kUMAMemoryPressureLevelPeriod;
++
++  for (int i = 0; i < kModeratePressureCooldownCycles; ++i) {
++    if (i + 1 == kModeratePressureCooldownCycles) {
++      EXPECT_CALL(
++          evaluator,
++          OnMemoryPressure(
++              base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE));
++    }
++    evaluator.CheckMemoryPressure();
++    base::RunLoop().RunUntilIdle();
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++              evaluator.current_vote());
++    testing::Mock::VerifyAndClearExpectations(&evaluator);
++  }
++
++  // Setting the memory usage to 99% should produce critical levels.
++  EXPECT_CALL(
++      evaluator,
++      OnMemoryPressure(
++          base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL));
++  evaluator.SetCritical();
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
++            evaluator.current_vote());
++  testing::Mock::VerifyAndClearExpectations(&evaluator);
++
++  // Calling it again should immediately produce a second call.
++  EXPECT_CALL(
++      evaluator,
++      OnMemoryPressure(
++          base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL));
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
++            evaluator.current_vote());
++  testing::Mock::VerifyAndClearExpectations(&evaluator);
++
++  // When lowering the pressure again there should be a notification and the
++  // pressure should go back to moderate.
++  EXPECT_CALL(
++      evaluator,
++      OnMemoryPressure(
++          base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE));
++  evaluator.SetModerate();
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++            evaluator.current_vote());
++  testing::Mock::VerifyAndClearExpectations(&evaluator);
++
++  // Check that the event gets reposted after a while.
++  for (int i = 0; i < kModeratePressureCooldownCycles; ++i) {
++    if (i + 1 == kModeratePressureCooldownCycles) {
++      EXPECT_CALL(
++          evaluator,
++          OnMemoryPressure(
++              base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE));
++    }
++    evaluator.CheckMemoryPressure();
++    base::RunLoop().RunUntilIdle();
++    EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE,
++              evaluator.current_vote());
++    testing::Mock::VerifyAndClearExpectations(&evaluator);
++  }
++
++  // Going down to no pressure should not produce an notification.
++  evaluator.SetNone();
++  evaluator.CheckMemoryPressure();
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE,
++            evaluator.current_vote());
++  testing::Mock::VerifyAndClearExpectations(&evaluator);
++}
++
++}  // namespace linux
++}  // namespace util
+diff --git a/content/browser/browser_main_loop.cc b/content/browser/browser_main_loop.cc
+index 4ada8596176e8..94ba708a77e39 100644
+--- a/content/browser/browser_main_loop.cc
++++ b/content/browser/browser_main_loop.cc
+@@ -365,7 +365,8 @@ std::unique_ptr<base::MemoryPressureMonitor> CreateMemoryPressureMonitor(
+ #if defined(OS_CHROMEOS)
+   if (chromeos::switches::MemoryPressureHandlingEnabled())
+     monitor = std::make_unique<util::MultiSourceMemoryPressureMonitor>();
+-#elif defined(OS_MACOSX) || defined(OS_WIN) || defined(OS_FUCHSIA)
++#elif defined(OS_MAC) || defined(OS_WIN) || defined(OS_FUCHSIA) || \
++    (defined(OS_LINUX) && !defined(OS_CHROMEOS))
+   monitor = std::make_unique<util::MultiSourceMemoryPressureMonitor>();
+ #endif
+   // No memory monitor on other platforms...
+-- 
+2.26.2
+
