@@ -1,0 +1,70 @@
+app-id: com.todoist.Todoist
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: todoist
+tags:
+  - proprietary
+finish-args:
+  - --socket=x11
+  - --device=dri
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: squashfs
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    sources:
+      - type: archive
+        url: https://github.com/plougher/squashfs-tools/archive/4.4.tar.gz
+        sha256: a7fa4845e9908523c38d4acf92f8a41fdfcd19def41bd5090d7ad767a6dc75c3
+      - type: patch
+        path: xz_support.patch
+      - type: patch
+        path: gcc10.diff
+
+  - shared-modules/libsecret/libsecret.json
+
+  - name: todoist
+    buildsystem: simple
+    build-commands:
+      - install -D apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install todoist "${FLATPAK_DEST}/bin/"
+    post-install:
+      - install -p -Dm644 "icon.png" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 todoist.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 com.todoist.Todoist.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: extra-data
+        filename: todoist.snap
+        url: https://api.snapcraft.io/api/v1/snaps/download/pP800io06HKwwkUmX8gDG1pFCfsinLHY_2.snap
+        sha256: c30cf3e0d5efc8131fcaacd847c7f2ad1932591c9ca2bca643f159b74c3c9a31
+        size: 66150400
+        x-checker-data:
+          type: snapcraft
+          name: todoist
+          channel: stable
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - unsquashfs todoist.snap
+          - rm todoist.snap
+          - mv squashfs-root todoist
+          - touch todoist/chrome-sandbox && chmod +x todoist/chrome-sandbox
+      - type: script
+        dest-filename: todoist
+        commands:
+          - TMPDIR=$XDG_CACHE_HOME zypak-wrapper /app/extra/todoist/todoist "$@"
+      - type: file
+        path: com.todoist.Todoist.metainfo.xml
+      - type: file
+        path: todoist.desktop
+      - type: file
+        path: icon.png
