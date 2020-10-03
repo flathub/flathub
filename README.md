@@ -1,9 +1,9 @@
-# How do I install Widevine CDM?
+<!-- # How do I install Widevine CDM?
 
 1. Go to https://github.com/mozilla/gecko-dev/blob/master/toolkit/content/gmp-sources/widevinecdm.json
 2. Download for your architecture (ex. `Linux_x86_64-gcc3` if you're on x86_64). Get the URL in `fileURL` and download and extract the zip file.
 3. Now do `mv libwidevinecdm.so ~/.var/app/com.github.Eloston.ungoogled-chromium/config/chromium/WidevineCdm`.
-
+-->
 # How do I fix the spell checker?
 
 1. Go to https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/master
