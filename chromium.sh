@@ -27,4 +27,4 @@ if [[ -f "$XDG_CONFIG_HOME/chromium-flags.conf" ]]; then
 fi
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-exec /app/share/chromium-browser/chromium "$@"
+exec /app/chromium/chromium "$@"

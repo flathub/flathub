@@ -33,6 +33,11 @@ add-extensions:
     no-autodownload: true
     autodelete: true
 
+  com.widevine.Widevine:
+    version: '1'
+    directory: widevine
+    autodelete: true
+
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node12
 
@@ -42,7 +47,7 @@ modules:
   - name: extensions
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/native-messaging-hosts
+      - mkdir -p /app/native-messaging-hosts /app/widevine
 
   # Based on https://github.com/flathub/shared-modules/blob/master/python2.7/python-2.7.json
   - name: python2
@@ -123,53 +128,29 @@ modules:
       - 'mkdir -p out/Default'
       - 'cp /app/ugc/flags.gn out/Default/args.gn'
       - 'cat flatpak.gn >> out/Default/args.gn'
-      - |
-         architecture=""
-         case $(uname -m) in
-           x86_64) architecture="x64" ;;
-           aarch64*) architecture="arm64" ;;
-           armv8*) architecture="arm64" ;;
-           i386) architecture="i386" ;;
-           i686) architecture="i386" ;;
-         esac
-         echo host_cpu=\"$architecture\" >> out/Default/args.gn
-         echo target_cpu=\"$architecture\" >> out/Default/args.gn
-         case $architecture in
-           arm64)
-             echo use_vaapi=true >> out/Default/args.gn ;;
-           x64)
-             echo use_vaapi=true >> out/Default/args.gn ;;
-           i386)
-             echo use_vaapi=true >> out/Default/args.gn ;;
-         esac
-
       - 'mkdir -p third_party/node/linux/node-linux-x64/bin/'
       - 'ln -sf /usr/lib/sdk/node12/bin/node third_party/node/linux/node-linux-x64/bin/'
       - './tools/gn/bootstrap/bootstrap.py -o out/Default/gn --skip-generate-buildfiles'
       - './out/Default/gn gen out/Default --script-executable=/usr/lib/sdk/node12/bin/python2'
       - 'ninja -C out/Default -j$FLATPAK_BUILDER_N_JOBS chrome'
-
       # Installing ungoogled-chromium
       - 'install -Dm 755 chromium.sh /app/bin/chromium'
       - 'install -Dm 644 -t /app/share/flatpak-chromium portal_error.txt'
       - 'install -Dm 644 -t /app/share/applications com.github.Eloston.ungoogled-chromium.desktop'
       - 'install -Dm 644 -t /app/share/metainfo com.github.Eloston.ungoogled-chromium.metainfo.xml'
-      - 'mkdir -p /app/share/chromium-browser'
-      - 'install -D out/Default/chrome /app/share/chromium-browser/chromium'
-      - 'touch /app/share/chromium-browser/chrome-sandbox && chmod +x /app/share/chromium-browser/chrome-sandbox'
+      - 'mkdir -p /app/chromium'
+      - 'install -D out/Default/chrome /app/chromium/chromium'
       - |
           cd out/Default/
           for x in icudtl.dat *.so *.pak *.bin *.png locales MEIPreload; do
-            cp -r $x /app/share/chromium-browser/ || true
+            cp -rv $x /app/chromium/ || true
           done
       - |
           for size in 24 48 64 128 256; do
             install -Dm 644 chrome/app/theme/chromium/product_logo_$size.png /app/share/icons/hicolor/${size}x${size}/apps/com.github.Eloston.ungoogled-chromium.png || true
           done
-
-      - 'install -Dm755 -t /app/share/chromium-browser/swiftshader out/Default/swiftshader/*.so || true'
+      - 'install -Dm755 -t /app/chromium/swiftshader out/Default/swiftshader/*.so || true'
       - 'rm -rf /app/ugc || true'
-
     sources:
       - type: archive
         url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.121.tar.xz
@@ -189,7 +170,13 @@ modules:
       - type: patch
         path: patches/0002-Use-Flatpak-specific-configuration-paths.patch
       - type: patch
+        path: patches/0003-Add-support-for-Flatpak-s-Widevine-location.patch
+      - type: patch
+        path: patches/0004-Import-chromium-71.0.3578.98-widevine-r3.patch.patch
+      - type: patch
         path: patches/0005-Enable-Chromecast-by-default.patch
+      - type: patch
+        path: patches/0006-Don-t-ever-play-the-default-First-Run-experience.patch
       - type: patch
         path: patches/0007-x11-Set-_NET_WM_BYPASS_COMPOSITOR-for-fullscreen.patch
       - type: patch
@@ -200,3 +187,17 @@ modules:
         path: patches/0010-XDG-file-chooser-portal-support.patch
       - type: patch
         path: patches/0011-Add-memory-pressure-monitor-for-Linux.patch
+      - type: patch
+        path: patches/0001-ffmpeg-Use-royalty-free-libfdk-aac-for-AAC-playback.patch
+      - type: patch
+        path: patches/0002-ffmpeg-Handle-transient-decode-errors-arising-from-l.patch
+      - type: patch
+        path: patches/0003-ffmpeg-Enable-support-for-using-OpenH264-for-H264-pl.patch
+      - type: patch
+        path: patches/0004-ffmpeg-Don-t-lie-about-AAC-and-H264-decoders-when-no.patch
+      - type: patch
+        path: patches/0001-Use-system-wide-node.patch
+      - type: patch
+        path: patches/0002-Ensure-libffmpeg.so-is-in-the-rpath-of-binaries.patch
+      - type: patch
+        path: patches/chromium-60.0.3112.78-no-libpng-prefix.patch
