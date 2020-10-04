@@ -1,0 +1,176 @@
+app-id: com.github.Eloston.ungoogled-chromium
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: chromium
+separate-locales: false
+finish-args:
+  - --require-version=1.8.2
+  - --filesystem=host-etc
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pulseaudio
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.Avahi
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.UPower
+  - --talk-name=org.gnome.SessionManager
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+
+add-extensions:
+  com.github.Eloston.ungoogled-chromium.NativeMessagingHost:
+    version: '1'
+    directory: native-messaging-hosts
+    merge-dirs: manifest
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node12
+
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: extensions
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/native-messaging-hosts
+
+  # Based on https://github.com/flathub/shared-modules/blob/master/python2.7/python-2.7.json
+  - name: python2
+    config-opts:
+      - --enable-shared
+      - --with-ensurepip=yes
+      - --with-system-expat
+      - --with-system-ffi
+      - --with-dbmliborder=gdbm
+      - --enable-unicode=ucs4
+    build-options:
+      no-debuginfo: true
+    post-install:
+      - chmod 644 $FLATPAK_DEST/lib/libpython2.7.so.1.0
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/apple/cups/releases/download/v2.3.3/cups-2.3.3-source.tar.gz
+        sha256: 261fd948bce8647b6d5cb2a1784f0c24cc52b5c4e827b71d726020bcc502f3ee
+
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini'
+    sources:
+      - type: file
+        path: gtk-settings.ini
+
+  - name: ungoogled-chromium
+    buildsystem: simple
+    build-commands:
+      - 'cp -r $PWD /app/ugc'
+    sources:
+      - type: git
+        url: https://github.com/Eloston/ungoogled-chromium
+        tag: 85.0.4183.121-1
+
+  - name: chromium
+    buildsystem: simple
+    build-options:
+      env:
+        CFLAGS: -Wno-builtin-macro-redefined -Wno-unknown-warning-option -Wno-unknown-pragmas
+        CPPFLAGS: -D__DATE__=  -D__TIME__=  -D__TIMESTAMP__=
+        CXXFLAGS: -Wno-builtin-macro-redefined -Wno-unknown-warning-option -Wno-unknown-pragmas
+        AR: llvm-ar
+        NM: llvm-nm
+        CC: clang
+        CXX: clang++
+    build-commands:
+      # Refer to https://github.com/Eloston/ungoogled-chromium/blob/master/docs/building.md
+      - '/app/ugc/utils/prune_binaries.py ./ /app/ugc/pruning.list'
+      - '/app/ugc/utils/patches.py apply ./ /app/ugc/patches'
+      - '/app/ugc/utils/domain_substitution.py apply -r /app/ugc/domain_regex.list -f /app/ugc/domain_substitution.list -c ./domsubcache.tar.gz ./'
+      - 'mkdir -p out/Default'
+      - 'cp /app/ugc/flags.gn out/Default/args.gn'
+      - 'cat flatpak.gn >> out/Default/args.gn'
+      - 'mkdir -p third_party/node/linux/node-linux-x64/bin/'
+      - 'ln -sf /usr/lib/sdk/node12/bin/node third_party/node/linux/node-linux-x64/bin/'
+      - './tools/gn/bootstrap/bootstrap.py -o out/Default/gn --skip-generate-buildfiles -v --no-clean'
+      - './out/Default/gn gen out/Default'
+      - 'ninja -C out/Default -j$FLATPAK_BUILDER_N_JOBS chrome'
+      # Installing ungoogled-chromium
+      - 'install -Dm 755 chromium.sh /app/bin/chromium'
+      - 'install -Dm 644 -t /app/share/flatpak-chromium portal_error.txt'
+      - 'install -Dm 644 -t /app/share/applications com.github.Eloston.ungoogled-chromium.desktop'
+      - 'install -Dm 644 -t /app/share/metainfo com.github.Eloston.ungoogled-chromium.metainfo.xml'
+      - 'mkdir -p /app/chromium'
+      - 'install -D out/Default/chrome /app/chromium/chromium'
+      - |
+          cd out/Default/
+          for x in icudtl.dat *.so *.pak *.bin *.png locales MEIPreload; do
+            cp -rv $x /app/chromium/ || true
+          done
+      - |
+          for size in 24 48 64 128 256; do
+            install -Dm 644 chrome/app/theme/chromium/product_logo_$size.png /app/share/icons/hicolor/${size}x${size}/apps/com.github.Eloston.ungoogled-chromium.png || true
+          done
+      - 'install -Dm755 -t /app/chromium/swiftshader out/Default/swiftshader/*.so || true'
+      - 'rm -rf /app/ugc || true'
+    sources:
+      - type: archive
+        url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-85.0.4183.121.tar.xz
+        sha256: e018547e54566410fb365d9f3dae10037c30fca5debe6ba8baceef3ad3b03d28
+      - type: file
+        path: chromium.sh
+      - type: file
+        path: com.github.Eloston.ungoogled-chromium.desktop
+      - type: file
+        path: com.github.Eloston.ungoogled-chromium.metainfo.xml
+      - type: file
+        path: flatpak.gn
+      - type: file
+        path: portal_error.txt
+      - type: patch
+        path: patches/0001-Add-Flatpak-sandbox-support.patch
+      - type: patch
+        path: patches/0002-Use-Flatpak-specific-configuration-paths.patch
+      - type: patch
+        path: patches/0006-Don-t-ever-play-the-default-First-Run-experience.patch
+      - type: patch
+        path: patches/0007-x11-Set-_NET_WM_BYPASS_COMPOSITOR-for-fullscreen.patch
+      - type: patch
+        path: patches/0008-memory-Enable-the-tab-discards-feature.patch
+      - type: patch
+        path: patches/0009-Enable-VAVDA-VAVEA-and-VAJDA-on-linux-with-VAAPI-onl.patch
+      - type: patch
+        path: patches/0010-XDG-file-chooser-portal-support.patch
+      - type: patch
+        path: patches/0011-Add-memory-pressure-monitor-for-Linux.patch
