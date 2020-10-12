@@ -1,0 +1,147 @@
+app-id: org.openmsx.openMSX
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+
+command: openmsx
+
+finish-args: # flatpak permissions
+  - --device=all # needed for gamepads and serial/parallel
+  - --share=ipc  # needed for X11
+  - --share=network # needed for networking
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=home
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/aclocal
+  - /share/man
+  - '*.la'
+  - '*.a'
+  - /share/doc
+
+modules:
+
+# Build Mesa GLU and GLEW
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+
+# Build TCL
+  - name: tcl
+    sources: 
+      - type: archive
+        url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.10/tcl8.6.10-src.tar.gz
+        sha256: 5196dbf6638e3df8d5c87b5815c8c2b758496eb6f0e41446596c9a4e638d87ed
+    subdir: unix
+    build-options:
+      no-debuginfo: true
+    cleanup:
+      - /bin
+      - /man
+
+# Build openMSX
+  - name: openmsx
+    sources:
+      - type: archive
+        url: https://github.com/openMSX/openMSX/releases/download/RELEASE_16_0/openmsx-16.0.tar.gz
+        sha256: 055c6d12c8c15eb49be1ce53587f560e53fa05bdb05a56a7a249489fe93fb04e
+      - type: file
+        path: org.openmsx.openMSX.desktop
+      - type: file
+        path: org.openmsx.openMSX.metainfo.xml
+      - type: shell
+        commands:
+          - sed -i 's/^INSTALL_BASE.*/INSTALL_BASE:=\/app\/share\/'${FLATPAK_ID}'/' build/custom.mk
+          - sed -i "s/distroRoot = thirdPartyInstall or None/distroRoot = '\/app'/" build/probe.py
+          - ln -s /usr/bin/libpng-config /app/bin/libpng-config
+          - ln -s /usr/bin/sdl2-config /app/bin/sdl2-config
+          - ln -s /usr/bin/pkg-config /app/bin/pkg-config
+    build-options:
+        env:
+          - TCL_CONFIG=/app/lib
+    post-install:
+      - install -Dm755 /app/share/${FLATPAK_ID}/bin/openmsx /app/bin
+      - install -Dm644 org.openmsx.openMSX.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 org.openmsx.openMSX.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 share/icons/openMSX-logo-16.png /app/share/icons/hicolor/16x16/apps/${FLATPAK_ID}.png
+      - install -Dm644 share/icons/openMSX-logo-32.png /app/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png
+      - install -Dm644 share/icons/openMSX-logo-48.png /app/share/icons/hicolor/48x48/apps/${FLATPAK_ID}.png
+      - install -Dm644 share/icons/openMSX-logo-64.png /app/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm644 share/icons/openMSX-logo-128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 share/icons/openMSX-logo-256.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    cleanup:
+      - /app/share/${FLATPAK_ID}/bin/openmsx
+      - /app/share/${FLATPAK_ID}/bin
+      - /app/bin/libpng-config
+      - /app/bin/pkg-config
+      - /app/bin/sdl2-config
+
+# Build wxWidgets (needed for Catapult)
+  - name: wxwidgets
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2
+        sha256: 8aacd56b462f42fb6e33b4d8f5d40be5abc3d3b41348ea968aa515cc8285d813
+    build-options:
+      cxxflags:
+        -std=c++0x
+    config-opts:
+      - --with-opengl
+      - --with-libjpeg
+      - --with-expat
+      - --with-libtiff
+      - --with-libpng
+      - --with-zlib
+      - --disable-sdltest
+      - --enable-unicode
+      - --enable-display
+      - --enable-propgrid
+      - --disable-webkit
+      - --disable-webview
+      - --disable-webviewwebkit
+      - --with-libiconv=/usr
+
+# Build icoutils
+  - name: icoutils
+    config-opts:
+      - --enable-maintainer-mode
+    sources:
+      - type: archive
+        url: https://savannah.nongnu.org/download/icoutils/icoutils-0.32.3.tar.bz2
+        sha256: 17abe02d043a253b68b47e3af69c9fc755b895db68fdc8811786125df564c6e0
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} "build-aux"/;
+          - autoreconf -vfi;
+    cleanup: ['*']
+
+# Build openMSX Catapult launcher
+  - name: catapult
+    sources:
+      - type: archive
+        url: https://github.com/openMSX/openMSX/releases/download/RELEASE_16_0/openmsx-catapult-16.0.tar.gz
+        sha256: fb2999d5c2af0e212f3653f40ee17a2807fc052403554dea720dbc30c9bbae94
+      - type: file
+        path: org.openmsx.openMSX.Catapult.desktop
+      - type: shell
+        commands:
+          - sed -i 's/^INSTALL_BASE.*/INSTALL_BASE:=\/app\/share\/'${FLATPAK_ID}'.Catapult/' build/custom.mk
+          - sed -i 's/^CATAPULT_OPENMSX_BINARY.*/CATAPULT_OPENMSX_BINARY:=\/app\/bin\/openmsx/' build/custom.mk
+          - sed -i 's/^CATAPULT_OPENMSX_SHARE.*/CATAPULT_OPENMSX_SHARE:=\/app\/share\/'${FLATPAK_ID}'/' build/custom.mk
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install
+    post-install:
+      - install -Dm755 /app/share/org.openmsx.openMSX.Catapult/bin/catapult /app/bin/openmsx-catapult
+      - install -Dm644 org.openmsx.openMSX.Catapult.desktop /app/share/applications/${FLATPAK_ID}.Catapult.desktop
+      - mkdir icons ; icotool -x -b 32 -o icons src/catapult.ico
+      - install -Dm644 icons/catapult_14_16x16x32.png /app/share/icons/hicolor/16x16/apps/${FLATPAK_ID}.Catapult.png
+      - install -Dm644 icons/catapult_3_32x32x32.png /app/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.Catapult.png
+      - install -Dm644 icons/catapult_4_48x48x32.png /app/share/icons/hicolor/48x48/apps/${FLATPAK_ID}.Catapult.png
+      - install -Dm644 icons/catapult_6_64x64x32.png /app/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.Catapult.png
+      - install -Dm644 icons/catapult_1_128x128x32.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.Catapult.png
+    cleanup:
+      - /app/share/org.openmsx.openMSX.Catapult/bin
