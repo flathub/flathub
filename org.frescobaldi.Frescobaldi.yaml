@@ -26,5 +26,206 @@ finish-args:
 #  - --env=QT_QPA_PLATFORM=xcb
 
 modules:
-  - lilypond.yaml
-  - frescobaldi.yaml
+  # To be removed when next lilypond stable (2.22) is released.
+  - shared-modules/python2.7/python-2.7.json
+
+  - name: guile
+    buildsystem: autotools
+    build-options:
+      cflags: "-Wno-unused-but-set-variable -Wno-misleading-indentation
+              -Wno-stringop-truncation -Wno-deprecated-declarations"
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/guile/guile-1.8.8.tar.gz
+        sha256: c3471fed2e72e5b04ad133bbaaf16369e8360283679bcf19800bc1b381024050
+
+  - name: pango
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/pango/1.42/pango-1.42.4.tar.xz
+        sha256: 1d2b74cd63e8bd41961f2f8d952355aa0f9be6002b52c8aa7699d9f5da597c9d
+    cleanup:
+      - /share/doc/fontforge
+
+  - name: libuinameslist
+    sources:
+      - type: archive
+        url: https://github.com/fontforge/libuninameslist/releases/download/20180701/libuninameslist-dist-20180701.tar.gz
+        sha256: 8aed97d0bc872d893d8bf642a14e49958b0613136e1bfe2a415c69599c803c90
+
+  - name: fontforge
+    buildsystem: autotools
+    config-opts:
+      - "--enable-double"
+    sources:
+      - type: archive
+        url: https://github.com/fontforge/fontforge/releases/download/20190801/fontforge-20190801.tar.gz
+        sha256: d92075ca783c97dc68433b1ed629b9054a4b4c74ac64c54ced7f691540f70852
+
+  - name: t1utils
+    sources:
+      - type: archive
+        url: https://github.com/kohler/t1utils/archive/v1.41.tar.gz
+        sha256: 0129fbfabb212143f52ff1e5de8ccbef5e5295d46772bad3ed149115bab5a094
+
+  - name: texgyre
+    sources:
+      - type: archive
+        url: http://www.gust.org.pl/projects/e-foundry/tex-gyre/whole/tg2_501otf.zip
+        sha256: d7f8be5317bec4e644cf16c5abf876abeeb83c43dbec0ccb4eee4516b73b1bbe
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/share/fonts
+      - install * /app/share/fonts
+
+  - name: ghostscript
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs952/ghostpdl-9.52.tar.xz
+        sha256: 33dd239a61bac154de123b6f8a28ebf3d8d9d462ac282065a1c389f96d92c0f3
+    config-opts:
+      - --enable-dynamic
+      - --without-versioned-path
+    cleanup:
+      - /share/doc
+
+  - name: lilypond
+    buildsystem: autotools
+    config-opts:
+      - "--disable-documentation"
+    sources:
+      - type: archive
+        url: http://lilypond.org/download/sources/v2.20/lilypond-2.20.0.tar.gz
+        sha256: 595901323fbc88d3039ca4bdbc2d8c5ce46b182edcb3ea9c0940eba849bba661
+    build-options:
+      env:
+        PATH: /usr/lib/sdk/texlive/bin/x86_64-linux:/usr/lib/sdk/texlive/bin:/usr/bin:/app/bin
+
+  # OpenJPEG is needed to build Poppler
+  - shared-modules/openjpeg/openjpeg.json
+
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib
+      - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-0.80.0.tar.xz
+        sha256: 4d3ca6b79bc13b8e24092e34f83ef5f387f3bb0bbd7359a6c078e09c696d104f
+
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --bindir=/app/bin
+        --destdir=/app/lib/python3.7/site-packages
+        --incdir=/app/include
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3.7/site-packages
+        --sip-module=PyQt5.sip
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://distfiles.macports.org/py-sip/sip-4.19.22.tar.gz
+        sha256: e1b768824ec1a2ee38dd536b6b6b3d06de27b00a2f5f55470d1b512306e3be45
+    cleanup:
+      - /bin
+
+  - name: pyqt5
+    config-opts:
+      - --disable-static
+      - --enable-x11
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/4d/81/b9a66a28fb9a7bbeb60e266f06ebc4703e7e42b99e3609bf1b58ddd232b9/PyQt5-5.14.2.tar.gz
+        sha256: bd230c6fd699eabf1ceb51e13a8b79b74c00a80272c622427b80141a22269eb0
+      - type: script
+        commands:
+          - python3 configure.py --assume-shared --confirm-license --no-designer-plugin
+            --no-qml-plugin --sysroot=/app --qsci-api --qsci-api-destdir=/app/qsci
+            --sipdir=/app/share/sip --sip=/app/bin/sip --sip-incdir=/app/include
+            QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/'
+            QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
+        dest-filename: configure
+
+  - name: pyqt5-webengine
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/47/9f/60e630711fd1dd14ef3bd95c86c733c86b8c0853749c7a03691f681f13fd/PyQtWebEngine-5.14.0.tar.gz
+        sha256: e11595051f8bfbfa49175d899b2c8c2eea3a3deac4141edf4db68c3555221c92
+      - type: script
+        commands:
+          - python3 configure.py --concatenate --no-dist-info --no-docstrings
+            --pyqt-sipdir=/app/share/sip --no-qsci-api --no-sip-files
+            --sysroot=/app --verbose
+            QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/'
+            QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
+            QMAKE_INCDIR+=/app/include/QtWebEngine
+            QMAKE_INCDIR+=/app/include/QtWebEngineCore
+            QMAKE_INCDIR+=/app/include/QtWebEngineWidgets
+        dest-filename: configure
+    cleanup:
+      - "/lib/debug"
+
+  - name: python-ly
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app
+    sources:
+      - type: archive
+        url: https://github.com/frescobaldi/python-ly/archive/v0.9.6.tar.gz
+        sha256: f1e7a2386c50460c2bf6e0876216f5101f3ee4aa956c6eb2348d901e005d1a07
+
+  - name: python-poppler-qt5
+    buildsystem: simple
+    ensure-writable: [
+      "easy-install.pth"
+    ]
+    build-commands:
+      - python3 setup.py build
+      - python3 setup.py install
+        --prefix=/app
+        --install-lib=/app/lib/python3.7/site-packages
+    sources:
+      - type: archive
+        url: https://github.com/frescobaldi/python-poppler-qt5/archive/v0.75.0.tar.gz
+        sha256: 92e6bd8f4ce90ba4e3e0c2ada026b643481ba1b109d45e8fdbdaedca8416a995
+
+  - name: portmidi
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/app/bin
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/portmedia/files/portmidi/217/portmidi-src-217.zip
+        sha256: 08e9a892bd80bdb1115213fb72dc29a7bf2ff108b378180586aa65f3cfd42e0f
+      - type: patch
+        path: shared-modules/pygame/portmidi-no-java.patch
+    cleanup:
+      - /bin
+      - /lib/pkgconfig
+      - /include
+      - '*.a'
+      - '*.la'
+
+  - name: frescobaldi
+    buildsystem: simple
+    build-commands:
+      - make -C linux
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/frescobaldi/frescobaldi/releases/download/v3.1.2/frescobaldi-3.1.2.tar.gz
+        sha256: 5c2cffb8282cd9faef1585808bd800d1eb3c0db4cc464a61ce8576dbf7ef9b20
+      - type: patch
+        path: patches/frescobaldi-fix-metainfo-file.patch
+
