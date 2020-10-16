@@ -1,0 +1,431 @@
+app-id: org.d3cod3.Mosaic
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: mosaic
+# rename-icon: accessories-dictionary
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Wayland access
+  - --socket=wayland
+  # Needs to talk to the network:
+  - --share=network
+  # Needs to save files locally
+  - --filesystem=host
+# cleanup:
+#  - /include
+add-extensions:
+    org.freedesktop.Platform.ffmpeg-full:
+      directory: lib/ffmpeg
+      version: 20.08
+      add-ld-path: .
+      no-autodownload: true
+      autodelete: false
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+modules:
+# openFrameworks dependencies
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+  - shared-modules/gtk2/gtk2.json
+  - shared-modules/libusb/libusb.json
+  - shared-modules/linux-audio/jack2.json
+  - name: iputils
+      buildsystem: meson
+      config-opts:
+        - "-DUSE_CAP=false"
+        - "-DUSE_IDN=false"
+        - "-DBUILD_ARPING=false"
+        - "-DBUILD_CLOCKDIFF=false"
+        - "-DBUILD_RARPD=false"
+        - "-DBUILD_RDISC=false"
+        - "-DENABLE_RDISC_SERVER=false"
+        - "-DBUILD_TFTPD=false"
+        - "-DBUILD_TRACEPATH=false"
+        - "-DBUILD_TRACEROUTE6=false"
+        - "-DBUILD_NINFOD=false"
+        - "-DNINFOD_MESSAGES=false"
+        - "-DBUILD_MANS=false"
+        - "-DBUILD_HTML_MANS=false"
+        - "-DNO_SETCAP_OR_SUID=false"
+        - "-DSETCAP_OR_SUID_ARPING=false"
+        - "-DSETCAP_OR_SUID_CLOCKDIFF=false"
+        - "-DSETCAP_OR_SUID_PING=false"
+        - "-DSETCAP_OR_SUID_TRACEROUTE6=false"
+        - "-DUSE_GETTEXT=false"
+      sources:
+        - type: archive
+          url: https://github.com/iputils/iputils/archive/s20190709.tar.gz
+          sha256: a15720dd741d7538dd2645f9f516d193636ae4300ff7dbc8bfca757bf166490a
+  - name: freeglut
+    build-options:
+      cflags: -fcommon
+      cxxflags: -fcommon
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: "https://sourceforge.net/projects/freeglut/files/freeglut/3.2.1/freeglut-3.2.1.tar.gz"
+        md5: cd5c670c1086358598a6d4a9d166949d
+        
+  - name: libxmu
+    sources:
+      - type: archive
+        url: https://www.x.org/archive//individual/lib/libXmu-1.1.3.tar.bz2
+        sha256: 9c343225e7c3dc0904f2122b562278da5fed639b1b5e880d25111561bac5b731
+        
+  - name: libraw1394
+    rm-configure: true
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/linux/libs/ieee1394/libraw1394-2.1.2.tar.xz
+        sha256: 03ccc69761d22c7deb1127fc301010dd13e70e44bb7134b8ff0d07590259a55e
+      - type: script
+        commands: 
+         - autoreconf -fiv
+        dest-filename: autogen.sh
+      
+  - name: freeimage
+    buildsystem: simple
+    build-commands:
+      - sh gensrclist.sh
+      - sh genfipsrclist.sh
+      - make -f Makefile.gnu -j $FLATPAK_BUILDER_N_JOBS
+      - make -f Makefile.fip -j $FLATPAK_BUILDER_N_JOBS
+      - make -f Makefile.gnu INCDIR=/app/include INSTALLDIR=/app/lib install
+      - make -f Makefile.fip INCDIR=/app/include INSTALLDIR=/app/lib install
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeimage/Source%20Distribution/3.18.0/FreeImage3180.zip
+        sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+      - type: shell
+        commands:
+          - sed -i 's/-o root -g root //g' Makefile.{gnu,fip}
+
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Debug
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+      - -OPENCV_ENABLE_NONFREE=ON
+      - -DWITH_OPENCL=ON
+      - -DWITH_OPENGL=ON
+      - -DWITH_TBB=ON
+      - -DWITH_VULKAN=ON
+      - -DBUILD_WITH_DEBUG_INFO=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DINSTALL_C_EXAMPLES=OFF
+      - -DINSTALL_PYTHON_EXAMPLES=OFF
+      # - -DOPENCV_EXTRA_MODULES_PATH="contrib/modules"
+      - -DWITH_1394=OFF
+      - -DWITH_PROTOBUF=ON
+      # - -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib-master/modules ../opencv-master
+      - -DBUILD_LIST=calib3d,core,dnn,features2d,flann,highgui,imgcodecs,imgproc,java_bindings_generator,ml,objdetect,photo,python_bindings_generator,python_tests,stitching,video,videoio
+    # cleanup:
+    #   - "/bin"
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
+        sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
+      - type: archive
+        url: https://github.com/opencv/opencv_contrib/archive/4.2.0.tar.gz
+        sha256: 8a6b5661611d89baa59a26eb7ccf4abb3e55d73f99bb52d8f7c32265c8a43020
+        # dest: contrib
+
+  - name: assimp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DASSIMP_BUILD_ASSIMP_TOOLS:BOOL=NO
+      - -DASSIMP_BUILD_TESTS:BOOL=NO
+    sources:
+      - type: archive
+        url: https://github.com/assimp/assimp/archive/v4.1.0.tar.gz
+        sha256: 3520b1e9793b93a2ca3b797199e16f40d61762617e072f2d525fad70f9678a71
+
+  - name: rtaudio
+    config-opts:
+    - "--disable-static"
+    - "--enable-shared"
+    sources:
+    - type: archive
+      url: http://www.music.mcgill.ca/~gary/rtaudio/Debug/rtaudio-5.1.0.tar.gz
+      sha256: ff138b2b6ed2b700b04b406be718df213052d4c952190280cf4e2fab4b61fe09
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS headers
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://dl.bintray.com/boostorg/release/1.72.0/source/boost_1_72_0.tar.bz2
+        sha256: 59c9b274bc451cf91a9ba1dd2c7fdcaf5d60b1b3aa83f2c9fa143417cc660722
+
+  - name: glfw
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+    - "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+    - "-DBUILD_SHARED_LIBS:BOOL=ON"
+    sources:
+    - type: archive
+      url: https://github.com/glfw/glfw/releases/download/3.3.2/glfw-3.3.2.zip
+      sha256: 08a33a512f29d7dbf78eab39bd7858576adcc95228c9efe8e4bc5f0f3261efc7
+    cleanup:
+    - "/include"
+    - "/lib/pkgconfig"
+
+  - name: liburiparser
+    buildsystem: cmake
+    config-opts:
+    - "-DURIPARSER_BUILD_DOCS=OFF"
+    - "-DURIPARSER_BUILD_TESTS=OFF"
+    cleanup:
+    - "/bin/uriparse"
+    sources:
+    - type: archive
+      url: https://github.com/uriparser/uriparser/releases/download/uriparser-0.9.4/uriparser-0.9.4.tar.bz2
+      sha256: b7cdabe5611408fc2c3a10f8beecb881a0c7e93ff669c578cd9e3e6d64b8f87b
+
+  - name: pugixml
+    buildsystem: cmake-ninja
+    build-options:
+      cflags: "-fPIC"
+      cxxflags: "-fPIC"
+    sources:
+    - type: archive
+      url: https://github.com/zeux/pugixml/releases/download/v1.10/pugixml-1.10.tar.gz
+      sha256: 55f399fbb470942410d348584dc953bcaec926415d3462f471ef350f29b5870a
+
+  - name: poco
+    buildsystem: cmake
+    sources:
+    - type: archive
+      url: https://github.com/pocoproject/poco/archive/poco-1.10.1-release.tar.gz
+      sha256: 44592a488d2830c0b4f3bfe4ae41f0c46abbfad49828d938714444e858a00818
+  - name: libdaemon
+    buildsystem: autotools
+    config-opts:
+      - "--prefix=/app"
+    sources:
+      - type: git
+        url: git://git.0pointer.net/libdaemon.git
+        commit: 9fcc28e0e8f84968d1fb8b6d544a42efb13803ec
+  - name: libevent
+    buildsystem: autotools
+    config-opts:
+      - "--prefix=/app"
+    sources:
+      - type: git
+        url: https://github.com/libevent/libevent
+        tag: release-2.1.12-stable
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - "--prefix=/app"
+      - "--with-distro=none"
+      - "--disable-gtk3"
+      - "--disable-mono"
+      - "--disable-qt5"
+      - "--disable-manpages"
+      - "--disable-python"
+      - "--with-systemdsystemunitdir=no"
+    sources:
+      - type: git
+        url: https://github.com/lathiat/avahi
+        tag: v0.8
+  - name: openframeworks
+    buildsystem: simple
+    # subdir: libs/openFrameworksCompiled/project
+    build-commands:
+      - cd libs/openFrameworksCompiled/project && make -j$FLATPAK_BUILDER_N_JOBS Debug
+      - cd src/fftw3 && ./configure --prefix=`pwd` --enable-float --enable-sse2 --with-incoming-stack-boundary=2 --with-our-malloc16 --disable-shared --enable-static && make MAKEINFO=true -j$FLATPAK_BUILDER_N_JOBS
+      - mkdir addons/ofxAudioAnalyzer/libs/fftw3f/lib/linux64
+      - cp src/fftw3/.libs/libfftw3f.a addons/ofxAudioAnalyzer/libs/fftw3f/lib/linux64/
+      - cp addons/ofxNDI/libs/libndi/lib/x86_64-linux-gnu/libndi.so.3.7.1 /app/lib
+      - ln -s /app/lib/libndi.so.3.7.1 /app/lib/libndi.so.3
+      - cd apps/d3cod3/Mosaic && make -j$FLATPAK_BUILDER_N_JOBS Release
+      - mkdir /app/mosaic
+      - cp -ar * /app/mosaic
+    post-install:
+      - ln -s ../mosaic/apps/d3cod3/Mosaic/bin/Mosaic /app/bin/mosaic
+    cleanup:
+      - src
+    sources:
+# openframeworks
+      - type: archive
+        url: https://openframeworks.cc/versions/v0.11.0/of_v0.11.0_linux64gcc6_release.tar.gz
+        sha256: 513cee3ce081e79fdc1a942af09869145fff3d7addeee0a76cef26fbc3ae69b1
+      - type: shell
+        commands: 
+          - sed -e '/GL\/glext.h/ s/^#*/\/\//' -i libs/openFrameworks/utils/ofConstants.h
+# use openCV 4
+      - type: shell
+        commands:
+          - sed -i -E 's/ADDON_PKG_CONFIG_LIBRARIES =(.*)opencv\s/ADDON_PKG_CONFIG_LIBRARIES =\1opencv4 /g' addons/ofxOpenCv/addon_config.mk
+          - sed -i -E 's/ADDON_PKG_CONFIG_LIBRARIES =(.*)opencv$/ADDON_PKG_CONFIG_LIBRARIES =\1opencv4/g' addons/ofxOpenCv/addon_config.mk
+      - type: patch
+        path: openal_fix.patch
+        strip-components: 0
+      - type: patch
+        path: make4.3.patch
+        strip-components: 0
+# addons
+      - type: git
+        url: https://github.com/d3cod3/ofxAudioAnalyzer.git
+        branch: master
+        # tag:
+        commit: 0b9c98e7e9a32821d15da7d43a1881c704b09589
+        dest: addons/ofxAudioAnalyzer
+      - type: git
+        url: https://github.com/npisanti/ofxAudioFile.git
+        branch: master
+        # tag:
+        commit: 3b4248d7772379aedbe7088ac239b9d376a7df55
+        dest: addons/ofxAudioFile
+      - type: git
+        url: https://github.com/d3cod3/ofxBTrack.git
+        branch: master
+        # tag:
+        commit: f70679f6c4c958a6faa9f33825eef18f946a575a
+        dest: addons/ofxBTrack
+      - type: git
+        url: https://github.com/d3cod3/ofxChromaKeyShader.git
+        branch: master
+        # tag:
+        commit: 4f1a2940bd44fd423526517cb65779a072078882
+        dest: addons/ofxChromaKeyShader
+      - type: git
+        url: https://github.com/kylemcdonald/ofxCv.git
+        branch: master
+        # tag:
+        commit: 209a3986a8f8e1928c7a11f6e1c5d8ea5406e639
+        dest: addons/ofxCv
+      - type: git
+        url: https://github.com/arturoc/ofxEasing.git
+        branch: master
+        # tag:
+        commit: 3a15beffb9cfdce26ffafb1f78e06e730b26c239
+        dest: addons/ofxEasing
+      - type: git
+        url: https://github.com/d3cod3/ofxFFmpegRecorder.git
+        branch: master
+        # tag:
+        commit: e9854d5b3d265efa8e59dfc74238379ed135900d
+        dest: addons/ofxFFmpegRecorder
+      - type: git
+        url: https://github.com/d3cod3/ofxFontStash.git
+        branch: master
+        # tag:
+        commit: 08b0ad91113f17f4eb276441adfedb54869bdc9b
+        dest: addons/ofxFontStash
+      - type: git
+        url: https://github.com/d3cod3/ofxGLEditor.git
+        branch: master
+        # tag:
+        commit: 2dbf9542e186e25d84cafdbbe194dbad728cced2
+        dest: addons/ofxGLEditor
+      - type: git
+        url: https://github.com/jeffcrouse/ofxJSON.git
+        branch: master
+        # tag:
+        commit: 55a5825ddf510c991466f9d39d8e1d57b2bc2008
+        dest: addons/ofxJSON
+      - type: git
+        url: https://github.com/d3cod3/ofxImGui.git
+        branch: master
+        # tag:
+        commit: 8901940c11bed56eb1bd976ebd47fcb596b69644
+        dest: addons/ofxImGui
+      - type: git
+        url: https://github.com/d3cod3/ofxInfiniteCanvas.git
+        branch: master
+        # tag:
+        commit: 810664d7046901f3fb6b5d5627f618342acf7776
+        dest: addons/ofxInfiniteCanvas
+      - type: git
+        url: https://github.com/d3cod3/ofxLua.git
+        branch: of-0.10.0
+        # tag:
+        commit: c5fd0858de700e1b85ff2dffd7d005b4c691e6d9
+        dest: addons/ofxLua
+      - type: git
+        url: https://github.com/d3cod3/ofxMidi.git
+        branch: master
+        # tag:
+        commit: 2aaa87d9dc5b2b7e3c47c6484803ffcbade8d95e
+        dest: addons/ofxMidi
+      - type: git
+        url: https://github.com/d3cod3/ofxMtlMapping2D.git
+        branch: master
+        # tag:
+        commit: 2f8a3713a2b2a6d7255b6cb13da70732a5d3a0b3
+        dest: addons/ofxMtlMapping2D
+      - type: git
+        url: https://github.com/d3cod3/ofxNDI.git
+        branch: master
+        # tag:
+        commit: a777204469729eb3760f780b2da4b20080245f50
+        dest: addons/ofxNDI
+      - type: git
+        url: https://github.com/danomatika/ofxPd.git
+        branch: master
+        # tag:
+        commit: 1439f298027df21fe55150d831cfee1f068491a1
+        dest: addons/ofxPd
+      - type: git
+        url: https://github.com/d3cod3/ofxPdExternals.git
+        branch: master
+        # tag:
+        commit: 8fe10b9641f724d1b1fd9cceb6334d50d6645a96
+        dest: addons/ofxPdExternals
+      - type: git
+        url: https://github.com/npisanti/ofxPDSP.git
+        branch: master
+        # tag:
+        commit: e106991f4abf4314116d4e7c4ef7ad69d6ca005f
+        dest: addons/ofxPDSP
+      - type: git
+        url: https://github.com/d3cod3/ofxPython.git
+        branch: master
+        # tag:
+        commit: 606fb3538e396539540bbb90317bfc9566d729a4
+        dest: addons/ofxPython
+      - type: git
+        url: https://github.com/d3cod3/ofxTimeline.git
+        branch: master
+        # tag:
+        commit: 0309d6b1db9ace1ced3d168c72ef3ba278f02af0
+        dest: addons/ofxTimeline
+      - type: git
+        url: https://github.com/d3cod3/ofxVisualProgramming.git
+        branch: master
+        # tag:
+        commit: cea8b65a2882e2dd08ea3bbcf5db3c7aec066d08
+        dest: addons/ofxVisualProgramming
+      - type: git
+        url: https://github.com/d3cod3/ofxWarp.git
+        branch: master
+        # tag:
+        commit: e59a722f4c69fd94b0ad3fdc9172ea536673cf28
+        dest: addons/ofxWarp
+      - type: git
+        url: https://github.com/d3cod3/fftw3.3.2-source.git
+        branch: master
+        # tag:
+        commit: 045e98ff560579d4adb2d8b18708aefbadffe1e8
+        dest: src/fftw3
+      - type: git
+        url: https://github.com/d3cod3/Mosaic.git
+        branch: master
+        tag: 0.4.4
+        commit: b5a743d0a8504e9819fc05c17d609e711308c3c8
+        dest: apps/d3cod3/Mosaic
+
+     
