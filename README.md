@@ -11,7 +11,7 @@ This build is unofficial and wasn't tested with all possible games and cases. It
 
 First [add](https://flatpak.org/setup) Flathub repository and install Steam from there, if not already. Then run
 ```
-flatpak remote-add --user proton-flatpak https://gasinvein.github.io/proton-flatpak
+flatpak remote-add --user proton-flatpak oci+https://gasinvein.github.io/proton-flatpak
 flatpak install proton-flatpak com.valvesoftware.Steam.CompatibilityTool.Proton
 ```
 (remove `--user` option if you're installing it system-wide)
