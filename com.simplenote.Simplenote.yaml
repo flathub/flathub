@@ -7,6 +7,7 @@ sdk: org.freedesktop.Sdk
 separate-locales: false
 command: simplenote
 finish-args:
+  - --env=GTK_PATH=/app/lib/gtkmodules
   - --socket=x11
   - --socket=wayland
   - --device=dri
@@ -15,16 +16,42 @@ finish-args:
   - --socket=cups
   - --filesystem=xdg-config/Simplenote
   - --filesystem=xdg-documents
+  - --filesystem=xdg-download
   - --talk-name=org.freedesktop.secrets
-cleanup:
-  - /include
-  - /lib/*.a
-  - /lib/*.la
-  - /lib/pkgconfig
-  - /share/man
 modules:
 
   - shared-modules/libsecret/libsecret.json
+
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/apple/cups/releases/download/v2.3.3/cups-2.3.3-source.tar.gz
+        sha256: 261fd948bce8647b6d5cb2a1784f0c24cc52b5c4e827b71d726020bcc502f3ee
+
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+  
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini
+    sources:
+      - type: file
+        path: gtk-settings.ini
 
   - name: simplenote
     buildsystem: simple
@@ -35,18 +62,19 @@ modules:
         path: com.simplenote.Simplenote.desktop
       - type: file
         path: com.simplenote.Simplenote.png
-      - type: file
+      - type: archive
         url: https://github.com/Automattic/simplenote-electron/releases/download/v1.21.1/Simplenote-linux-1.21.1-x64.tar.gz
         sha256: 39ffd1a5d5d9310ce149c9bb47e58e3ed7605bd5bdbf83b5eb22653c3070e3c2
-        dest-filename: Simplenote.tar.gz
+        dest: main
       - type: script
-        dest-filename: simplenote
+        dest-filename: simplenote.sh
         commands:
-          - "exec env TMPDIR=$XDG_CACHE_HOME zypak-wrapper /app/Simplenote/simplenote \"$@\""
+          - "export TMPDIR=\"$XDG_RUNTIME_DIR/app/$FLATPAK_ID\""
+          - "exec zypak-wrapper /app/Simplenote/simplenote \"$@\""
     build-commands:
       - mkdir -p /app/Simplenote
-      - tar zxf Simplenote.tar.gz --strip-components=1 -C /app/Simplenote
-      - install -D simplenote /app/bin/simplenote
-      - install -Dm 644 com.simplenote.Simplenote.appdata.xml -t /app/share/appdata
-      - install -Dm 644 com.simplenote.Simplenote.desktop -t /app/share/applications
-      - install -Dm 644 com.simplenote.Simplenote.png -t /app/share/icons/hicolor/256x256/apps
+      - cp -ra main/* /app/Simplenote/
+      - install simplenote.sh /app/bin/simplenote
+      - install -Dm644 com.simplenote.Simplenote.desktop /app/share/applications/com.simplenote.Simplenote.desktop
+      - install -Dm644 com.simplenote.Simplenote.appdata.xml /app/share/appdata/com.simplenote.Simplenote.appdata.xml
+      - install -Dm644 com.simplenote.Simplenote.png /app/share/icons/hicolor/256x256/apps/com.simplenote.Simplenote.png
