@@ -2,13 +2,13 @@
 app-id: org.frescobaldi.Frescobaldi
 
 base: io.qt.qtwebengine.BaseApp
-base-version: '5.14'
+base-version: '5.15'
 
 runtime: org.kde.Platform
-runtime-version: '5.14'
+runtime-version: '5.15'
 sdk: org.kde.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.texlive  # version 19.08
+  - org.freedesktop.Sdk.Extension.texlive  # version 20.08
 
 command: frescobaldi
 
@@ -34,10 +34,20 @@ modules:
     build-options:
       cflags: "-Wno-unused-but-set-variable -Wno-misleading-indentation
               -Wno-stringop-truncation -Wno-deprecated-declarations"
+    config-opts:
+      - --disable-error-on-warning
+      - --disable-static
+    # Patches copied from https://src.fedoraproject.org/rpms/compat-guile18/tree/master
     sources:
       - type: archive
         url: https://ftp.gnu.org/gnu/guile/guile-1.8.8.tar.gz
         sha256: c3471fed2e72e5b04ad133bbaaf16369e8360283679bcf19800bc1b381024050
+      - type: patch
+        path: patches/guile-1.8.8-deplibs.patch
+      - type: patch
+        path: patches/guile-1.8.8-cve-2016-8605.patch
+      - type: patch
+        path: patches/guile-1.8.8-configure.patch
 
   - name: pango
     sources:
@@ -121,58 +131,76 @@ modules:
     build-commands:
       - python3 configure.py
         --bindir=/app/bin
-        --destdir=/app/lib/python3.7/site-packages
+        --destdir=/app/lib/python3.8/site-packages
         --incdir=/app/include
         --sipdir=/app/share/sip
-        --stubsdir=/app/lib/python3.7/site-packages
+        --stubsdir=/app/lib/python3.8/site-packages
         --sip-module=PyQt5.sip
       - make -j $FLATPAK_BUILDER_N_JOBS
       - make install
     sources:
       - type: archive
-        url: https://distfiles.macports.org/py-sip/sip-4.19.22.tar.gz
-        sha256: e1b768824ec1a2ee38dd536b6b6b3d06de27b00a2f5f55470d1b512306e3be45
+        url: https://distfiles.macports.org/py-sip/sip-4.19.24.tar.gz
+        sha256: edcd3790bb01938191eef0f6117de0bf56d1136626c0ddb678f3a558d62e41e5
     cleanup:
       - /bin
 
-  - name: pyqt5
-    config-opts:
-      - --disable-static
-      - --enable-x11
-    sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/4d/81/b9a66a28fb9a7bbeb60e266f06ebc4703e7e42b99e3609bf1b58ddd232b9/PyQt5-5.14.2.tar.gz
-        sha256: bd230c6fd699eabf1ceb51e13a8b79b74c00a80272c622427b80141a22269eb0
-      - type: script
-        commands:
-          - python3 configure.py --assume-shared --confirm-license --no-designer-plugin
-            --no-qml-plugin --sysroot=/app --qsci-api --qsci-api-destdir=/app/qsci
-            --sipdir=/app/share/sip --sip=/app/bin/sip --sip-incdir=/app/include
-            QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/'
-            QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
-        dest-filename: configure
-
-  - name: pyqt5-webengine
+  - name: PyQt5
+    buildsystem: simple
     build-options:
       env:
         - QMAKEPATH=/app/lib
+    build-commands:
+      - python3 configure.py
+        --confirm-license
+        --bindir=/app/bin
+        --destdir=/app/lib/python3.8/site-packages
+        --designer-plugindir=/app/lib/plugins/designer
+        --qml-plugindir=/app/lib/plugins/PyQt5
+        --sipdir=/app/share/sip
+        --sip-incdir=/app/include
+        --stubsdir=/app/lib/python3.8/site-packages/PyQt5
+        --enable QtCore
+        --enable QtGui
+        --enable QtNetwork
+        --enable QtPrintSupport
+        --enable QtSvg
+        --enable QtWebChannel
+        --enable QtWidgets
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /bin
     sources:
       - type: archive
-        url: https://files.pythonhosted.org/packages/47/9f/60e630711fd1dd14ef3bd95c86c733c86b8c0853749c7a03691f681f13fd/PyQtWebEngine-5.14.0.tar.gz
-        sha256: e11595051f8bfbfa49175d899b2c8c2eea3a3deac4141edf4db68c3555221c92
-      - type: script
-        commands:
-          - python3 configure.py --concatenate --no-dist-info --no-docstrings
-            --pyqt-sipdir=/app/share/sip --no-qsci-api --no-sip-files
-            --sysroot=/app --verbose
-            QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.7m/'
-            QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.7m/'
-            QMAKE_INCDIR+=/app/include/QtWebEngine
-            QMAKE_INCDIR+=/app/include/QtWebEngineCore
-            QMAKE_INCDIR+=/app/include/QtWebEngineWidgets
-        dest-filename: configure
+        url: https://files.pythonhosted.org/packages/1d/31/896dc3dfb6c81c70164019a6cbba6ab037e3af7653d9ca60ccc874ee4c27/PyQt5-5.15.1.tar.gz
+        sha256: d9a76b850246d08da9863189ecb98f6c2aa9b4d97a3e85e29330a264aed0f9a1
+
+  - name: PyQt5-WebEngine
+    buildsystem: simple
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+    build-commands:
+      - python3 configure.py
+        --concatenate --no-dist-info --no-docstrings
+        --no-qsci-api --no-sip-files
+        --pyqt-sipdir=/app/share/sip
+        --destdir=/app/lib/python3.8/site-packages/PyQt5
+        --stubsdir=/app/lib/python3.8/site-packages/PyQt5
+        QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.8m/'
+        QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.8m/'
+        QMAKE_INCDIR+=/app/include/QtWebEngine
+        QMAKE_INCDIR+=/app/include/QtWebEngineCore
+        QMAKE_INCDIR+=/app/include/QtWebEngineWidgets
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/6f/8a/b7c05d582764a92b031f3f2575faf61a43da76218578bf1f9720d63241b6/PyQtWebEngine-5.15.1.tar.gz
+        sha256: f0ca7915ee206ba5d703168c6ca40b0aad62c67360328fae4af5359cdbcee439
     cleanup:
-      - "/lib/debug"
+      - /lib/debug
 
   - name: python-ly
     buildsystem: simple
@@ -192,7 +220,7 @@ modules:
       - python3 setup.py build
       - python3 setup.py install
         --prefix=/app
-        --install-lib=/app/lib/python3.7/site-packages
+        --install-lib=/app/lib/python3.8/site-packages
     sources:
       - type: archive
         url: https://github.com/frescobaldi/python-poppler-qt5/archive/v0.75.0.tar.gz
