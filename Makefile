@@ -35,7 +35,7 @@ ifeq ($(CONFIG),Debug)
     TARGET_ARCH := -m64
   endif
 
-  JUCE_CPPFLAGS := $(DEPFLAGS) "-DLINUX=1" "-DDEBUG=1" "-D_DEBUG=1" "-DODIN_LINUX" "-DJUCE_JACK_CLIENT_NAME=JucePlugin_Name" "-DODIN_DEBUG" "-DJUCER_LINUX_MAKE_6D53C8B4=1" "-DJUCE_APP_VERSION=2.2.4" "-DJUCE_APP_VERSION_HEX=0x20204" $(shell pkg-config --cflags alsa freetype2 libcurl) -pthread -I../../JUCE/modules/juce_audio_processors/format_types/VST3_SDK -I../../VST_SDK/VST2_SDK -I../../JuceLibraryCode -I../../JUCE/modules -I/home/frot/Downloads/VST_SDK/VST2_SDK/ -I/usr/include/freetype2/ -I/usr/include/gtk-3.0/ -I/usr/include/glib-2.0/ -I/usr/lib/x86_64-linux-gnu/glib-2.0/include/ -I/usr/include/pango-1.0/ -I/usr/include/cairo/ -I/usr/include/gdk-pixbuf-2.0/ -I/usr/include/atk-1.0/ $(CPPFLAGS)
+  JUCE_CPPFLAGS := $(DEPFLAGS) "-DLINUX=1" "-DDEBUG=1" "-D_DEBUG=1" "-DODIN_LINUX" "-DJUCE_JACK_CLIENT_NAME=JucePlugin_Name" "-DODIN_DEBUG" "-DJUCER_LINUX_MAKE_6D53C8B4=1" "-DJUCE_APP_VERSION=2.2.4" "-DJUCE_APP_VERSION_HEX=0x20204" $(shell pkg-config --cflags alsa freetype2 libcurl) -pthread -I../../JUCE/modules/juce_audio_processors/format_types/VST3_SDK -I../../VST_SDK/VST2_SDK -I../../JuceLibraryCode -I../../JUCE/modules -I/home/frot/Downloads/VST_SDK/VST2_SDK/ -I/usr/include/freetype2/ -I/usr/include/gtk-3.0/ -I/usr/include/glib-2.0/ -I/usr/lib/x86_64-linux-gnu/glib-2.0/include/ -I/usr/include/pango-1.0/ -I/usr/include/cairo/ -I/usr/include/gdk-pixbuf-2.0/ -I/usr/include/atk-1.0/ $(shell pkg-config --cflags lv2) $(CPPFLAGS)
 
   JUCE_CPPFLAGS_VST3 :=  "-DJucePlugin_Build_VST=0" "-DJucePlugin_Build_VST3=1" "-DJucePlugin_Build_AU=0" "-DJucePlugin_Build_AUv3=0" "-DJucePlugin_Build_RTAS=0" "-DJucePlugin_Build_AAX=0" "-DJucePlugin_Build_Standalone=0" "-DJucePlugin_Build_Unity=0"
   JUCE_CFLAGS_VST3 := -fPIC -fvisibility=hidden
@@ -69,7 +69,7 @@ ifeq ($(CONFIG),Release)
     TARGET_ARCH := -m64
   endif
 
-  JUCE_CPPFLAGS := $(DEPFLAGS) "-DLINUX=1" "-DNDEBUG=1" "-DODIN_LINUX" "-DJUCE_JACK_CLIENT_NAME=JucePlugin_Name" "-DODIN_RELEASE" "-DJUCER_LINUX_MAKE_6D53C8B4=1" "-DJUCE_APP_VERSION=2.2.4" "-DJUCE_APP_VERSION_HEX=0x20204" $(shell pkg-config --cflags alsa freetype2 libcurl) -pthread -I../../JUCE/modules/juce_audio_processors/format_types/VST3_SDK -I../../VST_SDK/VST2_SDK -I../../JuceLibraryCode -I../../JUCE/modules -I/home/frot/Downloads/VST_SDK/VST2_SDK/ -I/usr/include/freetype2/ -I/usr/include/gtk-3.0/ -I/usr/include/glib-2.0/ -I/usr/lib/x86_64-linux-gnu/glib-2.0/include/ -I/usr/include/pango-1.0/ -I/usr/include/cairo/ -I/usr/include/gdk-pixbuf-2.0/ -I/usr/include/atk-1.0/ $(CPPFLAGS)
+  JUCE_CPPFLAGS := $(DEPFLAGS) "-DLINUX=1" "-DNDEBUG=1" "-DODIN_LINUX" "-DJUCE_JACK_CLIENT_NAME=JucePlugin_Name" "-DODIN_RELEASE" "-DJUCER_LINUX_MAKE_6D53C8B4=1" "-DJUCE_APP_VERSION=2.2.4" "-DJUCE_APP_VERSION_HEX=0x20204" $(shell pkg-config --cflags alsa freetype2 libcurl) -pthread -I../../JUCE/modules/juce_audio_processors/format_types/VST3_SDK -I../../VST_SDK/VST2_SDK -I../../JuceLibraryCode -I../../JUCE/modules -I/home/frot/Downloads/VST_SDK/VST2_SDK/ -I/usr/include/freetype2/ -I/usr/include/gtk-3.0/ -I/usr/include/glib-2.0/ -I/usr/lib/x86_64-linux-gnu/glib-2.0/include/ -I/usr/include/pango-1.0/ -I/usr/include/cairo/ -I/usr/include/gdk-pixbuf-2.0/ -I/usr/include/atk-1.0/ $(shell pkg-config --cflags lv2) $(CPPFLAGS)
 
   JUCE_CPPFLAGS_VST3 :=  "-DJucePlugin_Build_VST=0" "-DJucePlugin_Build_VST3=1" "-DJucePlugin_Build_AU=0" "-DJucePlugin_Build_AUv3=0" "-DJucePlugin_Build_RTAS=0" "-DJucePlugin_Build_AAX=0" "-DJucePlugin_Build_Standalone=0" "-DJucePlugin_Build_Unity=0"
   JUCE_CFLAGS_VST3 := -fPIC -fvisibility=hidden
@@ -195,6 +195,7 @@ OBJECTS_SHARED_CODE := \
   $(JUCE_OBJDIR)/include_juce_audio_basics_8a4e984a.o \
   $(JUCE_OBJDIR)/include_juce_audio_devices_63111d02.o \
   $(JUCE_OBJDIR)/include_juce_audio_formats_15f82001.o \
+  $(JUCE_OBJDIR)/include_juce_audio_plugin_client_LV2_7d84e0a5.o \
   $(JUCE_OBJDIR)/include_juce_audio_plugin_client_utils_e32edaee.o \
   $(JUCE_OBJDIR)/include_juce_audio_processors_10c03666.o \
   $(JUCE_OBJDIR)/include_juce_audio_utils_9f9fb2d6.o \
@@ -721,6 +722,11 @@ $(JUCE_OBJDIR)/include_juce_audio_formats_15f82001.o: ../../JuceLibraryCode/incl
 	@echo "Compiling include_juce_audio_formats.cpp"
 	$(V_AT)$(CXX) $(JUCE_CXXFLAGS) $(JUCE_CPPFLAGS_SHARED_CODE) $(JUCE_CFLAGS_SHARED_CODE) -o "$@" -c "$<"
 
+$(JUCE_OBJDIR)/include_juce_audio_plugin_client_LV2_7d84e0a5.o: ../../JuceLibraryCode/include_juce_audio_plugin_client_LV2.cpp
+	-$(V_AT)mkdir -p $(JUCE_OBJDIR)
+	@echo "Compiling include_juce_audio_plugin_client_LV2.cpp"
+	$(V_AT)$(CXX) $(JUCE_CXXFLAGS) $(JUCE_CPPFLAGS_SHARED_CODE) $(JUCE_CFLAGS_SHARED_CODE) -o "$@" -c "$<"
+
 $(JUCE_OBJDIR)/include_juce_audio_plugin_client_utils_e32edaee.o: ../../JuceLibraryCode/include_juce_audio_plugin_client_utils.cpp
 	-$(V_AT)mkdir -p $(JUCE_OBJDIR)
 	@echo "Compiling include_juce_audio_plugin_client_utils.cpp"
@@ -792,3 +798,4 @@ strip:
 -include $(OBJECTS_VST3:%.o=%.d)
 -include $(OBJECTS_STANDALONE_PLUGIN:%.o=%.d)
 -include $(OBJECTS_SHARED_CODE:%.o=%.d)
+include ../../LV2.mak
