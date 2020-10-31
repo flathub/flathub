@@ -1,0 +1,131 @@
+app-id: org.notepad_plus_plus.NotepadPlusPlus
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: npp
+default-branch: stable
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --filesystem=home
+   # only 64-bit is supported
+  - --env=WINEARCH=win64
+  # disable wine gecko and mono
+  - --env=WINEDLLOVERRIDES=mscoree,mshtml=
+
+modules:
+  - name: wine64
+    builddir: true
+    # https://wiki.winehq.org/Building_Wine#General_Compiling_Hints
+    config-opts:
+      - --enable-win64
+      - --disable-win16
+      - --disable-tests
+      # https://wiki.gentoo.org/wiki/Wine#USE_flags
+      - --without-alsa
+      - --without-oss
+      - --without-pulse
+      - --without-gecko
+      - --without-gphoto2
+      - --without-gstreamer
+      - --without-mp3
+      - --without-v4l
+      - --without-mono
+      - --without-test
+    cleanup:
+      - "*.a"
+      - "*.la"
+      - /include
+      - /lib/pkgconfig
+      - /lib64/pkgconfig
+      - /lib/cmake
+      - /lib64/cmake
+      - /share/man
+      - /bin/function_grep.pl
+      - /bin/widl
+      - /bin/winebuild
+      - /bin/winecpp
+      - /bin/winedump
+      - /bin/wineg++
+      - /bin/winegcc
+      - /bin/winemaker
+      - /bin/wmc
+      - /bin/wrc
+      - /lib/wine/*.def
+      - /lib64/wine/*.def
+    post-install:
+      - install -Dm 644 ../COPYING.LIB ${FLATPAK_DEST}/share/licenses/wine/LICENSE
+    sources:
+      - type: archive
+        url: https://dl.winehq.org/wine/source/5.0/wine-5.0.2.tar.xz
+        sha256: c2c284f470874b35228327c3972bc29c3a9d8d98abd71dbf81c288b8642becbc
+    only-arches:
+      - x86_64
+
+  # it includes wrestool, used to extract icons from exe files
+  - name: icoutils
+    sources:
+      - type: archive
+        url: https://savannah.nongnu.org/download/icoutils/icoutils-0.32.3.tar.bz2
+        sha256: 17abe02d043a253b68b47e3af69c9fc755b895db68fdc8811786125df564c6e0
+    post-install:
+      - install -Dm 644 COPYING /${FLATPAK_DEST}/share/licenses/icoutils/LICENSE
+
+  - name: npp
+    buildsystem: simple
+    sources:
+      - type: file
+        path: org.notepad_plus_plus.NotepadPlusPlus.metainfo.xml
+      - type: file
+        path: npp.sh
+      - type: file
+        path: npp.desktop
+      # 64-bit installer is 32-bit, so use the zip file instead
+      - type: file
+        dest-filename: npp.zip
+        url: https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v7.9/npp.7.9.portable.x64.zip
+        sha256: 126b4cdab094639696ffa92f2e544b8ba8487333175e1b729ba1a2682406f65a
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo/ ${FLATPAK_ID}.metainfo.xml
+      - install -Dm755 npp.sh ${FLATPAK_DEST}/bin/npp
+      - mkdir -p "notepad++/"
+      - unzip npp.zip -d "notepad++/"
+      # remove zip and doLocalConf.xml (which is broken)
+      # https://community.notepad-plus-plus.org/topic/16645/new-plugins-home-where-notepad-will-load-from
+      - rm -rf npp.zip "notepad++/doLocalConf.xml"
+      # extract icon and copy
+      - mkdir icons/ png/
+      - wrestool -x --output=icons/ -t14 "notepad++/notepad++.exe"
+      - icotool -x -o png/ icons/notepad++.exe_14_100.ico
+      - |-
+        for suffix in {9_16x16x32,8_32x32x32,7_48x48x32,6_64x64x32,5_128x128x32,4_256x256x32}; do
+          size=$(echo $suffix | awk '{split($0,parts,"x"); print parts[2]}')
+          install -Dm644 \
+            "png/notepad++.exe_14_100_${suffix}.png" \
+            ${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png
+        done
+      - rm -rf icons png
+      # we will extract npp.tgz on the first run because ${FLATPAK_DEST}/data is read-only
+      - mkdir ${FLATPAK_DEST}/data
+      # https://unix.stackexchange.com/questions/28976/how-to-xz-a-directory-with-tar-using-maximum-compression/28977#28977
+      - XZ_OPT=-9 tar -C "notepad++/" -cJf "${FLATPAK_DEST}/data/npp.tar.xz" .
+      - rm -rf "notepad++/"
+      # install desktop shortcut, the %f argument means a single file name, see also
+      # https://developer.gnome.org/desktop-entry-spec/#:~:text=Recognized%20field%20codes%20are%20as%20follows
+      - install -Dm644 npp.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key="Exec" --set-value="${FLATPAK_DEST}/bin/npp %f" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key="Icon" --set-value="${FLATPAK_ID}" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - rm npp.desktop
+    only-arches:
+      - x86_64
+
+cleanup:
+ - /lib/debug
+ - /bin/extresso
+ - /bin/genresscript
+ - /bin/icotool
+ - /bin/wrestool
+ - /share/man
