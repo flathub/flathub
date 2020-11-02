@@ -1,7 +1,7 @@
-From 92d31a68a6e0eb52f28897ec2e1fadff6bb582b8 Mon Sep 17 00:00:00 2001
+From 353abbd13b843e081df94cb218893516ea602744 Mon Sep 17 00:00:00 2001
 From: Kirill Ovchinnikov <kirill.ovchinn@gmail.com>
 Date: Thu, 27 Aug 2020 22:29:32 +0000
-Subject: [PATCH 11/11] Add memory pressure monitor for Linux.
+Subject: [PATCH 13/18] Add memory pressure monitor for Linux.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -32,11 +32,11 @@ Cr-Commit-Position: refs/heads/master@{#802397}
  create mode 100644 base/util/memory_pressure/system_memory_pressure_evaluator_linux_unittest.cc
 
 diff --git a/base/util/memory_pressure/BUILD.gn b/base/util/memory_pressure/BUILD.gn
-index 1765d89deaf15..1f9fbec5aca93 100644
+index 7d142d6d5c4d2..296ec52c63e9f 100644
 --- a/base/util/memory_pressure/BUILD.gn
 +++ b/base/util/memory_pressure/BUILD.gn
-@@ -51,6 +51,13 @@ source_set("memory_pressure") {
-       "system_memory_pressure_evaluator_chromeos.h",
+@@ -44,6 +44,13 @@ source_set("memory_pressure") {
+       "system_memory_pressure_evaluator_fuchsia.h",
      ]
    }
 +
@@ -49,9 +49,9 @@ index 1765d89deaf15..1f9fbec5aca93 100644
  }
  
  source_set("unittests") {
-@@ -85,6 +92,10 @@ source_set("unittests") {
-   if (is_chromeos) {
-     sources += [ "system_memory_pressure_evaluator_chromeos_unittest.cc" ]
+@@ -74,6 +81,10 @@ source_set("unittests") {
+     deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.memorypressure" ]
+     sources += [ "system_memory_pressure_evaluator_fuchsia_unittest.cc" ]
    }
 +
 +  if (is_linux && !is_chromeos) {
@@ -61,22 +61,22 @@ index 1765d89deaf15..1f9fbec5aca93 100644
  
  static_library("test_support") {
 diff --git a/base/util/memory_pressure/system_memory_pressure_evaluator.cc b/base/util/memory_pressure/system_memory_pressure_evaluator.cc
-index c624b928cb044..6dc9b8532b6ef 100644
+index 7179fa09a3862..babb4f8f9a1fb 100644
 --- a/base/util/memory_pressure/system_memory_pressure_evaluator.cc
 +++ b/base/util/memory_pressure/system_memory_pressure_evaluator.cc
-@@ -16,6 +16,8 @@
- #include "base/util/memory_pressure/system_memory_pressure_evaluator_mac.h"
+@@ -14,6 +14,8 @@
  #elif defined(OS_WIN)
  #include "base/util/memory_pressure/system_memory_pressure_evaluator_win.h"
+ #include "base/win/windows_version.h"
 +#elif defined(OS_LINUX) && !defined(OS_CHROMEOS)
 +#include "base/util/memory_pressure/system_memory_pressure_evaluator_linux.h"
  #endif
  
  namespace util {
-@@ -42,6 +44,9 @@ SystemMemoryPressureEvaluator::CreateDefaultSystemEvaluator(
- #elif defined(OS_WIN)
-   return std::make_unique<util::win::SystemMemoryPressureEvaluator>(
-       monitor->CreateVoter());
+@@ -43,6 +45,9 @@ SystemMemoryPressureEvaluator::CreateDefaultSystemEvaluator(
+     evaluator->CreateOSSignalPressureEvaluator(monitor->CreateVoter());
+   }
+   return evaluator;
 +#elif defined(OS_LINUX) && !defined(OS_CHROMEOS)
 +  return std::make_unique<util::linux::SystemMemoryPressureEvaluator>(
 +      monitor->CreateVoter());
@@ -632,14 +632,14 @@ index 0000000000000..e5db67e87972b
 +}  // namespace linux
 +}  // namespace util
 diff --git a/content/browser/browser_main_loop.cc b/content/browser/browser_main_loop.cc
-index 4ada8596176e8..94ba708a77e39 100644
+index bdfeda65e160b..481499d784caa 100644
 --- a/content/browser/browser_main_loop.cc
 +++ b/content/browser/browser_main_loop.cc
 @@ -365,7 +365,8 @@ std::unique_ptr<base::MemoryPressureMonitor> CreateMemoryPressureMonitor(
  #if defined(OS_CHROMEOS)
    if (chromeos::switches::MemoryPressureHandlingEnabled())
      monitor = std::make_unique<util::MultiSourceMemoryPressureMonitor>();
--#elif defined(OS_MACOSX) || defined(OS_WIN) || defined(OS_FUCHSIA)
+-#elif defined(OS_MAC) || defined(OS_WIN) || defined(OS_FUCHSIA)
 +#elif defined(OS_MAC) || defined(OS_WIN) || defined(OS_FUCHSIA) || \
 +    (defined(OS_LINUX) && !defined(OS_CHROMEOS))
    monitor = std::make_unique<util::MultiSourceMemoryPressureMonitor>();

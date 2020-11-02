@@ -1,0 +1,101 @@
+From 9ee0c776cad7ae7fdeadf92cca13248d22e9ec50 Mon Sep 17 00:00:00 2001
+From: Ryan Gonzalez <rymg19@gmail.com>
+Date: Thu, 29 Oct 2020 12:00:35 -0500
+Subject: [PATCH 18/18] [XProto] Search for cursors in the XDG data dirs
+
+---
+ ui/base/x/x11_cursor_loader.cc | 51 +++++++++++++++++++++++++++-------
+ 1 file changed, 41 insertions(+), 10 deletions(-)
+
+diff --git a/ui/base/x/x11_cursor_loader.cc b/ui/base/x/x11_cursor_loader.cc
+index 0fd30ace93ca5..ed6bdd96c1a1e 100644
+--- a/ui/base/x/x11_cursor_loader.cc
++++ b/ui/base/x/x11_cursor_loader.cc
+@@ -13,6 +13,7 @@
+ #include "base/files/file_util.h"
+ #include "base/memory/ref_counted_memory.h"
+ #include "base/memory/scoped_refptr.h"
++#include "base/nix/xdg_util.h"
+ #include "base/sequence_checker.h"
+ #include "base/stl_util.h"
+ #include "base/strings/string_number_conversions.h"
+@@ -113,18 +114,48 @@ constexpr const char* cursor_names[] = {
+     "xterm",
+ };
+ 
+-std::string GetEnv(const std::string& var) {
+-  auto env = base::Environment::Create();
++std::string GetEnv(base::Environment* env, const std::string& var) {
+   std::string value;
+   env->GetVar(var, &value);
+   return value;
+ }
+ 
+-std::string CursorPath() {
+-  constexpr const char kDefaultPath[] =
+-      "~/.icons:/usr/share/icons:/usr/share/pixmaps:/usr/X11R6/lib/X11/icons";
+-  std::string path = GetEnv("XCURSOR_PATH");
+-  return path.empty() ? kDefaultPath : path;
++std::vector<base::FilePath> GetDataDirs(base::Environment* env) {
++  std::vector<base::FilePath> xdg_data_dirs;
++
++  base::FilePath data_home =
++      base::nix::GetXDGDirectory(env, "XDG_DATA_HOME", ".local/share");
++  if (!data_home.empty()) {
++    xdg_data_dirs.push_back(data_home);
++  }
++
++  std::string dirs_env = GetEnv(env, "XDG_DATA_DIRS");
++  if (!dirs_env.empty()) {
++    auto data_dirs = base::SplitString(dirs_env, ":", base::TRIM_WHITESPACE,
++                                       base::SPLIT_WANT_NONEMPTY);
++    for (const auto& data_dir : data_dirs) {
++      xdg_data_dirs.emplace_back(data_dir);
++    }
++  }
++
++  return xdg_data_dirs;
++}
++
++std::vector<std::string> GetCursorPaths() {
++  auto env = base::Environment::Create();
++  std::string xcursor_path = GetEnv(env.get(), "XCURSOR_PATH");
++  if (!xcursor_path.empty()) {
++    return base::SplitString(xcursor_path, ":", base::TRIM_WHITESPACE,
++                             base::SPLIT_WANT_NONEMPTY);
++  }
++
++  std::vector<std::string> paths;
++  std::vector<base::FilePath> data_dirs = GetDataDirs(env.get());
++  for (const auto& data_dir : data_dirs) {
++    paths.push_back(data_dir.AppendASCII("icons").AsUTF8Unsafe());
++  }
++
++  return paths;
+ }
+ 
+ x11::Render::PictFormat GetRenderARGBFormat(
+@@ -179,8 +210,7 @@ scoped_refptr<base::RefCountedMemory> ReadCursorFromTheme(
+   constexpr const char kThemeInfo[] = "index.theme";
+   std::vector<std::string> base_themes;
+ 
+-  auto paths = base::SplitString(CursorPath(), ":", base::TRIM_WHITESPACE,
+-                                 base::SPLIT_WANT_NONEMPTY);
++  auto paths = GetCursorPaths();
+   for (const auto& path : paths) {
+     auto dir = CanonicalizePath(base::FilePath(path));
+     if (dir.empty())
+@@ -390,8 +420,9 @@ uint32_t XCursorLoader::GetPreferredCursorSize() const {
+   constexpr unsigned int kScreenCursorRatio = 48;
+ 
+   // Allow the XCURSOR_SIZE environment variable to override GTK settings.
++  auto env = base::Environment::Create();
+   int size;
+-  if (base::StringToInt(GetEnv(kXcursorSizeEnv), &size) && size > 0)
++  if (base::StringToInt(GetEnv(env.get(), kXcursorSizeEnv), &size) && size > 0)
+     return size;
+ 
+   // Let the toolkit have the next say.
+-- 
+2.26.2
+
