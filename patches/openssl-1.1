@@ -1,0 +1,1020 @@
+From 902b20360747db2b47285eae6697e328c6edbf5b Mon Sep 17 00:00:00 2001
+From: Ben Fox-Moore <ben.foxmoore@accelleran.com>
+Date: Mon, 20 Jan 2020 18:26:20 +0100
+Subject: [PATCH] Update to OpenSSL 1.1
+
+---
+ source/iked/crypto.cpp          |  53 +++++----
+ source/iked/ike.cpp             |  28 ++---
+ source/iked/ike.exch.config.cpp |  28 ++---
+ source/iked/ike.exch.inform.cpp |  28 ++---
+ source/iked/ike.exch.phase1.cpp | 204 ++++++++++++++++----------------
+ source/iked/ike.exch.phase2.cpp |  84 ++++++-------
+ source/iked/ike.idb.exch.cpp    |  13 +-
+ source/iked/ike.idb.phase1.cpp  |   4 +-
+ source/iked/ike.idb.phase2.cpp  |   4 +-
+ source/iked/ike.keyfile.cpp     |  21 ++--
+ source/libike/manager.file.cpp  |  10 +-
+ 11 files changed, 249 insertions(+), 228 deletions(-)
+
+diff --git a/source/iked/crypto.cpp b/source/iked/crypto.cpp
+index 421e34f..f2281f5 100644
+--- a/source/iked/crypto.cpp
++++ b/source/iked/crypto.cpp
+@@ -372,64 +372,60 @@ static unsigned char group18[] =
+ 
+ bool dh_init( long group, DH ** dh_data, long * dh_size )
+ {
++	BIGNUM *p = NULL;
++	BIGNUM *g = NULL;
++
+ 	DH * dh = DH_new();
+ 	if( dh == NULL )
+ 		return false;
+ 
+-	dh->p = NULL;
+-	dh->g = NULL;
+-	dh->length = 0;
+-
+ 	//
+-	// set p ( prime ) value
++	// calc p ( prime ) value
+ 	//
+ 
+-	unsigned char * p_data = NULL;
+-	size_t			p_size = 0;
+-
+-	dh->p = BN_new();
+-	if( dh->p == NULL )
++	p = BN_new();
++	if( p == NULL )
+ 		goto dh_failed;
+ 
+ 	switch( group )
+ 	{
+ 		case 1:
+-			if( !BN_bin2bn( group1, sizeof( group1 ), dh->p ) )
++			if( !BN_bin2bn( group1, sizeof( group1 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 2:
+-			if( !BN_bin2bn( group2, sizeof( group2 ), dh->p ) )
++			if( !BN_bin2bn( group2, sizeof( group2 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 5:
+-			if( !BN_bin2bn( group5, sizeof( group5 ), dh->p ) )
++			if( !BN_bin2bn( group5, sizeof( group5 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 14:
+-			if( !BN_bin2bn( group14, sizeof( group14 ), dh->p ) )
++			if( !BN_bin2bn( group14, sizeof( group14 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 15:
+-			if( !BN_bin2bn( group15, sizeof( group15 ), dh->p ) )
++			if( !BN_bin2bn( group15, sizeof( group15 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 16:
+-			if( !BN_bin2bn( group16, sizeof( group16 ), dh->p ) )
++			if( !BN_bin2bn( group16, sizeof( group16 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 17:
+-			if( !BN_bin2bn( group17, sizeof( group17 ), dh->p ) )
++			if( !BN_bin2bn( group17, sizeof( group17 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+ 		case 18:
+-			if( !BN_bin2bn( group18, sizeof( group18 ), dh->p ) )
++			if( !BN_bin2bn( group18, sizeof( group18 ), p ) )
+ 				goto dh_failed;
+ 			break;
+ 
+@@ -438,14 +434,21 @@ bool dh_init( long group, DH ** dh_data, long * dh_size )
+ 	}
+ 
+ 	//
+-	// set g ( generator ) value
++	// calc g ( generator ) value
+ 	//
+ 
+-	dh->g = BN_new();
+-	if( dh->g == NULL )
++	g = BN_new();
++	if( g == NULL )
++		goto dh_failed;
++
++	if( !BN_set_word( g, 2 ) )
+ 		goto dh_failed;
+ 
+-	if( !BN_set_word( dh->g, 2 ) )
++	//
++	// set p and g values
++	//
++
++	if( !DH_set0_pqg( dh, p, NULL, g) )
+ 		goto dh_failed;
+ 
+ 	//
+@@ -456,12 +459,16 @@ bool dh_init( long group, DH ** dh_data, long * dh_size )
+ 		goto dh_failed;
+ 
+ 	*dh_data = dh;
+-	*dh_size = BN_num_bytes( dh->p );
++	*dh_size = BN_num_bytes( p );
+ 
+ 	return true;
+ 
+ 	dh_failed:
+ 
++	if ( p != NULL)
++		BN_free( p );
++	if ( g != NULL)
++		BN_free( g );
+ 	DH_free( dh );
+ 
+ 	return false;
+diff --git a/source/iked/ike.cpp b/source/iked/ike.cpp
+index 1ad6a44..d5fd5b0 100644
+--- a/source/iked/ike.cpp
++++ b/source/iked/ike.cpp
+@@ -391,11 +391,11 @@ long _IKED::packet_ike_decrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 	// init cipher key and iv
+ 	//
+ 
+-	EVP_CIPHER_CTX ctx_cipher;
+-	EVP_CIPHER_CTX_init( &ctx_cipher );
++	EVP_CIPHER_CTX *ctx_cipher;
++	ctx_cipher = EVP_CIPHER_CTX_new();
+ 
+ 	EVP_CipherInit_ex(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		sa->evp_cipher,
+ 		NULL,
+ 		NULL,
+@@ -403,11 +403,11 @@ long _IKED::packet_ike_decrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 		0 );
+ 
+ 	EVP_CIPHER_CTX_set_key_length(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		( int ) sa->key.size() );
+ 
+ 	EVP_CipherInit_ex(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		NULL,
+ 		NULL,
+ 		sa->key.buff(),
+@@ -419,12 +419,12 @@ long _IKED::packet_ike_decrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 	//
+ 
+ 	EVP_Cipher(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		data + sizeof( IKE_HEADER ),
+ 		data + sizeof( IKE_HEADER ),
+ 		( int ) size - sizeof( IKE_HEADER ) );
+ 
+-	EVP_CIPHER_CTX_cleanup( &ctx_cipher );
++	EVP_CIPHER_CTX_free( ctx_cipher );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -595,11 +595,11 @@ long _IKED::packet_ike_encrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 	// encrypt all but header
+ 	//
+ 
+-	EVP_CIPHER_CTX ctx_cipher;
+-	EVP_CIPHER_CTX_init( &ctx_cipher );
++	EVP_CIPHER_CTX *ctx_cipher;
++	ctx_cipher = EVP_CIPHER_CTX_new();
+ 
+ 	EVP_CipherInit_ex(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		sa->evp_cipher,
+ 		NULL,
+ 		NULL,
+@@ -607,11 +607,11 @@ long _IKED::packet_ike_encrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 		1 );
+ 
+ 	EVP_CIPHER_CTX_set_key_length(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		( int ) sa->key.size() );
+ 
+ 	EVP_CipherInit_ex(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		NULL,
+ 		NULL,
+ 		sa->key.buff(),
+@@ -619,12 +619,12 @@ long _IKED::packet_ike_encrypt( IDB_PH1 * sa, PACKET_IKE & packet, BDATA * iv )
+ 		1 );
+ 
+ 	EVP_Cipher(
+-		&ctx_cipher,
++		ctx_cipher,
+ 		data + sizeof( IKE_HEADER ),
+ 		data + sizeof( IKE_HEADER ),
+ 		( int ) size - sizeof( IKE_HEADER ) );
+ 
+-	EVP_CIPHER_CTX_cleanup( &ctx_cipher );
++	EVP_CIPHER_CTX_free( ctx_cipher );
+ 
+ 	//
+ 	// store cipher iv data
+diff --git a/source/iked/ike.exch.config.cpp b/source/iked/ike.exch.config.cpp
+index a9390e7..f04eace 100644
+--- a/source/iked/ike.exch.config.cpp
++++ b/source/iked/ike.exch.config.cpp
+@@ -2481,15 +2481,15 @@ long _IKED::config_chk_hash( IDB_PH1 * ph1, IDB_CFG * cfg, unsigned long msgid )
+ 	BDATA hash_c;
+ 	hash_c.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &msgid, 4 );
+-	HMAC_Update( &ctx_prf, cfg->hda.buff(), cfg->hda.size() );
+-	HMAC_Final( &ctx_prf, hash_c.buff(), NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &msgid, 4 );
++	HMAC_Update( ctx_prf, cfg->hda.buff(), cfg->hda.size() );
++	HMAC_Final( ctx_prf, hash_c.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -2543,15 +2543,15 @@ long _IKED::config_message_send( IDB_PH1 * ph1, IDB_CFG * cfg )
+ 	// create message authentication hash
+ 	//
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &cfg->msgid, sizeof( cfg->msgid ) );
+-	HMAC_Update( &ctx_prf, packet.buff() + beg, end - beg );
+-	HMAC_Final( &ctx_prf, hash.buff(), 0 );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &cfg->msgid, sizeof( cfg->msgid ) );
++	HMAC_Update( ctx_prf, packet.buff() + beg, end - beg );
++	HMAC_Final( ctx_prf, hash.buff(), 0 );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	memcpy( packet.buff() + off + 4, hash.buff(), hash.size() );
+ 
+diff --git a/source/iked/ike.exch.inform.cpp b/source/iked/ike.exch.inform.cpp
+index 07d963b..9ce1656 100644
+--- a/source/iked/ike.exch.inform.cpp
++++ b/source/iked/ike.exch.inform.cpp
+@@ -399,15 +399,15 @@ long _IKED::inform_chk_hash( IDB_PH1 * ph1, IDB_XCH * inform )
+ 	BDATA hash_c;
+ 	hash_c.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &inform->msgid, 4 );
+-	HMAC_Update( &ctx_prf, inform->hda.buff(), inform->hda.size() );
+-	HMAC_Final( &ctx_prf, hash_c.buff(), NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &inform->msgid, 4 );
++	HMAC_Update( ctx_prf, inform->hda.buff(), inform->hda.size() );
++	HMAC_Final( ctx_prf, hash_c.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -439,15 +439,15 @@ long _IKED::inform_gen_hash( IDB_PH1 * ph1, IDB_XCH * inform )
+ {
+ 	inform->hash_l.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &inform->msgid, sizeof( inform->msgid ) );
+-	HMAC_Update( &ctx_prf, inform->hda.buff(), inform->hda.size() );
+-	HMAC_Final( &ctx_prf, inform->hash_l.buff(), 0 );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &inform->msgid, sizeof( inform->msgid ) );
++	HMAC_Update( ctx_prf, inform->hda.buff(), inform->hda.size() );
++	HMAC_Final( ctx_prf, inform->hash_l.buff(), 0 );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+diff --git a/source/iked/ike.exch.phase1.cpp b/source/iked/ike.exch.phase1.cpp
+index 47fe020..034eba1 100644
+--- a/source/iked/ike.exch.phase1.cpp
++++ b/source/iked/ike.exch.phase1.cpp
+@@ -1044,14 +1044,14 @@ long _IKED::process_phase1_send( IDB_PH1 * ph1 )
+ 								BDATA psk_hash;
+ 								psk_hash.size( ph1->hash_size );
+ 
+-								HMAC_CTX ctx_prf;
+-								HMAC_CTX_init( &ctx_prf );
++								HMAC_CTX *ctx_prf;
++								ctx_prf = HMAC_CTX_new();
+ 
+-								HMAC_Init_ex( &ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
+-								HMAC_Update( &ctx_prf, ph1->tunnel->peer->psk.buff(), ph1->tunnel->peer->psk.size() );
+-								HMAC_Final( &ctx_prf, psk_hash.buff(), NULL );
++								HMAC_Init_ex( ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
++								HMAC_Update( ctx_prf, ph1->tunnel->peer->psk.buff(), ph1->tunnel->peer->psk.size() );
++								HMAC_Final( ctx_prf, psk_hash.buff(), NULL );
+ 
+-								HMAC_CTX_cleanup( &ctx_prf );
++								HMAC_CTX_free( ctx_prf );
+ 
+ 								//
+ 								// add the notification payload
+@@ -1556,8 +1556,10 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 	if( level >= LLOG_DECODE )
+ 	{
+ 		BDATA prv;
++		const BIGNUM *pub_key, *priv_key;
+ 		prv.size( ph1->dh_size );
+-		BN_bn2bin( ph1->dh->priv_key, prv.buff() );
++		DH_get0_key( ph1->dh, &pub_key, &priv_key );
++		BN_bn2bin( priv_key, prv.buff() );
+ 
+ 		log.bin(
+ 			LLOG_DECODE,
+@@ -1656,25 +1658,25 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 		case XAUTH_AUTH_INIT_PSK:
+ 		case XAUTH_AUTH_RESP_PSK:
+ 		{
+-			HMAC_CTX ctx_prf;
+-			HMAC_CTX_init( &ctx_prf );
++			HMAC_CTX *ctx_prf;
++			ctx_prf = HMAC_CTX_new();
+ 
+-			HMAC_Init_ex( &ctx_prf, ph1->tunnel->peer->psk.buff(), ( int ) ph1->tunnel->peer->psk.size(), ph1->evp_hash, NULL );
++			HMAC_Init_ex( ctx_prf, ph1->tunnel->peer->psk.buff(), ( int ) ph1->tunnel->peer->psk.size(), ph1->evp_hash, NULL );
+ 
+ 			if( ph1->initiator )
+ 			{
+-				HMAC_Update( &ctx_prf, ph1->nonce_l.buff(), ph1->nonce_l.size() );
+-				HMAC_Update( &ctx_prf, ph1->nonce_r.buff(), ph1->nonce_r.size() );
++				HMAC_Update( ctx_prf, ph1->nonce_l.buff(), ph1->nonce_l.size() );
++				HMAC_Update( ctx_prf, ph1->nonce_r.buff(), ph1->nonce_r.size() );
+ 			}
+ 			else
+ 			{
+-				HMAC_Update( &ctx_prf, ph1->nonce_r.buff(), ph1->nonce_r.size() );
+-				HMAC_Update( &ctx_prf, ph1->nonce_l.buff(), ph1->nonce_l.size() );
++				HMAC_Update( ctx_prf, ph1->nonce_r.buff(), ph1->nonce_r.size() );
++				HMAC_Update( ctx_prf, ph1->nonce_l.buff(), ph1->nonce_l.size() );
+ 			}
+ 
+-			HMAC_Final( &ctx_prf, skeyid_data, NULL );
++			HMAC_Final( ctx_prf, skeyid_data, NULL );
+ 
+-			HMAC_CTX_cleanup( &ctx_prf );
++			HMAC_CTX_free( ctx_prf );
+ 
+ 			break;
+ 		}
+@@ -1704,14 +1706,14 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 				nonce.add( ph1->nonce_l );
+ 			}
+ 
+-			HMAC_CTX ctx_prf;
+-			HMAC_CTX_init( &ctx_prf );
++			HMAC_CTX *ctx_prf;
++			ctx_prf = HMAC_CTX_new();
+ 
+-			HMAC_Init_ex( &ctx_prf, nonce.buff(), ( int ) nonce.size(), ph1->evp_hash, NULL );
+-			HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
+-			HMAC_Final( &ctx_prf, skeyid_data, NULL );
++			HMAC_Init_ex( ctx_prf, nonce.buff(), ( int ) nonce.size(), ph1->evp_hash, NULL );
++			HMAC_Update( ctx_prf, shared.buff(), shared.size() );
++			HMAC_Final( ctx_prf, skeyid_data, NULL );
+ 
+-			HMAC_CTX_cleanup( &ctx_prf );
++			HMAC_CTX_free( ctx_prf );
+ 
+ 			break;
+ 		}	
+@@ -1730,15 +1732,15 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 	// compute SKEYID_d
+ 	//
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
+-	HMAC_Update( &ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) "\0", 1 );
+-	HMAC_Final( &ctx_prf, skeyid_data, NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, shared.buff(), shared.size() );
++	HMAC_Update( ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ( unsigned char * ) "\0", 1 );
++	HMAC_Final( ctx_prf, skeyid_data, NULL );
+ 
+ 	ph1->skeyid_d.set( skeyid_data, skeyid_size );
+ 
+@@ -1753,13 +1755,13 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 	// compute SKEYID_a
+ 	//
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, skeyid_data, skeyid_size );
+-	HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
+-	HMAC_Update( &ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) "\1", 1 );
+-	HMAC_Final( &ctx_prf, skeyid_data, NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, skeyid_data, skeyid_size );
++	HMAC_Update( ctx_prf, shared.buff(), shared.size() );
++	HMAC_Update( ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ( unsigned char * ) "\1", 1 );
++	HMAC_Final( ctx_prf, skeyid_data, NULL );
+ 
+ 	ph1->skeyid_a.set( skeyid_data, skeyid_size );
+ 
+@@ -1774,13 +1776,13 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 	// compute SKEYID_e
+ 	//
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, skeyid_data, skeyid_size );
+-	HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
+-	HMAC_Update( &ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) "\2", 1 );
+-	HMAC_Final( &ctx_prf, skeyid_data, NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid.buff(), ( int ) ph1->skeyid.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, skeyid_data, skeyid_size );
++	HMAC_Update( ctx_prf, shared.buff(), shared.size() );
++	HMAC_Update( ctx_prf, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, ( unsigned char * ) "\2", 1 );
++	HMAC_Final( ctx_prf, skeyid_data, NULL );
+ 
+ 	ph1->skeyid_e.set( skeyid_data, skeyid_size );
+ 
+@@ -1821,15 +1823,15 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 
+ 		// create extended key data
+ 
+-		HMAC_Init_ex( &ctx_prf, skeyid_data, skeyid_size, ph1->evp_hash, NULL );
+-		HMAC_Update( &ctx_prf, ( unsigned char * ) "\0", 1 );
+-		HMAC_Final( &ctx_prf, key_data, NULL );
++		HMAC_Init_ex( ctx_prf, skeyid_data, skeyid_size, ph1->evp_hash, NULL );
++		HMAC_Update( ctx_prf, ( unsigned char * ) "\0", 1 );
++		HMAC_Final( ctx_prf, key_data, NULL );
+ 
+ 		for( long size = skeyid_size; size < key_size; size += skeyid_size )
+ 		{
+-			HMAC_Init_ex( &ctx_prf, skeyid_data, skeyid_size, ph1->evp_hash, NULL );
+-			HMAC_Update( &ctx_prf, key_data + size - skeyid_size, skeyid_size );
+-			HMAC_Final( &ctx_prf, key_data + size, NULL );
++			HMAC_Init_ex( ctx_prf, skeyid_data, skeyid_size, ph1->evp_hash, NULL );
++			HMAC_Update( ctx_prf, key_data + size - skeyid_size, skeyid_size );
++			HMAC_Final( ctx_prf, key_data + size, NULL );
+ 		}
+ 	}
+ 	else
+@@ -1839,7 +1841,7 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 		memcpy( key_data, skeyid_data, key_size );
+ 	}
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	if( proposal->ciph_kl )
+ 		key_size = ( proposal->ciph_kl + 7 ) / 8;
+@@ -1860,22 +1862,23 @@ long _IKED::phase1_gen_keys( IDB_PH1 * ph1 )
+ 	unsigned char iv_data[ HMAC_MAX_MD_CBLOCK ];
+ 	unsigned long iv_size = EVP_CIPHER_iv_length( ph1->evp_cipher );
+ 
+-	EVP_MD_CTX ctx_hash;
+-	EVP_DigestInit( &ctx_hash, ph1->evp_hash );
++	EVP_MD_CTX *ctx_hash;
++	ctx_hash = EVP_MD_CTX_new();
++	EVP_DigestInit( ctx_hash, ph1->evp_hash );
+ 
+ 	if( ph1->initiator )
+ 	{
+-		EVP_DigestUpdate( &ctx_hash, ph1->xl.buff(), ph1->xl.size() );
+-		EVP_DigestUpdate( &ctx_hash, ph1->xr.buff(), ph1->xr.size() );
++		EVP_DigestUpdate( ctx_hash, ph1->xl.buff(), ph1->xl.size() );
++		EVP_DigestUpdate( ctx_hash, ph1->xr.buff(), ph1->xr.size() );
+ 	}
+ 	else
+ 	{
+-		EVP_DigestUpdate( &ctx_hash, ph1->xr.buff(), ph1->xr.size() );
+-		EVP_DigestUpdate( &ctx_hash, ph1->xl.buff(), ph1->xl.size() );
++		EVP_DigestUpdate( ctx_hash, ph1->xr.buff(), ph1->xr.size() );
++		EVP_DigestUpdate( ctx_hash, ph1->xl.buff(), ph1->xl.size() );
+ 	}
+ 
+-	EVP_DigestFinal( &ctx_hash, iv_data, NULL );
+-	EVP_MD_CTX_cleanup( &ctx_hash );
++	EVP_DigestFinal( ctx_hash, iv_data, NULL );
++	EVP_MD_CTX_free( ctx_hash );
+ 
+ 	ph1->iv.set( iv_data, iv_size );
+ 
+@@ -1903,29 +1906,29 @@ long _IKED::phase1_gen_hash_i( IDB_PH1 * sa, BDATA & hash )
+ 
+ 	hash.size( sa->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, sa->skeyid.buff(), ( int ) sa->skeyid.size(), sa->evp_hash, NULL );
++	HMAC_Init_ex( ctx_prf, sa->skeyid.buff(), ( int ) sa->skeyid.size(), sa->evp_hash, NULL );
+ 
+ 	if( sa->initiator )
+ 	{
+-		HMAC_Update( &ctx_prf, sa->xl.buff(), sa->xl.size() );
+-		HMAC_Update( &ctx_prf, sa->xr.buff(), sa->xr.size() );
++		HMAC_Update( ctx_prf, sa->xl.buff(), sa->xl.size() );
++		HMAC_Update( ctx_prf, sa->xr.buff(), sa->xr.size() );
+ 	}
+ 	else
+ 	{
+-		HMAC_Update( &ctx_prf, sa->xr.buff(), sa->xr.size() );
+-		HMAC_Update( &ctx_prf, sa->xl.buff(), sa->xl.size() );
++		HMAC_Update( ctx_prf, sa->xr.buff(), sa->xr.size() );
++		HMAC_Update( ctx_prf, sa->xl.buff(), sa->xl.size() );
+ 	}
+ 
+-	HMAC_Update( &ctx_prf, sa->cookies.i, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, sa->cookies.r, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, sa->hda.buff(), sa->hda.size() );
+-	HMAC_Update( &ctx_prf, sa->idi.buff(), sa->idi.size() );
+-	HMAC_Final( &ctx_prf, hash.buff(), NULL );
++	HMAC_Update( ctx_prf, sa->cookies.i, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, sa->cookies.r, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, sa->hda.buff(), sa->hda.size() );
++	HMAC_Update( ctx_prf, sa->idi.buff(), sa->idi.size() );
++	HMAC_Final( ctx_prf, hash.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -1945,29 +1948,29 @@ long _IKED::phase1_gen_hash_r( IDB_PH1 * sa, BDATA & hash )
+ 
+ 	hash.size( sa->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, sa->skeyid.buff(), ( int ) sa->skeyid.size(), sa->evp_hash, NULL );
++	HMAC_Init_ex( ctx_prf, sa->skeyid.buff(), ( int ) sa->skeyid.size(), sa->evp_hash, NULL );
+ 
+ 	if( sa->initiator )
+ 	{
+-		HMAC_Update( &ctx_prf, sa->xr.buff(), sa->xr.size() );
+-		HMAC_Update( &ctx_prf, sa->xl.buff(), sa->xl.size() );
++		HMAC_Update( ctx_prf, sa->xr.buff(), sa->xr.size() );
++		HMAC_Update( ctx_prf, sa->xl.buff(), sa->xl.size() );
+ 	}
+ 	else
+ 	{
+-		HMAC_Update( &ctx_prf, sa->xl.buff(), sa->xl.size() );
+-		HMAC_Update( &ctx_prf, sa->xr.buff(), sa->xr.size() );
++		HMAC_Update( ctx_prf, sa->xl.buff(), sa->xl.size() );
++		HMAC_Update( ctx_prf, sa->xr.buff(), sa->xr.size() );
+ 	}
+ 
+-	HMAC_Update( &ctx_prf, sa->cookies.r, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, sa->cookies.i, ISAKMP_COOKIE_SIZE );
+-	HMAC_Update( &ctx_prf, sa->hda.buff(), sa->hda.size() );
+-	HMAC_Update( &ctx_prf, sa->idr.buff(), sa->idr.size() );
+-	HMAC_Final( &ctx_prf, hash.buff(), NULL );
++	HMAC_Update( ctx_prf, sa->cookies.r, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, sa->cookies.i, ISAKMP_COOKIE_SIZE );
++	HMAC_Update( ctx_prf, sa->hda.buff(), sa->hda.size() );
++	HMAC_Update( ctx_prf, sa->idr.buff(), sa->idr.size() );
++	HMAC_Final( ctx_prf, hash.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -2569,14 +2572,15 @@ long _IKED::phase1_gen_natd( IDB_PH1 * ph1 )
+ 	// hash for remote address
+ 	//
+ 
+-	EVP_MD_CTX ctx_hash;
+-	EVP_DigestInit( &ctx_hash, ph1->evp_hash );
+-	EVP_DigestUpdate( &ctx_hash, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
+-	EVP_DigestUpdate( &ctx_hash, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
+-	EVP_DigestUpdate( &ctx_hash, &ph1->tunnel->saddr_r.saddr4.sin_addr.s_addr, 4 );
+-	EVP_DigestUpdate( &ctx_hash, &ph1->tunnel->saddr_r.saddr4.sin_port, 2 );
+-	EVP_DigestFinal( &ctx_hash, natd.buff(), NULL );
+-	EVP_MD_CTX_cleanup( &ctx_hash );
++	EVP_MD_CTX *ctx_hash;
++	ctx_hash = EVP_MD_CTX_new();
++	EVP_DigestInit( ctx_hash, ph1->evp_hash );
++	EVP_DigestUpdate( ctx_hash, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
++	EVP_DigestUpdate( ctx_hash, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
++	EVP_DigestUpdate( ctx_hash, &ph1->tunnel->saddr_r.saddr4.sin_addr.s_addr, 4 );
++	EVP_DigestUpdate( ctx_hash, &ph1->tunnel->saddr_r.saddr4.sin_port, 2 );
++	EVP_DigestFinal( ctx_hash, natd.buff(), NULL );
++	EVP_MD_CTX_reset( ctx_hash );
+ 
+ 	ph1->natd_hash_l.add( natd );
+ 
+@@ -2585,13 +2589,13 @@ long _IKED::phase1_gen_natd( IDB_PH1 * ph1 )
+ 	// hash for local address
+ 	//
+ 
+-	EVP_DigestInit( &ctx_hash, ph1->evp_hash );
+-	EVP_DigestUpdate( &ctx_hash, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
+-	EVP_DigestUpdate( &ctx_hash, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
+-	EVP_DigestUpdate( &ctx_hash, &ph1->tunnel->saddr_l.saddr4.sin_addr.s_addr, 4 );
+-	EVP_DigestUpdate( &ctx_hash, &ph1->tunnel->saddr_l.saddr4.sin_port, 2 );
+-	EVP_DigestFinal( &ctx_hash, natd.buff(), NULL );
+-	EVP_MD_CTX_cleanup( &ctx_hash );
++	EVP_DigestInit( ctx_hash, ph1->evp_hash );
++	EVP_DigestUpdate( ctx_hash, ph1->cookies.i, ISAKMP_COOKIE_SIZE );
++	EVP_DigestUpdate( ctx_hash, ph1->cookies.r, ISAKMP_COOKIE_SIZE );
++	EVP_DigestUpdate( ctx_hash, &ph1->tunnel->saddr_l.saddr4.sin_addr.s_addr, 4 );
++	EVP_DigestUpdate( ctx_hash, &ph1->tunnel->saddr_l.saddr4.sin_port, 2 );
++	EVP_DigestFinal( ctx_hash, natd.buff(), NULL );
++	EVP_MD_CTX_free( ctx_hash );
+ 
+ 	ph1->natd_hash_l.add( natd );
+ 
+diff --git a/source/iked/ike.exch.phase2.cpp b/source/iked/ike.exch.phase2.cpp
+index 19a5ad5..fe8cd25 100644
+--- a/source/iked/ike.exch.phase2.cpp
++++ b/source/iked/ike.exch.phase2.cpp
+@@ -1008,14 +1008,14 @@ long _IKED::phase2_gen_hash_i( IDB_PH1 * ph1, IDB_PH2 * ph2, BDATA & hash )
+ 
+ 	hash.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, input.buff(), input.size() );
+-	HMAC_Final( &ctx_prf, hash.buff(), NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, input.buff(), input.size() );
++	HMAC_Final( ctx_prf, hash.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -1048,14 +1048,14 @@ long _IKED::phase2_gen_hash_r( IDB_PH1 * ph1, IDB_PH2 * ph2, BDATA & hash )
+ 
+ 	hash.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, input.buff(), input.size() );
+-	HMAC_Final( &ctx_prf, hash.buff(), NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, input.buff(), input.size() );
++	HMAC_Final( ctx_prf, hash.buff(), NULL );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -1093,14 +1093,14 @@ long _IKED::phase2_gen_hash_p( IDB_PH1 * ph1, IDB_PH2 * ph2, BDATA & hash )
+ 
+ 	hash.size( ph1->hash_size );
+ 
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
+-	HMAC_Update( &ctx_prf, input.buff(), input.size() );
+-	HMAC_Final( &ctx_prf, hash.buff(), 0 );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_a.buff(), ( int ) ph1->skeyid_a.size(), ph1->evp_hash, NULL );
++	HMAC_Update( ctx_prf, input.buff(), input.size() );
++	HMAC_Final( ctx_prf, hash.buff(), 0 );
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	log.bin(
+ 		LLOG_DEBUG,
+@@ -1554,8 +1554,10 @@ long _IKED::phase2_gen_keys( IDB_PH1 * ph1, IDB_PH2 * ph2 )
+ 		if( level >= LLOG_DECODE )
+ 		{
+ 			BDATA prv;
++			const BIGNUM *pub_key, *priv_key;
+ 			prv.size( ph2->dh_size );
+-			BN_bn2bin( ph2->dh->priv_key, prv.buff() );
++			DH_get0_key( ph2->dh, &pub_key, &priv_key );
++			BN_bn2bin( priv_key, prv.buff() );
+ 
+ 			log.bin(
+ 				LLOG_DECODE,
+@@ -1817,56 +1819,56 @@ long _IKED::phase2_gen_keys( IDB_PH1 * ph1, IDB_PH2 * ph2, long dir, IKE_PROPOSA
+ 	// K3 = prf( SKEYID_d, K2 | [ g(qm)^xy | ] protocol | SPI | Ni_b | Nr_b )
+ 	//
+ 	
+-	HMAC_CTX ctx_prf;
+-	HMAC_CTX_init( &ctx_prf );
++	HMAC_CTX *ctx_prf;
++	ctx_prf = HMAC_CTX_new();
+ 
+-	HMAC_Init_ex( &ctx_prf, ph1->skeyid_d.buff(), ( int ) ph1->skeyid_d.size(), ph1->evp_hash, NULL );
++	HMAC_Init_ex( ctx_prf, ph1->skeyid_d.buff(), ( int ) ph1->skeyid_d.size(), ph1->evp_hash, NULL );
+ 
+ 	if( ph2->dhgr_id )
+-		HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
++		HMAC_Update( ctx_prf, shared.buff(), shared.size() );
+ 
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &proposal->proto, 1 );
+-	HMAC_Update( &ctx_prf, ( unsigned char * ) &proposal->spi, 4 );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &proposal->proto, 1 );
++	HMAC_Update( ctx_prf, ( unsigned char * ) &proposal->spi, 4 );
+ 
+ 	if( ph2->initiator )
+ 	{
+-		HMAC_Update( &ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
+-		HMAC_Update( &ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
++		HMAC_Update( ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
++		HMAC_Update( ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
+ 	}
+ 	else
+ 	{
+-		HMAC_Update( &ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
+-		HMAC_Update( &ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
++		HMAC_Update( ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
++		HMAC_Update( ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
+ 	}
+ 
+-	HMAC_Final( &ctx_prf, key_data, NULL );
++	HMAC_Final( ctx_prf, key_data, NULL );
+ 
+ 	for( long size = skeyid_size; size < key_size; size += skeyid_size )
+ 	{
+-		HMAC_Init_ex( &ctx_prf, ph1->skeyid_d.buff(), ( int ) ph1->skeyid_d.size(), ph1->evp_hash, NULL );
+-		HMAC_Update( &ctx_prf, key_data + size - skeyid_size, skeyid_size );
++		HMAC_Init_ex( ctx_prf, ph1->skeyid_d.buff(), ( int ) ph1->skeyid_d.size(), ph1->evp_hash, NULL );
++		HMAC_Update( ctx_prf, key_data + size - skeyid_size, skeyid_size );
+ 
+ 		if( ph2->dhgr_id )
+-			HMAC_Update( &ctx_prf, shared.buff(), shared.size() );
++			HMAC_Update( ctx_prf, shared.buff(), shared.size() );
+ 
+-		HMAC_Update( &ctx_prf, ( unsigned char * ) &proposal->proto, 1 );
+-		HMAC_Update( &ctx_prf, ( unsigned char * ) &proposal->spi, 4 );
++		HMAC_Update( ctx_prf, ( unsigned char * ) &proposal->proto, 1 );
++		HMAC_Update( ctx_prf, ( unsigned char * ) &proposal->spi, 4 );
+ 
+ 		if( ph2->initiator )
+ 		{
+-			HMAC_Update( &ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
+-			HMAC_Update( &ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
++			HMAC_Update( ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
++			HMAC_Update( ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
+ 		}
+ 		else
+ 		{
+-			HMAC_Update( &ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
+-			HMAC_Update( &ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
++			HMAC_Update( ctx_prf, ph2->nonce_r.buff(), ph2->nonce_r.size() );
++			HMAC_Update( ctx_prf, ph2->nonce_l.buff(), ph2->nonce_l.size() );
+ 		}
+ 
+-		HMAC_Final( &ctx_prf, key_data + size, 0 );
++		HMAC_Final( ctx_prf, key_data + size, 0 );
+ 	}
+ 
+-	HMAC_CTX_cleanup( &ctx_prf );
++	HMAC_CTX_free( ctx_prf );
+ 
+ 	//
+ 	// separate encrypt and auth key data
+diff --git a/source/iked/ike.idb.exch.cpp b/source/iked/ike.idb.exch.cpp
+index d237e41..5e1c648 100644
+--- a/source/iked/ike.idb.exch.cpp
++++ b/source/iked/ike.idb.exch.cpp
+@@ -134,12 +134,13 @@ bool _IDB_XCH::new_msgiv( IDB_PH1 * ph1 )
+ 	unsigned char iv_data[ EVP_MAX_MD_SIZE ];
+ 	unsigned long iv_size = EVP_CIPHER_iv_length( ph1->evp_cipher );
+ 
+-	EVP_MD_CTX ctx_hash;
+-	EVP_DigestInit( &ctx_hash, ph1->evp_hash );
+-	EVP_DigestUpdate( &ctx_hash, ph1->iv.buff(), ph1->iv.size() );
+-	EVP_DigestUpdate( &ctx_hash, &msgid, 4 );
+-	EVP_DigestFinal( &ctx_hash, iv_data, NULL );
+-	EVP_MD_CTX_cleanup( &ctx_hash );
++	EVP_MD_CTX *ctx_hash;
++	ctx_hash = EVP_MD_CTX_new();
++	EVP_DigestInit( ctx_hash, ph1->evp_hash );
++	EVP_DigestUpdate( ctx_hash, ph1->iv.buff(), ph1->iv.size() );
++	EVP_DigestUpdate( ctx_hash, &msgid, 4 );
++	EVP_DigestFinal( ctx_hash, iv_data, NULL );
++	EVP_MD_CTX_free( ctx_hash );
+ 
+ 	iv.set( iv_data, iv_size );
+ 
+diff --git a/source/iked/ike.idb.phase1.cpp b/source/iked/ike.idb.phase1.cpp
+index f3858fc..1562707 100644
+--- a/source/iked/ike.idb.phase1.cpp
++++ b/source/iked/ike.idb.phase1.cpp
+@@ -676,7 +676,9 @@ bool _IDB_PH1::setup_dhgrp( IKE_PROPOSAL * proposal )
+ 	}
+ 
+ 	xl.size( dh_size );
+-	long result = BN_bn2bin( dh->pub_key, xl.buff() );
++	const BIGNUM *pub_key, *priv_key;
++	DH_get0_key( dh, &pub_key, &priv_key );
++	long result = BN_bn2bin( pub_key, xl.buff() );
+ 
+ 	//
+ 	// fixup public buffer alignment
+diff --git a/source/iked/ike.idb.phase2.cpp b/source/iked/ike.idb.phase2.cpp
+index 172944c..95ae7d3 100644
+--- a/source/iked/ike.idb.phase2.cpp
++++ b/source/iked/ike.idb.phase2.cpp
+@@ -438,7 +438,9 @@ bool _IDB_PH2::setup_dhgrp()
+ 		}
+ 
+ 		xl.size( dh_size );
+-		long result = BN_bn2bin( dh->pub_key, xl.buff() );
++		const BIGNUM *pub_key, *priv_key;
++		DH_get0_key( dh, &pub_key, &priv_key );
++		long result = BN_bn2bin( pub_key, xl.buff() );
+ 
+ 		//
+ 		// fixup public buffer alignment
+diff --git a/source/iked/ike.keyfile.cpp b/source/iked/ike.keyfile.cpp
+index c9ea803..0ae0ed7 100644
+--- a/source/iked/ike.keyfile.cpp
++++ b/source/iked/ike.keyfile.cpp
+@@ -664,14 +664,15 @@ static int verify_cb( int ok, X509_STORE_CTX * store_ctx )
+ 		long ll = LLOG_ERROR;
+ 		char name[ 512 ];
+ 
+-		X509_NAME * x509_name = X509_get_subject_name( store_ctx->current_cert );
++		X509_NAME * x509_name = X509_get_subject_name( X509_STORE_CTX_get_current_cert( store_ctx ) );
+ 
+ 		X509_NAME_oneline(
+ 			x509_name,
+ 			name,
+ 			512 );
+ 
+-		switch( store_ctx->error )
++		int error = X509_STORE_CTX_get_error( store_ctx );
++		switch( error )
+ 		{
+ 			case X509_V_ERR_UNABLE_TO_GET_CRL:
+ 				ok = 1;
+@@ -683,9 +684,9 @@ static int verify_cb( int ok, X509_STORE_CTX * store_ctx )
+ 			ll,
+ 			"ii : %s(%d) at depth:%d\n"
+ 			"ii : subject :%s\n",
+-			X509_verify_cert_error_string( store_ctx->error ),
+-			store_ctx->error,
+-			store_ctx->error_depth,
++			X509_verify_cert_error_string( error ),
++			error,
++			X509_STORE_CTX_get_error_depth( store_ctx ),
+ 			name );
+ 	}
+ 
+@@ -857,7 +858,7 @@ bool prvkey_rsa_load_pem( BDATA & prvkey, FILE * fp, BDATA & pass )
+ 	if( evp_pkey == NULL )
+ 		return false;
+ 
+-	bool converted = prvkey_rsa_2_bdata( prvkey, evp_pkey->pkey.rsa );
++	bool converted = prvkey_rsa_2_bdata( prvkey, EVP_PKEY_get0_RSA( evp_pkey ) );
+ 	EVP_PKEY_free( evp_pkey );
+ 
+ 	return converted;
+@@ -883,7 +884,7 @@ bool prvkey_rsa_load_p12( BDATA & prvkey, FILE * fp, BDATA & pass )
+ 	if( evp_pkey == NULL )
+ 		return false;
+ 
+-	bool converted = prvkey_rsa_2_bdata( prvkey, evp_pkey->pkey.rsa );
++	bool converted = prvkey_rsa_2_bdata( prvkey, EVP_PKEY_get0_RSA( evp_pkey ) );
+ 	EVP_PKEY_free( evp_pkey );
+ 
+ 	return converted;
+@@ -939,7 +940,7 @@ bool prvkey_rsa_load_pem( BDATA & prvkey, BDATA & input, BDATA & pass )
+ 	if( evp_pkey == NULL )
+ 		return false;
+ 
+-	bool converted = prvkey_rsa_2_bdata( prvkey, evp_pkey->pkey.rsa );
++	bool converted = prvkey_rsa_2_bdata( prvkey, EVP_PKEY_get0_RSA( evp_pkey ) );
+ 	EVP_PKEY_free( evp_pkey );
+ 
+ 	return converted;
+@@ -976,7 +977,7 @@ bool prvkey_rsa_load_p12( BDATA & prvkey, BDATA & input, BDATA & pass )
+ 	if( evp_pkey == NULL )
+ 		return false;
+ 
+-	bool converted = prvkey_rsa_2_bdata( prvkey, evp_pkey->pkey.rsa );
++	bool converted = prvkey_rsa_2_bdata( prvkey, EVP_PKEY_get0_RSA( evp_pkey ) );
+ 	EVP_PKEY_free( evp_pkey );
+ 
+ 	return converted;
+@@ -1010,7 +1011,7 @@ bool _IKED::pubkey_rsa_read( BDATA & cert, BDATA & pubkey )
+ 	if( evp_pkey == NULL )
+ 		return false;
+ 
+-	bool result = pubkey_rsa_2_bdata( pubkey, evp_pkey->pkey.rsa );
++	bool result = pubkey_rsa_2_bdata( pubkey, EVP_PKEY_get0_RSA( evp_pkey ) );
+ 
+ 	EVP_PKEY_free( evp_pkey );
+ 
+diff --git a/source/libike/manager.file.cpp b/source/libike/manager.file.cpp
+index 67a50ad..5b3f117 100644
+--- a/source/libike/manager.file.cpp
++++ b/source/libike/manager.file.cpp
+@@ -679,11 +679,11 @@ bool _CONFIG_MANAGER::file_pcf_load( CONFIG & config, const char * path, bool &
+ 			BDATA pwd;
+ 			data.get( pwd );
+ 
+-			EVP_CIPHER_CTX ctx_cipher;
+-			EVP_CIPHER_CTX_init( &ctx_cipher );
++			EVP_CIPHER_CTX *ctx_cipher;
++			ctx_cipher = EVP_CIPHER_CTX_new();
+ 
+ 			EVP_CipherInit_ex(
+-				&ctx_cipher,
++				ctx_cipher,
+ 				EVP_des_ede3_cbc(),
+ 				NULL,
+ 				key,
+@@ -691,7 +691,7 @@ bool _CONFIG_MANAGER::file_pcf_load( CONFIG & config, const char * path, bool &
+ 				0 );
+ 
+ 			EVP_Cipher(
+-				&ctx_cipher,
++				ctx_cipher,
+ 				pwd.buff(),
+ 				pwd.buff(),
+ 				( unsigned int ) pwd.size() );
+@@ -700,6 +700,8 @@ bool _CONFIG_MANAGER::file_pcf_load( CONFIG & config, const char * path, bool &
+ 			pwd.size( pwlen );
+ 
+ 			config.set_binary( "auth-mutual-psk", pwd );
++
++			EVP_CIPHER_CTX_free( ctx_cipher);
+ 		}
+ 
+ 		if( !_stricmp( name.text(), "DHGroup" ) && data.size() )
