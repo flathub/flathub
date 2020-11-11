@@ -2,12 +2,18 @@
 
 This is the [vkBasalt](https://github.com/DadSchoorse/vkBasalt/) flatpak for Steam's flatpak.
 
-## Enable vkBasalt
+## Enable vkBasalt per game
 
 Edit the launch option of a game and add:
 
 ```ini
 ENABLE_VKBASALT=1 %command%
+```
+
+## Permentally enable vkBasalt globally
+
+```bash
+flatpak override --env=ENABLE_VKBASALT=1 com.valvesoftware.Steam # add `--user` if it is installed as a user
 ```
 
 ## Configuration
