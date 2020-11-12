@@ -10,7 +10,7 @@ Edit the launch option of a game and add:
 ENABLE_VKBASALT=1 %command%
 ```
 
-## Permentally enable vkBasalt globally
+## Permanentally enable vkBasalt globally
 
 ```bash
 flatpak override --env=ENABLE_VKBASALT=1 com.valvesoftware.Steam # add `--user` if it is installed as a user
