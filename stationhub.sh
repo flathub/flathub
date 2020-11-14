@@ -1,4 +1,2 @@
 #!/bin/bash
-export DOTNET_ROOT=/app/dotnet
-export PATH=$PATH:/app/dotnet
-/app/dotnet/dotnet /app/org.unitystation.StationHub/StationHub.dll
+/usr/lib/sdk/dotnet/bin/dotnet /app/org.unitystation.StationHub/StationHub.dll
