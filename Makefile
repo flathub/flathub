@@ -1,6 +1,6 @@
 NAME=net.sf.fuse_emulator
 BUNDLE=$(NAME).flatpak
-MANIFEST=$(NAME).json
+MANIFEST=$(NAME).yaml
 APPDATA=$(NAME).appdata.xml
 BRANCH_ID=stable
 
