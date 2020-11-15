@@ -1,0 +1,338 @@
+From 697730240394cd9fedcf7924f29ffa625fc784fd Mon Sep 17 00:00:00 2001
+From: RSDuck <rsduck@users.noreply.github.com>
+Date: Wed, 30 Sep 2020 23:58:42 +0200
+Subject: [PATCH] make OpenGL renderer a build option mostly meant for the
+ Switch port
+
+---
+ CMakeLists.txt                              |  6 ++++
+ src/CMakeLists.txt                          | 31 +++++++++++++++------
+ src/GPU.cpp                                 | 13 +++++++--
+ src/GPU.h                                   |  2 ++
+ src/GPU2D.cpp                               |  2 ++
+ src/GPU3D.cpp                               |  6 ++++
+ src/GPU3D.h                                 |  2 ++
+ src/frontend/qt_sdl/VideoSettingsDialog.cpp |  4 +++
+ src/frontend/qt_sdl/main.cpp                | 12 ++++++++
+ 9 files changed, 67 insertions(+), 11 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6729e73..8b8d699 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -50,6 +50,12 @@ else()
+ 	option(ENABLE_LTO "Enable link-time optimization" OFF)
+ endif()
+ 
++option(ENABLE_OGLRENDERER "Enable OpenGL renderer" ON)
++
++if (ENABLE_OGLRENDERER)
++    add_definitions(-DOGLRENDERER_ENABLED)
++endif()
++
+ if (CMAKE_BUILD_TYPE STREQUAL Debug)
+ 	add_compile_options(-Og)
+ endif()
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 8839fc2..d6c3897 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -26,17 +26,12 @@ add_library(core STATIC
+ 	FIFO.h
+ 	GBACart.cpp
+ 	GPU.cpp
+-	GPU_OpenGL.cpp
+-	GPU_OpenGL_shaders.h
+ 	GPU2D.cpp
+ 	GPU3D.cpp
+-	GPU3D_OpenGL.cpp
+-	GPU3D_OpenGL_shaders.h
+ 	GPU3D_Soft.cpp
+ 	melonDLDI.h
+ 	NDS.cpp
+ 	NDSCart.cpp
+-	OpenGLSupport.cpp
+ 	Platform.h
+ 	ROMList.h
+ 	RTC.cpp
+@@ -52,6 +47,16 @@ add_library(core STATIC
+ 	xxhash/xxhash.c
+ )
+ 
++if (ENABLE_OGLRENDERER)
++	target_sources(core PRIVATE
++		GPU_OpenGL.cpp
++		GPU_OpenGL_shaders.h
++		GPU3D_OpenGL.cpp
++		GPU3D_OpenGL_shaders.h
++		OpenGLSupport.cpp
++	)
++endif()
++
+ if (ENABLE_JIT)
+ 	enable_language(ASM)
+ 
+@@ -95,8 +100,16 @@ if (ENABLE_JIT)
+ 	endif()
+ endif()
+ 
+-if (WIN32)
+-	target_link_libraries(core ole32 comctl32 ws2_32 opengl32)
++if (ENABLE_OGLRENDERER)
++	if (WIN32)
++		target_link_libraries(core ole32 comctl32 ws2_32 opengl32)
++	else()
++		target_link_libraries(core GL EGL)
++	endif()
+ else()
+-	target_link_libraries(core GL EGL)
+-endif()
++	if (WIN32)
++		target_link_libraries(core ole32 comctl32 ws2_32)
++	else()
++		target_link_libraries(core)
++	endif()
++endif()
+\ No newline at end of file
+diff --git a/src/GPU.cpp b/src/GPU.cpp
+index 29867db..7989750 100644
+--- a/src/GPU.cpp
++++ b/src/GPU.cpp
+@@ -280,6 +280,7 @@ void AssignFramebuffers()
+ 
+ void InitRenderer(int renderer)
+ {
++#ifdef OGLRENDERER_ENABLED
+     if (renderer == 1)
+     {
+         if (!GLCompositor::Init())
+@@ -292,8 +293,8 @@ void InitRenderer(int renderer)
+             renderer = 0;
+         }
+     }
+-
+-    if (renderer == 0)
++    else
++#endif
+     {
+         GPU3D::SoftRenderer::Init();
+     }
+@@ -308,11 +309,13 @@ void DeInitRenderer()
+     {
+         GPU3D::SoftRenderer::DeInit();
+     }
++#ifdef OGLRENDERER_ENABLED
+     else
+     {
+         GPU3D::GLRenderer::DeInit();
+         GLCompositor::DeInit();
+     }
++#endif
+ }
+ 
+ void ResetRenderer()
+@@ -321,11 +324,13 @@ void ResetRenderer()
+     {
+         GPU3D::SoftRenderer::Reset();
+     }
++#ifdef OGLRENDERER_ENABLED
+     else
+     {
+         GLCompositor::Reset();
+         GPU3D::GLRenderer::Reset();
+     }
++#endif
+ }
+ 
+ void SetRenderSettings(int renderer, RenderSettings& settings)
+@@ -364,11 +369,13 @@ void SetRenderSettings(int renderer, RenderSettings& settings)
+     {
+         GPU3D::SoftRenderer::SetRenderSettings(settings);
+     }
++#ifdef OGLRENDERER_ENABLED
+     else
+     {
+         GLCompositor::SetRenderSettings(settings);
+         GPU3D::GLRenderer::SetRenderSettings(settings);
+     }
++#endif
+ }
+ 
+ 
+@@ -1055,7 +1062,9 @@ void StartScanline(u32 line)
+             GPU2D_B->VBlank();
+             GPU3D::VBlank();
+ 
++#ifdef OGLRENDERER_ENABLED
+             if (Accelerated) GLCompositor::RenderFrame();
++#endif
+         }
+         else if (VCount == 144)
+         {
+diff --git a/src/GPU.h b/src/GPU.h
+index c7d25ec..1564ef7 100644
+--- a/src/GPU.h
++++ b/src/GPU.h
+@@ -437,6 +437,7 @@ void SetDispStat(u32 cpu, u16 val);
+ 
+ void SetVCount(u16 val);
+ 
++#ifdef OGLRENDERER_ENABLED
+ namespace GLCompositor
+ {
+ 
+@@ -450,6 +451,7 @@ void RenderFrame();
+ void BindOutputTexture();
+ 
+ }
++#endif
+ 
+ }
+ 
+diff --git a/src/GPU2D.cpp b/src/GPU2D.cpp
+index 7964aa4..7774c65 100644
+--- a/src/GPU2D.cpp
++++ b/src/GPU2D.cpp
+@@ -949,6 +949,7 @@ void GPU2D::VBlankEnd()
+     //OBJMosaicY = 0;
+     //OBJMosaicYCount = 0;
+ 
++#ifdef OGLRENDERER_ENABLED
+     if (Accelerated)
+     {
+         if ((Num == 0) && (CaptureCnt & (1<<31)) && (((CaptureCnt >> 29) & 0x3) != 1))
+@@ -956,6 +957,7 @@ void GPU2D::VBlankEnd()
+             GPU3D::GLRenderer::PrepareCaptureFrame();
+         }
+     }
++#endif
+ }
+ 
+ 
+diff --git a/src/GPU3D.cpp b/src/GPU3D.cpp
+index 5ccacf4..74debfe 100644
+--- a/src/GPU3D.cpp
++++ b/src/GPU3D.cpp
+@@ -2528,13 +2528,19 @@ void VBlank()
+ void VCount215()
+ {
+     if (GPU::Renderer == 0) SoftRenderer::RenderFrame();
++#ifdef OGLRENDERER_ENABLED
+     else                    GLRenderer::RenderFrame();
++#endif
+ }
+ 
+ u32* GetLine(int line)
+ {
+     if (GPU::Renderer == 0) return SoftRenderer::GetLine(line);
++#ifdef OGLRENDERER_ENABLED
+     else                    return GLRenderer::GetLine(line);
++#else
++    return NULL;
++#endif
+ }
+ 
+ 
+diff --git a/src/GPU3D.h b/src/GPU3D.h
+index 71f069d..c69adde 100644
+--- a/src/GPU3D.h
++++ b/src/GPU3D.h
+@@ -139,6 +139,7 @@ u32* GetLine(int line);
+ 
+ }
+ 
++#ifdef OGLRENDERER_ENABLED
+ namespace GLRenderer
+ {
+ 
+@@ -154,6 +155,7 @@ u32* GetLine(int line);
+ void SetupAccelFrame();
+ 
+ }
++#endif
+ 
+ }
+ 
+diff --git a/src/frontend/qt_sdl/VideoSettingsDialog.cpp b/src/frontend/qt_sdl/VideoSettingsDialog.cpp
+index 971fee7..1397ccd 100644
+--- a/src/frontend/qt_sdl/VideoSettingsDialog.cpp
++++ b/src/frontend/qt_sdl/VideoSettingsDialog.cpp
+@@ -50,6 +50,10 @@ VideoSettingsDialog::VideoSettingsDialog(QWidget* parent) : QDialog(parent), ui(
+     connect(grp3DRenderer, SIGNAL(buttonClicked(int)), this, SLOT(onChange3DRenderer(int)));
+     grp3DRenderer->button(Config::_3DRenderer)->setChecked(true);
+ 
++#ifndef OGLRENDERER_ENABLED
++    ui->rb3DOpenGL->setEnabled(false);
++#endif
++
+     ui->cbGLDisplay->setChecked(Config::ScreenUseGL != 0);
+ 
+     ui->cbVSync->setChecked(Config::ScreenVSync != 0);
+diff --git a/src/frontend/qt_sdl/main.cpp b/src/frontend/qt_sdl/main.cpp
+index 1900998..e0c12e3 100644
+--- a/src/frontend/qt_sdl/main.cpp
++++ b/src/frontend/qt_sdl/main.cpp
+@@ -49,7 +49,9 @@
+ 
+ #include "NDS.h"
+ #include "GBACart.h"
++#ifdef OGLRENDERER_ENABLED
+ #include "OpenGLSupport.h"
++#endif
+ #include "GPU.h"
+ #include "SPU.h"
+ #include "Wifi.h"
+@@ -336,13 +338,17 @@ void EmuThread::run()
+     videoSettings.Soft_Threaded = Config::Threaded3D != 0;
+     videoSettings.GL_ScaleFactor = Config::GL_ScaleFactor;
+ 
++#ifdef OGLRENDERER_ENABLED
+     if (hasOGL)
+     {
+         oglContext->makeCurrent(oglSurface);
+         videoRenderer = OpenGL::Init() ? Config::_3DRenderer : 0;
+     }
+     else
++#endif
++    {
+         videoRenderer = 0;
++    }
+ 
+     GPU::InitRenderer(videoRenderer);
+     GPU::SetRenderSettings(videoRenderer, videoSettings);
+@@ -396,13 +402,17 @@ void EmuThread::run()
+                 if (hasOGL != mainWindow->hasOGL)
+                 {
+                     hasOGL = mainWindow->hasOGL;
++#ifdef OGLRENDERER_ENABLED
+                     if (hasOGL)
+                     {
+                         oglContext->makeCurrent(oglSurface);
+                         videoRenderer = OpenGL::Init() ? Config::_3DRenderer : 0;
+                     }
+                     else
++#endif
++                    {
+                         videoRenderer = 0;
++                    }
+                 }
+                 else
+                     videoRenderer = hasOGL ? Config::_3DRenderer : 0;
+@@ -923,12 +933,14 @@ void ScreenPanelGL::paintGL()
+     int frontbuf = GPU::FrontBuffer;
+     glActiveTexture(GL_TEXTURE0);
+ 
++#ifdef OGLRENDERER_ENABLED
+     if (GPU::Renderer != 0)
+     {
+         // hardware-accelerated render
+         GPU::GLCompositor::BindOutputTexture();
+     }
+     else
++#endif
+     {
+         // regular render
+         glBindTexture(GL_TEXTURE_2D, screenTexture);
+-- 
+2.29.2
+
