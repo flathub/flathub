@@ -1,7 +1,7 @@
 NAME=com.locomalito.MalditaCastilla
 BUNDLE=$(NAME).flatpak
 MANIFEST=$(NAME).yaml
-APPDATA=$(NAME).appdata.xml
+APPDATA=$(NAME).metainfo.xml
 BRANCH_ID=stable
 
 default: $(BUNDLE)
