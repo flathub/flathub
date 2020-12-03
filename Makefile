@@ -7,10 +7,10 @@ BRANCH_ID=stable
 default: $(BUNDLE)
 
 $(BUNDLE): repo
-	flatpak build-bundle --arch=i386 repo $(BUNDLE) $(NAME) $(BRANCH_ID)
+	flatpak build-bundle repo $(BUNDLE) $(NAME) $(BRANCH_ID)
 
 repo: $(MANIFEST) $(APPDATA)
-	flatpak-builder --arch=i386 --repo=repo build-dir $(MANIFEST)
+	flatpak-builder --repo=repo build-dir $(MANIFEST)
 
 clean:
 	rm -f $(BUNDLE)
