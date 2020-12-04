@@ -1,0 +1,163 @@
+app-id: org.viking.Viking
+# https://docs.flatpak.org/en/latest/available-runtimes.html
+# NB Viking doesn't use any Gnome specifics so freedesktop should suffice for the build
+# Albeit Yelp for help is Gnome only
+runtime: org.gnome.Platform
+runtime-version: '3.38'
+sdk: org.gnome.Sdk
+command: viking
+rename-icon: viking
+rename-desktop-file: viking.desktop
+finish-args:
+  - --share=network
+  - --system-talk-name=org.freedesktop.GeoClue2
+  - --share=ipc
+  - --socket=x11
+# Allow to read/save anywhere (subject to normal permissions)
+  - --filesystem=host
+
+modules:
+# Shared modules 'git submodule' - https://github.com/flathub/shared-modules
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/gtk2/gtk2.json
+#
+# libauth
+# build-command mostly from https://github.com/x42/liboauth/blob/master/.travis.yml
+#  modified to actually work by using '--enable-nss' for this flatpak environment
+#  and install into the flatpak area - ${FLATPAK_DEST} - which is typically /app
+#
+  - name: liboauth
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/x42/liboauth.git
+        branch: "v1.0.3"
+    build-commands:
+      - aclocal && autoheader && libtoolize --copy && autoconf && automake --gnu --add-missing --copy && ./configure --enable-nss --prefix="${FLATPAK_DEST}" && make && make install
+    cleanup:
+      - /include
+      - '/lib/*.a'
+#
+# libzip
+#
+  - name: libzip
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://libzip.org/download/libzip-1.7.3.tar.xz
+        sha256: a60473ffdb7b4260c08bfa19c2ccea0438edac11193c3afbbb1f17fbcf6c6132
+    cleanup:
+      - /include
+      - /lib/pkgconfig/
+      - /lib/cmake/
+      - '/lib/*.a'
+      - '/bin/zip*'
+#
+# gexiv2/exiv2 cribbed from GIMP json build
+# https://github.com/flathub/org.gimp.GIMP/blob/master/org.gimp.GIMP.json
+#
+  - name: gexiv2
+    modules:
+      - name: exiv2
+        buildsystem: cmake-ninja
+        builddir: true
+        sources:
+          - type: archive
+            url: https://exiv2.org/builds/exiv2-0.27.3-Source.tar.gz
+            sha256: a79f5613812aa21755d578a297874fb59a85101e793edc64ec2c6bd994e3e778
+        cleanup:
+          - /include
+          - '/lib/*.a'
+          - /lib/pkgconfig/
+          - /lib/cmake/
+          - '/bin/exi*'
+          - '/bin/ipt*'
+          - '/bin/xmp*'
+          - '/bin/m*'
+          - '/bin/addmoddel'
+          - '/bin/geotag'
+          - '/bin/taglist'
+
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=false
+      - -Dlibdir=lib
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gexiv2/0.12/gexiv2-0.12.1.tar.xz
+        sha256: 8aeafd59653ea88f6b78cb03780ee9fd61a2f993070c5f0d0976bed93ac2bd77
+    cleanup:
+      - /include
+      - '/lib/*.a'
+      - /lib/pkgconfig/
+#
+# GPSD
+#
+  - name: gpsd
+#
+# scons shamelessly copied from
+# https://github.com/scx/gpick-flatpak/blob/master/scons.yaml
+#  but revised cleanup
+#
+    modules:
+      - name: scons
+        buildsystem: simple
+        sources:
+        - type: archive
+          url: http://download.sourceforge.net/scons/scons-3.0.1.tar.gz
+          sha256: 24475e38d39c19683bc88054524df018fe6949d70fbd4c69e298d39a0269f173
+        build-commands:
+          - python3 setup.py install --prefix="${FLATPAK_DEST}";
+        cleanup:
+          - /include
+          - '/lib/scons-*'
+          - '/bin/scons*'
+
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: http://download-mirror.savannah.gnu.org/releases/gpsd/gpsd-3.21.tar.xz
+        sha256: 5512a7d3c2e86be83c5555652e5b4cc9049e8878a4320be7f039eb1a7203e5f0
+    build-commands:
+      - scons minimal=yes shared=True gpsd=False gpsdclients=False prefix="${FLATPAK_DEST}" && scons install
+    cleanup:
+      - /include
+      - '/lib/*.a'
+      - /lib/pkgconfig/
+
+## qt, thus needs org.kde.Sdk
+#  - name: gpsbabel
+## NB after 1.7 has moved to cmake
+## NB2 1.7 broken build on using --without-libusb
+#    buildsystem: autotools
+#    config-opts:
+#    - --without-libusb
+#    sources:
+#    - type: git
+#      url: https://github.com/gpsbabel/gpsbabel.git
+#      branch: "gpsbabel_1_6_0"
+
+# DO NOT CLEAN THESE AS NEEDED FOR DEPLOYMENT!!
+#   cleanup:
+#      - /bin
+#      - /lib
+# Otherwise gpsbabel & libgps.so can get removed
+
+# Actual own Viking build here
+#
+  - name: viking
+    buildsystem: autotools
+# Mapnik is expansive C++ dependencies, but more importantly creating maps generally requires a complex system setup for runtime usage
+#  thus seemingly out of scope for a flatpak app anyway - so disable for now.
+    config-opts:
+      - --disable-mapnik
+    sources:
+# Note v1.8 doesn't build 'out of the box' due to dependency on gnome-doc-utils
+# Hence creation of v1.8 flatpak version with a few fixes to get build working.
+       - type: git
+         url: git://git.code.sf.net/p/viking/code
+         branch: "viking-1.8-flatpak"
+#         branch: "viking-1.9"
+# Local path for testing
+#       - type: archive
+#         path: viking-1.8.zip
