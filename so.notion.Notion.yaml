@@ -1,0 +1,142 @@
+app-id: so.notion.Notion
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+branch: stable
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+command: notion
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-documents:ro
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-download
+
+build-options:
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  - name: python2.7
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+
+  - name: nodejs
+    cleanup:
+      - /include
+      - /share
+      - /app/lib/node_modules/npm/changelogs
+      - /app/lib/node_modules/npm/doc
+      - /app/lib/node_modules/npm/html
+      - /app/lib/node_modules/npm/man
+      - /app/lib/node_modules/npm/scripts
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v12.18.3/node-v12.18.3.tar.gz
+        sha256: 6ea85f80e01b007cc9b566b8836513bc5102667d833bad4c1092be60fa60c2d4
+
+  - name: yasm
+    sources:
+      - type: archive
+        url: http://www.tortall.net/projects/yasm/releases/yasm-1.3.0.tar.gz
+        sha256: 3dce6601b495f5b3d45b59f7d2492a340ee7e84b5beca17e48f862502bd5603f
+
+  - name: p7zip
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/p7zip/p7zip_16.02_src_all.tar.bz2
+        sha256: 5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f
+      - type: patch
+        path: p7zip-16.02-gcc10.patch
+    build-commands:
+      - cd CPP/7zip/CMAKE; sh ./generate.sh
+      - cp -f makefile.linux_amd64_asm makefile.machine
+      - make all2
+      - make install DEST_HOME=/app
+    cleanup:
+      - /share/doc
+
+  - name: imagemagick
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --with-modules
+    sources:
+      - type: git
+        url: https://github.com/ImageMagick/ImageMagick.git
+        tag: 7.0.10-46
+    cleanup:
+      - /share/doc
+
+  - name: notion
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://desktop-release.notion-static.com/Notion%20Setup%202.0.11.exe
+        sha256: 4528bb49ab677eb73b84da3a60840f6d1081ff0afd5c2d64ef6247058a38c19d
+        dest-filename: notion.exe
+      - type: file
+        path: package-lock.json
+      - type: file
+        path: package.json
+      - type: file
+        path: so.notion.Notion.desktop
+      - type: file
+        path: so.notion.Notion.appdata.xml
+      - type: file
+        path: notion-2.0.11-platform.patch
+      - generated-sources.json
+      - type: script
+        dest-filename: notion
+        commands:
+          - exec env TMPDIR=$XDG_CACHE_HOME zypak-wrapper /app/Notion-linux-x64/notion "$@"
+    build-options:
+      env:
+        npm_config_target: 11.0.4
+        npm_config_arch: x64
+        npm_config_target_arch: x64
+        npm_config_disturl: https://electronjs.org/headers
+        npm_config_runtime: electron
+        npm_config_build_from_source: 'true'
+        npm_config_nodedir: /run/build/notion/flatpak-node/node-gyp/electron-current
+        electron_config_cache: /run/build/notion/flatpak-node/electron-cache
+        ELECTRON_SKIP_BINARY_DOWNLOAD: 'true'
+    build-commands:
+      - 7z x notion.exe
+      - 7z x \$PLUGINSDIR/app-64.7z
+      - npx --offline --cache=flatpak-node/npm-cache asar@3.0.3 extract resources/app.asar app
+      - patch -t -p0 < notion-2.0.11-platform.patch
+      - rm -rf app/node_modules
+      - cp package.json package-lock.json app/
+      - npm install --prefix=app --offline --cache=flatpak-node/npm-cache
+      - |
+        npx --offline --cache=flatpak-node/npm-cache electron-packager@15.1.0 app Notion \
+          --platform linux \
+          --arch x64 \
+          --out $FLATPAK_DEST \
+          --electron-version 11.0.4 \
+          --executable-name notion \
+          --protocol notion \
+          --electron-zip-dir=flatpak-node/electron-cache
+      - install notion ${FLATPAK_DEST}/bin/
+      - convert app/icon.ico icon.png
+      - install -D icon-0.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -D icon-1.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -D icon-2.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -D icon-3.png ${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/${FLATPAK_ID}.png
+      - install -D icon-4.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png
+      - install -D icon-5.png ${FLATPAK_DEST}/share/icons/hicolor/16x16/apps/${FLATPAK_ID}.png
+      - install -D ${FLATPAK_ID}.appdata.xml ${FLATPAK_DEST}/share/appdata/${FLATPAK_ID}.appdata.xml
+      - install -D ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
