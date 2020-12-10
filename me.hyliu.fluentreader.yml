@@ -1,0 +1,114 @@
+app-id: me.hyliu.fluentreader
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+branch: stable
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "20.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: start-fluent-reader
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+modules:
+  # First step is to install Node to /app/node, that way it can be accessible outside of the sdk
+  # environment. install-sdk.sh is used because install.sh omits npm.
+  # (This does not need to be done for electron-builder, see
+  # electron-webpack-quick-start's build.electron.webpack.ElectronWebpackQuickStart.yaml for an
+  # explanation.)
+  # - name: node
+  #   buildsystem: simple
+  #   build-commands:
+  #     - '/usr/lib/sdk/node14/install-sdk.sh'
+
+  # Now is the quickstart module.
+  - name: fluent-reader
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node14/bin
+      env:
+        # Set the Electron cache directory.
+        # (The directory format is: /run/build/MODULE_NAME/flatpak-node/electron-cache)
+        # ELECTRON_CACHE: '/run/build/fluent-reader/flatpak-node/electron-cache'
+        XDG_CACHE_HOME: /run/build/fluent-reader/flatpak-node/cache
+        # Sets the directory where Node is located so way npm won't download the headers.
+        # npm_config_nodedir: '/usr/lib/sdk/node14'
+    build-commands:
+      # Have Yarn use the offline mirror.
+      - "npm install --offline --prefix=fluent-reader --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache"
+      # Download the packages.
+      # If you were using npm with electron-webpack/electron-builder, then the above two commands
+      # would look more like the npm commands in the vanilla-quick-start manifest, just without
+      # the --prefix.
+
+      # Run electron-builder, passing the architecture arguments to it.
+      # Note that the -- is important; without that, the argument will be passed to
+      # yarn instead of electron-builder.
+      - ". flatpak-node/electron-builder-arch-args.sh; npm run --prefix=fluent-reader --offline build; npm run --prefix=fluent-reader --offline package-linux-unpacked -- $ELECTRON_BUILDER_ARCH_ARGS"
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - "cp -r fluent-reader/bin/linux/x64/linux*unpacked /app/fluent-reader"
+      # If you passed --electron-non-patented-ffmpeg, you could install it like this:
+      # - 'install -Dm 755 flatpak-node/libffmpeg.so -t /app/electron-webpack-quick-start'
+      # Install the wrapper script to start it.
+      - "install -Dm 755 start-fluent-reader.sh /app/bin/start-fluent-reader"
+    sources:
+      - type: git
+        url: https://github.com/xcffl/fluent-reader/
+        # Use the Electron 4 / Node 10 version.
+        commit: package-linux-unpacked
+        # Checkout into a subdirectory so we can copy the whole thing to /app.
+        dest: fluent-reader
+      # Add the flatpak-node-generator generated sources.
+      - generated-sources.json
+      # Our runner script.
+      - type: script
+        dest-filename: start-fluent-reader.sh
+        commands:
+          # Use zypak to call the electron binary to enable sandboxing and prevents no sandbox error
+          - "zypak-wrapper /app/fluent-reader/fluent-reader"
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 me.hyliu.fluentreader.appdata.xml /app/share/metainfo/me.hyliu.fluentreader.appdata.xml
+    sources:
+      - type: file
+        path: me.hyliu.fluentreader.appdata.xml
+  - name: desktop-entry
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 me.hyliu.fluentreader.desktop /app/share/applications/me.hyliu.fluentreader.desktop
+    sources:
+      - type: file
+        path: me.hyliu.fluentreader.desktop
+  - name: icons
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 me.hyliu.fluentreader-16.png /app/share/icons/hicolor/16x16/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-32.png /app/share/icons/hicolor/32x32/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-48.png /app/share/icons/hicolor/48x48/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-64.png /app/share/icons/hicolor/64x64/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-128.png /app/share/icons/hicolor/128x128/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-256.png /app/share/icons/hicolor/256x256/apps/me.hyliu.fluentreader.png
+      - install -Dm644 me.hyliu.fluentreader-512.png /app/share/icons/hicolor/512x512/apps/me.hyliu.fluentreader.png
+    sources:
+      - type: file
+        path: me.hyliu.fluentreader-16.png
+      - type: file
+        path: me.hyliu.fluentreader-32.png
+      - type: file
+        path: me.hyliu.fluentreader-48.png
+      - type: file
+        path: me.hyliu.fluentreader-64.png
+      - type: file
+        path: me.hyliu.fluentreader-128.png
+      - type: file
+        path: me.hyliu.fluentreader-256.png
+      - type: file
+        path: me.hyliu.fluentreader-512.png
