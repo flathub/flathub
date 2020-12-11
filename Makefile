@@ -1,3 +1,4 @@
+FLATPAK = flatpak
 FLATPAK_BUILDER = flatpak-builder
 BUILDER_OPTIONS = --force-clean --ccache --require-changes
 TARGET_REPO = repo
@@ -27,4 +28,7 @@ install: ## Install Flatpak locally
 clean: ## Cleanup
 	@rm -rf build-dir
 
-.PHONY: help build run install clean
+validate: ## Validate metadata
+	@$(FLATPAK) run org.freedesktop.appstream-glib validate $(APP_ID).metainfo.xml
+
+.PHONY: help build run install clean validate
