@@ -1,0 +1,140 @@
+app-id: com.microsoft.Edge
+# desktop-file-name-prefix: '(Testing) '
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: edge
+separate-locales: false
+build-options:
+  no-debuginfo: true
+tags:
+  - proprietary
+finish-args:
+  - '--device=all'
+#   - '--env=GTK_PATH=/app/lib/gtkmodules'
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=cups'
+  - '--socket=pulseaudio'
+  - '--socket=x11'
+  - '--socket=wayland'
+  - '--require-version=1.8.2'
+  - '--system-talk-name=org.freedesktop.UPower'
+  - '--talk-name=org.freedesktop.FileManager1'
+  - '--talk-name=org.freedesktop.Notifications'
+  - '--talk-name=org.freedesktop.secrets'
+  - '--talk-name=org.gnome.SessionManager'
+  - '--system-talk-name=org.freedesktop.Avahi'
+  - '--own-name=org.mpris.MediaPlayer2.chrome.*'
+#  - '--filesystem=xdg-documents'
+  - '--filesystem=xdg-download'
+#  - '--filesystem=xdg-music'
+#  - '--filesystem=xdg-videos'
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/apple/cups/releases/download/v2.3.3/cups-2.3.3-source.tar.gz
+        sha256: 261fd948bce8647b6d5cb2a1784f0c24cc52b5c4e827b71d726020bcc502f3ee
+
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini'
+    sources:
+      - type: file
+        path: gtk-settings.ini
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/TheEvilSkeleton/zypak/
+        # branch: master
+        # commit: f419c2e36d9f6f6115798d946e3630b64d3bd075
+        tag: v2020.10beta.4-edge
+      # - type: dir
+      #   path: ../../code/zypak
+
+  - name: flextop
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/refi64/flextop
+        commit: 485c332c7ec36a8b74be8f3622fc756ac6263f40
+
+  - name: edge
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm 755 edge.sh /app/bin/edge'
+      - 'install -Dm 755 apply_extra.sh /app/bin/apply_extra'
+      - 'install -Dm 755 stub_sandbox.sh /app/bin/stub_sandbox'
+      - 'install -Dm 644 -t /app/share/flatpak-edge flatpak_policy.json'
+      - 'install -Dm 644 -t /app/share/flatpak-edge mimic_warning.txt'
+      - 'install -Dm 644 -t /app/share/applications com.microsoft.Edge.desktop'
+      - 'install -Dm 644 -t /app/share/metainfo com.microsoft.Edge.metainfo.xml'
+      - |
+          for icon in 16 24 32 48 64 128 256; do
+            install -Dm 644 com.microsoft.Edge-$icon.png /app/share/icons/hicolor/${icon}x${icon}/apps/com.microsoft.Edge.png
+          done
+
+      # For extra-data to be able to extract the .deb
+      - 'install -Dm 755 /{usr,app}/bin/ar'
+      - 'cp /usr/lib/$(gcc --print-multiarch)/libbfd-*.so /app/lib'
+    sources:
+      - type: extra-data
+        # From https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-dev
+        url: https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-dev/microsoft-edge-dev_89.0.723.0-1_amd64.deb
+        sha256: 9335faa09bfb9712bfe4d9575bc6d786533fcec8a740fc2a88839e86e6fe8537
+        filename: edge.deb
+        only-arches: [x86_64]
+        size: 89214260
+      - type: script
+        dest-filename: stub_sandbox.sh
+        commands:
+          - 'echo "Stub sandbox ignoring command: $@"'
+          - 'exit 1'
+      - type: file
+        path: edge.sh
+      - type: file
+        path: apply_extra.sh
+      - type: file
+        path: flatpak_policy.json
+      - type: file
+        path: mimic_warning.txt
+      - type: file
+        path: com.microsoft.Edge.desktop
+      - type: file
+        path: com.microsoft.Edge.metainfo.xml
+      - type: file
+        path: icons/com.microsoft.Edge-16.png
+      - type: file
+        path: icons/com.microsoft.Edge-24.png
+      - type: file
+        path: icons/com.microsoft.Edge-32.png
+      - type: file
+        path: icons/com.microsoft.Edge-48.png
+      - type: file
+        path: icons/com.microsoft.Edge-64.png
+      - type: file
+        path: icons/com.microsoft.Edge-128.png
+      - type: file
+        path: icons/com.microsoft.Edge-256.png
