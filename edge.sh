@@ -21,11 +21,6 @@ done
 # run_stamp="$XDG_DATA_HOME/flatpak-edge-run-stamp"
 mimic_stamp="$XDG_DATA_HOME/flatpak-edge-mimic-stamp"
 
-# if [[ ! -f "$run_stamp" ]]; then
-#   set /app/share/flatpak-edge/first_run.html chrome://welcome "$@"
-#   touch "$run_stamp"
-# fi
-
 if [[ ! -f "$mimic_stamp" ]] && ! zypak-helper spawn-strategy-test; then
   zenity --info --title='Edge Flatpak' --no-wrap \
     --text="$(< /app/share/flatpak-edge/mimic_warning.txt)"
