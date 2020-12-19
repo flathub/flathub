@@ -15,7 +15,7 @@ Includes
 
 * [php](https://php.net/) (7.4.13)
 * [composer](https://github.com/composer/composer) (2.0.8)
-* [PHIVE](https://phar.io/) (0.14.4)
+* [PHIVE](https://phar.io/) (0.14.5)
 * [apcu](https://pecl.php.net/package/APCu) (5.1.19)
 * [xdebug](https://xdebug.org/) (3.0.1)
 
