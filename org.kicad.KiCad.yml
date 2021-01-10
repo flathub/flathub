@@ -1,0 +1,203 @@
+app-id: org.kicad.KiCad
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: kicad
+rename-appdata-file: kicad.appdata.xml
+rename-desktop-file: kicad.desktop
+rename-icon: kicad
+finish-args:
+- --device=dri
+- --env=LD_LIBRARY_PATH=/app/lib
+- --env=KISYS3DMOD=/app/library-extensions/Packages3D/extra
+- --filesystem=home
+- --share=ipc
+- --share=network
+- --socket=x11
+
+add-extensions:
+  org.kicad.KiCad.Library:
+    version: '5.1'
+    directory: library-extensions
+    autodelete: true
+    no-autodownload: true
+    subdirectories: true
+    merge-dirs: extra/template
+
+cleanup:
+- /include
+- /lib/cmake
+- /lib/pkgconfig
+- /lib/wx
+- /lib64
+- /share/aclocal
+- /share/bakefile
+- '*.la'
+- '*.a'
+
+modules:
+- shared-modules/glu/glu-9.json
+- shared-modules/glew/glew.json
+
+- name: glm
+  buildsystem: simple
+  build-commands:
+  - cp -r glm /app/include
+  sources:
+  - type: archive
+    url: https://github.com/g-truc/glm/releases/download/0.9.9.8/glm-0.9.9.8.zip
+    sha256: 37e2a3d62ea3322e43593c34bae29f57e3e251ea89f4067506c94043769ade4c
+
+- name: boost
+  buildsystem: simple
+  build-commands:
+  - ./bootstrap.sh --prefix=/app --with-libraries=context,date_time,filesystem,iostreams,locale,program_options,regex,system,thread,test
+  - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+  sources:
+  - type: archive
+    url: http://sourceforge.net/projects/boost/files/boost/1.75.0/boost_1_75_0.tar.gz
+    sha256: aeb26f80e80945e82ee93e5939baebdca47b9dee80a07d3144be1e1a6a66dd6a
+
+- name: wxWidgets
+  rm-configure: true
+  cleanup:
+  - /bin
+  subdir: ext/wxWidgets
+  sources:
+  - type: archive
+    url: https://files.pythonhosted.org/packages/b9/8b/31267dd6d026a082faed35ec8d97522c0236f2e083bf15aff64d982215e1/wxPython-4.0.7.post2.tar.gz
+    sha256: 5a229e695b64f9864d30a5315e0c1e4ff5e02effede0a07f16e8d856737a0c4e
+  - type: script
+    commands:
+    - cp -p /usr/share/automake-*/config.{sub,guess} .
+    - autoconf -f -B build/autoconf_prepend-include
+
+- python3-wxPython.yml
+
+- name: swig
+  buildsystem: autotools
+  cleanup:
+  - /bin
+  - /share
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/swig/files/swig/swig-4.0.2/swig-4.0.2.tar.gz
+    sha256: d53be9730d8d58a16bf0cbd1f8ac0c0c3e1090573168bfa151b01eb47fa906fc
+
+- name: libXmu
+  cleanup:
+  - /share/doc
+  sources:
+  - type: archive
+    url: https://www.x.org/archive//individual/lib/libXmu-1.1.3.tar.gz
+    sha256: 5bd9d4ed1ceaac9ea023d86bf1c1632cd3b172dce4a193a72a94e1d9df87a62e
+
+- name: OCCT
+  buildsystem: cmake-ninja
+  cleanup:
+  - /bin
+  - /share/doc
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DBUILD_LIBRARY_TYPE=Shared
+  - -DBUILD_Inspector=OFF
+  - -DBUILD_DOC_Overview=OFF
+  - -DBUILD_MODULE_ApplicationFramework=ON
+  - -DBUILD_MODULE_DataExchange=ON
+  - -DBUILD_MODULE_Draw=OFF
+  - -DBUILD_MODULE_FoundationClasses=ON
+  - -DBUILD_MODULE_ModelingAlgorithms=ON
+  - -DBUILD_MODULE_ModelingData=ON
+  - -DBUILD_MODULE_Visualization=ON
+  - -DUSE_VTK=OFF
+  - -DUSE_TBB=OFF
+  - -DINSTALL_FREETYPE=OFF
+  - -DINSTALL_SAMPLES=OFF
+  - -DINSTALL_TEST_CASES=OFF
+  sources:
+  - type: archive
+    url: https://github.com/tpaviot/oce/releases/download/official-upstream-packages/opencascade-7.5.0.tgz
+    sha256: d82d253aa6f43ce49111e84e04286dab4445eecba8efb5190973244b0c7fd211
+
+- name: ngspice
+  cleanup:
+  - /bin
+  - /share/man
+  config-opts:
+  - --disable-silent-rules
+  - --enable-xspice
+  - --enable-cider
+  - --enable-openmp
+  - --with-ngshared
+  rm-configure: true
+  sources:
+  - type: archive
+    url: https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/33/ngspice-33.tar.gz
+    sha256: b99db66cc1c57c44e9af1ef6ccb1dcbc8ae1df3e35acf570af578f606f8541f1
+  - type: script
+    commands:
+    - cp -p /usr/share/automake-*/config.{sub,guess} .
+    - autoconf -f -B build/autoconf_prepend-include
+
+- name: kicad
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DGLEW_INCLUDE_DIR=/app/include/GL
+  - -DOCC_INCLUDE_DIR=/app/include/opencascade
+  - -DOPENGL_glu_LIBRARY=/app/lib/libGLU.so
+  - -DKICAD_BUILD_QA_TESTS=OFF
+  - -DKICAD_SCRIPTING_PYTHON3=ON
+  - -DKICAD_USE_OCC=ON
+  - -DKICAD_USE_OCE=OFF
+  - -DKICAD_SCRIPTING_WXPYTHON_PHOENIX=ON
+  post-install:
+  - install -d /app/library-extensions
+  sources:
+  - type: archive
+    url: https://gitlab.com/kicad/code/kicad/-/archive/5.1.9/kicad-5.1.9.tar.gz
+    sha256: 841be864b9dc5c761193c3ee9cbdbed6729952d7b38451aa8e1977bdfdb6081b
+  - type: patch
+    path: fix-rectifier-demo-for-ngspice-32.patch
+  - type: shell
+    commands:
+    - sed -i '5s/org\.kicad_pcb\.kicad/org.kicad.KiCad/;96i<kudos><kudo>UserDocs</kudo></kudos>' resources/linux/appdata/kicad.appdata.xml.in
+
+- name: kicad-i18n
+  builddir: true
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DKICAD_I18N_UNIX_STRICT_PATH=ON
+  sources:
+  - type: archive
+    url: https://gitlab.com/kicad/code/kicad-i18n/-/archive/5.1.9/kicad-i18n-5.1.9.tar.gz
+    sha256: f2cadcae1400bf483668ceccd190dff3d9dfd098307c146d273ed0bb01f4882f
+
+- name: kicad-doc
+  build-commands:
+  - find . -type f -exec install -Dm644 "{}" "${FLATPAK_DEST}/{}" \;
+  buildsystem: simple
+  sources:
+  - type: archive
+    url: https://kicad-downloads.s3.cern.ch/docs/kicad-doc-5.1.9.tar.gz
+    sha256: 61571f260bba67e26b9f7456ad6eb5da7c3b406412f506e7857d0ca70ca66393
+
+- name: kicad-templates
+  buildsystem: cmake-ninja
+  sources:
+  - type: archive
+    url: https://gitlab.com/kicad/libraries/kicad-templates/-/archive/5.1.9/kicad-templates-5.1.9.tar.gz
+    sha256: 0c1bf3d2e6d8d1056a5da6c1f7a173551c154b4bdaddb86b6a34155b18e65da6
+
+- name: kicad-symbols
+  buildsystem: cmake-ninja
+  sources:
+  - type: archive
+    url: https://gitlab.com/kicad/libraries/kicad-symbols/-/archive/5.1.9/kicad-symbols-5.1.9.tar.gz
+    sha256: cdb033cc755cc66a087b44fff1d2b77bf2dd44311a02c81a516b8ca1fbd242a7
+
+- name: kicad-footprints
+  buildsystem: cmake-ninja
+  sources:
+  - type: archive
+    url: https://gitlab.com/kicad/libraries/kicad-footprints/-/archive/5.1.9/kicad-footprints-5.1.9.tar.gz
+    sha256: 415e014364d1c12584f115a4adfeec1b71e41e2cd7f4ae543237ee71b8ef41bd
