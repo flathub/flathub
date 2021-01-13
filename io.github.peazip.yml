@@ -1,0 +1,98 @@
+app-id: io.github.peazip
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: peazip
+finish-args:
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --filesystem=host
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+modules:
+  - shared-modules/gtk2/gtk2.json
+  
+  - name: lazarus
+    cleanup:
+      - '*'
+    buildsystem: simple
+    build-commands:
+      - ln -s /app/etc/* /etc/ && make clean lazbuild
+      - touch lazarus startlazarus
+      - PREFIX=/app make install
+    sources: 
+      - type: archive
+        url: 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Zip%20_%20GZip/Lazarus%202.0.10/lazarus-2.0.10-2.tar.gz'
+        sha256: 64d5626468dd24a3332b205f3abd0a581ab7de1b060a2d57e21864066cfd43b7
+
+    modules:
+      - name: fpc
+        buildsystem: simple
+        build-commands:
+          - sed -i 's/PREFIX=\"$HOME\/fpc-$VERSION\"/PREFIX=\/app/g' install.sh
+          - rm -f demo.tar.gz doc-pdf.tar.gz
+          - ./install.sh
+          - /app/lib/fpc/3.2.0/samplecfg /app/lib/fpc/3.2.0 /app/etc
+          - mv fpcsrc /app/lib/fpc/src
+        cleanup:
+          - '*'
+        sources:
+          - type: archive
+            url: 'https://downloads.sourceforge.net/project/freepascal/Linux/3.2.0/fpc-3.2.0-x86_64-linux.tar'
+            sha256: d19252e6cfe52f1217f4822a548ee699eaa7e044807aaf8429a0532cb7e4cb3d
+
+          - type: archive
+            url: 'https://downloads.sourceforge.net/project/freepascal/Source/3.2.0/fpcbuild-3.2.0.tar.gz'
+            sha256: f9b914eace989a023fb953da203dc0d973b44487568b4138c7d5b9613d7d6838
+
+  - name: peazip
+    build-options:
+      env:
+        - PPC_CONFIG_PATH=/app/etc
+    buildsystem: simple
+    build-commands:
+      # build
+      - install -Dm755 ld.sh /app/bin/ld
+      - lazbuild --widgetset=gtk2 --lazarusdir=/app/share/lazarus --build-all project_pea.lpi
+      - lazbuild --widgetset=gtk2 --lazarusdir=/app/share/lazarus --build-all project_peach.lpi
+      # install
+      - install -Dm755 peazip -t /app/bin/PeaZip
+      - rm -r res/conf*.txt res/lang-wincontext && sed -i 's/^same/appdata/' res/altconf.txt
+      - cp -r res /app/bin/PeaZip/res
+      - install -Dm755 pea -t /app/bin/PeaZip/res
+      - ln -s /app/bin/PeaZip/peazip /app/bin/
+      # install other formats
+      - cp -vr /app/plugin/* -t /app/bin/PeaZip/res
+      # install desktop integragion
+      - rename peazip ${FLATPAK_ID} FreeDesktop_integration/{peazip.desktop,peazip.png}
+      - desktop-file-install --dir=/app/share/applications/ --set-icon=io.github.peazip FreeDesktop_integration/${FLATPAK_ID}.desktop
+      - install -Dm644  FreeDesktop_integration/${FLATPAK_ID}.png -t /app/share/icons/hicolor/256x256/apps
+    cleanup:
+      - /bin/ld
+    sources:
+      - type: archive
+        url: 'https://github.com/peazip/PeaZip/releases/download/7.7.0/peazip-7.7.0.src.zip'
+        sha256: 9aadd78df2b48219833b5005a24afd6495aeb9f47e14384e85eb6c1b0b326cf2
+
+      - type: script
+        dest-filename: ld.sh
+        commands:
+          - /usr/bin/ld -L/app/lib "$@"
+
+    modules:
+      - formats/p7zip.json
+
+      - formats/lpaq.json
+
+      - formats/pad.json
+  
+      - formats/zpaq.json
+ 
+      - formats/zstd.json
+
+      - formats/upx.json
+ 
+      - formats/brotli.json
