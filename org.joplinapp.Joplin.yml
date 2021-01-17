@@ -1,0 +1,90 @@
+app-id: org.joplinapp.Joplin
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node12
+separate-locales: false
+command: joplin-desktop
+finish-args:
+  - --socket=pulseaudio
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: libvips
+    sources:
+      - type: archive
+        url: https://github.com/libvips/libvips/releases/download/v8.10.5/vips-8.10.5.tar.gz
+        sha256: a4eef2f5334ab6dbf133cd3c6d6394d5bdb3e76d5ea4d578b02e1bc3d9e1cfd8
+
+  - name: rsync
+    config-opts:
+      - --disable-xxhash
+      - --disable-zstd
+    cleanup:
+      - /share
+    sources:
+      - type: archive
+        url: https://download.samba.org/pub/rsync/src/rsync-3.2.3.tar.gz
+        sha256: becc3c504ceea499f4167a260040ccf4d9f2ef9499ad5683c179a697146ce50e
+
+  - name: joplin
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node12/bin
+      env:
+        # Electron get cache dir, with downloaded electron by node-gen
+        XDG_CACHE_HOME: /run/build/joplin/flatpak-node/cache 
+        npm_config_cache: /run/build/joplin/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node12
+        #DEBUG: electron-builder 
+    build-commands:
+      - mkdir disabled && mv packages/{app-clipper,app-mobile,generator-joplin,plugins,server} disabled
+      - sed -i '/"husky". ".*"/d' package.json
+      # Pass opts to npm, --no-save is for checking package-lock.json when failed
+      - jq ". += {\"npmClient\":\"npm\", \"npmClientArgs\":[\"-ddd\",\"--offline\",\"--no-save\"]}" 
+        lerna.json > lerna.json.new &&
+        mv lerna.json{.new,}
+      - npm install --verbose --offline --no-save
+      # generateSha512.js require appimage build, need touch it
+      # If no it will cause electron-builder failed without error message even set debug!
+      - mkdir -p packages/app-desktop/dist && touch packages/app-desktop/dist/AppImage
+      - . flatpak-node/electron-builder-arch-args.sh && 
+        cd packages/app-desktop && 
+        npm run --ddd dist -- $ELECTRON_BUILDER_ARCH_ARGS --dir --linux dir
+      - cp -r packages/app-desktop/dist/linux*unpacked /app/joplin-desktop
+      - cd packages/app-desktop &&
+        for size in 16 32 64 128 256 512; do
+          [[ -e "build/icons/${size}x${size}.png" ]] &&
+            install -Dm644 "build/icons/${size}x${size}.png"
+            "/app/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png";
+        done
+      - install -Dm755 ${FLATPAK_ID}.desktop -t /app/share/applications
+      - install -Dm755 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      - install -Dm755 joplin-desktop.sh /app/bin/joplin-desktop
+
+    sources:
+      - type: archive
+        url: "https://github.com/laurent22/joplin/archive/v1.6.7.tar.gz"
+        sha256: be8cb76bb2b2bdf0ad14078195bb61513a8ea30970d61860ea537db88395dadf
+
+      - generated-sources.json
+
+      - type: file
+        path: org.joplinapp.Joplin.desktop 
+
+      - type: file
+        path: org.joplinapp.Joplin.metainfo.xml
+
+      - type: script
+        dest-filename: joplin-desktop.sh
+        commands:
+          - exec zypak-wrapper /app/joplin-desktop/@joplinapp-desktop "$@"
