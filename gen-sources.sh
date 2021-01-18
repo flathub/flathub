@@ -1,6 +1,6 @@
 #!/bin/bash
 if [ ! -d joplin ];then
-	url=`grep -oE "https://[^\"]*" ./org.joplinapp.Joplin.yml | grep joplin`
+	url=`grep -oE "https://[^\"]*" ./*.yml | grep joplin`
 	wget $url -O joplin.tar && tar -xf joplin.tar
 	mv joplin-* joplin
 fi
@@ -16,11 +16,10 @@ fi
 
 nodegen=./flatpak-builder-tools/node/flatpak-node-generator.py
 packages="app-cli app-desktop fork-htmlparser2 renderer turndown fork-sax lib tools turndown-plugin-gfm"
-src=joplin
 
 for pack in $packages;do
 	echo "add $pack"
-	pattern="$pattern -R $src/packages/$pack/package-lock.json"
+	pattern="$pattern -R joplin/packages/$pack/package-lock.json"
 done
 pattern="$pattern -R joplin/git/uslug/package-lock.json"
 pattern="$pattern -R joplin/git/node-emoji/package-lock.json"
