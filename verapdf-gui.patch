@@ -1,0 +1,42 @@
+--- verapdf-gui.sh	2021-01-15 23:19:05.928387737 -0400
++++ verapdf-gui.sh	2021-01-16 13:03:01.368223370 -0400
+@@ -125,6 +125,32 @@
+ # If you have problems with a cramped window and invisible window controls you can increase the SCALE_FACTOR below to 1.5 or even 2.0
+ SCALE_FACTOR=1.0
+ 
++# Retrieve DPI directly from X, and calculate scale_factor from it.
++# (depends on xgetres binary from https://github.com/tamirzb/xgetres)
++is_natural_number='^[0-9]+$'
++DPI=`xgetres Xft.dpi`
++# if $DPI is a natural number, taken from https://stackoverflow.com/a/806923
++if [[ $DPI =~ $is_natural_number ]] ; then
++   # float division in bash, taken from https://stackoverflow.com/a/21032001
++   SCALE=`echo "$DPI 96" | awk '{printf "%.1f \n", $1/$2}'`
++   # Round in bash, taken from https://stackoverflow.com/a/26465573
++   SCALE_FACTOR=$(LC_ALL=C printf "%.0f\n" $SCALE)
++fi
++
++# Java2D and Swing APIs use Xlib and support HiDPI via GDK_SCALE var
++# http://hg.openjdk.java.net/jdk9/jdk9/jdk/rev/bc2d1130105f#l27.8
++GDK_SCALE=$SCALE_FACTOR
++export GDK_SCALE
++
++# Allow Java CreateTempFile API to work under flatpak
++# Needs flatpak "--filesystem=xdg-cache" or "--filesystem=home"
++export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=${XDG_CACHE_HOME}/tmp"
++
++# We saved original config files in read-only location 'config-default'
++# copy them to 'config' writable dir before launching app
++# This workarounds known flatpak limitation, see https://github.com/flatpak/flatpak/issues/545#issuecomment-278931352
++cp -u /app/verapdf/config-default/* /var/config/
++
+ exec "$JAVACMD" $JAVA_OPTS  \
+   -classpath "$CLASSPATH" \
+   -Dfile.encoding="UTF8" \
+@@ -135,5 +157,5 @@
+   -Dapp.home="$BASEDIR" \
+   -Dbasedir="$BASEDIR" \
+   org.verapdf.apps.GreenfieldGuiWrapper \
+-  "--frameScale" "$SCALE_FACTOR" \
++# --frameScale was intended for Windows, produces bad results on Unix (linux) see https://github.com/veraPDF/veraPDF-library/issues/993
+   "$@"
