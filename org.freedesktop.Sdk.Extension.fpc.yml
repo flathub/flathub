@@ -1,0 +1,80 @@
+app-id: org.freedesktop.Sdk.Extension.fpc
+branch: '20.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+build-extension: true
+separate-locales: false
+appstream-compose: false
+modules:
+  - name: fpc
+    build-options:
+      env: [fpcver=3.2.0]
+      arch:
+        aarch64:
+          env: [PPNAME=ppca64] 
+        x86_64:
+          env: [PPNAME=ppcx64] 
+    buildsystem: simple
+    build-commands:
+      # install src 
+      - mkdir -p /usr/lib/sdk/fpc && cp -r fpcsrc /usr/lib/sdk/fpc/src
+      # tar x fpcpre 
+      - mkdir fpcpre 
+      - tar -xf binary.*.tar && tar -C fpcpre -xf base.*.tar.gz
+      - rm *.tar.gz *.tar
+      # compile self
+      - make -C fpcsrc compiler_cycle PP=`pwd`/fpcpre/lib/fpc/${fpcver}/${PPNAME}
+      # compile rtl with new pp
+      - make -C fpcsrc rtl_clean rtl_smart PP=`pwd`/fpcsrc/compiler/${PPNAME}
+      # compile others with new pp,rtl
+      - make -C fpcsrc packages_smart utils_all PP=`pwd`/fpcsrc/compiler/${PPNAME}
+      # install 
+      - make -C fpcsrc compiler_distinstall rtl_distinstall packages_distinstall utils_distinstall
+        INSTALL_PREFIX=/usr/lib/sdk/fpc
+        PP=`pwd`/fpcsrc/compiler/${PPNAME}
+        FPCMAKE=`pwd`/fpcsrc/utils/fpcm/bin/${FLATPAK_ARCH}-linux/fpcmake
+      # make cfg, and add lib path
+      - PREFIX=/usr/lib/sdk/fpc &&
+        ${PREFIX}/lib/fpc/${fpcver}/samplecfg ${PREFIX}/lib/fpc/${fpcver} ${PREFIX}/etc && 
+        echo '-Fl/app/lib' >> ${PREFIX}/etc/fpc.cfg
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: 'https://downloads.sourceforge.net/project/freepascal/Linux/3.2.0/fpc-3.2.0-x86_64-linux.tar'
+        sha256: d19252e6cfe52f1217f4822a548ee699eaa7e044807aaf8429a0532cb7e4cb3d
+
+      - type: archive
+        only-arches:
+          - aarch64
+        url: 'https://downloads.sourceforge.net/project/freepascal/Linux/3.2.0/fpc-3.2.0.aarch64-linux.tar'
+        sha256: e16411a8ca6cf7817d5fc95bfc39919a306157c8f9f09a9ea616d5f19e0d88c0
+
+      - type: archive
+        url: 'https://downloads.sourceforge.net/project/freepascal/Source/3.2.0/fpcbuild-3.2.0.tar.gz'
+        sha256: f9b914eace989a023fb953da203dc0d973b44487568b4138c7d5b9613d7d6838
+
+  - name: script
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 {enable,install-sdk}.sh -t ${FLATPAK_DEST}/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak
+        ${FLATPAK_ID}
+    sources:
+      - type: script
+        dest-filename: install-sdk.sh
+        commands:
+          - cp -r /usr/lib/sdk/fpc ${FLATPAK_DEST}/fpc
+
+      - type: script
+        dest-filename: enable.sh
+        commands:
+          - export PATH=$PATH:/usr/lib/sdk/fpc/bin
+          - export PPC_CONFIG_PATH=/usr/lib/sdk/fpc/etc
+          - export FPCDIR=/usr/lib/sdk/fpc/src
+          - export FPC_DIR=$FPCDIR
+
+      - type: file
+        path: org.freedesktop.Sdk.Extension.fpc.metainfo.xml
