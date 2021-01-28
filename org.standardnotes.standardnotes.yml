@@ -1,0 +1,93 @@
+
+app-id: org.standardnotes.standardnotes
+branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+# Use the Electron 2 BaseApp, which adds several common libraries we'll need.
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+# Add the Node 10 SDK extension.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+# Electron doesn't use a traditional locale format so separate-locales is useless.
+separate-locales: false
+command: start-standardnotes
+finish-args:
+- "--device=dri"
+- "--filesystem=xdg-download"
+- "--filesystem=xdg-documents"
+- "--filesystem=xdg-run/keyring"
+- "--share=ipc"
+- "--share=network"
+- "--socket=x11"
+- "--talk-name=org.freedesktop.Notifications"
+- "--talk-name=org.freedesktop.secrets"
+modules:
+  - name: standardnotes
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node14/bin
+      env:
+        # Set the cache directory. No need for ELECTRON_CACHE
+        XDG_CACHE_HOME: /run/build/standardnotes/flatpak-node/cache
+    build-commands:
+      # Use the offline mirror.
+      # Translated from npm run setup
+      - 'npm --offline install
+        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      - 'npm --offline --prefix ./app install ./app
+        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      # - git submodule update --init
+      - 'npm --offline --prefix ./web install
+        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      # Download the packages.
+      # If you were using npm with electron-webpack/electron-builder, then the above two commands
+      # would look more like the npm commands in the vanilla-quick-start manifest, just without
+      # the --prefix.
+
+      # Run electron-builder, passing the architecture arguments to it.
+      # Note that the -- is important; without that, the argument will be passed to
+      # yarn instead of electron-builder.
+      - >
+        . flatpak-node/electron-builder-arch-args.sh; npm run --offline build:linux -- $ELECTRON_BUILDER_ARCH_ARGS
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - 'cp -r standardnotes/bin/linux/*/linux*unpacked /app/standardnotes'
+      # If you passed --electron-non-patented-ffmpeg, you could install it like this:
+      # - 'install -Dm 755 flatpak-node/libffmpeg.so -t /app/electron-webpack-quick-start'
+      # Install the wrapper script to start it.
+      - 'install -Dm 755 start-standardnotes.sh /app/bin/start-standardnotes'
+      # Installing SVG Icon is sufficient
+      - install -Dm644 standardnotes/dist/icons/logo.svg
+        /app/share/icons/hicolor/scalable/apps/org.standardnotes.standardnotes.svg
+    sources:
+      - type: archive
+        url: https://github.com/standardnotes/desktop/archive/v3.5.18.tar.gz
+        sha256: baf51d6cfac760d8974faeff3256ddb9478ba363059d99ae3b61cd8b6c569825
+      # Add the flatpak-node-generator generated sources.
+      # Note to generate recursively with -r because of the code layout
+      - generated-sources.json
+      # Our runner script.
+      - type: script
+        dest-filename: start-fluent-reader.sh
+        commands:
+          # Use zypak to call the electron binary to enable sandboxing and prevents no sandbox error
+          - 'zypak-wrapper /app/fluent-reader/fluent-reader'
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 org.standardnotes.standardnotes.appdata.xml
+        /app/share/metainfo/org.standardnotes.standardnotes.appdata.xml
+    sources:
+      - type: file
+        path: org.standardnotes.standardnotes.appdata.xml
+  - name: desktop-entry
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 org.standardnotes.standardnotes.desktop
+        /app/share/applications/org.standardnotes.standardnotes.desktop
+    sources:
+      - type: file
+        path: org.standardnotes.standardnotes.desktop
