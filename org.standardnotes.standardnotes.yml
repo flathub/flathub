@@ -1,80 +1,109 @@
-
 app-id: org.standardnotes.standardnotes
 branch: stable
 runtime: org.freedesktop.Platform
 runtime-version: '20.08'
 sdk: org.freedesktop.Sdk
-# Use the Electron 2 BaseApp, which adds several common libraries we'll need.
 base: org.electronjs.Electron2.BaseApp
 base-version: '20.08'
-# Add the Node 10 SDK extension.
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node14
 # Electron doesn't use a traditional locale format so separate-locales is useless.
 separate-locales: false
 command: start-standardnotes
 finish-args:
-- "--device=dri"
-- "--filesystem=xdg-download"
-- "--filesystem=xdg-documents"
-- "--filesystem=xdg-run/keyring"
-- "--share=ipc"
-- "--share=network"
-- "--socket=x11"
-- "--talk-name=org.freedesktop.Notifications"
-- "--talk-name=org.freedesktop.secrets"
+  - '--device=dri'
+  - '--filesystem=xdg-download'
+  - '--filesystem=xdg-documents'
+  - '--filesystem=xdg-run/keyring'
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=x11'
+  - '--talk-name=org.freedesktop.Notifications'
+  - '--talk-name=org.freedesktop.secrets'
 modules:
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - 'cp -a * /app'
+    # Only used for building, so clean it up afterwards.
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-v1.22.4.tar.gz
+        sha256: bc5316aa110b2f564a71a3d6e235be55b98714660870c5b6b2d2d3f12587fb58
+
   - name: standardnotes
     buildsystem: simple
     build-options:
       # Add the node bin directory.
-      append-path: /usr/lib/sdk/node14/bin
+      append-path: '/usr/lib/sdk/node14/bin:/app/yarn/bin:/run/build/standardnotes/flatpak-node/chromedriver/'
       env:
-        # Set the cache directory. No need for ELECTRON_CACHE
+        # Don't add ELECTRON_CACHE
         XDG_CACHE_HOME: /run/build/standardnotes/flatpak-node/cache
+        # ELECTRON_CACHE: '/run/build/standardnotes/flatpak-node/electron-cache/'
+        CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
+        JOBS: max
     build-commands:
-      # Use the offline mirror.
-      # Translated from npm run setup
-      - 'npm --offline install
-        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
-      - 'npm --offline --prefix ./app install ./app
-        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
-      # - git submodule update --init
-      - 'npm --offline --prefix ./web install
-        --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
-      # Download the packages.
-      # If you were using npm with electron-webpack/electron-builder, then the above two commands
-      # would look more like the npm commands in the vanilla-quick-start manifest, just without
-      # the --prefix.
+      # Retire this at some point; (1) create a new task by default and (2) use Yarn instead"
+      - "sed -i '/dist:linux/c\\    \\\"dist-linux\\\": \\\"npm run build &&
+        electron-builder --linux\\\",' package.json"
+      # - "find . -type f -name 'package-lock.json' -exec rm {} +"
 
-      # Run electron-builder, passing the architecture arguments to it.
-      # Note that the -- is important; without that, the argument will be passed to
-      # yarn instead of electron-builder.
-      - >
-        . flatpak-node/electron-builder-arch-args.sh; npm run --offline build:linux -- $ELECTRON_BUILDER_ARCH_ARGS
+      # Use the offline mirror.
+      - 'HOME=$PWD yarn config --offline set yarn-offline-mirror
+        $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
+
+      # Translated from npm run setup
+      - yarn --offline --pure-lockfile
+      # - yarn --offline --pure-lockfile --cwd ./web
+      - yarn --offline --pure-lockfile --cwd ./app
+
+      # - 'npm --offline --save false ci
+      #   --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      # - 'npm --offline --save false --prefix ./web install
+      #   --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+      # - 'npm --offline --save false --prefix ./app ci
+      #   --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
+
+      - . flatpak-node/electron-builder-arch-args.sh
+      - npm run --offline dist:linux -- $ELECTRON_BUILDER_ARCH_ARGS
       # Copy the resulting, unpacked directory to /app.
       # (A glob is used because the directory name may contain the current arch.)
-      - 'cp -r standardnotes/bin/linux/*/linux*unpacked /app/standardnotes'
-      # If you passed --electron-non-patented-ffmpeg, you could install it like this:
-      # - 'install -Dm 755 flatpak-node/libffmpeg.so -t /app/electron-webpack-quick-start'
+      - 'cp -r standardnotes/dist/linux/*/linux*unpacked /app/standardnotes'
+
       # Install the wrapper script to start it.
       - 'install -Dm 755 start-standardnotes.sh /app/bin/start-standardnotes'
-      # Installing SVG Icon is sufficient
-      - install -Dm644 standardnotes/dist/icons/logo.svg
-        /app/share/icons/hicolor/scalable/apps/org.standardnotes.standardnotes.svg
+
+      # Retire this at some point when an SVG is available
+      - install -Dm644 app/icon/Icon-256x256.png
+        /app/share/icons/hicolor/256x256/apps/org.standardnotes.standardnotes.png
+      - install -Dm644 app/icon/Icon-512x512.png
+        /app/share/icons/hicolor/512x512/apps/org.standardnotes.standardnotes.png
     sources:
-      - type: archive
-        url: https://github.com/standardnotes/desktop/archive/v3.5.18.tar.gz
-        sha256: baf51d6cfac760d8974faeff3256ddb9478ba363059d99ae3b61cd8b6c569825
+      - type: file
+        path: yarn.lock
+      - type: file
+        path: yarn.app.lock
+        dest-filename: yarn.lock
+        dest: app
+      # - type: archive
+      #   sha256: baf51d6cfac760d8974faeff3256ddb9478ba363059d99ae3b61cd8b6c569825
+      #   url: https://github.com/standardnotes/desktop/archive/v3.5.18.tar.gz
+      - type: git
+        url: https://github.com/standardnotes/desktop
+        tag: v3.5.18
       # Add the flatpak-node-generator generated sources.
-      # Note to generate recursively with -r because of the code layout
+      # Note to generate recursively with -r since the repo is composed by submodules
       - generated-sources.json
+      - generated-sources.app.json
+      - generated-sources.web.json
       # Our runner script.
       - type: script
-        dest-filename: start-fluent-reader.sh
+        dest-filename: start-standardnotes.sh
         commands:
           # Use zypak to call the electron binary to enable sandboxing and prevents no sandbox error
-          - 'zypak-wrapper /app/fluent-reader/fluent-reader'
+          - 'zypak-wrapper /app/standardnotes/standardnotes'
   - name: appdata
     buildsystem: simple
     build-commands:
