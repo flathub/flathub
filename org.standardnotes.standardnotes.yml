@@ -1,8 +1,8 @@
 app-id: org.standardnotes.standardnotes
 branch: stable
-runtime: org.freedesktop.Platform
-runtime-version: '20.08'
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '3.38'
+sdk: org.gnome.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '20.08'
 sdk-extensions:
@@ -44,10 +44,15 @@ modules:
         # ELECTRON_CACHE: '/run/build/standardnotes/flatpak-node/electron-cache/'
         CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
         JOBS: max
+        npm_config_nodedir: /run/build/standardnotes/flatpak-node/cache/node-gyp/9.4.2
     build-commands:
       # Retire this at some point; (1) create a new task by default and (2) use Yarn instead"
-      - "sed -i '/dist:linux/c\\    \\\"dist-linux\\\": \\\"npm run build &&
-        electron-builder --linux\\\",' package.json"
+      - "sed -i '/\\\"pack\\\"/c\\    \\\"pack:linux\\\": \\\"npm run
+        build:linux && electron-builder --linux\\\",' package.json"
+      # No need to prettify the code
+      - sed -i -e "s/npm run lint:formatting && npm run lint:eslint && //"
+        package.json
+      # Remove lockfiles used by npm
       - "find . -type f -name 'package-lock.json' -exec rm {} +"
 
       # Use the offline mirror.
@@ -55,9 +60,9 @@ modules:
         $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
 
       # Translated from npm run setup
-      - ln -s ~/.node-gyp $XDG_CACHE_HOME/node-gyp; yarn --offline --pure-lockfile 
-      # - ln -s ~/.node-gyp $XDG_CACHE_HOME/node-gyp; yarn --offline --pure-lockfile --cwd ./web
-      - ln -s ~/.node-gyp $XDG_CACHE_HOME/node-gyp; yarn --offline --pure-lockfile --cwd ./app
+      - yarn --offline --pure-lockfile
+      - yarn --offline --pure-lockfile --cwd ./web
+      - yarn --offline --pure-lockfile --cwd ./app
 
       # - 'npm --offline --save false ci
       #   --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
@@ -67,7 +72,7 @@ modules:
       #   --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache'
 
       - . flatpak-node/electron-builder-arch-args.sh; yarn run --offline
-        dist:linux -- $ELECTRON_BUILDER_ARCH_ARGS
+        build:linux -- $ELECTRON_BUILDER_ARCH_ARGS
       # Copy the resulting, unpacked directory to /app.
       # (A glob is used because the directory name may contain the current arch.)
       - 'cp -r standardnotes/dist/linux/*/linux*unpacked /app/standardnotes'
@@ -88,9 +93,19 @@ modules:
         dest-filename: yarn.lock
         dest: app
         # TODO: Replace with the git source
+        # https://github.com/standardnotes/web/pull/516
       - type: archive
         sha256: baf51d6cfac760d8974faeff3256ddb9478ba363059d99ae3b61cd8b6c569825
         url: https://github.com/standardnotes/desktop/archive/v3.5.18.tar.gz
+      - type: archive
+        url: https://github.com/standardnotes/web/archive/3.5.17.tar.gz
+        sha256: 4aaeb7176904e3aacd31d53cf8dbd3037a2468321f726e97857df4f452f76ed9
+        dest: web
+      # - type: git
+      #   # url: https://github.com/standardnotes/desktop
+      #   # tag: v3.5.18
+      #   path: ../standardnotes-desktop
+      #   commit: master
       # Add the flatpak-node-generator generated sources.
       # Note to generate recursively with -r since the repo is composed by submodules
       - generated-sources.json
