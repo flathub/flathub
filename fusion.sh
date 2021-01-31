@@ -1,10 +1,7 @@
 #!/bin/sh
 
-# *FIXME* cry
-HOME="$XDG_CONFIG_HOME"
-
 kega_libdir="/app/lib/KegaFusion"
-kega_localdir="$HOME/.Kega Fusion"
+kega_localdir="$XDG_CONFIG_HOME/.Kega Fusion"
 
 # create local plugins directory if not present
 mkdir -p "$kega_localdir/Plugins"
@@ -22,4 +19,5 @@ if ! [ -f "$kega_localdir/Fusion.ini" ]; then
 fi
 
 # here we go!
+export LD_PRELOAD=/app/lib32/libfix-config-location.so
 $kega_libdir/Fusion "$@"

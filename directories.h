@@ -1,6 +1,5 @@
 ReDirected dirs[] = {
-	{ ".adobe" },
-	{ ".macromedia" }
+	{ ".Kega Fusion" }
 };
 
-#define REDIRECT_DIR ".var/app/com.adobe.Flash-Player-Projector/config/"
+#define REDIRECT_DIR ".var/app/com.carpeludum.KegaFusion/config/"
