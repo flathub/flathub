@@ -1,0 +1,132 @@
+app-id: com.valvesoftware.steamlink
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: steamlink
+
+finish_args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=all
+
+tags:
+  - proprietary
+  - beta
+
+cleanup-platform-commands:
+  - "/usr/libexec/freedesktop-post.sh"
+
+modules:
+  - name: qt5-qtbase
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/5.14/5.14.1/submodules/qtbase-everywhere-src-5.14.1.tar.xz
+        sha256: d9d423a6e7bcf1055c0372fc029f14a6fe67dd62c67b83095cde68b60b762cf7
+
+      - type: patch
+        path: patches/steamlink/qtbase.patch
+        strip-components: 2
+
+      # From org.kde.Sdk
+      - type: patch
+        path: patches/org.kde.Sdk/qtbase-avoid-hardcoding-kernel-version.patch
+      - type: patch
+        path: patches/org.kde.Sdk/qtbase-use-wayland-on-gnome.patch
+      # Temporary fix for https://github.com/flatpak/flatpak/issues/3397
+      - type: patch
+        path: patches/org.kde.Sdk/qtbase-revert-correct-handling-for-xdg-runtime-dir.patch
+      - type: patch
+        path: patches/org.kde.Sdk/qtbase-make-sure-to-correctly-construct-base-platform-theme.patch
+      - type: patch
+        path: patches/org.kde.Sdk/open-file-portal-writable.patch
+      - type: shell
+        commands:
+          - "mv configure configure.qt"
+      - type: script
+        commands:
+          - "processed=`sed -e 's/--/-/g ; s/=/ /g' <<< $@`"
+          - "./configure.qt $processed"
+        dest-filename: configure
+
+    cleanup-platform:
+      - "/bin"
+      - "/mkspecs"
+
+    # Cargo-culted from org.kde.Sdk
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - "-reduce-relocations"
+            - "-force-debug-info"
+        arm:
+          config-opts:
+            - "-no-reduce-relocations"
+            - "-optimize-size"
+            - "-opengl es2"
+        aarch64:
+          config-opts:
+            - "-no-reduce-relocations"
+            - "-optimize-size"
+            - "-opengl es2"
+    config-opts: [
+      "-confirm-license",
+      "-opensource",
+      "-shared",
+      "-platform", "linux-g++",
+      "-optimized-qmake",
+      "-nomake", "examples",
+      "-nomake", "tests",
+      "-system-harfbuzz",
+      "-system-sqlite",
+      "-accessibility",
+      "-dbus-linked",
+      "-fontconfig",
+      "-glib",
+      "-icu",
+      "-openssl-linked",
+      "-no-pch",
+      "-no-rpath",
+      "-no-directfb",
+      "-no-linuxfb",
+      "-no-kms",
+      "-system-proxies",
+      "-gtk",
+      "-no-use-gold-linker",
+      "-archdatadir", "/app/lib/"
+    ]
+
+  - name: scout
+    sources:
+      - type: archive
+        url: https://repo.steampowered.com/steamrt-images-scout/snapshots/0.20210126.2/steam-runtime.tar.xz
+        sha256: edc40f253300890d7721c22e4d41e94840a037cca94d0e78676990e31836d270
+    buildsystem: simple
+    build-commands:
+      - "install -d /app/lib/scout"
+      - "cp -a * /app/lib/scout"
+      - "rm -f /app/lib/scout/*/selinux"
+      - "find /app/lib/scout -print0 | xargs -0 chmod u=rwX,og=rX"
+
+  - name: steamlink
+    sources:
+      - type: archive
+        #url: https://.../steamlink-amd64.tgz
+        path: _source/steamlink-amd64.tgz
+        sha256: 774c0542e9ab428bbda227189939871bcece7a3390b48eed2ba40c5b205b7199
+    buildsystem: simple
+    build-commands:
+      - "install -d /app/lib/steamlink"
+      - "cp -a * /app/lib/steamlink"
+      - "rm -fr /app/lib/steamlink/Qt-*"
+      - "find /app/lib/steamlink -print0 | xargs -0 chmod u=rwX,og=rX"
+
+  - name: wrapper
+    sources:
+      - type: file
+        path: wrapper.sh
+    buildsystem: simple
+    build-commands:
+      - install -D -m755 wrapper.sh /app/bin/steamlink

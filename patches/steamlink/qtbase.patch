@@ -1,0 +1,1725 @@
+# filterdiff -p1 -i 'qtbase/*' qt-everywhere-src-5.14.1.patch
+
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/configure qt-everywhere-src-5.14.1/qtbase/configure
+--- qt-everywhere-src-5.14.1.orig/qtbase/configure	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/configure	2020-12-09 10:51:47.000000000 -0800
+@@ -244,6 +244,7 @@
+         ;;
+         iphonesimulator*)
+             version_min_flag="-mios-simulator-version-min=$(getSingleQMakeVariable QMAKE_IOS_DEPLOYMENT_TARGET "$1")"
++echo "version_min_flag=$version_min_flag"
+         ;;
+         appletvos*)
+             version_min_flag="-mappletvos-version-min=$(getSingleQMakeVariable QMAKE_TVOS_DEPLOYMENT_TARGET "$1")"
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/configure.json qt-everywhere-src-5.14.1/qtbase/configure.json
+--- qt-everywhere-src-5.14.1.orig/qtbase/configure.json	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/configure.json	2020-12-09 10:51:47.000000000 -0800
+@@ -343,6 +343,7 @@
+                 "head": [
+                     "#if __cplusplus > 201402L",
+                     "// Compiler claims to support experimental C++1z, trust it",
++                    "#  error nevermind",
+                     "#else",
+                     "#  error __cplusplus must be > 201402L (the value for C++14)",
+                     "#endif",
+@@ -1320,7 +1321,7 @@
+         },
+         "widgets": {
+             "label": "Qt Widgets",
+-            "autoDetect": "!config.tvos && !config.watchos",
++            "autoDetect": "!config.watchos",
+             "condition": "features.gui",
+             "output": [
+                 "privateFeature",
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/android-g++/qmake.conf.dist qt-everywhere-src-5.14.1/qtbase/mkspecs/android-g++/qmake.conf.dist
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/android-g++/qmake.conf.dist	1969-12-31 16:00:00.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/android-g++/qmake.conf.dist	2020-12-09 10:51:47.000000000 -0800
+@@ -0,0 +1,37 @@
++# qmake configuration for building with android-g++
++MAKEFILE_GENERATOR      = UNIX
++QMAKE_PLATFORM          = android
++QMAKE_COMPILER          = gcc
++
++CONFIG                 += android_install unversioned_soname unversioned_libname plugin_with_soname android_deployment_settings
++
++include(../common/linux.conf)
++include(../common/gcc-base-unix.conf)
++include(../common/android-base-head.conf)
++
++QMAKE_CC                = $${CROSS_COMPILE}gcc
++QMAKE_CXX               = $${CROSS_COMPILE}g++
++QMAKE_LINK              = $$QMAKE_CXX
++
++ANDROID_SOURCES_CXX_STL_LIBDIR = $$NDK_ROOT/sources/cxx-stl/gnu-libstdc++/$$NDK_TOOLCHAIN_VERSION/libs/$$ANDROID_TARGET_ARCH
++ANDROID_STDCPP_PATH            = $$ANDROID_SOURCES_CXX_STL_LIBDIR/libgnustl_shared.so
++ANDROID_CXX_STL_LIBS           = -lgnustl_shared -lgcc
++
++exists($$NDK_ROOT/sysroot/usr/include): \
++        QMAKE_CFLAGS += --sysroot=$$NDK_ROOT/sysroot \
++                        -isystem $$NDK_ROOT/sysroot/usr/include/$$NDK_TOOLS_PREFIX
++else:   QMAKE_CFLAGS += --sysroot=$$ANDROID_PLATFORM_ROOT_PATH
++
++QMAKE_CFLAGS += -isystem $$NDK_ROOT/sources/cxx-stl/gnu-libstdc++/$$NDK_TOOLCHAIN_VERSION/include \
++                -isystem $$ANDROID_SOURCES_CXX_STL_LIBDIR/include
++
++equals(ANDROID_TARGET_ARCH, armeabi)|equals(ANDROID_TARGET_ARCH, armeabi-v7a): \
++    LIBGCC_PATH_FULL = $$system("$$QMAKE_CXX -mthumb-interwork -print-libgcc-file-name")
++else: \
++    LIBGCC_PATH_FULL = $$system("$$QMAKE_CXX -print-libgcc-file-name")
++ANDROID_SOURCES_CXX_STL_LIBDIR += $$dirname(LIBGCC_PATH_FULL)
++
++QMAKE_ARM_CFLAGS_RELEASE                   = -Os
++QMAKE_ARM_CFLAGS_RELEASE_WITH_DEBUGINFO    = -g -Os
++
++include(../common/android-base-tail.conf)
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/common/gcc-base.conf qt-everywhere-src-5.14.1/qtbase/mkspecs/common/gcc-base.conf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/common/gcc-base.conf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/common/gcc-base.conf	2020-12-09 10:51:47.000000000 -0800
+@@ -41,7 +41,7 @@
+ QMAKE_CFLAGS_WARN_ON       += -Wall -Wextra
+ QMAKE_CFLAGS_WARN_OFF      += -w
+ QMAKE_CFLAGS_RELEASE       += $$QMAKE_CFLAGS_OPTIMIZE
+-QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO += $$QMAKE_CFLAGS_OPTIMIZE -g
++QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO += $$QMAKE_CFLAGS_OPTIMIZE -g -fno-omit-frame-pointer
+ QMAKE_CFLAGS_DEBUG         += -g
+ QMAKE_CFLAGS_SHLIB         += $$QMAKE_CFLAGS_PIC
+ QMAKE_CFLAGS_STATIC_LIB    += $$QMAKE_CFLAGS_PIC
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qeglfshooks_marvell.cpp qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qeglfshooks_marvell.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qeglfshooks_marvell.cpp	1969-12-31 16:00:00.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qeglfshooks_marvell.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -0,0 +1,103 @@
++/****************************************************************************
++**
++** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
++** Contact: http://www.qt-project.org/legal
++**
++** This file is part of the qmake spec of the Qt Toolkit.
++**
++** $QT_BEGIN_LICENSE:LGPL$
++** Commercial License Usage
++** Licensees holding valid commercial Qt licenses may use this file in
++** accordance with the commercial license agreement provided with the
++** Software or, alternatively, in accordance with the terms contained in
++** a written agreement between you and Digia.  For licensing terms and
++** conditions see http://qt.digia.com/licensing.  For further information
++** use the contact form at http://qt.digia.com/contact-us.
++**
++** GNU Lesser General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU Lesser
++** General Public License version 2.1 as published by the Free Software
++** Foundation and appearing in the file LICENSE.LGPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU Lesser General Public License version 2.1 requirements
++** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
++**
++** In addition, as a special exception, Digia gives you certain additional
++** rights.  These rights are described in the Digia Qt LGPL Exception
++** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
++**
++** GNU General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU
++** General Public License version 3.0 as published by the Free Software
++** Foundation and appearing in the file LICENSE.GPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU General Public License version 3.0 requirements will be
++** met: http://www.gnu.org/copyleft/gpl.html.
++**
++**
++** $QT_END_LICENSE$
++**
++****************************************************************************/
++
++#include "qeglfshooks_p.h"
++#include <EGL/eglvivante.h>
++#include <QDebug>
++
++QT_BEGIN_NAMESPACE
++
++class QEglFSMarvellHooks : public QEglFSHooks
++{
++public:
++    QEglFSMarvellHooks();
++	void platformInit() Q_DECL_OVERRIDE { }
++	void platformDestroy() Q_DECL_OVERRIDE { }
++    QSize screenSize() const Q_DECL_OVERRIDE;
++    EGLNativeWindowType createNativeWindow(QPlatformWindow *window, const QSize &size, const QSurfaceFormat &format) Q_DECL_OVERRIDE;
++    void destroyNativeWindow(EGLNativeWindowType window) Q_DECL_OVERRIDE;
++    EGLNativeDisplayType platformDisplay() const Q_DECL_OVERRIDE;
++
++private:
++    QSize mScreenSize;
++    EGLNativeDisplayType mNativeDisplay;
++};
++
++
++QEglFSMarvellHooks::QEglFSMarvellHooks()
++{
++    int width, height;
++
++    mNativeDisplay = fbGetDisplayByIndex(framebufferIndex());
++    fbGetDisplayGeometry(mNativeDisplay, &width, &height);
++    mScreenSize.setHeight(height);
++    mScreenSize.setWidth(width);
++}
++
++QSize QEglFSMarvellHooks::screenSize() const
++{
++    return mScreenSize;
++}
++
++EGLNativeDisplayType QEglFSMarvellHooks::platformDisplay() const
++{
++    return mNativeDisplay;
++}
++
++EGLNativeWindowType QEglFSMarvellHooks::createNativeWindow(QPlatformWindow *window, const QSize &size, const QSurfaceFormat &format)
++{
++    Q_UNUSED(window)
++    Q_UNUSED(format)
++
++    EGLNativeWindowType eglWindow = fbCreateWindow(mNativeDisplay, 0, 0, size.width(), size.height());
++    return eglWindow;
++}
++
++
++void QEglFSMarvellHooks::destroyNativeWindow(EGLNativeWindowType window)
++{
++    fbDestroyWindow(window);
++}
++
++QEglFSMarvellHooks eglFSMarvellHooks;
++QEglFSHooks *platformHooks = &eglFSMarvellHooks;
++
++QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf	1969-12-31 16:00:00.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf	2020-12-09 10:51:47.000000000 -0800
+@@ -0,0 +1,25 @@
++#
++# qmake configuration for the Marvell BG2CD
++#
++include(../common/linux_device_pre.conf)
++
++EGLFS_PLATFORM_HOOKS_SOURCES = $$PWD/qeglfshooks_marvell.cpp
++
++MARVELL_SDK            = $$(MARVELL_SDK_PATH)
++MARVELL_APPROOT        = $$MARVELL_SDK/MRVL/MV88DE3100_SDK/Customization_Data/File_Systems/application_steam
++
++QMAKE_LIBS_EGL         += -lEGL -lGAL -lVSC -lshm -lOSAL -lPEAgent
++QMAKE_LIBS_OPENGL_ES2  += -lGLESv2 $$QMAKE_LIBS_EGL
++QMAKE_LIBS_OPENVG      += -lOpenVG $$QMAKE_LIBS_EGL
++
++QMAKE_LFLAGS           += -Wl,-rpath-link,$$[QT_SYSROOT]/lib -Wl,-rpath-link,$$[QT_SYSROOT]/usr/lib -Wl,-rpath-link,$$[QT_SYSROOT]/usr/lib/arm-linux-gnueabihf -L$$MARVELL_APPROOT/lib
++QMAKE_LFLAGS           += --sysroot=$$[QT_SYSROOT]
++
++MARVELL_CFLAGS         = -I$$MARVELL_APPROOT/include -DLINUX -DEGL_API_FB
++QMAKE_CFLAGS           += $$MARVELL_CFLAGS
++QMAKE_CXXFLAGS         += $$MARVELL_CFLAGS
++DISTRO_OPTS            += hard-float
++
++include(../common/linux_arm_device_post.conf)
++
++load(qt_config)
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf.directfb qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf.directfb
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf.directfb	1969-12-31 16:00:00.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qmake.conf.directfb	2020-12-09 10:51:47.000000000 -0800
+@@ -0,0 +1,13 @@
++#
++# qmake configuration for the Marvell BG2CD
++#
++include(../common/linux_device_pre.conf)
++
++QMAKE_INCDIR           += $$[QT_SYSROOT]/usr/include
++QMAKE_LIBDIR           += $$[QT_SYSROOT]/usr/lib
++
++QMAKE_LFLAGS           += -Wl,-rpath-link,$$[QT_SYSROOT]/usr/lib
++
++include(../common/linux_arm_device_post.conf)
++
++load(qt_config)
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qplatformdefs.h qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qplatformdefs.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-marvell-g++/qplatformdefs.h	1969-12-31 16:00:00.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-marvell-g++/qplatformdefs.h	2020-12-09 10:51:47.000000000 -0800
+@@ -0,0 +1,42 @@
++/****************************************************************************
++**
++** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
++** Contact: http://www.qt-project.org/legal
++**
++** This file is part of the qmake spec of the Qt Toolkit.
++**
++** $QT_BEGIN_LICENSE:LGPL$
++** Commercial License Usage
++** Licensees holding valid commercial Qt licenses may use this file in
++** accordance with the commercial license agreement provided with the
++** Software or, alternatively, in accordance with the terms contained in
++** a written agreement between you and Digia.  For licensing terms and
++** conditions see http://qt.digia.com/licensing.  For further information
++** use the contact form at http://qt.digia.com/contact-us.
++**
++** GNU Lesser General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU Lesser
++** General Public License version 2.1 as published by the Free Software
++** Foundation and appearing in the file LICENSE.LGPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU Lesser General Public License version 2.1 requirements
++** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
++**
++** In addition, as a special exception, Digia gives you certain additional
++** rights.  These rights are described in the Digia Qt LGPL Exception
++** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
++**
++** GNU General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU
++** General Public License version 3.0 as published by the Free Software
++** Foundation and appearing in the file LICENSE.GPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU General Public License version 3.0 requirements will be
++** met: http://www.gnu.org/copyleft/gpl.html.
++**
++**
++** $QT_END_LICENSE$
++**
++****************************************************************************/
++
++#include "../../linux-g++/qplatformdefs.h"
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-rasp-pi3-g++/qmake.conf qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-rasp-pi3-g++/qmake.conf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/devices/linux-rasp-pi3-g++/qmake.conf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/devices/linux-rasp-pi3-g++/qmake.conf	2020-12-09 10:51:47.000000000 -0800
+@@ -11,9 +11,9 @@
+ QMAKE_RPATHLINKDIR_POST += $$[QT_SYSROOT]/opt/vc/lib
+ 
+ VC_LIBRARY_PATH         = /opt/vc/lib
+-VC_INCLUDE_PATH         = =/opt/vc/include
++VC_INCLUDE_PATH         = /opt/vc/include
+ 
+-VC_LINK_LINE            = -L=$${VC_LIBRARY_PATH}
++VC_LINK_LINE            = -L$${VC_LIBRARY_PATH}
+ 
+ QMAKE_LIBDIR_OPENGL_ES2 = =$${VC_LIBRARY_PATH}
+ QMAKE_LIBDIR_EGL        = $$QMAKE_LIBDIR_OPENGL_ES2
+@@ -26,10 +26,10 @@
+ 
+ QMAKE_INCDIR_OPENGL_ES2 = $${QMAKE_INCDIR_EGL}
+ 
+-QMAKE_LIBS_OPENGL_ES2   = $${VC_LINK_LINE} -lGLESv2
++QMAKE_LIBS_OPENGL_ES2   = $${VC_LINK_LINE} -lbrcmGLESv2
+ 
+ # The official opt vc EGL references GLESv2 symbols: need to link it
+-QMAKE_LIBS_EGL          = $${VC_LINK_LINE} -lEGL -lGLESv2
++QMAKE_LIBS_EGL          = $${VC_LINK_LINE} -lbrcmEGL -lbrcmGLESv2
+ 
+ QMAKE_LIBDIR_BCM_HOST   = =$$VC_LIBRARY_PATH
+ QMAKE_INCDIR_BCM_HOST   = $$VC_INCLUDE_PATH
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/qt.prf qt-everywhere-src-5.14.1/qtbase/mkspecs/features/qt.prf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/qt.prf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/features/qt.prf	2020-12-09 10:51:47.000000000 -0800
+@@ -16,7 +16,7 @@
+ qtConfig(force_asserts): DEFINES += QT_FORCE_ASSERTS
+ no_keywords:DEFINES += QT_NO_KEYWORDS
+ plugin { #Qt plugins
+-   static:DEFINES += QT_STATICPLUGIN
++   static|uikit:DEFINES += QT_STATICPLUGIN
+    DEFINES += QT_PLUGIN
+ }
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/toolchain.prf qt-everywhere-src-5.14.1/qtbase/mkspecs/features/toolchain.prf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/toolchain.prf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/features/toolchain.prf	2020-12-09 10:51:47.000000000 -0800
+@@ -182,6 +182,10 @@
+         # UIKit simulator platforms will see the device SDK's sysroot in
+         # QMAKE_DEFAULT_*DIRS, because they're handled in a single build pass.
+         darwin {
++            # Clang doesn't pick up the architecture from the sysroot, and will
++            # default to the host architecture, so we need to manually set it.
++            cxx_flags += -arch $$QMAKE_APPLE_DEVICE_ARCHS
++
+             uikit:macx-xcode: \
+                 cxx_flags += -isysroot $$sdk_path_device.value
+             else: \
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/uikit/default_post.prf qt-everywhere-src-5.14.1/qtbase/mkspecs/features/uikit/default_post.prf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/features/uikit/default_post.prf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/features/uikit/default_post.prf	2020-12-09 10:51:47.000000000 -0800
+@@ -27,30 +27,6 @@
+     device_family.name = TARGETED_DEVICE_FAMILY
+     device_family.value = $$QMAKE_APPLE_TARGETED_DEVICE_FAMILY
+     QMAKE_MAC_XCODE_SETTINGS += device_family
+-
+-    ios {
+-        # Set up default 4-inch iPhone/iPod launch image so that our apps
+-        # support the full screen resolution of those devices.
+-        qmake_launch_image = Default-568h@2x.png
+-        qmake_copy_image.input = $$QMAKESPEC/$$qmake_launch_image
+-        qmake_copy_image.output = $$OUT_PWD/$${TARGET}.xcodeproj/$$qmake_launch_image
+-        qmake_copy_image.CONFIG = verbatim
+-        QMAKE_SUBSTITUTES += qmake_copy_image
+-        qmake_launch_images.files = $$qmake_copy_image.output
+-        QMAKE_BUNDLE_DATA += qmake_launch_images
+-
+-        !versionAtLeast(QMAKE_XCODE_VERSION, 6.0) {
+-            warning("You need to update Xcode to version 6 or newer to fully support iPhone6/6+")
+-        } else {
+-            # Set up default LaunchScreen to support iPhone6/6+
+-            qmake_launch_screen = LaunchScreen.xib
+-            qmake_copy_launch_screen.input = $$QMAKESPEC/$$qmake_launch_screen
+-            qmake_copy_launch_screen.output = $$OUT_PWD/$${TARGET}.xcodeproj/$$qmake_launch_screen
+-            QMAKE_SUBSTITUTES += qmake_copy_launch_screen
+-            qmake_launch_screens.files = $$qmake_copy_launch_screen.output
+-            QMAKE_BUNDLE_DATA += qmake_launch_screens
+-        }
+-    }
+ }
+ 
+ !xcodebuild:equals(TEMPLATE, app):!isEmpty(QMAKE_INFO_PLIST) {
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-clang/Info.plist.lib qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-clang/Info.plist.lib
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-clang/Info.plist.lib	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-clang/Info.plist.lib	2021-01-28 16:25:35.000000000 -0800
+@@ -14,6 +14,30 @@
+ 	<string>${QMAKE_PKGINFO_TYPEINFO}</string>
+ 	<key>CFBundleVersion</key>
+ 	<string>${QMAKE_FULL_VERSION}</string>
++	<key>CFBundleSupportedPlatforms</key>
++	<array>
++		<string>MacOSX</string>
++	</array>
++	<key>CFBundleVersion</key>
++	<string>1.0</string>
++	<key>DTCompiler</key>
++	<string>com.apple.compilers.llvm.clang.1_0</string>
++	<key>DTPlatformBuild</key>
++	<string>12C33</string>
++	<key>DTPlatformName</key>
++	<string>macosx</string>
++	<key>DTPlatformVersion</key>
++	<string>11.1</string>
++	<key>DTSDKBuild</key>
++	<string>20C63</string>
++	<key>DTSDKName</key>
++	<string>macosx11.1</string>
++	<key>DTXcode</key>
++	<string>1230</string>
++	<key>DTXcodeBuild</key>
++	<string>12C33</string>
++	<key>LSMinimumSystemVersion</key>
++	<string>${MACOSX_DEPLOYMENT_TARGET}</string>
+ 	<key>NOTE</key>
+ 	<string>Please, do NOT change this file -- It was generated by Qt/QMake.</string>
+ </dict>
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-ios-clang/Info.plist.lib qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-ios-clang/Info.plist.lib
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-ios-clang/Info.plist.lib	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-ios-clang/Info.plist.lib	2020-12-09 10:51:47.000000000 -0800
+@@ -14,6 +14,12 @@
+ 	<string>${QMAKE_PKGINFO_TYPEINFO}</string>
+ 	<key>CFBundleVersion</key>
+ 	<string>${QMAKE_FULL_VERSION}</string>
++	<key>CFBundleSupportedPlatforms</key>
++	<array>
++		<string>iPhoneOS</string>
++	</array>
++	<key>MinimumOSVersion</key>
++	<string>11.0</string>
+ 	<key>NOTE</key>
+ 	<string>Please, do NOT change this file -- It was generated by Qt/QMake.</string>
+ </dict>
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-ios-clang/qmake.conf qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-ios-clang/qmake.conf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-ios-clang/qmake.conf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-ios-clang/qmake.conf	2020-12-09 10:51:47.000000000 -0800
+@@ -2,7 +2,7 @@
+ # qmake configuration for macx-ios-clang
+ #
+ 
+-QMAKE_IOS_DEPLOYMENT_TARGET = 12.0
++QMAKE_IOS_DEPLOYMENT_TARGET = 11.0
+ 
+ # Universal target (iPhone and iPad)
+ QMAKE_APPLE_TARGETED_DEVICE_FAMILY = 1,2
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-tvos-clang/Info.plist.lib qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-tvos-clang/Info.plist.lib
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-tvos-clang/Info.plist.lib	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-tvos-clang/Info.plist.lib	2020-12-09 10:51:47.000000000 -0800
+@@ -14,6 +14,8 @@
+ 	<string>${QMAKE_PKGINFO_TYPEINFO}</string>
+ 	<key>CFBundleVersion</key>
+ 	<string>${QMAKE_FULL_VERSION}</string>
++	<key>MinimumOSVersion</key>
++	<string>11.0</string>
+ 	<key>NOTE</key>
+ 	<string>Please, do NOT change this file -- It was generated by Qt/QMake.</string>
+ </dict>
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-tvos-clang/qmake.conf qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-tvos-clang/qmake.conf
+--- qt-everywhere-src-5.14.1.orig/qtbase/mkspecs/macx-tvos-clang/qmake.conf	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/mkspecs/macx-tvos-clang/qmake.conf	2020-12-09 10:51:47.000000000 -0800
+@@ -2,7 +2,7 @@
+ # qmake configuration for macx-tvos-clang
+ #
+ 
+-QMAKE_TVOS_DEPLOYMENT_TARGET    = 12.0
++QMAKE_TVOS_DEPLOYMENT_TARGET    = 11.0
+ 
+ QMAKE_APPLE_TARGETED_DEVICE_FAMILY = 3
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/qmake/generators/mac/pbuilder_pbx.cpp qt-everywhere-src-5.14.1/qtbase/qmake/generators/mac/pbuilder_pbx.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/qmake/generators/mac/pbuilder_pbx.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/qmake/generators/mac/pbuilder_pbx.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -1674,7 +1674,7 @@
+                 if (!project->isEmpty("QMAKE_IOS_DEPLOYMENT_TARGET"))
+                     t << "\t\t\t\t" << writeSettings("IPHONEOS_DEPLOYMENT_TARGET", project->first("QMAKE_IOS_DEPLOYMENT_TARGET")) << ";\n";
+                 if (!project->isEmpty("QMAKE_TVOS_DEPLOYMENT_TARGET"))
+-                    t << "\t\t\t\t" << writeSettings("APPLETVOS_DEPLOYMENT_TARGET", project->first("QMAKE_TVOS_DEPLOYMENT_TARGET")) << ";\n";
++                    t << "\t\t\t\t" << writeSettings("TVOS_DEPLOYMENT_TARGET", project->first("QMAKE_TVOS_DEPLOYMENT_TARGET")) << ";\n";
+                 if (!project->isEmpty("QMAKE_WATCHOS_DEPLOYMENT_TARGET"))
+                     t << "\t\t\t\t" << writeSettings("WATCHOS_DEPLOYMENT_TARGET", project->first("QMAKE_WATCHOS_DEPLOYMENT_TARGET")) << ";\n";
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/qmake/library/proitems.h qt-everywhere-src-5.14.1/qtbase/qmake/library/proitems.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/qmake/library/proitems.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/qmake/library/proitems.h	2020-12-09 10:51:47.000000000 -0800
+@@ -138,6 +138,7 @@
+     qlonglong toLongLong(bool *ok = nullptr, int base = 10) const { return toQStringRef().toLongLong(ok, base); }
+     int toInt(bool *ok = nullptr, int base = 10) const { return toQStringRef().toInt(ok, base); }
+     short toShort(bool *ok = nullptr, int base = 10) const { return toQStringRef().toShort(ok, base); }
++	float toFloat(bool *ok = nullptr) const { return toQStringRef().toFloat(ok); }
+ 
+     uint hash() const { return m_hash; }
+     static uint hash(const QChar *p, int n);
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/qmake/library/qmakebuiltins.cpp qt-everywhere-src-5.14.1/qtbase/qmake/library/qmakebuiltins.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/qmake/library/qmakebuiltins.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/qmake/library/qmakebuiltins.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -1666,6 +1666,15 @@
+                 return returnBool(lhs_int < rhs_int);
+             }
+         }
++        float rhs_float = rhs.toFloat(&ok);
++        if (ok) { // do integer compare
++            float lhs_float = lhs.toFloat(&ok);
++            if (ok) {
++                if (func_t == T_GREATERTHAN)
++                    return returnBool(lhs_float > rhs_float);
++                return returnBool(lhs_float < rhs_float);
++            }
++        }
+         if (func_t == T_GREATERTHAN)
+             return returnBool(lhs > rhs.toQStringRef());
+         return returnBool(lhs < rhs.toQStringRef());
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qcompilerdetection.h qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qcompilerdetection.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qcompilerdetection.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qcompilerdetection.h	2020-12-09 10:51:47.000000000 -0800
+@@ -769,10 +769,14 @@
+ #    if __has_feature(cxx_alias_templates)
+ #      define Q_COMPILER_TEMPLATE_ALIAS
+ #    endif
+-#    if __has_feature(cxx_thread_local)
+-#      if !defined(__FreeBSD__) /* FreeBSD clang fails on __cxa_thread_atexit */
+-#        define Q_COMPILER_THREAD_LOCAL
+-#      endif
++#    if defined(Q_PROCESSOR_X86_64) && defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 90000 /* iOS simulator only supports thread local in iOS 9.0 and newer */
++#      define Q_COMPILER_THREAD_LOCAL_UNSUPPORTED
++#    endif
++#    if !defined(__FreeBSD__) /* FreeBSD clang fails on __cxa_thread_atexit */
++#      define Q_COMPILER_THREAD_LOCAL_UNSUPPORTED
++#    endif
++#    if __has_feature(cxx_thread_local) && !defined(Q_COMPILER_THREAD_LOCAL_UNSUPPORTED)
++#      define Q_COMPILER_THREAD_LOCAL
+ #    endif
+ #    if __has_feature(cxx_user_literals)
+ #      define Q_COMPILER_UDL
+@@ -913,6 +917,10 @@
+ #         define Q_COMPILER_REF_QUALIFIERS
+ #      endif
+ #    endif
++#    if Q_CC_GNU >= 409
++       /* Marvell gcc 4.9 has support for constexpr, at least well enough to build Qt threads */
++#      define Q_COMPILER_PARTIAL_CONSTEXPR
++#    endif
+ #    if Q_CC_GNU >= 500
+        /* GCC 4.6 introduces constexpr, but it's bugged (at least) in the whole
+         * 4.x series, see e.g. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=57694 */
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qendian.h qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qendian.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qendian.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qendian.h	2020-12-09 10:51:47.000000000 -0800
+@@ -93,11 +93,11 @@
+  * This function can be used if you are not concerned about alignment issues,
+  * and it is therefore a bit more convenient and in most cases more efficient.
+ */
+-template <typename T> Q_DECL_CONSTEXPR T qbswap(T source);
++template <typename T> T qbswap(T source);
+ 
+ // These definitions are written so that they are recognized by most compilers
+ // as bswap and replaced with single instruction builtins if available.
+-template <> inline Q_DECL_CONSTEXPR quint64 qbswap<quint64>(quint64 source)
++template <> inline quint64 qbswap<quint64>(quint64 source)
+ {
+     return 0
+         | ((source & Q_UINT64_C(0x00000000000000ff)) << 56)
+@@ -110,7 +110,7 @@
+         | ((source & Q_UINT64_C(0xff00000000000000)) >> 56);
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR quint32 qbswap<quint32>(quint32 source)
++template <> inline quint32 qbswap<quint32>(quint32 source)
+ {
+     return 0
+         | ((source & 0x000000ff) << 24)
+@@ -119,35 +119,35 @@
+         | ((source & 0xff000000) >> 24);
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR quint16 qbswap<quint16>(quint16 source)
++template <> inline quint16 qbswap<quint16>(quint16 source)
+ {
+     return quint16( 0
+                     | ((source & 0x00ff) << 8)
+                     | ((source & 0xff00) >> 8) );
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR quint8 qbswap<quint8>(quint8 source)
++template <> inline quint8 qbswap<quint8>(quint8 source)
+ {
+     return source;
+ }
+ 
+ // signed specializations
+-template <> inline Q_DECL_CONSTEXPR qint64 qbswap<qint64>(qint64 source)
++template <> inline qint64 qbswap<qint64>(qint64 source)
+ {
+     return qbswap<quint64>(quint64(source));
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR qint32 qbswap<qint32>(qint32 source)
++template <> inline qint32 qbswap<qint32>(qint32 source)
+ {
+     return qbswap<quint32>(quint32(source));
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR qint16 qbswap<qint16>(qint16 source)
++template <> inline qint16 qbswap<qint16>(qint16 source)
+ {
+     return qbswap<quint16>(quint16(source));
+ }
+ 
+-template <> inline Q_DECL_CONSTEXPR qint8 qbswap<qint8>(qint8 source)
++template <> inline qint8 qbswap<qint8>(qint8 source)
+ {
+     return source;
+ }
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qfloat16.cpp qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qfloat16.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/global/qfloat16.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/global/qfloat16.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -205,7 +205,7 @@
+ #undef f16cextern
+ }
+ 
+-#elif defined(__ARM_FP16_FORMAT_IEEE) && defined(__ARM_NEON__)
++#elif defined(__ARM_FP16_FORMAT_IEEE) && defined(__ARM_NEON__) && 0
+ static inline bool hasFastF16()
+ {
+     return true;
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/io/qloggingcategory.h qt-everywhere-src-5.14.1/qtbase/src/corelib/io/qloggingcategory.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/io/qloggingcategory.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/io/qloggingcategory.h	2020-12-09 10:51:47.000000000 -0800
+@@ -109,7 +109,7 @@
+ };
+ 
+ #define Q_DECLARE_LOGGING_CATEGORY(name) \
+-    extern const QLoggingCategory &name();
++    Q_CORE_EXPORT const QLoggingCategory &name();
+ 
+ #define Q_LOGGING_CATEGORY(name, ...) \
+     const QLoggingCategory &name() \
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/kernel/qcoreevent.h qt-everywhere-src-5.14.1/qtbase/src/corelib/kernel/qcoreevent.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/kernel/qcoreevent.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/kernel/qcoreevent.h	2020-12-09 10:51:47.000000000 -0800
+@@ -289,6 +289,8 @@
+         // 512 reserved for Qt Jambi's MetaCall event
+         // 513 reserved for Qt Jambi's DeleteOnMainThread event
+ 
++        Controller = 768,                       // Game controller state change
++
+         User = 1000,                            // first user event id
+         MaxUser = 65535                         // last user event id
+     };
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/kernel/qmath.h qt-everywhere-src-5.14.1/qtbase/src/corelib/kernel/qmath.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/kernel/qmath.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/kernel/qmath.h	2020-12-28 11:40:41.000000000 -0800
+@@ -203,6 +203,8 @@
+ #define M_SQRT1_2 (0.70710678118654752440)
+ #endif
+ 
++#define _MATH_DEFINES_DEFINED
++
+ inline qreal qFastSin(qreal x)
+ {
+     int si = int(x * (0.5 * QT_SINE_TABLE_SIZE / M_PI)); // Would be more accurate with qRound, but slower.
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/plugin/qplugin.h qt-everywhere-src-5.14.1/qtbase/src/corelib/plugin/qplugin.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/plugin/qplugin.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/plugin/qplugin.h	2020-12-09 10:51:47.000000000 -0800
+@@ -132,7 +132,7 @@
+ 
+ 
+ #define Q_IMPORT_PLUGIN(PLUGIN) \
+-        extern const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##PLUGIN(); \
++        Q_EXTERN_C const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##PLUGIN(); \
+         class Static##PLUGIN##PluginInstance{ \
+         public: \
+                 Static##PLUGIN##PluginInstance() { \
+@@ -175,7 +175,7 @@
+     static QT_PREPEND_NAMESPACE(QObject) *qt_plugin_instance_##PLUGINCLASSNAME() \
+     Q_PLUGIN_INSTANCE(PLUGINCLASS) \
+     static const char *qt_plugin_query_metadata_##PLUGINCLASSNAME() { return reinterpret_cast<const char *>(qt_pluginMetaData); } \
+-    const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##PLUGINCLASSNAME() { \
++    Q_EXTERN_C Q_DECL_EXPORT const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##PLUGINCLASSNAME() { \
+         QT_PREPEND_NAMESPACE(QStaticPlugin) plugin = { qt_plugin_instance_##PLUGINCLASSNAME, qt_plugin_query_metadata_##PLUGINCLASSNAME}; \
+         return plugin; \
+     }
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/thread/qbasicatomic.h qt-everywhere-src-5.14.1/qtbase/src/corelib/thread/qbasicatomic.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/corelib/thread/qbasicatomic.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/corelib/thread/qbasicatomic.h	2020-12-09 10:51:47.000000000 -0800
+@@ -49,7 +49,7 @@
+ // If C++11 atomics are supported, use them!
+ // Note that constexpr support is sometimes disabled in QNX builds but its
+ // library has <atomic>.
+-#elif defined(Q_COMPILER_ATOMICS) && (defined(Q_COMPILER_CONSTEXPR) || defined(Q_OS_QNX))
++#elif defined(Q_COMPILER_ATOMICS) && (defined(Q_COMPILER_CONSTEXPR) || defined(Q_COMPILER_PARTIAL_CONSTEXPR) || defined(Q_OS_QNX))
+ #  include <QtCore/qatomic_cxx11.h>
+ 
+ // We only support one fallback: MSVC, because even on version 2015, it lacks full constexpr support
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/image/image.pri qt-everywhere-src-5.14.1/qtbase/src/gui/image/image.pri
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/image/image.pri	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/image/image.pri	2020-12-09 10:51:47.000000000 -0800
+@@ -97,7 +97,7 @@
+     MIPS_DSPR2_ASM += image/qimage_mips_dspr2_asm.S
+ } else {
+     # see https://developer.android.com/ndk/guides/abis
+-    arm64-v8a {
++    arm64-v8a | armeabi-v7a {
+         SOURCES += image/qimage_neon.cpp
+     }
+     x86 | x86_64 {
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/kernel/qevent.cpp qt-everywhere-src-5.14.1/qtbase/src/gui/kernel/qevent.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/kernel/qevent.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/kernel/qevent.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -5322,4 +5322,68 @@
+     return qHash(key.numericId(), seed);
+ }
+ 
++/*!
++    Creates a new QControllerEvent.
++*/
++QControllerEvent::QControllerEvent()
++: QEvent(QEvent::Controller)
++{
++    m_type = NONE;
++    m_pressed = false;
++    m_angle = 0;
++    m_distance = 0;
++    m_direction = DIRECTION_CENTER;
++}
++
++/*!
++    Initialize a controller event as a button press
++*/
++void QControllerEvent::setButton(EventType button, bool pressed)
++{
++	m_type = button;
++	m_pressed = pressed;
++}
++
++/*!
++    Initialize a controller event as a dpad direction
++*/
++void QControllerEvent::setDPad(Direction direction)
++{
++    m_type = DPAD;
++    m_direction = direction;
++}
++
++/*!
++    Initialize a controller event as a thumbstick motion
++	The angle ranges from 0 to 2 * M_PI starting at the top and going clockwise.
++	The distance ranges from 0 to 1
++*/
++void QControllerEvent::setThumbstick(EventType thumbstick, qreal angle, qreal distance)
++{
++	m_type = thumbstick;
++    m_angle = angle;
++    m_distance = distance;
++
++    if (distance > 0.0) {
++        m_direction = DIRECTION_N;
++        qreal span = ((2 * M_PI)/8);
++        for (int i=0; i<8; ++i) {
++            if (angle >= ((i*span)-(span/2)) && angle <= ((i*span)+(span/2))) {
++                m_direction = (Direction)(1+i);
++                break;
++            }
++        }
++    }
++}
++
++/*!
++    Initialize a controller event as a trigger motion
++	The distance ranges from 0 to 1
++*/
++void QControllerEvent::setTrigger(EventType trigger, qreal distance)
++{
++	m_type = trigger;
++	m_distance = distance;
++}
++
+ QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/kernel/qevent.h qt-everywhere-src-5.14.1/qtbase/src/gui/kernel/qevent.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/kernel/qevent.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/kernel/qevent.h	2020-12-09 10:51:47.000000000 -0800
+@@ -1094,6 +1094,122 @@
+     Qt::ApplicationState m_applicationState;
+ };
+ 
++class Q_GUI_EXPORT QControllerEvent : public QEvent
++{
++public:
++    enum EventType
++    {
++		NONE,
++        BUTTON_A,
++        BUTTON_B,
++        BUTTON_X,
++        BUTTON_Y,
++        BUTTON_BACK,
++        BUTTON_GUIDE,
++        BUTTON_START,
++        BUTTON_LEFTSTICK,
++        BUTTON_RIGHTSTICK,
++        BUTTON_LEFTSHOULDER,
++        BUTTON_RIGHTSHOULDER,
++        DPAD,
++        THUMBSTICK_LEFT,
++        THUMBSTICK_RIGHT,
++        TRIGGER_LEFT,
++        TRIGGER_RIGHT,
++    };
++
++    enum Direction
++    {
++        DIRECTION_CENTER,
++        DIRECTION_N,
++        DIRECTION_NE,
++        DIRECTION_E,
++        DIRECTION_SE,
++        DIRECTION_S,
++        DIRECTION_SW,
++        DIRECTION_W,
++        DIRECTION_NW,
++    };
++
++public:
++    QControllerEvent();
++
++	void setButton(EventType button, bool pressed);
++    void setDPad(Direction direction);
++    void setThumbstick(EventType thumbstick, qreal angle, qreal distance);
++    void setTrigger(EventType trigger, qreal distance);
++
++    EventType type() const { return m_type; }
++
++    bool isButton() const { return m_type >= BUTTON_A && m_type <= BUTTON_RIGHTSHOULDER; }
++    bool isButtonPress() const { return isButton() && m_pressed; }
++    bool isButtonRelease() const { return isButton() && !m_pressed; }
++
++    bool isButtonA() const { return m_type == BUTTON_A; }
++    bool isButtonAPress() const { return isButtonA() && m_pressed; }
++    bool isButtonARelease() const { return isButtonA() && !m_pressed; }
++
++    bool isButtonB() const { return m_type == BUTTON_B; }
++    bool isButtonBPress() const { return isButtonB() && m_pressed; }
++    bool isButtonBRelease() const { return isButtonB() && !m_pressed; }
++
++    bool isButtonX() const { return m_type == BUTTON_X; }
++    bool isButtonXPress() const { return isButtonX() && m_pressed; }
++    bool isButtonXRelease() const { return isButtonX() && !m_pressed; }
++
++    bool isButtonY() const { return m_type == BUTTON_Y; }
++    bool isButtonYPress() const { return isButtonY() && m_pressed; }
++    bool isButtonYRelease() const { return isButtonY() && !m_pressed; }
++
++    bool isButtonBack() const { return m_type == BUTTON_BACK; }
++    bool isButtonBackPress() const { return isButtonBack() && m_pressed; }
++    bool isButtonBackRelease() const { return isButtonBack() && !m_pressed; }
++
++    bool isButtonGuide() const { return m_type == BUTTON_GUIDE; }
++    bool isButtonGuidePress() const { return isButtonGuide() && m_pressed; }
++    bool isButtonGuideRelease() const { return isButtonGuide() && !m_pressed; }
++
++    bool isButtonStart() const { return m_type == BUTTON_START; }
++    bool isButtonStartPress() const { return isButtonStart() && m_pressed; }
++    bool isButtonStartRelease() const { return isButtonStart() && !m_pressed; }
++
++    bool isButtonLeftStick() const { return m_type == BUTTON_LEFTSTICK; }
++    bool isButtonLeftStickPress() const { return isButtonLeftStick() && m_pressed; }
++    bool isButtonLeftStickRelease() const { return isButtonLeftStick() && !m_pressed; }
++
++    bool isButtonRightStick() const { return m_type == BUTTON_RIGHTSTICK; }
++    bool isButtonRightStickPress() const { return isButtonRightStick() && m_pressed; }
++    bool isButtonRightStickRelease() const { return isButtonRightStick() && !m_pressed; }
++
++    bool isButtonLeftShoulder() const { return m_type == BUTTON_LEFTSHOULDER; }
++    bool isButtonLeftShoulderPress() const { return isButtonLeftShoulder() && m_pressed; }
++    bool isButtonLeftShoulderRelease() const { return isButtonLeftShoulder() && !m_pressed; }
++
++    bool isButtonRightShoulder() const { return m_type == BUTTON_RIGHTSHOULDER; }
++    bool isButtonRightShoulderPress() const { return isButtonRightShoulder() && m_pressed; }
++    bool isButtonRightShoulderRelease() const { return isButtonRightShoulder() && !m_pressed; }
++
++    bool isDPad() const { return m_type == DPAD; }
++    bool isThumbstick() const { return m_type == THUMBSTICK_LEFT || m_type == THUMBSTICK_RIGHT; }
++    bool isTrigger() const { return m_type == TRIGGER_LEFT || m_type == TRIGGER_RIGHT; }
++
++    qreal angle() const { return m_angle; }
++    qreal distance() const { return m_distance; }
++    Direction direction() const { return m_direction; }
++
++    bool isDirectionUp() const { return m_direction == DIRECTION_NW || m_direction == DIRECTION_N || m_direction == DIRECTION_NE; }
++    bool isDirectionDown() const { return m_direction == DIRECTION_SW || m_direction == DIRECTION_S || m_direction == DIRECTION_SE; }
++    bool isDirectionLeft() const { return m_direction == DIRECTION_NW || m_direction == DIRECTION_W || m_direction == DIRECTION_SW; }
++    bool isDirectionRight() const { return m_direction == DIRECTION_NE || m_direction == DIRECTION_E || m_direction == DIRECTION_SE; }
++
++private:
++    EventType m_type;
++    bool m_pressed;
++    qreal m_angle;
++    qreal m_distance;
++    Direction m_direction;
++};
++
+ QT_END_NAMESPACE
+ 
+ #endif // QEVENT_H
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/opengl/qopenglvertexarrayobject.cpp qt-everywhere-src-5.14.1/qtbase/src/gui/opengl/qopenglvertexarrayobject.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/opengl/qopenglvertexarrayobject.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/opengl/qopenglvertexarrayobject.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -209,7 +209,7 @@
+         // Before going through the effort of creating an offscreen surface
+         // check that we are on the GUI thread because otherwise many platforms
+         // will not able to create that offscreen surface.
+-        if (QThread::currentThread() != qGuiApp->thread()) {
++        if (!qGuiApp || QThread::currentThread() != qGuiApp->thread()) {
+             ctx = 0;
+         } else {
+             // Cannot just make the current surface current again with another context.
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/painting/painting.pri qt-everywhere-src-5.14.1/qtbase/src/gui/painting/painting.pri
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/painting/painting.pri	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/painting/painting.pri	2020-12-09 10:51:47.000000000 -0800
+@@ -166,7 +166,7 @@
+         DEFINES += QT_COMPILER_SUPPORTS_SSE4_1 QT_COMPILER_SUPPORTS_SSE4_2
+         SOURCES += painting/qdrawhelper_sse4.cpp painting/qimagescale_sse4.cpp
+     }
+-    arm64-v8a {
++    arm64-v8a | armeabi-v7a {
+         SOURCES += painting/qdrawhelper_neon.cpp painting/qimagescale_neon.cpp
+         HEADERS += painting/qdrawhelper_neon_p.h
+     }
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/gui/painting/qplatformbackingstore.h qt-everywhere-src-5.14.1/qtbase/src/gui/painting/qplatformbackingstore.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/gui/painting/qplatformbackingstore.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/gui/painting/qplatformbackingstore.h	2020-12-24 08:16:33.000000000 -0800
+@@ -60,7 +60,7 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
+-Q_GUI_EXPORT Q_DECLARE_LOGGING_CATEGORY(lcQpaBackingStore)
++Q_DECLARE_LOGGING_CATEGORY(lcQpaBackingStore)
+ 
+ class QRegion;
+ class QRect;
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev.cpp qt-everywhere-src-5.14.1/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -45,8 +45,34 @@
+ #include <QHash>
+ #include <QSocketNotifier>
+ #include <QLoggingCategory>
++#include <QDir>
++#include <QThread>
++#include <QtCore/private/qcore_unix_p.h>
+ 
+ #include <linux/input.h>
++#include <fcntl.h>
++
++/* android (and perhaps some other linux-derived stuff) don't define everything
++ * in linux/input.h, so we'll need to do that ourselves.
++ */
++#ifndef KEY_CNT
++#define KEY_CNT                 (KEY_MAX+1)
++#endif
++#ifndef REL_CNT
++#define REL_CNT                 (REL_MAX+1)
++#endif
++#ifndef ABS_CNT
++#define ABS_CNT                 (ABS_MAX+1)
++#endif
++
++#define LONG_BITS (sizeof(long) * 8 )
++#define LONG_FIELD_SIZE(bits) ((bits / LONG_BITS) + 1)
++
++static bool testBit(long bit, const long *field)
++{
++    return (field[bit / LONG_BITS] >> bit % LONG_BITS) & 1;
++}
++
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -103,58 +129,33 @@
+ QStringList QDeviceDiscoveryUDev::scanConnectedDevices()
+ {
+     QStringList devices;
++    QDir dir;
++    dir.setFilter(QDir::System);
+ 
+-    if (!m_udev)
+-        return devices;
+-
+-    udev_enumerate *ue = udev_enumerate_new(m_udev);
+-    udev_enumerate_add_match_subsystem(ue, "input");
+-    udev_enumerate_add_match_subsystem(ue, "drm");
+-
+-    if (m_types & Device_Mouse)
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_MOUSE", "1");
+-    if (m_types & Device_Touchpad)
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_TOUCHPAD", "1");
+-    if (m_types & Device_Touchscreen)
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_TOUCHSCREEN", "1");
+-    if (m_types & Device_Keyboard) {
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_KEYBOARD", "1");
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_KEY", "1");
+-    }
+-    if (m_types & Device_Tablet)
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_TABLET", "1");
+-    if (m_types & Device_Joystick)
+-        udev_enumerate_add_match_property(ue, "ID_INPUT_JOYSTICK", "1");
+-
+-    if (udev_enumerate_scan_devices(ue) != 0) {
+-        qWarning("Failed to scan devices");
+-        return devices;
+-    }
+-
+-    udev_list_entry *entry;
+-    udev_list_entry_foreach (entry, udev_enumerate_get_list_entry(ue)) {
+-        const char *syspath = udev_list_entry_get_name(entry);
+-        udev_device *udevice = udev_device_new_from_syspath(m_udev, syspath);
+-        QString candidate = QString::fromUtf8(udev_device_get_devnode(udevice));
+-        if ((m_types & Device_InputMask) && candidate.startsWith(QLatin1String(QT_EVDEV_DEVICE)))
+-            devices << candidate;
+-        if ((m_types & Device_VideoMask) && candidate.startsWith(QLatin1String(QT_DRM_DEVICE))) {
+-            if (m_types & Device_DRM_PrimaryGPU) {
+-                udev_device *pci = udev_device_get_parent_with_subsystem_devtype(udevice, "pci", 0);
+-                if (pci) {
+-                    if (qstrcmp(udev_device_get_sysattr_value(pci, "boot_vga"), "1") == 0)
+-                        devices << candidate;
+-                }
+-            } else
+-                devices << candidate;
++    // check for input devices
++    if (m_types & Device_InputMask) {
++        dir.setPath(QString::fromLatin1(QT_EVDEV_DEVICE_PATH));
++        foreach (const QString &deviceFile, dir.entryList()) {
++            QString absoluteFilePath = dir.absolutePath() + QString::fromLatin1("/") + deviceFile;
++            if (checkDeviceType(absoluteFilePath))
++                devices << absoluteFilePath;
+         }
+-
+-        udev_device_unref(udevice);
+     }
+-    udev_enumerate_unref(ue);
+ 
++    // check for drm devices
++    if (m_types & Device_VideoMask) {
++        dir.setPath(QString::fromLatin1(QT_DRM_DEVICE_PATH));
++        foreach (const QString &deviceFile, dir.entryList()) {
++            QString absoluteFilePath = dir.absolutePath() + QString::fromLatin1("/") + deviceFile;
++            if (checkDeviceType(absoluteFilePath))
++                devices << absoluteFilePath;
++        }
++    }
++ 
+     qCDebug(lcDD) << "Found matching devices" << devices;
+ 
++    m_devices = devices;
++
+     return devices;
+ }
+ 
+@@ -188,69 +189,87 @@
+         subsystem = "drm";
+     else goto cleanup;
+ 
+-    // if we cannot determine a type, walk up the device tree
+-    if (!checkDeviceType(dev)) {
+-        // does not increase the refcount
+-        struct udev_device *parent_dev = udev_device_get_parent_with_subsystem_devtype(dev, subsystem, 0);
+-        if (!parent_dev)
+-            goto cleanup;
+-
+-        if (!checkDeviceType(parent_dev))
+-            goto cleanup;
+-    }
+-
+     if (qstrcmp(action, "add") == 0)
+-        emit deviceDetected(devNode);
++    {
++        // Wait for the device to finish initialization
++        QThread::msleep( 100 );
++
++        if (checkDeviceType(devNode))
++        {
++            qCDebug(lcDD) << "DeviceDiscovery adding device" << devNode;
+ 
++            emit deviceDetected(devNode);
++            m_devices << devNode;
++        }
++    }
++ 
+     if (qstrcmp(action, "remove") == 0)
+-        emit deviceRemoved(devNode);
++    {
++        if (m_devices.contains(devNode))
++        {
++            qCDebug(lcDD) << "DeviceDiscovery removing device" << devNode;
++
++            emit deviceRemoved(devNode);
++            m_devices.removeAll(devNode);
++        }
++    }
+ 
+ cleanup:
+     udev_device_unref(dev);
+ }
+ 
+-bool QDeviceDiscoveryUDev::checkDeviceType(udev_device *dev)
++bool QDeviceDiscoveryUDev::checkDeviceType(const QString &device)
+ {
+-    if (!dev)
++    bool ret = false;
++    int fd = QT_OPEN(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY, 0);
++    if (!fd) {
++        qCDebug(lcDD) << "DeviceDiscovery cannot open device" << device;
+         return false;
++    }
+ 
+-    if ((m_types & Device_Keyboard) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_KEYBOARD"), "1") == 0 )) {
+-        const QString capabilities_key = QString::fromUtf8(udev_device_get_sysattr_value(dev, "capabilities/key"));
+-        const auto val = capabilities_key.splitRef(QLatin1Char(' '), QString::SkipEmptyParts);
+-        if (!val.isEmpty()) {
+-            bool ok;
+-            unsigned long long keys = val.last().toULongLong(&ok, 16);
+-            if (ok) {
+-                // Tests if the letter Q is valid for the device.  We may want to alter this test, but it seems mostly reliable.
+-                bool test = (keys >> KEY_Q) & 1;
+-                if (test)
+-                    return true;
++    long bitsKey[LONG_FIELD_SIZE(KEY_CNT)];
++    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bitsKey)), bitsKey) >= 0 ) {
++        if (!ret && (m_types & Device_Keyboard)) {
++            if (testBit(KEY_Q, bitsKey)) {
++                qCDebug(lcDD) << "DeviceDiscovery found keyboard at" << device;
++                ret = true;
+             }
+         }
+-    }
+-
+-    if ((m_types & Device_Keyboard) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_KEY"), "1") == 0 ))
+-        return true;
+-
+-    if ((m_types & Device_Mouse) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_MOUSE"), "1") == 0))
+-        return true;
+-
+-    if ((m_types & Device_Touchpad) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_TOUCHPAD"), "1") == 0))
+-        return true;
+ 
+-    if ((m_types & Device_Touchscreen) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_TOUCHSCREEN"), "1") == 0))
+-        return true;
+-
+-    if ((m_types & Device_Tablet) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_TABLET"), "1") == 0))
+-        return true;
++        if (!ret && (m_types & Device_Mouse)) {
++            long bitsRel[LONG_FIELD_SIZE(REL_CNT)];
++            if (ioctl(fd, EVIOCGBIT(EV_REL, sizeof(bitsRel)), bitsRel) >= 0 ) {
++                if (testBit(REL_X, bitsRel) && testBit(REL_Y, bitsRel) && testBit(BTN_MOUSE, bitsKey)) {
++                    qCDebug(lcDD) << "DeviceDiscovery found mouse at" << device;
++                    ret = true;
++                }
++            }
++        }
+ 
+-    if ((m_types & Device_Joystick) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_JOYSTICK"), "1") == 0))
+-        return true;
++        if (!ret && (m_types & (Device_Touchpad | Device_Touchscreen))) {
++            long bitsAbs[LONG_FIELD_SIZE(ABS_CNT)];
++            if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(bitsAbs)), bitsAbs) >= 0 ) {
++                if (testBit(ABS_X, bitsAbs) && testBit(ABS_Y, bitsAbs)) {
++                    if ((m_types & Device_Touchpad) && testBit(BTN_TOOL_FINGER, bitsKey)) {
++                        qCDebug(lcDD) << "DeviceDiscovery found touchpad at" << device;
++                        ret = true;
++                    } else if ((m_types & Device_Touchscreen) && testBit(BTN_TOUCH, bitsKey)) {
++                        qCDebug(lcDD) << "DeviceDiscovery found touchscreen at" << device;
++                        ret = true;
++                    } else if ((m_types & Device_Tablet) && (testBit(BTN_STYLUS, bitsKey) || testBit(BTN_TOOL_PEN, bitsKey))) {
++                        qCDebug(lcDD) << "DeviceDiscovery found tablet at" << device;
++                        ret = true;
++                    }
++                }
++            }
++        }
++    }
+ 
+-    if ((m_types & Device_DRM) && (qstrcmp(udev_device_get_subsystem(dev), "drm") == 0))
+-        return true;
++    if (!ret && (m_types & Device_DRM) && device.contains(QString::fromLatin1(QT_DRM_DEVICE_PREFIX)))
++        ret = true;
+ 
+-    return false;
++    QT_CLOSE(fd);
++    return ret;
+ }
+ 
+ QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev_p.h qt-everywhere-src-5.14.1/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev_p.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev_p.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/platformsupport/devicediscovery/qdevicediscovery_udev_p.h	2020-12-09 10:51:47.000000000 -0800
+@@ -69,7 +69,7 @@
+     void handleUDevNotification();
+ 
+ private:
+-    bool checkDeviceType(struct udev_device *dev);
++    bool checkDeviceType(const QString &device);
+ 
+     void startWatching();
+     void stopWatching();
+@@ -78,6 +78,7 @@
+     struct udev_monitor *m_udevMonitor;
+     int m_udevMonitorFileDescriptor;
+     QSocketNotifier *m_udevSocketNotifier;
++    QStringList m_devices;
+ };
+ 
+ QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager.cpp qt-everywhere-src-5.14.1/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -51,15 +51,19 @@
+ #include <private/qinputdevicemanager_p_p.h>
+ #include <private/qhighdpiscaling_p.h>
+ 
++#define ENV_READ_THROTTLE_RATE 10
++
+ QT_BEGIN_NAMESPACE
+ 
+ Q_DECLARE_LOGGING_CATEGORY(qLcEvdevMouse)
+ 
+ QEvdevMouseManager::QEvdevMouseManager(const QString &key, const QString &specification, QObject *parent)
+-    : QObject(parent), m_x(0), m_y(0), m_xoffset(0), m_yoffset(0)
++    : QObject(parent), m_x(0), m_y(0), m_xoffset(0), m_yoffset(0), m_envReadThrottle(0), m_sensitivity(1.0f), m_accum_x(0.0f), m_accum_y(0.0f)
+ {
+     Q_UNUSED(key);
+ 
++    readMouseParamsFromEnv();
++
+     QString spec = QString::fromLocal8Bit(qgetenv("QT_QPA_EVDEV_MOUSE_PARAMETERS"));
+ 
+     if (spec.isEmpty())
+@@ -123,13 +127,30 @@
+         m_y = g.bottom() - m_yoffset;
+ }
+ 
++static int
++GetScaledMouseDelta(float scale, int value, float *accum)
++{
++    if (scale != 1.0f) {
++        *accum += scale * value;
++        if (*accum >= 0.0f) {
++            value = (int)floorf(*accum);
++        } else {
++            value = (int)ceilf(*accum);
++        }
++        *accum -= value;
++    }
++    return value;
++}
++
+ void QEvdevMouseManager::handleMouseEvent(int x, int y, bool abs, Qt::MouseButtons buttons,
+                                           Qt::MouseButton button, QEvent::Type type)
+ {
++    readMouseParamsFromEnv();
++
+     // update current absolute coordinates
+     if (!abs) {
+-        m_x += x;
+-        m_y += y;
++        m_x += GetScaledMouseDelta(m_sensitivity, x, &m_accum_x);
++        m_y += GetScaledMouseDelta(m_sensitivity, y, &m_accum_y);
+     } else {
+         m_x = x;
+         m_y = y;
+@@ -179,4 +200,36 @@
+         QInputDeviceManager::DeviceTypePointer, m_mice.count());
+ }
+ 
++void QEvdevMouseManager::readMouseParamsFromEnv()
++{
++    if (m_envReadThrottle++ % ENV_READ_THROTTLE_RATE)
++        return;
++
++    QString spec = QString::fromLocal8Bit(qgetenv("QT_QPA_EVDEV_MOUSE_PARAMETERS"));
++
++    if (spec.isEmpty() || m_lastEnvSpec == spec)
++        return;
++
++    m_lastEnvSpec = spec;
++
++    QStringList args = spec.split(QLatin1Char(':'));
++
++    foreach (const QString &arg, args) {
++        if (arg.startsWith(QLatin1String("/dev/"))) {
++            args.removeAll(arg);
++        } else if (arg.startsWith(QLatin1String("xoffset="))) {
++            m_xoffset = arg.mid(8).toInt();
++        } else if (arg.startsWith(QLatin1String("yoffset="))) {
++            m_yoffset = arg.mid(8).toInt();
++        } else if (arg.startsWith(QLatin1String("sensitivity="))) {
++            m_sensitivity = arg.mid(12).toFloat();
++            if (m_sensitivity <= 0.0f)
++                m_sensitivity = 1.0f;
++        }
++    }
++
++    // build new specification without /dev/ elements
++    m_spec = args.join(QLatin1Char(':'));
++}
++
+ QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager_p.h qt-everywhere-src-5.14.1/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager_p.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager_p.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/platformsupport/input/evdevmouse/qevdevmousemanager_p.h	2020-12-09 10:51:47.000000000 -0800
+@@ -78,6 +78,9 @@
+     void removeMouse(const QString &deviceNode);
+ 
+ private:
++    void readMouseParamsFromEnv();
++
++private:
+     void clampPosition();
+     void updateDeviceCount();
+ 
+@@ -87,6 +90,11 @@
+     int m_y;
+     int m_xoffset;
+     int m_yoffset;
++    QString m_lastEnvSpec;
++    unsigned int m_envReadThrottle;
++    float m_sensitivity;
++    float m_accum_x;
++    float m_accum_y;
+ };
+ 
+ QT_END_NAMESPACE
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/android/qandroidassetsfileenginehandler.cpp qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/android/qandroidassetsfileenginehandler.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/android/qandroidassetsfileenginehandler.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/android/qandroidassetsfileenginehandler.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -174,10 +174,8 @@
+         return !empty() && m_index + 1 < size();
+     }
+ 
+-    std::optional<std::pair<QString, AssetItem>> next()
++    std::pair<QString, AssetItem> next()
+     {
+-        if (!hasNext())
+-            return {};
+         ++m_index;
+         return std::pair<QString, AssetItem>(currentFileName(), at(m_index));
+     }
+@@ -242,15 +240,15 @@
+             return {};
+         }
+         m_currentIterator = m_stack.last();
+-        auto res = m_currentIterator->next();
+-        if (!res)
++        if (!m_currentIterator->hasNext())
+             return {};
+-        if (res->second.type == AssetItem::Type::Folder) {
++        auto res = m_currentIterator->next();
++        if (res.second.type == AssetItem::Type::Folder) {
+             m_stack.push_back(FolderIterator::fromCache(cleanedAssetPath(currentFilePath()), true));
+             if (m_stack.last()->empty())
+                 m_stack.pop_back();
+         }
+-        return res->first;
++        return res.first;
+     }
+ 
+ private:
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiosintegration.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiosintegration.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiosintegration.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiosintegration.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -253,8 +253,9 @@
+         // this number is based on timing the native delay
+         // since there is no API to get it
+         return 2000;
+-    case ShowIsMaximized:
+-        return true;
++// Don't show dialogs maximized over other windows
++//    case ShowIsMaximized:
++//        return true;
+     case SetFocusOnTouchRelease:
+         return true;
+     default:
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiosscreen.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiosscreen.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiosscreen.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiosscreen.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -96,10 +96,12 @@
+ + (void)load
+ {
+     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
++#if 0 // We don't use this notification and it crashes once Qt app has quit
+     [center addObserver:self selector:@selector(screenConnected:)
+             name:UIScreenDidConnectNotification object:nil];
+     [center addObserver:self selector:@selector(screenDisconnected:)
+             name:UIScreenDidDisconnectNotification object:nil];
++#endif
+     [center addObserver:self selector:@selector(screenModeChanged:)
+             name:UIScreenModeDidChangeNotification object:nil];
+ }
+@@ -125,7 +127,9 @@
+     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
+     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen changed that we didn't know about");
+ 
+-    screen->updateProperties();
++    if (screen) {
++        screen->updateProperties();
++    }
+ }
+ 
+ @end
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiostheme.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiostheme.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qiostheme.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qiostheme.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -53,6 +53,10 @@
+ #include <UIKit/UIInterface.h>
+ 
+ #ifndef Q_OS_TVOS
++#define USE_NATIVE_DIALOGS
++#endif
++
++#ifdef USE_NATIVE_DIALOGS
+ #include "qiosmenu.h"
+ #include "qiosfiledialog.h"
+ #include "qiosmessagedialog.h"
+@@ -83,28 +87,30 @@
+ 
+ QPlatformMenuItem* QIOSTheme::createPlatformMenuItem() const
+ {
+-#ifdef Q_OS_TVOS
+-    return 0;
+-#else
++#ifdef USE_NATIVE_DIALOGS
+     return new QIOSMenuItem();
++#else
++    return 0;
+ #endif
+ }
+ 
+ QPlatformMenu* QIOSTheme::createPlatformMenu() const
+ {
+-#ifdef Q_OS_TVOS
+-    return 0;
+-#else
++#ifdef USE_NATIVE_DIALOGS
+     return new QIOSMenu();
++#else
++    return 0;
+ #endif
+ }
+ 
+ bool QIOSTheme::usePlatformNativeDialog(QPlatformTheme::DialogType type) const
+ {
+     switch (type) {
++#ifdef USE_NATIVE_DIALOGS
+     case FileDialog:
+     case MessageDialog:
+         return !qt_apple_isApplicationExtension();
++#endif
+     default:
+         return false;
+     }
+@@ -113,7 +119,7 @@
+ QPlatformDialogHelper *QIOSTheme::createPlatformDialogHelper(QPlatformTheme::DialogType type) const
+ {
+     switch (type) {
+-#ifndef Q_OS_TVOS
++#ifdef USE_NATIVE_DIALOGS
+     case FileDialog:
+         return new QIOSFileDialog();
+         break;
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qioswindow.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qioswindow.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/qioswindow.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/qioswindow.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -225,9 +225,14 @@
+ 
+ QMargins QIOSWindow::safeAreaMargins() const
+ {
++#if 1 //def Q_OS_TVOS
++    // We already take the safe area into account
++    return QMargins(0, 0, 0, 0);
++#else
+     UIEdgeInsets safeAreaInsets = m_view.qt_safeAreaInsets;
+     return QMargins(safeAreaInsets.left, safeAreaInsets.top,
+         safeAreaInsets.right, safeAreaInsets.bottom);
++#endif
+ }
+ 
+ bool QIOSWindow::isExposed() const
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview.h qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview.h	2020-12-09 10:51:47.000000000 -0800
+@@ -56,6 +56,9 @@
+ - (instancetype)initWithQIOSWindow:(QT_PREPEND_NAMESPACE(QIOSWindow) *)window;
+ - (void)sendUpdatedExposeEvent;
+ - (BOOL)isActiveWindow;
++#ifdef Q_OS_TVOS
++- (void)swipeGesture:(UISwipeGestureRecognizer *)gesture;
++#endif
+ @property (nonatomic, assign) QT_PREPEND_NAMESPACE(QIOSWindow) *platformWindow;
+ @end
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -111,6 +111,25 @@
+         if (isQtApplication())
+             self.hidden = YES;
+ 
++#ifdef Q_OS_TVOS
++        // Apple TV Remote touchpad swipe gestures
++        UISwipeGestureRecognizer *swipeUp = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeGesture:)];
++        swipeUp.direction = UISwipeGestureRecognizerDirectionUp;
++        [self addGestureRecognizer:swipeUp];
++
++        UISwipeGestureRecognizer *swipeDown = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeGesture:)];
++        swipeDown.direction = UISwipeGestureRecognizerDirectionDown;
++        [self addGestureRecognizer:swipeDown];
++
++        UISwipeGestureRecognizer *swipeLeft = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeGesture:)];
++        swipeLeft.direction = UISwipeGestureRecognizerDirectionLeft;
++        [self addGestureRecognizer:swipeLeft];
++
++        UISwipeGestureRecognizer *swipeRight = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeGesture:)];
++        swipeRight.direction = UISwipeGestureRecognizerDirectionRight;
++        [self addGestureRecognizer:swipeRight];
++#endif
++
+ #ifndef Q_OS_TVOS
+         self.multipleTouchEnabled = YES;
+ #endif
+@@ -327,7 +346,7 @@
+ 
+ - (BOOL)isActiveWindow
+ {
+-    // Normally this is determined exclusivly by being firstResponder, but
++    // Normally this is determined exclusively by being firstResponder, but
+     // since we employ a separate first responder for text input we need to
+     // handle both cases as this view being the active Qt window.
+ 
+@@ -349,6 +368,9 @@
+     [super traitCollectionDidChange: previousTraitCollection];
+ 
+     QTouchDevice *touchDevice = QIOSIntegration::instance()->touchDevice();
++    if (!QWindowSystemInterface::isTouchDeviceRegistered(touchDevice))
++        return;
++
+     QTouchDevice::Capabilities touchCapabilities = touchDevice->capabilities();
+ 
+     if (self.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable)
+@@ -606,6 +628,33 @@
+         [super pressesEnded:presses withEvent:event];
+ }
+ 
++#ifdef Q_OS_TVOS
++- (void)swipeGesture:(UISwipeGestureRecognizer *)gesture
++{
++    if (gesture.state == UIGestureRecognizerStateEnded) {
++		int key = Qt::Key_unknown;
++		switch (gesture.direction) {
++		case UISwipeGestureRecognizerDirectionUp:
++			key = Qt::Key_Up;
++			break;
++		case UISwipeGestureRecognizerDirectionDown:
++			key = Qt::Key_Down;
++			break;
++		case UISwipeGestureRecognizerDirectionLeft:
++			key = Qt::Key_Left;
++			break;
++		case UISwipeGestureRecognizerDirectionRight:
++			key = Qt::Key_Right;
++			break;
++		default:
++			return;
++        }
++        QWindowSystemInterface::handleKeyEvent(self.platformWindow->window(), QEvent::KeyPress, key, Qt::NoModifier);
++        QWindowSystemInterface::handleKeyEvent(self.platformWindow->window(), QEvent::KeyRelease, key, Qt::NoModifier);
++    }
++}
++#endif // Q_OS_TVOS
++
+ - (BOOL)canPerformAction:(SEL)action withSender:(id)sender
+ {
+ #ifndef Q_OS_TVOS
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview_accessibility.mm qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview_accessibility.mm
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/plugins/platforms/ios/quiview_accessibility.mm	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/plugins/platforms/ios/quiview_accessibility.mm	2020-12-09 10:51:47.000000000 -0800
+@@ -74,10 +74,12 @@
+     if ([m_accessibleElements count])
+         return;
+ 
+-    QWindow *win = self.platformWindow->window();
+-    QAccessibleInterface *iface = win->accessibleRoot();
+-    if (iface)
+-        [self createAccessibleContainer: iface];
++    if (self.platformWindow) {
++        QWindow *win = self.platformWindow->window();
++        QAccessibleInterface *iface = win->accessibleRoot();
++        if (iface)
++            [self createAccessibleContainer: iface];
++    }
+ }
+ 
+ - (void)clearAccessibleCache
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/dialogs/qdialog.cpp qt-everywhere-src-5.14.1/qtbase/src/widgets/dialogs/qdialog.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/dialogs/qdialog.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/widgets/dialogs/qdialog.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -1214,6 +1214,31 @@
+ #endif
+ }
+ 
++/*! \reimp */
++void QDialog::controllerEvent(QControllerEvent *e)
++{
++    // Don't pass controller events on when a dialog is up
++    e->accept();
++
++    if (e->isButtonAPress() || e->isButtonARelease() || e->isButtonBPress() || e->isButtonBRelease()) {
++        if (e->isButtonAPress()) {
++            QList<QPushButton*> list = findChildren<QPushButton*>();
++            for (int i=0; i<list.size(); ++i) {
++                QPushButton *pb = list.at(i);
++                if (pb->isDefault() && pb->isVisible()) {
++                    if (pb->isEnabled())
++                        pb->click();
++                    return;
++                }
++            }
++        } else if (e->isButtonBPress()) {
++            reject();
++        }
++    } else {
++        QWidget::controllerEvent(e);
++    }
++}
++
+ /*! \fn void QDialog::finished(int result)
+     \since 4.1
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/dialogs/qdialog.h qt-everywhere-src-5.14.1/qtbase/src/widgets/dialogs/qdialog.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/dialogs/qdialog.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/widgets/dialogs/qdialog.h	2020-12-09 10:51:47.000000000 -0800
+@@ -111,6 +111,7 @@
+ #ifndef QT_NO_CONTEXTMENU
+     void contextMenuEvent(QContextMenuEvent *) override;
+ #endif
++    void controllerEvent(QControllerEvent *) override;
+     bool eventFilter(QObject *, QEvent *) override;
+     void adjustPosition(QWidget*);
+ private:
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/kernel/qwidget.cpp qt-everywhere-src-5.14.1/qtbase/src/widgets/kernel/qwidget.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/kernel/qwidget.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/widgets/kernel/qwidget.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -8622,6 +8622,7 @@
+ #if QT_CONFIG(wheelevent)
+         case QEvent::Wheel:
+ #endif
++        case QEvent::Controller:
+             return false;
+         default:
+             break;
+@@ -9069,6 +9070,11 @@
+         d->renderToTextureReallyDirty = 1;
+ #endif
+         break;
++
++    case QEvent::Controller:
++        controllerEvent((QControllerEvent*)event);
++        break;
++
+ #ifndef QT_NO_PROPERTIES
+     case QEvent::DynamicPropertyChange: {
+         const QByteArray &propName = static_cast<QDynamicPropertyChangeEvent *>(event)->propertyName();
+@@ -9088,6 +9094,7 @@
+         Q_FALLTHROUGH();
+     }
+ #endif
++
+     default:
+         return QObject::event(event);
+     }
+@@ -9877,6 +9884,25 @@
+ }
+ 
+ /*!
++    \fn void QWidget::controllerEvent(QControllerEvent *event)
++
++    This event handler can be reimplemented in a subclass to receive
++    controller events. The event is passed in the \a event parameter.
++
++    \sa event(), QControllerEvent
++*/
++void QWidget::controllerEvent(QControllerEvent *event)
++{
++    if ((windowType() == Qt::Popup) && (event->isButtonBPress() || event->isButtonBRelease())) {
++        event->accept();
++        if (event->isButtonBRelease())
++            close();
++    } else {
++        event->ignore();
++    }
++}
++
++/*!
+     Ensures that the widget and its children have been polished by
+     QStyle (i.e., have a proper font and palette).
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/kernel/qwidget.h qt-everywhere-src-5.14.1/qtbase/src/widgets/kernel/qwidget.h
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/kernel/qwidget.h	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/widgets/kernel/qwidget.h	2020-12-09 10:51:47.000000000 -0800
+@@ -88,6 +88,7 @@
+ class QScreen;
+ class QShowEvent;
+ class QHideEvent;
++class QControllerEvent;
+ class QIcon;
+ class QBackingStore;
+ class QPlatformWindow;
+@@ -660,6 +661,8 @@
+     virtual bool nativeEvent(const QByteArray &eventType, void *message, long *result);
+ #endif
+ 
++    virtual void controllerEvent(QControllerEvent *);
++
+     // Misc. protected functions
+     virtual void changeEvent(QEvent *);
+ 
+diff -ruN qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/util/qflickgesture.cpp qt-everywhere-src-5.14.1/qtbase/src/widgets/util/qflickgesture.cpp
+--- qt-everywhere-src-5.14.1.orig/qtbase/src/widgets/util/qflickgesture.cpp	2020-01-23 04:37:32.000000000 -0800
++++ qt-everywhere-src-5.14.1/qtbase/src/widgets/util/qflickgesture.cpp	2020-12-09 10:51:47.000000000 -0800
+@@ -138,7 +138,7 @@
+ 
+     static PressDelayHandler *instance()
+     {
+-        static PressDelayHandler *inst = 0;
++        static QPointer<PressDelayHandler> inst;
+         if (!inst)
+             inst = new PressDelayHandler(QCoreApplication::instance());
+         return inst;
