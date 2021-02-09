@@ -17,7 +17,7 @@ export SDL_GAMECONTROLLERCONFIG_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/Valve
 exit_status=0
 restart=false
 while true; do
-    shell -platform "$QPLATFORM" "$@" || exit_status="$?"
+    shell "$@" || exit_status="$?"
 
     # See if the shell wanted to launch anything
     cmdline_file="$TMPDIR/launch_cmdline.txt"
