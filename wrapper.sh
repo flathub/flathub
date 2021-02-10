@@ -2,4 +2,4 @@
 
 set -eu
 
-exec /app/lib/scout/run.sh -- steamlink
+exec /app/lib/scout/run.sh -- /app/lib/steamlink/steamlink
