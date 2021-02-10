@@ -11,10 +11,12 @@ function xilinx_install() {
 	if [ -f "$XILINX_INSTALL_PATH/.xinstall/Vitis_2020.2/xsetup" ]; then
 		installer_path="$XILINX_INSTALL_PATH/.xinstall/Vitis_2020.2/xsetup"
 	else
+		zenity --width=300 --info --title "Missing xsetup" --text "xsetup is not installed. Please download the Xilinx Unified installer from\n<b>https://xilinx.com/downloads</b>\nand select it in the next window."
+
 		# Get the installer path
 		installer_path=$(zenity --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
 
-		zenity --warning --text "The Xilinx installer will now start. Make sure to select $XILINX_INSTALL_PATH as installation path."
+		zenity --width=300 --warning --text "The Xilinx installer will now start. Make sure to select $XILINX_INSTALL_PATH as installation path."
 		mkdir -p "$XILINX_INSTALL_PATH"
 	fi
 
@@ -24,7 +26,7 @@ function xilinx_install() {
 
 function xilinx_install_if_needed() {
 	if [ ! -f "$XILINX_INSTALL_PATH/$1" ]; then
-		zenity --question --title "Missing software" --text "$1 is not installed in $XILINX_INSTALL_PATH. Do you want to install it now?" && xilinx_install
+		zenity --width=300 --question --title "Missing software" --text "$1 is not installed in $XILINX_INSTALL_PATH. Do you want to install it now?" && xilinx_install
 	fi
 }
 
