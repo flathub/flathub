@@ -7,6 +7,7 @@ command: steamlink
 finish_args:
   - --device=all
   - --env=LD_LIBRARY_PATH=/app/lib
+  - "--env=SDL_GAMECONTROLLERCONFIG_FILE=/var/data/Valve Corporation/SteamLink/controller_map.txt"
   - --share=ipc
   - --share=network
   - --socket=pulseaudio
@@ -148,23 +149,30 @@ modules:
           install -D -m644 "$src" "$dst"
         done
 
-  - name: steamlink
+  - name: steamlink-dependencies
     sources:
       - type: archive
         #url: https://.../steamlink-flatpak-0.20210210.0.tgz
         path: _source/steamlink-flatpak-0.20210210.0.tgz
         sha256: 55184c8ff9cf96c5574da4e568488eedb28ed5369b9a5f9f0daea8a2c384a911
-      - type: file
-        path: hack-dt-needed.py
     buildsystem: simple
     build-commands:
-      - "install -d /app/lib/steamlink"
-      - "cp -a * /app/lib/steamlink"
-      - "chrpath -d /app/lib/steamlink/bin/shell"
-      - "./hack-dt-needed.py /app/lib/steamlink/bin/shell"
-      - "rm -fr /app/lib/steamlink/Qt-*"
-      - "rm -fr /app/lib/steamlink/hack-dt-needed.py*"
-      - "rm -fr /app/lib/steamlink/udev"
+      # This is wrong, but the ABIs are close enough...
+      - "ln -s /usr/lib/x86_64-linux-gnu/libudev.so.1 /app/lib/libudev.so.0"
+      - "cp -a *.txt ThirdPartyLegalNotices.* /app"
+      - "cp -a lib/* /app/lib"
+
+  - name: steamlink-binary
+    sources:
+      - type: archive
+        #url: ...
+        path: _source/steamlink-1.1.71.173.tar.gz
+        sha256: 8a0dc3ff7525cb646368429dd7aeb41407c621d7393ecd90326fe8edccf0e235
+        strip-components: 0
+    buildsystem: simple
+    build-commands:
+      - "cp -a steamlink /app/bin"
+      - "chrpath -d /app/bin/steamlink"
 
   - name: packaging
     sources:
@@ -172,12 +180,9 @@ modules:
         path: com.valvesoftware.SteamLink.appdata.xml
       - type: file
         path: com.valvesoftware.SteamLink.desktop
-      - type: file
-        path: wrapper.sh
     buildsystem: simple
     build-commands:
       - install -d /app/share/applications/
       - install -d /app/share/metainfo/
       - install -D -m644 com.valvesoftware.SteamLink.appdata.xml /app/share/metainfo/
       - install -D -m644 com.valvesoftware.SteamLink.desktop /app/share/applications/
-      - install -D -m755 wrapper.sh /app/bin/steamlink
