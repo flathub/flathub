@@ -8,8 +8,8 @@ export LD_LIBRARY_PATH=/app/lib
 export LC_NUMERIC=en_US.UTF-8	# Vivado may throw errors on locales which uses comma as decimal separator
 
 function xilinx_install() {
-	if [ -f "$XILINX_INSTALL_PATH/.xinstall/Vitis_2020.2/xsetup" ]; then
-		installer_path="$XILINX_INSTALL_PATH/.xinstall/Vitis_2020.2/xsetup"
+	if [ -f "$XILINX_INSTALL_PATH/.xinstall/xic/xsetup" ]; then
+		installer_path="$XILINX_INSTALL_PATH/.xinstall/xic/xsetup"
 	else
 		zenity --width=300 --info --title "Missing xsetup" --text "xsetup is not installed. Please download the Xilinx Unified installer from\n<b>https://xilinx.com/downloads</b>\nand select it in the next window."
 
@@ -35,5 +35,6 @@ function xilinx_install_if_needed_then_run() {
 	shift
 
 	xilinx_install_if_needed "$command"
+	. "$XILINX_INSTALL_PATH/Vivado/2020.2/settings64.sh"
 	"$XILINX_INSTALL_PATH/$command" "$@"
 }
