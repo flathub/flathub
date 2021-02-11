@@ -27,12 +27,11 @@ At the moment, it builds:
 
 and also pulls together:
 
-* icons from the Steam client
-    * this is a placeholder, ideally Steam Link would have different icons?
 * precompiled dependencies
     * suitable snapshots of SDL
     * a suitable snapshot of FFmpeg
 * the Steam Link main executable
+* icons
 * [AppStream](https://www.freedesktop.org/software/appstream/docs/) metadata
 * a [Desktop Entry](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
     to launch it with
