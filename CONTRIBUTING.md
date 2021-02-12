@@ -45,6 +45,7 @@ Rebuilding this package locally
 * `flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo`
     * Add `--user` if you prefer to install into
         `~/.local/share/flatpak` instead of `/var/lib/flatpak`
+* `flatpak install org.freedesktop.Platform/x86_64/20.08`
 * `flatpak install org.freedesktop.Sdk/x86_64/20.08`
 
 ### Get the binaries
