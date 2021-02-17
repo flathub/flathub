@@ -11,7 +11,10 @@ function xilinx_install() {
 	if [ -f "$XILINX_INSTALL_PATH/.xinstall/xic/xsetup" ]; then
 		installer_path="$XILINX_INSTALL_PATH/.xinstall/xic/xsetup"
 	else
-		zenity --width=600 --info --title "Missing xsetup" --text "xsetup is not installed. Please download the Xilinx Unified installer from\n<b>https://xilinx.com/downloads</b>\nand select it in the next window."
+		zenity --width=600 --info --title "Missing xsetup" --text "xsetup is not installed. Please download the Xilinx Unified installer and select it in the next window."
+
+		# Launch the browser
+		xdg-open 'https://www.xilinx.com/support/download.html'
 
 		# Get the installer path
 		installer_path=$(zenity --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
