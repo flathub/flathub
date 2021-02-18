@@ -21,20 +21,18 @@ At the moment, it builds:
     * TODO: Has some/all of the controller support gone upstream?
 * `qtsvg`
     * this is straight from org.kde.Sdk, and not patched
-* `chrpath`
-    * we use this to remove unwanted RPATHs
-    * Debian is the closest it has to an upstream developer
 
 and also pulls together:
 
 * precompiled dependencies
-    * suitable snapshots of SDL
+    * suitable snapshots of SDL (these are patched, upstream SDL is not enough)
     * a suitable snapshot of FFmpeg
 * the Steam Link main executable
-* icons
-* [AppStream](https://www.freedesktop.org/software/appstream/docs/) metadata
-* a [Desktop Entry](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
-    to launch it with
+* metadata:
+    * icons
+    * [AppStream](https://www.freedesktop.org/software/appstream/docs/) metadata
+    * a [Desktop Entry](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
+        to launch it with
 
 Rebuilding this package locally
 -------------------------------
