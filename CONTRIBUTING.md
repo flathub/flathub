@@ -46,17 +46,6 @@ Rebuilding this package locally
 * `flatpak install org.freedesktop.Platform/x86_64/20.08`
 * `flatpak install org.freedesktop.Sdk/x86_64/20.08`
 
-### Get the binaries
-
-The Steam Link binaries aren't available to the public yet, so the
-manifest can't refer to them by URL like it can when they're public.
-Instead, for now:
-
-* Look in `com.valvesoftware.SteamLink.yml` to find what binaries are
-    expected to be found in `_source/`
-* Create a `./_source/` directory
-* Put the archive(s) in there
-
 ### Build
 
 Run `flatpak-builder(1)` according to its documentation. For convenience,
