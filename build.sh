@@ -1,4 +1,14 @@
-#!/bin/sh
+#!/bin/bash
+
+YML=com.valvesoftware.SteamLink.yml
+while :; do
+    case $1 in
+        --yml) YML=$2
+        ;;
+        *) break
+    esac
+    shift
+done
 
 mkdir -p _source
 flatpak-builder \
@@ -6,7 +16,7 @@ flatpak-builder \
     --repo=_build/repo \
     --extra-sources=_source \
     _build \
-    com.valvesoftware.SteamLink.yml
+    ${YML}
 
 flatpak \
     build-bundle \
