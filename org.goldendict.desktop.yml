@@ -1,0 +1,130 @@
+app-id: org.goldendict.desktop
+runtime: org.kde.Platform
+runtime-version: '5.15'
+branch: stable
+sdk: org.kde.Sdk
+base-version: '5.15'
+command: goldendict
+# separate-locales: false
+base: io.qt.qtwebkit.BaseApp
+finish-args:
+  - --share=ipc
+  # GoldenDict use lots of X11 functions and it currently cannot work
+  # natively on Wayland.
+  - --socket=x11
+  - --device=dri # hardware acceleration
+  - --socket=pulseaudio # videos/audios
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+rename-appdata-file: goldendict.appdata.xml
+rename-desktop-file: goldendict.desktop
+modules:
+  - name: opencc
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        CC: 'ccache gcc'
+        CXX: 'ccache g++'
+    sources:
+      - type: git
+        url: https://github.com/BYVoid/OpenCC
+        tag: ver.1.1.1
+        x-checker-data:
+          type: anitya
+          project-id: 7230
+          tag-template: ver.$version
+
+  - name: lzo2
+    config-opts:
+      - '--enable-shared'
+      - '--disable-static'
+    cleanup:
+      - /include
+      - /share/doc
+      - '*.la'
+      - /lib/*.so
+    sources:
+      - type: archive
+        url: 'https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz'
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+        x-checker-data:
+          type: anitya
+          project-id: 1868
+          url-template: http://www.oberhumer.com/opensource/lzo/download/lzo-$version.tar.gz
+
+  - name: eb
+    config-opts:
+      - '--enable-shared'
+      - '--disable-static'
+    cleanup:
+      - /bin
+      - /share/doc
+    sources:
+      - type: git
+        url: https://salsa.debian.org/debian/eb
+        tag: debian/4.4.3-13
+        x-checker-data:
+          type: anitya
+          project-id: 155542
+          tag-template: debian/$version
+
+  - name: zstd
+    'buildsystem': 'meson'
+    'subdir': 'build/meson'
+    'config-opts':
+      - -Dbin_programs=false
+      - -Dbin_contrib=false
+    sources:
+      - type: git
+        url: 'https://github.com/facebook/zstd.git'
+        tag: v1.4.8
+        x-checker-data:
+          type: anitya
+          project-id: 12083
+          tag-template: v$version
+
+  - name: libao
+    cleanup:
+      - /include
+      - '*.la'
+      - /lib/pkgconfig
+      - /lib/ckport
+      - /share
+    sources:
+      - type: archive
+        url: 'https://downloads.xiph.org/releases/ao/libao-1.2.0.tar.gz'
+        sha256: 03ad231ad1f9d64b52474392d63c31197b0bc7bd416e58b1c10a329a5ed89caf
+        x-checker-data:
+          type: anitya
+          project-id: 7629
+          url-template: 'https://downloads.xiph.org/releases/ao/libao-$version.tar.gz'
+
+  - name: goldendict
+    buildsystem: qmake
+    build-options:
+      env:
+        CC: 'ccache gcc'
+        CXX: 'ccache g++'
+        QMAKEPATH: '/app/lib'
+        LD_LIBRARY_PATH: ${LD_LIBRARY_PATH}:/app/lib/:/usr/lib
+    config-opts:
+      - DEFINES+=USE_DBUS
+      - INCLUDEPATH+="${FLATPAK_DEST}/include/QtWebKitWidgets"
+      - INCLUDEPATH+="${FLATPAK_DEST}/include/QtWebKit"
+      - CONFIG+=release
+    build-commands:
+      - sed -i "s,Icon=goldendict,Icon=${FLATPAK_ID}," redist/goldendict.desktop
+      - sed -i "s,<launchable type="desktop-id">goldendict.desktop</launchable>,<launchable type="desktop-id">${FLATPAK_ID}.desktop</launchable>," redist/goldendict.appdata.xml
+      - make -j$(nproc)
+      - make -j$(nproc) install
+      - install -Dm644 redist/icons/goldendict.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    sources:
+      - type: git
+        url: https://github.com/goldendict/goldendict
+        commit: 278c143a055a03934691557d9babb02c96c439e5
+        x-checker-data:
+          type: anitya
+          project-id: 148566
+          commit-template: v$version
+    cleanup:
+      - /share/pixmaps
