@@ -1,0 +1,92 @@
+app-id: org.mozilla.FirefoxNightly
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+base: org.mozilla.firefox.BaseApp
+base-version: '20.08'
+command: firefox-nightly
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --filesystem=xdg-download
+
+modules:
+  - name: metadata
+    buildsystem: simple
+    build-options:
+      env:
+        VERSION: '87.0'
+    build-commands:
+      # symbolic-icon
+      - install -Dm644 firefox-symbolic.svg
+        "${FLATPAK_DEST}/share/icons/hicolor/symbolic/apps/${FLATPAK_ID}-symbolic.svg"
+
+      # Install the wrapper script to start it.
+      - sed -i -e 's/__DEFAULT_WAYLAND__/true/'
+        -e "s,\$MOZ_LIB_DIR/,${FLATPAK_DEST}/,g"
+        -e "s,/__PREFIX__/bin/firefox,/__PREFIX__/bin/firefox-nightly,g"
+        -e 's,/__PREFIX__,${FLATPAK_DEST},g' firefox.sh.in
+      - 'install -Dm 755 firefox.sh.in ${FLATPAK_DEST}/bin/firefox-nightly'
+
+      # Metainfo
+      - sed -i -e "s/__VERSION__/${VERSION}/"
+        -e "s/__DATE__/$(date '+%F')/"
+        -e "s/firefox.desktop/${FLATPAK_ID}.desktop/g"
+        -e "s,<translation type=\"gettext\">firefox</translation>,<translation type=\"gettext\">${FLATPAK_ID}</translation>,g"
+        firefox.appdata.xml.in
+      - appstream-util modify firefox.appdata.xml.in releases "<release version=\"${VERSION}\" date=\"`date --iso-8601`\"/>"
+      - sed -i -e "s,<releases>&lt;,<releases><," -e "s,&gt;</releases>,></releases>," firefox.appdata.xml.in
+      - install -Dm644 firefox.appdata.xml.in ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+      # Desktop Entry
+      - sed -i -e "s,Exec=firefox ,Exec=firefox-nightly --name ${FLATPAK_ID} ,g"
+        -e "s,Icon=firefox,Icon=${FLATPAK_ID},g"
+        -e "s,Name=Firefox,Name=Firefox Nightly,g" firefox.desktop
+      - install -Dm644 firefox.desktop
+        ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+
+      # Search Provider
+      - sed -i -e 's/firefox.desktop/${FLATPAK_ID}.desktop/' firefox-search-provider.ini
+      - install -Dm644 firefox-search-provider.ini
+        ${FLATPAK_DEST}/share/gnome-shell/search-providers/${FLATPAK_ID}-search-provider.ini
+
+      # Copy over run-mozilla.sh
+      - install -Dm755 run-mozilla.sh ${FLATPAK_DEST}/firefox/run-mozilla.sh
+    sources:
+      - type: git
+        url: https://src.fedoraproject.org/rpms/firefox.git
+        branch: main
+      - type: file
+        url: https://hg.mozilla.org/mozilla-central/raw-file/ffe056c7c496395708f643aeb00910622d689f64/build/unix/run-mozilla.sh
+        sha256: e7fadbe1e407362d492263b5dcb66b131605643611e200bf526b4a52ae2a636b
+        dest-filename: run-mozilla.sh
+
+  - name: firefox-nightly
+    buildsystem: simple
+    build-commands:
+      ## Firefox explicitly supports python3, so its also our choice of interpreter. Note that there is no dependency on python.
+      ## These scripts are only used when generating debug information in case of a crash, so not critical to the operation of firefox.
+      - find . -name '*.py' -type f -exec sed -i -e
+        's,!/usr/bin/python,!/usr/bin/python3,' -e 's,/usr/bin/env
+        python,/usr/bin/env python3,' -s {} \;
+
+      - for size in 16 32 48 64 128; do [[ -e
+        "browser/chrome/icons/default/default${size}.png" ]] && install
+        -Dm644 "browser/chrome/icons/default/default${size}.png"
+        "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png"; done
+
+      # Blobs provided by Mozilla
+      - cp -rf . ${FLATPAK_DEST}/firefox
+      - rm -f ${FLATPAK_DEST}/firefox/firefox-config
+      - rm -f ${FLATPAK_DEST}/firefox/update-settings.ini
+    sources:
+      - type: archive
+        url: https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-87.0a1.en-US.linux-x86_64.tar.bz2
+        sha512: 4379c334f409945d1d0b0de3e8573fffb579b98c90e930115be75734e24308fa6d412c002b8212ac39003593f8002d2f4d70dab11769fa9ce9b3766ca06bcb04
