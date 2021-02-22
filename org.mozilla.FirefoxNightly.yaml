@@ -20,9 +20,6 @@ finish-args:
 modules:
   - name: metadata
     buildsystem: simple
-    build-options:
-      env:
-        VERSION: '87.0'
     build-commands:
       # symbolic-icon
       - install -Dm644 firefox-symbolic.svg
@@ -35,16 +32,6 @@ modules:
         -e 's,/__PREFIX__,${FLATPAK_DEST},g' firefox.sh.in
       - 'install -Dm 755 firefox.sh.in ${FLATPAK_DEST}/bin/firefox-nightly'
 
-      # Metainfo
-      - sed -i -e "s/__VERSION__/${VERSION}/"
-        -e "s/__DATE__/$(date '+%F')/"
-        -e "s/firefox.desktop/${FLATPAK_ID}.desktop/g"
-        -e "s,<translation type=\"gettext\">firefox</translation>,<translation type=\"gettext\">${FLATPAK_ID}</translation>,g"
-        firefox.appdata.xml.in
-      - appstream-util modify firefox.appdata.xml.in releases "<release version=\"${VERSION}\" date=\"`date --iso-8601`\"/>"
-      - sed -i -e "s,<releases>&lt;,<releases><," -e "s,&gt;</releases>,></releases>," firefox.appdata.xml.in
-      - install -Dm644 firefox.appdata.xml.in ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-
       # Desktop Entry
       - sed -i -e "s,Exec=firefox ,Exec=firefox-nightly --name ${FLATPAK_ID} ,g"
         -e "s,Icon=firefox,Icon=${FLATPAK_ID},g"
@@ -56,17 +43,76 @@ modules:
       - sed -i -e 's/firefox.desktop/${FLATPAK_ID}.desktop/' firefox-search-provider.ini
       - install -Dm644 firefox-search-provider.ini
         ${FLATPAK_DEST}/share/gnome-shell/search-providers/${FLATPAK_ID}-search-provider.ini
-
-      # Copy over run-mozilla.sh
-      - install -Dm755 run-mozilla.sh ${FLATPAK_DEST}/firefox/run-mozilla.sh
     sources:
       - type: git
         url: https://src.fedoraproject.org/rpms/firefox.git
         branch: main
+
+  # Use the mozilla-provided metadata which has better presentation
+  - name: metainfo
+    buildsystem: simple
+    build-options:
+      env:
+        VERSION: '87.0'
+    build-commands:
+      - sed -i
+        -e "s/\$VERSION/${VERSION}/"
+        -e "s/\$DATE/$(date '+%F')/"
+        -e "s/org.mozilla.firefox/${FLATPAK_ID}/"
+        -e "s/org.mozilla.firefox.desktop/${FLATPAK_ID}.desktop/g"
+        org.mozilla.firefox.appdata.xml.in
+      - install -Dm644 org.mozilla.firefox.appdata.xml.in ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: file
+        url: https://hg.mozilla.org/mozilla-central/raw-file/ffe056c7c496395708f643aeb00910622d689f64/taskcluster/docker/firefox-flatpak/org.mozilla.firefox.appdata.xml.in
+        sha256: c46f8b4efd19a3ca34cfb3b3d61c5a178db5839694cfe2675fca4620eaa807ab
+        dest-filename: org.mozilla.firefox.appdata.xml.in
+
+  - name: run-mozilla
+    buildsystem: simple
+    build-commands:
+      # Copy over run-mozilla.sh
+      - install -Dm755 run-mozilla.sh ${FLATPAK_DEST}/firefox/run-mozilla.sh
+    sources:
       - type: file
         url: https://hg.mozilla.org/mozilla-central/raw-file/ffe056c7c496395708f643aeb00910622d689f64/build/unix/run-mozilla.sh
         sha256: e7fadbe1e407362d492263b5dcb66b131605643611e200bf526b4a52ae2a636b
         dest-filename: run-mozilla.sh
+
+  # https://bugzilla.mozilla.org/show_bug.cgi?id=1675312
+  - name: default-preferences
+    buildsystem: simple
+    build-commands:
+      # Copy over run-mozilla.sh
+      - install -Dm644 default-preferences.js ${FLATPAK_DEST}/firefox/browser/defaults/preferences/default-preferences.js
+    sources:
+      - type: file
+        url: https://hg.mozilla.org/mozilla-central/raw-file/ffe056c7c496395708f643aeb00910622d689f64/taskcluster/docker/firefox-flatpak/default-preferences.js
+        sha256: 23faaa790d55eab99c7131008b47859c100297a74eb53530763e34c5f4eebed1
+        dest-filename: default-preferences.js
+    
+  - name: policies
+    buildsystem: simple
+    build-commands:
+      # Copy over run-mozilla.sh
+      - install -Dm644 policies.json ${FLATPAK_DEST}/firefox/distribution/policies.json
+    sources:
+      - type: file
+        url: https://hg.mozilla.org/mozilla-central/raw-file/ffe056c7c496395708f643aeb00910622d689f64/taskcluster/docker/firefox-flatpak/policies.json
+        sha256: 35b68797094749f1d0553b3bc9f4154f323729c0d37345e472f249aab73be1bf
+        dest-filename: policies.json
+    
+
+  # https://searchfox.org/mozilla-central/source/taskcluster/docker/firefox-flatpak/runme.sh#52
+  - name: distribution
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 desktop/flatpak/distribution/distribution.ini ${FLATPAK_DEST}/firefox/distribution/distribution.ini
+    sources:
+      - type: git
+        url: https://github.com/mozilla-partners/flatpak.git
+        branch: master
+        commit: ae102c3789bd719c5ff11a67533115132281286e
 
   - name: firefox-nightly
     buildsystem: simple
