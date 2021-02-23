@@ -4,9 +4,6 @@ if [ -z "$XILINX_INSTALL_PATH" ]; then
 	export XILINX_INSTALL_PATH="/home/$USER/.Xilinx/install"
 fi
 
-export LD_LIBRARY_PATH=/app/lib
-export LC_NUMERIC=en_US.UTF-8	# Vivado may throw errors on locales which uses comma as decimal separator
-
 function xilinx_install() {
 	if [ -f "$XILINX_INSTALL_PATH/.xinstall/xic/xsetup" ]; then
 		installer_path="$XILINX_INSTALL_PATH/.xinstall/xic/xsetup"
