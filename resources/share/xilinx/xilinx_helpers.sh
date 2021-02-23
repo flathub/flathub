@@ -1,7 +1,7 @@
 #/bin/sh
 
 if [ -z "$XILINX_INSTALL_PATH" ]; then
-	export XILINX_INSTALL_PATH="/home/$USER/.Xilinx/install"
+	XILINX_INSTALL_PATH="$XDG_DATA_HOME/xilinx"
 fi
 
 function xilinx_install() {
@@ -28,7 +28,7 @@ function xilinx_install() {
 
 function xilinx_install_if_needed() {
 	if [ ! -f "$XILINX_INSTALL_PATH/$1" ]; then
-		zenity --width=600 --question --title "Missing software" --text "$1 is not installed in $XILINX_INSTALL_PATH. Do you want to install it now?" && xilinx_install
+		zenity --width=400 --question --title "Missing software" --text "$(basename $1) is not installed. Do you want to install it now?" && xilinx_install
 	fi
 }
 
