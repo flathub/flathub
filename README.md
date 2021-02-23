@@ -12,7 +12,7 @@ has no access outside of the sandbox.
 Local installation via flatpak-builder:
 
 ```bash
-flatpak-builder --user --force-clean --install build org.squirrelsql.squirrelsql.json
+flatpak-builder --user --force-clean --install build net.sourceforge.squirrel_sql.json
 ```
 
 This flatpak includes the JDBC drivers for PostgreSQL, MySQL, SQLite, and MariaDB.
