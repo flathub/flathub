@@ -1,4 +1,4 @@
-#/bin/sh
+#/bin/bash
 
 if [ -z "$XILINX_INSTALL_PATH" ]; then
 	XILINX_INSTALL_PATH="$XDG_DATA_HOME/xilinx"
@@ -37,6 +37,18 @@ function xilinx_install_if_needed_then_run() {
 	shift
 
 	xilinx_install_if_needed "$command"
-	. "$XILINX_INSTALL_PATH/Vivado/2020.2/settings64.sh"
+
+	SETTINGS64_DIR=$(mktemp -d)
+
+	# Fix the paths in .settings64*.sh (so that the installation can be freely moved)
+	find "$XILINX_INSTALL_PATH" -maxdepth 3 -name ".settings64*.sh" -exec cp {} "$SETTINGS64_DIR" \;
+	find "$SETTINGS64_DIR" -type f -exec sed -i -E "s@=.*/(Vivado|Vitis|DocNav)@=$XILINX_INSTALL_PATH/\1@g" {} \;
+
+	# Replace the absolute paths in Vivado/*/settings64.sh with relative ones
+	sed "s|source .*/.settings64|source $SETTINGS64_DIR/.settings64|g" "$XILINX_INSTALL_PATH/Vivado/2020.2/settings64.sh" > "$SETTINGS64_DIR/settings64.sh"
+
+	. "$SETTINGS64_DIR/settings64.sh"
+	rm -rf "$SETTINGS64_DIR"
+
 	"$XILINX_INSTALL_PATH/$command" "$@"
 }
