@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e
+set -x
+
 YML=com.valvesoftware.SteamLink.yml
 while :; do
     case $1 in
