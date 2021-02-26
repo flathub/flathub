@@ -1,0 +1,67 @@
+From b2ad7c68c3478c433a0ede4aed6afb2f0b32702c Mon Sep 17 00:00:00 2001
+From: Rafostar <40623528+Rafostar@users.noreply.github.com>
+Date: Sun, 10 Jan 2021 15:44:45 +0100
+Subject: [PATCH] matroska: fix attachments detection in large data blocks
+
+Due to max block size limit being set to 15MB, large
+attachments (fonts of few MB in size) were undetected
+as attachments consist of single data block. Raise max
+data block limit to 60MB to fix that.
+---
+ gst/matroska/matroska-demux.c | 34 ++++++++++++++++------------------
+ 1 file changed, 16 insertions(+), 18 deletions(-)
+
+diff --git a/gst/matroska/matroska-demux.c b/gst/matroska/matroska-demux.c
+index 4d0234743..ce906e5a3 100644
+--- a/gst/matroska/matroska-demux.c
++++ b/gst/matroska/matroska-demux.c
+@@ -5115,30 +5115,28 @@ gst_matroska_demux_parse_contents (GstMatroskaDemux * demux, GstEbmlRead * ebml)
+ }
+ 
+ #define GST_FLOW_OVERFLOW   GST_FLOW_CUSTOM_ERROR
+-
+-#define MAX_BLOCK_SIZE (15 * 1024 * 1024)
++#define MAX_BLOCK_SIZE (60 * 1024 * 1024)
+ 
+ static inline GstFlowReturn
+ gst_matroska_demux_check_read_size (GstMatroskaDemux * demux, guint64 bytes)
+ {
+-  if (G_UNLIKELY (bytes > MAX_BLOCK_SIZE)) {
+-    /* only a few blocks are expected/allowed to be large,
+-     * and will be recursed into, whereas others will be read and must fit */
+-    if (demux->streaming) {
+-      /* fatal in streaming case, as we can't step over easily */
+-      GST_ELEMENT_ERROR (demux, STREAM, DEMUX, (NULL),
+-          ("reading large block of size %" G_GUINT64_FORMAT " not supported; "
+-              "file might be corrupt.", bytes));
+-      return GST_FLOW_ERROR;
+-    } else {
+-      /* indicate higher level to quietly give up */
+-      GST_DEBUG_OBJECT (demux,
+-          "too large block of size %" G_GUINT64_FORMAT, bytes);
+-      return GST_FLOW_ERROR;
+-    }
+-  } else {
++  if (G_LIKELY (bytes <= MAX_BLOCK_SIZE))
+     return GST_FLOW_OK;
++
++  /* only a few blocks are expected/allowed to be large,
++   * and will be recursed into, whereas others will be read and must fit */
++  if (demux->streaming) {
++    /* fatal in streaming case, as we can't step over easily */
++    GST_ELEMENT_ERROR (demux, STREAM, DEMUX, (NULL),
++        ("reading large block of size %" G_GUINT64_FORMAT " not supported; "
++            "file might be corrupt.", bytes));
++  } else {
++    /* indicate higher level to quietly give up */
++    GST_DEBUG_OBJECT (demux, "too large block of size %" G_GUINT64_FORMAT,
++        bytes);
+   }
++
++  return GST_FLOW_ERROR;
+ }
+ 
+ /* returns TRUE if we truly are in error state, and should give up */
+-- 
+2.29.2
+

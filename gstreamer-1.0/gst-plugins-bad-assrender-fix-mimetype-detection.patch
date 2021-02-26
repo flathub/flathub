@@ -1,0 +1,89 @@
+From ab9ceccc8b7f0591f580abfa6901d27c49812a94 Mon Sep 17 00:00:00 2001
+From: Rafostar <40623528+Rafostar@users.noreply.github.com>
+Date: Sun, 10 Jan 2021 20:22:43 +0100
+Subject: [PATCH 1/2] assrender: fix mimetype detection
+
+Previously gst_structure_has_name was used to get a string to compare with supported mimetypes.
+This is incorrect as above function returns a user defined structure name which is
+not the structure mimetype value.
+---
+ ext/assrender/gstassrender.c | 21 ++++++++++++---------
+ 1 file changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/ext/assrender/gstassrender.c b/ext/assrender/gstassrender.c
+index e6d31985b..a69d3fe78 100644
+--- a/ext/assrender/gstassrender.c
++++ b/ext/assrender/gstassrender.c
+@@ -1557,7 +1557,7 @@ gst_ass_render_handle_tag_sample (GstAssRender * render, GstSample * sample)
+   const GstStructure *structure;
+   gboolean valid_mimetype, valid_extension;
+   guint i;
+-  const gchar *filename;
++  const gchar *mimetype, *filename;
+ 
+   buf = gst_sample_get_buffer (sample);
+   structure = gst_sample_get_info (sample);
+@@ -1565,20 +1565,23 @@ gst_ass_render_handle_tag_sample (GstAssRender * render, GstSample * sample)
+   if (!buf || !structure)
+     return;
+ 
++  filename = gst_structure_get_string (structure, "filename");
++  if (!filename)
++    return;
++
+   valid_mimetype = FALSE;
+   valid_extension = FALSE;
+ 
+-  for (i = 0; i < G_N_ELEMENTS (mimetypes); i++) {
+-    if (gst_structure_has_name (structure, mimetypes[i])) {
+-      valid_mimetype = TRUE;
+-      break;
++  mimetype = gst_structure_get_string (structure, "mimetype");
++  if (mimetype) {
++    for (i = 0; i < G_N_ELEMENTS (mimetypes); i++) {
++      if (strcmp (mimetype, mimetypes[i]) == 0) {
++        valid_mimetype = TRUE;
++        break;
++      }
+     }
+   }
+ 
+-  filename = gst_structure_get_string (structure, "filename");
+-  if (!filename)
+-    return;
+-
+   if (!valid_mimetype) {
+     guint len = strlen (filename);
+     const gchar *extension = filename + len - 4;
+-- 
+2.28.0
+
+
+From fd7d46171b2abcd3ac247491f01a91444e7b95b2 Mon Sep 17 00:00:00 2001
+From: Rafostar <40623528+Rafostar@users.noreply.github.com>
+Date: Sun, 10 Jan 2021 20:26:58 +0100
+Subject: [PATCH 2/2] assrender: add "vnd.ms-opentype" to supported mimetypes
+
+The "application/vnd.ms-opentype" mimetype is commonly used mimetype
+for fonts with .otf extension, handle it without checking the file extension.
+---
+ ext/assrender/gstassrender.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ext/assrender/gstassrender.c b/ext/assrender/gstassrender.c
+index a69d3fe78..96b062c50 100644
+--- a/ext/assrender/gstassrender.c
++++ b/ext/assrender/gstassrender.c
+@@ -1546,7 +1546,8 @@ gst_ass_render_handle_tag_sample (GstAssRender * render, GstSample * sample)
+   static const gchar *mimetypes[] = {
+     "application/x-font-ttf",
+     "application/x-font-otf",
+-    "application/x-truetype-font"
++    "application/x-truetype-font",
++    "application/vnd.ms-opentype"
+   };
+   static const gchar *extensions[] = {
+     ".otf",
+-- 
+2.28.0
+

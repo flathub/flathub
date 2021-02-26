@@ -1,0 +1,142 @@
+From 61a66babede5a587783a1d4eb28e950a755ff362 Mon Sep 17 00:00:00 2001
+From: Rafostar <rafostar.github@gmail.com>
+Date: Wed, 25 Nov 2020 14:44:21 +0100
+Subject: [PATCH] subparse: Autodetect subtitle text encoding
+
+Use "uchardet" to guess the subtitle text encoding if it is not in UTF-8
+or manually specified instead of blindly guessing its "ISO-8859-15".
+The "uchardet" dependency is optional and when is not available at
+compile time, then old behaviour will be used.
+---
+ gst/subparse/gstsubparse.c | 58 +++++++++++++++++++++++++++++++++-----
+ gst/subparse/meson.build   | 12 ++++++--
+ 2 files changed, 61 insertions(+), 9 deletions(-)
+
+diff --git a/gst/subparse/gstsubparse.c b/gst/subparse/gstsubparse.c
+index 382e430f2..42283d2d1 100644
+--- a/gst/subparse/gstsubparse.c
++++ b/gst/subparse/gstsubparse.c
+@@ -31,6 +31,10 @@
+ #include <sys/types.h>
+ #include <glib.h>
+ 
++#if defined(HAVE_UCHARDET)
++#include <uchardet.h>
++#endif
++
+ #include "gstsubparse.h"
+ #include "gstssaparse.h"
+ #include "samiparse.h"
+@@ -148,8 +152,9 @@ gst_sub_parse_class_init (GstSubParseClass * klass)
+           "Encoding to assume if input subtitles are not in UTF-8 or any other "
+           "Unicode encoding. If not set, the GST_SUBTITLE_ENCODING environment "
+           "variable will be checked for an encoding to use. If that is not set "
+-          "either, ISO-8859-15 will be assumed.", DEFAULT_ENCODING,
+-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
++          "either, then if plugin was build with uchardet support it will be "
++          "used to guess the encoding, otherwise ISO-8859-15 will be assumed.",
++          DEFAULT_ENCODING, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+ 
+   g_object_class_install_property (object_class, PROP_VIDEOFPS,
+       gst_param_spec_fraction ("video-fps", "Video framerate",
+@@ -439,6 +444,35 @@ detect_encoding (const gchar * str, gsize len)
+   return NULL;
+ }
+ 
++static gchar *
++uchardet_detect_encoding (const gchar * str, gsize len)
++{
++  gchar *charset = NULL;
++  gint retval;
++
++#if defined(HAVE_UCHARDET)
++  uchardet_t handle = uchardet_new ();
++  retval = uchardet_handle_data (handle, str, len);
++
++  GST_DEBUG ("detecting encoding with uchardet using %li characters", len);
++
++  if (retval != 0) {
++    GST_WARNING ("could not handle data with uchardet");
++  } else {
++    uchardet_data_end (handle);
++    charset = g_strdup (uchardet_get_charset (handle));
++
++    if (charset == NULL || *charset == '\0')
++      GST_WARNING ("uchardet could not detect encoding");
++    else
++      GST_INFO ("uchardet detected encoding: %s", charset);
++  }
++  uchardet_delete (handle);
++#endif
++
++  return charset;
++}
++
+ static gchar *
+ convert_encoding (GstSubParse * self, const gchar * str, gsize len,
+     gsize * consumed)
+@@ -481,11 +515,18 @@ convert_encoding (GstSubParse * self, const gchar * str, gsize len,
+     encoding = g_getenv ("GST_SUBTITLE_ENCODING");
+   }
+   if (encoding == NULL || *encoding == '\0') {
+-    /* if local encoding is UTF-8 and no encoding specified
+-     * via the environment variable, assume ISO-8859-15 */
+-    if (g_get_charset (&encoding)) {
++    /* no encoding specified via the environment variable either,
++     * so try to autodetect with uchardet */
++    encoding = uchardet_detect_encoding (str, len);
++  }
++
++  /* if uchardet failed and local encoding is UTF-8, assume ISO-8859-15 */
++  if (encoding == NULL || *encoding == '\0') {
++    if (g_get_charset (&encoding))
+       encoding = "ISO-8859-15";
+-    }
++  } else {
++    /* reuse the detected encoding from now on */
++    self->detected_encoding = g_strdup (encoding);
+   }
+ 
+   ret = gst_convert_to_utf8 (str, len, encoding, consumed, &err);
+@@ -2159,7 +2200,10 @@ gst_subparse_type_find (GstTypeFind * tf, gpointer private)
+     enc = g_getenv ("GST_SUBTITLE_ENCODING");
+     if (enc == NULL || *enc == '\0') {
+       /* if local encoding is UTF-8 and no encoding specified
+-       * via the environment variable, assume ISO-8859-15 */
++       * via the environment variable, assume ISO-8859-15
++       *
++       * Encoding here is only used for type find, so no need
++       * to run through uchardet at this point */
+       if (g_get_charset (&enc)) {
+         enc = "ISO-8859-15";
+       }
+diff --git a/gst/subparse/meson.build b/gst/subparse/meson.build
+index 9a76601f0..2dcf8830f 100644
+--- a/gst/subparse/meson.build
++++ b/gst/subparse/meson.build
+@@ -6,12 +6,20 @@ subparse_sources = [
+   'mpl2parse.c',
+   'qttextparse.c',
+ ]
++subparse_defines = []
++subparse_optional_deps = []
++
++subparse_uchardet_dep = dependency('uchardet', required : false)
++if subparse_uchardet_dep.found()
++  subparse_defines += '-DHAVE_UCHARDET'
++  subparse_optional_deps += subparse_uchardet_dep
++endif
+ 
+ gstsubparse = library('gstsubparse',
+   subparse_sources,
+-  c_args : gst_plugins_base_args,
++  c_args : gst_plugins_base_args + subparse_defines,
+   include_directories: [configinc, libsinc],
+-  dependencies : [gst_base_dep],
++  dependencies : [gst_base_dep] + subparse_optional_deps,
+   install : true,
+   install_dir : plugins_install_dir,
+ )
+-- 
+2.26.2
+

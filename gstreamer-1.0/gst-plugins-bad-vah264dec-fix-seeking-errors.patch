@@ -1,0 +1,75 @@
+From f9af93d841546ca7898350ae14ed57448b24a644 Mon Sep 17 00:00:00 2001
+From: Seungha Yang <seungha@centricular.com>
+Date: Sat, 14 Nov 2020 03:16:07 +0900
+Subject: [PATCH 1/2] codecs: h264decoder: Don't give up to decode due to
+ missing reference picture
+
+Missing reference picture is very common thing for broken/malformed stream.
+Decoder should be able to keep decoding if it's not a very critical error.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gst-plugins-bad/-/merge_requests/1809>
+---
+ gst-libs/gst/codecs/gsth264decoder.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gst-libs/gst/codecs/gsth264decoder.c b/gst-libs/gst/codecs/gsth264decoder.c
+index e6d20af208..40446d92df 100644
+--- a/gst-libs/gst/codecs/gsth264decoder.c
++++ b/gst-libs/gst/codecs/gsth264decoder.c
+@@ -2354,7 +2354,7 @@ modify_ref_pic_list (GstH264Decoder * self, int list)
+         if (!pic) {
+           GST_WARNING_OBJECT (self, "Malformed stream, no pic num %d",
+               pic_num_lx);
+-          return FALSE;
++          break;
+         }
+         shift_right_and_insert (ref_pic_listx, ref_idx_lx,
+             num_ref_idx_lX_active_minus1, pic);
+@@ -2380,7 +2380,7 @@ modify_ref_pic_list (GstH264Decoder * self, int list)
+         if (!pic) {
+           GST_WARNING_OBJECT (self, "Malformed stream, no pic num %d",
+               list_mod->value.long_term_pic_num);
+-          return FALSE;
++          break;
+         }
+         shift_right_and_insert (ref_pic_listx, ref_idx_lx,
+             num_ref_idx_lX_active_minus1, pic);
+-- 
+GitLab
+
+
+From 9011a58491b089461762a8f550892de434af5c29 Mon Sep 17 00:00:00 2001
+From: Seungha Yang <seungha@centricular.com>
+Date: Sat, 14 Nov 2020 03:20:19 +0900
+Subject: [PATCH 2/2] vah264dec: Allow missing reference picture
+
+baseclass might provide reference picture list with null picture.
+Ensure picture before filling picture information.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gst-plugins-bad/-/merge_requests/1809>
+---
+ sys/va/gstvah264dec.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/sys/va/gstvah264dec.c b/sys/va/gstvah264dec.c
+index e90f84bb44..184af430fa 100644
+--- a/sys/va/gstvah264dec.c
++++ b/sys/va/gstvah264dec.c
+@@ -198,7 +198,13 @@ _fill_ref_pic_list (VAPictureH264 va_reflist[32], GArray * reflist)
+ 
+   for (i = 0; i < reflist->len; i++) {
+     GstH264Picture *picture = g_array_index (reflist, GstH264Picture *, i);
+-    _fill_vaapi_pic (&va_reflist[i], picture);
++
++    if (picture) {
++      _fill_vaapi_pic (&va_reflist[i], picture);
++    } else {
++      /* list might include null picture if reference picture was missing */
++      _init_vaapi_pic (&va_reflist[i]);
++    }
+   }
+ 
+   for (; i < 32; i++)
+-- 
+GitLab
+
