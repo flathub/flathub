@@ -1,6 +1,6 @@
 # Matcha-light-sea on Flathub
 
-To install Matcha-light-sea theme hosted on Flathub, use the following:
+To install the Matcha-light-sea theme hosted on Flathub, use the following:
 ```
 flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install flathub org.gtk.Gtk3theme.Matcha-light-sea
