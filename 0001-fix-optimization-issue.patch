@@ -1,0 +1,119 @@
+From 52e9d7fa49c1da30ece8909d80e3aeafeda2760e Mon Sep 17 00:00:00 2001
+From: ameerj <52414509+ameerj@users.noreply.github.com>
+Date: Sun, 28 Feb 2021 22:03:00 -0500
+Subject: [PATCH] gpu_thread: Remove Async NVDEC placeholders
+
+This commit removes early placeholders for an implementation of async nvdec. With recent changes to the source code, the placeholders are no longer accurate, and can cause a nullptr dereference due to the nature of the cdma_pusher lifetime.
+---
+ src/video_core/gpu.cpp        |  2 +-
+ src/video_core/gpu_thread.cpp | 13 +++----------
+ src/video_core/gpu_thread.h   | 19 ++++---------------
+ 3 files changed, 8 insertions(+), 26 deletions(-)
+
+diff --git a/src/video_core/gpu.cpp b/src/video_core/gpu.cpp
+index 51c63af4ae8..c61f4461968 100644
+--- a/src/video_core/gpu.cpp
++++ b/src/video_core/gpu.cpp
+@@ -459,7 +459,7 @@ void GPU::ProcessSemaphoreAcquire() {
+ }
+ 
+ void GPU::Start() {
+-    gpu_thread.StartThread(*renderer, renderer->Context(), *dma_pusher, *cdma_pusher);
++    gpu_thread.StartThread(*renderer, renderer->Context(), *dma_pusher);
+     cpu_context = renderer->GetRenderWindow().CreateSharedContext();
+     cpu_context->MakeCurrent();
+ }
+diff --git a/src/video_core/gpu_thread.cpp b/src/video_core/gpu_thread.cpp
+index eb0e43c0cd8..99353f15f53 100644
+--- a/src/video_core/gpu_thread.cpp
++++ b/src/video_core/gpu_thread.cpp
+@@ -19,7 +19,7 @@ namespace VideoCommon::GPUThread {
+ /// Runs the GPU thread
+ static void RunThread(Core::System& system, VideoCore::RendererBase& renderer,
+                       Core::Frontend::GraphicsContext& context, Tegra::DmaPusher& dma_pusher,
+-                      SynchState& state, Tegra::CDmaPusher& cdma_pusher) {
++                      SynchState& state) {
+     std::string name = "yuzu:GPU";
+     MicroProfileOnThreadCreate(name.c_str());
+     SCOPE_EXIT({ MicroProfileOnThreadExit(); });
+@@ -46,9 +46,6 @@ static void RunThread(Core::System& system, VideoCore::RendererBase& renderer,
+         if (auto* submit_list = std::get_if<SubmitListCommand>(&next.data)) {
+             dma_pusher.Push(std::move(submit_list->entries));
+             dma_pusher.DispatchCalls();
+-        } else if (auto* command_list = std::get_if<SubmitChCommandEntries>(&next.data)) {
+-            // NVDEC
+-            cdma_pusher.ProcessEntries(std::move(command_list->entries));
+         } else if (const auto* data = std::get_if<SwapBuffersCommand>(&next.data)) {
+             renderer.SwapBuffers(data->framebuffer ? &*data->framebuffer : nullptr);
+         } else if (std::holds_alternative<OnCommandListEndCommand>(next.data)) {
+@@ -83,20 +80,16 @@ ThreadManager::~ThreadManager() {
+ 
+ void ThreadManager::StartThread(VideoCore::RendererBase& renderer,
+                                 Core::Frontend::GraphicsContext& context,
+-                                Tegra::DmaPusher& dma_pusher, Tegra::CDmaPusher& cdma_pusher) {
++                                Tegra::DmaPusher& dma_pusher) {
+     rasterizer = renderer.ReadRasterizer();
+     thread = std::thread(RunThread, std::ref(system), std::ref(renderer), std::ref(context),
+-                         std::ref(dma_pusher), std::ref(state), std::ref(cdma_pusher));
++                         std::ref(dma_pusher), std::ref(state));
+ }
+ 
+ void ThreadManager::SubmitList(Tegra::CommandList&& entries) {
+     PushCommand(SubmitListCommand(std::move(entries)));
+ }
+ 
+-void ThreadManager::SubmitCommandBuffer(Tegra::ChCommandHeaderList&& entries) {
+-    PushCommand(SubmitChCommandEntries(std::move(entries)));
+-}
+-
+ void ThreadManager::SwapBuffers(const Tegra::FramebufferConfig* framebuffer) {
+     PushCommand(SwapBuffersCommand(framebuffer ? std::make_optional(*framebuffer) : std::nullopt));
+ }
+diff --git a/src/video_core/gpu_thread.h b/src/video_core/gpu_thread.h
+index 4cd951169d8..18269e51c43 100644
+--- a/src/video_core/gpu_thread.h
++++ b/src/video_core/gpu_thread.h
+@@ -43,14 +43,6 @@ struct SubmitListCommand final {
+     Tegra::CommandList entries;
+ };
+ 
+-/// Command to signal to the GPU thread that a cdma command list is ready for processing
+-struct SubmitChCommandEntries final {
+-    explicit SubmitChCommandEntries(Tegra::ChCommandHeaderList&& entries_)
+-        : entries{std::move(entries_)} {}
+-
+-    Tegra::ChCommandHeaderList entries;
+-};
+-
+ /// Command to signal to the GPU thread that a swap buffers is pending
+ struct SwapBuffersCommand final {
+     explicit SwapBuffersCommand(std::optional<const Tegra::FramebufferConfig> framebuffer_)
+@@ -91,9 +83,9 @@ struct OnCommandListEndCommand final {};
+ struct GPUTickCommand final {};
+ 
+ using CommandData =
+-    std::variant<EndProcessingCommand, SubmitListCommand, SubmitChCommandEntries,
+-                 SwapBuffersCommand, FlushRegionCommand, InvalidateRegionCommand,
+-                 FlushAndInvalidateRegionCommand, OnCommandListEndCommand, GPUTickCommand>;
++    std::variant<EndProcessingCommand, SubmitListCommand, SwapBuffersCommand, FlushRegionCommand,
++                 InvalidateRegionCommand, FlushAndInvalidateRegionCommand, OnCommandListEndCommand,
++                 GPUTickCommand>;
+ 
+ struct CommandDataContainer {
+     CommandDataContainer() = default;
+@@ -123,14 +115,11 @@ class ThreadManager final {
+ 
+     /// Creates and starts the GPU thread.
+     void StartThread(VideoCore::RendererBase& renderer, Core::Frontend::GraphicsContext& context,
+-                     Tegra::DmaPusher& dma_pusher, Tegra::CDmaPusher& cdma_pusher);
++                     Tegra::DmaPusher& dma_pusher);
+ 
+     /// Push GPU command entries to be processed
+     void SubmitList(Tegra::CommandList&& entries);
+ 
+-    /// Push GPU CDMA command buffer entries to be processed
+-    void SubmitCommandBuffer(Tegra::ChCommandHeaderList&& entries);
+-
+     /// Swap buffers (render frame)
+     void SwapBuffers(const Tegra::FramebufferConfig* framebuffer);
+ 
