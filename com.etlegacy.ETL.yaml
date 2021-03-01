@@ -1,0 +1,184 @@
+app-id: com.etlegacy.ETLegacy
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+branch: stable
+
+# 64bit is currently unfunctional. Upsteam is aware of this,
+# but there is no definitive solution as of yet.
+
+# https://dev.etlegacy.com/issues/1211
+
+# There is also a more controversial problem, relating to mods.
+# Many mods are made under a crappy non-GPL compatible SDK license which
+# means that those mods will forever remain closed source, 32bit only.
+# Good hope is that overtime they will die, but until then, we better stick
+# to 32bit
+
+command: etl.sh
+rename-icon: etl
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+
+finish-args:
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --allow=multiarch
+  
+  - --persist=.etlegacy
+  
+# Simpler way of preventing loading errors
+  - --env=LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/app/lib32/
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '20.08'
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '20.08'
+    no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 20.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+  prepend-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
+
+modules:
+
+  - name: setup-i386
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+  
+  - name: glu
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.1.tar.xz
+        sha256: fb5a4c2dd6ba6d1c21ab7c05129b0769544e1d68e1e3b0ffecb18e73c93055bc
+
+  - name: glew
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    no-autogen: true
+    make-args:
+      - SYSTEM=flatpak-32
+      - GLEW_DEST=/app
+    make-install-args:
+      - SYSTEM=flatpak-32
+      - GLEW_PREFIX=/app
+      - GLEW_DEST=/app
+      - LIBDIR=/app/lib32
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/glew/glew/2.2.0/glew-2.2.0.tgz
+        sha256: d4fc82893cfb00109578d0a1a2337fb8ca335b3ceccf97b97e5cc7f08e4353e1
+
+  - name: etlegacy
+    buildsystem: simple
+    build-commands:
+      - tar -xf ./etl.tar.gz
+      - install -Dm744 ./etlegacy-*-i386/etl -t /app/bin/
+      - install -Dm744 ./etlegacy-*-i386/etlded -t /app/bin/
+      - install -Dm744 ./etlegacy-*-i386/librenderer_opengl1_i386.so -t /app/bin/
+      - cp -r ./etlegacy-*-i386/etmain /app/bin/
+      - cp -r ./etlegacy-*-i386/legacy /app/bin/
+      - mkdir -p  /app/extra/legacy/
+      - ln -s /app/extra/legacy/ /app/bin/legacy
+      - ln -s /app/extra/pak0.pk3 /app/bin/etmain/pak0.pk3
+      - ln -s /app/extra/pak1.pk3 /app/bin/etmain/pak1.pk3
+      - ln -s /app/extra/pak2.pk3 /app/bin/etmain/pak2.pk3
+    sources:
+      - type: file
+        url: https://www.etlegacy.com/download/file/236
+        sha256: 3092724eb05574fd8b8b3dc7fb9cf9b36bd68e00d590d98936cdb2e3ab82632b
+        dest-filename: etl.tar.gz
+
+  - name: enemy-territory
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/bin
+      - install apply_extra ${FLATPAK_DEST}/bin
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          # WOlf:ET
+          - mkdir -p enemy-territory
+          - unzip -o enemy-territory.zip
+          - chmod +x et*.run
+          - ./et*.run --noexec --nox11 --target enemy-territory/
+          - install -Dm644 enemy-territory/etmain/{pak0,pak1,pak2}.pk3 .
+          - rm -rf enemy-territory/
+          - rm enemy-territory.zip
+          - rm et260b.x86_keygen_V03.run
+          - rm "README FIRST ! IMPORTANT.txt"
+      # Official propriatary files
+      - type: extra-data
+        url: https://cdn.splashdamage.com/downloads/games/wet/et260b.x86_full.zip
+        sha256: 2a8fef8e8558efffcad658bb9a8b12df8740418b3514142350eba3b7641eb3e0
+        size: 275647724
+        filename: enemy-territory.zip
+
+  # Feature request has been made upstream to include this metainfo: https://dev.etlegacy.com/issues/1352
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm744 etl.sh -t /app/bin/
+      - install -Dm644 com.etlegacy.ETLegacy.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 com.etlegacy.ETLegacy.desktop -t /app/share/applications/
+      - install -Dm644 etl.svg -t /app/share/icons/hicolor/scalable/apps/
+    sources:
+      - type: file
+        url: https://raw.githubusercontent.com/etlegacy/etlegacy/v2.77/misc/com.etlegacy.ETLegacy.metainfo.xml
+        sha256: 4b7a18dc918e595a0118e195ee712a18ac8c26988d9dcc275c3ada53532f2bf2
+      - type: file
+        url: https://raw.githubusercontent.com/etlegacy/etlegacy/v2.77/misc/com.etlegacy.ETLegacy.desktop
+        sha256: a59e2ec097935ba233239bad53a4e955935870a031f104c95030d55e81e4a130
+      - type: file
+        url: https://raw.githubusercontent.com/etlegacy/etlegacy/v2.77/misc/etl.svg
+        sha256: 23be15483577aabfa729f622cc79cff98859c26cfca31831e3314b08021f5c77
+      - type: script
+        dest-filename: etl.sh
+        commands:
+        - /app/bin/etl +set fs_basepath /app/bin "$@"
+
