@@ -64,6 +64,16 @@ function xilinx_source_settings64() {
 	rm -rf "$settings64_dir"
 }
 
+function xilinx_run() {
+	command=$1
+	shift
+	error_text=$1
+	shift
+
+	PATH=$(echo $PATH | sed -E 's@(^|:)/app/bin/?($|:)@:@g')
+	cmd_path="$(which $command)" && ( PATH=$PATH:/app/bin && "$cmd_path" "$@" ) || zenity --width=400 --error --title "Missing software" --text "$error_text"
+}
+
 function xilinx_versioned_install_if_needed_then_run() {
 	command="$1"
 	shift
@@ -72,7 +82,7 @@ function xilinx_versioned_install_if_needed_then_run() {
 	xilinx_choose_version
 	xilinx_source_settings64 "$chosen_version"
 
-	which $command > /dev/null && "$command" "$@" || zenity --width=400 --error --title "Missing software" --text "$command $chosen_version is not installed, please run the installation wizard to install it."
+	xilinx_run "$command" "$command $chosen_version is not installed, please run the installation wizard to install it." "$@"
 }
 
 function xilinx_install_if_needed_then_run() {
@@ -83,13 +93,13 @@ function xilinx_install_if_needed_then_run() {
 	chosen_version=${installed_versions[0]}
 	xilinx_source_settings64 "$chosen_version"
 
-	which $command > /dev/null && "$command" "$@" || zenity --width=400 --error --title "Missing software" --text "$command is not installed, please run the installation wizard to install it."
+	xilinx_run "$command" "$command is not installed, please run the installation wizard to install it." "$@"
 }
 
 function xilinx_xsetup_install_if_needed_then_run() {
 	xilinx_detect_xsetup
 	xilinx_choose_version
-	export PATH=$XILINX_INSTALL_PATH/.xinstall/$chosen_version:$PATH
+	PATH=$XILINX_INSTALL_PATH/.xinstall/$chosen_version:$PATH
 
 	xsetup "$@"
 }
