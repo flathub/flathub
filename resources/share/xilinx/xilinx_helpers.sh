@@ -1,7 +1,7 @@
 #/bin/bash
 
 if [ -z "$XILINX_INSTALL_PATH" ]; then
-	XILINX_INSTALL_PATH="$XDG_DATA_HOME/xilinx"
+	XILINX_INSTALL_PATH="$XDG_DATA_HOME/xilinx-install"
 fi
 
 function xilinx_detect() {
