@@ -62,6 +62,11 @@ function xilinx_source_settings64() {
 
 	. "$settings64_dir/settings64.sh"
 	rm -rf "$settings64_dir"
+
+	# XIC is not added to the PATH by settings64: add it now
+	if [ -d "$XILINX_INSTALL_PATH/xic" ]; then
+		PATH=$XILINX_INSTALL_PATH/xic:$PATH
+	fi
 }
 
 function xilinx_run() {
