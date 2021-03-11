@@ -91,7 +91,9 @@ build-options:
 
 x-compat-i386-opts: &compat_i386_opts
   prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
-  ldflags: -L/app/lib32
+  # Some autotools-based builds will fail if -L/app/lib32 isn't first
+  ldflags: -L/app/lib32 -Wl,-z,relro,-z,now -Wl,--as-needed
+  ldflags-override: true
   append-path: /usr/lib/sdk/toolchain-i386/bin
   env:
     CC: ccache i686-unknown-linux-gnu-gcc
@@ -119,6 +121,70 @@ cleanup:
 cleanup-commands:
   - mkdir -p ${FLATPAK_DEST}/lib{,32}/ffmpeg
 modules:
+
+  # Multilib deps
+
+  - name: libusb
+    sources: &libusb-sources
+      - type: archive
+        url: https://github.com//libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.tar.bz2
+        sha256: db11c06e958a82dac52cf3c65cb4dd2c3f339c8a988665110e0d24d19312ad8d
+    modules:
+
+      - name: eudev
+        cleanup: &eudev-cleanup
+          - /bin
+          - /sbin
+          - /lib*/udev
+        post-install:
+          - udevadm hwdb --update
+        sources: &eudev-sources
+          - type: archive
+            url: https://github.com/gentoo/eudev/archive/v3.2.9.tar.gz
+            sha256: 7d281276b480da3935d1acb239748c2c9db01a8043aad7e918ce57a223d8cd24
+
+  - name: libusb-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    sources: *libusb-sources
+    modules:
+
+      - name: eudev-32bit
+        build-options:
+          arch:
+            x86_64: *compat_i386_opts
+        cleanup: *eudev-cleanup
+        sources: *eudev-sources
+
+  - name: FAudio
+    buildsystem: cmake-ninja
+    config-opts: &FAudio-config-opts
+      - -DGSTREAMER=ON
+    sources: &FAudio-sources
+      - type: archive
+        url: https://github.com/FNA-XNA/FAudio/archive/20.09.tar.gz
+        sha256: 375d12ba57f507b95e030926fd08308029b38af883d0524583a2d5d8fe65168b
+
+  - name: FAudio-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    buildsystem: cmake-ninja
+    config-opts: *FAudio-config-opts
+    sources: *FAudio-sources
+
+  - name: vkd3d
+    sources: &vkd3d-sources
+      - type: archive
+        url: https://dl.winehq.org/vkd3d/source/vkd3d-1.2.tar.xz
+        sha256: b04b030fcbf0f2dacc933c76c74b449bffef1fc1a18d50254ef1ad3e380df96b
+
+  - name: vkd3d-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    sources: *vkd3d-sources
 
   # Native arch build
 
@@ -148,7 +214,7 @@ modules:
       - &wine-post-install |
         set -e
         mkdir -p /app/$LIBDIR/wine/wined3d
-        for lib in dxgi d3d9 d3d10 d3d10core d3d10_1 d3d11; do
+        for lib in dxgi d3d9 d3d10 d3d10core d3d10_1 d3d11 d3d12; do
           for ext in dll dll.so; do
             lib_file=/app/$LIBDIR/wine/$lib.$ext
             if [ -f $lib_file ]; then
