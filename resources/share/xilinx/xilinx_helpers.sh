@@ -14,7 +14,7 @@ function xilinx_detect_xsetup() {
 
 function xilinx_choose_version() {
 	if [ "${#installed_versions[@]}" -eq "0" ]; then
-		zenity --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?" && xilinx_install
+		zenity --class $CURRENT_WM_CLASS --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?" && xilinx_install
 		xilinx_detect
 		chosen_version=${installed_versions[0]}
 	elif [ "${#installed_versions[@]}" -eq "1" ]; then
@@ -25,27 +25,28 @@ function xilinx_choose_version() {
 			zenity_versions+=(FALSE $version)
 		done
 		zenity_versions[0]=TRUE
-		chosen_version=$(zenity --list --title "Xilinx Vivado Design Suite version" --text "Which version do you want to use?" --radiolist --column "Pick" --column "Version" ${zenity_versions[@]})
+		echo zenity --class $CURRENT_WM_CLASS --list --title "Xilinx Vivado Design Suite version" 
+		chosen_version=$(zenity --class $CURRENT_WM_CLASS --list --title "Xilinx Vivado Design Suite version" --text "Which version do you want to use?" --radiolist --column "Pick" --column "Version" ${zenity_versions[@]})
 	fi
 }
 
 function xilinx_install() {
-	zenity --width=600 --info --title "Xilinx installer required" --text "Please download the Xilinx Unified installer and select it in the next window."
+	zenity --class $CURRENT_WM_CLASS --width=600 --info --title "Xilinx installer required" --text "Please download the Xilinx Unified installer and select it in the next window."
 
 	# Launch the browser
 	xdg-open 'https://www.xilinx.com/support/download.html'
 
 	# Get the installer path
-	installer_path=$(zenity --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
+	installer_path=$(zenity --class $CURRENT_WM_CLASS --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
 
-	zenity --width=600 --warning --text "The Xilinx installer will now start. Make sure to select $XILINX_INSTALL_PATH as installation path."
+	zenity --class $CURRENT_WM_CLASS --width=600 --warning --text "The Xilinx installer will now start. Make sure to select $XILINX_INSTALL_PATH as installation path."
 	mkdir -p "$XILINX_INSTALL_PATH"
 
 	# Run the installer
 	sh "$installer_path"
 
 	xilinx_detect
-	zenity --width=600 --info --text "Installation is complete.\nTo allow access to the hardware devices (necessary to program them within Vivado and Vitis), run <b>sudo $XILINX_INSTALL_PATH/Vivado/${installed_versions[0]}/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers &amp;&amp; sudo udevadm control --reload</b>, then reconnect all the devices (if any)"
+	zenity --class $CURRENT_WM_CLASS --width=600 --info --text "Installation is complete.\nTo allow access to the hardware devices (necessary to program them within Vivado and Vitis), run <b>sudo $XILINX_INSTALL_PATH/Vivado/${installed_versions[0]}/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers &amp;&amp; sudo udevadm control --reload</b>, then reconnect all the devices (if any)"
 }
 
 function xilinx_source_settings64() {
@@ -69,42 +70,29 @@ function xilinx_source_settings64() {
 	fi
 }
 
-function xilinx_run() {
-	command=$1
-	shift
-	error_text=$1
-	shift
-
+function xilinx_get_cmd_abs_path() {
 	PATH=$(echo $PATH | sed -E 's@(^|:)/app/bin/?($|:)@:@g')
-	cmd_path="$(which $command)" && ( PATH=$PATH:/app/bin && "$cmd_path" "$@" ) || zenity --width=400 --error --title "Missing software" --text "$error_text"
+	xilinx_cmd_abs_path="$(which $1)" || zenity --class $CURRENT_WM_CLASS --width=400 --error --title "Missing software" --text "$2"
+	PATH=$PATH:/app/bin
 }
 
-function xilinx_versioned_install_if_needed_then_run() {
-	command="$1"
-	shift
-
+function xilinx_versioned_install_if_needed() {
 	xilinx_detect
 	xilinx_choose_version
 	xilinx_source_settings64 "$chosen_version"
-
-	xilinx_run "$command" "$command $chosen_version is not installed, please run the installation wizard to install it." "$@"
+	xilinx_get_cmd_abs_path "$1" "$command $chosen_version is not installed, please run the installation wizard to install it."
 }
 
-function xilinx_install_if_needed_then_run() {
-	command="$1"
-	shift
-
+function xilinx_install_if_needed() {
 	xilinx_detect
 	chosen_version=${installed_versions[0]}
 	xilinx_source_settings64 "$chosen_version"
-
-	xilinx_run "$command" "$command is not installed, please run the installation wizard to install it." "$@"
+	xilinx_get_cmd_abs_path "$1" "$command is not installed, please run the installation wizard to install it."
 }
 
-function xilinx_xsetup_install_if_needed_then_run() {
+function xilinx_xsetup_install_if_needed() {
 	xilinx_detect_xsetup
 	xilinx_choose_version
 	PATH=$XILINX_INSTALL_PATH/.xinstall/$chosen_version:$PATH
-
-	xsetup "$@"
+	xilinx_get_cmd_abs_path xsetup "xsetup $chosen_version is not installed, please run the installation wizard to install it."
 }
