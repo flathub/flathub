@@ -1,6 +1,14 @@
 name: Flatpak
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+      - branch/*
+  pull_request:
+    branches:
+      - master
+      - branch/*
 
 jobs:
   build:
@@ -12,13 +20,35 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Determine flatpak branch
+        id: flatpak_branch
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/master)
+              FLATPAK_BRANCH=stable
+            ;;
+            refs/heads/beta)
+              FLATPAK_BRANCH=beta
+            ;;
+            refs/heads/branch/*)
+              FLATPAK_BRANCH=${GITHUB_REF##*/}
+            ;;
+            *)
+              exit 1
+            ;;
+          esac
+          echo "::set-output name=branch::$FLATPAK_BRANCH"
+
       - name: Prime cache
         uses: actions/cache@v2
         with:
           path: |
             .flatpak-builder/ccache
-          key: flatpak-builder-${{ github.run_id }}
+          key: flatpak-builder-${{ steps.flatpak_branch.outputs.branch }}-${{ github.run_id }}
           restore-keys: |
+            flatpak-builder-${{ steps.flatpak_branch.outputs.branch }}-
             flatpak-builder-
 
       - name: Build flatpak
@@ -28,7 +58,7 @@ jobs:
           kind: app
           id: org.winehq.Wine
           arch: x86_64
-          branch: stable
+          branch: ${{ steps.flatpak_branch.outputs.branch }}
 
       - name: Publish to OSTree repo
         if: github.ref == 'refs/heads/master'
