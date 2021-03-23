@@ -1,9 +1,9 @@
 app-id: com.codemouse92.timecard
 default-branch: stable
 base: io.qt.qtwebkit.BaseApp
-base-version: "5.14"
+base-version: "5.15"
 runtime: org.kde.Platform
-runtime-version: "5.14"
+runtime-version: "5.15"
 sdk: org.kde.Sdk
 command: Timecard-App
 cleanup:
@@ -15,10 +15,9 @@ cleanup:
     - "*.a"
     - "*.la"
 finish-args:
-    - --filesystem=host
+    - --filesystem=home
     - --share=ipc
     - --socket=x11
-    - --socket=fallback-x11
     - --socket=wayland
     - --device=dri
     - --talk-name=org.freedesktop.DBus.Proprieties
@@ -28,38 +27,51 @@ finish-args:
     - --own-name=org.kde.*
     - --talk-name=com.canonical.indicator.application
     - --talk-name=org.ayatana.indicator.application
-    - --env=PATH=/app/bin
     - --env=PYTHONPATH=/app/packages/python
 modules:
+    # pyside2 module borrowed from https://github.com/flathub/com.github.unrud.djpdf
     - name: pyside2
-      buildsystem: cmake-ninja
-      builddir: true
-      config-opts:
-          - -DCMAKE_BUILD_TYPE=Release
-          - -DBUILD_TESTS=OFF
+      buildsystem: simple
+      build-commands:
+        - mkdir -p /app/qt5include && cp -R /usr/include/Qt* /app/qt5include # https://bugreports.qt.io/browse/PYSIDE-787
+        - mkdir _build && cd _build &&
+          cmake -GNinja -j"$FLATPAK_BUILDER_N_JOBS"
+          -DCMAKE_INSTALL_PREFIX:PATH="$FLATPAK_DEST"
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DUSE_PYTHON_VERSION=3
+          -DBUILD_TESTS=OFF .. &&
+          ninja install
+      post-install:
+        - |
+          # Make package discoverable by setuptools
+          printf "Metadata-Version: 1.0\nName: PySide2\nVersion: %s\n" \
+            "$(python3 -c "import PySide2; print(PySide2.__version__)")" \
+            > "$(dirname "$(python3 -c "import PySide2; print(PySide2.__file__)")")/../pyside2.egg-info"
       cleanup:
-          - /bin
+        - /qt5include
+        - /bin
       sources:
         - type: archive
-          url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.0-src/pyside-setup-opensource-src-5.15.0.tar.xz
-          sha256: f1cdee53de3b76e22c1117a014a91ed95ac16e4760776f4f12dc38cd5a7b6b68
+          url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.2-src/pyside-setup-opensource-src-5.15.2.tar.xz
+          sha256: b306504b0b8037079a8eab772ee774b9e877a2d84bab2dbefbe4fa6f83941418
         - type: shell
           commands:
-           - mkdir -p /app/include/qt5tmp && cp -R /usr/include/Qt* /app/include/qt5tmp  # https://bugreports.qt.io/browse/PYSIDE-787
-           - sed -i 's|\(--include-paths=\)|\1/app/include/qt5tmp:|' sources/pyside2/cmake/Macros/PySideModules.cmake
+          - sed -i 's|\(--include-paths=\)|\1/app/qt5include:|' sources/pyside2/cmake/Macros/PySideModules.cmake
 
     - name: Timecard-App
       buildsystem: simple
-      build-options:
-        build-args:
-          - "--share=network"
       build-commands:
         - python3 setup.py install --prefix=${FLATPAK_DEST}
-        - install -Dm644 app/share/icons/${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-        - install -Dm644 app/share/applications/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-        - install -Dm644 app/share/metainfo/${FLATPAK_ID}.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+        - install -Dm644 share/icons/${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+        - install -Dm644 share/applications/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+        - install -Dm644 share/metainfo/${FLATPAK_ID}.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
       sources:
+        - type: file
+          url: https://files.pythonhosted.org/packages/12/68/95515eaff788370246dac534830ea9ccb0758e921ac9e9041996026ecaf2/setuptools-53.0.0.tar.gz
+          sha256: 1b18ef17d74ba97ac9c0e4b4265f123f07a8ae85d9cd093949fa056d3eeeead5
+        - type: file
+          url: https://files.pythonhosted.org/packages/ed/46/e298a50dde405e1c202e316fa6a3015ff9288423661d7ea5e8f22f589071/wheel-0.36.2.tar.gz
+          sha256: e11eefd162658ea59a60a0f6c7d493a7190ea4b9a85e335b33489d9f17e0245e
         - type: git
           url: https://github.com/codemouse92/timecard
-          branch: stable
-
+          tag: v2.0.6
