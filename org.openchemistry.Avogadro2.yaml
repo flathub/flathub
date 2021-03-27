@@ -1,0 +1,215 @@
+app-id: org.openchemistry.Avogadro2
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: '5.15'
+command: avogadro2
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+cleanup:
+  - /bin/papraview
+  - /include
+  - /lib/cmake
+  - /share/doc
+  - /share/applications
+  - /share/castxml
+  - *.la
+  - *.a
+
+modules:
+  - shared-modules/glew/glew.json
+  
+  - name: CastXML
+    buildsystem: cmake
+    config-opts:
+      - -DCLANG_LINK_CLANG_DYLIB:BOOL=ON
+      - -DLLVM_DIR=/usr/lib/sdk/llvm11/lib/cmake/llvm
+    sources:
+      - type: archive
+        url: https://github.com/CastXML/CastXML/archive/v0.4.3.tar.gz
+        sha256: 3dd94096e07ffe103b2a951e4ff0f9486cc615b3ef08e95e5778eaaec667fb65
+    cleanup:
+      - /lib/cmake     
+
+  - name: Eigen3
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.3.9/eigen-3.3.9.tar.bz2
+        sha256: 0fa5cafe78f66d2b501b43016858070d52ba47bd9b1016b0165a7b8e04675677
+    cleanup: 
+      - "*"
+    
+  - name: lapack
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DLAPACKE=ON
+      - -DCBLAS=ON
+    sources:
+      - type: archive
+        url: https://github.com/Reference-LAPACK/lapack/archive/v3.9.0.tar.gz
+        sha256: 106087f1bb5f46afdfba7f569d0cbe23dacb9a07cd24733765a0e89dbe1ad573
+    cleanup:
+      - /lib/cmake
+      
+  - name: pybind11    
+    buildsystem: simple
+    build-commands:
+      - python3.8 setup.py build
+      - cmake -DPYBIND11_INSTALL=ON -DPYBIND11_TEST=OFF .
+      - cmake --build .
+      - python3.8 setup.py install --skip-build --force --prefix=/app
+    sources:
+      - type: archive
+        url: https://github.com/pybind/pybind11/archive/v2.6.2.tar.gz
+        sha256: 8ff2fff22df038f5cd02cea8af56622bc67f5b64534f1b83b9f133b8366acff2
+  
+  - name: python3-numpy
+    buildsystem: simple
+    build-commands:
+      - rm pyproject.toml
+      - pip3 install --prefix=/app .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/51/60/3f0fe5b7675a461d96b9d6729beecd3532565743278a9c3fe6dd09697fa7/numpy-1.19.5.zip
+        sha256: a76f502430dd98d7546e1ea2250a7360c065a5fdea52b2dffe8ae7180909b6f4  
+
+  - name: python3-scipy
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py build -j 0
+      - python3 setup.py install --prefix=/app --root=/ --optimize=1
+    build-options:
+      env:
+        ATLAS: None
+        BLAS: "/app/lib"
+        LAPACK: "/app/lib"
+        LDFLAGS: "-shared"
+    sources:
+      - type: archive
+        url: https://github.com/scipy/scipy/releases/download/v1.6.1/scipy-1.6.1.tar.gz
+        sha256: c4fceb864890b6168e79b0e714c585dbe2fd4222768ee90bc1aa0f8218691b11      
+        
+  - name: TBB
+    buildsystem: cmake
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/oneapi-src/oneTBB/archive/2019_U8.tar.gz
+        sha256: 6b540118cbc79f9cbc06a35033c18156c21b84ab7b6cf56d773b168ad2b68566
+      - type: patch
+        path: tbb_cmake.patch
+
+  - name: swig
+    config-opts:
+      - --without-pcre
+      - --disable-ccache
+      - --without-tcl
+      - --without-tcl
+      - --without-perl5
+      - --without-octave
+      - --without-scilab
+      - --without-java
+      - --without-ruby
+    sources:
+      - type: archive
+        url: https://github.com/swig/swig/archive/v4.0.2.tar.gz
+        sha256: b5f43d5f94c57ede694ffe5e805acc5a3a412387d7f97dcf290d06c46335cb0b
+     cleanup:
+      - /share
+        
+  - name: gdcm
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/malaterre/GDCM/archive/v3.0.8.tar.gz
+        sha256: 47b96be345b1611784f9e65fc39367c7450c9a1ef81c21f8acddfb6207098315
+    buildsystem: cmake-ninja
+    config-opts: 
+      - -DGDCM_BUILD_APPLICATIONS=OFF
+      - -DGDCM_BUILD_SHARED_LIBS=ON
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DGDCM_WRAP_PYTHON=ON
+      - -DPYTHON_EXECUTABLE=/usr/bin/python3
+      - -DGDCM_INSTALL_PYTHONMODULE_DIR=/app/lib/python3.8/site-packages/
+      - -DGDCM_USE_VTK=OFF
+      - -DGDCM_BUILD_DOCBOOK_MANPAGES:BOOL=OFF
+    #cleanup: 
+      #- /bin   
+
+    # Paraview need 32GB of memory to build
+  - name: openchemistry-paraview
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DPARAVIEW_USE_PYTHON:BOOL=ON
+      - -DPARAVIEW_ENABLE_WEB:BOOL=OFF
+      - -DPARAVIEW_ENABLE_EMBEDDED_DOCUMENTATION:BOOL=OFF
+      - -DPARAVIEW_USE_QTHELP:BOOL=OFF
+      - -DPARAVIEW_PLUGINS_DEFAULT:BOOL=OFF
+      - -DVTK_SMP_IMPLEMENTATION_TYPE:STRING=TBB
+      - -DVTK_PYTHON_VERSION:STRING=3
+      - -DVTK_PYTHON_FULL_THREADSAFE:BOOL=ON
+      - -DVTK_NO_PYTHON_THREADS:BOOL=OFF
+    sources:
+      - type: git
+        url: git://github.com/OpenChemistry/ParaView.git
+        tag: v5.9.0
+        commit: 0aaf903ba3e8d012a608a466f798a041b4aebe17
+    cleanup: 
+      - /share
+        
+  - name: ITK
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
+      - -DITK_LEGACY_REMOVE:BOOL=ON
+      - -DITK_LEGACY_SILENT:BOOL=ON
+      - -DModule_ITKBridgeNumPy:BOOL=ON
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DITK_WRAP_unsigned_short:BOOL=ON
+      - -DITK_WRAP_rgb_unsigned_char:BOOL=OFF
+      - -DITK_WRAP_rgba_unsigned_char:BOOL=OFF
+      - -DITK_BUILD_DEFAULT_MODULES:BOOL=OFF
+      - -DITKGroup_Core:BOOL=ON
+      - -DITKGroup_Filtering:BOOL=ON
+      - -DITKGroup_Segmentation:BOOL=ON
+      - -DITKGroup_Nonunit:BOOL=ON
+      - -DPython_ADDITIONAL_VERSIONS:STRING=3
+      - -DITK_WRAP_PYTHON:BOOL=ON
+      - -DBUILD_EXAMPLES:BOOL=OFF
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DITK_USE_SYSTEM_LIBRARIES:BOOL=ON
+      - -DITK_USE_SYSTEM_CASTXML:BOOL=ON
+      - -DITK_USE_SYSTEM_GDCM:BOOL=ON
+      - -DITK_USE_SYSTEM_SWIG:BOOL=ON
+      - -DITK_USE_SYSTEM_VXL:BOOL=OFF
+      - -DITK_FORBID_DOWNLOADS=ON
+    sources:
+      - type: archive
+        url: https://github.com/InsightSoftwareConsortium/ITK/releases/download/v5.1.2/InsightToolkit-5.1.2.tar.gz
+        sha256: f1e5a78e11125348f68f655c6b89b617c3a8b2c09f710081f621054811a70c98
+        
+  - name: tomviz
+    buildsystem: cmake
+    no-make-install: false
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
+    sources:
+      - type: git
+        url: https://github.com/OpenChemistry/tomviz/
+        tags: 1.9.0
+        commit: 1e6b9d967da32d1e824a13b21721c90284a46a72
+        #1e6b9d967da32d1e824a13b21721c90284a46a72 master
