@@ -1,0 +1,784 @@
+# FieldWorks Flatpak package build specification
+#
+# Copyright (c) 2021 SIL International. MIT License.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+app-id: org.sil.FieldWorks
+
+# org.gnome.Platform provides some pieces that we would need to manually specify
+# if we use org.freedesktop.Platform.
+runtime: org.gnome.Platform
+runtime-version: "3.36"
+sdk: org.gnome.Sdk
+
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  # FieldWorks can synchronize project data over the network with other users.
+  - --share=network
+  # FieldWorks allows playing sound files and playing and recording in audio
+  # writing systems.
+  - --socket=pulseaudio
+  # FieldWorks can import language and dictionary data, restore from backup
+  # files, and link to pictures or other media to appear in a dictionary.
+  # Users need to save project data, project backups, Encoding Converter
+  # configurations, and configuration and settings of FieldWorks and included
+  # components.
+  # Users need to be able to export dictionaries to arbitrary locations.
+  - --filesystem=host
+  # FieldWorks writes temporary reports to /tmp, to open in a browser to show
+  # the user, such as regarding the import process. Use the same /tmp as the
+  # host, so the host browser can find the files.
+  - --filesystem=/tmp
+  # As a language-documentation tool, FieldWorks allows a user to assign
+  # specific keyboard input methods to specific writing systems, and then
+  # automatically switches between those keyboards when the user moves between
+  # fields for the different writing systems. For example, writing a lexeme form
+  # in the vernacular language, and then using the analysis language in the
+  # gloss field. This feature uses the desktop environment's list of defined
+  # keyboard input methods, as well as notifying the desktop environment about
+  # what keyboard was switched to.
+  - --talk-name=org.gnome.Shell
+  # FieldWorks uses FlexBridge to synchronize data over the network or by USB
+  # Flash Drives. FlexBridge queries for avaliable USB Flash Drives using
+  # the system bus.
+  - --system-talk-name=org.freedesktop.Udisks2
+
+command: fieldworks-flex
+rename-desktop-file: fieldworks-applications.desktop
+rename-icon: fieldworks-flex
+
+modules:
+  - name: fieldworks
+    buildsystem: simple
+    build-options:
+      env:
+        PREFIX: "/app"
+        PERL5LIB: "/app/perl-modules/lib/perl5"
+        MONO_PREFIX: "/app"
+        MONO_SILPKGDIR: "/app"
+        NUGET_DEST: "fw/packages"
+        FW_ROOT_PATH: "/run/build/fieldworks/fw"
+        INSTALLATION_PREFIX: "/app"
+        RUNMODE: "PACKAGING"
+        # BUILD_CONFIG settings include Debug and Release.
+        BUILD_CONFIG: "Release"
+        # BUILD_TYPE settings include d and r.
+        BUILD_TYPE: r
+    build-commands:
+      - |
+        set -xueo pipefail
+        # Apply outstanding FwBuildTasks code changes, if any.
+        cd ${FW_ROOT_PATH}/Build/Src/FwBuildTasks
+        ${FW_ROOT_PATH}/Build/run-in-environ msbuild
+
+        cd ${FW_ROOT_PATH}
+        Build/run-in-environ make \
+          BUILD_TYPE=${BUILD_TYPE} \
+          BUILD_CONFIG=${BUILD_CONFIG} \
+          disableDownloads=true \
+          build-package-for-flatpak
+
+        perl -pi -e \
+          '/<runtime>/ and s/^/  <dllmap dll="libdl.so" target="libdl.so.2" \/>\n/' \
+          $(find "${FW_ROOT_PATH}" -name SIL.LCModel.Core.dll.config)
+
+        cd ${FW_ROOT_PATH}
+        Build/run-in-environ make \
+          BUILD_TYPE=${BUILD_TYPE} \
+          BUILD_CONFIG=${BUILD_CONFIG} \
+          disableDownloads=true \
+          install-for-flatpak
+    cleanup:
+      - "/include"
+      - "/lib/*/include"
+      - "*.a"
+    sources:
+      - type: git
+        dest: fw
+        url: https://github.com/sillsdev/FieldWorks.git
+        # Branch support/9.0
+        commit: 901fb46b83b422a00af3e8e6cec1c7aad01cf9a9
+      - type: git
+        # liblcm is cloned for use during localization. But the actual liblcm
+        # assemblies used are fetched separately.
+        dest: liblcm
+        url: https://github.com/sillsdev/liblcm.git
+        # Branch master
+        commit: 6a6ed9bbe8433352769d6909079fe54b77368b99
+      - type: git
+        dest: libcom
+        url: https://github.com/sillsdev/libcom.git
+        # Branch develop
+        tag: fieldworks-9.0.17
+        commit: 035225805e477061e9a2d72180a96bcaa7cc1952
+      - type: git
+        dest: fw/DistFiles/Helps
+        url: https://github.com/sillsdev/FwHelps.git
+        # Branch support/9.0
+        tag: FieldWorks9.0.17
+        commit: 02c9b5b0fd293e883b4d19be8439905595189ac1
+      - type: git
+        dest: fw/Localizations
+        url: https://github.com/sillsdev/FwLocalizations.git
+        # Branch develop
+        tag: FieldWorks9.0.17
+        commit: 6d09370772ecd99f3efbe776c55c6561d1b7af88
+      - type: file
+        url: https://github.com/sillsdev/FwLocalizations/releases/download/v9.0.17-14-g37c0f8f/crowdin.zip
+        sha512: 08586f7479d5c99d668d4ec92a1824e02f2982683abf3d13549e07dc1378eaf1204547a1ce6cf9a29f4a9ee418aeaf558e00a13e25e9bd41a0de880a20de1f39
+        dest: fw/Downloads/
+        dest-filename: Crowdin.zip
+      # FW nuget dependencies
+      # Preview updates via FieldWorks.git:
+      #   git log -p -- Build/nuget-{common,linux}/packages.config
+      # To regenerate input sources:
+      #   ./compose-nuget-sources fieldworks-sources-nuget-linux.yml . ../fw/Build/nuget-linux/packages.config
+      #   ./compose-nuget-sources fieldworks-sources-nuget-common.yml . ../fw/Build/nuget-common/packages.config
+      - fieldworks-sources-nuget-common.yml
+      - fieldworks-sources-nuget-linux.yml
+      - type: shell
+        # Extract nuget packages. The 'type: archive', 'archive-type: zip' had
+        # some trouble working, so manually extract.
+        commands:
+          - |
+            for package in *.nupkg; do
+              mkdir -p "${NUGET_DEST}/$(basename "${package}" .nupkg)" &&
+                unzip "${package}" \
+                  -d "${NUGET_DEST}/$(basename "${package}" .nupkg)"
+            done
+      # FW dependencies
+      # Find updates via FieldWorks.git with a command like:
+      #   git log -p FieldWorks9.0.13..FieldWorks9.0.16 -- Build/mkall.targets
+      # Manually apply changes by editing fieldworks-sources-urls-input.yml.
+      # Regenerate input sources:
+      #   ./compose-url-sources fieldworks-sources-urls-input.yml fieldworks-sources-urls.yml
+      - fieldworks-sources-urls.yml
+    modules:
+      - name: libboost
+        buildsystem: simple
+        build-options:
+          prefix: /app
+        config-opts:
+          - --prefix=/app
+        build-commands:
+          - ./bootstrap.sh
+          - ./b2 install variant=release --prefix=/app
+        cleanup:
+          # Don't ship.
+          - "*"
+        sources:
+          - type: archive
+            url: https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2
+            sha512: b7937d50c4512cf13cadd0ca829de36cf2cbc6fb788f45b1d4565ad0753e2b206c545125a5862016c2f16016f2e4a6b687928963b466fff17c3e0a4437142c20
+      - name: dbus-glib
+        # For Gecko.
+        cleanup:
+          - "/share/gtk-doc"
+          - "/include"
+          - "*.a"
+        sources:
+          - type: git
+            url: https://gitlab.freedesktop.org/dbus/dbus-glib.git
+            tag: dbus-glib-0.110
+            commit: ffeb6909967ff79585a7ede85227da94f04ecb01
+      - name: libxklavier
+        buildsystem: autotools
+        cleanup:
+          - "/include"
+          - "*.a"
+        sources:
+          - type: git
+            url: https://gitlab.freedesktop.org/archived-projects/libxklavier.git
+            tag: libxklavier-5.4
+            commit: 396955bd2ba2db34a42b3807b03155fcc11dfe50
+          - type: patch
+            # From https://sources.debian.org/patches/libxklavier/5.4-4/0001-autogen.sh-Drop-intltool-requirement.patch/
+            path: patches/libxklavier/0001-autogen.sh-Drop-intltool-requirement.patch
+      - name: gtkmm2.4
+        config-opts:
+          - --disable-documentation
+        cleanup:
+          - "/include"
+          - "/lib/*/include"
+          - "*.a"
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/gtkmm/2.24/gtkmm-2.24.5.tar.xz
+            sha256: 0680a53b7bf90b4e4bf444d1d89e6df41c777e0bacc96e9c09fc4dd2f5fe6b72
+        modules:
+          - shared-modules/gtk2/gtk2.json
+          - name: atkmm1.6
+            buildsystem: meson
+            config-opts:
+              - -Dbuild-documentation=false
+              - -Dbuild-demos=false
+              - -Dbuild-tests=false
+            cleanup:
+              - "/include"
+              - "/lib/*/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://gitlab.gnome.org/GNOME/atkmm.git
+                tag: "2.28.1"
+                commit: 5d8721c5619b0d9c904f669f712db1d9ca7107f9
+            modules:
+              - name: glibmm
+                buildsystem: meson
+                config-opts:
+                  - -Dbuild-documentation=false
+                  - -Dbuild-demos=false
+                  - -Dbuild-tests=false
+                cleanup:
+                  - "/include"
+                  - "/lib/*/include"
+                  - "*.a"
+                  - "*.la"
+                sources:
+                  - type: git
+                    url: https://gitlab.gnome.org/GNOME/glibmm.git
+                    tag: "2.64.2"
+                    commit: e775940669cb6d93f37ddc2b4cd7da446dfa482c
+                modules:
+                  - name: libsigc++-2.0
+                    config-opts:
+                      - --disable-documentation
+                    cleanup:
+                      - "/include"
+                      - "/lib/*/include"
+                      - "*.a"
+                    sources:
+                      - type: git
+                        url: https://github.com/libsigcplusplus/libsigcplusplus.git
+                        tag: "2.10.2"
+                        commit: 06fabac512bf81164d5b01f877927cb39e9db864
+                    modules:
+                      - name: mm-common
+                        buildsystem: meson
+                        cleanup:
+                          - "*"
+                        sources:
+                          - type: archive
+                            url: https://download.gnome.org/sources/mm-common/1.0/mm-common-1.0.2.tar.xz
+                            sha256: a2a99f3fa943cf662f189163ed39a2cfc19a428d906dd4f92b387d3659d1641d
+          - name: pangomm
+            buildsystem: meson
+            config-opts:
+              - -Dbuild-documentation=false
+              - -Dbuild-demos=false
+              - -Dbuild-tests=false
+            cleanup:
+              - "/include"
+              - "/lib/*/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://gitlab.gnome.org/GNOME/pangomm.git
+                tag: "2.42.1"
+                commit: 7dfc6c3372faaa4a7c492d08f09881b02095145b
+            modules:
+              - name: cairomm
+                config-opts:
+                  - --disable-documentation
+                  - --disable-demos
+                  - --disable-tests
+                cleanup:
+                  - "/include"
+                  - "/lib/*/include"
+                  - "*.a"
+                sources:
+                  - type: git
+                    url: https://github.com/freedesktop/cairomm.git
+                    # Branch cairomm-1-12
+                    commit: e9ef515b7b8db5b4f024ddfefe5dfc03f2b8ccea
+      - name: wget
+        buildsystem: autotools
+        cleanup:
+          # Don't ship.
+          - "*"
+        sources:
+          - type: archive
+            url: https://ftp.gnu.org/gnu/wget/wget-1.20.3.tar.gz
+            sha512: e8b82b40e270296228094a78d47f81580bdbdea9e6b93fd61b37dccb39430aeb9bda5397dc53a31c952a61629383c7e2a8c8abf414c8a4dd369af6ecf2717e6c
+      - name: gnome-desktop
+        # For keyboarding
+        buildsystem: meson
+        config-opts:
+          - -Ddesktop_docs=false
+          - -Ddebug_tools=false
+          - -Dudev=disabled
+        sources:
+          - type: git
+            url: https://gitlab.gnome.org/GNOME/gnome-desktop.git
+            # Branch gnome-3-36
+            commit: d0bd232482302a28ff444c27c91b0bf82bb7f365
+      - name: mono5-sil
+        cleanup:
+          # Not cleaning away lib/mono/4.5/mcs* because mcs.exe is used in SFM import.
+          - "/include"
+          - "*.a"
+          - "/bin/gtk-demo"
+          - "/bin/monodis"
+          - "/bin/monograph"
+          - "/bin/pedump"
+          - "/lib/mono/2*"
+          - "/lib/mono/3*"
+          - "/lib/mono/4.5/dim"
+          - "/lib/mono/4.5/Microsoft.CodeAnalysis.*"
+          - "/lib/mono/gac/Microsoft.Build.Engine"
+          - "/lib/mono/gac/Microsoft.Build"
+          - "/lib/mono/gac/monodoc"
+          - "/lib/mono/msbuild"
+          - "/lib/mono/xbuild-frameworks"
+          - "/lib/mono/xbuild"
+          - "/lib/monodoc"
+        sources:
+          - type: git
+            url: https://github.com/sillsdev/mono.git
+            # Past sil/5.16.0.179
+            commit: 3bb5d7c98c3bc6f977bc7960f3a541bc0acba715
+          - type: archive
+            # Update URL by doing: cd .../path/to/mono-repo && .../determine-monolite-url
+            url: https://download.mono-project.com/monolite/monolite-linux-1051600011-latest.tar.gz
+            sha512: b48bb273f5a9107f9bb9795d47277aeaaeb458588a6e011676bb9a152b83759f305cf1031a5e74a62145854ef17026cb1aa20ea9adb5e6b15f275b9d6af585db
+            dest: mcs/class/lib/monolite-linux/1051600011
+          - type: patch
+            # mono uses a hard-coded path to ping. Help it find ping in /app.
+            path: patches/mono/mono-ping-path.patch
+        modules:
+          - name: python-2.7
+            # Build Python 2 without cleaning away parts that we still need,
+            # like shared-modules/python2.7 does.
+            config-opts:
+              - --enable-shared
+              - --with-system-expat
+              - --with-system-ffi
+              - --enable-unicode=ucs4
+            post-install:
+              - chmod 644 ${FLATPAK_DEST}/lib/libpython2.7.so.1.0
+            cleanup:
+              - "/lib/python2.7/test"
+              - "/lib/python2.7/unittest"
+              - "/lib/python2.7/distutils/tests"
+              - "/lib/python2.7/idlelib/idle_test"
+              - "/lib/python2.7/lib2to3"
+              - "/include"
+              - "*.a"
+              - "*.o"
+            sources:
+              - type: archive
+                url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+                sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+      - name: gtk-sharp
+        config-opts:
+          - --disable-gtk-doc
+          - --disable-man
+        cleanup:
+          - "/lib/monodoc"
+          - "/include"
+          - "*.a"
+        sources:
+          - type: git
+            url: https://github.com/sillsdev/gtk-sharp.git
+            # Branch develop
+            commit: fcf1dd40d4892be309dd450bcda2026ddece4480
+          - type: script
+            commands:
+              - NOCONFIGURE=1 ./bootstrap-2.12
+      - name: mono5-sil-msbuild
+        # It was challenging to build msbuild from source. Other projects
+        # appear to fetch binaries rather than build msbuild. Following that.
+        buildsystem: simple
+        build-commands:
+          # Extract opt/mono5-sil/* into /app/
+          - |
+            for package in *.deb; do
+              mkdir "${package}-dir" &&
+                (cd "${package}-dir" && ar x ../"${package}") &&
+                tar -C /app -x -f "${package}-dir"/data.tar.xz \
+                  --strip-components=3 ./opt/mono5-sil
+            done
+          # Use same-character-count path to /app since some binary files are
+          # going to be modified too.
+          - perl -pi -e 's#/opt/mono5-sil#/./././././app#g' /app/bin/*
+        cleanup:
+          # Can't clean '*' because that seems to result in /app/bin/mono being
+          # absent.
+          - "/lib/mono/msbuild"
+          - "/lib/mono/xbuild"
+        sources:
+          - type: file
+            url: http://linux.lsdev.sil.org/ubuntu/pool/main/m/mono5-sil-msbuild/mono5-sil-msbuild_15.8+xamarinxplat.2018.07.31.22.43-0xamarin5+ubuntu1804b1_all.deb
+            sha256: 758274d8bc438f325fc5fc808c0482ab50eb2bdaf02f61747888e190760753de
+      - name: libgdiplus
+        build-options:
+          prefix: /app
+          env:
+            MONO_PREFIX: /app
+        config-opts:
+          - --with-pango
+        cleanup:
+          - "/include"
+          - "*.a"
+        sources:
+          - type: git
+            url: https://github.com/sillsdev/libgdiplus
+            tag: merge/5.6.0
+            commit: b9c581ba87da89651d5ec56c5da0960ab739a63a
+        modules:
+          - name: giflib
+            buildsystem: simple
+            build-commands:
+              # Skip building documentation
+              - perl -pi -e 's#doc/Makefile##' configure.ac
+              - ./autogen.sh --prefix=/app
+              - make
+              - make install
+            cleanup:
+              - "/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://github.com/mirrorer/giflib.git
+                commit: fa37672085ce4b3d62c51627ab3c8cf2dda8009a
+                # Note that libgdiplus needs giflib to have GifQuantizeBuffer.
+                # Some giflibs need adjustment to have that built in.
+      - name: icu-fw
+        # FW ICU should install to paths like
+        # /app/lib/fieldworks/lib/libicuuc.so . The FieldWorks build expects
+        # icu-config to be in icu-bin, such as in _init.mak.lnx and environ.
+        config-opts:
+          - --prefix=/app/lib/fieldworks
+          - --bindir=/app/lib/fieldworks/icu-bin
+          - --sbindir=/app/lib/fieldworks/icu-bin
+        subdir: source
+        cleanup:
+          - "/lib/*/include"
+        sources:
+          - type: git
+            url: https://github.com/sillsdev/icu.git
+            # Branch FieldWorks54
+            tag: v54.1.31-fw
+            commit: f648b14cd744202c24648c5f76847621721e1ae9
+      - name: encoding-converters
+        buildsystem: autotools
+        build-options:
+          prepend-ld-library-path: /app/lib/fieldworks/lib
+          env:
+            FIELDWORKS: "1"
+            PYTHON_VERSION: "2.7"
+            EC_DOWNLOAD_NUGETEXE: "false"
+            EC_DOWNLOAD_DEPS: "true"
+            # Even tho `pkg-config --libs python-2.7` gives
+            # '-L/app/lib -lpython2.7', we end up using
+            # '-L/app/lib/python2.7 -lpython2.7' and failing to find
+            # -lpython2.7. Override.
+            PYTHON_LDFLAGS: "-L/app/lib -lpython2.7"
+            REGROOT: "/app/share/encoding-converters"
+        config-opts:
+          - --prefix=/app
+        sources:
+          - type: git
+            url: https://github.com/silnrsi/encoding-converters-core.git
+            # Using branch master
+            commit: aee4ff72bd3894eba96de7978990061e36b4784c
+          - type: shell
+            # Encoding Converters expects a shared directory where multiple
+            # applications and even users can write shared data to. Previously
+            # the FieldWorks .deb package used /var/lib/fieldworks. Install
+            # initial files to PREFIX/share/encoding-converters and
+            # XDG_DATA_HOME will be used for an EC area to share among
+            # applications.
+            commands:
+              - |
+                set -xueo pipefail
+                # Adjust prefix of PluginDir and RootDir in registry file.
+                # Note: EncCnvtrs/AutoConfigDialog.cs wants to find a help file
+                # in a path specified by the RootDir registry key, but it
+                # doesn't look like that help file is even being installed for
+                # Linux. So it may not matter what the RootDir registry key
+                # value is set to, but set it to /app/lib/fieldworks in case.
+                perl -pi -e 's|/usr|/app|g' values.xml
+                perl -pi -e \
+                  's|/usr/lib/fieldworks/icu-bin/icu-config|/app/lib/fieldworks/icu-bin/icu-config|' \
+                  Makefile.in
+          - type: file
+            url: https://api.nuget.org/v3-flatcontainer/Geckofx45.64.Linux/45.0.21/Geckofx45.64.Linux.45.0.21.nupkg
+            sha512: d34f7175793bdfc4dcfa0b404bf7d6f2a27ba29389623a23c4d6383281fedf7f8014474775f4321af21ad9eab2817e5309934b81b918296fb518c23064272dfe
+            dest: nuget-sources/
+          - type: file
+            url: https://api.nuget.org/v3-flatcontainer/Geckofx45.32.Linux/45.0.21/Geckofx45.32.Linux.45.0.21.nupkg
+            sha512: 677c1dea32bd8631e859a7ddb2e72971a5db5561e9bc3ddced9a5bd451395f78719d3001b1cea908025707bb34175ecbc698c9ca965a44535bb4e9c83687832f
+            dest: nuget-sources/
+          - type: file
+            url: https://api.nuget.org/v3-flatcontainer/NUnit/2.6.4/NUnit.2.6.4.nupkg
+            sha512: e0510c05364d512d810d8bc5741462cb8eeef06b45101f81106f5489fd9f9987d07050320d4306c41c9bc76fe186735a8e3544be0b496dc416617cf0bdb99600
+            dest: nuget-sources/
+          - type: file
+            url: https://dist.nuget.org/win-x86-commandline/v3.4.4/nuget.exe
+            sha512: 3b404655c39cfc39334c8437ff2c7d6007e23262daa7bb34863fdd6f2e7da9a89ab97176a52b1e8a99327fde3e9decc29c450664492af73680f5a715a72aacf3
+            dest: build/
+          # Use local nuget packages
+          - type: inline
+            dest-filename: nuget.config
+            contents: |
+              <?xml version="1.0" encoding="utf-8"?>
+              <configuration>
+                <packageSources>
+                  <add key="LocalNugetPackages" value="nuget-sources" />
+                </packageSources>
+                <disabledPackageSources>
+                  <add key="nuget.org" value="true" />
+                </disabledPackageSources>
+              </configuration>
+        modules:
+          - name: teckit
+            cleanup:
+              - "/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://github.com/silnrsi/teckit
+                tag: v2.5.10
+                commit: 1c510d4de7ff844207b1273e856fd27a15b3486d
+      - name: flexbridge
+        buildsystem: simple
+        build-options:
+          env:
+            PREFIX: /app
+            MONO_PREFIX: /app
+            MONO_SILPKGDIR: /app
+            CONFIGURATION: Release
+            XDG_DATA_HOME: xdg-data-home
+        build-commands:
+          - |
+            set -xueo pipefail
+
+            pushd nuget-specific
+            for package in *.nupkg; do
+              mkdir -p "../packages/$(basename "${package}" .nupkg)"
+              unzip "${package}" \
+                -d "../packages/$(basename "${package}" .nupkg)"
+            done
+            popd
+
+            # Use the same version of geckofx used by FieldWorks (in
+            # FieldWorks.git Build/nuget-linux/packages.config ).
+            perl -pi -e 's#.*Geckofx60.32.*##' src/FLExBridge/FLExBridge.csproj
+            perl -pi -e \
+              's#.*Geckofx60.64.*#<PackageReference Include="Geckofx45.64.Linux" Version="45.0.36" />#' \
+              src/FLExBridge/FLExBridge.csproj
+
+            make process_l10ns
+
+            msbuild \
+              -p:Configuration=${CONFIGURATION} \
+              -p:DisableGitVersionTask=true \
+              -p:GitVersion_SemVer=1.0.0 \
+              -p:Version=1.0.0 \
+              -p:WriteVersionInfoToBuildLog=false \
+              build/FLExBridge.proj
+            # Fix path on fixutf8 extension
+            perl -ni -e 'print unless /^fixutf8/' Mercurial/mercurial.ini
+            tee --append Mercurial/mercurial.ini <<< \
+              "fixutf8=/app/lib/flexbridge/MercurialExtensions/fixutf8/fixutf8.py"
+            # Help hg find python (in /app).
+            perl -pi -e 's#/usr/bin/python#/usr/bin/env python#' Mercurial/hg
+
+            make install-core
+        sources:
+          - type: git
+            url: https://github.com/sillsdev/flexbridge.git
+            # Branch develop
+            commit: 7dbc684697944d59fad7f091f5266f99d1a289a9
+          - type: file
+            # To update: Choose a new l10n artifact at
+            # https://github.com/sillsdev/flexbridge/releases , possibly after
+            # running the localizations GHA.
+            url: https://github.com/sillsdev/flexbridge/releases/download/l10n-v3.3.0-38-gf6ef2ba8/FieldWorksL10ns.zip
+            sha512: d395f26be1ef1777351e5515e34a3f7004d126590b00049aa5ec03d7ab392af60a26bce31a6af16a9eefdb5e79854f8bf24d40a61aed214558b3f35041b53149
+            dest: l10n/
+          - type: file
+            url: https://dist.nuget.org/win-x86-commandline/v5.9.0/nuget.exe
+            sha512: 980b62387ce9540eff0d49ef6dd5b4da121a8648646a465bc6445534e9ec0d7605483fad933b26f9b0b3797db4d4b1ec82ed354b3daf13e1dcc0818292815dca
+            dest: build/
+          # These nuget packages are installed by build/FLExBridge.proj by
+          # directly running nuget.exe. To update: Check on what current
+          # packages and versions are needed with
+          # `grep NuGetCommand build/FLExBridge.proj`. Then manually edit the
+          # yml to change or add.
+          # Note that attempting to install
+          # SIL.Windows.Forms.GeckoBrowserAdapter results in it trying to
+          # identify dependencies to install, and works differently than the
+          # other nuget installations that use a similar command. A solution is
+          # to write the GeckoBrowserAdapter nuget file to dest nuget-sources,
+          # rather than nuget-specific. The dependencies may not need special
+          # handling, but if they start to, then note that the dependencies
+          # don't seem to be mentioned in the .nupkg file itself, nor on the
+          # nuget.org web site, but can be determined by running in flexbridge
+          # `msbuild build/FLExBridge.proj -t:RestoreBuildTasks` and observing
+          # how it resolves dependencies.
+          - flexbridge-sources-nuget-specific.yml
+          # Use local nuget packages
+          - type: inline
+            dest-filename: nuget.config
+            contents: |
+              <?xml version="1.0" encoding="utf-8"?>
+              <configuration>
+                <packageSources>
+                  <add key="LocalNugetPackages" value="nuget-sources" />
+                </packageSources>
+                <disabledPackageSources>
+                  <add key="nuget.org" value="true" />
+                </disabledPackageSources>
+              </configuration>
+          # Regenerate: Set flexbridge git dir to newer code. Then run (in the
+          # directory with the flatpak manifest):
+          #   .../flatpak-builder-tools/dotnet/flatpak-dotnet-generator.py flexbridge-sources-nuget.json $(find $HOME/fwrepo/flexbridge -name \*.csproj -o -name \*.proj)
+          # Also, to work with FW 9.0, FW needs geckofx45 not 60.
+          - flexbridge-sources-nuget.json
+          # Dependencies specified from FLExBridge.dep
+          # Determine what is needed by running in the flexbridge repo:
+          #   msbuild -t:DownloadDependencies build/FLExBridge.proj && cat build/FLExBridge.files
+          - flexbridge-sources-deps.yml
+          - type: inline
+            dest-filename: gitversion.properties
+            contents: |
+              BuildVersion=1.0.0
+        modules:
+          - name: ping
+            # FlexBridge uses .NET/Mono Ping to check connectivity. Mono's Ping
+            # uses the ping utility.
+            buildsystem: meson
+            config-opts:
+              - -DBUILD_ARPING=false
+              - -DBUILD_CLOCKDIFF=false
+              - -DBUILD_RARPD=false
+              - -DBUILD_RDISC=false
+              - -DENABLE_RDISC_SERVER=false
+              - -DBUILD_TRACEPATH=false
+              - -DBUILD_NINFOD=false
+              - -DBUILD_MANS=false
+              - -DSKIP_TESTS=true
+            sources:
+              - type: git
+                url: https://github.com/iputils/iputils.git
+                tag: "20211215"
+                commit: "1d1e7c43210d8af316a41cb2c53d612a4c16f34d"
+      - name: xchm
+        # Help file viewer
+        cleanup:
+          - "/include"
+          - "*.a"
+          - "/share/icons"
+          - "/share/applications"
+        sources:
+          - type: git
+            url: https://github.com/rzvncj/xCHM
+            # Version 1.31 is used in Ubuntu 20.04.
+            tag: "1.31"
+            commit: e983d11fd546c961501f736b2c6f93178c92fa97
+          - type: patch
+            # xchm would otherwise need to write to files ~/.xchmXXXXXX and
+            # ~/.xchm. This won't be needed after upgrading to a newer xchm
+            # version and wxWidgets v3.1.1+.
+            path: patches/xchm/no-config.patch
+        modules:
+          - name: chmlib
+            cleanup:
+              - "/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://github.com/jedwing/CHMLib
+                # Latest commit, from 2009-07-03.
+                commit: 2bef8d063ec7d88a8de6fd9f0513ea42ac0fa21f
+              - type: script
+                commands:
+                  - autoreconf --install
+          - name: wxWidgets
+            cleanup:
+              - "/include"
+              - "/lib/wx/include"
+              - "*.a"
+            sources:
+              - type: git
+                url: https://github.com/wxWidgets/wxWidgets
+                # v3.0.4 is used in Ubuntu 20.04.
+                # v3.1.1+ is needed for xchm to write to XDG_CONFIG_HOME.
+                # However, v3.1.0 appears to introduce a problem rendering the
+                # chm html. v3.0.5.1 still worked, rendering the html.
+                tag: v3.0.4
+                commit: 721d62adde3f8ba8704a9cf56efeb050f652dfbf
+      - name: setxkbmap
+        # Needed by ibusdotnet for keyboarding.
+        sources:
+          - type: archive
+            url: https://xorg.freedesktop.org/releases/individual/app/setxkbmap-1.3.2.tar.gz
+            sha512: 5e07285c16fb8822fec90ce8393c9f484fa19defa3d9db927a70dd1b525706b78901af5fff58fa99c947236f99c0010e34f1968f65e42ed6ba89a5c3925451fe
+      - name: xkeyboard-config
+        # Used by setxkbmap
+        sources:
+          - type: archive
+            url: https://xorg.freedesktop.org/releases/individual/data/xkeyboard-config/xkeyboard-config-2.34.tar.gz
+            sha512: 8ddb21da44dd22dedd3206990c54ce3f91cd3081f4fc8c4a49f6f0b49d91a865df530c1d30a7ca0054526462cfb7aab24b13c07d5370af7d2041f270684944af
+      # FieldWorks is used to describe languages using various writing
+      # systems. Include some fonts.
+      - name: fonts-sil-doulos
+        # From https://software.sil.org/doulos/download/previous-versions/
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app/share/fonts/truetype/doulos
+          - cp -a *.ttf /app/share/fonts/truetype/doulos
+        sources:
+          - type: archive
+            url: https://software.sil.org/downloads/r/doulos/DoulosSIL-5.000.zip
+            sha512: 3698b3f330d34cfa2be93f9dfc87c113a0b3e174a40ce9c2277bb452161cda61aab4688338ab3aeaaaa3cc684cedc58bbb3f066392e3911246a230d1a9fb02f3
+      - name: fonts-sil-charis
+        # From https://software.sil.org/charis/download/previous-versions/
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app/share/fonts/truetype/charis
+          - cp -a *.ttf /app/share/fonts/truetype/charis
+        sources:
+          - type: archive
+            url: https://software.sil.org/downloads/r/charis/CharisSIL-5.000.zip
+            sha512: f85da6c9b93c0ef81617241219b208ca262c12fcecae1d447163b7aff31ea8bfc3f09636dcfc0a322c86201a0d551288884e4017fded5bb71bbb54c8093faaed
+      - name: fonts-sil-galatia
+        # From https://software.sil.org/galatia/#downloads
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app/share/fonts/truetype/galatia
+          - cp -a *.ttf /app/share/fonts/truetype/galatia
+        sources:
+          - type: archive
+            url: https://software.sil.org/downloads/r/galatia/GalatiaSIL-2.1.zip
+            sha512: ff408660ab892d04e81db24f4395ffb1e3732921a2277173dfcc1b080338c68d22aa004f3838959ece724114ff0e5cf3be101c41341ec5ba22a1736458e25672
+      - name: fonts-sil-ezra
+        # From https://software.sil.org/ezra/
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app/share/fonts/truetype/ezra
+          - cp -a *.ttf /app/share/fonts/truetype/ezra
+        sources:
+          - type: archive
+            url: https://software.sil.org/downloads/r/ezra/EzraSIL-2.51.zip
+            sha512: 404f273a078ce89b84c1fcb91a7d9b729a80934b1327eb62d6625db245fcd4e96400c5fb5350014011771bfeac3191481b6c95e724232355b031f46eb51aab15

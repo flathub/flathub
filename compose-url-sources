@@ -1,0 +1,91 @@
+#!/usr/bin/env xonsh
+
+# Generate flatpak sources from URLs
+#
+# Copyright (c) 2021 SIL International. MIT License.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Output a flatpak yaml sources list from an input yaml file specifying files at
+# base URLs. Files will be downloaded (and cached) to compute their checksums.
+# Usage: compose-url-sources input.yml output.yml
+# Dependencies: xonsh wget
+#
+# Input should be formatted like the following example:
+#   - name: My Assembly
+#     baseurl: https://www.example.com/my-assembly/
+#     dest: dependencies
+#     files:
+#       - My.Assembly.dll
+#       - My.Assembly.dll.config
+#   - name: Something else
+#     baseurl: https://project.example.com/something-else/
+#     dest: other-dependencies
+#     files:
+#       - deps.tar.xz
+#       - icon.png
+# output.yml will then specify to download the following files:
+#   https://www.example.com/my-assembly/My.Assembly.dll
+#   https://www.example.com/my-assembly/My.Assembly.dll.config
+#   https://project.example.com/something-else/deps.tar.xz
+#   https://project.example.com/something-else/icon.png
+
+import sys
+import yaml
+$RAISE_SUBPROC_ERROR = True
+
+# trace on
+# $XONSH_TRACE_SUBPROC = True
+
+inputsPath = sys.argv[1]
+outputSourcesPath = sys.argv[2]
+
+nugetSources = []
+if 'XDG_CACHE_HOME' in ${...}:
+    cacheHome = $XDG_CACHE_HOME
+else:
+    cacheHome = '{}/.cache'.format($HOME)
+cachePath = '{}/nuget-sources-flatpak'.format(cacheHome)
+mkdir -p @(cachePath)
+
+def processInputSourcesList(path):
+    with open(path, 'r') as inputStream:
+        inputSources = yaml.safe_load(inputStream)
+    for source in inputSources:
+        print('Processing group {} ...'.format(source['name']))
+        for file in source['files']:
+            prepareSourceRecord(source['name'], source['baseurl'], source['dest'], file)
+
+def prepareSourceRecord(name, baseurl, dest, file):
+    url = '{}{}'.format(baseurl, file)
+    cacheOutputPath = '{}/{}'.format(cachePath, file)
+    wget @(url) -O @(cacheOutputPath)
+    pathToCachedFile = '{}/{}'.format(cachePath,file)
+    sha512 = $(sha512sum @(pathToCachedFile) | perl -p -e 's/ .*$//').rstrip()
+    nugetSources.append({
+      'type': 'file',
+      'url': url,
+      'sha512': sha512,
+      'dest': dest
+    })
+
+processInputSourcesList(inputsPath)
+
+with open(outputSourcesPath, 'w') as out:
+    yaml.dump(nugetSources, out)
