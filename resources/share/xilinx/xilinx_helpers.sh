@@ -12,12 +12,17 @@ function xilinx_detect_xsetup() {
 	installed_versions=( $(find "$XILINX_INSTALL_PATH/.xinstall" -mindepth 2 -maxdepth 2 -type f -name xsetup -exec sh -c 'basename "$(dirname {})"' \; | sort) )
 }
 
-function xilinx_choose_version() {
+function xilinx_install_vivado_if_missing() {
 	if [ "${#installed_versions[@]}" -eq "0" ]; then
-		zenity --class $CURRENT_WM_CLASS --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?" && xilinx_install
-		xilinx_detect
-		chosen_version=${installed_versions[0]}
-	elif [ "${#installed_versions[@]}" -eq "1" ]; then
+                zenity --class $CURRENT_WM_CLASS --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?" && xilinx_install
+                xilinx_detect
+	fi
+}
+
+function xilinx_choose_version() {
+	xilinx_install_vivado_if_missing
+
+	if [ "${#installed_versions[@]}" -eq "1" ]; then
 		chosen_version=${installed_versions[0]}
 	else
 		zenity_versions=()
@@ -85,6 +90,7 @@ function xilinx_versioned_install_if_needed() {
 
 function xilinx_install_if_needed() {
 	xilinx_detect
+	xilinx_install_vivado_if_missing
 	chosen_version=${installed_versions[0]}
 	xilinx_source_settings64 "$chosen_version"
 	xilinx_get_cmd_abs_path "$1" "$command is not installed, please run the installation wizard to install it."
