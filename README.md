@@ -44,7 +44,7 @@ You can find the sandboxed filesystem in `~/var/app/com.github.corna.Vivado/`.
 
 Have you installed the "cable drivers" (which are just udev rules) at the end
 of the installation? To install them, run:
-`sudo ~/.var/app/com.github.corna.Vivado/data/xilinx-install/Vivado/<version>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers && sudo udevadm control --reload`,
+`cd ~/.var/app/com.github.corna.Vivado/data/xilinx-install/Vivado/<version>/data/xicom/cable_drivers/lin64/install_script/install_drivers/ && sudo ./install_drivers && sudo udevadm control --reload`,
 then re-connect any hardware device.
 
 ### Can you include the Xilinx installer in this package?
