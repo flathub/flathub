@@ -56,13 +56,13 @@ No, the installer is not redistributable.
 Yes, just remove the corresponding permission with:
 `flatpak override com.github.corna.Vivado  --unshare=network`.
 Note that the license manager uses your MAC addresses, so you may experience
-issues with non free products.
+issues with non free components.
 
 ### How can I install additional components?
 
 Run the launcher *Add Xilinx Design Tools or Devices*.
 
-### Can I install another version of the Xilinx tools?
+### Can I install an additional version of the Xilinx tools?
 
 Yes, run `flatpak run --command=xilinx_install com.github.corna.Vivado`
 
