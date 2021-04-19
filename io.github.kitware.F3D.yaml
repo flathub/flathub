@@ -17,20 +17,9 @@ cleanup:
   - /share/doc
   - "*.la"
   - "*.a"
-  
-sdk-extensions:
-  - org.freedesktop.Sdk.Compat.i386
-  - org.freedesktop.Sdk.Extension.toolchain-i386
-  
-add-extensions:
-  org.freedesktop.Platform.Compat.i386:
-    directory: lib/i386-linux-gnu
-    version: '20.08'
 
 modules:
   - shared-modules/glew/glew.json
-    # ISPC need glibc-32bit for some reason.
-  - ISPC-32bit.yaml
   
   - name: Eigen3
     buildsystem: cmake-ninja
@@ -49,16 +38,42 @@ modules:
         sha256: a62dcb276658cb78e6795dd29bf926ed7a9bc4edf6e77025cd2c689a8f97c17a
     cleanup:
       - "/share/hdf5_examples"
-          
-    # For ray tracing      
-  - name: OSPRay
+      
+  - name: embree
     buildsystem: cmake
-    builddir: true
+    config-opts:
+      - -DEMBREE_TUTORIALS:BOOL=OFF
+      - -DEMBREE_ISPC_SUPPORT:BOOL=ON
+      - -DEMBREE_ISPC_ADRESSING=64
     sources:
       - type: archive
-        url: https://github.com/ospray/OSPRay/archive/v2.5.0.tar.gz
-        sha256: 074bfd83b5a554daf8da8d9b778b6ef1061e54a1688eac13e0bdccf95593883d
+        url: https://github.com/embree/embree/archive/refs/tags/v3.12.2.tar.gz
+        sha256: 22a527622497e07970e733f753cc9c10b2bd82c3b17964e4f71a5fd2cdfca210
     modules:
+      - name: extra-cmake-modules
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://invent.kde.org/frameworks/extra-cmake-modules.git
+            tag: v5.78.0
+        # Attempt to build from source, but ISPC need glic-32bit
+        # which make things complicated.
+      - name: ISPC
+        buildsystem: simple
+        build-commands:
+          - cp bin/ispc /app/bin/
+        sources:
+          - type: archive
+            url: https://github.com/ispc/ispc/releases/download/v1.15.0/ispc-v1.15.0-linux.tar.gz
+            sha256: b67f50ab16b38d29e28b0a2dbb9733fd6fc1276cb5a5be0cac78e356941f881f
+      - name: glfw
+        buildsystem: cmake
+        config-opts:
+          - -DGLFW_USE_WAYLAND:BOOL=OFF
+        sources:
+          - type: archive
+            url: https://github.com/glfw/glfw/releases/download/3.3.4/glfw-3.3.4.zip
+            sha256: bbd2c42c660b725e9755eb417e40b373f0d4c03138c9b2e210d02cd308bd99cd
       - name: TBB
         buildsystem: cmake
         builddir: true
@@ -69,36 +84,25 @@ modules:
           - type: archive
             url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.2.0.tar.gz
             sha256: cee20b0a71d977416f3e3b4ec643ee4f38cedeb2a9ff015303431dd9d8d79854
-      - name: openimagedenoise
-        buildsystem: cmake
-        sources:
-          - type: archive
-            url: https://github.com/OpenImageDenoise/oidn/releases/download/v1.3.0/oidn-1.3.0.src.tar.gz
-            sha256: 88367b2bbea82d1df45d65141c36b6d86491bc6b397dc70beb3a05dda566f31c
+          
+    # For ray tracing      
+  - name: OSPRay
+    buildsystem: cmake
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/ospray/OSPRay/archive/v2.5.0.tar.gz
+        sha256: 074bfd83b5a554daf8da8d9b778b6ef1061e54a1688eac13e0bdccf95593883d
+    modules:
       - name: rkcommon
         buildsystem: cmake
         builddir: true
+        config-opts:
+          - -DBUILD_TESTING:BOOL=OFF
         sources:
           - type: archive
             url: https://github.com/ospray/rkcommon/archive/refs/tags/v1.6.0.tar.gz
             sha256: 24d0c9c58a4d2f22075850df170ec5732cfaa0a16f22f90dbd6538232be009b0
-      - name: embree
-        buildsystem: cmake
-        config-opts:
-          - -DEMBREE_TUTORIALS:BOOL=OFF
-        sources:
-          - type: archive
-            url: https://github.com/embree/embree/archive/refs/tags/v3.12.2.tar.gz
-            sha256: 22a527622497e07970e733f753cc9c10b2bd82c3b17964e4f71a5fd2cdfca210
-        modules: 
-          - name: glfw
-            buildsystem: cmake
-            #config-opts:
-              #- -DGLFW_USE_WAYLAND:BOOL=ON
-            sources:
-              - type: archive
-                url: https://github.com/glfw/glfw/releases/download/3.3.4/glfw-3.3.4.zip
-                sha256: bbd2c42c660b725e9755eb417e40b373f0d4c03138c9b2e210d02cd308bd99cd
       - name: openvkl
         buildsystem: cmake
         builddir: true
@@ -109,34 +113,7 @@ modules:
           - type: archive
             url: https://github.com/openvkl/openvkl/archive/refs/tags/v0.12.1.tar.gz
             sha256: 58ce13fe09699a9966b665c89fac0fca96a1155606889e11ec8f0fc34834e25a
-
-        #modules:
-          #- name: ISPC
-            #buildsystem: cmake
-            #config-opts:
-              #- -DCMAKE_BUILD_TYPE:STRING=Release
-              #- -DISPC_INCLUDE_EXAMPLES:BOOL=OFF
-              #- -DISPC_NO_DUMPS:BOOL=ON
-              #- -DCMAKE_INSTALL_PREFIX=/app
-              #- -DARM_ENABLED:BOOL=OFF
-            #sources:
-              #- type: git
-                #url: https://github.com/ispc/ispc
-                #tag: v1.15.0
-              #- type: patch
-                #path: ispc-libclang-cpp.patch
-            #modules: 
-              #- name: glibc-32bit
-                #buildsystem: simple
-                #build-commands:
-                  #- mkdir build
-                  #- cd build && ../configure --prefix=/app --host=i686-linux-gnu --build=i686-linux-gnu CC="gcc -m32" CXX="g++ -m32" CFLAGS="-O2 -march=i686" CXXFLAGS="-O2 -march=i686"
-                  #- cd build  && make && make install
-                #sources:
-                  #- type: archive
-                    #url: http://ftp.gnu.org/pub/gnu/glibc/glibc-2.33.tar.xz
-                    #sha256: 2e2556000e105dbd57f0b6b2a32ff2cf173bde4f0d85dffccfd8b7e51a0677ff
-
+        
   - name: VTK
     buildsystem: cmake
     builddir: true
@@ -149,8 +126,8 @@ modules:
     - -DVTK_BUILD_QT_DESIGNER_PLUGIN:BOOL=OFF
     - -DCMAKE_BUILD_TYPE=Release
     - -DVTK_LEGACY_REMOVE:BOOL=ON
-    #- -DVTK_MODULE_ENABLE_VTK_RenderingRayTracing=WANT
-    #- -DVTKOSPRAY_ENABLE_DENOISER:BOOL=ON
+    - -DVTK_MODULE_ENABLE_VTK_RenderingRayTracing=WANT
+    - -DVTKOSPRAY_ENABLE_DENOISER:BOOL=ON
     sources:
       - type: archive
         url: https://www.vtk.org/files/release/9.0/VTK-9.0.1.tar.gz
@@ -171,3 +148,5 @@ modules:
         sha256: 93aa9759efcc4e77beac4568280aaeaca21bfb233d3c9f60262207ca595bde79
       - type: file
         path: io.github.kitware.F3D.metainfo.xml
+        
+  
