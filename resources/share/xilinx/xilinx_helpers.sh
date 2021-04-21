@@ -31,7 +31,6 @@ function xilinx_choose_version() {
 			zenity_versions+=(FALSE "$version")
 		done
 		zenity_versions[0]=TRUE
-		zenity --class "$CURRENT_WM_CLASS" --list --title "Xilinx Vivado Design Suite version"
 		chosen_version=$(zenity --class "$CURRENT_WM_CLASS" --list --title "Xilinx Vivado Design Suite version" --text "Which version do you want to use?" --radiolist --column "Pick" --column "Version" "${zenity_versions[@]}")
 	fi
 }
