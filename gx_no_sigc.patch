@@ -1,0 +1,96 @@
+commit 41350fb8efc7c92f1d11be918fbf9b7524427ace
+Author: Hubert Figuière <hub@figuiere.net>
+Date:   Tue Apr 20 22:57:11 2021 -0400
+
+    LV2/gxtuner: remove sigc++ use
+
+diff --git a/trunk/src/LV2/gxtuner.lv2/gx_pitch_tracker.h b/trunk/src/LV2/gxtuner.lv2/gx_pitch_tracker.h
+index f7d9c0a5..8e07d085 100644
+--- a/trunk/src/LV2/gxtuner.lv2/gx_pitch_tracker.h
++++ b/trunk/src/LV2/gxtuner.lv2/gx_pitch_tracker.h
+@@ -24,6 +24,9 @@
+ 
+ #ifndef SRC_HEADERS_GX_PITCH_TRACKER_H_
+ #define SRC_HEADERS_GX_PITCH_TRACKER_H_
++#undef max
++#undef min
++#include <boost/signals2/signal.hpp>
+ #include <fftw3.h>
+ #include <semaphore.h>
+ 
+@@ -42,7 +45,7 @@ class PitchTracker {
+     void            set_threshold(float v);
+     void            set_fast_note_detection(bool v);
+    // Glib::Dispatcher new_freq;
+-    sigc::signal<void > new_freq;
++    boost::signals2::signal<void ()> new_freq;
+  private:
+     bool            setParameters(int priority, int policy, int sampleRate, int fftSize );
+     void            run();
+diff --git a/trunk/src/LV2/gxtuner.lv2/gx_vumeter.cc b/trunk/src/LV2/gxtuner.lv2/gx_vumeter.cc
+index edcc72ae..d8d79028 100644
+--- a/trunk/src/LV2/gxtuner.lv2/gx_vumeter.cc
++++ b/trunk/src/LV2/gxtuner.lv2/gx_vumeter.cc
+@@ -85,10 +85,10 @@ void MaxLevel::process(int count, float *input1, float*, PluginLV2 *plugin) {
+     const float *data = input1;
+         float level = 0;
+         for (int i = 0; i < count; i++) {
+-            level = max(fabs(data[i]),level);
++            level = std::max(fabsf(data[i]),level);
+         }
+         self.midilevel = level;
+-        *(self.maxlevel_) = self.maxlevel = max(self.maxlevel, level);
++        *(self.maxlevel_) = self.maxlevel = std::max(self.maxlevel, level);
+ }
+ 
+ PluginLV2 *vu_plugin() {
+diff --git a/trunk/src/LV2/gxtuner.lv2/gxtuner.cpp b/trunk/src/LV2/gxtuner.lv2/gxtuner.cpp
+index a13cf314..56ecb09e 100644
+--- a/trunk/src/LV2/gxtuner.lv2/gxtuner.cpp
++++ b/trunk/src/LV2/gxtuner.lv2/gxtuner.cpp
+@@ -346,7 +346,9 @@ void Gxtuner::init_dsp_mono(uint32_t rate)
+   lhcut->set_samplerate(rate, lhcut);
+   bow->set_samplerate(rate, bow);
+   tuner& self = *static_cast<tuner*>(tuner_adapter);
+-  self.signal_freq_changed().connect(sigc::mem_fun(this, &Gxtuner::freq_changed_handler));
++  self.signal_freq_changed().connect([this]() {
++    this->freq_changed_handler();
++  });
+ }
+ 
+ // connect the Ports used by the plug-in class
+diff --git a/trunk/src/LV2/gxtuner.lv2/tuner.cc b/trunk/src/LV2/gxtuner.lv2/tuner.cc
+index 7a68a038..d3961a4d 100644
+--- a/trunk/src/LV2/gxtuner.lv2/tuner.cc
++++ b/trunk/src/LV2/gxtuner.lv2/tuner.cc
+@@ -26,6 +26,9 @@
+  */
+ 
+ #include "gx_pitch_tracker.h"
++#undef max
++#undef min
++#include <boost/signals2/signal.hpp>
+ 
+ /****************************************************************
+  ** class tuner
+@@ -42,7 +45,7 @@ private:
+     enum { tuner_use = 0x01, livetuner_use = 0x02, switcher_use = 0x04, midi_use = 0x08 };
+     void set_and_check(int use, bool on);
+ public:
+-    sigc::signal<void >& signal_freq_changed() { return pitch_tracker.new_freq; }
++    boost::signals2::signal<void ()>& signal_freq_changed() { return pitch_tracker.new_freq; }
+    // Glib::Dispatcher& signal_freq_changed() { return pitch_tracker.new_freq; }
+     static float get_freq(tuner& self) { return self.pitch_tracker.get_estimated_freq(); }
+     static float get_note(tuner& self) { return self.pitch_tracker.get_estimated_note(); }
+diff --git a/trunk/wscript b/trunk/wscript
+index a3762d56..db465634 100644
+--- a/trunk/wscript
++++ b/trunk/wscript
+@@ -211,6 +211,7 @@ def check_boost(conf):
+     code="""
+     #include <boost/version.hpp>
+     #include <boost/format.hpp>
++    #include <boost/signals2.hpp>
+     #include <boost/thread.hpp>
+     #if BOOST_VERSION < %d
+     #error
