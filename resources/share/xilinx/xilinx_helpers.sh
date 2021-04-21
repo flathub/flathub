@@ -45,11 +45,20 @@ function xilinx_install() {
 	local installer_path
 	installer_path=$(zenity --class "$CURRENT_WM_CLASS" --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
 
-	zenity --class "$CURRENT_WM_CLASS" --width=600 --warning --text "The Xilinx installer will now start. Make sure to select $XILINX_INSTALL_PATH as installation path."
-	mkdir -p "$XILINX_INSTALL_PATH"
+	zenity --class "$CURRENT_WM_CLASS" --width=600 --warning --text "The Xilinx installer will now start. Do not change the default installation path."
+
+	# Extract the installer
+	local installer_dir
+	installer_dir=$(mktemp -d)
+	sh "$installer_path" --noexec --target "$installer_dir"
+
+	# Change the default installation folder
+	sed -i "s|^DEFAULT_DESTINATION_FOLDER_LIN_Install=.*|DEFAULT_DESTINATION_FOLDER_LIN_Install=$XILINX_INSTALL_PATH|" "$installer_dir/data/dynamic_language_bundle.properties"
 
 	# Run the installer
-	sh "$installer_path"
+	mkdir -p "$XILINX_INSTALL_PATH"
+	"$installer_dir/xsetup"
+	rm -rf "$installer_dir"
 
 	xilinx_detect
 	zenity --class "$CURRENT_WM_CLASS" --width=600 --info --text "Installation is complete.\nTo allow access to the hardware devices (necessary to program them within Vivado and Vitis), run <b>cd \"$XILINX_INSTALL_PATH/Vivado/${installed_versions[0]}/data/xicom/cable_drivers/lin64/install_script/install_drivers/\" &amp;&amp; sudo ./install_drivers &amp;&amp; sudo udevadm control --reload</b>, then reconnect all the devices (if any)"
