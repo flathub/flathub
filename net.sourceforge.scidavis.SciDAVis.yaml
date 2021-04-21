@@ -8,11 +8,7 @@ finish-args:
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
-  #- --env=SESSION_MANAGER= # required to avoid Qt warning
-  - --filesystem=home
-  #- --env=PYTHON=python3 cmake .
-  #- --env=PYTHONPATH=/app/packages/python
-  #- --env=PYTHONPATH=/app/lib/python3.8/site-packages
+  #- --filesystem=home
 
 modules:
   - shared-modules/glu/glu-9.json
@@ -25,67 +21,41 @@ modules:
     - type: archive
       url: https://github.com/beltoforion/muparser/archive/v2.3.2.tar.gz
       sha256: b35fc84e3667d432e3414c8667d5764dfa450ed24a99eeef7ee3f6647d44f301   
-      
-  - name: python3-sip
-    config-opts:
-      - --sip-module=PyQt5.sip
-      - --bindir=/app/bin
-      - --destdir=/app/lib/python3.8/site-packages
-      - --incdir=/app/include
-      - --pyidir=/app/lib/python3.8/site-packages
-      - --sipdir=/app/share/sip
-      - --stubsdir=/app/lib/python3.8/site-packages
-    sources:
-      - type: archive
-        url: https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.13/sip-4.19.13.tar.gz
-        sha256: e353a7056599bf5fbd5d3ff9842a6ab2ea3cf4e0304a0f925ec5862907c0d15e
-  # Patch50
-  # make install should not strip (by default)
-      - type: patch
-        path: sip-4.18-no_strip.patch
-  #Patch51
-  #try not to rpath the world
-      - type: patch
-        path: sip-4.18-no_rpath.patch
-      - type: script
-        commands:
-          - processed="$( sed -e 's|--prefix=/app||' <<< "${@}" )";
-          - python3 "configure.py" ${processed};
-        dest-filename: configure
+
+  - name: pyqt5
+    build-options:
+      arch:
+        aarch64:
+          env:
+            config_opt: "--disable-feature=PyQt_Desktop_OpenGL"
     cleanup:
       - /bin
- 
-  - name: python3-pyqt5
-    config-opts:
-      - --verbose
-      - --confirm-license
-      - --sip-incdir=/app/include
-      - --bindir=/app/bin
-      - --destdir=/app/lib/python3.8/site-packages
-      - --designer-plugindir=/app/lib/plugins/designer
-      - --qml-plugindir=/app/lib/plugins/PyQt5
-      - --sipdir=/app/share/sip
-      - --stubsdir=/app/lib/python3.8/site-packages/PyQt5
-      - QMAKE_CFLAGS_RELEASE=-I/usr/include/python3.8/
-      - QMAKE_CXXFLAGS_RELEASE=-I/usr/include/python3.8/
-    build-options:
-      env:
-        QMAKEPATH: "/app/lib"
+    buildsystem: simple
+    build-commands:
+      - PY_VER=python$(python3 -c 'import sys; print(sys.version[:3])') &&
+        python3 configure.py
+          --confirm-license
+          --assume-shared
+          --destdir=/app/lib/${PY_VER}/site-packages
+          --stubsdir=/app/lib/${PY_VER}/site-packages/PyQt5
+          --sipdir=/app/share/sip/PyQt5
+          --no-designer-plugin
+          --no-qml-plugin
+          --no-python-dbus
+          --no-tools
+          --enable=QtCore
+          --enable=QtGui
+          --enable=QtNetwork
+          --enable=QtWidgets
+          ${config_opt}
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
     sources:
       - type: archive
-        url: https://sourceforge.net/projects/pyqt/files/PyQt5/PyQt-5.11.3/PyQt5_gpl-5.11.3.tar.gz
-        sha256: c9b57d15601d436faf35dacf8e0acefa220194829a653e771e80b189b3261073
-  #Patch1
-  #support newer Qt5 releases than 5.11.2
-      - type: patch
-        path: PyQt5-Timeline.patch
-      - type: script
-        commands:
-           - processed="$( sed -e 's|prefix|sysroot|' <<< "${@}" )";
-           - python3 "configure.py" ${processed};
-        dest-filename: configure
-    cleanup:
-      - /bin    
+        url: https://files.pythonhosted.org/packages/source/p/pyqt5/PyQt5-5.15.2.tar.gz
+        sha256: 372b08dc9321d1201e4690182697c5e7ffb2e0770e6b4a45519025134b12e4fc
+    modules:
+      - pyqt5-pypi-dependencies.json  
         
   - name: gsl
     config-opts:
@@ -101,10 +71,10 @@ modules:
     buildsystem: cmake
     config-opts:
          - -DSCRIPTING_PYTHON:BOOL=ON
-         - -DORIGIN_IMPORT:BOOL=OFF
+         - -DORIGIN_IMPORT:BOOL=ON
          - -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-         - -DPyQt_INCLUDE_DIR=/app/include/PyQt5
+         - -DPyQt_INCLUDE_DIR=/app/share/sip/PyQt5
     sources:
       - type: git
         url: https://github.com/highperformancecoder/scidavis
-        commit: faf0b7a37aaddb3b14a063fb431067c7236d7032 
+        commit: faf0b7a37aaddb3b14a063fb431067c7236d7032
