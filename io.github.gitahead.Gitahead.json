@@ -3,10 +3,11 @@
   "runtime": "org.kde.Platform",
   "runtime-version": "5.15",
   "sdk": "org.kde.Sdk",
-  "command": "/app/usr/local/GitAhead",
+  "command": "gitahead",
+  "separate-locales": false,
   "finish-args": [
     "--share=ipc",
-    "--socket=x11",
+    "--socket=fallback-x11",
     "--socket=wayland",
     "--device=dri",
     /*for git repos that require ssh keys*/
@@ -18,8 +19,7 @@
     /*we use the keyring to store credentials*/
     "--filesystem=xdg-run/keyring",
     "--talk-name=org.freedesktop.secrets",
-    "--talk-name=org.freedesktop.Notifications",
-    "--talk-name=org.freedesktop.Flatpak"
+    "--talk-name=org.freedesktop.Notifications"
   ],
   "modules": [
     "shared-modules/libsecret/libsecret.json",
@@ -27,17 +27,14 @@
     {
       "name": "git",
       "buildsystem": "simple",
-      "sources": [
-        {
-          "type": "archive",
-          "url": "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.31.1.tar.gz",
-          "sha256": "46d37c229e9d786510e0c53b60065704ce92d5aedc16f2c5111e3ed35093bfa7"
-        }
-      ],
       "build-commands": [
-        "./configure",
-        "make NO_TCLTK=1 NO_PYTHON=1 NO_OPENSSL=1",
-        "make install DESTDIR=${FLATPAK_DEST}"
+        "install -Dm0755 $(which git) /app/bin/",
+        "install -Dm0755 $(which git-clang-format) /app/bin/",
+        "install -Dm0755 $(which git-cvsserver) /app/bin/",
+        "install -Dm0755 $(which git-receive-pack) /app/bin/",
+        "install -Dm0755 $(which git-shell) /app/bin/",
+        "install -Dm0755 $(which git-upload-archive) /app/bin/",
+        "install -Dm0755 $(which git-upload-pack) /app/bin/"
       ]
     },
     {
@@ -66,37 +63,46 @@
           "type": "archive",
           "url": "https://download-fallback.gnome.org/sources/libgnome-keyring/3.12/libgnome-keyring-3.12.0.tar.xz",
           "sha256": "c4c178fbb05f72acc484d22ddb0568f7532c409b0a13e06513ff54b91e947783"
-        },
-        {
-          "type": "file",
-          "path": "gitahead.patch"
         }
       ],
-      "cleanup": [
+      "cleanup":[
         "/share/gtk-doc"
       ]
     },
     {
       "name": "gitahead",
-      "buildsystem": "simple",
+      "buildsystem": "cmake-ninja",
+      "builddir": true,
+      "build-options": {
+        "prefix": "/app/gitahead"
+      },
       "cleanup": [
-        "/usr/local/share/",
-        "/usr/local/man",
-        "/usr/local/share/doc",
-        "/usr/local/share/man",
-        "/usr/local/Resources/*.html",
-        "/usr/local/Resources/GitAhead.iconset",
-        "/share/man"
+        "/gitahead/*.so*",
+        "/gitahead/include",
+        "/gitahead/lib"
+      ],
+      "post-install": [
+        "install -Dm755 ../gitahead.sh /app/bin/gitahead",
+        "install -Dm644 /app/gitahead/Resources/GitAhead.iconset/icon_512x512.png /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png",
+        "install -D ../io.github.gitahead.Gitahead.metainfo.xml -t /app/share/metainfo/",
+        "install -D ../io.github.gitahead.Gitahead.desktop -t /app/share/applications/"
       ],
       "sources": [
         {
           "type": "git",
           "url": "https://github.com/gitahead/gitahead.git",
-          "commit": "bb747caef098140d9674990b1d79d096d1eac8df"
+          "commit":"bb747caef098140d9674990b1d79d096d1eac8df"
         },
         {
           "type": "patch",
           "path": "gitahead.patch"
+        },
+        {
+          "type": "script",
+          "commands": [
+            "exec /app/gitahead/GitAhead $@"
+          ],
+          "dest-filename": "gitahead.sh"
         },
         {
           "type": "file",
@@ -106,14 +112,6 @@
           "type": "file",
           "path": "io.github.gitahead.Gitahead.desktop"
         }
-      ],
-      "build-commands": [
-        "mkdir -p build/release",
-        "cd build/release && cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_LINK_DIRECTORIES=${FLATPAK_DEST} ../.. && ninja &&  DESTDIR=${FLATPAK_DEST} ninja install",
-        "cp ${FLATPAK_DEST}/usr/local/Resources/GitAhead.iconset/icon_512x512.png io.github.gitahead.Gitahead.png",
-        "install -D io.github.gitahead.Gitahead.png --target-directory=${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/",
-        "install -D io.github.gitahead.Gitahead.metainfo.xml --target-directory=${FLATPAK_DEST}/share/metainfo/",
-        "install -D io.github.gitahead.Gitahead.desktop --target-directory=${FLATPAK_DEST}/share/applications/"
       ]
     }
   ]
