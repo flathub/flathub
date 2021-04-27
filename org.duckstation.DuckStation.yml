@@ -1,0 +1,55 @@
+app-id: org.duckstation.DuckStation
+runtime: org.kde.Platform
+runtime-version: '5.15'
+sdk: org.kde.Sdk
+command: duckstation-nogui
+finish-args:
+  - --device=all
+  - --filesystem=host:ro
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+
+modules:
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.11.0.tar.xz
+        sha256: 63f4ea1489858a109080e0b40bd43e4e0903a1e12ea888d581db8c495747c2d0
+
+  - name: duckstation
+    buildsystem: cmake-ninja
+    no-make-install: true
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DUSE_SDL2=ON
+      - -DUSE_WAYLAND=1
+      - -DUSE_DRMKMS=1
+    post-install:
+      - install -m 755 -t /app/bin/ bin/duckstation-nogui bin/duckstation-qt
+      - |-
+        for px in 16 32 48 64 128 256; do
+          install -Dm644 ../dist/icon-${px}px.png /app/share/icons/hicolor/${px}x${px}/apps/org.duckstation.DuckStation.png
+        done
+      - install -Dm644 ../dist/duckstation-nogui.desktop /app/share/applications/org.duckstation.DuckStation.desktop
+      - install -Dm644 ../dist/duckstation-qt.desktop /app/share/applications/org.duckstation.DuckStation.Qt.desktop
+      - sed -i 's/^Icon=.*/Icon=org.duckstation.DuckStation/' /app/share/applications/*.desktop
+      - install -Dm644 ../dist/org.duckstation.DuckStation.metainfo.xml /app/share/metainfo/org.duckstation.DuckStation.metainfo.xml
+      - cp -r ../data/* bin/translations /app/bin
+      - sed -i "s/date=.* v/date=\"$(git log -1 --format=%ci | awk '{print $1}')\" v/" /app/share/metainfo/org.duckstation.DuckStation.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/stenzek/duckstation
+        commit: 7080e307dd7c0d4bc971fc0e890bf7b93bfd15b3
