@@ -22,18 +22,6 @@ For example (using default model and denoise disabled):
 $ flatpak run com.github.nihui.waifu2x-ncnn-vulkan -i ~/Pictures/foo.jpg -o ~/Pictures/bar.png -n -1 -s 2 -t 400
 ```
 
-### Run with Mesa ACO
-More info here (in Japanese): <https://blog.coelacanth-dream.com/posts/2020/04/26/waifu2x-ncnn-vulkan-speedup-2x-aco/>  
-For a single run, pass `--env=RADV_PERFTEST=aco` option to `flatpak run`.  
-Example:
-```
-flatpak run --env=RADV_PERFTEST=aco com.github.nihui.waifu2x-ncnn-vulkan -i ~/Pictures/foo.jpg -o ~/Pictures/bar.png -n -1 -s 2 -t 400
-```
-To make the option permanent:
-```
-flatpak override --env=RADV_PERFTEST=aco com.github.nihui.waifu2x-ncnn-vulkan
-```
-
 ## Notes:
 By default, this flatpak only allows reading and saving to **XDG-PICTURES** directory.  
 If you want to save/read from other locations:
