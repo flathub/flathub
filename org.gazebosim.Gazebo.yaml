@@ -51,6 +51,33 @@ modules:
         #sha256: 8702ba68b442657f11aaeb2b338443ca8d5fb95b0d845757968a7be31ef7f16d
 
     # Gazebo need this    
+  #- name: FreeImage
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    #buildsystem: simple
+    #build-commands:
+      ## Remove bundled libs to make sure these don't get used during compile
+      ##- rm -rf Source/LibJPEG/
+      #- sh ./gensrclist.sh
+      #- sh ./genfipsrclist.sh
+      #- make -f Makefile.gnu
+      #- make -f Makefile.fip
+      #- make install
+      #- make -f Makefile.fip DESTDIR=/app INSTALLDIR=/app/lib install
+    #sources:
+      #- type: archive
+        #url: https://sourceforge.net/projects/freeimage/files/Source%20Distribution/3.18.0/FreeImage3180.zip
+        #sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+        ## patch adopt from openSUSE
+        ## It attempt to install as root user
+      #- type: patch
+        #path: freeimage_fix_install_dir.patch
+        ## Patch from Fedora, use system libraries.
+      #- type: patch
+        #path: FreeImage_unbundle.patch
+        
   - name: FreeImage
     build-options:
       env:
@@ -59,7 +86,17 @@ modules:
     buildsystem: simple
     build-commands:
       # Remove bundled libs to make sure these don't get used during compile
-      #- rm -rf Source/LibJPEG/
+      - rm -r Source/Lib* Source/ZLib Source/OpenEXR
+      # clear files which cannot be built due to dependencies on private headers
+      - > Source/FreeImage/PluginG3.cpp
+	  - > Source/FreeImageToolkit/JPEGTransform.cpp
+      # sanitize encodings / line endings
+      - |
+        for file in `find . -type f -name '*.c' -or -name '*.cpp' -or -name '*.h' -or -name '*.txt' -or -name Makefile`; do
+	      iconv --from=ISO-8859-15 --to=UTF-8 $file > $file.new && \
+	      sed -i 's|\r||g' $file.new && \
+	      touch -r $file $file.new && mv $file.new $file
+	    done
       - sh ./gensrclist.sh
       - sh ./genfipsrclist.sh
       - make -f Makefile.gnu
@@ -74,14 +111,9 @@ modules:
         # It attempt to install as root user
       - type: patch
         path: freeimage_fix_install_dir.patch
-      #- type: patch
-        #path: unbundle.patch
-    #cleanup:
-      #- "/include/openjpeg*"
-      #- "/lib/openjpeg*"
-      #- "/lib/debug"
-      #- "/lib/pkgconfig"
-      #- "/lib/libopen*"
+        # Patch from Fedora, use system libraries.
+      - type: patch
+        path: FreeImage_unbundle.patch
 
     # Gazebo need HDF5 component C and CXX
   - name: hdf5
