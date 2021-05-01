@@ -1,0 +1,178 @@
+{
+  "id": "io.github.lpub3d.LPub3D",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "5.15",
+  "sdk": "org.kde.Sdk",
+  "command": "lpub3d24",
+  "rename-icon": "lpub3d",
+  "rename-desktop-file": "lpub3d.desktop",
+  "rename-appdata-file": "io.github.lpub3d.appdata.xml",
+  "build-options": {
+    "env": {
+      "LP3D_3RD_PARTY_DIR": "/app/lpub3d_linux_3rdparty",
+      "LP3D_DIST_DIR_PATH": "/app/lpub3d_linux_3rdparty",
+      "LDRAWDIR": "/app/lpub3d_linux_3rdparty/ldraw",
+      "PLATFORM_CODE": "osl",
+      "TARGET_CPU": "$(uname -m)",
+      "PLATFORM_VER": "$(. /etc/os-release 2>/dev/null; [ -n \"$VERSION_ID\" ] && echo $VERSION_ID || true)"
+    }
+  },
+  "cleanup": [
+    "./lpub3d_linux_3rdparty"
+  ],
+  "finish-args": [
+    "--device=dri",
+    "--share=ipc",
+    "--socket=x11",
+    "--filesystem=home",
+    "--env=TMPDIR=/var/tmp",
+    "--env=QT_ENABLE_HIGHDPI_SCALING=1"
+  ],
+  "modules": [
+    {
+      "name": "part-archives",
+      "buildsystem": "simple",
+      "build-commands": [
+        "unzip -d ${LP3D_3RD_PARTY_DIR} -q /app/lpub3d_linux_3rdparty/complete.zip",
+        "if test -d ${LP3D_3RD_PARTY_DIR}/ldraw; then echo 'LDraw library extracted.'; fi"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "dest-filename": "complete.zip",
+          "dest": "/app/lpub3d_linux_3rdparty",
+          "url": "https://github.com/trevorsandy/lpub3d_libs/releases/download/v1.0.1/complete-20-03.zip",
+          "sha256": "85cf747b5923f18a8d0f37d0cef647636d70ddfeda5de49ea019e7e440f9e4e0"
+        },
+        {
+          "type": "archive",
+          "dest-filename": "lpub3dldrawunf.zip",
+          "dest": "/app/lpub3d_linux_3rdparty",
+          "url": "https://github.com/trevorsandy/lpub3d_libs/releases/download/v1.0.1/lpub3dldrawunf-01-04-21.zip",
+          "sha256": "f0266006c4b7114e4f4719801696fbe8780cf9d767e948fb6478c752989cbee8"
+        },
+        {
+          "type": "archive",
+          "dest": "/app/lpub3d_linux_3rdparty",
+          "url": "https://github.com/trevorsandy/lpub3d_libs/releases/download/v1.0.1/tenteparts.zip",
+          "sha256": "7e1a68490b1be11bddcfb3180151b42ffbb85ce3aa8ec3f7431bee5c04cc1ac5"
+        },
+        {
+          "type": "archive",
+          "dest": "/app/lpub3d_linux_3rdparty",
+          "url": "https://github.com/trevorsandy/lpub3d_libs/releases/download/v1.0.1/vexiqparts.zip.sha256",
+          "sha256": "e2f4114c8ff6bfe7e5a43b6c88fb47f32328ddb147578456ec0825aa76803b20"
+        }
+      ]
+    },
+    {
+      "name": "ldglite",
+      "buildsystem": "qmake",
+      "config-opts": [
+        "CONFIG+=3RD_PARTY_INSTALL=/app/lpub3d_linux_3rdparty",
+        "CONFIG+=release",
+        "CONFIG+=BUILD_CHECK"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/trevorsandy/ldglite.git",
+          "branch": "master",
+          "tag": "v1.3.6",
+          "commit": "140865cb85b17eac1abe613066c9364db1e57650"
+        }
+      ]
+    },
+    {
+      "name": "ldview",
+      "buildsystem": "qmake",
+      "config-opts": [
+        "CONFIG+=3RD_PARTY_INSTALL=/app/lpub3d_linux_3rdparty",
+        "CONFIG+=release",
+        "CONFIG+=BUILD_CUI_ONLY",
+        "CONFIG+=USE_SYSTEM_LIBS",
+        "CONFIG+=BUILD_TINYXML",
+        "CONFIG+=BUILD_GL2PS",
+        "CONFIG+=BUILD_CHECK"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/trevorsandy/ldview.git",
+          "branch": "qmake-build",
+          "commit": "16b44f3658690294b1faf13778e3654d443e3751"
+        }
+      ]
+    },
+    {
+      "name": "povray",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cd unix && ./prebuild3rdparty.sh",
+        "./configure COMPILED_BY=\"Trevor SANDY <trevor.sandy@gmail.com> using FlatHub for LPub3D.\" --prefix=/app/lpub3d_linux_3rdparty LPUB3D_3RD_PARTY=yes --with-libsdl2 --with-boost-libdir=${FLATPAK_DEST}/lib --enable-watch-cursor",
+        "make",
+        "make install"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/trevorsandy/povray.git",
+          "branch": "lpub3d/raytracer-cui",
+          "commit": "54b65529090b4161193df24f0d846046b1495f0b"
+        },
+        {
+          "type": "patch",
+          "path": "patches/povray/0002-Autotool-massaging.patch"
+        }
+      ],
+      "modules": [
+        {
+          "name": "boost",
+          "buildsystem": "simple",
+          "cleanup": [
+            "/include",
+            "/lib/libboost_*.a"
+          ],
+          "build-commands": [
+            "./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=date_time,thread",
+            "./b2 install variant=release link=shared runtime-link=shared --prefix=/app -j $FLATPAK_BUILDER_N_JOBS"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://downloads.sourceforge.net/project/boost/boost/1.60.0/boost_1_60_0.tar.bz2",
+              "sha256": "686affff989ac2488f79a97b9479efb9f2abae035b5ed4d8226de6857933fd3b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lpub3d",
+      "buildsystem": "qmake",
+      "config-opts": [
+        "-makefile",
+        "-nocache",
+        "QMAKE_STRIP=:",
+        "CONFIG+=release",
+        "CONFIG+=flp",
+        "CONFIG+=build_check",
+        "CONFIG-=debug_and_release",
+        "INSTALL_PREFIX=/app"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/trevorsandy/lpub3d-ci.git",
+          "branch": "master",
+          "tag": "v2.4.3",
+          "commit": "76d9418a484497f822a7044670101b7749ce7bb8"
+        }
+      ],
+      "post-install": [
+        "mv ${FLATPAK_DEST}/share/mime/packages/lpub3d.xml ${FLATPAK_DEST}/share/mime/packages/${FLATPAK_ID}.xml",
+        "cd ${FLATPAK_DEST}/share/icons/hicolor; for d in */mimetypes/; do for f in ${d}*; do mv \"$f\" \"${d}${FLATPAK_ID}.$(basename $f)\"; done; done"
+      ]
+    }
+  ]
+}
