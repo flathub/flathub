@@ -28,16 +28,17 @@ modules:
   - shared-modules/glu/glu-9.json
   - shared-modules/libusb/libusb.json
   
-    # Gazebo need libjpeg version 62    
-  #- name: libjpeg62
-    #build-options:
-      #env:
-        #LIBRARY_PATH: "/app/lib:/usr/lib"
-        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
-    #sources:
-      #- type: archive
-        #url: http://jpegclub.org/support/files/jpegsrc.v6b2.tar.gz
-        #sha256: 6d2be0db82dda2e50c908b72aa22ed8cf42cc5aa5ae5f2b081498be6ef16eabc
+    # Gazebo need libjpeg version 62
+    # FreeImage need jinclude.h which libjpeg9 provide.
+  - name: libjpeg9
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    sources:
+      - type: archive
+        url: https://ijg.org/files/jpegsrc.v9d.tar.gz
+        sha256: 6c434a3be59f8f62425b2e3c077e785c9ce30ee5874ea1c270e843f273ba71ee
         
   #- name: OpenJPEG
     #buildsystem: cmake-ninja
@@ -78,25 +79,160 @@ modules:
       #- type: patch
         #path: FreeImage_unbundle.patch
         
-  - name: FreeImage
+          # Remove bundled libs to make sure these don't get used during compile
+              # clear files which cannot be built due to dependencies on private headers
+ #Source/FreeImage/PluginG3.cpp
+#Source/FreeImageToolkit/JPEGTransform.cpp
+      # sanitize encodings / line endings
+        
+  #- name: FreeImage
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    #buildsystem: simple
+    #build-commands:
+      #- rm -r Source/Lib* Source/ZLib Source/OpenEXR
+      #- sh ./gensrclist.sh
+      #- sh ./genfipsrclist.sh
+      #- make -f Makefile.gnu
+      #- make -f Makefile.fip
+      #- make install
+      #- make -f Makefile.fip DESTDIR=/app INSTALLDIR=/app/lib install
+    #sources:
+      #- type: archive
+        #url: https://sourceforge.net/projects/freeimage/files/Source%20Distribution/3.18.0/FreeImage3180.zip
+        #sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+        ## patch adopt from openSUSE
+        ## It attempt to install as root user
+      #- type: patch
+        #path: freeimage_fix_install_dir.patch
+        ## Patch from Fedora, use system libraries.
+      #- type: patch
+        #path: FreeImage_unbundle.patch
+        
+  #- name: FreeImage
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    #buildsystem: simple
+    #build-commands:
+      #- rm -rf Source/LibPNG/ Source/LibRawLite/ Source/OpenEXR/ Source/ZLib/ Source/LibOpenJPEG/ Source/LibJPEG/
+      #- sh ./gensrclist.sh
+      #- sh ./genfipsrclist.sh
+      #- make -f Makefile.gnu
+      #- make -f Makefile.fip
+      #- make install
+      #- make -f Makefile.fip DESTDIR=/app INSTALLDIR=/app/lib install
+    #sources:
+      #- type: archive
+        #url: https://downloads.sourceforge.net/freeimage/FreeImage3180.zip
+        #sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+        ## patch adopt from openSUSE
+        ## It attempt to install as root user
+      #- type: patch
+        #path: bigendian.patch
+      #- type: patch
+        #path: freeimage-no-return-in-nonvoid.patch
+      ##- type: patch
+        ##path: freeimage-openexr3.patch
+      #- type: patch
+        #path: libraw_0_20.patch
+      #- type: patch
+        #path: makefiles_fixes.patch
+      #- type: patch
+        #path: unbundle.patch
+      #- type: patch
+        #path: CVE-2019-12211_2019-12213.patch
+        
+    # For FreeImage    
+    #https://archive.codeplex.com/?p=jxrlib will be close soon    
+  - name: libjxr
+    #no-autogen: true
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://github.com/4creators/jxrlib/archive/refs/tags/v2019.10.9.tar.gz
+        sha256: 555c006e27c5cb66f99c05dcbb2feb197199ca9018dbd06d3467d37cd29a79cd
+        # CMakeLists.txt from https://build.opensuse.org/package/show/graphics/jxrlib
+      - type: file
+        path: JXR-CMakeLists.txt
+        dest-filename: CMakeLists.txt
+      #- type: patch
+        #path: libjxr_change_install_path.patch
+        
+    # For FreeImage
+    # Cannot build new version aclocal-1.15: command not found
+  - name: LibRaw
+    builddir: true
+    config-opts:
+      - --disable-examples
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libraw.org/data/LibRaw-0.19.5.tar.gz
+        sha256: 40a262d7cc71702711a0faec106118ee004f86c86cc228281d12d16da03e02f5
+        
+  - name: Imath
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/Imath.git
+        tag: v3.0.1
+        
+  - name: openEXR
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/openexr.git
+        tag: v3.0.1
+        
+  #- name: FreeImage
+    #subdir: recipe
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    #buildsystem: cmake
+    #sources:
+      #- type: git
+        #url: https://github.com/conda-forge/freeimage-feedstock
+        
+  - name: libwebp
+    buildsystem: cmake
+    sources:
+      - type: git
+        url: https://chromium.googlesource.com/webm/libwebp/
+        tag: v1.2.0
+        
+  #- name: FreeImage
+    #subdir: ports/freeimage
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    #buildsystem: cmake
+    #sources:
+      #- type: git
+        #url: https://github.com/microsoft/vcpkg
+        
+  - name: FreeImage-openSUSE
     build-options:
       env:
         LIBRARY_PATH: "/app/lib:/usr/lib"
         LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+      cflags: -I/app/include/jxrlib -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC
+      cxxflags: -I/app/include/jxrlib -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC
     buildsystem: simple
     build-commands:
-      # Remove bundled libs to make sure these don't get used during compile
-      - rm -r Source/Lib* Source/ZLib Source/OpenEXR
-      # clear files which cannot be built due to dependencies on private headers
-      - > Source/FreeImage/PluginG3.cpp
-	  - > Source/FreeImageToolkit/JPEGTransform.cpp
-      # sanitize encodings / line endings
-      - |
-        for file in `find . -type f -name '*.c' -or -name '*.cpp' -or -name '*.h' -or -name '*.txt' -or -name Makefile`; do
-	      iconv --from=ISO-8859-15 --to=UTF-8 $file > $file.new && \
-	      sed -i 's|\r||g' $file.new && \
-	      touch -r $file $file.new && mv $file.new $file
-	    done
+      - rm -rf Source/LibPNG/ Source/LibRawLite/ Source/OpenEXR/ Source/ZLib/ Source/LibOpenJPEG/ Source/LibJPEG/
+      - for file in `find . -type f -name '*.c' -or -name '*.cpp' -or -name '*.h' -or -name '*.txt' -or -name Makefile`; do iconv --from=ISO-8859-15 --to=UTF-8 $file > $file.new && sed -i 's|\r||g' $file.new && touch -r $file $file.new && mv $file.new $file;
+        done
       - sh ./gensrclist.sh
       - sh ./genfipsrclist.sh
       - make -f Makefile.gnu
@@ -105,16 +241,25 @@ modules:
       - make -f Makefile.fip DESTDIR=/app INSTALLDIR=/app/lib install
     sources:
       - type: archive
-        url: https://sourceforge.net/projects/freeimage/files/Source%20Distribution/3.18.0/FreeImage3180.zip
-        sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
-        # patch adopt from openSUSE
-        # It attempt to install as root user
+        path: FreeImage3180.zip
       - type: patch
-        path: freeimage_fix_install_dir.patch
-        # Patch from Fedora, use system libraries.
+        path: unbundle.patch
       - type: patch
-        path: FreeImage_unbundle.patch
-
+        path: doxygen.patch
+        strip-components: 0
+      - type: patch
+        path: makefiles_fixes.patch
+      - type: patch
+        path: freeimage-no-return-in-nonvoid.patch
+      - type: patch
+        path: CVE-2019-12211_2019-12213.patch
+      - type: patch
+        path: bigendian.patch
+      - type: patch
+        path: libraw_0_20.patch
+      - type: patch
+        path: freeimage-openexr3.patch
+        
     # Gazebo need HDF5 component C and CXX
   - name: hdf5
     buildsystem: cmake-ninja
