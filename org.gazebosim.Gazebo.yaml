@@ -30,15 +30,23 @@ modules:
   
     # Gazebo need libjpeg version 62
     # FreeImage need jinclude.h which libjpeg9 provide.
-  - name: libjpeg9
-    build-options:
-      env:
-        LIBRARY_PATH: "/app/lib:/usr/lib"
-        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+  #- name: libjpeg9
+    #sources:
+      #- type: archive
+        #url: https://ijg.org/files/jpegsrc.v9d.tar.gz
+        #sha256: 6c434a3be59f8f62425b2e3c077e785c9ce30ee5874ea1c270e843f273ba71ee
+    
+    # FreeImage need jinclude.h, transupp.h.
+    # Not sure why *.h in libjpeg-turbo was not installed.
+    # Freedesktop Sdk does not ship jinclude.h, so I manually copy it.   
+  - name: libjpeg-turbo
+    buildsystem: cmake
+    post-install:
+      - cp *.h /app/include
     sources:
       - type: archive
-        url: https://ijg.org/files/jpegsrc.v9d.tar.gz
-        sha256: 6c434a3be59f8f62425b2e3c077e785c9ce30ee5874ea1c270e843f273ba71ee
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.0.tar.gz
+        sha256: d6b7790927d658108dfd3bee2f0c66a2924c51ee7f9dc930f62c452f4a638c52
         
   #- name: OpenJPEG
     #buildsystem: cmake-ninja
@@ -147,10 +155,14 @@ modules:
         #path: CVE-2019-12211_2019-12213.patch
         
     # For FreeImage    
-    #https://archive.codeplex.com/?p=jxrlib will be close soon    
+    # https://archive.codeplex.com/?p=jxrlib will be close soon
+    # FreeImage need -fPIC
   - name: libjxr
     #no-autogen: true
     buildsystem: cmake
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
     sources:
       - type: archive
         url: https://github.com/4creators/jxrlib/archive/refs/tags/v2019.10.9.tar.gz
@@ -203,8 +215,12 @@ modules:
       #- type: git
         #url: https://github.com/conda-forge/freeimage-feedstock
         
+    # FreeImage need -fPIC
   - name: libwebp
     buildsystem: cmake
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
     sources:
       - type: git
         url: https://chromium.googlesource.com/webm/libwebp/
@@ -226,11 +242,13 @@ modules:
       env:
         LIBRARY_PATH: "/app/lib:/usr/lib"
         LD_LIBRARY_PATH: "/app/lib:/usr/lib"
-      cflags: -I/app/include/jxrlib -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC
-      cxxflags: -I/app/include/jxrlib -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC
+      cflags: -I/app/include/jxrlib -I/app/include -I/usr/include -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC -Wunused-variable
+      cxxflags: -I/app/include/jxrlib -I/app/include -I/usr/include -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC -Wunused-variable
     buildsystem: simple
     build-commands:
-      - rm -rf Source/LibPNG/ Source/LibRawLite/ Source/OpenEXR/ Source/ZLib/ Source/LibOpenJPEG/ Source/LibJPEG/
+      - rm -rf Source/LibPNG/ Source/LibRawLite/ Source/OpenEXR/ Source/ZLib/ Source/LibOpenJPEG/ Source/LibJPEG/ 
+      - truncate -s 0 Source/FreeImageToolkit/JPEGTransform.cpp 
+      - truncate -s 0 Source/FreeImage/PluginG3.cpp
       - for file in `find . -type f -name '*.c' -or -name '*.cpp' -or -name '*.h' -or -name '*.txt' -or -name Makefile`; do iconv --from=ISO-8859-15 --to=UTF-8 $file > $file.new && sed -i 's|\r||g' $file.new && touch -r $file $file.new && mv $file.new $file;
         done
       - sh ./gensrclist.sh
@@ -242,6 +260,8 @@ modules:
     sources:
       - type: archive
         path: FreeImage3180.zip
+      - type: patch
+        path: freeimage_flatpak_dest.patch
       - type: patch
         path: unbundle.patch
       - type: patch
