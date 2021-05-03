@@ -1,0 +1,136 @@
+app-id: org.scilab.Scilab
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: '5.15'
+command: scilab
+#rename-desktop-file: avogadro2.desktop
+#rename-desktop-file: molequeue.desktop
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+  # Molequeue enjoy its life in the menu tray.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Allow Avogadro to communicate with Molequeue.
+  - --share=network
+cleanup:
+  - /include
+  - /lib/cmake
+  - /share/doc
+  - "*.la"
+  - "*.a"
+
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+  
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk/install.sh
+      
+  - name: hdf5
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DHDF5_BUILD_EXAMPLES:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.bz2
+        sha256: 68d6ea8843d2a106ec6a7828564c1689c7a85714a35d8efafa2fee20ca366f44
+        
+  - name: OCaml
+    sources:
+      - type: archive
+        url: https://github.com/ocaml/ocaml/archive/refs/tags/4.12.0.tar.gz
+        sha256: adc07a3995362403f3cb11085a86354de08e5a7f9eb3c09be7bbcc38a3a26744
+
+  - name: Scilab
+    buildsystem: simple
+    build-commands:
+      - rm ./modules/cacsd/tests/unit_tests/dscr.tst.orig
+      - sed -i '/name="Class-Path"/d' build.incl.xml
+      - sed -i '/name="Class-Path"/d' modules/javasci/build.xml
+      - sed -i '/name="Class-Path"/d' modules/scirenderer/build.xml
+      - autoreconf -fvi
+      - ./configure --disable-static-system-lib --without-umfpack --without-emf --with-xcos
+      - make -C modules/scicos modelicac modelicat XML2Modelica
+      - make
+      - export SCI_ALL_JAR_CLASSPATHS=`grep -Eo "\".*.jar" etc/classpath.xml | sed 's/$SCILAB/$SCI/' | tr -d "\"" | tr "\n" ":"`
+      - sed -i "s|@SPEC_ALL_JAR_CLASSPATHS@|${SCI_ALL_JAR_CLASSPATHS}|" bin/scilab
+      - export SCI_LIB_PATH=/app/lib/scilab
+      - sed -i "s|@SPEC_SCI_LIB_PATH@|${SCI_LIB_PATH}|" bin/scilab
+      - export SCI_ALL_JAR_CLASSPATHS=`grep -Eo "\".*.jar" etc/classpath.xml | sed 's/$SCILAB/./' | tr -d "\"" | tr "\n" ":"`
+      - export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:./modules/*/.libs:./modules/.libs
+      - export _JAVA_OPTIONS="--add-modules=java.xml.bind,java.activation -Djava.awt.headless=true -Djava.class.path=${SCI_ALL_JAR_CLASSPATHS}"
+      - make doc SCIVERBOSE=1
+      - make install DESTDIR=/app
+      - mkdir -p /app/etc/ld.so.conf.d
+      - echo /app/lib/scilab > /app/etc/ld.so.conf.d/scilab.conf
+      - rm -rf /app/share/scilab/ACK*
+      - rm -rf /app/share/scilab/CHANGES*
+      - rm -rf /app/share/scilab/COPYING*
+      - rm -rf /app/share/scilab/README*
+      - rm -rf /app/share/scilab/RELEASE*
+      - rm -rf /app/share/scilab/Readme_Visual.txt
+      - rm -rf /app/share/scilab/license.txt
+      - rm -fr /app/share/applications/scilab-*.desktop
+    #config-opts:
+      #- -DENABLE_RPATH:BOOL=ON
+      #- -DENABLE_TESTING:BOOL=OFF
+      #- -DBUILD_DOCUMENTATION:BOOL=OFF
+      #- -DCMAKE_BUILD_TYPE:STRING=Release
+    #post-install:
+      #- install -Dm644 avogadro/icons/avogadro2_64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      #- install -Dm644 avogadro/icons/avogadro2_128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      #- install -Dm644 avogadro/icons/avogadro2_256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      #- install -Dm644 avogadro/icons/avogadro2_512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      #- desktop-file-edit --set-key=Icon --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/avogadro2.desktop
+      #- install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: archive
+        url: http://www.scilab.org/download/6.1.0/scilab-6.1.0-src.tar.gz
+        sha256: ae6befb0153fb823fd647f4eb36076f98fd20fed601f7dfa94d8c13e31044964
+      #- type: file
+        #path: org.scilab.Scilab.metainfo.xml
+
+  #- name: python3-numpy
+    #buildsystem: simple
+    #ensure-writable:
+      #- /lib/python3.8/site-packages/easy-install.pth
+    #build-commands:
+      #- rm pyproject.toml
+      #- pip3 install --prefix=${FLATPAK_DEST} .
+    #sources:
+      #- type: archive
+        #url: https://files.pythonhosted.org/packages/d2/48/f445be426ccd9b2fb64155ac6730c7212358882e589cd3717477d739d9ff/numpy-1.20.1.zip
+        #sha256: 3bc63486a870294683980d76ec1e3efc786295ae00128f9ea38e2c6e74d5a60a
+
+  #- name: Eigen3
+    #buildsystem: cmake-ninja
+    #builddir: true
+    #sources:
+      #- type: archive
+        #url: https://gitlab.com/libeigen/eigen/-/archive/3.3.9/eigen-3.3.9.tar.bz2
+        #sha256: 0fa5cafe78f66d2b501b43016858070d52ba47bd9b1016b0165a7b8e04675677
+    #cleanup: 
+      #- "*"
+
+  #- name: hdf5
+    #buildsystem: cmake-ninja
+    #builddir: true
+    #config-opts:
+      #- -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      #- -DBUILD_TESTING:BOOL=OFF
+      #- -DHDF5_BUILD_EXAMPLES:BOOL=OFF
+    #sources:
+      #- type: archive
+        #url: https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.bz2
+        #sha256: 68d6ea8843d2a106ec6a7828564c1689c7a85714a35d8efafa2fee20ca366f44
