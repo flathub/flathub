@@ -1,0 +1,134 @@
+id: com.fightcade.Fightcade.Wine
+runtime: com.fightcade.Fightcade
+runtime-version: stable
+sdk: org.freedesktop.Sdk//21.08
+build-extension: true
+separate-locales: false
+appstream-compose: false
+
+cleanup:
+  - /man
+  - /share/man
+
+modules:
+  # wine-wow64 build adapted from github.com/fastrizwaan/flatpak-wine
+  - name: wine-wow64
+    builddir: true
+    build-options:
+      make-args: -j5
+      prefix: /app/wine
+      prepend-path: /app/bin
+      ldflags: -L/app/lib64 -L/app/lib32
+      append-path: /usr/lib/sdk/toolchain-i386/bin
+      env:
+        CC: i686-unknown-linux-gnu-gcc
+        CXX: i686-unknown-linux-gnu-g++
+      libdir: /app/lib32
+      strip: true
+      no-debuginfo: true
+    make-install-args:
+      - LDCONFIG=/bin/true
+      - STRIP=/bin/true
+      - UPDATE_DESKTOP_DATABASE=/bin/true
+    buildsystem: simple
+    build-commands:
+    # 1. Build wine64
+      - export CC=x86_64-unknown-linux-gnu-gcc  &&
+        export CXX=x86_64-unknown-linux-gnu-g++ &&
+        mkdir wine64-build && cd wine64-build   &&
+        ../configure
+          --prefix="/app/wine"
+          --disable-win16
+          --enable-shared
+          --disable-static
+          --disable-tests
+          --with-x
+          --without-cups
+          --without-curses
+          --without-capi
+          --without-glu
+          --without-gphoto
+          --without-gsm
+          --without-hal
+          --without-ldap
+          --without-netapi
+          --with-faudio
+          --enable-win64   &&
+        make -j5
+    # 2. Build wine32 twice
+      - export CC=i686-unknown-linux-gnu-gcc  &&
+        export CXX=i686-unknown-linux-gnu-g++ &&
+        mkdir wine32-tools && cd wine32-tools &&
+        ../configure
+          --prefix="/app/wine"
+          --disable-win16
+          --enable-shared
+          --disable-static
+          --disable-tests
+          --with-x
+          --without-cups
+          --without-curses
+          --without-capi
+          --without-glu
+          --without-gphoto
+          --without-gsm
+          --without-hal
+          --without-ldap
+          --without-netapi
+          --with-faudio    &&
+        make -j5
+    # 3. Build 32bit second time and
+    # install 32 bit and 64 bit wine
+      - export CC=i686-unknown-linux-gnu-gcc  &&
+        export CXX=i686-unknown-linux-gnu-g++ &&
+        mkdir wine32-combo && cd wine32-combo &&
+        ../configure
+          --with-wine64=../wine64-build
+          --with-wine-tools=../wine32-tools
+          --prefix="/app/wine"
+          --disable-win16
+          --enable-shared
+          --disable-static
+          --disable-tests
+          --with-x
+          --without-cups
+          --without-curses
+          --without-capi
+          --without-glu
+          --without-gphoto
+          --without-gsm
+          --without-hal
+          --without-ldap
+          --without-netapi
+          --with-faudio    &&
+        make -j5           &&
+        make install       &&
+        cd ../wine64-build &&
+        make install
+    cleanup:
+      - '*.a'
+      - '*.la'
+      - /include
+      - /lib/pkgconfig
+      - /lib32/pkgconfig
+      - /lib/cmake
+      - /lib32/cmake
+      - /share/man
+
+      - /bin/function_grep.pl
+      - /bin/widl
+      - /bin/winebuild
+      - /bin/winecpp
+      - /bin/winedump
+      - /bin/wineg++
+      - /bin/winegcc
+      - /bin/winemaker
+      - /bin/wmc
+      - /bin/wrc
+
+      - /lib/wine/*.def
+      - /lib32/wine/*.def
+    sources:
+      - type: archive
+        url: https://dl.winehq.org/wine/source/5.0/wine-5.0.2.tar.xz
+        sha256: c2c284f470874b35228327c3972bc29c3a9d8d98abd71dbf81c288b8642becbc
