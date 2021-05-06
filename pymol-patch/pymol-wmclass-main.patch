@@ -1,0 +1,87 @@
+Index: pymol-open-source-2.3.0/layer5/main.cpp
+===================================================================
+--- pymol-open-source-2.3.0.orig/layer5/main.cpp	(revision 4149)
++++ pymol-open-source-2.3.0/layer5/main.cpp	(working copy)
+@@ -34,6 +34,11 @@
+ #include <dlfcn.h>
+ #endif
+ 
++/* Used for WM_CLASS hack */
++#include <GL/glx.h>
++#include <X11/Xutil.h>
++#include <X11/Xlib.h>
++
+ #include "PyMOLGlobals.h"
+ #include "PyMOL.h"
+ #include "PyMOLOptions.h"
+@@ -1025,7 +1030,52 @@
+ 
+ }
+ 
++/*========================================================================*/
+ 
++static int IgnoreError(Display *display, XErrorEvent *theEvent)
++{
++  return 0;
++}
++
++static int MainCreateWindow(const char *title)
++{
++  int window;
++  Display *display;
++  GLXDrawable xwin;
++  XClassHint *hint;
++  XErrorHandler oldErrorHandler;
++
++  window = p_glutCreateWindow(title);
++
++  /* Hack to set WM_CLASS hint
++   * This assumes the current drawable is the window we just created which is
++   * a detail of the GLUT implementation. There is no way of getting the XID of
++   * a window using GLUT alone. */
++
++  /* Disable the error handler so in case the assumption fails the program still
++   * works */
++  oldErrorHandler = XSetErrorHandler(IgnoreError);
++
++  display = glXGetCurrentDisplay();
++  if (display) {
++    hint = XAllocClassHint();
++    if (hint) {
++      hint->res_name = "pymol";
++      hint->res_class = "Pymol";
++      xwin = glXGetCurrentDrawable();
++      XSetClassHint(display, xwin, hint);
++      XFree(hint);
++    }
++    /* Make sure all errors are handled before restoring the old error handler */
++    XFlush(display);
++    XSync(display, False);
++  }
++
++  XSetErrorHandler(oldErrorHandler);
++
++  return window;
++}
++
+ /*========================================================================*/
+ static void MainInit(PyMOLGlobals * G)
+ {
+@@ -1104,7 +1154,7 @@
+       p_glutInitWindowSize(640, 480);
+       p_glutInitDisplayMode(P_GLUT_RGBA | P_GLUT_DEPTH | P_GLUT_DOUBLE);
+       if(p_glutGet(P_GLUT_DISPLAY_MODE_POSSIBLE)) {
+-        theWindow = p_glutCreateWindow("PyMOL Viewer");
++        theWindow = MainCreateWindow("PyMOL Viewer");
+         p_glutFullScreen();
+         p_glutDestroyWindow(theWindow);
+       }
+@@ -1604,7 +1654,7 @@
+ 
+       p_glutInitWindowSize(G->Option->winX, G->Option->winY);
+ 
+-      theWindow = p_glutCreateWindow("PyMOL Viewer");
++      theWindow = MainCreateWindow("PyMOL Viewer");
+ 
+       if(G->Option->full_screen) {
+         p_glutFullScreen();
