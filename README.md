@@ -21,10 +21,3 @@ For example (using default model and denoise disabled):
 ```
 $ flatpak run com.github.nihui.waifu2x-ncnn-vulkan -i ~/Pictures/foo.jpg -o ~/Pictures/bar.png -n -1 -s 2 -t 400
 ```
-
-## Notes:
-By default, this flatpak only allows reading and saving to **XDG-PICTURES** directory.  
-If you want to save/read from other locations:
-```
-flatpak override com.github.nihui.waifu2x-ncnn-vulkan --filesystem=host
-```
