@@ -70,3 +70,4 @@ Yes, run `flatpak run --command=xilinx_install com.github.corna.Vivado`
 
 Run the launcher *Uninstall Xilinx Design Tools or Devices*.
 
+### NOTE: This wrapper is not verified by, affiliated with, or supported by Xilinx, Inc.
