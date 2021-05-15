@@ -1,0 +1,50 @@
+# Modifed from https://github.com/flathub/net.veloren.veloren/raw/master/net.veloren.veloren.yaml
+
+name: Auto update
+
+env:
+  BUILDER_TOOLS_URL: https://github.com/flatpak/flatpak-builder-tools
+  BUILDER_TOOLS_BRANCH: master
+  YQ_VERSION: "v4.6.1"
+  YQ_BINARY: yq_linux_amd64
+
+on:
+  push:
+
+jobs:
+  update:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Install dependencies
+        run: |
+          set -e
+          sudo apt install python3-toml python3-aiohttp
+
+      - uses: actions/checkout@v2
+
+      - name: Download flatpak-builder-tools
+        run: |
+          git clone -b ${BUILDER_TOOLS_BRANCH} \
+                       ${BUILDER_TOOLS_URL} \
+                       builder-tools
+
+      # Rather than track the tip of a branch
+      - name: Get the current tag
+        run: |
+          set -e
+
+          mkdir ~/bin
+          wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/${YQ_BINARY} -O ~/bin/yq && \
+          chmod +x ~/bin/yq
+
+          TAG=`~/bin/yq e '.modules.[] | select(.name == "motrix") | .sources.[] | select(.url == "https://github.com/agalwood/Motrix.git") | .tag' net.agalwood.Motrix.yml`
+
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Run update
+        run: |
+          set -e
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git config user.name "Workflow trigger"
+          python3 ./update.py net.agalwood.Motrix-git.json --ref ${{ env.TAG }} -g builder-tools/node/flatpak-node-generator.py --generator-arg=--electron-node-headers --generator-arg=--xdg-layout --generator-arg=-r --generator-arg=yarn --generator-arg=yarn.lock
+          git push https://${GITHUB_ACTOR}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}

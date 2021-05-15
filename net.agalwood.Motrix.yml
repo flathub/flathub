@@ -1,0 +1,160 @@
+app-id: net.agalwood.Motrix
+branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "20.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+# Electron doesn't use a traditional locale format so separate-locales is useless.
+separate-locales: false
+command: start-motrix
+finish-args:
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  # Copied from shared-modules/python2.7/python-2.7.json since it's only used at build time
+  # - name: python-2.7
+  #   sources:
+  #     - type: archive
+  #       url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+  #       sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+  #   config-opts:
+  #     - --enable-shared
+  #     - --with-ensurepip=yes
+  #     - --with-system-expat
+  #     - --with-system-ffi
+  #     - --enable-loadable-sqlite-extensions
+  #     - --with-dbmliborder=gdbm
+  #     - --enable-unicode=ucs4
+  #   post-install:
+  #     - chmod 644 $FLATPAK_DEST/lib/libpython2.7.so.1.0
+  #   cleanup:
+  #     - '*'
+
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - cp -a * $FLATPAK_DEST
+    # Only used for building, so clean it up afterwards.
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.10/yarn-v1.22.10.tar.gz
+        sha256: 7e433d4a77e2c79e6a7ae4866782608a8e8bcad3ec6783580577c59538381a6e
+        x-checker-data:
+          type: anitya
+          project-id: 13363
+          url-template: https://github.com/yarnpkg/yarn/releases/download/$version/yarn-v$version.tar.gz
+  - name: motrix
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node14/bin:/app/yarn/bin:/run/build/motrix/flatpak-node/chromedrive
+      env:
+        # Don't add ELECTRON_CACHE
+        XDG_CACHE_HOME: /run/build/motrix/flatpak-node/cache
+        # npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: "true"
+        npm_config_no_save: "true"
+        npm_config_cache: /run/build/motrix/flatpak-node/npm-cache
+        npm_config_loglevel: verbose
+        # https://stackoverflow.com/questions/25146976/can-i-get-npm-gyp-to-use-ccache
+        CXX: ccache g++
+        CC: ccache gcc
+      arch:
+        # https://github.com/sass/node-sass/issues/3033#issuecomment-763180778
+        # The architecture of Electron, see https://electronjs.org/docs/tutorial/support#supported-platforms
+        # for supported architectures.
+        i386:
+          env:
+            npm_config_arch: ia32
+            npm_config_target_arch: ia32
+        x86_64:
+          env:
+            npm_config_arch: x64
+            npm_config_target_arch: x64
+        arm:
+          env:
+            npm_config_arch: armv7l
+            npm_config_target_arch: armv7l
+        aarch64:
+          env:
+            npm_config_arch: arm64
+            npm_config_target_arch: arm64
+
+    build-commands:
+      # Use the offline mirror.
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+
+      # Translated from .travis.yml
+      # - yarn --offline add -g xvfb-maybe
+      - yarn --offline --pure-lockfile --$npm_config_arch
+
+      - node $FLATPAK_BUILDER_BUILDDIR/.electron-vue/build.js
+      - yarn --offline run electron-builder --linux dir --$npm_config_arch -c.linux.target=dir
+        --publish=never
+
+      # Remove unneeded files
+      - rm $FLATPAK_BUILDER_BUILDDIR/release/linux*-unpacked/chrome-sandbox
+
+      # Copy the resulting, unpacked directory to $FLATPAK_DEST.
+      - cp -r $FLATPAK_BUILDER_BUILDDIR/release/linux*-unpacked $FLATPAK_DEST/motrix
+
+      # Retire this at some point when an SVG is available
+      - for size in 512; do [[ -e "static/${size}x${size}.png" ]] && install
+        -Dm644 "$FLATPAK_BUILDER_BUILDDIR/static/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png";
+        done
+      - install -Dm644 "$FLATPAK_BUILDER_BUILDDIR/static/mo-tray-dark-normal@2x.png" "/app/share/icons/hicolor/symbolic/apps/${FLATPAK_ID}-symbolic.png"
+      - cp -r $FLATPAK_BUILDER_BUILDDIR/extra/linux/. $FLATPAK_DEST/motrix
+    sources:
+      - type: git
+        url: https://github.com/agalwood/Motrix.git
+        tag: v1.6.10
+        commit: 166aba77474df5dd65da20ee1548004c9f078bdd
+        x-checker-data:
+          type: anitya
+          project-id: 197314
+          tag-template: v$version
+          stable-only: true
+      # Add the flatpak-node-generator generated sources.
+      # Note to generate recursively with -r since the repo is composed by submodules
+      # No need to generate a separate one for ./app
+      - generated-sources.json
+  - name: start-script
+    buildsystem: simple
+    build-commands:
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-motrix.sh $FLATPAK_DEST/bin/start-motrix
+    sources:
+      # Our runner script.
+      - type: script
+        dest-filename: start-motrix.sh
+        commands:
+          # Use zypak to call the electron binary to enable sandboxing and prevents no sandbox error
+          # Note the hyphen
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - zypak-wrapper /app/motrix/motrix "$@"
+  - name: metainfo
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 net.agalwood.Motrix.metainfo.xml $FLATPAK_DEST/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        path: net.agalwood.Motrix.metainfo.xml
+  - name: desktop-entry
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 net.agalwood.Motrix.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
+    sources:
+      - type: file
+        path: net.agalwood.Motrix.desktop
