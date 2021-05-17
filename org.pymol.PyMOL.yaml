@@ -83,73 +83,61 @@ modules:
         url: https://github.com/Unidata/netcdf-c/archive/v4.7.4.tar.gz
         sha256: 99930ad7b3c4c1a8e8831fb061cb02b2170fc8e5ccaeda733bd99c3b9d31666b 
 
-  - name: python-sip
-    config-opts:
-      - --sip-module=PyQt5.sip
-      - --bindir=/app/bin
-      - --destdir=/app/lib/python3.8/site-packages
-      - --incdir=/app/include
-    sources:
-      - type: archive
-        url: https://www.riverbankcomputing.com/static/Downloads/sip/4.19.25/sip-4.19.25.tar.gz
-        sha256: b39d93e937647807bac23579edbff25fe46d16213f708370072574ab1f1b4211
-  # Patch50
-  # make install should not strip (by default)
-      - type: patch
-        path: sip-4.18-no_strip.patch
-  #Patch51
-  #try not to rpath the world
-      - type: patch
-        path: sip-4.18-no_rpath.patch
-      - type: script
-        commands:
-          - processed="$( sed -e 's|--prefix=/app||' <<< "${@}" )";
-          - python3 "configure.py" ${processed};
-        dest-filename: configure
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
     cleanup:
       - /bin
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/33/e9/27730ac17713c0a80d81d8f3bb56213f1549d96f9dc183fd16a7eec6287c/sip-5.5.0.tar.gz
+        sha256: 5d024c419b30fea8a6de8c71a560c7ab0bc3c221fbfb14d55a5b865bd58eaac5
+
+  - name: PyQt5_sip
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/b1/40/dd8f081f04a12912b65417979bf2097def0af0f20c89083ada3670562ac5/PyQt5_sip-12.9.0.tar.gz
+        sha256: d3e4489d7c2b0ece9d203ae66e573939f7f60d4d29e089c9f11daa17cfeaae32
  
-  - name: python-qt5
-    config-opts:
-      - --verbose
-      - --confirm-license
-      - --assume-shared
-      - --sip-incdir=/app/include
-      - --bindir=/app/bin
-      - --destdir=/app/lib/python3.8/site-packages
-      - --designer-plugindir=/app/lib/plugins/designer
-      - --qml-plugindir=/app/lib/plugins/PyQt5
-      - QMAKE_CFLAGS_RELEASE=-I/usr/include/python3.8/
-      - QMAKE_CXXFLAGS_RELEASE=-I/usr/include/python3.8/
-      - --disable=QtBluetooth 
-      - --disable=QtWebKit 
-      - --disable=QtWebKitWidgets 
-      - --disable=QtNfc 
-      - --disable=QtPositioning
-      - --disable=QtNetwork
-      - --disable=QtTextToSpeech
-      - --disable=QtMultimediaWidgets 
-      - --disable=QtLocation 
-      - --disable=QtDesigner
-      - --disable=QtSensors 
-      - --disable=QtWebEngine 
-      - --disable=QtQuick 
-      - --disable=QtQml 
-      - --disable=QtTest 
-    build-options:
-      env:
-        QMAKEPATH: "/app/lib"
+  - name: PyQt5
+    buildsystem: simple
+    build-commands:
+      - PYVER=$(python3 -c "import sys;print(sys.version_info[1])") &&
+        QMAKEPATH=/app/lib python3 configure.py
+        --confirm-license
+        --bindir=/app/bin
+        --destdir=/app/lib/python3.${PYVER}/site-packages
+        --designer-plugindir=/app/lib/plugins/designer
+        --qml-plugindir=/app/lib/plugins/PyQt5
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3.${PYVER}/site-packages/PyQt5
+        --disable=QtBluetooth 
+        --disable=QtWebKit 
+        --disable=QtWebKitWidgets 
+        --disable=QtNfc 
+        --disable=QtPositioning
+        --disable=QtNetwork
+        --disable=QtTextToSpeech
+        --disable=QtMultimediaWidgets 
+        --disable=QtLocation 
+        --disable=QtDesigner
+        --disable=QtSensors 
+        --disable=QtWebEngine 
+        --disable=QtQuick 
+        --disable=QtQml 
+        --disable=QtTest 
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /bin
     sources:
       - type: archive
         url: https://files.pythonhosted.org/packages/8e/a4/d5e4bf99dd50134c88b95e926d7b81aad2473b47fde5e3e4eac2c69a8942/PyQt5-5.15.4.tar.gz
         sha256: 2a69597e0dd11caabe75fae133feca66387819fc9bc050f547e5551bce97e5be
-      - type: script
-        commands:
-           - processed="$( sed -e 's|prefix|sysroot|' <<< "${@}" )";
-           - python3 "configure.py" ${processed};
-        dest-filename: configure
-    cleanup:
-      - /bin
         
   - name: glm
     buildsystem: simple
@@ -164,27 +152,27 @@ modules:
   - name: pymol
     buildsystem: simple
     build-commands:
-      - python setup.py install --prefix=${FLATPAK_DEST}
+      - python setup.py install --prefix=${FLATPAK_DEST} --pymol-path=/app/share/pymol
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        url: https://github.com/schrodinger/pymol-open-source/archive/v2.4.0.tar.gz
-        sha256: 5ede4ce2e8f53713c5ee64f5905b2d29bf01e4391da7e536ce8909d6b9116581
+        url: https://github.com/schrodinger/pymol-open-source/archive/v2.5.0.tar.gz
+        sha256: aa828bf5719bd9a14510118a93182a6e0cadc03a574ba1e327e1e9780a0e80b3
         # All patch, desktop, and appdata files from Fedora
         # https://src.fedoraproject.org/rpms/pymol/tree/rawhide
-      - type: patch
-        path: pymol-patch/pymol-2.4.0-fix_bug119.patch
-      - type: patch
-        path: pymol-patch/pymol-mmtf.patch
-      - type: patch
-        path: pymol-patch/pymol-python3.patch
-      - type: patch
-        path: pymol-patch/pymol-setup.py.patch
-      - type: patch
-        path: pymol-patch/pymol-wmclass-main.patch
-      - type: patch
-        path: pymol-patch/pymol-wmclass-pmgapp.patch
+      #- type: patch
+        #path: pymol-patch/pymol-2.4.0-fix_bug119.patch
+      #- type: patch
+        #path: pymol-patch/pymol-mmtf.patch
+      #- type: patch
+        #path: pymol-patch/pymol-python3.patch
+      #- type: patch
+        #path: pymol-patch/pymol-setup.py.patch
+      #- type: patch
+        #path: pymol-patch/pymol-wmclass-main.patch
+      #- type: patch
+        #path: pymol-patch/pymol-wmclass-pmgapp.patch
       - type: file
         path: org.pymol.PyMOL.metainfo.xml
       - type: file
