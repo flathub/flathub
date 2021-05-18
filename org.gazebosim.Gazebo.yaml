@@ -5,7 +5,8 @@ runtime-version: '5.15'
 command: pymol
 finish-args:
   - --share=ipc
-  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
   - --filesystem=home
@@ -20,186 +21,617 @@ cleanup:
 
 modules:
   - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/libusb/libusb.json
 
-  - name: msgpack
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DBUILD_SHARED_LIBS=ON
-      - -DMSGPACK_ENABLE_STATIC=OFF
-      - -DCMAKE_INSTALL_LIBDIR=lib
-      - -DMSGPACK_BUILD_EXAMPLES=OFF
-      - -DMSGPACK_CXX11=ON
-    cleanup:
-      - /include
-      - /lib/cmake
-      - /lib/pkgconfig
-      - '*.a'  
+  - name: libjxr
+    buildsystem: cmake
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
     sources:
       - type: archive
-        url: https://github.com/msgpack/msgpack-c/releases/download/cpp-3.3.0/msgpack-3.3.0.tar.gz
-        sha256: 6e114d12a5ddb8cb11f669f83f32246e484a8addd0ce93f274996f1941c1f07b
+        url: https://github.com/4creators/jxrlib/archive/refs/tags/v2019.10.9.tar.gz
+        sha256: 555c006e27c5cb66f99c05dcbb2feb197199ca9018dbd06d3467d37cd29a79cd
+      - type: file
+        path: JXR-CMakeLists.txt
+        dest-filename: CMakeLists.txt
 
+  - name: LibRaw
+    builddir: true
+    config-opts:
+      - --disable-examples
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libraw.org/data/LibRaw-0.19.5.tar.gz
+        sha256: 40a262d7cc71702711a0faec106118ee004f86c86cc228281d12d16da03e02f5
+        
+  - name: Imath
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/Imath.git
+        tag: v3.0.1
+  
+  - name: openEXR
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/openexr.git
+        tag: v3.0.1
+        
+  - name: libwebp
+    buildsystem: cmake
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
+    sources:
+      - type: git
+        url: https://chromium.googlesource.com/webm/libwebp/
+        tag: v1.2.0
+        
+  - name: FreeImage
+    build-options:
+      cflags: -I/app/include/jxrlib -I/app/include -I/usr/include -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC -Wunused-variable
+      cxxflags: -I/app/include/jxrlib -I/app/include -I/usr/include -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC -Wunused-variable
+    buildsystem: simple
+    build-commands:
+      - rm -rf Source/LibPNG/ Source/LibRawLite/ Source/OpenEXR/ Source/ZLib/ Source/LibOpenJPEG/ Source/LibJPEG/ 
+      - truncate -s 0 Source/FreeImageToolkit/JPEGTransform.cpp 
+      - truncate -s 0 Source/FreeImage/PluginG3.cpp
+      - for file in `find . -type f -name '*.c' -or -name '*.cpp' -or -name '*.h' -or -name '*.txt' -or -name Makefile`; do iconv --from=ISO-8859-15 --to=UTF-8 $file > $file.new && sed -i 's|\r||g' $file.new && touch -r $file $file.new && mv $file.new $file;
+        done
+      - sh ./gensrclist.sh
+      - sh ./genfipsrclist.sh
+      - make -f Makefile.gnu
+      - make -f Makefile.fip
+      - make install
+      - make -f Makefile.fip DESTDIR=/app INSTALLDIR=/app/lib install
+    sources:
+      - type: archive
+        url: http://downloads.sourceforge.net/freeimage/FreeImage3180.zip
+        sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+      - type: patch
+        path: FreeImage_patch/freeimage_flatpak_dest.patch
+      - type: patch
+        path: FreeImage_patch/unbundle.patch
+      - type: patch
+        path: FreeImage_patch/doxygen.patch
+        strip-components: 0
+      - type: patch
+        path: FreeImage_patch/makefiles_fixes.patch
+      - type: patch
+        path: FreeImage_patch/freeimage-no-return-in-nonvoid.patch
+      - type: patch
+        path: FreeImage_patch/CVE-2019-12211_2019-12213.patch
+      - type: patch
+        path: FreeImage_patch/bigendian.patch
+      - type: patch
+        path: FreeImage_patch/libraw_0_20.patch
+      - type: patch
+        path: FreeImage_patch/freeimage-openexr3.patch
+        
   - name: hdf5
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - -DBUILD_TESTING:BOOL=OFF
       - -DHDF5_BUILD_EXAMPLES:BOOL=OFF
-      - -DHDF5_ENABLE_Z_LIB_SUPPORT:BOOL=ON
     sources:
       - type: archive
         url: https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.bz2
         sha256: 68d6ea8843d2a106ec6a7828564c1689c7a85714a35d8efafa2fee20ca366f44
-        
-  - name: python-numpy
-    buildsystem: simple
-    ensure-writable:
-      - /lib/python3.8/site-packages/easy-install.pth
-    build-commands:
-      - rm pyproject.toml
-      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
-    sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/f3/1f/fe9459e39335e7d0e372b5e5dcd60f4381d3d1b42f0b9c8222102ff29ded/numpy-1.20.3.zip
-        sha256: e55185e51b18d788e49fe8305fd73ef4470596b33fc2c1ceb304566b99c71a69
-
-  - name: python-packaging
+      
+  - name: Boost
     buildsystem: simple
     build-commands:
-      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 install --build-type=complete link=shared --layout=versioned runtime-link=shared cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
     sources:
       - type: archive
-        url: https://files.pythonhosted.org/packages/86/3c/bcd09ec5df7123abcf695009221a52f90438d877a2f1499453c6938f5728/packaging-20.9.tar.gz
-        sha256: 5b327ac1320dc863dca72f4514ecc086f31186744b84a230374cc1fd776feae5
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
+        sha256: f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
         
-  - name: python-Pyparsing
-    buildsystem: simple
-    build-commands:
-      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
-    sources:
-      - type: archive
-        url: https://github.com/pyparsing/pyparsing/releases/download/pyparsing_2.4.7/pyparsing-2.4.7.tar.gz
-        sha256: c203ec8783bf771a155b207279b9bccb8dea02d8f0c9e5f8ead507bc3246ecc1
-        
-  - name: python-toml
-    buildsystem: simple
-    ensure-writable:
-      - /lib/python3.8/site-packages/easy-install.pth
-    build-commands:
-      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
-    sources:
-      - type: archive
-        url: https://github.com/uiri/toml/archive/refs/tags/0.10.2.tar.gz
-        sha256: 71d4039bbdec91e3e7591ec5d6c943c58f9a2d17e5f6783acdc378f743fcdd2a
-        
-  - name: mmtf-cpp
+  - name: Eigen3
     buildsystem: cmake-ninja
+    builddir: true
     sources:
       - type: archive
-        url: https://github.com/rcsb/mmtf-cpp/archive/v1.0.0.tar.gz
-        sha256: 881f69c4bb56605fa63fd5ca50842facc4947f686cbf678ad04930674d714f40
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.3.9/eigen-3.3.9.tar.bz2
+        sha256: 0fa5cafe78f66d2b501b43016858070d52ba47bd9b1016b0165a7b8e04675677
+    cleanup: 
+      - "*"
         
-  - name: python-mmtf-python
-    buildsystem: simple
-    build-commands:
-      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
-    sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/13/ea/c6a302ccdfdcc1ab200bd2b7561e574329055d2974b1fb7939a7aa374da3/mmtf-python-1.1.2.tar.gz
-        sha256: a5caa7fcd2c1eaa16638b5b1da2d3276cbd3ed3513f0c2322957912003b6a8df
-
-  - name: netcdf
+  - name: lapack
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DLAPACKE=ON
+      - -DCBLAS=ON
     sources:
       - type: archive
-        url: https://github.com/Unidata/netcdf-c/archive/v4.7.4.tar.gz
-        sha256: 99930ad7b3c4c1a8e8831fb061cb02b2170fc8e5ccaeda733bd99c3b9d31666b 
-
-  - name: sip
-    buildsystem: simple
-    build-commands:
-      - python3 setup.py install --prefix=/app --root=/
+        url: https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.9.1.tar.gz
+        sha256: d0085d2caf997ff39299c05d4bacb6f3d27001d25a4cc613d48c1f352b73e7e0
     cleanup:
-      - /bin
-    sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/33/e9/27730ac17713c0a80d81d8f3bb56213f1549d96f9dc183fd16a7eec6287c/sip-5.5.0.tar.gz
-        sha256: 5d024c419b30fea8a6de8c71a560c7ab0bc3c221fbfb14d55a5b865bd58eaac5
+      - /lib/cmake
 
-  - name: PyQt5_sip
+  - name: TBB
     buildsystem: simple
     build-commands:
-      - python3 setup.py install --prefix=/app --root=/
-    sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/b1/40/dd8f081f04a12912b65417979bf2097def0af0f20c89083ada3670562ac5/PyQt5_sip-12.9.0.tar.gz
-        sha256: d3e4489d7c2b0ece9d203ae66e573939f7f60d4d29e089c9f11daa17cfeaae32
- 
-  - name: PyQt5
-    buildsystem: simple
-    build-commands:
-      - PYVER=$(python3 -c "import sys;print(sys.version_info[1])") &&
-        QMAKEPATH=/app/lib python3 configure.py
-        --confirm-license
-        --bindir=/app/bin
-        --destdir=/app/lib/python3.${PYVER}/site-packages
-        --designer-plugindir=/app/lib/plugins/designer
-        --qml-plugindir=/app/lib/plugins/PyQt5
-        --sipdir=/app/share/sip
-        --stubsdir=/app/lib/python3.${PYVER}/site-packages/PyQt5
-        --disable=QtBluetooth 
-        --disable=QtWebKit 
-        --disable=QtWebKitWidgets 
-        --disable=QtNfc 
-        --disable=QtPositioning
-        --disable=QtNetwork
-        --disable=QtTextToSpeech
-        --disable=QtMultimediaWidgets 
-        --disable=QtLocation 
-        --disable=QtDesigner
-        --disable=QtSensors 
-        --disable=QtWebEngine 
-        --disable=QtQuick 
-        --disable=QtQml 
-        --disable=QtTest 
       - make -j $FLATPAK_BUILDER_N_JOBS
-      - make install
-    cleanup:
-      - /bin
+      - install -d /app/lib
+      - install -m755 build/linux_*/*.so* /app/lib
+      - install -d /app/include
+      - cp -a include/tbb /app/include
     sources:
       - type: archive
-        url: https://files.pythonhosted.org/packages/8e/a4/d5e4bf99dd50134c88b95e926d7b81aad2473b47fde5e3e4eac2c69a8942/PyQt5-5.15.4.tar.gz
-        sha256: 2a69597e0dd11caabe75fae133feca66387819fc9bc050f547e5551bce97e5be
+        url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/2020_U3.tar.gz
+        sha256: 2103cc6238c935664f87680618f6684d57501d4a2fa8ea8f6c97ad6ff7dc722a
         
-  - name: glm
+  - name: GDAL
+    sources:
+      - type: archive
+        url: https://download.osgeo.org/gdal/3.2.2/gdal-3.2.2.tar.gz
+        sha256: 3313e1b0e75de58da4e15a68a9b55e7c04509d3e0e274311dfffe996f6da1a2a
+    modules:
+      - name: PROJ
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DBUILD_TESTING:BOOL=OFF
+        sources:
+          - type: archive
+            url: https://github.com/OSGeo/PROJ/releases/download/8.0.0/proj-8.0.0.tar.gz
+            sha256: aa5d4b934450149a350aed7e5fbac880e2f7d3fa2f251c26cb64228f96a2109e
+    cleanup:
+      - /bin
+        
+  - name: TinyXML2
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/leethomason/tinyxml2/archive/refs/tags/8.0.0.tar.gz
+        sha256: 6ce574fbb46751842d23089485ae73d3db12c1b6639cda7721bf3a7ee862012c
+
+  - name: TinyXML
+    sources:
+      - type: archive
+        url: http://mirrors.kodi.tv/build-deps/sources/tinyxml-2.6.2_2.tar.gz
+        sha256: 8164c9ad48b9028667768a584d62f7760cfbfb90d0dd6214ad174403058da10c
+      - type: script
+        dest-filename: autogen.sh
+        commands:
+          - 'autoreconf -vfi'
+
+  - name: Graphviz
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://gitlab.com/graphviz/graphviz/-/archive/2.47.1/graphviz-2.47.1.tar.gz
+        sha256: b7f4d6819e4dc17c15e7e07bd1ea5e081ef6569b63f8427117dac32f0e3837b4
+        
+  - name: libtar
     buildsystem: simple
     build-commands:
-      - cp -r glm /app/include
+      - autoreconf --force --install
+      - ./configure --disable-static --prefix=/app
+      - make
+      - make install 
     sources:
       - type: git
-        url: https://github.com/g-truc/glm
-        tag: 0.9.9.8
-        commit: bf71a834948186f4097caa076cd2663c69a10e1e
+        url: https://repo.or.cz/libtar.git
+        tag: v1.2.20
         
-  - name: PyMOL
+  - name: qwt
+    buildsystem: qmake
+    config-opts:
+      - -after
+      - QWT_INSTALL_PREFIX=/app
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/qwt/files/qwt/6.1.6/qwt-6.1.6.tar.bz2
+        sha256: 99460d31c115ee4117b0175d885f47c2c590d784206f09815dc058fbe5ede1f6
+      - type: shell
+        commands: 
+          - "sed 's/QWT_INSTALL_PREFIX\\s*=\\s*\\/usr\\/local\\/qwt-$$QWT_VERSION/QWT_INSTALL_PREFIX=\\/app/g' -i qwtconfig.pri"
+          - "sed 's/#QWT_CONFIG\\s*+=\\s*QwtPkgConfig/QWT_CONFIG+=QwtPkgConfig/g' -i qwtconfig.pri"
+     
+  - name: Protobuf
+    buildsystem: cmake
+    subdir: cmake
+    config-opts:
+      - -Dprotobuf_BUILD_TESTS:BOOL=OFF
+      - -Dprotobuf_BUILD_EXAMPLES:BOOL=OFF
+    build-options:
+      cflags: '-fPIC'
+      ldflags: '-fPIC'
+      cxxflags: '-fPIC'
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v3.15.6/protobuf-cpp-3.15.6.tar.gz
+        sha256: bbdfb7455431d7d58666e8a2996d14b236718ff238eecde10646581e4c87f168
+
+  - name: Simbody
+    buildsystem: cmake
+    config-opts:
+      - -DINSTALL_DOCS:BOOL=OFF
+      - -DBUILD_TESTS_AND_EXAMPLES_STATIC:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/simbody/simbody/archive/refs/tags/Simbody-3.7.tar.gz
+        sha256: d371a92d440991400cb8e8e2473277a75307abb916e5aabc14194bea841b804a
+    cleanup:
+      - /share/doc
+
+  - name: SWIG
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/swig/files/swig/swig-4.0.2/swig-4.0.2.tar.gz
+        sha256: d53be9730d8d58a16bf0cbd1f8ac0c0c3e1090573168bfa151b01eb47fa906fc
+        
+  - name: ZZip
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://github.com/gdraheim/zziplib/archive/refs/tags/v0.13.72.tar.gz
+        sha256: 93ef44bf1f1ea24fc66080426a469df82fa631d13ca3b2e4abaeab89538518dc
+        
+  - name: pugixml
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://github.com/zeux/pugixml/releases/download/v1.11.4/pugixml-1.11.4.tar.gz
+        sha256: 8ddf57b65fb860416979a3f0640c2ad45ddddbbafa82508ef0a0af3ce7061716
+   
+  - name: imgui
     buildsystem: simple
     build-commands:
-      - python setup.py install --prefix=${FLATPAK_DEST} --pymol-path=/app/share/pymol
+      - mkdir -p /app/include/imgui
+      - cp *.h /app/include/imgui
+    sources:
+      - type: archive
+        url: https://github.com/ocornut/imgui/archive/refs/tags/v1.82.tar.gz
+        sha256: fefa2804bd55f3d25b134af08c0e1f86d4d059ac94cef3ee7bd21e2f194e5ce5
+          
+  - name: mono-core
+    sources:
+      - type: archive
+        url: https://download.mono-project.com/sources/mono/mono-6.12.0.122.tar.xz
+        sha256: 29c277660fc5e7513107aee1cbf8c5057c9370a4cdfeda2fc781be6986d89d23
+    cleanup:
+      - /lib
+      - /include
+      - /etc
+        
+  - name: ORGE
+    buildsystem: cmake
+    config-opts:
+      - -DOGRE_INSTALL_DOCS:BOOL=OFF
+      - -DOGRE_BUILD_TESTS:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/OGRECave/ogre
+        tag: v1.12.12
+      - type: archive
+        url: https://github.com/ocornut/imgui/archive/refs/tags/v1.79.tar.gz
+        sha256: f1908501f6dc6db8a4d572c29259847f6f882684b10488d3a8d2da31744cd0a4
+        dest: imgui-1.79
+
+  - name: gperftools
+    sources:
+      - type: archive
+        url: https://github.com/gperftools/gperftools/archive/refs/tags/gperftools-2.9.1.tar.gz
+        sha256: 484a88279d2fa5753d7e9dea5f86954b64975f20e796a6ffaf2f3426a674a06a
+        
+  - name: libccd
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/danfis/libccd/archive/refs/tags/v2.1.tar.gz
+        sha256: 542b6c47f522d581fbf39e51df32c7d1256ac0c626e7c2b41f1040d4b9d50d1e
+            
+  - name: libQGLViewer
+    buildsystem: qmake
+    subdir: QGLViewer
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    config-opts:
+      - LIB_DIR=/app/lib
+      - INCLUDE_DIR=/app/include
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: http://www.libqglviewer.com/src/libQGLViewer-2.7.2.tar.gz
+        sha256: e2d2799dec5cff74548e951556a1fa06a11d9bcde2ce6593f9c27a17543b7c08
+        
+  - name: OctoMap
+    builddir: true
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+    sources:
+      - type: archive
+        url: https://github.com/OctoMap/octomap/archive/refs/tags/v1.8.1.tar.gz
+        sha256: 8b18ef7693e87f1400b9a8bc41f86e3b28259ac98c0b458037232652380aa6af
+        
+  - name: FCL
+    buildsystem: cmake
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/flexible-collision-library/fcl/archive/refs/tags/v0.6.1.tar.gz
+        sha256: c8a68de8d35a4a5cd563411e7577c0dc2c626aba1eef288cb1ca88561f8d8019
+            
+  - name: IPOPT
+    sources:
+      - type: archive
+        url: https://github.com/coin-or/Ipopt/archive/refs/tags/releases/3.13.4.tar.gz
+        sha256: 1fdd0f8ea637856d66b1ebdd7d52ad1b8b8c1142d1a4ce0976b200ab280e5683
+            
+  - name: NLopt
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.0.tar.gz
+        sha256: b881cc2a5face5139f1c5a30caf26b7d3cb43d69d5e423c9d78392f99844499f
+            
+  - name: ODE
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://bitbucket.org/odedevs/ode/downloads/ode-0.16.2.tar.gz
+        sha256: b26aebdcb015e2d89720ef48e0cb2e8a3ca77915f89d853893e7cc861f810f22
+    
+  - name: ASSIMP
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DASSIMP_BUILD_TESTS:BOOL=OFF
+      - -DASSIMP_BUILD_DOCS:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/assimp/assimp/archive/refs/tags/v5.0.1.tar.gz
+        sha256: 11310ec1f2ad2cd46b95ba88faca8f7aaa1efe9aa12605c55e3de2b977b3dbfc
+
+  - name: Bullet
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    config-opts:
+      - -DBUILD_UNIT_TESTS:BOOL=OFF
+      - -DBUILD_EXTRAS:BOOL=ON
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DINSTALL_EXTRA_LIBS:BOOL=ON
+      - -DINSTALL_LIBS:BOOL=ON
+    sources:
+      - type: archive
+        url: https://github.com/bulletphysics/bullet3/archive/refs/tags/3.09.tar.gz
+        sha256: f2feef9322329c0571d9066fede2db0ede92b19f7f7fdf54def3b4651f02af03
+        
+  - name: FLANN
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DFLANN_LIB_INSTALL_DIR:PATH=/app/lib
+      - -DBUILD_MATLAB_BINDINGS:BOOL=OFF
+      - -DBUILD_EXAMPLES:BOOL=OFF
+      - -DBUILD_TESTS:BOOL=OFF
+      - -DBUILD_DOC:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/flann-lib/flann/archive/refs/tags/1.9.1.tar.gz
+        sha256: b23b5f4e71139faa3bcb39e6bbcc76967fbaf308c4ee9d4f5bfbeceaa76cc5d3
+      - type: patch
+        path: 0001-src-cpp-fix-cmake-3.11-build.patch
+              
+  - name: urdfdom_headers
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ros/urdfdom_headers/archive/refs/tags/1.0.5.tar.gz
+        sha256: 76a68657c38e54bb45bddc4bd7d823a3b04edcd08064a56d8e7d46b9912035ac
+  
+  - name: console_bridge
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ros/console_bridge/archive/refs/tags/0.3.0.tar.gz
+        sha256: 1b43a1b8d3e762415290d4ba9ef68beb3c8412f340aa053d2b1beec660685a69
+         
+  - name: urdfdom
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ros/urdfdom/archive/refs/tags/1.0.4.tar.gz
+        sha256: 8f3d56b0cbc4b84436d8baf4c8346cd2ee7ffb257bba5ddd9892c41bf516edc4
+
+  - name: DART
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX:PATH=/app
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    sources:
+      - type: archive
+        url: https://github.com/dartsim/dart/archive/refs/tags/v6.10.1.tar.gz
+        sha256: bf19cdef8e28dbc4059dcbb11997576d6e1d825791bd756e8272d2ddc5b147ce
+    cleanup:
+      - /share/doc
+        
+  - name: Ignition-CMake
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-cmake/archive/refs/tags/ignition-cmake2_2.5.0.tar.gz
+        sha256: 7b8ae0f55c066776f991250f4e84e8af57e76ccf69f9a841a8906a3805e368de
+         
+  - name: Ignition-math6
+    builddir: true
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-math/archive/refs/tags/ignition-math6_6.8.0.tar.gz
+        sha256: 07c4fa9eeaa51fe2b4ee2855ea69bb16571d7e6c315b8b0726fc4383b64303a1
+            
+  - name: Ignition-utils
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-utils/archive/refs/tags/ignition-utils1_1.0.0.tar.gz
+        sha256: bd024164f12f66e125b544602ec481f6760d5a710aeb62d34a015fb598ee5a0a
+        
+  - name: Ignition-msgs5
+    buildsystem: cmake
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-msgs/archive/refs/tags/ignition-msgs5_5.7.0.tar.gz
+        sha256: 1aafdf96e6eda9dd14ed302029aa1954f2e02356b00b0e9aef8831692ff62bef
+
+  - name: ZeroMQ
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_TESTS:BOOL=OFF
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/zeromq/libzmq/releases/download/v4.3.4/zeromq-4.3.4.tar.gz
+        sha256: c593001a89f5a85dd2ddf564805deb860e02471171b3f204944857336295c3e5
+
+  - name: CppZMQ
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCPPZMQ_BUILD_TESTS:BOOL=OFF
+    sources:
+       - type: archive
+         url: https://github.com/zeromq/cppzmq/archive/refs/tags/v4.7.1.tar.gz
+         sha256: 9853e0437d834cbed5d3c223bf1d755cadee70e7c964c6e42c4c6783dee5d02c
+         
+  - name: Ignition-transport8
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-transport/archive/refs/tags/ignition-transport8_8.2.0.tar.gz
+        sha256: 5b1fe23f7704c7bb17884ab8151ef5462b52059575d11a85a13e72395f1967e7
+      - type: patch
+        path: remove_stdc++fs.patch
+    
+  - name: GTS
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/gts/files/gts/0.7.6/gts-0.7.6.tar.gz
+        sha256: 059c3e13e3e3b796d775ec9f96abdce8f2b3b5144df8514eda0cc12e13e8b81e
+
+  - name: Ignition-common3
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+      - -DCMAKE_INSTALL_PREFIX:PATH=/app
+      - -DBUILD_TESTING:BOOL=False
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-common/archive/refs/tags/ignition-common3_3.12.0.tar.gz
+        sha256: 62d550ff866587a13db4f1b83c9cbbad010267f2b44ad7d981262174ac8e5545
+
+  - name: Ignition-tools
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-tools/archive/refs/tags/ignition-tools_1.1.0.tar.gz
+        sha256: 475141593023cb37a05a5eaddee1bb400faa9056272173838df36aef2d982f94
+
+  - name: Ignition-fuel-tools4
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-fuel-tools/archive/refs/tags/ignition-fuel-tools4_4.3.0.tar.gz
+        sha256: 9f05c067a70059a22f46ccce37dcd02dd9fb7c9091608f61c8a0f4aee9b22a03
+    modules:
+      - name: libzip
+        buildsystem: cmake-ninja
+        sources:
+          - type: archive
+            url: https://github.com/nih-at/libzip/releases/download/v1.7.3/libzip-1.7.3.tar.gz
+            sha256: 0e2276c550c5a310d4ebf3a2c3dfc43fb3b4602a072ff625842ad4f3238cb9cc
+      - name: JSONCPP
+        buildsystem: cmake-ninja
+        sources:
+          - type: archive
+            url: https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.9.4.tar.gz
+            sha256: e34a628a8142643b976c7233ef381457efad79468c67cb1ae0b83a33d7493999
+      - name: libyaml
+        sources:
+          - type: archive
+            url: http://pyyaml.org/download/libyaml/yaml-0.2.5.tar.gz
+            sha256: c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4
+            
+  - name: Ignition-plugin
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/ignitionrobotics/ign-plugin/archive/refs/tags/ignition-plugin_1.2.0.tar.gz
+        sha256: 476b8a50233c05fec5ab3eb85703a19ff3afcd18c5d55e8de0046dca4940fd42
+
+  - name: SDFormat9
+    buildsystem: cmake
+    config-opts:
+      - -DLIB_INSTALL_DIR:PATH=/app/lib
+      - -DBUILD_TESTING:BOOL=OFF
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    sources:
+      - type: archive
+        url: https://github.com/osrf/sdformat/archive/refs/tags/sdformat9_9.5.0.tar.gz
+        sha256: 53791427b25c2485a2f74aab90e07ff8e7470f86532ecd30b9510bbec4122c97
+
+  - name: Gazebo
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+      - -DCMAKE_INSTALL_PREFIX:PATH=/app
+      - -DBUILD_TESTING:BOOL=ON
+      - -DENABLE_PROFILER:BOOL=ON
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+    post-install:
       - install -Dm644 gazebo.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/org.gazebosim.Gazebo.svg
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/org.gazebosim.Gazebo.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/org.gazebosim.Gazebo.metainfo.xml
     sources:
       - type: archive
-        url: https://github.com/schrodinger/pymol-open-source/archive/v2.5.0.tar.gz
-        sha256: aa828bf5719bd9a14510118a93182a6e0cadc03a574ba1e327e1e9780a0e80b3
+        url: https://github.com/osrf/gazebo/archive/refs/tags/gazebo11_11.5.0.tar.gz
+        sha256: cd46d85e01aa40ad181a7b0afcbe23dfd13ecdfb6ea37b881655205d8fc1aec0
+      - type: patch
+        path: Gazebo_fix_protobuf_linking.patch
       - type: file
         path: org.gazebosim.Gazebo.metainfo.xml
       - type: file
         path: org.gazebosim.Gazebo.desktop
       - type: file
         path: gazebo.svg
+ 
