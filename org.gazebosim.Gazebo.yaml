@@ -5,8 +5,7 @@ runtime-version: '5.15'
 command: gazebo
 finish-args:
   - --share=ipc
-  - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --socket=pulseaudio
   - --device=dri
   - --filesystem=home
@@ -18,12 +17,19 @@ cleanup:
   - /doc
   - "*.la"
   - "*.a"
+  # This fix Failed to find icon: Failed to find icon
+  # https://github.com/hughsie/appstream-glib/issues/271
+  - /usr
 
 modules:
   - shared-modules/glew/glew.json
   - shared-modules/glu/glu-9.json
   - shared-modules/libusb/libusb.json
-  
+ 
+    # For FreeImage    
+    # https://archive.codeplex.com/?p=jxrlib will be close soon
+    # FreeImage need -fPIC
+    # CMakeLists.txt from https://build.opensuse.org/package/show/graphics/jxrlib 
   - name: libjxr
     buildsystem: cmake-ninja
     build-options:
@@ -37,6 +43,9 @@ modules:
         path: JXR-CMakeLists.txt
         dest-filename: CMakeLists.txt
       
+    # For FreeImage
+    # Cannot build new version aclocal-1.15: command not found
+    # https://stackoverflow.com/questions/33278928/how-to-overcome-aclocal-1-15-is-missing-on-your-system-warning
   - name: LibRaw
     buildsystem: simple
     build-commands:
@@ -60,7 +69,8 @@ modules:
       - type: git
         url: https://github.com/AcademySoftwareFoundation/Imath.git
         tag: v3.0.1
-  
+ 
+   # For FreeImage  
   - name: openEXR
     buildsystem: cmake-ninja
     config-opts:
@@ -69,17 +79,9 @@ modules:
       - type: git
         url: https://github.com/AcademySoftwareFoundation/openexr.git
         tag: v3.0.1
-        
-  #- name: libwebp
-    #buildsystem: cmake-ninja
-    #build-options:
-      #cflags: -fPIC
-      #cxxflags: -fPIC
-    #sources:
-      #- type: git
-        #url: https://chromium.googlesource.com/webm/libwebp/
-        #tag: v1.2.0
-        
+
+    # Use methods, patch, and build flags from openSUSE.
+    # https://build.opensuse.org/package/show/openSUSE:Factory/freeimage        
   - name: FreeImage
     build-options:
       cflags: -I/app/include/jxrlib -I/app/include -I/usr/include -fpermissive -O2 -Wall -D_FORTIFY_SOURCE=2 -fstack-protector-strong -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -Werror=return-type -flto=auto -fPIC -Wunused-variable
@@ -121,7 +123,8 @@ modules:
       - type: patch
         path: FreeImage_patch/freeimage-openexr3.patch
         
-  - name: hdf5
+    # Gazebo need HDF5 component C and CXX
+  - name: HDF5
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
@@ -169,6 +172,8 @@ modules:
     cleanup:
       - /lib/cmake
 
+    # Gazebo does not compile with new TBB
+    # https://github.com/osrf/gazebo/issues/2867
   - name: TBB
     buildsystem: simple
     build-commands:
@@ -206,6 +211,7 @@ modules:
         url: https://github.com/leethomason/tinyxml2/archive/refs/tags/8.0.0.tar.gz
         sha256: 6ce574fbb46751842d23089485ae73d3db12c1b6639cda7721bf3a7ee862012c
 
+    # urdfdom still use TinyXML        
   - name: TinyXML
     sources:
       - type: archive
@@ -248,7 +254,8 @@ modules:
         commands: 
           - "sed 's/QWT_INSTALL_PREFIX\\s*=\\s*\\/usr\\/local\\/qwt-$$QWT_VERSION/QWT_INSTALL_PREFIX=\\/app/g' -i qwtconfig.pri"
           - "sed 's/#QWT_CONFIG\\s*+=\\s*QwtPkgConfig/QWT_CONFIG+=QwtPkgConfig/g' -i qwtconfig.pri"
-     
+
+    # Need compile with -fPIC           
   - name: Protobuf
     buildsystem: cmake-ninja
     subdir: cmake
@@ -276,6 +283,7 @@ modules:
     cleanup:
       - /share/doc
 
+    # ORGE Python need SWIG        
   - name: SWIG
     sources:
       - type: archive
@@ -488,6 +496,7 @@ modules:
         url: https://github.com/ignitionrobotics/ign-utils/archive/refs/tags/ignition-utils1_1.0.0.tar.gz
         sha256: bd024164f12f66e125b544602ec481f6760d5a710aeb62d34a015fb598ee5a0a
         
+    # Ignition-transport8 need Ignition-msgs version 5
   - name: Ignition-msgs5
     buildsystem: cmake
     builddir: true
@@ -496,6 +505,7 @@ modules:
         url: https://github.com/ignitionrobotics/ign-msgs/archive/refs/tags/ignition-msgs5_5.7.0.tar.gz
         sha256: 1aafdf96e6eda9dd14ed302029aa1954f2e02356b00b0e9aef8831692ff62bef
 
+    # Needed by Ignition-transport        
   - name: ZeroMQ
     buildsystem: cmake-ninja
     config-opts:
@@ -506,6 +516,7 @@ modules:
         url: https://github.com/zeromq/libzmq/releases/download/v4.3.4/zeromq-4.3.4.tar.gz
         sha256: c593001a89f5a85dd2ddf564805deb860e02471171b3f204944857336295c3e5
 
+    # Needed by Ignition-transport        
   - name: CppZMQ
     buildsystem: cmake-ninja
     builddir: true
@@ -515,7 +526,8 @@ modules:
        - type: archive
          url: https://github.com/zeromq/cppzmq/archive/refs/tags/v4.7.1.tar.gz
          sha256: 9853e0437d834cbed5d3c223bf1d755cadee70e7c964c6e42c4c6783dee5d02c
-         
+
+    # Without remove_stdc++fs.patch, build fail with error ld cannot find -lstdc++fs, no clue how to fix it properly
   - name: Ignition-transport8
     buildsystem: cmake-ninja
     sources:
@@ -524,13 +536,17 @@ modules:
         sha256: 5b1fe23f7704c7bb17884ab8151ef5462b52059575d11a85a13e72395f1967e7
       - type: patch
         path: remove_stdc++fs.patch
-    
+
+    # Required by Ignition-common3 to be found by Gazebo
   - name: GTS
     sources:
       - type: archive
         url: https://sourceforge.net/projects/gts/files/gts/0.7.6/gts-0.7.6.tar.gz
         sha256: 059c3e13e3e3b796d775ec9f96abdce8f2b3b5144df8514eda0cc12e13e8b81e
 
+    # Gazebo11 use Ignition-common3
+    # Need FreeImage to produce graphics component
+    # https://github.com/osrf/gazebo/blob/gazebo11/cmake/SearchForStuff.cmake
   - name: Ignition-common3
     buildsystem: cmake-ninja
     config-opts:
@@ -553,6 +569,8 @@ modules:
         url: https://github.com/ignitionrobotics/ign-tools/archive/refs/tags/ignition-tools_1.1.0.tar.gz
         sha256: 475141593023cb37a05a5eaddee1bb400faa9056272173838df36aef2d982f94
 
+    # Gazebo11 use Ignition-fuel-tools4
+    # https://github.com/osrf/gazebo/blob/gazebo11/cmake/SearchForStuff.cmake
   - name: Ignition-fuel-tools4
     buildsystem: cmake-ninja
     sources:
@@ -585,6 +603,7 @@ modules:
         url: https://github.com/ignitionrobotics/ign-plugin/archive/refs/tags/ignition-plugin_1.2.0.tar.gz
         sha256: 476b8a50233c05fec5ab3eb85703a19ff3afcd18c5d55e8de0046dca4940fd42
 
+    # Gazebo11 use SDFormat version 9   
   - name: SDFormat9
     buildsystem: cmake-ninja
     config-opts:
@@ -641,6 +660,12 @@ modules:
         #url: https://github.com/playerproject/player/archive/refs/tags/release-3-1-0.tar.gz
         #sha256: b661623ccd9c03fdf71e15263ef46592d6c7084625486f91a1839901e3860a11
 
+    # Enable PROFILER to work around freezing at start. But not working.
+    # https://github.com/osrf/gazebo/issues/2457
+    # https://bugzilla.redhat.com/show_bug.cgi?id=1871291
+    # Protobuf patch adopt from https://github.com/osrf/gazebo/issues/2639
+    # Create png icon with inkscape, the original icon is not square, must resize.
+    # Modify the svg to be square.
   - name: Gazebo
     buildsystem: cmake
     config-opts:
