@@ -1,0 +1,66 @@
+app-id: rest.insomnia.client
+runtime: org.freedesktop.Sdk
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+rename-desktop-file: insomnia.desktop
+rename-icon: insomnia
+separate-locales: false
+command: insomnia
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  # I think it shows notifications sometimes? If not, remove this:
+  - --talk-name=org.freedesktop.Notifications
+  # I'm not a fan of this permission, but for some reason Insomnia won't start
+  # without it. Contributions welcome:
+  - --device=all
+modules:
+  - name: insomnia
+    buildsystem: simple
+    build-options:
+      strip: false
+      no-debuginfo: true
+      no-debuginfo-compression: true
+    build-commands:
+      - tar xf insomnia.tar.gz
+      - install -dm755 /app/share/
+      - install -dm755 /app/main/
+      - mv Insomnia.Core-2021.3.0/* /app/main
+
+      - install -Dm644 insomnia.desktop /app/share/applications/insomnia.desktop
+      - install -Dm644 insomnia.png /app/share/icons/hicolor/scalable/apps/insomnia.png
+
+      - install -Dm755 insomnia.sh /app/bin/insomnia
+      - install -Dm644 rest.insomnia.client.appdata.xml /app/share/metainfo/$FLATPAK_ID.appdata.xml
+    sources:
+      - type: file
+        dest-filename: insomnia.tar.gz
+        only-arches:
+          - x86_64
+        url: https://github.com/Kong/insomnia/releases/download/core%402021.3.0/Insomnia.Core-2021.3.0.tar.gz
+        sha256: c7b5ab9607945b00ada35862365346a0b53ff1265d5cb5c47511a157c8fc2996
+      - type: file
+        path: insomnia.png
+        # There are no images in the published tarball. The one in the repo is
+        # 1024x1024, but the max that flatpak accepts is 512x512, so that one
+        # isn't usable either.
+        #
+        # dest-filename: insomnia.png
+        # url: https://raw.githubusercontent.com/Kong/insomnia/core%402021.3.0/packages/insomnia-app/app/ui/images/insomnia-core-logo.png
+        # sha256: 9495087cb09512d2693f1dd4bc3c2c72a026d1c2d9238922115f8bffcf56e6df
+      - type: script
+        dest-filename: insomnia.sh
+        commands:
+          # Share a TMPDIR, so that multiple instance can figure out there's
+          # already one running.
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          # This script is required to work around a lack of SUID sandbox helper:
+          - exec zypak-wrapper /app/main/insomnia "$@"
+      - type: file
+        path: rest.insomnia.client.appdata.xml
+      - type: file
+        # The upstream tarball is missing the desktop file.
+        path: insomnia.desktop
