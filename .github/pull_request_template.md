@@ -11,3 +11,4 @@
 [reqs]: https://github.com/flathub/flathub/wiki/App-Requirements
 [maint]: https://github.com/flathub/flathub/wiki/App-Maintenance
 [submission]: https://github.com/flathub/flathub/wiki/App-Submission
+
