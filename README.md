@@ -1,8 +1,8 @@
-# SDK Extension for OpenJDK 15
+# SDK Extension for OpenJDK 16
 
-This extension contains the OpenJDK 15 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
+This extension contains the OpenJDK 16 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
 
-OpenJDK 15 is the current latest (non-LTS) version.
+OpenJDK 16 is the current latest (non-LTS) version.
 
 For the current long-term support (LTS) version, see the [OpenJDK 11](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk11) extension.
 
