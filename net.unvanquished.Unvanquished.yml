@@ -1,0 +1,82 @@
+app-id: net.unvanquished.Unvanquished
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+command: /app/bin/unvanquished
+finish-args:
+  - --share=network
+  - --socket=pulseaudio # sound
+  - --device=dri # OpenGL
+  - --socket=x11 # X11 access
+  - --share=ipc # X shared memory (for performance)
+cleanup:
+  - /share/doc
+modules:
+  - shared-modules/glew/glew.json
+
+  - name: unvanquished-assets
+    buildsystem: simple
+    build-commands:
+      - mv pkg /app/pkg
+    sources:
+      - type: archive
+        url: https://dl.unvanquished.net/release/unvanquished_0.52.0.zip
+        sha256: 2af1af06426f4c2ac93be0bde122bf263ec7a2a8608df48c4f9d6aed0106f6be
+
+  - name: daemon
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_GAME_NACL=FALSE
+      - -DBUILD_GAME_NACL_NEXE=FALSE
+      - -DBUILD_GAME_NATIVE_DLL=FALSE
+      - -DBUILD_GAME_NATIVE_EXE=FALSE
+      - -DBUILD_TTY_CLIENT=FALSE
+      - -DBUILD_SERVER=FALSE
+      - -DUSE_CURSES=FALSE # broken, not sure why
+      - -DUSE_GEOIP=FALSE # this is mostly useful for server anyway
+      - -DUSE_HARDENING=TRUE
+      - -DUSE_LTO=TRUE
+    sources:
+      - type: git
+        url: https://github.com/DaemonEngine/Daemon
+        tag: unvanquished/0.52.0
+      - type: git # used for the icons
+        disable-submodules: true
+        dest: unv
+        url: https://github.com/Unvanquished/Unvanquished
+        tag: unvanquished/0.52.0
+      - type: file
+        path: net.unvanquished.Unvanquished.appstream.xml
+      - type: file
+        path: net.unvanquished.Unvanquished.desktop
+      - type: archive
+        dest: external_deps/linux64-5
+        url: https://dl.unvanquished.net/deps/linux64-5.tar.bz2
+        sha256: 0dc5a58403926b0fb4680fb64220cc10b58c83e8871e7c59285ff5161287eb17
+      - type: patch
+        path: 0001-Suppress-a-warning.patch
+        use-git-am: true
+    no-make-install: true # no install phase is defined, we need a custom one
+    post-install:
+      - >
+        for f in daemon nacl_loader nacl_helper_bootstrap; do
+          install -Dm0755 -t /app/lib/ $f
+        done
+      - install -Dm0644 -t /app/lib/ irt_core-x86_64.nexe
+      - install -Dm0644 -t /app/share/applications/ net.unvanquished.Unvanquished.desktop
+      - install -Dm0644 -t /app/share/metainfo/ net.unvanquished.Unvanquished.appstream.xml
+      - >
+        for d in unv/dist/icons/*; do
+          mkdir /app/share/icons/hicolor/$(basename $d)/apps/ -p
+          install -Dm0644 $d/unvanquished.png /app/share/icons/hicolor/$(basename $d)/apps/net.unvanquished.Unvanquished.png
+        done
+
+  - name: unvanquished
+    buildsystem: simple
+    build-commands:
+      - install -Dm0755 -t /app/bin/ unvanquished
+    sources:
+      - type: script
+        commands:
+          - /app/lib/daemon -pakpath /app/pkg "$@"
+        dest-filename: unvanquished
