@@ -3,7 +3,7 @@
 The easiest way will be to have `flatpak-builder` installed and running:
 
 ```sh
-rm -rf .flatpak-builder/ && flatpak-builder build-dir/ io.gdevs.GDLauncher.yml --force-clean --install --user
+flatpak-builder build-dir/ io.gdevs.GDLauncher.yml --force-clean --install --user
 ```
 
 ## How do I play versions of Minecraft that require Java non-LTS (1.17+)?
