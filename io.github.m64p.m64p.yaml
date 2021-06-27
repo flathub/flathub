@@ -1,0 +1,153 @@
+app-id: io.github.m64p.m64p
+runtime: org.kde.Platform
+runtime-version: "5.15"
+sdk: org.kde.Sdk
+command: mupen64plus-gui
+rename-icon: mupen64plus
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=all
+cleanup:
+  - /include
+  - /share/doc
+  - /share/licenses
+build-options:
+  env:
+    NEW_DYNAREC: "1"
+modules:
+  - shared-modules/glu/glu-9.json
+  - shared-modules/libusb/libusb.json
+
+  - name: hidapi
+    sources:
+      - type: git
+        url: https://github.com/libusb/hidapi.git
+        tag: hidapi-0.10.1
+        commit: f6d0073fcddbdda24549199445e844971d3c9cef
+        x-checker-data:
+          type: git
+          tag-pattern: ^(hidapi-[\d.]+)$
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /lib/*.la
+
+  - name: mupen64plus-core
+    subdir: mupen64plus-core/projects/unix
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+      - SHAREDIR=/app/share/mupen64plus
+      - NETPLAY=1
+      - OSD=0
+    sources:
+      - &m64p
+        type: git
+        url: https://github.com/loganmc10/m64p.git
+        tag: v2021.6.23
+        commit: 53d1c295edc816ae4d654d60eb91c0c46204b4b3
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
+
+  - name: mupen64plus-input-raphnetraw
+    subdir: mupen64plus-input-raphnetraw/projects/unix
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - *m64p
+
+  - name: mupen64plus-input-qt
+    subdir: mupen64plus-input-qt
+    buildsystem: qmake
+    builddir: true
+    sources:
+      - *m64p
+    post-install:
+      - install -D libmupen64plus-input-qt.so /app/lib/mupen64plus/mupen64plus-input-qt.so
+
+  - name: mupen64plus-audio-sdl2
+    subdir: mupen64plus-audio-sdl2/projects/unix
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - *m64p
+
+  - name: parallel-rsp
+    subdir: parallel-rsp
+    buildsystem: cmake-ninja
+    builddir: true
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - *m64p
+    post-install:
+      - install mupen64plus-rsp-parallel.so -t /app/lib/mupen64plus
+
+  - name: parallel-rdp-standalone
+    subdir: parallel-rdp-standalone
+    buildsystem: cmake-ninja
+    builddir: true
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - *m64p
+    post-install:
+      - install mupen64plus-video-parallel.so -t /app/lib/mupen64plus
+
+  - name: mupen64plus-gui
+    subdir: mupen64plus-gui
+    buildsystem: qmake
+    builddir: true
+    config-opts:
+      - DEFINES += CORE_LIBRARY_PATH=\\\"/app/lib\\\"
+      - DEFINES += PLUGIN_DIR_PATH=\\\"/app/lib/mupen64plus\\\"
+      - DEFINES += CONFIG_DIR_PATH=\\\"\\\$\$CONFIG_PATH\\\$\$\\\"
+    sources:
+      - *m64p
+      - type: shell
+        commands:
+          - echo "#define GUI_VERSION \"$(git rev-parse HEAD)\"" > mupen64plus-gui/version.h
+      - type: patch
+        path: 3d4923b.patch
+      - type: file
+        path: io.github.m64p.m64p.desktop
+      - type: file
+        path: io.github.m64p.m64p.metainfo.xml
+    post-install:
+      - install -D mupen64plus-gui -t /app/bin
+      - install -D ../mupen64plus.svg -t /app/share/icons/hicolor/scalable/apps
+      - install -D ../../io.github.m64p.m64p.desktop -t /app/share/applications
+      - install -D ../../io.github.m64p.m64p.metainfo.xml -t /app/share/metainfo
+
+  - name: libvosk
+    buildsystem: simple
+    build-commands:
+      - wheel unpack vosk-*-py3-none-linux_x86_64.whl
+      - install vosk-*/vosk/libvosk.so -t /app/bin
+    sources:
+      - type: file
+        url: https://github.com/alphacep/vosk-api/releases/download/0.3.30/vosk-0.3.30-py3-none-linux_x86_64.whl
+        sha256: 650a98bde70fed12ec80c94be8436e17b0e45c4dac8fe37c571ba4e1c6641505
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/alphacep/vosk-api/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name=="vosk-" + $version + "-py3-none-linux_x86_64.whl") | .browser_download_url
+
+  - name: vosk-model
+    buildsystem: simple
+    build-commands:
+      - cp -r . /app/bin/vosk-model-small-en-us-0.15
+    sources:
+      - type: archive
+        url: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+        sha256: 30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498
