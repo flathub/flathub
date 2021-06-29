@@ -1,0 +1,179 @@
+name: mpv
+modules:
+        - pipewire/pipewire-jack-runtime.json
+        - ../shared-modules/lua5.1/lua-5.1.5.json
+
+        - name: youtube-dl
+          no-autogen: true
+          no-make-install: true
+          make-args:
+          - youtube-dl
+          - PYTHON=/usr/bin/python3
+          post-install:
+          - install youtube-dl /app/bin
+          sources:
+          - type: archive
+            url: https://github.com/ytdl-org/youtube-dl/archive/2021.04.26.tar.gz
+            sha256: d80023ab221b3cb89229b632e247035a22c5afaee9a7b3c653bbd702f71c1083
+            
+        - name: uchardet
+          buildsystem: cmake-ninja
+          config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_STATIC=0
+          cleanup:
+          - /bin
+          - /include
+          - /lib/pkgconfig
+          - /share/man
+          sources:
+          - type: archive
+            url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.6.tar.xz
+            sha256: 8351328cdfbcb2432e63938721dd781eb8c11ebc56e3a89d0f84576b96002c61
+          
+        - name: libass
+          cleanup:
+          - /include
+          - /lib/*.la
+          - /lib/pkgconfig
+          config-opts:
+          - --disable-static
+          sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.15.0/libass-0.15.0.tar.gz
+            sha256: 9cbddee5e8c87e43a5fe627a19cd2aa4c36552156eb4edcf6c5a30bd4934fe58
+
+        - name: libv4l2
+          cleanup:
+          - /include
+          - /lib/*.la
+          - /lib/*/*.la
+          - /lib*/*/*/*.la
+          - /lib/pkgconfig
+          - /share/man
+          config-opts:
+          - --disable-static
+          - --disable-bpf
+          - --with-udevdir=/app/lib/udev
+          sources:
+          - type: archive
+            url: https://linuxtv.org/downloads/v4l-utils/v4l-utils-1.20.0.tar.bz2
+            sha256: 956118713f7ccb405c55c7088a6a2490c32d54300dd9a30d8d5008c28d3726f7
+
+              
+        - name: nv-codec-headers
+          cleanup:
+          - "*"
+          no-autogen: true
+          make-install-args:
+          - PREFIX=/app
+          sources:
+          - type: git
+            url: https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+            tag: n11.0.10.1
+            commit: 315ad740ac77282c7cea67ba31f2e4b373132919
+            x-checker-data:
+              type: git
+              tag-pattern: "^n([\\d.]+)$"      
+
+
+        - name: ffmpeg
+          cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /share/ffmpeg/examples
+          config-opts:
+          - --disable-static
+          - --disable-debug        
+          - --disable-doc
+          - --enable-gnutls  
+          - --enable-shared    
+          - --enable-encoder=png
+          - --enable-libv4l2
+          - --enable-gpl
+          - --enable-version3    
+          - --enable-nonfree     
+          - --enable-libass      
+          - --enable-libfdk-aac  
+          - --enable-libfreetype 
+          - --enable-libmp3lame  
+          - --enable-libopus     
+          - --enable-libtheora   
+          - --enable-libvorbis   
+          - --enable-libvpx      
+          - --enable-libaom 
+          - --enable-libdav1d   
+          sources:
+          - type: archive
+            url: https://ffmpeg.org/releases/ffmpeg-4.4.tar.xz
+            sha256: 06b10a183ce5371f915c6bb15b7b1fffbe046e8275099c96affc29e17645d909
+
+        - name: mpv
+          buildsystem: simple
+          cleanup:
+          - /include
+          - /lib/pkgconfig
+          build-commands:
+          - python3 waf configure --prefix=/app 
+                                  --enable-libmpv-shared 
+                                  --disable-build-date 
+                                  --disable-alsa
+                                  --enable-libmpv-shared 
+                                  --enable-sdl2 
+                                  --enable-libarchive 
+          - python3 waf build
+          - python3 waf install
+          post-install:
+          # y and g Step forward/backward in the subtitle list
+          - mkdir -p /app/etc/mpv/ 
+          - echo 'y sub-step +1'  > /app/etc/mpv/input.conf
+          - echo 'g sub-step -1' >> /app/etc/mpv/input.conf
+          # save screenshots at ~/Pictures/mpv-screenshots
+          - echo "screenshot-directory=~/Pictures/mpv-screenshots" > /app/etc/mpv/mpv.conf
+          sources:
+          - type: archive
+            url: https://github.com/mpv-player/mpv/archive/v0.33.1.tar.gz
+            sha256: 100a116b9f23bdcda3a596e9f26be3a69f166a4f1d00910d1789b6571c46f3a9
+          - type: file
+            url: https://waf.io/waf-2.0.17
+            sha256: e05a7f0e81dc3af7e744ddf7c7a334e3504967108fe51fab45808015ba1c0de0
+            dest-filename: waf
+
+        # Scripts for mpv
+        - name: mpv-mpris
+          buildsystem: simple
+          cleanup:
+          - /include
+          - /lib/pkgconfig
+          build-commands:
+          - make
+          - mkdir -vp /app/etc/mpv/scripts
+          - install -D -m644 mpris.so /app/etc/mpv/scripts
+          sources: 
+          - type: archive
+            url: https://github.com/hoyon/mpv-mpris/archive/refs/tags/0.5.tar.gz
+            sha256: 673aff031e7cc741edea68d7b4b0103d7b031d4a55755abb9e1be5dd4ec4e969
+            dest-filename: mpv-mpris-0.5.tar.gz
+
+        - name: mpv-thumbnailer
+          buildsystem: simple
+          cleanup:
+          - /include
+          - /lib/pkgconfig
+          build-commands:
+          - mkdir -vp /app/etc/mpv/scripts
+            #Don't show osc=no message 
+          - sed 's|"You must disable the built-in OSC with osc=no in your configuration!"|""|g' -i mpv_thumbnail_script_client_osc.lua
+            #Thumbnail videos up to 3.5 hours 
+          - sed 's|autogenerate_max_duration = 3600|autogenerate_max_duration = 12840|g'        -i mpv_thumbnail_script_server.lua
+          - sed 's|autogenerate_max_duration = 3600|autogenerate_max_duration = 12840|g'        -i mpv_thumbnail_script_client_osc.lua
+          - install -D -m644 mpv_thumbnail_script_server.lua     /app/etc/mpv/scripts
+          - install -D -m644 mpv_thumbnail_script_client_osc.lua /app/etc/mpv/scripts
+
+          sources: 
+          - type: file
+            url: https://gist.githubusercontent.com/jamesxmcintosh/f419785d1c95d8f49873b800bb407dc5/raw/d12a57e22b5c02a972d774409ca39d84768a82bd/mpv_thumbnail_script_server.lua
+            sha256: 1dcb2f41275f6737af11bd3676a847ea79900720a46e14e8e63554fb1f538f64
+          - type: file
+            url: https://gist.githubusercontent.com/jamesxmcintosh/4224551956f4626df69920750fccf887/raw/765a2c40b42cbf221aa05ce7b2cea1dc81391f6a/mpv_thumbnail_script_client_osc.lua
+            sha256: 49dd2857d6687dd9ec0bf5e5da8c99a1d5b611c46f841ea5041e7591ca610293
