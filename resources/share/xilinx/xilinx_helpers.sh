@@ -14,9 +14,9 @@ function xilinx_detect_xsetup() {
 
 function xilinx_install_vivado_if_missing() {
 	if [ "${#installed_versions[@]}" -eq "0" ]; then
-                zenity --class "$CURRENT_WM_CLASS" --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?"
+		zenity --class "$CURRENT_WM_CLASS" --width=400 --question --title "Missing software" --text "Xilinx Vivado Design Suite is not installed. Do you want to install it now?"
 		xilinx_install
-                xilinx_detect
+		xilinx_detect
 	fi
 }
 
@@ -36,20 +36,45 @@ function xilinx_choose_version() {
 }
 
 function xilinx_install() {
-	zenity --class "$CURRENT_WM_CLASS" --width=600 --info --title "Xilinx installer required" --text "Please download the Xilinx Unified installer and select it in the next window."
+	XILINX_DOWNLOADER=$(dirname "${BASH_SOURCE[0]}")/download_vivado.py
 
-	# Launch the browser
-	xdg-open 'https://www.xilinx.com/support/download.html'
+	local installer_dir
+	installer_dir=$(mktemp -d)
 
-	# Get the installer path
 	local installer_path
-	installer_path=$(zenity --class "$CURRENT_WM_CLASS" --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
+
+	if zenity --class "$CURRENT_WM_CLASS" --width=400 --question --title "Download" --text "Do you want to automatically download the latest available version on xilinx.com?"; then
+
+		# Get username and password
+		local user_pass
+		user_pass=$(zenity --class "$CURRENT_WM_CLASS" --password --title "xilinx.com login" --username)
+
+		local user
+		user=$(echo "$user_pass" | cut -d '|' -f 1)
+
+		local pass
+		pass=$(echo "$user_pass" | sed 's/^[^|]*|//')
+
+		installer_path="$installer_dir/installer.bin"
+
+		# Download Vivado
+		echo "$pass" | \
+			( "$XILINX_DOWNLOADER" "$user" "$installer_path" || ( zenity --class "$CURRENT_WM_CLASS" --width=400 --error --title "Download failed" --text "Unable to download the installer with the provided credentials."; exit 1 ) ) | \
+			zenity --class "$CURRENT_WM_CLASS" --width=400 --progress --title="Downloading Vivado" --text "Retrieving download information..." --auto-close 
+
+	else
+		zenity --class "$CURRENT_WM_CLASS" --width=400 --info --title "Xilinx installer required" --text "Please download the Xilinx Unified installer and select it in the next window."
+
+		# Launch the browser
+		xdg-open 'https://www.xilinx.com/support/download.html'
+
+		# Get the installer path
+		installer_path=$(zenity --class "$CURRENT_WM_CLASS" --file-selection --title "Select the Xilinx installer (Xilinx_Unified_*_Lin64.bin)")
+	fi
 
 	zenity --class "$CURRENT_WM_CLASS" --width=600 --warning --text "The Xilinx installer will now start. Do not change the default installation path."
 
 	# Extract the installer
-	local installer_dir
-	installer_dir=$(mktemp -d)
 	sh "$installer_path" --noexec --target "$installer_dir"
 
 	# Change the default installation folder
