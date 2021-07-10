@@ -11,13 +11,13 @@ Installation
 To build and install this Flatpak, you have to [install Flatpak, Flatpak builder and the Flathub repo](https://flatpak.org/setup/). Don't forget to initialize this repo submodules. Then run:
 
 ```sh
-flatpak-builder build com.github.Desktop.yaml --repo=repo --install --force-clean --install-deps-from=flathub
+flatpak-builder build io.github.shiftey.Desktop.yaml --repo=repo --install --force-clean --install-deps-from=flathub
 ```
 
 Once installed, launch GitHub Desktop by running:
 
 ```sh
-flatpak run com.github.Desktop
+flatpak run io.github.shiftey.Desktop
 ```
 
 Updating `desktop` repo and dependencies
@@ -28,7 +28,7 @@ Flatpak builder doesn't allow the build scripts to access the internet, so you h
 To update `desktop` repo to its latest commit and update the dependencies, you have to:
 
 1. Clone [https://github.com/shiftkey/desktop](https://github.com/shiftkey/desktop) inside this repo.
-2. Change the commit in `com.github.Desktop.yaml` to the desired one:
+2. Change the commit in `io.github.shiftey.Desktop.yaml` to the desired one:
 
     ```yaml
     ...
