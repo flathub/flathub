@@ -1,0 +1,96 @@
+app-id: com.github.Desktop
+base: org.electronjs.Electron2.BaseApp
+base-version: "20.08"
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: start-github-desktop
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=ssh-auth
+  - --share=network
+  - --device=all
+  - --filesystem=host
+  - --filesystem=/opt/:ro
+  - --filesystem=xdg-run/keyring
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - "cp -a * /app"
+    # Only used for building, so clean it up afterwards.
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.10/yarn-v1.22.10.tar.gz
+        sha256: 7e433d4a77e2c79e6a7ae4866782608a8e8bcad3ec6783580577c59538381a6e
+
+  - name: github-desktop
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory & yarn directory.
+      append-path: "/usr/lib/sdk/node14/bin:/app/yarn/bin:/run/build/github-desktop/flatpak-node/chromedriver"
+      env:
+        # Sets the directory where Node is located so way npm won't download the headers.
+        npm_config_nodedir: "/usr/lib/sdk/node14"
+        # Set the Electron cache directory.
+        ELECTRON_CACHE: "/run/build/github-desktop/flatpak-node/electron-cache"
+        # Skip Electron related downloads
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        CHROMEDRIVER_SKIP_DOWNLOAD: "true"
+        # Use predownloaded dugite-native
+        DUGITE_CACHE_DIR: "/run/build/github-desktop/flatpak-node/yarn-mirror"
+    build-commands:
+      - "HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror"
+      - "yarn --offline --verbose"
+      # Run electron-builder, passing the architecture arguments to it.
+      - "echo here"
+      - ". flatpak-node/electron-builder-arch-args.sh; yarn run --offline build:prod $ELECTRON_BUILDER_ARCH_ARGS"
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - "cp -r dist/github-desktop-linux-* /app/github-desktop"
+      # Install the wrapper script to start it.
+      - "install -Dm 755 start-github-desktop.sh /app/bin/start-github-desktop"
+    post-install:
+      - install -Dm644 app/static/logos/32x32.png  /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/logos/64x64.png  /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/logos/128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/logos/256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/logos/512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+      - install -D com.github.Desktop.desktop -t /app/share/applications/
+      - install -D  com.github.Desktop.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/shiftkey/desktop.git
+        commit: 8fcc20c6c08433ef64a636d0c2a47425c0e20980
+      - type: file
+        url: https://github.com/desktop/dugite-native/releases/download/v2.29.3-2/dugite-native-v2.29.3-3d467be-ubuntu.tar.gz
+        dest: flatpak-node/yarn-mirror
+        sha256: 288d3b64dd9c7ecd73e289bf622ce226dc7b832f1b42cddecc039d0d3fd16b32
+      - type: patch
+        paths:
+          - patches/0001-flatpak-Use-yarn-directly-with-offline-flag-in-post-.patch
+          - patches/0002-flatpak-Set-electron-get-cacheRoot-to-flatpak-node-d.patch
+          - patches/0003-desktop-no-detect-translation.patch
+          - patches/0004-desktop-editor-intigration.patch # being upstreamed
+      - generated-sources.json
+      - type: file
+        path: com.github.Desktop.desktop
+
+      - type: file
+        path: com.github.Desktop.metainfo.xml
+      - type: script
+        dest-filename: start-github-desktop.sh
+        commands:
+          - 'zypak-wrapper /app/github-desktop/github-desktop "$@"'

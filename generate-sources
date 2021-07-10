@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import subprocess
+
+
+if __name__ == "__main__":
+    root = os.path.dirname(__file__)
+    generated_sources_path = f'{root}/generated-sources.json'
+
+    subprocess.call([
+        'python3',
+        f'{root}/flatpak-builder-tools/node/flatpak-node-generator.py',
+        '--electron-node-headers',
+        '--node-chromedriver-from-electron',
+        '9.3.1',
+        'yarn', '-r', f'{root}/desktop/yarn.lock',
+        '-R', 'yarn.lock', '-R', 'app/yarn.lock',
+    ], cwd=root)
+
+    with open(generated_sources_path, 'r') as fp:
+        generated_sources = json.load(fp)
+
+    # Move electron-cache files to match what @electron/get expects
+    # https://github.com/electron/get/blob/master/src/Cache.ts
+    for source in generated_sources:
+        if source['dest'] == 'flatpak-node/electron-cache':
+            cache_dir = source['url'] \
+                .split('?')[0].split('#')[0] \
+                .translate(str.maketrans('', '', '<>:"/\\|?*'))[:255]
+            source['dest'] = f'flatpak-node/electron-cache/{cache_dir}'
+            del source['dest-filename']
+
+    with open(generated_sources_path, 'w') as fp:
+        json.dump(generated_sources, fp, indent=4)
