@@ -1,38 +1,91 @@
+diff --git a/app/src/lib/editors/launch.ts b/app/src/lib/editors/launch.ts
+index 1d098f384..7fd8c13bf 100644
+--- a/app/src/lib/editors/launch.ts
++++ b/app/src/lib/editors/launch.ts
+@@ -13,7 +13,13 @@ export async function launchExternalEditor(
+   editor: FoundEditor
+ ): Promise<void> {
+   const editorPath = editor.path
+-  const exists = await pathExists(editorPath)
++  let exists
++  if (process.env.FLATPAK_HOST !== 'undefined') {
++    exists = await pathExists('/var/host/run'.toString().concat(editorPath))
++  } else {
++    exists = await pathExists(editorPath)
++  }
++  console.log(exists)
+   if (!exists) {
+     const label = __DARWIN__ ? 'Preferences' : 'Options'
+     throw new ExternalEditorError(
+@@ -30,12 +36,20 @@ export async function launchExternalEditor(
+   }
+ 
+   if (editor.usesShell) {
+-    spawn(`"${editorPath}"`, [`"${fullPath}"`], { ...opts, shell: true })
++    if (process.env.FLATPAK_HOST !== 'undefined') {
++      spawn('flatpak-spawn', ['--host', `"${editorPath}"`, `"${fullPath}"`], { ...opts, shell: true })
++    } else {
++      spawn(`"${editorPath}"`, [`"${fullPath}"`], { ...opts, shell: true })
++    }
+   } else if (__DARWIN__) {
+     // In macOS we can use `open`, which will open the right executable file
+     // for us, we only need the path to the editor .app folder.
+     spawn('open', ['-a', editorPath, fullPath], opts)
+   } else {
+-    spawn(editorPath, [fullPath], opts)
++    if (process.env.FLATPAK_HOST !== 'undefined') {
++      spawn('flatpak-spawn', ['--host', editorPath, fullPath], opts)
++    } else {
++      spawn(editorPath, [fullPath], opts)
++    }
+   }
+ }
 diff --git a/app/src/lib/editors/linux.ts b/app/src/lib/editors/linux.ts
-index 314344dde..eb608f09f 100644
+index 314344dde..7432182e1 100644
 --- a/app/src/lib/editors/linux.ts
 +++ b/app/src/lib/editors/linux.ts
-@@ -18,23 +18,23 @@ interface ILinuxExternalEditor {
- const editors: ILinuxExternalEditor[] = [
-   {
-     name: 'Atom',
--    paths: ['/snap/bin/atom', '/usr/bin/atom'],
-+    paths: ['/snap/bin/atom', '/usr/bin/atom', '/var/run/host/usr/bin/atom'],
-   },
-   {
-     name: 'Neovim',
--    paths: ['/usr/bin/nvim'],
-+    paths: ['/usr/bin/nvim', '/var/run/host/usr/bin/nvim'],
-   },
-   {
-     name: 'Visual Studio Code',
--    paths: ['/usr/share/code/bin/code', '/snap/bin/code', '/usr/bin/code'],
-+    paths: ['/usr/share/code/bin/code', '/snap/bin/code', '/usr/bin/code', '/var/run/host/usr/bin/code'],
-   },
-   {
-     name: 'Visual Studio Code (Insiders)',
--    paths: ['/snap/bin/code-insiders', '/usr/bin/code-insiders'],
-+    paths: ['/snap/bin/code-insiders', '/usr/bin/code-insiders', '/var/run/host/usr/bin/code-insiders'],
+@@ -34,7 +34,7 @@ const editors: ILinuxExternalEditor[] = [
    },
    {
      name: 'VSCodium',
 -    paths: ['/usr/bin/codium','/var/lib/flatpak/app/com.vscodium.codium'],
-+    paths: ['/usr/bin/codium', '/var/lib/flatpak/app/com.vscodium.codium', '/var/run/host/usr/share/vscodium-bin/bin/codium'],
++    paths: ['/usr/bin/codium', '/var/lib/flatpak/app/com.vscodium.codium', '/usr/share/vscodium-bin/bin/codium'],
    },
    {
      name: 'Sublime Text',
+@@ -62,12 +62,26 @@ const editors: ILinuxExternalEditor[] = [
+ ]
+ 
+ async function getAvailablePath(paths: string[]): Promise<string | null> {
+-  for (const path of paths) {
+-    if (await pathExists(path)) {
+-      return path
++  if (process.env.FLATPAK_HOST !== 'undefined') {
++    for (const path of paths) {
++      console.log(path)
++      if (path.indexOf("/usr/") > -1) {
++        if (await pathExists("/var/run/host".toString().concat(path))) {
++          return path
++        }
++      } else {
++        if (await pathExists(path)) {
++          return path
++        }
++      }
++    }
++  } else {
++    for (const path of paths) {
++      if (await pathExists(path)) {
++        return path
++      }
+     }
+   }
+-
+   return null
+ }
+ 
 diff --git a/app/src/lib/shells/linux.ts b/app/src/lib/shells/linux.ts
-index 47a5c7f03..dd417a5dd 100644
+index 47a5c7f03..a73a9ffa8 100644
 --- a/app/src/lib/shells/linux.ts
 +++ b/app/src/lib/shells/linux.ts
 @@ -27,7 +27,12 @@ export function parse(label: string): Shell {
@@ -41,11 +94,116 @@ index 47a5c7f03..dd417a5dd 100644
  async function getPathIfAvailable(path: string): Promise<string | null> {
 -  return (await pathExists(path)) ? path : null
 +  if (process.env.FLATPAK_HOST !== 'undefined') {
-+    path = "/var/run/host".toString().concat(path)
-+    return (await pathExists(path)) ? path : null
++    var path_to_search: string = "/var/run/host".toString().concat(path)
++    return (await pathExists(path_to_search)) ? path : null
 +  } else {
 +    return (await pathExists(path)) ? path : null
 +  }
  }
  
  function getShellPath(shell: Shell): Promise<string | null> {
+@@ -157,29 +162,62 @@ export function launch(
+   path: string
+ ): ChildProcess {
+   const shell = foundShell.shell
+-  switch (shell) {
+-    case Shell.Gnome:
+-    case Shell.Mate:
+-    case Shell.Tilix:
+-    case Shell.Terminator:
+-    case Shell.XFCE:
+-    case Shell.Alacritty:
+-      return spawn(foundShell.path, ['--working-directory', path])
+-    case Shell.Urxvt:
+-      return spawn(foundShell.path, ['-cd', path])
+-    case Shell.Konsole:
+-      return spawn(foundShell.path, ['--workdir', path])
+-    case Shell.Xterm:
+-      return spawn(foundShell.path, ['-e', '/bin/bash'], { cwd: path })
+-    case Shell.Terminology:
+-      return spawn(foundShell.path, ['-d', path])
+-    case Shell.Deepin:
+-      return spawn(foundShell.path, ['-w', path])
+-    case Shell.Elementary:
+-      return spawn(foundShell.path, ['-w', path])
+-    case Shell.Kitty:
+-      return spawn(foundShell.path, ['--single-instance', '--directory', path])
+-    default:
+-      return assertNever(shell, `Unknown shell: ${shell}`)
++  if (process.env.FLATPAK_HOST !== 'undefined') {
++    switch (shell) {
++      case Shell.Gnome:
++        return spawn("flatpak-spawn", ["--host", foundShell.path])
++      case Shell.Mate:
++        return spawn("flatpak-spawn", ["--host", foundShell.path])
++      case Shell.Tilix:
++        return spawn("flatpak-spawn", ["--host", foundShell.path])
++      case Shell.Terminator:
++        return spawn("flatpak-spawn", ["--host", foundShell.path])
++      case Shell.XFCE:
++        return spawn("flatpak-spawn", ["--host", foundShell.path])
++      case Shell.Alacritty:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '--working-directory', path])
++      case Shell.Urxvt:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '-cd', path])
++      case Shell.Konsole:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '--workdir', path])
++      case Shell.Xterm:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '-e', '/bin/bash'], { cwd: path })
++      case Shell.Terminology:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '-d', path])
++      case Shell.Deepin:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '-w', path])
++      case Shell.Elementary:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '-w', path])
++      case Shell.Kitty:
++        return spawn("flatpak-spawn", ["--host", foundShell.path, '--single-instance', '--directory', path])
++      default:
++        return assertNever(shell, `Unknown shell: ${shell}`)
++    }
++  } else {
++    switch (shell) {
++      case Shell.Gnome:
++      case Shell.Mate:
++      case Shell.Tilix:
++      case Shell.Terminator:
++      case Shell.XFCE:
++      case Shell.Alacritty:
++        return spawn(foundShell.path, ['--working-directory', path])
++      case Shell.Urxvt:
++        return spawn(foundShell.path, ['-cd', path])
++      case Shell.Konsole:
++        return spawn(foundShell.path, ['--workdir', path])
++      case Shell.Xterm:
++        return spawn(foundShell.path, ['-e', '/bin/bash'], { cwd: path })
++      case Shell.Terminology:
++        return spawn(foundShell.path, ['-d', path])
++      case Shell.Deepin:
++        return spawn(foundShell.path, ['-w', path])
++      case Shell.Elementary:
++        return spawn(foundShell.path, ['-w', path])
++      case Shell.Kitty:
++        return spawn(foundShell.path, ['--single-instance', '--directory', path])
++      default:
++        return assertNever(shell, `Unknown shell: ${shell}`)
++    }
+   }
+ }
+diff --git a/app/src/lib/shells/shared.ts b/app/src/lib/shells/shared.ts
+index f09bfdfa7..eca86c632 100644
+--- a/app/src/lib/shells/shared.ts
++++ b/app/src/lib/shells/shared.ts
+@@ -81,7 +81,12 @@ export async function launchShell(
+   // We have to manually cast the wider `Shell` type into the platform-specific
+   // type. This is less than ideal, but maybe the best we can do without
+   // platform-specific build targets.
+-  const exists = await pathExists(shell.path)
++  let exists
++  if (process.env.FLATPAK_HOST !== 'undefined') {
++    exists = await pathExists("/var/run/host".toString().concat(shell.path))
++  } else {
++    exists = await pathExists(shell.path)
++  }
+   if (!exists) {
+     const label = __DARWIN__ ? 'Preferences' : 'Options'
+     throw new ShellError(
