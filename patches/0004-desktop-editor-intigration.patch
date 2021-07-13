@@ -1,23 +1,34 @@
 diff --git a/app/src/lib/editors/launch.ts b/app/src/lib/editors/launch.ts
-index 1d098f384..7fd8c13bf 100644
+index 1d098f384..3746b75c2 100644
 --- a/app/src/lib/editors/launch.ts
 +++ b/app/src/lib/editors/launch.ts
-@@ -13,7 +13,13 @@ export async function launchExternalEditor(
+@@ -1,5 +1,6 @@
+ import { spawn, SpawnOptions } from 'child_process'
+ import { pathExists } from 'fs-extra'
++import { join } from 'path'
+ import { ExternalEditorError, FoundEditor } from './shared'
+ 
+ /**
+@@ -13,7 +14,17 @@ export async function launchExternalEditor(
    editor: FoundEditor
  ): Promise<void> {
    const editorPath = editor.path
 -  const exists = await pathExists(editorPath)
 +  let exists
 +  if (process.env.FLATPAK_HOST !== 'undefined') {
-+    exists = await pathExists('/var/host/run'.toString().concat(editorPath))
++    if (editorPath.indexOf("/usr") > -1) {
++      exists = await pathExists(join("/var/run/host", editorPath))
++    }
++    else {
++      exists = await pathExists(editorPath)
++    }
 +  } else {
 +    exists = await pathExists(editorPath)
 +  }
-+  console.log(exists)
    if (!exists) {
      const label = __DARWIN__ ? 'Preferences' : 'Options'
      throw new ExternalEditorError(
-@@ -30,12 +36,20 @@ export async function launchExternalEditor(
+@@ -30,12 +41,20 @@ export async function launchExternalEditor(
    }
  
    if (editor.usesShell) {
@@ -41,9 +52,16 @@ index 1d098f384..7fd8c13bf 100644
    }
  }
 diff --git a/app/src/lib/editors/linux.ts b/app/src/lib/editors/linux.ts
-index 314344dde..7432182e1 100644
+index 314344dde..fe1f787d1 100644
 --- a/app/src/lib/editors/linux.ts
 +++ b/app/src/lib/editors/linux.ts
+@@ -1,5 +1,5 @@
+ import { pathExists } from 'fs-extra'
+-
++import { join } from 'path'
+ import { IFoundEditor } from './found-editor'
+ 
+ /** Represents an external editor on Linux */
 @@ -34,7 +34,7 @@ const editors: ILinuxExternalEditor[] = [
    },
    {
@@ -53,7 +71,7 @@ index 314344dde..7432182e1 100644
    },
    {
      name: 'Sublime Text',
-@@ -62,12 +62,26 @@ const editors: ILinuxExternalEditor[] = [
+@@ -62,12 +62,25 @@ const editors: ILinuxExternalEditor[] = [
  ]
  
  async function getAvailablePath(paths: string[]): Promise<string | null> {
@@ -62,9 +80,8 @@ index 314344dde..7432182e1 100644
 -      return path
 +  if (process.env.FLATPAK_HOST !== 'undefined') {
 +    for (const path of paths) {
-+      console.log(path)
 +      if (path.indexOf("/usr/") > -1) {
-+        if (await pathExists("/var/run/host".toString().concat(path))) {
++        if (await pathExists(join("/var/run/host", path))) {
 +          return path
 +        }
 +      } else {
@@ -85,16 +102,24 @@ index 314344dde..7432182e1 100644
  }
  
 diff --git a/app/src/lib/shells/linux.ts b/app/src/lib/shells/linux.ts
-index 47a5c7f03..a73a9ffa8 100644
+index 47a5c7f03..ccc3bb5da 100644
 --- a/app/src/lib/shells/linux.ts
 +++ b/app/src/lib/shells/linux.ts
-@@ -27,7 +27,12 @@ export function parse(label: string): Shell {
+@@ -3,6 +3,7 @@ import { pathExists } from 'fs-extra'
+ import { assertNever } from '../fatal-error'
+ import { IFoundShell } from './found-shell'
+ import { parseEnumValue } from '../enum'
++import { join } from 'path'
+ 
+ export enum Shell {
+   Gnome = 'GNOME Terminal',
+@@ -27,7 +28,12 @@ export function parse(label: string): Shell {
  }
  
  async function getPathIfAvailable(path: string): Promise<string | null> {
 -  return (await pathExists(path)) ? path : null
 +  if (process.env.FLATPAK_HOST !== 'undefined') {
-+    var path_to_search: string = "/var/run/host".toString().concat(path)
++    var path_to_search: string = join("/var/run/host", path)
 +    return (await pathExists(path_to_search)) ? path : null
 +  } else {
 +    return (await pathExists(path)) ? path : null
@@ -102,7 +127,7 @@ index 47a5c7f03..a73a9ffa8 100644
  }
  
  function getShellPath(shell: Shell): Promise<string | null> {
-@@ -157,29 +162,62 @@ export function launch(
+@@ -157,29 +163,57 @@ export function launch(
    path: string
  ): ChildProcess {
    const shell = foundShell.shell
@@ -185,17 +210,25 @@ index 47a5c7f03..a73a9ffa8 100644
    }
  }
 diff --git a/app/src/lib/shells/shared.ts b/app/src/lib/shells/shared.ts
-index f09bfdfa7..eca86c632 100644
+index f09bfdfa7..2e4bb47de 100644
 --- a/app/src/lib/shells/shared.ts
 +++ b/app/src/lib/shells/shared.ts
-@@ -81,7 +81,12 @@ export async function launchShell(
+@@ -6,6 +6,7 @@ import * as Win32 from './win32'
+ import * as Linux from './linux'
+ import { IFoundShell } from './found-shell'
+ import { ShellError } from './error'
++import { join } from 'path'
+ 
+ export type Shell = Darwin.Shell | Win32.Shell | Linux.Shell
+ 
+@@ -81,7 +82,12 @@ export async function launchShell(
    // We have to manually cast the wider `Shell` type into the platform-specific
    // type. This is less than ideal, but maybe the best we can do without
    // platform-specific build targets.
 -  const exists = await pathExists(shell.path)
 +  let exists
 +  if (process.env.FLATPAK_HOST !== 'undefined') {
-+    exists = await pathExists("/var/run/host".toString().concat(shell.path))
++    exists = await pathExists(join("/var/run/host/", shell.path))
 +  } else {
 +    exists = await pathExists(shell.path)
 +  }
