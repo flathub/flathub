@@ -1,0 +1,86 @@
+From e1301100ca199f100c4b67952a3d57ccf01a0aa9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dami=C3=A1n=20Nohales?= <damiannohales@gmail.com>
+Date: Fri, 6 Nov 2020 16:00:36 -0300
+Subject: [PATCH 1/2] flatpak: Use yarn directly with --offline flag in
+ post-install script
+
+---
+ script/post-install.ts | 40 +++++++---------------------------------
+ 1 file changed, 7 insertions(+), 33 deletions(-)
+
+diff --git a/script/post-install.ts b/script/post-install.ts
+index dac221dc8..1efee6ba8 100644
+--- a/script/post-install.ts
++++ b/script/post-install.ts
+@@ -3,8 +3,6 @@
+ import * as Path from 'path'
+ import { spawnSync, SpawnSyncOptions } from 'child_process'
+ 
+-import glob from 'glob'
+-
+ const root = Path.dirname(__dirname)
+ 
+ const options: SpawnSyncOptions = {
+@@ -12,26 +10,10 @@ const options: SpawnSyncOptions = {
+   stdio: 'inherit',
+ }
+ 
+-function findYarnVersion(callback: (path: string) => void) {
+-  glob('vendor/yarn-*.js', (error, files) => {
+-    if (error != null) {
+-      throw error
+-    }
+-
+-    // this ensures the paths returned by glob are sorted alphabetically
+-    files.sort()
+-
+-    // use the latest version here if multiple are found
+-    const latestVersion = files[files.length - 1]
+-
+-    callback(latestVersion)
+-  })
+-}
+-
+-findYarnVersion(path => {
++function main() {
+   let result = spawnSync(
+-    'node',
+-    [path, '--cwd', 'app', 'install', '--force'],
++    'yarn',
++    ['--cwd', 'app', 'install', '--force', '--offline'],
+     options
+   )
+ 
+@@ -39,25 +21,17 @@ findYarnVersion(path => {
+     process.exit(result.status || 1)
+   }
+ 
+-  result = spawnSync(
+-    'git',
+-    ['submodule', 'update', '--recursive', '--init'],
+-    options
+-  )
++  result = spawnSync('yarn', ['--offline', 'compile:tslint'], options)
+ 
+   if (result.status !== 0) {
+     process.exit(result.status || 1)
+   }
+ 
+-  result = spawnSync('node', [path, 'compile:tslint'], options)
++  result = spawnSync('yarn', ['--offline', 'compile:script'], options)
+ 
+   if (result.status !== 0) {
+     process.exit(result.status || 1)
+   }
++}
+ 
+-  result = spawnSync('node', [path, 'compile:script'], options)
+-
+-  if (result.status !== 0) {
+-    process.exit(result.status || 1)
+-  }
+-})
++main();
+-- 
+2.26.2
+
