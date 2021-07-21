@@ -1,0 +1,177 @@
+---
+app-id: org.denemo.Denemo
+
+runtime: org.gnome.Platform
+runtime-version: '40'
+sdk: org.gnome.Sdk
+
+command: denemo
+
+finish-args:
+  - --socket=pulseaudio
+
+modules:
+  - name: guile
+    buildsystem: autotools
+    build-options:
+      cflags: "-Wno-unused-but-set-variable -Wno-misleading-indentation
+              -Wno-stringop-truncation -Wno-deprecated-declarations"
+    config-opts:
+      - --disable-error-on-warning
+      - --disable-static
+    # Patches copied from https://src.fedoraproject.org/rpms/compat-guile18/tree/master
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/guile/guile-1.8.8.tar.gz
+        sha256: c3471fed2e72e5b04ad133bbaaf16369e8360283679bcf19800bc1b381024050
+      - type: patch
+        path: patches/guile-1.8.8-deplibs.patch
+      - type: patch
+        path: patches/guile-1.8.8-cve-2016-8605.patch
+      - type: patch
+        path: patches/guile-1.8.8-configure.patch
+      # Files in the tarball are too old for aarch64 so we take them from the Sdk.
+      - type: shell
+        commands:
+          - cp -fp /usr/share/automake-*/config.{sub,guess} build-aux/
+          - cp -fp /usr/share/automake-*/config.{sub,guess} guile-readline/
+    cleanup:
+      - /include
+      - /share/aclocal
+
+  - name: pango
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/pango/1.42/pango-1.42.4.tar.xz
+        sha256: 1d2b74cd63e8bd41961f2f8d952355aa0f9be6002b52c8aa7699d9f5da597c9d
+    cleanup:
+      - /include
+      - /libexec/installed-tests
+      - /share/doc/fontforge
+      - /share/installed-tests
+
+  # Fontforge build dependency
+  - name: libuinameslist
+    sources:
+      - type: archive
+        url: https://github.com/fontforge/libuninameslist/releases/download/20180701/libuninameslist-dist-20180701.tar.gz
+        sha256: 8aed97d0bc872d893d8bf642a14e49958b0613136e1bfe2a415c69599c803c90
+    cleanup:
+      - "*"
+
+  - name: fontforge
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DENABLE_DOCS=false
+      - -DENABLE_LIBSPIRO=false
+      - -DREAL_TYPE=double
+    sources:
+      - type: archive
+        url: https://github.com/fontforge/fontforge/archive/20200314.tar.gz
+        sha256: ad0eb017379c6f7489aa8e2d7c160f19140d1ac6351f20df1d9857d9428efcf2
+    cleanup:
+      - "*"
+
+  - name: t1utils
+    sources:
+      - type: archive
+        url: https://github.com/kohler/t1utils/archive/v1.41.tar.gz
+        sha256: 0129fbfabb212143f52ff1e5de8ccbef5e5295d46772bad3ed149115bab5a094
+    cleanup:
+      - "*"
+
+  - name: texgyre
+    sources:
+      - type: archive
+        url: http://www.gust.org.pl/projects/e-foundry/tex-gyre/whole/tg2_501otf.zip
+        sha256: d7f8be5317bec4e644cf16c5abf876abeeb83c43dbec0ccb4eee4516b73b1bbe
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/share/fonts
+      - install * /app/share/fonts
+
+  - name: ghostscript
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs9533/ghostscript-9.53.3.tar.xz
+        sha256: 9c9f5bc85b6c7eb08368c05b1e3339f7aaf9677ddca710c6283f872d55e2a234
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} freetype/builds/unix/
+          - cp -p /usr/share/automake-*/config.{sub,guess} ijs/
+          - cp -p /usr/share/automake-*/config.{sub,guess} jpeg/
+          - cp -p /usr/share/automake-*/config.{sub,guess} libpng/
+          - cp -p /usr/share/automake-*/config.{sub,guess} lcms2mt/
+          - cp -p /usr/share/automake-*/config.{sub,guess} tiff/config/
+          - cp -p /usr/share/automake-*/config.{sub,guess} .
+    config-opts:
+      - --disable-cups
+      - --disable-gtk
+      - --enable-dynamic
+    make-args:
+      - so
+    make-install-args:
+      - soinstall
+    cleanup:
+      - /share/doc
+      - /bin/gpcl6
+      - /bin/gxps
+
+  - name: lilypond
+    buildsystem: autotools
+    config-opts:
+      - --disable-documentation
+    sources:
+      - type: archive
+        url: https://lilypond.org/download/sources/v2.22/lilypond-2.22.0.tar.gz
+        sha256: 64ddd03171d247adc243e01a3be3ec2610d97c62b893c253ad02ac50694b0f4e
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} config/
+    build-options:
+      arch:
+        aarch64:
+          prepend-path: /usr/lib/sdk/texlive/bin/aarch64-linux:/usr/lib/sdk/texlive/bin
+        x86_64:
+          prepend-path: /usr/lib/sdk/texlive/bin/x86_64-linux:/usr/lib/sdk/texlive/bin
+
+  # Denemo requires intltool 0.35.0 or later.
+  - shared-modules/intltool/intltool-0.51.json
+
+  - name: aubio
+    buildsystem: simple
+    build-commands:
+      - ./waf configure --prefix=/app
+      - ./waf build -j $FLATPAK_BUILDER_N_JOBS
+      - ./waf install
+    sources:
+      - type: archive
+        url: https://aubio.org/pub/aubio-0.4.7.tar.bz2
+        sha256: cbed4afec5ab3a1a6300c7e3af0a1369379aa94259f5e701a8ca905cdd9fa041
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - "*.a"
+
+  - name: gtksourceview3
+    config-opts:
+      - --enable-gtk-doc=no
+      - --enable-introspection=yes
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtksourceview/3.24/gtksourceview-3.24.11.tar.xz
+        sha256: 691b074a37b2a307f7f48edc5b8c7afa7301709be56378ccf9cc9735909077fd
+
+  - name: denemo
+    build-options:
+      env:
+        # Needed to find aubio library in /app/lib64
+        - PKG_CONFIG_PATH=/app/lib/pkgconfig:/app/lib64/pkgconfig
+    sources:
+      - type: archive
+        url: http://ftp.gnu.org/gnu/denemo/denemo-2.5.0.tar.gz
+        sha256: 07a19b04bfe8ff3d1e993f88c3a5ef5a602c242988c12182c95d439210f27c16
+
