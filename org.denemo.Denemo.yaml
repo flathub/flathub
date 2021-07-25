@@ -1,15 +1,32 @@
 ---
 app-id: org.denemo.Denemo
-
-runtime: org.gnome.Platform
-runtime-version: '40'
-sdk: org.gnome.Sdk
-
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.texlive
 command: denemo
-
+rename-appdata-file: denemo.appdata.xml
+rename-desktop-file: denemo.desktop
+rename-icon: denemo
+copy-icon: true
 finish-args:
+  # Display
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # Folder access
+  - --filesystem=home
+  - --filesystem=xdg-music
+  # Needed for PortAudio/MIDI
+  - --device=all
+  # Needed for note playpack
   - --socket=pulseaudio
-
+  # Needed for JACK over PipeWire
+  - --filesystem=xdg-run/pipewire-0
+  # required to find texlive binaries
+  - --env=PATH=/app/texlive/bin/x86_64-linux:/app/texlive/bin/aarch64-linux:/app/bin:/usr/bin
 modules:
   - name: guile
     buildsystem: autotools
@@ -143,7 +160,7 @@ modules:
   - name: aubio
     buildsystem: simple
     build-commands:
-      - ./waf configure --prefix=/app
+      - ./waf configure --prefix=/app --libdir=/app/lib
       - ./waf build -j $FLATPAK_BUILDER_N_JOBS
       - ./waf install
     sources:
@@ -165,13 +182,134 @@ modules:
         url: https://download.gnome.org/sources/gtksourceview/3.24/gtksourceview-3.24.11.tar.xz
         sha256: 691b074a37b2a307f7f48edc5b8c7afa7301709be56378ccf9cc9735909077fd
 
-  - name: denemo
+  - name: Boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 install --build-type=complete link=shared --layout=versioned runtime-link=shared cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
+        sha256: f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
+
+  - name: poppler-data
+    no-autogen: true
+    make-install-args:
+      - prefix=/app
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-data-0.4.10.tar.gz
+        sha256: 6e2fcef66ec8c44625f94292ccf8af9f1d918b410d5aa69c274ce67387967b30
+
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib
+      - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
+      - -DENABLE_LIBOPENJPEG=none
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-21.07.0.tar.xz
+        sha256: e26ab29f68065de4d6562f0a3e2b5435a83ca92be573b99a1c81998fa286a4d4
+
+  - name: evince
+    buildsystem: meson
+    config-opts:
+      - -Dcomics=disabled
+      - -Dnautilus=false
+      - -Dviewer=false
+      - -Dpreviewer=false
+      - -Ddbus=false
+      #- -Dbrowser-plugin=false
+      - -Dthumbnail_cache=disabled
+      - -Dgtk_doc=false
+      - -Duser_doc=false
+      - -Dintrospection=true
+      - -Dsystemduserunitdir=no
+    cleanup:
+      - /share/GConf
+      - /share/help
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/evince/40/evince-40.4.tar.xz
+        sha256: 33420500e0e060f178a435063197d42dae7b67e39cc437a96510a33ddf7e95fb
+      - type: shell
+        commands:
+          # Remove libhandy dep, not needed with -Dviewer=false
+          - sed -i '/hdy_dep/d' meson.build
+          # Remove adwaita-icon-theme support, not needed with -Dviewer=false
+          - sed -i '/adwaita_icon_them/d' meson.build
+          # Force evince to use internal_synctex (make it no find the external one)
+          - sed -i 's/1.19/8.88/g' meson.build
+
+  - name: fluidsynth
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DLIB_SUFFIX=
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/FluidSynth/fluidsynth/archive/v1.1.11.tar.gz
+        sha256: da8878ff374d12392eecf87e96bad8711b8e76a154c25a571dd8614d1af80de8
+
+  - name: vamp-plugin-sdk
+    sources:
+      - type: archive
+        # Official site currently fails with ssl error, use a mirror
+        #url: https://code.soundsoftware.ac.uk/attachments/download/2450/vamp-plugin-sdk-2.8.0.tar.gz
+        url: http://mirror.sobukus.de/files/src/vamp-plugin-sdk/vamp-plugin-sdk-2.8.0.tar.gz
+        sha256: dcc96ae894795822398789f251c2c7effa602fc60e9dd6c7a5c5d2e7a513526c
+    post-install:
+      - install -Dm644 -t /app/share/licenses/vamp-plugin-sdk COPYING
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - "*.a"
+
+  - name: rubberband
     build-options:
       env:
-        # Needed to find aubio library in /app/lib64
-        - PKG_CONFIG_PATH=/app/lib/pkgconfig:/app/lib64/pkgconfig
+        Vamp_CFLAGS: " "
+        Vamp_LIBS: " "
+    sources:
+      - type: archive
+        url: http://code.breakfastquay.com/attachments/download/34/rubberband-1.8.1.tar.bz2
+        sha256: ff0c63b0b5ce41f937a8a3bc560f27918c5fe0b90c6bc1cb70829b86ada82b75
+    post-install:
+      - install -Dm644 -t /app/share/licenses/rubberband COPYING
+    cleanup:
+      - /share/ladspa
+      - "*.a"
+
+  - name: portaudio
+    config-opts:
+      - --disable-static
+      - --without-oss
+    sources:
+      - type: archive
+        url: http://files.portaudio.com/archives/pa_stable_v190600_20161030.tgz
+        sha256: f5a21d7dcd6ee84397446fa1fa1a0675bb2e8a4a6dceb4305a8404698d8d1513
+
+  - name: portmidi
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=/app/lib
+      - -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/app/bin
+    sources:
+      - type: archive
+        url: http://downloads.sourceforge.net/project/portmedia/portmidi/217/portmidi-src-217.zip
+        sha256: 08e9a892bd80bdb1115213fb72dc29a7bf2ff108b378180586aa65f3cfd42e0f
+      - type: patch
+        path: patches/portmidi-no-java.patch
+    cleanup:
+      - /bin
+
+  - name: denemo
     sources:
       - type: archive
         url: http://ftp.gnu.org/gnu/denemo/denemo-2.5.0.tar.gz
         sha256: 07a19b04bfe8ff3d1e993f88c3a5ef5a602c242988c12182c95d439210f27c16
-
