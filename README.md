@@ -14,8 +14,7 @@ In order to build your app with tools provided with this extension you have to s
 "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm12" ],
 ...
 "build-options":{
-    "prepend-path": "/usr/lib/sdk/llvm12/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
+    "append-path": "/usr/lib/sdk/llvm12/bin"
     }
 ```
 Example:
@@ -30,8 +29,7 @@ Example:
   {
     "name" : "Myapp",
     "build-options":{
-    "prepend-path": "/usr/lib/sdk/llvm12/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
+    "append-path": "/usr/lib/sdk/llvm12/bin"
   },
  ]
 }
