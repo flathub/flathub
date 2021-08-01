@@ -1,6 +1,6 @@
 # Thonny Flatpak
 
-This is the official Thonny Flatpak.
+This is the official [Thonny](https://thonny.org/) Flatpak.
 
 ## Users
 
@@ -31,7 +31,7 @@ Add the Flathub repository.
 
 Install the FreeDesktop SDK and Platform.
 
-    flatpak install --user flathub org.freedesktop.Sdk//20.08 org.freedesktop.Platform//20.08
+    flatpak install --user flathub org.freedesktop.Sdk//20.08
 
 Install Flatpak Builder.
 
@@ -47,33 +47,21 @@ Run the Flatpak.
 
 ### Update
 
-The Python dependencies for the Flatpak are generated with the [Flatpak Pip Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip).
-This tool is used to produces the `python3-modules.json` and `python3-wheel.json` files, which are included in the Flatpak manifest.
-In order to update the dependencies used in the Flatpak, these files must be regenerated.
-Follow the instructions here to do so.
+The Python dependencies for the Flatpak are generated with the help of the [Flatpak Pip Generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip).
+This tool produces `json` files for Python packages to be included in the Flatpak manifest's `modules` section.
+In order to update or add dependencies in the Flatpak, these dependencies can be generated using the following instructions.
 
 First, install the Python dependency `requirements-parser`.
 
     python3 -m pip install requirements-parser
 
-Clone the [Flatpak Builder Tools](https://github.com/flatpak/flatpak-builder-tools) repository.
-Currently, it's necessary to use [a fork](https://github.com/nanonyme/flatpak-builder-tools) of the project which allows building all the Python dependencies without throwing errors.
+Now run the Flatpak Pip Generator script for the necessary packages.
+The necessary packages are listed in the files `packaging/requirements-regular-bundle.txt` and `packaging/requirements-xxl-bundle.txt` in Thonny's repository.
+The following command shows how to retrieve packages from Thonny's `requirements.txt` file by producing a `python3-modules.json` file.
+I usually convert these to YAML and place them directly in the Flatpak manifest for readability.
 
-    git clone https://github.com/nanonyme/flatpak-builder-tools.git
-    git -C flatpak-builder-tools switch support-build-isolation
-
-Run the Flatpak Pip Generator script in the `packaging/linux` directory to produce an updated `python3-modules.json` manifest and an updated `python3-wheel.json` manifest.
-The dependencies for the `python3-modules.json` manifest are retrieved from the `requirements-regular-bundle.txt` and `requirements-xxl-bundle.txt` files.
-
-    python3 flatpak-builder-tools/pip/flatpak-pip-generator \
-        --runtime org.freedesktop.Sdk//20.08 \
-        wheel
-    wget -L https://raw.githubusercontent.com/thonny/thonny/master/packaging/requirements-regular-bundle.txt
-    wget -L https://raw.githubusercontent.com/thonny/thonny/master/packaging/requirements-xxl-bundle.txt
-    python3 flatpak-builder-tools/pip/flatpak-pip-generator \
-        --runtime org.freedesktop.Sdk//20.08 \
-        $(cat requirements-regular-bundle.txt) \
-        $(cat requirements-xxl-bundle.txt)
+    wget -L https://raw.githubusercontent.com/thonny/thonny/master/requirements.txt
+    python3 flatpak-builder-tools/pip/flatpak-pip-generator --runtime org.freedesktop.Sdk//20.08 $(cat requirements.txt)
 
 If you have `org.freedesktop.Sdk//20.08` installed in *both* the user and system installations, the Flatpak Pip Generator will choke generating the manifest.
 The best option at the moment is to temporarily remove either the user or the system installation until this issue is fixed upstream.
