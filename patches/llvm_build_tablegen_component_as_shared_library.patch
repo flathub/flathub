@@ -1,0 +1,59 @@
+The LLVMTableGen component is a special case that is excluded from libLLVM and
+normally is only built as static library and linked into llvm-tblgen.
+
+We need to have it as a shared library to be available for other projects such
+as ldc.
+
+This patch makes it even more special and forces it to be build and installed
+as separate shared library.
+
+Index: llvm-8.0.0rc3.src/llvm/cmake/modules/AddLLVM.cmake
+===================================================================
+--- llvm-8.0.0rc3.src.orig/llvm/cmake/modules/AddLLVM.cmake
++++ llvm-8.0.0rc3.src/llvm/cmake/modules/AddLLVM.cmake
+@@ -541,7 +541,7 @@ function(llvm_add_library name)
+   if(ARG_MODULE AND LLVM_EXPORT_SYMBOLS_FOR_PLUGINS AND ARG_PLUGIN_TOOL AND (WIN32 OR CYGWIN))
+     # On DLL platforms symbols are imported from the tool by linking against it.
+     set(llvm_libs ${ARG_PLUGIN_TOOL})
+-  elseif (NOT ARG_COMPONENT_LIB)
++  elseif (NOT ARG_COMPONENT_LIB OR (${name} STREQUAL "LLVMTableGen" AND LLVM_BUILD_LLVM_DYLIB))
+     if (LLVM_LINK_LLVM_DYLIB AND NOT ARG_DISABLE_LLVM_LINK_LLVM_DYLIB)
+       set(llvm_libs LLVM)
+     else()
+Index: llvm-8.0.0rc3.src/cmake/modules/TableGen.cmake
+===================================================================
+--- llvm-8.0.0rc3.src.orig/llvm/cmake/modules/TableGen.cmake
++++ llvm-8.0.0rc3.src/llvm/cmake/modules/TableGen.cmake
+@@ -115,7 +115,8 @@ macro(add_tablegen target project)
+     set(LLVM_ENABLE_OBJLIB ON)
+   endif()
+ 
+-  add_llvm_executable(${target} DISABLE_LLVM_LINK_LLVM_DYLIB ${ARGN})
++  add_llvm_executable(${target} ${ARGN})
++  target_link_libraries(${target} PRIVATE LLVMTableGen)
+   set(LLVM_LINK_COMPONENTS ${${target}_OLD_LLVM_LINK_COMPONENTS})
+ 
+   set(${project}_TABLEGEN "${target}" CACHE
+Index: llvm-8.0.0rc3.src/lib/TableGen/CMakeLists.txt
+===================================================================
+--- llvm-8.0.0rc3.src.orig/llvm/lib/TableGen/CMakeLists.txt
++++ llvm-8.0.0rc3.src/llvm/lib/TableGen/CMakeLists.txt
+@@ -1,3 +1,7 @@
++if (LLVM_BUILD_LLVM_DYLIB)
++    set(MAYBE_SHARED SHARED)
++endif()
++
+ add_llvm_component_library(LLVMTableGen
+   DetailedRecordsBackend.cpp
+   Error.cpp
+@@ -9,6 +13,8 @@ add_llvm_library(LLVMTableGen
+   TGLexer.cpp
+   TGParser.cpp
+ 
++  ${MAYBE_SHARED}
++
+   ADDITIONAL_HEADER_DIRS
+   ${LLVM_MAIN_INCLUDE_DIR}/llvm/TableGen
+ 
+
+ 
