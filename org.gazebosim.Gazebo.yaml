@@ -10,15 +10,6 @@ finish-args:
   - --device=dri
   - --filesystem=home
   - --share=network
-  #- --env=GAZEBO_MASTER_URI=http://127.0.0.1:11345
-  #- --env=GAZEBO_MODEL_DATABASE_URI=http://models.gazebosim.org
-  #- --env=GAZEBO_RESOURCE_PATH=/app/share/gazebo-11:${GAZEBO_RESOURCE_PATH}
-  #- --env=GAZEBO_PLUGIN_PATH=/app/lib/gazebo-11/plugins:${GAZEBO_PLUGIN_PATH}
-  #- --env=GAZEBO_MODEL_PATH=/app/share/gazebo-11/models:${GAZEBO_MODEL_PATH}
-  #- --env=LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/app/lib/gazebo-11/plugins
-  #- --env=OGRE_RESOURCE_PATH=/app/lib/OGRE
-  #- --env=GAZEBO_RESOURCE_PATH=${GAZEBO_RESOURCE_PATH}:/app/share/OGRE/Media
-  #- --env=GAZEBO_RESOURCE_PATH=${GAZEBO_RESOURCE_PATH}:/app/share/OGRE/Media/ShadowVolume
 
 cleanup:
   - /include
@@ -172,6 +163,11 @@ modules:
       - type: archive
         url: https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
         sha256: f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://boostorg.jfrog.io/artifactory/main/release/$version/source/boost_${major}_${minor}_$patch.tar.bz2
         
   - name: Eigen3
     buildsystem: cmake-ninja
@@ -679,7 +675,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/OGRECave/ogre
-        tag: v1.11.3
+        tag: v1.11.2
         x-checker-data:
           type: git
           tag-pattern: ^(v[\d.]+)$
@@ -777,6 +773,62 @@ modules:
               stable-only: true
               url-template: https://gitlab.gnome.org/GNOME/gdk-pixbuf/-/archive/$version/gdk-pixbuf-$version.tar.bz2
 
+  - name: libtirpc
+    buildsystem: autotools
+    config-opts:
+      - --disable-gssapi
+    post-install:
+      - mkdir -p /app/include/rpc
+      - mkdir -p /app/include/rpcsvc
+      - mv /app/include/tirpc/rpc/* /app/include/rpc
+      - mv /app/include/tirpc/rpcsvc/* /app/include/rpcsvc
+      - mv /app/include/tirpc/netconfig.h /app/include/
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/libtirpc/files/libtirpc/1.3.2/libtirpc-1.3.2.tar.bz2
+        sha256: e24eb88b8ce7db3b7ca6eb80115dd1284abc5ec32a8deccfed2224fc2532b9fd
+        x-checker-data:
+          type: anitya
+          project-id: 1740
+          stable-only: true
+          url-template: https://sourceforge.net/projects/libtirpc/files/libtirpc/$version/libtirpc-$version.tar.bz2
+    modules:
+      - name: krb5
+        subdir: src
+        config-opts:
+          - --disable-static
+          - --disable-rpath
+          - --enable-shared
+        sources:
+          - type: archive
+            url: https://kerberos.org/dist/krb5/1.19/krb5-1.19.2.tar.gz
+            sha256: 10453fee4e3a8f8ce6129059e5c050b8a65dab1c257df68b99b3112eaa0cdf6a
+            x-checker-data:
+              type: anitya
+              project-id: 1740
+              stable-only: true
+              url-template: https://kerberos.org/dist/krb5/1.19/krb5-$version.tar.gz
+
+  #- name: ROS2
+    #buildsystem: cmake
+    #config-opts:
+      #- -DPLAYER_BUILD_TESTS:BOOL=OFF
+      #- -Dglib=glib-2.0
+    #builddir: true
+    #sources:
+      #- type: git
+        #url: git://github.com/playerproject/player.git
+        ##tag: gazebo11_11.7.0
+        #commit: b05878f9a803f981604fda1efffa2ac1ae28329d
+
+  - name: teste
+    buildsystem: simple
+    build-commands:
+      - ls -l /app/include
+      - ls -l /app/include/rpc
+      #- ls -l /usr/include
+      #- ls -l /usr/include/rpc
+
     # Protobuf patch adopt from https://github.com/osrf/gazebo/issues/2639
   - name: Gazebo
     buildsystem: cmake
@@ -791,10 +843,6 @@ modules:
       env:
         LIBRARY_PATH: "/app/lib:/usr/lib"
         LD_LIBRARY_PATH: "/app/lib:/usr/lib"
-    post-install:
-      - cp -r /app/share/gazebo/setup.sh /app/bin/setup.sh
-      - cp -r setup-test.sh /app/bin/setup-test.sh
-      - chmod +x /app/bin/setup.sh /app/bin/setup-test.sh
     sources:
       - type: git
         url: git://github.com/osrf/gazebo.git
@@ -820,4 +868,13 @@ modules:
         path: org.gazebosim.Gazebo.desktop
       - type: file
         path: org.gazebosim.Gazebo.svg
- 
+
+  #- name: Gazebo-wrapper
+    #buildsystem: simple
+    #build-commands:
+      #- install run-gazebo.sh /app/bin/
+    #sources:
+      #- type: script
+        #dest-filename: run-gazebo.sh
+        #commands:
+          #- export GAZEBO_MASTER_URI=${GAZEBO_MASTER_URI:-http://localhost:11345} && export GAZEBO_MODEL_DATABASE_URI=http://models.gazebosim.org && export GAZEBO_RESOURCE_PATH=/app/share/gazebo-11:${GAZEBO_RESOURCE_PATH} && export GAZEBO_PLUGIN_PATH=/app/lib/gazebo-11/plugins:${GAZEBO_PLUGIN_PATH} && export GAZEBO_MODEL_PATH=/app/share/gazebo-11/models:${GAZEBO_MODEL_PATH} && export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/app/lib/gazebo-11/plugins && export OGRE_RESOURCE_PATH=/app/lib/OGRE && export GAZEBO_RESOURCE_PATH=${GAZEBO_RESOURCE_PATH}:/app/share/OGRE/Media && export GAZEBO_RESOURCE_PATH=${GAZEBO_RESOURCE_PATH}:/app/share/OGRE/Media/Shadow/Volume && gazebo
