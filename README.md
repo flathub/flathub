@@ -29,17 +29,13 @@ Add the Flathub repository.
 
     flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-Install the FreeDesktop SDK and Platform.
-
-    flatpak install --user flathub org.freedesktop.Sdk//20.08
-
 Install Flatpak Builder.
 
     sudo apt install flatpak-builder
 
 Build the Flatpak.
 
-    flatpak-builder --user --install --force-clean --repo=repo thonny-flatpak-build-dir org.thonny.Thonny.yaml
+    flatpak-builder --user --install --install-deps-from=flathub --force-clean --repo=repo build-dir org.thonny.Thonny.yaml
 
 Run the Flatpak.
 
@@ -54,6 +50,10 @@ In order to update or add dependencies in the Flatpak, these dependencies can be
 First, install the Python dependency `requirements-parser`.
 
     python3 -m pip install requirements-parser
+
+Install the FreeDesktop SDK and Platform.
+
+    flatpak install --user flathub org.freedesktop.Sdk//20.08
 
 Now run the Flatpak Pip Generator script for the necessary packages.
 The necessary packages are listed in the files `packaging/requirements-regular-bundle.txt` and `packaging/requirements-xxl-bundle.txt` in Thonny's repository.
