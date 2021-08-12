@@ -1,0 +1,137 @@
+From 81e0d616edeb73cbd06d6c40bc4f90593ac0c5d1 Mon Sep 17 00:00:00 2001
+From: Tongliang Liao <xkszltl@gmail.com>
+Date: Thu, 13 May 2021 08:24:08 +0800
+Subject: [PATCH] Expose `IsGoogleLoggingInitialized()` in public API. Usually
+ library does not have control of the process lifespan. Without this function,
+ it is impossible to init/shutdown reliably. It has been one of the major pain
+ points for years when using glog in libraries.
+
+AFAIK 3 workarounds have been used previously:
+1. Init without checking. This causes compatiblity issues with other libs using glog.
+2. Also provide a init function in library's API. This makes API complicated and stateful, especially for libs that does not mean to stay for the entire life of process.
+3. Steal the utility function in internal namespace. Does not work with msvc (due to missing dllexport) or `gcc -fvisibility=hidden`.
+
+None of them are perfect, except for the last hack that usually works well on Linux.
+0.5.0 changes default visibility to hidden and it does not work anymore.
+
+Resolve https://github.com/google/glog/issues/125
+---
+ src/glog/logging.h.in                 | 3 +++
+ src/logging_custom_prefix_unittest.cc | 6 ++++++
+ src/logging_unittest.cc               | 6 ++++++
+ src/utilities.cc                      | 8 ++++----
+ src/utilities.h                       | 2 --
+ 5 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/src/glog/logging.h.in b/src/glog/logging.h.in
+index 421f1e02..a9b0d461 100644
+--- a/src/glog/logging.h.in
++++ b/src/glog/logging.h.in
+@@ -594,6 +594,9 @@ GOOGLE_GLOG_DLL_DECL void InitGoogleLogging(const char* argv0,
+                                             void* prefix_callback_data = NULL);
+ #endif
+ 
++// Check if google's logging library has been initialized.
++GOOGLE_GLOG_DLL_DECL bool IsGoogleLoggingInitialized();
++
+ // Shutdown google's logging library.
+ GOOGLE_GLOG_DLL_DECL void ShutdownGoogleLogging();
+ 
+diff --git a/src/logging_custom_prefix_unittest.cc b/src/logging_custom_prefix_unittest.cc
+index c9fb5b81..55da56c5 100644
+--- a/src/logging_custom_prefix_unittest.cc
++++ b/src/logging_custom_prefix_unittest.cc
+@@ -221,11 +221,15 @@ int main(int argc, char **argv) {
+   LogWithLevels(0, 0, 0, 0);  // simulate "before global c-tors"
+   const string early_stderr = GetCapturedTestStderr();
+ 
++  EXPECT_FALSE(IsGoogleLoggingInitialized());
++
+   // Setting a custom prefix generator (it will use the default format so that
+   // the golden outputs can be reused):
+   string prefix_attacher_data = "good data";
+   InitGoogleLogging(argv[0], &PrefixAttacher, static_cast<void*>(&prefix_attacher_data));
+ 
++  EXPECT_TRUE(IsGoogleLoggingInitialized());
++
+   RunSpecifiedBenchmarks();
+ 
+   FLAGS_logtostderr = true;
+@@ -992,8 +996,10 @@ static void TestCustomLoggerDeletionOnShutdown() {
+   base::SetLogger(GLOG_INFO,
+                   new RecordDeletionLogger(&custom_logger_deleted,
+                                            base::GetLogger(GLOG_INFO)));
++  EXPECT_TRUE(IsGoogleLoggingInitialized());
+   ShutdownGoogleLogging();
+   EXPECT_TRUE(custom_logger_deleted);
++  EXPECT_FALSE(IsGoogleLoggingInitialized());
+ }
+ 
+ _START_GOOGLE_NAMESPACE_
+diff --git a/src/logging_unittest.cc b/src/logging_unittest.cc
+index edc7d35d..37cc247c 100644
+--- a/src/logging_unittest.cc
++++ b/src/logging_unittest.cc
+@@ -197,8 +197,12 @@ int main(int argc, char **argv) {
+   LogWithLevels(0, 0, 0, 0);  // simulate "before global c-tors"
+   const string early_stderr = GetCapturedTestStderr();
+ 
++  EXPECT_FALSE(IsGoogleLoggingInitialized());
++
+   InitGoogleLogging(argv[0]);
+ 
++  EXPECT_TRUE(IsGoogleLoggingInitialized());
++
+   RunSpecifiedBenchmarks();
+ 
+   FLAGS_logtostderr = true;
+@@ -965,8 +969,10 @@ static void TestCustomLoggerDeletionOnShutdown() {
+   base::SetLogger(GLOG_INFO,
+                   new RecordDeletionLogger(&custom_logger_deleted,
+                                            base::GetLogger(GLOG_INFO)));
++  EXPECT_TRUE(IsGoogleLoggingInitialized());
+   ShutdownGoogleLogging();
+   EXPECT_TRUE(custom_logger_deleted);
++  EXPECT_FALSE(IsGoogleLoggingInitialized());
+ }
+ 
+ _START_GOOGLE_NAMESPACE_
+diff --git a/src/utilities.cc b/src/utilities.cc
+index 6b9a69e6..63d90305 100644
+--- a/src/utilities.cc
++++ b/src/utilities.cc
+@@ -62,6 +62,10 @@ _START_GOOGLE_NAMESPACE_
+ 
+ static const char* g_program_invocation_short_name = NULL;
+ 
++bool IsGoogleLoggingInitialized() {
++  return g_program_invocation_short_name != NULL;
++}
++
+ _END_GOOGLE_NAMESPACE_
+ 
+ // The following APIs are all internal.
+@@ -176,10 +180,6 @@ const char* ProgramInvocationShortName() {
+   }
+ }
+ 
+-bool IsGoogleLoggingInitialized() {
+-  return g_program_invocation_short_name != NULL;
+-}
+-
+ #ifdef OS_WINDOWS
+ struct timeval {
+   long tv_sec, tv_usec;
+diff --git a/src/utilities.h b/src/utilities.h
+index e4115ad4..052d8705 100644
+--- a/src/utilities.h
++++ b/src/utilities.h
+@@ -163,8 +163,6 @@ namespace glog_internal_namespace_ {
+ 
+ const char* ProgramInvocationShortName();
+ 
+-bool IsGoogleLoggingInitialized();
+-
+ int64 CycleClock_Now();
+ 
+ int64 UsecToCycles(int64 usec);
