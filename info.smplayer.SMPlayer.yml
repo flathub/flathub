@@ -1,0 +1,217 @@
+app-id: info.smplayer.SMPlayer
+base: io.qt.qtwebkit.BaseApp
+base-version: '5.15'
+runtime: org.kde.Platform
+runtime-version: '5.15'
+sdk: org.kde.Sdk
+rename-desktop-file: smplayer.desktop
+command: smplayer
+finish-args:
+  - '--share=ipc'
+  - '--share=network'
+  - '--socket=x11'
+  - '--socket=fallback-x11'
+  #- '--socket=wayland'
+  - '--socket=pulseaudio'
+  - '--device=dri'
+  - '--filesystem=host'
+  - '--talk-name=org.freedesktop.ScreenSaver'
+  - '--own-name=org.mpris.MediaPlayer2.smplayer'
+
+modules:
+  - name: smplayer
+    buildsystem: simple
+    build-options:
+      env:
+        QMAKEPATH: /app/lib
+    build-commands:
+      - ln -sf smtube-dir/src smtube
+      - cd smtube && lrelease smtube.pro && qmake DEFINES+="SMTUBE_LIB" && make
+      - cp smtube/translations/*.qm src/translations/
+      - make PREFIX=/app QMAKE_OPTS="DEFINES+=NO_DEBUG_ON_CONSOLE DEFINES+=USE_SHM DEFINES+=USE_GL_WINDOW DEFINES+=USE_SMTUBE_LIB" install
+      - mkdir -p /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 icons/smplayer.svg
+             /app/share/icons/hicolor/scalable/apps/info.smplayer.SMPlayer.svg
+      - desktop-file-edit --set-icon=info.smplayer.SMPlayer
+             /app/share/applications/smplayer.desktop
+      - mv /app/share/metainfo/smplayer.appdata.xml /app/share/metainfo/info.smplayer.SMPlayer.appdata.xml
+    sources:
+      #- type: git
+      #  url: https://github.com/smplayer-dev/smplayer.git
+      #  tag: v21.8.0
+      #  commit: 0362b21519f69f1baa2525522b43f07134c57fd4
+      #  #disable-shallow-clone: true
+      - type: archive
+        url: https://github.com/smplayer-dev/smplayer/releases/download/v21.8.0/smplayer-21.8.0.tar.bz2
+        sha256: 'c5bcdb175303baf590eaa91163043f23cfab1901ac15e7da24b4d674f1822163'
+      #- type: git
+      #  url: https://github.com/smplayer-dev/smtube.git
+      #  tag: v21.7.0
+      #  commit: 1badaac1eaa40c104716cdf22333b0c17e31d982
+      - type: archive
+        url: https://github.com/smplayer-dev/smtube/releases/download/v21.7.0/smtube-21.7.0.tar.bz2
+        sha256: '77e47778cd813ddaec63b5d7fba216a73e9c288cbf2f6c7488b647d264e07dc7'
+        dest: smtube-dir
+
+    modules:
+      - name: mpv
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /share/man
+        buildsystem: simple
+        build-commands:
+          - python3 waf configure --prefix=/app
+                                  --enable-libarchive
+                                  --enable-gl-x11
+          - python3 waf build
+          - python3 waf install
+        sources:
+          #- type: git
+          #  url: 'https://github.com/smplayer-dev/mpv-mod.git'
+          #  tag: v0.33.1-58
+          #  commit: cf077ab770e4d839380f5797b4c164874aa6fb21
+          - type: archive
+            url: https://github.com/smplayer-dev/mpv-mod/archive/refs/tags/v0.33.1-58.tar.gz
+            sha256: '3fa79858be7d4cb967e69364ccfd1e9b717fe3b94cbff4231c14239d1f474915'
+          - type: file
+            url: 'https://waf.io/waf-2.0.21'
+            sha256: '7cebf2c5efe53cbb9a4b5bdc4b49ae90ecd64a8fce7a3222d58e591b58215306'
+            dest-filename: waf
+
+        modules:
+          - name: luajit
+            no-autogen: true
+            cleanup:
+              - /bin
+              - /lib/*.a
+              - /include
+              - /lib/pkgconfig
+              - /share/man
+            sources:
+              - type: archive
+                url: 'http://luajit.org/download/LuaJIT-2.1.0-beta3.tar.gz'
+                sha256: '1ad2e34b111c802f9d0cdf019e986909123237a28c746b21295b63c9e785d9c3'
+              - type: shell
+                commands:
+                  - sed -i 's|/usr/local|/app|' ./Makefile
+
+          - name: nv-codec-headers
+            cleanup:
+              - '*'
+            no-autogen: true
+            make-install-args:
+              - PREFIX=/app
+            sources:
+              - type: archive
+                url: 'https://github.com/FFmpeg/nv-codec-headers/releases/download/n11.0.10.0/nv-codec-headers-11.0.10.0.tar.gz'
+                sha256: 'e5d1fe6b18254a3c8747a38714564030e4fda506961a11a7eafb94f2400419bb'
+
+          - name: ffmpeg
+            cleanup:
+              - /include
+              - /lib/pkgconfig
+              - /share/ffmpeg/examples
+            config-opts:
+              - '--enable-shared'
+              - '--disable-static'
+              - '--enable-gnutls'
+              - '--enable-gpl'
+              - '--disable-doc'
+              - '--disable-programs'
+              - '--disable-encoders'
+              - '--disable-muxers'
+              - '--enable-encoder=png,libwebp'
+              - '--enable-libv4l2'
+              - '--enable-libdav1d'
+              - '--enable-libfontconfig'
+              - '--enable-libfreetype'
+              - '--enable-libopus'
+              - '--enable-librsvg'
+              - '--enable-libvpx'
+              - '--enable-libmp3lame'
+              - '--enable-libwebp'
+            sources:
+              - type: archive
+                url: 'https://ffmpeg.org/releases/ffmpeg-4.4.tar.xz'
+                sha256: '06b10a183ce5371f915c6bb15b7b1fffbe046e8275099c96affc29e17645d909'
+
+          - name: libass
+            cleanup:
+              - /include
+              - /lib/*.la
+              - /lib/pkgconfig
+            config-opts:
+              - '--disable-static'
+            sources:
+              - type: archive
+                url: 'https://github.com/libass/libass/releases/download/0.15.0/libass-0.15.0.tar.gz'
+                sha256: '9cbddee5e8c87e43a5fe627a19cd2aa4c36552156eb4edcf6c5a30bd4934fe58'
+
+          - name: uchardet
+            buildsystem: cmake-ninja
+            config-opts:
+              - '-DCMAKE_BUILD_TYPE=Release'
+              - '-DBUILD_STATIC=0'
+            cleanup:
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /share/man
+            sources:
+              - type: archive
+                url: 'https://gitlab.freedesktop.org/uchardet/uchardet/-/archive/v0.0.7/uchardet-v0.0.7.tar.gz'
+                sha256: 'f3635d1d10e1470452bc42c1bf509451a9926b399a11740a9949e86069d69f58'
+
+          - name: fribidi
+            cleanup:
+              - "/bin"
+              - "/include"
+              - "/lib/pkgconfig"
+              - "/lib/*.la"
+              - "/share/man"
+            sources:
+              - type: archive
+                url: https://github.com/fribidi/fribidi/releases/download/v1.0.5/fribidi-1.0.5.tar.bz2
+                sha256: 6a64f2a687f5c4f203a46fa659f43dd43d1f8b845df8d723107e8a7e6158e4ce
+
+      - name: mplayer
+        buildsystem: simple
+        build-commands:
+          - ./configure --prefix=/app
+                        --disable-libmpeg2-internal
+                        --disable-ffmpeg_a
+                        --disable-gui
+                        --disable-mencoder
+                        --enable-runtime-cpudetection
+                        --yasm=''
+          - make install
+        sources:
+          #- type: git
+          #  url: https://github.com/smplayer-dev/mplayer.git
+          #  tag: v1.4-83
+          #  commit: 09c649e889bf2345f1558427b4557fb0b656ef07
+          - type: archive
+            url: https://github.com/smplayer-dev/mplayer-mod/archive/refs/tags/v1.4-83.tar.gz
+            sha256: 'fbfd426822f7f075f19813850456b0e4efac16d793c3317724d189b6d202751f'
+
+      - name: smplayer-skins
+        buildsystem: simple
+        build-commands:
+          - make PREFIX=/app
+          - make PREFIX=/app install
+        sources:
+          - type: archive
+            url: https://sourceforge.net/projects/smplayer/files/SMPlayer-skins/20.11.0/smplayer-skins-20.11.0.tar.bz2
+            sha256: 3bbfe7f31f2ebaa158b9e7c9f7601b0116eb375bb577cf65e313a9a45c622973
+
+      - name: smplayer-themes
+        buildsystem: simple
+        build-commands:
+          - make PREFIX=/app
+          - make PREFIX=/app install
+        sources:
+          - type: archive
+            url: https://sourceforge.net/projects/smplayer/files/SMPlayer-themes/20.11.0/smplayer-themes-20.11.0.tar.bz2
+            sha256: b99c02a13e5587e0c59d127d2f2536a1bc2740e726fadb47c89d349df5951132
+
