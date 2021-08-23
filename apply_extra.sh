@@ -19,7 +19,4 @@ desktop-file-edit --set-key="Exec" --set-value="guilded %U" \
 	--set-key="X-Flatpak-RenamedFrom" --set-value="guilded.desktop;" \
 	"export/share/applications/${FLATPAK_ID}.desktop"
 
-sed -i 's|Icon=guilded|Icon=${FLATPAK_ID}|' export/share/applications/${FLATPAK_ID}.desktop
-sed -i 's|Exec=/opt/Guilded/guilded|Exec=guilded|' export/share/applications/${FLATPAK_ID}.desktop
-
 rm -r Guilded-Linux.deb deb-package
