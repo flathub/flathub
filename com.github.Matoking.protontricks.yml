@@ -1,0 +1,266 @@
+---
+id: com.github.Matoking.protontricks
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+sdk: org.freedesktop.Sdk
+appstream-compose: false
+command: protontricks
+finish-args:
+  # Copy some args from Steam Flatpak to make the environment similar
+  # to Proton apps running under Steam Flatpak. Arguments only related to
+  # native titles or the Steam client are omitted.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  # Steam in -steamos mode uses Network Manager for network settings, e.g.
+  # connecting to wifi and so on.
+  # In normal mode, it probably just gets info about current connection status.
+  - --system-talk-name=org.freedesktop.NetworkManager
+  # Wine uses UDisks2 to enumerate disk drives
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --device=all
+  - --allow=multiarch
+  - --allow=devel
+  - --allow=bluetooth
+  - --env=ALSA_CONFIG_PATH=
+  - --unset-env=ALSA_CONFIG_PATH
+  - --env=MESA_GLSL_CACHE_DIR=
+  - --unset-env=MESA_GLSL_CACHE_DIR
+  - --env=STEAM_RUNTIME_PREFER_HOST_LIBRARIES=
+  - --unset-env=STEAM_RUNTIME_PREFER_HOST_LIBRARIES
+  - --env=STEAM_RUNTIME=
+  - --unset-env=STEAM_RUNTIME
+  - --env=STEAM_EXTRA_COMPAT_TOOLS_PATHS=/app/share/steam/compatibilitytools.d
+  - --env=PROTON_DEBUG_DIR=/var/tmp
+  - --env=XDG_CONFIG_DIRS=/etc/xdg:/usr/lib/x86_64-linux-gnu/GL:/usr/lib/i386-linux-gnu/GL
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/app/lib32/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0
+  - --require-version=1.0.0
+
+  # Protontricks-specific permissions to grant access to Steam installation
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --filesystem=xdg-data/Steam
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '20.08'
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '20.08'
+    no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 20.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+  com.valvesoftware.Steam.CompatibilityTool:
+    subdirectories: true
+    directory: share/steam/compatibilitytools.d
+    version: stable
+    versions: stable;beta;test
+    no-autodownload: true
+    autodelete: true
+
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/aclocal
+  - /share/man
+modules:
+
+  - "python3-setuptools-scm.json"
+  - "vdf.json"
+
+  - name: protontricks
+    buildsystem: simple
+    build-options:
+      env:
+        # Override setuptools-scm version detection logic.
+        # This is necessary because the patch to implement the required
+        # functionality for stand-alone Flatpak isn't part of a tagged release
+        # yet.
+        # TODO: Remove this for next version
+        SETUPTOOLS_SCM_PRETEND_VERSION: "1.6.0"
+    build-commands:
+      - pip3 install --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} .
+      # This manifest ships '.desktop' files properly, so no need to install
+      # 'protontricks-desktop-install'
+      - rm ${FLATPAK_DEST}/bin/protontricks-desktop-install
+    post-install:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo data/${FLATPAK_ID}.metainfo.xml
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak ${FLATPAK_ID}
+      - rename protontricks ${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/protontricks*.desktop
+    sources:
+      - type: git
+        url: "https://github.com/Matoking/protontricks.git"
+        # Fetch specific commit consisting of 1.6.0 and additional changes
+        # to enable the standalone Flatpak.
+        # These will be included in the next upstream release.
+        #tag: "1.6.0"
+        commit: 3a57bc6bbfb039abd7fe623b25a29c277e064f9c
+
+    modules:
+
+      - name: yad
+        config-opts:
+          - "--enable-standalone"
+        sources:
+          - type: archive
+            url: "https://github.com/v1cont/yad/releases/download/v10.1/yad-10.1.tar.xz"
+            sha256: 742a5bd55de4b249eee6780bddeccb05c7ff4b158fd9743808f7d280219fd3ab
+        modules:
+
+          - name: intltool
+            cleanup:
+              - "*"
+            sources:
+              - type: archive
+                url: "https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz"
+                sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+      - name: winetricks
+        no-autogen: true
+        make-install-args:
+          - PREFIX=$(FLATPAK_DEST)
+        sources:
+          - type: archive
+            url: "https://github.com/Winetricks/winetricks/archive/20210206.tar.gz"
+            sha256: 705421798b28696f577104ebdf03b068b9343ab096754150f47a6ec06fa8ae65
+        modules:
+
+          - name: p7zip
+            no-autogen: true
+            build-options:
+              strip: true
+            make-args:
+              - all2
+              - OPTFLAGS=-O2 -g
+              - DEST_HOME=$(FLATPAK_DEST)
+              - DEST_BIN=$(FLATPAK_DEST)/bin
+              - DEST_SHARE=$(FLATPAK_DEST)/lib/p7zip
+              - DEST_MAN=$(FLATPAK_DEST)/share/man
+            make-install-args:
+              - DEST_HOME=$(FLATPAK_DEST)
+              - DEST_BIN=$(FLATPAK_DEST)/bin
+              - DEST_SHARE=$(FLATPAK_DEST)/lib/p7zip
+              - DEST_MAN=$(FLATPAK_DEST)/share/man
+            sources:
+              - type: archive
+                url: "https://downloads.sourceforge.net/p7zip/p7zip_16.02_src_all.tar.bz2"
+                sha256: 5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f
+              - type: patch
+                paths:
+                  - patches/p7zip/gcc10-conversion.patch
+              - type: shell
+                only-arches:
+                  - "x86_64"
+                commands:
+                  - ln -sf makefile.linux_amd64_asm makefile.machine
+              - type: shell
+                only-arches:
+                  - "i386"
+                commands:
+                  - ln -sf makefile.linux_x86_asm_gcc_4.X makefile.machine
+            modules:
+
+              - name: yasm
+                buildsystem: cmake-ninja
+                sources:
+                  - type: archive
+                    url: "https://github.com/yasm/yasm/archive/v1.3.0.tar.gz"
+                    sha256: f708be0b7b8c59bc1dbe7134153cd2f31faeebaa8eec48676c10f972a1f13df3
+                cleanup:
+                  - "*"
+
+          - name: cabextract
+            build-options:
+              strip: true
+            sources:
+              - type: archive
+                url: "https://www.cabextract.org.uk/cabextract-1.9.1.tar.gz"
+                sha256: afc253673c8ef316b4d5c29cc4aa8445844bee14afffbe092ee9469405851ca7
+
+          - name: unrar
+            no-autogen: true
+            build-options:
+              strip: true
+            make-install-args:
+              - DESTDIR=$(FLATPAK_DEST)
+            sources:
+              - type: archive
+                url: "https://www.rarlab.com/rar/unrarsrc-5.8.3.tar.gz"
+                sha256: 3591685c8f5bbcb0be09de3d0a0544adb88966b9cccb80986f6cd2b534fd91a6
+
+          - name: binutils-ar
+            buildsystem: simple
+            build-options:
+              strip: true
+            build-commands:
+              - install -Dm755 /usr/bin/ar -t ${FLATPAK_DEST}/bin/
+              - install -Dm755 /usr/lib/$(gcc -print-multiarch)/libbfd-*.so -t ${FLATPAK_DEST}/lib/
+
+          - name: perl
+            no-autogen: true
+            config-opts:
+              - "-des"
+            cleanup:
+              - "*.pod"
+              - "/bin/perl5*"
+              - "/bin/c2ph"
+              - "/bin/corelist"
+              - "/bin/cpan"
+              - "/bin/enc2xs"
+              - "/bin/encguess"
+              - "/bin/h2*"
+              - "/bin/instmodsh"
+              - "/bin/json_pp"
+              - "/bin/libnetcfg"
+              - "/bin/perlbug"
+              - "/bin/perldoc"
+              - "/bin/perlthanks"
+              - "/bin/piconv"
+              - "/bin/pl2pm"
+              - "/bin/pod*"
+              - "/bin/prove"
+              - "/bin/pstruct"
+              - "/bin/ptar*"
+              - "/bin/shasum"
+              - "/bin/splain"
+              - "/bin/xsubpp"
+              - "/bin/zipdetails"
+            sources:
+              - type: archive
+                url: "https://www.cpan.org/src/5.0/perl-5.32.0.tar.gz"
+                sha256: efeb1ce1f10824190ad1cadbcccf6fdb8a5d37007d0100d2d9ae5f2b5900c0b4
+              - type: script
+                dest-filename: configure
+                commands:
+                  - "exec ./configure.gnu $@"
+            post-install:
+              - "find ${FLATPAK_DEST}/lib/perl5 -type f -exec chmod u+w {} \\;"
+
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/steam/compatibilitytools.d
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: file
+        dest-filename: ld.so.conf
+        url: data:/app/lib32%0A/app/lib/i386-linux-gnu%0A
