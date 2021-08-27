@@ -1,0 +1,59 @@
+From 646c935892fa6c0b4cfae3ae8c990ee6e9956f0e Mon Sep 17 00:00:00 2001
+From: Waqar Ahmed <waqar.17a@gmail.com>
+Date: Wed, 15 Mar 2023 02:07:13 +0500
+Subject: [PATCH] Fix TERM env variable not being set in flatpak
+
+If this is not set, the whole terminal experience is useless with any
+non bash shell e.g., zsh
+---
+ src/session/Session.cpp | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/src/session/Session.cpp b/src/session/Session.cpp
+index 0a5d813e7..602e3322c 100644
+--- a/src/session/Session.cpp
++++ b/src/session/Session.cpp
+@@ -418,6 +418,29 @@ QString Session::shellSessionId() const
+     return friendlyUuid;
+ }
+ 
++static QStringList postProcessArgs(const QStringList &args)
++{
++#ifndef Q_OS_WIN
++    if (!KSandbox::isFlatpak()) {
++        return args;
++    }
++    QStringList arguments;
++    // last arg is the program
++    arguments = args;
++    QString program = arguments.back();
++    arguments.pop_back();
++    // Needs to be explicitly specified, KSandbox::makeHostContext
++    // ignores any variables set in the system environment so this
++    // never gets set.
++    arguments.push_back(QStringLiteral("--env=TERM=xterm-256color"));
++    arguments.push_back(program);
++    return arguments;
++#else
++    qCritical() << "Should never get called on windows";
++    return {};
++#endif
++}
++
+ void Session::run()
+ {
+     // FIXME: run() is called twice in some instances
+@@ -534,8 +557,9 @@ void Session::run()
+     _shellProcess->setArguments(arguments);
+     _shellProcess->setEnvironment(originalEnvironment + _environment);
+     const auto context = KSandbox::makeHostContext(*_shellProcess);
++    arguments = postProcessArgs(context.arguments);
+     _shellProcess->setEnvironment(originalEnvironment);
+-    const auto result = _shellProcess->start(context.program, context.arguments, _environment);
++    const auto result = _shellProcess->start(context.program, arguments, _environment);
+ #else
+     int result = _shellProcess->start(exec, arguments, _environment);
+ #endif
+-- 
+GitLab
+
