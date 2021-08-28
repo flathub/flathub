@@ -3,20 +3,104 @@ runtime: org.kde.Platform
 runtime-version: "5.15"
 sdk: org.kde.Sdk
 command: meshroom
+cleanup:
+  - /include
+  - /etc
+  - /doc
+  - /cmake
+  - /share/pkgconfig
+  - /share/man
+  - /share/doc
+  - /lib/cmake  
+  - /lib/pkgconfig
+  - /lib/*.a
+  - /lib/*.la
+  - /lib64/cmake  
+  - /lib64/pkgconfig
+  - /lib64/*.a
+  - /lib64/*.la
 finish-args:
   - --share=ipc
-  - --socket=x11
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
 
 modules:
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+
   - name: boost
     buildsystem: simple
     build-commands:
-      - ./bootstrap.sh --prefix=/app
-      - ./b2 install --prefix=/app link=shared runtime-link=shared cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST}
+      - ./b2 install --prefix=${FLATPAK_DEST} link=shared runtime-link=shared cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
+    cleanup:
+      - "*"
     sources:
       - type: archive
         url: https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
         sha256: f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://boostorg.jfrog.io/artifactory/main/release/$version/source/boost_${major}_${minor}_$patch.tar.bz2
+
+  - name: TBB
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/oneapi-src/oneTBB/archive/2019_U8.tar.gz
+        sha256: 6b540118cbc79f9cbc06a35033c18156c21b84ab7b6cf56d773b168ad2b68566
+        x-checker-data:
+          type: anitya
+          project-id: 8217
+          stable-only: true
+          url-template: https://github.com/oneapi-src/oneTBB/archive/$version.tar.gz
+      - type: patch
+        path: tbb_cmake.patch
+
+  - name: numpy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "numpy"
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/3a/be/650f9c091ef71cb01d735775d554e068752d3ff63d7943b26316dc401749/numpy-1.21.2.zip
+        sha256: 423216d8afc5923b15df86037c6053bf030d15cc9e3224206ef868c2d63dd6dc
+        x-checker-data:
+          type: pypi
+          name: numpy
+      - type: file
+        url: https://files.pythonhosted.org/packages/d0/4a/22ee76842d8ffc123d4fc48d24a623c1d206b99968fe3960039f1efc2cbc/setuptools-49.1.3.zip
+        sha256: ea484041dc6495c4ee74dd578470866e3043f6d1c998cfafbdb1f668f1768284
+      - type: file
+        url: &wheel_url https://files.pythonhosted.org/packages/ed/46/e298a50dde405e1c202e316fa6a3015ff9288423661d7ea5e8f22f589071/wheel-0.36.2.tar.gz
+        sha256: &wheel_sha256 e11eefd162658ea59a60a0f6c7d493a7190ea4b9a85e335b33489d9f17e0245e
+        x-checker-data:
+          type: pypi
+          name: wheel
+      - type: file
+        url: https://files.pythonhosted.org/packages/59/e3/78c921adf4423fff68da327cc91b73a16c63f29752efe7beb6b88b6dd79d/Cython-0.29.24.tar.gz
+        sha256: cdf04d07c3600860e8c2ebaad4e8f52ac3feb212453c1764a49ac08c827e8443
+        x-checker-data:
+          type: pypi
+          name: Cython
+
+  - name: Imath
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPYTHON:BOOL=ON
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/Imath/archive/v3.1.2/imath-3.1.2.tar.gz
+        sha256: f21350efdcc763e23bffd4ded9bbf822e630c15ece6b0697e2fcb42737c08c2d
+        x-checker-data:
+          type: anitya
+          project-id: 223366
+          stable-only: true
+          url-template: https://github.com/AcademySoftwareFoundation/Imath/archive/v$version/imath-$version.tar.gz
 
   - name: openexr
     buildsystem: cmake-ninja
@@ -24,95 +108,322 @@ modules:
       - /bin
     sources:
       - type: archive
-        url: https://github.com/AcademySoftwareFoundation/openexr/archive/v2.5.7.tar.gz
-        sha256: 36ecb2290cba6fc92b2ec9357f8dc0e364b4f9a90d727bf9a57c84760695272d
-    modules:
-      - name: imath
-        buildsystem: cmake-ninja
-        config-opts:
-          - -DPYTHON=ON
-        sources:
-          - type: archive
-            url: https://github.com/AcademySoftwareFoundation/Imath/archive/v3.1.2/imath-3.1.2.tar.gz
-            sha256: f21350efdcc763e23bffd4ded9bbf822e630c15ece6b0697e2fcb42737c08c2d
+        url: https://github.com/AcademySoftwareFoundation/openexr/archive/v3.1.1.tar.gz
+        sha256: 045254e201c0f87d1d1a4b2b5815c4ae54845af2e6ec0ab88e979b5fdb30a86e
+        x-checker-data:
+          type: anitya
+          project-id: 13289
+          stable-only: true
+          url-template: https://github.com/AcademySoftwareFoundation/openexr/archive/v$version.tar.gz
 
-  - name: openimageio
+  - name: hdf5
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
-      - -DUSE_PYTHON=ON
-      - -DOIIO_BUILD_TESTS=OFF
-      - -DOIIO_BUILD_TOOLS=ON
-      - -DBUILD_MISSING_FMT=OFF
-      - -DCMAKE_LIBRARY_PATH=/app/lib
-      - -DSTOP_ON_WARNING=OFF
-    build-options:
-      env: 
-        pybind11_DIR: /app/lib/python3.8/site-packages/pybind11/share/cmake
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DHDF5_BUILD_EXAMPLES:BOOL=OFF
+      - -DHDF5_ENABLE_Z_LIB_SUPPORT:BOOL=ON
     cleanup:
       - /bin
-      - /share/doc
+    sources:
+      - type: archive
+        url: https://github.com/HDFGroup/hdf5/archive/hdf5-1_12_1.tar.gz
+        sha256: e6dde173c2d243551922d23a0387a79961205b018502e6a742acb30b61bc2d5f
+        x-checker-data:
+          type: anitya
+          project-id: 1303
+          stable-only: true
+          url-template: https://github.com/HDFGroup/hdf5/archive/hdf5-$version.tar.gz
+
+  - name: pybind11
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "pybind11"
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/66/99/fc60e2287bb2309b8db4d0f080770ecc8d37dc64911e37b86698ec4b6a51/pybind11-2.7.1.tar.gz
+        sha256: 8950aac5e5f4d505f7a0f067c5cb3893dcf098ff29cedfcb4ccf1e9e44d0bd9a
+        x-checker-data:
+          type: pypi
+          name: pybind11
+      - type: file
+        url: &setuptools_url https://files.pythonhosted.org/packages/db/e2/c0ced9ccffb61432305665c22842ea120c0f649eec47ecf2a45c596707c4/setuptools-57.4.0.tar.gz
+        sha256: &setuptools_sha256 6bac238ffdf24e8806c61440e755192470352850f3419a52f26ffe0a1a64f465
+        x-checker-data:
+          type: pypi
+          name: setuptools
+      - type: file
+        url: *wheel_url
+        sha256: *wheel_sha256
+
+  - name: OpenColorIO
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      arch:
+        aarch64:
+          config-opts:
+            - -DOCIO_USE_SSE=OFF
+    config-opts:
+      - -DOCIO_BUILD_APPS:BOOL=OFF
+      - -DOCIO_BUILD_TESTS:BOOL=OFF
+      - -DOCIO_BUILD_GPU_TESTS:BOOL=OFF
+      - -DOCIO_BUILD_STATIC:BOOL=OFF
+      - -DCMAKE_CXX_FLAGS:STRING='-Wno-error=deprecated-declarations -Wno-error=unused-function -Wno-error=cast-function-type'
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/v1.1.1.tar.gz
+        sha256: c9b5b9def907e1dafb29e37336b702fff22cc6306d445a13b1621b8a754c14c8
+        x-checker-data:
+          type: anitya
+          project-id: 9631
+          stable-only: true
+          url-template: https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/v$version.tar.gz
+
+  - name: OpenBLAS
+    no-autogen: true
+    make-args:
+      - DYNAMIC_ARCH=1
+      - DYNAMIC_OLDER=1
+      - FC=gfortran
+      - NO_CBLAS=0
+      - NO_LAPACKE=0
+      - TARGET=GENERIC
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.17.tar.gz
+        sha256: df2934fa33d04fd84d839ca698280df55c690c86a5a1133b3f7266fce1de279f
+        x-checker-data:
+          type: anitya
+          project-id: 2540
+          stable-only: true
+          url-template: https://github.com/xianyi/OpenBLAS/archive/v$version.tar.gz
+
+  - name: OpenCV
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DOPENCV_GENERATE_PKGCONFIG:BOOL=ON
+      - -DOPENCV_ENABLE_NONFREE:BOOL=ON
+      - -DWITH_OPENCL:BOOL=ON
+      - -DWITH_OPENGL:BOOL=ON
+      - -DWITH_TBB:BOOL=ON
+      - -DWITH_VULKAN:BOOL=ON
+      - -DBUILD_WITH_DEBUG_INFO:BOOL=OFF
+      - -DBUILD_TESTS:BOOL=OFF
+      - -DBUILD_PERF_TESTS:BOOL=OFF
+      - -DBUILD_EXAMPLES:BOOL=OFF
+      - -DINSTALL_C_EXAMPLES:BOOL=OFF
+      - -DINSTALL_PYTHON_EXAMPLES:BOOL=OFF
+      - -DWITH_1394:BOOL=OFF
+      - -DWITH_PROTOBUF:BOOL=ON
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
+        sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
+        x-checker-data:
+          type: anitya
+          project-id: 6615
+          stable-only: true
+          url-template: https://github.com/opencv/opencv/archive/$version.tar.gz
+
+  - name: dcmtk
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DDCMTK_WITH_PNG:BOOL=ON
+      - -DDCMTK_WITH_TIFF:BOOL=ON
+      - -DDCMTK_WITH_XML:BOOL=ON
+      - -DDCMTK_WITH_ZLIB:BOOL=ON
+    sources:
+      - type: archive
+        url: ftp://dicom.offis.de/pub/dicom/offis/software/dcmtk/dcmtk366/dcmtk-3.6.6.tar.gz
+        sha512: 2bba96eac5908012eec7f510e05e7e426b3f1d2454fcdec056a3de9eb724b04d9d12f3cd0088b1f3be9c32430367600abdf30514d0f62c2f017f7740d1008b63
+        x-checker-data:
+          type: anitya
+          project-id: 18627
+          stable-only: true
+          url-template: ftp://dicom.offis.de/pub/dicom/offis/software/dcmtk/dcmtk$major$minor$patch/dcmtk-$version.tar.gz
+
+  - name: libheif
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/strukturag/libheif/archive/v1.11.0.tar.gz
+        sha256: 993c3320e179b8fdce983e3a7e96615af3830077be6b0ab28bfa25579df08d26
+        x-checker-data:
+          type: anitya
+          project-id: 64439
+          stable-only: true
+          url-template: https://github.com/strukturag/libheif/archive/v$version.tar.gz
+      - type: shell
+        commands:
+          - sed -i 's|DESTINATION ${GDKPIXBUF2_MODULE_DIR}|DESTINATION /app/lib/gdk-pixbuf-2.0/2.10.0/loaders|' gdk-pixbuf/CMakeLists.txt
+    modules:
+      - name: libde265
+        cleanup:
+          - /bin
+        config-opts:
+          - --disable-encoder
+          - --disable-sherlock265
+          - --disable-dec265
+        sources:
+          - type: archive
+            url: https://github.com/strukturag/libde265/archive/v1.0.8.tar.gz
+            sha256: c5ab61185f283f46388c700c43dc08606b0e260cd53f06b967ec0ad7a809ff11
+            x-checker-data:
+              type: anitya
+              project-id: 11239
+              stable-only: true
+              url-template: https://github.com/strukturag/libde265/archive/v$version.tar.gz
+
+  - name: LibRaw
+    config-opts:
+      - --disable-examples
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libraw.org/data/LibRaw-0.19.5.tar.gz
+        sha256: 40a262d7cc71702711a0faec106118ee004f86c86cc228281d12d16da03e02f5
+        x-checker-data:
+          type: anitya
+          project-id: 1709
+          stable-only: true
+          url-template: https://www.libraw.org/data/LibRaw-$version.tar.gz
+    cleanup:
+      - /bin
+
+  - name: OpenImageIO
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DUSE_PYTHON:BOOL=ON
+      - -DOIIO_BUILD_TESTS:BOOL=OFF
+      - -DOIIO_BUILD_TOOLS:BOOL=ON
+      - -DBUILD_MISSING_FMT:BOOL=OFF
+      - -DSTOP_ON_WARNING:BOOL=OFF
+    build-options:
+      env:
+        pybind11_DIR: /app/lib/python3.8/site-packages/pybind11/share/cmake/pybind11
+    cleanup:
+      - /bin
     sources:
       - type: archive
         url: https://github.com/OpenImageIO/oiio/archive/v2.2.17.0.tar.gz
         sha256: b570da8928c3e8cde29bdb0e0320e727789e141c48375fb69a2548d642462396
+        x-checker-data:
+              type: anitya
+              project-id: 2548
+              stable-only: true
+              url-template: https://github.com/OpenImageIO/oiio/archive/v$version.tar.gz
     modules:
       - name: fmt
         buildsystem: cmake-ninja
+        cleanup:
+          - "*"
         sources:
           - type: archive
             url: https://github.com/fmtlib/fmt/archive/8.0.1.tar.gz
             sha256: b06ca3130158c625848f3fb7418f235155a4d389b2abc3a6245fb01cb0eb1e01
-            
+            x-checker-data:
+              type: anitya
+              project-id: 11526
+              stable-only: true
+              url-template: https://github.com/fmtlib/fmt/archive/$version.tar.gz
+
       - name: robin-map
         buildsystem: cmake-ninja
+        cleanup:
+          - "*"
         sources:
           - type: archive
             url: https://github.com/Tessil/robin-map/archive/v0.6.3.tar.gz
             sha512: 485557f300d33bda62bb8accdf246819ee8ffe956bc022e7ddca54ff6ad1a9fdb8db8d80690add3ef238e834d1eb8e2905920cb0a0674e7df010f6946d01297b
-
-      - name: pybind11
-        buildsystem: simple
-        build-commands:
-         - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "pybind11"
-        sources:
-          - type: file
-            url: https://files.pythonhosted.org/packages/66/99/fc60e2287bb2309b8db4d0f080770ecc8d37dc64911e37b86698ec4b6a51/pybind11-2.7.1.tar.gz
-            sha256: 8950aac5e5f4d505f7a0f067c5cb3893dcf098ff29cedfcb4ccf1e9e44d0bd9a
-          - type: file
-            url: https://files.pythonhosted.org/packages/db/e2/c0ced9ccffb61432305665c22842ea120c0f649eec47ecf2a45c596707c4/setuptools-57.4.0.tar.gz
-            sha256: 6bac238ffdf24e8806c61440e755192470352850f3419a52f26ffe0a1a64f465
-          - type: file
-            url: https://files.pythonhosted.org/packages/ed/46/e298a50dde405e1c202e316fa6a3015ff9288423661d7ea5e8f22f589071/wheel-0.36.2.tar.gz
-            sha256: e11eefd162658ea59a60a0f6c7d493a7190ea4b9a85e335b33489d9f17e0245e
+            x-checker-data:
+              type: anitya
+              project-id: 18602
+              stable-only: true
+              url-template: https://github.com/Tessil/robin-map/archive/v$version.tar.gz
 
   - name: eigen
     buildsystem: cmake-ninja
     builddir: true
+    cleanup:
+      - "*"
     sources:
       - type: archive
-        url: https://gitlab.com/libeigen/eigen/-/archive/3.3.9/eigen-3.3.9.tar.bz2
+        url: https://gitlab.com/libeigen/eigen/archive/3.3.9/eigen-3.3.9.tar.bz2
         sha256: 0fa5cafe78f66d2b501b43016858070d52ba47bd9b1016b0165a7b8e04675677
         x-checker-data:
           type: anitya
           project-id: 13751
           stable-only: true
-          url-template: https://gitlab.com/libeigen/eigen/-/archive/$version/eigen-$version.tar.bz2
-    # cleanup:
-    #   - '*'
+          url-template: https://gitlab.com/libeigen/eigen/archive/$version/eigen-$version.tar.bz2
+
+  - name: mpfr
+    config-opts:
+      - --enable-thread-safe
+      - --enable-shared
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz
+        sha512: 1bd1c349741a6529dfa53af4f0da8d49254b164ece8a46928cdb13a99460285622d57fe6f68cef19c6727b3f9daa25ddb3d7d65c201c8f387e421c7f7bee6273
+        x-checker-data:
+          type: anitya
+          project-id: 2019
+          stable-only: true
+          url-template: https://ftp.gnu.org/gnu/mpfr/mpfr-$version.tar.xz
+      - type: patch
+        path: mpfr-patches.diff
+
+  - name: SuiteSparse
+    make-args:
+      - BLAS=-lopenblas
+      - LAPACK=
+      - library
+    make-install-args:
+      - BLAS=-lopenblas
+      - LAPACK=
+      - INSTALL_INCLUDE=${FLATPAK_DEST}/include/suitesparse
+      - INSTALL_LIB=${FLATPAK_DEST}/lib
+      - library
+    no-autogen: true
+    sources:
+      - type: archive
+        url: https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v5.10.1.tar.gz
+        sha256: acb4d1045f48a237e70294b950153e48dce5b5f9ca8190e86c2b8c54ce00a7ee
+        x-checker-data:
+          type: anitya
+          project-id: 4908
+          stable-only: true
+          url-template: https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v$version.tar.gz
+      - type: patch
+        path: suitesparse-no-demo.patch
 
   - name: ceres-solver
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
-      - -DEIGENSPARSE=ON
-      - -DBUILD_TESTING=OFF
-      - -DBUILD_EXAMPLES=OFF
-      - -DBUILD_BENCHMARKS=OFF
+      - -DEIGENSPARSE:BOOL=ON
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DBUILD_EXAMPLES:BOOL=OFF
+      - -DBUILD_BENCHMARKS:BOOL=OFF
     sources:
       - type: archive
         url: http://ceres-solver.org/ceres-solver-2.0.0.tar.gz
         sha256: 10298a1d75ca884aa0507d1abb0e0f04800a92871cd400d4c361b56a777a7603
+        x-checker-data:
+          type: anitya
+          project-id: 5834
+          stable-only: true
+          url-template: http://ceres-solver.org/ceres-solver-$version.tar.gz
     modules:
       - name: glog
         buildsystem: cmake-ninja
@@ -120,91 +431,45 @@ modules:
           - type: archive
             url: https://github.com/google/glog/archive/v0.5.0.tar.gz
             sha512: 445e4338f3d81cd0b065f2da9c6ce343c243263ca144cea424ef97531a4e9e09c06ffd6942ac01c5213a8003c75cfbbede3c4028d12f0134f23ff29314769c1a
+            x-checker-data:
+              type: anitya
+              project-id: 8732
+              stable-only: true
+              url-template: https://github.com/google/glog/archive/v$version.tar.gz
           - type: patch
             path: glog-0b3d4cb4.patch
 
-      - name: openblas
-        no-autogen: true
-        make-args:
-          - DYNAMIC_ARCH=1
-          - DYNAMIC_OLDER=1
-          - FC=gfortran
-          - NO_CBLAS=1
-          - NO_LAPACKE=1
-          - TARGET=GENERIC
-          - USE_OPENMP=0    ## OpenMP off by default, this hack skips 'test_fork' which crashes on i386
-        make-install-args:
-          - PREFIX=/app
-        sources:
-          - type: archive
-            url: https://github.com/xianyi/OpenBLAS/archive/v0.3.17.tar.gz
-            sha256: df2934fa33d04fd84d839ca698280df55c690c86a5a1133b3f7266fce1de279f
-            x-checker-data:
-              type: anitya
-              project-id: 2540
-              url-template: https://github.com/xianyi/OpenBLAS/archive/v$version.tar.gz
-
-      - name: mpfr
-        config-opts:
-          - --enable-thread-safe
-          - --enable-shared
-        sources:
-          - type: archive
-            url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.xz
-            sha512: 1bd1c349741a6529dfa53af4f0da8d49254b164ece8a46928cdb13a99460285622d57fe6f68cef19c6727b3f9daa25ddb3d7d65c201c8f387e421c7f7bee6273
-          - type: patch
-            path: mpfr-patches.diff
-
-      - name: suitesparse
-        make-args:
-          - BLAS=-lopenblas
-          - LAPACK=
-          - library
-        make-install-args:
-          - BLAS=-lopenblas
-          - LAPACK=
-          - INSTALL_INCLUDE=/app/include/suitesparse
-          - INSTALL_LIB=/app/lib
-          - library
-        no-autogen: true
-        sources:
-          - type: archive
-            url: https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v5.10.1.tar.gz
-            sha256: acb4d1045f48a237e70294b950153e48dce5b5f9ca8190e86c2b8c54ce00a7ee
-            x-checker-data:
-              type: anitya
-              project-id: 4908
-              url-template: https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v$version.tar.gz
-          - type: patch
-            path: suitesparse-no-demo.patch
-
   - name: alembic
     buildsystem: cmake-ninja
+    config-opts:
+      - -DUSE_HDF5:BOOL=ON
+      - -DUSE_TESTS:BOOL=OFF
     sources:
       - type: archive
         url: https://github.com/alembic/alembic/archive/1.8.2.tar.gz
         sha512: 23fec3d51cfd8ac8bc02749550de53a7b699ebe67654336864a8208a6a1d4f69e8e1a2c8e07832665c203788cbabbb65f346582741bac10ceb0d56c16d6b4217
+        x-checker-data:
+          type: anitya
+          project-id: 13980
+          stable-only: true
+          url-template: https://github.com/alembic/alembic/archive/$version.tar.gz
 
   - name: opengv
     buildsystem: cmake-ninja
     config-opts:
-      - -DBUILD_SHARED_LIBS=ON
-      # - -DBUILD_PYTHON=ON
-      - -DBUILD_POSITION_INDEPENDENT_CODE=ON
-      # - -DINSTALL_OPENGV=ON
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DBUILD_POSITION_INDEPENDENT_CODE:BOOL=ON
     sources:
       - type: git
         url: https://github.com/laurentkneip/opengv.git
         commit: 91f4b19c73450833a40e463ad3648aae80b3a7f3
 
-  - shared-modules/glu/glu-9.json
-
   - name: geogram
     buildsystem: cmake-ninja
     config-opts:
-      - -DBUILD_SHARED_LIBS=ON 
-      - -DGEOGRAM_LIB_ONLY=ON 
-      - -DVORPALINE_PLATFORM=Linux64-gcc-dynamic
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DGEOGRAM_LIB_ONLY:BOOL=ON
+      - -DVORPALINE_PLATFORM:STRING=Linux64-gcc-dynamic
     sources:
       - type: git
         url: https://github.com/alicevision/geogram.git
@@ -217,7 +482,6 @@ modules:
       - --disable-cups
       - --disable-dbus
       - --disable-gtk
-      # - --with-system-libtiff
       - --with-drivers=FILES
     build-options:
       arch:
@@ -227,41 +491,39 @@ modules:
       - type: archive
         url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs9540/ghostscript-9.54.0.tar.xz
         sha256: c2b7b43cde600f4e70efb2cd95865f6d884a67315c3de235914697d8ccde6e3b
+        x-checker-data:
+          type: anitya
+          project-id: 1157
+          stable-only: true
+          url-template: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs$major$minor$patch/ghostscript-$version.tar.xz
 
-  # - name: cuda
-  #   buildsystem: simple
-  #   build-commands: 
-  #     - chmod +x cuda_11.4.1_470.57.02_linux.run
-  #     - ./cuda_11.4.1_470.57.02_linux.run --toolkit --installpath=/app/cuda --no-man-page --override --silent
-  #   sources:
-  #     - type: file
-  #       url: https://developer.download.nvidia.com/compute/cuda/11.4.1/local_installers/cuda_11.4.1_470.57.02_linux.run
-  #       md5: 0ceda24534455fa06d95f3dbd5125c94
-        
-  - name: alicevision
+  - name: AliceVision
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
-      - -DALICEVISION_BUILD_DOC=OFF
-      - -DALICEVISION_BUILD_TESTS=OFF
-      - -DALICEVISION_BUILD_EXAMPLES=OFF
-      - -DALICEVISION_USE_ALEMBIC=OFF
-      # - -DCUDA_TOOLKIT_ROOT_DIR=/app/cuda
-      - -DALICEVISION_USE_CUDA=OFF
+      - -DALICEVISION_BUILD_DOC:BOOL=OFF
+      - -DALICEVISION_BUILD_TESTS:BOOL=OFF
+      - -DALICEVISION_BUILD_EXAMPLES:BOOL=OFF
+      - -DALICEVISION_USE_ALEMBIC:BOOL=ON
+      - -DALICEVISION_USE_CUDA:BOOL=OFF
     sources:
       - type: git
         tag: v2.4.0
         commit: 38d899f54910f98164ccbbdf950750eb10ae8a65
         url: https://github.com/alicevision/AliceVision.git
+      - type: patch
+        path: openexr3.patch
       - type: shell
-        commands: 
+        commands:
+          - grep -lR "#include.*OpenEXR/half.h"|xargs sed -i 's|OpenEXR/half|Imath/half|'
           - grep -lR "std::numeric_limits"|xargs sed -i '1 i\#include <limits>'
 
   - name: meshroom
     buildsystem: simple
+    no-python-timestamp-fix: true
     build-commands:
-      - python3 setup.py install --prefix=/app --root=/
-      - install meshroom.sh /app/bin/meshroom
+      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
+      - install meshroom.sh ${FLATPAK_DEST}/bin/meshroom
     sources:
       - type: git
         url: https://github.com/alicevision/meshroom.git
@@ -271,3 +533,68 @@ modules:
         dest-filename: meshroom.sh
         commands:
           - python app/bin/meshroom/ui "$@"
+    modules:
+      - name: cx-Freeze
+        buildsystem: simple
+        build-commands:
+          - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "cx-Freeze"
+        sources:
+          - type: file
+            url: https://files.pythonhosted.org/packages/5f/e5/af76fa30798600aab8ab9d535d630f6eb8fd46bff8e35c8303f4a5dfdb70/cx_Freeze-6.7.tar.gz
+            sha256: 050f1dd133a04810bd7f38ac7ae3b290054acb2ff4f6e73f7a286266d153495d
+            x-checker-data:
+              type: pypi
+              name: cx-Freeze
+          - type: file
+            url: https://files.pythonhosted.org/packages/d5/e7/b716bf428edb23df5b04a15ac1c2c1acbae8bca3a84991805261f6f47577/importlib_metadata-4.7.1.tar.gz
+            sha256: c4eb3dec5f697682e383a39701a7de11cd5c02daf8dd93534b69e3e6473f6b1b
+            x-checker-data:
+              type: pypi
+              name: importlib-metadata
+          - type: file
+            url: *setuptools_url
+            sha256: *setuptools_sha256
+          - type: file
+            url: *wheel_url
+            sha256: *wheel_sha256
+          - type: file
+            url: https://files.pythonhosted.org/packages/57/38/930b1241372a9f266a7df2b184fb9d4f497c2cef2e016b014f82f541fe7c/setuptools_scm-6.0.1.tar.gz
+            sha256: d1925a69cb07e9b29416a275b9fadb009a23c148ace905b2fb220649a6c18e92
+            x-checker-data:
+              type: pypi 
+              name: setuptools-scm
+          - type: file
+            url: https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz
+            sha256: b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
+            x-checker-data:
+              type: pypi 
+              name: toml
+          - type: file
+            url: https://files.pythonhosted.org/packages/3a/9f/1d4b62cbe8d222539a84089eeab603d8e45ee1f897803a0ae0860400d6e7/zipp-3.5.0.tar.gz
+            sha256: f5812b1e007e48cff63449a5e9f4e7ebea716b4111f9c4f9a645f91d579bf0c4
+            x-checker-data:
+              type: pypi
+              name: zipp
+
+      - name: patchelf
+        sources:
+          - type: archive
+            url: https://github.com/NixOS/patchelf/archive/0.13/patchelf-0.13.tar.gz
+            sha512: 0b4cb41dc1b76d1c0f46655d8b1c56187d2bf18fa12fad9ad6e8acd321a98df372713a92c6649479498bb5939c91ce16a1032ec03afc5a2f7c92cd68882c2bd9
+            x-checker-data:
+              type: anitya
+              project-id: 2598
+              stable-only: true
+              url-template: https://github.com/NixOS/patchelf/archive/$version/patchelf-$version.tar.gz
+
+      - name: idna
+        buildsystem: simple
+        build-commands:
+          - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "idna"
+        sources:
+          - type: file
+            url: https://files.pythonhosted.org/packages/cb/38/4c4d00ddfa48abe616d7e572e02a04273603db446975ab46bbcd36552005/idna-3.2.tar.gz
+            sha256: 467fbad99067910785144ce333826c71fb0e63a425657295239737f7ecd125f3
+            x-checker-data:
+              type: pypi
+              name: idna
