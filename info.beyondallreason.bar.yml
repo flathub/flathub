@@ -1,0 +1,85 @@
+app-id: info.beyondallreason.bar
+runtime: org.freedesktop.Platform
+runtime-version: "20.08"
+base: org.electronjs.Electron2.BaseApp
+base-version: "20.08"
+sdk: org.freedesktop.Sdk
+command: launcher-args.sh
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+build-options:
+  append_path: "/usr/lib/sdk/node14/bin"
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    npm_config_nodedir: /usr/lib/sdk/node14
+    npm_config_offline: 'true'
+    NPM_CONFIG_LOGLEVEL: info
+    XDG_CACHE_HOME: /run/build/spring-launcher/flatpak-node/cache
+    npm_config_cache: /run/build/spring-launcher/flatpak-node/npm-cache
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network
+  - --env=PATH=/usr/bin:/app/bin:/usr/lib/sdk/node14/bin
+modules:
+  - name: byar-chobby
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/bar && mkdir /app/bar/BYAR-Chobby
+      - cp -Rp . /app/bar/BYAR-Chobby
+    sources:
+      - type: git
+        url: https://github.com/beyond-all-reason/BYAR-Chobby
+        commit: 42effde478b64cf58bd96e29457041d3fad66dd7
+  - name: spring-launcher
+    buildsystem: simple
+    build-commands:
+      # Use `--ignore-scripts`, so electron does not make a postinstall request
+      - npm ci --offline --ignore-scripts --cache=/run/build/spring-launcher/flatpak-node/npm-cache/
+      - cp -p /app/bar/BYAR-Chobby/dist_cfg/config.json ./src
+      - cp -p /app/bar/BYAR-Chobby/dist_cfg/config-backup.json ./src
+      - cp -p /app/bar/BYAR-Chobby/dist_cfg/springsettings.json ./src
+      - cp -Rp /app/bar/BYAR-Chobby/dist_cfg/renderer/* ./src/renderer
+      - cp -Rp /app/bar/BYAR-Chobby/dist_cfg/files ./files
+      - cp -Rp /app/bar/BYAR-Chobby/dist_cfg/build ./build
+      - jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
+      - cat package.json
+      - . flatpak-node/electron-builder-arch-args.sh
+      - |
+        . flatpak-node/electron-builder-arch-args.sh
+        node_modules/.bin/electron-builder -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir --project /run/build/spring-launcher
+      - cp -a dist/linux*unpacked /app/main
+      - install -Dm755 -t /app/bin/ launcher-args.sh
+      - install -Dm755 -t /app/bin/ run.sh
+      - install -Dm644 info.beyondallreason.bar.desktop /app/share/applications/info.beyondallreason.bar.desktop
+      - install -Dm644 icon.png /app/share/icons/hicolor/16x16/apps/info.beyondallreason.bar.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/32x32/apps/info.beyondallreason.bar.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/64x64/apps/info.beyondallreason.bar.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/128x128/apps/info.beyondallreason.bar.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/256x256/apps/info.beyondallreason.bar.png
+    sources:
+      - type: git
+        url: https://github.com/gajop/spring-launcher
+        commit: 03d42be4796253ad8d61a68cf946e589e1e0deb6
+      - type: patch
+        path: patch/remove-launcher-self-update.patch
+      - type: file
+        path: info.beyondallreason.bar.desktop
+      - type: file
+        path: ../dist_cfg/build/icon.png
+      - generated-sources.json
+      - type: file
+        path: launcher-args.sh
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/spring-launcher "$@"
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/spring-launcher/flatpak-node/cache
+        npm_config_cache: /run/build/spring-launcher/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
