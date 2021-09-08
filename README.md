@@ -53,15 +53,16 @@ First, install the Python dependency `requirements-parser`.
 
 Install the FreeDesktop SDK and Platform.
 
-    flatpak install --user flathub org.freedesktop.Sdk//20.08
+    flatpak install --user flathub org.freedesktop.Sdk//21.08
 
 Now run the Flatpak Pip Generator script for the necessary packages.
-The necessary packages are listed in the files `packaging/requirements-regular-bundle.txt` and `packaging/requirements-xxl-bundle.txt` in Thonny's repository.
-The following command shows how to retrieve packages from Thonny's `requirements.txt` file by producing a `python3-modules.json` file.
+The necessary packages are listed in the files `packaging/requirements-regular-bundle.txt` in Thonny's repository.
+The following command shows how to retrieve packages from Thonny's `requirements.txt` file by producing a `python3-requirements-bundle.json` file.
 I usually convert these to YAML and place them directly in the Flatpak manifest for readability.
 
-    wget -L https://raw.githubusercontent.com/thonny/thonny/master/requirements.txt
-    python3 flatpak-builder-tools/pip/flatpak-pip-generator --runtime org.freedesktop.Sdk//20.08 $(cat requirements.txt)
+    wget -L https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
+    wget -L https://raw.githubusercontent.com/thonny/thonny/master/packaging/requirements-regular-bundle.txt
+    python3 flatpak-pip-generator --runtime org.freedesktop.Sdk//21.08 -r requirements-regular-bundle.txt
 
-If you have `org.freedesktop.Sdk//20.08` installed in *both* the user and system installations, the Flatpak Pip Generator will choke generating the manifest.
+If you have `org.freedesktop.Sdk//21.08` installed in *both* the user and system installations, the Flatpak Pip Generator will choke generating the manifest.
 The best option at the moment is to temporarily remove either the user or the system installation until this issue is fixed upstream.
