@@ -1,0 +1,61 @@
+app-id: app.ytmdesktop.ytmdesktop
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+command: start-ytmdesktop.sh
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --own-name=org.mpris.MediaPlayer2.youtubemusic
+modules:
+  - name: ytmdesktop
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node14/bin
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+        XDG_CACHE_HOME: /run/build/ytmdesktop/flatpak-node/cache
+        npm_config_cache: /run/build/ytmdesktop/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+        ELECTRON_CACHE: /run/build/ytmdesktop/flatpak-node/electron-cache
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    build-commands:
+      - npm install --offline
+      - npm run build:lin --linux --dir
+      - cp -a dist/linux*unpacked /app/ytmdesktop
+      - install -Dm755 -t /app/bin/ ./start-ytmdesktop.sh
+      - install -D -t /app/share/applications/ app.ytmdesktop.ytmdesktop.desktop
+      - install -D -t /app/share/metainfo/ app.ytmdesktop.ytmdesktop.metainfo.xml
+    post-install:
+      - install -Dm644 src/assets/favicon.16x16.png /app/share/icons/hicolor/16x16/apps/$FLATPAK_ID.png  
+      - install -Dm644 src/assets/favicon.256x256.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png 
+      - install -Dm644 src/assets/favicon.512x512.png /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/ytmdesktop/ytmdesktop.git
+        tag: v1.13.0
+        commit: e4c5e308e345765fb7e42d149bb4abf39f7ae4bd
+      - type: patch
+        paths:
+          # pr open on upstream for all 3
+          - patches/0001-don-t-hard-code-cache-in-electron-build-config.patch
+          - patches/0002-set-target-for-config.patch
+          - patches/0003-disable-autoupdate-if-running-in-flatpak.patch
+      - type: script
+        dest-filename: start-ytmdesktop.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - FLATPAK_HOST=1 zypak-wrapper.sh /app/ytmdesktop/youtube-music-desktop-app "$@"
+      - type: file
+        path: app.ytmdesktop.ytmdesktop.desktop
+      - type: file
+        path: app.ytmdesktop.ytmdesktop.metainfo.xml
+      - generated-sources.json
