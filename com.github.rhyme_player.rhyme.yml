@@ -1,0 +1,83 @@
+app-id: com.github.rhyme_player.rhyme
+runtime: org.freedesktop.Platform
+runtime-version: "21.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "20.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: run.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/node14/bin
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/yarn/
+      - cp -a * /app/share/yarn/
+      - ln -s /app/share/yarn/bin/yarn /app/bin/yarn
+      - ln -s /app/share/yarn/bin/yarnpkg /app/bin/yarnpkg
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.10/yarn-v1.22.10.tar.gz
+        sha256: 7e433d4a77e2c79e6a7ae4866782608a8e8bcad3ec6783580577c59538381a6e
+
+  - name: rhyme
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/rhyme/flatpak-node/cache
+        npm_config_cache: /run/build/rhyme/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/rhyme-player/rhyme.git
+        tag: v0.6.0
+        commit: ac06b1cf5679c7c0779d524683f7c4de04ea3350
+        dest: main
+
+      - type: file
+        url: data:yarn-offline-mirror%20/run/build/rhyme/flatpak-node/yarn-mirror%0A--install.offline%20true%0A--run.offline%20true%0A
+        dest: main
+        dest-filename: .yarnrc
+
+      - generated-sources.json
+
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/rhyme "$@"
+      - type: file
+        path: ./com.github.rhyme_player.rhyme.desktop
+      - type: file
+        path: ./com.github.rhyme_player.rhyme.appdata.xml
+    build-commands:
+      # Install dependencies
+      - yarn --offline
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
+        yarn build && yarn electron-builder -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a build_dist/linux*unpacked /app/main
+      # Install icons
+      - for size in 16 32 48 64 128 256;do install -d $FLATPAK_DEST/share/icons/hicolor/${size}x${size}/apps; cp ./build/linux/icons/${size}x${size}.png $FLATPAK_DEST/share/icons/hicolor/${size}x${size}/apps/$FLATPAK_ID.png; done
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      - install -Dm644 -t $FLATPAK_DEST/share/applications ../$FLATPAK_ID.desktop
+      - install -Dm644 -t $FLATPAK_DEST/share/metainfo ../$FLATPAK_ID.appdata.xml
