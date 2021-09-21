@@ -1,8 +1,8 @@
-# SDK Extension for OpenJDK 16
+# SDK Extension for OpenJDK 17
 
-This extension contains the OpenJDK 16 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
+This extension contains the OpenJDK 17 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
 
-OpenJDK 16 is the current latest version. This is *not* a long-term support (LTS) version and will be periodically updated as new JDKs are released.
+OpenJDK 17 is the current latest version. This is *not* a long-term support (LTS) version and will be periodically updated as new JDKs are released.
 
 For the current LTS version, see the [OpenJDK 17](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17) extension.
 
