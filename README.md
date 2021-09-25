@@ -14,7 +14,8 @@ In order to build your app with tools provided with this extension you have to s
 "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm12" ],
 ...
 "build-options":{
-    "append-path": "/usr/lib/sdk/llvm12/bin"
+    "append-path": "/usr/lib/sdk/llvm12/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
     }
 ```
 Example:
@@ -22,15 +23,16 @@ Example:
 {
   "id" : "org.example.MyApp",
   "runtime" : "org.freedesktop.Platform",
-  "runtime-version" : "20.08",
+  "runtime-version" : "21.08",
   "sdk" : "org.freedesktop.Sdk",
   "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm12" ],
   "modules" : [
   {
     "name" : "Myapp",
     "build-options":{
-    "append-path": "/usr/lib/sdk/llvm12/bin"
-  },
+    "append-path": "/usr/lib/sdk/llvm12/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
+  }
  ]
 }
 ```
