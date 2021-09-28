@@ -1,0 +1,394 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Gilbert <bgilbert@cs.cmu.edu>
+Date: Tue, 1 Sep 2015 21:05:25 -0400
+Subject: [PATCH 1/5] jp2k: Allow OpenJPEG 2.x to read buffer in multiple chunks
+
+Preparation for next commit.
+
+[Starting with this commit, my contributions are copyright Benjamin Gilbert.]
+
+diff --git a/src/openslide-decode-jp2k.c b/src/openslide-decode-jp2k.c
+index 1111111..2222222 100644
+--- a/src/openslide-decode-jp2k.c
++++ b/src/openslide-decode-jp2k.c
+@@ -3,6 +3,7 @@
+  *
+  *  Copyright (c) 2007-2015 Carnegie Mellon University
+  *  Copyright (c) 2011 Google, Inc.
++ *  Copyright (c) 2015 Benjamin Gilbert
+  *  All rights reserved.
+  *
+  *  OpenSlide is free software: you can redistribute it and/or modify
+@@ -29,8 +30,9 @@
+ #include <openjpeg.h>
+ 
+ struct read_callback_params {
+-  void *data;
+-  int32_t datalen;
++  uint8_t *data;
++  int32_t offset;
++  int32_t length;
+ };
+ 
+ static inline void write_pixel_ycbcr(uint32_t *dest, uint8_t Y,
+@@ -184,12 +186,12 @@ static void error_callback(const char *msg, void *data) {
+ static OPJ_SIZE_T read_callback(void *buf, OPJ_SIZE_T count, void *data) {
+   struct read_callback_params *params = data;
+ 
+-  if (params->datalen != (int32_t) count) {
+-    params->datalen = 0;
++  count = MIN(count, (OPJ_SIZE_T) (params->length - params->offset));
++  if (!count) {
+     return (OPJ_SIZE_T) -1;
+   }
+-  memcpy(buf, params->data, count);
+-  params->datalen = 0;
++  memcpy(buf, params->data + params->offset, count);
++  params->offset += count;
+   return count;
+ }
+ 
+@@ -211,7 +213,7 @@ bool _openslide_jp2k_decode_buffer(uint32_t *dest,
+   opj_stream_t *stream = opj_stream_create(datalen, true);
+   struct read_callback_params read_params = {
+     .data = data,
+-    .datalen = datalen,
++    .length = datalen,
+   };
+   opj_stream_set_user_data(stream, &read_params, NULL);
+   opj_stream_set_user_data_length(stream, datalen);
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Gilbert <bgilbert@cs.cmu.edu>
+Date: Tue, 1 Sep 2015 21:43:01 -0400
+Subject: [PATCH 2/5] jp2k: Support seeking within memory buffer for OpenJPEG 2.x
+
+With current OpenJPEG master, streams must be seekable to prevent
+opj_decode() from failing with the message
+"opj_j2k_apply_nb_tile_parts_correction error".
+
+https://lists.andrew.cmu.edu/pipermail/openslide-users/2015-August/001086.html
+
+diff --git a/src/openslide-decode-jp2k.c b/src/openslide-decode-jp2k.c
+index 1111111..2222222 100644
+--- a/src/openslide-decode-jp2k.c
++++ b/src/openslide-decode-jp2k.c
+@@ -29,7 +29,7 @@
+ 
+ #include <openjpeg.h>
+ 
+-struct read_callback_params {
++struct buffer_state {
+   uint8_t *data;
+   int32_t offset;
+   int32_t length;
+@@ -184,17 +184,38 @@ static void error_callback(const char *msg, void *data) {
+ #ifdef HAVE_OPENJPEG2
+ 
+ static OPJ_SIZE_T read_callback(void *buf, OPJ_SIZE_T count, void *data) {
+-  struct read_callback_params *params = data;
++  struct buffer_state *state = data;
+ 
+-  count = MIN(count, (OPJ_SIZE_T) (params->length - params->offset));
++  count = MIN(count, (OPJ_SIZE_T) (state->length - state->offset));
+   if (!count) {
+     return (OPJ_SIZE_T) -1;
+   }
+-  memcpy(buf, params->data + params->offset, count);
+-  params->offset += count;
++  memcpy(buf, state->data + state->offset, count);
++  state->offset += count;
+   return count;
+ }
+ 
++static OPJ_OFF_T skip_callback(OPJ_OFF_T count, void *data) {
++  struct buffer_state *state = data;
++
++  int32_t orig_offset = state->offset;
++  state->offset = CLAMP(state->offset + count, 0, state->length);
++  if (count && state->offset == orig_offset) {
++    return -1;
++  }
++  return state->offset - orig_offset;
++}
++
++static OPJ_BOOL seek_callback(OPJ_OFF_T offset, void *data) {
++  struct buffer_state *state = data;
++
++  if (offset < 0 || offset > state->length) {
++    return OPJ_FALSE;
++  }
++  state->offset = offset;
++  return OPJ_TRUE;
++}
++
+ bool _openslide_jp2k_decode_buffer(uint32_t *dest,
+                                    int32_t w, int32_t h,
+                                    void *data, int32_t datalen,
+@@ -211,13 +232,15 @@ bool _openslide_jp2k_decode_buffer(uint32_t *dest,
+   // avoid tracking stream offset (and implementing skip callback) by having
+   // OpenJPEG read the whole buffer at once
+   opj_stream_t *stream = opj_stream_create(datalen, true);
+-  struct read_callback_params read_params = {
++  struct buffer_state state = {
+     .data = data,
+     .length = datalen,
+   };
+-  opj_stream_set_user_data(stream, &read_params, NULL);
++  opj_stream_set_user_data(stream, &state, NULL);
+   opj_stream_set_user_data_length(stream, datalen);
+   opj_stream_set_read_function(stream, read_callback);
++  opj_stream_set_skip_function(stream, skip_callback);
++  opj_stream_set_seek_function(stream, seek_callback);
+ 
+   // init codec
+   opj_codec_t *codec = opj_create_decompress(OPJ_CODEC_J2K);
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Gilbert <bgilbert@cs.cmu.edu>
+Date: Mon, 7 Sep 2015 22:28:22 -0400
+Subject: [PATCH 3/5] On Windows, assume filenames are in UTF-8, not the system
+ codepage
+
+On Windows, fopen() expects filenames in the system codepage, and thus
+can't handle arbitrary characters.  Assume filenames are in UTF-8,
+convert to UTF-16, and pass to _wfopen().
+
+http://lists.andrew.cmu.edu/pipermail/openslide-users/2015-September/001098.html
+
+diff --git a/configure.ac b/configure.ac
+index 1111111..2222222 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -180,6 +180,9 @@ AS_CASE([$host_os],
+ # Fallback: racily use fcntl()
+ AC_CHECK_FUNCS([fcntl])
+ 
++# Windows _wfopen()
++AC_CHECK_FUNCS([_wfopen])
++
+ # The test driver has special support for testing Windows builds from Cygwin
+ AC_MSG_CHECKING([whether to cross-test from Cygwin])
+ if test "$host_os" = "mingw32" -a "$build_os" = "cygwin"; then
+diff --git a/src/openslide-util.c b/src/openslide-util.c
+index 1111111..2222222 100644
+--- a/src/openslide-util.c
++++ b/src/openslide-util.c
+@@ -2,6 +2,7 @@
+  *  OpenSlide, a library for reading whole slide image files
+  *
+  *  Copyright (c) 2007-2015 Carnegie Mellon University
++ *  Copyright (c) 2015 Benjamin Gilbert
+  *  All rights reserved.
+  *
+  *  OpenSlide is free software: you can redistribute it and/or modify
+@@ -157,14 +158,46 @@ FAIL:
+ }
+ 
+ #undef fopen
++static FILE *do_fopen(const char *path, const char *mode, GError **err) {
++  FILE *f;
++
++#ifdef HAVE__WFOPEN
++  wchar_t *path16 = (wchar_t *) g_convert(path, -1, "UTF-16", "UTF-8",
++                                          NULL, NULL, err);
++  if (path16 == NULL) {
++    g_prefix_error(err, "Couldn't open %s: ", path);
++    return NULL;
++  }
++  wchar_t *mode16 = (wchar_t *) g_convert(mode, -1, "UTF-16", "UTF-8",
++                                          NULL, NULL, err);
++  if (mode16 == NULL) {
++    g_prefix_error(err, "Bad file mode %s: ", mode);
++    g_free(path16);
++    return NULL;
++  }
++  f = _wfopen(path16, mode16);
++  if (f == NULL) {
++    _openslide_io_error(err, "Couldn't open %s", path);
++  }
++  g_free(mode16);
++  g_free(path16);
++#else
++  f = fopen(path, mode);
++  if (f == NULL) {
++    _openslide_io_error(err, "Couldn't open %s", path);
++  }
++#endif
++
++  return f;
++}
++#define fopen _OPENSLIDE_POISON(_openslide_fopen)
++
+ FILE *_openslide_fopen(const char *path, const char *mode, GError **err)
+ {
+   char *m = g_strconcat(mode, FOPEN_CLOEXEC_FLAG, NULL);
+-  FILE *f = fopen(path, m);
++  FILE *f = do_fopen(path, m, err);
+   g_free(m);
+-
+   if (f == NULL) {
+-    _openslide_io_error(err, "Couldn't open %s", path);
+     return NULL;
+   }
+ 
+@@ -193,7 +226,6 @@ FILE *_openslide_fopen(const char *path, const char *mode, GError **err)
+ 
+   return f;
+ }
+-#define fopen _OPENSLIDE_POISON(_openslide_fopen)
+ 
+ #undef g_ascii_strtod
+ double _openslide_parse_double(const char *value) {
+diff --git a/src/openslide.h b/src/openslide.h
+index 1111111..2222222 100644
+--- a/src/openslide.h
++++ b/src/openslide.h
+@@ -62,7 +62,7 @@ typedef struct _openslide openslide_t;
+  * Otherwise, return NULL.  Calling openslide_open() on this file will also
+  * return NULL.
+  *
+- * @param filename The filename to check.
++ * @param filename The filename to check.  On Windows, this must be in UTF-8.
+  * @return An identification of the format vendor for this file, or NULL.
+  * @since 3.4.0
+  */
+@@ -78,7 +78,7 @@ const char *openslide_detect_vendor(const char *filename);
+  * request.  Instead, it should maintain a cache of OpenSlide objects and
+  * reuse them when possible.
+  *
+- * @param filename The filename to open.
++ * @param filename The filename to open.  On Windows, this must be in UTF-8.
+  * @return
+  *         On success, a new OpenSlide object.
+  *         If the file is not recognized by OpenSlide, NULL.
+@@ -463,7 +463,7 @@ const char *openslide_get_version(void);
+  * openslide_open(), but it could also erroneously return @p true in some
+  * cases where openslide_open() would fail.
+  *
+- * @param filename The filename to check.
++ * @param filename The filename to check.  On Windows, this must be in UTF-8.
+  * @return If openslide_open() will succeed.
+  * @deprecated Use openslide_detect_vendor() to efficiently check whether
+  *             a slide file is recognized by OpenSlide, or just call
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Gilbert <bgilbert@cs.cmu.edu>
+Date: Sun, 15 May 2016 23:37:33 -0500
+Subject: [PATCH 4/5] Use g_utf8_to_utf16() to compute Windows file paths
+
+On glib 2.47.6 through at least 2.48.1, g_convert() adds a BOM to the
+beginning of the returned string, causing _wfopen() to fail.  Switch to
+g_utf8_to_utf16(), which should also be more efficient.
+
+Fixes #176.
+
+diff --git a/src/openslide-util.c b/src/openslide-util.c
+index 1111111..2222222 100644
+--- a/src/openslide-util.c
++++ b/src/openslide-util.c
+@@ -162,14 +162,12 @@ static FILE *do_fopen(const char *path, const char *mode, GError **err) {
+   FILE *f;
+ 
+ #ifdef HAVE__WFOPEN
+-  wchar_t *path16 = (wchar_t *) g_convert(path, -1, "UTF-16", "UTF-8",
+-                                          NULL, NULL, err);
++  wchar_t *path16 = (wchar_t *) g_utf8_to_utf16(path, -1, NULL, NULL, err);
+   if (path16 == NULL) {
+     g_prefix_error(err, "Couldn't open %s: ", path);
+     return NULL;
+   }
+-  wchar_t *mode16 = (wchar_t *) g_convert(mode, -1, "UTF-16", "UTF-8",
+-                                          NULL, NULL, err);
++  wchar_t *mode16 = (wchar_t *) g_utf8_to_utf16(mode, -1, NULL, NULL, err);
+   if (mode16 == NULL) {
+     g_prefix_error(err, "Bad file mode %s: ", mode);
+     g_free(path16);
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Sat, 2 June 2018 14:20:00 +0200
+Subject: [PATCH 5/5] Windows fixes
+
+- Fix compile errors with labeled statements named `OUT`.
+- The `host_os` and `build_os` variables may contain the
+  `.shared` or `.static` suffix.
+
+diff --git a/configure.ac b/configure.ac
+index 1111111..2222222 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -27,7 +27,10 @@ AC_TYPE_UINTPTR_T
+ LT_PREREQ([2.2.5])
+ LT_INIT([win32-dll disable-static])
+ LT_LANG([Windows Resource])
+-AM_CONDITIONAL([WINDOWS_RESOURCES], [test x$RC != x])
++AS_CASE([$host_os],
++  [mingw*], [AM_CONDITIONAL([WINDOWS_RESOURCES], [true])],
++  [AM_CONDITIONAL([WINDOWS_RESOURCES], [false])]
++)
+ 
+ # for windows manifest
+ WINDOWS_VERSIONINFO=$(echo "${VERSION}.0.0.0" | cut -f1-4 -d. | tr . ,)
+@@ -137,7 +140,7 @@ gl_VISIBILITY
+ # CLOEXEC
+ AC_MSG_CHECKING([fopen() close-on-exec flag])
+ AS_CASE([$host_os],
+-  [mingw32], [
++  [mingw32*], [
+     # Assume that if we're building for Windows, we want to pass N to fopen().
+     AC_MSG_RESULT([N])
+     AC_DEFINE([FOPEN_CLOEXEC_FLAG], ["N"], [Set to the fopen() flag string that sets FD_CLOEXEC, or an empty string if not supported.])
+@@ -185,28 +188,39 @@ AC_CHECK_FUNCS([_wfopen])
+ 
+ # The test driver has special support for testing Windows builds from Cygwin
+ AC_MSG_CHECKING([whether to cross-test from Cygwin])
+-if test "$host_os" = "mingw32" -a "$build_os" = "cygwin"; then
+-  AC_MSG_RESULT([yes])
+-  CYGWIN_CROSS_TEST=yes
+-else
+-  AC_MSG_RESULT([no])
+-  CYGWIN_CROSS_TEST=""
+-fi
++case ${host_os}+${build_os} in
++  mingw32*+cygwin*)
++    AC_MSG_RESULT([yes])
++    CYGWIN_CROSS_TEST=yes
++    ;;
++  *)
++    AC_MSG_RESULT([no])
++    CYGWIN_CROSS_TEST=""
++    ;;
++esac
+ AC_SUBST([CYGWIN_CROSS_TEST])
+ AM_CONDITIONAL([CYGWIN_CROSS_TEST], [test -n "$CYGWIN_CROSS_TEST"])
+ 
+ # Only enable this on MinGW, since otherwise gcc will complain about an
+ # unknown option whenever it produces any *other* warnings
+-if test "$host_os" = "mingw32"; then
+-  CFLAG_MS_FORMAT=-Wno-pedantic-ms-format
+-else
+-  CFLAG_MS_FORMAT=""
+-fi
++# The CFLAG_NO_PSEUDO_MODIFIERS variable prevents Windows.h from
++# defining IN or OUT.
++case "$host_os" in
++  mingw32*)
++    CFLAG_MS_FORMAT=-Wno-pedantic-ms-format
++    CFLAG_NO_PSEUDO_MODIFIERS=-D_NO_W32_PSEUDO_MODIFIERS
++    ;;
++  *)
++    CFLAG_MS_FORMAT=""
++    CFLAG_NO_PSEUDO_MODIFIERS=""
++    ;;
++esac
+ AC_SUBST([CFLAG_MS_FORMAT])
++AC_SUBST([CFLAG_NO_PSEUDO_MODIFIERS])
+ 
+ # The min/max glib version is actually 2.16, but glib doesn't have special
+ # handling for API changes that old
+-AC_SUBST(AM_CFLAGS, ['-Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs $(CFLAG_MS_FORMAT) $(CFLAG_VISIBILITY) -DG_DISABLE_SINGLE_INCLUDES -DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26 -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_MIN_REQUIRED -fno-common'])
++AC_SUBST(AM_CFLAGS, ['-Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs $(CFLAG_MS_FORMAT) $(CFLAG_VISIBILITY) $(CFLAG_NO_PSEUDO_MODIFIERS) -DG_DISABLE_SINGLE_INCLUDES -DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26 -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_MIN_REQUIRED -fno-common'])
+ 
+ AC_SUBST(FEATURE_FLAGS)
+ 
