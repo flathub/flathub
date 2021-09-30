@@ -1,0 +1,82 @@
+app-id: app.xemu.Xemu
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: xemu
+rename-desktop-file: xemu.desktop
+finish-args:
+  - --device=all
+  - --filesystem=host:ro
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+
+modules:
+  - name: libpcap
+    buildsystem: cmake-ninja
+    cleanup:
+      - /bin
+      - /include
+      - /lib/debug
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /share
+    sources:
+      - type: archive
+        url: https://www.tcpdump.org/release/libpcap-1.10.1.tar.gz
+        sha256: ed285f4accaf05344f90975757b3dbfe772ba41d1c401c2648b7fa45b711bdd4
+        x-checker-data:
+          type: anitya
+          project-id: 1702
+          stable-only: true
+          url-template: https://www.tcpdump.org/release/libpcap-$version.tar.gz
+
+  - name: libglu
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/debug
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.2.tar.xz
+        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+        x-checker-data:
+          type: anitya
+          project-id: 13518
+          stable-only: true
+          url-template: https://mesa.freedesktop.org/archive/glu/glu-$version.tar.xz
+
+  - name: xemu
+    buildsystem: autotools
+    builddir: true
+    no-make-install: true
+    build-options:
+      cflags: "-O3 -DXBOX=1 -Wno-error=redundant-decls"
+    config-opts:
+      - --audio-drv-list=sdl
+      - --disable-werror
+      - --target-list=i386-softmmu
+    make-args:
+      - qemu-system-i386
+    post-install:
+      - |-
+        for px in 16 32 48 64 128 256 512; do
+          install -Dm644 ../ui/icons/xemu_${px}x${px}.png /app/share/icons/hicolor/${px}x${px}/apps/app.xemu.Xemu.png
+        done
+      - install -Dm644 ../ui/icons/xemu.svg /app/share/icons/hicolor/scalable/apps/app.xemu.Xemu.svg
+      - desktop-file-install ../ui/xemu.desktop --dir /app/share/applications
+      - sed -i 's/^Icon=xemu/Icon=app.xemu.Xemu/' /app/share/applications/xemu.desktop
+      - mv qemu-system-i386 /app/bin/xemu
+      - mkdir -p /app/share/licenses/xemu
+      - cd .. && python3 scripts/gen-license.py > /app/share/licenses/xemu/LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/mborgerson/xemu
+        tag: xemu-v0.6.1
+
+      - type: file
+        path: app.xemu.Xemu.metainfo.xml
