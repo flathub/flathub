@@ -32,6 +32,7 @@
 #include <gst/gst.h>
 
 extern char *root_app;
+extern char *root_sounds;
 
 struct _MainWindow {
 	GtkWindow parent_instance;
@@ -877,9 +878,57 @@ void main_window_play_new_message (MainWindow *self)
 
 static void main_window_init (MainWindow *self)
 {
+  GFile *ff = g_file_new_for_uri ("resource:///org/xverizex/nem-desktop/in_message.mp3");
+
 	GError *error = NULL;
-	self->new_message = gst_parse_launch ("filesrc location=assets/in_message.mp3 "
-			"! mpegaudioparse ! mpg123audiodec ! audioconvert ! audioresample ! autoaudiosink", &error);
+  char ppath[512];
+  snprintf (ppath, 512, "%s/in_message.mp3", root_sounds);
+  if (access (ppath, F_OK)) {
+    g_autofree char *content = NULL;
+    gsize length;
+    if (!g_file_load_contents (ff,
+                               NULL,
+                               &content,
+                               &length,
+                               NULL,
+                               &error))
+      {
+        if (error)
+          {
+            g_print ("error resource load in_message: %s\n", error->message);
+            g_error_free (error);
+            error = NULL;
+          }
+      } else {
+        GFile *file = g_file_new_for_path (ppath);
+        GFileOutputStream *out = g_file_create (file,
+                                                G_FILE_CREATE_NONE,
+                                                NULL,
+                                                &error);
+        if (error) {
+          g_print ("create file in_message.: %s\n", error->message);
+          g_error_free (error);
+          error = NULL;
+        }
+               g_output_stream_write (G_OUTPUT_STREAM (out),
+                                      content,
+                                      length,
+                                      NULL,
+                                      &error);
+        if (error) {
+          g_print ("error write in_message: %s\n", error->message);
+          g_error_free (error);
+          error = NULL;
+        }
+        g_output_stream_close (G_OUTPUT_STREAM (out), NULL, NULL);
+
+      }
+
+  }
+  snprintf (ppath, 512,"filesrc location=%s/in_message.mp3 "
+			"! mpegaudioparse ! mpg123audiodec ! audioconvert ! audioresample ! autoaudiosink",
+            root_sounds);
+	self->new_message = gst_parse_launch ( ppath, &error);
 	if (error) {
 		g_print ("error parse gst file in_message: %s\n", error->message);
 		g_error_free (error);

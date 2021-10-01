@@ -29,6 +29,7 @@
 
 static GtkWidget *register_window;
 char *root_app;
+char *root_sounds;
 
 static gboolean windows_close_request_cb (GtkWindow *widget,
 		gpointer user_data)
@@ -129,7 +130,12 @@ static void get_root_app ()
 		mkdir (root, S_IRWXU | S_IRWXG | S_IRWXO);
 	}
 
-  int rr = access (root, F_OK);
+  snprintf (root, 256, "%s/.nem/sounds", home);
+	if (access (root, F_OK) == -1) {
+		mkdir (root, S_IRWXU | S_IRWXG | S_IRWXO);
+	}
+
+  root_sounds = strdup (root);
 
   snprintf (root_keys, 256, "%s/keys", root);
 	if (access (root_keys, F_OK) == -1) {
