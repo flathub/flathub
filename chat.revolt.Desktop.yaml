@@ -1,0 +1,78 @@
+app-id: chat.revolt.Desktop
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+
+separate-locales: false
+command: revolt-desktop
+finish-args:
+  # Xorg access for graphics
+  - --share=ipc
+  - --socket=x11
+  # Required to provide Call functionality
+  - --socket=pulseaudio
+  - --device=all
+  # Network access
+  - --share=network
+  # Local filesystem
+  - --filesystem=xdg-documents:ro
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-videos:ro
+
+  # Required for notifications in various desktop environments
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Required for advanced input methods e.g. writing CJK languages
+  - --talk-name=org.freedesktop.portal.Fcitx
+
+build-options:
+  append-path: /usr/lib/sdk/node14/bin
+
+modules:
+  # Install node sdk
+  - name: node
+    buildsystem: simple
+    build-commands:
+      - '/usr/lib/sdk/node14/install-sdk.sh'
+  
+  # Build and install revolt
+  - name: revolt
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node14/bin
+      env:
+        XDG_CACHE_HOME: /run/build/revolt/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror "$FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror"
+      - yarn --offline
+      - yarn run build:bundle
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        yarn run eb -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+      - cp -a dist/linux*unpacked /app/main
+      - sed -i 's~Icon=revolt-desktop~Icon=chat.revolt.Desktop~' revolt-desktop.desktop
+      - install -Dm644 revolt-desktop.desktop /app/share/applications/chat.revolt.Desktop.desktop
+      - install -Dm644 build/icons/icon.png /app/share/icons/hicolor/512x512/apps/chat.revolt.Desktop.png
+      - install -Dm644 ../chat.revolt.Desktop.metainfo.xml /app/share/metainfo/chat.revolt.Desktop.metainfo.xml
+      - install -Dm755 ../revolt-desktop.sh /app/bin/revolt-desktop
+    subdir: main
+    sources:
+      - type: archive
+        url: https://github.com/revoltchat/desktop/archive/v1.0.2.tar.gz
+        sha256: d50a97712e32cc6d19553c471c6dffdf59ac5275e4b56428ea8eefab8f92d0bb
+        dest: main
+      - type: script
+        dest-filename: revolt-desktop.sh
+        commands:
+          - zypak-wrapper.sh /app/main/revolt-desktop "$@"
+      - type: file
+        path: chat.revolt.Desktop.metainfo.xml
+      - generated-sources.json
