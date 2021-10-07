@@ -1,6 +1,6 @@
 app-id: il.co.ravkavonline.RavKavOnline
 runtime: org.freedesktop.Platform
-runtime-version: '20.08'
+runtime-version: '21.08'
 sdk: org.freedesktop.Sdk
 command: ravkavonline
 finish-args:
@@ -8,6 +8,11 @@ finish-args:
   - --persist=.local/share/ravkavonline
   - --share=network
   - --socket=pcsc
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.a'
+  - '*.la'
 modules:
   - name: ravkavonline
     buildsystem: simple
@@ -16,17 +21,11 @@ modules:
       - install -Dm644 ${FLATPAK_ID}.desktop -t /app/share/applications/
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
       - |
-          for s in 64 128 256; do
-            install -Dm644 ${FLATPAK_ID}-${s}.png \
-              /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png
-          done
+        for s in 64 128 256; do
+          install -Dm644 ${FLATPAK_ID}-${s}.png \
+            /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png
+        done
     sources:
-      - type: script
-        dest-filename: apply_extra
-        commands:
-          - bsdtar -Oxf ravkavonline.deb data.tar.gz |
-              tar -xz  ./usr/bin --strip-components=3
-          - rm ravkavonline.deb
       - type: extra-data
         filename: ravkavonline.deb
         # releases: https://ravkavonline.s3.amazonaws.com/
@@ -34,25 +33,50 @@ modules:
         url: https://ravkavonline.co.il/releases/linux/ravkavonline_2.5.2_amd64.deb
         size: 2418252
         sha256: 002704d194012e454a255db1646de6067775524f97edb07e88ef067fae97b70c
-      - type: file
-        path: ravkavonline
+        x-checker-data:
+          is-main-source: true
+          type: html
+          url: https://ravkavonline.s3.amazonaws.com/
+          version-pattern: linux/ravkavonline_([\d\.-]+)_amd64.deb
+          url-template: https://ravkavonline.co.il/releases/linux/ravkavonline_${version}_amd64.deb
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - |
+            bsdtar -Oxf ravkavonline.deb 'data.tar*' |
+            bsdtar -xf - \
+            --strip-components=3 \
+            ./usr/bin
+          - rm ravkavonline.deb
+      - type: script
+        dest-filename: ravkavonline
+        commands:
+          - exec /app/extra/ravkavonline "$@"
       - type: file
         path: il.co.ravkavonline.RavKavOnline.desktop
       - type: file
         path: il.co.ravkavonline.RavKavOnline.metainfo.xml
-      - type: dir
-        path: icons
-  - name: pcsclite
-    config-opts:
-      - --sbindir=/app/bin
-    sources:
-      - type: archive
-        url: https://pcsclite.apdu.fr/files/pcsc-lite-1.9.1.tar.bz2
-        sha256: 73c4789b7876a833a70f493cda21655dfe85689d9b7e29701c243276e55e683a
-    cleanup:
-      - /bin
-      - /include
-      - /lib/pkgconfig
-      - /lib/libpcscspy.so*
-      - /share
-      - '*.la'
+      - type: file
+        path: icons/il.co.ravkavonline.RavKavOnline-64.png
+      - type: file
+        path: icons/il.co.ravkavonline.RavKavOnline-128.png
+      - type: file
+        path: icons/il.co.ravkavonline.RavKavOnline-256.png
+    modules:
+      - name: pcsclite
+        config-opts:
+          - --sbindir=/app/bin
+        sources:
+          - type: archive
+            url: https://github.com/LudovicRousseau/PCSC/archive/1.9.4/PCSC-1.9.4.tar.gz
+            sha256: 3ee0dfd1f98739a68b1152c33926acce52f408872f4a488f850608b784079ead
+            x-checker-data:
+              type: anitya
+              project-id: 2611
+              stable-only: true
+              url-template: https://github.com/LudovicRousseau/PCSC/archive/$version/PCSC-$version.tar.gz
+        cleanup:
+          - /bin
+          - /lib/libpcscspy.so*
+          - /share
