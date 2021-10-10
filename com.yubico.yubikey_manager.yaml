@@ -1,0 +1,122 @@
+app-id: com.yubico.yubikey_manager
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+runtime-version: 5.15-21.08
+command: ykman-gui
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pcsc
+  - --share=ipc
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.a11y.Bus
+  - --device=all
+  - --require-version=1.3.2
+  - --env=YKMAN_XDG_EXPERIMENTAL=1
+cleanup:
+  - /bin/ccache-swig
+  - /bin/pcsc-spy
+  - /bin/swig
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/licenses
+  - /share/man
+  - /share/swig
+modules:
+  - shared-modules/libusb/libusb.json
+  - name: pcsc-lite
+    config-opts:
+      - --disable-libudev
+      - --disable-libsystemd
+      - --without-systemdsystemunitdir
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-1.9.4.tar.bz2
+        sha256: 8a8caac227e0a266015298dda663e81576a0d11d698685101e6aa6c9fdb51c4b
+        x-checker-data:
+          type: anitya
+          project-id: 2611
+          url-template: https://pcsclite.apdu.fr/files/pcsc-lite-$version.tar.bz2
+    post-install:
+        - rm /app/sbin/pcscd
+        - rmdir /app/sbin || true
+  - name: poetry-core
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix /app --no-deps .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/40/d0/adc9ab25f68d9382f32c355627423a32135efaa5aaeebd6dec6d19e6b0af/poetry-core-1.0.7.tar.gz
+        sha256: 98c11c755a16ef6c5673c22ca94a3802a7df4746a0853a70b6fae8b9f5cac206
+        x-checker-data:
+          type: pypi
+          name: poetry-core
+  - name: semantic-version
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "semantic-version" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/d4/52/3be868c7ed1f408cb822bc92ce17ffe4e97d11c42caafce0589f05844dd0/semantic_version-2.8.5.tar.gz
+        sha256: d2cb2de0558762934679b9a104e82eca7af448c9f4974d1f3eeccff651df8a54
+        x-checker-data:
+          type: pypi
+          name: semantic_version
+  - name: swig
+    sources:
+      - type: archive
+        url: http://prdownloads.sourceforge.net/swig/swig-4.0.2.tar.gz
+        sha256: d53be9730d8d58a16bf0cbd1f8ac0c0c3e1090573168bfa151b01eb47fa906fc
+  - name: pyscard
+    buildsystem: simple
+    build-commands: 
+      - pip3 install --use-feature=in-tree-build --prefix /app --no-deps .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/57/aa/aa2610e7929fac90509eecac0f3de1049db07a6c889e3a99008e215cb665/pyscard-2.0.2.tar.gz
+        sha256: 05de0579c42b4eb433903aa2fb327d4821ebac262434b6584da18ed72053fd9e
+        x-checker-data:
+          type: pypi
+          name: pyscard
+      - type: patch
+        paths:
+          - patches/pyscard-include-path.patch
+  - python-semantic-version.json
+  - python3-requirements.json
+  - name: pyotherside
+    buildsystem: qmake
+    sources:
+    - type: git
+      url: https://github.com/thp/pyotherside.git
+      tag: "1.5.9"
+      commit: 373cac2e661c68070baac57baefbb9d45f0c130d
+      x-checker-data:
+        type: git
+        tag-pattern: ([\d+]\.[\d+]\.[\d+])
+    - type: patch
+      path: patches/pyotherside-install-path.patch
+  - name: yubikeymanager
+    buildsystem: qmake
+    post-install:
+      - desktop-file-edit --set-icon=$FLATPAK_ID resources/ykman-gui.desktop
+      - install -D resources/ykman-gui.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - install -D com.yubico.yubikey_manager.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 resources/icons/ykman.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+    sources:
+      - type: git 
+        url: https://github.com/Yubico/yubikey-manager-qt.git
+        tag: yubikey-manager-qt-1.2.3
+        commit: 32396af2b8c66bd9293aac6fb7099aafbaad8f7d
+        x-checker-data:
+          type: git
+          tag-pattern: yubikey-manager-qt-([\d+]\.[\d+]\.[\d+])
+      - type: file
+        path: com.yubico.yubikey_manager.metainfo.xml
+      - type: patch
+        paths:
+          - patches/0001-change-default-install-to-app.patch
+          - patches/0002-don-t-pip-install-dep-we-already-install-it.patch
+          
