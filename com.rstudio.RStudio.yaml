@@ -1,0 +1,179 @@
+app-id: com.rstudio.RStudio
+runtime: org.kde.Platform
+runtime-version: '5.15'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '5.15'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+command: rstudio
+rename-icon: rstudio
+rename-desktop-file: rstudio.desktop
+finish-args:
+  - '--socket=wayland'
+  - '--share=ipc'
+  - '--share=network'
+  - '--filesystem=home'
+  - '--talk-name=org.gnome.SessionManager'
+  - '--device=dri'
+  - '--env=PATH=/app/jre/bin:/usr/bin:/app/bin:/app/bin/x86_64-linux'
+  - '--env=QTWEBENGINE_DISABLE_SANDBOX=1'
+build-options:
+  cflags: '-O2'
+  cxxflags: '-O2'
+  env:
+    PATH: '/usr/bin:/app/bin:/usr/lib/sdk/openjdk11/bin'
+cleanup:
+  - /include
+modules:
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 install --build-type=complete link=shared --layout=versioned runtime-link=shared cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
+        sha256: f0397ba6e982c4450f27bf32a2a83292aba035b827a5623a14636ea583318c41
+
+  - name: R
+    buildsystem: autotools
+    config-opts:
+      - --enable-R-shlib
+      - LIBnn=/app/lib
+    #make-args:
+      #- '-j'
+      #- '-O'
+    sources:
+      - type: archive
+        url: https://cloud.r-project.org/src/base/R-4/R-4.1.1.tar.gz
+        sha256: 515e03265752257d0b7036f380f82e42b46ed8473f54f25c7b67ed25bbbdd364
+
+  - name: ant
+    cleanup:
+      - '*'
+    buildsystem: simple
+    build-commands:
+      - mv ./bin/* /app/bin/
+      - mkdir -p /app/etc
+      - mv ./etc/* /app/etc/
+      - mv ./lib/* /app/lib/
+    sources:
+      - type: archive
+        url: 'https://downloads.apache.org/ant/binaries/apache-ant-1.9.16-bin.tar.bz2'
+        sha256: 57ceb0b249708cb28d081a72045657ab067fc4bc4a0d1e4af252496be44c2e66
+
+#RStudio use this specific version
+  - name: yaml-cpp
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_BUILD_TYPE=Release
+      #- -DBUILD_SHARED_LIBS=ON
+      #- -DYAML_BUILD_SHARED_LIBS=ON
+      #- -DYAML_CPP_BUILD_TOOLS=OFF
+      - -DYAML_CPP_BUILD_TESTS=OFF
+      #- -DYAML_CPP_BUILD_CONTRIB=OFF
+    sources:
+      - type: archive
+        url: https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.6.3.tar.gz
+        sha256: 77ea1b90b3718aa0c324207cb29418f5bced2354c2e483a9523d98c3460af1ed
+
+  #- name: sqlite
+    #buildsystem: simple
+    #build-commands:
+       #- ./configure --prefix=/app --enable-fts5 --enable-fts3 --enable-rtree
+       #- make
+       #- make install
+    #sources:
+      #- type: archive
+        #url: https://www.sqlite.org/2021/sqlite-autoconf-3360000.tar.gz
+        #sha256: bd90c3eb96bee996206b83be7065c9ce19aef38c3f4fb53073ada0d0b69bbce3
+
+  - name: postgresql
+    config-opts:
+      - --disable-rpath
+      - --with-openssl
+    sources:
+      - type: archive
+        url : https://ftp.postgresql.org/pub/source/v12.2/postgresql-12.2.tar.bz2
+        sha256 : ad1dcc4c4fc500786b745635a9e1eba950195ce20b8913f50345bb7d5369b5de
+
+  - name: SOCI
+    buildsystem: cmake
+    config-opts:
+      - -DWITH_BOOST=ON
+      - -DWITH_EMPTY=ON
+      - -DWITH_SQLITE3=ON
+      - -DWITH_POSTGRESQL=ON
+      - -DWITH_MYSQL=ON
+      - -DWITH_ODBC=ON
+      - -DWITH_FIREBIRD=OFF
+      - -DWITH_DB2=OFF
+      - -DWITH_ORACLE=OFF
+      - -DSOCI_CXX11=ON
+      - -DSOCI_STATIC=OFF
+      - -DSOCI_TESTS=OFF
+    sources:
+      - type: git
+        url: git://github.com/SOCI/soci.git
+        tag: v4.0.2
+
+  - name: RStudio
+    buildsystem: cmake
+    config-opts:
+      - -DRSTUDIO_USE_SYSTEM_YAML_CPP=TRUE
+      - -DRSTUDIO_TARGET=Desktop
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DYAML_CPP_INCLUDE_DIR=/app/include
+      - -DBoost_INCLUDE_DIR=/app/include
+      - -DBOOST_ROOT=/app
+      - -DBOOST_LIBRARYDIR=/app/lib
+      #- -DQt5Core_DIR=/usr/lib/x86_64-linux-gnu/cmake/Qt5Core
+      #- -DQT_LIBRARY_DIR=/usr/lib/x86_64-linux-gnu
+      - -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake
+      #- -DRSTUDIO_INSTALL_FREEDESKTOP:BOOL=true
+      #- -DFLATPAK:BOOL=true
+      - -DSOCI_CORE_LIB=/app/lib
+      - -DSOCI_SQLITE_LIB=/app/lib
+      - -DSOCI_POSTGRESQL_LIB=/app/lib
+    build-options:
+      env:
+        ANT_HOME: /app
+        JAVA_HOME: /usr/lib/sdk/openjdk11/
+        BOOST_ROOT: /app
+      append-path: '$JAVA_HOME/bin:/usr/bin'
+      append-ld-library-path: /usr/lib/x86_64-linux-gnu
+    sources:
+      - type: git
+        url: 'https://github.com/rstudio/rstudio'
+        tag: v1.4.1717
+      - type: archive
+        url: https://s3.amazonaws.com/rstudio-buildtools/dictionaries/core-dictionaries.zip
+        sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
+        dest: dependencies/common/dictionaries
+      - type: archive
+        url: 'https://s3.amazonaws.com/rstudio-buildtools/mathjax-26.zip'
+        sha256: 939a2d7f37e26287970be942df70f3e8f272bac2eb868ce1de18bb95d3c26c71
+        dest: dependencies/common/mathjax-26
+      - type: archive
+        url: https://s3.amazonaws.com/rstudio-buildtools/pandoc/2.3.1/pandoc-2.3.1-linux.tar.gz
+        sha256: 859609cdba5af61aefd7c93d174e412d6a38f5c1be90dfc357158638ff5e7059
+        dest: dependencies/common/pandoc
+      - type: patch
+        path: 0001-Unbundle-mathjax-and-pandoc.patch
+      - type: patch
+        path: 0002-Don-t-install-pandoc-and-mathjax.patch
+      - type: patch
+        path: 0003-Fix-rstudio-exec-path.patch
+      - type: patch
+        path: 0004-Add-additional-includes-for-aarch64.patch
+      #- type: patch
+        #path: 0005-Use-system-hunspell.patch
+      - type: patch
+        path: 0006-Fix-libclang-usage.patch
+      - type: patch
+        path: 0007-use-system-node.patch
+      #- type: patch
+        #path:
