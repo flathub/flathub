@@ -7,6 +7,7 @@ base-version: '5.15'
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.openjdk11
   - org.freedesktop.Sdk.Extension.llvm12
+  - org.freedesktop.Sdk.Extension.node14
 command: rstudio
 rename-icon: rstudio
 rename-desktop-file: rstudio.desktop
@@ -17,7 +18,7 @@ finish-args:
   - '--filesystem=home'
   - '--talk-name=org.gnome.SessionManager'
   - '--device=dri'
-  #- '--env=PATH=/app/jre/bin:/usr/bin:/app/bin:/app/bin/x86_64-linux'
+  - '--env=PATH=/app/jre/bin:/usr/bin:/app/bin:/app/bin/x86_64-linux'
   - '--env=QTWEBENGINE_DISABLE_SANDBOX=1'
 #build-options:
   #cflags: '-O2'
@@ -133,35 +134,35 @@ modules:
         sha256: bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e
 
   - name: RStudio
-    buildsystem: cmake
-    config-opts:
-      - -DRSTUDIO_USE_SYSTEM_YAML_CPP=TRUE
-      - -DRSTUDIO_TARGET=Desktop
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DYAML_CPP_INCLUDE_DIR=/app/include
-      - -DBoost_INCLUDE_DIR=/app/include
-      - -DBOOST_ROOT=/app
-      - -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake
-      - -DSOCI_CORE_LIB=/app/lib/libsoci_core.so
-      - -DSOCI_SQLITE_LIB=/app/lib/libsoci_sqlite3.so
-      - -DSOCI_POSTGRESQL_LIB=/app/lib/libsoci_postgresql.so
-      - -DHUNSPELL_LIB=/usr/lib
-      - -DRSTUDIO_BUNDLE_QT=FALSE
+    buildsystem: simple
+    build-commands:
+      - "mkdir src/gwt/panmirror/src/editor/node_modules"
+      #- "cp -r node_modules_prod/* src/gwt/panmirror/src/editor/node_modules"
+      #- "cp -r node_modules_dev/* src/gwt/panmirror/src/editor/node_modules"
+      #- "rm -rf src/cpp/desktop/3rdparty src/cpp/ext/websocketpp"
+      #- "ln -sf %{_includedir}/rapidxml.h src/cpp/core/include/core/rapidxml/rapidxml.hpp"
+      #- "ln -sf %{_includedir}/websocketpp src/cpp/ext/websocketpp"
+      #- "rm -rf src/cpp/tests/cpp/tests/vendor"
+      #- "ln -sf %{_includedir}/catch2 src/cpp/tests/cpp/tests/vendor"
+      - "sed -i 's@gwt_build ALL@gwt_build@g' src/gwt/CMakeLists.txt"
+      - mkdir build
+      - cd build && cmake -DRSTUDIO_USE_SYSTEM_YAML_CPP=Yes -DRSTUDIO_TARGET=Desktop -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DYAML_CPP_INCLUDE_DIR=/app/include -DBoost_INCLUDE_DIR=/app/include -DRSTUDIO_USE_SYSTEM_BOOST=Yes -DBOOST_ROOT=/app -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake -DSOCI_CORE_LIB=/app/lib/libsoci_core.so -DSOCI_SQLITE_LIB=/app/lib/libsoci_sqlite3.so -DSOCI_POSTGRESQL_LIB=/app/lib/libsoci_postgresql.so -DHUNSPELL_LIB=/usr/lib/x86_64-linux-gnu/ -DRSTUDIO_BUNDLE_QT=FALSE ..
+      - cd build && cmake -B build .
+      - make -C build
+      - make -C build gwt_build
+      - make install -C build
     build-options:
       env:
         ANT_HOME: /app
         JAVA_HOME: /usr/lib/sdk/openjdk11/
-        LIBRARY_PATH: "/app/lib:/usr/lib"
-        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
       append-path: '$JAVA_HOME/bin:/usr/bin'
       append-ld-library-path: /usr/lib/x86_64-linux-gnu
       prepend-path: /usr/lib/sdk/llvm12/bin
-      prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
+      prepend-path: /usr/lib/node_modules/npm/bin/
     sources:
       - type: git
         url: 'https://github.com/rstudio/rstudio'
-        tag: v1.4.1717
+        tag: 2021.09.0+351
       - type: archive
         url: https://s3.amazonaws.com/rstudio-buildtools/dictionaries/core-dictionaries.zip
         sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
@@ -174,184 +175,47 @@ modules:
         url: https://s3.amazonaws.com/rstudio-buildtools/pandoc/2.3.1/pandoc-2.3.1-linux.tar.gz
         sha256: 859609cdba5af61aefd7c93d174e412d6a38f5c1be90dfc357158638ff5e7059
         dest: dependencies/common/pandoc
-      #- type: patch
-        #path: 0000-unbundle-dependencies-common.patch
+      - type: patch
+        path: 0000-unbundle-dependencies-common.patch
       #- type: patch
         #path: 0001-unbundle-qtsingleapplication.patch
-      #- type: patch
-        #path: 0003-fix-resources-path.patch
       - type: patch
-        path: 0001-Unbundle-mathjax-and-pandoc.patch
-      #- type: patch
-        #path: 0002-Don-t-install-pandoc-and-mathjax.patch
+        path: 0002-fix-rstudio-exec-path.patch
       - type: patch
-        path: 0003-Fix-rstudio-exec-path.patch
+        path: 0003-fix-resources-path.patch
       - type: patch
-        path: 0004-Add-additional-includes-for-aarch64.patch
-      - type: patch
-        path: 0005-Use-system-hunspell.patch
-      - type: patch
-        path: 0006-Fix-libclang-usage.patch
-      - type: patch
-        path: 0007-use-system-node.patch
-      - type: shell
-        commands:
-          - "rm -r src/cpp/core/include/core/libclang/clang-c/ src/cpp/core/spelling/hunspell/"
-          - "find src/cpp/core/zlib -type f -not -name '*.cpp' -delete"
-          - "sed -i 's@gwt_build ALL@gwt_build@g' src/gwt/CMakeLists.txt"
-          - "sed -i 's#LIBCLANG_PLACEHOLDER#/usr/lib/libclang.so.12#' src/cpp/core/libclang/LibClang.cpp"
-
-  #- name: RStudio
-    #buildsystem: simple
-    #build-commands:
-      #- mkdir build
-      #- rm -r src/cpp/core/include/core/libclang/clang-c/ src/cpp/core/spelling/hunspell/
-      #- find src/cpp/core/zlib -type f -not -name '*.cpp' -delete
-      ##- ln -sf /app/include/websocketpp src/cpp/ext/websocketpp
-      ##- ln -sf /app/include/rapidjson src/cpp/shared_core/include/shared_core/json/rapidjson
-      #- sed -i 's@gwt_build ALL@gwt_build@g' src/gwt/CMakeLists.txt
-      #- sed -i 's#LIBCLANG_PLACEHOLDER#/usr/lib/libclang.so.12#' src/cpp/core/libclang/LibClang.cpp
-      #- cd build && cmake -DRSTUDIO_USE_SYSTEM_YAML_CPP=TRUE -DRSTUDIO_TARGET=Desktop -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DYAML_CPP_INCLUDE_DIR=/app/include -DBoost_INCLUDE_DIR=/app/include -DBOOST_ROOT=/app -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake -DSOCI_CORE_LIB=/app/lib/libsoci_core.so -DSOCI_SQLITE_LIB=/app/lib/libsoci_sqlite3.so -DSOCI_POSTGRESQL_LIB=/app/lib/libsoci_postgresql.so -DHUNSPELL_LIB=/usr/lib -DRSTUDIO_BUNDLE_QT=FALSE ..
-      #- cd build && make && make gwt_build
-    #build-options:
-      #env:
-        #ANT_HOME: /app
-        #JAVA_HOME: /usr/lib/sdk/openjdk11/
-        #BOOST_ROOT: /app
-      #append-path: '$JAVA_HOME/bin:/usr/bin'
-      #append-ld-library-path: /usr/lib/x86_64-linux-gnu
-      #prepend-path: /usr/lib/sdk/llvm12/bin
-      #prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
-    #sources:
-      #- type: git
-        #url: 'https://github.com/rstudio/rstudio'
-        #tag: v1.4.1717
-      #- type: archive
-        #url: https://s3.amazonaws.com/rstudio-buildtools/dictionaries/core-dictionaries.zip
-        #sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
-        #dest: dependencies/common/dictionaries
-      #- type: archive
-        #url: 'https://s3.amazonaws.com/rstudio-buildtools/mathjax-26.zip'
-        #sha256: 939a2d7f37e26287970be942df70f3e8f272bac2eb868ce1de18bb95d3c26c71
-        #dest: dependencies/common/mathjax-26
-      #- type: archive
-        #url: https://s3.amazonaws.com/rstudio-buildtools/pandoc/2.3.1/pandoc-2.3.1-linux.tar.gz
-        #sha256: 859609cdba5af61aefd7c93d174e412d6a38f5c1be90dfc357158638ff5e7059
-        #dest: dependencies/common/pandoc
-      ##- type: patch
-        ##path: 0000-unbundle-dependencies-common.patch
-      ##- type: patch
-        ##path: 0001-unbundle-qtsingleapplication.patch
-      ##- type: patch
-        ##path: 0003-fix-resources-path.patch
-      #- type: patch
-        #path: 0001-Unbundle-mathjax-and-pandoc.patch
-      ##- type: patch
-        ##path: 0002-Don-t-install-pandoc-and-mathjax.patch
-      #- type: patch
-        #path: 0003-Fix-rstudio-exec-path.patch
-      #- type: patch
-        #path: 0004-Add-additional-includes-for-aarch64.patch
-      #- type: patch
-        #path: 0005-Use-system-hunspell.patch
-      #- type: patch
-        #path: 0006-Fix-libclang-usage.patch
-      #- type: patch
-        #path: 0007-use-system-node.patch
-      #- type: shell
-        #commands:
-          #- ""
-
-  #- name: RStudio
-    #buildsystem: simple
-    #build-commands:
-      #- mkdir build
-      #- rm -r src/cpp/core/include/core/libclang/clang-c/ src/cpp/core/spelling/hunspell/ src/cpp/ext/websocketpp src/cpp/shared_core/include/shared_core/json/rapidjson/
-      #- find src/cpp/core/zlib -type f -not -name '*.cpp' -delete
-      #- ln -sf /app/include/websocketpp src/cpp/ext/websocketpp
-      #- ln -sf /app/include/rapidjson src/cpp/shared_core/include/shared_core/json/rapidjson
-      #- sed -i 's@gwt_build ALL@gwt_build@g' src/gwt/CMakeLists.txt
-      #- sed -i 's#LIBCLANG_PLACEHOLDER#/usr/lib/libclang.so.12#' src/cpp/core/libclang/LibClang.cpp
-      #- cd build && cmake -DRSTUDIO_USE_SYSTEM_YAML_CPP=TRUE -DRSTUDIO_TARGET=Desktop -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DYAML_CPP_INCLUDE_DIR=/app/include -DBoost_INCLUDE_DIR=/app/include -DBOOST_ROOT=/app -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake -DSOCI_CORE_LIB=/app/lib/libsoci_core.so -DSOCI_SQLITE_LIB=/app/lib/libsoci_sqlite3.so -DSOCI_POSTGRESQL_LIB=/app/lib/libsoci_postgresql.so -DHUNSPELL_LIB=/usr/lib -DRSTUDIO_BUNDLE_QT=FALSE ..
-      #- cd build && make && make gwt_build
-    #build-options:
-      #env:
-        #ANT_HOME: /app
-        #JAVA_HOME: /usr/lib/sdk/openjdk11/
-        #BOOST_ROOT: /app
-      #append-path: '$JAVA_HOME/bin:/usr/bin'
-      #append-ld-library-path: /usr/lib/x86_64-linux-gnu
-      #prepend-path: /usr/lib/sdk/llvm12/bin
-      #prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
-    #sources:
-      #- type: git
-        #url: 'https://github.com/rstudio/rstudio'
-        #tag: v1.4.1717
-      #- type: archive
-        #url: https://s3.amazonaws.com/rstudio-buildtools/dictionaries/core-dictionaries.zip
-        #sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
-        #dest: dependencies/common/dictionaries
-      #- type: archive
-        #url: 'https://s3.amazonaws.com/rstudio-buildtools/mathjax-26.zip'
-        #sha256: 939a2d7f37e26287970be942df70f3e8f272bac2eb868ce1de18bb95d3c26c71
-        #dest: dependencies/common/mathjax-26
-      #- type: archive
-        #url: https://s3.amazonaws.com/rstudio-buildtools/pandoc/2.3.1/pandoc-2.3.1-linux.tar.gz
-        #sha256: 859609cdba5af61aefd7c93d174e412d6a38f5c1be90dfc357158638ff5e7059
-        #dest: dependencies/common/pandoc
-      ##- type: patch
-        ##path: 0000-unbundle-dependencies-common.patch
-      ##- type: patch
-        ##path: 0001-unbundle-qtsingleapplication.patch
-      ##- type: patch
-        ##path: 0003-fix-resources-path.patch
-      #- type: patch
-        #path: 0001-Unbundle-mathjax-and-pandoc.patch
-      ##- type: patch
-        ##path: 0002-Don-t-install-pandoc-and-mathjax.patch
-      #- type: patch
-        #path: 0003-Fix-rstudio-exec-path.patch
-      #- type: patch
-        #path: 0004-Add-additional-includes-for-aarch64.patch
-      #- type: patch
-        #path: 0005-Use-system-hunspell.patch
-      ##- type: patch
-        ##path: 0006-Fix-libclang-usage.patch
-      #- type: patch
-        #path: 0007-use-system-node.patch
-      ##- type: patch
-        ##path:
+        path: 0004-use-system-node.patch
 
   #- name: RStudio
     #buildsystem: cmake
     #config-opts:
-      #- -DRSTUDIO_CMAKE_COMPILER_INCLUDED=NO
-      #- -DCMAKE_C_COMPILER=/usr/bin/gcc
-      #- -DCMAKE_CXX_COMPILER=/usr/bin/g++
-      #- -DRSTUDIO_USE_SYSTEM_YAML_CPP=TRUE
+      #- -DRSTUDIO_USE_SYSTEM_YAML_CPP=Yes
       #- -DRSTUDIO_TARGET=Desktop
+      ##- -DRSTUDIO_SERVER=TRUE
       #- -DCMAKE_BUILD_TYPE=Release
       #- -DCMAKE_INSTALL_PREFIX=/app
       #- -DYAML_CPP_INCLUDE_DIR=/app/include
       #- -DBoost_INCLUDE_DIR=/app/include
+      #- -DRSTUDIO_USE_SYSTEM_BOOST=Yes
       #- -DBOOST_ROOT=/app
       #- -DQT_QMAKE_EXECUTABLE=/usr/bin/qmake
       #- -DSOCI_CORE_LIB=/app/lib/libsoci_core.so
       #- -DSOCI_SQLITE_LIB=/app/lib/libsoci_sqlite3.so
       #- -DSOCI_POSTGRESQL_LIB=/app/lib/libsoci_postgresql.so
-      #- -DHUNSPELL_LIB=/usr/lib
+      #- -DHUNSPELL_LIB=/usr/lib/x86_64-linux-gnu/
       #- -DRSTUDIO_BUNDLE_QT=FALSE
     #build-options:
       #env:
         #ANT_HOME: /app
         #JAVA_HOME: /usr/lib/sdk/openjdk11/
-        #BOOST_ROOT: /app
       #append-path: '$JAVA_HOME/bin:/usr/bin'
       #append-ld-library-path: /usr/lib/x86_64-linux-gnu
+      #prepend-path: /usr/lib/sdk/llvm12/bin
+      #prepend-path: /usr/lib/node_modules/npm/bin/
     #sources:
       #- type: git
         #url: 'https://github.com/rstudio/rstudio'
-        #tag: v1.4.1717
+        #tag: 2021.09.0+351
       #- type: archive
         #url: https://s3.amazonaws.com/rstudio-buildtools/dictionaries/core-dictionaries.zip
         #sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
@@ -364,25 +228,25 @@ modules:
         #url: https://s3.amazonaws.com/rstudio-buildtools/pandoc/2.3.1/pandoc-2.3.1-linux.tar.gz
         #sha256: 859609cdba5af61aefd7c93d174e412d6a38f5c1be90dfc357158638ff5e7059
         #dest: dependencies/common/pandoc
-      ##- type: patch
-        ##path: 0000-unbundle-dependencies-common.patch
+      #- type: patch
+        #path: 0000-unbundle-dependencies-common.patch
       ##- type: patch
         ##path: 0001-unbundle-qtsingleapplication.patch
-      ##- type: patch
-        ##path: 0003-fix-resources-path.patch
       #- type: patch
-        #path: 0001-Unbundle-mathjax-and-pandoc.patch
-      ##- type: patch
-        ##path: 0002-Don-t-install-pandoc-and-mathjax.patch
+        #path: 0002-fix-rstudio-exec-path.patch
       #- type: patch
-        #path: 0003-Fix-rstudio-exec-path.patch
+        #path: 0003-fix-resources-path.patch
       #- type: patch
-        #path: 0004-Add-additional-includes-for-aarch64.patch
-      #- type: patch
-        #path: 0005-Use-system-hunspell.patch
-      ##- type: patch
-        ##path: 0006-Fix-libclang-usage.patch
-      #- type: patch
-        #path: 0007-use-system-node.patch
-      ##- type: patch
-        ##path:
+        #path: 0004-use-system-node.patch
+      #- type: shell
+        #commands:
+          #- "mkdir src/gwt/panmirror/src/editor/node_modules"
+          ##- "cp -r node_modules_prod/* src/gwt/panmirror/src/editor/node_modules"
+          ##- "cp -r node_modules_dev/* src/gwt/panmirror/src/editor/node_modules"
+          ##- "rm -rf src/cpp/desktop/3rdparty src/cpp/ext/websocketpp"
+          ##- "ln -sf %{_includedir}/rapidxml.h src/cpp/core/include/core/rapidxml/rapidxml.hpp"
+          ##- "ln -sf %{_includedir}/websocketpp src/cpp/ext/websocketpp"
+          ##- "rm -rf src/cpp/tests/cpp/tests/vendor"
+          ##- "ln -sf %{_includedir}/catch2 src/cpp/tests/cpp/tests/vendor"
+          #- "sed -i 's@gwt_build ALL@gwt_build@g' src/gwt/CMakeLists.txt"
+
