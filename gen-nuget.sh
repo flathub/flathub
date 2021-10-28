@@ -1,4 +1,6 @@
 #!/bin/bash
+# You can also use https://github.com/flatpak/flatpak-builder-tools/tree/master/dotnet
+#   if you want to execute dotnet from flatpak runtime extension
 PWDD="$(pwd)"
 DIR="$HOME/.nuget/packages"
 cd $DIR
