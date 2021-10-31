@@ -7,6 +7,7 @@ sdk-extensions:
 rename-desktop-file: HMCL.desktop
 rename-appdata-file: HMCL.appdata.xml
 rename-icon: HMCL
+separate-locales: false
 command: HMCL
 finish-args:
   - --share=network
@@ -15,33 +16,65 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
   - --persist=.minecraft
-  - --env=PATH=/app/jre/bin:/usr/bin:/app/bin
+  - --env=PATH=/app/jre/bin:/app/jre-8/bin:/usr/bin:/app/bin
+
+add-extensions:
+  org.freedesktop.Sdk.Extension.openjdk8:
+    version: '21.08'
+    directory: jdk-8 # this is relative to /app
+    no-autodownload: true
 
 modules:
+  - name: flite
+    config-opts:
+      - --enable-shared
+      - --with-audio=alsa
+      - --with-vox=cmu_us_kal16
+    cleanup:
+      - "*.a"
+      - "/include"
+      - "/share"
+    sources:
+      - type: git
+        url: https://github.com/festvox/flite.git
+        tag: v2.2
+        commit: e9e2e37c329dbe98bfeb27a1828ef9a71fa84f88
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+
+  - name: xrandr
+    sources:
+      - type: archive
+        url: https://www.x.org/archive/individual/app/xrandr-1.5.1.tar.gz
+        sha256: 7b99edb7970a1365eaf5bcaf552144e4dfc3ccf510c4abc08569849929fb366e
+
   - name: jre
     buildsystem: simple
     build-commands:
-      - /usr/lib/sdk/openjdk17/install.sh
-
-  - name: javafx
-    buildsystem: simple
-    build-commands:
-      - mkdir -p /app/javafx
-      - cp -r ./ /app/javafx
+      - mkdir -p /app/jdk-8
+      - ln -s jdk-8/jvm/java-8-openjdk /app/jre-8
+      - . /usr/lib/sdk/openjdk17/enable.sh && 
+        jlink --strip-debug --no-header-files --no-man-pages --compress=1  
+          --module-path $JAVA_HOME/jmods:. 
+          --add-modules ALL-MODULE-PATH --output 
+          /app/jre
     sources:
       - type: archive
         only-arches: [x86_64]
-        url: https://download2.gluonhq.com/openjfx/17.0.1/openjfx-17.0.1_linux-x64_bin-sdk.zip
-        sha256: bb901fa4cfc5d1a2ded2d03c0d4782d47dec6a6a4dc344f48e6f2096b1008569
+        url: https://download2.gluonhq.com/openjfx/17.0.1/openjfx-17.0.1_linux-x64_bin-jmods.zip
+        sha256: 28662b6fcdaedaaf23ee6dbef2d632bf2a53e30aaa9231f27e00e6ceb10238a0
       - type: archive
         only-arches: [aarch64]
-        url: https://download2.gluonhq.com/openjfx/17.0.1/openjfx-17.0.1_linux-aarch64_bin-sdk.zip
-        sha256: 16b647e6cbb9dc5c4b3547ce0ab5b57ff9f78497437180af5badc6f2ce45ba60
+        url: https://download2.gluonhq.com/openjfx/17.0.1/openjfx-17.0.1_linux-aarch64_bin-jmods.zip
+        sha256: 40525cc333f48acbc62657f5cfbc30635940c4bc61d42f6a1e19ab3e208b2744
 
   - name: HMCL
     buildsystem: simple
     build-commands:
       - exit 0
+    build-options:
+      no-debuginfo: true
     post-install:
       - install -Dm644 HMCL.jar -t /app/HMCL
       - install -Dm755 HMCL.sh /app/bin/HMCL
@@ -51,8 +84,13 @@ modules:
     sources:
       - type: file
         dest-filename: HMCL.jar 
-        url: http://ci.huangyuhui.net/job/HMCL/lastSuccessfulBuild/artifact/HMCL/build/libs/HMCL-3.4.208.jar
-        sha256: 7ec4e6c257443cfc0434369a233be1358707b91b3b0e80b276022a13ec8d5625
+        url: http://ci.huangyuhui.net/job/HMCL/209/artifact/HMCL/build/libs/HMCL-3.4.209.jar
+        sha256: 97aeedb1a4a3ba78ede7423122eca185179df4a85f529e419f7d9c619bf2e1fc
+        x-checker-data: 
+          type: json
+          url: 'https://ci.huangyuhui.net/job/HMCL/lastSuccessfulBuild/api/json?pretty=true'
+          version-query: .artifacts[0].fileName | gsub("^HMCL-|.exe"; "")
+          url-query: .url + "artifact/" + (.artifacts[] | select(.fileName=="HMCL-" + $version + ".jar") | .relativePath)
 
       - type: file
         path: HMCL.desktop
@@ -67,8 +105,5 @@ modules:
         dest-filename: HMCL.sh
         commands:
           - mkdir -p $XDG_DATA_HOME/HMCL
-          - cd $XDG_DATA_HOME/HMCL || (echo "Cann't open $XDG_DATA_HOME/HMCL" && exit 1)
-          - exec java 
-            --module-path /app/javafx/lib 
-            --add-modules=javafx.base,javafx.fxml,javafx.graphics,javafx.media,javafx.swing,javafx.web,javafx.controls 
-            -jar /app/HMCL/HMCL.jar
+          - cd $XDG_DATA_HOME/HMCL || (echo "Can't open $XDG_DATA_HOME/HMCL" && exit 1)
+          - exec java -jar /app/HMCL/HMCL.jar
