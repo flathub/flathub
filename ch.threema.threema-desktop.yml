@@ -1,0 +1,64 @@
+app-id: ch.threema.threema-desktop
+runtime: org.freedesktop.Platform
+runtime-version: '20.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '20.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+build-options:
+  append-path: /usr/lib/sdk/node14/bin
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+    DEV_ENV: development
+    threema_web_version: threema-web-2.3.17
+modules:
+  - name: threema-desktop
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/threema-desktop/flatpak-node/cache
+        npm_config_cache: /run/build/threema-desktop/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+    sources:
+      - type: git
+        url: https://github.com/threema-ch/threema-web-electron.git
+        tag: release-1.0.3-latest
+        commit: 6ecc07bfe174bb2116057629931ae11995083e6f
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/threema-web "$@"
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Patch #1 for Threema Web
+      - ./tools/patches/patch-threema-web.sh
+      # Build Threema Web
+      - npm run app:build:web
+      # Patch #2 for Threema Web
+      - ./tools/patches/post-patch-threema-web.sh
+      # Build Threema Electron
+      - npm run app:install
+      # Patch #3 for Threema Web (linux-deb really just means "linux")
+      - node tools/patches/post-patch-threema-web.js linux-deb consumer
+      # Here, linux:deb also just means "linux", effectively
+      - npm run electron:dist:linux:deb:consumer
+      # This would actually package .deb
+      #- npm run electron:package:linux:deb:consumer
+      # Bundle app and dependencies
+      - cp -a app/build/dist-electron/packaged/Threema-linux-x64 /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ run.sh
