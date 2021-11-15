@@ -1,0 +1,71 @@
+app-id: social.whalebird.WhalebirdDesktop
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+command: start-whalebird.sh
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gtk.vfs.*
+  - --filesystem=/run/dbus:ro
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-download
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=com.canonical.Unity.LauncherEntry
+modules:
+  - name: whalebird
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node16
+        ELECTRON_CACHE: /run/build/whalebird/flatpak-node/electron-cache
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        OFFLINE: '1'
+        TMPDIR: /run/build/whalebird/flatpak-node/tmp
+        XDG_CACHE_HOME: /run/build/whalebird/flatpak-node/cache
+    build-commands:
+      - jq 'del(.linux.target)'  <<<$(<electron-builder.json) > electron-builder.json
+      - jq '.linux.target[0].target="dir"' <<<$(<electron-builder.json) > electron-builder.json
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror ./flatpak-node/yarn-mirror
+      - yarn --offline 
+      # equiv to yarn build:linux
+      - yarn --offline build
+      - yarn --offline package:linux 
+      - cp -r build/linux-unpacked* /app/whalebird
+      - install -Dm755 -t /app/bin ./start-whalebird.sh
+    post-install:
+      - install -D social.whalebird.WhalebirdDesktop.desktop -t /app/share/applications/
+      - install -D social.whalebird.WhalebirdDesktop.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 build/icons/icon.iconset/icon_16x16.png /app/share/icons/hicolor/16x16/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icons/icon.iconset/icon_32x32.png /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icons/icon.iconset/icon_128x128.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png 
+      - install -Dm644 build/icons/icon.iconset/icon_256x256.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/h3poteto/whalebird-desktop.git
+        tag: '4.4.6'
+        commit: 2359b76198662407ef8ce55e80d77703befcaf98
+      - type: script
+        dest-filename: start-whalebird.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - GTK_USE_PORTAL=1
+          - FLATPAK_HOST=1 zypak-wrapper.sh /app/whalebird/whalebird "$@"
+      - type: file
+        path: social.whalebird.WhalebirdDesktop.desktop
+      - type: file
+        path: social.whalebird.WhalebirdDesktop.metainfo.xml
+      - generated-sources.json
