@@ -1,0 +1,67 @@
+app-id: io.parmentier.flatpak.streamdeck
+base-version: '5.15'
+runtime: org.kde.Platform
+runtime-version: '5.15'
+sdk: org.kde.Sdk
+command: streamdeck
+finish-ars:
+  - --socket=x11
+  - --socket=session-bus
+  - --device=all
+modules:
+  - shared-modules/libusb/libusb.json
+
+  - name: hidapi
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap
+      - ./configure --prefix=/app
+      - make
+      - make install
+    cleanup:
+      - /lib/*.la
+      - /lib/pkgconfig
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/libusb/hidapi.git
+        tag: hidapi-0.11.0
+    post-install:
+      - mkdir -p /app/share/licenses/hidapi/
+      - install -Dm644 LICENSE.txt LICENSE-bsd.txt LICENSE-orig.txt /app/share/licenses/hidapi/
+
+  - name: udev
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/gentoo/eudev/archive/v3.2.7.tar.gz
+        sha512: 17c1894c6e85ddcef259e3e10c21ff7f36567dec377c279cc423c14957d3de97c88aa6eb4cab7cab5ffbdbf80cc63b52af8da592bf226affd21dd9edb74203ed
+
+  - name: pyside2
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTS=OFF
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.2-src/pyside-setup-opensource-src-5.15.2.tar.xz
+        sha256: b306504b0b8037079a8eab772ee774b9e877a2d84bab2dbefbe4fa6f83941418
+      - type: shell
+        commands:
+          - mkdir -p /app/include/qt5tmp && cp -R /usr/include/Qt* /app/include/qt5tmp # https://bugreports.qt.io/browse/PYSIDE-787
+          - sed -i 's|\(--include-paths=\)|\1/app/include/qt5tmp:|' sources/pyside2/cmake/Macros/PySideModules.cmake
+
+  - name: streamdeck-ui
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app .
+    build-options:
+      build-args:
+        - --share=network
+    sources:
+      - type: git
+        url: https://github.com/timothycrosley/streamdeck-ui.git
+        tag: v1.1.2
