@@ -1,6 +1,6 @@
-app-id: io.github.peazip.PeaZip.i386
+app-id: io.github.peazip.PeaZip.Addon.i386
 runtime: io.github.peazip.PeaZip
-runtime-version: stable
+runtime-version: master #stable
 sdk: org.freedesktop.Sdk//21.08
 sdk-extensions:
   - org.freedesktop.Sdk.Compat.i386
@@ -9,14 +9,19 @@ build-extension: true
 separate-locales: false
 appstream-compose: false
 
+finish-args:
+  - "--metadata=Extra Data=NoRuntime=false"
+
 build-options:
-  prefix: /app/lib/i386-linux-gnu
+  prefix: /app/Addon/i386
+  env:
+    LIB_DIR: /app/Addon/i386/lib/i386-linux-gnu
 
 x-compat-i386-opts: &compat_i386_opts
-  prepend-pkg-config-path: /app/lib/i386-linux-gnu/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
-  ldflags: -L/app/lib/i386-linux-gnu
+  prepend-pkg-config-path: /app/Addon/i386/lib/i386-linux-gnu/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/Addon/i386/lib/i386-linux-gnu
+  libdir: /app/Addon/i386/lib/i386-linux-gnu
   append-path: /usr/lib/sdk/toolchain-i386/bin
-  libdir: /app/lib/i386-linux-gnu
   env:
     CC: i686-unknown-linux-gnu-gcc
     CXX: i686-unknown-linux-gnu-g++
@@ -44,7 +49,7 @@ modules:
     config-opts:
       - ABI=32
     post-install:
-      - ln -s libgmp.so $FLATPAK_DEST/libgmp.so.3
+      - cd $LIB_DIR && ln -s libgmp.so libgmp.so.3
     cleanup:
       - /bin
       - /include
@@ -61,37 +66,21 @@ modules:
     build-options:
       append-ld-library-path: /app/lib/i386-linux-gnu
     build-commands:
-      - $FLATPAK_DEST/bin/7z x addition.7z > /dev/null
+      - 7z x addition.7z > /dev/null
       - chmod 755 -R .
-      - mkdir $FLATPAK_DEST/peazip 
-      - mv peazip*/{arc,lpaq,paq,quad,zpaq} $FLATPAK_DEST/peazip
+      - mkdir -p ${FLATPAK_DEST}/formats
+      - mv peazip*/{arc,lpaq,paq,quad,zpaq} ${FLATPAK_DEST}/formats
       - |
-        cd $FLATPAK_DEST/peazip
+        cd ${FLATPAK_DEST}/formats
         ldd */* 2>/dev/null | grep -oE "=> [^=[:space:]]+" | grep "/usr/lib/i386" | cut -b 4- | sort -u > ia32.txt
-        echo "/usr/lib/i386-linux-gnu/ld-linux.so.2" >> ia32.txt
-        cat ia32.txt | xargs -i install -C -Dm755 -t $FLATPAK_DEST {}
+        echo /usr/lib/i386-linux-gnu/ld-linux.so.? >> ia32.txt
+        cat ia32.txt | xargs -i install -C -Dm755 -t $LIB_DIR {}
 
     sources:
       - type: file
         dest-filename: addition.7z
         url: https://downloads.sourceforge.net/project/peazip/Resources/PeaZip%20Additional%20Formats%20Plugin/peazip_additional_formats_plugin-LINUX-4.7z
         sha256: 49a2681f99b1d7c2e2156b09884adbfd23b06e12e3176cc04f35099ed822cd98
-
-    modules:
-      - name: p7zip
-        no-autogen: true
-        make-args:
-          - 7z
-        cleanup:
-          - '*'
-        sources:
-          - type: git
-            url: https://github.com/jinfeihan57/p7zip.git
-            tag: v17.04
-
-          - type: shell
-            commands:
-              - sed -i "s:/usr/local:${FLATPAK_DEST}:g" makefile.common
 
   - name: script
     buildsystem: simple
@@ -101,4 +90,25 @@ modules:
         ${FLATPAK_ID}
     sources:
       - type: file
-        path: io.github.peazip.PeaZip.i386.appdata.xml
+        path: io.github.peazip.PeaZip.Addon.i386.appdata.xml
+
+  - name: unace
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra -t ${FLATPAK_DEST}/bin
+      - install -Dm755 /usr/bin/ar -t ${FLATPAK_DEST}/bin
+      - install -Dm755 /usr/lib/$(gcc -print-multiarch)/libbfd-*.so -t ${FLATPAK_DEST}/lib
+      - cd ${FLATPAK_DEST}/formats && ln -sv ../extra/unace unace  
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - ar x *.deb $(ar t *.deb|grep data) && tar -xaf data.* && rm data.* *.deb
+          - install -D -t unace usr/local/share/PeaZip/res/unace/*
+          - rm -rf usr
+
+      - type: extra-data
+        filename: unace.deb
+        url: https://downloads.sourceforge.net/project/peazip/Resources/PeaZip%20UNACE%20Plugin/peazip-unace-plugin-linux_3-2_all.deb
+        sha256: 66f160322820799a7a803aeaf0f73cf367350667ea7f5f76e962de03cf6b0c22
+        size: 203740
