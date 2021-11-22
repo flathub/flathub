@@ -1,0 +1,127 @@
+---
+app-id: in.srev.guiscrcpy
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+command: guiscrcpy
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '21.08'
+    add-ld-path: "."
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+
+finish-args:
+  - "--share=network"
+  - "--share=ipc"
+  - "--socket=x11"
+  - "--socket=wayland"
+  - "--device=all"
+
+modules:
+  - shared-modules/libusb/libusb.json
+
+  # https://github.com/nexustar/scrcpy-flatpak
+  - name: scrcpy
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+      - --strip
+      - -Db_lto=true
+      - -Dprebuilt_server=scrcpy-server-v1.20
+    sources:
+      - type: archive
+        url: https://github.com/Genymobile/scrcpy/archive/refs/tags/v1.20.tar.gz
+        sha256: 0c667e7de043a67a740be99d3f236a7aa4107ff62c408e7c462f4fe291f045a7
+      - type: file
+        url: https://github.com/Genymobile/scrcpy/releases/download/v1.20/scrcpy-server-v1.20
+        sha256: b20aee4951f99b060c4a44000ba94de973f9604758ef62beb253b371aad3df34
+
+  - name: adb
+    buildsystem: simple
+    build-commands:
+      - install -D adb /app/bin/adb
+    sources:
+      - type: archive
+        url: https://dl.google.com/android/repository/platform-tools_r30.0.1-linux.zip
+        sha256: b30ee914045fe52b50f058d66baa10205500ea410f71457aec04b70ceb14da8b
+
+  - generated-poetry-sources.json
+
+  # https://github.com/flathub/org.frescobaldi.Frescobaldi/blob/c73dd9f729f8a9c908870653db0cfee5f70d8991/org.frescobaldi.Frescobaldi.yaml#L207
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --bindir=/app/bin
+        --destdir=/app/lib/python3.9/site-packages
+        --incdir=/app/include
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3.9/site-packages
+        --sip-module=PyQt5.sip
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://distfiles.macports.org/py-sip/sip-4.19.24.tar.gz
+        sha256: edcd3790bb01938191eef0f6117de0bf56d1136626c0ddb678f3a558d62e41e5
+    cleanup:
+      - /bin
+
+  - name: PyQt5
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+    config-opts:
+      - --confirm-license
+      - --bindir=/app/bin
+      - --destdir=/app/lib/python3.9/site-packages
+      - --sipdir=/app/share/sip
+      - --sip-incdir=/app/include
+      - --stubsdir=/app/lib/python3.9/site-packages/PyQt5
+      - --no-designer-plugin
+      - --no-qml-plugin
+      - --enable QtCore
+      - --enable QtGui
+      - --enable QtNetwork
+      - --enable QtSvg
+      - --enable QtWidgets
+      - QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.9/'
+      - QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.9/'
+    cleanup:
+      - /bin
+      - /include
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/28/6c/640e3f5c734c296a7193079a86842a789edb7988dca39eab44579088a1d1/PyQt5-5.15.2.tar.gz
+        sha256: 372b08dc9321d1201e4690182697c5e7ffb2e0770e6b4a45519025134b12e4fc
+
+      - type: script
+        dest-filename: configure
+        commands:
+          - processed=`sed -e 's|prefix|sysroot|' <<< $@`
+          - python3 configure.py $processed
+
+  - name: "guiscrcpy"
+    buildsystem: "simple"
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --find-links="file://${PWD}" --no-index poetry-core==1.0.7 ./guiscrcpy*.whl 
+    sources:
+      - type: file 
+        url: https://github.com/srevinsaju/guiscrcpy/releases/download/v4.11.2/guiscrcpy-4.11.2-py3-none-any.whl
+        sha256: 514ea4cf4c0e0be31108579e57bbae0e7c70da5c488c2c887aef93428b52ece5
+      - type: git
+        url: https://github.com/srevinsaju/guiscrcpy
+        commit: 32035f9aee4c2a37aa8a17c24ac9a254d9fa09db
+      - type: file
+        url: https://files.pythonhosted.org/packages/09/79/5ab16fbf2d9354c242e9f9e784d604dd06842405f7797e71238f3c053200/poetry_core-1.0.7-py2.py3-none-any.whl
+        sha256: 4f8a7f5390d772f42c4c4c3f188e6424b802cb4b57466c6633a1b9ac36f18a43
+    post-install: 
+      - install -D appimage/guiscrcpy.appdata.xml /app/share/metainfo/in.srev.guiscrcpy.appdata.xml
+      - desktop-file-edit --set-key=Icon --set-value=in.srev.guiscrcpy ./appimage/guiscrcpy.desktop
+      - install -D appimage/guiscrcpy.desktop /app/share/applications/in.srev.guiscrcpy.desktop
+      - install -D appimage/guiscrcpy-128.png /app/share/app-info/icons/flatpak/128x128/in.srev.guiscrcpy.png
+      - install -D appimage/guiscrcpy-256.png /app/share/app-info/icons/flatpak/256x256/in.srev.guiscrcpy.png
+      - install -D appimage/guiscrcpy.png /app/share/icons/hicolor/scalable/apps/in.srev.guiscrcpy.png
+
