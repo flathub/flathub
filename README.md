@@ -14,6 +14,9 @@ flatpak install --user flathub org.godotengine.Godot -y
 Once the Flatpak is installed, you can run Godot using your desktop environment's
 application launcher.
 
+**Looking to package a Godot project as a Flatpak ?**
+See [flathub/org.godotengine.godot.BaseApp](https://github.com/flathub/org.godotengine.godot.BaseApp).
+
 ## Updating
 
 This Flatpak follows the latest stable Godot version.
