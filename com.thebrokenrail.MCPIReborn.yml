@@ -1,0 +1,193 @@
+app-id: com.thebrokenrail.MCPIReborn
+
+# MCPI Itself Is Proprietary
+tags:
+  - proprietary
+
+# Runtime/SDK
+runtime: org.freedesktop.Platform
+# Newer Runtimes Don't Support ARM Multiarch
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+
+# Startup Command
+command: minecraft-pi-reborn-client
+
+# Permissions
+finish-args:
+  - --persist=.minecraft-pi
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --allow=multiarch
+
+# Multiarch
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.arm
+  - org.freedesktop.Sdk.Extension.toolchain-arm
+
+# Desktop
+rename-desktop-file: minecraft-pi-reborn-client.desktop
+rename-icon: minecraft-pi-reborn-client
+
+# MCPI-Reborn Git
+x-mcpi-reborn-git: &mcpi-reborn-git
+  type: git
+  url: https://gitea.thebrokenrail.com/TheBrokenRail/minecraft-pi-reborn.git
+  branch: 2.2.8-flatpak
+  disable-shallow-clone: true
+
+# Build
+modules:
+  # Zenity
+  - name: zenity
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/zenity.git
+        branch: 3.41.0
+  # QEMU
+  - name: qemu-arm
+    config-opts:
+      - --prefix=/app
+      - --target-list=arm-linux-user
+      - --enable-linux-user
+      - --disable-debug-info
+      - --disable-bsd-user
+      - --disable-werror
+      - --disable-system
+      - --disable-tools
+      - --disable-docs
+      - --disable-gtk
+      - --disable-gnutls
+      - --disable-nettle
+      - --disable-gcrypt
+      - --disable-glusterfs
+      - --disable-libnfs
+      - --disable-libiscsi
+      - --disable-vnc
+      - --disable-kvm
+      - --disable-libssh
+      - --disable-libxml2
+      - --disable-vde
+      - --disable-sdl
+      - --disable-opengl
+      - --disable-xen
+      - --disable-fdt
+      - --disable-vhost-net
+      - --disable-vhost-crypto
+      - --disable-vhost-user
+      - --disable-vhost-vsock
+      - --disable-vhost-scsi
+      - --disable-tpm
+      - --disable-qom-cast-debug
+      - --disable-capstone
+      - --disable-zstd
+      - --disable-linux-io-uring
+      - --disable-bpf
+    cleanup:
+      - /share
+    sources:
+      - type: archive
+        url: https://download.qemu.org/qemu-6.2.0.tar.xz
+        sha256: 68e15d8e45ac56326e0b9a4afa8b49a3dfe8aba3488221d098c84698bca65b45
+      - type: patch
+        path: qemu-arm.patch
+  # MCPI-Reborn Native Code
+  - name: minecraft-pi-reborn-native
+    buildsystem: cmake
+    config-opts:
+      - -DMCPI_USE_MEDIA_LAYER_PROXY=ON
+      - -DMCPI_BUILD_MODE=native
+      # Use GCC
+      - -DCMAKE_C_COMPILER=gcc
+      - -DCMAKE_CXX_COMPILER=g++
+    sources:
+      - *mcpi-reborn-git
+    # Nested Build
+    modules:
+      # GLFW
+      - name: glfw
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DBUILD_SHARED_LIBS:BOOL=ON
+          - -DGLFW_BUILD_EXAMPLES:BOOL=OFF
+          - -DGLFW_BUILD_TESTS:BOOL=OFF
+          - -DGLFW_BUILD_DOCS:BOOL=OFF
+        sources:
+          - type: git
+            url: https://github.com/glfw/glfw.git
+            branch: 3.3.6
+      # FreeImage
+      - name: freeimage
+        no-autogen: true
+        build-options:
+          # C++17 Isn't Supported
+          cxxflags: -std=c++14
+        make-args:
+          - DESTDIR=/app
+        sources:
+          - type: archive
+            url: http://downloads.sourceforge.net/freeimage/FreeImage3180.zip
+            sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+          - type: shell
+            commands:
+              - sed -i 's|-o root -g root ||' ./Makefile.gnu
+              - sed -i 's|/usr|/app|' ./Makefile.gnu
+  # MCPI-Reborn ARM Code
+  - name: minecraft-pi-reborn-arm
+    buildsystem: cmake
+    config-opts:
+      - -DMCPI_USE_MEDIA_LAYER_PROXY=ON
+      - -DMCPI_BUILD_MODE=arm
+      # ARM Toolchain
+      - -DCMAKE_TOOLCHAIN_FILE=flatpak-arm-toolchain.cmake
+    build-options:
+      prepend-path: /usr/lib/sdk/toolchain-arm/bin
+      env:
+        # The Runtime Automatically Includes An x86_64-Only Flag, So Reset Flags
+        CFLAGS: ''
+        CXXFLAGS: ''
+    sources:
+      - *mcpi-reborn-git
+      - type: file
+        path: flatpak-arm-toolchain.cmake
+  # Multiarch Setup
+  ## There is no platform equivalent of "org.freedesktop.Sdk.Compat.arm" so this copies required ARM libraries into the final Flatpak.
+  - name: multiarch-setup
+    buildsystem: simple
+    ensure-writable:
+      - /lib/minecraft-pi-reborn-client/minecraft-pi
+    build-commands:
+      - cp -Lp /lib/arm-linux-gnueabihf/libc.so.6 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/libm.so.6 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/libstdc++.so.6 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/libgcc_s.so.1 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/libpthread.so.0 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/libdl.so.2 /app/lib/minecraft-pi-reborn-client/lib
+      - cp -Lp /lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 /app/lib/minecraft-pi-reborn-client/lib
+      # Patch Binary Interpreter
+      - patchelf --set-interpreter /app/lib/minecraft-pi-reborn-client/lib/ld-linux-armhf.so.3 /app/lib/minecraft-pi-reborn-client/minecraft-pi
+    modules:
+      - name: patchelf
+        sources:
+          - type: git
+            url: https://github.com/NixOS/patchelf.git
+            branch: 0.14.3
+  # AppData File
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - install -Dp -m 644 com.thebrokenrail.MCPIReborn.appdata.xml /app/share/appdata/com.thebrokenrail.MCPIReborn.appdata.xml
+    sources:
+      - type: file
+        path: com.thebrokenrail.MCPIReborn.appdata.xml
+
+# Cleanup
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /bin/patchelf
