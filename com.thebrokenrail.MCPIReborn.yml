@@ -1,5 +1,8 @@
 app-id: com.thebrokenrail.MCPIReborn
 
+# No Separate Locales
+separate-locales: false
+
 # MCPI Itself Is Proprietary
 tags:
   - proprietary
@@ -101,6 +104,7 @@ modules:
     config-opts:
       - -DMCPI_USE_MEDIA_LAYER_PROXY=ON
       - -DMCPI_BUILD_MODE=native
+      - -DMCPI_OPEN_SOURCE_ONLY=ON
       # Use GCC
       - -DCMAKE_C_COMPILER=gcc
       - -DCMAKE_CXX_COMPILER=g++
@@ -142,6 +146,7 @@ modules:
     config-opts:
       - -DMCPI_USE_MEDIA_LAYER_PROXY=ON
       - -DMCPI_BUILD_MODE=arm
+      - -DMCPI_OPEN_SOURCE_ONLY=ON
       # ARM Toolchain
       - -DCMAKE_TOOLCHAIN_FILE=flatpak-arm-toolchain.cmake
     build-options:
@@ -158,8 +163,6 @@ modules:
   ## There is no platform equivalent of "org.freedesktop.Sdk.Compat.arm" so this copies required ARM libraries into the final Flatpak.
   - name: multiarch-setup
     buildsystem: simple
-    ensure-writable:
-      - /lib/minecraft-pi-reborn-client/minecraft-pi
     build-commands:
       - cp -Lp /lib/arm-linux-gnueabihf/libc.so.6 /app/lib/minecraft-pi-reborn-client/lib
       - cp -Lp /lib/arm-linux-gnueabihf/libm.so.6 /app/lib/minecraft-pi-reborn-client/lib
@@ -168,14 +171,6 @@ modules:
       - cp -Lp /lib/arm-linux-gnueabihf/libpthread.so.0 /app/lib/minecraft-pi-reborn-client/lib
       - cp -Lp /lib/arm-linux-gnueabihf/libdl.so.2 /app/lib/minecraft-pi-reborn-client/lib
       - cp -Lp /lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 /app/lib/minecraft-pi-reborn-client/lib
-      # Patch Binary Interpreter
-      - patchelf --set-interpreter /app/lib/minecraft-pi-reborn-client/lib/ld-linux-armhf.so.3 /app/lib/minecraft-pi-reborn-client/minecraft-pi
-    modules:
-      - name: patchelf
-        sources:
-          - type: git
-            url: https://github.com/NixOS/patchelf.git
-            tag: 0.14.3
   # AppData File
   - name: appdata
     buildsystem: simple
@@ -184,9 +179,39 @@ modules:
     sources:
       - type: file
         path: com.thebrokenrail.MCPIReborn.appdata.xml
+  # Download MCPI Separately At Installation-Time
+  - name: mcpi
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      # Allow Starting MCPI
+      - ln -s ../../extra/minecraft-pi /app/lib/minecraft-pi-reborn-client/minecraft-pi
+      # Allow Accessing MCPI Data
+      - ln -s ../../extra/data /app/lib/minecraft-pi-reborn-client/data
+    sources:
+      - type: extra-data
+        filename: mcpi.tar.gz
+        url: https://s3.amazonaws.com/assets.minecraft.net/pi/minecraft-pi-0.1.1.tar.gz
+        sha256: e0d68918874cdd403de1fd399380ae2930913fcefdbf60a3fbfebb62e2cfacab
+        size: 1459472
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar -xf mcpi.tar.gz --strip-components 1
+          - rm -f mcpi.tar.gz
+          # Allow Starting Media Layer Proxy Client
+          - mkdir lib
+          - ln -s ../../lib/minecraft-pi-reborn-client/lib/media-layer-proxy-client lib/media-layer-proxy-client
+          # Patch Binary Interpreter
+          - patchelf --set-interpreter /app/lib/minecraft-pi-reborn-client/lib/ld-linux-armhf.so.3 /app/extra/minecraft-pi
+    modules:
+      - name: patchelf
+        sources:
+          - type: git
+            url: https://github.com/NixOS/patchelf.git
+            tag: 0.14.3
 
 # Cleanup
 cleanup:
   - /include
   - /lib/pkgconfig
-  - /bin/patchelf
