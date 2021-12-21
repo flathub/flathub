@@ -16,3 +16,6 @@ run:
 	flatpak run -v $(APP_ID)
 uninstall:
 	flatpak uninstall --user $(APP_ID)
+check:
+	flatpak run org.freedesktop.appstream-glib validate $(APP_ID).metainfo.xml
+	flatpak run org.flathub.flatpak-external-data-checker $(APP_ID).yml
