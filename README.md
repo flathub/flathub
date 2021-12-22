@@ -1,12 +1,10 @@
 # 3D Pinball for Windows – Space Cadet
 
-3D Pinball for Windows – Space Cadet is a pinball video game developed by Cinematronics and published by Maxis in 1995. It features pre-rendered 3D graphics and three tables—Space Cadet, Skullduggery, and Dragon's Keep. On each table, there are displays on the side that show the players' score, ball number, player number, a display for various information and a table-specific image.
-
-## Source repository
+## Upstream repository
 
 <https://github.com/k4zmu2a/SpaceCadetPinball>
 
-## Building from source
+## Building the flatpak
 
 ### Prerequisites
 
