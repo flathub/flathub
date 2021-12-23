@@ -1,0 +1,235 @@
+app-id: info.femm.unofficial
+base-version: '21.08'
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: femm.sh
+build-options:
+  env:
+    - "WINEPREFIX": "/var/data/.local/share/femm42-flatpak"
+    - "WINEDLLOVERRIDES": "mscoree,mshtml="
+    - "V": "1"
+
+#rename-desktop-file: wine.desktop
+
+# Support 32-bit at runtime
+add-extensions:
+  org.freedesktop.LinuxAudio.Plugins:
+    directory: extensions/Plugins
+    versions: '21.08'
+    add-ld-path: lib
+    merge-dirs: lxvst;vst3
+    subdirectories: true
+    no-autodownload: true
+
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '21.08'
+
+# Support 32-bit at buildtime
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+
+finish-args:
+  - --env=WINEDEBUG=-all
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --socket=pulseaudio
+  - --allow=multiarch
+  - --allow=devel
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gnome.Mutter.DisplayConfig
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host
+  - --filesystem=~/.local/share/femm42-flatpak/:create
+  - --device=all
+  - --device=dri
+  # wineprefixes are created here
+  - --persist=~/.local/share/femm42-flatpak/
+  # Support 32-bit runtime
+  # Testing for Driver San andreas- --env=LD_LIBRARY_PATH=/app/lib:/app/lib:/app/lib32:/app/lib64:/app/lib/i386-linux-gnu:/app/lib/wine:/app/lib64/wine:$(pwd)
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib:/app/lib32:/app/lib64:/app/lib/i386-linux-gnu:/app/lib/wine:/app/lib64/wine
+
+modules:
+
+  # Create 32-bit directories
+  - name: compat
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu 
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/udev/rules.d
+      - mkdir -p /app/extensions/Plugins
+      - mkdir -p /app/lib64
+      - mkdir -p /app/lib32
+
+
+# build wow64              
+  - name: org.winehq.wine_64bit-5.0.5
+    builddir: true
+    build-options:
+      make-args: -j8
+      prefix: /app
+      prepend-path: /app/bin
+      ldflags: -L/app/lib64 -L/app/lib -L/app/lib32
+      append-path: /usr/lib/sdk/toolchain-i386/bin
+      env:
+        CC:  i686-unknown-linux-gnu-gcc
+        CXX: i686-unknown-linux-gnu-g++
+      libdir: /app/lib32
+      strip: true
+      no-debuginfo: true
+      
+    make-install-args:
+      - LDCONFIG=/bin/true
+      - STRIP=/bin/true
+      - UPDATE_DESKTOP_DATABASE=/bin/true
+    buildsystem: simple
+    build-commands:
+    # 1. Build wine64
+    - export CC=x86_64-unknown-linux-gnu-gcc  &&
+      export CXX=x86_64-unknown-linux-gnu-g++ &&
+      mkdir wine64-build && cd wine64-build   &&
+      ../configure 
+      --prefix="/app" 
+      --enable-shared      
+      --disable-static
+      --disable-tests
+      --with-x
+      --without-cups
+      --without-curses
+      --without-capi
+      --without-gphoto
+      --without-gsm
+      --without-hal
+      --without-netapi
+      --enable-win64 &&  
+      make -j8
+
+    # 2. Build wine32 twice
+    - export CC=i686-unknown-linux-gnu-gcc  &&
+      export CXX=i686-unknown-linux-gnu-g++ &&
+      mkdir wine32-tools && cd wine32-tools &&
+      ../configure 
+      --prefix="/app" 
+      --enable-shared
+      --disable-static
+      --disable-tests
+      --with-x
+      --without-cups
+      --without-curses
+      --without-capi
+      --without-gphoto
+      --without-gsm
+      --without-hal
+      --without-netapi &&
+      make -j8
+
+    # 3. Build 32bit second time and 
+    # install 32 bit and 64 bit wine
+    - export CC=i686-unknown-linux-gnu-gcc  &&
+      export CXX=i686-unknown-linux-gnu-g++ &&
+      mkdir wine32-combo && cd wine32-combo &&
+      ../configure 
+      --with-wine64=../wine64-build
+      --with-wine-tools=../wine32-tools
+      --prefix="/app" 
+      --enable-shared      
+      --disable-static
+      --disable-tests
+      --with-x
+      --without-cups
+      --without-curses
+      --without-capi
+      --without-gphoto
+      --without-gsm
+      --without-hal
+      --without-netapi   &&
+      make -j8           && 
+      make install       && 
+      cd ../wine64-build && 
+      make install
+
+    sources:
+      - type: archive
+        url: https://dl.winehq.org/wine/source/5.0/wine-5.0.5.tar.xz
+        sha512: 3cf0ccb2eac0868f700296a62aeea9b856522ac63861beb49deed50136a334c450f2d1172f9d0195b4fe0bbf8f808f7350a79122726da1cbf5d21161f6dfca36
+        
+  - name: winetricks
+    buildsystem: simple
+    build-commands:
+    - make
+    - make PREFIX=/app install
+    - chmod +x /app/bin/winetricks
+    sources:
+    - type: git
+      url: https://github.com/Winetricks/winetricks.git
+      commit: 8b0eec06fef88fb91356e886d1ad3d554b37e6c9
+              
+  - name: femm-installer
+    buildsystem: simple
+    dir: ${WINEPREFIX}
+    build-commands:
+    # icon
+    - install femm.sh /app/bin 
+    - install -D --mode=644 femm-256.svg /app/share/icons/hicolor/256x256/apps/info.femm.unofficial.png
+    - install -D --mode=644 femm-unofficial.desktop /app/share/applications/info.femm.unofficial.desktop
+    - install -D --mode=644 info.femm.unofficial.appdata.xml /app/share/metainfo/info.femm.unofficial.appdata.xml
+    - mkdir -p /app/mfiles
+    - install -D openfemm.m /app/mfiles
+    - install -D callfemm.m /app/mfiles
+    - install -D wine-bash /app
+    sources:
+    - type: file
+      path: femm.sh
+    - type: file
+      path: femm-256.svg
+    - type: file
+      path: femm-unofficial.desktop
+    - type: file
+      path: info.femm.unofficial.appdata.xml
+    - type: file
+      path: openfemm.m
+    - type: file
+      path: callfemm.m
+    - type: file
+      path: wine-bash
+
+
+cleanup:
+
+ - "*.a"
+ - /lib/debug
+ - /lib32/debug
+ - /lib64/debug
+ - /share/man
+ - /include 
+ - /share/applications/winetricks.desktop
+ - /app/share/applications/winetricks.desktop
+ - /app/explorer++/"*.txt"
+ - /bin/function_grep.pl
+ - /bin/widl
+ - /bin/wine64-preloader
+ - /bin/winebuild
+ - /bin/wineconsole
+ - /bin/winedbg
+ - /bin/winefile
+ - /bin/winegcc
+ - /bin/winemine
+ - /bin/wrc
+ - /bin/msidb
+ - /bin/notepad
+ - /bin/regsvr32
+ - /bin/wineboot
+ - /bin/winecfg
+ - /bin/winecpp
+ - /bin/winedump
+ - /bin/wineg++
+ - /bin/winemaker
+ - /bin/winepath
+ - /bin/wmc
+ - /include
+ - /share/man
+ - /share/applications"
