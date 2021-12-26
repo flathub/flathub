@@ -1,0 +1,56 @@
+app-id: io.github.nroduit.Weasis
+runtime: org.freedesktop.Sdk
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base-version: '21.08'
+sdk-extensions: 
+  - org.freedesktop.Sdk.Extension.openjdk11
+command: viewer-linux.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --filesystem=home
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+modules:
+
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: weasis
+    buildsystem: simple
+    cleanup:
+      - /weasis-*
+      - .m2
+    build-options:
+      #build-args:
+      #  - --share=network
+      env:
+        PATH: /app/bin:/usr/bin:/usr/lib/sdk/openjdk11/bin
+        MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
+        JAVA_HOME: /usr/lib/sdk/openjdk11/jvm/openjdk-11
+    build-commands:
+      - mvn clean install
+      - cd weasis-distributions && mvn clean package -Dportable=false -Dmaven.repo.local=../.m2/repository
+      - unzip weasis-distributions/target/portable-dist/weasis-portable.zip
+      - mv weasis /app
+      - sed -i 's/curPath=.*/curPath=\/app\/weasis/' viewer-linux.sh
+      - install -Dm755 -t "${FLATPAK_DEST}/bin" "viewer-linux.sh"
+      - install -D -t /app/share/applications/ io.github.nroduit.Weasis.desktop
+      - install -D -t /app/share/metainfo/ io.github.nroduit.Weasis.metainfo.xml
+      #- install -Dm644 io.github.nroduit.Weasis.png ${FLATPAK_DEST}/share/icons/io.github.nroduit.Weasis.png
+    sources:
+      - type: archive
+        url: https://github.com/nroduit/Weasis/archive/refs/tags/v3.7.1.tar.gz
+        sha256: bc16253a80b90f65f4397f515a29328ebf8b1f83e3e184a0194e9ff66ec22768
+      # Otherwise it will want to download all the mvn dependencies
+      - type: patch
+        path: patches/0001-remove-purge-from-weasis-distributions-pom.patch
+      - type: file
+        path: io.github.nroduit.Weasis.desktop
+      - type: file
+        path: io.github.nroduit.Weasis.metainfo.xml
+      - maven-dependencies.yaml
