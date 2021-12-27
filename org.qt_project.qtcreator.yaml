@@ -1,0 +1,94 @@
+app-id: org.qt_project.qtcreator
+runtime: org.kde.Sdk
+runtime-version: "6.2"
+sdk: org.kde.Sdk
+command: qtcreator
+# Qt Creator already provides desktop launchers and AppData metadata
+# but since we cannot use the original AppID, we have to rename the original files
+rename-desktop-file: org.qt-project.qtcreator.desktop
+rename-appdata-file: org.qt-project.qtcreator.appdata.xml
+rename-icon: QtProject-qtcreator
+finish-args:
+# Qt Creator crashes GNOME Shell 3.36 on Wayland
+# - --socket=wayland
+# - --socket=fallback-x11
+- --socket=x11
+- --share=ipc
+- --allow=devel
+- --share=network
+- --device=dri
+- --talk-name=org.freedesktop.Flatpak # for 'flatpak-spawn'
+- --filesystem=home
+cleanup:
+- /include
+- /lib/arch
+- /lib/cmake
+- /lib/libQt6Core5Compat.prl
+- /lib/libQt6Core5Compat.so # unused symlink
+- /lib/metatypes
+- /lib/qtcreator/objects-RelWithDebInfo
+- /lib/x86_64-linux-gnu
+- /mkspecs
+- /modules
+- /qml
+- /share/cmake
+- /share/pkgconfig
+- "*.a"
+cleanup-commands:
+- mv /app/lib/*-linux-gnu/* /app/lib/
+
+modules:
+# addition Qt modules that are not part of the KDE SDK
+- name: qt5compat
+  sources:
+  - type: git
+    url: git://code.qt.io/qt/qt5compat.git
+    tag: v6.2.1
+  buildsystem: cmake-ninja
+  builddir: true
+  post-install:
+  # move cmake files into a known path because we cannot determine the arch triplet
+  # (i.e. "x86_64-linux-gnu") using shell commands or environment variables
+  - mkdir /app/lib/arch/
+  - mv /app/lib/*-linux-gnu/cmake /app/lib/arch/
+
+- name: QtCreator
+  sources:
+  - type: git
+    url: git://code.qt.io/qt-creator/qt-creator.git
+    tag: v6.0.1
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DQt6Core5Compat_DIR=/app/lib/arch/cmake/Qt6Core5Compat/
+  post-install:
+  # run cmake manually to install the "Devel" component for plugin development
+  - cmake --install . --prefix=/app --component Devel
+  # set release data manually
+  # ideally, this can be extracted via 'git for-each-ref --format="%(creatordate:format:%Y-%m-%d)" "refs/tags/v6.0.1"'
+  - sed -i 's/<release version="6.0.1">/<release date="2021-12-26" version="6.0.1">/g' /app/share/metainfo/org.qt-project.qtcreator.appdata.xml
+
+- name: yaml-cpp
+  sources:
+  - type: git
+    url: https://github.com/jbeder/yaml-cpp.git
+    tag: "yaml-cpp-0.7.0"
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DBUILD_SHARED_LIBS=OFF
+  - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  - -DYAML_CPP_BUILD_TESTS=OFF
+
+- name: ROS-QtCreator-Plugin
+  sources:
+  - type: git
+    url: https://github.com/ros-industrial/ros_qtc_plugin.git
+    tag: "0.5.0"
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  - -DQt6Core5Compat_DIR=/app/lib/arch/cmake/Qt6Core5Compat/
