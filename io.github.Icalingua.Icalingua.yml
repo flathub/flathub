@@ -1,0 +1,75 @@
+app-id: io.github.Icalingua.Icalingua
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+separate-locales: false
+rename-icon: icalingua
+rename-desktop-file: icalingua.desktop
+command: icalingua
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network
+  - --persist=.pki
+  - --filesystem=xdg-documents:ro
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # Build and install revolt
+  - name: icalingua
+    subdir: icalingua
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin
+      env:
+        XDG_CACHE_HOME: /run/build/icalingua/flatpak-node/cache
+        YARN_CACHE_FOLDER: /run/build/icalingua/flatpak-node/yarn-mirror
+        npm_config_nodedir: /usr/lib/sdk/node16
+    build-commands:
+      - $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn2-setup.sh
+      - yarn install
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        yarn run build $ELECTRON_BUILDER_ARCH_ARGS --config.asar=false --linux --dir
+      - cp -a build/linux*unpacked /app/icalingua
+      - install -Dm644 -t $FLATPAK_DEST/share/applications ../pkgres/*.desktop
+      - install -Dm644 ../pkgres/512x512.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/icalingua.png
+      - install -Dm644 ../$FLATPAK_ID.appdata.xml -t /app/share/metainfo
+      - install -Dm755 ../icalingua.sh /app/bin/icalingua
+    sources:
+      - type: git
+        url: https://github.com/Icalingua/Icalingua.git
+        tag: v2.4.5
+        commit: d224b117df6758de397dbf15acc62c92237d9977
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+
+      - generated-sources.json
+
+      - type: file
+        path: io.github.Icalingua.Icalingua.appdata.xml
+
+      - type: script
+        dest-filename: icalingua.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - zypak-wrapper.sh /app/icalingua/icalingua "$@"
+
+      - type: shell
+        commands:
+          - |
+            . /usr/lib/sdk/node16/enable.sh
+            export GIT_VER=$(git describe --tags | sed "s/v//")
+            export SHA=$(git rev-parse HEAD)
+            export REF=refs/tags/$(git describe --tags)
+            node .github/check-version.js
+

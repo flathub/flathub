@@ -1,0 +1,55 @@
+name: auto-update
+
+on:
+  schedule:
+   - cron: "0 */4 * * *"
+  workflow_dispatch:
+
+env:
+  GIT_USER_NAME: github-actions[bot]
+  GIT_USER_EMAIL: github-actions[bot]@users.noreply.github.com
+  FLATPAK_ID: io.github.Icalingua.Icalingua
+
+jobs:
+  flatpak-external-data-checker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        with:
+          args: --edit-only ${{ env.FLATPAK_ID }}.yml
+
+      - name: check updated
+        id: is-updated 
+        run: |
+          git status -s -uno
+          [ -z "$(git status -s -uno)" ] || echo "::set-output name=updated::true"
+
+      - uses: actions/setup-python@v2
+        if: ${{ steps.is-updated.outputs.updated == 'true' }}
+        with:
+          python-version: 3.9
+
+      - name: generate node sources
+        if: ${{ steps.is-updated.outputs.updated == 'true' }}
+        run: |
+          python3 -m pip install aiohttp
+          git submodules update --init
+          ./update-sources.sh
+          
+      - name: reset
+        run: |
+          git checkout -- ${FLATPAK_ID}.yml *.xml
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        name: recheck and open pr 
+        env:
+          GIT_AUTHOR_NAME: Flatpak External Data Checker
+          GIT_COMMITTER_NAME: Flatpak External Data Checker
+          GIT_AUTHOR_EMAIL: ${{ env.GIT_USER_NAME }}
+          GIT_COMMITTER_EMAIL: ${{ env.GIT_USER_EMAIL }}
+          EMAIL: ${{ env.GIT_USER_EMAIL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --update --never-fork ${{ env.FLATPAK_ID }}.yml
