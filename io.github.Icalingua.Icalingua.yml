@@ -4,8 +4,6 @@ runtime-version: '21.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '21.08'
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node16
 separate-locales: false
 rename-icon: icalingua
 rename-desktop-file: icalingua.desktop
@@ -26,36 +24,42 @@ finish-args:
 
 modules:
   - name: icalingua
-    subdir: icalingua
     buildsystem: simple
-    build-options:
-      append-path: /usr/lib/sdk/node16/bin
-      env:
-        XDG_CACHE_HOME: /run/build/icalingua/flatpak-node/cache
-        YARN_CACHE_FOLDER: /run/build/icalingua/flatpak-node/yarn-mirror
-        npm_config_nodedir: /usr/lib/sdk/node16
     build-commands:
-      - $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn2-setup.sh
-      - yarn install
-      - |
-        . ../flatpak-node/electron-builder-arch-args.sh
-        yarn run build $ELECTRON_BUILDER_ARCH_ARGS --config.asar=false --linux --dir
-      - cp -a build/linux*unpacked /app/icalingua
-      - sed -i 's:chat;:Chat;:g' ../pkgres/*.desktop
-      - install -Dm644 -t $FLATPAK_DEST/share/applications ../pkgres/*.desktop
-      - install -Dm644 ../pkgres/512x512.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/icalingua.png
-      - install -Dm644 ../$FLATPAK_ID.appdata.xml -t /app/share/metainfo
-      - install -Dm755 ../icalingua.sh /app/bin/icalingua
+      - ar x icalingua.deb
+      - tar xf data.*
+      - cp -a opt/Icalingua $FLATPAK_DEST/
+      - cp -a usr/share $FLATPAK_DEST/
+      - sed -i 's:chat;:Chat;:g' $FLATPAK_DEST/share/applications/*.desktop
+      - install -Dm644 $FLATPAK_ID.appdata.xml -t /app/share/metainfo
+      - install -Dm755 icalingua.sh /app/bin/icalingua
     sources:
-      - type: git
-        url: https://github.com/Icalingua/Icalingua.git
-        tag: v2.4.5
-        commit: d224b117df6758de397dbf15acc62c92237d9977
+      - type: file
+        only-arches: [x86_64]
+        dest-filename: icalingua.deb
+        url: https://github.com/Icalingua/Icalingua/releases/download/v2.4.5/icalingua_2.4.5_amd64.deb
+        sha256: 8f438decf4c69ee94b59052df2ceab889feb0e8965efd1108b93a3468ed3171d
         x-checker-data:
-          type: git
-          tag-pattern: "^v([\\d.]+)$"
+          type: json
+          is-main-source: true
+          url: https://api.github.com/repos/Icalingua/Icalingua/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: >-
+            .assets[] | select(.name=="icalingua_" + $version + "_amd64.deb") |
+            .browser_download_url
 
-      - generated-sources.json
+      - type: file
+        only-arches: [aarch64]
+        dest-filename: icalingua.deb
+        url: https://github.com/Icalingua/Icalingua/releases/download/v2.4.5/icalingua_2.4.5_arm64.deb
+        sha256: 5328ac609018871f8a3d42e8fc6f00915b99bf474d66b7d9a60b14f7b3267e0e
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Icalingua/Icalingua/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: >-
+            .assets[] | select(.name=="icalingua_" + $version + "_arm64.deb") |
+            .browser_download_url
 
       - type: file
         path: io.github.Icalingua.Icalingua.appdata.xml
@@ -65,13 +69,3 @@ modules:
         commands:
           - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
           - zypak-wrapper.sh /app/icalingua/icalingua "$@"
-
-      - type: shell
-        commands:
-          - |
-            . /usr/lib/sdk/node16/enable.sh
-            export GIT_VER=$(git describe --tags | sed "s/v//")
-            export SHA=$(git rev-parse HEAD)
-            export REF=refs/tags/$(git describe --tags)
-            node .github/check-version.js
-
