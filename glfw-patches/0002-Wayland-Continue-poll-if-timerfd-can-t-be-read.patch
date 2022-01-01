@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emmanuel Gil Peyrot <linkmauve@linkmauve.fr>
+Date: Tue, 14 Dec 2021 09:29:01 +0100
+Subject: =?UTF-8?q?Wayland:=20Continue=20poll()=20if=20timerfd=20can?=
+ =?UTF-8?q?=E2=80=99t=20be=20read?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the case the key repeat timerfd was interrupted before read(), the
+cursor timerfd wasn’t read at all even when it could.
+
+Related to #1711
+---
+ src/wl_window.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/src/wl_window.c b/src/wl_window.c
+index 939f9c19..656743a9 100644
+--- a/src/wl_window.c
++++ b/src/wl_window.c
+@@ -746,10 +746,7 @@ static void handleEvents(int timeout)
+         if (fds[1].revents & POLLIN)
+         {
+             read_ret = read(_glfw.wl.timerfd, &repeats, sizeof(repeats));
+-            if (read_ret != 8)
+-                return;
+-
+-            if (_glfw.wl.keyboardFocus)
++            if (read_ret == 8 && _glfw.wl.keyboardFocus)
+             {
+                 for (i = 0; i < repeats; ++i)
+                 {
+@@ -765,10 +762,8 @@ static void handleEvents(int timeout)
+         if (fds[2].revents & POLLIN)
+         {
+             read_ret = read(_glfw.wl.cursorTimerfd, &repeats, sizeof(repeats));
+-            if (read_ret != 8)
+-                return;
+-
+-            incrementCursorImage(_glfw.wl.pointerFocus);
++            if (read_ret == 8)
++                incrementCursorImage(_glfw.wl.pointerFocus);
+         }
+     }
+     else
