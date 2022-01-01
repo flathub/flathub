@@ -12,10 +12,12 @@ This is a **fork** of the MultiMC Launcher and not endorsed by MultiMC. The Poly
 
 8, 11, 16, 17. Play any minecraft version!
 
-### FAQ
+## FAQ
 
-Q: How do I run MC on a Hybrid-GPU system with a dedicated nvidia GPU using PolyMC?  
-A: The flatpak includes a `prime-run` script, which when set as the wrapper command in instance settings, runs MC using the Nvidia GPU.
+### How do I run MC on a Hybrid-GPU system with a dedicated nvidia GPU using PolyMC?
 
-Q: Does it work with Wayland?  
-A: Yes! This includes a patched version of the library minecraft uses GLFW. To enable wayland support without XWayland, enable `use system GLFW` in the settings of the instance in PolyMC.
+The flatpak includes a `prime-run` script, which when set as the wrapper command in instance settings, runs MC using the Nvidia GPU.
+
+### Does it work with Wayland?
+
+Yes! This includes a patched version of the library minecraft uses GLFW. To enable wayland support without XWayland, enable `use system GLFW` in the settings of the instance in PolyMC.
