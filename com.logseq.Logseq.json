@@ -1,0 +1,169 @@
+{
+    "id": "com.logseq.Logseq",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "21.08",
+    "sdk": "org.freedesktop.Sdk",
+    "base": "org.electronjs.Electron2.BaseApp",
+    "base-version": "21.08",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.node16",
+        "org.freedesktop.Sdk.Extension.openjdk8"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/node16/bin:/usr/lib/sdk/openjdk8/bin",
+        "env": {
+            "NPM_CONFIG_LOGLEVEL": "info"
+        }
+    },
+    "command": "run.sh",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=x11",
+        "--socket=pulseaudio",
+        "--share=network",
+        "--filesystem=home"
+    ],
+    "modules": [
+        {
+            "name": "clojure",
+            "buildsystem": "simple",
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://download.clojure.org/install/linux-install-1.10.1.763.sh",
+                    "sha256": "91421551872d421915c4a598741aefcc6749d3f4aafca9c08f271958e5456e2c"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "sed -ie 's/curl/#curl/' linux-install-1.10.1.763.sh"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://download.clojure.org/install/clojure-tools-1.10.1.763.tar.gz",
+                    "sha256": "2a3ec8a6c3639035c2bba10945ae9007ab0dc9136766b95d2161f354e62a4d10"
+                }
+            ],
+            "build-commands": [
+                "chmod +x linux-install-1.10.1.763.sh",
+                "./linux-install-1.10.1.763.sh -p /app/clojure"
+            ]
+        },
+        {
+            "name": "logseq",
+            "buildsystem": "simple",
+            "build-options": {
+                "append-path": "/app/clojure/bin",
+                "env": {
+                    "HOME": "/run/build/logseq",
+                    "CLJ_CONFIG": "/run/build/logseq/clojure",
+                    "XDG_CACHE_HOME": "/run/build/logseq/flatpak-node/cache",
+                    "DUGITE_CACHE_DIR": "/run/build/logseq/flatpak-node/tmp",
+                    "npm_config_cache": "/run/build/logseq/flatpak-node/npm-cache",
+                    "npm_config_offline": "true",
+                    "YARN_ENABLE_NETWORK": "0"
+                }
+            },
+            "subdir": "main",
+            "sources": [
+                "generated-sources.json",
+                "maven-sources.json",
+                {
+                    "type": "git",
+                    "url": "https://github.com/logseq/datascript",
+                    "commit": "de8df66e69ecd847c048f548fa0d5de0d4378bd0",
+                    "dest": "libs/datascript"
+                },
+                {
+                    "type": "git",
+                    "url": "https://github.com/borkdude/rewrite-edn",
+                    "commit": "edd87dc7f045f28d7afcbfc44bc0f0a2683dde62",
+                    "dest": "libs/rewrite-edn"
+                },
+                {
+                    "type": "git",
+                    "url": "https://github.com/lread/rewrite-cljc-playground",
+                    "commit": "ba1e4255cd1c1fd09dbe2e90556bfa66d5459234",
+                    "dest": "libs/rewrite-cljc"
+                },
+                {
+                    "type": "git",
+                    "url": "https://github.com/logseq/cljs-time",
+                    "commit": "5704fbf48d3478eedcf24d458c8964b3c2fd59a9",
+                    "dest": "libs/cljs-time"
+                },
+                {
+                    "type": "git",
+                    "url": "https://github.com/logseq/hickory",
+                    "commit": "9c2c2f1fc2c45efaad906e0faabc3201278deeaa",
+                    "dest": "libs/hickory"
+                },
+                {
+                    "type": "archive",
+                    "url": "https://github.com/logseq/logseq/archive/refs/tags/0.5.6.tar.gz",
+                    "sha256": "04d04521fe786dbc4f24a74ed696cf393dfbb0ba638eafbc54f887477149adde",
+                    "dest": "main"
+                },
+                {
+                    "type": "patch",
+                    "path": "deps_edn_local.patch",
+                    "options": ["-dmain"]
+                },
+                {
+                    "type": "patch",
+                    "path": "rewrite-edn-deps-edn.patch",
+                    "strip-components": 0
+                },
+                {
+                    "type": "file",
+                    "path": "yarn.lock",
+                    "dest": "main"
+                },
+                {
+                    "type": "file",
+                    "path": "static-yarn.lock",
+                    "dest-filename": "yarn.lock",
+                    "dest": "main/static"
+                },
+                {
+                    "type": "script",
+                    "dest-filename": "run.sh",
+                    "commands": ["zypak-wrapper.sh /app/logseq/Logseq \"$@\""]
+                },
+                {
+                    "type": "file",
+                    "path": "com.logseq.Logseq.desktop"
+                },
+                {
+                    "type": "file",
+                    "path": "com.logseq.Logseq.png"
+                },
+                {
+                    "type": "file",
+                    "path": "com.logseq.Logseq.svg"
+                },
+                {
+                    "type": "file",
+                    "path": "com.logseq.Logseq.metainfo.xml"
+                }
+            ],
+            "build-commands": [
+                "ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp",
+                "yarn config set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror",
+                "yarn",
+                "yarn gulp:build",
+                "yarn cljs:release-electron",
+                "cd static && yarn",
+                "cd static && yarn electron-forge package",
+                "cp -a static/out/Logseq-linux-x64 /app/logseq",
+                "install -Dm644 -t /app/share/icons/hicolor/128x128/apps/ ../com.logseq.Logseq.png",
+                "install -Dm644 -t /app/share/icons/hicolor/scalable/apps/ ../com.logseq.Logseq.svg",
+                "install -Dm644 -t /app/share/applications ../com.logseq.Logseq.desktop",
+                "install -Dm644 -t /app/share/metainfo ../com.logseq.Logseq.metainfo.xml",
+                "install -Dm755 -t /app/bin/ ../run.sh"
+            ]
+        }
+    ],
+    "cleanup": ["/clojure", "*.js.map"]
+}
