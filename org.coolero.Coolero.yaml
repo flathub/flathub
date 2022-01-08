@@ -1,0 +1,117 @@
+app-id: org.coolero.Coolero
+runtime: org.kde.Platform
+runtime-version: '6.2'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm12
+command: coolero.sh
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Flatpak
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.la'
+  - '*.a'
+modules:
+  - name: libusb
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/archive/v1.0.24.tar.gz
+        sha256: b7724c272dfc5713dce88ff717efd60f021ca5b7c8e30f08ebb2c42d2eea08ae
+
+  # prerequisites not handled by script
+  - name: cppy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} cppy
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/36/64/be592e84c443a70ea5dcfb1c30bfe6f10ba7d8eb05c2264c7ceca8498548/cppy-1.1.0.tar.gz
+        sha256: 4eda6f1952054a270f32dc11df7c5e24b259a09fddf7bfaa5f33df9fb4a29642
+  - name: pyamdgpuinfo
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} ./ --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/mark9064/pyamdgpuinfo.git
+        tag: v2.1.1
+        commit: 06284da07ca5abf7756f247c72b0192b7d0c5b98
+      - type: shell
+        commands:
+          - sed -i 's|/usr/include/libdrm|/app/include/libdrm|' setup.py
+    modules:
+      - name: libdrm
+        buildsystem: simple
+        build-commands:
+          - meson build --prefix=/app
+          - ninja -C build/ install
+        sources:
+          - type: git
+            url: git://anongit.freedesktop.org/mesa/drm
+            branch: master
+
+  - py-dependencies.yaml
+
+  - name: shiboken6
+    buildsystem: simple
+    build-options:
+      prepend-path: /usr/lib/sdk/llvm12/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
+    build-commands:
+      - python3 setup.py install --verbose-build --skip-docs --build-type=shiboken6 --prefix=${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: https://github.com/qtproject/pyside-pyside-setup.git
+        branch: 6.2.1
+  - name: pyside6
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      prepend-path: /usr/lib/sdk/llvm12/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTS=OFF
+      - -DCMAKE_SKIP_RPATH:BOOL=YES
+    sources:
+      - type: git
+        url: https://github.com/qtproject/pyside-pyside-setup.git
+        branch: 6.2.1
+      - type: shell
+        commands:
+          - mkdir -p /app/include/qt6tmp && cp -R /usr/include/Qt* /app/include/qt6tmp # https://bugreports.qt.io/broswse/PYSIDE-787
+          - sed -i 's|--include-paths=|--include-paths=/app/include/qt6tmp:|' sources/pyside6/cmake/Macros/PySideModules.cmake
+
+  - name: coolero
+    buildsystem: simple
+    build-commands:
+      - cp -r coolero /app/coolero
+      - mkdir -p /app/bin
+      - install -Dm644 org.coolero.Coolero.png /app/share/icons/hicolor/scalable/apps/org.coolero.Coolero.png
+      - install -Dm644 org.coolero.Coolero.desktop /app/share/applications/org.coolero.Coolero.desktop
+      - install -Dm644 org.coolero.Coolero.metainfo.xml -t /app/share/metainfo
+      - install -Dm755 -t /app/bin/ coolero.sh
+    sources:
+      - type: git
+        url: https://gitlab.com/codifryed/coolero.git
+        tag: 0.5.1
+        commit: aaeb452ebd5c42397fa5417f1dd0053b348839a6
+        disable-submodules: true
+      - type: file
+        path: org.coolero.Coolero.png
+      - type: file
+        path: org.coolero.Coolero.desktop
+      - type: file
+        path: org.coolero.Coolero.metainfo.xml
+      - type: script
+        dest-filename: coolero.sh
+        commands:
+          - python3 /app/coolero/coolero.py "$@"
