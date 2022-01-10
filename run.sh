@@ -1,10 +1,9 @@
 #!/bin/bash -e
 
-DIR="$XDG_DATA_HOME/Game/"
+SRC="/app/extra/wt.tar.gz"
 
-mkdir -p $DIR
-ls /app/extra/
-tar -xv --gzip -f /app/extra/wt.tar.gz -C $DIR
+# Unload launcher into data directory
+tar -xv --gzip -f $SRC -C $XDG_DATA_HOME
 
-exec "${DIR}launcher"
-
+# Execute launcher
+exec "${XDG_DATA_HOME}/WarThunder/launcher"
