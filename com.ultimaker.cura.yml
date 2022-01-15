@@ -1,0 +1,313 @@
+app-id: com.ultimaker.cura
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  
+  # For accessing network printers
+  - --share=network
+  # For accessing usb printers
+  - --device=all
+  # To access user files
+  - --filesystem=home
+command: cura
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/debug
+  - /lib/pkgconfig
+  - /bin/protoc
+  - /share/doc
+  - /share/pkgconfig
+  - /share/man
+  - /share/cmake*
+  - '*.a'
+  - '*.la'
+rename-icon: cura-icon
+
+
+modules:
+
+  - name: openblas
+    buildsystem: simple
+    build-commands:
+      - openblas_options="DYNAMIC_ARCH=1 DYNAMIC_OLDER=1 NO_STATIC=1 TARGET=GENERIC"
+      - make PREFIX=/app $openblas_options
+      - make PREFIX=/app $openblas_options install
+    sources:
+    - type: archive
+      url: https://github.com/xianyi/OpenBLAS/archive/v0.3.13.tar.gz
+      sha256: 79197543b17cc314b7e43f7a33148c308b0807cd6381ee77f77e15acf3e6459e
+
+  - name: geos
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DGEOS_ENABLE_TESTS=OFF
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://download.osgeo.org/geos/geos-3.7.3.tar.bz2
+        sha256: 02035ae4e0ad711fa5a5556d7712530029edacac364b5b9c3ade0ded865fca7e
+
+
+  # Based on https://github.com/Ultimaker/cura-build-environment/blob/4.12/projects/base_requirements.txt
+  - python-modules/base-requirements.json
+
+  - name: protobuf
+    buildsystem: autotools
+    config-opts:
+      - --with-zlib=false
+      - --prefix=/app
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.15.7.tar.gz
+        sha256: efdd6b932a2c0a88a90c4c80f88e4b2e1bf031e7514dbb5a5db5d0bf4f295504
+
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py --bindir=/app/bin --destdir=/app/lib/python3.9/site-packages --incdir=/app/include --pyidir=/app/lib/python3.9/site-packages --sipdir=/app/share/sip
+      - make -j`nproc`
+      - make install
+    sources:
+      - type: archive
+        url: https://www.riverbankcomputing.com/static/Downloads/sip/4.19.25/sip-4.19.25.tar.gz
+        sha256: b39d93e937647807bac23579edbff25fe46d16213f708370072574ab1f1b4211
+
+  - name: pyqt
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py --no-designer-plugin --no-tools --no-qml-plugin --sysroot /app --sip /app/bin/sip --sip-incdir /app/include --confirm-license --assume-shared --disable QtSensors --disable QtSerialPort --disable QtMultimedia --disable QtWebChannel --disable QtLocation -verbose QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.9' QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.9'
+      - make -j`nproc`
+      - make install DESTDIR=/app
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/28/6c/640e3f5c734c296a7193079a86842a789edb7988dca39eab44579088a1d1/PyQt5-5.15.2.tar.gz
+        sha256: 372b08dc9321d1201e4690182697c5e7ffb2e0770e6b4a45519025134b12e4fc
+
+  - name: nlopt
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/stevengj/nlopt.git
+        commit: 41967f1981d82d8495c0b27151a126bc35ae0d96
+        tag: v2.6.2
+
+
+  - name: boostheaders
+    buildsystem: simple
+    build-commands:
+      - cp -r boost /app/include/boost
+    sources:
+      - type: archive
+        url: http://sourceforge.net/projects/boost/files/boost/1.67.0/boost_1_67_0.tar.bz2
+        sha256: 2684c972994ee57fc5632e03bf044746f6eb45d4920c343937a465fd67a5adba
+
+  - name: clipper
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CXX_FLAGS=-fPIC
+      - -DBUILD_SHARED_LIBS=OFF
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/polyclipping/files/clipper_ver6.4.2.zip
+        sha256: a14320d82194807c4480ce59c98aa71cd4175a5156645c4e2b3edd330b930627
+      - type: file
+        url: https://raw.githubusercontent.com/Ultimaker/cura-build-environment/4.12/projects/clipper_cmakelists_patch.txt
+        sha256: 54c430466bcbe745fc85b757c02a63868d26022891cc1b98fb9862e9e20c79fb
+        dest-filename: CMakeLists.txt
+
+  - name: libnest2d
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CXX_STANDARD=17
+    sources:
+      - type: git
+        url: https://github.com/Ultimaker/libnest2d.git
+        commit: 031e4e61218edd092fbc54fbc6df145287b628ba
+      - type: file
+        url: https://raw.githubusercontent.com/Ultimaker/cura-build-environment/4.12/projects/libnest2d_find_clipper.cmake
+        sha256: 558d26c1071a4cb31c09e618553a3f98de7b782d779989db0582ab5c854a6d5f
+        dest-filename: FindClipper.cmake
+      - type: shell
+        commands:
+          - mv FindClipper.cmake cmake_modules/
+
+  - name: openctm
+    buildsystem: simple
+    build-commands:
+      - make -f Makefile.linux openctm
+      - cp lib/libopenctm.so /app/lib/libopenctm.so
+      - cp lib/openctm.h     /app/include/openctm.h
+      - cp lib/openctmpp.h   /app/include/openctmpp.h
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/openctm/files/OpenCTM-1.0.3/OpenCTM-1.0.3-src.tar.bz2/download
+        sha256: 4a8d2608d97364f7eec56b7c637c56b9308ae98286b3e90dbb7413c90e943f1d
+        archive-type: tar-bzip2
+
+
+
+  # Based on https://github.com/Ultimaker/cura-build-environment/blob/4.12/projects/requirements.txt
+  - python-modules/requirements.json
+
+
+  - name: stb
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/include/stb
+      - cp stb* /app/include/stb
+    sources:
+      - type: git
+        url: https://github.com/nothings/stb.git
+        commit: d5d052c806eee2ca1f858cb58b2f062d9fa25b90
+
+  - name: arcus
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_CXX_STANDARD=17
+      - -DBUILD_STATIC=ON
+      - -DBUILD_PYTHON=ON
+      - -DBUILD_EXAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/libArcus.git
+        commit: 2066a9ddccece8f970902bb5e33147d674627edd
+        tag: 4.13.0 
+      - type: patch
+        path: patch/libarcus-python-binindg-install.patch
+
+  - name: pynest2d
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CXX_STANDARD=17
+      - -DBUILD_STATIC=ON
+    sources:
+      - type: git
+        url: https://github.com/Ultimaker/pynest2d.git
+        commit: baec470ec51f334f6bc5b275ddb946083970aac5
+        tag: 4.12.1
+      - type: patch
+        path: patch/pynest2d-python-install.patch
+
+  - name: savitar
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CXX_STANDARD=17
+      - -DBUILD_STATIC=ON
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/libSavitar.git
+        commit: 68a8868e0b30883b461c0dde77f6e85ce0a4d2ef
+        tag: 4.13.0
+      - type: patch
+        path: patch/libsavitar-python-install.patch
+
+  - name: libCharon
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DPYTHON_EXECUTABLE=/app/bin/python3
+    sources:
+      - type: git
+        url: https://github.com/Ultimaker/libCharon
+        commit: 8e255aaad10b09c9cfc6e795f33968fd642e26c9
+        tag: 4.13.0
+
+  - name: cura-engine
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+      - -DCMAKE_CXX_STANDARD=17
+      - -DCURA_ENGINE_VERSION=4.13.0
+      - -DENABLE_MORE_COMPILER_OPTIMIZATION_FLAGS=ON
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/CuraEngine
+        commit: 0e79559492a9e3e631c28624b73a888b3297f174
+        tag: 4.13.0
+
+
+  - name: uranium
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/Uranium
+        commit: b1d9219a7272140a2021e7339901897c7df927d5
+        tag: 4.13.0
+
+  - name: fdm_materials
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/fdm_materials
+        commit: 304287c3a69d79a14d33c1fe897bf653a2fc4f15
+        tag: 4.13.0
+
+  - name: cura
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCURA_VERSION=4.13.0
+      - -DCURA_BUILDTYPE=Release
+      - -DCURA_CLOUD_API_ROOT=https://api.ultimaker.com
+      - -DCURA_CLOUD_API_VERSION=1
+      - -DCURA_CLOUD_ACCOUNT_API_ROOT=https://account.ultimaker.com
+      - -DCURA_DIGITAL_FACTORY_URL=https://digitalfactory.ultimaker.com
+      - -DCURA_MARKETPLACE_ROOT=https://marketplace.ultimaker.com
+      - -DCURA_NO_INSTALL_PLUGINS='SliceInfoPlugin'
+      - -DURANIUM_SCRIPTS_DIR=
+    post-install:
+      - mv /app/share/mime/packages/cura.xml /app/share/mime/packages/com.ultimaker.cura.xml
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/Cura
+        commit: c328f3619dae3ad37fb1decccf1013afa18b410c
+        tag: 4.13.0
+
+
+  - name: cura-binary-data
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/ultimaker/cura-binary-data
+        commit: 5e27a961715efc84db16692cf1299d42988f816b
+        tag: 4.13.0
