@@ -1,25 +1,38 @@
 #!/bin/bash -e
 
+echo "Preparing"
+
 APP_IMAGE="/app/extra/lunar-client-2.9.3.appimage"
 
 # Allow image to execute
 chmod +x $APP_IMAGE
 
-# Move into tmp dir
-RUN_DIR=/app/extra/tmp/
-mkdir $RUN_DIR
-cd $RUN_DIR
-
 # Extract image
-exec "$APP_IMAGE" --appimage-extract
+unappimage $APP_IMAGE
 
 # Install data
-mkdir "${FLATPAK_DEST}/lunarclient"
-cp -r squashfs-root/* "${FLATPAK_DEST}/lunarclient/"
+echo "Installing data"
 
-mkdir -p "${FLATPAK_DEST}/share/icons/hicolor/"
-cp -r squashfs-root/usr/share/icons/hicolor/* "${FLATPAK_DEST}/extra/export/share/icons/hicolor/"
+DEST="/app/extra/lunarclient.d/"
+mkdir $DEST
+cp -r squashfs-root/* $DEST
+
+ICON_DIR="/app/extra/export/share/icons/hicolor/"
+
+mkdir -p $ICON_DIR
+cp -r squashfs-root/usr/share/icons/hicolor/* $ICON_DIR
+
+iconSizes=("16" "32" "48" "64" "128" "256")
+
+for I in "${iconSizes[@]}"
+do
+	dir="$ICON_DIR/${I}x${I}/apps/"
+	mv "$dir/lunarclient.png" "$dir/com.lunarclient.LunarClient.png"
+done
 
 # Clean up
+echo "Cleaning up"
 
-rm -rf $RUN_DIR
+rm -rf squashfs-root/
+
+echo "Done"
