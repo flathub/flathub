@@ -1,21 +1,22 @@
 #!/bin/bash -e
 
-echo "Preparing"
-
 APP_IMAGE="/app/extra/lunar-client-2.9.3.appimage"
 
 # Allow image to execute
+
 chmod +x $APP_IMAGE
 
 # Extract image
+
 unappimage $APP_IMAGE
 
 # Install data
-echo "Installing data"
 
-DEST="/app/extra/lunarclient.d/"
+DEST="/app/extra/bin/"
 mkdir $DEST
 cp -r squashfs-root/* $DEST
+
+# Install icons
 
 ICON_DIR="/app/extra/export/share/icons/hicolor/"
 
@@ -31,8 +32,4 @@ do
 done
 
 # Clean up
-echo "Cleaning up"
-
 rm -rf squashfs-root/
-
-echo "Done"
