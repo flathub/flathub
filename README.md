@@ -61,3 +61,5 @@ Other notes:
 
 When upstream uses native PipeWire API (not PipeWire-JACK) will need:
 - ensure settings "manager" permission https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/667#note_787310
+
+[Instructions on audio plugins](https://github.com/flathub/org.freedesktop.LinuxAudio.BaseExtension)
