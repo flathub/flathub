@@ -1,0 +1,141 @@
+app-id: io.wavebox.Wavebox
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: wavebox
+separate-locales: false
+tags: [proprietary]
+build-options:
+  no-debuginfo: true
+finish-args:
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --require-version=1.8.2
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.SessionManager
+  - --system-talk-name=org.freedesktop.Avahi
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --filesystem=host-etc
+  - --filesystem=xdg-run/pipewire-0
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-desktop
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --persist=.pki
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - name: libcups
+    make-args: [libs]
+    no-make-install: true
+    post-install:
+      - make install-headers install-libs
+    cleanup:
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/OpenPrinting/cups.git
+        tag: v2.4.0
+        commit: 7b114a26fe8bbe3c280d3ac743d30e5cb8f6ef93
+  - name: gtk-cups-backend
+    buildsystem: meson
+    make-args: [modules/printbackends/libprintbackend-cups.so]
+    no-make-install: true
+    post-install:
+      - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gtk.git
+        tag: 3.24.23
+      - type: patch
+        path: gtk3-werror.patch
+  - name: gtk-settings
+    buildsystem: simple
+    build-commands:
+      - install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini
+    sources:
+      - type: file
+        path: gtk-settings.ini
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2021.09.1
+        commit: e09f37ca4ff09827434deba11f9b1f9e1c42dbaf
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+  - name: flextop
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/refi64/flextop
+        tag: v2021.07.1
+        commit: 9f66dac84388f520ecab5ac4fa60df6343b7db5b
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+  - name: cobalt
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/refi64/cobalt
+        tag: v2021.11.1
+        commit: 8a49246a97fcb989b370c20b204324862d79541f
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+  - name: krb5
+    subdir: src
+    sources:
+      - type: archive
+        url: https://kerberos.org/dist/krb5/1.19/krb5-1.19.1.tar.gz
+        sha256: fa16f87eb7e3ec3586143c800d7eaff98b5e0dcdf0772af7d98612e49dbeb20b
+      - type: file
+        path: krb5.conf
+    post-install:
+      - install -Dm644 ../krb5.conf /app/etc/krb5.conf
+  - name: wavebox
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/wavebox
+      - tar -xvf wavebox.tar.gz -C /app/wavebox --strip 1
+      - install -Dm 755 wavebox.sh /app/bin/wavebox
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/flatpak-wavebox flatpak_policy.json
+      - install -Dm 644 -t /app/share/applications io.wavebox.Wavebox.desktop
+      - install -Dm 644 -t /app/share/metainfo io.wavebox.Wavebox.metainfo.xml
+      - install -Dm 644 /app/wavebox/product_logo_128.png /app/share/icons/hicolor/scalable/apps/io.wavebox.Wavebox.png
+    sources:
+      - type: file
+        url: https://download.wavebox.app/stable/linux/tar/Wavebox_10.97.16-2.tar.gz
+        sha256: 8bad55d19015b41e8d4e392de6ebaad0ff689317df30c3f21631308209edd961
+        x-checker-data:
+          type: rotating-url
+          url: https://download.wavebox.app/latest/stable/linux/tar
+          pattern: https://download.wavebox.app/stable/linux/tar/Wavebox_([\d-]+).tar.gz
+          is-main-source: true
+        dest-filename: wavebox.tar.gz
+        only-arches: [x86_64]
+      - type: script
+        dest-filename: wavebox.sh
+        commands:
+          - exec cobalt "$@"
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: flatpak_policy.json
+      - type: file
+        path: io.wavebox.Wavebox.desktop
+      - type: file
+        path: io.wavebox.Wavebox.metainfo.xml
