@@ -57,9 +57,7 @@ flatpak build-bundle zrythm zrythm.flatpak org.zrythm.Zrythm
 flatpak install zrythm.flatpak
 ```
 
-Build-time issues:
-
-When building with ccache, sometimes vamp-plugin-sdk complains about the object file, rm .flatpak-builder and build-dir (i.e. reset the cache) to fix it.
+Other notes:
 
 When upstream uses native PipeWire API (not PipeWire-JACK) will need:
 - ensure settings "manager" permission https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/667#note_787310
