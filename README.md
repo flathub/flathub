@@ -24,17 +24,38 @@ Intended for Zrythm maintainers or experienced users.
 
 Build:
 
-1. `git clone https://github.com/vchernin/org.zrythm.Zrythm`
+Prerequisites:  
+Assuming you have Flathub installed, along with `flatpak` and `flatpak-builder`.
+```
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+```
 
-2.  `flatpak install --user org.gnome.Platform//41 org.gnome.Sdk//41 -y` (if not already present)
+1. Clone the repo
+```
+git clone --recurse-submodules https://github.com/vchernin/flathub --branch org.zrythm.Zrythm
+cd flathub
+```
 
-3. `flatpak-builder build-dir --user --install org.zrythm.Zrythm.json --force-clean --ccache`
-OR  
-3. `flatpak-builder --repo=zrythm --force-clean --user build-dir org.zrythm.Zrythm.json`  
-`flatpak remote-add --user zrythm zrythm --no-gpg-verify`  
-`flatpak install --user zrythm org.zrythm.Zrythm`  
+2. Build the Flatpak
+```
+flatpak-builder --repo=zrythm --force-clean --install-deps-from=flathub --ccache --user build-dir org.zrythm.Zrythm.json
+```
 
-4. `flatpak run org.zrythm.Zrythm`
+3. Add the local repo and install the Flatpak
+```
+flatpak remote-add --user zrythm zrythm --no-gpg-verify
+flatpak install --user zrythm org.zrythm.Zrythm
+```
+4. Run the Flatpak build 
+```
+flatpak run org.zrythm.Zrythm
+```
+
+Optionally after steps 1-3 you can build and install [a bundle](https://docs.flatpak.org/en/latest/single-file-bundles.html) with:
+```
+flatpak build-bundle zrythm zrythm.flatpak org.zrythm.Zrythm
+flatpak install zrythm.flatpak
+```
 
 Build-time issues:
 
