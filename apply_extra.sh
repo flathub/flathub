@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-APP_IMAGE="/app/extra/lunar-client-2.9.3.appimage"
+APP_IMAGE="/app/extra/lunar-client.appimage"
 
 # Allow image to execute
 
