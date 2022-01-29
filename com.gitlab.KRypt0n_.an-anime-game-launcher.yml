@@ -1,0 +1,137 @@
+app-id: com.gitlab.KRypt0n_.an-anime-game-launcher
+runtime: org.gnome.Platform
+runtime-version: "41"
+sdk: org.gnome.Sdk
+command: com.gitlab.KRypt0n_.an-anime-game-launcher
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11 # Not fallback-x11, because while the launcher supports Wayland, Wine doesn't (yet)
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --talk-name=org.freedesktop.Notifications
+  - --allow=multiarch
+  - --device=all # Controllers
+
+add-extensions:
+  org.gnome.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: "41"
+
+  org.gnome.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: "41"
+    no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: "1.4"
+    versions: 21.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - /share/vala
+  - "*.la"
+  - "*.a"
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: file
+        dest-filename: ld.so.conf
+        url: data:/app/lib32%0A/app/lib/i386-linux-gnu%0A
+
+  - name: xdelta3
+    # Pretty sure autotools would've been the right option but that didn't work, so I used simple and mostly stole the commands from the Arch package
+    buildsystem: simple
+    build-commands:
+      - aclocal
+      - autoreconf --install
+      - libtoolize
+      - autoconf
+      - autoheader
+      - automake --add-missing
+      - automake
+
+      - ./configure --prefix=/app
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/jmacd/xdelta/archive/refs/tags/v3.1.0.tar.gz
+        sha256: 7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d
+        strip-components: 2
+
+  - name: cabextract
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://www.cabextract.org.uk/cabextract-1.9.1.tar.gz
+        sha256: afc253673c8ef316b4d5c29cc4aa8445844bee14afffbe092ee9469405851ca7
+
+  # The launcher uses ping to check if certain domains are blocked, so we need to install it
+  - name: ping
+    buildsystem: meson
+    config-opts:
+      - -DBUILD_ARPING=false
+      - -DBUILD_CLOCKDIFF=false
+      - -DBUILD_PING=true
+      - -DBUILD_TRACEPATH=false
+      - -DBUILD_MANS=false
+      - -DSKIP_TESTS=true
+    sources:
+      - type: archive
+        url: https://github.com/iputils/iputils/archive/refs/tags/20211215.tar.gz
+        sha256: b6f67fc705490673ff4471d006221b4a2f1b1180b929d9fefd771352621ccedf
+
+  - name: an-anime-game-launcher
+    buildsystem: simple
+    build-commands:
+      - chmod +x An_Anime_Game_Launcher.AppImage
+      - ./An_Anime_Game_Launcher.AppImage --appimage-extract
+
+      - install -dm755 "${FLATPAK_DEST}/bin" "${FLATPAK_DEST}/lib/an-anime-game-launcher" "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps"
+      - cp -r squashfs-root/an-anime-game-launcher squashfs-root/public squashfs-root/resources.neu "${FLATPAK_DEST}/lib/an-anime-game-launcher"
+
+      - install -Dm644 "com.gitlab.KRypt0n_.an-anime-game-launcher.png" "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps"
+      - install -Dm755 "com.gitlab.KRypt0n_.an-anime-game-launcher.sh" "${FLATPAK_DEST}/bin/com.gitlab.KRypt0n_.an-anime-game-launcher"
+      - install -Dm644 "com.gitlab.KRypt0n_.an-anime-game-launcher.desktop" -t "${FLATPAK_DEST}/share/applications"
+    sources:
+      - type: file
+        url: https://gitlab.com/KRypt0n_/an-anime-game-launcher/uploads/c3021cb7e2441adbd73821e2a8600ced/An_Anime_Game_Launcher.AppImage
+        sha256: 4f09dd6648f3d3a3d0df96c4ca3d0fb71ac4c4b4e64708e640a4b76bc95e65fb
+        #url: https://cdn.discordapp.com/attachments/910870926420226118/936726879128412250/An_Anime_Game_Launcher.AppImage
+        #sha256: 70999beef57fbdd3393a86d19f1a6be44ca1827a847e45709e46239870807ab2
+      - type: file
+        path: com.gitlab.KRypt0n_.an-anime-game-launcher.png
+      - type: file
+        path: com.gitlab.KRypt0n_.an-anime-game-launcher.sh
+      - type: file
+        path: com.gitlab.KRypt0n_.an-anime-game-launcher.desktop
