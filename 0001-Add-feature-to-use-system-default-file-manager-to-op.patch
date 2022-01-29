@@ -1,0 +1,216 @@
+From 7ca2f908a5dc5285c5b94ae053e32ff0016d1afe Mon Sep 17 00:00:00 2001
+From: Snehit Sah <snehitsah@protonmail.com>
+Date: Sat, 22 Jan 2022 08:20:37 +0530
+Subject: [PATCH] Add feature to use system default file manager to open drive
+
+Added an option in settings to use system default file manager to
+open drives. If selected, KDF will use QDesktopServices to open
+disk. If unchecked, KDF will use the previous behaviour of executing
+supplied command in settings.
+
+BUG: 448764
+
+Signed-off-by: Snehit Sah <snehitsah@protonmail.com>
+---
+ src/kdfconfig.cpp | 10 ++++++++++
+ src/kdfconfig.ui  | 15 +++++++++++----
+ src/kdfwidget.cpp |  8 +++++++-
+ src/stdoption.cpp | 16 ++++++++++++++++
+ src/stdoption.h   |  3 +++
+ 5 files changed, 47 insertions(+), 5 deletions(-)
+
+diff --git a/src/kdfconfig.cpp b/src/kdfconfig.cpp
+index a653525..9ce0a31 100644
+--- a/src/kdfconfig.cpp
++++ b/src/kdfconfig.cpp
+@@ -72,6 +72,10 @@ KDFConfigWidget::KDFConfigWidget(QWidget *parent, bool init)
+ 
+         connect(mFileManagerEdit,&QLineEdit::textChanged,this,&KDFConfigWidget::slotChanged);
+ 
++        connect(mSystemFileManagerCheck,&QAbstractButton::toggled,this,&KDFConfigWidget::slotChanged);
++        connect(mSystemFileManagerCheck,&QAbstractButton::toggled,mFileManagerEdit,&QWidget::setDisabled);
++        connect(mSystemFileManagerCheck,&QAbstractButton::toggled,fileManagerEdit,&QWidget::setDisabled);
++
+         connect(mOpenMountCheck,&QAbstractButton::toggled,this,&KDFConfigWidget::slotChanged);
+ 
+         connect(mPopupFullCheck,&QAbstractButton::toggled,this,&KDFConfigWidget::slotChanged);
+@@ -110,6 +114,7 @@ void KDFConfigWidget::applySettings( void )
+         mStd.setUpdateFrequency( m_updateSpinBox->value() );
+         mStd.setPopupIfFull( mPopupFullCheck->isChecked() );
+         mStd.setOpenFileManager( mOpenMountCheck->isChecked() );
++        mStd.setUseSystemFileManager( mSystemFileManagerCheck->isChecked() );
+         mStd.writeConfiguration();
+ 
+         QTreeWidgetItem * item = m_listWidget->topLevelItem(0);
+@@ -138,8 +143,12 @@ void KDFConfigWidget::loadSettings( void )
+         m_updateSpinBox->setValue( mStd.updateFrequency() );
+         mPopupFullCheck->setChecked( mStd.popupIfFull() );
+         mOpenMountCheck->setChecked( mStd.openFileManager() );
++        mSystemFileManagerCheck->setChecked( mStd.useSystemFileManager() );
+         mFileManagerEdit->setText( mStd.fileManager() );
+ 
++        mFileManagerEdit->setEnabled( !mStd.useSystemFileManager() );
++        fileManagerEdit->setEnabled( !mStd.useSystemFileManager() );
++
+         QTreeWidgetItem * item = m_listWidget->topLevelItem(0);
+         for( int i=0; i < m_columnList.size(); i++ )
+         {
+@@ -160,6 +169,7 @@ void KDFConfigWidget::defaultsBtnClicked( void )
+     m_updateSpinBox->setValue( mStd.updateFrequency() );
+     mPopupFullCheck->setChecked( mStd.popupIfFull() );
+     mOpenMountCheck->setChecked( mStd.openFileManager() );
++    mSystemFileManagerCheck->setChecked( mStd.useSystemFileManager() );
+     mFileManagerEdit->setText( mStd.fileManager() );
+ 
+     QTreeWidgetItem * item = m_listWidget->topLevelItem(0);
+diff --git a/src/kdfconfig.ui b/src/kdfconfig.ui
+index c560f05..d68d16c 100644
+--- a/src/kdfconfig.ui
++++ b/src/kdfconfig.ui
+@@ -49,28 +49,35 @@
+      </property>
+     </widget>
+    </item>
+-   <item row="5" column="0" colspan="2">
++   <item row="6" column="0" colspan="2">
+     <widget class="QCheckBox" name="mOpenMountCheck">
+      <property name="text">
+       <string>Open file manager automatically on mount</string>
+      </property>
+     </widget>
+    </item>
+-   <item row="6" column="0" colspan="2">
++   <item row="7" column="0" colspan="2">
+     <widget class="QCheckBox" name="mPopupFullCheck">
+      <property name="text">
+       <string>Pop up a window when a disk gets critically full</string>
+      </property>
+     </widget>
+    </item>
+-   <item row="2" column="0">
++   <item row="2" column="0" colspan="2">
++    <widget class="QCheckBox" name="mSystemFileManagerCheck">
++     <property name="text">
++      <string>Use system default file manager</string>
++     </property>
++    </widget>
++   </item>
++   <item row="3" column="0">
+     <widget class="QLabel" name="fileManagerEdit">
+      <property name="text">
+       <string>File manager (e.g. konsole -e mc %m):</string>
+      </property>
+     </widget>
+    </item>
+-   <item row="2" column="1">
++   <item row="3" column="1">
+     <widget class="KLineEdit" name="mFileManagerEdit"/>
+    </item>
+   </layout>
+diff --git a/src/kdfwidget.cpp b/src/kdfwidget.cpp
+index 2fadc9e..7a333c1 100644
+--- a/src/kdfwidget.cpp
++++ b/src/kdfwidget.cpp
+@@ -31,6 +31,8 @@
+ #include <QPainter>
+ #include <QMenu>
+ #include <QProcess>
++#include <QDesktopServices>
++#include <QUrl>
+ 
+ //This aren't used here...
+ //#define BAR_COLUMN   7
+@@ -450,7 +452,11 @@ void KDFWidget::contextMenuRequested( const QPoint &p )
+     if( openFileManager == true )
+     {
+         qCDebug(KDF) << "opening filemanager";
+-        if(  mStd.fileManager().isEmpty() == false )
++        if( mStd.useSystemFileManager() == true )
++        {
++            QDesktopServices::openUrl( QUrl::fromLocalFile( disk->mountPoint() ) );
++        }
++        else if(  mStd.fileManager().isEmpty() == false )
+         {
+             QString cmd = mStd.fileManager();
+             int pos = cmd.indexOf(QLatin1String( "%m" ));
+diff --git a/src/stdoption.cpp b/src/stdoption.cpp
+index 2f35d6c..2d1edab 100644
+--- a/src/stdoption.cpp
++++ b/src/stdoption.cpp
+@@ -38,6 +38,8 @@ void CStdOption::updateConfiguration()
+                        "PopupIfFull", true );
+     mOpenFileManagerOnMount = config.readEntry(
+                                   "OpenFileMgrOnMount", false );
++    mUseSystemFileManager = config.readEntry(
++                       "UseSystemFileMgr", true);
+ }
+ 
+ 
+@@ -48,6 +50,7 @@ void CStdOption::writeConfiguration()
+     config.writePathEntry( "FileManagerCommand", mFileManager );
+     config.writeEntry( "PopupIfFull", mPopupIfFull );
+     config.writeEntry( "OpenFileMgrOnMount", mOpenFileManagerOnMount );
++    config.writeEntry( "UseSystemFileMgr", mUseSystemFileManager);
+     config.sync();
+ }
+ 
+@@ -85,12 +88,19 @@ bool CStdOption::openFileManager() const
+ }
+ 
+ 
++bool CStdOption::useSystemFileManager() const
++{
++    return( mUseSystemFileManager );
++}
++
++
+ void CStdOption::setDefault()
+ {
+     mFileManager     = mDefaultFileManager;
+     mUpdateFrequency = mDefaultUpdateFrequency;
+     mPopupIfFull     = true;
+     mOpenFileManagerOnMount = false;
++    mUseSystemFileManager   = true;
+ }
+ 
+ 
+@@ -117,3 +127,9 @@ void CStdOption::setOpenFileManager( bool openFileManagerOnMount )
+     mOpenFileManagerOnMount = openFileManagerOnMount;
+ }
+ 
++
++void CStdOption::setUseSystemFileManager( bool useSystemFileManager )
++{
++    mUseSystemFileManager = useSystemFileManager;
++}
++
+diff --git a/src/stdoption.h b/src/stdoption.h
+index 547fd9d..8cad5a5 100644
+--- a/src/stdoption.h
++++ b/src/stdoption.h
+@@ -29,12 +29,14 @@ class KDFPRIVATE_EXPORT CStdOption
+         int     updateFrequency() const;
+         bool    popupIfFull() const;
+         bool    openFileManager() const;
++        bool    useSystemFileManager() const;
+ 
+         void setDefault( );
+         void setFileManager( const QString &fileManager );
+         void setUpdateFrequency( int frequency );
+         void setPopupIfFull( bool popupIfFull );
+         void setOpenFileManager( bool openFileManagerOnMount );
++        void setUseSystemFileManager( bool useSystemFileManager );
+ 
+     private:
+         static QString mDefaultFileManager;
+@@ -43,6 +45,7 @@ class KDFPRIVATE_EXPORT CStdOption
+         int     mUpdateFrequency;
+         bool    mPopupIfFull;
+         bool    mOpenFileManagerOnMount;
++        bool    mUseSystemFileManager;
+ };
+ 
+ #endif
+-- 
+2.34.1
+
