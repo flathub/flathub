@@ -2,7 +2,7 @@ app-id: community.pathofbuilding.PathOfBuilding
 runtime: org.kde.Platform
 runtime-version: '5.15-21.08'
 sdk: org.kde.Sdk
-command: pob.sh
+command: pathofbuilding
 finish-args:
   - --socket=x11
   - --socket=wayland
@@ -11,7 +11,26 @@ finish-args:
   - --device=dri
 cleanup:
   - '/include'
+
 modules:
+  - name: PathOfBuildingCommunity
+    buildsystem: simple
+    build-commands:
+      - unzip runtime-win32.zip lua/xml.lua lua/base64.lua lua/sha1.lua
+      - mv lua/*.lua .
+      - rm -rf lua runtime-win32.zip runtime/*.dll runtime/*.exe
+      - cp -r $FLATPAK_BUILDER_BUILDDIR/. $FLATPAK_DEST/pathofbuilding
+    sources:
+      - type: git
+        url: https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
+        tag: v2.13.0
+        commit: d600d809c6ef3b5df0e604c2626d088135fa9867
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+      - type: patch
+        path: PathOfBuilding-force-disable-devmode.patch
+
   - name: luajit
     buildsystem: simple
     build-commands:
@@ -26,7 +45,7 @@ modules:
     build-commands:
       - make DESTDIR=${FLATPAK_DEST} LUA_IMPL=luajit -j16
     post-install:
-      - cp lcurl.so ${FLATPAK_DEST}/
+      - cp lcurl.so $FLATPAK_DEST/pathofbuilding
     sources:
       - type: archive
         url: https://github.com/Lua-cURL/Lua-cURLv3/archive/refs/tags/v0.3.13.tar.gz
@@ -35,36 +54,30 @@ modules:
   - name: pobfrontend
     buildsystem: meson
     post-install:
-      - cp -a pobfrontend ${FLATPAK_DEST}/bin
+      - install -Dm755 pobfrontend $FLATPAK_DEST/pathofbuilding
     sources:
       - type: git
         url: https://gitlab.com/bcareil/pobfrontend.git
         branch: luajit
 
-  - name: PathOfBuildingCommunity
+  - name: start-script
     buildsystem: simple
     build-commands:
-      - unzip runtime-win32.zip lua/xml.lua lua/base64.lua lua/sha1.lua
-      - mv lua/*.lua .
-      - rm -rf lua runtime-win32.zip runtime/*.dll runtime/*.exe
-      - cp -ar * /app/
+      - install -Dm755 pathofbuilding.sh ${FLATPAK_DEST}/bin/pathofbuilding
     sources:
-      - type: archive
-        url: https://github.com/PathOfBuildingCommunity/PathOfBuilding/archive/refs/tags/v2.11.0.tar.gz
-        sha256: 6a7a23f103f110d7a8ff84e20bd0439ba48748ae1e7e95c7b473420dda1eadfe
-      - type: patch
-        path: PathOfBuilding-force-disable-devmode.patch
+      - type: script
+        dest-filename: pathofbuilding.sh
+        commands:
+          - cd /app/pathofbuilding/
+          - /app/pathofbuilding/pobfrontend "$@"
 
   - name: extrafiles
     buildsystem: simple
     build-commands:
-      - install -Dm755 pob.sh ${FLATPAK_DEST}/bin/pob.sh
       - install -Dm644 community.pathofbuilding.PathOfBuilding.png ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/community.pathofbuilding.PathOfBuilding.png
       - install -Dm644 community.pathofbuilding.PathOfBuilding.desktop ${FLATPAK_DEST}/share/applications/community.pathofbuilding.PathOfBuilding.desktop
       - install -Dm644 community.pathofbuilding.PathOfBuilding.metainfo.xml ${FLATPAK_DEST}/share/metainfo/community.pathofbuilding.PathOfBuilding.metainfo.xml
     sources:
-      - type: file
-        path: pob.sh
       - type: file
         path: community.pathofbuilding.PathOfBuilding.png
       - type: file
