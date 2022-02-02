@@ -1,0 +1,139 @@
+app-id: com.sigil_ebook.Sigil
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: 5.15-21.08
+rename-desktop-file: sigil.desktop
+rename-icon: sigil
+command: sigil
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-documents
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  - name: build-script
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 flatpak-sip -t ${FLATPAK_DEST}/bin
+    cleanup: ['*']
+    sources:
+      - type: script
+        dest-filename: flatpak-sip
+        commands:
+          - |
+            PY_VER=python$(python3 -c 'import sys; print(sys.version[:3])')
+            sip-install \
+              --target-dir /app/lib/${PY_VER}/site-packages \
+              --scripts-dir /app/bin \
+              --build-dir ./build \
+              --jobs ${FLATPAK_BUILDER_N_JOBS} \
+              --debug \
+              --verbose \
+              $@
+
+  - name: PyQt5
+    build-options:
+      arch:
+        aarch64:
+          env:
+            - config_opts: [--disable-feature PyQt_Desktop_OpenGL]
+    buildsystem: simple
+    build-commands:
+      - |
+        flatpak-sip ${config_opts} \
+          --confirm-license \
+          --no-designer-plugin \
+          --no-qml-plugin \
+          --no-dbus-python \
+          --enable QtCore \
+          --enable QtGui \
+          --enable QtNetwork \
+          --enable QtWidgets \
+          --enable QtXml \
+          --enable QtXmlPatterns \
+          --enable QtSvg \
+          --enable QtWebChannel \
+          --enable QtPrintSupport 
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/3b/27/fd81188a35f37be9b3b4c2db1654d9439d1418823916fe702ac3658c9c41/PyQt5-5.15.6.tar.gz
+        sha256: 80343bcab95ffba619f2ed2467fd828ffeb0a251ad7225be5fc06dcc333af452
+        x-checker-data:
+          type: pypi
+          name: PyQt5
+
+    modules:
+      - dependencies/pyqt5-pypi-dependencies.json
+
+  - name: PyQtWebEngine
+    build-options:
+      env: [QMAKEPATH=/app/lib]
+    buildsystem: simple
+    build-commands:
+      - flatpak-sip --no-docstrings
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/60/66/56e118abb4cddd8e4bea6f89bdec834069b52479fb991748f1b21950811e/PyQtWebEngine-5.15.5.tar.gz
+        sha256: ab47608dccf2b5e4b950d5a3cc704b17711af035024d07a9b71ad29fc103b941
+        x-checker-data:
+          type: pypi
+          name: PyQtWebEngine
+
+  - name: sigil
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DUSE_SYSTEM_LIBS=1
+      - -DSYSTEM_LIBS_REQUIRED=1
+      - -DDISABLE_UPDATE_CHECK=1
+      - -DINSTALL_HICOLOR_ICONS=1
+    post-install:
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+    sources:
+      - type: git
+        url: https://github.com/Sigil-Ebook/Sigil.git
+        tag: 1.8.0
+        commit: 70f4618dd9138e7769a42592383b710f3e06cfb7
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          is-main-source: true
+
+      - type: file
+        path: com.sigil_ebook.Sigil.metainfo.xml
+
+    modules:
+      - dependencies/sigil-pypi-dependencies.json
+      - dependencies/python3-tkinter.yaml
+      # hunspell is in sdk
+      - name: pcre
+        cleanup:
+          - '*.a'
+          - '*.la'
+          - /include
+          - /share
+        config-opts:
+          - --enable-pcretest-libreadline
+          - --enable-unicode-properties
+          - --enable-utf
+          - --enable-pcre16
+          - --enable-jit
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/pcre/pcre-8.45.tar.bz2
+            sha256: 4dae6fdcd2bb0bb6c37b5f97c33c2be954da743985369cddac3546e3218bffb8
+            x-checker-data:
+              type: anitya
+              project-id: 2610
+              stable-only: true
+              url-template: https://prdownloads.sourceforge.net/pcre/pcre-$version.tar.bz2
