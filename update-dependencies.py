@@ -57,6 +57,7 @@ def main():
             }
             for url in urls
         ]
+        files.sort(key=lambda f: f['url'])
 
     with open('maven-dependencies.json', 'w') as sink:
         json.dump(files, sink, indent=2)
