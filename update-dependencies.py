@@ -51,7 +51,8 @@ def main():
             {
                 'type': 'file',
                 'url': url.url,
-                'dest': str(Path('.m2/repository') / url.relpath),
+                'dest': str((Path('.m2/repository') / url.relpath).parent),
+                'dest-filename': Path(url.relpath).name,
                 'sha512': hashlib.sha512((directory / url.relpath).read_bytes()).hexdigest()
             }
             for url in urls
