@@ -1,6 +1,6 @@
-# SDK Extension for LLVM Project 12
+# SDK Extension for LLVM Project 13
 
-This extension contains various components of the [LLVM Project](https://llvm.org) (version 12.x).
+This extension contains various components of the [LLVM Project](https://llvm.org) (version 13.x).
 
 Among provided tools there are LLVM Core libraries, Clang, Clang Extra Tools, LLDB and LLD.
 
@@ -11,11 +11,11 @@ Among provided tools there are LLVM Core libraries, Clang, Clang Extra Tools, LL
 In order to build your app with tools provided with this extension you have to set following variables in app manifest:
 
 ```
-"sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm12" ],
+"sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm13" ],
 ...
 "build-options":{
-    "append-path": "/usr/lib/sdk/llvm12/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
+    "append-path": "/usr/lib/sdk/llvm13/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm13/lib"
     }
 ```
 Example:
@@ -25,13 +25,13 @@ Example:
   "runtime" : "org.freedesktop.Platform",
   "runtime-version" : "21.08",
   "sdk" : "org.freedesktop.Sdk",
-  "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm12" ],
+  "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm13" ],
   "modules" : [
   {
     "name" : "Myapp",
     "build-options":{
-    "append-path": "/usr/lib/sdk/llvm12/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm12/lib"
+    "append-path": "/usr/lib/sdk/llvm13/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm13/lib"
   }
  ]
 }
@@ -43,12 +43,12 @@ It's possible that your app will additionally need some special variable(s) besi
 
 If your app dynamically links to any shared library provided by this extension then you need to copy that library in `/app/lib` directory during the build, i.e:
 ```
-cp /usr/lib/sdk/llvm12/lib/libLLVM-12.so /app/lib/
+cp /usr/lib/sdk/llvm13/lib/libLLVM-13.so /app/lib/
 ```
 
 ### Debugging/Development
 
 In order to use this extension in flatpak SDK environment you may add all provided tools in your PATH by executing first:
 ```
-source /usr/lib/sdk/llvm12/enable.sh
+source /usr/lib/sdk/llvm13/enable.sh
 ```
