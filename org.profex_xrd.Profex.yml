@@ -1,0 +1,81 @@
+app-id: org.profex_xrd.Profex
+runtime: org.kde.Platform
+runtime-version: '6.2'
+sdk: org.kde.Sdk
+command: profex
+rename-icon: profex
+rename-desktop-file: profex.desktop
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --filesystem=xdg-documents
+cleanup:
+  - /include
+  - /modules
+  - /lib/mkspecs
+  - /lib/debug
+  - /lib/*/cmake
+  - /lib/*/metatypes
+  - /qml
+  - '*.a'
+  - '*.la'
+  - '*.prl'
+modules:
+  - name: qt6-core5compat
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/qt/6.2/6.2.3/submodules/qt5compat-everywhere-src-6.2.3.tar.xz
+        sha256: 1cf89198cf2cf8a5c15336ccd69fa1f39b779feb64117d6bbf5509c21c123f53
+    post-install:
+      - mv /app/mkspecs /app/lib
+      - ln -sr ${FLATPAK_DEST}/lib/${FLATPAK_ARCH}-linux-gnu/libQt*.so* -t ${FLATPAK_DEST}/lib/
+      - sed -i 's/\\([0-9]\\+\\.[0-9]\\+\\)\\.[0-9]\\+ ${_Qt6.*_FIND_VERSION_EXACT}/\\1/' ${FLATPAK_DEST}/lib/${FLATPAK_ARCH}-linux-gnu/cmake/Qt6*/Qt6*Config.cmake
+      - sed -e 's@PATHS \"${CMAKE_CURRENT_LIST_DIR}/..\" NO_DEFAULT_PATH@PATHS \"${CMAKE_CURRENT_LIST_DIR}/..\" \"/usr/lib/${CMAKE_CXX_LIBRARY_ARCHITECTURE}/cmake/\" NO_DEFAULT_PATH@' -i ${FLATPAK_DEST}/lib/${FLATPAK_ARCH}-linux-gnu/cmake/Qt6*/Qt6*Config.cmake
+      - sed -e 's@\\($$QT_MODULE_BIN_BASE\\)@\\1 '${FLATPAK_DEST}'/bin @' -i ${FLATPAK_DEST}/lib/mkspecs/modules/*.pri
+      - sed -e 's@\\($$QT_MODULE_INCLUDE_BASE \\)@\\1'${FLATPAK_DEST}'/include @' -i ${FLATPAK_DEST}/lib/mkspecs/modules/*.pri
+      - sed -e 's@$$QT_MODULE_INCLUDE_BASE/@'${FLATPAK_DEST}'/include/@g' -i ${FLATPAK_DEST}/lib/mkspecs/modules/*.pri
+      - sed -e 's@$$QT_MODULE_LIB_BASE@'${FLATPAK_DEST}'/lib@g' -i ${FLATPAK_DEST}/lib/mkspecs/modules/*.pri
+
+  - name: bgmn
+    buildsystem: simple
+    build-commands:
+      - install -Dv * -t /app/bgmn
+    sources:
+      - type: archive
+        url: https://www.profex-xrd.org/wp-content/uploads/2017/12/bgmn-4.2.23-x86_64.tar.gz
+        sha256: 6c987bacc9b1ef8b4bd6569f13f193f24c0d61b7c4a8dd2cdeaecdf9352fa6a6
+
+  - name: bgmn-templates
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/BGMN-Templates
+      - mv {Devices,Reports,Structures,Wavelengths} /app/BGMN-Templates
+    sources:
+      - type: archive
+        url: https://www.profex-xrd.org/wp-content/uploads/2022/01/BGMN-Templates-220129.tar.gz
+        sha256: 7c69397782f3fbac340a88f0b923eae10d5ec8d89aa504cb55a85a3902694014
+
+  - name: profex
+    buildsystem: qmake
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+    sources:
+      - type: archive
+        url: https://www.profex-xrd.org/wp-content/uploads/2022/01/profex-5.0.0.tar.gz
+        sha256: 0d07724d6353d9edd3e9926c898263f59f1b0beace72d53aed0eda9e90c55f01
+      - type: patch
+        path: bgmnbackendconfig.patch
+      - type: file
+        path: profex.png
+      - type: file
+        path: org.profex_xrd.Profex.appdata.xml
+    post-install:
+      - mv ${FLATPAK_BUILDER_BUILDDIR}/bin /app
+      - install -Dv ${FLATPAK_BUILDER_BUILDDIR}/profex/resources/profex.desktop -t /app/share/applications
+      - sed -i 's@/opt/Profex-BGMN/Profex/@@g' /app/share/applications/profex.desktop
+      - install -Dv profex.png -t /app/share/icons/hicolor/512x512/apps
+      - install -Dv org.profex_xrd.Profex.appdata.xml -t /app/share/appdata
