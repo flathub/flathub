@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
-java --class-path "/app/Cryptomator/libs/*" \
-  --module-path "/app/Cryptomator/mods" \
+java --class-path "share/org.cryptomator.Cryptomator/lib/*" \
+  --module-path "share/org.cryptomator.Cryptomator/lib/app/mods" \
   -Dcryptomator.ipcPortPath="${XDG_CONFIG_HOME}"/Cryptomator/ipcPort.bin \
   -Dcryptomator.logDir="${XDG_DATA_HOME}"/Cryptomator/logs/ \
   -Dcryptomator.mountPointsDir="${XDG_DATA_HOME}"/Cryptomator/mnt/ \
