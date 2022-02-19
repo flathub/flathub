@@ -1,0 +1,175 @@
+---
+app-id: com.github.arminstraub.krop
+
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+
+command: krop
+
+finish-args:
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Without dri Qt prints "libEGL warning: wayland-egl: could not open /dev/dri/card0"
+  - --device=dri
+
+modules:
+  - org.boost.Boost.json
+  - qtbase-5-12.yml
+  - name: qt5-wayland
+    buildsystem: qmake
+    cleanup:
+      - /bin
+      - /include
+      - /lib/*.a
+      - /lib/*.la
+      - /lib/*.prl
+      - /lib/cmake
+      - /lib/mkspecs
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: http://qt.mirror.constant.com/archive/qt/5.12/5.12.12/submodules/qtwayland-everywhere-src-5.12.12.tar.xz
+        sha256: 47d074357d6b3e8bf2873462cad85555f9dc2899aa8422bbcc81ca31d4fd5b27
+      - type: patch
+        path: patches/qt/qtwayland-use-gnome-platform-theme-on-gnome-based-desktops.patch
+      - type: patch
+        path: patches/qt/Fix-installing-qtwayland-without-qtquick-or-opengl-s.patch
+  # OpenJPEG is needed to build Poppler
+  - openjpeg.json
+
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib
+      - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
+      - -DBUILD_QT5_TESTS=OFF
+      - -DBUILD_GTK_TESTS=OFF
+      - -DBUILD_CPP_TESTS=OFF
+      - -DBUILD_MANUAL_TESTS=OFF
+      - -DENABLE_UTILS=OFF
+    cleanup:
+      - /bin
+      - /include
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-21.06.1.tar.xz
+        sha256: 86b09e5a02de40081a3916ef8711c5128eaf4b1fc59d5f87d0ec66f04f595db4
+
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - python3 configure.py
+        --destdir=/app/lib/python3.9/site-packages
+        --bindir=/app/bin
+        --incdir=/app/include
+        --sipdir=/app/share/sip
+        --stubsdir=/app/lib/python3.9/site-packages
+        --sip-module=PyQt5.sip
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://distfiles.macports.org/py-sip/sip-4.19.24.tar.gz
+        sha256: edcd3790bb01938191eef0f6117de0bf56d1136626c0ddb678f3a558d62e41e5
+    cleanup:
+      - /bin
+
+  - name: PyQt5
+    build-options:
+      env:
+        - QMAKEPATH=/app/lib
+      arch:
+          aarch64:
+              config-opts:
+                - --disable-feature=PyQt_Desktop_OpenGL
+    config-opts:
+      - --confirm-license
+      - --bindir=/app/bin
+      - --destdir=/app/lib/python3.9/site-packages
+      - --sipdir=/app/share/sip
+      - --sip-incdir=/app/include
+      - --stubsdir=/app/lib/python3.9/site-packages/PyQt5
+      - --no-designer-plugin
+      - --no-qml-plugin
+      - --enable QtCore
+      - --enable QtGui
+      #- --enable QtNetwork
+      - --enable QtPrintSupport
+      #- --enable QtSvg
+      #- --enable QtWebChannel
+      - --enable QtWidgets
+      - QMAKE_CFLAGS_RELEASE='-I/usr/include/python3.9/'
+      - QMAKE_CXXFLAGS_RELEASE='-I/usr/include/python3.9/'
+    cleanup:
+      - /bin
+      - /include
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/28/6c/640e3f5c734c296a7193079a86842a789edb7988dca39eab44579088a1d1/PyQt5-5.15.2.tar.gz
+        sha256: 372b08dc9321d1201e4690182697c5e7ffb2e0770e6b4a45519025134b12e4fc      
+      - type: script
+        dest-filename: configure
+        commands:
+          - processed=`sed -e 's|prefix|sysroot|' <<< $@`
+          - python3 configure.py --verbose --allow-sip-warnings $processed
+
+  - name: python-poppler-qt5
+    buildsystem: simple
+    ensure-writable: [
+      "easy-install.pth"
+    ]
+    build-commands:
+      - python3 setup.py build
+      - python3 setup.py install
+        --prefix=/app
+        --install-lib=/app/lib/python3.9/site-packages
+    sources:
+      - type: archive
+        url: https://codeload.github.com/frescobaldi/python-poppler-qt5/tar.gz/refs/tags/v21.1.0
+        sha256: 5a234c2394990c06fe21d40f39725b349b6478235dd22350987040d3bb3177cc
+        dest-filename: python-poppler-qt5-21.1.0.tar.gz
+      - type: patch
+        # This patch is needed only for version v21.1.0 of python-poppler-qt5
+        path: patches/python-poppler-qt5-issue-43-fix.patch
+
+  - name: python3-PyPDF2
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "PyPDF2" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/b4/01/68fcc0d43daf4c6bdbc6b33cc3f77bda531c86b174cac56ef0ffdb96faab/PyPDF2-1.26.0.tar.gz
+        sha256: e28f902f2f0a1603ea95ebe21dff311ef09be3d0f0ef29a3e44a932729564385
+  
+  - name: krop
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 krop.svg /app/share/icons/hicolor/scalable/apps/com.github.arminstraub.krop.svg
+      - python3 setup.py install --prefix=/app --root=/
+    post-install:
+      - cp krop.desktop com.github.arminstraub.krop.desktop
+      - desktop-file-edit --set-key="Icon" --set-value="com.github.arminstraub.krop" com.github.arminstraub.krop.desktop
+      - desktop-file-edit --remove-category=KDE com.github.arminstraub.krop.desktop
+      - desktop-file-install --delete-original --dir=/app/share/applications com.github.arminstraub.krop.desktop
+      - install -Dm644 -t /app/share/metainfo com.github.arminstraub.krop.metainfo.xml
+    sources:
+      - type: archive
+        url: https://codeload.github.com/arminstraub/krop/tar.gz/refs/tags/v0.6.0
+        sha256: 97022416ec4f2ff70e0ab38d3f3aaff83a68dca99f3e273c29e9f3dd72bf88d9
+        dest-filename: krop.tar.gz
+      - type: file
+        url: https://upload.wikimedia.org/wikipedia/commons/8/89/Gnome-edit-cut.svg
+        sha256: 4e334a6d26a7f374eca85f7d9ebcf29fb09a7fd6fb564b9445cb97b28ec402eb
+        dest-filename: krop.svg
+      - type: file
+        path: com.github.arminstraub.krop.metainfo.xml
+
+cleanup:
+  - /share/man
