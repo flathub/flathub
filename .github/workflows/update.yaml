@@ -1,0 +1,272 @@
+# TODO: auto-merge prs, or use flathubbot id
+# TODO: handle container image updates
+# TODO: use actions instead of scripts?
+name: Check for updates
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch: {}
+jobs:
+  updates-check:
+    name: Updates check job for ${{ matrix.branch }}
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-21.08
+      options: --privileged
+    env:
+      GIT_AUTHOR_NAME: Flatpak External Data Checker
+      GIT_COMMITTER_NAME: Flatpak External Data Checker
+      GIT_AUTHOR_EMAIL: ${{ github.actor }}@users.noreply.github.com
+      GIT_COMMITTER_EMAIL: ${{ github.actor }}@users.noreply.github.com
+      EMAIL: ${{ github.actor }}@users.noreply.github.com
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GIT_BASE_BRANCH: ${{ matrix.branch }}
+    if: github.repository_owner == 'flathub'
+    strategy:
+      matrix:
+        branch: [ branch/5.15-21.08 ]
+    steps:
+      - name: Git checkout ${{ github.repository }}.git/${{ matrix.branch }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Download go-yq
+        run: |
+              curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 |
+                install -Dm755 /dev/stdin $PWD/.bin/go-yq
+              echo "$PWD/.bin" >> $GITHUB_PATH
+
+      - name: Process Flatpak manifest
+        run: |
+              APP_ID=${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}
+
+              # set flatpak manifest filename and type
+              for suffix in json yaml yml; do
+                APP_MANIFEST="${APP_ID}.${suffix}"
+                if [ -e "$APP_MANIFEST" ]; then
+                  echo "Found Flatpak manifest $APP_MANIFEST"
+                  case $suffix in
+                    json)
+                      APP_MANIFEST_TYPE=json
+                      APP_MANIFEST_IND=4
+                      ;;
+                    yaml|yml)
+                      APP_MANIFEST_TYPE=yaml
+                      APP_MANIFEST_IND=2
+                      ;;
+                  esac
+                  break
+                fi
+              done
+              if [ ! -e "$APP_MANIFEST" ]; then
+                >&2 echo "Cannot find Flatpak application manifest!"
+                exit 1
+              fi
+
+              # set application branch
+              # try loading from flatpak manifest
+              APP_BRANCH="$(go-yq '.branch' $APP_MANIFEST)"
+              if [ -n "$APP_BRANCH" ]; then
+                echo "Found application branch $APP_BRANCH in Flatpak manifest"
+              else
+                echo "Cannot find application branch in Flatpak manifest, using the default fallback for git branch $GIT_BASE_BRANCH"
+                case "$GIT_BASE_BRANCH" in
+                  master)
+                    APP_BRANCH=stable
+                    ;;
+                  beta)
+                    APP_BRANCH=beta
+                    ;;
+                  branch/*)
+                    APP_BRANCH=${GIT_BASE_BRANCH#branch/}
+                    ;;
+                  *)
+                    >&2 echo "Not appropriate git branch $GIT_BASE_BRANCH"
+                    exit 1
+                    ;;
+                esac
+                echo "Setting application branch to $APP_BRANCH"
+              fi
+
+              # set baseapp variables
+              BASEAPP_ID="$(go-yq '.base' $APP_MANIFEST)"
+              if [ -n "$BASEAPP_ID" ]; then
+                echo "Found BaseApp $BASEAPP_ID"
+                BASEAPP_ENABLED=1
+                BASEAPP_BRANCH="$(go-yq '.base-version' $APP_MANIFEST)"
+              else
+                BASEAPP_ENABLED=0
+                echo "Didn't find BaseApp"
+              fi
+
+              case $GIT_BASE_BRANCH in
+                beta)
+                  FLATPAK_REPO_NAME=flathub-beta
+                  FLATPAK_REPO_URL=https://dl.flathub.org/beta-repo/
+                  ;;
+                *)
+                  FLATPAK_REPO_NAME=flathub
+                  FLATPAK_REPO_URL=https://dl.flathub.org/repo/
+                  ;;
+              esac
+
+              # export environment variables
+              env_vars=(
+                APP_{BRANCH,ID,MANIFEST{,_IND,_TYPE}}
+                FLATPAK_REPO_{NAME,URL}
+              )
+
+              if [ "$BASEAPP_ENABLED" = 1 ]; then
+                env_vars+=(BASEAPP_{BRANCH,ENABLED,ID})
+              fi
+
+              for var in ${env_vars[@]}; do
+                echo "Exporting environment variable: $var=${!var}"
+                echo "$var=${!var}" >> $GITHUB_ENV
+              done
+
+      - name: Fetch the latest BaseApp commit
+        if: env.BASEAPP_ENABLED == 1
+        run: |
+              BASEAPP_COMMIT_LATEST=$(flatpak remote-info --system --show-commit $FLATPAK_REPO_NAME ${BASEAPP_ID}/x86_64/${BASEAPP_BRANCH})
+              if [ -n "$BASEAPP_COMMIT_LATEST" ]; then
+                echo "Found BaseApp latest commit: $BASEAPP_COMMIT_LATEST"
+                echo "BASEAPP_COMMIT_LATEST=$BASEAPP_COMMIT_LATEST" >> $GITHUB_ENV
+              else
+                echo "Cannot find BaseApp latest commit!"
+              fi
+
+      - name: Fetch BaseApp commit used in the most recent build
+        # TODO: use buildbot api to fetch baseapp commit from the latest unpublished build
+        #       curl
+        #         -X GET \
+        #         -H 'Content-Type: application/json' \
+        #         https://flathub.org/builds/api/v2/builds?flathub_name=${APP_ID}&flathub_repo_status=1&complete=true&flathub_build_type=1 \
+        #         | go-yq '.builds[0].flathub_repo_id'
+        #       number: buildnumber
+        #       flathub_repo_status: 0=building, 1=unpublished, 2=published, 3=failed/deleted
+        #       flathub_build_type: 0=test, 1=official
+        #       results: null=building, 0=success, 1=, 2=failure
+        #       flathub_repo_id: https://dl.flathub.org/build-repo/${flathub_repo_id}/${APP_ID}.flatpakref
+        # note: CI lists beta builds APP_ID/beta
+        if: env.BASEAPP_ENABLED == 1
+        run: |
+              OSTREE_REPO=/tmp/ostree
+              mkdir -p $OSTREE_REPO
+              ostree --repo=$OSTREE_REPO init
+              ostree --repo=$OSTREE_REPO config set core.mode bare-user-only
+              ostree --repo=$OSTREE_REPO remote add --no-gpg-verify $FLATPAK_REPO_NAME $FLATPAK_REPO_URL
+
+              # ostree pull can fail if this is a new submission, or if the published build didn't use a baseapp, so catch the error
+              if ostree --repo=$OSTREE_REPO pull --subpath=/files/manifest.json --disable-static-deltas $FLATPAK_REPO_NAME app/${APP_ID}/x86_64/${APP_BRANCH}; then
+                ostree --repo=$OSTREE_REPO checkout --subpath=/files/manifest.json flathub:app/${APP_ID}/x86_64/${APP_BRANCH} $OSTREE_REPO/app
+                BASEAPP_COMMIT_BUILT=$(go-yq '.base-commit' $OSTREE_REPO/app/manifest.json)
+
+                if [ -n "$BASEAPP_COMMIT_BUILT" ]; then
+                  echo "Found BaseApp built commit: $BASEAPP_COMMIT_BUILT"
+                  echo "BASEAPP_COMMIT_BUILT=$BASEAPP_COMMIT_BUILT" >> $GITHUB_ENV
+                else
+                  echo "Cannot find BaseApp built commit!"
+                  echo "BASEAPP_COMMIT_BUILT_EMPTY=1" >> $GITHUB_ENV
+                fi
+
+              else
+                >&2 echo "Cannot find ostree branch app/${BASEAPP_ID}/x86_64/${APP_BRANCH}! Is it a new application submission?"
+              fi
+
+      - name: Load BaseApp commit from Flatpak manifest
+        if: env.BASEAPP_ENABLED == 1
+        run: |
+              BASEAPP_COMMIT_STORED="$(go-yq '.x-base-commit' $APP_MANIFEST)"
+              if [ -n "$BASEAPP_COMMIT_STORED" ]; then
+                echo "Found stored BaseApp commit: $BASEAPP_COMMIT_STORED"
+                echo "BASEAPP_COMMIT_STORED=$BASEAPP_COMMIT_STORED" >> $GITHUB_ENV
+              else
+                echo "Cannot find stored BaseApp commit!"
+                  echo "BASEAPP_COMMIT_STORED_EMPTY=1" >> $GITHUB_ENV
+              fi
+
+      - name: Save BaseApp commit in Flatpak manifest
+        if: |
+            env.BASEAPP_ENABLED == 1 &&
+            ( env.BASEAPP_COMMIT_STORED_EMPTY == 1 || env.BASEAPP_COMMIT_LATEST != env.BASEAPP_COMMIT_STORED )
+        run: |
+              echo APP_NEED_REBUILD=1 >> $GITHUB_ENV
+
+              go-yq --inplace --indent=$APP_MANIFEST_IND --output-format=$APP_MANIFEST_TYPE '.x-base-commit = "${{ env.BASEAPP_COMMIT_LATEST }}"' $APP_MANIFEST
+
+              git add $APP_MANIFEST
+              git commit -m "Update BaseApp commit to $BASEAPP_COMMIT_LATEST"
+
+      - name: Run Flatpak External Data Checker
+        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        with:
+          args: --update --never-fork ${{ env.APP_MANIFEST }}
+
+      - name: Detect Flatpak External Data Checker PR
+        run: |
+              if [ "$(git rev-parse --abbrev-ref HEAD)" == "$GIT_BASE_BRANCH" ]; then
+                echo  "Flatpak External Data Checker pull request was not created!"
+                echo "FEDC_PR_EXIST=0" >> $GITHUB_ENV
+              else
+                echo  "Flatpak External Data Checker pull request was created or was already exist!"
+                echo "FEDC_PR_EXIST=1" >> $GITHUB_ENV
+              fi
+
+      - name: Prepare BaseApp update PR
+        # TODO: add a preceding step that tests if there's a build in-progress, skip this one, and maybe schedule another run,
+        #       or delay this. example: https://dev.to/cardinalby/scheduling-delayed-github-action-12a6
+        #       might need re-running the buildbot step, so it's likely better to have this step before the buildbot manifest pull
+        id: baseapp-prepare-pr
+        if: |
+            env.BASEAPP_ENABLED == 1 &&
+            env.FEDC_PR_EXIST == 0 &&
+            ( env.BASEAPP_COMMIT_STORED_EMPTY == 1 || env.BASEAPP_COMMIT_LATEST != env.BASEAPP_COMMIT_STORED ) &&
+            ( env.BASEAPP_COMMIT_BUILT_EMPTY == 1 || env.BASEAPP_COMMIT_LATEST != env.BASEAPP_COMMIT_BUILT )
+        run: |
+              tree_sha=$(git rev-parse HEAD^{tree})
+
+              # TODO: switch to this new branch format, https://github.com/flathub/flatpak-external-data-checker/issues/289
+              #$BASEAPP_PR_BRANCH=update-${GIT_BASE_BRANCH}-${tree_sha:0:7}
+              BASEAPP_PR_BRANCH=update-${tree_sha:0:7}
+
+              git checkout -b $BASEAPP_PR_BRANCH
+              echo "BASEAPP_PR_BRANCH=$BASEAPP_PR_BRANCH" >> $GITHUB_ENV
+
+      - name: Open BaseApp update PR
+        if: |
+            steps.baseapp-prepare-pr.outcome == 'success' &&
+            steps.baseapp-prepare-pr.conclusion == 'success'
+        run: |
+              # fetch pr list
+              curl
+                -X POST \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
+                'https://api.github.com/repos/${{ github.repository }}/pulls?base=${{ env.GIT_BASE_BRANCH }}&head=${{ github.repository_owner }}:${{ env.BASEAPP_PR_BRANCH }}&state=all' \
+                > .tmp.pull.json
+
+              # .[].head.label: flathub:update-SHA
+              # .[].head.ref: update-SHA
+              open_pr_ref="$(go-yq 'map(select(.head.ref == "${{ env.BASEAPP_PR_BRANCH }}") | select(.state == "open") | .head.ref ) | .[0]' .tmp.pull.json)"
+              closed_pr_ref="$(go-yq 'map(select(.head.ref == "${{ env.BASEAPP_PR_BRANCH }}") | select(.state == "closed") | .head.ref ) | .[0]' .tmp.pull.json)"
+
+              if [ "$open_pr_ref" = "${{ env.BASEAPP_PR_BRANCH }}" ]; then
+                open_pr_url="$(go-yq 'map(select(.head.ref == "${{ env.BASEAPP_PR_BRANCH }}") | select(.state == "open") | .html_url ) | .[0]' .tmp.pull.json)"
+                echo "Found open pull request at $open_pr_url"
+
+              elif [ "$closed_pr_ref" = "${{ env.BASEAPP_PR_BRANCH }}" ]; then
+                closed_pr_url="$(go-yq 'map(select(.head.ref == "${{ env.BASEAPP_PR_BRANCH }}") | select(.state == "closed") | .html_url ) | .[0]' .tmp.pull.json)"
+                echo "Found closed pull request at $closed_pr_url"
+
+              # no open or closed pr, so open a new one
+              else
+                git push origin ${{ env.BASEAPP_PR_BRANCH }}
+                curl \
+                  -X POST \
+                  -H "Accept: application/vnd.github.v3+json" \
+                  -H 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
+                  https://api.github.com/repos/${{ github.repository }}/pulls
+                  -d '{"head":"${{ env.BASEAPP_PR_BRANCH }}","base":"${{ env.GIT_BASE_BRANCH }}","title":"Update BaseApp commit to ${{ env.BASEAPP_COMMIT_LATEST }}","body":"This pull request was automatically generated by a GitHub workflow."}'
+              fi
