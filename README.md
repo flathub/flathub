@@ -14,12 +14,12 @@ add these lines to your Manifest:
 
 ```
 "sdk-extensions" : [
-    "org.freedektop.Sdk.Extension.vala-stable"
+    "org.freedektop.Sdk.Extension.vala"
 ]
 ...
 "build-options" : {
-    "prepend-path" : "/usr/lib/sdk/vala-stable/bin/",
-    "prepend-ld-library-path" : "/usr/lib/sdk/vala-stable/lib"
+    "prepend-path" : "/usr/lib/sdk/vala/bin/",
+    "prepend-ld-library-path" : "/usr/lib/sdk/vala/lib"
 }
 ```
 
@@ -31,10 +31,10 @@ add these lines to your Manifest:
     "runtime" : "org.freedesktop.Platform",
     "runtime-version" : "21.08",
     "sdk" : "org.freedesktop.Sdk",
-    "sdk-extensions" : ["org.freedesktop.Sdk.Extension.vala-stable"],
+    "sdk-extensions" : ["org.freedesktop.Sdk.Extension.vala"],
     "build-options" : {
-        "append-path" : "/usr/lib/sdk/vala-stable/bin",
-        "prepend-ld-library-path" : "/usr/lib/sdk/vala-stable/lib"
+        "append-path" : "/usr/lib/sdk/vala/bin",
+        "prepend-ld-library-path" : "/usr/lib/sdk/vala/lib"
     },
     "modules" : [
         "name" : "Myapp",
@@ -47,5 +47,5 @@ add these lines to your Manifest:
 In order to use this extension in flatpak SDK environment
 you may add all provided tools in your PATH by executing first:
 
-``source /usr/lib/sdk/vala-stable/enable.sh``
+``source /usr/lib/sdk/vala/enable.sh``
 
