@@ -1,0 +1,60 @@
+name: Ryujinx
+sources:
+  - nuget_sources.json
+  - type: git
+    url: https://github.com/Ryujinx/Ryujinx.git
+    commit: ac21abbb9d23432879b1026eb5bc48ad3d4583d8
+  - type: file
+    path: ryujinx-wrapper
+  - type: file
+    path: org.ryujinx.Ryujinx.appdata.xml
+buildsystem: simple
+build-options:
+  append-path: /usr/lib/sdk/dotnet6/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+  arch:
+    x86_64:
+      env:
+        RUNTIME: linux-x64
+  env:
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet6/lib/pkgconfig
+    DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+    RYUJINX_VERSION: "1.1.56"
+    RYUJINX_TARGET_RELEASE_CHANNEL_OWNER: "flathub"
+    RYUJINX_TARGET_RELEASE_CHANNEL_REPO: "org.ryujinx.Ryujinx"
+    RYUJINX_TARGET_RELEASE_CHANNEL_NAME: "master"
+build-commands:
+  - |
+    export RYUJINX_GIT_SHORT_HASH=$(git rev-parse --short HEAD)
+    sed -r --in-place "s/\%\%RYUJINX_BUILD_VERSION\%\%/$RYUJINX_VERSION/g;" Ryujinx.Common/ReleaseInformations.cs
+    sed -r --in-place "s/\%\%RYUJINX_BUILD_GIT_HASH\%\%/$RYUJINX_GIT_SHORT_HASH/g;" Ryujinx.Common/ReleaseInformations.cs
+    sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_NAME\%\%/$RYUJINX_TARGET_RELEASE_CHANNEL_NAME/g;" Ryujinx.Common/ReleaseInformations.cs
+    sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_OWNER\%\%/$RYUJINX_TARGET_RELEASE_CHANNEL_OWNER/g;" Ryujinx.Common/ReleaseInformations.cs
+    sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_REPO\%\%/$RYUJINX_TARGET_RELEASE_CHANNEL_REPO/g;" Ryujinx.Common/ReleaseInformations.cs
+    mkdir -p /app/bin
+    dotnet publish -c Release -r $RUNTIME /p:DebugType=embedded Ryujinx /p:Version=$RYUJINX_VERSION /p:SourceRevisionId=$RYUJINX_GIT_SHORT_HASH /p:ExtraDefineConstants=DISABLE_UPDATER --self-contained --source nuget-sources
+    cp -r --remove-destination /run/build/Ryujinx/Ryujinx/bin/Release/net6.0/$RUNTIME/publish/* /app/bin/
+    mkdir -p /app/lib/ffmpeg
+    ln -s /usr/lib/x86_64-linux-gnu/libX11.so.6 /app/lib/libX11.so
+post-install:
+  - install -Dm644 $FLATPAK_ID.appdata.xml /app/share/metainfo/$FLATPAK_ID.appdata.xml
+  - install -Dm755 ryujinx-wrapper /app/bin/ryujinx-wrapper
+  - |
+    install -Dm644 distribution/linux/ryujinx-logo.svg /app/share/icons/hicolor/scalable/apps/ryujinx.svg
+    icon_in="distribution/linux/ryujinx-logo.svg";
+    icon_out="ryujinx.png";
+    for s in {16,22,24,32,36,48,64,72,96,128,192,256,512}; do
+      [[ ! -f "/app/share/icons/hicolor/${s}x${s}/apps/${icon_out}" ]] || continue;
+      rsvg-convert "${icon_in}" -w "${s}" -h "${s}" -a -f png -o "${icon_out}";
+      install -p -D -m 0644 "${icon_out}" -t "/app/share/icons/hicolor/${s}x${s}/apps/";
+    done;
+    gtk-update-icon-cache --force --ignore-theme-index /app/share/icons/hicolor
+  - |
+    mkdir -p /app/share/mime/packages/
+    install -m644 distribution/linux/ryujinx-mime.xml /app/share/mime/packages/$FLATPAK_ID.mime.xml
+    update-mime-database /app/share/mime
+  - |
+    install -Dm644 distribution/linux/ryujinx.desktop /app/share/applications/$FLATPAK_ID.desktop
+    desktop-file-edit --set-key="Exec" --set-value="ryujinx-wrapper %f" /app/share/applications/$FLATPAK_ID.desktop
