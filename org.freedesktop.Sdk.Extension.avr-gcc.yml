@@ -8,9 +8,8 @@ separate-locales: false
 appstream-compose: false
 build-options:
     prefix: /usr/lib/sdk/avr-gcc
-    append-path: /usr/lib/sdk/avr-gcc/binutils/bin
-    append-ld-library-path: /usr/lib/sdk/avr-gcc/mpfr
-    append-ld-library-path: /usr/lib/sdk/avr-gcc/mpc
+    prepend-path: /usr/lib/sdk/avr-gcc/bin
+    prepend-ld-library-path: /usr/lib/sdk/avr-gcc/lib
     cppflags: "-I/usr/lib/sdk/avr-gcc/include -L/usr/lib/sdk/avr-gcc/lib"
 cleanup:
     - /share/info
@@ -21,10 +20,11 @@ modules:
           - type: archive
             url: https://ftp.gnu.org/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.xz
             sha256: d08edc536b54c372a1010ff6619dd274c0f1603aa49212ba20f7aa2cda36fa8b
+            dest: src
       buildsystem: simple
       build-commands:
-          - ./configure --prefix=/usr/lib/sdk/avr-gcc/gcc --target=avr --enable-languages=c,c++ --disable-nls --disable-libssp
-          - make && make install
+          - ./src/configure --prefix=/usr/lib/sdk/avr-gcc/ --target=avr --enable-languages=c,c++ --disable-nls --disable-bootstrap --disable-libssp --with-mpfr=/usr/lib/sdk/avr-gcc --with-mpc=/usr/lib/sdk/avr-gcc
+          - make -j8 && make install
       modules:
           - name: mpc
             sources:
@@ -33,7 +33,7 @@ modules:
                   sha256: 17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459
             buildsystem: simple
             build-commands:
-                - ./configure --prefix=/usr/lib/sdk/avr-gcc/mpc
+                - ./configure --prefix=/usr/lib/sdk/avr-gcc --with-mpfr=/usr/lib/sdk/avr-gcc
                 - make && make install
             modules:
                 - name: mpfr
@@ -43,7 +43,7 @@ modules:
                         sha256: 0c98a3f1732ff6ca4ea690552079da9c597872d30e96ec28414ee23c95558a7f
                   buildsystem: simple
                   build-commands:
-                      - ./configure --prefix=/usr/lib/sdk/avr-gcc/mpfr
+                      - ./configure --prefix=/usr/lib/sdk/avr-gcc/
                       - make && make install
           - name: binutils
             sources:
@@ -52,5 +52,34 @@ modules:
                   sha256: e316477a914f567eccc34d5d29785b8b0f5a10208d36bbacedcc39048ecfe024
             buildsystem: simple
             build-commands:
-                - ./configure --prefix=/usr/lib/sdk/avr-gcc/binutils --target=avr
+                - ./configure --prefix=/usr/lib/sdk/avr-gcc/ --target=avr
                 - make && make install
+    - name: avr-libc
+      sources:
+          - type: archive
+            url: http://download.savannah.gnu.org/releases/avr-libc/avr-libc-2.1.0.tar.bz2
+            sha256: 0b84cee5c08b5d5cba67c36125e5aaa85251bc9accfba5773bfa87bc34b654e8
+      buildsystem: simple
+      build-commands:
+          - ./configure -host=avr --prefix=/usr/lib/sdk/avr-gcc/
+          - make -j8 && make install
+    - name: scripts
+      buildsystem: simple
+      sources:
+          - type: script
+            commands:
+                - export PATH=/usr/lib/sdk/avr-gcc/bin/:$PATH
+                - export LD_LIBRARY_PATH=/usr/lib/sdk/avr-gcc/lib/:$LD_LIBRARY_PATH
+            dest-filename: enable.sh
+      build-commands:
+          - cp enable.sh /usr/lib/sdk/avr-gcc/
+    - name: appdata
+      buildsystem: simple
+      sources:
+          - type: file
+            path: org.freedesktop.Sdk.Extension.avr-gcc.appdata.xml
+      build-commands:
+          - mkdir -p ${FLATPAK_DEST}/share/metainfo
+          - cp ${FLATPAK_ID}.appdata.xml ${FLATPAK_DEST}/share/metainfo
+          - appstream-compose --basename ${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak
+            ${FLATPAK_ID}
