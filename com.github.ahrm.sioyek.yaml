@@ -1,0 +1,79 @@
+---
+app-id: com.github.ahrm.sioyek
+
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+
+command: sioyek
+
+finish-args:
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/tmp
+  - --share=ipc
+  # Sioyek fails with wayland (invisible window)
+  #- --socket=wayland
+  #- --socket=fallback-x11
+  - --socket=x11
+  - --device=shm
+  - --device=dri
+
+modules:
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh
+      - ./b2 install --prefix=/app --with-system --with-random define="BOOST_SYSTEM_NO_DEPRECATED" -sNO_BZIP2=1 cxxflags=-fPIC cflags=-fPIC
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.73.0/source/boost_1_73_0.tar.bz2
+        sha256: 4eb3b8d442b426dc35346235c8733b5ae35ba431690e38c6a8263dce9fcbb402
+  - qtbase-5-12.yml
+  - name: qt5-wayland
+    buildsystem: qmake
+    cleanup:
+      - /bin
+      - /include
+      - /lib/*.a
+      - /lib/*.la
+      - /lib/*.prl
+      - /lib/cmake
+      - /lib/mkspecs
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: http://qt.mirror.constant.com/archive/qt/5.12/5.12.12/submodules/qtwayland-everywhere-src-5.12.12.tar.xz
+        sha256: 47d074357d6b3e8bf2873462cad85555f9dc2899aa8422bbcc81ca31d4fd5b27
+      - type: patch
+        path: patches/qt/qtwayland-use-gnome-platform-theme-on-gnome-based-desktops.patch
+      - type: patch
+        path: patches/qt/Fix-installing-qtwayland-without-qtquick-or-opengl-s.patch
+  - "shared-modules/glu/glu-9.json"
+  - name: sioyek
+    buildsystem: simple
+    build-commands:
+      - ./build_linux.sh
+      - mv build /app/sioyek
+      - ln -s /app/sioyek/sioyek /app/bin/sioyek
+    post-install:
+      - install -Dm644 resources/sioyek-icon-linux.png /app/share/icons/hicolor/256x256/apps/com.github.ahrm.sioyek.png
+      - desktop-file-install --delete-original --dir=/app/share/applications com.github.ahrm.sioyek.desktop
+      - install -Dm644 -t /app/share/metainfo com.github.ahrm.sioyek.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/ahrm/sioyek.git
+        commit: 5c325e7bb340aeb55ec4a4b5678b6cf91bc0ac97
+        tag: 'v1.1.0'
+      - type: patch
+        path: patches/sioyek_build_fix.patch
+      - type: file
+        path: com.github.ahrm.sioyek.metainfo.xml
+      - type: file
+        path: com.github.ahrm.sioyek.desktop
+
+cleanup:
+  - /share/man
