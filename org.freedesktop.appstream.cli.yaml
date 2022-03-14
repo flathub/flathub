@@ -1,0 +1,76 @@
+---
+app-id: org.freedesktop.appstream.cli
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: appstreamcli
+separate-locales: false
+
+finish-args:
+ - --filesystem=host
+ - --filesystem=~/.local/share/flatpak:ro
+ - --filesystem=/var/lib/flatpak:ro
+ - --share=network
+
+cleanup:
+ - /include
+ - /lib/pkgconfig
+ - /lib/*.a
+ - /lib/*.la
+
+modules:
+- name: libyaml
+  sources:
+  - type: git
+    url: https://github.com/yaml/libyaml.git
+    tag: '0.2.5'
+
+- name: snowball
+  buildsystem: simple
+  build-commands:
+   - make libstemmer.so -j$FLATPAK_BUILDER_N_JOBS
+   - install -Dm644 include/libstemmer.h /app/include/libstemmer.h
+   - cp -d libstemmer.so.* -t /app/lib/
+   - install -Dm644 libstemmer.so /app/lib/libstemmer.so
+  sources:
+   - type: git
+     url: https://github.com/snowballstem/snowball.git
+     tag: v2.2.0
+   - type: patch
+     path: patches/snowball_build-options.diff
+   - type: patch
+     path: patches/snowball_shared-library.diff
+
+- name: libxmlb
+  buildsystem: meson
+  config-opts:
+   - -Dstemmer=true
+   - -Dintrospection=false
+   - -Dgtkdoc=false
+  sources:
+  - type: git
+    url: https://github.com/hughsie/libxmlb.git
+    tag: '0.3.6'
+
+- name: appstream
+  buildsystem: meson
+  config-opts:
+   - -Dcompose=true
+   - -Dgir=false
+   - -Dapidocs=false
+  sources:
+  - type: git
+    url: https://github.com/ximion/appstream.git
+    tag: v0.15.2
+
+# TODO: remove this module once Flatpak has updated to appstreamcli
+# or its appstream-glib copy understands modern AppStream XML and
+# doesn't fail parsing it.
+- name: metainfo-downgrade
+  buildsystem: simple
+  build-options:
+    env:
+      ASCLI_METAINFO_FNAME: '/app/share/metainfo/org.freedesktop.appstream.cli.metainfo.xml'
+  build-commands:
+   - sed -i 's/<em>//g' $ASCLI_METAINFO_FNAME
+   - sed -i 's/<\/em>//g' $ASCLI_METAINFO_FNAME
