@@ -1,0 +1,128 @@
+app-id: dev.geopjr.Collision
+runtime: org.gnome.Platform
+runtime-version: '41'
+sdk: org.gnome.Sdk
+command: collision
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  # Required by Crystal
+  - name: livevent
+    sources:
+      - type: git
+        url: https://github.com/libevent/libevent.git
+        tag: release-2.1.12-stable
+  # Required by libadwaita
+  - name: libsass
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/lazka/libsass.git
+        commit: 302397c0c8ae2d7ab02f45ea461c2c3d768f248e
+  # Required by libadwaita
+  - name: sassc
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/lazka/sassc.git
+        commit: 82803377c33247265d779af034eceb5949e78354
+  # Required by libadwaita until 42 becomes available
+  - name: pongo
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=disabled
+    sources:
+      - type: archive
+        url: https://gitlab.gnome.org/GNOME/pango/-/archive/1.50.3/pango-1.50.3.tar.gz
+        sha256: 4a8b0cf33d5f9ecaa9cd99dd72703d5c4c53bc58df64dd9538493bb4356ab691
+  # Required by libadwaita until 42 becomes available
+  - name: gtk
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=disabled
+      - -Dexamples=false
+      - -Dtests=false
+      - -Dbuild-examples=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk/4.6/gtk-4.6.0.tar.xz
+        sha256: 782d5951fbfd585fc9ec76c09d07e28e6014c72db001fb567fff217fb96e4d8c
+  # Required by Collision
+  - name: libadwaita
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=disabled
+      - -Dexamples=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/libadwaita.git
+        tag: 1.0.2
+  # Collision
+  - name: collision
+    buildsystem: simple
+    build-commands:
+      - for i in ./lib/*/; do ln -snf ".." "$i/lib"; done
+      - glib-compile-resources --sourcedir data --target data/dev.geopjr.Collision.gresource data/dev.geopjr.Collision.gresource.xml
+      - COLLISION_LOCALE_LOCATION="/app/share/locale" $(pwd)/crystal/bin/crystal build ./src/collision.cr -Dpreview_mt --no-debug --release
+      - msgfmt --xml --template data/dev.geopjr.Collision.metainfo.xml.in -d "./po" -o data/dev.geopjr.Collision.metainfo.xml
+      - msgfmt --desktop --template data/dev.geopjr.Collision.desktop.in -d "./po" -o data/dev.geopjr.Collision.desktop
+      - mkdir -p po/mo && for lang in `cat "po/LINGUAS"`; do if [[ "$lang" == 'en' || "$lang" == '' ]]; then continue; fi; mkdir -p "/app/share/locale/$lang/LC_MESSAGES"; msgfmt "po/$lang.po" -o "po/mo/$lang.mo";  install -D -m 0644 "po/mo/$lang.mo" "/app/share/locale/$lang/LC_MESSAGES/dev.geopjr.Collision.mo"; done
+    post-install:
+      - install -D -m 0755 collision /app/bin/collision
+      - install -D -m 0644 data/dev.geopjr.Collision.desktop /app/share/applications/dev.geopjr.Collision.desktop
+      - install -D -m 0644 data/icons/dev.geopjr.Collision.svg /app/share/icons/hicolor/scalable/apps/dev.geopjr.Collision.svg
+      - install -D -m 0644 data/icons/dev.geopjr.Collision-symbolic.svg /app/share/icons/hicolor/symbolic/apps/dev.geopjr.Collision-symbolic.svg
+      - install -D -m 0644 data/dev.geopjr.Collision.metainfo.xml /app/share/metainfo/dev.geopjr.Collision.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/GeopJr/Collision.git
+        tag: v3.0.0
+        commit: 9149e66eef54d02f570fc78f58f29cd26dc32f09
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: archive
+        dest: crystal/
+        url: https://github.com/crystal-lang/crystal/releases/download/1.3.2/crystal-1.3.2-1-linux-x86_64.tar.gz
+        sha256: 6e102e55d658f2cc0c56d23fcb50bd2edbd98959aa6b59b8e1210c6860651ed4
+      - type: git
+        url: https://github.com/elorest/compiled_license.git
+        tag: v1.2.2
+        dest: lib/compiled_license
+      - type: git
+        url: https://github.com/geopjr/gettext.cr.git
+        tag: v1.0.0
+        dest: lib/gettext
+      - type: git
+        url: https://github.com/hugopl/gi-crystal.git
+        tag: v0.6.0
+        dest: lib/gi-crystal
+      - type: git
+        url: https://github.com/hugopl/gtk4.cr.git
+        commit: 2335dfeb232d2371c8e7f410cffa73e5dd1b3c75
+        dest: lib/gtk4
+      - type: git
+        url: https://github.com/geopjr/libadwaita.cr.git
+        commit: 7f79b18f9b7701e9900b73f3de63df68ab6f4660
+        dest: lib/libadwaita
+      - type: git
+        url: https://github.com/geopjr/non-blocking-spawn.git
+        tag: v1.0.0
+        dest: lib/non-blocking-spawn
+      - type: git
+        url: https://github.com/hugopl/version_from_shard.git
+        tag: v1.2.5
+        dest: lib/version_from_shard
