@@ -1,0 +1,67 @@
+app-id: org.cidercollective.cider
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+command: cider
+rename-desktop-file: cider.desktop
+rename-icon: cider
+finish-args:
+  - --device=dri
+  - --filesystem=xdg-music
+  - --own-name=org.mpris.MediaPlayer2.Cider
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  # needs electron v11 (chromium v87) or newer with ozone enabled
+  # https://github.com/electron/electron/issues/10915
+  # - --socket=wayland
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.dbusmenu
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: cider
+    buildsystem: simple
+    build-commands:
+      - install -dm755 ${FLATPAK_DEST}/cider
+      - |
+        bsdtar -Oxf cider.deb 'data.tar*' |
+        bsdtar -xf - \
+        -C ${FLATPAK_DEST}/cider \
+        --strip-components=3 \
+        ./opt/Cider
+      - |
+        bsdtar -Oxf cider.deb 'data.tar*' |
+        bsdtar -xf - \
+        -C ${FLATPAK_DEST} \
+        --strip-components=2 \
+        --exclude=./usr/share/doc \
+        ./usr/share
+      - desktop-file-edit --set-key=Exec --set-value=cider ${FLATPAK_DEST}/share/applications/cider.desktop
+      - install -Dm755 stub_sandbox ${FLATPAK_DEST}/cider/chrome-sandbox
+      - install -Dm755 cider -t ${FLATPAK_DEST}/bin/
+    sources:
+      - type: file
+        dest-filename: cider.deb
+        url: https://1308-429851205-gh.circle-artifacts.com/0/~/Cider/dist/artifacts/cider_1.3.1308_amd64.deb
+        sha256: 342abde96bac9668e7238860ba435171edd72077ed9f4b385a3546c4d8f96995
+        x-checker-data:
+          type: html
+          url: https://circleci.com/api/v1.1/project/gh/ciderapp/Cider/latest/artifacts?branch=main&filter=successful
+          pattern: (https://.*circle-artifacts.com/.+/cider_([\d\.]+)_amd64.deb)
+      - type: script
+        dest-filename: cider
+        commands:
+          # share chromium singleton between multiple session, needed for flatpak<1.11.1
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - exec zypak-wrapper /app/cider/cider "$@"
+      - type: script
+        dest-filename: stub_sandbox
+        commands:
+          - |
+            echo Stub sandbox ignoring command: $@
+            exit 1
