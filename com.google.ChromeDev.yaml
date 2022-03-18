@@ -1,0 +1,137 @@
+app-id: com.google.ChromeDev
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: com.google.Chrome.BaseApp
+base-version: '21.08'
+command: chrome
+separate-locales: false
+build-options:
+  no-debuginfo: true
+tags:
+  - proprietary
+finish-args:
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --require-version=1.8.2
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.SessionManager
+  - --system-talk-name=org.freedesktop.Avahi
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=host-etc
+  # For GNOME proxy resolution
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
+  - --env=GSETTINGS_BACKEND=dconf
+  # For KDE proxy resolution (KDE5 only)
+  - --filesystem=~/.config/kioslaverc
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.03beta.1
+        commit: 8424c6bcf909ca2031ebc6537d324bb64772266e
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+(?:beta[\d.]+?))$
+
+  - name: chrome
+    buildsystem: simple
+    build-commands:
+      - install -Dm 755 chrome.sh /app/bin/chrome
+      - install -Dm 755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm 755 stub_sandbox.sh /app/bin/stub_sandbox
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/applications $FLATPAK_ID.desktop
+      - install -Dm 644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+      - |
+        for icon in 16 24 32 48 64 128 256; do
+          install -Dm 644 $FLATPAK_ID-$icon.png /app/share/icons/hicolor/${icon}x${icon}/apps/$FLATPAK_ID.png
+        done
+
+      # For extra-data to be able to extract the .deb
+      - install -Dm 755 /{usr,app}/bin/ar
+      - cp /usr/lib/$(gcc --print-multiarch)/libbfd-*.so /app/lib
+    sources:
+      - type: extra-data
+        # From https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages
+        url: https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-unstable/google-chrome-unstable_101.0.4929.5-1_amd64.deb
+        sha256: 2d2c76707929f1312382d5b363de41cf1f95558e4c0cd5babb9d8baf0dfae018
+        size: 87522080
+        filename: chrome.deb
+        only-arches: [x86_64]
+        x-checker-data:
+          type: debian-repo
+          root: https://dl.google.com/linux/chrome/deb
+          dist: stable
+          component: main
+          package-name: google-chrome-unstable
+          is-main-source: true
+      - type: script
+        dest-filename: stub_sandbox.sh
+        commands:
+          - 'echo "Stub sandbox ignoring command: $@"'
+          - exit 1
+      - type: file
+        path: chrome.sh
+      - type: file
+        path: apply_extra.sh
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: com.google.ChromeDev.desktop
+      - type: file
+        path: com.google.ChromeDev.metainfo.xml
+      - type: file
+        path: icons/com.google.ChromeDev-16.png
+      - type: file
+        path: icons/com.google.ChromeDev-24.png
+      - type: file
+        path: icons/com.google.ChromeDev-32.png
+      - type: file
+        path: icons/com.google.ChromeDev-48.png
+      - type: file
+        path: icons/com.google.ChromeDev-64.png
+      - type: file
+        path: icons/com.google.ChromeDev-128.png
+      - type: file
+        path: icons/com.google.ChromeDev-256.png
