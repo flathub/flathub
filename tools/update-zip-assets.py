@@ -5,7 +5,7 @@
 # - python-ruamel-yaml (https://pypi.org/project/ruamel.yaml/)
 
 # To automatically update the XML sources in the Flatpak manifest file, run:
-# ./update-zip-assets.py -m ../br.gov.economia.receita.IRPF.yaml
+# ./update-zip-assets.py -m ../br.gov.fazenda.receita.irpf.yaml
 
 import argparse
 import datetime
