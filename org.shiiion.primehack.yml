@@ -1,0 +1,133 @@
+app-id: org.shiiion.primehack
+branch: master
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+command: dolphin-emu-wrapper
+rename-desktop-file: dolphin-emu.desktop
+rename-icon: dolphin-emu
+rename-appdata-file: dolphin-emu.appdata.xml
+finish-args:
+  - --device=all
+  # the file picker uses portals but the set
+  # game directory feature still needs this
+  - --filesystem=host:ro
+  - --socket=pulseaudio
+  - --env=QT_QPA_PLATFORM=xcb
+  - --socket=x11
+  - --share=network
+  - --share=ipc
+  # along with the bluez module, required for the
+  # emulated bluetooth adapter feature to work.
+  - --allow=bluetooth
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --talk-name=org.freedesktop.ScreenSaver
+modules:
+  # needed for the bluetooth passthrough feature to work
+  - name: libusb
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.25/libusb-1.0.25.tar.bz2
+        sha256: 8a28ef197a797ebac2702f095e81975e2b02b2eeff2774fa909c78a74ef50849
+        x-checker-data:
+          type: anitya
+          project-id: 1749
+          url-template: https://github.com/libusb/libusb/releases/download/v$version/libusb-$version.tar.bz2
+
+  # needed for the emulate bluetooth adapter feature to work
+  - name: bluez
+    config-opts:
+      - --enable-library
+      - --disable-manpages
+      - --disable-udev
+      - --disable-tools
+      - --disable-cups
+      - --disable-monitor
+      - --disable-client
+      - --disable-systemd
+      - --disable-a2dp
+      - --disable-avrcp
+      - --disable-network
+      - --with-dbusconfdir=/app/etc
+      - --with-dbussessionbusdir=/app/usr/lib/system-services
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/linux/bluetooth/bluez-5.63.tar.xz
+        sha256: 9349e11e8160bb3d720835d271250d8a7424d3690f5289e6db6fe07cc66c6d76
+        x-checker-data:
+          type: anitya
+          project-id: 10029
+          url-template: https://www.kernel.org/pub/linux/bluetooth/bluez-$version.tar.xz
+
+  # enables motion controls on non-wii controllers (switch, ps4, etc)
+  # requires a udev rule enabling Motion Sensors access
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.12.0.tar.xz
+        sha256: 2f729e3480695791f9482e8388bd723402b89f0eaf118057bbdea3cecee9b237
+        x-checker-data:
+          type: anitya
+          project-id: 20540
+          url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+
+  # needed for screensaver inhibition
+  - name: xdg-screensaver-shim
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/Unrud/xdg-screensaver-shim/archive/0.0.2.tar.gz
+        sha256: 0ed2a69fe6ee6cbffd2fe16f85116db737f17fb1e79bfb812d893cf15c728399
+
+  - name: dolphin-emu
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_ALSA=OFF
+      - -DENABLE_SDL=ON
+      - -DENABLE_EVDEV=ON
+      - -DDISTRIBUTOR=Flathub
+    build-options:
+      arch:
+        arm:
+          config-opts:
+            - -DENABLE_GENERIC=ON
+    cleanup:
+      - /share/man
+    post-install:
+      - install -D dolphin-emu-wrapper /app/bin/dolphin-emu-wrapper
+      - install -Dm644 appdata.xml /app/share/appdata/dolphin-emu.appdata.xml
+      - sed -i -e 's/"2048"/"512"/g' /app/share/icons/hicolor/scalable/apps/dolphin-emu.svg
+      - desktop-file-edit --set-key=Exec --set-value='/app/bin/dolphin-emu-wrapper'
+        /app/share/applications/dolphin-emu.desktop
+    sources:
+      - type: git
+        url: https://github.com/shiiion/dolphin.git
+        commit: 9ca0eb888bd6f8ed13a4efb92d808fbf0705ffa4
+      # prevents dolphin from attempting to write conf files
+      # in non-writable paths, typically happens when a user
+      # has leftover files from a previous non-flatpak install
+      - type: patch
+        path: forcexdg.patch
+      # version strings must match exactly for online multiplayer
+      - type: patch
+        path: nodirtyversion.patch
+      - type: file
+        path: appdata.xml
+      - type: script
+        commands:
+          - for i in {0..9}; do
+          - test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+          - done
+          - dolphin-emu "$@"
+        dest-filename: dolphin-emu-wrapper
