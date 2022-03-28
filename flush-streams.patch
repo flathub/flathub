@@ -1,0 +1,50 @@
+From d86d7749654aca7b8f48d5d3d6c311cd2e0c0dd3 Mon Sep 17 00:00:00 2001
+From: Chris Spiegel <cspiegel@gmail.com>
+Date: Tue, 22 Mar 2022 10:28:09 -0700
+Subject: [PATCH] Flush FILE streams on write
+
+When upstream cheapglk was brought in, some fflush() calls got lost,
+resulting in (among other things, probably) transcripts not getting
+written until the buffer filled up, or the file was closed, whichever
+came first.
+
+fflush() is now called whenever a character or buffer is written. This
+is less efficient than it ought to be, since glk_put_buffer_uni() is now
+implemented in terms of gli_put_char_uni(). That means that when writing
+a buffer, fflush() is called for each and every character. Accept this
+for now, since it's never going to be a huge bottleneck, and only TADS
+is actually making use of glk_put_buffer_uni(). But at some point I'd
+like to find a solution that doesn't cause the code to deviate too much
+from upstream cheapglk, to keep future updates as painless as possible.
+---
+ garglk/cheapglk/cgstream.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/garglk/cheapglk/cgstream.c b/garglk/cheapglk/cgstream.c
+index c7460d0d..2b0d68cf 100644
+--- a/garglk/cheapglk/cgstream.c
++++ b/garglk/cheapglk/cgstream.c
+@@ -741,6 +741,7 @@ static void gli_put_char(stream_t *str, unsigned char ch)
+                     putc(ch, str->file);
+                 }
+             }
++            fflush(str->file);
+             break;
+         case strtype_Resource:
+             /* resource streams are never writable */
+@@ -830,6 +831,7 @@ static void gli_put_char_uni(stream_t *str, glui32 ch)
+                     putc( (ch        & 0xFF), str->file);
+                 }
+             }
++            fflush(str->file);
+             break;
+         case strtype_Resource:
+             /* resource streams are never writable */
+@@ -951,6 +953,7 @@ static void gli_put_buffer(stream_t *str, char *buf, glui32 len)
+                     }
+                 }
+             }
++            fflush(str->file);
+             break;
+         case strtype_Resource:
+             /* resource streams are never writable */
