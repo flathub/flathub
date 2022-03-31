@@ -1,0 +1,51 @@
+app-id: app.organicmaps.desktop
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+command: OMaps
+rename-desktop-file: OrganicMaps.desktop
+rename-icon: organicmaps
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+modules:
+  - name: rsync # used at build time
+    buildsystem: autotools
+    config-opts:
+      - --disable-md2man
+      - --disable-xxhash
+    sources:
+      - type: git
+        url: https://github.com/WayneD/rsync
+        tag: v3.2.3
+        commit: e94bad1c156fc3910f24e2b3b71a81b0b0bdeb70
+  - name: organicmaps
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    post-install:
+      - 'mv ${FLATPAK_DEST}/bin/OMaps ${FLATPAK_DEST}/bin/.OMaps-wrapped'
+      - 'install -Dm755 ../wrapper.sh ${FLATPAK_DEST}/bin/OMaps'
+    cleanup:
+      - '/lib' # static libraries and build configs
+      - '/include'
+    sources:
+      - type: git
+        url: https://github.com/organicmaps/organicmaps
+        # TODO on next release, add tag: YYYY.MM.DD-N-android
+        commit: 186c3761c07e9a30e22d2d7890dfd61ad1cdd095
+      - type: shell
+        commands:
+          - 'bash configure.sh'
+      # Tell the program that the read-only and the read-write data locations
+      # are different, and create the read-write one.
+      - type: script
+        commands:
+          - 'data_path="${XDG_DATA_HOME:-${HOME}/.var/app/app.organicmaps.OrganicMaps/data}/OMaps"'
+          - 'mkdir -p "$data_path"'
+          - 'exec -a "$0" /app/bin/.OMaps-wrapped -resources_path /app/share/organicmaps/data -data_path "$data_path" "$@"'
+        dest-filename: 'wrapper.sh'
