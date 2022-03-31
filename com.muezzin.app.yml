@@ -1,0 +1,58 @@
+app-id: com.muezzin.app
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: muezzin-run
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+build-options:
+  append-path: /usr/lib/sdk/node14/bin
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: muezzin
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/muezzin/flatpak-node/cache
+        npm_config_cache: /run/build/muezzin/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+    subdir: main
+    sources:
+      - type: archive
+        url: https://github.com/DBChoco/Muezzin/archive/refs/tags/v0.1.7.tar.gz
+        sha256: 55953d69db30417841d0f3397db3e9e0b71c9ce13f151dea148263d028216f16
+        dest: main
+
+      - generated-sources.json
+
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: muezzin-run
+        commands:
+          - zypak-wrapper.sh /app/main/muezzin "$@"
+
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `dist` script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../muezzin-run
