@@ -6,7 +6,7 @@ Flatpak for BiglyBT (https://www.biglybt.com/)
 - `flatpak`, `flatpak-builder` packages
 - Runtime `org.gnome.Platform` version `41`
 - Runtime `org.gnome.Sdk` version `41`
-- Runtime `org.freedesktop.Sdk.Extension.openjdk11` extension
+- Runtime Extension `org.freedesktop.Sdk.Extension.openjdk11`
 
 ## Method 1:
 
