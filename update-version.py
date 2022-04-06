@@ -15,7 +15,7 @@ import urllib.request
 
 # Pre-defined values
 REPO_API_RELEASE_URL = "https://api.github.com/repos/0neGal/viper/releases/latest"
-FLATPACK_MANIFEST_NAME = "com.github.onegal.Viper.yaml"
+FLATPACK_MANIFEST_NAME = "com.github._0negal.Viper.yaml"
 
 
 # Get JSON object containing info about all releases
@@ -61,4 +61,4 @@ with open(FLATPACK_MANIFEST_NAME, "wt") as f:
     f.write(file_content)
 
 print("Done")
-print("Don't forget to manually update the AppData XML (com.github.onegal.Viper.appdata.xml) !")
+print("Don't forget to manually update the AppData XML (com.github._0negal.Viper.appdata.xml) !")
