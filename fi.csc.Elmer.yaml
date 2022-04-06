@@ -1,0 +1,453 @@
+app-id: fi.csc.Elmer
+runtime: org.kde.Sdk
+sdk: org.kde.Sdk
+runtime-version: 5.15-21.08
+base-version: 5.15-21.08
+command: ElmerGUI
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+cleanup:
+  - /share/doc
+  - /share/man
+  - /doc
+  - /man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - shared-modules/glu/glu-9.json
+
+    # Elemer need qwt_compat.h which is remove in 6.2.0. Next Elmer version should support the new Qwt.
+  - name: qwt
+    buildsystem: qmake
+    config-opts:
+      - -after
+      - QWT_INSTALL_PREFIX=/app
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/qwt/files/qwt/6.1.6/qwt-6.1.6.tar.bz2
+        sha256: 99460d31c115ee4117b0175d885f47c2c590d784206f09815dc058fbe5ede1f6
+      - type: shell
+        commands:
+          - sed 's/QWT_INSTALL_PREFIX\s*=\s*\/usr\/local\/qwt-$$QWT_VERSION/QWT_INSTALL_PREFIX=\/app/g'
+            -i qwtconfig.pri
+          - sed 's/#QWT_CONFIG\s*+=\s*QwtPkgConfig/QWT_CONFIG+=QwtPkgConfig/g' -i
+            qwtconfig.pri
+
+  - name: lapack
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DLAPACKE=ON
+      - -DCBLAS=ON
+    sources:
+      - type: archive
+        url: https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.10.0.tar.gz
+        sha256: 328c1bea493a32cac5257d84157dc686cc3ab0b004e2bea22044e0a59f6f8a19
+        x-checker-data:
+          type: anitya
+          project-id: 1534
+          stable-only: true
+          url-template: https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v$version.tar.gz
+
+  - name: openmpi
+    config-opts:
+      - --disable-static
+      - --with-libmpi-name=MPI
+    sources:
+      - type: archive
+        url: https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.1.tar.bz2
+        sha256: e24f7a778bd11a71ad0c14587a7f5b00e68a71aa5623e2157bafee3d44c07cda
+        x-checker-data:
+          type: anitya
+          project-id: 2554
+          stable-only: true
+          url-template: https://download.open-mpi.org/release/open-mpi/v$version/openmpi-$version.tar.bz2
+    cleanup:
+      - /bin
+
+  - name: hdf5
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DHDF5_BUILD_EXAMPLES:BOOL=OFF
+      - -DHDF5_ENABLE_Z_LIB_SUPPORT:BOOL=ON
+      - -DDEFAULT_API_VERSION:STRING=v18
+    cleanup:
+      - /share/hdf5_examples
+    sources:
+      - type: archive
+        url: https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_13_1.tar.gz
+        sha256: 92552458f35c7e58128ce1bfc2831abf901cc142ea0fdd2b056311e4452db7bf
+        x-checker-data:
+          type: anitya
+          project-id: 1303
+          stable-only: true
+          url-template: https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-$version.tar.gz
+
+  - name: netcdf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/Unidata/netcdf-c/archive/v4.8.1.tar.gz
+        sha256: bc018cc30d5da402622bf76462480664c6668b55eb16ba205a0dfb8647161dd0
+        x-checker-data:
+          type: anitya
+          project-id: 10354
+          stable-only: true
+          url-template: https://github.com/Unidata/netcdf-c/archive/v$version.tar.gz
+
+  - name: Hypre
+    subdir: src
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
+    sources:
+      - type: git
+        url: https://github.com/hypre-space/hypre.git
+        commit: e5a82e81e62fdc7cb531aab8e1b6102cb830afa1
+        tag: v2.24.0
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d._]+)$
+
+    # cmake-ninja failed
+  - name: SCOTCH
+    buildsystem: cmake
+    sources:
+      - type: archive
+        url: https://gitlab.inria.fr/scotch/scotch/-/archive/v7.0.1/scotch-v7.0.1.tar.bz2
+        sha256: 4ce908798ebdf0ae8dc7899a51bbebe6f274c195e28ecbb29724681eee31a6af
+        x-checker-data:
+          type: anitya
+          project-id: 12358
+          stable-only: true
+          url-template: https://gitlab.inria.fr/scotch/scotch/-/archive/v$version/scotch-v$version.tar.bz2
+
+  - name: metis
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DSHARED=ON
+      - -DMATH_LIB=m
+    sources:
+      - type: archive
+        url: http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz
+        sha256: 76faebe03f6c963127dbb73c13eab58c9a3faeae48779f049066a21c087c5db2
+        x-checker-data:
+          type: anitya
+          project-id: 13538
+          stable-only: true
+          url-template: http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-$version.tar.gz
+      - type: patch
+        path: metis-cmake.patch
+      - type: patch
+        path: metis-programs-no-compilation-time.patch
+      - type: patch
+        path: metis-makefile-c-directives.patch
+
+  - name: ScaLAPACK
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_STATIC_LIBS=OFF
+      - -DSCALAPACK_BUILD_TESTS=OFF
+      - -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch
+    sources:
+      - type: git
+        url: https://github.com/Reference-ScaLAPACK/scalapack.git
+        tag: v2.2.1
+        commit: 1cad194b1e9e0d4f0731cf0dab52144eb4492d41
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
+
+  - name: Tcl
+    buildsystem: autotools
+    subdir: unix
+    build-options:
+      no-debuginfo: true
+    sources:
+      - type: archive
+        url: https://prdownloads.sourceforge.net/tcl/tcl8.6.12-src.tar.gz
+        sha256: 26c995dd0f167e48b11961d891ee555f680c175f7173ff8cb829f4ebcde4c1a6
+        x-checker-data:
+          type: anitya
+          project-id: 4941
+          stable-only: true
+          url-template: https://prdownloads.sourceforge.net/tcl/tcl$version-src.tar.gz
+
+  - name: tk
+    subdir: unix
+    build-options:
+      no-debuginfo: true
+    make-install-args:
+      - install-private-headers
+    cleanup:
+      - /bin
+      - /man
+    sources:
+      - type: archive
+        url: https://prdownloads.sourceforge.net/tcl/tk8.6.12-src.tar.gz
+        sha256: 12395c1f3fcb6bed2938689f797ea3cdf41ed5cb6c4766eec8ac949560310630
+        x-checker-data:
+          type: anitya
+          project-id: 11426
+          stable-only: true
+          url-template: https://prdownloads.sourceforge.net/tcl/tk$version-src.tar.gz
+
+  - name: libXmu
+    cleanup:
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://www.x.org/archive/individual/lib/libXmu-1.1.3.tar.gz
+        sha256: 5bd9d4ed1ceaac9ea023d86bf1c1632cd3b172dce4a193a72a94e1d9df87a62e
+        x-checker-data:
+          type: anitya
+          project-id: 1785
+          stable-only: true
+          url-template: https://www.x.org/archive/individual/lib/libXmu-$version.tar.gz
+
+  - name: OCE
+    buildsystem: cmake-ninja
+    config-opts:
+      - -D3RDPARTY_TK_INCLUDE_DIR:PATH=/app/include
+    sources:
+      - type: git
+        url: https://github.com/tpaviot/oce.git
+        tag: upstream/V7_5_0
+        commit: 29cf1a701ca269df10f2d1c4037e2826cf704355
+        x-checker-data:
+          type: git
+          tag-pattern: ^(upstream/V[\d._]+)$
+
+  - name: Eigen3
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2
+        sha256: b4c198460eba6f28d34894e3a5710998818515104d6e74e5cc331ce31e46e626
+        x-checker-data:
+          type: anitya
+          project-id: 13751
+          stable-only: true
+          url-template: https://gitlab.com/libeigen/eigen/-/archive/$version/eigen-$version.tar.bz2
+    cleanup:
+      - '*'
+
+  - name: VTK-9
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DOpenGL_GL_PREFERENCE=GLVND
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DVTK_USE_SYSTEM_ZLIB:BOOL=ON
+      - -DVTK_USE_SYSTEM_EIGEN:BOOL=ON
+      - -DVTK_GROUP_ENABLE_Qt=YES
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DVTK_LEGACY_REMOVE:BOOL=OFF
+      - -DVTK_USE_MPI:BOOL=ON
+      - -DVTK_GROUP_ENABLE_MPI=YES
+    sources:
+      - type: archive
+        url: https://www.vtk.org/files/release/9.1/VTK-9.1.0.tar.gz
+        sha256: 8fed42f4f8f1eb8083107b68eaa9ad71da07110161a3116ad807f43e5ca5ce96
+        x-checker-data:
+          type: anitya
+          project-id: 15084
+          stable-only: true
+          url-template: https://www.vtk.org/files/release/$major.$minor/VTK-$version.tar.gz
+
+    # Elmer is looking for libMPI::MPI_C, but no clue what it is actually.
+  - name: create-link-MPI
+    buildsystem: simple
+    build-commands:
+      - ln -s /app/lib/libMPI.so /app/lib/libMPI::MPI_C.so
+
+  - name: TBB
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DTBB_TEST:BOOL=OFF
+      - -DTBB_EXAMPLES:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.tar.gz
+        sha256: e5b57537c741400cf6134b428fc1689a649d7d38d9bb9c1b6d64f092ea28178a
+        x-checker-data:
+          type: anitya
+          project-id: 227581
+          stable-only: true
+          url-template: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v$version.tar.gz
+
+  - name: Trilinos
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      cflags: -fPIC
+      cxxflags: -fPIC
+    config-opts:
+      - -DTrilinos_ENABLE_TESTS=OFF
+      - -DTrilinos_ENABLE_ML=ON
+      - -DTrilinos_ENABLE_Belos=ON
+      - -DTrilinos_ENABLE_Epetra=ON
+      - -DTPL_ENABLE_MPI:BOOL=ON
+    sources:
+      - type: git
+        url: https://github.com/trilinos/Trilinos.git
+        tag: trilinos-release-13-2-0
+        commit: 4a5f7906a6420ee2f9450367e9cc95b28c00d744
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
+    cleanup:
+      - /lib/cmake/tribits/examples
+      - /lib/cmake/tribits/doc
+
+  #- name: espreso
+    #buildsystem: simple
+    #build-commands:
+      #- ls -l
+      #- cp -r include/* /app/include
+    #sources:
+      #- type: git
+        #url: https://github.com/It4innovations/espreso
+        #commit: 5dbd1d4377955308dc2fed94a898098bbf13878c
+
+  #- name: MUMPS
+    #buildsystem: simple
+    #build-options:
+      #env:
+        #CXXFLAGS: -L/app/lib
+    #build-commands:
+      #- rm -r examples # No need examples
+      #- sed -i 's:(cd\ examples;\ $(MAKE)\ clean)::g' Makefile # Don't build example
+      #- sed -i 's:cd\ examples;\ $(MAKE)\ all::g' Makefile # Don't build example
+      #- sed -i 's:/usr:/app:g' Makefile.inc # Adjust prefix to Flatpak
+      #- sed -i 's:/include/scotch:/include:g' Makefile.inc # Adjust SCOTCH include dir
+      #- sed -i 's:/include/metis:/include:g' Makefile.inc # Adjust metis include dir
+      #- sed -i 's:/-lmpi:/-lMPI:g' Makefile.inc # Adjust MPI library case
+      ##- ld -L/app/lib -lmpi --verbose
+      ##- ld -lmpi --verbose
+      #- make all
+      #- cd include && install -D -m644 *.h "/app/include"
+      #- cd lib && install -D -m644 *.so "/app/lib"
+    #sources:
+      #- type: archive
+        #url: http://mumps.enseeiht.fr/MUMPS_5.4.1.tar.gz
+        #sha256: 93034a1a9fe0876307136dcde7e98e9086e199de76f1c47da822e7d4de987fa8
+        #x-checker-data:
+          #type: anitya
+          #project-id: 5605
+          #stable-only: true
+          #url-template: http://mumps.enseeiht.fr/MUMPS_$version.tar.gz
+        ## Use Makefile from AUR
+      #- type: file
+        #url: https://aur.archlinux.org/cgit/aur.git/plain/Makefile.inc?h=mumps
+        #sha256: 978ad0fcb43665ac5fb2312ecc9fd1c22087e237a1793723eb51972132002c2b
+        #dest-filename: Makefile.inc
+
+  - name: Elmer
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      env:
+        CFLAGS: '-L /app/lib -lMPI -lMPI::MPI_C'
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+      - -DCMAKE_INSTALL_PREFIX:PATH=/app
+      - -DWITH_MPI:BOOL=TRUE
+      - -DWITH_OpenMP:BOOL=TRUE
+      - -DWITH_MKL:BOOL=FALSE # Seems difficult to compile
+      - -DWITH_Hypre:BOOL=TRUE
+      - -DWITH_ScatteredDataInterpolator=TRUE
+      - -DWITH_ElmerIce:BOOL=TRUE
+      - -DWITH_ELMERGUI:BOOL=TRUE
+      - -DWITH_ELMERGUILOGGER:BOOL=TRUE
+      - -DWITH_Trilinos:BOOL=TRUE
+      - -DWITH_FETI4I:BOOL=FALSE # does not detect by Elmer, don't know why.
+      - -DWITH_CONTRIB:BOOL=TRUE
+      - -DWITH_Mumps:BOOL=FALSE #Can't make ld refer to MUMPS, how to install MUMPS properly anyway?
+      - -DWITH_QT5:BOOL=TRUE
+      - -DWITH_VTK:BOOL=TRUE
+      - -DWITH_LUA:BOOL=TRUE
+      - -DWITH_MATC:BOOL=ON
+      - -DWITH_Zoltan:BOOL=FALSE # Set to false to not conflict with one from Trilinos
+      - -DUSE_CONTIGUOUS:BOOL=TRUE
+      - -DMPI_C_LIBRARIES=/app/lib
+      - -DMPI_C_INCLUDE_PATH=/app/include
+    sources:
+      - type: git
+        url: https://github.com/ElmerCSC/elmerfem.git
+        tag: release-9.0
+        commit: 9352634829dfde24439000571d64438d8c683264
+        disable-submodules: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^(release-[\d.]+)$
+        # Fix from https://github.com/ElmerCSC/elmerfem/pull/257
+      - type: patch
+        path: add_QPainterPath.patch
+        # Patch from https://github.com/ElmerCSC/elmerfem/issues/274
+      - type: patch
+        path: 0001-fixed-DCRComplexSolve-compile-error.patch
+      - type: git
+        url: https://github.com/ElmerCSC/Zoltan.git
+        dest: contrib/Zoltan_v3.83
+      - type: git
+        url: https://github.com/MmgTools/mmg
+        dest: elmerice/include/mmg
+
+  - name: Elmer-Tetgen-plugin
+    buildsystem: qmake
+    subdir: misc/tetgen_plugin/
+    config-opts:
+      - tetgen_plugin.pro
+    build-options:
+      env:
+        ELMER_HOME: /app
+    sources:
+      - type: git
+        url: https://github.com/ElmerCSC/elmerfem.git
+        tag: release-9.0
+        commit: 9352634829dfde24439000571d64438d8c683264
+        disable-submodules: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^(release-[\d.]+)$
+
+  - name: install-icon-desktop-metainfo
+    buildsystem: simple
+    build-commands:
+      - install -Dm0644 ElmerGUI/Application/images/logo.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm0644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm0644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/ElmerCSC/elmerfem.git
+        tag: release-9.0
+        commit: 9352634829dfde24439000571d64438d8c683264
+        disable-submodules: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^(release-[\d.]+)$
+      - type: file
+        path: fi.csc.Elmer.desktop
+      - type: file
+        path: fi.csc.Elmer.metainfo.xml
