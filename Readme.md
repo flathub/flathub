@@ -18,3 +18,6 @@ https://docs.flatpak.org/en/latest/python.html
 # Throubleshooting
 if the build fails check out on similar projects which are using python
 https://github.com/flathub/org.paraview.ParaView
+
+PyQt5:
+https://github.com/flathub/org.plomgrading.PlomClient
