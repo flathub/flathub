@@ -1,5 +1,5 @@
 # Creating flatpak package manually
-`flatpak-builder --force-clean --repo=pyfdaRepo build com.github.chipmuenk.pyfda.yaml`
+See build.sh
 
 
 
@@ -13,3 +13,8 @@ https://docs.flatpak.org/en/latest/python.html
 `python flatpak-pip-generator PyQt5-sip matplotlib docutils xlwt scipy`
 
 3) Replace python-modules.json file in this repository
+
+
+# Throubleshooting
+if the build fails check out on similar projects which are using python
+https://github.com/flathub/org.paraview.ParaView
