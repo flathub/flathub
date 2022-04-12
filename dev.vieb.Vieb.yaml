@@ -1,0 +1,142 @@
+app-id: dev.vieb.Vieb
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+command: vieb
+rename-desktop-file: vieb.desktop
+rename-icon: vieb
+finish-args:
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=home
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --require-version=1.8.2
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.Notifications
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+modules:
+  - name: vieb
+    buildsystem: simple
+    build-commands:
+      - install -dm755 ${FLATPAK_DEST}/vieb
+      - bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=3 -C ${FLATPAK_DEST}/vieb
+        ./opt/Vieb
+      - bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=2 --exclude='*/share/icons/hicolor/1024*'
+        -C ${FLATPAK_DEST} ./usr/share
+      - desktop-file-edit --set-key=Exec --set-value=vieb ${FLATPAK_DEST}/share/applications/vieb.desktop
+      - install -Dm755 vieb -t ${FLATPAK_DEST}/bin/
+      - install -Dm755 stub_sandbox ${FLATPAK_DEST}/vieb/chrome-sandbox
+      - install -Dm755 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+    sources:
+      - type: file
+        dest-filename: vieb.deb
+        only-arches:
+          - aarch64
+        url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_arm64.deb
+        sha256: 738c2b2fce65630e284cc891c143ebe44a6940c024ee1ebc9cb600dd95c1c165
+        x-checker-data:
+          type: anitya
+          project-id: 243097
+          stable-only: true
+          url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_arm64.deb
+      - type: file
+        dest-filename: vieb.deb
+        only-arches:
+          - x86_64
+        url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_amd64.deb
+        sha256: 617334d411987b98a5a1b28cc362aea9a01a0815df62030b879ad7ecee0cd6bc
+        x-checker-data:
+          is-main-source: true
+          type: anitya
+          project-id: 243097
+          stable-only: true
+          url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_amd64.deb
+      - type: script
+        dest-filename: vieb
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - exec zypak-wrapper /app/vieb/vieb "$@"
+      - type: script
+        dest-filename: stub_sandbox
+        commands:
+          - |
+            echo Stub sandbox ignoring command: $@
+            exit 1
+      - type: file
+        path: dev.vieb.Vieb.metainfo.xml
+    modules:
+      - name: gtk-cups-backend
+        buildsystem: meson
+        make-args:
+          - modules/printbackends/libprintbackend-cups.so
+        no-make-install: true
+        post-install:
+          - install -Dm755 modules/printbackends/libprintbackend-cups.so -t ${FLATPAK_DEST}/lib/gtkmodules/3.0.0/printbackends/
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.33.tar.xz
+            sha256: 588b06522e25d1579e989b6f9d8a1bdbf2fe13cde01a04e904ff346a225e7801
+            x-checker-data:
+              type: gnome
+              name: gtk+
+              stable-only: true
+              versions:
+                <: '3.89'
+          - type: patch
+            # https://gitlab.gnome.org/GNOME/gnome-build-meta/-/blob/master/files/gtk3-werror.patch
+            path: gtk3-werror.patch
+      - name: gtk-settings
+        buildsystem: simple
+        build-commands:
+          - install -Dm644 gtk-settings.ini ${FLATPAK_DEST}/etc/xdg/gtk-3.0/settings.ini
+        sources:
+          - type: file
+            path: gtk-settings.ini
+      - name: krb5
+        subdir: src
+        config-opts:
+          - --localstatedir=/var/lib
+          - --sbindir=${FLATPAK_DEST}/bin
+          - --disable-static
+          - --disable-rpath
+        sources:
+          - type: archive
+            url: https://github.com/krb5/krb5/archive/refs/tags/krb5-1.19.3-final.tar.gz
+            sha256: 131890da54fff2ac339e93facf9d8067f7db53b15181f38104c0b56a6f2acdee
+            x-checker-data:
+              type: anitya
+              project-id: 13287
+              stable-only: true
+              url-template: https://github.com/krb5/krb5/archive/refs/tags/krb5-$version.tar.gz
+          - type: shell
+            dest: src
+            commands:
+              - autoreconf -si
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /share/et
+          - /share/examples
+          - /share/man
+      - name: krb5-config
+        buildsystem: simple
+        build-commands:
+          - install -Dm644 krb5.conf -t ${FLATPAK_DEST}/etc
+        sources:
+          - type: file
+            path: krb5.conf
