@@ -1,0 +1,1 @@
+/home/deck/RetroDECK/res
