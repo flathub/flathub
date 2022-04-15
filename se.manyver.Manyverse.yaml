@@ -1,0 +1,66 @@
+app-id: se.manyver.Manyverse
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: manyverse
+separate-locales: false
+rename-desktop-file: manyverse.desktop
+rename-icon: manyverse
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=all
+  - --nodevice=kvm
+  - --nodevice=shm
+  # full filesystem access is needed in order for the user to be able to browse and upload files from their filesystem
+  - --filesystem=home:ro
+  - --filesystem=xdg-config/manyverse
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Background
+  - --own-name=org.kde.*
+modules:
+  - name: manyverse-desktop
+    buildsystem: simple
+    build-commands:
+      - ar x manyverse*.deb
+      - rm -f manyverse*.deb
+      - tar xf data.tar.xz
+      - rm -f control.tar.gz data.tar.xz debian-binary
+      - cp -r usr/* opt/* $FLATPAK_DEST
+      - rm -rf /app/share/icons/hicolor/1024x1024/
+      - rm -rf usr opt
+      - chmod -R a-s,go+rX,go-w $FLATPAK_DEST/Manyverse
+      - install manyverse.sh $FLATPAK_DEST/bin/manyverse
+      - install -Dm644 -t $FLATPAK_DEST/share/metainfo $FLATPAK_ID.appdata.xml
+      - desktop-file-edit --set-key=Exec --set-value="$FLATPAK_DEST/bin/manyverse"
+        $FLATPAK_DEST/share/applications/manyverse.desktop
+
+    sources:
+      # we fetch the latest .deb from github, from this deb file we will extract the binary, icons and manifest file
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/staltz/manyverse/releases/download/v0.2204.7-beta/manyverse_0.2204.7-beta_amd64.deb
+        sha256: 23288a9c2489239f37db7e0bff4f9d77f71cc331730f41a57fc9975287565bb9
+        # This will allow automatic new version detection using the flatpack-external-data-checker (see https://github.com/flathub/flatpak-external-data-checker)
+        x-checker-data:
+          type: html
+          url: https://github.com/staltz/manyverse/releases
+          version-pattern: manyverse_(.*)_amd64.deb
+          url-template: https://github.com/staltz/manyverse/releases/download/v${version}/manyverse_${version}_amd64.deb
+
+
+      # the script that will actually be run to start the application
+      - type: script
+        dest-filename: manyverse.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/Manyverse/manyverse
+
+      - type: file
+        path: se.manyver.Manyverse.appdata.xml
