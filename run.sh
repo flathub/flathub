@@ -5,4 +5,4 @@ for i in {0..9}; do
 done
 
 cd /app/lib/tidal-hifi
-exec ./tidal-hifi "$@"
+exec ./tidal-hifi --no-sandbox "$@"
