@@ -1,0 +1,197 @@
+From b597702d08b574a86dc4933437c11d48c566ce2f Mon Sep 17 00:00:00 2001
+From: Jonathan Esk-Riddell <jr@jriddell.org>
+Date: Mon, 18 Apr 2022 15:54:58 +0100
+Subject: [PATCH] allow kauth to be optional on linux with cmake
+ -DUSE_KAUTH=off
+
+---
+ CMakeLists.txt                 | 18 ++++++++++++++----
+ isoimagewriter/CMakeLists.txt  |  8 ++++++--
+ isoimagewriter/imagewriter.cpp | 14 +++++++-------
+ isoimagewriter/mainwindow.cpp  |  4 ++--
+ isoimagewriter/mainwindow.h    |  6 +++---
+ 5 files changed, 32 insertions(+), 18 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b27c4b5..5fd068a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -18,6 +18,20 @@ include(ECMSetupVersion)
+ 
+ option(ROSA_BRANDING "Build with ROSA branding" OFF)
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL Linux)
++    option(USE_KAUTH "Build with KAuth (default on for Linux, off for Windows)" ON)
++elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
++    option(USE_KAUTH "Build with KAuth (default on for Linux, off for Windows)" OFF)
++endif()
++
++if(USE_KAUTH AND CMAKE_SYSTEM_NAME STREQUAL Linux)
++    find_package(KF5Auth REQUIRED)
++    add_definitions(-DUSE_KAUTH=ON)
++    message("XX using KAuth")
++else()
++    message("XX not using KAuth")
++endif()
++
+ find_package(Qt5 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS Network Widgets)
+ 
+ find_package(KF5 ${KF5_REQUIRED_VERSION} REQUIRED COMPONENTS
+@@ -32,10 +46,6 @@ find_package(KF5 ${KF5_REQUIRED_VERSION} REQUIRED COMPONENTS
+ 
+ add_definitions(-DQT_DISABLE_DEPRECATED_BEFORE=0x050f00)
+ 
+-if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+-  find_package(KF5Auth REQUIRED)
+-endif()
+-
+ KDE_ENABLE_EXCEPTIONS()
+ 
+ add_subdirectory(isoimagewriter)
+diff --git a/isoimagewriter/CMakeLists.txt b/isoimagewriter/CMakeLists.txt
+index b86e1f5..5a61892 100644
+--- a/isoimagewriter/CMakeLists.txt
++++ b/isoimagewriter/CMakeLists.txt
+@@ -71,7 +71,11 @@ target_link_libraries(isoimagewriter
+ endif()
+ 
+ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+-  target_link_libraries(isoimagewriter KF5::Solid KF5::AuthCore)
++  target_link_libraries(isoimagewriter KF5::Solid)
++endif()
++
++if(USE_KAUTH)
++  target_link_libraries(isoimagewriter KF5::AuthCore)
+ endif()
+ 
+ install(TARGETS isoimagewriter ${INSTALL_TARGETS_DEFAULT_ARGS})
+@@ -81,7 +85,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+ endif()
+ 
+ # KAuth
+-if(CMAKE_SYSTEM_NAME STREQUAL Linux)
++if(USE_KAUTH)
+     add_executable(isoimagewriter_helper common.cpp imagewriter_helper.cpp imagewriter.cpp physicaldevice.cpp)
+     target_link_libraries(isoimagewriter_helper Qt5::Widgets KF5::AuthCore KF5::I18n KF5::WidgetsAddons KF5::Archive)
+     install(TARGETS isoimagewriter_helper DESTINATION ${KAUTH_HELPER_INSTALL_DIR})
+diff --git a/isoimagewriter/imagewriter.cpp b/isoimagewriter/imagewriter.cpp
+index 602ccd4..6928b03 100644
+--- a/isoimagewriter/imagewriter.cpp
++++ b/isoimagewriter/imagewriter.cpp
+@@ -10,7 +10,7 @@
+ 
+ #include <KLocalizedString>
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+ #include <kauth_version.h>
+ #if KAUTH_VERSION >= QT_VERSION_CHECK(5, 92, 0)
+ #include <KAuth/ActionReply>
+@@ -159,7 +159,7 @@ void ImageWriter::writeImage()
+         for (;;)
+         {
+             qDebug() << "For Loop3";
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+             if (KAuth::HelperSupport::isStopped()) {
+                 qDebug() << "isStopped";
+             } else {
+@@ -194,13 +194,13 @@ void ImageWriter::writeImage()
+             // this still works or at least fails compilation
+             emit progressChanged(percent);
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+             KAuth::HelperSupport::progressStep(percent);
+ #endif
+ 
+             // Check for the cancel request (using temporary variable to avoid multiple unlock calls in the code)
+             m_Mutex.lock();
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+             cancelRequested = KAuth::HelperSupport::isStopped();
+ #else
+             cancelRequested = m_CancelWriting;
+@@ -209,7 +209,7 @@ void ImageWriter::writeImage()
+ 
+             if (cancelRequested)
+             {
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+                 QVariantMap progressArgs;
+                 progressArgs[QStringLiteral("cancel")] = true;
+                 KAuth::HelperSupport::progressStep(progressArgs);
+@@ -238,7 +238,7 @@ void ImageWriter::writeImage()
+     catch (QString msg)
+     {
+         // Something went wrong :-(
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+         QVariantMap args;
+         args[QStringLiteral("error")] = msg;
+         KAuth::HelperSupport::progressStep(args);
+@@ -261,7 +261,7 @@ void ImageWriter::writeImage()
+             "<br><br>" +
+             (zeroing ? i18n("Now you need to format your device.") : i18n("To be able to store data on this device again, please, use the button \"Wipe USB Disk\"."));
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+         QVariantMap args;
+         args[QStringLiteral("success")] = message;
+         KAuth::HelperSupport::progressStep(args);
+diff --git a/isoimagewriter/mainwindow.cpp b/isoimagewriter/mainwindow.cpp
+index 5d183bb..2e85f00 100644
+--- a/isoimagewriter/mainwindow.cpp
++++ b/isoimagewriter/mainwindow.cpp
+@@ -373,7 +373,7 @@ void MainWindow::writeToDevice(bool zeroing)
+         m_usbDriveComboBox->currentIndex()).value<UsbDevice*>();
+ 
+ // Use KAuth to get required previleges in supported platforms
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+     connect(m_cancelButton, &QPushButton::clicked, this, &MainWindow::cancelWriting);
+ 
+     KAuth::Action action("org.kde.isoimagewriter.write");
+@@ -663,7 +663,7 @@ void MainWindow::showIsoVerificationResult(IsoVerifier::VerifyResult verify, con
+     Q_EMIT verificationResult(verify == IsoVerifier::VerifyResult::Successful);
+ }
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+ void MainWindow::cancelWriting() {
+     qCDebug(ISOIMAGEWRITER_LOG) << "cancelWriting()";
+     m_job->kill();
+diff --git a/isoimagewriter/mainwindow.h b/isoimagewriter/mainwindow.h
+index b23b0bb..b466285 100644
+--- a/isoimagewriter/mainwindow.h
++++ b/isoimagewriter/mainwindow.h
+@@ -20,7 +20,7 @@
+ #include <QStackedWidget>
+ #include <KPixmapSequenceOverlayPainter>
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+ #include <kauth_version.h>
+ #if KAUTH_VERSION >= QT_VERSION_CHECK(5, 92, 0)
+ #include <KAuth/ExecuteJob>
+@@ -67,7 +67,7 @@ private:
+     bool m_enumFlashDevicesWaiting;
+     ExternalProgressBar m_externalProgressBar;
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+     KAuth::ExecuteJob *m_job;
+ #endif
+ 
+@@ -99,7 +99,7 @@ private slots:
+     void showIsoVerificationResult(IsoVerifier::VerifyResult result, const QString &error);
+     void openUrl(const QUrl &url);
+ 
+-#if defined(Q_OS_LINUX)
++#if defined(USE_KAUTH)
+     void cancelWriting();
+     void progressPercentUpdate(KJob* job, unsigned long percent);
+     void progressStep(const QVariantMap &);
+-- 
+2.35.1
+
