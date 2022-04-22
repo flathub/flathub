@@ -22,14 +22,6 @@ Tsuki-tag is an aggregated imageboard browser and collection manager, which lets
 - Global tag blacklisting with wildcard and regular expression support.
 - Several other features such as opening images in your default image editor, opening or copying the image website URL, re-downloading the image from the original provider, and more.
 
-# Screenshots
-
-![Tsuki-tag main window](./images/main01.jpg)
-
-![Tsuki-tag main window](./images/main02.jpg)
-
-![Tsuki-tag browser](./images/main02.jpg)
-
 # License
 
 GNU GPL v3
