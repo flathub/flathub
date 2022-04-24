@@ -1,0 +1,75 @@
+#!/bin/bash
+
+get_modver(){
+  case $_modtype in
+    archive)
+      srcurl="$(jq --raw-output '.sources[0].url' ${_mod}.json)"
+      if [[ "$srcurl" == *"/releases/download/"* ]]; then
+        version="$( echo "$srcurl" | sed 's#^http[s]*://\([^/]\+/\)\{3\}releases/download/\([^/]\+\)/.\+#\2#')"
+      elif [[ "$srcurl" == *"/archive/"*"/"* ]]; then
+        version="$(echo "$srcurl" | sed 's#^http[s]*://\([^/]\+/\)\{3\}archive/\([^/]\+\)/.\+#\2#')"
+      else
+        version="$(echo "$srcurl" | sed 's#.*/##;s#\.tar\..*##')"
+      fi
+      ;;
+    git)
+      version="$(jq --raw-output '.sources[0].tag' ${_mod}.json)"
+      ;;
+  esac
+  echo "$version"
+}
+
+
+[ $# -ge 1 ] || { echo missing module name; exit 1; }
+
+_mod=$1
+_lockpath=${2:-Cargo.lock}
+
+_modtype=$(jq --raw-output '.sources[0].type' ${_mod}.json)
+
+if [ "$_modtype" != "archive" ] && [ "$_modtype" != "git" ]; then
+    echo 'cargo-updater: Unknown module type. Exiting...'
+    exit 1
+fi
+
+_modver="$(get_modver)"
+
+# add fedc
+#jq '.sources[0] += { "x-checker-data": { "type": "json", "url": "https://api.github.com/repos/user/repo/releases/latest", "tag-query": ".tag_name", "version-query": "$tag", "timestamp-query": ".published_at" } }' ${_mod}.json
+jq --indent 4 --join-output --argjson fedc "$(<fedc.json)" '.sources[0] += $fedc' ${_mod}.json > ${_mod}-fedc.json
+
+# look for an update
+flatpak-external-data-checker --edit-only ${_mod}-fedc.json
+
+# disable fedc
+jq --indent 4 --join-output 'del(.sources[0]."x-checker-data")' ${_mod}-fedc.json > ${_mod}.json
+rm ${_mod}-fedc.json
+
+# TODO: test if ${_mod}.json is still valid
+# if module was updated then also fetch latest cargo dependencies
+
+_modver_new="$(get_modver)"
+
+if [ "$_modver" != "$_modver_new" ]; then
+
+  _modver="$_modver_new"
+  echo "cargo-updater: Found new version $_modver for $_mod"
+
+  case $_modtype in
+    archive)
+      _modurl=$(jq --raw-output '.sources[0].url' ${_mod}.json | sed 's#^\(http[s]*://[^/]*/[^/]*/[^/]*\)/.*#\1#')
+      ;;
+    git)
+      _modurl=$(jq --raw-output '.sources[0].url' ${_mod}.json | sed 's/\.git$//')
+      ;;
+  esac
+
+  echo "cargo-updater: Downloading updated Cargo.lock"
+  echo "$_modver" > version
+  curl -L ${_modurl}/raw/${_modver}/${_lockpath} --output Cargo.lock || exit 1
+
+  echo "cargo-updater: Updating cargo-sources.json"
+  flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+else
+  echo 'cargo-updater: No update was found'
+fi
