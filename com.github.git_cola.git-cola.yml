@@ -1,0 +1,59 @@
+app-id: com.github.git_cola.git-cola
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+base: io.qt.qtwebkit.BaseApp
+base-version: "5.15-21.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm12
+command: git-cola
+rename-desktop-file: git-cola.desktop
+rename-icon: git-cola
+rename-appdata-file: git-cola.appdata.xml
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --filesystem=home
+
+modules:
+  - name: pyside2
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      prepend-path: /usr/lib/sdk/llvm12/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm12/lib
+    config-opts:
+      - -DUSE_PYTHON_VERSION=3
+      - -DBUILD_TESTS=OFF
+    cleanup:
+      - /qt5include
+      - /bin
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.2-src/pyside-setup-opensource-src-5.15.2.tar.xz
+        sha256: b306504b0b8037079a8eab772ee774b9e877a2d84bab2dbefbe4fa6f83941418
+      - type: shell
+        commands:
+          - mkdir -p /app/include/qt5tmp && cp -R /usr/include/Qt* /app/include/qt5tmp # https://bugreports.qt.io/browse/PYSIDE-787
+          - sed -i 's|\(--include-paths=\)|\1/app/include/qt5tmp:|' sources/pyside2/cmake/Macros/PySideModules.cmake
+
+  - name: git-cola
+    buildsystem: simple
+    build-commands:
+      - make install prefix=${FLATPAK_DEST}
+      - rm ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/git-cola.svg # it is just a sym link which breaks the linter
+      - cp ${FLATPAK_DEST}/share/git-cola/icons/git-cola.svg  ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/
+      - cp -r share ${FLATPAK_DEST}
+      - install -Dm0755 $(which git) ${FLATPAK_DEST}/bin/
+    sources:
+      - type: git
+        url: https://github.com/git-cola/git-cola.git
+        tag: v3.12.0
+        commit: 699cdec67a7195c7f6bd6cf5e4354c168aed0d44
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+      - type: patch
+        path: appstream.patch
