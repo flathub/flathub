@@ -1,8 +1,8 @@
 #!/bin/bash
 
-if [ -d ~/retrodeck/roms ] && [ -d ~/retrodeck/roms ]
+if [ -d ~/retrodeck/roms ] && [ -d /run/media/mmcblk0p1/retrodeck/roms ]
 then # found both internal and sd folders
-    kdialog --title "RetroDECK" --warning "I found a roms folder both in internal and SD Card, in order to make this tool useful you should remove one of the two."
+    kdialog --title "RetroDECK" --warning "I found a roms folder both in internal and SD Card, in order to make this tool useful you should remove one of the two or merge them."
     exit 0
 fi
 
@@ -18,8 +18,12 @@ then # found external folder and not the internal
     new_roms_path=~/retrodeck
 fi
 
-mkdir -p $new_roms_path
-mv -f $roms_path/roms $new_roms_path/roms
-rm -f /var/config/emulationstation/ROMs
-ln -s $new_roms_path/roms /var/config/emulationstation/ROMs
-rm -f $roms_path/roms
+kdialog --title "RetroDECK" --warningyesno "Should I move the roms from\n\n$roms_path/roms\n\nto\n\n$new_roms_path/roms?"
+if [ $? == 0 ] #yes
+then
+    mkdir -p $new_roms_path
+    mv -f $roms_path/roms $new_roms_path/roms
+    rm -f /var/config/emulationstation/ROMs
+    ln -s $new_roms_path/roms /var/config/emulationstation/ROMs
+    rm -f $roms_path/roms
+fi

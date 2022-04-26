@@ -37,6 +37,7 @@ then
     # Cleaning
     rm -rf /var/config/emulationstation/
     rm /var/config/retrodeck/tools/*
+    rm -f /var/config/yuzu/qt-config.ini
 
     kdialog --title "RetroDECK" --msgbox "EmulationStation will now initialize the system, please don't edit the roms location, just select:\n\nCREATE DIRECTORIES, YES, QUIT\n\nRetroDECK will manage the rest."
 
@@ -57,21 +58,39 @@ then
     mkdir -p ~/retrodeck/states
     mkdir -p ~/retrodeck/screenshots
     mkdir -p ~/retrodeck/bios
-    mkdir -p /var/config/retroarch/
-
+    # ES-DE
     cp -r /app/retrodeck/tools/* /var/config/retrodeck/tools/
+    mkdir -p /var/config/emulationstation/.emulationstation/custom_systems/tools/
+    cp /app/retrodeck/tools-gamelist.xml /var/config/retrodeck/tools/gamelist.xml
 
+    # Initializing emulators configs
+    emuconfigs=/app/retrodeck/emu-configs/
+
+    # RetroArch
+    mkdir -p /var/config/retroarch/cores/
     rm -rf /var/config/retroarch/system
     ln -s ~/retrodeck/bios /var/config/retroarch/system
-
-    cp /app/retrodeck/retrodeck-retroarch.cfg /var/config/retroarch/retroarch.cfg
-
-    mkdir -p /var/config/emulationstation/.emulationstation/custom_systems/tools/
-    cp /app/retrodeck/tools-gamelist.xml /var/config/emulationstation/.emulationstation/custom_systems/tools/gamelist.xml
-
-    mkdir -p /var/config/retroarch/cores/
     cp /app/share/libretro/cores/* /var/config/retroarch/cores/
+    cp $emuconfigs/retroarch.cfg /var/config/retroarch/
 
+    # Yuzu
+    mkdir -p ~/retrodeck/bios/switch/
+    mkdir -p /var/config/yuzu/keys
+    mkdir -p /var/data/yuzu/registered
+    ln -s ~/retrodeck/bios/switch/keys /var/data/yuzu/keys
+    ln -s /var/data/yuzu/registered ~/retrodeck/bios/switch/registered
+    cp $emuconfigs/qt-config.ini /var/config/yuzu/
+
+    # Dolphin
+    mkdir -p /var/config/dolphin-emu/
+    cp $emuconfigs/Dolphin.ini /var/config/dolphin-emu/
+
+    # pcsx2
+    mkdir -p /var/config/PCSX2/inis/
+    cp $emuconfigs/PCSX2_ui.ini /var/config/PCSX2/inis/
+
+
+    # Locking RetroDECK
     touch ~/retrodeck/.lock
 
     kdialog --title "RetroDECK" --msgbox "Initialization completed.\nplease put your roms in:\n\n$roms_folder\n\nand your bioses in\n\n~/retrodeck/bios\n\nThen start the program again.\nIf you wish to change the roms location, you may use the tool located the tools section of RetroDECK.\n\nIt's suggested to add RetroDECK to your Steam Library for a quick access."

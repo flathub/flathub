@@ -12,8 +12,8 @@ Powered by [EmulationStation Desktop Edition](https://es-de.org), which uses Ret
 
 Join our [Discord](https://discord.gg/Dz3szYsP8g)!
 <p float="center">
-<img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen03.jpg?raw=true" alt="screenshot" width="300"/>
-<img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen04.jpg?raw=true" alt="screenshot" width="300"/><br/>
+<img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen05.png?raw=true" alt="screenshot" width="300"/>
+<img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen04.png?raw=true" alt="screenshot" width="300"/><br/>
 <img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen01.png?raw=true" alt="screenshot" width="300"/>
 <img src="https://github.com/XargonWan/RetroDECK/blob/main/res/screenshots/screen02.png?raw=true" alt="screenshot" width="300"/>
 </p>
@@ -29,7 +29,7 @@ No partitioning or formatting is required. RetroDECK (differently from AmberELEC
 No, RetroDECK doesn't support Windows, but the project is fully open source so you can port it if you wish. As an alternative, [Retrobat](http://www.retrobat.ovh/) offers similar functionality (but may not be compatible with RetroDECK's rom paths).
 
 ## How can I install it?
-Check the [Managing RetroDECK flatpak file](https://github.com/XargonWan/RetroDECK/wiki/Developer-notes#managing-retrodeck-flatpak-file) on the Wiki
+Check the [Installation instructions](https://github.com/XargonWan/RetroDECK/wiki#installation-instructions) on the Wiki
 
 ## Can I help?
-Of course, any help is appreciated, and not only byp rogramming, just check out our [Discord](https://discord.gg/Dz3szYsP8g)!
+Of course, any help is appreciated, and not only by programming, just check out our [Discord](https://discord.gg/Dz3szYsP8g)!

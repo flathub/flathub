@@ -1,7 +1,11 @@
-app-id: com.xargon.retrodeck
+app-id: net.retrodeck.retrodeck
 runtime: org.kde.Platform
 runtime-version: '5.15-21.08'
 sdk: org.kde.Sdk
+# Needed for rpcs3
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.llvm13
+# /Needed for rpcs3
 # Needed for Yuzu
 base: io.qt.qtwebengine.BaseApp
 base-version: 5.15-21.08
@@ -27,6 +31,9 @@ finish-args:
   # Yuzu
    - --filesystem=home:ro
   # - --filesystem=/run/media:ro
+  # Dolphin
+   - --allow=bluetooth
+  #- --env=QT_QPA_PLATFORM=xcb not sure if this will break something
 
 cleanup:
   # ES-DE
@@ -84,11 +91,9 @@ modules:
     - --disable-programs
     - --disable-doc
     - --enable-gpl
-    - --enable-nonfree
     - --enable-shared
     - --enable-libvorbis
     - --enable-libopus
-    - --enable-libfdk-aac
     - --enable-libvpx
     - --enable-postproc
     sources:
@@ -128,7 +133,7 @@ modules:
     sources:
     - type: git
       url: https://gitlab.com/leonstyhre/emulationstation-de.git
-      commit: c3fc30cfd5c26195024e0da328349d83af067b9e
+      branch: 3cb464c7adcea8d020cdff92803c64b7f72fb443
 
   # ES-DE - END
 
@@ -157,8 +162,6 @@ modules:
         url: https://github.com/libretro/RetroArch.git
         branch: de4e56ecf28a09057734f8624af6d62f3088734f
       - type: file
-        path: rd-submodules/retroarch/org.libretro.RetroArch.appdata.xml
-      - type: file
         path: rd-submodules/retroarch/retroarch.cfg
     post-install:
       - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/
@@ -170,20 +173,18 @@ modules:
       - >-
         sed s:@prefix@:${FLATPAK_DEST}:g retroarch.cfg >
         ${FLATPAK_DEST}/etc/retroarch.cfg
-      - mkdir -p ${FLATPAK_DEST}/share/appdata
-      - cp org.libretro.RetroArch.appdata.xml ${FLATPAK_DEST}/share/appdata
     modules:
-      - nvidia-cg-toolkit/nvidia-cg-toolkit-3.1.0013.json
+      - rd-submodules/retroarch/nvidia-cg-toolkit/nvidia-cg-toolkit-3.1.0013.json
       - shared-modules/SDL/SDL-1.2.15.json
       - shared-modules/SDL/SDL_image-1.2.12.json
       - shared-modules/SDL/SDL_mixer-1.2.12.json
       - shared-modules/SDL/SDL_net-1.2.8.json
       - shared-modules/libusb/libusb.json
       - shared-modules/gudev/gudev.json
-      - libbz2/libbz2-1.0.8.json
-      - libaio/libaio-0.3.112.json
+      - rd-submodules/retroarch/libbz2/libbz2-1.0.8.json
+      - rd-submodules/retroarch/libaio/libaio-0.3.112.json
       - shared-modules/glu/glu-9.json
-      - libdecor/libdecor-0.1.0.json
+      - rd-submodules/retroarch/libdecor/libdecor-0.1.0.json
   - name: retroarch-filers-video
     subdir: gfx/video_filters
     make-install-args:
@@ -191,7 +192,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/libretro/RetroArch.git
-        commit: de4e56ecf28a09057734f8624af6d62f3088734f
+        branch: de4e56ecf28a09057734f8624af6d62f3088734f
   - name: retroarch-filers-audio
     subdir: libretro-common/audio/dsp_filters
     make-install-args:
@@ -199,7 +200,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/libretro/RetroArch.git
-        commit: de4e56ecf28a09057734f8624af6d62f3088734f
+        branch: de4e56ecf28a09057734f8624af6d62f3088734f
   - name: retroarch-assets
     make-install-args:
       - PREFIX=${FLATPAK_DEST}
@@ -265,8 +266,6 @@ modules:
     build-commands:
         - mkdir -p /app/share/libretro/cores/
         - mv ./RetroArch-Linux-x86_64.AppImage.home/.config/retroarch/cores/* /app/share/libretro/cores/
-    cleanup:
-        - RetroArch_cores.7z
     sources:
       - type: archive
         url: https://buildbot.libretro.com/stable/1.10.2/linux/x86_64/RetroArch_cores.7z
@@ -408,9 +407,6 @@ modules:
       - /share/pixmaps
     post-install:
       - install -Dm755 ../yuzu-launcher.sh /app/bin/yuzu-launcher
-      - >-
-        install -Dm644 ../org.yuzu_emu.yuzu.metainfo.xml
-        /app/share/appdata/org.yuzu_emu.yuzu.metainfo.xml
       - desktop-file-install --dir=/app/share/applications ../dist/yuzu.desktop
       - >-
         desktop-file-edit --set-key StartupWMClass --set-value yuzu --set-key
@@ -433,8 +429,6 @@ modules:
         x-checker-data:
           type: git
           tag-pattern: ^(mainline-0-\d+)$
-      - type: file
-        path: rd-submodules/yuzu/org.yuzu_emu.yuzu.metainfo.xml
       - type: file
         path: rd-submodules/yuzu/yuzu-launcher.sh
       - type: file
@@ -461,7 +455,6 @@ modules:
           type: git
           tag-pattern: ^v([\d.]+)$
     modules:
-      - shared-modules/glu/glu-9.json
   - name: libaio
     no-autogen: true
     make-install-args:
@@ -561,32 +554,168 @@ modules:
       - >-
         install -Dm644 ../AppIcon128.png
         /app/share/icons/hicolor/128x128/apps/PCSX2.png
-      - >-
-        install -Dm644 ../net.pcsx2.PCSX2.metainfo.xml
-        /app/share/metainfo/net.pcsx2.PCSX2.metainfo.xml
     sources:
       - type: git
         url: https://github.com/PCSX2/pcsx2.git
         tag: v1.7.2554
         commit: 0d1675fbaa0d40874df98eed6270efc55620271b
       - type: file
-        path: rd-submodules/pcsx2/net.pcsx2.PCSX2.metainfo.xml
-      - type: file
         path: rd-submodules/pcsx2/AppIcon128.png
 
   # pcsx2 - END
 
+  # Dolphin - START
+  # https://github.com/flathub/org.DolphinEmu.dolphin-emu
 
-  # Ryujinx
-  # Xemu
-  # Rpcs3
-  # vita3k
-  # dolphin
-  # arduboy
-  # pocket station
-  # cemu - win only: wine
-  # Anbox?
+  # needed for the emulate bluetooth adapter feature to work
+  - name: bluez
+    config-opts:
+      - --enable-library
+      - --disable-manpages
+      - --disable-udev
+      - --disable-tools
+      - --disable-cups
+      - --disable-monitor
+      - --disable-client
+      - --disable-systemd
+      - --disable-a2dp
+      - --disable-avrcp
+      - --disable-network
+      - --with-dbusconfdir=/app/etc
+      - --with-dbussessionbusdir=/app/usr/lib/system-services
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/linux/bluetooth/bluez-5.64.tar.xz
+        sha256: ae437e65b6b3070c198bc5b0109fe9cdeb9eaa387380e2072f9de65fe8a1de34
+        x-checker-data:
+          type: anitya
+          project-id: 10029
+          stable-only: true
+          url-template: https://www.kernel.org/pub/linux/bluetooth/bluez-$version.tar.xz
 
+  # enables motion controls on non-wii controllers (switch, ps4, etc)
+  # requires a udev rule enabling Motion Sensors access
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.12.1.tar.xz
+        sha256: 1dbba41bc516d3ca7abc0da5b862efe3ea8a7018fa6e9b97ce9d39401b22426c
+        x-checker-data:
+          type: anitya
+          project-id: 20540
+          stable-only: true
+          url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+
+  # needed for screensaver inhibition
+  - name: xdg-screensaver-shim
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/Unrud/xdg-screensaver-shim/archive/0.0.2.tar.gz
+        sha256: 0ed2a69fe6ee6cbffd2fe16f85116db737f17fb1e79bfb812d893cf15c728399
+
+  - name: dolphin-emu
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_ALSA=OFF
+      - -DENABLE_SDL=ON
+      - -DENABLE_EVDEV=ON
+      - -DDISTRIBUTOR=Flathub
+    cleanup:
+      - /share/man
+    post-install:
+      - install -D dolphin-emu-wrapper /app/bin/dolphin-emu-wrapper
+      - install -Dm644 appdata.xml /app/share/appdata/dolphin-emu.appdata.xml
+      - sed -i -e 's/"2048"/"512"/g' /app/share/icons/hicolor/scalable/apps/dolphin-emu.svg
+      - desktop-file-edit --set-key=Exec --set-value='/app/bin/dolphin-emu-wrapper'
+        /app/share/applications/dolphin-emu.desktop
+    sources:
+      - type: git
+        url: https://github.com/dolphin-emu/dolphin.git
+        commit: 8ecfa537a242de74d2e372e30d9d79b14584b2fb
+      # detects whether dolphin is running in a flatpak sandbox
+      # and makes it use xdg directories if it is.
+      # prevents dolphin from attempting to write conf files
+      # in non-writable paths, typically happens when a user
+      # has leftover files from a previous non-flatpak install
+      - type: patch
+        path: rd-submodules/dolphin/detectflatpak.patch
+      # version strings must match exactly for online multiplayer
+      - type: patch
+        path: rd-submodules/dolphin/nodirtyversion.patch
+      - type: file
+        path: rd-submodules/dolphin/appdata.xml
+      - type: script
+        commands:
+          - for i in {0..9}; do
+          - test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+          - done
+          - dolphin-emu "$@"
+        dest-filename: dolphin-emu-wrapper
+
+  # Dolphin - END
+
+  # XEMU - START
+
+  - name: libglu
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/debug
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.2.tar.xz
+        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+        x-checker-data:
+          type: anitya
+          project-id: 13518
+          stable-only: true
+          url-template: https://mesa.freedesktop.org/archive/glu/glu-$version.tar.xz
+
+  - name: xemu
+    buildsystem: autotools
+    builddir: true
+    no-make-install: true
+    build-options:
+      cflags: -O3 -DXBOX=1 -Wno-error=redundant-decls
+    config-opts:
+      - --audio-drv-list=sdl
+      - --disable-werror
+      - --target-list=i386-softmmu
+    make-args:
+      - qemu-system-i386
+    post-install:
+      - |-
+        for px in 16 32 48 64 128 256 512; do
+          install -Dm644 ../ui/icons/xemu_${px}x${px}.png /app/share/icons/hicolor/${px}x${px}/apps/app.xemu.xemu.png
+        done
+      - install -Dm644 ../ui/icons/xemu.svg /app/share/icons/hicolor/scalable/apps/app.xemu.xemu.svg
+      - desktop-file-install ../ui/xemu.desktop --dir /app/share/applications
+      - sed -i 's/^Icon=xemu/Icon=app.xemu.xemu/' /app/share/applications/xemu.desktop
+      - mv qemu-system-i386 /app/bin/xemu
+      - mkdir -p /app/share/licenses/xemu
+      - cd .. && python3 scripts/gen-license.py > /app/share/licenses/xemu/LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/mborgerson/xemu.git
+        tag: gh-release/0.6.2-90-g6f507c80af
+        commit: 6f507c80af546e0f5d316622d20f78820423ce6e
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/mborgerson/xemu/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^gh-release/"; "")
+          timestamp-query: .published_at
+          is-main-source: true
+
+  # XEMU - END
 
   # External manifests end
   
@@ -603,12 +732,11 @@ modules:
         # These must be put in home folder, managed by retrodeck.sh
         - mkdir -p ${FLATPAK_DEST}/retrodeck/
         - cp es_settings.xml ${FLATPAK_DEST}/retrodeck/es_settings.xml
-        - cp retrodeck-retroarch.cfg ${FLATPAK_DEST}/retrodeck/retrodeck-retroarch.cfg
 
         # Logo, res
         - rm -f /app/share/emulationstation/resources/graphics/splash.svg
         - cp splash.svg /app/share/emulationstation/resources/graphics/splash.svg
-        - cp icon.svg /app/share/icons/hicolor/scalable/apps/com.xargon.retrodeck.svg
+        - cp icon.svg /app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg
 
         # Tools
         - mkdir -p ${FLATPAK_DEST}/retrodeck/tools/
@@ -618,9 +746,26 @@ modules:
         
         - cp retrodeck.sh /app/bin/retrodeck.sh
         - chmod +x /app/bin/retrodeck.sh
-
+        
         # Desktop entry
-        - cp com.xargon.retrodeck.desktop /app/share/applications/com.xargon.retrodeck.desktop
+        - cp net.retrodeck.retrodeck.desktop /app/share/applications/net.retrodeck.retrodeck.desktop
+
+        # Steam Grids
+        - mkdir -p ${FLATPAK_DEST}/retrodeck/steam/
+        - cp banner_main.png ${FLATPAK_DEST}/retrodeck/steam/
+        - cp poster_main.png ${FLATPAK_DEST}/retrodeck/steam/
+        - cp poster_main_nodecklogo.png ${FLATPAK_DEST}/retrodeck/steam/
+
+        # Configuring emulators:
+        - mkdir -p ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # RetroArch
+        - cp retroarch.cfg ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # Dolphin 
+        - cp Dolphin.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # Yuzu
+        - cp qt-config.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # Pcsx2
+        - cp PCSX2_ui.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
 
     #cleanup: ['*']
     sources:
@@ -632,13 +777,15 @@ modules:
         path: es_systems.xml
       - type: file
         path: retrodeck.sh
-      - type: file
-        path: retrodeck-retroarch.cfg
+      - type: dir
+        path: emu-configs
       - type: file
         path: tools-gamelist.xml
       - type: dir
         path: res
       - type: dir
+        path: res/steam
+      - type: dir
         path: tools
       - type: file
-        path: com.xargon.retrodeck.desktop
+        path: net.retrodeck.retrodeck.desktop
