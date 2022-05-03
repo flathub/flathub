@@ -1,0 +1,115 @@
+id: io.github.bothlab.pomidaq
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+command: pomidaq
+rename-icon: pomidaq
+rename-desktop-file: pomidaq.desktop
+
+finish-args:
+  - '--share=ipc'
+  - '--socket=wayland'
+  - '--socket=fallback-x11'
+  - '--device=all'
+  - '--filesystem=host'
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '21.08'
+    directory: lib/ffmpeg
+    add-ld-path: '.'
+    autodelete: false
+
+cleanup:
+ - /include
+ - /lib/pkgconfig
+ - /lib/*.a
+ - /lib/*.la
+
+modules:
+- name: essential-dirs
+  buildsystem: simple
+  build-commands:
+    - mkdir -p /app/lib/ffmpeg
+
+- name: opencv
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    - -DOPENCV_GENERATE_PKGCONFIG=ON
+    - -DWITH_OPENCL=ON
+    - -DWITH_OPENGL=ON
+    - -DWITH_TBB=ON
+    - -DWITH_VULKAN=ON
+    - -DBUILD_WITH_DEBUG_INFO=OFF
+    - -DBUILD_TESTS=OFF
+    - -DBUILD_PERF_TESTS=OFF
+    - -DBUILD_EXAMPLES=OFF
+    - -DINSTALL_C_EXAMPLES=OFF
+    - -DINSTALL_PYTHON_EXAMPLES=OFF
+    - -DWITH_1394=OFF
+    - -DWITH_PROTOBUF=ON
+    - -DWITH_CAROTENE=OFF # fails on Flathub ARM builders and is only relevant for ARM
+    - -DBUILD_LIST=calib3d,core,dnn,features2d,flann,highgui,imgcodecs,imgproc,ml,objdetect,photo,stitching,video,videoio
+  sources:
+    - type: archive
+      url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
+      sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
+    - type: archive
+      url: https://github.com/opencv/opencv_contrib/archive/4.2.0.tar.gz
+      sha256: 8a6b5661611d89baa59a26eb7ccf4abb3e55d73f99bb52d8f7c32265c8a43020
+
+- name: libyaml
+  sources:
+  - type: git
+    url: https://github.com/yaml/libyaml.git
+    tag: '0.2.5'
+
+- name: snowball
+  buildsystem: simple
+  build-commands:
+   - make libstemmer.so -j$FLATPAK_BUILDER_N_JOBS
+   - install -Dm644 include/libstemmer.h /app/include/libstemmer.h
+   - cp -d libstemmer.so.* -t /app/lib/
+   - install -Dm644 libstemmer.so /app/lib/libstemmer.so
+  sources:
+   - type: git
+     url: https://github.com/snowballstem/snowball.git
+     tag: v2.2.0
+   - type: patch
+     path: patches/snowball_build-options.diff
+   - type: patch
+     path: patches/snowball_shared-library.diff
+
+- name: libxmlb
+  buildsystem: meson
+  config-opts:
+   - -Dstemmer=false
+   - -Dintrospection=false
+   - -Dgtkdoc=false
+  sources:
+  - type: git
+    url: https://github.com/hughsie/libxmlb.git
+    tag: '0.3.8'
+
+- name: appstream
+  buildsystem: meson
+  config-opts:
+   - -Dcompose=true
+   - -Dgir=false
+   - -Dapidocs=false
+  sources:
+  - type: git
+    url: https://github.com/ximion/appstream.git
+    tag: v0.15.2
+
+- name: pomidaq
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+    - -DPYTHON=OFF
+  sources:
+    - type: git
+      url: https://github.com/bothlab/pomidaq.git
+      commit: 9145e342324aa4e9c53f2541492746fb4fef9fe5
