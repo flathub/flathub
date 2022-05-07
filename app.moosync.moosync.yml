@@ -1,0 +1,54 @@
+app-id: app.moosync.moosync
+runtime: org.freedesktop.Platform
+runtime-version: "21.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "21.08"
+command: moosync
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=home
+  - --device=dri
+modules:
+  - name: libvips
+    builddir: true
+    buildsystem: autotools
+    build-options:
+      - env:
+          - V: 0
+    sources:
+      - type: archive
+        url: https://github.com/libvips/libvips/releases/download/v8.12.2/vips-8.12.2.tar.gz
+        sha256: 565252992aff2c7cd10c866c7a58cd57bc536e03924bde29ae0f0cb9e074010b
+
+  - name: Moosync
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/Moosync/Moosync/releases/download/v2.1.0/Moosync-2.1.0-linux-x64.pacman
+        sha256: eebdd3f053032dfb786422ec42ab2a2ab8a82938a6dbde7205d196fd3c080ab9
+        dest-filename: Moosync-2.1.0-linux-x64.tar.xz
+        dest: Moosync
+
+      - type: file
+        path: app.moosync.moosync.appdata.xml
+
+      - type: script
+        dest-filename: moosync.sh
+        commands:
+          # TODO: Find a way to get extension-host and relaunch working with zypak
+          - /app/Moosync/moosync --no-sandbox "$@"
+
+    build-commands:
+      - "install -Dm755 moosync.sh /app/bin/moosync"
+      - "mv Moosync/Moosync /app/Moosync"
+      - chmod +x /app/Moosync/moosync
+      - install -d /app/share/applications
+      - sed -e 's|Exec=/opt/Moosync/moosync|Exec=moosync|' -e 's/Icon=moosync/Icon=app.moosync.moosync/' Moosync/share/applications/moosync.desktop > /app/share/applications/${FLATPAK_ID}.desktop
+      - cp -r Moosync/share/icons /app/share/icons
+      - find /app/share/icons -iname "moosync.png" -exec rename moosync.png ${FLATPAK_ID}.png '{}' \;
+      - install -D app.moosync.moosync.appdata.xml --target-directory=/app/share/metainfo/
