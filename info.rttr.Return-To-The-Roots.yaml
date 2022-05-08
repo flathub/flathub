@@ -1,0 +1,85 @@
+app-id: info.rttr.Return-To-The-Roots
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: s25client
+rename-desktop-file: s25rttr.desktop
+rename-icon: s25rttr
+rename-appdata-file: s25rttr.metainfo.xml
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --persist=~/.s25rttr
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+
+modules:
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=test,locale,iostreams,filesystem,program_options,regex,system,chrono
+      - ./b2 -j${FLATPAK_BUILDER_N_JOBS} install variant=release cxxstd=17 --layout=system
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2
+        sha256: 8f32d4617390d1c2d16f26a27ab60d97807b35440d45891fa340fc2648b04406
+
+  - name: boost-nowide
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/boostorg/nowide.git
+        tag: v11.1.4
+        commit: b4c10155171b782fc858ae1aadcfdbe34e4940d4
+
+  - name: SDL2 # static version not provided by the runtime
+    sources:
+    - type: archive
+      url: https://libsdl.org/release/SDL2-2.0.22.tar.gz
+      sha256: fe7cbf3127882e3fc7259a75a0cb585620272c51745d3852ab9dd87960697f2e
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+    - -DCMAKE_BUILD_TYPE=Release
+
+  - name: miniupnpc
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        sha256: 888fb0976ba61518276fe1eda988589c700a3f2a69d71089260d75562afd3687
+        url: https://miniupnp.tuxfamily.org/files/miniupnpc-2.2.2.tar.gz
+
+  - name: s25client
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DRTTR_BUILD_UPDATER=OFF
+      - -DRTTR_USE_SYSTEM_LIBS=OFF
+      - -DRTTR_GAMEDIR=~/.s25rttr/S2
+      - -DRTTR_INSTALL_PLACEHOLDER=OFF
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DBUILD_TESTING=OFF
+      - -DRTTR_VERSION=0.9.5
+    post-install:
+      - install -D -m 0644 ../tools/release/debian/s25rttr.desktop ${FLATPAK_DEST}/share/applications/s25rttr.desktop
+      - install -D -m 0644 ../tools/release/debian/s25rttr.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/s25rttr.png
+      - install -D -m 0644 ../icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/s25rttr.png
+      - install -D -m 0644 ../tools/release/debian/s25rttr.metainfo.xml ${FLATPAK_DEST}/share/metainfo/s25rttr.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Return-To-The-Roots/s25client.git
+        tag: v0.9.5
+        commit: 397f2b2315e997504d4958bfbdea0af815ce559a
+      - type: patch
+        path: appdata.patch
+      - type: file
+        path: icon.png
+      - type: patch
+        path: placeholder.patch
+      - type: patch
+        path: popup.patch
