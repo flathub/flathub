@@ -23,7 +23,7 @@ for _mod in python-stem/python-cryptography:src/rust/Cargo.lock; do
 done
 
 # python modules that have multiple dependencies and a requirements.txt file
-for _mod in python-{beautifulsoup4,pocket-api,pykeepass,readability-lxml,stem/python-cryptography/python-setuptools-rust,tldextract}; do
+for _mod in python-{beautifulsoup4,pocket-api,pykeepass,readability-lxml,tldextract}; do
   (
     cd $_mod
     ${_TOOLSDIR}/pip-updater $(basename $_mod)
