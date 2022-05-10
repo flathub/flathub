@@ -1,0 +1,70 @@
+app-id: com.wickeditor.WickEditor
+runtime: org.freedesktop.Platform
+runtime-version: "21.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "21.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+build-options:
+  append-path: /usr/lib/sdk/node14/bin
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - shared-modules/python2.7/python-2.7.json
+  - name: WickEditor
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/WickEditor/flatpak-node/cache
+        npm_config_cache: /run/build/WickEditor/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: "true"
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/Wicklets/wick-editor.git
+        dest: main
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/wick-editor "$@"
+    build-commands:
+      - jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `dist` script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run package-linux -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+  - name: WickEditor-misc
+    buildsystem: simple
+    build-commands:
+      - install -D com.wickeditor.WickEditor.png /app/share/icons/hicolor/128x128/apps/com.wickeditor.WickEditor.png
+      - install -D com.wickeditor.WickEditor.desktop /app/share/applications/com.wickeditor.WickEditor.desktop
+      - install -D com.wickeditor.WickEditor.metainfo.xml /app/share/metainfo/com.wickeditor.WickEditor.metainfo.xml
+    sources:
+      - type: file
+        path: screenshot.png
+      - type: file
+        path: com.wickeditor.WickEditor.png
+      - type: file
+        path: com.wickeditor.WickEditor.desktop
+      - type: file
+        path: com.wickeditor.WickEditor.metainfo.xml
