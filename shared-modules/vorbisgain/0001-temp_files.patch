@@ -1,0 +1,75 @@
+Description: Apply patch to use temp files, which are dependent
+ on the file which is beeing processed, instead always using the same
+ filename, which can result to data loss in scenarios where two or more
+ vorbis processes are running parallel.
+Author: Pavel N. Krivitsky <pavel@krivitsky.name>
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=505164
+Forwarded: no
+---
+ vorbis.c |   17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+--- a/vorbis.c
++++ b/vorbis.c
+@@ -56,7 +56,7 @@
+ #define PROGRESS_FORMAT_SIZE 8
+ #define MIN_FILENAME_SIZE 5
+ #define MIN_MIDDLE_TRUNCATE_SIZE 20
+-#define TEMP_NAME "vorbisgain.tmpXXXXXX"
++#define TEMP_EXT ".vgain.tmpXXXXXX"
+ 
+ 
+ /**
+@@ -684,11 +684,10 @@
+         }
+     }
+ 
+-    /* Make sure temp is in same folder as file. And yes, the malloc is larger
+-     * than necessary (and not always needed). Lets keep it simple though (at
+-     * the expense of a few bytes)...
++    /* Construct a temporary file name by appending TEMP_EXT to
++     * the name of the file being modified.
+      */
+-    temp_name = malloc(strlen(filename) + sizeof(TEMP_NAME));
++    temp_name = malloc(strlen(filename)*sizeof(char) + sizeof(TEMP_EXT));
+ 
+     if (temp_name == NULL)
+     {
+@@ -697,7 +696,7 @@
+     }
+ 
+     strcpy(temp_name, filename);
+-    strcpy((char *) last_path(temp_name), TEMP_NAME);
++    strcat(temp_name, TEMP_EXT);
+ 
+ #ifdef WIN32
+     temp_name = _mktemp(temp_name);
+@@ -779,6 +778,7 @@
+         file_error(_("Note: Couldn't set mode for file '%s': "), filename);
+     }
+ 
++#if 0 /* Disable for Debian, this surprises people and is not useful --liw */
+     utime_buf.actime = stat_buf.st_atime;
+     utime_buf.modtime = stat_buf.st_mtime;
+ 
+@@ -786,6 +786,7 @@
+     {
+         file_error(_("Note: Couldn't set time for file '%s': "), filename);
+     }
++#endif
+ 
+     result = 0;
+ 
+@@ -817,10 +818,10 @@
+ 
+     if (delete_temp)
+     {
+-        if (remove(TEMP_NAME) != 0)
++        if (remove(temp_name) != 0)
+         {
+             file_error(_("Note: Couldn't remove temporary file '%s': "), 
+-                TEMP_NAME);
++                temp_name);
+         }
+     }
+ 
