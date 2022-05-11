@@ -4,9 +4,9 @@ runtime-version: '21.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
 command: vieb
-rename-desktop-file: vieb.desktop
-rename-icon: vieb
 finish-args:
   - --device=all
   - --env=GTK_PATH=/app/lib/gtkmodules
@@ -32,40 +32,86 @@ cleanup:
 modules:
   - name: vieb
     buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin:/run/build/vieb/node_modules/.bin
+      env:
+        XDG_CACHE_HOME: /run/build/vieb/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node18
     build-commands:
       - install -dm755 ${FLATPAK_DEST}/vieb
-      - bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=3 -C ${FLATPAK_DEST}/vieb
-        ./opt/Vieb
-      - bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=2 --exclude='*/share/icons/hicolor/1024*'
-        -C ${FLATPAK_DEST} ./usr/share
-      - desktop-file-edit --set-key=Exec --set-value=vieb ${FLATPAK_DEST}/share/applications/vieb.desktop
+
+      # build from source
+      - source flatpak-node/electron-builder-arch-args.sh
+      - npm install --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+     #- npm run buildlinux $ELECTRON_BUILDER_ARCH_ARGS
+     #- node build.js --linux dir
+      - electron-builder $ELECTRON_BUILDER_ARCH_ARGS --config.asar=false --linux dir
+      - |
+        if [ ${FLATPAK_ARCH} == 'x86_64' ]; then
+          cp -r dist/linux-unpacked/* ${FLATPAK_DEST}/vieb/
+        else
+          cp -r dist/linux-arm64-unpacked/* ${FLATPAK_DEST}/vieb/
+        fi
+      - install -Dm644 app/img/vieb.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - |
+        for s in 32 48 64 96 128 256 512;do
+          install -Dm644 app/img/icons/${s}x${s}.png ${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png
+        done
+
+      # use binary release
+     #- bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=3 -C ${FLATPAK_DEST}/vieb
+     #  ./opt/Vieb
+     #- bsdtar -Oxf vieb.deb 'data.tar*' | bsdtar -xf - --strip-components=2 --exclude='*/share/icons/hicolor/1024*'
+     #  -C ${FLATPAK_DEST} ./usr/share/icons
+     #- |
+     #  for f in $(find ${FLATPAK_DEST}/share/icons -name vieb.png); do
+     #    mv $f $(dirname $f)/${FLATPAK_ID}.png
+     #  done
+
+      # common
       - install -Dm755 vieb -t ${FLATPAK_DEST}/bin/
       - install -Dm755 stub_sandbox ${FLATPAK_DEST}/vieb/chrome-sandbox
-      - install -Dm755 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+      - install -Dm644 ${FLATPAK_ID}.desktop -t ${FLATPAK_DEST}/share/applications/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
     sources:
-      - type: file
-        dest-filename: vieb.deb
-        only-arches:
-          - aarch64
-        url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_arm64.deb
-        sha256: 738c2b2fce65630e284cc891c143ebe44a6940c024ee1ebc9cb600dd95c1c165
-        x-checker-data:
-          type: anitya
-          project-id: 243097
-          stable-only: true
-          url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_arm64.deb
-      - type: file
-        dest-filename: vieb.deb
-        only-arches:
-          - x86_64
-        url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_amd64.deb
-        sha256: 617334d411987b98a5a1b28cc362aea9a01a0815df62030b879ad7ecee0cd6bc
+      # build from source
+      - type: archive
+        url: https://github.com/Jelmerro/Vieb/archive/7.2.0/Vieb-7.2.0.tar.gz
+        sha256: bdce57d57f5770b265bae397e99991939e06b1b73f616fe02be27bf3e8ada309
         x-checker-data:
           is-main-source: true
-          type: anitya
-          project-id: 243097
-          stable-only: true
-          url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_amd64.deb
+          type: json
+          url: https://api.github.com/repos/Jelmerro/Vieb/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/Jelmerro/Vieb/archive/" + $version + "/Vieb-" + $version + ".tar.gz"'
+      - generated-sources.json # $ flatpak-node-generator.py npm --xdg-layout package-lock.json
+
+      # use binary release
+     #- type: file
+     #  dest-filename: vieb.deb
+     #  only-arches:
+     #    - aarch64
+     #  url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_arm64.deb
+     #  sha256: 738c2b2fce65630e284cc891c143ebe44a6940c024ee1ebc9cb600dd95c1c165
+     #  x-checker-data:
+     #    type: anitya
+     #    project-id: 243097
+     #    stable-only: true
+     #    url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_arm64.deb
+     #- type: file
+     #  dest-filename: vieb.deb
+     #  only-arches:
+     #    - x86_64
+     #  url: https://github.com/Jelmerro/Vieb/releases/download/7.2.0/vieb_7.2.0_amd64.deb
+     #  sha256: 617334d411987b98a5a1b28cc362aea9a01a0815df62030b879ad7ecee0cd6bc
+     #  x-checker-data:
+     #    is-main-source: true
+     #    type: anitya
+     #    project-id: 243097
+     #    stable-only: true
+     #    url-template: https://github.com/Jelmerro/Vieb/releases/download/$version/vieb_${version}_amd64.deb
+
+      # common sources
       - type: script
         dest-filename: vieb
         commands:
@@ -77,6 +123,8 @@ modules:
           - |
             echo Stub sandbox ignoring command: $@
             exit 1
+      - type: file
+        path: dev.vieb.Vieb.desktop
       - type: file
         path: dev.vieb.Vieb.metainfo.xml
     modules:
