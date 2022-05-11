@@ -1,0 +1,68 @@
+app-id: space.crankshaft.Crankshaft
+runtime: org.freedesktop.Platform
+runtime-version: "21.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node18
+
+command: crankshaft
+
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.Flatpak
+  # Logs stored in state directory
+  - --filesystem=~/.local/state/crankshaft:wo
+  # Non-Flatpak Steam
+  - --filesystem=xdg-data/Steam:rw
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: js-beautify
+    buildsystem: simple
+    build-options:
+      append-path: "/usr/lib/sdk/node18/bin"
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node18
+    build-commands:
+      - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+      - make js
+      - install -Dm00755 /usr/lib/sdk/node18/bin/node $FLATPAK_DEST/bin/node
+      - install -Dm00755 js-beautify $FLATPAK_DEST/bin/js-beautify
+    sources:
+      - js-beautify-sources.json
+      - type: git
+        url: https://github.com/coolavery/js-beautify.git
+        commit: bc4dd9e787ff8ee9f4709d76633d71e44c4ac4e2
+
+  - name: crankshaft
+    buildsystem: simple
+    build-options:
+      append-path: "/usr/lib/sdk/golang/bin:/usr/lib/sdk/node18/bin"
+      env:
+        GOBIN: /app/bin
+        GOROOT: /usr/lib/sdk/golang
+        GO111MODULE: off
+        GOPATH: /run/build/crankshaft
+    subdir: src/git.sr.ht/~avery/crankshaft
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror 
+      - cd injected/ && yarn install --offline
+      - make flatpak
+      - install -Dm755 crankshaft $FLATPAK_DEST/bin/crankshaft
+      - install -Dm644 desktop/space.crankshaft.Crankshaft.metainfo.xml /app/share/metainfo/space.crankshaft.Crankshaft.metainfo.xml
+      - install -Dm644 desktop/space.crankshaft.Crankshaft.desktop /app/share/applications/space.crankshaft.Crankshaft.desktop
+      - install -Dm644 desktop/puzzle-icon.svg /app/share/icons/hicolor/scalable/apps/space.crankshaft.Crankshaft.svg
+      - install -Dm644 desktop/puzzle-icon.32.png /app/share/icons/hicolor/32x32/apps/space.crankshaft.Crankshaft.png
+      - install -Dm644 desktop/puzzle-icon.64.png /app/share/icons/hicolor/64x64/apps/space.crankshaft.Crankshaft.png
+      - install -Dm644 desktop/puzzle-icon.128.png /app/share/icons/hicolor/128x128/apps/space.crankshaft.Crankshaft.png
+    sources:
+      - go-sources.json
+      - yarn-sources.json
+      - type: archive
+        url: https://git.sr.ht/~avery/crankshaft/archive/0.1.0.tar.gz
+        dest: src/git.sr.ht/~avery/crankshaft
+        sha256: f669977a771e1ddc4079727b1a6548fb912d44cfcd39c288dd9eb98bcc7df7a6
