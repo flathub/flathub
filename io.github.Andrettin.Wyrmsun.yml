@@ -1,0 +1,87 @@
+app-id: io.github.Andrettin.Wyrmsun
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+command: wyrmsun
+rename-icon: wyrmsun
+rename-desktop-file: wyrmsun.desktop
+rename-appdata-file: wyrmsun.appdata.xml
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --persist=.stratagus
+
+modules:
+  - shared-modules/lua5.1/lua-5.1.5.json
+  - shared-modules/physfs/physfs.json
+
+  - name: sqlite3
+    config-opts:
+      - --enable-threadsafe
+      - --enable-threads-override-locks
+    build-options:
+        cflags: -DSQLITE_ENABLE_UNLOCK_NOTIFY=1
+    sources:
+      - type: archive
+        url: https://sqlite.org/2021/sqlite-autoconf-3370000.tar.gz
+        sha256: 731a4651d4d4b36fc7d21db586b2de4dd00af31fd54fb5a9a4b7f492057479f7
+    cleanup:
+      - '/include'
+      - '/bin/sqlite3'
+      - '/lib/pkgconfig/sqlite3.pc'
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=date_time
+      - ./b2 -j${FLATPAK_BUILDER_N_JOBS} install variant=release cxxstd=11 --layout=system
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2
+        sha256: 8f32d4617390d1c2d16f26a27ab60d97807b35440d45891fa340fc2648b04406
+
+  - name: tolua++
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/LuaDist/toluapp.git
+        tag: 1.0.93
+        commit: 9feb31ab8b97eda9561846508ee9e3a2caff8da7
+    cleanup:
+      - '/bin/toluapp'
+
+  - name: wyrmgus
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DWITH_TEST=OFF
+      - -DENABLE_STATIC=OFF
+      - -DOpenGL_GL_PREFERENCE=GLVND
+      - -DWITH_GEOJSON=OFF
+      - -DGAMEDIR=/app/bin
+      - -DENABLE_USEGAMEDIR=OFF
+    sources:
+      - type: git
+        url: https://github.com/Andrettin/Wyrmgus.git
+        tag: v5.3.5
+        commit: 281ee8d89f7786889d241de437cb00b268c6a965
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+
+  - name: wyrmsun
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBIN_DIR=bin
+    sources:
+      - type: git
+        url: https://github.com/Andrettin/Wyrmsun.git
+        tag: v5.3.5
+        commit: c5bb082b1232280490cbf6ddb542c9b6dc2b3fe4
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+      - type: patch
+        path: appdata.patch
