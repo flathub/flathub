@@ -1,6 +1,6 @@
 # Creating flatpak package manually
 
-See build.sh
+Execute build.sh and install.sh (remove previous installations first)
 
 # Update to new tuxemon version
 - Update tag in flatpak manifest: org.tuxemon.Tuxemon.yaml
