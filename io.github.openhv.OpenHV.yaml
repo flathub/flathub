@@ -1,0 +1,59 @@
+app-id: io.github.openhv.OpenHV
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: openhv
+rename-desktop-file: openhv.desktop
+rename-appdata-file: openhv.metainfo.xml
+rename-icon: openhv
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+
+modules:
+  - shared-modules/lua5.1/lua-5.1.5.json
+  - name: OpenHV
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet6/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+      arch:
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+        aarch64:
+          env:
+            RUNTIME: linux-arm64
+    build-commands:
+      - exec engine/configure-system-libraries.sh
+      - cd engine && dotnet publish --source ./nuget-sources -c Release -p:TargetPlatform=$RUNTIME -p:CopyGenericLauncher=TRUE -p:CopyCncDll=FALSE -p:CopyD2kDll=FALSE -o ${FLATPAK_DEST}/lib/openhv --runtime $RUNTIME --self-contained true
+      - dotnet publish --source ./nuget-sources -c Release -o ${FLATPAK_DEST}/lib/openhv --self-contained true
+      - make install-executables install-metadata install-data prefix=${FLATPAK_DEST}
+    sources:
+      - dotnet-nuget.json
+      - type: git
+        url: https://github.com/OpenHV/OpenHV
+        tag: 20220526
+        commit: 540deb65633ba85ab68878328fa18d0d5926191b
+      - type: patch
+        path: install.patch
+      - type: patch
+        path: man.patch
+      - openhv-nuget.json
+      - type: git
+        url: https://github.com/OpenRA/OpenRA
+        commit: e685731b337d76ba4d03b7dc84105029870236d4
+        dest: engine
+      - type: shell
+        commands:
+          - cd engine && make version VERSION=e685731b337d76ba4d03b7dc84105029870236d4
+      - type: file
+        url: https://github.com/OpenRA/GeoIP-Database/releases/download/monthly/IP2LOCATION-LITE-DB1.IPV6.BIN.ZIP
+        dest: engine
+        sha256: fe0c93e3c7ade60f4ffcf05b306ae9970544bc97065434af08dcf31b9d8383f4
+      - openra-nuget.json
