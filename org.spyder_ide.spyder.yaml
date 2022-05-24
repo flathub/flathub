@@ -1,11 +1,12 @@
 app-id: org.spyder_ide.spyder
 runtime: org.kde.Sdk
+runtime-version: '5.15-21.08'
 sdk: org.kde.Sdk
-runtime-version: 5.15-21.08
-base: com.riverbankcomputing.PyQt.BaseApp
-base-version: 5.15-21.08
+command: spyder
 rename-icon: spyder
 rename-desktop-file: spyder.desktop
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '5.15-21.08'
 build-options:
   env:
     - BASEAPP_REMOVE_WEBENGINE=1
@@ -17,6 +18,7 @@ finish-args:
   - --socket=x11
   - --device=dri
   - --share=network
+  - --env=PYTHONPATH=/app/lib/python3.9/site-packages
 modules:
   - name: python3-pygments
     buildsystem: simple
@@ -64,29 +66,119 @@ modules:
       # The Cargo sources should be updated whenever cryptography is updated.
       - cargo-sources.json
 
-  #- spyder-deps-no-PyQt.json
+  - spyder-deps-no-PyQt.json
 
-  - name: Spyder
+  - name: zeromq
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/zeromq/libzmq/releases/download/v4.3.4/zeromq-4.3.4.tar.gz
+        sha256: c593001a89f5a85dd2ddf564805deb860e02471171b3f204944857336295c3e5
+        x-checker-data:
+          type: anitya
+          project-id: 16245
+          stable-only: true
+          url-template: https://github.com/zeromq/libzmq/releases/download/v$version/zeromq-$version.tar.gz
+
+  #- name: python-setuptools
+    #buildsystem: simple
+    #ensure-writable:
+      #- /lib/python3.9/site-packages/easy-install.pth
+    #build-commands:
+      #- pip3 install --verbose --exists-action=i --no-index --find-links=file://${PWD}
+        #--prefix=${FLATPAK_DEST} . --no-build-isolation
+    #sources:
+      #- type: archive
+        #url: https://files.pythonhosted.org/packages/ea/a3/3d3cbbb7150f90c4cf554048e1dceb7c6ab330e4b9138a40e130a4cc79e1/setuptools-62.1.0.tar.gz
+        #sha256: 47c7b0c0f8fc10eec4cf1e71c6fdadf8decaa74ffa087e68cd1c20db7ad6a592
+        #x-checker-data:
+          #type: pypi
+          #name: setuptools
+
+  #- name: python3-zmq
+    #buildsystem: simple
+    #build-commands:
+      #- pip3 install --exists-action=i --no-index --find-links="file://${PWD}"
+        #--prefix=${FLATPAK_DEST} .
+    #sources:
+      #- type: archive
+        #url: https://files.pythonhosted.org/packages/a4/a1/0dcfcea4c3f547f23781877ee90b4fccc8cf32bbbc1bc529a17bd142abc1/zmq-0.0.0.zip
+        #sha256: 21cfc6be254c9bc25e4dabb8a3b2006a4227966b7b39a637426084c8dc6901f7
+
+  - name: python3-pyzmq
     buildsystem: simple
     build-commands:
-      - pip3 install --exists-action=i --no-index --no-deps --find-links="file://${PWD}"
+      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
+    sources:
+      - type: archive
+        url: https://github.com/zeromq/pyzmq/archive/refs/tags/v23.0.0.tar.gz
+        sha256: 5b1a413c1b9b51b553bee678fef82e704804e061d26d0a78601f53f7aa0186f3
+
+  - name: jupyter-client
+    buildsystem: simple
+    ensure-writable:
+      - /bin/*
+    build-commands:
+      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/2c/d6/db61927064a9781d7e61163b3ea5f630d21a3af4bdeedb9d91738f9df487/jupyter_client-7.3.1.tar.gz
+        sha256: 05d4ff6a0ade25138c6bb0fbeac7ddc26b5fe835e7dd816b64b4a45b931bdc0b
+        x-checker-data:
+          type: pypi
+          name: jupyter-client
+
+  - name: spyder-kernels
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}"
         --prefix=${FLATPAK_DEST} .
     sources:
       - type: archive
-        url: https://files.pythonhosted.org/packages/34/81/07256167b81fce5f8797abe78af43bfa902536a320af44d2ab9c18fb2ee5/spyder-5.3.0.tar.gz
-        sha256: 820085bd851d526e5f552a5366837f3a134f24040ec9e870ad0a6b613ce9adb7
+        url: https://files.pythonhosted.org/packages/1a/16/92f8093074317dc059962267502b4ec86e34607db82a586520e9e5d2e0ad/spyder-kernels-2.3.1.tar.gz
+        sha256: 98fb77717ee94b5a3c8069612fc438bb748597179a5b3ecba290faa922782e50
+        x-checker-data:
+          type: pypi
+          name: spyder-kernels
+
+  - name: Spyder
+    buildsystem: simple
+    build-options:
+      env:
+        LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+        LD_PRELOAD_PATH: /app/lib:/usr/lib
+    build-commands:
+      - python3 setup.py install --prefix=${FLATPAK_DEST} --root=/ --optimize=1
+    post-install:
+      - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/spyder.desktop
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/65/d9/180fb345e6a3c08b8014636542e72ac10d6829ccd1898b24b71d9edbe451/spyder-5.3.1.tar.gz
+        sha256: 3cd82cb7a2184568b606752be0f3da5e3b7e90171c1b08257659cd9fb2c440cb
         x-checker-data:
           type: pypi
           name: spyder
-      - type: shell
-        commands:
-          - sed -i 's/\r$//' spyder/app/restart.py
-          - sed -i 's/\r$//' LICENSE.txt CHANGELOG.md
-            # Remove shebang for non-executable-script RPMLint warning
-          - sed -i -e '/^#!\//, 1d' spyder/app/restart.py
-          - sed -i -e '/^#!\//, 1d' spyder/utils/external/github.py
-          - sed -i -e '1 {s:/usr/bin/env bash.*:%{_bindir}/bash:}' spyder/plugins/ipythonconsole/scripts/conda-activate.sh
-          - chmod -x spyder/images/*/*.svg
-          - rm spyder/utils/check-git.sh
-            # windows script
-          - rm spyder/plugins/ipythonconsole/scripts/conda-activate.bat
+
+  #- name: Spyder
+    #buildsystem: simple
+    #build-options:
+      #env:
+        #LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_LIBRARY_PATH: "/app/lib:/usr/lib"
+        #LD_PRELOAD_PATH: /app/lib:/usr/lib
+    #build-commands:
+      #- pip3 install --exists-action=i --no-index --find-links="file://${PWD}"
+        #--prefix=${FLATPAK_DEST} .
+    #post-install:
+      #- desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/spyder.desktop
+    #sources:
+      #- type: archive
+        #url: https://files.pythonhosted.org/packages/65/d9/180fb345e6a3c08b8014636542e72ac10d6829ccd1898b24b71d9edbe451/spyder-5.3.1.tar.gz
+        #sha256: 3cd82cb7a2184568b606752be0f3da5e3b7e90171c1b08257659cd9fb2c440cb
+        #x-checker-data:
+          #type: pypi
+          #name: spyder
