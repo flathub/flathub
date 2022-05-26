@@ -1,0 +1,67 @@
+app-id: com.frogatto.Frogatto
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: frogatto
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --persist=.frogatto
+
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+
+  - shared-modules/SDL/SDL-1.2.15.json
+  - shared-modules/SDL/SDL_image-1.2.12.json
+  - shared-modules/SDL/SDL_mixer-1.2.12.json
+  - shared-modules/SDL/SDL_ttf-2.0.11.json
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=iostreams,regex,system,thread
+      - ./b2 install -j $FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.67.0/source/boost_1_67_0.tar.bz2
+        sha256: 2684c972994ee57fc5632e03bf044746f6eb45d4920c343937a465fd67a5adba
+
+  - name: frogatto
+    buildsystem: simple
+    build-options:
+      - cxxflags: -std=c++11
+    build-commands:
+      - make -j $FLATPAK_BUILDER_N_JOBS
+    post-install:
+      - install -Dm755 frogatto.sh ${FLATPAK_DEST}/bin/frogatto
+      - install -Dm755 game ${FLATPAK_DEST}/lib/frogatto/game
+      - install -d ${FLATPAK_DEST}/share/frogatto/modules/
+      - cp -pr data images music *.cfg ${FLATPAK_DEST}/share/frogatto
+      - cp -pr modules/frogatto ${FLATPAK_DEST}/share/frogatto/modules/
+      - install -Dm644 frogatto.desktop ${FLATPAK_DEST}/share/applications/com.frogatto.Frogatto.desktop
+      - install -Dm644 modules/frogatto/images/os/frogatto-icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/com.frogatto.Frogatto.png
+      - install -Dm644 frogatto.appdata.xml ${FLATPAK_DEST}/share/metainfo/com.frogatto.Frogatto.appdata.xml
+    sources:
+      - type: git
+        url: https://github.com/frogatto/frogatto.git
+        tag: 1.3.1
+        commit: 0932a82e989869366c481589d079249015083131
+      - type: patch
+        path: makefile.patch
+      - type: patch
+        path: texture.patch
+      - type: patch
+        path: surf.patch
+      - type: file
+        path: frogatto.desktop
+      - type: file
+        path: frogatto.appdata.xml
+      - type: script
+        dest-filename: frogatto.sh
+        commands:
+          - cd /app/share/frogatto
+          - exec /app/lib/frogatto/game "$@"
