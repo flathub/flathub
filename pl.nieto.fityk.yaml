@@ -1,0 +1,117 @@
+id: pl.nieto.fityk
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: fityk
+rename-icon: fityk
+rename-desktop-file: fityk.desktop
+rename-appdata-file: fityk.appdata.xml
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+
+modules:
+  - shared-modules/glu/glu-9.json
+  - name: wxwidgets
+    rm-configure: true
+    config-opts:
+      - --with-gtk=3
+      - --with-opengl
+      - --with-sdl
+    cleanup:
+      - /bin
+      - /lib/wx
+      - /share/bakefile
+      - /include/wx-*
+      - /share/aclocal/wx*
+    sources:
+      - type: script
+        dest-filename: autogen.sh
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} .
+          - autoconf -f -B build/autoconf_prepend-include
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5.1/wxWidgets-3.0.5.1.tar.bz2
+        sha256: 440f6e73cf5afb2cbf9af10cec8da6cdd3d3998d527598a53db87099524ac807
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=system
+      - ./b2 install -j ${FLATPAK_BUILDER_N_JOBS}
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.tar.bz2
+        sha256: 475d589d51a7f8b3ba2ba4eda022b170e562ca3b760ee922c146b6c65856ef39
+        x-checker-data:
+          type: html
+          url: https://www.boost.org/feed/downloads.rss
+          version-pattern: <link>https://www.boost.org/users/history/version_([\d_]+).html</link>
+          url-template: https://boostorg.jfrog.io/artifactory/main/release/$version0.$version2.$version4/source/boost_$version.tar.bz2
+    cleanup:
+      - /include/boost
+      - /lib/libboost*.a
+      - /lib/cmake
+
+  - name: xylib
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/wojdyr/xylib.git
+        tag: v1.6
+        commit: 157f7e6a3bae205557d5d5ce2349fcfb0cd935c9
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+
+  - shared-modules/lua5.3/lua-5.3.5.json
+
+  - name: nlopt
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/stevengj/nlopt.git
+        commit: 41967f1981d82d8495c0b27151a126bc35ae0d96
+        tag: v2.6.2
+    cleanup:
+      - /share/man
+      - /include
+
+  - name: swig
+    config-opts:
+      - --without-alllang
+      - --with-python=/usr/bin/python3
+      - --without-pcre
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/swig/files/swig/swig-3.0.12/swig-3.0.12.tar.gz
+        sha256: 7cf9f447ae7ed1c51722efc45e7f14418d15d7a1e143ac9f09a668999f4fc94d
+
+  - name: fityk
+    buildsystem: autotools
+    config-opts:
+      - --enable-nlopt
+    build-options:
+      cxxflags: -std=c++11
+    sources:
+      - type: git
+        url: https://github.com/wojdyr/fityk.git
+        tag: v1.3.1
+        commit: 5b11f7e5277c122a266895314be98e564712a60e
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+      - type: patch
+        path: gtk3.patch
+      - type: patch
+        path: appdata1.patch
+      - type: patch
+        path: appdata2.patch
+      - type: patch
+        path: appdata3.patch
