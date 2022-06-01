@@ -17,12 +17,45 @@ modules:
     buildsystem: simple
     build-options:
       append-path: /usr/lib/sdk/golang/bin
-      build-args:
-        - --share=network
+      env:
+        GOPATH: /run/build/ymuse/.go
     build-commands:
-      - go mod download
+      # Remove versions from the downloaded sources
+      # (e.g. vendor/github.com/pkg/errors@v0.9.1 -> vendor/github.com/pkg/errors)
+      - find vendor/ -type d -name '*@v*' |
+        while read d; do mv "$d" "$(echo "$d" | sed -E 's/@v.*//')"; done
+
+      # Write out a vendor modules file. Generate with "go mod vendor" (in ymuse dir) and collect from vendor/
+      - |
+        cat <<EOF > vendor/modules.txt
+        # github.com/fhs/gompd/v2 v2.2.0
+        ## explicit; go 1.11
+        github.com/fhs/gompd/v2/mpd
+        # github.com/gotk3/gotk3 v0.6.1
+        ## explicit; go 1.14
+        github.com/gotk3/gotk3/cairo
+        github.com/gotk3/gotk3/gdk
+        github.com/gotk3/gotk3/glib
+        github.com/gotk3/gotk3/gtk
+        github.com/gotk3/gotk3/internal/callback
+        github.com/gotk3/gotk3/internal/closure
+        github.com/gotk3/gotk3/internal/slab
+        github.com/gotk3/gotk3/pango
+        # github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
+        ## explicit
+        github.com/op/go-logging
+        # github.com/pkg/errors v0.9.1
+        ## explicit
+        github.com/pkg/errors
+        EOF
+
+      # Generate necessary stuff
       - go generate
-      - go build -ldflags "-s -w -X main.version=$(git describe --always --tags) -X main.commit=$(git rev-parse HEAD) -X main.date=$(git log -1 --format=%cd --date=iso-strict)"
+
+      # Build the binary
+      - go build
+        -mod=vendor
+        -ldflags "-s -w -X main.version=$(git describe --always --tags) -X main.commit=$(git rev-parse HEAD) -X main.date=$(git log -1 --format=%cd --date=iso-strict)"
 
       # Install the binary
       - install -Dm755 -t /app/bin/ ./ymuse
@@ -37,3 +70,35 @@ modules:
       - type: git
         url: https://github.com/yktoo/ymuse
         tag: v0.20
+
+      # Dependencies. Generate with (in ymuse dir):
+      # go mod download -json |
+      #     grep '"Zip"' |
+      #     cut -d '"' -f 4 |
+      #     sed -E 's|.*?download/|https://proxy.golang.org/|' |
+      #     while read u; do
+      #         echo -e "- type: archive\n  url: $u\n  strip-components: 0\n  dest: vendor\n  sha256: $(curl -fsS "$u" | sha256sum -b | cut -d ' ' -f 1)\n"
+      #     done
+      - type: archive
+        url: https://proxy.golang.org/github.com/fhs/gompd/v2/@v/v2.2.0.zip
+        strip-components: 0
+        dest: vendor
+        sha256: aa1e30ca5aa6596d6c7bd4e3faf87028c5e4ad081e86853a11df2c5674bbc43d
+
+      - type: archive
+        url: https://proxy.golang.org/github.com/gotk3/gotk3/@v/v0.6.1.zip
+        strip-components: 0
+        dest: vendor
+        sha256: 61a2d027cea272dbbcebb5ac6114fd3230cac6e54b16451c3597db3961b64380
+
+      - type: archive
+        url: https://proxy.golang.org/github.com/op/go-logging/@v/v0.0.0-20160315200505-970db520ece7.zip
+        strip-components: 0
+        dest: vendor
+        sha256: c506eace74028656eb28677a4c162f9c023ce2f9c0207354ba80cca89f11b461
+
+      - type: archive
+        url: https://proxy.golang.org/github.com/pkg/errors/@v/v0.9.1.zip
+        strip-components: 0
+        dest: vendor
+        sha256: d4c36b8bcd0616290a3913215e0f53b931bd6e00670596f2960df1b44af2bd07
