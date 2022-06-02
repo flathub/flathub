@@ -43,6 +43,7 @@ git submodule sync;
 git submodule foreach --recursive 'git checkout $(git config -f $toplevel/.gitmodules submodule.$name.branch || echo master)';
 
 git rm flathub-pr.sh
+git add flathub-pr.sh
 git submodule update
 git add *
 git commit -m "Updating flathub"
