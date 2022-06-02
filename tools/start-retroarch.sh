@@ -1,6 +1,6 @@
 #!/bin/bash
 
-kdialog --title "RetroDECK" --warningyesno "Doing some changes in the RetroArch configuration may create serious issues, please continue only if you know what you're doing.\n\nDo you want to continue?"
+zenity --title "RetroDECK" --question --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --text="Doing some changes in the RetroArch configuration may create serious issues,\nplease continue only if you know what you're doing.\n\nDo you want to continue?"
 if [ $? == 0 ]
 then
     retroarch

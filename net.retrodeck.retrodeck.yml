@@ -4,7 +4,7 @@ runtime-version: '5.15-21.08'
 sdk: org.kde.Sdk
 # Needed for rpcs3
 sdk-extensions:
-- org.freedesktop.Sdk.Extension.llvm13
+  - org.freedesktop.Sdk.Extension.llvm13
 # /Needed for rpcs3
 # Needed for Yuzu
 base: io.qt.qtwebengine.BaseApp
@@ -26,14 +26,15 @@ finish-args:
    - --talk-name=org.freedesktop.ScreenSaver
    - --talk-name=org.freedesktop.PowerManagement.Inhibit
    - --talk-name=org.freedesktop.login1
-   #- --filesystem=host
    - --filesystem=xdg-run/app/com.discordapp.Discord:create
   # Yuzu
-   - --filesystem=home:ro
+  # - --filesystem=home:ro # This may break Yuzu, let's see
   # - --filesystem=/run/media:ro
   # Dolphin
    - --allow=bluetooth
-  #- --env=QT_QPA_PLATFORM=xcb not sure if this will break something
+  #- --env=QT_QPA_PLATFORM=xcb #not sure if this will break something
+  # rpcs3
+   - --socket=fallback-x11
 
 cleanup:
   # ES-DE
@@ -59,6 +60,33 @@ cleanup-commands:
 
 modules:
 
+  # This module is used to define the RetroDECK version
+  # If the version is set as cooker it will automatically generate the version tag based on the date
+  # else it will just put what is written, "v" is not needed
+  # The version number is stored in /var/conf/retrodeck/version
+  # 
+  # UPDATE STEPS FOR MAIN:
+  # [X] Update the VERSION variable
+  # [X] Update the appdata.xml with the version number and notes
+  #
+  - name: version-initialization
+    buildsystem: simple
+    build-commands:
+      - |
+        git checkout ${GITHUB_REF_NAME}
+        mkdir -p ${FLATPAK_DEST}/retrodeck/
+        VERSION="0.4.0b"
+        if [[ $VERSION == "cooker" ]];
+        then
+          VERSION=$(git describe --tags | tr - .)
+        fi
+        echo $VERSION >> ${FLATPAK_DEST}/retrodeck/version
+        cat ${FLATPAK_DEST}/retrodeck/version
+    sources:
+    - type: git
+      url: https://github.com/XargonWan/RetroDECK.git
+      branch: cooker
+
   - name: xmlstarlet
     config-opts:
       - --disable-static-libs
@@ -75,13 +103,6 @@ modules:
     post-install:
       - ln -s "xml" "${FLATPAK_DEST}/bin/xmlstarlet" ||:
     cleanup: ["*"]
-
-  - name: kdialog
-    buildsystem: cmake-ninja
-    sources:
-    - type: git
-      url: https://github.com/KDE/kdialog.git
-      tag: v22.03.80
 
   # ES-DE
 
@@ -132,8 +153,12 @@ modules:
       - es-core
     sources:
     - type: git
-      url: https://gitlab.com/leonstyhre/emulationstation-de.git
-      branch: 3cb464c7adcea8d020cdff92803c64b7f72fb443
+      url: https://gitlab.com/es-de/emulationstation-de
+      branch: d89cedd25f1bbb9a38c1f66bca18b74d5332cad1
+    - type: shell
+      commands:
+        - sed -i 's/QUIT EMULATIONSTATION/QUIT RETRODECK/g' es-app/src/guis/GuiMenu.cpp 
+        - sed -i 's#"EMULATIONSTATION-DE  V" + Utils::String::toUpper(PROGRAM_VERSION_STRING)#"RetroDECK v'$(cat ${FLATPAK_DEST}/retrodeck/version)', ES-DE  v" + Utils::String::toUpper(PROGRAM_VERSION_STRING)#g' es-app/src/guis/GuiMenu.cpp
 
   # ES-DE - END
 
@@ -145,7 +170,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/anthonycaccese/art-book-next-de.git
-        commit: 4452f8356819d3cd079549b113fb15edb919a0df
+        commit: 7fb9f567892a357651bbc6a2b6af3d1085a10ffb
 
 
   # External manifests start
@@ -717,6 +742,234 @@ modules:
 
   # XEMU - END
 
+  # MELONDS - START
+  # https://github.com/flathub/net.kuribo64.melonDS
+  # ちっちゃい、かわいい！
+
+  - name: libslirp
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/slirp/libslirp.git
+        tag: v4.4.0
+  - name: melonds
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      arch:
+        aarch64:
+          config-opts:
+            - -DENABLE_OGLRENDERER=OFF
+    sources:
+      - type: git
+        url: https://github.com/Arisotura/melonDS.git
+        commit: cce9de5ee1f51e906a644922b2ada6644d81287a
+
+  # MELONDS - END
+
+  # CITRA - START
+  # https://github.com/flathub/org.citra_emu.citra
+
+  - name: citra
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - '-DCMAKE_BUILD_TYPE=Release'
+      - '-DENABLE_QT_TRANSLATION=ON'
+      - '-DCITRA_ENABLE_COMPATIBILITY_REPORTING=ON'
+      - '-DENABLE_COMPATIBILITY_LIST_DOWNLOAD=ON'
+      #- '-DENABLE_FFMPEG_VIDEO_DUMPER=ON'
+      # Disabled because of this: https://github.com/citra-emu/citra/issues/5949
+      - '-DENABLE_FDK=ON'
+    cleanup:
+      - /share/man
+      - /share/pixmaps
+    post-install:
+      - >-
+        install -Dm644 ../dist/citra.svg
+        /app/share/icons/hicolor/scalable/apps/citra.svg
+      - >-
+        install -Dm644 ../dist/icon.png
+        /app/share/icons/hicolor/512x512/apps/citra.png
+    sources:
+      - type: git
+        url: https://github.com/citra-emu/citra-nightly.git
+        tag: nightly-1762
+        commit: 1382035d4de5ada310c7f4fd00f1836b16ab74fb
+        disable-shallow-clone: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^(nightly-\d+)$
+          is-main-source: true
+
+  # CITRA - END
+  
+  # RPCS3 - START
+  # https://github.com/flathub/net.rpcs3.RPCS3
+
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+
+  - name: rpcs3-llvm
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      cflags: &optflags -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong
+        -grecord-gcc-switches -fasynchronous-unwind-tables -fstack-clash-protection
+        -fcf-protection -fno-omit-frame-pointer
+      cflags-override: true
+      cxxflags: -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong
+        -grecord-gcc-switches -fasynchronous-unwind-tables -fstack-clash-protection
+        -fcf-protection -fno-omit-frame-pointer -msse -msse2 -mcx16
+      cxxflags-override: true
+      env:
+        AR: llvm-ar
+        CC: clang
+        CXX: clang++
+        RANLIB: llvm-ranlib
+      ldflags: -fuse-ld=lld
+      prepend-ld-library-path: /usr/lib/sdk/llvm13/lib
+      prepend-path: /usr/lib/sdk/llvm13/bin
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DLLVM_CCACHE_BUILD=ON
+      - -DLLVM_TARGETS_TO_BUILD='X86'
+      - -DLLVM_BUILD_RUNTIME=OFF
+      - -DLLVM_BUILD_TOOLS=OFF
+      - -DLLVM_INCLUDE_DOCS=OFF
+      - -DLLVM_INCLUDE_EXAMPLES=OFF
+      - -DLLVM_INCLUDE_TESTS=OFF
+      - -DLLVM_INCLUDE_TOOLS=OFF
+      - -DLLVM_INCLUDE_UTILS=OFF
+      - -DLLVM_USE_INTEL_JITEVENTS=ON
+      - -DLLVM_USE_PERF=ON
+      - -DLLVM_ENABLE_Z3_SOLVER=OFF
+      - -DCMAKE_CXX_STANDARD=17
+      - -DITTAPI_SOURCE_DIR=/run/build/rpcs3-llvm/ittapi
+      - -Wno-dev
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://github.com/RPCS3/llvm-mirror.git
+        commit: 509d31ad89676522f7121b3bb8688f7d29b7ee60
+      - type: git
+        url: https://github.com/intel/ittapi.git
+        dest: ittapi/ittapi
+        disable-shallow-clone: true
+
+  - name: rpcs3
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      append-ld-library-path: /usr/lib/sdk/llvm13/lib
+      append-path: /usr/lib/sdk/llvm13/bin
+      cflags: *optflags
+      cflags-override: true
+      cxxflags: *optflags
+      cxxflags-override: true
+      env:
+        AR: llvm-ar
+        CC: clang
+        CXX: clang++
+        RANLIB: llvm-ranlib
+      ldflags: -fuse-ld=lld
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_LLVM_SUBMODULE=OFF
+      - -DUSE_NATIVE_INSTRUCTIONS=OFF
+      - -DUSE_PRECOMPILED_HEADERS=OFF
+      - -DUSE_SYSTEM_CURL=ON
+      - -DUSE_SYSTEM_FFMPEG=ON
+      - -DUSE_SYSTEM_LIBPNG=ON
+      - -DUSE_SYSTEM_ZLIB=ON
+      - -Wno-dev
+    post-install:
+      - |
+        set -eux;
+        sed -i 's|<id>RPCS3</id>|<id>net.rpcs3.RPCS3</id>|' ${FLATPAK_DEST}/share/metainfo/rpcs3.metainfo.xml;
+        COMM_TAG="$(awk -F'[\{,]' '/version{.*}/{printf "%d.%d.%d", $2, $3, $4}' ../rpcs3/rpcs3_version.cpp)";
+        COMM_COUNT="$(git rev-list --count HEAD)";
+        COMM_HASH="$(git rev-parse --short=8 HEAD)";
+        sed -i 's|</component>|<content_rating type="oars-1.1"/><releases><release date="'$(git show -s --format=%cs)'" version="'"${COMM_TAG}"'-'"${COMM_COUNT}"'-'"${COMM_HASH}"'"/></releases></component>|' ${FLATPAK_DEST}/share/metainfo/rpcs3.metainfo.xml;
+    sources:
+      - type: git
+        url: https://github.com/RPCS3/rpcs3.git
+        commit: e9570d1a0045926f63ec8ea9af68f81743d4f365
+
+  # RPCS3 - END
+  
+  # PRIMEHACK - START
+  # https://github.com/flathub/io.github.shiiion.primehack
+  # Disabled because it's overwriting Dolphin
+  # - name: primehack
+  #   buildsystem: cmake-ninja
+  #   config-opts:
+  #     - -DCMAKE_BUILD_TYPE=Release
+  #     - -DENABLE_ALSA=OFF
+  #     - -DENABLE_SDL=ON
+  #     - -DENABLE_EVDEV=ON
+  #     - -DDISTRIBUTOR=Flathub
+  #   cleanup:
+  #     - /share/man
+  #   post-install:
+  #     - install -D dolphin-emu-wrapper /app/bin/dolphin-emu-wrapper
+  #     - sed -i -e 's/"2048"/"512"/g' /app/share/icons/hicolor/scalable/apps/dolphin-emu.svg
+  #   sources:
+  #     - type: git
+  #       url: https://github.com/shiiion/dolphin.git
+  #       commit: 9ca0eb888bd6f8ed13a4efb92d808fbf0705ffa4
+  #     # detects whether dolphin is running in a flatpak sandbox
+  #     # and makes it use xdg directories if it is.
+  #     # prevents dolphin from attempting to write conf files
+  #     # in non-writable paths, typically happens when a user
+  #     # has leftover files from a previous non-flatpak install
+  #     - type: patch
+  #       path: rd-submodules/primehack/detectflatpak.patch
+  #     # version strings must match exactly for online multiplayer
+  #     - type: patch
+  #       path: rd-submodules/primehack/nodirtyversion.patch
+  #     - type: script
+  #       commands:
+  #         - for i in {0..9}; do
+  #         - test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+  #         - done
+  #         - dolphin-emu "$@"
+  #       dest-filename: dolphin-emu-wrapper
+
+  # PRIMEHACK - END
+
+  # PPSSPP - START
+  # https://github.com/flathub/org.ppsspp.PPSSPP
+
+  - name: ppsspp
+    buildsystem: cmake-ninja
+    config-opts:
+    - '-DUSE_SYSTEM_FFMPEG=OFF' # turn this on?
+    - '-DUSE_SYSTEM_LIBZIP=ON'
+    - '-DUSE_SYSTEM_ZSTD=ON'
+
+    - '-DUSE_WAYLAND_WSI=ON'
+    - '-DUSING_X11_VULKAN=ON'
+    - '-DUSING_QT_UI=OFF'
+
+    - '-DBUILD_TESTING=OFF'
+    - '-DOpenGL_GL_PREFERENCE=GLVND'
+    build-options:
+      - '-DX86_64=ON'
+    sources:
+      - type: git
+        url: https://github.com/hrydgard/ppsspp.git
+        tag: v1.12.3
+        commit: ce0a45cf0fcdd5bebf32208b9998f68dfc1107b7
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+          is-main-source: true
+
+  # PPSSPP - END
+
   # External manifests end
   
 
@@ -724,13 +977,12 @@ modules:
     buildsystem: simple
     build-commands:
 
-        # Prep the ES-DE and RetroArch config files
+        # Prep the ES-DE and RetroArch config files - I will have to SED/XMLSTARLET them soon
         - rm -rf /app/share/emulationstation/resources/systems/unix/es_find_rules.xml
         - cp es_find_rules.xml /app/share/emulationstation/resources/systems/unix/
         - rm -rf /app/share/emulationstation/resources/systems/unix/es_systems.xml
         - cp es_systems.xml /app/share/emulationstation/resources/systems/unix/
         # These must be put in home folder, managed by retrodeck.sh
-        - mkdir -p ${FLATPAK_DEST}/retrodeck/
         - cp es_settings.xml ${FLATPAK_DEST}/retrodeck/es_settings.xml
 
         # Logo, res
@@ -740,8 +992,9 @@ modules:
 
         # Tools
         - mkdir -p ${FLATPAK_DEST}/retrodeck/tools/
-        - cp start-retroarch.sh ${FLATPAK_DEST}/retrodeck/tools/
+        - cp start-*.sh ${FLATPAK_DEST}/retrodeck/tools/
         - cp move-roms.sh ${FLATPAK_DEST}/retrodeck/tools/
+        - cp start-yuzu.sh ${FLATPAK_DEST}/retrodeck/tools/
         - cp tools-gamelist.xml ${FLATPAK_DEST}/retrodeck/
         
         - cp retrodeck.sh /app/bin/retrodeck.sh
@@ -750,7 +1003,7 @@ modules:
         # Desktop entry
         - cp net.retrodeck.retrodeck.desktop /app/share/applications/net.retrodeck.retrodeck.desktop
 
-        # Steam Grids
+        # Steam Grids - When BoilR comes it will be deprecated
         - mkdir -p ${FLATPAK_DEST}/retrodeck/steam/
         - cp banner_main.png ${FLATPAK_DEST}/retrodeck/steam/
         - cp poster_main.png ${FLATPAK_DEST}/retrodeck/steam/
@@ -763,24 +1016,27 @@ modules:
         # Dolphin 
         - cp Dolphin.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # Yuzu
-        - cp qt-config.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp yuzu-qt-config.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # Pcsx2
         - cp PCSX2_ui.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # MelonDS
+        - cp melonDS.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # CITRA
+        - cp citra-qt-config.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        # RPCS3
+        - cp config.yml ${FLATPAK_DEST}/retrodeck/emu-configs/
 
-    #cleanup: ['*']
+        # Placing appdata
+        - mkdir -p ${FLATPAK_DEST}/share/appdata
+        - cp net.retrodeck.retrodeck.appdata.xml ${FLATPAK_DEST}/share/appdata
+
     sources:
-      - type: file
-        path: es_find_rules.xml
-      - type: file
-        path: es_settings.xml
-      - type: file
-        path: es_systems.xml
+      - type: dir
+        path: es_configs
       - type: file
         path: retrodeck.sh
       - type: dir
         path: emu-configs
-      - type: file
-        path: tools-gamelist.xml
       - type: dir
         path: res
       - type: dir
@@ -789,3 +1045,6 @@ modules:
         path: tools
       - type: file
         path: net.retrodeck.retrodeck.desktop
+      - type: file
+        path: net.retrodeck.retrodeck.appdata.xml
+      

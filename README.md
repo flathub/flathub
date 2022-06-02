@@ -2,6 +2,10 @@
     <img src="https://github.com/XargonWan/RetroDECK/blob/main/res/logo.png?raw=true" alt="RetroDECK logo" width="600"/>
 </p>
 
+![GitHub all releases](https://img.shields.io/github/downloads/XargonWan/RetroDECK/total?label=downloads)
+![Discord](https://img.shields.io/discord/951662718102962256?label=discord)
+![GitHub](https://img.shields.io/github/license/XargonWan/RetroDECK)
+
 # RetroDECK
 
 **RetroDECK** brings an environment to catalog and play your retro games directly from SteamOS and it's tailored specifically for the **Steam Deck**.
@@ -33,3 +37,7 @@ Check the [Installation instructions](https://github.com/XargonWan/RetroDECK/wik
 
 ## Can I help?
 Of course, any help is appreciated, and not only by programming, just check out our [Discord](https://discord.gg/Dz3szYsP8g)!
+<br/><br/><br/>
+
+
+###### *The Steam Deck logo is a registered trademark of Valve Corporation. This project is in no way officially affiliated with Valve.<br/>All trademarks, logos and brand names are the property of their respective owners. All company, product and service names used in this project are for identification purposes only. Use of these names, trademarks and brands does not imply endorsement.*
