@@ -1,10 +1,6 @@
 #!/usr/bin/sh
 
-set -e
-
-bsdtar -Oxf freedownloadmanager.deb 'data.tar*' |
-  bsdtar -xf - \
-    --strip-components=4 \
-    --exclude='./opt/freedownloadmanager/nacl*' \
-    ./opt/freedownloadmanager
+ar x freedownloadmanager.deb data.tar.xz
 rm freedownloadmanager.deb
+tar -xf data.tar.xz ./opt
+rm data.tar.xz
