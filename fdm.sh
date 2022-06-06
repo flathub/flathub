@@ -1,2 +1,2 @@
 #!/bin/bash
-exec /app/bin/freedownloadmanager/fdm "$@"
+exec /app/bin/fdm "$@"
