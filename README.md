@@ -1,4 +1,4 @@
-# org.freedownload.Manager
+# com.freedownload.Manager
 
-## Troubleshooting
+## Status
 Building Package
