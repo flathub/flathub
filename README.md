@@ -1,1 +1,1 @@
-# org.freedownload.Manager
+# org.freedownloadmanager.Manager
