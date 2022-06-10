@@ -1,12 +1,13 @@
 # officefactoring
 
-empacotar
+Comando para empacotar o App:
+
 flatpak-builder --install --user --force-clean build-dir com.officefactoring.officefactoring.yaml
 
-rodar
+comando para abrir o App: 
+
 flatpak-builder --run build-dir com.officefactoring.officefactoring.yaml OfficeFactoring
 
-
-Caso precise de usuário/senha
 Usuário: J
+
 Senha: rkc
