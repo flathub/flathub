@@ -8,6 +8,8 @@ comando para abrir o App:
 
 flatpak-builder --run build-dir com.officefactoring.officefactoring.yaml OfficeFactoring
 
+login/password
+
 Usuário: J
 
 Senha: rkc
