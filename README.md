@@ -13,3 +13,5 @@ login/password
 Usuário: J
 
 Senha: rkc
+
+![](http://officefactoring.serveftp.com/demo/github/officefactoring.png)
