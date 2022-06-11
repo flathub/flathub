@@ -2,11 +2,11 @@
 
 Comando para empacotar o App:
 
-flatpak-builder --install --user --force-clean build-dir com.officefactoring.officefactoring.yaml
+flatpak-builder --install --user --force-clean build-dir com.serveftp.officefactoring.yaml
 
 comando para abrir o App: 
 
-flatpak-builder --run build-dir com.officefactoring.officefactoring.yaml OfficeFactoring
+flatpak-builder --install --user --force-clean build-dir com.serveftp.officefactoring.yaml
 
 login/password
 
