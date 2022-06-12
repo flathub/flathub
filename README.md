@@ -1,17 +1,13 @@
 # officefactoring
 
-Comando para empacotar o App:
+Command to package the APP:
 
 flatpak-builder --install --user --force-clean build-dir com.serveftp.officefactoring.yaml
 
-comando para abrir o App: 
+Command to open the APP: 
 
-flatpak-builder --install --user --force-clean build-dir com.serveftp.officefactoring.yaml
+flatpak-builder --run build-dir com.serveftp.officefactoring.yaml OfficeFactoring
 
-login/password
-
-Usuário: J
-
-Senha: rkc
+login: J, password: rkc
 
 ![](http://officefactoring.serveftp.com/demo/github/officefactoring.png)
