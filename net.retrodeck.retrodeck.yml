@@ -75,7 +75,7 @@ modules:
       - |
         git checkout ${GITHUB_REF_NAME}
         mkdir -p ${FLATPAK_DEST}/retrodeck/
-        VERSION="0.4.0b"
+        VERSION="0.4.1b"
         if [[ $VERSION == "cooker" ]];
         then
           VERSION=$(git describe --tags | tr - .)
@@ -103,6 +103,48 @@ modules:
     post-install:
       - ln -s "xml" "${FLATPAK_DEST}/bin/xmlstarlet" ||:
     cleanup: ["*"]
+
+  # mesa repo got a double certificate issue and gnutils cannot handle that so GLU download fails,
+  # this affects even the shared-modules's glu so I have to replace it temporarly
+  # more info there: https://gitlab.com/gnutls/gnutls/-/issues/1335
+  - name: glu
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/debug
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://ftp.osuosl.org/pub/blfs/conglomeration/glu/glu-9.0.2.tar.xz
+        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+
+  - name: libgudev
+    buildsystem: meson
+    config-opts:
+      - '-Dtests=disabled'
+      - '-Dvapi=disabled'
+      - '-Dintrospection=disabled'
+      - '-Dgtk_doc=false'
+    cleanup:
+      - /include
+      - /etc
+      - /libexec
+      - /sbin
+      - /lib/pkgconfig
+      - /lib/systemd
+      - /man
+      - /share/aclocal
+      - /share/doc
+      - /share/gtk-doc
+      - /share/man
+      - /share/pkgconfig
+      - '*.la'
+      - '*.a'
+    sources:
+      - type: archive
+        url: https://ftp.osuosl.org/pub/blfs/conglomeration/libgudev/libgudev-237.tar.xz
+        sha256: 0d06b21170d20c93e4f0534dbb9b0a8b4f1119ffb00b4031aaeb5b9148b686aa
 
   # ES-DE
 
@@ -146,6 +188,8 @@ modules:
       url: https://github.com/zeux/pugixml/releases/download/v1.11.4/pugixml-1.11.4.tar.gz
       sha256: 8ddf57b65fb860416979a3f0640c2ad45ddddbbafa82508ef0a0af3ce7061716
 
+  # When updating this module remember to check those: https://gitlab.com/es-de/emulationstation-de/-/tree/stable-1.2.5/resources/systems/unix
+  # But we don't include them 1:1 as RetroDECK got some specific configs in some cases
   - name: emulationstation-de
     buildsystem: cmake-ninja
     cleanup:
@@ -154,10 +198,10 @@ modules:
     sources:
     - type: git
       url: https://gitlab.com/es-de/emulationstation-de
-      branch: d89cedd25f1bbb9a38c1f66bca18b74d5332cad1
+      branch: 5a76fef25ffc659f098ee65215281c51a63c3198
     - type: shell
       commands:
-        - sed -i 's/QUIT EMULATIONSTATION/QUIT RETRODECK/g' es-app/src/guis/GuiMenu.cpp 
+        - sed -i 's/QUIT EMULATIONSTATION/QUIT RETRODECK/g' es-app/src/guis/GuiMenu.cpp
         - sed -i 's#"EMULATIONSTATION-DE  V" + Utils::String::toUpper(PROGRAM_VERSION_STRING)#"RetroDECK v'$(cat ${FLATPAK_DEST}/retrodeck/version)', ES-DE  v" + Utils::String::toUpper(PROGRAM_VERSION_STRING)#g' es-app/src/guis/GuiMenu.cpp
 
   # ES-DE - END
@@ -205,10 +249,12 @@ modules:
       - shared-modules/SDL/SDL_mixer-1.2.12.json
       - shared-modules/SDL/SDL_net-1.2.8.json
       - shared-modules/libusb/libusb.json
-      - shared-modules/gudev/gudev.json
+      # certificate glu issue
+      #- shared-modules/gudev/gudev.json
       - rd-submodules/retroarch/libbz2/libbz2-1.0.8.json
       - rd-submodules/retroarch/libaio/libaio-0.3.112.json
-      - shared-modules/glu/glu-9.json
+      # certificate issue, check libglu module for more info
+      #- shared-modules/glu/glu-9.json
       - rd-submodules/retroarch/libdecor/libdecor-0.1.0.json
   - name: retroarch-filers-video
     subdir: gfx/video_filters
@@ -687,22 +733,23 @@ modules:
 
   # XEMU - START
 
-  - name: libglu
-    buildsystem: meson
-    cleanup:
-      - /include
-      - /lib/debug
-      - /lib/pkgconfig
-      - /lib/*.a
-    sources:
-      - type: archive
-        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.2.tar.xz
-        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
-        x-checker-data:
-          type: anitya
-          project-id: 13518
-          stable-only: true
-          url-template: https://mesa.freedesktop.org/archive/glu/glu-$version.tar.xz
+  # certificate issue, check libglu module for more info
+  # - name: libglu
+  #   buildsystem: meson
+  #   cleanup:
+  #     - /include
+  #     - /lib/debug
+  #     - /lib/pkgconfig
+  #     - /lib/*.a
+  #   sources:
+  #     - type: archive
+  #       url: http://mesa.freedesktop.org/archive/glu/glu-9.0.2.tar.xz
+  #       sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+  #       x-checker-data:
+  #         type: anitya
+  #         project-id: 13518
+  #         stable-only: true
+  #         url-template: http://mesa.freedesktop.org/archive/glu/glu-$version.tar.xz
 
   - name: xemu
     buildsystem: autotools
@@ -807,7 +854,8 @@ modules:
   # RPCS3 - START
   # https://github.com/flathub/net.rpcs3.RPCS3
 
-  - shared-modules/glu/glu-9.json
+  # glu issue, check libglu module for more info
+  #- shared-modules/glu/glu-9.json
   - shared-modules/glew/glew.json
 
   - name: rpcs3-llvm
@@ -1012,13 +1060,19 @@ modules:
         # Configuring emulators:
         - mkdir -p ${FLATPAK_DEST}/retrodeck/emu-configs/
         # RetroArch
-        - cp retroarch.cfg ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp retroarch* ${FLATPAK_DEST}/retrodeck/emu-configs/
         # Dolphin 
         - cp Dolphin.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp Hotkeys.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp GCPadNew.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp GFX.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp Qt.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # Yuzu
         - cp yuzu-qt-config.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # Pcsx2
         - cp PCSX2_ui.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp GS.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
+        - cp PCSX2_vm.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # MelonDS
         - cp melonDS.ini ${FLATPAK_DEST}/retrodeck/emu-configs/
         # CITRA
@@ -1032,11 +1086,13 @@ modules:
 
     sources:
       - type: dir
-        path: es_configs
+        path: es-configs
       - type: file
         path: retrodeck.sh
       - type: dir
         path: emu-configs
+      - type: dir
+        path: emu-configs/Dolphin
       - type: dir
         path: res
       - type: dir
@@ -1047,4 +1103,3 @@ modules:
         path: net.retrodeck.retrodeck.desktop
       - type: file
         path: net.retrodeck.retrodeck.appdata.xml
-      

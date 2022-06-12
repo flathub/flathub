@@ -3,7 +3,7 @@
 lockfile="$HOME/retrodeck/.lock"           # where the lockfile is located
 version="$(cat /app/retrodeck/version)"    # version info taken from the version file
 rdhome="$HOME/retrodeck"                   # the retrodeck home, aka ~/retrodecck
-emuconfigs="/app/retrodeck/emu-configs"   # folder with all the default emulator configs
+emuconfigs="/app/retrodeck/emu-configs"    # folder with all the default emulator configs
 sdcard="/run/media/mmcblk0p1"              # Steam Deck SD default path
 
 # Functions area
@@ -41,7 +41,7 @@ dir_prep() {
     if [ -d "$symlink.old" ];
     then
       echo "Moving the data from $symlink.old to $real" #DEBUG
-      mv -fv "$symlink.old/*" "$real"
+      mv -fv "$symlink".old/* $real
       echo "Removing $symlink.old" #DEBUG
       rm -rf "$symlink.old"
     fi
@@ -58,10 +58,25 @@ dir_prep() {
     echo $symlink is now $real
 }
 
-is_mounted() {
-    # This script checks if the provided path in $1 is mounted
-    mount | awk -v DIR="$1" '{if ($3 == DIR) { exit 0}} ENDFILE{exit -1}'
+cfg_init() {
+  # Initializing retrodeck config file
+  #rdconf=/var/config/retrodeck/retrodeck.cfg
+
+  # if I got a config file already I parse it
+  #if []
+
+  #else 
+  #  touch $rdconf
+  #fi
+
+  #$roms_folder > /var/config/retrodeck/retrodeck.cfg
+  return
 }
+
+# is_mounted() {
+#     # This script checks if the provided path in $1 is mounted
+#     mount | awk -v DIR="$1" '{if ($3 == DIR) { exit 0}} ENDFILE{exit -1}'
+# }
 
 tools_init() {
     rm -rfv /var/config/retrodeck/tools/
@@ -88,19 +103,31 @@ standalones_init() {
     # configuring Yuzu
     mkdir -pv /var/config/yuzu/
     cp -fv $emuconfigs/yuzu-qt-config.ini /var/config/yuzu/qt-config.ini
+    sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/yuzu/qt-config.ini
+    dir_prep "$rdhome/screenshots" "/var/data/yuzu/screenshots"
 
     # Dolphin
     mkdir -pv /var/config/dolphin-emu/
-    cp -fv $emuconfigs/Dolphin.ini /var/config/dolphin-emu/
+    cp -fv $emuconfigs/Dolphin/* /var/config/dolphin-emu/
+    dir_prep "$rdhome/saves" "/var/data/dolphin-emu/GBA/Saves"
+    dir_prep "$rdhome/saves" "/var/data/dolphin-emu/Wii" 
 
     # pcsx2
     mkdir -pv /var/config/PCSX2/inis/
     cp -fv $emuconfigs/PCSX2_ui.ini /var/config/PCSX2/inis/
+    sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/PCSX2/inis/PCSX2_ui.ini
+    cp -fv $emuconfigs/GS.ini /var/config/PCSX2/inis/
+    cp -fv $emuconfigs/PCSX2_vm.ini /var/config/PCSX2/inis/
+    dir_prep "$rdhome/states" "/var/config/PCSX2/sstates"
+    dir_prep "$rdhome/screenshots" "/var/config/PCSX2/snaps"
+    dir_prep "$rdhome/.logs" "/var/config/PCSX2/logs"
 
     # MelonDS
     mkdir -pv /var/config/melonDS/
     dir_prep "$rdhome/bios" "/var/config/melonDS/bios"
     cp -fv $emuconfigs/melonDS.ini /var/config/melonDS/
+    # Replace ~/retrodeck with $rdhome as ~ cannot be understood by MelonDS
+    sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/melonDS/melonDS.ini
 
     # CITRA
     mkdir -pv /var/config/citra-emu/
@@ -120,7 +147,9 @@ ra_init() {
     mkdir -pv /var/config/retroarch/cores/
     cp /app/share/libretro/cores/* /var/config/retroarch/cores/
     cp -f $emuconfigs/retroarch.cfg /var/config/retroarch/
+    cp -f $emuconfigs/retroarch-core-options.cfg /var/config/retroarch/
     #rm -rf $rdhome/bios/bios # in some situations a double bios symlink is created
+    sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/retroarch/retroarch.cfg
 }
 
 create_lock() {
@@ -160,28 +189,55 @@ finit() {
     then
         roms_folder="$rdhome/roms"
     else #no - SD Card
-        if [ is_mounted "$sdcard" ];
+        if [ -d "$sdcard" ];
         then
             roms_folder="$sdcard/retrodeck/roms"
         else
-            zenity --error --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="SD Card is not readable.\nPlease check if it's inserted or mounted correctly and run RetroDECK again."
-            exit 0
+            sdselected=false
+            zenity --question --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --cancel-label="Cancel" --ok-label "Browse" --text="SD Card was not find in the default location.\nPlease choose the SD Card root.\nA retrodeck/roms folder will be created starting from the directory that you selected."
+            if [ $? == 1 ] #cancel
+            then
+              exit 0
+            fi
+            while [ $sdselected == false ]
+            do
+              sdcard="$(zenity --file-selection --title="Choose SD Card root" --directory)"
+              echo "DEBUG: sdcard=$sdcard, answer=$?"
+              zenity --question --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --cancel-label="No" --ok-label "Yes" --text="Your rom folder will be:\n\n$sdcard/retrodeck/roms\n\nis that ok?"
+              if [ $? == 0 ] #yes
+              then
+                sdselected == true
+                roms_folder="$sdcard/retrodeck/roms"
+                break
+              else
+                zenity --question --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --cancel-label="No" --ok-label "Yes" --text="Do you want to quit?"
+                if [ $? == 0 ] # yes, quit
+                then
+                  exit 0
+                fi
+              fi
+            done
         fi
     fi
 
     mkdir -pv $roms_folder
 
     # TODO: after the next update of ES-DE this will not be needed
-    zenity --icon-name=net.retrodeck.retrodeck --info --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="EmulationStation will now initialize the system.\nPlease DON'T EDIT THE ROMS LOCATION, just select:\n\nCREATE DIRECTORIES\nYES\nOK\nQUIT\n\nRetroDECK will manage the rest."
+    #zenity --icon-name=net.retrodeck.retrodeck --info --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="EmulationStation will now initialize the system.\nPlease DON'T EDIT THE ROMS LOCATION, just select:\n\nCREATE DIRECTORIES\nYES\nOK\nQUIT\n\nRetroDECK will manage the rest."
+    zenity --icon-name=net.retrodeck.retrodeck --info --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="RetroDECK will now install the needed files.\nPlease wait up to one minute,\nanother message will notify when the process will be finished.\n\nPress OK to continue."
 
     # Recreating the folder
-    /var/config/retrodeck/tools/
+    rm -rfv /var/config/emulationstation/
+    rm -rfv /var/config/retrodeck/tools/
     mkdir -pv /var/config/emulationstation/
+    
     # Initializing ES-DE
-    # TODO: after the next update of ES-DE this will not be needed
-    start_retrodeck
+    # TODO: after the next update of ES-DE this will not be needed - let's test it
+    emulationstation --home /var/config/emulationstation --create-system-dirs
 
-    zenity --icon-name=net.retrodeck.retrodeck --info --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="RetroDECK will now install the needed files.\nPlease wait up to one minute,\nanother message will notify when the process will be finished.\n\nPress OK to continue."
+    mkdir -pv /var/config/retrodeck/tools/
+
+    #zenity --icon-name=net.retrodeck.retrodeck --info --no-wrap --window-icon="/app/share/icons/hicolor/scalable/apps/net.retrodeck.retrodeck.svg" --title "RetroDECK" --text="RetroDECK will now install the needed files.\nPlease wait up to one minute,\nanother message will notify when the process will be finished.\n\nPress OK to continue."
 
     # Initializing ROMs folder - Original in retrodeck home (or SD Card)
     dir_prep $roms_folder "/var/config/emulationstation/ROMs"
