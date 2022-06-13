@@ -1,0 +1,528 @@
+#
+# WARNING: this app wasn't thoroughly tested, there are most likely limitations and bugs.
+#
+
+app-id: org.virt_manager.virt-manager
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: virt-manager
+rename-icon: virt-manager
+rename-desktop-file: virt-manager.desktop
+finish-args:
+  - --device=dri
+  # TODO: thoroughly test usb redirection, it seems to work somehow without workarounds.
+  #       are workaround are still needed?
+  #         * udev rules and group membership for user?
+  #         * an suid helper on the host and flatpak-spawn wrapper in sandbox? polkit?
+  #         * polkit rules can't work in the sandbox, need to document all the polkit helpers, those
+  #           probably should be available on the host with their polkit rules,
+  #         * supply hardlinked binaries to run on the host? rules can be dropped into /etc
+  #         * handling usbredirserver calls? or spice-client-glib-usb-acl-helper from spice-gtk?
+  # usb device redirection
+  - --device=all
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-public-share
+  - --filesystem=xdg-videos
+  # unix socket access
+  - --filesystem=/run/libvirt
+  # ssh configuration dir access, includes config, known_hosts, and etc.
+  #   not xdg dirs spec compliant, so without the proper filesystem access permission the ssh
+  #     configuration won't be saved between running sessions.
+  #   enabled by default, if you don't like giving the sandbox this access then override it with
+  #     flatpak-override or flatseal and add a `--persist=.ssh` to keep the ssh config dir in
+  #     HOME/.var/app/org.virt_manager.virt-manager/.ssh
+  #   using persist also means that the sandbox won't have access to your private key files so it
+  #     won't be able to change them, if this is even something to be concerned about
+  #     instead of giving access to the keys, give access to the ssh-agent
+  #   i'm using a patched openssh build on the host to set the ssh config folder in .config/ssh so
+  #     i'm forced to set `--persist=.ssh`
+  - --filesystem=~/.ssh
+  #- --persist=.ssh
+  # ssh-agent pid and socket
+  #   access to the running ssh-agent on the host
+  #   it's presumed that SSH_AGENT_PID and SSH_AUTH_SOCK are known in the sandbox, and that
+  #     SSH_AUTH_SOCK is accessible in the sandbox
+  #   the default, `--socket=ssh-auth`, bind-mounts the xdg-run/ssh-auth, only used by gnome-keyring's
+  #     ssh agent but it's a good location as any to put the ssh-agent file socket
+  #   if you're not using gnome-keyring's ssh agent then you gonna need to force your ssh-agent to create
+  #     the socket in this mentioned dir, that you will also need to create before starting the app,
+  #     or in another location, and then you should add the suitable filesystem permission.
+  #     just make sure to only bind-mount an existing folder, and don't directly bind-mount the socket.
+  #   see example in the ssh-agents section in the archwiki ssh keys page
+  #     https://wiki.archlinux.org/index.php/SSH_keys#SSH_agents
+  - --socket=ssh-auth
+  #   custom ssh socket location
+  #- --filesystem=xdg-run/ssh
+  - --own-name=org.kde.*
+  - --own-name=org.virt-manager.virt-manager
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  # virt-manager implements fetching secrets over dbus without importing libsecret, so no added dependency
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # TODO: figure out if notifications is needed
+  #- --talk-name=org.freedesktop.Notifications
+  # TODO: also enable pcsc and cups?
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/applications/mimeinfo.cache
+  - /share/bash-completion
+  - /share/icons/hicolor/icon-theme.cache
+  - /share/man
+  - '*.la'
+modules:
+  - name: virt-manager
+    buildsystem: simple
+    build-commands:
+      - python setup.py configure --prefix=${FLATPAK_DEST}
+      - python setup.py build
+      - python setup.py --no-update-icon-cache --no-compile-schemas install --root=/
+      - python -m compileall ${FLATPAK_DEST}/share/virt-manager
+      - python -O -m compileall ${FLATPAK_DEST}/share/virt-manager
+      - glib-compile-schemas ${FLATPAK_DEST}/share/glib-2.0/schemas
+    sources:
+      - type: archive
+        url: https://github.com/virt-manager/virt-manager/archive/v4.0.0.tar.gz
+        sha256: a5098e196ef14e6c64ffdbbcacb2d1dbfaf2753eaaa3fc5b7ef07a0ebd63c4a6
+        x-checker-data:
+          type: anitya
+          project-id: 8183
+          stable-only: true
+          url-template: https://github.com/virt-manager/virt-manager/archive/v$version.tar.gz
+      - type: patch
+        path: virt-manager-disable-man-pages.patch
+      - type: patch
+        path: virt-manager-systray-icon-use-reverse-dns-naming-convention.patch
+
+    modules:
+      - shared-modules/intltool/intltool-0.51.json
+      - shared-modules/libappindicator/libappindicator-gtk3-introspection-12.10.json
+
+      - name: libvirt
+        buildsystem: meson
+        build-options:
+          cflags: -I/app/include/tirpc
+        config-opts:
+          - --libexec=/app/lib/libvirt
+          - --sbindir=/app/bin
+          - --localstatedir=/var
+          - -Drunstatedir=/run
+          - -Drpath=enabled
+          - -Dqemu_group=kvm
+          - -Ddocs=enabled
+          - -Dtests=disabled
+          - -Dstorage_mpath=disabled
+          - -Dfirewalld=disabled
+          - -Dfirewalld-zone=disabled
+          - -Dinit_script=none
+          - -Dsysctl_config=disabled
+        sources:
+          - type: archive
+            url: https://libvirt.org/sources/libvirt-8.3.0.tar.xz
+            sha256: be229b9ad1d48be7007e7bf341fc990c65e24aea624c16db6b36d02c820df5eb
+            x-checker-data:
+              type: anitya
+              project-id: 13830
+              stable-only: true
+              url-template: https://libvirt.org/sources/libvirt-$version.tar.xz
+        cleanup:
+          - /etc/logrotate.d
+          - /share/doc
+        modules:
+          - name: libnl
+            config-opts:
+              - --enable-cli=no
+              - --disable-static
+            sources:
+              - type: archive
+                url: https://github.com/thom311/libnl/releases/download/libnl3_6_0/libnl-3.6.0.tar.gz
+                sha256: 532155fd011e5a805bd67121b87a01c757e2bb24112ac17e69cb86013b970009
+                x-checker-data:
+                  type: json
+                  url: https://api.github.com/repos/thom311/libnl/releases/latest
+                  version-query: .tag_name | ( sub("^libnl"; "") | gsub("_"; ".") )
+                  url-query: .assets[] | select(.name=="libnl-" + $version + ".tar.gz") |
+                    .browser_download_url
+            cleanup:
+              - /etc
+              - /share/man
+          - name: libtirpc
+            config-opts:
+              - --disable-gssapi
+            sources:
+              - type: archive
+                url: https://downloads.sourceforge.net/sourceforge/libtirpc/libtirpc-1.3.2.tar.bz2
+                sha256: e24eb88b8ce7db3b7ca6eb80115dd1284abc5ec32a8deccfed2224fc2532b9fd
+                x-checker-data:
+                  type: anitya
+                  project-id: 1740
+                  stable-only: true
+                  url-template: https://downloads.sourceforge.net/sourceforge/libtirpc/libtirpc-$version.tar.bz2
+          - name: python-docutils
+            buildsystem: simple
+            build-commands:
+              - python3 setup.py build
+              - python3 setup.py install --root=/ --prefix=app/
+            sources:
+              - type: archive
+                url: http://downloads.sourceforge.net/docutils/docutils-0.18.1.tar.gz
+                sha256: 679987caf361a7539d76e584cbeddc311e3aee937877c87346f31debc63e9d06
+                x-checker-data:
+                  type: anitya
+                  project-id: 3849
+                  stable-only: true
+                  url-template: http://downloads.sourceforge.net/docutils/docutils-$version.tar.gz
+            cleanup:
+              - '*'
+          - name: rpcsvc-proto
+            sources:
+              - type: archive
+                url: https://github.com/thkukuk/rpcsvc-proto/archive/v1.4.3/rpcsvc-proto-1.4.3.tar.gz
+                sha256: 6906e0f81bb016bd0216460fc879d3d9f2f6d743be7dfb0d8b32d140226d5ef8
+                x-checker-data:
+                  type: anitya
+                  project-id: 155452
+                  stable-only: true
+                  url-template: https://github.com/thkukuk/rpcsvc-proto/archive/v$version/rpcsvc-proto-$version.tar.gz
+              - type: shell
+                commands:
+                  - autoreconf -ifv
+            cleanup:
+              - '*'
+
+      - name: libvirt-glib
+        buildsystem: meson
+        config-opts:
+          - -Drpath=enabled
+          - -Ddocs=disabled
+          - -Dtests=disabled
+          - -Dintrospection=enabled
+          - -Dvapi=disabled
+        sources:
+          - type: archive
+            url: https://libvirt.org/sources/glib/libvirt-glib-4.0.0.tar.xz
+            sha256: 8423f7069daa476307321d1c11e2ecc285340cd32ca9fc05207762843edeacbd
+            x-checker-data:
+              type: anitya
+              project-id: 11560
+              stable-only: true
+              url-template: https://libvirt.org/sources/glib/libvirt-glib-$version.tar.xz
+        cleanup:
+          - /share/gtk-doc
+        modules:
+          - name: libcap-ng
+            config-opts:
+              - --enable-static=no
+            sources:
+              - type: archive
+                url: https://github.com/stevegrubb/libcap-ng/archive/v0.8.3.tar.gz
+                sha256: e542e9139961f0915ab5878427890cdc7762949fbe216bd0cb4ceedb309bb854
+                x-checker-data:
+                  type: anitya
+                  project-id: 1570
+                  stable-only: true
+                  url-template: https://github.com/stevegrubb/libcap-ng/archive/v$version.tar.gz
+            cleanup:
+              - /bin
+              - /share/aclocal
+
+      - name: libvirt-python
+        buildsystem: simple
+        build-commands:
+          - python3 setup.py build
+          - python3 setup.py install --skip-build --prefix=/app --root=/ --optimize=1
+        sources:
+          - type: archive
+            url: https://libvirt.org/sources/python/libvirt-python-8.3.0.tar.gz
+            sha256: e936ff747c1d72b6618eebb7236ae69c255ca9e0de6e4153d95d8b9c6b2ecfc1
+            x-checker-data:
+              type: anitya
+              project-id: 13829
+              stable-only: true
+              url-template: https://libvirt.org/sources/python/libvirt-python-$version.tar.gz
+
+      - name: gtk-vnc
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/gtk-vnc/1.3/gtk-vnc-1.3.0.tar.xz
+            sha256: 5faaa5823b8cbe8c0b0ba1e456c4e70c4b1ae6685c9fe81a4282d98cf00a211d
+            x-checker-data:
+              type: anitya
+              project-id: 13142
+              stable-only: true
+              url-template: https://download.gnome.org/sources/gtk-vnc/$version0.$version1/gtk-vnc-$version.tar.xz
+
+      - name: spice-gtk
+        buildsystem: meson
+        config-opts:
+          - -Dgtk_doc=disabled
+          - -Dvapi=disabled
+          - -Dusb-acl-helper-dir=/app/lib
+        sources:
+          - type: archive
+            url: https://www.spice-space.org/download/gtk/spice-gtk-0.40.tar.xz
+            sha256: 23f5ff7fa80b75647ce73cda5eaf8b322f3432dbbb7f6f3a839634618adbced3
+            x-checker-data:
+              type: anitya
+              project-id: 11576
+              stable-only: true
+              url-template: https://www.spice-space.org/download/gtk/spice-gtk-$version.tar.xz
+        modules:
+          - name: python-pyparsing
+            buildsystem: simple
+            build-commands:
+              - pip3 install --verbose --exists-action=i --no-index --find-links=file://${PWD}
+                --prefix=${FLATPAK_DEST} pyparsing --no-build-isolation
+            sources:
+              - type: file
+                url: https://files.pythonhosted.org/packages/6c/10/a7d0fa5baea8fe7b50f448ab742f26f52b80bfca85ac2be9d35cdd9a3246/pyparsing-3.0.9-py3-none-any.whl
+                sha256: 5026bae9a10eeaefb61dab2f09052b9f4307d44aee4eda64b309723d8d206bbc
+                x-checker-data:
+                  type: pypi
+                  name: pyparsing
+                  packagetype: bdist_wheel
+            cleanup:
+              - '*'
+          - name: libcacard
+            sources:
+              - type: archive
+                url: https://www.spice-space.org/download/libcacard/libcacard-2.8.1.tar.xz
+                sha256: fbbf4de8cb7db5bdff5ecb672ff0dbe6939fb9f344b900d51ba6295329a332e7
+                x-checker-data:
+                  type: anitya
+                  project-id: 18776
+                  stable-only: true
+                  url-template: https://www.spice-space.org/download/libcacard/libcacard-$version.tar.xz
+          - name: phodav
+            buildsystem: meson
+            config-opts:
+              - -Dgtk_doc=disabled
+              - -Dsystemd=disabled
+              - -Dudev=disabled
+              - -Dsbindir=bin
+            sources:
+              - type: archive
+                url: https://download.gnome.org/sources/phodav/2.5/phodav-2.5.tar.xz
+                sha256: 71f0a9cd70afd4dd1412a0298331dbb8ac71c0377f52117afc15eb88dc6fb910
+                x-checker-data:
+                  type: anitya
+                  project-id: 9670
+                  stable-only: true
+                  url-template: https://download.gnome.org/sources/phodav/$version0.$version1/phodav-$version.tar.xz
+          - shared-modules/libusb/libusb.json
+          - name: usbredir
+            buildsystem: meson
+            config-opts:
+              - --sbindir=/app/bin
+            sources:
+              - type: archive
+                url: https://spice-space.org/download/usbredir/usbredir-0.12.0.tar.xz
+                sha256: fbb44025bf55e1ce8d84afc7596bfa47c8a36cd603c6fa440f9102c1c9761e6d
+                x-checker-data:
+                  type: anitya
+                  project-id: 16012
+                  stable-only: true
+                  url-template: https://spice-space.org/download/usbredir/usbredir-$version.tar.xz
+          - name: usbutils
+            config-opts:
+              - --datadir=/app/share/hwdata
+              - --disable-zlib
+            sources:
+              - type: archive
+                url: https://www.kernel.org/pub/linux/utils/usb/usbutils/usbutils-014.tar.xz
+                sha256: 3a079cfad60560227b67192482d7813bf96326fcbb66c04254839715f276fc69
+                x-checker-data:
+                  type: anitya
+                  project-id: 5061
+                  stable-only: true
+                  url-template: https://www.kernel.org/pub/linux/utils/usb/usbutils/usbutils-$version.tar.xz
+            modules:
+              - name: hwids
+                buildsystem: simple
+                build-commands:
+                  - for ids in pci.ids usb.ids; do install -Dm644 "$ids" /app/share/hwdata/${ids};
+                    done
+                sources:
+                  - type: archive
+                    url: https://github.com/gentoo/hwids/archive/hwids-20210613.tar.gz
+                    sha256: e28f1787290e9ea17426aa4090bbf6aca9bbc9e6cd14da232778bfaef4938bc1
+                    x-checker-data:
+                      type: anitya
+                      project-id: 233488
+                      stable-only: true
+                      url-template: https://github.com/gentoo/hwids/archive/hwids-$version.tar.gz
+          - name: spice-protocol
+            buildsystem: meson
+            sources:
+              - type: archive
+                url: https://gitlab.freedesktop.org/spice/spice-protocol/-/archive/v0.14.4/spice-protocol-v0.14.4.tar.gz
+                sha256: 9c31fa533ad531d1b816ffd0c24b4785d133e7bb397f72d35f7a6d59bcd7d53a
+                x-checker-data:
+                  type: anitya
+                  project-id: 14892
+                  stable-only: true
+                  url-template: https://gitlab.freedesktop.org/spice/spice-protocol/-/archive/v$version/spice-protocol-v$version.tar.gz
+
+      - name: python-gobject
+        buildsystem: meson
+        config-opts:
+          - -Dpycairo=enabled
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/pygobject/3.42/pygobject-3.42.1.tar.xz
+            sha256: 1f34b5f7624de35e44eb5a7eb428353285bd03004d55131a5f7f7fa9b90f3cc9
+            x-checker-data:
+              type: anitya
+              project-id: 83477
+              stable-only: true
+              url-template: https://download.gnome.org/sources/pygobject/$major.$minor/pygobject-$version.tar.xz
+        modules:
+          - name: python-cairo
+            buildsystem: meson
+            config-opts:
+              - -Doption=false
+            sources:
+              - type: archive
+                url: https://github.com/pygobject/pycairo/archive/v1.21.0.tar.gz
+                sha256: 5e88e718b58751c96aa496914dd1b6a0531488f501cedfb6cd40bb307d69b88c
+                x-checker-data:
+                  type: anitya
+                  project-id: 13166
+                  stable-only: true
+                  url-template: https://github.com/pygobject/pycairo/archive/v$version.tar.gz
+
+      - name: gtksourceview4
+        buildsystem: meson
+        config-opts:
+          - -Dvapi=false
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/gtksourceview/4.8/gtksourceview-4.8.3.tar.xz
+            sha256: c30019506320ca2474d834cced1e2217ea533e00eb2a3f4eb7879007940ec682
+            x-checker-data:
+              type: gnome
+              name: gtksourceview
+              versions:
+                <: 5.0.0
+              stable-only: true
+
+      - name: vte3
+        buildsystem: meson
+        config-opts:
+          - -Dgtk4=false
+          - -Dsixel=false
+          - -D_systemd=false
+          - -Dvapi=false
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/vte/0.68/vte-0.68.0.tar.xz
+            sha256: 13e7d4789ca216a33780030d246c9b13ddbfd04094c6316eea7ff92284dd1749
+            x-checker-data:
+              type: gnome
+              name: vte
+              stable-only: true
+        cleanup:
+          - /bin
+          - /etc
+          - /lib/systemd
+          - /libexec
+          - /share/gir-1.0
+          - /share/vala
+
+      - name: python3-requests
+        buildsystem: simple
+        build-commands:
+          - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+            --prefix=${FLATPAK_DEST} "requests" --no-build-isolation
+        sources:
+          - type: file
+            url: https://files.pythonhosted.org/packages/ec/03/062e6444ce4baf1eac17a6a0ebfe36bb1ad05e1df0e20b110de59c278498/urllib3-1.26.9-py2.py3-none-any.whl
+            sha256: 44ece4d53fb1706f667c9bd1c648f5469a2ec925fcf3a776667042d645472c14
+            x-checker-data:
+              type: pypi
+              name: urllib3
+              packagetype: bdist_wheel
+          - type: file
+            url: https://files.pythonhosted.org/packages/04/a2/d918dcd22354d8958fe113e1a3630137e0fc8b44859ade3063982eacd2a4/idna-3.3-py3-none-any.whl
+            sha256: 84d9dd047ffa80596e0f246e2eab0b391788b0503584e8945f2368256d2735ff
+            x-checker-data:
+              type: pypi
+              name: idna
+              packagetype: bdist_wheel
+          - type: file
+            url: https://files.pythonhosted.org/packages/06/b3/24afc8868eba069a7f03650ac750a778862dc34941a4bebeb58706715726/charset_normalizer-2.0.12-py3-none-any.whl
+            sha256: 6881edbebdb17b39b4eaaa821b438bf6eddffb4468cf344f09f89def34a8b1df
+            x-checker-data:
+              type: pypi
+              name: charset_normalizer
+              packagetype: bdist_wheel
+          - type: file
+            url: https://files.pythonhosted.org/packages/11/dd/e015f3780f42dd9af62cf0107b44ea1298926627ecd70c17b0e484e95bcd/certifi-2022.5.18.1-py3-none-any.whl
+            sha256: f1d53542ee8cbedbe2118b5686372fb33c297fcd6379b050cca0ef13a597382a
+            x-checker-data:
+              type: pypi
+              name: certifi
+              packagetype: bdist_wheel
+          - type: file
+            url: https://files.pythonhosted.org/packages/2d/61/08076519c80041bc0ffa1a8af0cbd3bf3e2b62af10435d269a9d0f40564d/requests-2.27.1-py2.py3-none-any.whl
+            sha256: f22fa1e554c9ddfd16e6e41ac79759e17be9e492b3587efa038054674760e72d
+            x-checker-data:
+              type: pypi
+              name: requests
+              packagetype: bdist_wheel
+
+      - name: libosinfo
+        buildsystem: meson
+        config-opts:
+          - -Dwith-usb-ids-path=/app/share/hwdata/usb.ids
+          - -Dwith-pci-ids-path=/app/share/hwdata/pci.ids
+        sources:
+          - type: archive
+            url: https://releases.pagure.org/libosinfo/libosinfo-1.10.0.tar.xz
+            sha256: a252e00fc580deb21da0da8c0aa03b8c31e8440b8448c8b98143fab477d32305
+            x-checker-data:
+              type: anitya
+              project-id: 155460
+              stable-only: true
+              url-template: https://releases.pagure.org/libosinfo/libosinfo-$version.tar.xz
+        cleanup:
+          - /share/gtk-doc
+          - /share/vala
+        modules:
+          - name: osinfo-db
+            buildsystem: simple
+            build-commands:
+              - osinfo-db-import --system osinfo-db.tar.xz
+            sources:
+              - type: file
+                url: https://releases.pagure.org/libosinfo/osinfo-db-20220516.tar.xz
+                sha256: d60f69d8afc9dcc53d76a2fb68d54c26d1fdc3a822b95c1801de58c3c66cda6d
+                dest-filename: osinfo-db.tar.xz
+                x-checker-data:
+                  type: anitya
+                  project-id: 226784
+                  stable-only: true
+                  url-template: https://releases.pagure.org/libosinfo/osinfo-db-$version.tar.xz
+            modules:
+              - name: osinfo-db-tools
+                buildsystem: meson
+                sources:
+                  - type: archive
+                    url: https://releases.pagure.org/libosinfo/osinfo-db-tools-1.10.0.tar.xz
+                    sha256: 802cdd53b416706ea5844f046ddcfb658c1b4906b9f940c79ac7abc50981ca68
+                    x-checker-data:
+                      type: anitya
+                      project-id: 226782
+                      stable-only: true
+                      url-template: https://releases.pagure.org/libosinfo/osinfo-db-tools-$version.tar.xz
+                cleanup:
+                  - '*'
