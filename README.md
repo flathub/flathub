@@ -1,10 +1,10 @@
 # officefactoring
 
-Command to package the APP:
+Building
 
 flatpak-builder --install --user --force-clean build-dir com.serveftp.officefactoring.yaml
 
-Command to open the APP: 
+Running
 
 flatpak-builder --run build-dir com.serveftp.officefactoring.yaml OfficeFactoring
 
