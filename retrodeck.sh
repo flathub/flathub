@@ -16,7 +16,7 @@ dir_prep() {
     real="$1"
     symlink="$2"
 
-    echo -e "\nDIR PREP: Moving $symlink in $real" #DEBUG
+    echo -e "\n[DIR PREP]\nMoving $symlink in $real" #DEBUG
 
     # if the dest dir exists we want to backup it
     if [ -d "$symlink" ];
@@ -46,16 +46,7 @@ dir_prep() {
       rm -rf "$symlink.old"
     fi
 
-    #DEBUG
-    previous_dir=$PWD
-    cd $real
-    cd ..
-    echo "We are in $PWD" #DEBUG
-    ls -ln
-    cd $previous_dir
-    #DEBUG
-
-    echo $symlink is now $real
+    echo -e "$symlink is now $real\n"
 }
 
 cfg_init() {
@@ -89,9 +80,14 @@ tools_init() {
 standalones_init() {
     # This script is configuring the standalone emulators with the default files present in emuconfigs folder
     
+    echo "----------------------"
     echo "Initializing standalone emulators"
+    echo "----------------------"
 
     # Yuzu
+    echo "----------------------"
+    echo "Initializing YUZU"
+    echo "----------------------"
     # removing dead symlinks as they were present in a past version
     if [ -d $rdhome/bios/switch ]; then
       find $rdhome/bios/switch -xtype l -exec rm {} \;
@@ -102,40 +98,55 @@ standalones_init() {
     dir_prep "$rdhome/bios/switch/registered" "/var/data/yuzu/nand/system/Contents/registered"
     # configuring Yuzu
     mkdir -pv /var/config/yuzu/
-    cp -fv $emuconfigs/yuzu-qt-config.ini /var/config/yuzu/qt-config.ini
+    cp -fvr $emuconfigs/yuzu-qt-config.ini /var/config/yuzu/qt-config.ini
     sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/yuzu/qt-config.ini
     dir_prep "$rdhome/screenshots" "/var/data/yuzu/screenshots"
 
     # Dolphin
+    echo "----------------------"
+    echo "Initializing DOLPHIN"
+    echo "----------------------"
     mkdir -pv /var/config/dolphin-emu/
-    cp -fv $emuconfigs/Dolphin/* /var/config/dolphin-emu/
+    cp -fvr "$emuconfigs/Dolphin/"* /var/config/dolphin-emu/
     dir_prep "$rdhome/saves" "/var/data/dolphin-emu/GBA/Saves"
-    dir_prep "$rdhome/saves" "/var/data/dolphin-emu/Wii" 
+    dir_prep "$rdhome/saves" "/var/data/dolphin-emu/Wii"
 
     # pcsx2
+    echo "----------------------"
+    echo "Initializing PCSX2"
+    echo "----------------------"
     mkdir -pv /var/config/PCSX2/inis/
-    cp -fv $emuconfigs/PCSX2_ui.ini /var/config/PCSX2/inis/
+    cp -fvr $emuconfigs/PCSX2_ui.ini /var/config/PCSX2/inis/
     sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/PCSX2/inis/PCSX2_ui.ini
-    cp -fv $emuconfigs/GS.ini /var/config/PCSX2/inis/
-    cp -fv $emuconfigs/PCSX2_vm.ini /var/config/PCSX2/inis/
+    cp -fvr $emuconfigs/GS.ini /var/config/PCSX2/inis/
+    cp -fvr $emuconfigs/PCSX2_vm.ini /var/config/PCSX2/inis/
     dir_prep "$rdhome/states" "/var/config/PCSX2/sstates"
     dir_prep "$rdhome/screenshots" "/var/config/PCSX2/snaps"
     dir_prep "$rdhome/.logs" "/var/config/PCSX2/logs"
 
     # MelonDS
+    echo "----------------------"
+    echo "Initializing MELONDS"
+    echo "----------------------"
     mkdir -pv /var/config/melonDS/
     dir_prep "$rdhome/bios" "/var/config/melonDS/bios"
-    cp -fv $emuconfigs/melonDS.ini /var/config/melonDS/
+    cp -fvr $emuconfigs/melonDS.ini /var/config/melonDS/
     # Replace ~/retrodeck with $rdhome as ~ cannot be understood by MelonDS
     sed -i 's#~/retrodeck#'$rdhome'#g' /var/config/melonDS/melonDS.ini
 
     # CITRA
+    echo "----------------------"
+    echo "Initializing CITRA"
+    echo "----------------------"
     mkdir -pv /var/config/citra-emu/
-    cp -fv $emuconfigs/citra-qt-config.ini /var/config/citra-emu/qt-config.ini
+    cp -fvr $emuconfigs/citra-qt-config.ini /var/config/citra-emu/qt-config.ini
 
     # RPCS3
+    echo "----------------------"
+    echo "Initializing RPCS3"
+    echo "----------------------"
     mkdir -pv /var/config/rpcs3/
-    cp -fv $emuconfigs/config.yml /var/config/rpcs3/
+    cp -fvr $emuconfigs/config.yml /var/config/rpcs3/
 
     # PICO-8
     # Moved PICO-8 stuff in the finit as only it knows here roms folders is
