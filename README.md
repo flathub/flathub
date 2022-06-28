@@ -26,14 +26,12 @@ An explanation for some of the options included in the `org.mamedev.MAME.yaml' m
 
 `--filesystem=host:ro` primarily to be used for external data, roms, samples, etc.
 
-`post-install` section used to copy MAME built-in directories.
-
 ### Patches
 
 Currently these are the patches applied:
 
 `0.244-ptrdiff_t.patch` includes `<cstddef>` header to find `ptrdiff_t` type in the 0.244 release.
 
-`use-system-lib-flac.patch` works around FORTIFY_SOURCE compiler option that causes errors in the included libflac.
-
 `ldopts.patch` enables an option for the linker to strip debug symbols.
+
+`use-system-lib-flac.patch` works around FORTIFY_SOURCE compiler option that causes errors in the included libflac.
