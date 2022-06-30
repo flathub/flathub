@@ -30,8 +30,6 @@ An explanation for some of the options included in the `org.mamedev.MAME.yaml' m
 
 Currently these are the patches applied:
 
-`0.244-ptrdiff_t.patch` includes `<cstddef>` header to find `ptrdiff_t` type in the 0.244 release.
-
 `ldopts.patch` enables an option for the linker to strip debug symbols.
 
 `use-system-lib-flac.patch` works around FORTIFY_SOURCE compiler option that causes errors in the included libflac.
