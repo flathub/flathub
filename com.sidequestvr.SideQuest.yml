@@ -1,0 +1,59 @@
+app-id: com.sidequestvr.SideQuest
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: sidequest
+finish-args:
+  # Access the network
+  - --share=network
+  # Access to connected devices
+  - --device=all
+  # Access the downloads folder
+  - --filesystem=xdg-download:ro
+  # X11
+  - --socket=x11
+  - --share=ipc
+  # PulseAudio
+  - --socket=pulseaudio
+modules:
+  - name: adb
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://dl.google.com/android/repository/platform-tools_r30.0.1-linux.zip
+        sha256: b30ee914045fe52b50f058d66baa10205500ea410f71457aec04b70ceb14da8b
+    build-commands:
+      - install -D adb /app/bin/adb
+  - name: sidequest
+    buildsystem: simple
+    sources:
+      # SideQuest
+      - type: archive
+        url: https://github.com/SideQuestVR/SideQuest/releases/download/v0.10.27/SideQuest-0.10.27.tar.xz
+        sha256: 500701a6cf292c6a2350e3460c5500c791d4b21f8c83e8a8e3ccef7521fac1b8
+        strip-components: 0
+      # Desktop Entry
+      - type: file
+        path: com.sidequestvr.SideQuest.desktop
+      # AppStream metainfo
+      - type: file
+        path: com.sidequestvr.SideQuest.metainfo.xml
+      # SideQuest wrapper script
+      - type: script
+        dest-filename: sidequest.sh
+        commands:
+          - FLAGS='--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --enable-features=UseSkiaRenderer'
+          - if [ $XDG_SESSION_TYPE == "wayland" ] && [ -c /dev/nvidia0 ]; then FLAGS="$FLAGS --disable-gpu-sandbox"; fi
+          - exec env TMPDIR=$XDG_CACHE_HOME zypak-wrapper /app/sidequest/sidequest $FLAGS "$@"
+    build-commands:
+      - install -Dm755 sidequest.sh /app/bin/sidequest
+      - mv SideQuest-* /app/sidequest
+      - chmod +x /app/sidequest/sidequest
+      - for res in 256x256 16x16 32x32 48x48 128x128 24x24 64x64 512x512; do
+          install -dm755 "/app/share/icons/hicolor/$res/apps/";
+          cp "/app/sidequest/resources/app.asar.unpacked/build/icons/$res.png" "/app/share/icons/hicolor/$res/apps/com.sidequestvr.SideQuest.png";
+        done
+      - install -Dm644 com.sidequestvr.SideQuest.desktop /app/share/applications/com.sidequestvr.SideQuest.desktop
+      - install -Dm644 com.sidequestvr.SideQuest.metainfo.xml /app/share/metainfo/com.sidequestvr.SideQuest.metainfo.xml
