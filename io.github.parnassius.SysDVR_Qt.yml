@@ -1,0 +1,113 @@
+app-id: io.github.parnassius.SysDVR_Qt
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+  - org.freedesktop.Sdk.Extension.llvm14
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: 5.15-21.08
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: '1'
+
+command: sysdvr-qt
+finish-args:
+  - --device=all
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+
+modules:
+  - shared-modules/libusb/libusb.json
+
+  - name: ffmpeg
+    config-opts:
+      - --disable-static
+      - --enable-shared
+      - --disable-programs
+      - --disable-doc
+      - --disable-encoders
+      - --disable-muxers
+      - --disable-demuxers
+    cleanup:
+      - /share/ffmpeg
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-4.4.2.tar.xz
+        sha256: af419a7f88adbc56c758ab19b4c708afbcae15ef09606b82b855291f6a6faa93
+        x-checker-data:
+          type: anitya
+          project-id: 5405
+          stable-only: true
+          versions: {<: '5.0'}
+          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+
+  - name: SysDVR-Client
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet6/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet6/lib/pkgconfig
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      arch:
+        arm:
+          env:
+            RUNTIME: linux-arm
+        aarch64:
+          env:
+            RUNTIME: linux-arm64
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+    build-commands:
+      - dotnet build -c Release --source ./nuget-sources ./Libs/Client.Native/Client.Native.csproj
+      - cp ./Libs/Built/SysDVR.Client.Native.*.nupkg ./nuget-sources
+      - dotnet publish -c Release --source ./nuget-sources ./Client/Client.csproj
+        --runtime $RUNTIME --self-contained true
+      - mkdir -p /app/bin
+      - cp -r --remove-destination ./Client/bin/Release/net6.0/$RUNTIME/publish/*
+        /app/bin
+    sources:
+      - type: git
+        url: https://github.com/exelix11/SysDVR.git
+        commit: 900c31dd64bb666ff8fc7ffca63b748f17a1744c
+        disable-submodules: true
+      - type: git
+        url: https://github.com/exelix11/FFmpeg.AutoGen.git
+        commit: 3f9b4ac7f296c429a5040e5b557444e4dc9939d1
+        dest: Libs/FFmpeg.AutoGen
+      - type: git
+        url: https://github.com/exelix11/SharpRTSP.git
+        commit: a24436e0a2af165f0a8e10c920082bae3c21e3d3
+        dest: Libs/SharpRTSP
+      - type: patch
+        path: sdl.patch
+      - nuget-sources.json
+
+  - name: SysDVR-Qt
+    buildsystem: simple
+    build-commands:
+      - cp -r ./SysDVR_Qt /app
+      - install -Dm755 sysdvr-qt.sh /app/bin/sysdvr-qt
+      - install -Dm644 io.github.parnassius.SysDVR_Qt.desktop /app/share/applications/io.github.parnassius.SysDVR_Qt.desktop
+      - install -Dm644 io.github.parnassius.SysDVR_Qt.svg /app/share/icons/hicolor/scalable/apps/io.github.parnassius.SysDVR_Qt.svg
+    sources:
+      - type: git
+        url: https://github.com/Parnassius/SysDVR-Qt.git
+        tag: 0.1.0
+        commit: c7ee7ddd2b0bb046bd1e120e000d04a7f151f312
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Parnassius/SysDVR-Qt/tags
+          tag-query: first | .name
+          version-query: $tag
+      - type: script
+        commands:
+          - python3 /app/SysDVR_Qt/main.py
+        dest-filename: sysdvr-qt.sh
