@@ -1,0 +1,97 @@
+app-id: net.brinkervii.grapejuice 
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: grapejuice
+separate-locales: false
+
+finish-args:
+        - --share=network
+        - --socket=x11
+        - --share=ipc
+        - --socket=wayland
+        - --device=dri
+        - --allow=devel
+        - --socket=pulseaudio
+        - --allow=multiarch
+
+add-extensions:
+        org.freedesktop.Platform.Compat.i386:
+                directory: lib/i386-linux-gnu
+                version: '21.08'
+        org.freedesktop.Platform.Compat.i386.Debug:
+                directory: lib/debug/lib/i386-linux-gnu
+                version: '21.08'
+                no-autodownload: true
+        org.freedesktop.Platform.GL32:
+                directory: lib/i386-linux-gnu/GL
+                version: '1.4'
+                versions: 21.08;1.4
+                subdirectories: true
+                no-autodownload: true
+                autodelete: false
+                add-ld-path: lib
+                merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+                download-if: active-gl-driver
+                enable-if: active-gl-driver
+        org.freedesktop.Platform.VAAPI.Intel.i386:
+                directory: lib/i386-linux-gnu/dri/intel-vaapi-driver
+                version: '21.08'
+                subdirectories: true
+                autodelete: false
+                add-ld-path: lib
+                download-if: active-gl-driver
+                enable-if: active-gl-driver
+modules:
+  - python3-requirements.yml
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib32
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: file
+        dest-filename: ld.so.conf
+        url: data:/app/lib32%0A/app/lib/i386-linux-gnu%0A
+  - name: grapejuice
+    buildsystem: simple
+    build-commands:
+      # install usersettings
+      - install -Dm755 user_settings.json /app
+      # use grapejuice packaging module
+      - PYTHONPATH=$(pwd)/src python3 -m grapejuice_packaging linux_package
+      - cp -r build/linux_package/usr/* /app
+      - mkdir /app/lib/python3.10
+      - mkdir /app/lib/python3.10/pip_deps
+      - mkdir /app/locales
+      - pip3 install $(pwd) --target=/app/lib/python3.10/pip_deps --no-deps --no-index
+      # hack: overwrite grapejuice bins
+      - install -Dm755 modified_bins/grapejuice /app/bin
+      - install -Dm755 modified_bins/grapejuice-gui /app/bin
+      - install -Dm755 modified_bins/grapejuiced /app/bin
+      # install wine
+      - tar --use-compress-program=unzstd -xvf debuntu-wine-tkg-staging-fsync-git-7.1.r2.gc437a01e.tar.zst
+      - mv wine-tkg-staging-fsync-git-7.1.r2.gc437a01e /app/patched_wine
+      # normal grapejuice desktop entries aren't exported anyway, so there's no need to delete them.
+      # install grapejuice desktop entry
+      - mkdir -p /app/share/applications
+      - cp desktop_entries/desktop/* /app/share/applications
+      # install grapejuice icons
+      - mkdir -p /app/share/icons/
+      - cp -r desktop_entries/hicolor /app/share/icons/
+      # install metainfo
+      - mkdir -p /app/share/metainfo/
+      - install -Dm644 net.brinkervii.grapejuice.metainfo.xml /app/share/metainfo 
+    sources:
+      - type: file
+        url: https://gitlab.com/brinkervii/wine-builds/-/raw/main/debuntu-wine-tkg-staging-fsync-git-7.1.r2.gc437a01e.tar.zst?inline=false
+        sha512: b60dd9628a592bef596049ff144ccdb7c2518afdbc70e32464f0d519122de4b2870ad8b7049f91acb876d302cde9189e899d54b615136d3bae1c0cc1bc2810da
+      - type: git
+        url: https://gitlab.com/brinkervii/grapejuice.git
+        tag: v5.1.1
+        commit: 6811a3776891a52e5569731ecf4d6937b5e4e755
+      - type: dir
+        path: fixes
