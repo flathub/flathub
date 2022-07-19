@@ -1,0 +1,98 @@
+app-id: net._86box._86Box
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+command: 86Box.sh
+finish-args:
+  - --share=network
+  - --share=ipc
+  # 86Box has issues on Wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  # CD drive and joystick access
+  - --device=all
+
+modules:
+  - shared-modules/linux-audio/fluidsynth2.json
+
+  - name: fluid_soundfont
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: http://http.debian.net/debian/pool/main/f/fluid-soundfont/fluid-soundfont_3.1.orig.tar.gz
+        sha256: 2621acaa1c78e4abdb24bdd163230cc577e61276936d6aa6e3180582142f0343
+    build-commands:
+      - install -Dm644 FluidR3_GM.sf2 /app/share/soundfonts/FluidR3_GM.sf2
+
+  - name: faudio
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/FNA-XNA/FAudio/archive/refs/tags/22.07.tar.gz
+        sha256: 591c8bf63873856d051d4ba8ff4a43e853391465d4eacd164c1d10898d848d04
+
+  - name: rtmidi
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DRTMIDI_API_JACK=OFF
+    sources:
+      - type: archive
+        url: https://github.com/thestk/rtmidi/archive/refs/tags/5.0.0.tar.gz
+        sha256: c7923e4eee82b06c007435892cb2c3212d9007fa482c6b718943bda71c02c5a7
+
+  - name: libevdev
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.12.0.tar.xz
+        sha256: 2f729e3480695791f9482e8388bd723402b89f0eaf118057bbdea3cecee9b237
+
+  - name: 86box
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/86Box/86Box.git
+        tag: v3.6
+        commit: ad8ea20e14c9b5d0e2c54d1d44f59a5f33572cb0
+        x-checker-data:
+          type: git
+      - type: patch
+        path: metainfo.patch
+      - type: script
+        dest-filename: 86Box.sh
+        commands:
+          - mkdir -p ${XDG_DATA_HOME}/86Box/roms
+          - mkdir -p ${XDG_CONFIG_HOME}/86Box
+          - exec 86Box --vmpath ${XDG_CONFIG_HOME}/86Box "$@"
+    post-install:
+      - install -Dm755 86Box.sh ${FLATPAK_DEST}/bin/86Box.sh
+      - sed -i 's/net.86box.86Box/net._86box._86Box/g' src/unix/assets/net.86box.86Box.metainfo.xml
+      - install -Dm644 src/unix/assets/net.86box.86Box.metainfo.xml ${FLATPAK_DEST}/share/metainfo/net._86box._86Box.metainfo.xml
+      - desktop-file-edit --set-key=Exec --set-value=86Box.sh src/unix/assets/net.86box.86Box.desktop
+      - desktop-file-edit --set-key=Icon --set-value=net._86box._86Box src/unix/assets/net.86box.86Box.desktop
+      - install -Dm644 src/unix/assets/net.86box.86Box.desktop ${FLATPAK_DEST}/share/applications/net._86box._86Box.desktop
+      - install -Dm644 src/unix/assets/64x64/net.86box.86Box.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/net._86box._86Box.png
+      - install -Dm644 src/unix/assets/128x128/net.86box.86Box.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/net._86box._86Box.png
+      - install -Dm644 src/unix/assets/256x256/net.86box.86Box.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/net._86box._86Box.png
+      - install -Dm644 src/unix/assets/512x512/net.86box.86Box.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/net._86box._86Box.png
+
+  - name: 86box-roms
+    buildsystem: simple
+    sources:
+      - type: extra-data
+        filename: 86Box-roms.tar.gz
+        url: https://github.com/86Box/roms/archive/refs/tags/20220701.tar.gz
+        sha256: cf3b66838220a2bff2eba73003b16b0ac371b745bd9d759f8abfdb8089ce2474
+        size: 35633877
+        x-checker-data:
+          type: anitya
+          project-id: 268433
+          url-template: https://github.com/86Box/roms/archive/refs/tags/$version.tar.gz
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar --strip-components=1 -xf 86Box-roms.tar.gz
+          - rm -f 86Box-roms.tar.gz
+    build-commands:
+          - mkdir -p ${FLATPAK_DEST}/extra && mkdir -p ${FLATPAK_DEST}/share/86Box
+          - ln -s ${FLATPAK_DEST}/extra ${FLATPAK_DEST}/share/86Box/roms
+          - install -Dm755 apply_extra ${FLATPAK_DEST}/bin/apply_extra
