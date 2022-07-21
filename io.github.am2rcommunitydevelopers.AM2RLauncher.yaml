@@ -1,0 +1,134 @@
+app-id: io.github.am2rcommunitydevelopers.AM2RLauncher
+runtime: org.gnome.Platform
+runtime-version: '42'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+  - org.freedesktop.Sdk.Extension.openjdk11
+  - org.gnome.Sdk.Compat.i386
+
+finish-args:
+# TODO: crashes with wayland on filepicker and font being whacky. Likely Eto bug, test and report there.
+- --socket=x11
+- --share=ipc
+
+# Network needed for updates, pulseaudio for sound
+- --share=network
+- --socket=pulseaudio
+
+# Home for getting the 1.1 zip, config because of profiles having their saves there, apktool for apk creation
+- --filesystem=home:ro
+- --filesystem=~/.config/
+- --filesystem=xdg-data/apktool/:create
+
+# libappindicator stuff
+- --talk-name=com.canonical.indicator.application
+- --talk-name=org.freedesktop.Notifications
+- --talk-name=org.kde.StatusNotifierWatcher
+
+# Fuse / Appimage related
+- --talk-name=org.freedesktop.Flatpak.*
+- --device=all
+- --filesystem=/tmp
+
+# Java and x32 stuff
+- --env=JAVA_HOME=/app/jre
+- --env=PATH=/usr/bin:/app/bin:/app/jre/bin
+- --env=XDG_CONFIG_DIRS=/etc/xdg:/usr/lib/x86_64-linux-gnu/GL:/usr/lib/i386-linux-gnu/GL
+
+add-extensions:
+  org.gnome.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '42'
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '21.08'
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+command: AM2RLauncher
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: libappindicator
+
+  - name: xdelta3
+    sources:
+      - type: archive
+        url: https://github.com/jmacd/xdelta/archive/refs/tags/v3.1.0.tar.gz
+        sha256: 7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d
+    buildsystem: simple
+    build-commands:
+      - mv ./xdelta3/* ./
+      - rm -r ./xdelta3
+      - autoreconf --install
+      - ./configure
+      - make
+      - mv ./xdelta3 /app/bin/xdelta3
+
+  - name: fusermout
+    config-opts:
+      - MOUNT_FUSE_PATH=/app/bin
+    post-install:
+      - install fusermount-wrapper.sh /app/bin/fusermount
+    sources:
+      - type: archive
+        url: https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz
+        sha256: d0e69d5d608cc22ff4843791ad097f554dd32540ddc9bed7638cc6fea7c1b4b5
+        x-checker-data:
+          type: anitya
+          project-id: 861
+          url-template: https://github.com/libfuse/libfuse/releases/download/fuse-$version/fuse-$version.tar.gz
+          versions: {<: '3'}
+      - type: file
+        path: fusermount-wrapper.sh
+
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: AM2RLauncher
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet6/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+      arch:
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet6/lib/pkgconfig
+    build-commands:
+      - mkdir -p /app/bin
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - mkdir -p /app/share/metainfo
+      - mkdir -p /app/share/applications
+      - mkdir -p /app/share/icons/hicolor/256x256/apps
+      # TODO: remove on 2.3.0
+      - sed --in-place "s/net5.0/net6.0/g" AM2RLauncher/AM2RLauncher.Gtk/AM2RLauncher.Gtk.csproj
+      - dotnet publish AM2RLauncher/AM2RLauncher.Gtk --source ./nuget-sources -p:PublishSingleFile=true -p:DebugType=embedded -c Release -r ubuntu.18.04-x64 --self-contained true
+      - cp -r --remove-destination /run/build/AM2RLauncher/AM2RLauncher/AM2RLauncher.Gtk/bin/Release/net6.0/ubuntu.18.04-x64/publish/* /app/bin/
+      - mv /app/bin/AM2RLauncher.Gtk /app/bin/AM2RLauncher
+
+      - install $FLATPAK_ID.appdata.xml /app/share/metainfo/$FLATPAK_ID.appdata.xml
+      - install am2rlauncher.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install am2rlauncher.desktop /app/share/applications/$FLATPAK_ID.desktop
+    sources:
+      - nuget.json
+      - type: git
+        url: https://github.com/AM2R-Community-Developers/AM2RLauncher.git
+        tag: 2.2.0
+        commit: f655137d28ddc280b293b631eaa0a39a62d14d93
+      - type: file
+        path: io.github.am2rcommunitydevelopers.AM2RLauncher.appdata.xml
+      - type: file
+        path: am2rlauncher.png
+      - type: file
+        path: am2rlauncher.desktop
