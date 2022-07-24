@@ -1,13 +1,176 @@
+commit a50acc67521dd1a3f28ad523c05d5328835a496f
+Author: Christian Parpart <christian@parpart.family>
+Date:   Sun Jul 24 21:45:32 2022 +0200
+
+    Applying some tweaks with regards to Flatpak and AppStream (XML) recommendations.
+
 diff --git a/cmake/FilesystemResolver.cmake b/cmake/FilesystemResolver.cmake
-index acef652..1bd3a15 100644
+index acef6522..4ba1ec19 100644
 --- a/cmake/FilesystemResolver.cmake
 +++ b/cmake/FilesystemResolver.cmake
-@@ -12,7 +12,7 @@ else()
+@@ -12,7 +12,10 @@ else()
      set(USING_BOOST_FILESYSTEM FALSE PARENT_SCOPE)
      set(USING_BOOST_FILESYSTEM FALSE)
      message(STATUS "[FilesystemResolver]: Using standard C++ filesystem API")
 -    if(APPLE OR "${CMAKE_SYSTEM}" MATCHES "Linux")
-+    if(APPLE)
++    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION MATCHES "8.")
++        # With respect to the supported operating systems, especially Ubuntu 18.04 Linux with GCC 8 needs this.
++        # Newer C++ compilers won't need that but still compile if ithe respective linker flag is provided.
++        # TODO: Remove this check once Ubuntu 18.04 LTS won't bee needed anymore.
          set(FILESYSTEM_LIBS "stdc++fs")
      else()
          set(FILESYSTEM_LIBS)
+diff --git a/src/contour/CMakeLists.txt b/src/contour/CMakeLists.txt
+index cd2f0c66..741c17bb 100644
+--- a/src/contour/CMakeLists.txt
++++ b/src/contour/CMakeLists.txt
+@@ -280,6 +280,7 @@ elseif(APPLE)
+     ")
+ else()
+     # any other Unix
++    set(AppId "org.contourterminal.Contour")
+ 
+     find_program(LSB_RELEASE_EXEC lsb_release)
+     execute_process(COMMAND ${LSB_RELEASE_EXEC} -rs
+@@ -307,9 +308,10 @@ else()
+ 
+     include(GNUInstallDirs)
+     install(TARGETS contour DESTINATION bin)
+-    install(FILES "contour.desktop" DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
++    install(FILES "contour.desktop" DESTINATION "${CMAKE_INSTALL_DATADIR}/applications" RENAME "${AppId}.desktop")
+     install(FILES "contour-run.desktop" DESTINATION "${CMAKE_INSTALL_DATADIR}/kservices5/ServiceMenus")
+-    install(FILES "res/images/contour-logo-256.png" DESTINATION "${CMAKE_INSTALL_DATADIR}/pixmaps" RENAME "contour.png")
++    install(FILES "res/images/contour-logo-256.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps" RENAME "${AppId}.png")
++    install(FILES "metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo" RENAME "${AppId}.metainfo.xml")
+     install(FILES "shell-integration.zsh" DESTINATION "${CMAKE_INSTALL_DATADIR}/contour")
+     install(FILES "${PROJECT_SOURCE_DIR}/Changelog.md" DESTINATION "${CMAKE_INSTALL_DATADIR}/contour")
+     install(FILES "${PROJECT_SOURCE_DIR}/LICENSE.txt" DESTINATION "${CMAKE_INSTALL_DATADIR}/contour")
+diff --git a/src/contour/contour.desktop b/src/contour/contour.desktop
+index f823fa9f..83f25881 100644
+--- a/src/contour/contour.desktop
++++ b/src/contour/contour.desktop
+@@ -6,7 +6,7 @@
+ Type=Application
+ TryExec=contour
+ Exec=contour
+-Icon=contour
++Icon=org.contourterminal.Contour
+ Terminal=false
+ Categories=Qt;System;TerminalEmulator;
+ Actions=NewWindow;
+@@ -145,6 +145,7 @@ Comment[zh_CN]=命令行访问
+ Comment[zh_TW]=指令列
+ 
+ [Desktop Action NewWindow]
++Exec=contour
+ Name=Open a New Window
+ Name[ar]=افتح نافذة جديدة
+ Name[ast]=Abrir nuna ventana nueva
+diff --git a/src/contour/metainfo.xml b/src/contour/metainfo.xml
+new file mode 100644
+index 00000000..c61a4415
+--- /dev/null
++++ b/src/contour/metainfo.xml
+@@ -0,0 +1,102 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<component type="desktop">
++  <id>org.contourterminal.Contour</id>
++  <metadata_license>CC0-1.0</metadata_license>
++  <project_license>Apache-2.0</project_license>
++  <content_rating type="oars-1.0" />
++  <name>Contour Terminal Emulator</name>
++  <developer_name>Christian Parpart</developer_name>
++  <url type="homepage">https://github.com/contour-terminal/contour/</url>
++  <url type="bugtracker">https://github.com/contour-terminal/contour/issues</url>
++
++  <launchable type="desktop-id">org.contourterminal.Contour.desktop</launchable>
++
++  <supports>
++    <control>pointing</control>
++    <control>keyboard</control>
++    <control>console</control>
++  </supports>
++
++  <provides>
++    <binary>contour</binary>
++  </provides>
++
++  <categories>
++    <category>System</category>
++  </categories>
++
++  <summary>
++    Contour is a modern and actually fast, modal, virtual terminal emulator, for everyday use
++  </summary>
++
++  <icon type="remote" width="256" height="256">https://raw.githubusercontent.com/contour-terminal/contour/4f565357720915402aca5ca63ca1fa812ed4741f/src/contour/res/images/contour-logo.png</icon>
++
++  <description>
++    <p>
++      Contour is a modern and actually fast, modal, virtual terminal emulator,
++      for everyday use. It is aiming for power users with a modern feature mindset.
++    </p>
++    <p>
++      <ul>
++        <li>Available on all 4 major platforms, Linux, OS/X, FreeBSD, Windows.</li>
++        <li>GPU-accelerated rendering.</li>
++        <li>Font ligatures support (such as in Fira Code).</li>
++        <li>Unicode: Emoji support (-: 🌈 💝 😛 👪 - including ZWJ, VS15, VS16 emoji :-)</li>
++        <li>Unicode: Grapheme cluster support</li>
++        <li>Bold and italic fonts</li>
++        <li>High-DPI support.</li>
++        <li>Vertical Line Markers (quickly jump to markers in your history!)</li>
++        <li>Vi-like input modes for improved selection and copy'n'paste experience and Vi-like `scrolloff` feature.</li>
++        <li>Blurred behind transparent background when using Windows 10 or KDE window manager on Linux.</li>
++        <li>Blurrable Background image support.</li>
++        <li>Runtime configuration reload</li>
++        <li>256-color and Truecolor support</li>
++        <li>Key binding customization</li>
++        <li>Color Schemes</li>
++        <li>Profiles (grouped customization of: color scheme, login shell, and related behaviours)</li>
++        <li>Synchronized rendering</li>
++        <li>Text reflow (configurable via `SM ? 2027` / `RM ? 2027`)</li>
++        <li>Clickable hyperlinks via OSC 8</li>
++        <li>Clipboard setting via OSC 52</li>
++        <li>Sixel inline images</li>
++        <li>Terminal page buffer capture VT extension</li>
++        <li>Builtin [Fira Code inspired progress bar support.</li>
++        <li>Read-only mode, protecting against accidental user-input to the running application, such as Ctrl+C.</li>
++        <li>VT320 Host-programmable and Indicator status line support.</li>
++        <li>and much more ...</li>
++      </ul>
++    </p>
++  </description>
++
++  <screenshots>
++    <screenshot type="default">
++      <image>https://raw.githubusercontent.com/contour-terminal/contour/4f565357720915402aca5ca63ca1fa812ed4741f/docs/screenshots/contour-screenshots-0.1.0-pre2.png</image>
++      <caption>Contour Terminal emulator being used to show some of its features</caption>
++    </screenshot>
++  </screenshots>
++
++  <keywords>
++    <keyword>CLI</keyword>
++    <keyword>administration</keyword>
++    <keyword>development</keyword>
++    <keyword>programming</keyword>
++    <keyword>shell</keyword>
++    <keyword>terminal</keyword>
++  </keywords>
++
++  <releases>
++    <release version="0.3.2.202" date="2022-07-07" />
++    <release version="0.3.1.200" date="2022-05-01" />
++    <release version="0.3.0.198" date="2022-04-18" />
++    <release version="0.2.3.183" date="2022-01-09" />
++    <release version="0.2.3.182" date="2021-12-12" />
++    <release version="0.2.2.175" date="2021-11-19" />
++    <release version="0.2.1.174" date="2021-11-14" />
++    <release version="0.2.0.173" date="2021-08-17" />
++    <release version="0.1.1"     date="2020-12-31" />
++    <release version="0.1.0"     date="2020-12-24" />
++  </releases>
++
++</component>
++
