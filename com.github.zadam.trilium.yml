@@ -1,0 +1,97 @@
+app-id: com.github.zadam.trilium
+
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+
+command: trilium
+
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=home
+
+build-options:
+  append-path: /usr/lib/sdk/node16/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  - name: trilium
+    buildsystem: simple
+
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/trilium/flatpak-node/cache
+        npm_config_cache: /run/build/trilium/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: 'true'
+        SRC_DIR: dist/trilium-src
+
+    sources:
+      - type: git
+        url: https://github.com/zadam/trilium.git
+        tag: v0.53.2
+        commit: ea3bce25d9b2bca859b62e856e6141c340f2a060
+
+      - generated-sources.json
+
+      - type: script
+        dest-filename: trilium.sh
+        commands:
+          - zypak-wrapper.sh /app/trilium/trilium "$@"
+
+      - type: file
+        path: com.github.zadam.trilium.desktop
+
+      - type: file
+        path: com.github.zadam.trilium.metainfo.xml
+
+    build-commands:
+      - npm install --offline
+      - npm run webpack
+
+      - mkdir -p $SRC_DIR
+      - cp -r images $SRC_DIR/
+      - cp -r libraries $SRC_DIR/
+      - cp -r src $SRC_DIR/
+      - cp -r db $SRC_DIR/
+      - cp -r package.json $SRC_DIR/
+      - cp -r package-lock.json $SRC_DIR/
+      - cp -r README.md $SRC_DIR/
+      - cp -r LICENSE $SRC_DIR/
+      - cp -r config-sample.ini $SRC_DIR/
+      - cp -r electron.js $SRC_DIR/
+      - cp webpack-* $SRC_DIR/
+
+      - (cd $SRC_DIR && npm install --only=prod --offline)
+
+      - sed -i -e 's/app\/desktop.js/app-dist\/desktop.js/g' $SRC_DIR/src/views/desktop.ejs
+      - sed -i -e 's/app\/mobile.js/app-dist\/mobile.js/g' $SRC_DIR/src/views/mobile.ejs
+      - sed -i -e 's/app\/setup.js/app-dist\/setup.js/g' $SRC_DIR/src/views/setup.ejs
+
+      - rm -r $SRC_DIR/src/public/app-dist/*.mobile.*
+      - cp -r bin/better-sqlite3/linux-desktop-better_sqlite3.node $SRC_DIR/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+
+      - ./node_modules/.bin/electron-packager $SRC_DIR --asar --out=dist --executable-name=trilium --platform=linux --arch=x64 --overwrite
+
+      - rm -r "dist/Trilium Notes-linux-x64/swiftshader"
+      - cp bin/tpl/anonymize-database.sql "dist/Trilium Notes-linux-x64/"
+
+      - cp -r "dist/Trilium Notes-linux-x64" /app/trilium
+      - install -Dm755 trilium.sh /app/bin/trilium
+      - install -Dm755 com.github.zadam.trilium.desktop /app/share/applications/com.github.zadam.trilium.desktop
+      - install -Dm644 images/app-icons/png/64x64.png /app/share/icons/hicolor/64x64/apps/com.github.zadam.trilium.png
+      - install -Dm644 images/app-icons/png/128x128.png /app/share/icons/hicolor/128x128/apps/com.github.zadam.trilium.png
+      - install -Dm644 com.github.zadam.trilium.metainfo.xml /app/share/metainfo/com.github.zadam.trilium.metainfo.xml
