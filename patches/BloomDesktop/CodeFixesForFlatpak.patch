@@ -1,0 +1,350 @@
+diff --git a/BloomDesktop/lib/BloomPdfMaker.sh b/BloomDesktop/lib/BloomPdfMaker.sh
+index 446fe59d6..7ec718ac7 100755
+--- a/BloomDesktop/lib/BloomPdfMaker.sh
++++ b/BloomDesktop/lib/BloomPdfMaker.sh
+@@ -7,7 +7,7 @@
+ LIB="$(dirname $0)"
+ BASE="$(dirname $LIB)"
+ 
+-if [ "$BASE" = "/usr/lib" ];
++if [ "$BASE" = "/usr/lib" -o "$BASE" = "/app/lib" ];
+ then
+     RUNMODE=INSTALLED
+     SHARE=$(echo $LIB | sed s=/lib/=/share/=)
+@@ -16,11 +16,11 @@ else
+     SHARE=$(dirname $BASE)
+ fi
+ 
+-# This information may help if something goes wrong...
+-echo BloomPdfMaker.sh: LIB=$LIB, BASE=$BASE, SHARE=$SHARE, RUNMODE=$RUNMODE
+-
+ cd "$SHARE"
+ . ./environ
+ cd "$OLDPWD"
+ 
+-exec /opt/mono5-sil/bin/mono --debug "$LIB/BloomPdfMaker.exe" "$@"
++# This information may help if something goes wrong...
++echo BloomPdfMaker.sh: LIB=$LIB, BASE=$BASE, SHARE=$SHARE, RUNMODE=$RUNMODE, MONO_PREFIX=$MONO_PREFIX
++
++exec "$MONO_PREFIX/bin/mono" --debug "$LIB/BloomPdfMaker.exe" "$@"
+diff --git a/BloomDesktop/src/BloomExe/FatalExceptionHandler.cs b/BloomDesktop/src/BloomExe/FatalExceptionHandler.cs
+index d1905d6eb..0e52b40da 100644
+--- a/BloomDesktop/src/BloomExe/FatalExceptionHandler.cs
++++ b/BloomDesktop/src/BloomExe/FatalExceptionHandler.cs
+@@ -72,6 +72,7 @@ protected void HandleTopLevelError(object sender, ThreadExceptionEventArgs e)
+ 			if (!GetShouldHandleException(sender, e.Exception))
+ 				return;
+ 
++			Console.Error.WriteLine("DEBUG FatalExceptionHandler.HandleTopLevelError({0}, {1}): exception={0}", sender, e.Exception);
+ 			if (UseFallback)
+ 			{
+ 				if (Program.RunningHarvesterMode)
+@@ -102,6 +103,7 @@ protected new void HandleUnhandledException(object sender, UnhandledExceptionEve
+ 			if (!GetShouldHandleException(sender, e.ExceptionObject as Exception))
+ 				return;
+ 
++			Console.Error.WriteLine("DEBUG FatalExceptionHandler.HandleUnhandledException({0}, {1})", sender, e.ExceptionObject);
+ 			if (UseFallback)
+ 			{
+ 				if (Program.RunningHarvesterMode)
+diff --git a/BloomDesktop/src/BloomExe/FontProcessing/FontMetadata.cs b/BloomDesktop/src/BloomExe/FontProcessing/FontMetadata.cs
+index 264855d8c..fd005c5ba 100644
+--- a/BloomDesktop/src/BloomExe/FontProcessing/FontMetadata.cs
++++ b/BloomDesktop/src/BloomExe/FontProcessing/FontMetadata.cs
+@@ -31,8 +31,8 @@ public class FontMetadata
+ 		/// On Window, we can use System.Windows.Media (which provides the GlyphTypeface class) to
+ 		/// provide all the font metatdata information.
+ 		/// On Linux, we have to use Sharpfont from nuget (which provides the Sharpfont.Face class)
+-		/// for reading the font's embedding flag plus running /usr/bin/otfino for everything else.
+-		/// We get /usr/bin/otfinfo as part of the lcdf-typetools package that is specified in the
++		/// for reading the font's embedding flag plus running /app/bin/otfinfo for everything else.
++		/// We get /app/bin/otfinfo as part of the lcdf-typetools package that is specified in the
+ 		/// debian/control file.
+ 		/// clas
+ 		/// </summary>
+@@ -101,7 +101,7 @@ public FontMetadata(string name, FontGroup group)
+ 				{
+ 					StartInfo = new ProcessStartInfo()
+ 					{
+-						FileName = "/usr/bin/otfinfo",
++						FileName = "/app/bin/otfinfo",
+ 						Arguments = $"-i \"{group.Normal}\"",
+ 						UseShellExecute = false,
+ 						CreateNoWindow = true,
+@@ -119,7 +119,7 @@ public FontMetadata(string name, FontGroup group)
+ 				}
+ 				else
+ 				{
+-					Console.WriteLine("oftinfo -i \"{0}\" returned {1}.  Standard Error =\n{2}", group.Normal, process.ExitCode, standardError);
++					Console.WriteLine("otfinfo -i \"{0}\" returned {1}.  Standard Error =\n{2}", group.Normal, process.ExitCode, standardError);
+ 					var msg = $"otfinfo returned: {process.ExitCode}. Standard Error={Environment.NewLine}{standardError}";
+ 					if (String.IsNullOrEmpty(determinedSuitabilityNotes))
+ 						determinedSuitabilityNotes = msg;
+@@ -132,7 +132,7 @@ public FontMetadata(string name, FontGroup group)
+ 			}
+ 			catch (Exception e)
+ 			{
+-				Console.WriteLine("Process.Start() of /usr/bin/otfinfo -i \"{0}\" threw an exception: {1}", group.Normal, e);
++				Console.WriteLine("Process.Start() of /app/bin/otfinfo -i \"{0}\" threw an exception: {1}", group.Normal, e);
+ 				var msg = $"Process.Start of \"otfinfo\" exception: {e}";
+ 				if (String.IsNullOrEmpty(determinedSuitabilityNotes))
+ 					determinedSuitabilityNotes = msg;
+diff --git a/BloomDesktop/src/BloomExe/HelpLauncher.cs b/BloomDesktop/src/BloomExe/HelpLauncher.cs
+index 54b036ff0..630d5175f 100644
+--- a/BloomDesktop/src/BloomExe/HelpLauncher.cs
++++ b/BloomDesktop/src/BloomExe/HelpLauncher.cs
+@@ -79,7 +79,7 @@ private static void ShowHelpWithTopic(Control parent, string helpFile, string he
+ 			{
+ 				arguments = String.Format("-showPage \"{0}\" \"{1}\"", helpTopic, helpFile);
+ 			}
+-			else if (helpViewer == "xchm" || helpViewer == "/usr/bin/xchm")
++			else if (helpViewer == "xchm" || helpViewer == "/app/bin/xchm")
+ 			{
+ 				// According to the xchm developer, something like this should work:
+ 				// xchm file:jdk150.chm#xchm:/jdk150/api/java/applet/package-summary.html
+diff --git a/BloomDesktop/src/BloomExe/ImageProcessing/ImageUtils.cs b/BloomDesktop/src/BloomExe/ImageProcessing/ImageUtils.cs
+index a38bdebc7..d6fd46acc 100644
+--- a/BloomDesktop/src/BloomExe/ImageProcessing/ImageUtils.cs
++++ b/BloomDesktop/src/BloomExe/ImageProcessing/ImageUtils.cs
+@@ -900,7 +900,7 @@ private static string GetGraphicsMagickPath()
+ 		{
+ 			if (Platform.IsLinux)
+ 			{
+-				return "/usr/bin/gm";
++				return "/app/bin/gm";
+ 			}
+ 			else
+ 			{
+diff --git a/BloomDesktop/src/BloomExe/NonFatalProblem.cs b/BloomDesktop/src/BloomExe/NonFatalProblem.cs
+index f3464543f..e1bf73a84 100644
+--- a/BloomDesktop/src/BloomExe/NonFatalProblem.cs
++++ b/BloomDesktop/src/BloomExe/NonFatalProblem.cs
+@@ -35,6 +35,7 @@ public class NonFatalProblem
+ 			Exception exception = null, bool showSendReport = true, bool isShortMessagePreEncoded = false, bool skipSentryReport = false, bool showRequestDetails = false,
+ 			string[] additionalFilesToInclude = null)
+ 		{
++			Console.Error.WriteLine("DEBUG NonFatalProblem.Report(\"{0}\", \"{1}\", {2})", shortUserLevelMessage, moreDetails, exception);
+ 			var originalException = exception;
+ 			s_expectedByUnitTest?.ProblemWasReported();
+ 
+diff --git a/BloomDesktop/src/BloomExe/Program.cs b/BloomDesktop/src/BloomExe/Program.cs
+index f9eabbc5a..660915cff 100644
+--- a/BloomDesktop/src/BloomExe/Program.cs
++++ b/BloomDesktop/src/BloomExe/Program.cs
+@@ -303,7 +303,7 @@ static int Main(string[] args1)
+ 								using (var projectContext =
+ 									_applicationContainer.CreateProjectContext(fakeCollectionPath, true))
+ 								{
+-									if (!UniqueToken.AcquireTokenQuietly(_mutexId))
++									if (!AcquireUniqueToken())
+ 									{
+ 										var msg = LocalizationManager.GetString("TeamCollection.QuitOtherBloom",
+ 											"Please close Bloom before joining a Team Collection");
+@@ -356,7 +356,7 @@ static int Main(string[] args1)
+ 						Settings.Default.Save();
+ 
+ 						// and now we need to get the lock as usual before going on to load the new collection.
+-						if (!UniqueToken.AcquireToken(_mutexId, "Bloom"))
++						if (!AcquireUniqueToken("Bloom"))
+ 							return 1;
+ 					}
+ 					else
+@@ -365,7 +365,7 @@ static int Main(string[] args1)
+ 						HandleDownload(args[0]);
+ 						// If another instance is running, this one has served its purpose and can exit right away. Otherwise,
+ 						// carry on with starting up normally.  See https://silbloom.myjetbrains.com/youtrack/issue/BL-3822.
+-						if (!UniqueToken.AcquireTokenQuietly(_mutexId))
++						if (!AcquireUniqueToken())
+ 							return 0;
+ 					}
+ 					else
+@@ -374,7 +374,7 @@ static int Main(string[] args1)
+ 						// BloomLibrary starts a new Bloom process even when one is already running.  But that is taken care of in the
+ 						// other branch of this if/else.  So quit if we find another instance of Bloom running at this point.
+ 						// (A message will pop up to tell the user about this situation if it happens.)
+-						if (!UniqueToken.AcquireToken(_mutexId, "Bloom"))
++						if (!AcquireUniqueToken("Bloom"))
+ 							return 1;
+ 					}
+ 					OldVersionCheck();
+@@ -475,6 +475,61 @@ static int Main(string[] args1)
+ 			return 0;
+ 		}
+ 
++		private static bool AcquireUniqueToken(string progNameForMsg = null)
++		{
++			if (RobustFile.Exists(Path.Combine(Path.GetTempPath(), _mutexId + ".locktoken")) &&
++				SIL.PlatformUtilities.Platform.IsFlatpak)
++			{
++				// Try to open a communication channel to a possibly running Bloom.  We haven't started our
++				// server yet, so if we can talk, another Bloom is running.
++				using (var client = new System.Net.Http.HttpClient())
++				{
++					// Bloom tries to open port 8089 for serving, but tries up to ten consecutive ports
++					// if the port is already in use.  In practice, I don't remember ever seeing a port
++					// above 8091 being used.
++					var testResult = CheckForBloomOnHttp(client, 8089);
++					if (testResult != "OK")
++						testResult = CheckForBloomOnHttp(client, 8090);
++					if (testResult != "OK")
++						testResult = CheckForBloomOnHttp(client, 8091);
++					if (testResult == "OK")
++					{
++						// Simplified version of what libpalaso does in UniqueToken.AcquireToken().
++						if (!String.IsNullOrEmpty(progNameForMsg))
++						{
++							var errorMsg = String.Format(
++								L10NSharp.LocalizationManager.GetString("Application.AlreadyRunning.Specific",
++									"Another copy of {0} is already running. If you cannot find that copy of {0}, restart your computer.",
++									"{0} is the application name"),
++									progNameForMsg);
++							ErrorReport.NotifyUserOfProblem(errorMsg);
++						}
++						return false;
++					}
++				}
++			}
++			if (String.IsNullOrEmpty(progNameForMsg))
++				return UniqueToken.AcquireTokenQuietly(_mutexId);
++			else
++				return UniqueToken.AcquireToken(_mutexId, "Bloom");
++		}
++
++		private static string CheckForBloomOnHttp(System.Net.Http.HttpClient client, int port)
++		{
++			try
++			{
++				Api.BloomServer.portForHttp = port;
++				var task = System.Threading.Tasks.Task.Run(() => client.GetStringAsync(Api.BloomServer.ServerUrlWithBloomPrefixEndingInSlash + "testconnection"));
++				task.Wait(TimeSpan.FromSeconds(1)); // localhost should be fast
++				return task.Result;
++			}
++			catch (Exception e)
++			{
++				Console.WriteLine($"Checking for Bloom on port {port} caused the exception {e}");
++				return e.Message;
++			}
++		}
++
+ 		/// <summary>
+ 		/// Sets up different analytics channels depending on Debug or not.
+ 		/// Also determines whether or not Registration should occur.
+diff --git a/BloomDesktop/src/BloomExe/Publish/Android/BloomPubMaker.cs b/BloomDesktop/src/BloomExe/Publish/Android/BloomPubMaker.cs
+index ed9b3d39c..8e37fce37 100644
+--- a/BloomDesktop/src/BloomExe/Publish/Android/BloomPubMaker.cs
++++ b/BloomDesktop/src/BloomExe/Publish/Android/BloomPubMaker.cs
+@@ -33,6 +33,8 @@ public static class BloomPubMaker
+ 
+ 		public static Control ControlForInvoke { get; set; }
+ 
++		static PublishHelper _publishHelper = null;
++
+ 		public static void CreateBloomPub(BookInfo bookInfo, AndroidPublishSettings settings, string outputFolder, BookServer bookServer, IWebSocketProgress progress )
+ 		{
+ 			var outputPath = Path.Combine(outputFolder, Path.GetFileName(bookInfo.FolderPath) + BookCompressor.BloomPubExtensionWithDot);
+@@ -138,13 +140,14 @@ public static void CreateBloomPub(string outputPath, Book.Book book, BookServer
+ 
+ 			// Do this after processing interactive pages, as they can satisfy the criteria for being 'blank'
+ 			HashSet<string> fontsUsed = null;
+-			using (var helper = new PublishHelper())
++			if (_publishHelper == null)
++				_publishHelper = new PublishHelper();
+ 			{
+-				helper.ControlForInvoke = ControlForInvoke;
++				_publishHelper.ControlForInvoke = ControlForInvoke;
+ 				ISet<string> warningMessages = new HashSet<string>();
+-				helper.RemoveUnwantedContent(modifiedBook.OurHtmlDom, modifiedBook, false, warningMessages);
++				_publishHelper.RemoveUnwantedContent(modifiedBook.OurHtmlDom, modifiedBook, false, warningMessages);
+ 				PublishHelper.SendBatchedWarningMessagesToProgress(warningMessages, progress);
+-				fontsUsed = helper.FontsUsed;
++				fontsUsed = _publishHelper.FontsUsed;
+ 			}
+ 			if (!modifiedBook.IsTemplateBook)
+ 				modifiedBook.RemoveBlankPages(settings?.LanguagesToInclude);
+diff --git a/BloomDesktop/src/BloomExe/Publish/BloomLibrary/BloomLibraryUploadControl.cs b/BloomDesktop/src/BloomExe/Publish/BloomLibrary/BloomLibraryUploadControl.cs
+index 89e55f729..4dc1c3804 100644
+--- a/BloomDesktop/src/BloomExe/Publish/BloomLibrary/BloomLibraryUploadControl.cs
++++ b/BloomDesktop/src/BloomExe/Publish/BloomLibrary/BloomLibraryUploadControl.cs
+@@ -937,11 +937,11 @@ private string GetLinuxTerminalProgramAndAdjustCommand(ref string command)
+ 		{
+ 			// See https://askubuntu.com/questions/484993/run-command-on-anothernew-terminal-window
+ 
+-			if (RobustFile.Exists("/usr/bin/gnome-terminal"))	// standard for GNOME (Ubuntu/Wasta)
++			if (RobustFile.Exists("/app/bin/gnome-terminal"))	// standard for GNOME (Ubuntu/Wasta)
+ 			{
+-				// /usr/bin/gnome-terminal -- /bin/bash -c "bloom upload \"folder\" -u user -d dest; read line"
+-				command = $"-- /bin/bash -c \"{QuoteQuotes(command)}; read line\"";
+-				return "/usr/bin/gnome-terminal";
++				// /app/bin/gnome-terminal -- /usr/bin/bash -c "bloom upload \"folder\" -u user -d dest; read line"
++				command = $"-- /usr/bin/bash -c \"{QuoteQuotes(command)}; read line\"";
++				return "/app/bin/gnome-terminal";
+ 			}
+ 			if (RobustFile.Exists("/usr/bin/terminator")) // popular alternative
+ 			{
+diff --git a/BloomDesktop/src/BloomExe/Publish/PDF/PdfViewer.cs b/BloomDesktop/src/BloomExe/Publish/PDF/PdfViewer.cs
+index 3df4f22f1..14fd9c17e 100644
+--- a/BloomDesktop/src/BloomExe/Publish/PDF/PdfViewer.cs
++++ b/BloomDesktop/src/BloomExe/Publish/PDF/PdfViewer.cs
+@@ -224,7 +224,7 @@ private bool TryGhostcriptPrint()
+ 			// setup in Ubuntu.  It handles PDF automatically.  gtklp is a graphical
+ 			// front end to the printer service that allows the user to specify the
+ 			// printer, paper size, and other parameters that may need to be tweaked.
+-			var exePath = "/usr/bin/gtklp";
++			var exePath = "/app/bin/gtklp";
+ 			systemSpecificArgs = "";
+ #else
+ 			var gsKey = Registry.LocalMachine.OpenSubKey(@"Software\GPL Ghostscript");
+@@ -336,6 +336,9 @@ public void BrowserPrint()
+ 				}
+ 				finally {
+ 					Marshal.ReleaseComObject (print);
++#if __MonoCS__
++					PrintFinished?.Invoke(this, new EventArgs());
++#endif
+ 				}
+ 			}
+ 		}
+diff --git a/BloomDesktop/src/BloomExe/Publish/PDF/ProcessPdfWithGhostscript.cs b/BloomDesktop/src/BloomExe/Publish/PDF/ProcessPdfWithGhostscript.cs
+index f687a8604..1b9719144 100644
+--- a/BloomDesktop/src/BloomExe/Publish/PDF/ProcessPdfWithGhostscript.cs
++++ b/BloomDesktop/src/BloomExe/Publish/PDF/ProcessPdfWithGhostscript.cs
+@@ -47,7 +47,7 @@ public void ProcessPdfFile(string inputFile, string outputFile, bool removeEvenP
+ 		{
+ 			_inputPdfPath = inputFile;
+ 			_outputPdfPath = outputFile;
+-			var exePath = "/usr/bin/gs";
++			var exePath = "/app/bin/gs";
+ 			if (SIL.PlatformUtilities.Platform.IsWindows)
+ 				exePath = FindGhostcriptOnWindows();
+ 			if (!String.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
+diff --git a/BloomDesktop/src/BloomExe/Publish/PublishModel.cs b/BloomDesktop/src/BloomExe/Publish/PublishModel.cs
+index 3f1577722..61efc6881 100644
+--- a/BloomDesktop/src/BloomExe/Publish/PublishModel.cs
++++ b/BloomDesktop/src/BloomExe/Publish/PublishModel.cs
+@@ -307,8 +307,9 @@ internal DisplayModes DisplayMode
+ 			set
+ 			{
+ 				_currentDisplayMode = value;
+-				if (View != null)
+-					View.Invoke((Action) (() => View.SetDisplayMode(value)));
++				//if (View != null)
++					//View.Invoke((Action)(() => View.SetDisplayMode(value)));
++				View.SetDisplayMode(value);
+ 			}
+ 		}
+ 
+diff --git a/BloomDesktop/src/BloomExe/web/controllers/AudioSegmentationApi.cs b/BloomDesktop/src/BloomExe/web/controllers/AudioSegmentationApi.cs
+index 626823148..705bf36bc 100644
+--- a/BloomDesktop/src/BloomExe/web/controllers/AudioSegmentationApi.cs
++++ b/BloomDesktop/src/BloomExe/web/controllers/AudioSegmentationApi.cs
+@@ -111,7 +111,9 @@ public bool AreAutoSegmentDependenciesMet(out string message)
+ 			string workingDir = Platform.IsLinux ? "/tmp" : kWorkingDirectory;
+ 			string stdout;
+ 			var findPythonCommand = $"{locateCmd} python";
+-			if (Platform.IsLinux && !DoesCommandCauseError("/usr/bin/lsb_release -r", out stdout, workingDir))
++			if (Platform.IsFlatpak)
++				findPythonCommand = $"{locateCmd} python3";
++			else if (Platform.IsLinux && !DoesCommandCauseError("/usr/bin/lsb_release -r", out stdout, workingDir))
+ 			{
+ 				// Ubuntu 20.04 installs python3 by default without any /usr/bin/python, and python3-aeneas is
+ 				// installed instead of python-aeneas (which depends on python2.7).

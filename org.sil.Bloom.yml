@@ -1,0 +1,647 @@
+# Bloom Flatpak package build specification
+#
+# Copyright (c) 2022 SIL International. MIT License.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+app-id: org.sil.Bloom
+
+runtime: org.gnome.Platform
+runtime-version: "41"
+sdk: org.gnome.Sdk
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.node16
+    - org.freedesktop.Sdk.Extension.mono6
+writable-sdk: true # Required to install msbuild for building libpalaso and geckofx
+
+# maybe someday, build a custom ffmpeg with just what we want
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '21.08'
+    add-ld-path: .
+
+finish-args:
+    - --socket=x11
+    - --share=ipc
+    - --share=network
+    - --socket=pulseaudio
+    # Bloom can import books and share folders over networks (either local or
+    # via a mechanism like DropBox).  Users need to load pictures, sound files,
+    # and videos from arbitrary locations in the filesystem. Users also need to
+    # be able to export books in various formats to arbitrary locations.
+    - --filesystem=home
+    - --filesystem=host
+    - --filesystem=xdg-data
+    # Bloom writes temporary folders and files to /tmp, to open in a browser to
+    # show the user, such as creating PDFs, ePUBs, or BloomPub ebooks.  Use the
+    # same /tmp as the host, so the host programs can find the files.
+    - --filesystem=/tmp
+    # libGL needs this
+    - --device=all
+    # debugging verbosely.  I need all the help I can get!
+    - -vv
+command: bloom
+
+modules:
+    - name: BloomDesktop
+      buildsystem: simple
+      build-options:
+          prepend-path: /app/bin
+          append-path: /usr/lib/sdk/node16/bin
+          env:
+              MONO_PREFIX: "/app"
+              MONO_SILPKGDIR: "/app"
+              NUGET_DEST: "BloomDesktop/packages"
+              INSTALLATION_PREFIX: "/app"
+              RUNMODE: "PACKAGING"
+              XDG_CACHE_HOME: /run/build/flatpak-node/cache
+              BLOOMLIB: "/app/lib/bloom-desktop"
+              BLOOMSHARE: "/app/share/bloom-desktop"
+              PREFIX: "/app"
+              PERL5LIB: "/app/perl-modules/lib/perl5"
+              BUILD_CONFIG: "Release"
+      build-commands:
+          - |
+              set -xueo pipefail
+              yarn config set yarn-offline-mirror ${FLATPAK_BUILDER_BUILDDIR}/flatpak-node/yarn-mirror
+              cd BloomDesktop
+              # These steps are adapted from the debian/rules file
+              export NODE_OPTIONS=--max-old-space-size=1536
+              if [ -f ../local-extra/build_number.env ]; then . ../local-extra/build_number.env; else FULL_BUILD_NUMBER=5.2.1.0; fi
+              (cd src/BloomBrowserUI && yarn --offline --ignore-engines && yarn --offline --ignore-engines build)
+              msbuild /t:SetAssemblyVersion /p:RootDir=`pwd` /p:BUILD_NUMBER=${FULL_BUILD_NUMBER} build/Bloom.proj
+              msbuild /p:Configuration=Release /p:BUILD_NUMBER=${FULL_BUILD_NUMBER} /v:diag "Bloom.sln"
+              msbuild /p:Configuration=Release /p:BUILD_NUMBER=${FULL_BUILD_NUMBER} src/LinuxBloomLauncher/LinuxBloomLauncher.cproj
+              ##################################################################
+              # mimic the installation steps used by the debian packaging
+              # Install library files
+              install -d ${BLOOMLIB}
+              cp -rv output/Release/* ${BLOOMLIB}
+              find ${BLOOMLIB} -type f -print0 | xargs -0 chmod 644
+              chmod +x ${BLOOMLIB}/BloomLauncher
+              chmod +x ${BLOOMLIB}/*.sh
+              chmod +x ${BLOOMLIB}/*.exe
+              chmod +x ${BLOOMLIB}/*.dll
+              chmod +x ${BLOOMLIB}/Firefox/*.so*
+              find ${BLOOMLIB} -type d -print0 | xargs -0 chmod 755
+              install -d ${BLOOMSHARE}
+              install -m 644 environ* ${BLOOMSHARE}
+              # Install data files
+              cp -r DistFiles/* ${BLOOMLIB}
+              chmod -R a+rX,og-w ${BLOOMLIB}
+              # Install browser support files
+              cp -r output/browser ${BLOOMLIB}
+              chmod -R a+rX,og-w ${BLOOMLIB}/browser
+              # Install wrapper script
+              install -d ${INSTALLATION_PREFIX}/bin
+              install debian/bloom ${INSTALLATION_PREFIX}/bin
+              # Add to Applications menu
+              install -d ${INSTALLATION_PREFIX}/share/pixmaps
+              install -d ${INSTALLATION_PREFIX}/share/icons/hicolor/48x48/mimetypes/
+              install -d ${INSTALLATION_PREFIX}/share/icons/hicolor/scalable/mimetypes/
+              install -m 644 debian/bloom.png ${INSTALLATION_PREFIX}/share/pixmaps/org.sil.Bloom.png
+              install -m 644 debian/bloom.svg ${INSTALLATION_PREFIX}/share/pixmaps/org.sil.Bloom.svg
+              install -m 644 debian/bloom.png ${INSTALLATION_PREFIX}/share/icons/hicolor/48x48/mimetypes/org.sil.Bloom.png
+              install -m 644 debian/bloom.svg ${INSTALLATION_PREFIX}/share/icons/hicolor/scalable/mimetypes/org.sil.Bloom.svg
+              install -d ${INSTALLATION_PREFIX}/share/applications
+              desktop-file-install --dir ${INSTALLATION_PREFIX}/share/applications ../local-extra/org.sil.Bloom.desktop
+              # Install icon for our mime type so that it shows up as icon for a bloompack
+              install -m 644 debian/BloomPack.png ${INSTALLATION_PREFIX}/share/icons/hicolor/48x48/mimetypes/application-bloom.png
+              install -m 644 debian/BloomPack.svg ${INSTALLATION_PREFIX}/share/icons/hicolor/scalable/mimetypes/application-bloom.svg
+              # Add bloom-collection mime type
+              install -m 644 debian/bloom-collection.png ${INSTALLATION_PREFIX}/share/icons/hicolor/48x48/mimetypes/application-bloom-collection.png
+              install -m 644 debian/bloom-collection.svg ${INSTALLATION_PREFIX}/share/icons/hicolor/scalable/mimetypes/application-bloom-collection.svg
+              # Add bloom-join-team mime type
+              install -m 644 debian/JoinBloomTC.png ${INSTALLATION_PREFIX}/share/icons/hicolor/48x48/mimetypes/application-bloom-join-team.png
+              install -m 644 debian/JoinBloomTC.svg ${INSTALLATION_PREFIX}/share/icons/hicolor/scalable/mimetypes/application-bloom-join-team.svg
+              # Add AppStream metadata file
+              install -d ${INSTALLATION_PREFIX}/share/metainfo
+              install -m 644 ../local-extra/org.sil.Bloom.metainfo.xml ${INSTALLATION_PREFIX}/share/metainfo
+              # Remove unwanted files
+              cd ${BLOOMLIB} && rm -rf AxInterop* BloomTests* Interop* Moq* nunit* NUnit* AndikaNewBasic ffmpeg ghostscript
+              find ${BLOOMLIB} -name '*.map' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name '*Spec.js' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'CheckOrFixXliff.*' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'GeckofxHtmlToPdf.*' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name '*UnitTestFramework.dll' -type d -print0 | xargs -0 rm -rf
+              find ${BLOOMLIB} -name 'Moq.*' -print0 | xargs -0 rm -f
+              # We need NAudio.dll for SIL.Media to load even though it's Windows-only.  But we don't need the xml file.
+              find ${BLOOMLIB} -name 'NAudio.xml' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'irrKlang.NET4.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'win-x86' -type d -print0 | xargs -0 rm -rf
+              find ${BLOOMLIB} -name 'win-x64' -type d -print0 | xargs -0 rm -rf
+              find ${BLOOMLIB} -name '*Interop.AcroPDFLib.*' -print0 | xargs -0 rm -f
+              # These are needed to compile libpalaso on Windows, but aren't really used even there I suspect.
+              find ${BLOOMLIB} -name 'AtkSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'CairoSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'GdkSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'GioSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'GLibSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'GtkSharp.dll' -print0 | xargs -0 rm -f
+              find ${BLOOMLIB} -name 'PangoSharp.dll' -print0 | xargs -0 rm -f
+              # make up for deficient mono mapping
+              ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 ${INSTALLATION_PREFIX}/lib/libdl.so
+              # make room for the ffmpeg-full extension
+              install -d ${INSTALLATION_PREFIX}/lib/ffmpeg
+      cleanup:
+          - "/include"
+          - "/lib/*/include"
+          - "*.a"
+      sources:
+          - type: git
+            dest: BloomDesktop
+            url: https://github.com/BloomBooks/BloomDesktop.git
+            branch: Version5.2
+          # Bloom nuget dependencies
+          # To regenerate bloom-build-sources-nuget.yml:
+          #   ./compose-nuget-sources bloom-build-sources-nuget.yml . ./buildPackages.config
+          - bloom-build-nuget-sources.yml
+          # To regenerate bloom-sources-nuget.yml:
+          #   ./compose-nuget-sources bloom-sources-nuget.yml . ../src/BloomExe/Linux/packages.config
+          - bloom-sources-nuget.yml
+          - type: shell
+            # Extract nuget packages. The 'type: archive', 'archive-type: zip' had
+            # some trouble working, so manually extract.
+            commands:
+                - |
+                    set -xueo pipefail
+                    for package in *.nupkg; do
+                      mkdir -p "${NUGET_DEST}/$(basename "${package}" .nupkg)" &&
+                        unzip "${package}" \
+                          -d "${NUGET_DEST}/$(basename "${package}" .nupkg)"
+                    done
+                    # repair damaged nupkgs
+                    mv "${NUGET_DEST}/MarkdownDeep.NET.1.5.0/lib/.NetFramework%203.5" "${NUGET_DEST}/MarkdownDeep.NET.1.5.0/lib/.NetFramework 3.5"
+                    chmod 755 "${NUGET_DEST}"/sqlite-net-pcl.1.7.335/*.*
+                    chmod 755 "${NUGET_DEST}"/sqlite-net-pcl.1.7.335/lib/netstandard2.0/SQLite-net.*
+                    # copy artifacts from internal libpalaso and geckofx builds to where the nuget packages have been installed.
+                    # (we need some things the nuget package includes, but want to replace the actual assemblies and add debug info)
+                    cp --verbose --force /app/libpalaso/SIL.Core.dll "${NUGET_DEST}"/SIL.Core.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Core.pdb "${NUGET_DEST}"/SIL.Core.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Core.Desktop.dll "${NUGET_DEST}"/SIL.Core.Desktop.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Core.Desktop.pdb "${NUGET_DEST}"/SIL.Core.Desktop.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Media.dll "${NUGET_DEST}"/SIL.Media.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Media.pdb "${NUGET_DEST}"/SIL.Media.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.dll "${NUGET_DEST}"/SIL.Windows.Forms.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.pdb "${NUGET_DEST}"/SIL.Windows.Forms.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.GeckoBrowserAdapter.dll "${NUGET_DEST}"/SIL.Windows.Forms.GeckoBrowserAdapter.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.GeckoBrowserAdapter.pdb "${NUGET_DEST}"/SIL.Windows.Forms.GeckoBrowserAdapter.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.Keyboarding.dll "${NUGET_DEST}"/SIL.Windows.Forms.Keyboarding.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.Keyboarding.pdb "${NUGET_DEST}"/SIL.Windows.Forms.Keyboarding.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.WritingSystems.dll "${NUGET_DEST}"/SIL.Windows.Forms.WritingSystems.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.Windows.Forms.WritingSystems.pdb "${NUGET_DEST}"/SIL.Windows.Forms.WritingSystems.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.WritingSystems.dll "${NUGET_DEST}"/SIL.WritingSystems.9.0.0-beta0119/lib/net461/
+                    cp --verbose --force /app/libpalaso/SIL.WritingSystems.pdb "${NUGET_DEST}"/SIL.WritingSystems.9.0.0-beta0119/lib/net461/
+                    rm "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/Geckofx-*.dll.mdb
+                    cp --verbose --force /app/geckofx/Geckofx-Core.dll "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+                    cp --verbose --force /app/geckofx/Geckofx-Core.dll.config "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+                    cp --verbose --force /app/geckofx/Geckofx-Core.pdb "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+                    cp --verbose --force /app/geckofx/Geckofx-Winforms.dll "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+                    cp --verbose --force /app/geckofx/Geckofx-Winforms.dll.config "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+                    cp --verbose --force /app/geckofx/Geckofx-Winforms.pdb "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
+            cleanup:
+                # the leading /app is assumed
+                - /libpalaso
+                - /geckofx
+          # Bloom dependencies
+          # Find updates via FieldWorks.git with a command like:
+          #   git log -p -- src/build/getDependencies-Linux.sh
+          # Manually apply changes by editing bloom-sources-urls-input.yml.
+          # Regenerate input sources:
+          #   ./compose-url-sources bloom-sources-urls-input.yml bloom-sources-urls.yml
+          - bloom-sources-urls.yml
+          - type: shell
+            # Extract files from pdf.js zipfile.
+            commands:
+                - |
+                    set -xueo pipefail
+                    pwd
+                    mkdir -p "BloomDesktop/DistFiles/pdf" && unzip -uqo BloomDesktop/Downloads/pdfjs-viewer.zip -d "BloomDesktop/DistFiles/pdf"
+          # python3 flatpak-builder-tools/node/flatpak-node-generator.py -o bloom-sources-browser-node.json yarn ../src/BloomBrowserUI/yarn.lock
+          - bloom-sources-browser-node.json
+          - type: patch
+            path: patches/BloomDesktop/BuildFileFixesForFlatpak.patch
+            options:
+                - --verbose
+          - type: patch
+            path: patches/BloomDesktop/CodeFixesForFlatpak.patch
+            options:
+                - --verbose
+          - type: dir
+            path: ./extra
+            dest: local-extra
+      modules:
+          - name: mono5-sil
+            config-opts:
+                # Build successfully with gcc >9.
+                - --enable-minimal=aot
+            cleanup:
+                # Not cleaning away lib/mono/4.5/mcs* because mcs.exe is used in SFM import.
+                - "/include"
+                - "*.a"
+                - "/bin/gtk-demo"
+                - "/bin/monodis"
+                - "/bin/monograph"
+                - "/bin/pedump"
+                - "/lib/mono/2*"
+                - "/lib/mono/3*"
+                - "/lib/mono/4.5/dim"
+                - "/lib/mono/4.5/Microsoft.CodeAnalysis.*"
+                - "/lib/mono/gac/Microsoft.Build.Engine"
+                - "/lib/mono/gac/Microsoft.Build"
+                - "/lib/mono/gac/monodoc"
+                - "/lib/mono/msbuild"
+                - "/lib/mono/xbuild-frameworks"
+                - "/lib/mono/xbuild"
+                - "/lib/monodoc"
+            sources:
+                - type: git
+                  url: https://github.com/sillsdev/mono.git
+                  # Past sil/5.16.0.179
+                  commit: 2672d16f8b3006a574a0108b6c324d7a090678b5
+                - type: archive
+                  # Update URL by doing: cd .../path/to/mono-repo && .../determine-monolite-url
+                  url: https://download.mono-project.com/monolite/monolite-linux-1051600011-latest.tar.gz
+                  sha512: b48bb273f5a9107f9bb9795d47277aeaaeb458588a6e011676bb9a152b83759f305cf1031a5e74a62145854ef17026cb1aa20ea9adb5e6b15f275b9d6af585db
+                  dest: mcs/class/lib/monolite-linux/1051600011
+                - type: patch
+                  # mono uses a hard-coded path to ping. Help it find ping in /app.
+                  path: patches/mono/mono-ping-path.patch
+            modules:
+                - name: python-2.7
+                  config-opts:
+                      - --enable-shared
+                      - --with-system-expat
+                      - --with-system-ffi
+                      - --enable-unicode=ucs4
+                  post-install:
+                      - chmod 644 ${FLATPAK_DEST}/lib/libpython2.7.so.1.0
+                  cleanup:
+                      - "/lib/python2.7/test"
+                      - "/lib/python2.7/unittest"
+                      - "/lib/python2.7/distutils/tests"
+                      - "/lib/python2.7/idlelib/idle_test"
+                      - "/lib/python2.7/lib2to3"
+                      - "/include"
+                      - "*.a"
+                      - "*.o"
+                      - "/bin/python"
+                      - "/lib/debug/source/python-2.7"
+                      - "/lib/debug/bin/python2.7*"
+                      - "/share/man/man1/python*.1"
+                  sources:
+                      - type: archive
+                        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+                        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
+          - name: gtk-sharp3
+            sources:
+                - type: git
+                  url: "https://github.com/mono/gtk-sharp.git"
+                  commit: 9ef7d3f394b9d485674c59e92db24ac66fd9f16b
+                - type: patch
+                  #https://github.com/scx/org.gnome.gbrainy/blob/ed2883a89cfd996c8e1e2a83ff23586c8971a0b6/gtk-sharp-profiler-startup.patch
+                  path: patches/gtk-sharp3/gtk-sharp-profiler-startup.patch
+          - name: mono5-sil-msbuild
+            # It was challenging to build msbuild from source. Other projects
+            # appear to fetch binaries rather than build msbuild. Following that.
+            buildsystem: simple
+            build-commands:
+                # Extract opt/mono5-sil/* into /app/
+                - |
+                    for package in *.deb; do
+                      mkdir "${package}-dir" &&
+                        (cd "${package}-dir" && ar x ../"${package}") &&
+                        tar -C /app -x -f "${package}-dir"/data.tar.xz \
+                          --strip-components=3 ./opt/mono5-sil
+                    done
+                # Use same-character-count path to /app since some binary files are
+                # going to be modified too.
+                - perl -pi -e 's#/opt/mono5-sil#/./././././app#g' /app/bin/*
+            cleanup:
+                # Can't clean '*' because that seems to result in /app/bin/mono being
+                # absent.
+                - "/lib/mono/msbuild"
+                - "/lib/mono/xbuild"
+            sources:
+                - type: file
+                  url: http://linux.lsdev.sil.org/ubuntu/pool/main/m/mono5-sil-msbuild/mono5-sil-msbuild_15.8+xamarinxplat.2018.07.31.22.43-0xamarin5+ubuntu1804b1_all.deb
+                  sha256: 758274d8bc438f325fc5fc808c0482ab50eb2bdaf02f61747888e190760753de
+          - name: libgdiplus
+            build-options:
+                prefix: /app
+                env:
+                    MONO_PREFIX: /app
+            config-opts:
+                - --with-pango
+            cleanup:
+                - "/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://github.com/sillsdev/libgdiplus
+                  tag: merge/5.6.0
+                  commit: b9c581ba87da89651d5ec56c5da0960ab739a63a
+            modules:
+                - name: giflib
+                  buildsystem: simple
+                  build-commands:
+                      # Skip building documentation
+                      - perl -pi -e 's#doc/Makefile##' configure.ac
+                      - ./autogen.sh --prefix=/app
+                      - make
+                      - make install
+                  cleanup:
+                      - "/include"
+                      - "*.a"
+                  sources:
+                      - type: git
+                        url: https://github.com/mirrorer/giflib.git
+                        commit: fa37672085ce4b3d62c51627ab3c8cf2dda8009a
+                        # Note that libgdiplus needs giflib to have GifQuantizeBuffer.
+                        # Some giflibs need adjustment to have that built in.
+          - name: xchm
+            # Help file viewer
+            cleanup:
+                - "/include"
+                - "*.a"
+                - "/share/icons"
+                - "/share/applications"
+            sources:
+                - type: git
+                  url: https://github.com/rzvncj/xCHM
+                  # Version 1.31 is used in Ubuntu 20.04.
+                  tag: "1.31"
+                  commit: e983d11fd546c961501f736b2c6f93178c92fa97
+                - type: patch
+                  # xchm would otherwise need to write to files ~/.xchmXXXXXX and
+                  # ~/.xchm. This won't be needed after upgrading to a newer xchm
+                  # version and wxWidgets v3.1.1+.
+                  path: patches/xchm/no-config.patch
+            modules:
+                - name: chmlib
+                  cleanup:
+                      - "/include"
+                      - "*.a"
+                  sources:
+                      - type: git
+                        url: https://github.com/jedwing/CHMLib
+                        # Latest commit, from 2009-07-03.
+                        commit: 2bef8d063ec7d88a8de6fd9f0513ea42ac0fa21f
+                      - type: script
+                        commands:
+                            - autoreconf --install
+                - name: wxWidgets
+                  cleanup:
+                      - "/include"
+                      - "/lib/wx/include"
+                      - "*.a"
+                  sources:
+                      - type: git
+                        url: https://github.com/wxWidgets/wxWidgets
+                        # v3.0.4 is used in Ubuntu 20.04.
+                        # v3.1.1+ is needed for xchm to write to XDG_CONFIG_HOME.
+                        # However, v3.1.0 appears to introduce a problem rendering the
+                        # chm html. v3.0.5.1 still worked, rendering the html.
+                        tag: v3.0.4
+                        commit: 721d62adde3f8ba8704a9cf56efeb050f652dfbf
+          - name: wget
+            buildsystem: autotools
+            cleanup:
+                # Don't ship.
+                - "*"
+            sources:
+                - type: archive
+                  url: https://ftp.gnu.org/gnu/wget/wget-1.20.3.tar.gz
+                  sha512: e8b82b40e270296228094a78d47f81580bdbdea9e6b93fd61b37dccb39430aeb9bda5397dc53a31c952a61629383c7e2a8c8abf414c8a4dd369af6ecf2717e6c
+          - name: dbus-glib
+            # For Gecko.
+            cleanup:
+                - "/share/gtk-doc"
+                - "/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://gitlab.freedesktop.org/dbus/dbus-glib.git
+                  tag: dbus-glib-0.110
+                  commit: ffeb6909967ff79585a7ede85227da94f04ecb01
+          - name: fonts-sil-andika-new-basic
+            # From https://software.sil.org/andika/download/
+            buildsystem: simple
+            build-commands:
+                - mkdir -p /app/share/fonts/truetype/andika-new-basic
+                - cp --verbose --force -a *.ttf /app/share/fonts/truetype/andika-new-basic
+            sources:
+                - type: archive
+                  url: https://software.sil.org/downloads/r/andika/AndikaNewBasic-5.500.zip
+                  sha512: 53513c782889fd7e87903cab43f1e419a87cfbc425fd722b621cbdb1b1928584b5ce82ecc56e6f6aa1073ed30268993c46c451dfd8b198b430a54a5cf1eb10a1
+          - name: wmctrl
+            buildsystem: autotools
+            sources:
+                - type: git
+                  url: https://github.com/Conservatory/wmctrl.git
+                  commit: 7c1dcbaa221a16e8a9765bf2b14d61d640a52304
+            modules:
+                - name: libxmu
+                  buildsystem: autotools
+                  cleanup:
+                      - "/include"
+                      - "*.a"
+                  sources:
+                      - type: git
+                        url: https://gitlab.freedesktop.org/xorg/lib/libxmu.git
+                        commit: e9efe2d027b4c46cf6834cc532222f8ad1d1d3c3
+          - name: libtidy-sil
+            buildsystem: cmake
+            config-opts:
+                - -DBUILD_SHARED_LIB:BOOL=TRUE
+            cleanup:
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://github.com/BloomBooks/tidy-html5.git
+                  branch: debian
+                  commit: 8efa8feb2046d31f9216e1ef806609c311809dea
+          - name: lcdf-typetools
+            # otfinfo (one of the lcdf-typetools)
+            buildsystem: autotools
+            config-opts:
+                - --without-kpathsea
+                - --disable-adobe-code
+                - --disable-cfftot1
+                - --disable-mmafm
+                - --disable-mmpfb
+                - --disable-otftotfm
+                - --disable-t1dotlessj
+                - --disable-t1lint
+                - --disable-t1rawafm
+                - --disable-t1reencode
+                - --disable-t1testpage
+                - --disable-ttftotype42
+            cleanup:
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://salsa.debian.org/fonts-team/lcdf-typetools.git
+                  commit: 635cbab327dbff73a7b1acd4b322c850f202b7bd
+          - name: ghostscript
+            config-opts:
+                - --disable-cups
+                - --disable-dbus
+                - --enable-dynamic
+                - --disable-gtk
+                - --with-drivers=FILES
+            make-args:
+                - so
+            make-install-args:
+                - install
+                - soinstall
+            sources:
+                - type: archive
+                  url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs9561/ghostscript-9.56.1.tar.xz
+                  sha256: d43406805650009b42c3d5f6dc535233454533c1e27c13a77dd1d462a056b8e4
+                  x-checker-data:
+                      type: html
+                      url: https://ghostscript.com/releases/
+                      version-pattern: The latest release is Ghostscript ([\d\.]+)
+                      url-template: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs${version0}${version1}${version2}/ghostscript-$version.tar.xz
+            cleanup:
+                - /share/doc
+                - /share/ghostscript/*/doc
+                - /share/ghostscript/*/examples
+                - /share/man# graphicsmagick
+          - name: GraphicsMagick
+            sources:
+                - type: archive
+                  url: https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick/1.3.35/GraphicsMagick-1.3.35.tar.bz2
+                  sha256: 7fd0b49903eb35df4ab5ca76139ab3f023f47485a4913fbdcf5c642c6e5f01fc
+          - python3-aeneas.yml
+          - libpalaso.yml
+          - name: ca-certificates
+            sources:
+                - type: file
+                  url: http://us.archive.ubuntu.com/ubuntu/pool/main/c/ca-certificates/ca-certificates_20211016~20.04.1_all.deb
+                  sha256: 5a7b922d35e328d7d7765a353f1bbc9e14c8476e67606b605c6d0b1186037571
+            buildsystem: simple
+            build-commands:
+                - |
+                    set -xueo pipefail
+                    ar x ca-certificates_*all.deb
+                    tar xf data.tar.xz
+                    cat usr/share/ca-certificates/mozilla/*.crt >ca-certificates.crt
+                    install -d /app/share/ca-certificates
+                    install ca-certificates.crt /app/share/ca-certificates
+          - name: geckofx
+            buildsystem: simple
+            build-commands:
+                - |
+                    set -xueo pipefail
+                    pwd
+                    ls -FC
+                    msbuild /p:Configuration=Release_Linux /p:Platform="Any CPU" Geckofx.sln
+                    # copy where these can be found by the BloomDesktop nuget package code
+                    install -d /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Core.dll /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Core.dll.config /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Core.pdb /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Winforms.dll /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Winforms.dll.config /app/geckofx
+                    install Geckofx-Winforms/bin/Release_Linux/Geckofx-Winforms.pdb /app/geckofx
+            sources:
+                - type: archive
+                  url: https://hg.sr.ht/~hindlemail/geckofx/archive/60.0.54.0.tar.gz
+                  sha256: f9e134944998ea48f4b85fb67eafdf3fc32ac1dacc68eae17c3ee3f4186f8813
+                - type: patch
+                  path: patches/geckofx/FixesForFlatpak.patch
+                  options:
+                      - --verbose
+    ############################################################################
+    #      - name: gtklp
+    #        # requires gtk+-2.0, which is too old to be provided
+    #        buildsystem: autotools
+    #        sources:
+    #          - type: archive
+    #            archive-type: tar-gzip
+    #            url: https://sourceforge.net/projects/gtklp/files/gtklp/1.3.3/gtklp-1.3.3.src.tar.gz/download
+    #            sha512: ce6d37fa155857b0e47f9ed28e3b2e5180b650e821e1246d398692625e8aafeedf4869c1c7ba9d41c180856c716989a13ac98ab48cb8c8f9a73e90c4da2c6546
+    ############################################################################
+    # gnome-terminal, terminator, xfce4-terminal, xterm ?
+    ############################################################################
+    - name: ArtOfReading
+      sources:
+          # This .deb contains only PNG image files with a few text files such
+          # as an index and changelog.
+          - type: file
+            url: https://packages.sil.org/ubuntu/pool/main/a/art-of-reading3/art-of-reading3_3.3.1+bionic1_all.deb
+            sha256: 96d99d60c1838aaac8461e3568185cc287206d2852bd3e11d94eef5d9d6a3f15
+      buildsystem: simple
+      build-commands:
+          # Extract art-of-reading3 images into /app instead of /usr
+          - |
+              for package in *.deb; do
+                mkdir "${package}-dir" &&
+                  (cd "${package}-dir" && ar x ../"${package}") &&
+                  tar -C /app -x -f "${package}-dir"/data.tar.xz \
+                    --strip-components=2 ./usr
+              done
+
+################################################################################
+# Leave this section commented out to simplify future work.
+#    - name: local-final-adjustments
+#      # This allows for adding and testing additional files without re-building
+#      # the other modules. For example, experimental changes to libpalaso or
+#      # Bloom could be copied to $BLOOMLIB. Copy with --force,
+#      # since the destination files may be marked as read-only.
+#      buildsystem: simple
+#      build-options:
+#          env:
+#              BLOOMLIB: "/app/lib/bloom-desktop"
+#      build-commands:
+#          - |
+#              set -xueo pipefail
+#              #cp --verbose --force local-palaso-output/SIL.Core.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Core.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Core.Desktop.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Core.Desktop.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Media.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Media.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.GeckoBrowserAdapter.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.GeckoBrowserAdapter.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.Keyboarding.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.Keyboarding.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.WritingSystems.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.Windows.Forms.WritingSystems.pdb $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.WritingSystems.dll $BLOOMLIB
+#              #cp --verbose --force local-palaso-output/SIL.WritingSystems.pdb $BLOOMLIB
+#              cp --verbose --force local-bloom-output/Bloom.exe $BLOOMLIB
+#              cp --verbose --force local-bloom-output/Bloom.exe.config $BLOOMLIB
+#              cp --verbose --force local-bloom-output/Bloom.pdb $BLOOMLIB
+#              #cp --verbose --force local-geckofx-output/*.* $BLOOMLIB
+#      sources:
+#          #- type: dir
+#          #  path: /d/github/palaso/output/Debug/net461
+#          #  dest: local-palaso-output
+#          - type: dir
+#            path: /d/github/BloomDesktop/output/Debug
+#            dest: local-bloom-output
+#          #- type: dir
+#          #  path: /d/steve/gecko/60/geckofx/Geckofx-Winforms/bin/Debug_Linux
+#          #  dest: local-geckofx-output

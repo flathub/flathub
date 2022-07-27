@@ -1,0 +1,97 @@
+#!/usr/bin/env xonsh
+
+# Generate flatpak sources from nuget package.config files
+# This is customized for BloomDesktop.
+#
+# Copyright (c) 2021 SIL International. MIT License.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Output a flatpak yaml sources list from one or more nuget packages.config
+# files. NuGet packages will be downloaded (and cached) to compute their
+# checksums.
+# Usage:
+#   compose-nuget-sources output-sources.yml dest-dir-in-build dir1/packages.config [dir2/packages.config ...]
+# Dependencies: xonsh wget
+
+import os
+import sys
+import collections
+import xml.etree.ElementTree as ET
+$RAISE_SUBPROC_ERROR = True
+
+# trace on
+# $XONSH_TRACE_SUBPROC = True
+
+outputSourcesPath = sys.argv[1]
+destDir = sys.argv[2]
+packagesConfigPaths = sys.argv[3:]
+
+PackageAndVersionSpecification = collections.namedtuple('PackageAndVersionSpecification', ['name', 'version'])
+
+nugetSources = []
+# packageSet should specify pairs of dependencies and versions, with no
+# duplicates. For example:
+#   SomeLib.Foo version 11
+#   SomeLib.Foo version 12
+#   OtherLib version 3
+packageSet = set()
+if 'XDG_CACHE_HOME' in ${...}:
+    cacheHome = $XDG_CACHE_HOME
+else:
+    cacheHome = '{}/.cache'.format($HOME)
+cachePath = '{}/nuget-sources-flatpak'.format(cacheHome)
+mkdir -p @(cachePath)
+
+def processPackagesConfig(path):
+    packagesTree = ET.parse(path)
+    root = packagesTree.getroot()
+    packageElements = root.findall('./package')
+    for package in packageElements:
+        name = package.attrib['id']
+        version = package.attrib['version']
+        packageSet.add(PackageAndVersionSpecification(name=name, version=version))
+
+def writeSourceRecord(name, version):
+    url = 'https://api.nuget.org/v3-flatcontainer/{}/{}/{}.{}.nupkg'.format(name.lower(), version.lower(), name.lower(), version.lower())
+    wget --timestamping --directory-prefix=@(cachePath) @(url)
+    filename = '{}.{}.nupkg'.format(name, version)
+    pathToCachedFile = '{}/{}'.format(cachePath, filename.lower())
+    sha512 = $(sha512sum @(pathToCachedFile) | perl -p -e 's/ .*$//').rstrip()
+    nugetSources.append('- type: file')
+    nugetSources.append('  url: {}'.format(url))
+    if (name == 'SIL.BuildTasks' || name == 'SIL.BuildTasks.AWS'):
+        nugetSources.append('  dest-filename: {}.nupkg'.format(name))
+    else:
+        nugetSources.append('  dest-filename: {}'.format(filename))
+    nugetSources.append('  sha512: {}'.format(sha512))
+    nugetSources.append('  dest: {}'.format(destDir))
+
+for packagesConfigPath in packagesConfigPaths:
+    processPackagesConfig(packagesConfigPath)
+
+for packageSpecification in sorted(packageSet):
+    name = packageSpecification.name
+    version = packageSpecification.version
+    writeSourceRecord(name, version)
+
+with open(outputSourcesPath, 'w') as out:
+    out.write('# Generated file\n')
+    for line in nugetSources:
+        out.write(line + '\n')
