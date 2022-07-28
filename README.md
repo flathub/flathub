@@ -32,4 +32,4 @@ flatpak uninstall de.bforartists.Bforartists
 - Add a new release under `releases`. A description and URL is not required but recommended.
 
 ### A note on updating
-This flatpak is based on the [Flathub Blender build files](https://github.com/flathub/org.blender.Blender). They should periodically be rebased on newer versions of the offical Blender build files to stay in line with the latest changes.
+This flatpak is based on the [Flathub Blender build files](https://github.com/flathub/org.blender.Blender). These files should periodically be rebased on newer versions of the Flathub Blender build files to stay in line with the latest changes.
