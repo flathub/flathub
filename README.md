@@ -33,3 +33,7 @@ Currently these are the patches applied:
 `ldopts.patch` enables an option for the linker to strip debug symbols.
 
 `use-system-lib-flac.patch` works around FORTIFY_SOURCE compiler option that causes errors in the included libflac.
+
+### Running
+
+A default minimal ini file is in the sandboxed /etc/mame/mame.ini.  Run MAME from the command line with the -createconfig argument to create a new mame.ini in your home directory.  Modify this new mame.ini to configure MAME.
