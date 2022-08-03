@@ -54,12 +54,12 @@ finish-args:
     # libGL needs this
     - --device=dri
 command: bloom
-only-arches:
-    - x86_64
 
 modules:
     - name: BloomDesktop
       buildsystem: simple
+      only-arches:
+          - x86_64
       build-options:
           append-path: /usr/lib/sdk/node16/bin
           env:
@@ -213,10 +213,7 @@ modules:
                     cp --verbose --force /app/geckofx/Geckofx-Winforms.dll "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
                     cp --verbose --force /app/geckofx/Geckofx-Winforms.dll.config "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
                     cp --verbose --force /app/geckofx/Geckofx-Winforms.pdb "${NUGET_DEST}"/Geckofx60.64.Linux.60.0.51/lib/net40/
-            cleanup:
-                # the leading /app is assumed
-                - /libpalaso
-                - /geckofx
+                    rm -rf /app/libpalaso /app/geckofx
           # Bloom dependencies
           # Find updates via Bloom.git with a command like:
           #   git log -p -- build/getDependencies-Linux.sh
@@ -235,22 +232,19 @@ modules:
           - bloom-sources-browser-node.json
           - type: patch
             path: patches/BloomDesktop/BuildFileFixesForFlatpak.patch
-            options:
-                - --verbose
           - type: patch
             path: patches/BloomDesktop/CodeFixesForFlatpak.patch
-            options:
-                - --verbose
           - type: dir
             path: ./extra
             dest: local-extra
       modules:
+          # python2.7 is needed for mono5-sil
+          - shared-modules/python2.7/python-2.7.json
           - name: mono5-sil
             config-opts:
                 # Build successfully with gcc >9.
                 - --enable-minimal=aot
             cleanup:
-                # Not cleaning away lib/mono/4.5/mcs* because mcs.exe is used in SFM import.
                 - "/include"
                 - "*.a"
                 - "/bin/gtk-demo"
@@ -281,32 +275,6 @@ modules:
                 - type: patch
                   # mono uses a hard-coded path to ping. Help it find ping in /app.
                   path: patches/mono/mono-ping-path.patch
-            modules:
-                - name: python-2.7
-                  config-opts:
-                      - --enable-shared
-                      - --with-system-expat
-                      - --with-system-ffi
-                      - --enable-unicode=ucs4
-                  post-install:
-                      - chmod 644 ${FLATPAK_DEST}/lib/libpython2.7.so.1.0
-                  cleanup:
-                      - "/lib/python2.7/test"
-                      - "/lib/python2.7/unittest"
-                      - "/lib/python2.7/distutils/tests"
-                      - "/lib/python2.7/idlelib/idle_test"
-                      - "/lib/python2.7/lib2to3"
-                      - "/include"
-                      - "*.a"
-                      - "*.o"
-                      - "/bin/python"
-                      - "/lib/debug/source/python-2.7"
-                      - "/lib/debug/bin/python2.7*"
-                      - "/share/man/man1/python*.1"
-                  sources:
-                      - type: archive
-                        url: https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
-                        sha256: b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
           - name: gtk-sharp3
             sources:
                 - type: git
@@ -340,6 +308,28 @@ modules:
                 - type: file
                   url: http://linux.lsdev.sil.org/ubuntu/pool/main/m/mono5-sil-msbuild/mono5-sil-msbuild_15.8+xamarinxplat.2018.07.31.22.43-0xamarin5+ubuntu1804b1_all.deb
                   sha256: 758274d8bc438f325fc5fc808c0482ab50eb2bdaf02f61747888e190760753de
+          # giflib is needed for libgdiplus
+          - name: giflib
+            # Note that for some reason, giflib won't build with the autotools buildsystem.
+            # The build stops with error
+            #   /run/build/giflib/missing: line 81: aclocal-1.15: command not found
+            # This happens whether or not the perl command is applied to modify configure.ac.
+            buildsystem: simple
+            build-commands:
+                # Skip building documentation
+                - perl -pi -e 's#doc/Makefile##' configure.ac
+                - ./autogen.sh --prefix=/app
+                - make
+                - make install
+            cleanup:
+                - "/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://github.com/mirrorer/giflib.git
+                  commit: fa37672085ce4b3d62c51627ab3c8cf2dda8009a
+                  # Note that libgdiplus needs giflib to have GifQuantizeBuffer.
+                  # Some giflibs need adjustment to have that built in.
           - name: libgdiplus
             build-options:
                 env:
@@ -354,28 +344,34 @@ modules:
                   url: https://github.com/sillsdev/libgdiplus
                   tag: merge/5.6.0
                   commit: b9c581ba87da89651d5ec56c5da0960ab739a63a
-            modules:
-                - name: giflib
-                  # Note that for some reason, giflib won't build with the autotools buildsystem.
-                  # The build stops with error
-                  #   /run/build/giflib/missing: line 81: aclocal-1.15: command not found
-                  # This happens whether or not the perl command is applied to modify configure.ac.
-                  buildsystem: simple
-                  build-commands:
-                      # Skip building documentation
-                      - perl -pi -e 's#doc/Makefile##' configure.ac
-                      - ./autogen.sh --prefix=/app
-                      - make
-                      - make install
-                  cleanup:
-                      - "/include"
-                      - "*.a"
-                  sources:
-                      - type: git
-                        url: https://github.com/mirrorer/giflib.git
-                        commit: fa37672085ce4b3d62c51627ab3c8cf2dda8009a
-                        # Note that libgdiplus needs giflib to have GifQuantizeBuffer.
-                        # Some giflibs need adjustment to have that built in.
+          # chmlib is needed for xchm
+          - name: chmlib
+            cleanup:
+                - "/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://github.com/jedwing/CHMLib
+                  # Latest commit, from 2009-07-03.
+                  commit: 2bef8d063ec7d88a8de6fd9f0513ea42ac0fa21f
+                - type: shell
+                  commands:
+                      - autoreconf --install
+          # wxWidgets is needed for xchm
+          - name: wxWidgets
+            cleanup:
+                - "/include"
+                - "/lib/wx/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://github.com/wxWidgets/wxWidgets
+                  # v3.0.4 is used in Ubuntu 20.04.
+                  # v3.1.1+ is needed for xchm to write to XDG_CONFIG_HOME.
+                  # However, v3.1.0 appears to introduce a problem rendering the
+                  # chm html. v3.0.5.1 still worked, rendering the html.
+                  tag: v3.0.4
+                  commit: 721d62adde3f8ba8704a9cf56efeb050f652dfbf
           - name: xchm
             # Help file viewer
             cleanup:
@@ -394,33 +390,6 @@ modules:
                   # ~/.xchm. This won't be needed after upgrading to a newer xchm
                   # version and wxWidgets v3.1.1+.
                   path: patches/xchm/no-config.patch
-            modules:
-                - name: chmlib
-                  cleanup:
-                      - "/include"
-                      - "*.a"
-                  sources:
-                      - type: git
-                        url: https://github.com/jedwing/CHMLib
-                        # Latest commit, from 2009-07-03.
-                        commit: 2bef8d063ec7d88a8de6fd9f0513ea42ac0fa21f
-                      - type: shell
-                        commands:
-                            - autoreconf --install
-                - name: wxWidgets
-                  cleanup:
-                      - "/include"
-                      - "/lib/wx/include"
-                      - "*.a"
-                  sources:
-                      - type: git
-                        url: https://github.com/wxWidgets/wxWidgets
-                        # v3.0.4 is used in Ubuntu 20.04.
-                        # v3.1.1+ is needed for xchm to write to XDG_CONFIG_HOME.
-                        # However, v3.1.0 appears to introduce a problem rendering the
-                        # chm html. v3.0.5.1 still worked, rendering the html.
-                        tag: v3.0.4
-                        commit: 721d62adde3f8ba8704a9cf56efeb050f652dfbf
           - name: wget
             buildsystem: autotools
             cleanup:
@@ -442,22 +411,22 @@ modules:
                 - type: archive
                   url: https://software.sil.org/downloads/r/andika/AndikaNewBasic-5.500.zip
                   sha512: 53513c782889fd7e87903cab43f1e419a87cfbc425fd722b621cbdb1b1928584b5ce82ecc56e6f6aa1073ed30268993c46c451dfd8b198b430a54a5cf1eb10a1
+          # libxmu is needed for wmctrl
+          - name: libxmu
+            buildsystem: autotools
+            cleanup:
+                - "/include"
+                - "*.a"
+            sources:
+                - type: git
+                  url: https://gitlab.freedesktop.org/xorg/lib/libxmu.git
+                  commit: e9efe2d027b4c46cf6834cc532222f8ad1d1d3c3
           - name: wmctrl
             buildsystem: autotools
             sources:
                 - type: git
                   url: https://github.com/Conservatory/wmctrl.git
                   commit: 7c1dcbaa221a16e8a9765bf2b14d61d640a52304
-            modules:
-                - name: libxmu
-                  buildsystem: autotools
-                  cleanup:
-                      - "/include"
-                      - "*.a"
-                  sources:
-                      - type: git
-                        url: https://gitlab.freedesktop.org/xorg/lib/libxmu.git
-                        commit: e9efe2d027b4c46cf6834cc532222f8ad1d1d3c3
           - name: libtidy-sil
             buildsystem: cmake
             config-opts:
@@ -523,6 +492,19 @@ modules:
                   url: https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick/1.3.35/GraphicsMagick-1.3.35.tar.bz2
                   sha256: 7fd0b49903eb35df4ab5ca76139ab3f023f47485a4913fbdcf5c642c6e5f01fc
           - python3-aeneas.yml
+          # msbuild is needed for building libpalaso.yml and geckofx.  It's the msbuild tied to the mono6 sdk.  (I don't know why it isn't part of that sdk!)
+          # We already have another msbuild (mono5-sil-msbuild) tied to mono5-sil which is installed in /app for building BloomDesktop.
+          - name: msbuild
+            sources:
+                - type: file
+                  url: https://download.mono-project.com/repo/ubuntu/pool/main/m/msbuild/msbuild_16.10.1+xamarinxplat.2021.05.26.14.00-0xamarin2+ubuntu2004b1_all.deb
+                  sha256: 32f1eba1c2df67bc55920cd45ce3689c32a5c705ae01fd7ead52ca180221b469
+            buildsystem: simple
+            build-commands:
+                - ar x msbuild_*.deb
+                - tar xf data.tar.xz
+                - sed -e 's|/usr/|/usr/lib/sdk/mono6/|g' -i usr/bin/msbuild
+                - cp -a usr/. /usr/lib/sdk/mono6/
           - libpalaso.yml
           - name: ca-certificates
             sources:
@@ -560,8 +542,6 @@ modules:
                   commit: a77e5ba72728630ee02b95892d5fd0c219f87c98
                 - type: patch
                   path: patches/geckofx/FixesForFlatpak.patch
-                  options:
-                      - --verbose
     - name: ArtOfReading
       sources:
           # This .deb contains only PNG image files with a few text files such
@@ -570,6 +550,8 @@ modules:
             url: https://packages.sil.org/ubuntu/pool/main/a/art-of-reading3/art-of-reading3_3.3.1+bionic1_all.deb
             sha256: 96d99d60c1838aaac8461e3568185cc287206d2852bd3e11d94eef5d9d6a3f15
       buildsystem: simple
+      only-arches:
+          - x86_64
       build-commands:
           # Extract art-of-reading3 images into /app instead of /usr
           - |
