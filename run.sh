@@ -1,0 +1,1 @@
+exec /app/bin/$@
