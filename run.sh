@@ -1,1 +1,1 @@
-exec /app/bin/$@
+exec /app/bin/$@ -kotlin-home /app/lib/
