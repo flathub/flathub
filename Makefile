@@ -6,3 +6,6 @@ install:
 
 run:
 	flatpak run --user org.codeberg.dnkl.foot
+
+clean:
+	rm -rf build-dir

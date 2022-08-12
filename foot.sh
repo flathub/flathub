@@ -1,2 +1,2 @@
-export SHELL="flatpak-spawn --host --env=TERM=xterm-256color $(flatpak-spawn --host getent passwd $USER | awk -F : '{ print $7 }')"
-/app/bin/foot
+export SHELL="host-spawn $(flatpak-spawn --host getent passwd $USER | awk -F : '{ print $7 }')"
+/app/bin/foot --term=xterm-256color
