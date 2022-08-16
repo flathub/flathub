@@ -9,9 +9,8 @@ sdk-extensions:
 command: run.sh
 separate-locales: false
 finish-args:
-  - "--socket=session-bus"
   - "--socket=wayland"
-  - "--socket=x11"
+  - "--socket=fallback-x11"
   - "--share=ipc"
   - "--device=dri"
   - "--filesystem=home"
@@ -21,30 +20,6 @@ finish-args:
 build-options:
   append-path: /usr/lib/sdk/node16/bin
 modules:
-  # needs yarn to build the project
-  - name: yarn
-    buildsystem: simple
-    build-commands:
-      - "cp -a * /app"
-    # Only used for building, so clean it up afterwards.
-    cleanup:
-      - "*"
-    sources:
-      - type: archive
-        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.19/yarn-v1.22.19.tar.gz
-        sha256: 732620bac8b1690d507274f025f3c6cfdc3627a84d9642e38a07452cc00e0f2e
-  # convert icon for all sizes
-  - name: ImageMagick
-    config-opts:
-      - "--disable-static"
-      - "--disable-docs"
-      - "--with-pic"
-    cleanup:
-      - "*"
-    sources:
-      - type: archive
-        url: https://github.com/ImageMagick/ImageMagick/archive/7.1.0-45.tar.gz
-        sha256: 3df6ca6dff15a4e8a20b4593c60285a59e38890440494d91a344e5c0e2bb3eec
   # Podman Desktop sources
   - name: podman-desktop
     buildsystem: simple
@@ -67,15 +42,17 @@ modules:
       # Bundle app and dependencies
       - cp -a dist/linux*unpacked /app/main
       # add icons
-      - for s in {32,64,128,256,512}; do
-        convert "buildResources/icon.png" -resize "${s}" "${FLATPAK_ID}.png";
-        echo "generating ${FLATPAK_ID}.png";
-        install -p -Dm644 "${FLATPAK_ID}.png" -t "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/";
+      - for size in {32,64,128,256,512}; do
+          rsvg-convert -w $size -h $size -f png -o "${FLATPAK_ID}.png" "buildResources/icon.svg";
+          echo "generating ${FLATPAK_ID} png file for size ${size}";
+          install -p -Dm644 "${FLATPAK_ID}.png" -t "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/";
         done;
         # add scalable svg icon
       - install -p -Dm644 "buildResources/icon.svg" -t "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg";
       # add metainfo
       - install -Dm644 .flatpak-appdata.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml";
+      # Add version
+      - sed -e 's|</component>|<releases><release version="0.0.6" date="2022-08-10"></release></releases></component>|' -i "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml";
       # add desktop file
       - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
       # Install run script
@@ -91,5 +68,9 @@ modules:
         commands:
           # Wrapper to launch the app
           - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - if [ "${XDG_SESSION_TYPE}" == "wayland" ]; then
+          - zypak-wrapper.sh /app/main/podman-desktop --enable-features=UseOzonePlatform --ozone-platform=wayland "$@"
+          - else
           - zypak-wrapper.sh /app/main/podman-desktop "$@"
+          - fi
       - generated-sources.json
