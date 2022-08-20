@@ -1,0 +1,128 @@
+id: org.mmass.mMass
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: mmass
+finish-args:
+  - --socket=x11
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --filesystem=home
+
+modules:
+  - shared-modules/python2.7/python-2.7.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/SDL/sdl12-compat.json
+
+  - name: wxWidgets
+    buildsystem: autotools
+    config-opts:
+      - --disable-monolithic
+      - --disable-rpath
+      - --enable-geometry
+      - --enable-graphics_ctx
+      - --enable-optimise
+      - --enable-sound
+      - --enable-display
+      - --enable-unicode
+      - --with-gtk=3
+      - --with-python=/app/bin/python
+      - --with-opengl
+      - --with-gnomeprint
+      - --with-sdl
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/wxpython/wxPython-src-3.0.2.0.tar.bz2
+        sha256: d54129e5fbea4fb8091c87b2980760b72c22a386cb3b9dd2eebc928ef5e8df61
+      - type: shell
+        commands:
+          - cp /usr/share/gnu-config/config.sub .
+          - cp /usr/share/gnu-config/config.guess .
+
+  - name: wxPython
+    buildsystem: simple
+    build-commands:
+      - >-
+        cd wxPython; /app/bin/python setup.py
+        WXPORT=gtk3
+        UNICODE=1
+        EP_ADD_OPTS=1
+        EP_FULL_VER=0
+        NO_SCRIPTS=1
+        WX_CONFIG="/app/bin/wx-config --prefix=/app --no_rpath"
+        SYS_WX_CONFIG="wx-config --version=3.0.2.0 --toolkit=gtk3 --static=no"
+        build_ext --rpath=/app/lib
+        build
+      - >-
+        cd wxPython; /app/bin/python setup.py
+        WXPORT=gtk3
+        UNICODE=1
+        EP_ADD_OPTS=1
+        EP_FULL_VER=0
+        NO_SCRIPTS=1
+        WX_CONFIG="/app/bin/wx-config --prefix=/app --no_rpath"
+        SYS_WX_CONFIG="wx-config --version=3.0.2.0 --toolkit=gtk3 --static=no --unicode"
+        build_ext --rpath=/app/lib
+        install
+        --root=/
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/wxpython/wxPython-src-3.0.2.0.tar.bz2
+        sha256: d54129e5fbea4fb8091c87b2980760b72c22a386cb3b9dd2eebc928ef5e8df61
+
+  - name: numpy
+    buildsystem: simple
+    build-commands:
+      - /app/bin/python setup.py build
+      - /app/bin/python setup.py install --prefix=/app --root=/ --optimize=1
+    build-options:
+      env:
+        ATLAS: None
+        BLAS: /app/lib
+        LAPACK: /app/lib
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/84/fb/5e9dfeeb5d8909d659e6892c97c9aa66d3798fad50e1d3d66b3c614a9c35/numpy-1.7.1.tar.gz
+        sha256: 5525019a3085c3d860e6cfe4c0a30fb65d567626aafc50cf1252a641a418084a
+
+  - name: mmass
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: http://www.mmass.org/download/files/v5.5.0/mmass_v5.5.0_source.zip
+        sha256: e75e0792b51ed16f5b772f285b1be2031a0906fd35b02294752ccf816258508c
+      - type: shell
+        commands:
+          - sed -i 's/\r$//' license.txt
+          - sed -i -e '1i#!/usr/bin/python' gui/*.py
+          - sed -i -e '1i#!/usr/bin/python' mspy/*.py
+      - type: file
+        path: mMass.desktop
+      - type: file
+        path: mmass.appdata.xml
+    build-commands:
+      - pushd mspy && /app/bin/python setup.py build && mv -f build/lib.*/calculations.so ./calculations.so && popd
+    post-install:
+      - pushd mspy && /app/bin/python setup.py install --skip-build --prefix=/app --root=/ && popd
+      - mkdir -p /app/lib/python2.7/mmass/configs/
+      - mkdir -p /app/lib/python2.7/mmass/gui
+      - mkdir -p /app/lib/python2.7/mmass/mspy/
+      - mkdir -p /app/share/mmass/database
+      - install -Dm0755 mspy/*.py* /app/lib/python2.7/mmass/mspy
+      - install -Dm0755 mspy/*.so /app/lib/python2.7/mmass/mspy
+      - install -Dm0644 configs/*.xml /app/lib/python2.7/mmass/configs
+      - install -Dm0755 gui/*.py* /app/lib/python2.7/mmass/gui
+      - install -Dm0644 gui/images/gtk/icon_about.png /app/lib/python2.7/mmass/gui/images/gtk
+      - install -Dm0755 mmass.py* /app/lib/python2.7/mmass
+      - ln -s /app/lib/python2.7/mmass/mmass.py /app/bin/mmass
+      - sed -i -e '1i#!/usr/bin/python' /app/lib/python2.7/mmass/mmass.py
+      - find  /app/lib/python2.7/mmass -name "*.py" | xargs sed -i '1s|/usr/bin/python|/app/bin/python|'
+      - install -Dm0644 *.xml /app/share/mmass/database
+      - install -Dm0644 mMass.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm0644 mmass.appdata.xml /app/share/metainfo/${FLATPAK_ID}.appdata.xml
+      - install -Dm0644 gui/images/gtk/icon_128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm0644 gui/images/gtk/icon_256.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm0644 gui/images/gtk/icon_512.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
