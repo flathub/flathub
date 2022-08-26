@@ -1,4 +1,4 @@
 #!/bin/bash
 
 cd /app/bin/
-/app/bin/dynablaster
+exec /app/bin/dynablaster
