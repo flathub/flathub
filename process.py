@@ -79,12 +79,15 @@ def extend_firefox_source(json_object, sha256_dict, languages, version):
             break
 
 
-def merge_baseapp_modules(json_objects):
+def merge_baseapp(json_objects):
     with open('./BaseApp/org.mozilla.firefox.BaseApp.json', 'r') as fi:
-        json_obj = json.load(fi)
+        json_baseapp = json.load(fi)
         # Fixup
-        json_obj['modules'] = map(lambda s: s.replace('dbus-glib-0.110.json', 'dbus-glib.json') if isinstance(s, str) else s, json_obj['modules'])
-        json_objects['modules'].extend(json_obj)
+        json_baseapp['modules'] = map(lambda s: s.replace(
+            'dbus-glib-0.110.json', 'dbus-glib.json') if isinstance(s, str) else s, json_baseapp['modules'])
+        json_objects['modules'].extend(json_baseapp['modules'])
+        # Merge cleanup
+        json_objects['cleanup'] = json_baseapp['cleanup']
 
 
 if __name__ == '__main__':
@@ -111,6 +114,6 @@ if __name__ == '__main__':
     sha256_dict = build_sha256dict(version_str)
 
     MyJsonTapper('./in/org.mozilla.firefox_esr.json.template').tap(extend_firefox_source,
-                                                                   sha256_dict, languages, version_str).tap(merge_baseapp_modules).output('./org.mozilla.firefox_esr.json')
+                                                                   sha256_dict, languages, version_str).tap(merge_baseapp).output('./org.mozilla.firefox_esr.json')
     varsubst('./in/org.mozilla.firefox_esr.appdata.xml.template',
              './org.mozilla.firefox_esr.appdata.xml', VERSION=version_str, RELEASE_TIMESTAMP=info['date'])
