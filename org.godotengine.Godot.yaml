@@ -5,6 +5,7 @@ default-branch: stable
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.openjdk11
+  - org.freedesktop.Sdk.Extension.dotnet6
 command: godot
 
 build-options:
@@ -15,14 +16,20 @@ build-options:
         # (causes issues on other architectures)
         SCONS_FLAGS_EXTRA: use_lto=yes
 
+  append-path: /usr/lib/sdk/dotnet6/bin
+
+  append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+
   env:
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet6/lib/pkgconfig
+
     # Will be appended to the version string displayed in the editor and command-line help
     BUILD_NAME: flathub
 
     # SCons flags common to all builds
     # Shouldn't be quoted when used as it's a single string, not an array
     SCONS_FLAGS: >
-      platform=x11
+      module_mono_enabled=yes
       CCFLAGS=-I/app/include
       prefix=/app
       unix_global_settings_path=/app
@@ -37,6 +44,7 @@ build-options:
       builtin_libvpx=no
       builtin_zlib=no
       udev=no
+
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -54,39 +62,49 @@ modules:
     build-commands:
       - /usr/lib/sdk/openjdk11/install.sh
 
+  - name: dotnet
+    buildsystem: simple
+    build-options:
+        arch:
+            x86_64:
+                env:
+                    RUNTIME: linux-x64
+    build-commands:
+      - /usr/lib/sdk/dotnet6/bin/install-sdk.sh
+      - /usr/lib/sdk/dotnet6/enable.sh
+      - ln -s /usr/lib/sdk/dotnet6/lib/packs/ /app/lib/dotnet/
+
   - name: scons
     buildsystem: simple
     cleanup: ['*']
-
     sources:
       - type: archive
         sha256: 3d43b2303a924816ea0e1b345ff04c9b3e27b53eadf0f26012fc0c29b019685f
         url: https://downloads.sourceforge.net/project/scons/scons/4.4.0/SCons-4.4.0.tar.gz
-
     build-commands:
       - python3 setup.py install --prefix=/app
 
   - name: godot-tools
     buildsystem: simple
-
     sources:
       - type: archive
-        sha256: 22a47065392b8a2a19690db42085b2756c2f67996bd24688cb17307f8a4b59c8
-        url: https://downloads.tuxfamily.org/godotengine/3.5/godot-3.5-stable.tar.xz
-
+        sha256: d5c0edbef00a5cb4e84bd050004bba5b9e85a195bb6548d3ec75850fb2e6804a
+        url: https://downloads.tuxfamily.org/godotengine/4.0/alpha15/godot-4.0-alpha15.tar.xz
       - type: script
         dest-filename: godot.sh
         commands:
           - export APPDATA="$XDG_DATA_HOME"
           - export PATH="/app/jre/bin:$PATH"
           - /app/bin/godot-bin "$@"
-
       - type: file
         path: org.godotengine.Godot.appdata.xml
-
     build-commands:
-      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA tools=yes target=release_debug -j "$FLATPAK_BUILDER_N_JOBS"
-      - install -D -m755 bin/godot.x11.opt.tools.* /app/bin/godot-bin
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA platform=linuxbsd tools=yes mono_glue=no target=release_debug -j "$FLATPAK_BUILDER_N_JOBS"
+      - bin/godot.linuxbsd.opt.tools.* --generate-mono-glue modules/mono/glue
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA platform=linuxbsd tools=yes mono_glue=yes target=release_debug -j "$FLATPAK_BUILDER_N_JOBS"
+      - modules/mono/build_scripts/build_assemblies.py --godot-output-dir bin --push-nupkgs-local ~/MyLocalNugetSource
+      - install -D -m755 bin/godot.linuxbsd.opt.tools.* /app/bin/godot-bin
+      - install -D -m755 bin/GodotSharp /app/bin/GodotSharp
       - install -D -m755 godot.sh /app/bin/godot
       - desktop-file-edit --set-icon=$FLATPAK_ID misc/dist/linux/$FLATPAK_ID.desktop
       - install -Dm644 misc/dist/linux/$FLATPAK_ID.desktop /app/share/applications/$FLATPAK_ID.desktop
