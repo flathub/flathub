@@ -1,0 +1,236 @@
+---
+app-id: pm.mirko.Atoms
+runtime: org.gnome.Platform
+runtime-version: '42'
+sdk: org.gnome.Sdk
+command: atoms
+
+finish-args:
+- "--share=network"
+- "--share=ipc"
+- "--socket=fallback-x11"
+- "--device=dri"
+- "--socket=wayland"
+- "--allow=devel"  # this make proot works
+# - "--talk-name=org.freedesktop.Flatpak"  # set this for distrobox support
+
+add-extensions:
+  org.gnome.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: "42"
+
+  org.gnome.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: "42"
+    no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 21.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+  append-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
+
+sdk-extensions:
+  - org.gnome.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+  - org.freedesktop.Sdk.Extension.golang
+
+cleanup:
+- "/include"
+- "/lib/pkgconfig"
+- "/man"
+- "/share/doc"
+- "/share/gtk-doc"
+- "/share/man"
+- "/share/pkgconfig"
+- "*.la"
+- "*.a"
+
+modules:
+- name: talloc
+  buildsystem: simple
+  build-commands:
+    - ./configure --prefix=/app
+    - make
+    - make install
+  sources:
+    - type: archive
+      url: https://www.samba.org/ftp/talloc/talloc-2.3.4.tar.gz
+      sha256: 179f9ebe265e67e4ab2c26cad2b7de4b6a77c6c212f966903382869f06be6505
+
+- name: proot
+  buildsystem: simple
+  build-commands:
+    - mv uthash/src/* src
+    - make -C src proot
+    - install -m755 -d /app/bin
+    - install -m755 -d /app/lib
+    - install -m755 src/proot /app/bin
+  sources:
+    - type: archive
+      url: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz
+      sha256: e10382ab75518bad8319eb922ad04f907cb20cccb451a3aa980c9d005e661acc
+      dest: uthash
+    - type: git
+      url: https://github.com/termux/proot
+      commit: 5c462a6ecfddd629b1439f38fbb61216d6fcb359
+
+- name: libadwaita
+  buildsystem: meson
+  config-opts:
+  - -Dexamples=false
+  - -Dtests=false
+  sources:
+  - type: git
+    url: https://gitlab.gnome.org/GNOME/libadwaita.git
+    tag: 1.2.alpha
+    commit: 9150f4016a04064a00733b78391c8e6aad49bee8
+  modules:
+  - name: libsass
+    buildsystem: meson
+    sources:
+    - type: git
+      url: https://github.com/lazka/libsass.git
+      branch: meson
+  - name: sassc
+    buildsystem: meson
+    sources:
+    - type: git
+      url: https://github.com/lazka/sassc.git
+      branch: meson
+
+  - name: vte
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=false
+      - -Dvapi=false
+      - -Dgtk4=true
+      - -Dgtk3=false
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/vte.git
+        commit: 3ed53bfaa7344ce5b7727a60a2d33315b15201e5
+
+# - name: fakeroot
+#   buildsystem: simple
+#   build-commands:
+#     - ./configure --prefix=/app
+#     - make
+#     - make install
+#   sources:
+#     - type: archive
+#       url: https://deb.debian.org/debian/pool/main/f/fakeroot/fakeroot_1.29.orig.tar.gz
+#       sha256: 8fbbafb780c9173e3ace4a04afbc1d900f337f3216883939f5c7db3431be7c20
+
+- name: servicectl
+  buildsystem: simple
+  build-commands:
+    - install -m755 serviced /app/bin
+    - install -m755 servicectl /app/bin
+  sources:
+    - type: git
+      url: https://github.com/AtomsDevs/servicectl.git
+      commit: fda22d97a65bb881d83f4ba10a78ce54867eeed4
+
+- name: atoms-core
+  buildsystem: simple
+  build-commands:
+    - python3 setup.py install --prefix=/app --root=/
+  sources:
+    - type: git
+      url: https://github.com/AtomsDevs/atoms-core.git
+      commit: 7fbd7c193bbc0bcb76458d1a5370e1bc20e80e07
+  modules:
+  - name: orjson
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix /app --no-deps orjson-*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/d6/79/174c198de7beb2f5ce06c41ecafb1aafc0714bb61a051ad9dfbc2fed76e8/orjson-3.7.8-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 7ef66e7c47e9531dfa3b3ffb791b548c84903570b0914b01acc5eeb56ff5bc33
+  - name: python-requests
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/psf/requests/archive/refs/tags/v2.28.0.tar.gz
+        sha256: 6b757ca284d8dc192794010c960b0cf405fcc7aed9ed2e04a8269dc41b1231ad
+  - name: python-urllib3
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/urllib3/urllib3/archive/refs/tags/1.26.9.tar.gz
+        sha256: 5860049db8811e7a26e5f228359522814dc8159e6ec4f352b1b596e0dee80503
+  - name: python-chardet
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/chardet/chardet/archive/4.0.0.tar.gz
+        sha256: 67bbe3eb02691d38831ddf2719c40fe09381bc17f15321946f6cd71dc274e530
+  - name: python-certifi
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/certifi/python-certifi/archive/refs/tags/2021.10.08.tar.gz
+        sha256: 51c2cf76f7f2582d9c4eb5440bb311ef523ba0b319d0a973450ecebfb6802a3a
+  - name: python-idna
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py install --prefix=/app --root=/
+    sources:
+      - type: archive
+        url: https://github.com/kjd/idna/archive/refs/tags/v3.3.tar.gz
+        sha256: 34b145ffe35b7872e9a3e0abc3a3a8330db90a0fd58db978725fd05c5c7d9f88
+
+- name: atoms-cli
+  buildsystem: simple
+  build-commands:
+    - python3 setup.py install --prefix=/app --root=/
+  sources:
+    - type: git
+      url: https://github.com/AtomsDevs/atoms-cli.git
+      commit: f0cf3718b517074ff63e1e7b54bf5d09d4b6e826
+  modules:
+    - name: python-tabulate
+      buildsystem: simple
+      build-commands:
+        - python3 setup.py install --prefix=/app --root=/
+      sources:
+        - type: archive
+          url: https://github.com/astanin/python-tabulate/archive/refs/tags/v0.8.10.tar.gz
+          sha256: 7a81a625d3cdfdd7c9db25f992410f46e7cbb20ed151126fceeac95586b90284
+
+- name: atoms
+  builddir: true
+  buildsystem: meson
+  build-commands:
+    - mkdir -p /app/lib/i386-linux-gnu
+    - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+    - mkdir -p /app/lib/i386-linux-gnu/GL
+  sources:
+    - type: git
+      url: https://github.com/AtomsDevs/Atoms.git
+      commit: 1baf5f55a4a8bb4fae7f32593057856780462067
