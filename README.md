@@ -48,8 +48,7 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 
 ## Limitations
 
-- No C#/Mono support
-  ([#8](https://github.com/flathub/org.godotengine.Godot/issues/8)).
+- _INCOMPLETE_
 
 ## Building from source
 
@@ -60,7 +59,7 @@ then enter the following commands in a terminal:
 ```bash
 git clone --recursive https://github.com/flathub/org.godotengine.Godot.git
 cd org.godotengine.Godot/
-flatpak install --user flathub org.freedesktop.Sdk//21.08 -y
+flatpak install --user flathub org.freedesktop.Sdk//21.08 org.freedesktop.Sdk.Extension.dotnet6//21.08 -y
 flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot.yaml
 ```
 
@@ -69,3 +68,13 @@ run it using your desktop environment's application launcher.
 
 You can speed up incremental builds by installing [ccache](https://ccache.dev/)
 and specifying `--ccache` in the flatpak-builder command line (before `builddir`).
+
+### Updating
+
+For updating this Flatpak to newer versions of Godot, the source code of Godot for that version must be downloaded and extracted to some location. The path to it must be updated within the `generate_sources.py` script. It is also necessary to run `generate_sources.py` in the following way:
+
+```
+python3 generate_sources.py
+```
+
+If `csproj` files that aren't included within the script include new packages, they must be added to the script. The generated source must also be added to the manifest under the `godot-tools` module.
