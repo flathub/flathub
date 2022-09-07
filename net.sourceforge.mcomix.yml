@@ -1,0 +1,96 @@
+app-id: net.sourceforge.mcomix
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+rename-icon: mcomix
+rename-desktop-file: mcomix.desktop
+rename-appdata-file: mcomix.appdata.xml
+command: mcomix
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # need, for own file chooser
+  - --filesystem=host:ro
+
+modules:
+  - name: 7-zip
+    buildsystem: simple
+    build-commands:
+      - |
+        for bundle in Alone2 SFXCon; do
+          pushd CPP/7zip/Bundles/${bundle}
+          make -j ${FLATPAK_BUILDER_N_JOBS} -f ../../cmpl_gcc.mak
+          popd
+        done
+      - install -Dm755 CPP/7zip/Bundles/Alone2/b/g/7zz   $FLATPAK_DEST/bin/7z
+      - install -Dm755 CPP/7zip/Bundles/SFXCon/b/g/7zCon $FLATPAK_DEST/bin/7zCon.sfx
+
+    sources:
+      - type: archive
+        strip-components: 0
+        url: https://7-zip.org/a/7z2201-src.tar.xz
+        sha256: 393098730c70042392af808917e765945dc2437dee7aae3cfcc4966eb920fbc5
+
+  - name: unrar
+    no-autogen: true
+    build-options:
+      strip: true
+    make-install-args:
+      - DESTDIR=$(FLATPAK_DEST)
+    sources:
+      - type: archive
+        url: "https://www.rarlab.com/rar/unrarsrc-5.8.3.tar.gz"
+        sha256: 3591685c8f5bbcb0be09de3d0a0544adb88966b9cccb80986f6cd2b534fd91a6
+
+  - name: mcomix
+    buildsystem: simple
+    build-commands:
+      - python ./setup.py install --single-version-externally-managed --root '/' --prefix $FLATPAK_DEST 
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/mcomix/MComix-2.0.2/mcomix-2.0.2.tar.gz
+        sha256: ef38d0713e56a07c72f98cc20c9eacda780e39f3b82fd7b1baa06a69c79c0a58
+
+      - type: patch
+        path: appdata.patch
+
+    modules:
+      - name: pygobject
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://gitlab.gnome.org/GNOME/pygobject/-/archive/3.42.2/pygobject-3.42.2.tar.gz
+            sha256: 56e6833f875bfe55409c780b9c87a9fc426c1cd55b3c65836de9d384d206201f
+            x-checker-data:
+              type: anitya
+              project-id: 13158
+              stable-only: true
+              url-template: https://gitlab.gnome.org/GNOME/pygobject/-/archive/$version/pygobject-$version.tar.gz
+        modules:
+          - name: pycairo
+            buildsystem: meson
+            sources:
+              - type: archive
+                url: https://github.com/pygobject/pycairo/archive/v1.21.0/pycairo-v1.21.0.tar.gz
+                sha256: 5e88e718b58751c96aa496914dd1b6a0531488f501cedfb6cd40bb307d69b88c
+                x-checker-data:
+                  type: anitya
+                  project-id: 13166
+                  stable-only: true
+                  url-template: https://github.com/pygobject/pycairo/archive/v$version/pycairo-v$version.tar.gz
+
+      - name: python3-Pillow
+        buildsystem: simple
+        build-commands:
+          - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "Pillow>=6.0.0" --no-build-isolation
+        sources:
+        - type: file
+          url: https://files.pythonhosted.org/packages/8c/92/2975b464d9926dc667020ed1abfa6276e68c3571dcb77e43347e15ee9eed/Pillow-9.2.0.tar.gz
+          sha256: 75e636fd3e0fb872693f23ccb8a5ff2cd578801251f3a4f6854c6a5d437d3c04
+          x-checker-data:
+            type: pypi
+            name: Pillow
+
