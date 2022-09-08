@@ -1,0 +1,68 @@
+app-id: org.fsnebula.Knossos
+runtime: org.kde.Platform
+runtime-version: '5.15-21.08'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '5.15-21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+  - org.freedesktop.Sdk.Extension.rust-stable
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+command: knossos
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --allow=bluetooth
+  - --share=network
+  - --filesystem=host
+build-options:
+    append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin
+    env:
+        XDG_CACHE_HOME: /run/build/knossos/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node18
+modules:
+    - python3-requirements.json
+    - p7zip.yml
+    - name: fuseless
+      buildsystem: simple
+      build-options:
+        env:
+          CARGO_HOME: /run/build/fuseless/cargo
+      build-commands:
+        - cargo --offline fetch --manifest-path Cargo.toml --verbose
+        - cargo --offline build --release --verbose
+        - install -Dm755 target/release/libfuseless.so /app/lib/
+        - ln -s /app/lib/libfuseless.so /app/lib/libfuse.so.2
+      sources:
+        - type: git
+          path: /home/phantomhoover/code/fuseless
+          branch: master
+        - cargo-sources.json
+    - name: knossos
+      buildsystem: simple
+      build-commands:
+        - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+        - yarn --offline
+        - python configure.py
+        - ninja resources
+        - python setup.py install --prefix=/app --optimize=1
+        - install -Dm644 knossos.desktop /app/share/applications/org.fsnebula.Knossos.desktop
+        - install -Dm644 knossos/data/hlp.png /app/share/icons/hicolor/256x256/apps/org.fsnebula.Knossos.png
+        - install -Dm644 org.fsnebula.Knossos.metainfo.xml /app/share/metainfo/
+        - install -Dm755 bin/knossos /app/bin/
+      sources:
+        - type: git
+          url: https://github.com/PhantomHoover/old-knossos
+          commit: ac0bc0488eabb74a260b587b9833f35058e406d3
+        - type: file
+          path: knossos.desktop
+        - type: file
+          path: org.fsnebula.Knossos.metainfo.xml
+        - type: file
+          path: knossos
+          dest: bin/
+        - yarn-pkgs.json
