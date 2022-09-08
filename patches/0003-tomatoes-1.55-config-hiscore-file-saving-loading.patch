@@ -1,0 +1,171 @@
+Subject: Fix code for loading / saving config and hiscore file
+
+--- a/include/config.h	2016-11-06 18:39:10.034679787 +0100
++++ b/include/config.h	2016-11-06 18:40:15.210067898 +0100
+@@ -30,6 +30,8 @@
+ #ifndef CONFIG_H
+ #define CONFIG_H
+ 
++#include <string>
++
+ // Config structure
+ struct CONFIG {
+ 	int vid_w;				// Video mode width
+@@ -54,19 +56,19 @@
+ 	int moving_style[2];	// Moving style (1 == relative, 2 == absolute)
+ };
+ 
+-
+-// Helper function which returns suitable path for the
+-// config file. It first checks the user's home directory,
+-// and if that fails it uses the CONFIG_DIR defined in the
+-// makefile.
+-const char *get_config_location(bool write = false);
++
++// Helper function which returns suitable path for the
++// config file. It first checks the user's home directory,
++// and if that fails it uses the CONFIG_DIR defined in the
++// makefile.
++std::string get_config_location(bool write = false);
+ 
+ 
+ // Load config from file
+-void load_config(const char *file, CONFIG *conf);
++void load_config(std::string file, CONFIG *conf);
+ 
+ // Save config to file
+-void save_config(const char *file, CONFIG *conf);
++void save_config(std::string file, CONFIG *conf);
+ 
+ #endif
+ 
+
+--- a/include/hiscore.h	2016-11-06 18:39:10.034679787 +0100
++++ b/include/hiscore.h	2016-11-06 18:43:27.992937549 +0100
+@@ -40,6 +40,7 @@
+ #define HISCORE_FILE		"hiscore.lst"
+ #define HISCORE_FILE2		"hiscore2.lst"
+ 
++#include <string>
+ 
+ // Record structure
+ struct RECORD {
+@@ -57,8 +58,8 @@
+ 	void sort();								// Sort the list
+ 	int add_name(const char *name, int score);		// Add a record
+ 	void draw(int place, float fade);			// Draw the list
+-	void save(const char *file);						// Save the list
+-	void load(const char *file);						// Load the list
++	void save(std::string file);						// Save the list
++	void load(std::string file);						// Load the list
+ 	void input_name(int place);					// Input a name
+ };
+ 
+@@ -66,7 +67,7 @@
+ extern HISCORE_LIST hiscore_1;
+ extern HISCORE_LIST hiscore_2;
+ 
+-const char *get_hiscore_location(int which, bool write = false);
++std::string get_hiscore_location(int which, bool write = false);
+ 
+ 
+ #endif
+
+--- a/src/config.cpp	2016-11-06 18:39:18.441181712 +0100
++++ b/src/config.cpp	2016-11-06 18:46:08.603094300 +0100
+@@ -76,7 +76,7 @@
+ // config file. It first checks the user's home directory,
+ // and if that fails it uses the CONFIG_DIR defined in the
+ // makefile.
+-const char *get_config_location(bool write) {
++string get_config_location(bool write) {
+ #ifdef LINUX
+ 	// Get the path to the config file
+ 	string tmp = get_tomatoes_dir() + "config.cfg";
+@@ -91,7 +91,7 @@
+ 		fclose(ftest);
+ 	}
+
+-	return (const char*)tmp.c_str();
++	return tmp;
+ #endif
+
+ 	// Return the CONFIG_DIR
+@@ -100,11 +100,11 @@
+
+
+ // Load config from file
+-void load_config(const char *file, CONFIG *conf) {
++void load_config(string file, CONFIG *conf) {
+
+-	FILE *f = fopen(file, "rt");
++	FILE *f = fopen(file.c_str(), "rt");
+ 	if(!f)
+-		error_msg("Unable to load config file: %s!", file);
++		error_msg("Unable to load config file: %s!", file.c_str());
+
+ 	fscanf(f, "video_mode = %d x %d\n", &(conf->vid_w), &(conf->vid_h));
+ 	fscanf(f, "video_mode_color_depth = %d\n", &(conf->vid_color_depth));
+@@ -127,11 +127,11 @@
+
+
+ // Save config to file
+-void save_config(const char *file, CONFIG *conf) {
++void save_config(string file, CONFIG *conf) {
+
+-	FILE *f = fopen(file, "wt");
++	FILE *f = fopen(file.c_str(), "wt");
+ 	if(!f)
+-		error_msg("Unable to save config file: %s!", file);
++		error_msg("Unable to save config file: %s!", file.c_str());
+
+ 	fprintf(f, "video_mode = %d x %d\n", (conf->vid_w), (conf->vid_h));
+ 	fprintf(f, "video_mode_color_depth = %d\n", (conf->vid_color_depth));
+
+--- a/src/hiscore.cpp	2016-11-06 18:39:18.437848445 +0100
++++ b/src/hiscore.cpp	2016-11-06 18:48:27.587005089 +0100
+@@ -69,7 +69,7 @@
+ // hiscore file. It first checks the user's home directory,
+ // and if that fails it uses the HISCORE_DIR defined in the
+ // makefile.
+-const char *get_hiscore_location(int which, bool write) {
++string get_hiscore_location(int which, bool write) {
+ #ifdef LINUX
+ 	// Get the path to the hiscore file
+ 	string tmp;
+@@ -91,7 +91,7 @@
+ 		fclose(ftest);
+ 	}
+
+-	return (char*)tmp.c_str();
++	return tmp;
+ #endif
+
+ 	// Return the HISCORE_DIR
+@@ -401,11 +401,11 @@
+
+
+ // Save the list to a file
+-void HISCORE_LIST::save(const char *file) {
++void HISCORE_LIST::save(string file) {
+ 	FILE *fout;
+-	fout = fopen(file, "wb");
++	fout = fopen(file.c_str(), "wb");
+ 	if(!fout)
+-		error_msg("Unable to save the hiscore list to %s!\n", file);
++		error_msg("Unable to save the hiscore list to %s!\n", file.c_str());
+
+ 	// Write the scores
+ 	int f;
+@@ -421,9 +421,9 @@
+
+
+ // Load the list from a file
+-void HISCORE_LIST::load(const char *file) {
++void HISCORE_LIST::load(string file) {
+ 	FILE *fin;
+-	fin = fopen(file, "rb");
++	fin = fopen(file.c_str(), "rb");
+ 	if(!fin) {
+ 		// The list wasn't found, no problem.
+ 		clear();
