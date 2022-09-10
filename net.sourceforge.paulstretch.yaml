@@ -1,0 +1,105 @@
+---
+app-id: net.sourceforge.paulstretch
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: paulstretch
+finish-args:
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  # Load/Save from removable usb drives
+  - --filesystem=/run/media
+  - --filesystem=/media
+  # temp files
+  - --filesystem=/tmp
+  # X11
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  # Playback
+  - --socket=pulseaudio
+  # Jack
+  - --filesystem=xdg-run/pipewire-0
+modules:
+  - name: audiofile
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: http://audiofile.68k.org/audiofile-0.3.6.tar.gz
+        sha256: cdc60df19ab08bfe55344395739bb08f50fc15c92da3962fac334d3bff116965
+      - type: patch
+        paths:
+          - patches/audiofile/01_gcc6.patch
+          - patches/audiofile/02_hurd.patch
+          - patches/audiofile/03_CVE-2015-7747.patch
+          - patches/audiofile/04_clamp-index-values-to-fix-index-overflow-in-IMA.cpp.patch
+          - patches/audiofile/05_Always-check-the-number-of-coefficients.patch
+          - patches/audiofile/06_Check-for-multiplication-overflow-in-MSADPCM-decodeSam.patch
+          - patches/audiofile/07_Check-for-multiplication-overflow-in-sfconvert.patch
+          - patches/audiofile/08_Fix-signature-of-multiplyCheckOverflow.-It-returns-a-b.patch
+          - patches/audiofile/09_Actually-fail-when-error-occurs-in-parseFormat.patch
+          - patches/audiofile/10_Check-for-division-by-zero-in-BlockCodec-runPull.patch
+          - patches/audiofile/11_CVE-2018-13440.patch
+          - patches/audiofile/12_CVE-2018-17095.patch
+  - name: mxml
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/michaelrsweet/mxml/releases/download/v3.3.1/mxml-3.3.1.tar.gz
+        sha256: 0c663ed1fe393b5619f80101798202eea43534abd7c8aff389022fd8c1dacc32
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+      - "*.so"
+      - "*.a"
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
+  - shared-modules/linux-audio/fftw3f.json
+  - shared-modules/libmad/libmad.json
+  - shared-modules/glu/glu-9.json
+  - name: fltk
+    buildsystem: cmake-ninja
+    build-options:
+      cflags: -O0
+      cxxflags: -O0 # app crashes without this
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DOPTION_USE_CAIRO=ON
+      - -DOPTION_USE_PANGO=ON
+    sources:
+      - type: git
+        url: https://github.com/fltk/fltk.git
+        commit: 3225afaeecc1a1f0a54cab6f60be485a0352606c #master as of 27/09/2022
+  - name: paulstretch
+    buildsystem: simple
+    build-commands:
+      - ./compile_linux_fftw_jack.sh
+      - install -D -m0755 paulstretch /app/bin/paulstretch
+    post-install:
+      - install -Dm644 net.sourceforge.paulstretch.svg /app/share/icons/hicolor/scalable/apps/net.sourceforge.paulstretch.svg
+      - desktop-file-install --delete-original --dir=/app/share/applications net.sourceforge.paulstretch.desktop
+      - install -Dm644 -t /app/share/metainfo net.sourceforge.paulstretch.metainfo.xml
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/hypermammut/paulstretch/2.2/paulstretch-2.2-2.tar.bz2
+        sha256: 3902a7e0479bfd5eb3c77a2e8b0b38fb491dbb136305b25c54231a1fdce81297
+      - type: patch
+        paths:
+          - patches/vorbis_fix.diff #vorbis compilation fixes on Linux and small error on GUI
+          - patches/mxml3_fix.diff #fix compatibility with mxml 3.0
+      - type: file
+        path: net.sourceforge.paulstretch.metainfo.xml
+      - type: file
+        path: net.sourceforge.paulstretch.desktop
+      - type: file
+        path: net.sourceforge.paulstretch.svg

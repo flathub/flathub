@@ -1,0 +1,381 @@
+Description: Remove usage of PATH_MAX in tests to fix FTBFS on Hurd.
+ jcowgill: Removed Changelog changes
+Author: Pino Toscano <toscano.pino@tiscali.it>
+Origin: backport, https://github.com/mpruett/audiofile/commit/34c261034f1193a783196618f0052112e00fbcfe
+Bug: https://github.com/mpruett/audiofile/pull/17
+Bug-Debian: https://bugs.debian.org/762595
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+
+--- a/test/TestUtilities.cpp
++++ b/test/TestUtilities.cpp
+@@ -21,8 +21,8 @@
+ #include "TestUtilities.h"
+ 
+ #include <limits.h>
+-#include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ 
+ bool createTemporaryFile(const std::string &prefix, std::string *path)
+@@ -35,12 +35,12 @@ bool createTemporaryFile(const std::stri
+ 	return true;
+ }
+ 
+-bool createTemporaryFile(const char *prefix, char *path)
++bool createTemporaryFile(const char *prefix, char **path)
+ {
+-	snprintf(path, PATH_MAX, "/tmp/%s-XXXXXX", prefix);
+-	int fd = ::mkstemp(path);
+-	if (fd < 0)
+-		return false;
+-	::close(fd);
+-	return true;
++	*path = NULL;
++	std::string pathString;
++	bool result = createTemporaryFile(prefix, &pathString);
++	if (result)
++		*path = ::strdup(pathString.c_str());
++	return result;
+ }
+--- a/test/TestUtilities.h
++++ b/test/TestUtilities.h
+@@ -53,7 +53,7 @@ extern "C" {
+ 
+ #include <stdbool.h>
+ 
+-bool createTemporaryFile(const char *prefix, char *path);
++bool createTemporaryFile(const char *prefix, char **path);
+ 
+ #ifdef __cplusplus
+ }
+--- a/test/floatto24.c
++++ b/test/floatto24.c
+@@ -86,8 +86,8 @@ int main (int argc, char **argv)
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_FLOAT, 32);
+ 
+-	char testFileName[PATH_MAX];
+-	if (!createTemporaryFile("floatto24", testFileName))
++	char *testFileName;
++	if (!createTemporaryFile("floatto24", &testFileName))
+ 	{
+ 		fprintf(stderr, "Could not create temporary file.\n");
+ 		exit(EXIT_FAILURE);
+@@ -182,6 +182,7 @@ int main (int argc, char **argv)
+ 	}
+ 
+ 	unlink(testFileName);
++	free(testFileName);
+ 
+ 	exit(EXIT_SUCCESS);
+ }
+--- a/test/sixteen-to-eight.c
++++ b/test/sixteen-to-eight.c
+@@ -57,8 +57,8 @@ int main (int argc, char **argv)
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_UNSIGNED, 8);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 
+-	char testFileName[PATH_MAX];
+-	if (!createTemporaryFile("sixteen-to-eight", testFileName))
++	char *testFileName;
++	if (!createTemporaryFile("sixteen-to-eight", &testFileName))
+ 	{
+ 		fprintf(stderr, "Could not create temporary file.\n");
+ 		exit(EXIT_FAILURE);
+@@ -113,6 +113,7 @@ int main (int argc, char **argv)
+ 
+ 	afCloseFile(file);
+ 	unlink(testFileName);
++	free(testFileName);
+ 
+ 	exit(EXIT_SUCCESS);
+ }
+--- a/test/testchannelmatrix.c
++++ b/test/testchannelmatrix.c
+@@ -39,7 +39,7 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ const short samples[] = {300, -300, 515, -515, 2315, -2315, 9154, -9154};
+ #define SAMPLE_COUNT (sizeof (samples) / sizeof (short))
+@@ -47,7 +47,11 @@ const short samples[] = {300, -300, 515,
+ 
+ void cleanup (void)
+ {
+-	unlink(sTestFileName);
++	if (sTestFileName)
++	{
++		unlink(sTestFileName);
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -76,7 +80,7 @@ int main (void)
+ 	afInitFileFormat(setup, AF_FILE_AIFFC);
+ 
+ 	/* Write stereo data to test file. */
+-	ensure(createTemporaryFile("testchannelmatrix", sTestFileName),
++	ensure(createTemporaryFile("testchannelmatrix", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	ensure(file != AF_NULL_FILEHANDLE, "could not open file for writing");
+--- a/test/testdouble.c
++++ b/test/testdouble.c
+@@ -38,7 +38,7 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ const double samples[] =
+ 	{1.0, 0.6, -0.3, 0.95, 0.2, -0.6, 0.9, 0.4, -0.22, 0.125, 0.1, -0.4};
+@@ -48,7 +48,11 @@ void testdouble (int fileFormat);
+ 
+ void cleanup (void)
+ {
+-	unlink(sTestFileName);
++	if (sTestFileName)
++	{
++		unlink(sTestFileName);
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -96,7 +100,7 @@ void testdouble (int fileFormat)
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_DOUBLE, 64);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 2);
+ 
+-	ensure(createTemporaryFile("testdouble", sTestFileName),
++	ensure(createTemporaryFile("testdouble", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	ensure(file != AF_NULL_FILEHANDLE, "could not open file for writing");
+--- a/test/testfloat.c
++++ b/test/testfloat.c
+@@ -38,7 +38,7 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ const float samples[] =
+ 	{1.0, 0.6, -0.3, 0.95, 0.2, -0.6, 0.9, 0.4, -0.22, 0.125, 0.1, -0.4};
+@@ -48,7 +48,11 @@ void testfloat (int fileFormat);
+ 
+ void cleanup (void)
+ {
+-	unlink(sTestFileName);
++	if (sTestFileName)
++	{
++		unlink(sTestFileName);
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -96,7 +100,7 @@ void testfloat (int fileFormat)
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_FLOAT, 32);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 2);
+ 
+-	ensure(createTemporaryFile("testfloat", sTestFileName),
++	ensure(createTemporaryFile("testfloat", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	ensure(file != AF_NULL_FILEHANDLE, "could not open file for writing");
+--- a/test/testmarkers.c
++++ b/test/testmarkers.c
+@@ -32,15 +32,19 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ #define FRAME_COUNT 200
+ 
+ void cleanup (void)
+ {
++	if (sTestFileName)
++	{
+ #ifndef DEBUG
+-	unlink(sTestFileName);
++		unlink(sTestFileName);
+ #endif
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -127,7 +131,7 @@ int testmarkers (int fileformat)
+ 
+ int main (void)
+ {
+-	ensure(createTemporaryFile("testmarkers", sTestFileName),
++	ensure(createTemporaryFile("testmarkers", &sTestFileName),
+ 		"could not create temporary file");
+ 
+ 	testmarkers(AF_FILE_AIFF);
+--- a/test/twentyfour.c
++++ b/test/twentyfour.c
+@@ -71,8 +71,8 @@ int main (int argc, char **argv)
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_TWOSCOMP, 24);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 
+-	char testFileName[PATH_MAX];
+-	if (!createTemporaryFile("twentyfour", testFileName))
++	char *testFileName;
++	if (!createTemporaryFile("twentyfour", &testFileName))
+ 	{
+ 		fprintf(stderr, "could not create temporary file\n");
+ 		exit(EXIT_FAILURE);
+@@ -239,6 +239,7 @@ int main (int argc, char **argv)
+ 		exit(EXIT_FAILURE);
+ 	}
+ 	unlink(testFileName);
++	free(testFileName);
+ 
+ 	exit(EXIT_SUCCESS);
+ }
+--- a/test/twentyfour2.c
++++ b/test/twentyfour2.c
+@@ -45,15 +45,19 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ #define FRAME_COUNT 10000
+ 
+ void cleanup (void)
+ {
++	if (sTestFileName)
++	{
+ #ifndef DEBUG
+-	unlink(sTestFileName);
++		unlink(sTestFileName);
+ #endif
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -78,7 +82,7 @@ int main (void)
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_TWOSCOMP, 24);
+ 
+-	ensure(createTemporaryFile("twentyfour2", sTestFileName),
++	ensure(createTemporaryFile("twentyfour2", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	ensure(file != NULL, "could not open test file for writing");
+--- a/test/writealaw.c
++++ b/test/writealaw.c
+@@ -53,7 +53,7 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ #define FRAME_COUNT 16
+ #define SAMPLE_COUNT FRAME_COUNT
+@@ -62,9 +62,13 @@ void testalaw (int fileFormat);
+ 
+ void cleanup (void)
+ {
++	if (sTestFileName)
++	{
+ #ifndef DEBUG
+-	unlink(sTestFileName);
++		unlink(sTestFileName);
+ #endif
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -113,7 +117,7 @@ void testalaw (int fileFormat)
+ 	afInitFileFormat(setup, fileFormat);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 
+-	ensure(createTemporaryFile("writealaw", sTestFileName),
++	ensure(createTemporaryFile("writealaw", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	afFreeFileSetup(setup);
+--- a/test/writeraw.c
++++ b/test/writeraw.c
+@@ -44,13 +44,17 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ void cleanup (void)
+ {
++	if (sTestFileName)
++	{
+ #ifndef DEBUG
+-	unlink(sTestFileName);
++		unlink(sTestFileName);
+ #endif
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -84,7 +88,7 @@ int main (int argc, char **argv)
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 	afInitSampleFormat(setup, AF_DEFAULT_TRACK, AF_SAMPFMT_TWOSCOMP, 16);
+ 
+-	ensure(createTemporaryFile("writeraw", sTestFileName),
++	ensure(createTemporaryFile("writeraw", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	ensure(file != AF_NULL_FILEHANDLE, "unable to open file for writing");
+--- a/test/writeulaw.c
++++ b/test/writeulaw.c
+@@ -53,7 +53,7 @@
+ 
+ #include "TestUtilities.h"
+ 
+-static char sTestFileName[PATH_MAX];
++static char *sTestFileName;
+ 
+ #define FRAME_COUNT 16
+ #define SAMPLE_COUNT FRAME_COUNT
+@@ -62,9 +62,13 @@ void testulaw (int fileFormat);
+ 
+ void cleanup (void)
+ {
++	if (sTestFileName)
++	{
+ #ifndef DEBUG
+-	unlink(sTestFileName);
++		unlink(sTestFileName);
+ #endif
++		free(sTestFileName);
++	}
+ }
+ 
+ void ensure (int condition, const char *message)
+@@ -113,7 +117,7 @@ void testulaw (int fileFormat)
+ 	afInitFileFormat(setup, fileFormat);
+ 	afInitChannels(setup, AF_DEFAULT_TRACK, 1);
+ 
+-	ensure(createTemporaryFile("writeulaw", sTestFileName),
++	ensure(createTemporaryFile("writeulaw", &sTestFileName),
+ 		"could not create temporary file");
+ 	file = afOpenFile(sTestFileName, "w", setup);
+ 	afFreeFileSetup(setup);
