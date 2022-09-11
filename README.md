@@ -31,14 +31,14 @@ Also currently accessing to external web pages is not working due to this [exter
 
 Since the application folder is readonly it has been enabled the following paths have been set:
 
-- User properties: `~/.var/app/com.eviware.soapui/config/soapui.properties`
-- User external actions: `~/.var/app/com.eviware.soapui/data/actions`
-- User external extensions: `~/.var/app/com.eviware.soapui/data/ext`
-- User external libraries: `~/.var/app/com.eviware.soapui/data/listeners`
+- User external actions: `~/.var/app/com.eviware.soapui/data/soapuios/actions`
+- User external extensions: `~/.var/app/com.eviware.soapui/data/soapuios/ext`
+- User external libraries: `~/.var/app/com.eviware.soapui/data/soapuios/listeners`
 - SoapUI user home directory: `~/.var/app/com.eviware.soapui/config/`
   - User settings: `~/.var/app/com.eviware.soapui/config/soapui-settings.xml`
   - User workspace: `~/.var/app/com.eviware.soapui/config/default-soapui-workspace.xml`
   - User plugins: `~/.var/app/com.eviware.soapui/config/.soapuios/plugins/`
   - Logs: `~/.var/app/com.eviware.soapui/config/.soapuios/logs/`
+- User properties: `~/.var/app/com.eviware.soapui/config/.soapuios/soapui.properties`
 
 This variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
