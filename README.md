@@ -2,6 +2,8 @@
 
 Unofficial Apache JMeter Flatpak package.
 
+Currently waiting for [official response](https://bz.apache.org/bugzilla/show_bug.cgi?id=66258) as is recommended by the [Flathub App Submission](https://github.com/flathub/flathub/wiki/App-Submission) page.
+
 ## Permissions
 
 - GUI: x11,ipc,dri
