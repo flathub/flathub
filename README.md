@@ -2,6 +2,8 @@
 
 Unofficial SoapUI Open Source Flatpak package.
 
+Currently waiting for [official response](https://github.com/SmartBear/soapui/issues/744) as is recommended by the [Flathub App Submission](https://github.com/flathub/flathub/wiki/App-Submission) page.
+
 ## Application Id concers
 
 For now we are not sure yet what Application Id is prefered by SmartBear Software since they are using 2 Ids for this aplication:
