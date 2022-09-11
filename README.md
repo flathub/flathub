@@ -14,9 +14,9 @@ Currently waiting for [official response](https://bz.apache.org/bugzilla/show_bu
 
 Since the application folder is readonly it has been enabled the following configurations and paths have been changed:
 
-- User configuration: `~/.var/app/org.apache.jmeter/config/user.properties`
-- User plugins directory: `~/.var/app/org.apache.jmeter/data/lib/ext/`
-- Application log: `~/.var/app/org.apache.jmeter/cache/jmeter.log`
+- User configuration: `~/.var/app/org.apache.jmeter/config/jmeter/user.properties`
+- User plugins directory: `~/.var/app/org.apache.jmeter/data/jmeter/lib/ext/`
+- Application log: `~/.var/app/org.apache.jmeter/cache/jmeter/jmeter.log`
 - Force use local help browser to ease accessing the help while this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1) is not fixed.
 
-Currently using this configuration the [JMeter Plugins Manager](https://github.com/undera/jmeter-plugins-manager) is unable to install plugins, this can be fixed modifying the plugin and an issue should be created to allow custom property to be used to designate the JMeter home to be used so that the `jmeter-wrapper.sh` can point it to `~/.var/app/org.apache.jmeter/data/`.
+Currently using this configuration the [JMeter Plugins Manager](https://github.com/undera/jmeter-plugins-manager) is unable to install plugins, this can be fixed modifying the plugin and an issue should be created to allow custom property to be used to designate the JMeter home to be used so that the `jmeter-wrapper.sh` can point it to `~/.var/app/org.apache.jmeter/data/jmeter/`.
