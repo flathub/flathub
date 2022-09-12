@@ -19,4 +19,8 @@ Since the application folder is readonly it has been enabled the following confi
 - Application log: `~/.var/app/org.apache.jmeter/cache/jmeter/jmeter.log`
 - Force use local help browser to ease accessing the help while this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1) is not fixed.
 
-Currently using this configuration the [JMeter Plugins Manager](https://github.com/undera/jmeter-plugins-manager) is unable to install plugins, this can be fixed modifying the plugin and an issue should be created to allow custom property to be used to designate the JMeter home to be used so that the `jmeter-wrapper.sh` can point it to `~/.var/app/org.apache.jmeter/data/jmeter/`.
+## Known issues
+
+Currently **JavaFX** is not installed. Not sure yet what is the best, if add it manually as a module or as a runtime extension (as is proposed in [this issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk/issues/1)).
+
+Also the current configuration doesn't allow the **[JMeter Plugins Manager](https://github.com/undera/jmeter-plugins-manager)** to install plugins, this can be fixed modifying the plugin and [an issue](https://groups.google.com/g/jmeter-plugins/c/-rJeqHz8lCw) have been created to allow custom property to be used to designate the JMeter home to be used so that the `jmeter-wrapper.sh` can point it to `~/.var/app/org.apache.jmeter/data/jmeter/`.
