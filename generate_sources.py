@@ -1,6 +1,6 @@
 import os
 
-godot_path = './godot-4.0-alpha17'
+godot_path = './godot-4.0-beta1'
 source_folder = './sources'
 csprojs = [
     'modules/mono/glue/GodotSharp/GodotSharp/GodotSharp.csproj',
