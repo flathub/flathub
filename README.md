@@ -16,7 +16,7 @@ Since the application folder is readonly it has been enabled the following confi
 
 - User configuration: `~/.var/app/org.apache.jmeter/config/jmeter/user.properties`
 - User plugins directory: `~/.var/app/org.apache.jmeter/data/jmeter/lib/ext/`
-- Application log: `~/.var/app/org.apache.jmeter/cache/jmeter/jmeter.log`
+- Application log: `~/.var/app/org.apache.jmeter/.local/state/jmeter/jmeter.log`
 - Force use local help browser to ease accessing the help while this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1) is not fixed.
 
 ## Known issues
