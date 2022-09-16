@@ -1,0 +1,124 @@
+id: com.github.taburineagle.NeewerLite-Python
+branch: stable
+runtime: org.kde.Platform
+runtime-version: 5.15-21.08
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm13
+command: NeewerLite-Python.py
+finish-args:
+  - --device=all
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --filesystem=host:ro
+  - --allow=bluetooth
+  - --share=network
+  - --system-talk-name=org.bluez
+
+modules:
+  - name: qt-include
+    # https://bugreports.qt.io/browse/PYSIDE-787
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/include/qt
+      - cp -R /usr/include/Qt* /app/include/qt
+
+  - name: pyside2
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      append-path: /usr/lib/sdk/llvm13/bin
+      append-ld-library-path: /usr/lib/sdk/llvm13/lib
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_TESTS=OFF
+    post-install:
+      # Make packages discoverable by pip
+      - |
+        libpath=$(ls -d /app/lib/python*/site-packages) || exit 1
+        for pkg in PySide2 shiboken2; do
+          version=$(python3 -c "import ${pkg}; print(${pkg}.__version__)") || exit 1
+          printf 'Metadata-Version: 1.0\nName: %s\nVersion: %s\n' "${pkg}" "${version}" > "${libpath}/${pkg}.egg-info" || exit 1
+        done
+    cleanup:
+      - /bin
+    sources:
+      # PySide2>5.15.3 is broken on aarch64
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.6-src/pyside-setup-opensource-src-5.15.6.tar.xz
+        sha256: 171ee058d056599b8e9e8605fe3dae5dabdab7764285b21b28f64760a0f6779d
+        skip-arches:
+          - aarch64
+        x-checker-data:
+          type: html
+          url: https://download.qt.io/official_releases/QtForPython/pyside2/
+          version-pattern: '>PySide2-([\d.]+)-src/<'
+          versions: {'>=': '5.15', <: '5.16'}
+          url-template: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-$version-src/pyside-setup-opensource-src-$version.tar.xz
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside2/PySide2-5.15.3-src/pyside-setup-opensource-src-5.15.3.tar.xz
+        sha256: 7ff5f1cc4291fffb6d5a3098b3090abe4d415da2adec740b4e901893d95d7137
+        only-arches:
+          - aarch64
+      - type: shell
+        # use qt-include
+        commands:
+          - sed -i 's|\(--include-paths=\)|\1/app/include/qt:|' sources/pyside2/cmake/Macros/PySideModules.cmake
+
+  - name: python3-async-timeout
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} async_timeout-4.0.2-py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/d6/c1/8991e7c5385b897b8c020cdaad718c5b087a6626d1d11a23e1ea87e325a7/async_timeout-4.0.2-py3-none-any.whl
+        sha256: 8ca1e4fcf50d07413d66d1a5e416e42cfdf5851c981d679a09851a6853383b3c
+
+  - name: python3-typing-extensions
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} typing_extensions-4.3.0-py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/ed/d6/2afc375a8d55b8be879d6b4986d4f69f01115e795e36827fd3a40166028b/typing_extensions-4.3.0-py3-none-any.whl
+        sha256: 25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02
+
+  - name: python3-dbus-fast
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} dbus_fast-1.4.0-py3-none-any.whl 
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/55/df/4342c8c426548ed28e9ee55f2839a6ac7eb4d64a48a1e1a70cfd9d9ca92f/dbus_fast-1.4.0-py3-none-any.whl
+        sha256: 3fea12c425587bb2b552e60e40bfcda2d3b94e77a8b2a30ec07c5bbc187bc984
+
+  - name: python3-bleak
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} bleak-0.17.0-py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/2e/d3/e3c004e47b42148995c6e397b9c7afde28bca97ad9158357f18f68f6380b/bleak-0.17.0-py3-none-any.whl
+        sha256: be243ced0132b02d43738411d7e5f210fb536905a867d26c339085b4f976ddb2
+
+
+  - name: NeewerLitePython
+    buildsystem: simple
+    build-commands:
+    - "install -Dp -m 744 NeewerLite-Python.py /app/bin"
+    - "install -Dp -m 744 ui_NeewerLightUI.py /app/bin"
+    - "install -Dm644 com.github.taburineagle.NeewerLite-Python.desktop /app/share/applications/com.github.taburineagle.NeewerLite-Python.desktop"
+    - "install -Dm644 com.github.taburineagle.NeewerLite-Python.metainfo.xml /app/share/metainfo/com.github.taburineagle.NeewerLite-Python.metainfo.xml"
+    - "install -Dm644 com.github.taburineagle.NeewerLite-Python.png /app/share/icons/hicolor/128x128/apps/com.github.taburineagle.NeewerLite-Python.png"
+    sources:
+      - type: git
+        url: https://github.com/taburineagle/NeewerLite-Python.git
+        branch: main
+        commit: b406cdd7d4dd2432b9544dba7886ee989fd43a7e
+      - type: file
+        path: com.github.taburineagle.NeewerLite-Python.metainfo.xml
+      - type: file
+        path: com.github.taburineagle.NeewerLite-Python.desktop
+      - type: file
+        path: com.github.taburineagle.NeewerLite-Python.png
