@@ -61,7 +61,7 @@ def main():
                     })
 
     # Save the sources into a JSON file
-    with open('nuget-sources.json', 'w') as fp:
+    with open('nuget/nuget-sources.json', 'w') as fp:
         json.dump(
             sorted(sources, key=lambda n: n.get("dest-filename")),
             fp,
