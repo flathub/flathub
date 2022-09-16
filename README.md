@@ -50,8 +50,7 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 
 In order for C# to be fully supported, a local Nuget source containing the Godot-SDK Nuget package must be added to the Nuget within the Flatpak SDK Extension. This can be done like so:
 ```
-mkdir ~/MyLocalNugetSource
-FLATPAK_ENABLE_SDK_EXT=dotnet flatpak run --command=sh org.godotengine.Godot -c 'cp /app/bin/GodotSharp/Tools/nupkgs/* ~/MyLocalNugetSource/; dotnet nuget add source ~/MyLocalNugetSource -n MyLocalNugetSource'
+FLATPAK_ENABLE_SDK_EXT=dotnet flatpak run --command=sh org.godotengine.Godot -c 'mkdir ~/MyLocalNugetSource; cp /app/bin/GodotSharp/Tools/nupkgs/* ~/MyLocalNugetSource/; dotnet nuget add source ~/MyLocalNugetSource -n MyLocalNugetSource'
 ```
 If the C# project throws an error, running the following command within the IDE's terminal should fix it, provided that it is run in the root of the project.
 ```
@@ -88,4 +87,4 @@ For updating this Flatpak to newer versions of Godot, the source code of Godot f
 python3 generate_sources.py
 ```
 
-If `csproj` files that aren't included within the script include new packages, they must be added to the script. The generated source must also be added to the manifest under the `godot-tools` module.
+If `csproj` files that aren't included within the script include new packages, they must be added to the script.
