@@ -102,4 +102,4 @@ If `csproj` files that aren't included within the script include new packages, t
 
 ### Double Precision
 
-To compile Godot 4 with double precision, `org.godotengine.Godot.yaml` needs to be modified to include the appropriate flags. Under `SCONS_FLAGS`, change `float=32` to `float=64` and where `modules/mono/build_scripts/build_assemblies.py` is executed, change `--float=32` to `--float=64`.
+To compile Godot 4 with double precision, `org.godotengine.Godot.yaml` needs to be modified to include the appropriate flags. Under `Build Commands`, change all instances of `float=32` to `float=64`.
