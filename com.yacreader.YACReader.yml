@@ -1,0 +1,123 @@
+app-id: com.yacreader.YACReader
+runtime: org.kde.Platform
+runtime-version: "5.15-22.08"
+sdk: org.kde.Sdk
+command: YACReader
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+  - --filesystem=home
+cleanup:
+  - /bin/gn
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /lib/systemd
+  - /share/doc
+  - /share/man
+  - "*.a"
+  - "*.la"
+modules:
+  - name: yacreader
+    # https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=yacreader
+    buildsystem: qmake
+    config-opts:
+      - CONFIG+=unarr pdfium server_bundled
+    install-rule: null
+    make-install-args:
+      - sub-YACReader-install_subtargets
+      - sub-YACReaderLibrary-install_subtargets
+    post-install:
+      - mv "$FLATPAK_DEST"/share/applications/{YACReader,com.yacreader.YACReader}.desktop
+      - mv "$FLATPAK_DEST"/share/applications/{YACReaderLibrary,com.yacreader.YACReader.YACReaderLibrary}.desktop
+      - mv "$FLATPAK_DEST"/share/icons/hicolor/scalable/apps/{YACReader,com.yacreader.YACReader}.svg
+      - mv "$FLATPAK_DEST"/share/icons/hicolor/scalable/apps/{YACReaderLibrary,com.yacreader.YACReader.YACReaderLibrary}.svg
+      - sed -i -e 's/^Categories=\(.*\)$/Categories=Office;\1/' -e 's/^Icon=.*$/Icon=com.yacreader.YACReader/' "$FLATPAK_DEST"/share/applications/com.yacreader.YACReader.desktop
+      - sed -i -e 's/^Categories=\(.*\)$/Categories=Office;\1/' -e 's/^Icon=.*$/Icon=com.yacreader.YACReader.YACReaderLibrary/' "$FLATPAK_DEST"/share/applications/com.yacreader.YACReader.YACReaderLibrary.desktop
+      - install -D -m644 com.yacreader.YACReader.appdata.xml "$FLATPAK_DEST"/share/metainfo/com.yacreader.YACReader.appdata.xml
+    sources:
+      - type: git
+        url: https://github.com/YACReader/yacreader.git
+        tag: 9.9.1
+      - type: file
+        path: com.yacreader.YACReader.appdata.xml
+    modules:
+      - name: unarr
+        buildsystem: cmake
+        sources:
+          - type: git
+            url: https://github.com/selmf/unarr.git
+            commit: cf4deedfdd2b815ae2ad0f24cfda72c3d8083d14
+      - name: pdfium
+        buildsystem: simple
+        build-commands:
+          # https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=libpdfium-nojs
+          # Fix visibilty for system Freetype
+          - git -C pdfium/build cherry-pick -n bfd6ff0
+          # Patch abseil build to be static
+          - cd "$FLATPAK_BUILDER_BUILDDIR/pdfium/third_party/abseil-cpp"
+          - sed -i -e 's/component(/static_library(/' -e 's/is_component_build(/false/' pdfium/third_party/abseil-cpp/BUILD.gn
+          # Use system provided icu library (unbundling)
+          - mkdir -p pdfium/third_party/icu
+          - ln -sf ../../build/linux/unbundle/icu.gn pdfium/third_party/icu/BUILD.gn
+          # Download and decode shim header script needed to unbundle icu (gittiles is weird)
+          - mkdir -p pdfium/tools/generate_shim_headers
+          - base64 --decode generate_shim_headers.py > pdfium/tools/generate_shim_headers/generate_shim_headers.py
+          # Create fake gclient_args.gni file to satisfy include list for build/config/compiler/compiler.gni
+          - touch pdfium/build/config/gclient_args.gni
+          # Exclude test fonts from build
+          - sed -i '/"\/\/third_party\/test_fonts",/s/^/#/g' pdfium/testing/BUILD.gn
+          # Build
+          - gn --root=pdfium gen pdfium/out/Release --args="is_clang=false use_sysroot=false is_debug=false symbol_level=0 pdf_enable_v8=false pdf_enable_xfa=false treat_warnings_as_errors=false use_system_libjpeg=true use_system_zlib=true pdf_bundle_freetype=false use_system_freetype=true use_system_lcms2=true use_system_libpng=true use_custom_libcxx=false pdf_is_standalone=true use_system_libopenjpeg2=true is_component_build=true use_gold=false"
+          - ninja -C pdfium/out/Release pdfium
+          - sed -e 's/@VERSION@/5005/g' -e 's#^\s*prefix\s*=.*$#prefix='"$FLATPAK_DEST"'#' -i libpdfium.pc
+          # Install
+          - install -D -m644 pdfium/LICENSE "$FLATPAK_DEST/share/licenses/pdfium/LICENSE"
+          - install -D pdfium/public/*.h --target-directory="$FLATPAK_DEST/include/pdfium"
+          - install -D pdfium/public/cpp/* --target-directory="$FLATPAK_DEST/include/pdfium/cpp"
+          - install -D pdfium/docs/* --target-directory="$FLATPAK_DEST/share/doc/pdfium"
+          - install -Dm755 pdfium/out/Release/libpdfium.so --target-directory="$FLATPAK_DEST/lib"
+          - install -Dm644 libpdfium.pc --target-directory="$FLATPAK_DEST/lib/pkgconfig"
+        sources:
+          - type: git
+            url: https://pdfium.googlesource.com/pdfium
+            # curl 'https://omahaproxy.appspot.com/linux?channel=stable' | cut -d'.' -f 3
+            branch: chromium/5195
+            dest: pdfium
+          - type: git
+            url: https://chromium.googlesource.com/chromium/src/build.git
+            # awk '/build_revision/ {print substr($2,2,40)}' pdfium/DEPS
+            commit: 26f8da34750ac3bccf683ed5f70d86f21c54b22b
+            dest: pdfium/build
+          - type: git
+            url: https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
+            # awk '/abseil_revision/ {print substr($2,2,40)}' pdfium/DEPS
+            commit: 62a4d6866aeeca02036c510b2f3f286084dd62af
+            dest: pdfium/third_party/abseil-cpp
+          - type: file
+            url: https://chromium.googlesource.com/chromium/src/+/master/tools/generate_shim_headers/generate_shim_headers.py?format=TEXT
+            dest-filename: generate_shim_headers.py
+            sha256: f95f0d29e3e12b22a7b86455265c87bc0219a25c09a7fa160d34b608992ea6da
+          - type: file
+            url: https://aur.archlinux.org/cgit/aur.git/plain/libpdfium.pc?h=libpdfium-nojs
+            dest-filename: libpdfium.pc
+            sha256: 4e8cf32c09568ae4c59244f0a221eee8f87ea4a31ddb31f796a1d818c967d477
+        modules:
+          - name: gn
+            buildsystem: simple
+            build-options:
+              env:
+                CC: gcc
+                CXX: g++
+            build-commands:
+              - ./build/gen.py
+              - ninja -C out
+              - install -D out/gn "$FLATPAK_DEST/bin/gn"
+            sources:
+              - type: git
+                url: https://gn.googlesource.com/gn
+                commit: b4851eb2062f76a880c07f7fa0d12913beb6d79e
+                disable-shallow-clone: true
