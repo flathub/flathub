@@ -2,11 +2,12 @@ app-id: org.skytemple.SkyTemple
 runtime: org.gnome.Platform
 runtime-version: '42'
 sdk: org.gnome.Sdk
-command: /app/bin/run.sh
+command: run.sh
 finish-args:
   - "--share=network"
   - "--socket=fallback-x11"
   - "--socket=wayland"
+  - "--share=ipc"
   - "--filesystem=host"
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-nightly
@@ -18,19 +19,91 @@ cleanup:  # todo
   - /share/man
 modules:
   - name: armips
-    buildsystem: simple
-    build-commands:
-      - mkdir -p build
-      - patch Core/ExpressionFunctions.cpp < armips.patch
-      - cd build && cmake -DCMAKE_BUILD_TYPE=Release ..
-      - cd build && make armips-bin
-      - install -Dm755 build/armips /app/bin/armips
+    buildsystem: cmake-ninja
+    no-make-install: true
+    build-options:
+      cxxflags: "-DCMAKE_BUILD_TYPE=Release"
+    post-install:
+      - install -Dm755 armips /app/bin/armips
     sources:
       - type: archive
         url: https://github.com/Kingcom/armips/archive/v0.11.0.tar.gz
         sha256: c94e29dfda3bdf853590d825562b9c73a3d8e8e995555e021c6b2a6451572681
-      - type: file
+      - type: patch
         path: patches/armips.patch
+  # This needs to be done seperately due to some patches and the Rust compiler and Cargo packages required.
+  # Also this needs build isolation, unlike the rest.
+  - name: python3-skytemple-rust
+    buildsystem: simple
+    build-commands:
+      - . /usr/lib/sdk/rust-nightly/enable.sh && pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "./skytemple-rust-1.3.7"
+    build-options:
+      env:
+        CARGO_HOME: /run/build/python3-skytemple-rust/cargo
+    sources:
+      - cargo-sources.json
+      - type: file
+        url: https://files.pythonhosted.org/packages/27/d6/003e593296a85fd6ed616ed962795b2f87709c3eee2bca4f6d0fe55c6d00/wheel-0.37.1-py2.py3-none-any.whl
+        sha256: 4bdcd7d840138086126cd09254dc6195fb4fc6f01c050a1d7236f2630db1d22a
+      - type: file
+        url: https://files.pythonhosted.org/packages/2e/49/565350c6fab3f5a3e2c46633290117060e70e2501544cdf3bde1d1d5d0fe/range_typed_integers-1.0.1-py3-none-any.whl
+        sha256: 35d39a41642503c5c5117e26798713f081b1beece1b2afd8f1ba70c8d90f63c5
+      - type: file
+        url: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
+        sha256: de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177
+      - type: file
+        url: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
+        sha256: de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177
+        type: file
+        url: https://files.pythonhosted.org/packages/ed/d6/2afc375a8d55b8be879d6b4986d4f69f01115e795e36827fd3a40166028b/typing_extensions-4.3.0-py3-none-any.whl
+        sha256: 25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02
+      - type: file
+        url: https://files.pythonhosted.org/packages/d9/5f/2daccd14278b6b780ae6799f85998377c06019354982391245f4b58a927d/setuptools-65.3.0-py3-none-any.whl
+        sha256: 2e24e0bec025f035a2e72cdd1961119f557d78ad331bb00ff82efb2ab8da8e82
+      # At the moment there is a packaging issue with the source on PyPi: The macro subcrates are not contained in the source tarballs.
+      # We need to fix this upstream, but in the meantime we use the Git repo.
+      - type: git
+        url: https://github.com/SkyTemple/skytemple-rust.git
+        tag: 1.3.7
+        dest: skytemple-rust-1.3.7
+      - type: file
+        url: https://files.pythonhosted.org/packages/5b/76/6ebf4728d287527514b29bc92c14ec59f666f43b0af650df6c100614c3dc/setuptools_rust-1.5.1-py3-none-any.whl
+        sha256: 306b236ff3aa5229180e58292610d0c2c51bb488191122d2fc559ae4caeb7d5e
+      - type: patch
+        path: patches/skytemple_rust_setup_py.patch
+  # This is required by py-desmume.
+  - name: pcap
+    buildsystem: autotools
+    config-opts:
+      - "--disable-shared"
+      - "--disable-dbus"
+    sources:
+    - type: archive
+      url: https://www.tcpdump.org/release/libpcap-1.10.1.tar.gz
+      sha512: 56c314f19c2b857742bf8abcb1e78066986aaa95cec339b75a3c8b70a9fa2b5167da98708352f9ec97a1cea2700cfb4e040bda108d58ac46cec9b7deab88d171
+  # This is needed by cariocffi - It uses setuptools installer which does not support offline installation unless these packages are already installed before.
+  # upstream issue: https://github.com/Kozea/cairocffi/issues/206
+  - name: python3-pytest-runner
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "pytest-runner"
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/42/7b/1cec26caae4bf44bb9911e1119d5d1a35171571e100b728a2ccd8719a3b1/pytest_runner-6.0.0-py3-none-any.whl
+        sha256: 4c059cf11cf4306e369c0f8f703d1eaf8f32fad370f41deb5f007044656aca6b
+  # This is needed by cariocffi - see above.
+  - name: python3-cffi
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "cffi>=1.1.0"
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/2b/a8/050ab4f0c3d4c1b8aaa805f70e26e84d0e27004907c5b8ecc1d31815f92a/cffi-1.15.1.tar.gz
+        sha256: d400bfb9a37b1351253cb402671cea7e89bdecc294e8016a707f6d1d8ac934f9
+      - type: file
+        url: https://files.pythonhosted.org/packages/62/d5/5f610ebe421e85889f2e55e33b7f9a6795bd982198517d912eb1c76e1a53/pycparser-2.21-py2.py3-none-any.whl
+        sha256: 8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9
+  - requirements-skytemple.json
   - name: skytemple
     buildsystem: simple
     build-commands:
@@ -44,95 +117,18 @@ modules:
       - install -Dm644 skytemple/data/icons/hicolor/512x512/apps/skytemple.png /app/share/icons/hicolor/512x512/apps/org.skytemple.SkyTemple.png
       # Runner
       - install -Dm755 run.sh /app/bin/run.sh
+      # Desktop file, appstream
+      - install -Dm644 org.skytemple.SkyTemple.desktop /app/share/applications/org.skytemple.SkyTemple.desktop
+      - install -Dm644 org.skytemple.SkyTemple.appdata.xml /app/share/metainfo/org.skytemple.SkyTemple.appdata.xml
     sources:
       - type: archive
         url: https://github.com/SkyTemple/skytemple/archive/refs/tags/1.3.11.post1.tar.gz
         sha256: cef04b4330da4b6e89f595af3ba8b5d8962717a9dc01fc7e4d0dd73917827e32
       - type: file
         path: run.sh
-    modules:
-      # This needs to be done seperately due to some patches and the Rust compiler and Cargo packages required.
-      # Also this needs build isolation, unlike the rest.
-      - name: python3-skytemple-rust
-        buildsystem: simple
-        build-commands:
-          - patch skytemple-rust-1.3.7/setup.py < skytemple_rust_setup_py.patch
-          - tar -czf skytemple-rust-1.3.7.tar.gz skytemple-rust-1.3.7 && rm -rf skytemple-rust-1.3.7
-          - . /usr/lib/sdk/rust-nightly/enable.sh && pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "skytemple-rust==1.3.7"
-        build-options:
-          env:
-            CARGO_HOME: /run/build/python3-skytemple-rust/cargo
-        sources:
-          - type: file
-            path: patches/skytemple_rust_setup_py.patch
-          - cargo-sources.json
-          - type: file
-            url: https://files.pythonhosted.org/packages/27/d6/003e593296a85fd6ed616ed962795b2f87709c3eee2bca4f6d0fe55c6d00/wheel-0.37.1-py2.py3-none-any.whl
-            sha256: 4bdcd7d840138086126cd09254dc6195fb4fc6f01c050a1d7236f2630db1d22a
-          - type: file
-            url: https://files.pythonhosted.org/packages/2e/49/565350c6fab3f5a3e2c46633290117060e70e2501544cdf3bde1d1d5d0fe/range_typed_integers-1.0.1-py3-none-any.whl
-            sha256: 35d39a41642503c5c5117e26798713f081b1beece1b2afd8f1ba70c8d90f63c5
-          - type: file
-            url: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
-            sha256: de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177
-          - type: file
-            url: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
-            sha256: de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177
-            type: file
-            url: https://files.pythonhosted.org/packages/ed/d6/2afc375a8d55b8be879d6b4986d4f69f01115e795e36827fd3a40166028b/typing_extensions-4.3.0-py3-none-any.whl
-            sha256: 25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02
-          - type: file
-            url: https://files.pythonhosted.org/packages/d9/5f/2daccd14278b6b780ae6799f85998377c06019354982391245f4b58a927d/setuptools-65.3.0-py3-none-any.whl
-            sha256: 2e24e0bec025f035a2e72cdd1961119f557d78ad331bb00ff82efb2ab8da8e82
-          # At the moment there is a packaging issue with the source on PyPi: The macro subcrates are not contained in the source tarballs.
-          # We need to fix this upstream, but in the meantime we use the Git repo.
-          - type: git
-            url: https://github.com/SkyTemple/skytemple-rust.git
-            tag: 1.3.7
-            dest: skytemple-rust-1.3.7
-          - type: file
-            url: https://files.pythonhosted.org/packages/5b/76/6ebf4728d287527514b29bc92c14ec59f666f43b0af650df6c100614c3dc/setuptools_rust-1.5.1-py3-none-any.whl
-            sha256: 306b236ff3aa5229180e58292610d0c2c51bb488191122d2fc559ae4caeb7d5e
-      # This is required by py-desmume.
-      - name: pcap
-        buildsystem: autotools
-        config-opts:
-          - "--disable-shared"
-          - "--disable-dbus"
-        sources:
-        - type: archive
-          url: https://www.tcpdump.org/release/libpcap-1.10.1.tar.gz
-          sha512: 56c314f19c2b857742bf8abcb1e78066986aaa95cec339b75a3c8b70a9fa2b5167da98708352f9ec97a1cea2700cfb4e040bda108d58ac46cec9b7deab88d171
-      # This is needed by cariocffi - It uses setuptools installer which does not support offline installation unless these packages are already installed before.
-      # upstream issue: https://github.com/Kozea/cairocffi/issues/206
-      - name: python3-pytest-runner
-        buildsystem: simple
-        build-commands:
-          - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "pytest-runner"
-        sources:
-          - type: file
-            url: https://files.pythonhosted.org/packages/42/7b/1cec26caae4bf44bb9911e1119d5d1a35171571e100b728a2ccd8719a3b1/pytest_runner-6.0.0-py3-none-any.whl
-            sha256: 4c059cf11cf4306e369c0f8f703d1eaf8f32fad370f41deb5f007044656aca6b
-      # This is needed by cariocffi - see above.
-      - name: python3-cffi
-        buildsystem: simple
-        build-commands:
-          - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "cffi>=1.1.0"
-        sources:
-          - type: file
-            url: https://files.pythonhosted.org/packages/2b/a8/050ab4f0c3d4c1b8aaa805f70e26e84d0e27004907c5b8ecc1d31815f92a/cffi-1.15.1.tar.gz
-            sha256: d400bfb9a37b1351253cb402671cea7e89bdecc294e8016a707f6d1d8ac934f9
-          - type: file
-            url: https://files.pythonhosted.org/packages/62/d5/5f610ebe421e85889f2e55e33b7f9a6795bd982198517d912eb1c76e1a53/pycparser-2.21-py2.py3-none-any.whl
-            sha256: 8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9
-      - requirements-skytemple.json
-  - name: meta
-    buildsystem: simple
-    build-commands:
-      - install -Dm644 org.skytemple.SkyTemple.desktop /app/share/applications/org.skytemple.SkyTemple.desktop
-      - install -Dm644 org.skytemple.SkyTemple.appdata.xml /app/share/metainfo/org.skytemple.SkyTemple.appdata.xml
-    sources:
       - type: file
-        path: org.skytemple.SkyTemple.desktop
+        url: https://raw.githubusercontent.com/SkyTemple/skytemple/118672e3929d0a1a6b2e8a326e3b8c52ffc66202/org.skytemple.SkyTemple.desktop
+        sha256: dfdf5baee462e85a7226688b6b60c863fde618b40b33a2ec4a76dff31f4f68a9
       - type: file
-        path: org.skytemple.SkyTemple.appdata.xml
+        url: https://raw.githubusercontent.com/SkyTemple/skytemple/118672e3929d0a1a6b2e8a326e3b8c52ffc66202/org.skytemple.SkyTemple.appdata.xml
+        sha256: f33f38571384cd31da83e9fea2725d2c841bdbde319d620eb59e422a9601f3aa
