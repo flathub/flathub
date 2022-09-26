@@ -24,7 +24,7 @@ JAVA_OPTS="$JAVA_OPTS -Dwsi.dir=${SOAPUI_HOME}/wsi-test-tools"
 #CVE-2021-44228
 JAVA_OPTS="$JAVA_OPTS -Dlog4j2.formatMsgNoLookups=true"
 #JAVA 16
-JAVA_OPTS="$JAVA_OPTS --illegal-access=permit"
+#JAVA_OPTS="$JAVA_OPTS --illegal-access=permit"
 
 export PATH
 export SOAPUI_HOME
