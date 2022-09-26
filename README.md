@@ -58,4 +58,4 @@ Checkout the appropriate tag.
 
 Run the script against the `package-lock.json` file as shown here.
 
-    flatpak-node-generator npm stretchly/package-lock.json
+    flatpak-node-generator npm stretchly/package-lock.json --electron-node-headers
