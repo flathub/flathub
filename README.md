@@ -17,7 +17,7 @@ Or maybe even to append the `-os` (opensource version) in any of the above or wh
 
 - GUI: x11,ipc,dri
 - Network (to allow perfonming the actual tests)
-- Documents folder (to load and save JMX files)
+- Documents folder (to load and save project files)
 
 ## Known issues
 
@@ -33,6 +33,6 @@ Since the application folder is readonly it has been enabled the following paths
 - User plugins: `~/.var/app/com.eviware.soapui/.soapuios/plugins/`
 - User properties: `~/.var/app/com.eviware.soapui/.soapuios/soapui.properties`
 
-Since SoapUI is using the root of the home folder to store the configuration files `soapui-settings.xml` and `default-soapui-workspace.xml`, in the launcher it creates symlinks to the `.soapuios` folder so that the settings can be persisted.
-
 This variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
+
+Also since SoapUI is using the root of the home folder to store some configuration files (`soapui-settings.xml` and `default-soapui-workspace.xml`), in the launcher it symlinks them (if they don't already exist) into the `.soapuios` folder so that the settings can be persisted.
