@@ -6,7 +6,7 @@ The instructions here describe how to build and update the [Stretchly](https://h
 
 Get the source code.
 
-    git clone https://github.com/flathub/net.hovancik.Stretchly.git
+    git clone --recursive https://github.com/flathub/net.hovancik.Stretchly.git
     cd net.hovancik.Stretchly
 
 Add the Flathub repository.
