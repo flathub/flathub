@@ -54,7 +54,7 @@ Fetch the Stretchly source code.
 
 Checkout the appropriate tag.
 
-    git -C stretchly switch -d $(yq -r '.[].commit' stretchly-sources.yaml)
+    git -C stretchly switch -d $(yq -r '.modules[1].sources[4].commit' net.hovancik.Stretchly.yaml)
 
 Run the script against the `package-lock.json` file as shown here.
 
