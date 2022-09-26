@@ -21,8 +21,6 @@ Or maybe even to append the `-os` (opensource version) in any of the above or wh
 
 ## Known issues
 
-Since SoapUI is using the root of the home folder to store the configuration files `soapui-settings.xml` and `default-soapui-workspace.xml`, in this package it has been proposed to use `~/.var/app/com.eviware.soapui/config/` as its home folder, so that in case the user selects to share his home folder it don't save those files in its root (examples below).
-
 The application has been designed to run using OpenJDK16 but currently this Flatpak has been configured to use [OpenJDK17](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17).
 
 Also currently accessing to external web pages is not working due to this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1).
@@ -31,14 +29,14 @@ Also currently accessing to external web pages is not working due to this [exter
 
 Since the application folder is readonly it has been enabled the following paths have been set:
 
-- User external actions: `~/.var/app/com.eviware.soapui/data/soapuios/actions`
-- User external extensions: `~/.var/app/com.eviware.soapui/data/soapuios/ext`
-- User external libraries: `~/.var/app/com.eviware.soapui/data/soapuios/listeners`
-- SoapUI user home directory: `~/.var/app/com.eviware.soapui/config/`
-  - User settings: `~/.var/app/com.eviware.soapui/config/soapui-settings.xml`
-  - User workspace: `~/.var/app/com.eviware.soapui/config/default-soapui-workspace.xml`
-  - User plugins: `~/.var/app/com.eviware.soapui/config/.soapuios/plugins/`
-  - Logs: `~/.var/app/com.eviware.soapui/config/.soapuios/logs/`
-- User properties: `~/.var/app/com.eviware.soapui/config/.soapuios/soapui.properties`
+- User external actions: `~/.var/app/com.eviware.soapui/config/soapuios/actions`
+- User external extensions: `~/.var/app/com.eviware.soapui/config/soapuios/ext`
+- User external libraries: `~/.var/app/com.eviware.soapui/config/soapuios/listeners`
+- User plugins: `~/.var/app/com.eviware.soapui/config/soapuios/plugins/`
+- User properties: `~/.var/app/com.eviware.soapui/config/soapuios/soapui.properties`
 
-This variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
+Since SoapUI is using the root of the home folder to store the configuration files `soapui-settings.xml` and `default-soapui-workspace.xml`, in the launcher it creates symlinks to `~/.var/app/com.eviware.soapui/config/` so that the settings can be persisted.
+
+This paths would be unless the user is sharing his home with an existing `~/.soapuios` folder, then all files would be stored there.
+
+Also this variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
