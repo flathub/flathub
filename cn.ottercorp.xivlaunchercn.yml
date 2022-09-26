@@ -1,0 +1,76 @@
+app-id: cn.ottercorp.xivlaunchercn
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+rename-icon: xivlauncher
+copy-icon: true
+build-options:
+  append-path: "/usr/lib/sdk/dotnet6/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet6/lib"
+  append-pkg-config-path: ":/usr/lib/sdk/dotnet6/lib/pkgconfig"
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+command: xivlauncher
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  #- --socket=wayland re-add later when libdecor support is added to builds
+  - --share=network
+  - --filesystem=home
+  - --socket=pulseaudio
+  - --talk-name=org.freedesktop.secrets
+  #- --talk-name=org.freedesktop.Flatpak # This is used as a temporary hack to run xdg-open outside of the sandbox, as Steam Decks have a misconfigured xdg-desktop-portal
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --device=all
+  - --allow=devel
+modules:
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      - "-Dmanpage=false"
+      - "-Dvapi=false"
+      - "-Dgtk_doc=false"
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/gir-1.0
+      - /share/man
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.20/libsecret-0.20.5.tar.xz
+        sha256: 3fb3ce340fcd7db54d87c893e69bfc2b1f6e4d4b279065ffe66dac9f0fd12b4d
+  - name: aria2
+    config-opts:
+      - '--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt'
+    sources:
+      - type: archive
+        url: https://github.com/aria2/aria2/releases/download/release-1.36.0/aria2-1.36.0.tar.xz
+        sha256: 58d1e7608c12404f0229a3d9a4953d0d00c18040504498b483305bcb3de907a5
+  - name: xivlauncher
+    buildsystem: simple
+    build-commands:
+      - install -d "${FLATPAK_DEST}/opt/XIVLauncher/"
+      - dotnet publish -r linux-x64 --sc --source ./nuget-sources -o "${FLATPAK_DEST}/opt/XIVLauncher/" src/XIVLauncher.Core/XIVLauncher.Core.csproj --configuration Release -p:ExtraDefineConstants=FLATPAK
+      - install -D -m644 misc/linux_distrib/XIVLauncher.desktop "${FLATPAK_DEST}/share/applications/cn.ottercorp.xivlaunchercn.desktop"
+      - install -D -m644 misc/linux_distrib/512.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/xivlauncher.png"
+      - install -D -m644 cn.ottercorp.xivlaunchercn.appdata.xml "${FLATPAK_DEST}/share/metainfo/cn.ottercorp.xivlaunchercn.appdata.xml"
+      - ln -s "${FLATPAK_DEST}/opt/XIVLauncher/XIVLauncher.Core" "${FLATPAK_DEST}/bin/xivlauncher"
+    sources:
+      - type: git
+        url: https://github.com/ottercorp/FFXIVQuickLauncher.git
+        commit: 42fbf0e0a85579442d8244609aea4622d64a6764
+      - type: file
+        url: https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.linux-x64/6.0.1/microsoft.aspnetcore.app.runtime.linux-x64.6.0.1.nupkg
+        dest: nuget-sources
+        dest-filename: microsoft.aspnetcore.app.runtime.linux-x64.6.0.1.nupkg
+        sha512: 865af2ac328070403202eb5f0c436abbf8edb3fd484dec92b4c0cd6d42d36c8c7e396bc9bfd13cd0b6f877baf72b3fbfb0b425a794711dbab4b0297b20143ce5
+      - type: file
+        url: https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.linux-x64/6.0.1/microsoft.netcore.app.runtime.linux-x64.6.0.1.nupkg
+        dest: nuget-sources
+        sha512: 01d0e6c885a357270dabb65878deed2c147841297d8688a543b7605f4704d2507c70f86f825a59a975ff7789a4b74677262947fc97a7a25f23556292266b50ef
+      - type: file
+        path: cn.ottercorp.xivlaunchercn.appdata.xml
+      - nuget-dependencies.json
