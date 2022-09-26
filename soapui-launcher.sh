@@ -6,15 +6,9 @@ SOAPUI_JAR=`ls /app/bin/soapui-*.jar`
 JFXRTPATH="/app/jre/lib/jfxrt.jar"
 SOAPUI_CLASSPATH=$JFXRTPATH:$SOAPUI_JAR:$SOAPUI_HOME/lib/*:$XDG_DATA_HOME/soapuios/lib/*
 
-# Create the project folder
-[ -d "${XDG_CONFIG_HOME}/soapuios" ] || mkdir -p "${XDG_CONFIG_HOME}/soapuios"
-
-# An alternative to use --persist=.soapuios and beeing clean and backcompatible
-[ -d "$HOME/.soapuios" ] || ln -s "${XDG_CONFIG_HOME}/soapuios" "$HOME/.soapuios"
-
 # Hacks to allow persist configuration across executions since persist option don't work well with plain files
-[ -e "$HOME/default-soapui-workspace.xml" ] || ln -s "${XDG_CONFIG_HOME}/soapuios/default-soapui-workspace.xml" "$HOME/default-soapui-workspace.xml"
-[ -e "$HOME/soapui-settings.xml" ] || ln -s "${XDG_CONFIG_HOME}/soapuios/soapui-settings.xml" "$HOME/soapui-settings.xml"
+[ -e "$HOME/default-soapui-workspace.xml" ] || ln -s "$HOME/.soapuios/default-soapui-workspace.xml" "$HOME/default-soapui-workspace.xml"
+[ -e "$HOME/soapui-settings.xml" ] || ln -s "$HOME/.soapuios/soapui-settings.xml" "$HOME/soapui-settings.xml"
 
 #JAVA OPTS
 JAVA_OPTS="-Xms128m -Xmx1024m -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40"

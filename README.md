@@ -27,14 +27,12 @@ Currently accessing to external web pages is not working due to this [external i
 
 Since the application folder is readonly it has been enabled the following paths have been set:
 
-- User external actions: `~/.var/app/com.eviware.soapui/config/soapuios/actions`
-- User external extensions: `~/.var/app/com.eviware.soapui/config/soapuios/ext`
-- User external libraries: `~/.var/app/com.eviware.soapui/config/soapuios/listeners`
-- User plugins: `~/.var/app/com.eviware.soapui/config/soapuios/plugins/`
-- User properties: `~/.var/app/com.eviware.soapui/config/soapuios/soapui.properties`
+- User external actions: `~/.var/app/com.eviware.soapui/.soapuios/actions`
+- User external extensions: `~/.var/app/com.eviware.soapui/.soapuios/ext`
+- User external libraries: `~/.var/app/com.eviware.soapui/.soapuios/listeners`
+- User plugins: `~/.var/app/com.eviware.soapui/.soapuios/plugins/`
+- User properties: `~/.var/app/com.eviware.soapui/.soapuios/soapui.properties`
 
-Since SoapUI is using the root of the home folder to store the configuration files `soapui-settings.xml` and `default-soapui-workspace.xml`, in the launcher it creates symlinks to `~/.var/app/com.eviware.soapui/config/` so that the settings can be persisted.
+Since SoapUI is using the root of the home folder to store the configuration files `soapui-settings.xml` and `default-soapui-workspace.xml`, in the launcher it creates symlinks to the `.soapuios` folder so that the settings can be persisted.
 
-This paths would be unless the user is sharing his home with an existing `~/.soapuios` folder, then all files would be stored there.
-
-Also this variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
+This variables has been set by coping the functionality of the `soapui.sh` into the `soapui-launcher.sh` (in this repository) since the former don't allow us to change the `JAVA_OPTS`.
