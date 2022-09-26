@@ -1,5 +1,8 @@
 #!/bin/sh
 
+JRE_HOME="/app/jre"
+export JRE_HOME
+
 # Workarround for Flatpak <1.13
 XDG_STATE_HOME=${XDG_STATE_HOME:-$XDG_CONFIG_HOME/../.local/state}
 
@@ -12,7 +15,7 @@ mkdir -p "$JMETER_CLASSPATH" "$JMETER_LIBEXT" \
   "${XDG_CONFIG_HOME}/jmeter" \
   "${XDG_STATE_HOME}/jmeter"
 
-[ -r "$JMETER_CONFIG" ] || cp /app/bin/user.properties "$JMETER_CONFIG"
+[ -e "$JMETER_CONFIG" ] || cp /app/bin/user.properties "$JMETER_CONFIG"
 
 # Force help.local=true since browser integration is not working
 # https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1
