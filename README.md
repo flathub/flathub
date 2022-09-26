@@ -34,11 +34,11 @@ To generate an updated version of this file, `generated-sources.json`, follow th
 
 Make sure to install npm.
 
-    sudo apt install python3-aiohttp npm pipx
+    sudo apt install jq npm pipx python3-aiohttp
 
 Install yq.
 
-    python3 -m pipx install yq
+    pipx install yq
 
 Install the Flatpak Node Generator Python utility with `pipx`.
 
@@ -54,7 +54,7 @@ Fetch the Stretchly source code.
 
 Checkout the appropriate tag.
 
-    git -C stretchly switch -d $(yq -r '.[].commit' thonny-sources.yaml)
+    git -C stretchly switch -d $(yq -r '.[].commit' stretchly-sources.yaml)
 
 Run the script against the `package-lock.json` file as shown here.
 
