@@ -21,9 +21,7 @@ Or maybe even to append the `-os` (opensource version) in any of the above or wh
 
 ## Known issues
 
-The application has been designed to run using OpenJDK16 but currently this Flatpak has been configured to use [OpenJDK17](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17).
-
-Also currently accessing to external web pages is not working due to this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1).
+Currently accessing to external web pages is not working due to this [external issue](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/issues/1).
 
 ## Special configurations and workarrounds
 
