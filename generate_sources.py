@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 # The parent path of the extracted Godot version to use. CHANGE FOR UPDATES
-godot_path = './godot-4.0-beta1'
+godot_path = './godot-4.0-beta2'
 
 # The projects to generate the sources from. CHANGE IF NECESSARY
 projects = [
