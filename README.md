@@ -4,11 +4,9 @@
 
 <https://github.com/flipperdevices/qFlipper>
 
-## Udev rules
+## Fix permissions error on serial port
 
-```
-flatpak run --command=cat one.flipperzero.qFlipper /app/lib/udev/rules.d/42-flipperzero.rules | sudo tee /etc/udev/rules.d/42-flipperzero.rules && sudo udevadm control --reload-rules && sudo udevadm trigger
-```
+Check out the [wiki page on how to troubleshoot the connection to Flipper](https://github.com/flathub/one.flipperzero.qFlipper/wiki/)
 
 ## Building the flatpak
 
@@ -19,10 +17,10 @@ flatpak run --command=cat one.flipperzero.qFlipper /app/lib/udev/rules.d/42-flip
 
 ```bash
 # Fedora
-sudo dnf install make flatpak-builder
+sudo dnf install flatpak-builder
 
 # Ubuntu
-sudo apt install make flatpak-builder
+sudo apt install flatpak-builder
 ```
 
 You will need the following platforms installed:
