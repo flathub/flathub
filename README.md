@@ -68,6 +68,11 @@ If the C# project throws an error, running the following command within the IDE'
 dotnet restore
 ```
 
+It may also be necessary to add the fallback folder for other flatpaks that use .NET 6. This can be done like so:
+```
+flatpak --user overrides --filesystem=~/.var/app/org.godotengine.Godot/data/godot/mono/GodotNuGetFallbackFolder
+```
+
 ## Limitations
 
 - The Mono external editor support does not work.
