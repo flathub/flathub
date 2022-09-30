@@ -25,8 +25,8 @@ sudo apt install flatpak-builder
 
 You will need the following platforms installed:
 
-- `org.kde.Platform` version "5.15-21.08"
-- `org.kde.Sdk` version "5.15-21.08"
+- `org.kde.Platform` version "5.15-22.08"
+- `org.kde.Sdk` version "5.15-22.08"
 
 ```bash
 flatpak install org.freedesktop.Platform org.freedesktop.Sdk
