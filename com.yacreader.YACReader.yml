@@ -10,6 +10,8 @@ finish-args:
   - --share=network
   - --device=dri
   - --filesystem=home
+rename-desktop-file: YACReader.desktop
+rename-icon: YACReader
 cleanup:
   - /bin/gn
   - /include
@@ -31,22 +33,20 @@ modules:
       - sub-YACReader-install_subtargets
       - sub-YACReaderLibrary-install_subtargets
     post-install:
-      - mv "$FLATPAK_DEST"/share/applications/{YACReader,com.yacreader.YACReader}.desktop
+    # fix YACReaderLibrary desktop file and icons
       - mv "$FLATPAK_DEST"/share/applications/{YACReaderLibrary,com.yacreader.YACReader.YACReaderLibrary}.desktop
-      - mv "$FLATPAK_DEST"/share/icons/hicolor/scalable/apps/{YACReader,com.yacreader.YACReader}.svg
       - mv "$FLATPAK_DEST"/share/icons/hicolor/scalable/apps/{YACReaderLibrary,com.yacreader.YACReader.YACReaderLibrary}.svg
-      - sed -i -e 's/^Categories=\(.*\)$/Categories=Office;\1/' -e 's/^Icon=.*$/Icon=com.yacreader.YACReader/' "$FLATPAK_DEST"/share/applications/com.yacreader.YACReader.desktop
-      - sed -i -e 's/^Categories=\(.*\)$/Categories=Office;\1/' -e 's/^Icon=.*$/Icon=com.yacreader.YACReader.YACReaderLibrary/' "$FLATPAK_DEST"/share/applications/com.yacreader.YACReader.YACReaderLibrary.desktop
+      - desktop-file-edit --set-icon=com.yacreader.YACReader.YACReaderLibrary "$FLATPAK_DEST"/share/applications/com.yacreader.YACReader.YACReaderLibrary.desktop
       - install -D -m644 com.yacreader.YACReader.appdata.xml "$FLATPAK_DEST"/share/metainfo/com.yacreader.YACReader.appdata.xml
     sources:
       - type: git
         url: https://github.com/YACReader/yacreader.git
-        tag: 9.9.1
+        tag: 9.9.2
       - type: file
         path: com.yacreader.YACReader.appdata.xml
     modules:
       - name: unarr
-        buildsystem: cmake
+        buildsystem: cmake-ninja
         sources:
           - type: git
             url: https://github.com/selmf/unarr.git
@@ -55,8 +55,7 @@ modules:
         buildsystem: simple
         build-commands:
           # https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=libpdfium-nojs
-          # Fix visibilty for system Freetype
-          - git -C pdfium/build cherry-pick -n bfd6ff0
+
           # Patch abseil build to be static
           - cd "$FLATPAK_BUILDER_BUILDDIR/pdfium/third_party/abseil-cpp"
           - sed -i -e 's/component(/static_library(/' -e 's/is_component_build(/false/' pdfium/third_party/abseil-cpp/BUILD.gn
@@ -73,7 +72,8 @@ modules:
           # Build
           - gn --root=pdfium gen pdfium/out/Release --args="is_clang=false use_sysroot=false is_debug=false symbol_level=0 pdf_enable_v8=false pdf_enable_xfa=false treat_warnings_as_errors=false use_system_libjpeg=true use_system_zlib=true pdf_bundle_freetype=false use_system_freetype=true use_system_lcms2=true use_system_libpng=true use_custom_libcxx=false pdf_is_standalone=true use_system_libopenjpeg2=true is_component_build=true use_gold=false"
           - ninja -C pdfium/out/Release pdfium
-          - sed -e 's/@VERSION@/5005/g' -e 's#^\s*prefix\s*=.*$#prefix='"$FLATPAK_DEST"'#' -i libpdfium.pc
+          # TODO: use a variable for version
+          - sed -e 's/@VERSION@/5249/g' -e 's#^\s*prefix\s*=.*$#prefix='"$FLATPAK_DEST"'#' -i libpdfium.pc
           # Install
           - install -D -m644 pdfium/LICENSE "$FLATPAK_DEST/share/licenses/pdfium/LICENSE"
           - install -D pdfium/public/*.h --target-directory="$FLATPAK_DEST/include/pdfium"
@@ -85,7 +85,7 @@ modules:
           - type: git
             url: https://pdfium.googlesource.com/pdfium
             # curl 'https://omahaproxy.appspot.com/linux?channel=stable' | cut -d'.' -f 3
-            branch: chromium/5195
+            branch: chromium/5249
             dest: pdfium
           - type: git
             url: https://chromium.googlesource.com/chromium/src/build.git
@@ -110,14 +110,14 @@ modules:
             buildsystem: simple
             build-options:
               env:
+                # Set CC and CXX to override default (llvm) build settings
                 CC: gcc
                 CXX: g++
             build-commands:
               - ./build/gen.py
-              - ninja -C out
-              - install -D out/gn "$FLATPAK_DEST/bin/gn"
+              - ninja -C out gn
+              - install -Dm755 out/gn "$FLATPAK_DEST/bin/gn"
             sources:
               - type: git
                 url: https://gn.googlesource.com/gn
-                commit: b4851eb2062f76a880c07f7fa0d12913beb6d79e
-                disable-shallow-clone: true
+                commit: 9ef321772ecc161937db69acb346397e0ccc484d
