@@ -33,3 +33,9 @@ flatpak install org.gnome.Platform//43 org.gnome.Sdk//43
 ```bash
 flatpak-builder --ccache --force-clean --install --user build-dir org.putty.putty.yml
 ```
+
+### Running
+
+```bash
+flatpak run org.putty.putty
+```
