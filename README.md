@@ -18,6 +18,7 @@ sudo dnf install make flatpak-builder
 # Ubuntu
 sudo apt install make flatpak-builder
 ```
+
 You will need the following platforms installed:
 
 - `org.freedesktop.Platform` version "22.08"
@@ -25,4 +26,10 @@ You will need the following platforms installed:
 
 ```bash
 flatpak install org.freedesktop.Platform org.freedesktop.Sdk
+```
+
+### Build and install
+
+```bash
+flatpak-builder --ccache --force-clean --install --user build-dir org.putty.putty.yml
 ```
