@@ -29,5 +29,5 @@ You will need the following platforms installed:
 - `org.kde.Sdk` version "5.15-22.08"
 
 ```bash
-flatpak install org.freedesktop.Platform org.freedesktop.Sdk
+flatpak install org.kde.Platform org.kde.Sdk
 ```
