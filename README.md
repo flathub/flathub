@@ -25,7 +25,7 @@ You will need the following platforms installed:
 - `org.freedesktop.Sdk` version "22.08"
 
 ```bash
-flatpak install org.freedesktop.Platform org.freedesktop.Sdk
+flatpak install org.gnome.Platform//43 org.gnome.Sdk//43
 ```
 
 ### Build and install
