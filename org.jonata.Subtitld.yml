@@ -1,0 +1,226 @@
+app-id: org.jonata.Subtitld
+
+runtime: org.kde.Platform
+runtime-version: '6.3'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.3'
+
+command: subtitld
+rename-desktop-file: subtitld.desktop
+rename-icon: subtitld
+finish-args:
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-pictures
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+
+modules:
+
+  - name: ffms2
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/FFMS/ffms2/archive/refs/tags/2.40.tar.gz
+        sha256: 82e95662946f3d6e1b529eadbd72bed196adfbc41368b2d50493efce6e716320
+
+  - name: libmpv
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+    buildsystem: simple
+    build-commands:
+      - python3 waf configure --prefix=${FLATPAK_DEST} --enable-libmpv-shared --disable-cplayer --disable-alsa --disable-manpage-build --disable-debug-build
+      - python3 waf build
+      - python3 waf install
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.34.1.tar.gz
+        sha256: 32ded8c13b6398310fa27767378193dc1db6d78b006b70dbcbd3123a1445e746
+      - type: file
+        url: https://waf.io/waf-2.0.23
+        sha256: 28a2e4583314a162cfcbffefb8a9202c1d7869040d30b5852da479b76d9c0491
+        dest-filename: waf
+    modules:
+      - name: libass
+        cleanup:
+          - "/include"
+          - "/lib/*.la"
+          - "/lib/pkgconfig"
+        config-opts:
+          - "--disable-static"
+        sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.15.2/libass-0.15.2.tar.xz
+            sha256: 1be2df9c4485a57d78bb18c0a8ed157bc87a5a8dd48c661961c625cb112832fd
+        modules:
+          - name: fribidi
+            cleanup:
+              - "/bin"
+              - "/include"
+              - "/lib/pkgconfig"
+              - "/lib/*.la"
+              - "/share/man"
+            buildsystem: meson
+            config-opts:
+              - "--buildtype=release"
+              - "-Ddocs=false"
+            sources:
+            - type: git
+              url: https://github.com/fribidi/fribidi.git
+              tag: v1.0.12
+              commit: 6428d8469e536bcbb6e12c7b79ba6659371c435a
+      - name: ffmpeg
+        cleanup:
+          - "/include"
+          - "/lib/pkgconfig"
+          - "/share/ffmpeg/examples"
+        config-opts:
+          - "--enable-shared"
+          - "--disable-static"
+          - "--disable-debug"
+          - "--enable-gnutls"
+          - "--disable-doc"
+          - "--disable-ffplay"
+          - "--enable-gpl"
+          - "--enable-libass"
+          - "--enable-libfribidi"
+          - "--enable-libmp3lame"
+          - "--enable-libpulse"
+          - "--enable-libtheora"
+          - "--enable-libvorbis"
+          - "--enable-libvpx"
+          - "--enable-libx264"
+          - "--enable-libx265"
+          - "--enable-libxvid"
+        build-options:
+          arch:
+            x86_64:
+              config-opts:
+              - "--enable-nvdec"
+        sources:
+          - type: archive
+            url: https://ffmpeg.org/releases/ffmpeg-5.0.1.tar.xz
+            sha256: ef2efae259ce80a240de48ec85ecb062cecca26e4352ffb3fda562c21a93007b
+        modules:
+          - name: ffnvcodec
+            only-arches:
+              - x86_64
+            buildsystem: simple
+            build-commands:
+              - make
+              - make install PREFIX=${FLATPAK_DEST}
+            sources:
+              - type: git
+                url: https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+                tag: n11.1.5.1
+                commit: 84483da70d903239d4536763fde8c7e6c4e80784
+          - name: xvid
+            subdir: build/generic
+            sources:
+              - type: archive
+                url: https://downloads.xvid.com/downloads/xvidcore-1.3.7.tar.gz
+                sha256: abbdcbd39555691dd1c9b4d08f0a031376a3b211652c0d8b3b8aa9be1303ce2d
+          - name: libvpx
+            config-opts:
+              - "--enable-runtime-cpu-detect"
+              - "--enable-shared"
+              - "--disable-static"
+              - "--enable-pic"
+              - "--disable-install-bins"
+              - "--disable-install-docs"
+              - "--disable-install-srcs"
+              - "--enable-vp8"
+              - "--enable-postproc"
+              - "--enable-vp9"
+              - "--enable-vp9-highbitdepth"
+            sources:
+              - type: archive
+                url: https://github.com/webmproject/libvpx/archive/refs/tags/v1.11.0.tar.gz
+                sha256: 965e51c91ad9851e2337aebcc0f517440c637c506f3a03948062e3d5ea129a83
+          - name: x264
+            config-opts:
+              - "--prefix=${FLATPAK_DEST}"
+              - "--enable-shared"
+              - "--disable-cli"
+              - "--disable-lavf"
+              - "--enable-pic"
+            build-options:
+              arch:
+                aarch64:
+                  cxxflags: "-fPIC"
+                  config-opts:
+                    - "--disable-lto"
+                x86_64:
+                  config-opts:
+                    - "--disable-asm"
+            post-install:
+              - ln -srf ${FLATPAK_DEST}/lib/libx264.so.* ${FLATPAK_DEST}/lib/libx264.so
+            sources:
+              - type: git
+                commit: 1771b556ee45207f8711744ccbd5d42a3949b14c
+                url: https://git.videolan.org/git/x264.git
+          - name: x265
+            buildsystem: simple
+            build-options:
+              arch:
+                aarch64:
+                  cxxflags: "-fPIC"
+            build-commands:
+              - mkdir source/build-8 source/build-10 source/build-12
+              - cd source/build-12 && cmake .. -DCMAKE_INSTALL_PREFIX=${FLATPAK_DEST} -DHIGH_BIT_DEPTH='TRUE' -DMAIN12='TRUE' -DEXPORT_C_API='FALSE' -DENABLE_CLI='FALSE' -DENABLE_SHARED='FALSE'
+              - cd source/build-12 && make
+              - cd source/build-10 && cmake .. -DCMAKE_INSTALL_PREFIX=${FLATPAK_DEST} -DHIGH_BIT_DEPTH='TRUE' -DEXPORT_C_API='FALSE' -DENABLE_CLI='FALSE' -DENABLE_SHARED='FALSE'
+              - cd source/build-10 && make
+              - ln -s ../build-10/libx265.a source/build-8/libx265_main10.a
+              - ln -s ../build-12/libx265.a source/build-8/libx265_main12.a
+              - cd source/build-8 && cmake .. -DCMAKE_INSTALL_PREFIX=${FLATPAK_DEST} -DENABLE_SHARED='TRUE' -DENABLE_CLI='FALSE' -DENABLE_HDR10_PLUS='TRUE' -DEXTRA_LIB='x265_main10.a;x265_main12.a' -DEXTRA_LINK_FLAGS='-L.' -DLINKED_10BIT='TRUE' -DLINKED_12BIT='TRUE'
+              - cd source/build-8 && make
+              - cd source/build-8 && make install
+            sources:
+            - type: archive
+              url: https://bitbucket.org/multicoreware/x265_git/downloads/x265_3.3.tar.gz
+              sha256: c6d744a87eda55560da715f56f878640554ddc06e2d0fcbd822fa330affc22cc
+          - name: fdkaac
+            config-opts:
+              - "--disable-static"
+            sources:
+              - type: archive
+                url: https://github.com/mstorsjo/fdk-aac/archive/v2.0.2.tar.gz
+                sha256: 7812b4f0cf66acda0d0fe4302545339517e702af7674dd04e5fe22a5ade16a90
+          - name: lame
+            cleanup:
+              - "/share/doc"
+            config-opts:
+              - "--enable-shared"
+              - "--disable-static"
+              - "--disable-frontend"
+              - "--enable-nasm"
+            sources:
+              - type: archive
+                url: https://downloads.sourceforge.net/lame/lame-3.100.tar.gz
+                sha256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+
+
+
+
+
+  - name: Subtitld
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} .
+      # - install -Dm644 share/icons/${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      # - install -Dm644 share/applications/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # - install -Dm644 share/metainfo/${FLATPAK_ID}.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+    build-options:
+      build-args:
+        - --share=network
+    sources:
+      - type: git
+        tag: "22.10",
+        commit: "302e579915f932b33362ae033db6e795b8be11d2"
+        url: https://gitlab.com/jonata/subtitld.git
