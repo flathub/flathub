@@ -1,2 +1,2 @@
 #!/bin/sh
-/app/jre/bin/java -jar /app/JSettlers/MapCreator.jar
+exec /app/jre/bin/java -jar /app/JSettlers/MapCreator.jar
