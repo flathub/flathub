@@ -10,11 +10,13 @@ Regarding `io.sourceforge.pysolfc.PySolFC.json`:
    with Python being too common a dependency to omit, but Tkinter being too rare
    a dependency for its size to be included by default, and both being part of
    the same source package.
-2. `python3-modules.json` was produced by running the
+2. You will need to run `git submodule update --init --recursive` to initially
+   pull the `shared-modules` submodule used for the FluidSynth build definition.
+3. `python3-modules.json` was produced by running the
    [flatpak-pip-generator](https://github.com/flatpak/flatpak-builder-tools/blob/master/pip/flatpak-pip-generator)
    script as
    `python3 flatpak-pip-generator --checker-data attrs configobj pillow pycotap 'pygame>=2' ttkthemes pysol-cards`
-3. `solvers_extra_deps.json` was produced by running the
+4. `solvers_extra_deps.json` was produced by running the
    [flatpak-cpan-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/cpan)
    script as
    `./flatpak-cpan-generator.pl -d solvers_extra_deps -o solvers_extra_deps.json Moo Path::Tiny Template`.
@@ -25,7 +27,7 @@ Regarding `io.sourceforge.pysolfc.PySolFC.json`:
    and I was thoroughly disillusioned with getting the solvers to build by this
    point, it's up to you to decide whether you want to add them manually.
 
-4. There's no version field because Flathub assumes the newest version listed in
+5. There's no version field because Flathub assumes the newest version listed in
    the `.appdata.xml` file is the version you're publishing. I don't know if it
    automatically filters out versions marked as development versions to only be
    displayed by tooling when you're asking for the development build channel,
