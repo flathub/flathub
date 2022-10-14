@@ -48,29 +48,11 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 
 ## C# Support
 
-In order for C# to be fully supported, a local Nuget source containing the Godot-SDK Nuget package must be added to the Nuget within the Flatpak SDK Extension. This can be done like so:
-```
-FLATPAK_ENABLE_SDK_EXT=dotnet flatpak run --command=sh org.godotengine.Godot -c \
-    'mkdir ~/MyLocalNugetSource;
-     cp /app/bin/GodotSharp/Tools/nupkgs/* ~/MyLocalNugetSource/;
-     dotnet nuget add source ~/MyLocalNugetSource -n MyLocalNugetSource'
-```
+After the first C# script is created, it is necessary to click `build` within Godot. Alternatively, running `dotnet restore` in the IDE's terminal would work as well.
 
-To undo this, simply run the following:
+It is also necessary to add the fallback folder for other flatpaks that use .NET 6. This can be done like so:
 ```
-FLATPAK_ENABLE_SDK_EXT=dotnet flatpak run --command=sh org.godotengine.Godot -c \
-    'rm -r ~/MyLocalNugetSource;
-     dotnet nuget remove source MyLocalNugetSource'
-```
-
-If the C# project throws an error, running the following command within the IDE's terminal should fix it, provided that it is run in the root of the project.
-```
-dotnet restore
-```
-
-It may also be necessary to add the fallback folder for other flatpaks that use .NET 6. This can be done like so:
-```
-flatpak --user overrides --filesystem=~/.var/app/org.godotengine.Godot/data/godot/mono/GodotNuGetFallbackFolder
+flatpak --user override --filesystem=~/.var/app/org.godotengine.Godot/data/godot/mono/GodotNuGetFallbackFolder
 ```
 
 ## Limitations
@@ -86,7 +68,8 @@ then enter the following commands in a terminal:
 ```bash
 git clone --recursive https://github.com/flathub/org.godotengine.Godot.git
 cd org.godotengine.Godot/
-flatpak install --user flathub org.freedesktop.Sdk//21.08 org.freedesktop.Sdk.Extension.dotnet6//21.08 -y
+flatpak install --user flathub org.freedesktop.Sdk//21.08 org.freedesktop.Sdk.Extension.dotnet6//21.08 org.freedesktop.Sdk.Extension.openjdk11//21.08 -y
+flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot.yaml
 ```
 
 If all goes well, the Flatpak will be installed after building. You can then
