@@ -31,11 +31,11 @@ flatpak install org.gnome.Platform//43 org.gnome.Sdk//43
 ### Build and install
 
 ```bash
-flatpak-builder --ccache --force-clean --install --user build-dir org.putty.putty.yml
+flatpak-builder --ccache --force-clean --install --user build-dir uk.org.greenend.chiark.sgtatham.putty.yml
 ```
 
 ### Running
 
 ```bash
-flatpak run org.putty.putty
+flatpak run uk.org.greenend.chiark.sgtatham.putty
 ```
