@@ -13,6 +13,71 @@ http://download.ebz.epson.net/dsc/du/02/DriverDownloadInfo.do?LG2=EN&CN2=&DSCMI=
 Source download
 http://support.epson.net/linux/src/scanner/epsonscan2/
 
+Content
+-------
+
+epsonscan2-non-free: the non-free plugins, drivers, firmware. x86_64
+only (there is an armv7 too, but this arch is non longer supported by
+the SDK). Required for many scanners, including Epson V600 This is
+extracted from the debian packages provided by Epson.
+
+epsonscan2: the Qt based front-end, build from source. LGPL-2.1
+
+Build
+-----
+
+### Non x86_64
+
+Given the nature of the package and the binaries not being available,
+this is restricted to `x86_64`.
+
+### Finish args
+
+Wayland cause the app to bail out.
+
+Network isn't enabled. Might be needed for networks scanning.
+
+Filesystem locations are the default offered in the app: xdg-pictures,
+xdg-documents, xdg-desktop.
+
+Persist `.epsonscan2` because that's where non XDG complient is stores
+the settings.
+
+### Build options
+
+`-DCMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu` is used because of where
+the non-free stuff is (extracted from the Debian package) and
+hardcoded in the source code. Note: this is arch specific. But it doesn't
+matter here.
+
+If using the RPM, it would be `-DCMAKE_INSTALL_LIBDIR=lib64` (64-bits
+archs only).
+
+### Binary patching
+
+`epson_patch.py` is meant to patch a binary that expect to load DSO
+from `/usr`. This cause the scanner to not be detected.
+
+### Patches
+
+`epsonscan2-build.patch`: some build fixes where `/usr` is hardcoded.
+
+`epsonscan2-crash.patch`: fix a crash during device detection.
+
+`epsonscan2-xdg-open.patch`: use xdg-open to open directories instead
+of file managers (not in the sandbox)
+
+`escan2_app-48.png` and `escan2_app-256.png`: 48 and 256 pixel icons
+extracted from the vendor .ico found in the source..
+
+screenshots: unfortunately the vendor doesn't provide screen, so
+they'll be hosted here.
+
+### Known issues
+
+epsonscan2 expect `killall`. It's not in the runtime.
+It also expects `avahi-browse`. It's not built. (TODO)
+
 Scanner Supported
 -----------------
 
@@ -104,29 +169,3 @@ XP-5150 Series, XP-5200 Series, XP-530 Series, XP-540 Series, XP-6000
 Series, XP-6100 Series, XP-630 Series, XP-640 Series, XP-7100 Series,
 XP-830 Series, XP-8500 Series, XP-8600 Series, XP-8700 Series, XP-900
 Series, XP-960 Series, XP-970 Series
-
-Content
--------
-
-epsonscan2-non-free: the non-free plugins, drivers, firmware. x86_64
-only (there is an armv7 too, but this arch is non longer supported by
-the SDK). Required for many scanners, including Epson V600 This is
-extracted from the debian packages provided by Epson.
-
-epsonscan2: the Qt based front-end, build from source. LGPL-2.1
-
-
-Non x86_64
-----------
-
-Given the nature of the package and the binaries not being available,
-this is restricted to x86_64.
-
-
-Patches
--------
-
-`epsonscan2-build.patch`: some build fixes where `/usr` is hardcoded.
-
-`escan2_app-48.png` and `escan2_app-256.png`: 48 and 256 pixel icons
-extracted from the vendor .ico.
