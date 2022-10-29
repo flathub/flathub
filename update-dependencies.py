@@ -28,6 +28,7 @@ RepoURL = namedtuple('RepoURL', 'url relpath base')
 
 REPO_BASES = [
     'https://repo.maven.apache.org/maven2/',
+    'https://oss.sonatype.org/content/repositories/snapshots/',
 ]
 
 
@@ -40,24 +41,31 @@ def parse_url(url):
         raise ValueError(f'Repository base of {url} unknown')
 
 
-def main():
-    directory = Path(sys.argv[1])
+def parse_output(directory):
     output = directory / 'maven-output'
     with output.open() as source:
-        matches = (DOWNLOAD_PATTERN.search(line) for line in source)
-        urls = (parse_url(m[1]) for m in matches if m)
-
-        files = [
-            {
+        for line in source:
+            match = DOWNLOAD_PATTERN.search(line)
+            if not match:
+                continue
+            url = parse_url(match[1])
+            destdir = str((Path('.m2/repository') / url.relpath).parent)
+            destname = Path(url.relpath).name
+            if destname == 'maven-metadata.xml':
+                candidates = list((directory / url.relpath).parent.glob('maven-metadata*.xml'))
+                destname = candidates[0].name
+            yield {
                 'type': 'file',
                 'url': url.url,
-                'dest': str((Path('.m2/repository') / url.relpath).parent),
-                'dest-filename': Path(url.relpath).name,
-                'sha512': hashlib.sha512((directory / url.relpath).read_bytes()).hexdigest()
+                'dest': destdir,
+                'dest-filename': destname,
+                'sha512': hashlib.sha512(((directory / url.relpath).parent / destname).read_bytes()).hexdigest()
             }
-            for url in urls
-        ]
-        files.sort(key=lambda f: f['url'])
+
+
+def main():
+    directory = Path(sys.argv[1])
+    files = sorted(parse_output(directory), key=lambda f: f['url'])
 
     with open('maven-dependencies.json', 'w') as sink:
         json.dump(files, sink, indent=2)
