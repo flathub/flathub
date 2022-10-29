@@ -2,7 +2,7 @@
 
 ## Update maven-dependencies.json
 
-Clone the MediathekView repository, switch to the relevant tag, and then run the following commands inside the clone:
+Download the relevant MediathekView source tarball, extract it and run the following commands in the extracted directory:
 
 ```console
 $ REPODIR=//path/to/a/fresh/directory
@@ -10,7 +10,7 @@ $ mkdir "$REPODIR"
 $ ./mvnw -B -Dmaven.repo.local="$REPODIR" clean install > "$REPODIR/maven-output"
 ```
 
-Then change into this directory and run:
+Then change into the directory containing your clone of this flatpak manifest and run:
 
 ```console
 $ ./update-dependencies.py "$REPODIR"
