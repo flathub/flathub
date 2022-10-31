@@ -1,0 +1,104 @@
+app-id: de.mediathekview.MediathekView
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: "lib/ffmpeg"
+    version: "22.08"
+    add-ld-path: "."
+command: de.mediathekview.MediathekView
+finish-args:
+  - '--share=network' # We need the network to download films
+  - '--socket=x11' # Show windows (Java doesn't support wayland yet)
+  - '--share=ipc' # Required for X11
+  - '--device=dri' # Render things with opengl
+  - '--socket=pulseaudio' # Sound
+  - '--talk-name=org.freedesktop.Notifications'   # For desktop notifications
+  - '--filesystem=xdg-download' # Standard directory for downloads
+  - '--talk-name=org.freedesktop.Flatpak' # to launch the VLC flatpak
+  # Persist Mediathekview config directories; it doesn't use XDG_CONFIG_HOME unfortunately, see
+  # https://github.com/mediathekview/MediathekView/issues/339
+  - '--persist=.mediathek3'
+  - '--persist=.mediathek.javafx.tool.JFXHiddenApplication/'
+  # See https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk#usage
+  - '--env=PATH=/app/bin/:/app/jre/bin:/usr/bin'
+cleanup-commands:
+  # Some cargo-culting for ffmpeg; copied this from elsewhere
+  - 'mkdir -p /app/lib/ffmpeg'
+modules:
+  # See https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk#usage
+  - name: openjdk
+    buildsystem: simple
+    build-commands: ['/usr/lib/sdk/openjdk17/install.sh']
+  # Libnotify for desktop notifications; we build it separately to avoid depending
+  # on the entire Gnome runtime.
+  - name: libnotify
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Dman=false
+      - -Dgtk_doc=false
+      - -Ddocbook_docs=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libnotify/0.8/libnotify-0.8.1.tar.xz
+        sha256: d033e6d4d6ccbf46a436c31628a4b661b36dca1f5d4174fe0173e274f4e62557
+  # The mediathekview maven build
+  - name: mediathekview-build
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /app/bin:/usr/bin:/usr/lib/sdk/openjdk17/bin
+        JAVA_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+    build-commands:
+      # The build process mostly follows Arch's PKGBUILD for MediathekView:
+      # https://github.com/archlinux/svntogit-community/blob/packages/mediathekview/trunk/PKGBUILD
+      - 'mvn -Dmaven.repo.local=.m2/repository/ -Dmaven.test.skip=true clean install -Plinux,install4j-linux'
+      - 'install -Dm644 -t "${FLATPAK_DEST}/share/de.mediathekview.MediathekView" target/MediathekView.jar'
+      # Icons from the source directory
+      - 'install -Dm644 target/MediathekView@x16.png "${FLATPAK_DEST}/share/icons/hicolor/16x16/apps/de.mediathekview.MediathekView.png"'
+      - 'install -Dm644 target/MediathekView@x32.png "${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/de.mediathekview.MediathekView.png"'
+      - 'install -Dm644 target/MediathekView@x48.png "${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/de.mediathekview.MediathekView.png"'
+      - 'install -Dm644 target/MediathekView@x128.png "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/de.mediathekview.MediathekView.png"'
+      - 'install -Dm644 res/MediathekView.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/de.mediathekview.MediathekView.svg"'
+    sources:
+      - type: archive
+        url: 'https://github.com/mediathekview/MediathekView/archive/refs/tags/13.9.1.tar.gz'
+        sha512: 'f706a2fdf458b6dccec34b35df6b5fa831eba851ca694150f48f396b87a957315d3380648e59e2e9c76475010d6fdcda72cb8e7e42cceee2bc3b2524235bb7e6'
+      - maven-dependencies.json
+      # Set default download directory to ~/Downloads to reduce file system access
+      - type: patch
+        path: standard-download-directory.patch
+      # Set default VLC path to the launcher script we install in the next step
+      - type: patch
+        path: default-vlc-path.patch
+  # VLC launcher script
+  - name: vlc-launcher
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm755 "open-vlc.sh" "${FLATPAK_DEST}/bin/vlc"'
+    sources:
+      - type: file
+        path: open-vlc.sh
+  # Mediathekview flatpak data, i.e. the desktop file, the launcher script, etc.
+  # Split from the JAR build to avoid rebuilding mediathekview when editing the desktop file or the laucher.
+  - name: mediathekview-flatpak
+    buildsystem: simple
+    build-commands:
+      # Launcher script
+      - 'install -Dm755 de.mediathekview.MediathekView.sh "${FLATPAK_DEST}/bin/de.mediathekview.MediathekView"'
+      # Desktop file
+      - 'install -Dm644 -t "${FLATPAK_DEST}/share/applications/" de.mediathekview.MediathekView.desktop'
+      # Appstream metadata
+      - 'install -Dm644 de.mediathekview.MediathekView.appdata.xml "${FLATPAK_DEST}/share/metainfo/de.mediathekview.MediathekView.metainfo.xml"'
+    sources:
+      - type: file
+        path: de.mediathekview.MediathekView.desktop
+      - type: file
+        path: de.mediathekview.MediathekView.sh
+      - type: file
+        path: de.mediathekview.MediathekView.appdata.xml
