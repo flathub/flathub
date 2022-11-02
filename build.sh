@@ -1,1 +1,1 @@
-flatpak-builder --force-clean --repo=ChartGeanyRepo build io.sourceforge.chart-geany.chart-geany.yml
+flatpak-builder --force-clean --repo=ChartGeanyRepo build io.sourceforge.chart_geany.chart-geany.yml
