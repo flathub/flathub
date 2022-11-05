@@ -1,27 +1,9 @@
-# Flathub
+# HDOS Flatpak
 
-Flathub is the central place for building and hosting Flatpak builds.
+This is a Flatpak build of the [HDOS](https://hdos.dev/) client.
+HDOS is a [official](https://secure.runescape.com/m=news/third-party-clients-update?oldschool=1) third party client
+for [Old School RuneScape](https://oldschool.runescape.com/) by Jagex Games.
 
-Using the Flathub repository
-----------------------------
+The goal of this Flatpack is to make it more convenient for users to use the client.
 
-To install applications that are hosted on Flathub, use the following:
-```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
-
-To install applications from the beta branch, use the following:
-```
-flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
-flatpak install flathub-beta org.godotengine.Godot
-```
-
-For more information and more applications see https://flathub.org
-
-Contributing to Flathub
------------------------
-
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
-
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub/website*
+The package is maintained by @Brainfree.
