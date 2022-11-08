@@ -1,0 +1,58 @@
+app-id: io.github.lunarequest.NightPDF
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+command: nightpdf
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --env=ZYPAK_SPAWN_LATEST_ON_REEXEC=0
+  - --env=FLATPAK_HOST=1 
+  - --env=GTK_USE_PORTAL=1
+modules:
+  - name: NightPDF
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin
+      env:
+        XDG_CACHE_HOME: /run/build/NightPDF/flatpak-node/cache
+        ELECTRON_CACHE: /run/build/NightPDF/flatpak-node/cache/electron
+        TMPDIR: /run/build/NightPDF/flatpak-node/tmp
+        ELECTRON_SKIP_BINARY_DOWNLOAD: 'true'
+        npm_config_nodedir: /usr/lib/sdk/node16
+    build-commands:
+      - jq 'del(.build.linux.target)' <<<$(<package.json) > package.json
+      - jq '.build.linux.target=["dir"]' <<<$(<package.json) > package.json
+      - HOME=$PWD yarn --offline --verbose config set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn --offline --verbose
+      - . flatpak-node/electron-builder-arch-args.sh; yarn run --offline dist $ELECTRON_BUILDER_ARCH_ARGS
+      - cp -r dist/linux-*unpacked /app/NightPDF 
+      - install -Dm755 nightpdf.sh /app/bin/nightpdf
+    post-install:
+      - install -D $FLATPAK_ID.desktop -t  /app/share/applications/
+      - install -D $FLATPAK_ID.metainfo.xml -t  /app/share/metainfo/
+      - install -Dm644 build/icon.iconset/icon_16x16.png  /app/share/icons/hicolor/16x16/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icon.iconset/icon_32x32.png  /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icon.iconset/icon_128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icon.iconset/icon_256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 build/icon.iconset/icon_512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+     - type: git
+       url: https://github.com/Lunarequest/NightPDF.git
+       tag: v0.4.2
+       commit: 7da7bdd0a31616a66e04124c0ef36e670ce31ce9
+     - generated-sources.json
+     - type: file
+       path: io.github.lunarequest.NightPDF.metainfo.xml
+     - type: file
+       path: io.github.lunarequest.NightPDF.desktop
+     - type: script
+       dest-filename: nightpdf.sh
+       commands:
+         - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+         - exec zypak-wrapper /app/NightPDF/nightpdf "$@"
+    
