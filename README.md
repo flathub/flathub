@@ -1,27 +1,23 @@
-# Flathub
+# Space Station 14
 
-Flathub is the central place for building and hosting Flatpak builds.
+This repo hosts an unofficial flatpak for
+[Space Station 14](https://spacestation14.io/), the multiplayer disaster
+simulator.
 
-Using the Flathub repository
-----------------------------
+## Building
 
-To install applications that are hosted on Flathub, use the following:
-```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
+To build and install this project locally, use `flatpak-builder`:
 
-To install applications from the beta branch, use the following:
-```
-flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
-flatpak install flathub-beta org.godotengine.Godot
-```
+    flatpak-builder build-dir com.spacestation14.Launcher.yaml --force-clean --repo=repo --install --user
 
-For more information and more applications see https://flathub.org
+## Creating a release
 
-Contributing to Flathub
------------------------
+To update the version of SS14.Launcher, you will need to update the tag specified in `modules/sources/ss14-launcher-git.yaml`, as well as the nuget sources which are generated using `flatpak-dotnet-generator`. To do all of this automatically, use the `update-ss14-version.py` tool, providing the newest release as the first parameter:
 
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
+    ./tools/update-ss14-version.py v0.13.2
 
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub/website*
+Finally, remember to add information about the new release to `modules/data/com.spacestation14.Launcher.appdata.xml`.
+
+## Authors
+
+- Dylan McCall <dylan@dylanmccall.ca>
