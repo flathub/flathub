@@ -1,0 +1,93 @@
+app-id: moe.karaokes.mugen.app
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '21.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+command: km-wrapper
+separate-locales: false
+finish-args:
+  - '--filesystem=host'
+  - '--share=ipc'
+  - '--socket=x11'
+  - '--socket=pulseaudio'
+  - '--socket=wayland'
+  - '--device=dri'
+  - '--share=network'
+  - '--system-talk-name=org.freedesktop.UPower'
+  - '--talk-name=com.canonical.AppMenu.Registrar'
+  - '--talk-name=com.canonical.dbusmenu'
+  - '--talk-name=org.freedesktop.Notifications'
+  - '--talk-name=org.kde.StatusNotifierWatcher'
+modules:
+  - name: karaokemugen
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin
+      env:
+        XDG_CACHE_HOME: /run/build/karaokemugen/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+    build-commands:
+      - install -D sentry-cli-Linux-x86_64 /app/bin/sentry-cli
+      - >-
+        HOME=$PWD yarn config --offline set yarn-offline-mirror
+        $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - SENTRYCLI_USE_LOCAL=1 yarn --offline
+      - yarn --offline build
+      - yarn --offline installkmfrontend
+      - yarn --offline buildkmfrontend
+      - git rev-parse HEAD | head -c 8 > assets/sha.txt
+      - >-
+        . flatpak-node/electron-builder-arch-args.sh; yarn run electron-builder
+        --dir -c.compression=store -c.mac.identity=null
+        $ELECTRON_BUILDER_ARCH_ARGS
+      - cp -r packages/linux*unpacked /app/km
+      - install -d /app/km/app/
+      - cp -r bin/ /app/km/app/
+      - install -Dm755 stub_sandbox /app/km/chrome-sandbox
+      - install -Dm755 km -t /app/bin/
+      - install -Dm755 km-wrapper /app/bin/km-wrapper
+      - install -d /app/share/applications
+      - >-
+        install -Dm644 moe.karaokes.mugen.app.desktop
+        "/app/share/applications/${FLATPAK_ID}.desktop"
+      - >-
+        install -Dm644 moe.karaokes.mugen.app.png
+        "/app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - >-
+        install -Dm644 moe.karaokes.mugen.app.metainfo.xml
+        /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://gitlab.com/karaokemugen/karaokemugen-app
+        commit: a26a630c4a8ec82613622fb2a83a12bfbd2d0ace
+        tag: next
+      - generated-sources.json
+      - type: script
+        dest-filename: km
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - zypak-wrapper /app/km/karaokemugen "$@"
+      - type: script
+        dest-filename: stub_sandbox
+        commands:
+          - |
+            echo Stub sandbox ignoring command: $@
+            exit 1
+      - type: file
+        path: km-wrapper
+      - type: file
+        path: moe.karaokes.mugen.app.metainfo.xml
+      - type: file
+        path: moe.karaokes.mugen.app.png
+      - type: file
+        path: moe.karaokes.mugen.app.desktop
+      - type: file
+        url: >-
+          https://downloads.sentry-cdn.com/sentry-cli/2.9.0/sentry-cli-Linux-x86_64
+        sha256: 8d24e65b07eee362cd8e8b80a98b6029c66950c01cc58b4345f235fae2e243a4
+      - type: archive
+        url: https://mugen.karaokes.moe/downloads/dist_linux-7.x.tar.gz
+        sha256: 809343e604cf5a46ca612553d082e4175aaa6f5fdf1b00e82f6efa262d482084
