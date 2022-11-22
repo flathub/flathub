@@ -33,14 +33,14 @@ Running:
 ## Screenshots
 
 ### Showing installed addons
-![installed](https://raw.githubusercontent.com/zastrixarundell/com.mmoui.Minion/master/screenshots/installed.png)
+![installed](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/master/screenshots/installed.png)
 
 ### Showing available addons for download
-![find](https://raw.githubusercontent.com/zastrixarundell/com.mmoui.Minion/master/screenshots/find.png)
+![find](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/master/screenshots/find.png)
 
 
 ### Searching for addons
-![search](https://raw.githubusercontent.com/zastrixarundell/com.mmoui.Minion/master/screenshots/search.png)
+![search](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/master/screenshots/search.png)
 
 
 *This is not affiliated with Minion, MMOUI nor Good Game Mods, LLC, it is just simply a wrapper for their client.*
