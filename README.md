@@ -2,7 +2,7 @@
 Flatpak wrapper for Minion, a premier addon manager.
 
 ## Information
-This version of Minion is using Java. As it requires JavaFX and it's not provided by OpenJDK it was settled to use [Bellsoft Liberica JRE 8](https://bell-sw.com/pages/downloads/) as it provided all the needed libraries. 
+This version of Minion is using Java. As it requires JavaFX and it's not provided by OpenJDK it was settled to use [Bellsoft Liberica JRE 11](https://bell-sw.com/pages/downloads/) as it provided all the needed libraries. 
 
 It is also compatible with a flatpak installation of ESO through flatpak Steam.
 
