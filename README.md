@@ -12,5 +12,5 @@ To enable wayland set `$SDL_VIDEODRIVER` to `wayland`.
 To do this persistently only for JA2, run the following command
 
 ```
-flatpak override --user --env=SDL_VIDEODRIVER=wayland io.github.ja2-stracciatella
+flatpak override --user --env=SDL_VIDEODRIVER=wayland io.github.ja2_stracciatella.JA2-Stracciatella
 ```
