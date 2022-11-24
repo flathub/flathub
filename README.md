@@ -30,6 +30,10 @@ Running:
 
     flatpak run gg.minion.Minion
 
+Running from a silverblue toolbox container:
+
+    DISPLAY=:0 flatpak run gg.minion.Minion
+
 ## Screenshots
 
 ### Showing installed addons
