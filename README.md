@@ -16,31 +16,31 @@ For some reason it is not possible to run this flatpak from a toolbox container 
 
 Building:
 
-    flatpak-builder --user --install --force-clean build-dir com.mmoui.Minion.yml
+    flatpak-builder --user --install --force-clean build-dir gg.minion.Minion.yml
 
 Bulding in a silverblue toolbox container:
 
-    flatpak-builder --user --install --force-clean build-dir com.mmoui.Minion.yml --disable-rofiles-fuse
+    flatpak-builder --user --install --force-clean build-dir gg.minion.Minion.yml --disable-rofiles-fuse
 
 Checking Minion version for updates:
 
-    flatpak run org.flathub.flatpak-external-data-checker com.mmoui.Minion.yml
+    flatpak run org.flathub.flatpak-external-data-checker gg.minion.Minion.yml
 
 Running:
 
-    flatpak run com.mmoui.Minion
+    flatpak run gg.minion.Minion
 
 ## Screenshots
 
 ### Showing installed addons
-![installed](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/screenshots/installed.png)
+![installed](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/installed.png)
 
 ### Showing available addons for download
-![find](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/screenshots/find.png)
+![find](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/find.png)
 
 
 ### Searching for addons
-![search](https://raw.githubusercontent.com/zastrixarundell/flathub/com.mmoui.Minion/screenshots/search.png)
+![search](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/search.png)
 
 
 *This is not affiliated with Minion, MMOUI nor Good Game Mods, LLC, it is just simply a wrapper for their client.*
