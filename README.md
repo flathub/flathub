@@ -33,6 +33,3 @@ flatpak run --command=/app/gtkradiant/d3data io.github.TTimo.GtkRadiant model.qd
 ```
 
 The available binaries are: *q3data q3map2 q3map2_urt*.
-
-## Flatpak build notes
-So far I have concentrated on getting this working and have not done any clean-up on the output package. Thus it includes a whole bunch of binaries that are not needed as well as headers, pkg-configs and many other bits of cruft that bloat the package. But hey it works!
