@@ -1,19 +1,20 @@
 # GtkRadiant Flatpak build manifest
- 
+
 [GtkRadiant project website](https://icculus.org/gtkradiant/)
- 
+
 ## Building
- Install flatpak-builder 0.10.10+ (svn support required) then run:
+Use flatpak-builder 1.2.2 or newer (latest at the time of writing):
 
 ```
- flatpak-builder --force-clean --disable-updates --repo=gtkradiant-repo gtkradiant io.github.TTimo.GtkRadiant.json
- flatpak --user remote-add --no-gpg-verify --if-not-exists gtkradiant-repo gtkradiant-repo
+flatpak-builder --user --install gtkradiant io.github.TTimo.GtkRadiant.json
 ```
+
+See flatpak-builder man page for more options. For repeat invocations, see `--force-clean` and `--disable-updates`.
 
 ## Running
-If running flatpak 0.10.2+ with the wrapper bin path setup you can simply run the app as `io.github.TTimo.GtkRadiant`. Otherwise:
+
 ```
-flatpak run io.github.TTimo.GtkRadiant [ COMMANDS ]
+flatpak run io.github.TTimo.GtkRadiant
 ```
 
 ## FAQ
