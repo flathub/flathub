@@ -45,6 +45,3 @@ Running from a silverblue toolbox container:
 
 ### Searching for addons
 ![search](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/search.png)
-
-
-*This is not affiliated with Minion, MMOUI nor Good Game Mods, LLC, it is just simply a wrapper for their client.*
