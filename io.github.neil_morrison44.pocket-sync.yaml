@@ -1,0 +1,51 @@
+app-id: io.github.neil_morrison44.pocket-sync
+runtime: org.gnome.Platform
+# Stuck with GNOME 42 until tauri supports newer webkitgtk
+runtime-version: '42'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+  - org.freedesktop.Sdk.Extension.rust-nightly
+command: pocket-sync
+rename-icon: pocket-sync
+separate-locales: false
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --filesystem=/run/media
+
+modules:
+  - name: pocket-sync
+    buildsystem: simple
+    build-options:
+      append-path: "/usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-nightly/bin"
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: 'true'
+        CARGO_HOME: /run/build/pocket-sync/cargo
+    sources:
+      - type: git
+        url: https://github.com/neil-morrison44/pocket-sync
+        tag: v1.4.0
+      # Generated with .../flatpak-builder-tools/node/flatpak-node-generator.py npm package-lock.json
+      - 'node-sources.json'
+      # Generated with .../flatpak-builder-tools/cargo/flatpak-cargo-generator.py src-tauri/Cargo.lock
+      - 'cargo-sources.json'
+      - type: file
+        path: io.github.neil_morrison44.pocket-sync.appdata.xml
+      - type: file
+        path: io.github.neil_morrison44.pocket-sync.desktop
+    build-commands:
+      - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run --offline tauri build -- -b deb
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/bundle/deb/*/data/usr/bin/*
+      - mkdir -p /app/share/icons/hicolor
+      - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/*
+        /app/share/icons/hicolor/
+      - mv /app/share/icons/hicolor/256x256@2/ /app/share/icons/hicolor/256x256/
+      - install -Dm644 -t /app/share/metainfo/ io.github.neil_morrison44.pocket-sync.appdata.xml
+      - install -Dm644 -t /app/share/applications/ io.github.neil_morrison44.pocket-sync.desktop
