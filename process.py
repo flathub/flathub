@@ -11,7 +11,7 @@ VERSIONS_API_URL = 'https://product-details.mozilla.org/1.0/firefox_versions.jso
 
 platform = 'linux'
 arches = ['x86_64']
-freedesktop_version = '21.08'
+freedesktop_version = '22.08'
 
 
 class MyJsonTapper:
