@@ -1,3 +1,10 @@
+vimix Flathub repository
+========================
+
+# vimix
+
+Find vimix on github https://github.com/brunoherbelin/vimix 
+
 # Flathub
 
 Flathub is the central place for building and hosting Flatpak builds.
