@@ -1,0 +1,96 @@
+app-id: io.itch.App
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.winehq.Wine
+base-version: stable-22.08
+command: itch-run
+separate-locales: false
+finish-args:
+  - --allow=devel # For Wine crash handling
+  - --allow=multiarch
+  
+  - --device=all
+  
+  - --share=ipc
+  - --share=network
+
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+
+  - --env=PATH=/app/bin:/usr/bin
+  - --env=WINEPREFIX=/var/data/wine
+  - --env=WINEDLLOVERRIDES=mscoree,mshtml='
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib:/app/lib32/wine/wined3d:/app/lib/wine/wined3d
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib32
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0:/app/lib32/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0
+  
+  - --persist=.wine
+  - --persist=.wine64
+#  - --persist=.
+
+inherit-extensions:
+  - org.freedesktop.Platform.GL32
+  - org.freedesktop.Platform.ffmpeg-full
+  - org.freedesktop.Platform.ffmpeg_full.i386
+  - org.winehq.Wine.gecko
+  - org.winehq.Wine.mono
+  - org.winehq.Wine.DLLs
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    no-autodownload: true
+
+modules:
+  - name: compat
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu /app/lib/debug/lib/i386-linux-gnu
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.04
+        commit: 55a60d110301e8dd37b631503c3524ab7baaf7aa
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+  - name: itch-resources
+    buildsystem: simple
+    build-commands:
+      - install -D -t "${FLATPAK_DEST}/share/applications/" ./io.itch.App.desktop
+      - install -D -t "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/" ./io.itch.App.svg
+      - install -D -t "${FLATPAK_DEST}/share/metainfo/" ./io.itch.App.metainfo.xml
+    sources:
+      - type: file
+        path: io.itch.App.svg
+        
+      - type: file
+        path: io.itch.App.desktop
+        
+      - type: file
+        path: io.itch.App.metainfo.xml
+
+  - name: itch
+    buildsystem: simple
+    build-commands:
+      - mv /run/build/itch/* /app/bin/
+    sources:
+      - type: script
+        dest-filename: itch-run
+        commands:
+          - zypak-wrapper.sh /app/bin/itch "$@"
+        
+      - type: archive
+        strip-components: 0
+        url: https://broth.itch.ovh/itch/linux-amd64/25.5.1/itch-linux-amd64.zip
+        sha256: fdd916c79beb90c19c7ee404e11398e5f2f5c7c402ae68910b4f70e6918071ed
