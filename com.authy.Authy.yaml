@@ -1,0 +1,69 @@
+app-id: com.authy.Authy
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: authy
+tags:
+  - proprietary
+finish-args:
+  - --socket=x11
+  - --device=dri
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: unsquashfs
+    buildsystem: simple
+    build-commands:
+      - XZ_SUPPORT=1 make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    cleanup:
+      - /bin/mksquashfs
+      - /bin/sqfs*
+    sources:
+      - type: git
+        url: https://github.com/plougher/squashfs-tools.git
+        tag: '4.5'
+        commit: 0496d7c3de3e09da37ba492081c86159806ebb07
+
+  - shared-modules/libsecret/libsecret.json
+
+  - name: authy
+    buildsystem: simple
+    build-commands:
+      - install -D apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install authy "${FLATPAK_DEST}/bin/"
+    post-install:
+      - install -p -Dm644 authy.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 authy.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 com.authy.Authy.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: extra-data
+        filename: authy.snap
+        url: https://api.snapcraft.io/api/v1/snaps/download/H8ZpNgIoPyvmkgxOWw5MSzsXK1wRZiHn_12.snap
+        sha256: bd26ea4f6b3994b114d52483682fac4baaade38ea248a61480ab9d3b958c3aee
+        size: 109084672
+        x-checker-data:
+          type: snapcraft
+          name: authy
+          channel: stable
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - unsquashfs -no-progress authy.snap
+          - rm -f authy.snap
+          - mv squashfs-root authy
+      - type: script
+        dest-filename: authy
+        commands:
+          - TMPDIR="$XDG_RUNTIME_DIR" zypak-wrapper /app/extra/authy/authy "$@"
+      - type: file
+        path: com.authy.Authy.metainfo.xml
+      - type: file
+        path: authy.desktop
+      - type: file
+        path: authy.png
