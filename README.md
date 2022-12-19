@@ -2,6 +2,8 @@
 
 Install, update and play indie games
 
+**DISCLAIMER: THIS FLATPAK IS NOT AFFLIATED WITH ITCH.IO, ANY ISSUES SHOULD BE SENT HERE**
+
 ## Notes
 
 Uses wine as a base, to provide support for windows games.
