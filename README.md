@@ -2,7 +2,7 @@
 
 Install, update and play indie games
 
-**DISCLAIMER: THIS FLATPAK IS NOT AFFLIATED WITH ITCH.IO, ANY ISSUES SHOULD BE SENT HERE**
+**NOTICE: This package is not verified by, affiliated with, or supported by itch.io.**
 
 ## Notes
 
