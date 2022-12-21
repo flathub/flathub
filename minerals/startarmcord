@@ -1,27 +1,35 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 
+# Set FEATURES to what goes after --enable-features; for example, UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc will then get turned into --enable-features=UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc.
+FEATURES="UseSkiaRenderer"
 TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-xyz.armcord.xyz}"
-FLAGS="--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --enable-features=UseSkiaRenderer"
+FLAGS="--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization"
 
-# Just your normal NVIDIA things
-if [ "${XDG_SESSION_TYPE,,}" = "wayland" ] && [ -c /dev/nvidia0 ]
-then
-    FLAGS="$FLAGS --disable-gpu-sandbox"
-fi
 
-# Use PipeWire for screencapture if on Wayland
-if [ "${XDG_SESSION_TYPE,,}" = "wayland" ]
-then
+if [ "${XDG_SESSION_TYPE,,}" = "wayland" ]; then
+
+    # Just your normal NVIDIA things
+    if [ -c /dev/nvidia0 ]; then
+        echo "Using NVIDIA on Wayland, applying workaround"
+        FLAGS="$FLAGS --disable-gpu-sandbox"
+    fi
+
+    # Use PipeWire for screencapture if on Wayland
     echo "Using Wayland; enabling PipeWire for video capture"
-    FLAGS="$FLAGS --enable-features=WebRTCPipeWireCapturer"
+    FEATURES="$FEATURES,WebRTCPipeWireCapturer"
+
+    # Electron and Wayland don't mix very well, so hide the backend behind USE_WAYLAND=1
+    if [[ ${USE_WAYLAND} -eq 1 ]]; then
+        echo "USE_WAYLAND set, using the Wayland Electron backend"
+        FEATURES="$FEATURES,UseOzonePlatform,WaylandWindowDecorations"
+        FLAGS="$FLAGS --ozone-platform=wayland"
+    elif [[ ${USE_WAYLAND} -ne 1 ]]; then
+        echo "USE_WAYLAND not set, running through Xwayland"
+    fi
+
 fi
 
-# Electron and Wayland don't mix very well, so hide the backend behind USE_WAYLAND=1
-declare -i USE_WAYLAND=${USE_WAYLAND:-0}
-if [[ $USE_WAYLAND -eq 1 ]] && [ "${XDG_SESSION_TYPE,,}" = "wayland" ]
-then
-    echo "USE_WAYLAND set, using the Wayland Electron backend"
-    FLAGS="$FLAGS --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland"
-fi
 
+FLAGS="$FLAGS --enable-features=$FEATURES"
+echo "Passing the following arguments to Electron: $FLAGS"
 zypak-wrapper /app/bin/armcord/armcord $FLAGS "$@"
