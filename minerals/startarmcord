@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 
-FLAGS='--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --enable-features=UseSkiaRenderer'
+TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-xyz.armcord.xyz}"
+FLAGS="--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --enable-features=UseSkiaRenderer"
 
-if [[ $XDG_SESSION_TYPE =~ "[Ww]ayland" ]] && [ -c /dev/nvidia0 ]
+# Just your normal NVIDIA things
+if [ "${XDG_SESSION_TYPE,,}" = "wayland" ] && [ -c /dev/nvidia0 ]
 then
     FLAGS="$FLAGS --disable-gpu-sandbox"
 fi
 
-declare -i USE_WAYLAND="${USE_WAYLAND:-0}"
-declare -i EXIT_CODE=0
-
-if [[ "${USE_WAYLAND}" -eq 1 && "${XDG_SESSION_TYPE}" == "wayland" ]]; then
-    zypak-wrapper /app/bin/armcord/armcord $FLAGS --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --ozone-platform=wayland $@ || EXIT_CODE=$?
-    # Fall back to x11 if failed to launch under Wayland. Otherwise, exit normally
-    [[ "${EXIT_CODE}" -ne 133 ]] && exit "${EXIT_CODE}"
+# Use PipeWire for screencapture if on Wayland
+if [ "${XDG_SESSION_TYPE,,}" = "wayland" ]
+then
+    echo "Using Wayland; enabling PipeWire for video capture"
+    FLAGS="$FLAGS --enable-features=WebRTCPipeWireCapturer"
 fi
 
-env TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-xyz.armcord.xyz}" zypak-wrapper /app/bin/armcord/armcord $FLAGS "$@"
+# Electron and Wayland don't mix very well, so hide the backend behind USE_WAYLAND=1
+declare -i USE_WAYLAND=${USE_WAYLAND:-0}
+if [[ $USE_WAYLAND -eq 1 ]] && [ "${XDG_SESSION_TYPE,,}" = "wayland" ]
+then
+    echo "USE_WAYLAND set, using the Wayland Electron backend"
+    FLAGS="$FLAGS --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland"
+fi
+
+zypak-wrapper /app/bin/armcord/armcord $FLAGS "$@"
