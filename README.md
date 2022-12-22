@@ -15,7 +15,7 @@ systemctl --user enable --now systemd-tmpfiles-setup.service
 Now, native applications will be able to use Rich Presence on every system start.
 
 ### Flatpak applications
-TAKEN FROM https://github.com/flathub/com.discordapp.Discord/wiki/Rich-Precense-(discord-rpc)
+<!-- TAKEN FROM https://github.com/flathub/com.discordapp.Discord/wiki/Rich-Precense-(discord-rpc) -->
 
 Flatpak applications need certain changes inside of the flatpak environment to connect properly:
 
