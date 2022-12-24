@@ -13,32 +13,49 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   - --filesystem=host
 modules:
-  - shared-modules/SDL2/SDL2-2.26.1-with-libdecor.json
-  - shared-modules/lua5.1/lua-5.1.5.json
-
-  - name: luarocks
-    no-autogen: true
-    sources:
-      - type: archive
-        url: "https://luarocks.org/releases/luarocks-3.3.0.tar.gz"
-        sha256: 8de54eb851f5245ed3708d94d8872e825b9704049d3ad4febe8e219f419b427d
-      - type: shell
-        commands:
-          - sed -i 's|/usr/local|/app|' ./Makefile
-
-  - name: metadata
+  - name: koreader
     buildsystem: simple
     build-commands:
       - install -Dm755 koreader.sh ${FLATPAK_DEST}/bin/koreader
       - install -Dm644 org.koreader.KOReader.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
 
-      - desktop-file-edit --set-icon ${FLATPAK_ID} --set-key Exec --set-value 'koreader %u' koreader.desktop
-      - install -Dm644 koreader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - ar x koreader.deb
+      - tar xf data.tar.xz
+
+      - desktop-file-edit --set-icon ${FLATPAK_ID} --set-key Exec --set-value 'koreader %u' usr/share/applications/koreader.desktop
+      - install -Dm644 usr/share/applications/koreader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 koreader.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
 
-      - mkdir -p ${FLATPAK_DEST}/koreader
+      - sed -i "s,!/usr/lib/koreader/luajit,!${FLATPAK_DEST}/koreader/luajit,g" usr/lib/koreader/reader.lua
+      - mv usr/lib/koreader ${FLATPAK_DEST}/koreader
+
       - mv fonts ${FLATPAK_DEST}/koreader/fonts
     sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/koreader/koreader/releases/download/v2022.11/koreader-2022.11-amd64.deb
+        sha256: 66ac40d18f1606e2ff09cfa23e04637b21526c9e7f6c906f98d72fea90a5a7af
+        dest-filename: koreader.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/koreader/koreader/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query:
+            .assets[] | select(.name == "koreader-" + $version + "-amd64.deb")
+            | .browser_download_url
+      - type: file
+        only-arches: [arm64]
+        url: https://github.com/koreader/koreader/releases/download/v2022.11/koreader-2022.11-arm64.deb
+        sha256: 4bf3329cf2b5775055086ed5ae15fd9c177197b0a7a72e865288acff008c1527
+        dest-filename: koreader.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/koreader/koreader/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query:
+            .assets[] | select(.name == "koreader-" + $version + "-arm64.deb")
+            | .browser_download_url
+
       - type: script
         dest-filename: koreader.sh
         commands:
@@ -61,26 +78,3 @@ modules:
         url: https://github.com/koreader/koreader-fonts/archive/046976988aa33639d60d6ffd25c7a0ff50b72ac0.zip
         sha256: 906f443c703070a49fc2c8cdc39615ce9745b70a3055c57c7803c01dbeb28412
         dest: fonts
-
-      - type: file
-        url: https://github.com/koreader/koreader/raw/788ccac5613af02812ae210bb801e682836f1ca4/platform/debian/koreader.desktop
-        sha256: 5b09633da30dfef104ed56022877c67dd3efd154866ed1aee28d3202ce5148b0
-        dest-filename: koreader.desktop
-
-  - name: koreader
-    buildsystem: simple
-    build-commands:
-      - rm -rf base
-      - mv base-pazos base
-
-      - ./kodev release linux --ignore-translation
-    sources:
-      - type: git
-        url: https://github.com/pazos/koreader.git
-        branch: deb2linux
-        commit: bc7fed3bcf5286f35a7c2ec984c3c9193c963b5a
-      - type: git
-        url: https://github.com/pazos/koreader-base.git
-        dest: base-pazos
-        branch: deb2linux
-        commit: 540253313b8c27c55729b21693662fbc54bbc14e
