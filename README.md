@@ -90,4 +90,4 @@ If `csproj` files that aren't included within the script include new packages, t
 
 ### Double Precision
 
-To compile Godot 4 with double precision, `org.godotengine.Godot.yaml` needs to be modified to include the appropriate flags. Under `Build Commands`, change all instances of `float=32` to `float=64`.
+To compile Godot 4 with double precision, `org.godotengine.Godot.yaml` needs to be modified to include the appropriate flags. Under `Build Commands`, change all instances of `precision=single` to `precision=double`.
