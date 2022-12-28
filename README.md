@@ -16,9 +16,7 @@ medieval fantasy world and is similar to other games of this genre.
 
 ### Screenshots
 
-![Title Screen](screenshot1.png)
-
-![Player Screen](screenshot2.png)
+![Title Screen](screenshot.png)
 
 ### Game Links
 
