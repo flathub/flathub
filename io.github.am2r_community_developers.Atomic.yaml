@@ -1,0 +1,65 @@
+app-id: io.github.am2r_community_developers.Atomic
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+  - org.freedesktop.Sdk.Extension.openjdk11
+
+finish-args:
+# Eto acts too strangely on wayland for now
+- --socket=x11
+- --share=ipc
+
+# Eto does not use gtk_filepicker_native yet, so in the meantime it needs read and write access for files the user will pick/save to
+- --filesystem=home
+
+# Java stuff
+- --env=JAVA_HOME=/app/jre
+- --env=PATH=/usr/bin:/app/bin:/app/jre/bin
+
+command: atomic
+
+modules:
+  - name: xdelta3
+    sources:
+      - type: archive
+        url: https://github.com/jmacd/xdelta/archive/refs/tags/v3.1.0.tar.gz
+        sha256: 7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d
+      - type: shell
+        commands:
+          - autoreconf -si ./xdelta3
+    buildsystem: autotools
+    subdir: xdelta3
+    
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: atomic
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet6/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet6/lib
+      append-pkg-config-path: /usr/lib/sdk/dotnet6/lib/pkgconfig
+      arch:
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+        # TODO: figure out how to add arm32 and arm64 and allow them in flathub.json too
+    build-commands:
+      - dotnet publish Atomic.Gtk --source nuget-sources -p:BuildPlatform=Gtk -p:DebugType=embedded -c Release --self-contained true -r $RUNTIME
+      - cp -r --remove-destination Atomic.Gtk/bin/Release/net6.0/$RUNTIME/publish/* /app/bin/
+      - mv /app/bin/Atomic.Gtk /app/bin/atomic
+
+      - install -Dm644 distribution/linux/Atomic.appdata.xml /app/share/metainfo/$FLATPAK_ID.appdata.xml
+      - install -Dm644 distribution/linux/Atomic.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 distribution/linux/Atomic.desktop /app/share/Atomic/$FLATPAK_ID.desktop
+      - desktop-file-edit /app/share/Atomic/$FLATPAK_ID.desktop --set-key=Icon --set-value=$FLATPAK_ID
+    sources:
+      - nuget.json
+      - type: git
+        url: https://github.com/AM2R-Community-Developers/Atomic.git
+        #tag:  2.1.0 + metadata change
+        commit: 56914c8391b35dda7a4caaa40945728303a58519
