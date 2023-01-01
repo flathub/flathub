@@ -1,0 +1,91 @@
+app-id: io.github.barryran.QtScrcpy
+runtime: org.kde.Platform
+runtime-version: 5.15-22.08
+sdk: org.kde.Sdk
+command: qtscrcpy
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all
+  - --persist=.android
+
+modules:
+  - shared-modules/libusb/libusb.json
+
+  - name: adb
+    buildsystem: simple
+    build-commands:
+      - install -D adb /app/bin/adb
+    sources:
+      - type: archive
+        url: https://dl.google.com/android/repository/platform-tools_r33.0.0-linux.zip
+        sha256: ca746b60aa1c1f6a848ccbec0cbf16a5d10a5da45bcce9d681772afa1bc474d4
+
+  # To generate icons of specific sizes
+  - name: imagemagick
+    cleanup:
+      - /bin
+      - /etc
+      - /share
+      - /lib
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-docs
+      - --with-modules
+      - --with-threads
+    sources:
+      - type: archive
+        url: https://github.com/ImageMagick/ImageMagick/archive/7.1.0-56.tar.gz
+        sha256: 58c36ca7bb7b3d78fee6036945e79e0bb57f67015af08bb58c20488df5158d88
+        x-checker-data:
+          type: anitya
+          project-id: 1372
+          stable-only: true
+          url-template: https://github.com/ImageMagick/ImageMagick/archive/$version.tar.gz
+
+  - name: qtscrcpy
+    buildsystem: cmake
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX='/app'
+      - -DCMAKE_BUILD_TYPE='None'
+      - -DCMAKE_SKIP_RPATH='TRUE'
+      - -Wno-dev
+    post-install:
+      - install -Dm755 output/x64/None/QtScrcpy -t "${FLATPAK_DEST}/qtscrcpy/"
+      - install -Dm644 output/x64/None/scrcpy-server -t "${FLATPAK_DEST}/qtscrcpy/"
+      - install -Dm644 output/x64/None/sndcpy.apk "${FLATPAK_DEST}/qtscrcpy/"
+      - install -Dm755 output/x64/None/sndcpy.sh "${FLATPAK_DEST}/qtscrcpy/"
+      - install -Dm644 config/config.ini -t "${FLATPAK_DEST}/etc/qtscrcpy/"
+      - install -Dm644 backup/logo.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 io.github.barryran.QtScrcpy.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 io.github.barryran.QtScrcpy.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm755 qtscrcpy.sh "${FLATPAK_DEST}/bin/qtscrcpy"
+      - |
+        for res in 16 32 48 64 128 256 512; do
+          convert +set date:create +set date:modify backup/logo.png -resize ${res}x${res} \
+            -background transparent -gravity center -extent ${res}x${res} icon_${res}.png || exit 1
+          install -Dm0644 icon_${res}.png ${FLATPAK_DEST}/share/icons/hicolor/${res}x${res}/apps/${FLATPAK_ID}.png || exit 1
+        done
+    sources:
+      - type: git
+        url: https://github.com/barry-ran/QtScrcpy
+        tag: v2.1.2
+        commit: 6692ee15d4f635a802079b33834d44bb10b0064f
+        x-checker-data:
+          type: anitya
+          project-id: 269973
+          stable-only: true
+          tag-template: v$version
+      - type: patch
+        path: path-fix.patch
+      - type: file
+        path: io.github.barryran.QtScrcpy.desktop
+      - type: file
+        path: io.github.barryran.QtScrcpy.metainfo.xml
+      - type: file
+        path: qtscrcpy.sh
