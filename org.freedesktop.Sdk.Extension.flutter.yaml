@@ -1,0 +1,61 @@
+id: org.freedesktop.Sdk.Extension.flutter
+branch: "22.08"
+runtime: org.freedesktop.Sdk
+build-extension: true
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm15
+runtime-version: "22.08"
+separate-locales: false
+appstream-compose: false
+
+modules:
+  - name: flutter
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/llvm15/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm15/lib
+      build-args:
+        # Flutter setup needs network access
+        - --share=network
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.3.10-stable.tar.xz
+        sha256: d24e83f7a6b829d163feeef1abfcc30869f0c5d1af93e9917426265dad507024
+        x-checker-data:
+          type: anitya
+          project-id: 236318 # https://release-monitoring.org/project/236318/
+          stable-only: true
+          url-template: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$version-stable.tar.xz
+    build-commands:
+      - rm -rf dev/ examples/
+      # Flutter builds itself and downloads its own dart compiler upon initialization
+      - ./bin/flutter config --enable-linux-desktop --no-enable-android --no-enable-web --no-analytics --no-enable-macos-desktop  --no-enable-windows-desktop --no-enable-ios --no-enable-fuchsia
+      - ./bin/flutter doctor -v
+      - install -d /usr/lib/sdk/flutter
+      - cp -rpv * /usr/lib/sdk/flutter/
+  - name: scripts
+    modules:
+      - flutter
+    sources:
+      - type: script
+        commands:
+          - export FLUTTERROOT=/usr/lib/sdk/flutter
+          - export PATH=$PATH:$FLUTTERROOT/bin
+        dest-filename: enable.sh
+    buildsystem: simple
+    build-commands:
+      - cp enable.sh /usr/lib/sdk/flutter/
+    test-commands:
+      - source /usr/lib/sdk/flutter/enable.sh
+      - flutter --version
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/appdata
+      - cp org.freedesktop.Sdk.Extension.flutter.appdata.xml ${FLATPAK_DEST}/share/appdata
+      - appstream-compose  --basename=org.freedesktop.Sdk.Extension.flutter --prefix=${FLATPAK_DEST}
+        --origin=flatpak org.freedesktop.Sdk.Extension.flutter
+    sources:
+      - type: file
+        path: org.freedesktop.Sdk.Extension.flutter.appdata.xml
