@@ -1,0 +1,123 @@
+app-id: com.opera.Opera
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '22.08'
+command: opera
+separate-locales: false
+build-options:
+  no-debuginfo: true
+finish-args:
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --require-version=1.8.2
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.Mutter.IdleMonitor.*
+  - --system-talk-name=org.freedesktop.Avahi
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --filesystem=host-etc
+  - --filesystem=home/.local/share/applications:create
+  - --filesystem=home/.local/share/icons:create
+  - --filesystem=xdg-run/pipewire-0
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-desktop
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --persist=.pki
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.04
+        commit: 55a60d110301e8dd37b631503c3524ab7baaf7aa
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: opera
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/opera /app/tmp-install/data
+      - bsdtar -xf opera.deb -C /app/tmp-install
+      - bsdtar -xf /app/tmp-install/data.tar.xz -C /app/tmp-install/data
+      - mv /app/tmp-install/data/usr/lib/x86_64-linux-gnu/opera /app
+      - rm -rf /app/tmp-install opera.deb
+      - install -Dm 644 com.opera.Opera.desktop /app/share/applications/com.opera.Opera.desktop
+      - install -Dm 644 Opera_2015_icon.svg /app/share/icons/hicolor/scalable/apps/com.opera.Opera.svg
+      - install -Dm 755 opera.sh /app/bin/opera
+#      - ln -s /app/opera/opera_sandbox /app/opera/opera-sandbox
+#      - chmod 4755 /app/opera/opera_sandbox
+#      - chown 0 /app/opera/opera_sandbox
+#      - ls -l /app/opera
+#      - install -Dm 755 /app/opera/opera_sandbox /app/opera/opera-sandbox
+#      - ls -l /app/opera
+#      - install -Dm 755 stub_sandbox.sh /app/bin/stub_sandbox
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/metainfo com.opera.Opera.metainfo.xml
+    sources:
+      - type: file
+        url: https://get.geo.opera.com/pub/opera/desktop/94.0.4606.38/linux/Opera_94.0.4606.38_amd64.deb
+        sha256: 959e710e06022a845689a6aeeaacfdd9bc6be9370987375643c5c74cb6184273
+        dest-filename: opera.deb
+        only-arches: [x86_64]
+        x-checker-data:
+          type: debian-repo
+          package-name: opera-stable
+          root: https://get.geo.opera.com/pub/opera/desktop/
+          dist: stable
+          component: main
+          is-main-source: true
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: com.opera.Opera.metainfo.xml
+      - type: file
+        path: Opera_2015_icon.svg
+      - type: file
+        path: com.opera.Opera.desktop
+      - type: script
+        dest-filename: opera.sh
+        commands:
+          - exec cobalt "$@"
