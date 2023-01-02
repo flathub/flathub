@@ -2,6 +2,9 @@ app-id: io.github.carterbox.Tofu
 runtime: org.freedesktop.Platform
 runtime-version: "22.08"
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  # Flutter needs clang to compile Linux desktop apps
+  - org.freedesktop.Sdk.Extension.llvm15
 command: tofu
 
 finish-args:
@@ -13,17 +16,38 @@ finish-args:
 modules:
   - name: TOfU
     buildsystem: simple
-    only-arches: x86_64
+    build-options:
+      append-path: /usr/lib/sdk/llvm15/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm15/lib
+      build-args:
+        # Flutter/Dart need network access to get your dependencies
+        - --share=network
+    sources:
+      - type: git
+        url: https://github.com/carterbox/tofu.git
+        tag: 1.0.4
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\\d.]+)$
+          version-scheme: semantic
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.3.10-stable.tar.xz
+        sha256: d24e83f7a6b829d163feeef1abfcc30869f0c5d1af93e9917426265dad507024
+        dest: flutter/
+        x-checker-data:
+          type: anitya
+          project-id: 236318 # https://release-monitoring.org/project/236318/
+          stable-only: true
+          url-template: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$version-stable.tar.xz
     build-commands:
-      - install -Dm644 io.github.carterbox.Tofu.desktop -t /app/share/applications/
-      - install -Dm644 io.github.carterbox.Tofu.metainfo.xml -t /app/share/metainfo/
-      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.carterbox.Tofu.png
+      # Flutter builds itself and downloads its own dart compiler upon initialization
+      - ./flutter/bin/flutter doctor -v
+      - ./flutter/bin/flutter build linux --release
       - mkdir -p /app/Tofu
-      - mv -vn * /app/Tofu/
+      - mv -vn build/linux/$([ "${FLATPAK_ARCH}" == "x86_64" ] && echo "x64" || echo "arm64")/release/bundle/* /app/Tofu/
       - chmod +x /app/Tofu/tofu
       - mkdir -p /app/bin
       - ln -s /app/Tofu/tofu /app/bin/tofu
-    sources:
-      - type: archive
-        url: https://github.com/carterbox/tofu/releases/download/1.0.4/tofu-linux-x86_64-1.0.4.tar.gz
-        sha256: 429908f02ae667fdfa82487ebe76cd057df225bb9ba9fd7d6341074339b16ea0
+      - install -Dm644 ./linux/flatpak/io.github.carterbox.Tofu.desktop -t /app/share/applications/
+      - install -Dm644 ./linux/flatpak/io.github.carterbox.Tofu.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 ./web/icons/Icon-maskable-512.png /app/share/icons/hicolor/512x512/apps/io.github.carterbox.Tofu.png
