@@ -1,0 +1,88 @@
+app-id: io.github.punesemu.puNES
+runtime: org.kde.Platform
+runtime-version: "5.15-22.08"
+sdk: org.kde.Sdk
+command: punes
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=all
+  - --share=network
+  - --socket=pulseaudio
+  - --filesystem=/run/udev:ro
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/pkgconfig
+  - /man
+
+modules:
+  - name: glu
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/glu/glu-9.0.2.tar.gz
+        sha256: 24effdfb952453cc00e275e1c82ca9787506aba0282145fff054498e60e19a65
+
+  - name: p7zip
+    no-autogen: true
+    make-args:
+      - 7z
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/v17.04/p7zip-v17.04.tar.gz
+        sha256: ea029a2e21d2d6ad0a156f6679bd66836204aa78148a4c5e498fe682e77127ef
+      - type: shell
+        commands:
+          - sed -i 's|/usr/local|/app|g' makefile.common
+      - type: patch
+        path: p7zip-17.04-CVE-2018-11498.patch
+      - type: patch
+        path: p7zip-17.04-CVE-2021-0184.patch
+      - type: patch
+        path: p7zip-17.04-CVE-2021-3520.patch
+      - type: patch
+        path: p7zip-norar.patch
+
+  - name: nvidia-cg-toolkit
+    only-arches:
+      - x86_64
+    buildsystem: simple
+    build-commands: 
+      - mkdir -p ${FLATPAK_DEST}/lib/pkgconfig
+      - install -m 0644 usr/lib64/libCg.so ${FLATPAK_DEST}/lib
+      - install -m 0644 usr/lib64/libCgGL.so ${FLATPAK_DEST}/lib
+      - install -m 0644 nvidia-cg-toolkit-gl.pc ${FLATPAK_DEST}/lib/pkgconfig
+      - mkdir -p ${FLATPAK_DEST}/include/Cg
+      - install -m 0644 usr/include/Cg/cgGL.h ${FLATPAK_DEST}/include/Cg
+      - install -m 0644 usr/include/Cg/cg.h ${FLATPAK_DEST}/include/Cg
+    sources:
+      - type: file
+        path: nvidia-cg-toolkit-gl.pc
+      - type: archive
+        url: http://developer.download.nvidia.com/cg/Cg_3.1/Cg-3.1_April2012_x86_64.tgz
+        sha256: e8ff01e6cc38d1b3fd56a083f5860737dbd2f319a39037528fb1a74a89ae9878
+
+  - name: puNES
+    buildsystem: cmake
+    build-options:
+      config-opts:
+        - "-DENABLE_RELEASE=ON"
+        - "-DENABLE_FFMPEG=ON"
+        - "-DENABLE_OPENGL=ON"
+        - "-DENABLE_OPENGL_CG=OFF"
+        - "-DENABLE_FULLSCREEN_RESFREQ=ON"
+        - "-DDISABLE_PORTABLE_MODE=ON"
+      arch: 
+        x86_64:
+          config-opts:
+            - "-DENABLE_OPENGL_CG=ON"
+    sources:
+      - type: archive
+        url: https://github.com/punesemu/puNES/archive/refs/tags/v0.110.tar.gz
+        sha256: f72507daaf8d5a13184829ea2f875db49f5bc93ab8e1c8e48b2ed9a32612fe1d
+      - type: shell
+        commands:
+          - mkdir -p ${FLATPAK_DEST}/share/metainfo
+          - install -m 0644 misc/io.github.punesemu.puNES.metainfo.xml ${FLATPAK_DEST}/share/metainfo/.
