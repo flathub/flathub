@@ -1,0 +1,48 @@
+From 4c15d45dce05d84a685c0b4f6f8b2ba6bc8a596c Mon Sep 17 00:00:00 2001
+From: Felipe Borges <felipeborges@gnome.org>
+Date: Wed, 29 Jul 2020 12:03:34 +0200
+Subject: [PATCH] use monitor in XDG_RUNTIME_DIR
+
+---
+ src/qemu/qemu_process.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/qemu/qemu_process.c b/src/qemu/qemu_process.c
+index d36088ba98..1c57cd66ae 100644
+--- a/src/qemu/qemu_process.c
++++ b/src/qemu/qemu_process.c
+@@ -22,6 +22,7 @@
+ #include <config.h>
+ 
+ #include <fcntl.h>
++#include <gio/gio.h>
+ #include <unistd.h>
+ #include <signal.h>
+ #include <sys/stat.h>
+@@ -3181,10 +3182,22 @@ int
+ qemuProcessPrepareMonitorChr(virDomainChrSourceDefPtr monConfig,
+                              const char *domainDir)
+ {
++    g_autoptr(GFile) file = NULL;
++    g_autofree gchar *basename = NULL;
++    g_autofree gchar *path = NULL;
++
+     monConfig->type = VIR_DOMAIN_CHR_TYPE_UNIX;
+     monConfig->data.nix.listen = true;
+ 
+-    monConfig->data.nix.path = g_strdup_printf("%s/monitor.sock", domainDir);
++    file = g_file_new_for_path (domainDir);
++    basename = g_file_get_basename (file);
++    path = g_build_filename (g_get_user_runtime_dir (), basename, NULL);
++
++    if (g_mkdir (path, 0700) == 0) 
++        monConfig->data.nix.path = g_strdup_printf("%s/monitor.sock", path);
++    else
++        monConfig->data.nix.path = g_strdup_printf("%s/monitor.sock", domainDir);
++
+     return 0;
+ }
+ 
+-- 
+2.26.2
+
