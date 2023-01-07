@@ -1,0 +1,122 @@
+app-id: com.github.benini.scid
+branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: /app/scid/scid
+
+finish-args:
+  - --filesystem=home        # for accessing files in the user's home folder
+  - --share=network          # access the network
+  - --socket=x11             # show windows with x11
+  - --share=ipc              # share IPC namespace with the host (necessary for X11)
+  - --device=dri             # OpenGL rendering
+  - --socket=pulseaudio      # play sound with PulseAudio
+
+modules:
+- name: stockfish # Stockfish engine, put into /app/engines/stockfish/
+  buildsystem: simple
+  build-commands:
+  - cp nn-ad9b42354671.nnue ./src
+  - cd src; make -j build
+  - mkdir -p /app/engines/stockfish
+  - cp ./src/stockfish /app/engines/stockfish/
+  - cp ./nn-ad9b42354671.nnue /app/engines/stockfish/
+  sources:
+  - type: archive
+    url: https://github.com/official-stockfish/Stockfish/archive/refs/tags/sf_15.1.zip
+    sha256: 5174e4247f4c107648c9f7c906d5e9733abc61c6dae047be570cee2b930f0339
+  - type: file
+    url: https://tests.stockfishchess.org/api/nn/nn-ad9b42354671.nnue
+    sha256: ad9b423546714137916bd38978af6fd68d7b8951bef25ff76bf43da72d6cb786
+
+- name: eigen # library for linear algebra, used for lc0
+  buildsystem: cmake-ninja
+  builddir: true
+  sources:
+  - type: archive
+    url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+    sha256: 8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+
+- name: openblas # Basic Linear Algebra Subprograms library, used for lc0
+  no-autogen: true
+  make-args:
+  - DYNAMIC_ARCH=1
+  - FC=gfortran
+  - NO_LAPACKE=1
+  - USE_OPENMP=0
+  make-install-args:
+  - PREFIX=/app
+  post-install:
+  - rm /app/lib/*.a
+  sources:
+  - type: archive
+    url: https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.21.tar.gz
+    sha256: f36ba3d7a60e7c8bcc54cd9aaa9b1223dd42eaf02c811791c37e8ca707c241ca
+
+- name: lc0 # Lc0 engine, put into /app/engines/lc0
+  buildsystem: meson
+  config-opts:
+  - "-Dopenblas=true"
+  - "-Dopenblas_libdirs=/app/lib"
+  - "-Dgtest=false"
+  - "-Db_lto=true"
+  - "-Dopencl=false"
+  post-install:
+  - mkdir -p /app/engines/lc0
+  - mv /app/bin/lc0 /app/engines/lc0/
+  sources:
+  - type: archive
+    url: https://github.com/LeelaChessZero/lc0/archive/refs/tags/v0.29.0.zip
+    sha256: 91b8c76db7009ae4592bd0e87d2f6fda01fc33c819264d107fd6fc16330cc868
+  - type: archive
+    dest: "./libs/lczero-common/"
+    url: https://github.com/LeelaChessZero/lczero-common/archive/refs/heads/master.zip
+    sha256: 441eac56bf31aa966fd9baeecf2a71a2018475bd7c55310f61462fc7c8f2954c
+
+- name: nn # neural network T79, added to Lc0 (see https://lczero.org/play/networks/bestnets/)
+  buildsystem: simple
+  build-commands:
+  - mkdir -p /app/engines/lc0
+  - mv nn /app/engines/lc0/
+  sources:
+  - type: file
+    dest-filename: nn
+    url: https://training.lczero.org/get_network?sha=195b450999e874d07aea2c09fd0db5eff9d4441ec1ad5a60a140fe8ea94c4f3a
+    sha256: ece2b5e06dc7c2121c31649be0effdd645f3df53bcf801623246d75494a866ad
+
+- name: tcl # latest stable tcl, required for scid
+  sources:
+    - type: archive
+      url: https://prdownloads.sourceforge.net/tcl/tcl8.6.13-src.tar.gz
+      sha256: 43a1fae7412f61ff11de2cfd05d28cfc3a73762f354a417c62370a54e2caf066
+  subdir: "unix"
+  post-install:
+    - chmod 755 /app/lib/libtcl*.so
+
+- name: tk # latest stable tk, required for scid
+  sources:
+    - type: archive
+      url: https://prdownloads.sourceforge.net/tcl/tk8.6.13-src.tar.gz
+      sha256: 2e65fa069a23365440a3c56c556b8673b5e32a283800d8d9b257e3f584ce0675
+  subdir: "unix"
+  post-install:
+    - chmod 755 /app/lib/libtk*.so
+
+- name: scid # main app
+  buildsystem: cmake-ninja
+  post-install:
+    - install -Dma+r com.github.benini.scid.svg /app/share/icons/hicolor/scalable/apps/com.github.benini.scid.svg
+    - install -Dma+r com.github.benini.scid.desktop /app/share/applications/com.github.benini.scid.desktop
+    - install -Dma+r com.github.benini.scid.appdata.xml /app/share/metainfo/com.github.benini.scid.appdata.xml
+  sources:
+    - type: git
+      url: https://github.com/benini/scid.git
+      tag: v4.8.0
+      commit: 43740990c3ee47d662d57d11bedac6e667a06fd8
+    - type: file
+      path: com.github.benini.scid.svg
+    - type: file
+      path: com.github.benini.scid.desktop
+    - type: file
+      path: com.github.benini.scid.appdata.xml
