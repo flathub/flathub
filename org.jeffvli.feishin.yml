@@ -1,0 +1,121 @@
+app-id: org.jeffvli.feishin
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "23.08"
+command: feishin
+separate-locales: false
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-music
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --own-name=org.mpris.MediaPlayer2.Feishin
+  - --talk-name=org.gnome.SettingsDaemon.MediaKeys
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: mpv
+    buildsystem: simple
+    build-commands:
+      - meson setup build
+      - meson configure build -Dbuildtype=release -Ddebug=false -Dstrip=true -Dbuild-date=false -Dmanpage-build=disabled -Dprefix=/app
+      - meson compile -C build
+      - meson install -C build
+    cleanup:
+      - /lib/pkgconfig
+      - /share
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        commit: 818ce7c51a6b9179307950e919983e0909942098
+    modules:
+      - name: ffmpeg
+        config-opts:
+          - --enable-shared
+          - --disable-static
+          - --enable-gnutls
+          - --enable-pic
+          - --disable-doc
+          - --disable-programs
+          - --disable-encoders
+          - --disable-muxers
+          - --disable-devices
+        cleanup:
+          - /lib/pkgconfig
+          - /share
+          - /include
+        sources:
+          - type: git
+            url: https://git.ffmpeg.org/ffmpeg.git
+            commit: e38092ef9395d7049f871ef4d5411eb410e283e0
+
+      - name: libplacebo
+        buildsystem: meson
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+        sources:
+          - type: git
+            url: https://github.com/haasn/libplacebo.git
+            commit: 64c1954570f1cd57f8570a57e51fb0249b57bb90
+        modules:
+          - name: glslang
+            buildsystem: cmake-ninja
+            config-opts:
+              - -DBUILD_SHARED_LIBS=ON
+            cleanup:
+              - /bin
+              - /include
+              - /lib/cmake
+            sources:
+              - type: archive
+                url: https://github.com/KhronosGroup/glslang/archive/refs/tags/11.12.0.tar.gz
+                sha256: 7795a97450fecd9779f3d821858fbc2d1a3bf1dd602617d95b685ccbcabc302f
+
+      - name: libass
+        config-opts:
+          - --enable-shared
+          - --disable-static
+        cleanup:
+          - /lib/*.la
+          - /lib/pkgconfig
+          - /include
+        sources:
+          - type: git
+            url: https://github.com/libass/libass.git
+            commit: e8ad72accd3a84268275a9385beb701c9284e5b3
+
+  - name: feishin
+    buildsystem: simple
+    subdir: main
+    build-commands:
+      - >
+        for i in 128x128 256x256 512x512; do 
+          install -Dm 644 resources/assets/icons/${i}.png /app/share/icons/hicolor/${i}/apps/${FLATPAK_ID}.png
+        done
+      - cp -ar . /app/main
+      - install -Dm 644 ../flatpak/default.json /app/main/resources/default.json
+      - install -Dm 644 ../flatpak/org.jeffvli.feishin.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ../flatpak/org.jeffvli.feishin.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm 755 ../feishin.sh /app/bin/feishin
+    sources:
+      - type: archive
+        url: https://github.com/jeffvli/feishin/releases/download/v0.6.0/Feishin-0.6.0-linux-x64.tar.xz
+        sha256: 1c2266798e94e66340f54e985ecc924a5be7646c4859562c837fa5e16d3ce408
+        dest: main
+      - type: dir
+        path: .
+        dest: flatpak
+      - type: script
+        dest-filename: feishin.sh
+        commands:
+          - mkdir -p $XDG_CONFIG_HOME/feishin/ && cp -n /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json
+          - zypak-wrapper /app/main/feishin --ozone-platform-hint=auto
