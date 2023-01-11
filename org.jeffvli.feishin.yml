@@ -1,0 +1,113 @@
+app-id: org.jeffvli.feishin
+runtime: org.freedesktop.Platform
+runtime-version: "21.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "21.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+command: feishin
+separate-locales: false
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-music
+  - --talk-name=org.gnome.SettingsDaemon.MediaKeys
+  - --talk-name=org.freedesktop.Notifications
+  - --socket=session-bus
+modules:
+  - name: mpv
+    buildsystem: simple
+    build-commands:
+      - python3 waf configure --prefix=/app --disable-build-date --disable-manpage-build --enable-pulse --enable-alsa --disable-tv
+      - python3 waf build
+      - python3 waf install
+    cleanup:
+      - /lib/pkgconfig
+      - /share
+      - /include
+    sources:
+      - type: archive
+        url: "https://github.com/mpv-player/mpv/archive/refs/tags/v0.35.0.tar.gz"
+        sha256: dc411c899a64548250c142bf1fa1aa7528f1b4398a24c86b816093999049ec00
+      - type: file
+        url: "https://waf.io/waf-2.0.25"
+        sha256: 21199cd220ccf60434133e1fd2ab8c8e5217c3799199c82722543970dc8e38d5
+        dest-filename: waf
+    modules:
+      - name: ffmpeg
+        config-opts:
+          - "--enable-shared"
+          - "--disable-static"
+          - "--enable-gnutls"
+          - "--enable-pic"
+          - "--disable-doc"
+          - "--disable-programs"
+          - "--disable-encoders"
+          - "--disable-muxers"
+          - "--disable-devices"
+        cleanup:
+          - /lib/pkgconfig
+          - /share
+          - /include
+        sources:
+          - type: archive
+            url: "https://ffmpeg.org/releases/ffmpeg-5.1.2.tar.xz"
+            sha256: 619e706d662c8420859832ddc259cd4d4096a48a2ce1eefd052db9e440eef3dc
+      - name: libass
+        config-opts:
+          - "--enable-shared"
+          - "--disable-static"
+        cleanup:
+          - /lib/*.la
+          - /lib/pkgconfig
+          - /include
+        sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.17.0/libass-0.17.0.tar.xz
+            sha256: 971e2e1db59d440f88516dcd1187108419a370e64863f70687da599fdf66cc1a
+
+  - name: feishin
+    buildsystem: simple
+    subdir: main
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin
+      env:
+        XDG_CACHE_HOME: /run/build/feishin/flatpak-node/cache
+        npm_config_cache: /run/build/feishin/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: "true"
+    build-commands:
+      # --legacy-peer-deps required from broken peer dependencies from eslint-airbnb and specified eslint
+      - npm install --offline --legacy-peer-deps
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run package -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      - cp -r release/build/linux*unpacked /app/main
+      - install -Dm 644 flatpak/default.json /app/main/resources/default.json
+      - >
+        for i in 128x128 256x256 512x512; do 
+          install -Dm 644 assets/icons/${i}.png /app/share/icons/hicolor/${i}/apps/${FLATPAK_ID}.png
+        done
+
+      - install -Dm 644 flatpak/org.jeffvli.feishin.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 flatpak/org.jeffvli.feishin.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm 755 ../feishin.sh /app/bin/feishin
+    sources:
+      - type: git
+        url: https://github.com/jeffvli/feishin
+        commit: ba0ec909c823fb6c70651c7a85394cf4a030a662
+        dest: main
+      - type: dir
+        path: .
+        dest: main/flatpak
+      - generated-sources.json
+      - type: script
+        dest-filename: feishin.sh
+        commands:
+          - cp -n /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json
+          - zypak-wrapper /app/main/feishin
