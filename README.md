@@ -22,3 +22,4 @@ Filesystem:
 
 `--filesystem=~/.config/ChowdhuryDSP`: To persist and share with the
 plugin. Doesn't honour XDG
+`--persist=.config` because of `./.config/BYOD.settings`.
