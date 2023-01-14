@@ -1,0 +1,118 @@
+app-id: cc.craftos_pc.craftos_pc
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: craftos
+
+cleanup:
+  - '/include'
+  - '*.cmake'
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+
+modules:
+  - name: poco
+    buildsystem: cmake
+    config-opts:
+      - "-DENABLE_ENCODINGS=OFF"
+      - "-DENABLE_ACTIVERECORD=OFF"
+      - "-DENABLE_ACTIVERECORD_COMPILER=OFF"
+      - "-DENABLE_MONGODB=OFF"
+      - "-DENABLE_DATA_SQLITE=OFF"
+      - "-DENABLE_REDIS=OFF"
+      - "-DENABLE_PROMETHEUS=OFF"
+      - "-DENABLE_PDF=OFF"
+      - "-DENABLE_ZIP=OFF"
+      - "-DENABLE_PAGECOMPILER=OFF"
+      - "-DENABLE_PAGECOMPILER_FILE2PAGE=OFF"
+    sources:
+      - type: archive
+        url: https://pocoproject.org/releases/poco-1.12.4/poco-1.12.4-all.tar.bz2
+        sha256: 4e6ccc0df904596478414ef56a992cf885eb4b0ee695b23d307eb2ff91c36626
+  
+  - name: libharu
+    buildsystem: cmake
+    sources:
+      - type: git
+        url: https://github.com/libharu/libharu.git
+        tag: v2.4.3
+        commit: 8dbcfe470581edc4bc52c3ef132d410e66cadc20
+  
+  - name: pngpp
+    buildsystem: simple
+    build-commands:
+      - make install PREFIX=/app
+    sources:
+      - type: archive
+        url: http://download.savannah.nongnu.org/releases/pngpp/png++-0.2.10.tar.gz
+        sha512: c54a74c0c20212bd0dcf86386c0c11dd824ad14952917ba0ff4c184b6547744458728a4f06018371acb7d5b842b641708914ccaa81bad8e72e173903f494ca85
+  
+  - shared-modules/SDL2/SDL2-with-libdecor.json
+  
+  - name: patchelf
+    buildsystem: autotools
+    cleanup:
+      - "*"
+    sources:
+      - type: git
+        url: https://github.com/NixOS/patchelf.git
+        tag: "0.17.2"
+        commit: 5908e16cd562bcb1909be4de0409c4912a8afc52
+  
+  - name: craftos2
+    buildsystem: simple
+    build-commands: 
+      - make -C craftos2-lua -j$(nproc) linux
+      - ./configure --without-ncurses --prefix=/app
+      - make -j$(nproc)
+
+      # https://github.com/MCJack123/craftos2/issues/237
+      - install -D -m 755 craftos2-lua/src/liblua.so /app/lib/libcraftos2-lua.so
+      - patchelf --replace-needed craftos2-lua/src/liblua.so libcraftos2-lua.so craftos
+
+      - install -D -m 755 craftos /app/bin/craftos
+
+      - mkdir icons
+      - unzip resources/linux-icons.zip -d icons
+      - install -D -m 0644 icons/CraftOS-PC.desktop "/app/share/applications/cc.craftos_pc.craftos_pc.desktop"
+      - desktop-file-edit --set-icon="cc.craftos_pc.craftos_pc" --set-key="Exec" --set-value="" /app/share/applications/cc.craftos_pc.craftos_pc.desktop
+      - install -D -m 0644 icons/16.png "/app/share/icons/hicolor/16x16/apps/cc.craftos_pc.craftos_pc.png"
+      - install -D -m 0644 icons/24.png "/app/share/icons/hicolor/24x24/apps/cc.craftos_pc.craftos_pc.png"
+      - install -D -m 0644 icons/32.png "/app/share/icons/hicolor/32x32/apps/cc.craftos_pc.craftos_pc.png"
+      - install -D -m 0644 icons/48.png "/app/share/icons/hicolor/48x48/apps/cc.craftos_pc.craftos_pc.png"
+      - install -D -m 0644 icons/96.png "/app/share/icons/hicolor/96x96/apps/cc.craftos_pc.craftos_pc.png"
+
+      - install -D -m 0644 cc.craftos_pc.craftos_pc.appdata.xml /app/share/metainfo/cc.craftos_pc.craftos_pc.appdata.xml
+
+    sources:
+      - type: git
+        url: https://github.com/MCJack123/craftos2.git
+        tag: v2.7.2
+        commit: e4ed6c0527d9983154df9b67d26593f84a4f2edc
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+
+      - type: file
+        path: cc.craftos_pc.craftos_pc.appdata.xml
+    
+  - name: craftos2-rom
+    buildsystem: simple
+    build-commands:
+      - install -d -m 755 /app/share/craftos
+      - cp -r ./* /app/share/craftos
+    sources:
+      - type: git
+        url: https://github.com/MCJack123/craftos2-rom.git
+        tag: v2.7.2
+        commit: 016b633e3f00e96782d0f5a40b49f048dd887e06
+
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
