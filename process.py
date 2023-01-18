@@ -18,7 +18,7 @@ class MyJsonTapper:
     json_data = {}
 
     def __init__(self, file_path) -> None:
-        with open(file_path, 'r') as fi:
+        with open(file_path, 'r', encoding='utf-8') as fi:
             self.json_data = json.load(fi)
 
     def tap(self, func, *args):
@@ -26,14 +26,14 @@ class MyJsonTapper:
         return self
 
     def output(self, output_path):
-        with open(output_path, 'w') as fo:
+        with open(output_path, 'w', encoding='utf-8') as fo:
             fo.write(json.dumps(self.json_data, indent=4))
 
 
 def get_last_ver():
-    last = ''
+    last = '0.0'
     try:
-        f = open('./last', 'r')
+        f = open('./last', 'r', encoding='utf-8')
         last = f.readline()
         f.close()
     except:
@@ -42,17 +42,23 @@ def get_last_ver():
 
 
 def set_last_ver(last):
-    with open('./last', 'w') as f:
+    with open('./last', 'w', encoding='utf-8') as f:
         f.write(last)
+
+
+def get_matching_freedesktop_version():
+    with open('./BaseApp/org.mozilla.firefox.BaseApp.json', 'r', encoding='utf-8') as fi:
+        json_baseapp = json.load(fi)
+        return json_baseapp['runtime-version']
 
 
 def varsubst(input_path, output_path, **vars):
     print(input_path, output_path, vars)
-    with open(input_path, 'r') as f:
+    with open(input_path, 'r', encoding='utf-8') as f:
         content = f.read()
         for key in vars:
             content = content.replace(f'${key}', vars[key])
-        with open(output_path, 'w') as fo:
+        with open(output_path, 'w', encoding='utf-8') as fo:
             fo.write(content)
 
 
@@ -89,15 +95,8 @@ def set_freedesktop_version(json_objects, version):
         extension_root[k]['version'] = version
 
 
-def merge_baseapp(json_objects):
-    with open('./BaseApp/org.mozilla.firefox.BaseApp.json', 'r') as fi:
-        json_baseapp = json.load(fi)
-        # Fixup
-        json_baseapp['modules'] = map(lambda s: s.replace(
-            'dbus-glib-0.110.json', 'dbus-glib.json') if isinstance(s, str) else s, json_baseapp['modules'])
-        json_objects['modules'].extend(json_baseapp['modules'])
-        # Merge cleanup
-        json_objects['cleanup'] = json_baseapp['cleanup']
+def merge_baseapp(json_objects, channel):
+    json_objects['base-version'] = channel
 
 
 if __name__ == '__main__':
@@ -119,11 +118,13 @@ if __name__ == '__main__':
     else:
         set_last_ver(version_str)
 
+    freedesktop_version = get_matching_freedesktop_version()
     info = get_build_info(version_str)
     languages = build_language_list(version_str, info['build_number'])
     sha256_dict = build_sha256dict(version_str)
 
     MyJsonTapper('./in/org.mozilla.firefox_esr.json.template').tap(extend_firefox_source,
-                                                                   sha256_dict, languages, version_str).tap(merge_baseapp).tap(set_freedesktop_version, freedesktop_version).output('./org.mozilla.firefox_esr.json')
+                                                                   sha256_dict, languages, version_str).tap(merge_baseapp, freedesktop_version).tap(set_freedesktop_version, freedesktop_version).output('./org.mozilla.firefox_esr.json')
     varsubst('./in/org.mozilla.firefox_esr.appdata.xml.template',
              './org.mozilla.firefox_esr.appdata.xml', VERSION=version_str, RELEASE_TIMESTAMP=info['date'])
+    exit(0)
