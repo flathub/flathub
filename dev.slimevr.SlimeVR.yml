@@ -1,0 +1,68 @@
+app-id: dev.slimevr.SlimeVR
+runtime: org.gnome.Platform
+sdk: org.gnome.Sdk
+runtime-version: '42'
+separate-locales: false
+command: slimevr
+finish-args:
+  # Network access
+  - --share=network
+  # Needed for graphics
+  - --share=ipc
+  - --device=dri
+  - --socket=x11
+  # - --socket=wayland
+  - --socket=pulseaudio
+  # Add JRE bin on path
+  - --env=PATH=/app/jre/bin:/usr/bin:/app/bin
+
+# build dependencies
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+  - org.freedesktop.Sdk.Extension.rust-nightly
+  - org.freedesktop.Sdk.Extension.node16
+modules:
+  # We need the JRE for executing the server
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk17/install.sh
+  - name: slimevr-server
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/slimevr
+      - install -Dm755 slimevr.jar /app/share/slimevr/slimevr.jar
+    sources:
+      - type: file
+        url: https://github.com/SlimeVR/SlimeVR-Server/releases/download/v0.6.0/slimevr.jar
+        sha256: 55675d8f12504b16c1515e480316a91f6575ac4fe80c59ff30da1435bf706b18
+  - name: slimevr-gui
+    buildsystem: simple
+    build-options:
+      append-path: "/usr/lib/sdk/rust-nightly/bin:/usr/lib/sdk/node16/bin"
+      env:
+        # Sets the directory where Node is located so that npm won't download the headers.
+        npm_config_nodedir: /usr/lib/sdk/node16
+        CARGO_HOME: /run/build/slimevr-gui/cargo
+      build-args:
+        - --share=network
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - npm i
+      - npm run skipbundler
+      - install -Dm755 target/release/slimevr /app/bin/slimevr-bin
+      - install -Dm755 slimevr-wrapper /app/bin/slimevr
+    sources:
+      - type: git
+        url: https://github.com/SlimeVR/SlimeVR-Server.git
+        tag: "v0.6.0"
+        commit: 4d7c931b696a3524125347ddb288b0257cb8ce56
+      - type: patch
+        path: jar.diff
+      - "cargo-sources.json"
+      - type: script
+        dest-filename: slimevr-wrapper
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - echo $TMPDIR
+          - exec /app/bin/slimevr-bin "$@"
