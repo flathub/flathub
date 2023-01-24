@@ -40,15 +40,17 @@ modules:
     build-options:
       append-path: "/usr/lib/sdk/rust-nightly/bin:/usr/lib/sdk/node16/bin"
       env:
+        XDG_CACHE_HOME: /run/build/slimevr-gui/flatpak-node/cache 
         # Sets the directory where Node is located so that npm won't download the headers.
         npm_config_nodedir: /usr/lib/sdk/node16
         CARGO_HOME: /run/build/slimevr-gui/cargo
-      build-args:
-        - --share=network
     build-commands:
       - cargo --offline fetch --manifest-path Cargo.toml --verbose
-      - npm i
-      - npm run skipbundler
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      # the husky hook is ran in a weird manner and solarxr doesnt get built before the installation
+      # to gui/node_modules, so I just redo it.
+      - yarn --offline && rm -r /run/build/slimevr-gui/gui/node_modules/ && yarn --offline
+      - npm run --offline skipbundler --offline
       - install -Dm755 target/release/slimevr /app/bin/slimevr-bin
       - install -Dm755 slimevr-wrapper /app/bin/slimevr
     sources:
@@ -56,12 +58,20 @@ modules:
         url: https://github.com/SlimeVR/SlimeVR-Server.git
         tag: "v0.6.0"
         commit: 4d7c931b696a3524125347ddb288b0257cb8ce56
+      # Patch for expecting a jar inside /app
       - type: patch
         path: jar.diff
+      # Patch for not checking if git is clean
+      - type: patch
+        path: clean.diff
+      # yarn.lock maintained just for flatpak
+      - type: file
+        path: yarn.lock
+      - "node-sources.json"
       - "cargo-sources.json"
+      # TODO: make the TMPDIR be a place where the steamvr driver can expect it
       - type: script
         dest-filename: slimevr-wrapper
         commands:
           - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-          - echo $TMPDIR
           - exec /app/bin/slimevr-bin "$@"
