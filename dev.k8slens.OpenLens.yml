@@ -1,0 +1,138 @@
+app-id: dev.k8slens.OpenLens
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "22.08"
+sdk-extensions:
+  # Node.js version: https://github.com/lensapp/lens/blob/master/.github/workflows/publish-release-npm.yml#L20
+  - org.freedesktop.Sdk.Extension.node16
+command: open-lens
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=ssh-auth
+  - --talk-name=org.freedesktop.Notifications
+  - --system-talk-name=org.freedesktop.login1
+  - --filesystem=~/.kube
+modules:
+  - name: libvips
+    buildsystem: meson
+    builddir: true
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/libvips/libvips/archive/refs/tags/v8.14.1.tar.gz
+        sha256: a4a6b282216f7522b42ebb5cd64cfd82a0d1a632033e9c0502f021e945fed641
+        x-checker-data:
+          type: anitya
+          project-id: 5097
+          url-template: https://github.com/libvips/libvips/archive/refs/tags/v$version.tar.gz
+  - name: open-lens
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: "/usr/lib/sdk/node16/bin:/run/build/open-lens/flatpak-node/chromedrive"
+      env:
+        # Don't add ELECTRON_CACHE
+        XDG_CACHE_HOME: /run/build/open-lens/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: "true"
+        npm_config_no_save: "true"
+        npm_config_cache: /run/build/open-lens/flatpak-node/npm-cache
+        npm_config_loglevel: "verbose"
+        # https://stackoverflow.com/questions/25146976/can-i-get-npm-gyp-to-use-ccache
+        CXX: ccache g++
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "true"
+
+        LENS_SKIP_DOWNLOAD_BINARIES: "true"
+      arch:
+        # https://github.com/sass/node-sass/issues/3033#issuecomment-763180778
+        # The architecture of Electron, see https://electronjs.org/docs/tutorial/support#supported-platforms
+        # for supported architectures.
+        i386:
+          env:
+            npm_config_arch: ia32
+            npm_config_target_arch: ia32
+        x86_64:
+          env:
+            npm_config_arch: x64
+            npm_config_target_arch: x64
+        arm:
+          env:
+            npm_config_arch: armv7l
+            npm_config_target_arch: armv7l
+        aarch64:
+          env:
+            npm_config_arch: arm64
+            npm_config_target_arch: arm64
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn install --cwd packages/openlens --frozen-lockfile --offline
+      - yarn --offline lerna run --stream build
+      - yarn --offline lerna run --stream build:dir
+
+      # Copy the resulting, unpacked directory to /app.
+      - cp -r packages/open-lens/dist/linux-*unpacked ${FLATPAK_DEST}/open-lens
+
+      - install -Dm644 dev.k8slens.OpenLens.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm755 open-lens.sh ${FLATPAK_DEST}/bin/open-lens
+      - install -Dm644 dev.k8slens.OpenLens.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 packages/open-lens/build/icons/512x512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/open-lens/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/open-lens/locales/$(basename $lang)"
+        done
+    sources:
+      - type: git
+        url: https://github.com/lensapp/lens.git
+        tag: v6.4.0-beta.7
+        commit: 6247c7647ed25262b2e84bb360f674d1dc5ca0e5
+        x-checker-data:
+          type: anitya
+          project-id: 322370
+          stable-only: true
+          tag-template: v$version
+
+      - type: file
+        path: open-lens.sh
+
+      - type: file
+        path: dev.k8slens.OpenLens.metainfo.xml
+
+      - type: file
+        path: dev.k8slens.OpenLens.desktop
+
+      - type: file
+        only-arches: ["x86_64"]
+        url: https://github.com/lensapp/lens-k8s-proxy/releases/download/v0.3.0/lens-k8s-proxy-linux-amd64
+        sha256: d640037ae4e7b505f14cc0174d89c90f7e5aadc8df6389c51fa17bd33c7e55c6
+        dest: packages/open-lens/binaries/client/linux/x64
+        dest-filename: lens-k8s-proxy
+
+      - type: file
+        only-arches: ["x86_64"]
+        url: https://storage.googleapis.com/kubernetes-release/release/v1.26.1/bin/linux/amd64/kubectl
+        sha256: d57be22cfa25f7427cfb538cfc8853d763878f8b36c76ce93830f6f2d67c6e5d
+        dest: packages/open-lens/binaries/client/linux/x64
+        dest-filename: kubectl
+
+      - type: file
+        only-arches: ["x86_64"]
+        url: https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz
+        sha256: 6c3440d829a56071a4386dd3ce6254eab113bc9b1fe924a6ee99f7ff869b9e0b
+        dest: packages/open-lens/binaries/client/linux/x64
+        dest-filename: helm
+
+      # Add the flatpak-node-generator generated sources.
+      # flatpak-node-generator --electron-node-headers --recursive yarn yarn.lock
+      - generated-sources.json
