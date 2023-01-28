@@ -1,0 +1,113 @@
+app-id: io.github.listen1.Listen1
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "22.08"
+sdk-extensions:
+  # Node.js version: https://github.com/listen1/listen1_desktop/blob/7636b7d685e999a1894d393e64e3f8324280e6e5/.github/workflows/release.yml#L21
+  - org.freedesktop.Sdk.Extension.node16
+command: listen1
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-music
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.freedesktop.PowerManagement
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+modules:
+  - name: listen1
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node16/bin:/run/build/listen1/flatpak-node/chromedrive
+      env:
+        # Don't add ELECTRON_CACHE
+        XDG_CACHE_HOME: /run/build/listen1/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: "true"
+        npm_config_no_save: "true"
+        npm_config_cache: /run/build/listen1/flatpak-node/npm-cache
+        npm_config_loglevel: verbose
+        # https://stackoverflow.com/questions/25146976/can-i-get-npm-gyp-to-use-ccache
+        CXX: ccache g++
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "true"
+
+        LENS_SKIP_DOWNLOAD_BINARIES: "true"
+      arch:
+        # https://github.com/sass/node-sass/issues/3033#issuecomment-763180778
+        # The architecture of Electron, see https://electronjs.org/docs/tutorial/support#supported-platforms
+        # for supported architectures.
+        i386:
+          env:
+            npm_config_arch: ia32
+            npm_config_target_arch: ia32
+        x86_64:
+          env:
+            npm_config_arch: x64
+            npm_config_target_arch: x64
+        arm:
+          env:
+            npm_config_arch: armv7l
+            npm_config_target_arch: armv7l
+        aarch64:
+          env:
+            npm_config_arch: arm64
+            npm_config_target_arch: arm64
+    build-commands:
+      - npm ci --offline
+      - npx electron-builder --linux dir --${npm_config_arch}
+
+      # Copy the resulting, unpacked directory to /app.
+      - cp -r dist/linux-*unpacked ${FLATPAK_DEST}/listen1
+
+      - install -Dm644 io.github.listen1.Listen1.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm755 listen1.sh ${FLATPAK_DEST}/bin/listen1
+      - install -Dm644 io.github.listen1.Listen1.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 app/resources/logo512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/listen1/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/listen1/locales/$(basename $lang)"
+        done
+    sources:
+      - type: git
+        url: https://github.com/listen1/listen1_desktop.git
+        tag: v2.27.0
+        commit: 7636b7d685e999a1894d393e64e3f8324280e6e5
+        x-checker-data:
+          type: anitya
+          project-id: 322736
+          stable-only: true
+          tag-template: v$version
+
+      - type: script
+        dest-filename: listen1.sh
+        commands:
+          - set -oue pipefail
+
+          - export FLATPAK_ID="${FLATPAK_ID:-io.github.listen1.Listen1}"
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - export SNAP=/app/listen1
+
+          - exec zypak-wrapper /app/listen1/listen1 $@
+
+      - type: file
+        path: io.github.listen1.Listen1.metainfo.xml
+
+      - type: file
+        path: io.github.listen1.Listen1.desktop
+
+      # Add the flatpak-node-generator generated sources.
+      # flatpak-node-generator --electron-node-headers --recursive npm package-lock.json -o generated-sources.json
+      - generated-sources.json

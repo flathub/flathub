@@ -1,0 +1,44 @@
+name: Auto update
+
+on:
+  push:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Setup environment variables
+        run: |
+          echo "FLATPAK_BUILDER_TOOLS_DIR=/tmp/flatpak-builder-tools" >> $GITHUB_ENV
+          echo "OPEN_LENS_VERSION="$(yq '.modules[1].sources[0].tag' 'io.github.listen1.Listen1.yml')"" >> $GITHUB_ENV
+
+      - name: Setup flatpak-builder-tools
+        run: |
+          git clone --depth=1 https://github.com/flatpak/flatpak-builder-tools ${FLATPAK_BUILDER_TOOLS_DIR}
+          pip install --user pipx && pipx install ${FLATPAK_BUILDER_TOOLS_DIR}/node
+          pip install --user toml aiohttp
+
+      - name: Update Node.js generated sources
+        run: |
+          git clone https://github.com/listen1/listen1_desktop.git --depth=1 --branch=${OPEN_LENS_VERSION} /tmp/listen1_desktop
+
+          flatpak-node-generator --electron-node-headers --recursive npm /tmp/listen1_desktop/package-lock.json -o generated-sources.json
+
+      - name: Commit updates
+        run: |
+          set -e
+
+          [[ ! $(git status --porcelain) ]] && exit 0
+
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git config user.name "Workflow trigger"
+
+          git add generated-sources.json
+          git commit -m 'Update generated sources'
+
+          git push https://${GITHUB_ACTOR}:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}
