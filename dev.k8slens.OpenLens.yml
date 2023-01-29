@@ -61,30 +61,35 @@ modules:
             npm_config_arch: arm64
             npm_config_target_arch: arm64
     build-commands:
-      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - HOME="$PWD" yarn config --offline set yarn-offline-mirror "$FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror"
       - yarn install --cwd packages/openlens --frozen-lockfile --offline
       - yarn --offline lerna run -- --stream --ignore open-lens build
       - |
-        ln -srv $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
+        ln -srv "$XDG_CACHE_HOME/node-gyp" "$HOME/.electron-gyp"
         yarn --offline lerna run -- --stream --scope open-lens build:app -- --linux dir --${npm_config_arch} --publish never
 
       # Copy the resulting, unpacked directory to /app.
-      - cp -r packages/open-lens/dist/linux-*unpacked ${FLATPAK_DEST}/open-lens
+      - cp -r packages/open-lens/dist/linux-*unpacked "${FLATPAK_DEST}/open-lens"
 
-      - install -Dm644 dev.k8slens.OpenLens.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm755 open-lens.sh ${FLATPAK_DEST}/bin/open-lens
-      - install -Dm644 dev.k8slens.OpenLens.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - install -Dm644 packages/open-lens/build/icons/512x512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 dev.k8slens.OpenLens.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm755 open-lens.sh "${FLATPAK_DEST}/bin/open-lens"
+      - install -Dm644 dev.k8slens.OpenLens.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm644 packages/open-lens/build/icons/512x512.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
 
       # To allow separate locales
       # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
       - |
-        for lang in ${FLATPAK_DEST}/open-lens/locales/*.pak
-        do
-          locale="$(basename -s .pak $lang)"
-          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
-          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/open-lens/locales/$(basename $lang)"
-        done
+        APP_LOCALES_ROOT="${FLATPAK_DEST}/open-lens/locales"
+        RUNTIME_LOCALES_ROOT="${FLATPAK_DEST}/share/runtime/locale"
+
+        if [ -d "${APP_LOCALES_ROOT}" ]; then
+          for lang in "${APP_LOCALES_ROOT}"/*.pak; do
+            LOCALE="$(basename -s .pak "${lang}")"
+            runtime_locale_dir="${RUNTIME_LOCALES_ROOT}/${LOCALE%%-*}/"
+            install -Dm644 -t "${runtime_locale_dir}" "${lang}"
+            ln -sf "${runtime_locale_dir}/$(basename "${lang}")" "${APP_LOCALES_ROOT}/$(basename "${lang}")"
+          done
+        fi
     sources:
       - type: git
         url: https://github.com/lensapp/lens.git
