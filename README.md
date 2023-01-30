@@ -8,10 +8,12 @@
 
 ## Documentation
 
-### High DPI Screens
+### Environment Variables
 
-Set the `RARS_UISCALE` environment variable to a floating-point number at least `1.0` (eg: `2.0`,
-`2.5`, `3.0`). This will set the `sun.java2d.uiScale` property (See documentation [here](https://news.kynosarges.org/2019/03/24/swing-high-dpi-properties/))
+Name | Default | Description
+--- | --- | ---
+`RARS_JAVA` | None | Passes arguments directly to the Java command (Will override other environment variables)
+`RARS_SCALE` | Screen width / `1920` | Sets the `sun.java2d.uiScale` property (See documentation [here](https://news.kynosarges.org/2019/03/24/swing-high-dpi-properties/))
 
 ### Development
 1. Install Flatpak (See [this](https://flatpak.org/setup/) guide)
@@ -31,8 +33,9 @@ flatpak-builder --user --install --force-clean build com.github.TheThirdOne.rars
 6. Run:
 ```shell
 flatpak run com.github.TheThirdOne.rars
-RARS_UISCALE=3.0 flatpak run com.github.TheThirdOne.rars
 flatpak run com.github.TheThirdOne.rars h
+RARS_SCALE=3.0 flatpak run com.github.TheThirdOne.rars
+RARS_JAVA=bad-argument flatpak run com.github.TheThirdOne.rars
 ```
 7. Validate:
 ```shell
