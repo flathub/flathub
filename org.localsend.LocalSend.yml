@@ -1,0 +1,71 @@
+app-id: org.localsend.LocalSend
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "22.08"
+command: start-localsend
+finish-args:
+  - --device=all
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  # - shared-modules/libsecret/libsecret.json
+  - name: localsend
+    buildsystem: simple
+    build-commands:
+      - chmod +x LocalSend.AppImage
+      - ./LocalSend.AppImage --appimage-extract
+
+      - install -Dm644 logo-512.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+
+      - desktop-file-edit --set-key=Exec --set-value='start-localsend %U' --set-icon=${FLATPAK_ID}
+        "squashfs-root/org.localsend.localsend_app.desktop"
+      - install -Dm644 squashfs-root/org.localsend.localsend_app.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+
+      # cleanup
+      - rm squashfs-root/org.localsend.localsend_app.desktop squashfs-root/AppRun.env squashfs-root/AppRun
+      - cp -r squashfs-root "${FLATPAK_DEST}/localsend"
+
+      - install -Dm644 org.localsend.LocalSend.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm755 start-localsend.sh "${FLATPAK_DEST}/bin/start-localsend"
+
+      # To allow separate locales
+      - |
+        for lang in ${FLATPAK_DEST}/localsend/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/localsend/locales/$(basename $lang)"
+        done
+    sources:
+      - type: file
+        dest-filename: LocalSend.AppImage
+        only-arches: [x86_64]
+        url: https://github.com/localsend/localsend/releases/download/v1.6.2/LocalSend-1.6.2.AppImage
+        sha256: b50f10d1a1c85069c14f9a02a61d4b7ee32daef841c8af0b6d67520299bcb95b
+        x-checker-data:
+          type: anitya
+          project-id: 324117
+          url-template: https://github.com/localsend/localsend/releases/download/v$version/LocalSend-$version.AppImage
+          stable-only: true
+      - type: file
+        path: org.localsend.LocalSend.metainfo.xml
+      - type: file
+        url: https://localsend.org/img/logo-512.png
+        dest-filename: logo-512.png
+        sha256: 2434b6e64d484544322d2aedc8dee8b2e7511a3a56c134ea6be794385ca8878f
+      - type: script
+        dest-filename: localsend.sh
+        commands:
+          - set -oue pipefail
+
+          - export FLATPAK_ID="${FLATPAK_ID:-org.localsend.LocalSend}"
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+
+          - exec zypak-wrapper /app/localsend/localsend_app $@
