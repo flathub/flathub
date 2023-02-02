@@ -1,0 +1,78 @@
+app-id: com.hunterwittenborn.Celeste
+runtime: org.gnome.Platform
+runtime-version: "43"
+sdk: org.gnome.Sdk
+command: celeste
+finish-args:
+  # We need to display on Wayland/X11.
+  - '--socket=wayland'
+  - '--socket=fallback-x11'
+  # Enable OpenGL rendering.
+  - '--device=dri'
+  # Users may want to sync files from anywhere on their system.
+  - '--filesystem=host'
+  # We need network access in order to sync files to remotes.
+  - '--share=network'
+  # Used for X11 performance as described at
+  # https://docs.flatpak.org/en/latest/sandbox-permissions-reference.html#f1.
+  - '--share=ipc'
+  # DBus sockets we needs.
+  - '--talk-name=org.kde.StatusNotifierWatcher'
+  - '--talk-name=org.kde.StatusNotifierItem'
+  - '--talk-name=com.canonical.AppMenu.Registrar'
+  # Extra libraries that we've bundled with the Flatpak in order to run.
+  # '/usr/lib/x86_64-linux-gnu' is exposed by default, but if we specify
+  # one we have to specify them all.
+  - '--env=LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/app/lib/x86_64-linux-gnu'
+modules:
+  - name: unsquashfs
+    buildsystem: simple
+    cleanup:
+      - '*'
+    build-commands:
+      - "sed -i 's|#XZ_SUPPORT|XZ_SUPPORT|' squashfs-tools/Makefile"
+      - 'cd squashfs-tools/ && make unsquashfs'
+      - 'install -Dm 755 squashfs-tools/unsquashfs /app/bin/unsquashfs'
+    sources:
+      - type: 'git'
+        url: 'https://github.com/plougher/squashfs-tools'
+        tag: '4.5.1'
+  - name: celeste
+    buildsystem: simple
+    build-commands:
+      # Unpack and install the Snap package.
+      - 'unsquashfs celeste.snap'
+      - 'cp squashfs-root/* /app/ -R'
+
+      # Fix the icon path in the desktop file. The desktop file from the Snap
+      # contains a `${SNAP}` prefix, but we don't want that.
+      - 'desktop-file-edit --set-icon=com.hunterwittenborn.Celeste /app/usr/share/applications/com.hunterwittenborn.Celeste.desktop'
+
+      # Fix the location of our files.
+      - 'rm /app/{bin,lib} -R'
+      - 'mv /app/usr/* /app/'
+      - 'rmdir /app/usr'
+      
+      # Install our Appstream file.
+      - 'install -Dm 644 com.hunterwittenborn.Celeste.metainfo.xml /app/share/metainfo/com.hunterwittenborn.Celeste.metainfo.xml'
+
+      # Remove uneeded files.
+      - |
+        find /app \
+          -not -type d \
+          -not -path /app/bin/celeste \
+          -not -path /app/bin/rclone \
+          -not -regex '^/app/share/.*com\.hunterwittenborn\.Celeste.*$' \
+          -not -regex '^/app/lib/x86_64-linux-gnu/.*indicator3\.so.*$' \
+          -not -regex '^/app/lib/x86_64-linux-gnu/libayatana-.*\.so.*$' \
+          -not -regex '^/app/lib/x86_64-linux-gnu/libdbusmenu-.*\.so\.4.*$' \
+          -delete
+      - 'find /app -empty -type d -delete'
+
+    sources:
+      - type: 'file'
+        url: 'https://api.snapcraft.io/api/v1/snaps/download/a9zAmHVl4doDwIGkptVyA7VI7fMlPPpE_14.snap'
+        sha256: '0d17f4ca51408547d0ed0ba0811294c4888f5f874d6193777d047e1bcde63e44'
+        dest-filename: 'celeste.snap'
+      - type: 'file'
+        path: 'com.hunterwittenborn.Celeste.metainfo.xml'
