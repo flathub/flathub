@@ -1,0 +1,119 @@
+{
+    "app-id": "zone.elk.Elk",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "42",
+    "sdk": "org.gnome.Sdk",
+    "sdk-extensions" : [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.node18",
+    ],
+    "command": "elk",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=dri"
+    ],
+    "build-options": {
+        "append-path" : "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node18/bin",
+        "env" : {
+            "CARGO_HOME" : "/run/build/elk/cargo-home",
+            "NUXT_TELEMETRY_DISABLED": "1",
+        }
+    },
+    "modules": [
+        {
+            "name": "elk",
+            "buildsystem": "simple",
+            "build-commands": [
+                "cd tauri-cli/ && cargo --offline fetch --verbose",
+                "cd tauri-cli/ && cargo --offline build --release --verbose",
+                "cd tauri-cli/ && cargo --offline install tauri-cli --path .",
+
+                "cd elk-native/elk && ../../pnpm/pnpm --store-dir ../../pnpm/.pnpm-store i --offline",
+                "cd elk-native && cargo --offline fetch --manifest-path Cargo.toml --verbose",
+                "cd elk-native && cargo --offline tauri build --bundles deb --verbose",
+
+                "install -Dm755 -t /app/bin/ elk-native/target/release/bundle/deb/*/data/usr/bin/*",
+                "mkdir -p /app/share/icons/hicolor",
+                "cp -r elk-native/target/release/bundle/deb/*/data/usr/share/icons/hicolor/* /app/share/icons/hicolor/",
+                "mv /app/share/icons/hicolor/256x256@2/ /app/share/icons/hicolor/256x256/",
+                "install -Dm644 -t /app/share/metainfo/ ${FLATPAK_ID}.metainfo.xml",
+                "install -Dm644 -T elk-native/target/release/bundle/deb/*/data/usr/share/applications/elk.desktop /app/share/applications/{FLATPAK_ID}.desktop",
+
+                "install -Dm644 elk-native/elk/public/logo.svg -t /app/share/icons/hicolor/scalable/apps/"
+
+            ],
+            "sources": [
+              {
+                "type": "archive",
+                "url": "https://static.crates.io/crates/tauri-cli/tauri-cli-1.2.3.crate",
+                "sha512": "e408904da3a546ec1d0bce3361bb48b71469b55f7bb625ec44d324ca527398d03135ae8b1eea1f35465ddd1975bb23bc64ae9884e47c3d9e63967e5cb128d441",
+                "archive-type": "tar-gzip",
+                "dest": "tauri-cli"
+              },
+              "cargo-tauri-cli-sources.json",
+
+
+                {
+                  "url": "https://registry.npmjs.org/@pnpm/linux-x64/-/linux-x64-7.26.0.tgz",
+                  "type": "archive",
+                  "sha512": "3e612fe32cedde56aa3002d235d7c3bcb7dff7998d7a82db8b3ed5df119ef79e1b9c5ad522fb890b5190485fe0949cc28f5f56a78d09a0d6b8e4d564b32da3db",
+                  "dest": "pnpm",
+                },
+                {
+                  "type": "shell",
+                  "commands": [
+                    "chmod +x pnpm",
+                  ],
+                  "dest": "pnpm",
+                },
+
+                "pnpm-sources.json",
+                {
+                  "type": "shell",
+                  "commands": [
+                    "for a in $(find npmjs.org/ -type f); do ./pnpm store --store-dir ./.pnpm-store add \"./$a\"; done",
+                  ],
+                  "dest": "pnpm",
+                },
+                {
+                  "type": "file",
+                  "path": "checkin-npm-store.sh",
+                  "dest-filename": "checkin-npm-store.sh",
+                  "dest": "pnpm",
+                },
+                {
+                    "type": "shell",
+                    "commands": [ "./checkin-npm-store.sh" ],
+                    "dest": "pnpm",
+                },
+
+
+                {
+                  "url": "https://github.com/elk-zone/elk-native.git",
+                  "type": "git",
+                  "commit": "fec3a818cb1a68a61f7e4dddecb2f6bccedcd272",
+                  "dest": "elk-native",
+                },
+                {
+                  "type": "patch",
+                  "path": "0001-Workaround-Cargo-1.67-workspace-vendoring.patch",
+                  "dest": "elk-native",
+                },
+                {
+                  "type": "shell",
+                  "commands": [
+                    "mkdir -p ./src-tauri/../elk/.output/public",
+                  ],
+                  "dest": "elk-native",
+                },
+                "cargo-elk-sources.json",
+                {
+                  "type": "file",
+                  "path": "zone.elk.Elk.metainfo.xml",
+                }
+            ]
+        }
+    ]
+}
