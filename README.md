@@ -30,14 +30,14 @@ flatpak-builder build com.github.TheThirdOne.rars.yml --force-clean
 ```shell
 flatpak-builder --user --install --force-clean build com.github.TheThirdOne.rars.yml
 ```
-6. Run:
+6. Test:
 ```shell
 flatpak run com.github.TheThirdOne.rars
 flatpak run com.github.TheThirdOne.rars h
 RARS_SCALE=3.0 flatpak run com.github.TheThirdOne.rars
 RARS_JAVA=bad-argument flatpak run com.github.TheThirdOne.rars
 ```
-7. Validate:
+7. Validate metadata:
 ```shell
 flatpak run org.freedesktop.appstream-glib validate com.github.TheThirdOne.rars.metainfo.xml
 desktop-file-validate com.github.TheThirdOne.rars.desktop
