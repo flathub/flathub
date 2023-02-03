@@ -4,11 +4,11 @@
 
 You can build and directly install the built Flatpak:
 
-    flatpak-builder --install ./build ./zone.elk.Elk.yml --force-clean -y
+    flatpak-builder --install ./build ./zone.elk.Elk.json --force-clean -y
 
 or export the Flatpak into a repo for later installation or bundling:
 
-    flatpak-builder --repo ./repo ./build ./zone.elk.Elk.yml --force-clean
+    flatpak-builder --repo ./repo ./build ./zone.elk.Elk.json --force-clean
 
 Install from repository:
 
