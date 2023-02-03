@@ -24,21 +24,21 @@ flatpak install org.freedesktop.Sdk.Extension.openjdk17 org.freedesktop.appstrea
 ```
 4. Build:
 ```shell
-flatpak-builder build com.github.TheThirdOne.rars.yml --force-clean
+flatpak-builder build io.github.TheThirdOne.rars.yml --force-clean
 ```
 5. Install:
 ```shell
-flatpak-builder --user --install --force-clean build com.github.TheThirdOne.rars.yml
+flatpak-builder --user --install --force-clean build io.github.TheThirdOne.rars.yml
 ```
 6. Test:
 ```shell
-flatpak run com.github.TheThirdOne.rars
-flatpak run com.github.TheThirdOne.rars h
-RARS_SCALE=3.0 flatpak run com.github.TheThirdOne.rars
-RARS_JAVA=bad-argument flatpak run com.github.TheThirdOne.rars
+flatpak run io.github.TheThirdOne.rars
+flatpak run io.github.TheThirdOne.rars h
+RARS_SCALE=3.0 flatpak run io.github.TheThirdOne.rars
+RARS_JAVA=bad-argument flatpak run io.github.TheThirdOne.rars
 ```
 7. Validate metadata:
 ```shell
-flatpak run org.freedesktop.appstream-glib validate com.github.TheThirdOne.rars.metainfo.xml
-desktop-file-validate com.github.TheThirdOne.rars.desktop
+flatpak run org.freedesktop.appstream-glib validate io.github.TheThirdOne.rars.metainfo.xml
+desktop-file-validate io.github.TheThirdOne.rars.desktop
 ```
