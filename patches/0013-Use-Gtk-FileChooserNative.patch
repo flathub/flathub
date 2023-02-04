@@ -1,0 +1,196 @@
+From 0bbfe37c182b40cf8a46dc6b428fdc7af1278570 Mon Sep 17 00:00:00 2001
+From: Will Thompson <wjt@endlessos.org>
+Date: Tue, 3 May 2022 11:43:34 +0100
+Subject: [PATCH 13/13] Use Gtk::FileChooserNative
+
+This allows the user to open arbitrary files on their filesystem with
+Gobby, without the Gobby Flatpak having access to the whole filesystem.
+
+For unknown reasons, the dialog is not correctly attached to the parent
+window; still, it works.
+---
+ code/commands/browser-context-commands.cpp    |  9 +++++----
+ code/commands/browser-context-commands.hpp    |  3 ++-
+ code/commands/file-tasks/task-export-html.cpp |  2 +-
+ code/commands/file-tasks/task-open-file.cpp   |  2 +-
+ code/commands/file-tasks/task-save.cpp        |  2 +-
+ code/core/filechooser.cpp                     | 20 ++-----------------
+ code/core/filechooser.hpp                     |  4 ++--
+ code/dialogs/preferences-dialog.cpp           |  4 ++--
+ 8 files changed, 16 insertions(+), 30 deletions(-)
+
+diff --git a/code/commands/browser-context-commands.cpp b/code/commands/browser-context-commands.cpp
+index feda8e5..016d60d 100644
+--- a/code/commands/browser-context-commands.cpp
++++ b/code/commands/browser-context-commands.cpp
+@@ -386,8 +386,8 @@ void Gobby::BrowserContextCommands::on_open(const Glib::VariantBase& param)
+ 
+ 	file_dialog->set_select_multiple(true);
+ 
+-	m_dialog = std::move(file_dialog);
+-	m_dialog->present();
++	m_file_chooser_dialog = std::move(file_dialog);
++	m_file_chooser_dialog->show();
+ }
+ 
+ void Gobby::BrowserContextCommands::on_permissions(
+@@ -430,6 +430,7 @@ void Gobby::BrowserContextCommands::on_delete(
+ void Gobby::BrowserContextCommands::on_dialog_node_removed()
+ {
+ 	m_dialog.reset(NULL);
++	m_file_chooser_dialog.reset(NULL);
+ 	m_dialog_watch.reset(NULL);
+ }
+ 
+@@ -596,8 +597,7 @@ void Gobby::BrowserContextCommands::on_open_response(int response_id,
+                                                      InfBrowser* browser,
+                                                      InfBrowserIter iter)
+ {
+-	FileChooser::Dialog* dialog =
+-		static_cast<FileChooser::Dialog*>(m_dialog.get());
++	FileChooser::Dialog* dialog = m_file_chooser_dialog.get();
+ 	if(response_id == Gtk::RESPONSE_ACCEPT)
+ 	{
+ 		const std::vector<Glib::RefPtr<Gio::File> > files =
+@@ -608,6 +608,7 @@ void Gobby::BrowserContextCommands::on_open_response(int response_id,
+ 	}
+ 
+ 	m_dialog.reset(NULL);
++	m_file_chooser_dialog.reset(NULL);
+ 	m_dialog_watch.reset(NULL);
+ }
+ 
+diff --git a/code/commands/browser-context-commands.hpp b/code/commands/browser-context-commands.hpp
+index bead3e7..ca01aca 100644
+--- a/code/commands/browser-context-commands.hpp
++++ b/code/commands/browser-context-commands.hpp
+@@ -109,8 +109,9 @@ protected:
+ 	std::unique_ptr<NodeWatch> m_popup_watch;
+ 	gulong m_populate_popup_handler;
+ 
+-	// Dialog
++	// Dialogs
+ 	std::unique_ptr<Gtk::Dialog> m_dialog;
++	std::unique_ptr<FileChooser::Dialog> m_file_chooser_dialog;
+ 	std::unique_ptr<NodeWatch> m_dialog_watch;
+ 
+ 	// Allowed Actions (TODO: move them to browsercontextactions.cpp)
+diff --git a/code/commands/file-tasks/task-export-html.cpp b/code/commands/file-tasks/task-export-html.cpp
+index c27ae36..a5ea7ab 100644
+--- a/code/commands/file-tasks/task-export-html.cpp
++++ b/code/commands/file-tasks/task-export-html.cpp
+@@ -49,7 +49,7 @@ void Gobby::TaskExportHtml::run()
+ 		*this, &TaskExportHtml::on_response));
+ 
+ 	m_file_dialog.set_current_name(m_view->get_title() + ".xhtml");
+-	m_file_dialog.present();
++	m_file_dialog.show();
+ }
+ 
+ void Gobby::TaskExportHtml::on_response(int response_id)
+diff --git a/code/commands/file-tasks/task-open-file.cpp b/code/commands/file-tasks/task-open-file.cpp
+index 86753f3..d509f39 100644
+--- a/code/commands/file-tasks/task-open-file.cpp
++++ b/code/commands/file-tasks/task-open-file.cpp
+@@ -30,7 +30,7 @@ void Gobby::TaskOpenFile::run()
+ 	m_file_dialog.signal_response().connect(sigc::mem_fun(
+ 		*this, &TaskOpenFile::on_file_response));
+ 
+-	m_file_dialog.present();
++	m_file_dialog.show();
+ }
+ 
+ void Gobby::TaskOpenFile::on_file_response(int response_id)
+diff --git a/code/commands/file-tasks/task-save.cpp b/code/commands/file-tasks/task-save.cpp
+index 02ed603..57ad853 100644
+--- a/code/commands/file-tasks/task-save.cpp
++++ b/code/commands/file-tasks/task-save.cpp
+@@ -55,7 +55,7 @@ void Gobby::TaskSave::run()
+ 	else
+ 		m_file_dialog.set_current_name(m_view->get_title());
+ 
+-	m_file_dialog.present();
++	m_file_dialog.show();
+ }
+ 
+ void Gobby::TaskSave::on_response(int response_id)
+diff --git a/code/core/filechooser.cpp b/code/core/filechooser.cpp
+index 432aed4..84233fc 100644
+--- a/code/core/filechooser.cpp
++++ b/code/core/filechooser.cpp
+@@ -24,26 +24,10 @@ Gobby::FileChooser::Dialog::Dialog(Gobby::FileChooser& chooser,
+                                    Gtk::Window& parent,
+                                    const Glib::ustring& title,
+                                    Gtk::FileChooserAction action):
+-	Gtk::FileChooserDialog(parent, title, action),
++	Gtk::FileChooserNative(title, parent, action, "", ""),
+ 	m_chooser(chooser)
+ {
+-	// Set defaults depending on action
+-	switch(action)
+-	{
+-	case Gtk::FILE_CHOOSER_ACTION_SAVE:
+-		add_button(_("_Cancel"), Gtk::RESPONSE_CANCEL);
+-		add_button(_("_Save"), Gtk::RESPONSE_ACCEPT);
+-		set_do_overwrite_confirmation(true);
+-		break;
+-	case Gtk::FILE_CHOOSER_ACTION_OPEN:
+-		add_button(_("_Cancel"), Gtk::RESPONSE_CANCEL);
+-		add_button(_("_Open"), Gtk::RESPONSE_ACCEPT);
+-		break;
+-	default:
+-		g_assert_not_reached();
+-		break;
+-	}
+-
++	// TODO: the dialog prevents interaction with the parent window but Shell does not grey it out. If I toggle the 'modal' property on the dialog to false then true again with the inspector, it behaves as expected. Is this a Shell bug, a portal bug, or something else?
+ 	set_modal(true);
+ 	set_local_only(false);
+ 	set_current_folder_uri(m_chooser.get_current_folder_uri());
+diff --git a/code/core/filechooser.hpp b/code/core/filechooser.hpp
+index 2f3a438..93a3f1c 100644
+--- a/code/core/filechooser.hpp
++++ b/code/core/filechooser.hpp
+@@ -17,7 +17,7 @@
+ #ifndef _GOBBY_FILE_CHOOSER_HPP_
+ #define _GOBBY_FILE_CHOOSER_HPP_
+ 
+-#include <gtkmm/filechooserdialog.h>
++#include <gtkmm/filechoosernative.h>
+ #include <gtkmm/window.h>
+ 
+ namespace Gobby
+@@ -28,7 +28,7 @@ namespace Gobby
+ class FileChooser
+ {
+ public:
+-	class Dialog: public Gtk::FileChooserDialog
++	class Dialog: public Gtk::FileChooserNative
+ 	{
+ 	public:
+ 		Dialog(Gobby::FileChooser& chooser, Gtk::Window& parent,
+diff --git a/code/dialogs/preferences-dialog.cpp b/code/dialogs/preferences-dialog.cpp
+index d5e5cf8..914a59e 100644
+--- a/code/dialogs/preferences-dialog.cpp
++++ b/code/dialogs/preferences-dialog.cpp
+@@ -693,7 +693,7 @@ void Gobby::PreferencesDialog::Security::on_create_key_clicked()
+ 		sigc::mem_fun(
+ 			*this, &Security::on_file_dialog_response_key));
+ 
+-	m_file_dialog->present();
++	m_file_dialog->show();
+ }
+ 
+ void Gobby::PreferencesDialog::Security::on_create_cert_clicked()
+@@ -713,7 +713,7 @@ void Gobby::PreferencesDialog::Security::on_create_cert_clicked()
+ 			*this,
+ 			&Security::on_file_dialog_response_certificate));
+ 
+-	m_file_dialog->present();
++	m_file_dialog->show();
+ }
+ 
+ void Gobby::PreferencesDialog::Security::on_file_dialog_response_key(
+-- 
+2.30.2
+
