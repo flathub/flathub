@@ -52,18 +52,374 @@ modules:
       - install -Dm644 data/icons/gimagereader.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/gimagereader.svg"
     modules:
       - shared-modules/intltool/intltool-0.51.json
-      - boost.yml
-      - mm-common.yml
-      - sane-backends.yml
-      - podofo.yml
-      - djvulibre.yml
-      - tesseract.yml
-      - tessdata.yml
-      - gtkmm.yml
-      - gtksourceviewmm.yml
-      - poppler.yml
-      - libxml++.yml
-      - libzip.yml
+
+      - name: boost
+        buildsystem: simple
+        build-commands:
+          - ./bootstrap.sh --prefix=/app --with-libraries=system
+          - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+        sources:
+          - type: archive
+            url: https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.bz2
+            sha256: 71feeed900fbccca04a3b4f2f84a7c217186f28a940ed8b7ed4725986baf99fa
+            x-checker-data:
+              type: anitya
+              project-id: 6845
+              stable-only: true
+              url-template: https://boostorg.jfrog.io/artifactory/main/release/$version/source/boost_${major}_${minor}_$patch.tar.bz2
+
+      - name: mm-common
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/mm-common/1.0/mm-common-1.0.5.tar.xz
+            sha256: 705c6d29f4116a29bde4e36cfc1b046c92b6ef8c6dae4eaec85018747e6da5aa
+            x-checker-data:
+              type: gnome
+              name: mm-common
+              stable-only: true
+
+      - name: sane-backends
+        buildsystem: autotools
+        config-opts:
+          - '--disable-saned'
+        post-install:
+          - rm /app/etc/sane.d/dll.conf
+          - rm /app/etc/sane.d/net.conf
+          - echo 127.0.0.1 > /app/etc/sane.d/net.conf
+          - echo net > /app/etc/sane.d/dll.conf
+          - echo escl >> /app/etc/sane.d/dll.conf
+          - echo airscan >> /app/etc/sane.d/dll.conf
+        sources:
+          - type: git
+            url: https://gitlab.com/sane-project/backends.git
+            tag: 1.1.1
+            commit: 332edc8b7ce642bb06132cf204a8c2dd57720bce
+            x-checker-data:
+              type: anitya
+              project-id: 4760
+              tag-template: $version
+
+      - name: podofo
+        buildsystem: cmake-ninja
+        cleanup:
+          - /bin
+          - /share
+          - /lib/pkgconfig
+        config-opts:
+          - '-DPODOFO_BUILD_LIB_ONLY=1'
+          - '-DPODOFO_BUILD_SHARED=1'
+          - '-DPODOFO_BUILD_STATIC=0'
+        sources:
+          - type: archive
+            url: https://downloads.sourceforge.net/project/podofo/podofo/0.9.8/podofo-0.9.8.tar.gz
+            sha256: 5de607e15f192b8ad90738300759d88dea0f5ccdce3bf00048a0c932bc645154
+            x-checker-data:
+              type: anitya
+              project-id: 10527
+              url-template: https://downloads.sourceforge.net/project/podofo/podofo/$version/podofo-$version.tar.gz
+
+      - name: djvulibre
+        sources:
+          - type: archive
+            url: 'https://downloads.sourceforge.net/djvu/djvulibre-3.5.28.tar.gz'
+            sha256: fcd009ea7654fde5a83600eb80757bd3a76998e47d13c66b54c8db849f8f2edc
+            x-checker-data:
+              type: anitya
+              project-id: 10159
+              stable-only: true
+              url-template: 'https://downloads.sourceforge.net/djvu/djvulibre-$version.tar.gz'
+
+      - name: tesseract
+        buildsystem: autotools
+        config-opts:
+          - '--disable-graphics'
+        modules:
+          - name: libleptonica
+            buildsystem: autotools
+            sources:
+              - type: archive
+                url: https://github.com/DanBloomberg/leptonica/releases/download/1.83.0/leptonica-1.83.0.tar.gz
+                sha256: 206591dd58cf84ef380836dad133b58c9d1af92491f5a9825c346a162044bcfe
+                x-checker-data:
+                  type: anitya
+                  project-id: 1549
+                  url-template: https://github.com/DanBloomberg/leptonica/releases/download/$version/leptonica-$version.tar.gz
+
+        sources:
+          - type: archive
+            url: 'https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.3.0.tar.gz'
+            sha256: 7e70870f8341e5ea228af2836ce79a36eefa11b01b56177b4a8997f330c014b8
+            x-checker-data:
+              type: anitya
+              project-id: 4954
+              url-template: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz
+
+      - name: tessdata
+        buildsystem: simple
+        build-commands:
+          - rm -rf ${FLATPAK_DEST}/share/tessdata
+          - mkdir -p ${FLATPAK_DEST}/share/tessdata
+          - cp -av * ${FLATPAK_DEST}/share/tessdata/
+        sources:
+          - type: archive
+            url: https://github.com/tesseract-ocr/tessdata_best/archive/refs/tags/4.1.0.tar.gz
+            sha256: bb05b738298ae73e7130e2913ed002b49d94cd1cea508e63be1928fe47770b32
+            x-checker-data:
+              type: anitya
+              project-id: 325951
+              url-template: https://github.com/tesseract-ocr/tessdata_best/archive/refs/tags/$version.tar.gz
+
+      - # https://github.com/flathub/org.gnome.Gnote/blob/11d75091558cef2cc9658a04da7ad71d63581d3f/gtkmm.json#L3
+        # NB: all versions are pinned below a coordinated ABI break
+        name: gtkmm
+        sources:
+          - sha256: 1d7a35af9c5ceccacb244ee3c2deb9b245720d8510ac5c7e6f4b6f9947e6789c
+            type: archive
+            url: 'https://download.gnome.org/sources/gtkmm/3.24/gtkmm-3.24.7.tar.xz'
+            x-checker-data:
+              type: gnome
+              name: gtkmm
+              versions:
+                <: '3.25'
+        buildsystem: meson
+        config-opts:
+          - '-Dmaintainer-mode=false'
+          - '-Dbuild-demos=false'
+          - '-Dbuild-tests=false'
+        cleanup:
+          - '*.a'
+          - '*.la'
+          - /include
+          - /lib/gdkmm-3.0
+          - /lib/gtkmm-3.0
+          - /lib/pkgconfig
+          - /man
+          - /share/aclocal
+          - /share/man
+          - /share/pkgconfig
+        modules:
+          - name: sigc++
+            sources:
+              - sha256: 235a40bec7346c7b82b6a8caae0456353dc06e71f14bc414bcc858af1838719a
+                type: archive
+                url: >-
+                  https://download.gnome.org/sources/libsigc++/2.10/libsigc++-2.10.8.tar.xz
+                x-checker-data:
+                  type: gnome
+                  name: libsigc++
+                  //: later versions are incompatible with gtkmm3.24
+                  versions:
+                    <: '2.11'
+            buildsystem: meson
+            config-opts:
+              - '-Dbuild-examples=false'
+            cleanup:
+              - '*.la'
+              - /include/sigc++-2.0
+              - /lib/pkgconfig
+              - /lib/sigc++-2.0
+          - name: glibmm
+            sources:
+              - sha256: 7b384662dd6ec3b86c0570331d32af05db2bd99a791602b767b4a0b2566ec149
+                type: archive
+                url: 'https://download.gnome.org/sources/glibmm/2.66/glibmm-2.66.5.tar.xz'
+                x-checker-data:
+                  type: gnome
+                  name: glibmm
+                  //: later versions have ABI break
+                  versions:
+                    <: '2.67'
+            buildsystem: meson
+            config-opts:
+              - '-Dbuild-examples=false'
+            cleanup:
+              - '*.la'
+              - /include/glibmm-2.4
+              - /include/giomm-2.4
+              - /lib/glibmm-2.4
+              - /lib/giomm-2.4
+              - /lib/libglibmm_generate_extra_defs*
+              - /lib/pkgconfig
+          - name: cairomm
+            sources:
+              - sha256: 4749d25a2b2ef67cc0c014caaf5c87fa46792fc4b3ede186fb0fc932d2055158
+                type: archive
+                url: 'https://www.cairographics.org/releases/cairomm-1.14.4.tar.xz'
+                x-checker-data:
+                  type: anitya
+                  project-id: 7959
+                  url-template: 'https://www.cairographics.org/releases/cairomm-$version.tar.xz'
+                  versions:
+                    <: '1.15'
+            buildsystem: meson
+            config-opts:
+              - '-Dbuild-examples=false'
+            cleanup:
+              - '*.la'
+              - /include/cairomm-1.0
+              - /lib/cairomm-1.0
+              - /lib/pkgconfig
+          - name: pangomm
+            sources:
+              - sha256: 410fe04d471a608f3f0273d3a17d840241d911ed0ff2c758a9859c66c6f24379
+                type: archive
+                url: 'https://download.gnome.org/sources/pangomm/2.46/pangomm-2.46.3.tar.xz'
+                x-checker-data:
+                  type: gnome
+                  name: pangomm
+                  versions:
+                    <: '2.47'
+            buildsystem: meson
+            cleanup:
+              - '*.la'
+              - /include/pangomm-1.4
+              - /lib/pangomm-1.4
+              - /lib/pkgconfig
+          - name: atkmm
+            sources:
+              - sha256: 7c2088b486a909be8da2b18304e56c5f90884d1343c8da7367ea5cd3258b9969
+                type: archive
+                url: 'https://download.gnome.org/sources/atkmm/2.28/atkmm-2.28.3.tar.xz'
+                x-checker-data:
+                  type: gnome
+                  name: atkmm
+                  versions:
+                    <: '2.35'
+            buildsystem: meson
+            cleanup:
+              - '*.la'
+              - /include/atkmm-1.6
+              - /lib/atkmm-1.6
+              - /lib/pkgconfig
+
+      - name: gtksourceviewmm
+        config-opts:
+          - --disable-documentation
+        modules:
+          - name: gtkspellmm
+            config-opts:
+              - '--disable-documentation'
+            modules:
+              - name: gtkspell3
+                config-opts:
+                  - "--disable-documentation"
+                sources:
+                  - type: archive
+                    url: https://downloads.sourceforge.net/gtkspell/gtkspell3-3.0.10.tar.xz
+                    sha256: b040f63836b347eb344f5542443dc254621805072f7141d49c067ecb5a375732
+                    x-checker-data:
+                      type: anitya
+                      project-id: 13111
+                      stable-only: true
+                      url-template: https://downloads.sourceforge.net/gtkspell/gtkspell3-$version.tar.xz
+
+            sources:
+              - type: archive
+                url: https://downloads.sourceforge.net/gtkspell/gtkspellmm-3.0.5.tar.xz
+                sha256: 5b875a5753ce593274d0c6e803af6300973020c5443905999aba96ed3cef1545
+                x-checker-data:
+                  type: anitya
+                  project-id: 325948
+                  stable-only: true
+                  url-template: https://downloads.sourceforge.net/gtkspell/gtkspellmm-$version.tar.xz
+
+          - name: gtksourceview
+            config-opts:
+              - --disable-documentation
+            sources:
+              - type: archive
+                url: https://download.gnome.org/sources/gtksourceview/3.24/gtksourceview-3.24.11.tar.xz
+                sha256: 691b074a37b2a307f7f48edc5b8c7afa7301709be56378ccf9cc9735909077fd
+                x-checker-data:
+                  type: gnome
+                  name: gtksourceview
+                  stable-only: true
+                  versions:
+                    <: '4.0'
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/gtksourceviewmm/3.18/gtksourceviewmm-3.18.0.tar.xz
+            sha256: 51081ae3d37975dae33d3f6a40621d85cb68f4b36ae3835eec1513482aacfb39
+            x-checker-data:
+              type: gnome
+              name: gtksourceviewmm
+              stable-only: true
+
+      - name: poppler
+        config-opts:
+          - '-DENABLE_ZLIB=ON'
+          - '-DENABLE_LIBTIFF=ON'
+          - '-DENABLE_LIBPNG=ON'
+          - '-DENABLE_GLIB=ON'
+          - "-DENABLE_CMS='lcms2'"
+          - "-DENABLE_LIBOPENJPEG='openjpeg2'"
+          - "-DENABLE_DCTDECODER='libjpeg'"
+          - '-DENABLE_SPLASH=OFF'
+          - '-DENABLE_BOOST=OFF'
+          - '-DENABLE_CPP=OFF'
+        buildsystem: cmake-ninja
+        builddir: true
+        modules:
+          - name: openjpeg2
+            buildsystem: cmake-ninja
+            builddir: true
+            cleanup:
+              - /bin
+              - /include
+              - /lib/openjpeg-*
+              - /lib/pkgconfig
+            sources:
+              - type: archive
+                url: 'https://github.com/uclouvain/openjpeg/archive/v2.5.0.tar.gz'
+                sha256: 0333806d6adecc6f7a91243b2b839ff4d2053823634d4f6ed7a59bc87409122a
+                x-checker-data:
+                  type: anitya
+                  project-id: 2550
+                  stable-only: true
+                  url-template: 'https://github.com/uclouvain/openjpeg/archive/v$version.tar.gz'
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+        sources:
+          - type: archive
+            url: 'https://poppler.freedesktop.org/poppler-23.02.0.tar.xz'
+            sha256: 3315dda270fe2b35cf1f41d275948c39652fa863b90de0766f6b293d9a558fc9
+            x-checker-data:
+              type: anitya
+              project-id: 3686
+              stable-only: true
+              url-template: 'https://poppler.freedesktop.org/poppler-$version.tar.xz'
+
+      - name: libxml++
+        config-opts:
+          - --disable-documentation
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/libxml++/3.2/libxml++-3.2.4.tar.xz
+            sha256: ba53f5eaca45b79f4ec1b3b28bc8136fce26873cd38f2e381d9355289e432405
+            x-checker-data:
+              type: gnome
+              name: libxml++
+              stable-only: true
+              versions:
+                <: '4.0'
+
+      - name: libzip
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_INSTALL_LIBDIR=/app/lib
+          - -DCMAKE_INSTALL_INCLUDEDIR=/app/include
+        cleanup:
+          - /bin
+        sources:
+          - type: archive
+            url: https://libzip.org/download/libzip-1.9.2.tar.xz
+            sha256: c93e9852b7b2dc931197831438fee5295976ee0ba24f8524a8907be5c2ba5937
+            x-checker-data:
+              type: anitya
+              project-id: 10649
+              url-template: https://libzip.org/download/libzip-$version.tar.xz
+
     sources:
       - type: git
         url: https://github.com/manisandro/gimagereader
