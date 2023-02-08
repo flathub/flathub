@@ -1,0 +1,73 @@
+app-id: dev.ensoft.ecode
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+rename-desktop-file: ecode.desktop
+rename-icon: ecode
+command: ecode
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+build-options:
+  prepend-path: /app/bin
+
+modules:
+  - shared-modules/SDL2/SDL2-with-libdecor.json
+
+  - name: premake5
+    buildsystem: simple
+    build-commands:
+      - make -f Bootstrap.mak linux
+      - install -Dm755 -t "${FLATPAK_DEST}/bin" bin/release/premake5
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/premake/premake-core/releases/download/v5.0.0-beta2/premake-5.0.0-beta2-src.zip
+        sha256: 4c1100f5170ae1c3bd1b4fd9458b3b02ae841aefbfc41514887b80996436dee2
+        x-checker-data:
+          type: anitya
+          project-id: 3707
+          url-template: https://github.com/premake/premake-core/releases/download/v$version/premake-$version-src.zip
+          stable-only: false
+
+  - name: ecode
+    buildsystem: simple
+    build-options:
+      arch:
+        x86_64:
+          env:
+            ARCH: x86_64
+        aarch64:
+          env:
+            ARCH: arm64
+    build-commands:
+      # https://github.com/SpartanJ/eepp/blob/ca84455fcc399db2ba0ddd0b85b6927f215c4603/projects/linux/ecode/build.app.sh
+      - premake5 --with-mojoal gmake
+      - cd make/linux && make -j8 config="release_${ARCH}" ecode
+      - cp -r bin /app/ecode
+      - install -Dm644 libs/linux/libeepp.so "${FLATPAK_DEST}/ecode/libs/libeepp.so"
+      - install -Dm644 projects/​linux/​ecode/ecode.desktop "${FLATPAK_DEST}/share/applications/ecode.desktop"
+      - install -Dm644 bin/assets/icon/ee.png "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/ecode.png"
+      - ln -s "${FLATPAK}/bin/ecode" "${FLATPAK_DEST}/ecode/ecode"
+      - install -Dm644 dev.ensoft.ecode.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metadata.xml"
+    sources:
+      - type: git
+        url: https://github.com/SpartanJ/eepp.git
+        tag: ecode-0.4.4
+        commit: 3aeb6f6bfeaa6bd138d8e1dcbfe71addef26f43d
+        x-checker-data:
+          type: anitya
+          project-id: 325538
+          tag-template: ecode-$version
+
+      - type: file
+        path: dev.ensoft.ecode.metainfo.xml
+
+      # Quoting GCC 9 change log: Using the types and functions in <filesystem> does not require linking with -lstdc++fs now.
+      # https://github.com/flathub/flathub/pull/1694#discussion_r467712165
+      - type: patch
+        path: patches/remove-linking-stdc++fs.patch
