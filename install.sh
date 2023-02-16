@@ -1,10 +1,10 @@
 #!/bin/bash
 mkdir /app/opt
 cp -r waterfox/ /app/opt/waterfox
-desktop-file-install --dir /app/share/applications net.waterfoxco.waterfox-g5.desktop
+desktop-file-install --dir /app/share/applications net.waterfox.waterfox.desktop
 mkdir -p /app/share/icons/hicolor/256x256/apps/ /app/share/appdata
-cp -p /app/opt/waterfox/browser/chrome/icons/default/default256.png /app/share/icons/hicolor/256x256/apps/net.waterfoxco.waterfox-g5.png
-cp -p net.waterfoxco.waterfox-g5.appdata.xml /app/share/appdata
+cp -p /app/opt/waterfox/browser/chrome/icons/default/default256.png /app/share/icons/hicolor/256x256/apps/net.waterfox.waterfox.png
+cp -p net.waterfox.waterfox.appdata.xml /app/share/appdata
 mkdir /app/bin
 ln -sf /app/opt/waterfox/waterfox-bin /app/bin/waterfox
 # Create prefrence file to block updates and 
