@@ -1,0 +1,58 @@
+From b6582e715479b3b3fe6aac9f0112b570f1b20cff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jonah=20Br=C3=BCchert?= <jbb@kaidan.im>
+Date: Fri, 17 Feb 2023 23:07:11 +0100
+Subject: [PATCH] Use host-spawn
+
+---
+ src/shellcommand.cpp | 23 ++++++++++++++++++++++-
+ 1 file changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/src/shellcommand.cpp b/src/shellcommand.cpp
+index e75e6c9..9890e9b 100644
+--- a/src/shellcommand.cpp
++++ b/src/shellcommand.cpp
+@@ -1,4 +1,5 @@
+ // SPDX-FileCopyrightText: 2022 Jonah Brüchert <jbb@kaidan.im>
++// SPDX-FileCopyrightText: 2022 Harald Sitter <sitter@kde.org>
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include "shellcommand.h"
+@@ -6,6 +7,10 @@
+ #include <KSandbox>
+ #include <KShell>
+ 
++#include <pwd.h>
++#include <sys/types.h>
++#include <unistd.h>
++
+ ShellCommand::ShellCommand(QObject *parent)
+     : QObject(parent)
+     , m_cmd(KShell::splitArgs(command()))
+@@ -25,7 +30,23 @@ QStringList ShellCommand::args() const
+ QString ShellCommand::command() const
+ {
+     if (KSandbox::isFlatpak()) {
+-        return QStringLiteral(R"(bash -c "flatpak-spawn --env=TERM=${TERM} --host sh -c 'exec $SHELL'")");
++        auto shell = []() {
++            // From Konsole: https://github.com/KDE/konsole/blob/c450e754c789915b6dd27514a18f311ba9249981/src/profile/Profile.cpp#L177
++            auto pw = getpwuid(getuid());
++            // pw: Do not pass the returned pointer to free.
++            if (pw != nullptr) {
++                QProcess proc;
++                proc.setProgram(QStringLiteral("getent"));
++                proc.setArguments({QStringLiteral("passwd"), QString::number(pw->pw_uid)});
++                KSandbox::startHostProcess(proc);
++                proc.waitForFinished();
++                return QString::fromUtf8(proc.readAllStandardOutput().simplified().split(':').at(6));
++            } else {
++                return QStringLiteral("bash");
++            }
++        }();
++
++        return QStringLiteral("host-spawn %1").arg(shell);
+     } else {
+         return qEnvironmentVariable("SHELL");
+     }
+-- 
+2.39.1
+
