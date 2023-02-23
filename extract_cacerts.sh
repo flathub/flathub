@@ -35,8 +35,9 @@ for certificate in $(ls /etc/ssl/certs/*.pem) ; do
 	issuer=$(echo "$cert" | grep '^Issuer' | cut -d' ' -f1 --complement)
 	fprint=$(echo "$cert" | grep 'SHA1:' | cut -d' ' -f3)
 	alias=$(get_alias "$issuer")
-	echo "Adding $fprint ($alias)"
-	$jdk/bin/keytool -importcert -noprompt -alias $alias -storepass changeit -storetype JKS -keystore cacerts -file $certificate
+	echo "Adding $fprint ($alias, $certificate)"
+	${jdk}/bin/keytool -importcert -noprompt -alias "${alias}" -storepass changeit -storetype JKS -keystore cacerts -file "${certificate}" || \
+		${jdk}/bin/keytool -importcert -noprompt -alias "${alias}_1" -storepass changeit -storetype JKS -keystore cacerts -file "${certificate}" # Since there was a certificate that ended up getting the same alias (<filename>.pem versus <filename>_1.pem)
 done
 
 rm $jdk/lib/security/cacerts
