@@ -1,0 +1,49 @@
+From 4376a37c36697347b15ce486f356d44e309915ec Mon Sep 17 00:00:00 2001
+From: Chris Rizzitello <sithlord48@gmail.com>
+Date: Wed, 1 Mar 2023 23:02:42 -0500
+Subject: [PATCH] flatpak:show drives
+
+---
+ src/dialogs/bcdialog.cpp | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/dialogs/bcdialog.cpp b/src/dialogs/bcdialog.cpp
+index 9e828d3..b553add 100644
+--- a/src/dialogs/bcdialog.cpp
++++ b/src/dialogs/bcdialog.cpp
+@@ -25,6 +25,7 @@
+ #include <QPushButton>
+ #include <QStandardPaths>
+ #include <QTextCodec>
++#include <QStorageInfo>
+ 
+ #include <AchievementEditor>
+ #include <FF7Save>
+@@ -277,14 +278,22 @@ QFileDialog* BCDialog::getFileDialog(QWidget *parent, const QString &title, cons
+     const QList<QAbstractButton*> buttons = dialog->findChildren<QAbstractButton*>(QString(), Qt::FindChildrenRecursively);
+     for(QAbstractButton * btn: buttons)
+         btn->setIconSize(iconSize);
+-
+     dialog->setGeometry(mainRect.x() + ((mainRect.width() - dialogWidth) / 2), mainRect.y() + ((mainRect.height() - dialogHeight) /2), dialogWidth, dialogHeight);
+     dialog->setLabelText(QFileDialog::LookIn, QObject::tr("Places"));
+ 
+     QList<QUrl> sideBarUrls;
+-    const QFileInfoList drives = QDir::drives();
++#ifdef Q_OS_LINUX
++    const auto drives = QStorageInfo::mountedVolumes().toList();
++    for (const auto &drive : drives) {
++        bool chksubs = QFile::exists("/.flatpak-info") ? drive.subvolume().isEmpty() : true;
++        if (drive.fileSystemType() != "tmpfs" && drive.displayName() != "/boot" && drive.displayName() != "/home" && drive.isValid() && chksubs)
++            sideBarUrls.append(QUrl::fromLocalFile(drive.displayName()));
++    }
++#else
++    const QFileInfoList drives = QStorageInfo::mounted::drives();
+     for (const QFileInfo &drive : drives)
+         sideBarUrls.append(QUrl::fromLocalFile(drive.path()));
++#endif
+     const QStringList SideBarUrls = BCSettings::value(SETTINGS::SIDEBARURLS).toStringList();
+     for(const QString &url : SideBarUrls)
+         sideBarUrls.append(QUrl::fromLocalFile(url));
+-- 
+2.39.2
+
