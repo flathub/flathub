@@ -26,6 +26,20 @@ To update it, run the following command in a terminal:
 flatpak update
 ```
 
+## Using Blender
+
+This version of Godot is built with special [permissions](https://github.com/flathub/org.godotengine.Godot/blob/394f81c3310b82f5069ea917bb21f49888f818c6/org.godotengine.Godot.yaml#L46) to be able to run commands on the host system outside of the sandbox via [flatpak-spawn](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn). This is done by prefixing the command with `flatpak-spawn --host`. For example, if you want to run `gnome-terminal` on the host system outside of the sandbox, you can do so by running `flatpak-spawn --host gnome-terminal`.
+
+To use the built-in Blender importer, Godot expects the Blender executable to be named `blender` (lowercase). To use the importer in the Flatpak, a script exactly named `blender` should be placed in a directory of your choosing and must contain the following contents:
+
+```bash
+#!/bin/bash
+
+flatpak-spawn --host blender "$@"
+```
+
+Then make the script executable using `chmod +x blender` and configure the path to the directory containing the Blender script in the Editor Settings (**Filesystem > Import > Blender > Blender 3 Path**).
+
 ## Using an external script editor
 
 This version of Godot is built with special [permissions](https://github.com/flathub/org.godotengine.Godot/blob/394f81c3310b82f5069ea917bb21f49888f818c6/org.godotengine.Godot.yaml#L46) to be able to run commands on the host system outside of the sandbox via [flatpak-spawn](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn). This is done by prefixing the command with `flatpak-spawn --host`. For example, if you want to run `gnome-terminal` on the host system outside of the sandbox, you can do so by running `flatpak-spawn --host gnome-terminal`.
