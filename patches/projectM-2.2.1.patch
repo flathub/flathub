@@ -1,0 +1,133 @@
+From bb1a6a174adcc698d4656d2cf20393af9c56e720 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20Gl=C3=B6ckner?= <daniel-gl@gmx.net>
+Date: Sat, 2 May 2020 14:08:46 +0200
+Subject: [PATCH] Backport build system fixes
+
+02d8e0e377c7 install additional headers needed to compile against libprojectm
+1b30a59075fe do not install config.h.  Remove config.h from Common.hpp
+f0ce9c726942 Install headers to /usr/include/libprojectM
+7d414b93a970 Makefile.am: Fix installation with DESTDIR set
+85f6d954b28a Re-add pkg-config support
+
+autogen.sh is taken from the git repository for automatic regeneration
+during flatpak builds.
+---
+ Makefile.am                       |  4 ++--
+ autogen.sh                        |  5 +++++
+ configure.ac                      |  1 +
+ src/Makefile.am                   |  4 ++++
+ src/libprojectM/Common.hpp        |  2 +-
+ src/libprojectM/Makefile.am       |  8 +++-----
+ src/libprojectM/libprojectM.pc.in | 13 +++++++++++++
+ 7 files changed, 29 insertions(+), 8 deletions(-)
+ create mode 100755 autogen.sh
+ create mode 100644 src/libprojectM/libprojectM.pc.in
+
+diff --git a/Makefile.am b/Makefile.am
+index 05eaaa0..596beec 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -18,8 +18,8 @@ pm_shaders__DATA = src/libprojectM/Renderer/blur.cg \
+ 
+ # find and install all preset files
+ install-data-local:
+-	test -z $(pkgdatadir) || $(MKDIR_P) $(pm_presets_dir)
+-	find "$(PRESETSDIR)" -type f -exec $(INSTALL_DATA) {} $(pm_presets_dir) \;
++	test -z $(DESTDIR)$(pkgdatadir) || $(MKDIR_P) $(DESTDIR)$(pm_presets_dir)
++	find "$(PRESETSDIR)" -type f -exec $(INSTALL_DATA) {} $(DESTDIR)$(pm_presets_dir) \;
+ 
+ # from https://stackoverflow.com/questions/30897170/ac-subst-does-not-expand-variable answer: https://stackoverflow.com/a/30960268
+ # ptomato https://stackoverflow.com/users/172999/ptomato
+diff --git a/autogen.sh b/autogen.sh
+new file mode 100755
+index 0000000..63a7d80
+--- /dev/null
++++ b/autogen.sh
+@@ -0,0 +1,5 @@
++#!/bin/sh
++
++autoreconf --install || exit 1
++
++echo "Now run ./configure && make"
+diff --git a/configure.ac b/configure.ac
+index 31c9e37..ec77848 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -19,6 +19,7 @@ AC_CONFIG_FILES([
+   src/libprojectM/Renderer/Makefile
+   src/libprojectM/NativePresetFactory/Makefile
+   src/libprojectM/MilkdropPresetFactory/Makefile
++  src/libprojectM/libprojectM.pc
+   src/NativePresets/Makefile
+   src/projectM-sdl/Makefile
+   src/projectM-qt/Makefile
+diff --git a/src/Makefile.am b/src/Makefile.am
+index ea0af3a..85478b4 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -7,3 +7,7 @@ if ENABLE_QT
+ endif
+ 
+ SUBDIRS=libprojectM NativePresets ${PROJECTM_SDL_SUBDIR} ${PROJECTM_QT_SUBDIR}
++
++# system headers/libraries/data to install
++# for compatibility reasons here as nobase_include
++nobase_include_HEADERS = libprojectM/projectM.hpp libprojectM/Common.hpp libprojectM/dlldefs.h libprojectM/event.h libprojectM/fatal.h libprojectM/PCM.hpp
+diff --git a/src/libprojectM/Common.hpp b/src/libprojectM/Common.hpp
+index 368d03f..cd2ee04 100755
+--- a/src/libprojectM/Common.hpp
++++ b/src/libprojectM/Common.hpp
+@@ -30,7 +30,7 @@
+ #include <typeinfo>
+ #include <cstdarg>
+ #include <cassert>
+-#include "config.h"
++
+ #ifdef _MSC_sVER
+ #define strcasecmp(s, t) _strcmpi(s, t)
+ #endif
+diff --git a/src/libprojectM/Makefile.am b/src/libprojectM/Makefile.am
+index 8da9745..3918dea 100644
+--- a/src/libprojectM/Makefile.am
++++ b/src/libprojectM/Makefile.am
+@@ -10,8 +10,6 @@ AM_CPPFLAGS = \
+ 	-I$(top_srcdir)/src/libprojectM/Renderer \
+ 	${FTGL_CFLAGS}
+ 
+-# system headers/libraries/data to install
+-include_HEADERS = projectM.hpp
+ lib_LTLIBRARIES = libprojectM.la  # public, possibly-shared library
+ 
+ # link flags
+@@ -47,6 +45,6 @@ libprojectM_la_SOURCES = ConfigFile.cpp Preset.cpp PresetLoader.cpp timer.cpp \
+ 	omptl/omptl_algorithm
+ 
+ pkgconfigdir = $(libdir)/pkgconfig
+-# pkgconfig_DATA = src/libprojectM.pc
+-# EXTRA_DIST += src/libprojectM.pc.in
+-# CLEANFILES += src/libprojectM.pc
++pkgconfig_DATA = libprojectM.pc
++EXTRA_DIST += libprojectM.pc.in
++CLEANFILES += libprojectM.pc
+diff --git a/src/libprojectM/libprojectM.pc.in b/src/libprojectM/libprojectM.pc.in
+new file mode 100644
+index 0000000..84f6694
+--- /dev/null
++++ b/src/libprojectM/libprojectM.pc.in
+@@ -0,0 +1,13 @@
++prefix=@prefix@
++exec_prefix=@exec_prefix@
++libdir=@libdir@
++includedir=@includedir@
++pkgdatadir=@datadir@/@PACKAGE_NAME@
++sysconfdir=@datadir@/@PACKAGE_NAME@
++
++Name: libprojectM
++Version: @PACKAGE_VERSION@
++Description: projectM - OpenGL Milkdrop
++Requires:
++Libs: -L${libdir} -lprojectM
++Cflags: -I${includedir}
+-- 
+2.23.0
+

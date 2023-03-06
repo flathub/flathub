@@ -1,0 +1,77 @@
+--- a/pm_linux/finddefault.c
++++ b/pm_linux/finddefault.c
+@@ -5,10 +5,13 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
++#include <ctype.h>
+ #include "portmidi.h"
+ 
+ #define STRING_MAX 256
+ 
++extern int pm_find_default_device(char *pattern, int is_input);
++
+ /* skip over spaces, return first non-space */
+ void skip_spaces(FILE *inf)
+ {
+@@ -26,7 +29,6 @@
+ } 
+ 
+ 
+-/* 
+ /* Parse preference files, find default device, search devices --
+  */
+ PmDeviceID find_default_device(char *path, int input, PmDeviceID id)
+@@ -80,7 +82,7 @@
+             pref_str[i] = c;
+         }
+         if (i == STRING_MAX) continue; // value too long, ignore
+-        pref_str[i] == 0;
++        //pref_str[i] == 0;
+         i = pm_find_default_device(pref_str, input);
+         if (i != pmNoDevice) {
+             id = i;
+--- a/pm_linux/pmlinux.c
++++ b/pm_linux/pmlinux.c
+@@ -26,6 +26,8 @@
+ PmDeviceID pm_default_input_device_id = -1;
+ PmDeviceID pm_default_output_device_id = -1;
+ 
++extern int find_default_device(char *path, int input, PmDeviceID id);
++
+ void pm_init()
+ {
+     /* Note: it is not an error for PMALSA to fail to initialize. 
+--- a/pm_linux/pmlinuxalsa.c
++++ b/pm_linux/pmlinuxalsa.c
+@@ -32,9 +32,9 @@
+ #endif
+ 
+ /* to store client/port in the device descriptor */
+-#define MAKE_DESCRIPTOR(client, port) ((void*)(((client) << 8) | (port)))
+-#define GET_DESCRIPTOR_CLIENT(info) ((((int)(info)) >> 8) & 0xff)
+-#define GET_DESCRIPTOR_PORT(info) (((int)(info)) & 0xff)
++#define MAKE_DESCRIPTOR(client, port) ((void*)((((size_t)client) << 8) | (port)))
++#define GET_DESCRIPTOR_CLIENT(info) ((((size_t)(info)) >> 8) & 0xff)
++#define GET_DESCRIPTOR_PORT(info) (((size_t)(info)) & 0xff)
+ 
+ #define BYTE unsigned char
+ 
+@@ -422,7 +422,7 @@
+     }
+     if (desc->error < 0) return pmHostError;
+ 
+-    VERBOSE printf("snd_seq_drain_output: 0x%x\n", (unsigned int) seq);
++    VERBOSE printf("snd_seq_drain_output: 0x%zx\n", (size_t) seq);
+     desc->error = snd_seq_drain_output(seq);
+     if (desc->error < 0) return pmHostError;
+ 
+@@ -436,7 +436,7 @@
+ {
+     alsa_descriptor_type desc = (alsa_descriptor_type) midi->descriptor;
+     if (!desc) return pmBadPtr;
+-    VERBOSE printf("snd_seq_drain_output: 0x%x\n", (unsigned int) seq);
++    VERBOSE printf("snd_seq_drain_output: 0x%zx\n", (size_t) seq);
+     desc->error = snd_seq_drain_output(seq);
+     if (desc->error < 0) return pmHostError;
+ 

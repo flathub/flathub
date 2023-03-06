@@ -1,0 +1,179 @@
+id: eu.usdx.UltraStarDeluxe
+runtime: org.freedesktop.Platform
+sdk: org.freedesktop.Sdk
+runtime-version: '22.08'
+separate-locales: false
+rename-desktop-file: ultrastardx.desktop
+rename-icon: ultrastardx
+command: ultrastardx
+
+finish-args:
+- --socket=wayland
+- --socket=fallback-x11
+- --share=ipc
+- --socket=pulseaudio
+- --device=all
+- --filesystem=~/.java/.userPrefs/PortMidi:ro
+- --persist=.ultrastardx
+
+cleanup:
+- /include
+- /lib/cmake
+- /lib/pkgconfig
+- "/lib/*.so"
+- "/lib/*.la"
+- setup_vars_opencv4.sh
+
+add-extensions:
+  eu.usdx.UltraStarDeluxe.Songs:
+    directory: share/ultrastardx/songs
+    subdirectories: true
+    no-autodownload: true
+
+  eu.usdx.UltraStarDeluxe.Themes:
+    directory: theme-extensions
+    merge-dirs: share/ultrastardx/themes
+    subdirectories: true
+    no-autodownload: true
+
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '22.08'
+    add-ld-path: .
+
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.freepascal
+
+build-options:
+  append-path: /usr/lib/sdk/freepascal/bin
+  env:
+   - FPCDIR=/usr/lib/sdk/freepascal/fpcsrc
+
+modules:
+- name: opencv
+  buildsystem: cmake-ninja
+  builddir: true
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DOPENCV_GENERATE_PKGCONFIG=ON
+  - -DBUILD_TESTS=OFF
+  - -DBUILD_opencv_apps=OFF
+  - -DBUILD_opencv_calib3d=OFF
+  - -DBUILD_opencv_dnn=OFF
+  - -DBUILD_opencv_features2d=OFF
+  - -DBUILD_opencv_flann=OFF
+  - -DBUILD_opencv_gapi=OFF
+  - -DBUILD_opencv_highgui=OFF
+  - -DBUILD_opencv_java_bindings_generator=OFF
+  - -DBUILD_opencv_ml=OFF
+  - -DBUILD_opencv_objdetect=OFF
+  - -DBUILD_opencv_photo=OFF
+  - -DBUILD_opencv_python2=OFF
+  - -DBUILD_opencv_python_bindings_generator=OFF
+  - -DBUILD_opencv_python_tests=OFF
+  - -DBUILD_opencv_stitching=OFF
+  - -DBUILD_opencv_ts=OFF
+  - -DBUILD_opencv_video=OFF
+  - -DCV_TRACE=OFF
+  - -DWITH_PROTOBUF=OFF
+  - -DWITH_FFMPEG=OFF
+  - -DWITH_ADE=OFF
+  - -DWITH_QUIRC=OFF
+  - -DWITH_GTK=OFF
+  - -DWITH_TIFF=OFF
+  - -DWITH_WEBP=OFF
+  - -DWITH_JASPER=OFF
+  - -DWITH_OPENJPEG=OFF
+  - -DWITH_PNG=OFF
+  - -DWITH_OPENEXR=OFF
+  - -DWITH_GDAL=OFF
+  - -DWITH_GDCM=OFF
+  - -DWITH_IMGCODEC_HDR=OFF
+  - -DWITH_IMGCODEC_SUNRASTER=OFF
+  - -DWITH_IMGCODEC_PXM=OFF
+  - -DWITH_IMGCODEC_PFM=OFF
+  cleanup:
+  - /share/opencv4/*cascades
+  - /share/opencv4/valgrind*.supp
+  sources:
+  - type: archive
+    url: https://github.com/opencv/opencv/archive/4.7.0.tar.gz
+    sha256: 8df0079cdbe179748a18d44731af62a245a45ebf5085223dc03133954c662973
+
+- name: projectm
+  buildsystem: autotools
+  rm-configure: true
+  config-opts:
+  - --disable-static
+  post-install:
+  - "f=$(fc-match -f '%{file}' sans) ; sed -i \"/Title Font/s:=.*:= $f:\" ${FLATPAK_DEST}/share/projectM/config.inp"
+  - "f=$(fc-match -f '%{file}' monospace) ; sed -i \"/Menu Font/s:=.*:= $f:\" ${FLATPAK_DEST}/share/projectM/config.inp"
+  cleanup:
+  - /share/projectM/fonts
+  - /bin
+  sources:
+  - type: archive
+    url: https://github.com/projectM-visualizer/projectm/releases/download/v2.2.1/projectM-2.2.1.tar.gz
+    sha256: 9bbb33c5ba048537e97ea5ba2bd9fef76972c881597599a272b0194ec1d5f2a3
+  - type: patch
+    paths:
+    - patches/projectM-2.2.1.patch
+
+- shared-modules/lua5.4/lua-5.4.json
+
+- name: portmidi
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  cleanup:
+  - "*.a"
+  - "libporttime.*"
+  sources:
+  - type: archive
+    url: https://sourceforge.net/projects/portmedia/files/portmidi/217/portmidi-src-217.zip
+    sha256: 08e9a892bd80bdb1115213fb72dc29a7bf2ff108b378180586aa65f3cfd42e0f
+  - type: shell
+    commands:
+    - find -type f | while read a ; do tr -d '\r' < "$a" > /tmp/t && cat /tmp/t > "$a" ; done
+  - type: patch
+    paths:
+# Patches taken from Debian portmidi 217-6.1
+    - patches/00_cmake.diff
+    - patches/02_pmlinuxalsa.diff
+    - patches/03_pm_test_Makefile.diff
+    - patches/11-pmlinuxalsa.patch
+    - patches/13-disablejni.patch
+    - patches/20-movetest.diff
+    - patches/21-hardentests.diff
+    - patches/30-porttime_cmake.diff
+    - patches/40-test_sysex.diff
+    - patches/41-pm_linux.diff
+    - patches/50-change_assert.diff
+    - patches/51-remove_assert.diff
+
+- name: ultrastardx
+  buildsystem: autotools
+  config-opts:
+  - --with-libprojectM
+  - --with-opencv-cxx-api
+  post-install:
+  - "cd ${FLATPAK_DEST}/share/ultrastardx/fonts ; fc-scan -f '%{file} :fullname=%{fullname}\n' . | while read a b ; do a=${a#./} c=$(fc-list -f '%{file}\n' \"$b\" | head -n 1) ; if [ -n \"$c\" ] ; then sed -i \"s:=$a:=$c:\" fonts.ini ; rm \"$a\" ; fi ; done"
+  - "for i in ${FLATPAK_DEST}/share/ultrastardx/fonts/*/ ; do [ -n \"$(fc-scan -f '%{file}' \"$i\" | head -n 1)\" ] || rm -Rf \"$i\" ; done"
+  - mkdir ${FLATPAK_DEST}/lib/ffmpeg
+  sources:
+  - type: git
+    url: https://github.com/UltraStar-Deluxe/USDX.git
+    tag: v2023.3.0
+    commit: 36ca911387357295d295b6557aae36f574941b8a
+    disable-submodules: true
+  - type: patch
+    paths:
+    - patches/appstream.patch
+    - patches/install-data.patch
+    - patches/ldflags.patch
+  - type: shell
+    commands:
+# Workaround for flathub/org.freedesktop.Sdk.Extension.freepascal#10
+    - cp /usr/lib/sdk/freepascal/etc/fpc.cfg fpc.cfg
+    - ln -s ../fpc.cfg src/
+    - "set -- `gcc -print-file-name=crtbegin.o` ; echo -Fl${1%/*} >> fpc.cfg"

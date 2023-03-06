@@ -1,0 +1,70 @@
+Subject: Prevent SIGSEGV on handling events for already closed devices.
+Bug: http://sourceforge.net/apps/trac/portmedia/ticket/3
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=695842
+Bug-Ubuntu: https://launchpad.net/bugs/1073484
+Applied-Upstream: yes
+---
+ pm_linux/pmlinuxalsa.c |   10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+--- portmidi-200.orig/pm_linux/pmlinuxalsa.c
++++ portmidi-200/pm_linux/pmlinuxalsa.c
+@@ -193,6 +193,7 @@ static PmError alsa_write_byte(PmInterna
+     snd_seq_event_t ev;
+     int err;
+ 
++    if (!desc) return pmBadPtr;
+     snd_seq_ev_clear(&ev);
+     if (snd_midi_event_encode_byte(desc->parser, byte, &ev) == 1) {
+         snd_seq_ev_set_dest(&ev, desc->client, desc->port);
+@@ -339,6 +340,7 @@ static PmError alsa_in_close(PmInternal
+         pm_hosterror = snd_seq_delete_port(seq, desc->this_port);
+     }
+     alsa_unuse_queue();
++    midi->descriptor = NULL;
+     pm_free(desc);
+     if (pm_hosterror) {
+         get_alsa_error_text(pm_hosterror_text, PM_HOST_ERROR_MSG_LEN, 
+@@ -433,6 +435,7 @@ static PmError alsa_write(PmInternal *mi
+ static PmError alsa_write_flush(PmInternal *midi, PmTimestamp timestamp)
+ {
+     alsa_descriptor_type desc = (alsa_descriptor_type) midi->descriptor;
++    if (!desc) return pmBadPtr;
+     VERBOSE printf("snd_seq_drain_output: 0x%x\n", (unsigned int) seq);
+     desc->error = snd_seq_drain_output(seq);
+     if (desc->error < 0) return pmHostError;
+@@ -448,6 +451,7 @@ static PmError alsa_write_short(PmIntern
+     PmMessage msg = event->message;
+     int i;
+     alsa_descriptor_type desc = (alsa_descriptor_type) midi->descriptor;
++    if (!desc) return pmBadPtr;
+     for (i = 0; i < bytes; i++) {
+         unsigned char byte = msg;
+         VERBOSE printf("sending 0x%x\n", byte);
+@@ -481,6 +485,10 @@ static void handle_event(snd_seq_event_t
+ {
+     int device_id = ev->dest.port;
+     PmInternal *midi = descriptors[device_id].internalDescriptor;
++    /* The device we received events for might have been closed before we
++       processed them. */
++    if (!midi)
++        return;
+     PmEvent pm_ev;
+     PmTimeProcPtr time_proc = midi->time_proc;
+     PmTimestamp timestamp;
+@@ -650,6 +658,7 @@ static PmError alsa_poll(PmInternal *mid
+ static unsigned int alsa_has_host_error(PmInternal *midi)
+ {
+     alsa_descriptor_type desc = (alsa_descriptor_type) midi->descriptor;
++    if (!desc) return 0;
+     return desc->error;
+ }
+ 
+@@ -657,6 +666,7 @@ static unsigned int alsa_has_host_error(
+ static void alsa_get_host_error(PmInternal *midi, char *msg, unsigned int len)
+ {
+     alsa_descriptor_type desc = (alsa_descriptor_type) midi->descriptor;
++    if (!desc) return;
+     int err = (pm_hosterror || desc->error);
+     get_alsa_error_text(msg, len, err);
+ }
