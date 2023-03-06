@@ -1,0 +1,95 @@
+# io.enpass.Enpass.yaml
+app-id: io.enpass.Enpass
+default-branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: enpass
+tags: [proprietary]
+separate-locales: false
+finish-args:
+    # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+    # Wayland access
+  - --socket=wayland
+    # Notification access
+  - --talk-name=org.freedesktop.Notifications
+    # System Tray Icon (Test at every major update)
+  - --talk-name=com.kde.StatusNotifierWatcher
+    # Secret Service
+  - --own-name=org.freedesktop.secrets
+    # Favicon download
+  - --share=network
+    # YubiKey USB access
+  - --device=all
+    # SSH Agent access
+  - --socket=ssh-auth
+    # Required for native messaging (Tor browser)
+  - --filesystem=xdg-data
+    # Required for native messaging (Non-Firefox)
+  - --filesystem=xdg-config
+    # Required to save vaults in default location <$HOME/Documents>
+  - --filesystem=xdg-documents
+modules:
+  - name: enpass
+    buildsystem: simple
+    build-commands:
+      - |
+        mkdir -p /app/bin/extra
+
+        install -Dm 755 apply_extra --target-directory /app/bin/
+        chmod +x /app/bin/apply_extra
+
+        install -Dm 755 enpass --target-directory /app/bin/
+        chmod +x /app/bin/enpass
+    sources:
+      - type: script
+        dest-filename: enpass
+        commands:
+          -
+          - exec /app/extra/enpass/Enpass
+      - type: extra-data
+        filename: enpass.deb
+        only-arches: [x86_64]
+        url: https://apt.enpass.io/pool/main/e/enpass/enpass_6.8.5.1173_amd64.deb
+        sha256: 5855e617041d73682320f3643eb4136c93eef2beaf3be9d37cbadfc76d719b5b
+        x-checker-data:
+          type: debian-repo
+          package-name: enpass
+          root: https://apt.enpass.io
+          dist: stable
+          component: main
+        size: 39644988
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - |
+            FLATPAK_ID=io.enpass.Enpass
+
+            # Extract upstream package
+            mkdir -p deb-package export/{bin,share/{applications,icons}}
+
+            bsdtar -xvf enpass.deb
+            tar -xzf data.tar.gz -C deb-package
+
+            # Install desktop entry and icons
+            mv deb-package/usr/share/{applications,icons} export/share/
+
+            rename enpass ${FLATPAK_ID} export/share/applications/*.desktop
+            rename enpass ${FLATPAK_ID} export/share/icons/hicolor/*/{apps,status}/*
+
+            sed -i "s/Exec=\/opt\/enpass\/Enpass %U/Exec=\/app\/extra\/enpass\/Enpass %F/g" export/share/applications/${FLATPAK_ID}.desktop
+            sed -i "s/Icon=enpass/Icon=${FLATPAK_ID}/g" export/share/applications/${FLATPAK_ID}.desktop
+            sed -i "s/Icon\[en_IN\]=enpass/Icon=${FLATPAK_ID}/g" export/share/applications/${FLATPAK_ID}.desktop
+
+            # Install the app
+            mv deb-package/opt/enpass ./
+
+            ln -s /app/extra/enpass/Enpass export/bin/enpass
+            chmod +x export/bin/enpass
+
+            # Cleanup
+            rm -rf control.tar.gz data.tar.gz debian-binary deb-package enpass.deb
+    cleanup:
+     - rm -rf app
