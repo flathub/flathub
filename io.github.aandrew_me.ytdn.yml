@@ -1,0 +1,70 @@
+app-id: io.github.aandrew_me.ytdn
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --share=network
+
+build-options:
+  append-path: /usr/lib/sdk/node18/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: ytdownloader
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/ytdownloader/flatpak-node/cache
+        npm_config_cache: /run/build/ytdownloader/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `dist` script
+      # in package.json runs electron-builder
+      - install -Dm777 ../bin/ffmpeg ffmpeg
+      - jq '.build = {"asar":"false"}' <<<$(<package.json) > package.json
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+
+      - install -Dm755 flatpak/me.aandrew.ytdownloader.metainfo.xml /app/share/metainfo/me.aandrew.ytdownloader.metainfo.xml
+
+      - install -Dm644 flatpak/me.aandrew.ytdownloader.desktop /app/share/applications/me.aandrew.ytdownloader.desktop
+
+      - install -Dm644 resources/icon.png /app/share/icons/hicolor/512x512/apps/me.aandrew.ytdownloader.png
+
+      - install -Dm644 resources/icons/256x256.png /app/share/icons/hicolor/256x256/apps/me.aandrew.ytdownloader.png
+
+      - install -Dm644 resources/icons/64x64.png /app/share/icons/hicolor/64x64/apps/me.aandrew.ytdownloader.png
+
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/aandrew-me/ytDownloader.git
+        commit: f07e2ccc96d5b9d8b0d872f5d069396e1d5ba25a
+        dest: main
+      - type: archive
+        url: https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2023-02-25-12-51/ffmpeg-n5.1.2-39-g2953c6381a-linux64-gpl-5.1.tar.xz
+        sha256: 2ef6790f90413fe22295dc5d8c44d8f3f841288475fd6530322f20e16d2845fc
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/ytdownloader "$@"
