@@ -1,0 +1,102 @@
+app-id: io.github.troyeguo.koodo-reader
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+sdk-extensions:
+  # Node.js version: https://github.com/troyeguo/koodo-reader/blob/8e8d0693659fe0c62c13865054250aeca429f83c/.github/workflows/release.yml#L28
+  - org.freedesktop.Sdk.Extension.node14
+command: koodo
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+modules:
+  - shared-modules/python2.7/python-2.7.json
+
+  - name: koodo
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node14/bin:/run/build/koodo/flatpak-node/chromedrive
+      env:
+        # Don't add ELECTRON_CACHE
+        XDG_CACHE_HOME: /run/build/koodo/flatpak-node/cache
+        npm_config_nodedir: /usr/lib/sdk/node14
+        npm_config_offline: 'true'
+        npm_config_no_save: 'true'
+        npm_config_cache: /run/build/koodo/flatpak-node/npm-cache
+        npm_config_loglevel: verbose
+        ELECTRON_SKIP_BINARY_DOWNLOAD: 'true'
+        LENS_SKIP_DOWNLOAD_BINARIES: 'true'
+      arch:
+        # https://github.com/sass/node-sass/issues/3033#issuecomment-763180778
+        # The architecture of Electron, see https://electronjs.org/docs/tutorial/support#supported-platforms
+        # for supported architectures.
+        x86_64:
+          env:
+            npm_config_arch: x64
+            npm_config_target_arch: x64
+        aarch64:
+          env:
+            npm_config_arch: arm64
+            npm_config_target_arch: arm64
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn --offline
+      - yarn run build
+      - npx electron-builder --linux dir --${npm_config_arch}
+
+      # Copy the resulting, unpacked directory to /app.
+      - cp -r dist/linux-*unpacked ${FLATPAK_DEST}/koodo
+
+      - install -Dm644 io.github.troyeguo.koodo-reader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm755 koodo.sh ${FLATPAK_DEST}/bin/koodo
+      - install -Dm644 io.github.troyeguo.koodo-reader.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 assets/icons/256x256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+
+      - |
+        APP_LOCALES_ROOT="${FLATPAK_DEST}/koodo/locales"
+          RUNTIME_LOCALES_ROOT="${FLATPAK_DEST}/share/runtime/locale"
+          if [ -d "${APP_LOCALES_ROOT}" ]; then
+            for lang in "${APP_LOCALES_ROOT}"/*.pak; do
+              LOCALE="$(basename -s .pak "${lang}")"
+              runtime_locale_dir="${RUNTIME_LOCALES_ROOT}/${LOCALE%%-*}/"
+              install -Dm644 -t "${runtime_locale_dir}" "${lang}"
+              ln -sf "${runtime_locale_dir}/$(basename "${lang}")" "${APP_LOCALES_ROOT}/$(basename "${lang}")"
+            done
+          fi
+    sources:
+      - type: git
+        url: https://github.com/troyeguo/koodo-reader.git
+        tag: v1.5.2
+        commit: 00d20c7c191f51d3602df7006901742c3e76dc94
+        x-checker-data:
+          type: anitya
+          project-id: 328157
+          stable-only: true
+          tag-template: v$version
+
+      - type: script
+        dest-filename: koodo.sh
+        commands:
+          - set -oue pipefail
+
+          - export FLATPAK_ID="${FLATPAK_ID:-io.github.troyeguo.koodo-reader}"
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - export SNAP=/app/koodo
+
+          - exec zypak-wrapper /app/koodo/koodo-reader $@
+
+      - type: file
+        path: io.github.troyeguo.koodo-reader.metainfo.xml
+
+      - type: file
+        path: io.github.troyeguo.koodo-reader.desktop
+
+      # Add the flatpak-node-generator generated sources.
+      # flatpak-node-generator --electron-node-headers yarn yarn.lock -o generated-sources.json
+      - generated-sources.json
