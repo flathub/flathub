@@ -1,0 +1,82 @@
+app-id: org.dbgate.DbGate
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+command: dbgate
+rename-icon: dbgate
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  # allow fork subprocess
+  - --socket=system-bus
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: dbgate
+    buildsystem: simple
+    build-commands:
+      - chmod +x dbgate.AppImage
+      - ./dbgate.AppImage --appimage-extract
+      - rm dbgate.AppImage
+
+      - desktop-file-edit --set-icon ${FLATPAK_ID} --set-key Exec --set-value 'dbgate
+        %u' squashfs-root/dbgate.desktop
+      - install -Dm644 squashfs-root/dbgate.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+
+      - install -Dm755 dbgate.sh ${FLATPAK_DEST}/bin/dbgate
+      - install -Dm644 org.dbgate.DbGate.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+      # - install -Dm644 squashfs-root/usr/share/mime/dbgate.xml ${FLATPAK_DEST}/share/mime/packages/${FLATPAK_ID}.xml
+      # - rm squashfs-root/usr/share/mime/dbgate.xml
+
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor
+      - cp -r squashfs-root/usr/share/icons/hicolor/* ${FLATPAK_DEST}/share/icons/hicolor
+      # flatpak doesn't support icons lareger than 512x512
+      - rm -rf ${FLATPAK_DEST}/share/icons/hicolor/1024x1024
+
+      - rm -rf squashfs-root/resources/public/icons/win squashfs-root/resources/public/icons/mac
+
+      - mv squashfs-root ${FLATPAK_DEST}/dbgate
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/dbgate/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/dbgate/locales/$(basename $lang)"
+        done
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/dbgate/dbgate/releases/download/v5.2.4/dbgate-latest.AppImage
+        sha512: 9461294861ccfaa93edb125d5c768cb184bb706d46bcfc069d325fdcc6feba8bfc86860a4451ed00adfd60d1ae917f1627dd2c1c645b79d178d00a4c199eca49
+        dest_filename: dbgate.AppImage
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/dbgate/dbgate/releases/latest
+          version-query: .tag_name | sub("v"; "")
+          url-query: .assets[] | select(.name == "dbgate-" + $version +
+            ".AppImage") | .browser_download_url
+      - type: file
+        only-arches: [aarch64]
+
+        url: https://github.com/dbgate/dbgate/releases/download/v5.2.4/dbgate-latest-arm64.AppImage
+        sha512: bc3bb310003eab8b818b40f2a4dc6033a7668c80e0db5cd68924e5b025337321557be44d1902d072c57ecd4fbd493785d8fc38d29efc0d6d07cd0024d961cfac
+        dest_filename: dbgate.AppImage
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/dbgate/dbgate/releases/latest
+          version-query: .tag_name | sub("v"; "")
+          url-query: .assets[] | select(.name == "dbgate-" + $version +
+            "-arm64.AppImage") | .browser_download_url
+
+      - type: file
+        path: dbgate.sh
+
+      - type: file
+        path: org.dbgate.DbGate.metainfo.xml
