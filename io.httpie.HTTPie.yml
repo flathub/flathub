@@ -1,0 +1,75 @@
+app-id: io.httpie.HTTPie
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+separate-locales: false
+tags:
+  - proprietary
+command: httpie
+rename-icon: httpie
+rename-desktop-file: httpie.desktop
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+  - name: httpie
+    buildsystem: simple
+    build-commands:
+      - unappimage httpie.AppImage
+      - rm httpie.AppImage
+
+      - install -Dm755 httpie.sh /app/bin/httpie
+      - install -dm755 /app/share/applications
+      - sed -e 's|Exec=AppRun|Exec=/app/bin/httpie|' squashfs-root/httpie.desktop
+        > /app/share/applications/httpie.desktop
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/512x512/apps/httpie.png
+        -t /app/share/icons/hicolor/512x512/apps
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/256x256/apps/httpie.png
+        -t /app/share/icons/hicolor/256x256/apps
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/128x128/apps/httpie.png
+        -t /app/share/icons/hicolor/128x128/apps
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/64x64/apps/httpie.png
+        -t /app/share/icons/hicolor/64x64/apps
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/32x32/apps/httpie.png
+        -t /app/share/icons/hicolor/32x32/apps
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/16x16/apps/httpie.png
+        -t /app/share/icons/hicolor/16x16/apps
+
+      - install -Dm644 io.httpie.HTTPie.appdata.xml -t /app/share/metainfo/
+      - mv squashfs-root /app/main/
+    sources:
+      - type: file
+        dest-filename: httpie.AppImage
+        only-arches:
+          - x86_64
+        url: https://github.com/httpie/desktop/releases/download/v2023.1.2/HTTPie-2023.1.2.AppImage
+        sha256: 5eb2ec0e5d4865966ed32ffc3891b90f40215134cb01b6590ef07c467c23d6b5
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/httpie/desktop/releases
+          version-query: map(select(.prerelease == false)) | map(select(.tag_name
+            | startswith("core@"))) | first | .tag_name | sub("core@"; "")
+          timestamp-query: map(select(.prerelease == false)) | map(select(.tag_name
+            | startswith("core@"))) | first | .published_at
+          url-query: '"https://github.com/httpie/desktop/releases/download/"+ $version + "/HTTPie-" + $version + ".AppImage"'
+      - type: script
+        dest-filename: httpie.sh
+        commands:
+          # Share a TMPDIR, so that multiple instance can figure out there's
+          # already one running.
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          # This script is required to work around a lack of SUID sandbox helper:
+          - exec zypak-wrapper /app/main/httpie "$@"
+      - type: file
+        path: io.httpie.HTTPie.appdata.xml
