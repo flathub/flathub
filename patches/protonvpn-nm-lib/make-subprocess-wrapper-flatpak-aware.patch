@@ -1,0 +1,105 @@
+diff --git a/protonvpn_nm_lib/core/subprocess_wrapper.py b/protonvpn_nm_lib/core/subprocess_wrapper.py
+index 96634f6..9b2ed9e 100644
+--- a/protonvpn_nm_lib/core/subprocess_wrapper.py
++++ b/protonvpn_nm_lib/core/subprocess_wrapper.py
+@@ -1,5 +1,6 @@
+ import os
+ import platform
++import shutil
+ import subprocess as _subprocess
+ 
+ 
+@@ -25,9 +26,41 @@ class SubprocessWrapper:
+ 
+     @staticmethod
+     def is_root_owned(path):
++        if SubprocessWrapper.is_flatpak():
++            try:
++                owner_uid = int(_subprocess.check_output(
++                    ["flatpak-spawn", "--host", "stat", "-c", "%u", path]).decode().strip())
++                owner_gid = int(_subprocess.check_output(
++                    ["flatpak-spawn", "--host", "stat", "-c", "%g", path]).decode().strip())
++                return owner_uid == owner_gid == 0
++            except _subprocess.CalledProcessError:
++                pass
+         stat_info = os.stat(path)
+         return stat_info.st_uid == 0 and stat_info.st_gid == 0
+ 
++    @staticmethod
++    def is_flatpak():
++        """Checks if it's in the Flatpak sandbox environment.
++        """
++        return os.path.isfile("/.flatpak-info")
++
++    @staticmethod
++    def which(binary):
++        """Returns the path to an executable which would be run if the given cmd was called.
++
++        If we are in a Flatpak, get the corresponding host command.
++        """
++        if SubprocessWrapper.is_flatpak():
++            try:
++                return _subprocess.check_output(["flatpak-spawn", "--host", "which", binary]).decode().strip()
++            except _subprocess.CalledProcessError:
++                pass
++        path = shutil.which(binary)
++        if path != "":
++            return path
++        else:
++            return None
++
+     def __init__(self):
+         self._path_to_binaries = {}
+         self.__search_for_matching_executables()
+@@ -43,31 +76,18 @@ class SubprocessWrapper:
+         It builds self._path_to_binaries, where
+         binary_short_name => full secure path.
+         """
+-        # Look for root-owned directories in the system path in order
+-        for path in os.environ.get('PATH', '').split(os.path.pathsep):
+-            if not os.path.isdir(path):
+-                continue
+-            if not self.is_root_owned(path):
+-                continue
+-
+-            # Check for all the binaries that we haven't matched yet
+-            for binary in self._acceptable_binaries.difference(
+-                self._path_to_binaries.keys()
+-            ):
+-                binary_path_candidate = os.path.join(path, binary)
+-                if not os.path.isfile(binary_path_candidate):
+-                    continue
+ 
+-                if not self.is_root_owned(binary_path_candidate):
+-                    continue
++        # Check for all the binaries that we haven't matched yet
++        for binary in self._acceptable_binaries.difference(
++            self._path_to_binaries.keys()
++        ):
++            binary_path_candidate = self.which(binary)
+ 
+-                # We're happy with that one, store it
+-                self._path_to_binaries[binary] = binary_path_candidate
++            if not self.is_root_owned(binary_path_candidate):
++                continue
+ 
+-            # Shortcut: if we don't have any executable left to find,
+-            # we can exit the loop
+-            if len(self._path_to_binaries) == len(self._acceptable_binaries):
+-                break
++            # We're happy with that one, store it
++            self._path_to_binaries[binary] = binary_path_candidate
+ 
+     def __ensure_executables_exist(self):
+         """Ensure that executables exist, by comparing the length of
+@@ -106,6 +126,10 @@ class SubprocessWrapper:
+         # Replace the path with the one we wanted
+         args[0] = self._path_to_binaries[args[0]]
+ 
++        # The command should be executed on the host if we are in a Flatpak
++        if self.is_flatpak():
++            args = ["flatpak-spawn", "--host"] + args
++
+         # Python below 3.7.0 does not support capture_output
+         if platform.python_version() < "3.7.0":
+             return _subprocess.run(
