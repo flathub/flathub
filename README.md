@@ -1,14 +1,14 @@
-# Flatpak for Godot Engine
+# Flatpak for Godot Engine 3 (LTS)
 
 ## Installation
 
 This Flatpak is available on
-[Flathub](https://flathub.org/apps/details/org.godotengine.Godot).
+[Flathub](https://flathub.org/apps/details/org.godotengine.Godot3).
 After following the [Flatpak setup guide](https://flatpak.org/setup/),
 you can install it by entering the following command in a terminal:
 
 ```bash
-flatpak install --user flathub org.godotengine.Godot -y
+flatpak install --user flathub org.godotengine.Godot3 -y
 ```
 
 Once the Flatpak is installed, you can run Godot using your desktop environment's
@@ -49,7 +49,7 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 ## Limitations
 
 - No C#/Mono support
-  ([#8](https://github.com/flathub/org.godotengine.Godot/issues/8)).
+  ([#8 issue in Godot 4 Flatpak repo](https://github.com/flathub/org.godotengine.Godot/issues/8)).
 
 ## Building from source
 
@@ -60,7 +60,7 @@ then enter the following commands in a terminal:
 ```bash
 git clone --recursive https://github.com/flathub/org.godotengine.Godot.git
 cd org.godotengine.Godot/
-flatpak install --user flathub org.freedesktop.Sdk//21.08 -y
+flatpak install --user flathub org.freedesktop.Sdk//22.08 -y
 flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot.yaml
 ```
 
