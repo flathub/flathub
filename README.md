@@ -1,4 +1,4 @@
-# Flatpak for Godot Engine 3 (LTS)
+# Flatpak for Godot Engine 3.x
 
 ## Installation
 
