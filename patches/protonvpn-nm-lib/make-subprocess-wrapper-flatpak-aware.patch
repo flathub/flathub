@@ -1,5 +1,5 @@
 diff --git a/protonvpn_nm_lib/core/subprocess_wrapper.py b/protonvpn_nm_lib/core/subprocess_wrapper.py
-index 96634f6..9b2ed9e 100644
+index 96634f6..bfa3a77 100644
 --- a/protonvpn_nm_lib/core/subprocess_wrapper.py
 +++ b/protonvpn_nm_lib/core/subprocess_wrapper.py
 @@ -1,5 +1,6 @@
@@ -9,19 +9,15 @@ index 96634f6..9b2ed9e 100644
  import subprocess as _subprocess
  
  
-@@ -25,9 +26,41 @@ class SubprocessWrapper:
+@@ -19,6 +20,7 @@ class SubprocessWrapper:
+     """
  
-     @staticmethod
-     def is_root_owned(path):
-+        if SubprocessWrapper.is_flatpak():
-+            try:
-+                owner_uid = int(_subprocess.check_output(
-+                    ["flatpak-spawn", "--host", "stat", "-c", "%u", path]).decode().strip())
-+                owner_gid = int(_subprocess.check_output(
-+                    ["flatpak-spawn", "--host", "stat", "-c", "%g", path]).decode().strip())
-+                return owner_uid == owner_gid == 0
-+            except _subprocess.CalledProcessError:
-+                pass
+     _acceptable_binaries = {"nmcli", "systemctl", "clear", "xdg-open"}
++    _binaries_in_flatpak = {"xdg-open"}
+     PIPE = _subprocess.PIPE
+     STDOUT = _subprocess.STDOUT
+     DEVNULL = _subprocess.DEVNULL
+@@ -28,6 +30,29 @@ class SubprocessWrapper:
          stat_info = os.stat(path)
          return stat_info.st_uid == 0 and stat_info.st_gid == 0
  
@@ -37,7 +33,7 @@ index 96634f6..9b2ed9e 100644
 +
 +        If we are in a Flatpak, get the corresponding host command.
 +        """
-+        if SubprocessWrapper.is_flatpak():
++        if SubprocessWrapper.is_flatpak() and not binary in SubprocessWrapper._binaries_in_flatpak:
 +            try:
 +                return _subprocess.check_output(["flatpak-spawn", "--host", "which", binary]).decode().strip()
 +            except _subprocess.CalledProcessError:
@@ -51,7 +47,7 @@ index 96634f6..9b2ed9e 100644
      def __init__(self):
          self._path_to_binaries = {}
          self.__search_for_matching_executables()
-@@ -43,31 +76,18 @@ class SubprocessWrapper:
+@@ -43,31 +68,19 @@ class SubprocessWrapper:
          It builds self._path_to_binaries, where
          binary_short_name => full secure path.
          """
@@ -76,30 +72,42 @@ index 96634f6..9b2ed9e 100644
 +        for binary in self._acceptable_binaries.difference(
 +            self._path_to_binaries.keys()
 +        ):
-+            binary_path_candidate = self.which(binary)
  
 -                # We're happy with that one, store it
 -                self._path_to_binaries[binary] = binary_path_candidate
-+            if not self.is_root_owned(binary_path_candidate):
-+                continue
++            # We don't check this since in Flatpak the file is owned by uid=1000
++            # if not self.is_root_owned(binary):
++            #     continue
  
 -            # Shortcut: if we don't have any executable left to find,
 -            # we can exit the loop
 -            if len(self._path_to_binaries) == len(self._acceptable_binaries):
 -                break
 +            # We're happy with that one, store it
++            binary_path_candidate = self.which(binary)
 +            self._path_to_binaries[binary] = binary_path_candidate
  
      def __ensure_executables_exist(self):
          """Ensure that executables exist, by comparing the length of
-@@ -106,6 +126,10 @@ class SubprocessWrapper:
-         # Replace the path with the one we wanted
-         args[0] = self._path_to_binaries[args[0]]
+@@ -98,13 +111,18 @@ class SubprocessWrapper:
+         ):
+             raise ValueError("args should be a non-empty list of string")
  
-+        # The command should be executed on the host if we are in a Flatpak
-+        if self.is_flatpak():
-+            args = ["flatpak-spawn", "--host"] + args
+-        if args[0] not in self._path_to_binaries:
++        binary = args[0]
++        if binary not in self._path_to_binaries:
+             raise ValueError(
+-                "{!r} is not an acceptable binary".format(args[0])
++                "{!r} is not an acceptable binary".format(binary)
+             )
+ 
+         # Replace the path with the one we wanted
+-        args[0] = self._path_to_binaries[args[0]]
++        args[0] = self._path_to_binaries[binary]
 +
++        # The command should be executed on the host if we are in a Flatpak
++        if self.is_flatpak() and not binary in SubprocessWrapper._binaries_in_flatpak:
++            args = ["flatpak-spawn", "--host"] + args
+ 
          # Python below 3.7.0 does not support capture_output
          if platform.python_version() < "3.7.0":
-             return _subprocess.run(
