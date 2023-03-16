@@ -1,0 +1,141 @@
+app-id: org.waywallen.waywallen
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: waywallen
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/waywallen:create
+  - --own-name=org.waywallen.Daemon
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=~/.steam
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/data/Steam
+  - --filesystem=~/snap/steam
+
+modules:
+  - ./ffmpeg.yml
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -DBUILD_SHARED_LIBS=ON
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: 7ccf2060af4cd13c44a8659d0999be6c7a98fcc1
+        tag: v33.2
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: qt6-grpc
+    buildsystem: cmake-ninja
+    post-install:
+      - ln -s /app/lib/*-linux-gnu/*.so* /app/lib/
+    sources:
+      - type: git
+        url: https://code.qt.io/qt/qtgrpc.git
+        tag: 6.10.2
+
+  - name: spirv-tools
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Tools.git
+        tag: v2025.4
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Headers.git
+        tag: vulkan-sdk-1.4.335.0
+        dest: external/spirv-headers
+    cleanup:
+      - '*'
+
+  - name: waywallen
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/waywallen/cargo
+      build-args: [ "--share=network" ]
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 ./target/release/waywallen -t /app/bin/
+    sources:
+      - &waywallen-src
+        type: git
+        url: https://github.com/waywallen/waywallen.git
+        commit: 88c79f723d1e666bc5745d0ce044650547067fc1
+      - ./cargo-sources.json
+
+  - name: waywallen-ui
+    buildsystem: cmake-ninja
+    build-options:
+      append-path: /usr/lib/sdk/llvm22/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm22/lib
+    subdir: ui
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DQML_INSTALL_DIR=/app/lib/qml
+      - -DCMAKE_CXX_COMPILER=clang++
+      - -DCMAKE_LINKER=lld
+      - -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/FetchDepsProvider.cmake
+    sources:
+      - *waywallen-src
+      - ./ui-deps.json
+
+  - name: waywallen-bridge
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      - type: git
+        url: https://github.com/waywallen/waywallen-bridge.git
+        commit: 514f8d990deedd2ce28d88322a56c02446bc8c00
+
+  - name: waywallen-mpv
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    modules:
+      - ./mpv.yml
+    sources:
+      - type: git
+        url: https://github.com/waywallen/waywallen-mpv.git
+        commit: 2809ba2430dd743926c04a3cedcffdaa765d52b0
+
+  - name: open-wallpaper-engine
+    buildsystem: cmake-ninja
+    build-options:
+      append-path: /usr/lib/sdk/llvm22/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm22/lib
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_CXX_COMPILER=clang++
+      - -DCMAKE_LINKER=lld
+      - -DQML_INSTALL_DIR=/app/lib/qml
+      - -DBUILD_TESTS=OFF
+      - -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/FetchDepsProvider.cmake
+    sources:
+      - type: git
+        url: https://github.com/waywallen/open-wallpaper-engine.git
+        commit: 5d9ac273b31bbbd0c3bd34bb93856d2d1ef37cc8
+      - ./owe-deps.json
+
