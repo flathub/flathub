@@ -26,7 +26,9 @@ To update it, run the following command in a terminal:
 flatpak update
 ```
 
-## Using an external script editor
+## Using an external script editor (READ WARNING)
+
+**⚠️ WARNING: Unfortunately [a breaking change](https://github.com/flathub/org.godotengine.Godot3/commit/e925d000ccddc76398e81b602316787b2ee3d7af) has meant that the below instructions currently do not apply to this Flatpak out-of-the-box. To work around this issue, you'll need to manually add support through either [Flatseal](https://flathub.org/apps/details/com.github.tchx84.Flatseal) (by adding `org.freedesktop.Flatpak` to the `Talks` section under `Session Bus`) or the command line (by running `flatpak run --talk-name=org.freedesktop.Flatpak org.godotengine.Godot3`).**
 
 This version of Godot is built with special [permissions](https://github.com/flathub/org.godotengine.Godot/blob/394f81c3310b82f5069ea917bb21f49888f818c6/org.godotengine.Godot.yaml#L46) to be able to run commands on the host system outside of the sandbox via [flatpak-spawn](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn). This is done by prefixing the command with `flatpak-spawn --host`. For example, if you want to run `gnome-terminal` on the host system outside of the sandbox, you can do so by running `flatpak-spawn --host gnome-terminal`.
 
@@ -50,6 +52,7 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 
 - No C#/Mono support
   ([#8 issue in Godot 4 Flatpak repo](https://github.com/flathub/org.godotengine.Godot/issues/8)).
+- [External editor support must be manually configured](#using-an-external-script-editor-read-warning)
 
 ## Building from source
 
