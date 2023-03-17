@@ -58,10 +58,10 @@ Install Git, follow the
 then enter the following commands in a terminal:
 
 ```bash
-git clone --recursive https://github.com/flathub/org.godotengine.Godot.git
-cd org.godotengine.Godot/
+git clone --recursive https://github.com/flathub/org.godotengine.Godot3.git
+cd org.godotengine.Godot3/
 flatpak install --user flathub org.freedesktop.Sdk//22.08 -y
-flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot.yaml
+flatpak-builder --force-clean --install --user -y builddir org.godotengine.Godot3.yaml
 ```
 
 If all goes well, the Flatpak will be installed after building. You can then
