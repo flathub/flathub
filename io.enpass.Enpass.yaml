@@ -12,25 +12,25 @@ finish-args:
   - --socket=x11
     # Notification access
   - --talk-name=org.freedesktop.Notifications
-    # System Tray Icon (Test at every major update)
+    # System Tray Icon
   - --talk-name=com.kde.StatusNotifierWatcher
     # Secret Service
   - --own-name=org.freedesktop.secrets
     # Favicon download
   - --share=network
-    # SSH Agent access
-  - --socket=ssh-auth
     # Required to save vaults in default location <$HOME/Documents>
   - --filesystem=xdg-documents
 modules:
   - name: enpass
     buildsystem: simple
+    build-options:
+      env:
+        FLATPAK_ID: io.enpass.Enpass
     build-commands:
       - |
-        FLATPAK_ID=io.enpass.Enpass
 
         mkdir -p ${FLATPAK_DEST}/bin/extra
-        mkdir -p ${FLATPAK_DEST}/share/app-info/icons/flatpak/{128x128,256x256}
+        mkdir -p ${FLATPAK_DEST}/share/app-info/icons/flatpak/128x128
         mkdir -p ${FLATPAK_DEST}/share/mime/packages
 
         install -Dm 755 apply_extra --target-directory ${FLATPAK_DEST}/bin/
@@ -41,10 +41,9 @@ modules:
 
         install -Dm 644 ${FLATPAK_ID}.desktop --target-directory ${FLATPAK_DEST}/share/applications/
         install -Dm 644 ${FLATPAK_ID}.metainfo.xml --target-directory ${FLATPAK_DEST}/share/metainfo/
-        install -Dm 644 mime.xml ${FLATPAK_DEST}/share/mime/packages/${FLATPAK_ID}.xml
+        install -Dm 644 ${FLATPAK_ID}.mime.xml --target-directory ${FLATPAK_DEST}/share/mime/packages/
 
-        install -Dm 644 ${FLATPAK_ID}.png --target-directory ${FLATPAK_DEST}/share/app-info/icons/flatpak/{128x128,256x256}/
-        install -Dm 644 ${FLATPAK_ID}.png --target-directory ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/
+        install -Dm 644 ${FLATPAK_ID}.png --target-directory ${FLATPAK_DEST}/share/app-info/icons/flatpak/128x128/
         install -Dm 644 ${FLATPAK_ID}.svg --target-directory ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/
     sources:
       - type: script
@@ -67,40 +66,36 @@ modules:
         dest-filename: apply_extra
         commands:
           - |
+            # =====$(pwd)=====`/app/extra`=====
+            # Env from `build-options` does not carry over, define vars again
             FLATPAK_ID=io.enpass.Enpass
-
             # Extract upstream package
-            mkdir -p deb-package export/{bin,share/{applications,icons}}
+            mkdir -p deb-package export/{bin,share/{icons,mime}}
 
             bsdtar -xvf enpass.deb
             tar -xzf data.tar.gz -C deb-package
 
-            # Install desktop entry and icons
-            mv deb-package/usr/share/{applications,icons} export/share/
-
-            # Remove original `.desktop` file
-            rm export/share/applications/enpass.desktop
+            # Install icons
+            mv deb-package/usr/share/icons export/share/
 
             # Rename all icons accordingly
             rename enpass ${FLATPAK_ID} export/share/icons/hicolor/*/{apps,status}/*
 
             # Install the app
             mv deb-package/opt/enpass ./
-
-            ln -s ${FLATPAK_DEST}/extra/enpass/Enpass export/bin/enpass
-            chmod +x export/bin/enpass
-
-            # Cleanup
-            rm -rf control.tar.gz data.tar.gz debian-binary deb-package enpass.deb
-      - type: file
-        path: io.enpass.Enpass.metainfo.xml
       - type: file
         path: icons/io.enpass.Enpass.png
       - type: file
         path: icons/io.enpass.Enpass.svg
       - type: file
-        path: mime/packages/io.enpass.Enpass.xml
-      - type: file
         path: io.enpass.Enpass.desktop
+      - type: file
+        path: io.enpass.Enpass.metainfo.xml
+      - type: file
+        path: io.enpass.Enpass.mime.xml
     cleanup:
-     - rm -rf app
+     - control.tar.gz
+     - data.tar.gz
+     - debian-binary
+     - deb-package
+     - enpass.deb
