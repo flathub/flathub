@@ -1,0 +1,152 @@
+diff --git a/protonvpn_nm_lib/core/dbus/dbus_reconnect.py b/protonvpn_nm_lib/core/dbus/dbus_reconnect.py
+index 3db50e5..a5d1b65 100644
+--- a/protonvpn_nm_lib/core/dbus/dbus_reconnect.py
++++ b/protonvpn_nm_lib/core/dbus/dbus_reconnect.py
+@@ -1,6 +1,7 @@
+ import hashlib
+ import os
+ import sys
++import dbus
+ 
+ import protonvpn_nm_lib
+ 
+@@ -17,9 +18,11 @@ class DbusReconnect:
+         DaemonReconnectorEnum.STOP,
+         DaemonReconnectorEnum.DAEMON_RELOAD
+     ]
++    service_unit_name = "protonvpn_reconnect.service"
+ 
+     def __init__(self):
+-        pass
++        self.bus = dbus.SessionBus()
++
+         if not os.path.isdir(XDG_CONFIG_SYSTEMD_USER):
+             os.makedirs(XDG_CONFIG_SYSTEMD_USER)
+ 
+@@ -27,7 +30,7 @@ class DbusReconnect:
+             not os.path.isfile(LOCAL_SERVICE_FILEPATH)
+             or (
+                 os.path.isfile(LOCAL_SERVICE_FILEPATH)
+-                and self.get_hash_from_template() != self.get_service_file_hash(LOCAL_SERVICE_FILEPATH) # noqa
++                and self.get_hash_from_template() != self.get_service_file_hash(LOCAL_SERVICE_FILEPATH)  # noqa
+             )
+         ):
+             self.setup_service()
+@@ -120,29 +123,44 @@ class DbusReconnect:
+             int: indicates the status of the daemon process
+         """
+         logger.info("Checking daemon reconnector status")
+-        check_daemon = subprocess.run(
+-            ["systemctl", "status", "--user", "protonvpn_reconnect"],
+-            stdout=subprocess.PIPE, stderr=subprocess.PIPE
++
++        systemd_object = self.bus.get_object(
++            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+         )
+-        decoded_stdout = check_daemon.stdout.decode()
+-        if (
+-            check_daemon.returncode == 3
+-        ):
+-            # Not running
+-            return 0
+-        elif (
+-            check_daemon.returncode == 0
+-        ):
+-            # Already running
+-            return 1
+-        else:
++        systemd = dbus.Interface(systemd_object, "org.freedesktop.systemd1.Manager")
++        try:
++            service_path = systemd.GetUnit(self.service_unit_name)
++            service_object = self.bus.get_object("org.freedesktop.systemd1", service_path)
++            service_props = dbus.Interface(
++                service_object, "org.freedesktop.DBus.Properties"
++            )
++            unit = service_props.GetAll("org.freedesktop.systemd1.Unit")
++            active_state = str(unit.get("ActiveState", "inactive"))
++
++            if active_state == "inactive":
++                # Not running
++                return 0
++            elif (
++                active_state == "active"
++            ):
++                # Already running
++                return 1
++            else:
++                # Service threw an exception
++                raise Exception(
++                    "[!] An error occurred while checking for Proton VPN "
++                    + "reconnector service: "
++                    + "(Active state: {})".format(
++                        active_state
++                    )
++                )
++        except dbus.DBusException as exception:
+             # Service threw an exception
+             raise Exception(
+                 "[!] An error occurred while checking for Proton VPN "
+                 + "reconnector service: "
+-                + "(Return code: {}; Exception: {} {})".format(
+-                    check_daemon.returncode, decoded_stdout,
+-                    check_daemon.stderr.decode().strip("\n")
++                + "(Exception: {} {})".format(
++                    exception
+                 )
+             )
+ 
+@@ -159,28 +177,23 @@ class DbusReconnect:
+         if command not in self.DAEMON_COMMANDS:
+             raise Exception("Invalid daemon command \"{}\"".format(command))
+ 
+-        call_daemon = subprocess.run(
+-            ["systemctl", command.value, "--user", "protonvpn_reconnect"],
+-            stdout=subprocess.PIPE, stderr=subprocess.PIPE
++        systemd_object = self.bus.get_object(
++            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+         )
+-        if command == DaemonReconnectorEnum.DAEMON_RELOAD:
+-            call_daemon = subprocess.run(
+-                [
+-                    "systemctl",
+-                    "--user",
+-                    DaemonReconnectorEnum.DAEMON_RELOAD.value
+-                ],
+-                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+-            )
+-        decoded_stdout = call_daemon.stdout.decode()
+-        decoded_stderr = call_daemon.stderr.decode().strip("\n")
+-
+-        if not call_daemon.returncode == 0:
++        systemd = dbus.Interface(systemd_object, "org.freedesktop.systemd1.Manager")
++        try:
++            match command:
++                case DaemonReconnectorEnum.START:
++                    systemd.StartUnit(self.service_unit_name, "replace")
++                case DaemonReconnectorEnum.STOP:
++                    systemd.StopUnit(self.service_unit_name, "replace")
++                case DaemonReconnectorEnum.DAEMON_RELOAD:
++                    systemd.Reload()
++        except dbus.DBusException as exception:
+             msg = "[!] An error occurred while {}ing Proton VPN "\
+                 "reconnector service: {} {}".format(
+                     command,
+-                    decoded_stdout,
+-                    decoded_stderr
++                    exception
+                 )
+             logger.error(msg)
+ 
+diff --git a/protonvpn_nm_lib/core/subprocess_wrapper.py b/protonvpn_nm_lib/core/subprocess_wrapper.py
+index 96634f6..5a8098e 100644
+--- a/protonvpn_nm_lib/core/subprocess_wrapper.py
++++ b/protonvpn_nm_lib/core/subprocess_wrapper.py
+@@ -18,7 +18,7 @@ class SubprocessWrapper:
+         is effectivtly a layer on top of subprocess.
+     """
+ 
+-    _acceptable_binaries = {"nmcli", "systemctl", "clear", "xdg-open"}
++    _acceptable_binaries = {"nmcli", "clear", "xdg-open"}
+     PIPE = _subprocess.PIPE
+     STDOUT = _subprocess.STDOUT
+     DEVNULL = _subprocess.DEVNULL
