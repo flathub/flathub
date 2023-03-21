@@ -30,7 +30,9 @@ flatpak update
 
 This version of Godot is built with special [permissions](https://github.com/flathub/org.godotengine.Godot/blob/394f81c3310b82f5069ea917bb21f49888f818c6/org.godotengine.Godot.yaml#L46) to be able to run commands on the host system outside of the sandbox via [flatpak-spawn](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn). This is done by prefixing the command with `flatpak-spawn --host`. For example, if you want to run `gnome-terminal` on the host system outside of the sandbox, you can do so by running `flatpak-spawn --host gnome-terminal`.
 
-To use the built-in Blender importer, Godot expects the Blender executable to be named `blender` (lowercase). To use the importer in the Flatpak, a script exactly named `blender` should be placed in a directory of your choosing and must contain the following contents:
+Godot expects the Blender executable to be named `blender` (lowercase), so a script exactly named `blender` that executes Blender via `flatpak-spawn --host` should be created. Below are two [Bash](https://www.gnu.org/software/bash/) scripts which may need to be modified depending on your [shell](https://en.wikipedia.org/wiki/Shell_(computing)) and how Blender is installed.
+
+### Bash script assuming Blender is installed in `PATH` (e.g. using distribution packages)
 
 ```bash
 #!/bin/bash
@@ -38,7 +40,15 @@ To use the built-in Blender importer, Godot expects the Blender executable to be
 flatpak-spawn --host blender "$@"
 ```
 
-Then make the script executable using `chmod +x blender` and configure the path to the directory containing the Blender script in the Editor Settings (**Filesystem > Import > Blender > Blender 3 Path**).
+### Bash script assuming Blender is installed from Flathub
+
+```bash
+#!/bin/bash
+
+flatpak-spawn --host flatpak run org.blender.Blender "$@"
+```
+
+Make sure your script is executable using `chmod +x blender`. Use the directory path containing your script in the Editor Settings (**Filesystem > Import > Blender > Blender 3 Path**).
 
 ## Using an external script editor
 
