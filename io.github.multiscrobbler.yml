@@ -1,0 +1,98 @@
+app-id: io.github.multiscrobbler
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: multiscrobbler
+finish-args:
+  - --share=network
+  # used for access to MPRIS
+  - --socket=session-bus
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+modules:
+  - name: multiscrobbler
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin
+      env:
+        XDG_CACHE_HOME: /run/build/multiscrobbler/flatpak-node/cache
+        npm_config_cache: /run/build/multiscrobbler/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node18
+        npm_config_offline: 'true'
+    build-commands:
+      # install npm dependencies
+      - npm install --offline
+
+      # build app
+      - npm run build
+
+      # makes node and npm available
+      - mkdir -p /app/bin /app/lib /app/lib/src
+      - cp -a /usr/lib/sdk/node18/bin/{node,npm} /app/bin
+      - cp -a /usr/lib/sdk/node18/lib/* /app/lib
+      - rm -r /app/lib/node_modules/npm/{docs,man}
+
+      # remove dev dependencies
+      - npm prune --production
+
+      # copy node_modules needed to run app
+      - cp -r node_modules/* /app/lib/node_modules
+
+      # delete typescript files (not needed for running app)
+      - find src/ -name "*.ts" -type f -delete
+
+      # copy app files to runtime dir
+      - cp -r src/* /app/lib/src
+      - cp -r config /app/lib/config
+      - cp ../defaultConfig.json /app/lib/config/config.json
+
+      # not a desktop app (for now) so don't include this
+      #- install -Dm644 ../${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+      # see configCheck.sh source below
+      #- ../configCheck.sh
+
+      - install -Dm755 ../run.sh /app/bin/multiscrobbler
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/FoxxMD/multi-scrobbler
+        branch: develop
+        commit: de4a0aecd57dc9468aaab27cb774fe0ec7059cf0
+        dest: main
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - export CONFIG_DIR=$XDG_CONFIG_HOME
+
+          # Run config check and copy examples + default config (disable file logging)
+          - |
+            echo -e "Checking CONFIG_DIR for existing configs: ${XDG_CONFIG_HOME}\n"
+            if [ "$(ls -A ${XDG_CONFIG_HOME})" ]; then
+              echo "Directory is not empty, not creating default config and examples"
+            else
+              echo "Adding examples and default config"
+              cp -r /app/lib/config/. "${XDG_CONFIG_HOME}"/
+              #cp /app/lib/defaultConfig.json $XDG_CONFIG_HOME/config.json
+            fi
+
+          - cd /app/lib && node src/index.js
+
+       # would prefer to run config check at build time only but for some reason cannot get XDG_CONFIG_HOME variable?
+#      - type: script
+#        dest-filename: configCheck.sh
+#        commands:
+#          - |
+#            echo -e "Checking CONFIG_DIR for existing config: ${XDG_CONFIG_HOME}\n"
+#            if [ "$(ls -A ${XDG_CONFIG_HOME})" ]; then
+#              echo "Directory is not empty, not creating default config."
+#            else
+#              cp ../defaultConfig.json $XDG_CONFIG_HOME/config.json
+#            fi
+      - type: file
+        path: defaultConfig.json
+      # not a desktop app (for now) so don't include this
+#      - type: file
+#        path: io.github.multiscrobbler.metainfo.xml
+      - generated-sources.json
