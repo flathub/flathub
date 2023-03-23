@@ -3,7 +3,7 @@ runtime: org.freedesktop.Platform
 runtime-version: '22.08'
 sdk: org.freedesktop.Sdk
 
-command: Cemu
+command: Cemu-wrapper
 
 finish-args:
   - --device=all
@@ -12,7 +12,8 @@ finish-args:
   - --socket=pulseaudio
   - --share=ipc
   - --share=network
-  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/app/com.discordapp.Discord:ro
+  - --filesystem=xdg-run/app/com.discordapp.DiscordCanary:ro
 
 modules:
 # Required so we can use wxWidgets with openGL integration
@@ -187,8 +188,21 @@ modules:
         commit: 3acdd47eaf080293ba61f3d7d55bfba4be574270
       - type: patch
         path: arm_maes.patch
+      - type: script
+        commands:
+          - |
+            for d in DiscordCanary Discord; do
+              for i in {0..9}; do
+                test -S $XDG_RUNTIME_DIR/discord-ipc-$i ||
+                  ln -sf {app/com.discordapp.$d,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+              done
+            done
+            Cemu_relwithdebinfo "$@"
+        dest-filename: Cemu-wrapper
     post-install:
       - install -Dm644 -t ${FLATPAK_DEST}/share/appdata/ dist/linux/info.cemu.Cemu.metainfo.xml
       - install -Dm644 -t ${FLATPAK_DEST}/share/applications/ dist/linux/info.cemu.Cemu.desktop
       - install -Dm644 -t ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/ dist/linux/info.cemu.Cemu.png
-      - cp -R bin/Cemu_relwithdebinfo ${FLATPAK_DEST}/bin/Cemu
+      - desktop-file-edit --set-key=Exec --set-value="${FLATPAK_DEST}/bin/Cemu-wrapper"
+        ${FLATPAK_DEST}/share/applications/info.cemu.Cemu.desktop
+      - install -D -t ${FLATPAK_DEST}/bin/ bin/Cemu_relwithdebinfo Cemu-wrapper
