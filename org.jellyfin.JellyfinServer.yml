@@ -1,4 +1,4 @@
-id: org.jellyfin.Jellyfin
+id: org.jellyfin.JellyfinServer
 runtime: org.freedesktop.Platform
 runtime-version: "22.08"
 sdk: org.freedesktop.Sdk
@@ -46,7 +46,7 @@ modules:
       - --disable-libxcb
       - --disable-ptx-compression
       - --disable-sdl2
-      - --disable-shared
+      - --disable-static
       - --disable-xlib
       - --enable-amf
       - --enable-chromaprint
@@ -78,11 +78,11 @@ modules:
       - --enable-libx265
       - --enable-libzimg
       - --enable-libzvbi
-      # - --enable-lto
+      - --enable-lto
       - --enable-nvdec
       - --enable-nvenc
       - --enable-opencl
-      - --enable-static
+      - --enable-shared
       - --enable-vaapi
       - --enable-version3
       - --enable-vulkan
@@ -109,12 +109,25 @@ modules:
             url: https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-1.5.1.tar.gz
             sha256: a1aad8fa3b8b18b78d3755b3767faff9abb67242e01b478ec9a64e190f335e1c
       - name: libass
+        config-opts:
+          - --enable-shared
+          - --disable-static
+          - --with-pic
         sources:
           - type: archive
             url: https://github.com/libass/libass/releases/download/0.16.0/libass-0.16.0.tar.gz
             sha256: fea8019b1887cab9ab00c1e58614b4ec2b1cee339b3f7e446f5fab01b032d430
       - name: libbluray
         config-opts:
+          - --enable-shared
+          - --disable-static
+          - --with-pic
+          - --disable-doxygen-doc
+          - --disable-doxygen-dot
+          - --disable-doxygen-html
+          - --disable-doxygen-ps
+          - --disable-doxygen-pdf
+          - --disable-examples
           - --disable-bdjava-jar
         sources:
           - type: archive
@@ -140,7 +153,7 @@ modules:
           - -DSHADERC_SKIP_TESTS=ON
           - -DSHADERC_SKIP_EXAMPLES=ON
           - -DSHADERC_SKIP_COPYRIGHT_CHECK=ON
-          - -DBUILD_SHARED_LIBS=OFF
+          - -DBUILD_SHARED_LIBS=ON
         cleanup:
           - /bin
           - /include
@@ -152,23 +165,8 @@ modules:
           - type: archive
             url: https://github.com/google/shaderc/archive/refs/tags/v2022.2.tar.gz
             sha256: 517d36937c406858164673db696dc1d9c7be7ef0960fbf2965bfef768f46b8c0
-          - type: shell
-            commands:
-              - sed -i 's|SPIRV/GlslangToSpv.h|glslang/SPIRV/GlslangToSpv.h|' libshaderc_util/src/compiler.cc
-              - sed -i 's|add_subdirectory(third_party)||' CMakeLists.txt
-              - sed -i 's|add_custom_target(build-version|set(NOT_USE|' CMakeLists.txt
-              - |
-                LIB=/lib/$(gcc --print-multiarch)
-                VER_MATCH="[0-9]+\.[^\. ]+"
-                SHADERC=$(grep -m1 -oP "^v$VER_MATCH" CHANGES)
-                SPIRV=v$(grep -oP "(?<=Version:.)$VER_MATCH" $LIB/pkgconfig/SPIRV-Tools-shared.pc)
-                GLSLANG=v$(realpath $LIB/libglslang.so | grep -oP "(?<=so.)$VER_MATCH")
-                cat <<- EOF > glslc/src/build-version.inc
-                  "shaderc $SHADERC"
-                  "spirv-tools $SPIRV"
-                  "glslang $GLSLANG"
-                EOF
-              - cat glslc/src/build-version.inc
+          - type: patch
+            path: shaderc.patch
       - name: libplacebo
         buildsystem: meson
         config-opts:
@@ -189,28 +187,52 @@ modules:
         config-opts:
           - --disable-cli
           - --enable-shared
+          - --disable-static
+          - --enable-pic
+          - --disable-lavf
+          - --disable-swscale
         sources:
           - type: git
             url: https://code.videolan.org/videolan/x264.git
             commit: eaa68fad9e5d201d42fde51665f2d137ae96baf0
       - name: x265
-        # Does it need numa?
+        # Add 10bit 12bit
         buildsystem: cmake-ninja
         builddir: true
         subdir: source
+        build-options:
+          arch:
+            x86_64:
+              config-opts:
+                - -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
         config-opts:
           - -DCMAKE_BUILD_TYPE=Release
+          - -DENABLE_SHARED=ON
           - -DENABLE_CLI=OFF
         sources:
           - type: archive
             url: https://bitbucket.org/multicoreware/x265_git/downloads/x265_3.5.tar.gz
             sha256: e70a3335cacacbba0b3a20ec6fecd6783932288ebc8163ad74bcc9606477cae8
       - name: zimg
+        config-opts:
+          - --enable-shared
+          - --disable-static
+          - --with-pic
         sources:
           - type: archive
             url: https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.4.tar.gz
             sha256: 219d1bc6b7fde1355d72c9b406ebd730a4aed9c21da779660f0a4c851243e32f
       - name: zvbi
+        config-opts:
+          - --enable-shared
+          - --disable-static
+          - --with-pic
+          - --without-doxygen
+          - --without-x
+          - --disable-dvb
+          - --disable-bktr
+          - --disable-nls
+          - --disable-proxy
         sources:
           - type: archive
             url: https://github.com/zapping-vbi/zvbi/archive/refs/tags/v0.2.41.tar.gz
@@ -254,7 +276,6 @@ modules:
           - -DBUILD_SHARED_LIBS=ON
           - -DBUILD_TESTING=OFF
           - -DBUILD_APPS=OFF
-          - -DBUILD_DEC=OFF
         builddir: true
         sources:
           - type: archive
