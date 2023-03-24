@@ -1,0 +1,130 @@
+app-id: com.microsoft.EdgeDev
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '22.08'
+command: edge
+separate-locales: false
+build-options:
+  no-debuginfo: true
+tags:
+  - proprietary
+finish-args:
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --env=CHROME_VERSION_EXTRA=dev
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --require-version=1.8.2
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.Mutter.IdleMonitor.*
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --system-talk-name=org.freedesktop.Avahi
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=host-etc
+  - --filesystem=home/.local/share/applications:create
+  - --filesystem=home/.local/share/icons:create
+  - --filesystem=xdg-run/pipewire-0
+  - --own-name=org.mpris.MediaPlayer2.edge.*
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-desktop
+  - --persist=.pki
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.04
+        commit: 55a60d110301e8dd37b631503c3524ab7baaf7aa
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: edge
+    buildsystem: simple
+    build-commands:
+      - install -Dm 755 edge.sh /app/bin/edge
+      - install -Dm 755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm 755 stub_sandbox.sh /app/bin/stub_sandbox
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/flatpak-edge flatpak_policy.json
+      - install -Dm 644 -t /app/share/applications com.microsoft.EdgeDev.desktop
+      - install -Dm 644 -t /app/share/metainfo com.microsoft.EdgeDev.metainfo.xml
+      # TODO: download and add icons from the deb file directly
+      - install -Dm 644 com.microsoft.EdgeDev-256.png /app/share/icons/hicolor/256x256/apps/com.microsoft.EdgeDev.png
+      # workaround for broken 3d acceleration with ozone x11
+      - install -Dm 644 -t /app/etc ld.so.conf
+    sources:
+      - type: extra-data
+        # From https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-dev
+        url: https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-dev/microsoft-edge-dev_113.0.1754.0-1_amd64.deb
+        sha256: 958a8a50f53ffed89dc2a92976e4a76daa4664aa5906b0b9e85b9ec5ff1d406d
+        filename: edge.deb
+        x-checker-data:
+          type: debian-repo
+          package-name: microsoft-edge-dev
+          root: https://packages.microsoft.com/repos/edge
+          dist: stable
+          component: main
+        size: 144562006
+      - type: script
+        dest-filename: stub_sandbox.sh
+        commands:
+          - 'echo "Stub sandbox ignoring command: $@"'
+          - exit 1
+      - type: file
+        path: edge.sh
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: apply_extra.sh
+      - type: file
+        path: flatpak_policy.json
+      - type: file
+        path: com.microsoft.EdgeDev.desktop
+      - type: file
+        path: com.microsoft.EdgeDev.metainfo.xml
+      - type: file
+        path: icons/com.microsoft.EdgeDev-256.png
+      - type: file
+        path: ld.so.conf
