@@ -1,0 +1,76 @@
+---
+app-id: com.spacestation14.Launcher
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet7
+build-options:
+  append-path: "/usr/lib/sdk/dotnet7/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet7/lib"
+  env:
+    PKG_CONFIG_PATH: "/app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet7/lib/pkgconfig"
+
+command: SS14.Launcher
+
+finish-args:
+  - --device=dri
+  # Allow all-device access for MIDI device support
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  # TODO: Replace this with wayland and fallback-x11 once Wayland support
+  #       becomes available:
+  #       <https://github.com/AvaloniaUI/Avalonia/pull/8003>
+  #       <https://github.com/space-wizards/RobustToolbox/issues/2468>
+  - --socket=x11
+  # Allow access to the Music directory for MIDI files
+  - --filesystem=xdg-music
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+modules:
+  - shared-modules/linux-audio/fluidsynth2.json
+
+  - name: space-station-14-launcher
+    buildsystem: simple
+    sources:
+      - sources/ss14-launcher-git.yaml
+      - sources/space-station-14-launcher-nuget-sources.json
+    build-commands:
+      - dotnet publish SS14.Launcher/SS14.Launcher.csproj /p:FullRelease=True -c Release --no-self-contained --source ./nuget-sources
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/SS14.Launcher/bin/Release/net7.0/publish/* ${FLATPAK_DEST}/bin
+
+  - name: space-station-14-loader
+    buildsystem: simple
+    sources:
+      - sources/ss14-launcher-git.yaml
+      - sources/space-station-14-loader-nuget-sources.json
+    build-commands:
+      - dotnet publish SS14.Loader/SS14.Loader.csproj -c Release --no-self-contained --source ./nuget-sources
+      - mkdir -p ${FLATPAK_DEST}/bin/loader
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/SS14.Loader/bin/Release/net7.0/publish/* ${FLATPAK_DEST}/bin/loader
+
+  - name: extra-data
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: data
+        dest: data
+    build-commands:
+      # The upstream project does not include a desktop file. Instead, we
+      # write one from scratch.
+      - install -Dm644 data/com.spacestation14.Launcher.desktop -t /app/share/applications
+      # The upstream project does not include an appdata.xml file. Instead, we
+      # write one from scratch.
+      - install -Dm644 data/com.spacestation14.Launcher.appdata.xml -t /app/share/appdata
+      # The upstream project does not include an SVG icon file, but one is
+      # available as part of the Space Station 14 website:
+      # <https://github.com/space-wizards/website-content/blob/master/static/images/main/icon.svg>
+      - install -Dm644 -T data/icons/icon-scalable.svg /app/share/icons/hicolor/scalable/apps/com.spacestation14.Launcher.svg
+
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet7/bin/install.sh
