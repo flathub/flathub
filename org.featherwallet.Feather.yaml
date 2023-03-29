@@ -1,0 +1,144 @@
+app-id: org.featherwallet.Feather
+runtime: org.kde.Platform
+runtime-version: '6.4'
+sdk: org.kde.Sdk
+command: feather
+modules:
+
+  - name: unbound
+    sources:
+      - type: git
+        url: 'https://github.com/NLnetLabs/unbound.git'
+        tag: release-1.17.1
+        commit: 90831af981221bbce1cd7b15055562336760e484
+    buildsystem: autotools
+    config-opts:
+      - '--without-pyunbound'
+      - '--without-pythonmodule'
+      - '--with-libevent=no'
+      - '--with-pthreads'
+      - '--with-libunbound-only'
+
+  - name: boost
+    sources:
+      - type: archive
+        url: 'https://downloads.sourceforge.net/project/boost/boost/1.78.0/boost_1_78_0.tar.bz2'
+        sha256: 8681f175d4bdb26c52222665793eef08490d7758529330f98d3b29dd0735bccc
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh
+      - ./b2
+            --with-atomic
+            --with-system
+            --with-filesystem
+            --with-thread
+            --with-date_time
+            --with-chrono
+            --with-regex
+            --with-serialization
+            --with-program_options
+            --with-locale
+            --prefix=${FLATPAK_DEST}
+            variant=release link=shared debug-symbols=off runtime-link=shared
+            install
+
+  - name: zbar
+    sources:
+      - type: archive
+        url: 'https://www.linuxtv.org/downloads/zbar/zbar-0.23.90.tar.gz'
+        sha256: ff857dd7e3dbe043dac3765b5182c91dfd0477800713a75d15287d797cee60fa
+    buildsystem: autotools
+    config-opts:
+      - '--without-imagemagick'
+      - '--without-gtk'
+      - '--without-python'
+      - '--without-dbus'
+
+  - name: qrencode
+    sources:
+      - type: git
+        url: 'https://github.com/fukuchi/libqrencode.git'
+        tag: v4.1.1
+        commit: 715e29fd4cd71b6e452ae0f4e36d917b43122ce8
+    buildsystem: cmake
+
+  - name: zip
+    sources:
+      - type: git
+        url: 'https://github.com/nih-at/libzip.git'
+        tag: v1.9.2
+        commit: 5532f9baa0c44cc5435ad135686a4ea009075b9a
+    buildsystem: cmake
+
+  - name: sodium
+    sources:
+      - type: git
+        url: 'https://github.com/jedisct1/libsodium.git'
+        tag: '1.0.18-RELEASE'
+        commit: 940ef42797baa0278df6b7fd9e67c7590f87744b
+    buildsystem: autotools
+
+
+  - name: feather
+    sources:
+      - type: git
+        url: 'https://github.com/feather-wallet/feather'
+        tag: '2.4.4'
+        commit: ffd6d332daa2f50da3f434de35837204d973ca39
+      # Metadata: Appdata XML
+      - type: file
+        path: org.featherwallet.Feather.appdata.xml
+        dest: src/assets/
+    buildsystem: simple
+    build-commands:
+      - 'mkdir -pv build/release'
+      - 'cmake
+          -D CMAKE_PREFIX_PATH=${FLATPAK_DEST}
+          -D CMAKE_INSTALL_PREFIX=${FLATPAK_DEST}
+          -D ARCH=x86-64
+          -D BUILD_TAG="linux-x64"
+          -D CMAKE_BUILD_TYPE=Release
+          -D TOR_DIR=Off
+          -D TOR_VERSION=Off
+          -D CHECK_UPDATES=Off
+          -D WITH_SCANNER=Off
+          -D REPRODUCIBLE=Off
+          -B build/release'
+      - 'cmake
+          --build build/release
+          --config Release
+          -j ${FLATPAK_BUILDER_N_JOBS}'
+      - 'cmake
+          --install build/release
+          --config Release'
+      - 'mv -v /app/feather /app/bin/feather'
+        # Metadata: .desktop file (needs slight patching)
+      - 'install -D src/assets/feather.desktop
+          /app/share/applications/org.featherwallet.Feather.desktop'
+      - "sed -i 's/Icon=feather/Icon=org.featherwallet.Feather/'
+          /app/share/applications/org.featherwallet.Feather.desktop"
+        # Metadata: AppStream XML file
+      - 'install -D src/assets/org.featherwallet.Feather.appdata.xml
+          /app/share/metainfo/org.featherwallet.Feather.appdata.xml'
+        # Metadata: Icons
+      - 'install -D src/assets/images/appicons/32x32.png
+          /app/share/icons/hicolor/32x32/apps/org.featherwallet.Feather.png'
+      - 'install -D src/assets/images/appicons/48x48.png
+          /app/share/icons/hicolor/48x48/apps/org.featherwallet.Feather.png'
+      - 'install -D src/assets/images/appicons/64x64.png
+          /app/share/icons/hicolor/64x64/apps/org.featherwallet.Feather.png'
+      - 'install -D src/assets/images/appicons/96x96.png
+          /app/share/icons/hicolor/96x96/apps/org.featherwallet.Feather.png'
+      - 'install -D src/assets/images/appicons/128x128.png
+          /app/share/icons/hicolor/128x128/apps/org.featherwallet.Feather.png'
+      - 'install -D src/assets/images/appicons/256x256.png
+          /app/share/icons/hicolor/256x256/apps/org.featherwallet.Feather.png'
+
+
+finish-args:
+  # Show windows through Wayland
+  - --socket=wayland
+  # Network permission
+  - --share=network
+  # Access to ~/Monero
+  - --filesystem=~/Monero:create
