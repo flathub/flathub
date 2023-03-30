@@ -4,6 +4,10 @@ for i in {0..9}; do
 	test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
 done
 
+if [[ -z $(find ~/.srb2kart -name bonuschars.kart) ]]; then
+	ln -s /app/extra/bonuschars.kart ~/.srb2kart/bonuschars.kart
+fi
+
 export PATH="/app/utils/gamescope/bin:$PATH"
 
 if [[ -z "$SRB2WADDIR" ]]; then
