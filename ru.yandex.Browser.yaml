@@ -1,0 +1,103 @@
+app-id: ru.yandex.Browser
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '22.08'
+command: yandex-browser
+separate-locales: false
+finish-args:
+  - --require-version=1.8.2
+  - --device=all
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.gnome.SessionManager
+  - --system-talk-name=org.freedesktop.Avahi
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --filesystem=xdg-download
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --persist=.pki
+
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.04
+        commit: 55a60d110301e8dd37b631503c3524ab7baaf7aa
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: yandex-browser
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/yandex-browser /app/tmp-install/data
+      - bsdtar -xf yandex-browser.rpm -C /app/tmp-install
+      - mv /app/tmp-install/opt/yandex/browser /app/yandex_browser
+      - rm -rf /app/tmp-install yandex-browser.rpm
+      - install -D ru.yandex.Browser.desktop /app/share/applications/ru.yandex.Browser.desktop
+      - install -D ru.yandex.Browser.svg /app/share/icons/hicolor/scalable/apps/ru.yandex.Browser.svg
+      - install -D yandex-browser.sh /app/bin/yandex-browser
+      - install -D -t /app/etc cobalt.ini
+      - install -D -t /app/share/metainfo ru.yandex.Browser.metainfo.xml
+    sources:
+      - type: file
+        url: https://repo.yandex.ru/yandex-browser/rpm/stable/x86_64/yandex-browser-stable-23.1.5.751-1.x86_64.rpm
+        sha256: 5ef6f2becc6054e174457527a29005a5aadf30213c3198b21a52bb8e8fb1d639
+        dest-filename: yandex-browser.rpm
+        only-arches: [x86_64]
+        x-checker-data:
+          type: rpm-repo
+          package-name: yandex-browser-stable
+          root: https://repo.yandex.ru/yandex-browser/rpm/stable/x86_64
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: ru.yandex.Browser.metainfo.xml
+      - type: file
+        path: ru.yandex.Browser.svg
+      - type: file
+        path: ru.yandex.Browser.desktop
+      - type: script
+        dest-filename: yandex-browser.sh
+        commands:
+          - exec cobalt "$@"
