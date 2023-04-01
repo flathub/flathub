@@ -2,7 +2,7 @@
 
 `git clone --depth 1 https://github.com/flatpak/flatpak-builder-tools.git`
 
-### Generate cache for nuget
+### Generate cache for NuGet
 
 `git clone --depth 1 -b v10.8.9 https://github.com/jellyfin/jellyfin.git`
 
