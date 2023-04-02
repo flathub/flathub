@@ -9,7 +9,7 @@ For upstream issues:
 
 #### FileNotFoundError: [Errno 2] No such file or directory: ~/.var/app/com.github.slgobinath.SafeEyes/config/safeeyes/safeeyes.json
 
-Safe Eyes expects `safeeyes.json` and `safeeyes_style.css` under XDG_DATA_HOME
+Safe Eyes expects `safeeyes.json` and `safeeyes_style.css` under XDG_CONFIG_HOME
 
 After running `com.github.slgobinath.SafeEyes` copy and paste this:
 
