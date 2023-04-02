@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 import hashlib
 
-dir_home = str(Path.home()) + '/.var/app/org.snesrev.Zelda3/data/'
+dir_home = str(Path.home()) + '/.var/app/io.github.snesrev.Zelda3/data/'
 os.chdir(dir_home)
 
 if not os.path.isfile('zelda3.ini'):
