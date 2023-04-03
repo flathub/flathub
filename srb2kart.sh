@@ -14,6 +14,10 @@ if [[ -z "$SRB2WADDIR" ]]; then
 	export SRB2WADDIR=/app/extra
 fi
 
+if [ -z "$GAMESCOPE_ARGS" ]; then
+	GAMESCOPE_ARGS="-h 1080 -C 1000 -i"
+fi
+
 if [[ -n $(command -v gamescope) && -n "$GAMESCOPE_ENABLE" ]]; then
 	echo "$GAMESCOPE_ARGS" -- srb2kart "$@" | xargs gamescope
 else
