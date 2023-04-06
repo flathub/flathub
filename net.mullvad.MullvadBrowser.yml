@@ -1,0 +1,94 @@
+app-id: net.mullvad.MullvadBrowser
+runtime: org.freedesktop.Platform
+runtime-version: &sdk-version '22.08'
+sdk: org.freedesktop.Sdk
+base: org.mozilla.firefox.BaseApp
+base-version: *sdk-version
+command: mullvadbrowser
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    no-autodownload: true
+    version: *sdk-version
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # Smartcard access - Requires flatpak >= 1.3.2
+  - --socket=pcsc
+  - --socket=cups
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gtk.vfs.*
+  - --system-talk-name=org.freedesktop.RealtimeKit1
+  - --system-talk-name=org.freedesktop.login1
+  - --filesystem=xdg-download:rw
+  - --env=MOZ_ENABLE_WAYLAND=1
+  - --env=WAYLAND_DISPLAY=wayland-0
+  # the author doesn't control the domain mozilla.org
+  - --own-name=org.mozilla.mullvadbrowser.*
+
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+
+modules:
+  - name: mullvad-browser
+    buildsystem: simple
+    build-commands:
+      # Remove launcher files that are useless in the context of Flatpak
+      - rm Browser/start-mullvad-browser Browser/start-mullvad-browser.desktop
+
+      - mv Browser/ "${FLATPAK_DEST}/lib/mullvad-browser/"
+      - install -Dm755 mullvad-browser-wrapper "${FLATPAK_DEST}/bin/mullvadbrowser"
+      - install -Dm644 firefox.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - install -Dm644 distribution.ini "${FLATPAK_DEST}/lib/mullvad-browser/distribution/distribution.ini"
+      - install -Dm644 policies.json "${FLATPAK_DEST}/lib/mullvad-browser/distribution/policies.json"
+      - install -Dm644 default-preferences.js "${FLATPAK_DEST}/lib/mullvad-browser/defaults/pref/default-preferences.js"
+      - install -Dm644 net.mullvad.MullvadBrowser.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+
+      # Desktop Entry
+      - install -Dm644 start-mullvad-browser.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+        --set-key "Exec" --set-value "${FLATPAK_DEST}/bin/mullvadbrowser --class \"Mullvad Browser\" --name \"Mullvad Browser\" %u"
+        --set-key "Icon" --set-value "${FLATPAK_ID}"
+    sources:
+      - type: archive
+        url: https://github.com/mullvad/mullvad-browser/releases/download/mullvad-browser-102.9.0esr-12.0-2-build1/mullvad-browser-linux64-12.0.4_ALL.tar.xz
+        sha256: ab875328d42472a691c22176e6254e412bf054b037b494654380f30b7b6e1b90
+        x-checker-data:
+          type: rotating-url
+          url: https://download.mozilla.org/?product=firefox-nightly-latest-ssl&os=linux64&lang=en-US
+          pattern: https://download-installer.cdn.mozilla.net/pub/firefox/nightly/latest-mozilla-central/firefox-([0-9.]+)a([0-9.]+).en-US.linux-x86_64.tar.bz2
+
+      - type: file
+        url: https://gitlab.torproject.org/tpo/applications/mullvad-browser/-/raw/e712cb197b83778cbda85e96525dd56ada25945e/browser/branding/mb-release/firefox.svg
+        sha256: 3159b3ab1d3c9393d60f9589a75ec10bf9a3e23f4665be2bf63fa64d916ebc8b
+        dest-filename: firefox.svg
+
+      - type: file
+        path: distribution.ini
+
+      - type: file
+        path: policies.json
+
+      - type: file
+        path: default-preferences.js
+      
+      - type: file
+        path: net.mullvad.MullvadBrowser.metainfo.xml
+
+      - type: script
+        dest-filename: mullvad-browser-wrapper
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - exec "/app/lib/mullvad-browser/mullvadbrowser" "$@"
