@@ -4,6 +4,7 @@ runtime-version: 5.15-22.08
 sdk: org.kde.Sdk
 base: com.riverbankcomputing.PyQt.BaseApp
 base-version: 5.15-22.08
+separate-locales: false
 
 command: syntalos
 rename-icon: syntalos
@@ -17,7 +18,14 @@ finish-args:
   - --filesystem=host
   - --socket=system-bus
   - --socket=session-bus
+  - --allow=devel
+  - --allow=bluetooth
   - --env=PATH=/app/bin:/usr/bin:/usr/sbin
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+  - --require-version=1.0.0
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
 
 add-extensions:
   org.freedesktop.Platform.GL:
@@ -45,6 +53,16 @@ modules:
       url: https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.01.04.tar.gz
       sha256: 6e716e2b13fc8d363b40a165ca75021b102f9328e2b38f8054d7db5884de29c9
 
+- name: meson
+  buildsystem: simple
+  build-commands:
+    - python3 setup.py build
+    - python3 setup.py install --prefix=/app --root=/
+  sources:
+    - type: git
+      url: https://github.com/mesonbuild/meson.git
+      tag: '1.0.2'
+
 - name: xxhash
   no-autogen: true
   make-install-args:
@@ -62,10 +80,12 @@ modules:
 - name: toml++
   buildsystem: meson
   builddir: true
+  config-opts:
+    - --libdir=lib
   sources:
     - type: archive
-      url: https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.0.1.tar.gz
-      sha256: e05b2814b891e223d7546aa2408d6cba0628164a84ac453205c7743cb667b9cf
+      url: https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.3.0.tar.gz
+      sha256: fc1a5eb410f3c67e90e5ad1264a1386d020067cfb01b633cc8c0441789aa6cf2
 
 - name: openblas
   no-autogen: true
@@ -80,8 +100,8 @@ modules:
     - PREFIX=/app
   sources:
     - type: archive
-      url: https://github.com/xianyi/OpenBLAS/archive/v0.3.21.tar.gz
-      sha256: f36ba3d7a60e7c8bcc54cd9aaa9b1223dd42eaf02c811791c37e8ca707c241ca
+      url: https://github.com/xianyi/OpenBLAS/releases/download/v0.3.23/OpenBLAS-0.3.23.tar.gz
+      sha256: 5d9491d07168a5d00116cdc068a40022c3455bf9293c7cb86a65b1054d7e5114
   cleanup:
     - "*.a"
     - "/include"
@@ -98,8 +118,9 @@ modules:
   cleanup:
     - '*'
 
-- modules/ffmpeg.yaml
 - shared-modules/libusb/libusb.json
+- modules/usbutils.yaml
+- modules/ffmpeg.yaml
 
 - name: opencv
   buildsystem: cmake-ninja
@@ -138,13 +159,11 @@ modules:
     - /bin
   sources:
     - type: archive
-      url: https://github.com/opencv/opencv/archive/refs/tags/4.6.0.tar.gz
-      sha256: 1ec1cba65f9f20fe5a41fda1586e01c70ea0c9a6d7b67c9e13edf0cfe2239277
+      url: https://github.com/opencv/opencv/archive/refs/tags/4.7.0.tar.gz
+      sha256: 8df0079cdbe179748a18d44731af62a245a45ebf5085223dc03133954c662973
     - type: archive
-      url: https://github.com/opencv/opencv_contrib/archive/refs/tags/4.6.0.tar.gz
-      sha256: 1777d5fd2b59029cf537e5fd6f8aa68d707075822f90bde683fcde086f85f7a7
-    - type: patch
-      path: patches/ffmpeg_01_Add-missing-header-for-LIBAVCODEC_VERSION_INT.patch
+      url: https://github.com/opencv/opencv_contrib/archive/refs/tags/4.7.0.tar.gz
+      sha256: 42df840cf9055e59d0e22c249cfb19f04743e1bdad113d31b1573d3934d62584
 
 - name: pybind11
   buildsystem: simple
@@ -158,8 +177,8 @@ modules:
     - cmake --install .
   sources:
     - type: archive
-      url: https://github.com/pybind/pybind11/archive/v2.9.0.tar.gz
-      sha256: 057fb68dafd972bc13afb855f3b0d8cf0fa1a78ef053e815d9af79be7ff567cb
+      url: https://github.com/pybind/pybind11/archive/refs/tags/v2.10.4.tar.gz
+      sha256: 832e2f309c57da9c1e6d4542dedd34b24e4192ecb4d62f6f4866a737454c9970
 
 - name: python3-numpy
   buildsystem: simple
@@ -175,63 +194,14 @@ modules:
     - "/bin"
   sources:
     - type: archive
-      url: https://github.com/numpy/numpy/releases/download/v1.22.2/numpy-1.22.2.tar.gz
-      sha256: 093d513a460fd94f94c16193c3ef29b2d69a33e482071e3d6d6e561a700587a6
+      url: https://github.com/numpy/numpy/releases/download/v1.24.3/numpy-1.24.3.tar.gz
+      sha256: ab344f1bf21f140adab8e47fdbc7c35a477dc01408791f8ba00d018dd0bc5155
 
 - modules/git.yaml
 - modules/python-venv.yaml
 - modules/python-tomlkit.yaml
 - modules/python-tkinter.yaml
-
-# libzip is needed for tiscamera
-- name: libzip
-  buildsystem: cmake-ninja
-  config-opts:
-  - "-DCMAKE_BUILD_TYPE=Release"
-  - "-DCMAKE_INSTALL_LIBDIR=lib"
-  cleanup:
-  - "/include"
-  - "/bin"
-  - "/share"
-  - "/lib/pkgconfig"
-  - "/lib/*.la"
-  sources:
-  - type: archive
-    url: https://libzip.org/download/libzip-1.8.0.tar.xz
-    sha256: f0763bda24ba947e80430be787c4b068d8b6aa6027a26a19923f0acfa3dac97e
-
-- name: aravis
-  buildsystem: meson
-  builddir: true
-  config-opts:
-    - -Dviewer=disabled
-    - -Dgst-plugin=enabled
-  sources:
-    - type: git
-      url: https://github.com/AravisProject/aravis.git
-      tag: '0.8.21'
-
-- name: tiscamera
-  buildsystem: cmake-ninja
-  builddir: true
-  config-opts:
-    - -DBUILD_DOCUMENTATION=OFF
-    - -DTCAM_INSTALL_FORCE_PREFIX=ON
-    - -DTCAM_INSTALL_UDEV=/app/lib/udev
-    - -DTCAM_INSTALL_SYSTEMD=/app/lib/systemd/system/
-    - -DTCAM_BUILD_WITH_GUI=OFF
-    - -DTCAM_BUILD_DOCUMENTATION=OFF
-    - -DTCAM_DOWNLOAD_MESON=OFF
-    - -DTCAM_INTERNAL_ARAVIS=OFF
-    - -Daravis_INCLUDE_DIR=/app/include/aravis-0.8
-    - -DGOBJECT_INTROSPECTION_1.0_GIRDIR=/app/share/gir-1.0/
-    - -DGOBJECT_INTROSPECTION_1.0_TYPELIBDIR=/app/lib/girepository-1.0
-    - -DGSTREAMER_1.0_PLUGINSDIR=/app/lib/gstreamer-1.0
-    - -DGSTREAMER_1.0_INCLUDEDIR=/include/gstreamer-1.0
-  sources:
-    - type: git
-      commit: 2225d34d2f6be6134965b504d56fc7388c1d67f7
-      url: https://github.com/TheImagingSource/tiscamera.git
+- modules/tiscamera.yaml
 
 - name: pomidaq
   buildsystem: cmake-ninja
@@ -248,10 +218,10 @@ modules:
   buildsystem: meson
   builddir: true
   config-opts:
+    - --libdir=lib
     - -Doptimize-modern-amd64=true
     - -Dudevdir=/app/lib/udev
-    - -Dmodules=miniscope,intan-rhx
   sources:
     - type: git
       url: https://github.com/bothlab/syntalos.git
-      tag: v0.8.3
+      tag: v0.8.4
