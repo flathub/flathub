@@ -20,3 +20,8 @@ to work.
 
 Once this is [published on Flathub](https://discourse.flathub.org/t/supersonic-lightweight-cross-platform-desktop-client-for-subsonic-music-servers/3984/), only `flatpak` will be
 required for running, of course.
+
+To regenerate the modules list, run this against your supersonic
+source tree (e.g. `~/dist/supersonic` below):
+
+    go run github.com/dennwc/flatpak-go-mod@latest ~/dist/supersonic
