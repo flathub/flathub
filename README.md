@@ -20,3 +20,13 @@ to work.
 
 Once this is [published on Flathub](https://discourse.flathub.org/t/supersonic-lightweight-cross-platform-desktop-client-for-subsonic-music-servers/3984/), only `flatpak` will be
 required for running, of course.
+
+To regenerate the `go-sources.json` file, head for the relevant
+Supersonic source tree and run:
+
+    go mod vendor
+    flatpak-builder-tools/go-get/flatpak-go-vendor-generator.py vendor/modules.txt > golang_sources.json
+
+Also copy the `vendor/modules.txt` file over.
+
+You can find the latter script in [flatpak-builder-tools](https://github.com/flatpak/flatpak-builder-tools/tree/master/go-get).
