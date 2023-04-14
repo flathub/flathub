@@ -1,0 +1,212 @@
+# example flatpaks:
+# https://github.com/search?q=org%3Aflathub+golang+&type=code&p=2
+# https://github.com/search?q=org%3Aflathub+GLFW+&type=code
+#
+# followup on:
+# https://discourse.flathub.org/t/supersonic-lightweight-cross-platform-desktop-client-for-subsonic-music-servers/3984/2
+# https://github.com/dweymouth/supersonic/issues/86
+app-id: com.github.dweymouth.supersonic
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: supersonic
+
+finish-args:
+  # Wayland
+  - --socket=wayland
+  # from https://github.com/flathub/im.riot.Riot/blob/ff59f1ac426823e95444d67c763cd92523f1db4e/im.riot.Riot.yaml#L37
+  # Required for experimental wayland support
+  #- --filesystem=xdg-run/pipewire-0
+  # io.mpv.Mpv does this:
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --filesystem=/tmp:rw
+  #  mpris support via dbus
+  - --own-name=org.mpris.MediaPlayer2.mpv.*
+  - --talk-name=org.gnome.SessionManager
+  # For correct cursor scaling under Wayland
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  # X11 + XShm access
+  - --socket=x11
+  - --share=ipc
+  # video acceleration in X11
+  #- --device=dri
+  # audio devices?
+  - --device=all
+  # for audio, hopefully
+  - --socket=pulseaudio
+  # Required to store access tokens (persistent logins)
+  - --filesystem=xdg-run/keyring
+  # seems like we also need those:
+  # from https://github.com/flathub/com.jetbrains.IntelliJ-IDEA-Community/blob/846e9b59fc9b644782864bcc44b1e204869cc980/com.jetbrains.IntelliJ-IDEA-Community.yaml#L11
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.keyring.SystemPrompter
+  # for network, obviously
+  - --share=network
+  #
+  # System tray icon doesn't work anyway
+  ## Required for notifications in various desktop environments
+  #- --talk-name=org.freedesktop.Notifications
+  #- --talk-name=org.kde.StatusNotifierWatcher
+  ## Required for tray icons on KDE
+  #- --own-name=org.kde.*
+  #
+  # might be useful for media keys?
+  ## cargo-cult from https://github.com/flathub/com.github.iwalton3.jellyfin-mpv-shim/blob/master/com.github.iwalton3.jellyfin-mpv-shim.json
+  ##- --talk-name=org.gnome.SettingsDaemon.MediaKeys
+
+modules:
+  # TODO: consider using io.mpv.Mpv as a "base app" instead, see
+  # https://docs.flatpak.org/en/latest/electron.html for how it's done
+  # with electron apps. alternatively, mpv could be a "shared module",
+  # see:
+  # https://docs.flatpak.org/en/latest/manifests.html#shared-modules
+  # https://github.com/flathub/shared-modules
+  - name: mpv
+    buildsystem: meson
+    build-options:
+      env:
+        CFLAGS=-DNDEBUG=1
+    config-opts:
+      - -Dbuild-date=false
+      - -Dlibmpv=true
+      - -Dmanpage-build=disabled
+      - -Dalsa=enabled
+      - -Dcdda=disabled
+      - -Ddvbin=disabled
+      - -Ddvdnav=disabled
+      - -Djavascript=disabled
+      - -Dlibarchive=disabled
+      - -Dlua=disabled
+      - -Dpulse=enabled
+      - -Dsdl2=disabled
+      - -Dshaderc=disabled
+      - -Dvulkan=disabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.35.1.tar.gz
+        sha256: 41df981b7b84e33a2ef4478aaf81d6f4f5c8b9cd2c0d337ac142fc20b387d1a9
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          stable-only: true
+          url-template: https://github.com/mpv-player/mpv/archive/refs/tags/v$version.tar.gz
+    modules:
+    - name: libass
+      config-opts:
+        - --disable-static
+      sources:
+        - type: archive
+          url: https://github.com/libass/libass/releases/download/0.17.1/libass-0.17.1.tar.xz
+          sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
+          x-checker-data:
+            type: anitya
+            project-id: 1560
+            stable-only: true
+            url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+        - type: script
+          commands:
+            - autoreconf -fiv
+          dest-filename: autogen.sh
+      cleanup:
+        - /include
+        - /lib/pkgconfig
+        - /share
+    - name: ffmpeg
+      cleanup:
+        - /include
+        - /lib/pkgconfig
+        - /share/ffmpeg/examples
+      config-opts:
+        # this is almost like io.mpv.Mpv, except we removed:
+        # --enable-libbs2b
+        # --enable-libjxl
+        # --enable-libmysofa
+        # --enable-libx264
+        # --enable-libx265
+        # because those would require yet another dependency tree
+        - --disable-debug
+        - --disable-doc
+        - --disable-programs
+        - --disable-static
+        - --enable-encoder=png
+        - --enable-gnutls
+        - --enable-gpl
+        - --enable-shared
+        - --enable-version3
+        - --enable-libaom
+        - --enable-libass
+        - --enable-libdav1d
+        - --enable-libfreetype
+        - --enable-libmp3lame
+        - --enable-libopus
+        - --enable-libtheora
+        - --enable-libv4l2
+        - --enable-libvorbis
+        - --enable-libvpx
+      sources:
+        - type: git
+          url: https://github.com/FFmpeg/FFmpeg.git
+          mirror-urls:
+            - https://git.ffmpeg.org/ffmpeg.git
+          commit: ea3d24bbe3c58b171e55fe2151fc7ffaca3ab3d2
+          tag: n6.0
+          x-checker-data:
+            type: git
+            tag-pattern: ^n([\d.]{3,7})$
+
+  # this is used to bundle the final supersonic command correctly and
+  # provides the /app/bin/fyne command to the next module
+  - name: finecmd
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOBIN: /app/bin
+      # TODO: remove this and get each dependency properly, then add
+      # `GO111MODULE: off` above
+      #
+      # package list could be generated with:
+      # https://github.com/divVerent/aaaaxy/blob/main/scripts/go-vendor-to-flatpak-yml.sh
+      # https://github.com/flathub/com.yktoo.ymuse/blob/7c33add48cfc6788b9ddf0c92ee7213f40c6c78e/com.yktoo.ymuse.yml#L57-L63
+      #
+      # this doesn't work so well:
+      # https://github.com/flatpak/flatpak-builder-tools/tree/master/go-get
+      # ... because it generates git links, which are much slower
+      #
+      # other examples:
+      # https://github.com/flathub/me.kozec.syncthingtk/blob/cf25336132b96c514f29d5a5322874e847aba150/syncthing.yaml
+      #
+      # also used:
+      # https://github.com/search?q=org%3Aflathub+++mpv&type=code
+      build-args:
+        - --share=network
+    build-commands:
+      - . /usr/lib/sdk/golang/enable.sh && go install -v fyne.io/fyne/v2/cmd/fyne@v2.3.3
+
+  - name: supersonic
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOBIN: /app/bin
+      # TODO: remove this and get each dependency properly, then add
+      # `GO111MODULE: off` above
+      build-args:
+        - --share=network
+    build-commands:
+      - . /usr/lib/sdk/golang/enable.sh && CGO_LDFLAGS=-L/app/lib go build -v .
+      - . /usr/lib/sdk/golang/enable.sh && CGO_LDFLAGS=-L/app/lib /app/bin/fyne package -os linux -name Supersonic -icon ./res/appicon-500.png
+      - tar -C /app --strip-components=1 -x -v -f /run/build/supersonic/Supersonic.tar.xz
+      - ls -al /app/bin/supersonic
+    sources:
+      - type: git
+        url: https://github.com/dweymouth/supersonic/
+        commit: 440dee15ac1bb42fcd899578576098542ffc4a19
+    post-install:
+      # workaround for go annoyance
+      - chmod -R u+w $FLATPAK_BUILDER_BUILDDIR
