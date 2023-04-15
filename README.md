@@ -28,6 +28,13 @@ source tree (e.g. `~/dist/supersonic` below):
 
     go run github.com/dennwc/flatpak-go-mod@latest ~/dist/supersonic
 
+The icon was generated with ImageMagick from the upstream `1040x1040`
+icon using:
+
+    convert ~/dist/supersonic/res/appicon.png -resize 512x512 io.github.dweymouth.supersonic.png
+
+This was filed upstream as: https://github.com/dweymouth/supersonic/issues/132
+
 ### Digression
 
 It's surprisingly difficult to get this to work right. First off, it's
