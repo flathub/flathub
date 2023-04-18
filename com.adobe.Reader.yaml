@@ -1,0 +1,97 @@
+app-id: com.adobe.Reader
+
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '22.08'
+sdk: org.freedesktop.Sdk
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --allow=multiarch
+  - --filesystem=xdg-documents
+  - --persist=.adobe
+
+command: acroread
+tags: [ proprietary ]
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: *runtime-version
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: *runtime-version
+    no-autodownload: true
+
+modules:
+  # https://docs.flatpak.org/en/latest/multiarch.html
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+
+  # Grab old binaries for missing libraries
+  - name: gtk2
+    buildsystem: simple
+    build-commands:
+      - ar p libgtk2.0-0_2.24.17-0ubuntu2_i386.deb data.tar.xz | tar xvJ
+      - rm -v libgtk2.0-0_2.24.17-0ubuntu2_i386.deb
+      - mkdir -pv $FLATPAK_DEST/lib32/
+      - cp -rv ./usr/lib/i386-linux-gnu/* $FLATPAK_DEST/lib32/
+    sources:
+      - type: file
+        url: https://old-releases.ubuntu.com/ubuntu/pool/main/g/gtk+2.0/libgtk2.0-0_2.24.17-0ubuntu2_i386.deb
+        sha256: fb9ee37a7789f43fd92a1f3c3e8022c56f9b1353d15f46277489c1a91ee5be79
+
+  - name: gdk-pixbuf-xlib
+    buildsystem: simple
+    build-commands:
+      - ar p libgdk-pixbuf2.0-0_2.28.0-0ubuntu1_i386.deb data.tar.xz | tar xvJ
+      - rm -v libgdk-pixbuf2.0-0_2.28.0-0ubuntu1_i386.deb
+      - mkdir -pv $FLATPAK_DEST/lib32/
+      - cp -rv ./usr/lib/i386-linux-gnu/* $FLATPAK_DEST/lib32/
+    sources:
+      - type: file
+        url: https://old-releases.ubuntu.com/ubuntu/pool/main/g/gdk-pixbuf/libgdk-pixbuf2.0-0_2.28.0-0ubuntu1_i386.deb
+        sha256: 90841a12debec181eef38aad3eddb154bcd3c49ebc6c6661341603cc81ba495f
+
+  # Install Adobe Reader in extra-data (not redistributable)
+  - name: adobe-reader
+    buildsystem: simple
+    build-commands:
+      - install -Dm0755 apply_extra -t /app/bin
+      - install -Dm0755 acroread -t /app/bin
+      - install -Dm0644 com.adobe.Reader.metainfo.xml -t /app/share/metainfo
+      - install -Dm0644 AdobeReader.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
+      - install -Dm0644 AdobeReader9.png $FLATPAK_DEST/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+    sources:
+      - type: script
+        dest-filename: acroread
+        commands:
+          - exec /app/extra/Adobe/Reader9/bin/acroread "$@"
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar xjvf AdbeRdr9.5.5-1_i486linux_enu.tar.bz2
+          - ./AdobeReader/INSTALL --install_path=/app/extra
+          - rm -rv AdobeReader/ AdbeRdr9.5.5-1_i486linux_enu.tar.bz2
+      - type: extra-data
+        filename: AdbeRdr9.5.5-1_i486linux_enu.tar.bz2
+        url: https://download.adobe.com/pub/adobe/reader/unix/9.x/9.5.5/enu/AdbeRdr9.5.5-1_i486linux_enu.tar.bz2
+        sha256: ee0ea9c65b38abd40ec7c92654e767dc138757f02aef5ae92f74e2dc75ac6540
+        size: 57127348
+      - type: file
+        path: com.adobe.Reader.metainfo.xml
+      - type: file
+        path: AdobeReader.desktop
+      - type: file
+        path: AdobeReader9.png
