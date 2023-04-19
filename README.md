@@ -1,8 +1,8 @@
-# SDK Extension for OpenJDK 19
+# SDK Extension for OpenJDK 20
 
-This extension contains the OpenJDK 19 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
+This extension contains the OpenJDK 20 Java Runtime Environment (JRE) and Java Developement Kit (JDK).
 
-OpenJDK 19 is the current latest version. This is *not* a long-term support (LTS) version and will be periodically updated as new JDKs are released.
+OpenJDK 20 is the current latest version. This is *not* a long-term support (LTS) version and will be periodically updated as new JDKs are released.
 
 For the current LTS version, see the [OpenJDK 17](https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17) extension.
 
