@@ -1,0 +1,114 @@
+app-id: org.sabnzbd.SABnzbd
+command: SABnzbd.py
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --system-talk-name=org.freedesktop.login1
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-download
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --persist=.sabnzbd
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /man
+modules:
+  - pypi-dependencies.json
+  - name: dbus-run-session
+    buildsystem: autotools
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/dbus/dbus/-/archive/dbus-1.14.6/dbus-dbus-1.14.6.tar.gz
+        sha256: 2533742eb324fa7fbb093a3ed0ff436c7eb11861fd6a31e9b857fc4878f01831
+        x-checker-data:
+          type: anitya
+          project-id: 5356
+          stable-only: true
+          url-template: https://gitlab.freedesktop.org/dbus/dbus/-/archive/dbus-$version/dbus-dbus-$version.tar.gz
+  - name: dbus-python
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-1.3.2.tar.gz
+        sha256: ad67819308618b5069537be237f8e68ca1c7fcc95ee4a121fe6845b1418248f8
+        x-checker-data:
+          type: anitya
+          project-id: 402
+          url-template: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-$version.tar.gz
+  - name: python3-cryptography
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/python3-cryptography/cargo
+        CARGO_NET_OFFLINE: "true"
+        RUST_BACKTRACE: "1"
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "cryptography==39.0.1" --no-build-isolation
+    sources:
+      - cargo-sources.json
+      - type: file
+        url: https://files.pythonhosted.org/packages/6a/f5/a729774d087e50fffd1438b3877a91e9281294f985bda0fd15bf99016c78/cryptography-39.0.1.tar.gz
+        sha256: d1f6198ee6d9148405e49887803907fe8962a23e6c6f83ea7d98f1c0de375695
+        x-checker-data:
+          type: anitya
+          project-id: 5532
+          url-template: https://github.com/pyca/flacon/cryptography/$version.tar.gz
+  - name: p7zip
+    no-autogen: true
+    make-args:
+      - 7z
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/v17.05/p7zip-v17.05.tar.gz
+        sha256: 9473e324de6a87d89cb7ff65b0fec4ae3f147f03ffc138189c336a4650d74804
+      - type: shell
+        commands:
+          - sed -i 's|/usr/local|/app|g' makefile.common
+  - name: unrar
+    no-autogen: true
+    build-options:
+      strip: true
+    make-install-args:
+      - DESTDIR=$(FLATPAK_DEST)
+    sources:
+      - type: archive
+        url: https://www.rarlab.com/rar/unrarsrc-6.2.5.tar.gz
+        sha256: 9a3974410d1d340e3998dd2a6f98faefbe838cad556266e714adfb0e8cf9377c
+  - name: par2cmdline
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/Parchive/par2cmdline/releases/download/v0.8.1/par2cmdline-0.8.1.tar.gz
+        sha256: 7b2fcc19b54c7080939fc2cbaca33ae40ac33759a526292933c94a85ba850d11
+  - name: sabnzbdplus
+    buildsystem: simple
+    build-commands:
+      - cp -a * /app/bin/
+      - install -Dm644 ${PWD}/linux/org.sabnzbd.sabnzbd.appdata.xml /app/share/appdata/$FLATPAK_ID.xml
+      - install -Dm644 ${PWD}/icons/logo-arrow.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 ${PWD}/linux/sabnzbd.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+      - sed -i 's|Exec=/opt/sabnzbd/SABnzbd.py --browser 1 %F|Exec=SABnzbd.py|g' /app/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: archive
+        url: https://github.com/sabnzbd/sabnzbd/releases/download/3.7.2/SABnzbd-3.7.2-src.tar.gz
+        sha256: 01250ecd09cdb50da8be8829e4f44f33f0bf1bcf1fcff136ad6045e5f4a2a172
