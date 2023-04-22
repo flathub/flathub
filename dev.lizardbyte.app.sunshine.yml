@@ -1,0 +1,215 @@
+app-id: dev.lizardbyte.app.sunshine
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+separate-locales: false
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+command: sunshine
+
+finish-args:
+  - --device=all
+  - --env=PULSE_PROP_media.category=Manager
+  - --persist=.config/sunshine
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.Avahi
+  # - --talk-name=org.freedesktop.Flatpak
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /lib/*.la
+  - /lib/*.a
+  - /share/man
+
+modules:
+  # - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: boost
+    disabled: false
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=$FLATPAK_DEST --with-libraries=locale,log,program_options,system,thread
+      - ./b2 install variant=release link=shared runtime-link=shared -j $FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://github.com/boostorg/boost/releases/download/boost-1.82.0/boost-1.82.0.tar.xz
+        sha256: fd60da30be908eff945735ac7d4d9addc7f7725b1ff6fcdcaede5262d511d21e
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://github.com/boostorg/boost/releases/download/boost-$version/boost-$version.tar.xz
+
+  - name: avahi
+    disabled: false
+    cleanup:
+      - /bin
+      - /lib/avahi
+      - /share
+    config-opts:
+      - --with-distro=none
+      - --disable-gobject
+      - --disable-introspection
+      - --disable-qt3
+      - --disable-qt4
+      - --disable-qt5
+      - --disable-gtk
+      - --disable-core-docs
+      - --disable-manpages
+      - --disable-libdaemon
+      - --disable-python
+      - --disable-pygobject
+      - --disable-mono
+      - --disable-monodoc
+      - --disable-autoipd
+      - --disable-doxygen-doc
+      - --disable-doxygen-dot
+      - --disable-doxygen-xml
+      - --disable-doxygen-html
+      - --disable-manpages
+      - --disable-xmltoman
+      - --disable-libevent
+    sources:
+      - type: archive
+        url: http://avahi.org/download/avahi-0.8.tar.gz
+        sha256: 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda
+      - type: git
+        url: https://src.fedoraproject.org/rpms/avahi.git
+        commit: e8ad0f7bbb7fdf82a0f0be128bab07b5928322f0
+        dest: rpms
+      - type: shell
+        commands:
+          - cat rpms/*.patch | patch -Np1 -d .
+          - autoreconf -ivf
+
+  - name: libevdev
+    disabled: false
+    buildsystem: meson
+    config-opts:
+      - -Ddocumentation=disabled
+      - -Dtests=disabled
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.0.tar.xz
+        sha256: 9edf2006cc86a5055279647c38ec923d11a821ee4dc2c3033e8d20e8ee237cd9
+        x-checker-data:
+          type: anitya
+          project-id: 20540
+          stable-only: true
+          url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+
+  - name: numactl
+    disabled: false
+    buildsystem: autotools
+    make-args:
+      - install
+    cleanup:
+      - "/bin"
+    sources:
+      - type: archive
+        url: https://github.com/numactl/numactl/archive/refs/tags/v2.0.16.tar.gz
+        sha256: a35c3bdb3efab5c65927e0de5703227760b1101f5e27ab741d8f32b3d5f0a44c
+        x-checker-data:
+          type: anitya
+          project-id: 2507
+          stable-only: true
+          url-template: https://github.com/numactl/numactl/archive/refs/tags/v$version.tar.gz
+
+  - name: intel-mediasdk
+    disabled: false
+    only-arches:
+      - x86_64
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SAMPLES=OFF
+      - -DBUILD_TUTORIALS=OFF
+      - -DENABLE_X11=OFF
+    sources:
+      - type: archive
+        url: https://github.com/Intel-Media-SDK/MediaSDK/archive/refs/tags/intel-mediasdk-23.2.0.tar.gz
+        sha256: 6b33ec917ef0c6395fb66c7b93aae4ae31b3d1dedb5d7d39e0c69f45acb7c4fb
+        x-checker-data:
+          type: anitya
+          project-id: 21814
+          stable-only: true
+          url-template: https://github.com/Intel-Media-SDK/MediaSDK/archive/refs/tags/intel-mediasdk-$version.tar.gz
+
+  - name: cuda
+    disabled: false
+    buildsystem: simple
+    only-arches:
+      - x86_64
+      - aarch64
+    cleanup:
+      - "*"
+    build-commands:
+      - chmod u+x ./cuda.run
+      - ./cuda.run --silent --toolkit --toolkitpath=$FLATPAK_DEST/cuda --no-opengl-libs --no-man-page --no-drm
+        --tmpdir=$FLATPAK_BUILDER_BUILDDIR
+      - rm -r $FLATPAK_DEST/cuda/nsight-systems-*
+      - rm ./cuda.run
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
+        sha256: d74022d41d80105319dfa21beea39b77a5b9919539c0487a05caaf2446d6a70e
+        dest-filename: cuda.run
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux_sbsa.run
+        sha256: 45ea4cd860f0a26d3db8ce032530f2ee0b55abdd587545213d395a73623b4278
+        dest-filename: cuda.run
+
+  - name: sunshine
+    disabled: false
+    buildsystem: cmake
+    builddir: true
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin
+      cxxflags: -I${C_INCLUDE_PATH}/libevdev-1.0
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CUDA_COMPILER=/app/cuda/bin/nvcc
+      - -DSUNSHINE_ASSETS_DIR=share/sunshine
+      - -DSUNSHINE_EXECUTABLE_PATH="flatpak run dev.lizardbyte.sunshine"
+      - -DSUNSHINE_ENABLE_WAYLAND=ON
+      - -DSUNSHINE_ENABLE_X11=ON
+      - -DSUNSHINE_ENABLE_DRM=ON
+      - -DSUNSHINE_ENABLE_CUDA=ON
+      - -DSUNSHINE_CONFIGURE_FLATPAK=ON
+    post-install:
+      - install -D $FLATPAK_BUILDER_BUILDDIR/packaging/linux/flatpak/scripts/* /app/bin
+      - install -D $FLATPAK_BUILDER_BUILDDIR/sunshine.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -D $FLATPAK_ID.sh $FLATPAK_DEST/bin/$FLATPAK_ID.sh
+      - install -D $FLATPAK_ID.metainfo.xml $FLATPAK_DEST/share/metainfo/$FLATPAK_ID.metainfo.xml
+      - install -D $FLATPAK_ID.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
+    sources:
+      - npm-generated-sources.json
+      - type: git
+        url: https://github.com/LizardByte/Sunshine.git
+        commit: d70d084f9fbb4e0150977a89d94937418a3ccf9c
+        tag: v0.19.1
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: patch
+        path: spawn-host.patch
+      - type: file
+        path: dev.lizardbyte.app.sunshine.desktop
+      - type: file
+        path: dev.lizardbyte.app.sunshine.metainfo.xml
+      - type: file
+        path: dev.lizardbyte.app.sunshine.sh
+      - type: shell
+        commands:
+          - npm install --offline --cache=flatpak-node/npm-cache
