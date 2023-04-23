@@ -1,0 +1,229 @@
+id: br.gov.fazenda.receita.irpf2023
+runtime: org.gnome.Platform
+runtime-version: '44'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+tags:
+  - proprietary
+command: irpf2023
+
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=cups # Printing doesn't really work righ now: https://github.com/flatpak/flatpak/issues/3355
+  - --share=ipc
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+  # The next two permissions (plus the GNOME runtime) are needed to make most clickable URLs within the app open correctly.
+  - --talk-name=org.gtk.vfs.*
+  - --filesystem=xdg-run/gvfsd
+  - --filesystem=xdg-documents # Useful place to save PDF files.
+  - --filesystem=~/ProgramasRFB:create # This path is hardcoded by the app to save all kinds of tax data.
+  - --persist=.java # In-app preferences are stored in: ~/.java/.userPrefs/serpro
+  - --persist=.receitanet # Log files, tokens and whatnot.
+  - --persist=.rfb # User-provided form data (such as CPF and CNPJ numbers) are stored in: ~/.rfb
+
+modules:
+  - name: irpf2023
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/bin irpf2023
+      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
+      - install -Dm644 icon-64.png /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+      - install -Dm644 -t /app/share/$FLATPAK_ID irpf.jar pgd-updater.jar
+      - cp -r --no-preserve=mode help/ lib/ lib-modulos/ /app/share/$FLATPAK_ID
+      # Workaround to make the clickable link on the "About" window open with the default web browser.
+      - ln -s /usr/bin/xdg-open /app/bin/firefox
+    sources:
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/arquivos/IRPF2023-1.2.zip
+        sha256: d24ae893e0e3e5f680b85b0be5a663053c47af0d8148406732636fdedb8ad65e
+        x-checker-data:
+          type: html
+          url: https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/download/pgd/dirpf
+          version-pattern: /arquivos/IRPF2023-([\d.]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/arquivos/IRPF2023-$version.zip
+          is-main-source: true
+      - type: script
+        dest-filename: irpf2023
+        commands:
+          - exec java -jar /app/share/br.gov.fazenda.receita.irpf2023/irpf.jar $@
+      - type: file
+        path: br.gov.fazenda.receita.irpf2023.metainfo.xml
+      - type: file
+        path: br.gov.fazenda.receita.irpf2023.desktop
+      - type: file
+        path: icons/icon-64.png
+      - type: file
+        path: icons/icon-128.png
+      - type: file
+        path: icons/icon-256.png
+
+  # The zipped XML files in this module are meant to be updated by the app automatically at startup.
+  # However, because we're initially installing them to /app/share, the app won't be able to update
+  # them like usual because that's a read-only path, so we must do it ourselves.
+  #
+  # To make this tedious process easier, I made a Python script to assist me in keeping these files
+  # always up to date. To do so, run:
+  #
+  # ./tools/update-zip-assets.py -m br.gov.fazenda.receita.irpf2023.yaml -x -y 2023
+  #
+  # If there are new updates, this manifest file will be updated automatically.
+  - name: irpf_xml
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 *.xml /app/share/$FLATPAK_ID/lib/resources
+    sources:
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/AJUST__20221227_20230308072724.zip
+        sha256: b341020c9291993adccd5767d8ed3b246a95e9ddfb09ef04bbda7abfdaf12ab9
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: AJUST__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/AJUST__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BANCO__20230427_20230427021557.zip
+        sha256: 7989df6c9b6e909988a3691df5cb06e2dd67d15e268a59d861a74284532be9cc
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: BANCO__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BANCO__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BBENS__20230427_20230427021557.zip
+        sha256: e0a83d531d829c9a1f334ab6e0130d290166fa83b82c4952d3d92cc0cf4e5d9c
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: BBENS__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BBENS__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BENSD__20230308_20230308072724.zip
+        sha256: 6ef2e316a51255456c5ae4481797ebac7843f81210d66f191001a0f5ba6e448d
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: BENSD__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/BENSD__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/CFVAL__20230228_20230308072724.zip
+        sha256: 03989cdf5a56b4fd1b701904835ddcd5283d65cda7627ab3faffa436ad79a047
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: CFVAL__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/CFVAL__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/DEPEN__20221227_20230308072724.zip
+        sha256: 161976aba2091bbaae99dc04193b30958bff099d04644069b0a7e50490727d8b
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: DEPEN__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/DEPEN__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/DIVID__20221227_20230308072724.zip
+        sha256: c1f020b0aacb5e5c709fb8b52a34442742157a4b45684ce095724d4e5b3b22c3
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: DIVID__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/DIVID__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/ECA__20230309_20230309021614.zip
+        sha256: 92ebca5e0f9d43d6a11909e248c8026d5526a24669c888f50d41f4d35e0ebfff
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: ECA__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/ECA__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/IDOSO__20230216_20230308072724.zip
+        sha256: 250a3ec556c13dc6e107b072ab986dbf00b55751c341d99df578934953d21e42
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: IDOSO__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/IDOSO__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/LINKS__20230411_20230412021636.zip
+        sha256: be8d8f31c2b244bb19ec569034f708805e4a8b21f0945b787c30e55c7e9844bb
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: LINKS__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/LINKS__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/MSGS__20230315_20230315021555.zip
+        sha256: 396b57c5ba26d041b391a492dacb872016919d76a8ded52d33147bce6bac26a3
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: MSGS__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/MSGS__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/NATOC__20221227_20230308072724.zip
+        sha256: c4b355d142ee5ce011826a7fda63587fe46fe658ae40971bf354378bb8a157a1
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: NATOC__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/NATOC__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/OCPRI__20221227_20230308072724.zip
+        sha256: 70146704c478dd341982e02bea17cd999da95046f13765a9eba23db7cc1dec41
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: OCPRI__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/OCPRI__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/PAIS__20221227_20230308072724.zip
+        sha256: ff57272f3ea46411e6df472d3f475002e39d3cbb9fc9aebcaa62c83643549c64
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: PAIS__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/PAIS__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/PGTOS__20230307_20230308072724.zip
+        sha256: 5c9f96d90ab62ba43a7b800afcfbeae7973108ce47f4a604b2744215041de138
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: PGTOS__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/PGTOS__$version.zip
+      - type: archive
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/RENDI__20230307_20230308072724.zip
+        sha256: 5d81938a84db81cb0568e5793c431beebbb5006d0db7060b34edd014975bdc0a
+        strip-components: 2
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/latest.xml
+          version-pattern: RENDI__([\d_]+)\.zip
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2023/irpf/update/RENDI__$version.zip
+    modules:
+      - name: openjdk
+        buildsystem: simple
+        build-commands:
+          - /usr/lib/sdk/openjdk11/install.sh
