@@ -7,19 +7,4 @@ and that finally allowed me to build a flatpak :)
 
 ## Notes:
 
-Build commands:
-```bash
-python flatpak-pip-generator-fix --runtime='org.freedesktop.Sdk//22.08' --yaml --output pypi-dependencies --requirements-file='requirements.txt'
-```
-
-```bash
-flatpak-builder --repo=myrepo --force-clean build-dir io.github.voxelcubes.deepqt.yaml
-```
-
-```bash
-flatpak build-bundle myrepo deepqt.flatpak io.github.voxelcubes.deepqt 
-```
-
-```bash
-flatpak install --user deepqt.flatpak   
-```
+See the Makefile for local test builds.
