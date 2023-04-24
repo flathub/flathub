@@ -13,11 +13,11 @@ python flatpak-pip-generator-fix --runtime='org.freedesktop.Sdk//22.08' --yaml -
 ```
 
 ```bash
-flatpak-builder --repo=myrepo --force-clean build-dir com.github.voxelcubes.deepqt.yaml
+flatpak-builder --repo=myrepo --force-clean build-dir io.github.voxelcubes.deepqt.yaml
 ```
 
 ```bash
-flatpak build-bundle myrepo deepqt.flatpak com.github.voxelcubes.deepqt 
+flatpak build-bundle myrepo deepqt.flatpak io.github.voxelcubes.deepqt 
 ```
 
 ```bash
