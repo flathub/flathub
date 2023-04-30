@@ -1,0 +1,94 @@
+app-id: com.moddb.TotalChaosRetro
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: gzdoom.sh
+finish-args:
+  - --device=all
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --env=DOOMWADDIR=/app/share/games/doom
+  - --persist=.config/gzdoom
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+  - /share/man
+modules:
+  - name: fluidsynth
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DLIB_SUFFIX=
+    sources:
+      - type: archive
+        url: https://github.com/FluidSynth/fluidsynth/archive/v2.3.1.tar.gz
+        sha256: d734e4cf488be763cf123e5976f3154f0094815093eecdf71e0e9ae148431883
+
+  - name: zmusic
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      - type: git
+        url: https://github.com/ZDoom/ZMusic.git
+        commit: 75d2994b4b1fd6891b20819375075a2976ee34de
+
+  - name: gzdoom-legacy
+    buildsystem: cmake-ninja
+    build-options:
+      cxxflags: -std=c++17
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DSEND_ANON_STATS=OFF
+    sources:
+      - type: archive
+        url: https://zdoom.org/files/gzdoom/src/gzdoom-src-g3.8.2_legacy.zip
+        sha256: 0c3af7b0af6b59f1ecbcc50e4fc0f70d6b1a33f554f63998a421bbc4da2913e6
+      - type: script
+        commands:
+          - "[ ! -f ~/.config/gzdoom/gzdoom.ini ] && cp /app/share/games/doom/gzdoom_portable.ini ~/.config/gzdoom/gzdoom.ini"
+          - "gzdoom -file totalchaos.pk3 +fluid_patchset /app/share/games/doom/soundfonts/gzdoom.sf2 $@"
+        dest-filename: gzdoom.sh
+    post-install:
+      - install -D gzdoom.sh /app/bin/gzdoom.sh
+
+  - name: freedoom2
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/freedoom/freedoom/releases/download/v0.12.1/freedoom-0.12.1.zip
+        sha256: f42c6810fc89b0282de1466c2c9c7c9818031a8d556256a6db1b69f6a77b5806
+    build-commands:
+      - install -Dm 644 freedoom2.wad /app/share/games/doom
+
+  - name: totalchaos-retro
+    buildsystem: simple
+    sources:
+      - type: archive
+        path: totalchaos_dc_retro_b5.zip
+        sha256: 0d8a87edc4fc4ab84495b23bfe655742721195a094dbe604072183842f84336e
+#      - type: archive
+#        url: https://dl.flathub.org/sources/com.moddb.TotalChaosRetro/totalchaos_dc_retro_b5.zip
+#        sha256: 0d8a87edc4fc4ab84495b23bfe655742721195a094dbe604072183842f84336e
+      - type: file
+        path: com.moddb.TotalChaosRetro.appdata.xml
+      - type: file
+        path: com.moddb.TotalChaosRetro.desktop
+      - type: file
+        path: com.moddb.TotalChaosRetro.png
+    build-commands:
+      # Patch shaders to avoid GZDoom runtime errors
+      - unzip totalchaos.pk3 SHADERS/old.fp
+      - sed -i 's/texture2D/texture/g' SHADERS/old.fp
+      - zip -u totalchaos.pk3 SHADERS/old.fp
+      - rm SHADERS -rf
+      # Install files
+      - install -Dm 644 totalchaos.pk3 -t /app/share/games/doom
+      - install -Dm 644 gzdoom_portable.ini -t /app/share/games/doom
+      - install -Dm 644 com.moddb.TotalChaosRetro.appdata.xml -t /app/share/appdata
+      - install -Dm 644 com.moddb.TotalChaosRetro.desktop -t /app/share/applications
+      - install -Dm 644 com.moddb.TotalChaosRetro.png -t /app/share/icons/hicolor/128x128/apps
