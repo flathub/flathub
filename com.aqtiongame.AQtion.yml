@@ -59,6 +59,26 @@ modules:
       - make
       - make install
 
+  - name: rsync
+    config-opts:
+      - --prefix=${FLATPAK_DEST}
+      - --with-included-popt
+      - --with-included-zlib
+      - --host=x86
+      - --disable-xxhash
+      - --disable-md2man
+    sources:
+      - type: archive
+        url: https://download.samba.org/pub/rsync/src/rsync-3.2.7.tar.gz
+        sha256: 4e7d9d3f6ed10878c58c5fb724a67dacf4b6aac7340b13e488fb2dc41346f2bb
+        x-checker-data:
+          type: anitya
+          project-id: 4217
+          stable-only: true
+          url-template: https://download.samba.org/pub/rsync/src/rsync-$version.tar.gz
+    cleanup:
+      - /share/man
+
   - name: discord_sdk
     buildsystem: simple
     sources:
@@ -83,13 +103,12 @@ modules:
         - -Dwerror=false
         - -Daqtion-build=true
         - -Ddiscord-sdk=true
-        - -Ddatadir=~/.var/app/com.aqtiongame.aqtion/data/aqtion
-        - -Dhomedir=~/.var/app/com.aqtiongame.aqtion/data/aqtion
+        - -Ddatadir=~/.var/app/com.aqtiongame.aqtion/data
+        - -Dhomedir=~/.var/app/com.aqtiongame.aqtion/data
         - -Dwindows-crash-dumps=disabled
         - -Dwayland=disabled
         - -Dwrap_mode=nofallback
     post-install:
-      - install -Dm775 ../flatpak-wrapper -t ${FLATPAK_DEST}/bin/
       - install -Dm644 ../256_aqtion.png -t ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps
       - install -Dm644 ../128_aqtion.png -t ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps
       - install -Dm644 ../64_aqtion.png -t ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps
@@ -110,16 +129,33 @@ modules:
         path: com.aqtiongame.AQtion.metainfo.xml
       - type: file
         path: images/icon/256_aqtion.png
+      - type: file
+        path: images/icon/128_aqtion.png
+      - type: file
+        path: images/icon/64_aqtion.png
+      - type: file
+        path: images/icon/32_aqtion.png
+  
+  - name: aqtion
+    buildsystem: simple
+    build-commands:
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/baseaq ${FLATPAK_DEST}/share/applications/
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/action ${FLATPAK_DEST}/share/applications/
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/paks/zz* ${FLATPAK_DEST}/share/applications/action/
+    post-install:
+      - install -Dm775 flatpak-wrapper -t ${FLATPAK_DEST}/bin/
+    sources:
+      - type: git
+        url: https://github.com/actionquake/distrib.git
+        tag: v1.3.5
       - type: script
         dest-filename: flatpak-wrapper
         commands:
           - for i in {0..9}; do test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i; done
-          - if [ ! -f ~/.var/app/com.aqtiongame.aqtion/data/aqtion/baseaq/pak0.pkz ]; then
-            echo "Downloading the latest game files, please wait...";
-            echo "This will only happen the first time you launch this Flatpak.";
-            wget -q -O content.zip https://github.com/actionquake/distrib/releases/download/v1.3.5-rc6/aqtion-v1.3.5-rc6-content-only.zip;
-            unzip -o content.zip -d ~/.var/app/com.aqtiongame.aqtion/data/;
-            rm -rf content.zip || true;
-            /app/bin/q2pro "$@";
-            else /app/bin/q2pro "$@";
-            fi
+          #- if [ ! -f ~/.var/app/com.aqtiongame.aqtion/data/baseaq/pics/colormap.pcx ]; then
+          - echo "Updating necessary game files, please wait...";
+            mkdir -p ${XDG_DATA_HOME}/baseaq/;
+            rsync -aq /app/share/applications/baseaq/pak0/* ${XDG_DATA_HOME}/baseaq/;
+            rsync -aq /app/share/applications/baseaq/pak1/* ${XDG_DATA_HOME}/baseaq/;
+            rsync -aq /app/share/applications/action/* ${XDG_DATA_HOME}/;
+            /app/bin/q2pro "$@"
