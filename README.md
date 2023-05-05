@@ -1,5 +1,7 @@
 # Roccat-tools
 
+You can read these instruction online at https://github.com/flathub/net.sourceforge.roccat.roccat-tools.
+
 ## Add udev rules for your devices.
 
 1. List supported devices rules :
