@@ -1,0 +1,147 @@
+---
+app-id: org.freedesktop.appstream.generator
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+ - org.freedesktop.Sdk.Extension.ldc
+ - org.freedesktop.Sdk.Extension.llvm14
+ - org.freedesktop.Sdk.Extension.node18
+command: appstream-generator
+separate-locales: false
+
+build-options:
+  append-path: /usr/lib/sdk/ldc/bin
+
+finish-args:
+ - --filesystem=host
+ - --share=network
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '22.08'
+    directory: lib/ffmpeg
+    add-ld-path: '.'
+    autodelete: false
+
+cleanup-commands:
+  - mkdir -p $FLATPAK_DEST/lib/ffmpeg
+
+cleanup:
+ - /include
+ - /lib/pkgconfig
+ - /lib/*.a
+ - /lib/*.la
+ - /share/installed-tests
+ - /share/gir-1.0
+ - /bin/girtod
+
+modules:
+- name: ldc-runtime
+  buildsystem: simple
+  build-commands:
+    - mkdir -p ${FLATPAK_DEST}/lib
+    - cp -r /usr/lib/sdk/ldc/lib/lib{druntime,phobos2}-ldc-shared.so* ${FLATPAK_DEST}/lib/
+
+- name: libyaml
+  sources:
+   - type: git
+     url: https://github.com/yaml/libyaml.git
+     tag: '0.2.5'
+
+- name: libxmlb
+  buildsystem: meson
+  config-opts:
+   - -Dstemmer=true
+   - -Dintrospection=false
+   - -Dgtkdoc=false
+   - -Dstemmer=false
+  cleanup:
+   - /share/man/man1/*
+   - /bin/*
+   - /app/libexec/installed-tests
+  sources:
+   - type: git
+     url: https://github.com/hughsie/libxmlb.git
+     tag: '0.3.10'
+
+- name: appstream
+  buildsystem: meson
+  config-opts:
+   - -Dcompose=true
+   - -Dapidocs=false
+   - -Dstemming=false
+  cleanup:
+   - /share/metainfo/*
+  sources:
+   - type: git
+     url: https://github.com/ximion/appstream.git
+     tag: v0.16.2
+
+- name: lmdb
+  no-autogen: true
+  make-install-args:
+   - prefix=/app
+  subdir: libraries/liblmdb
+  post-install:
+   - install -D lmdb.pc /app/lib/pkgconfig/lmdb.pc
+  cleanup:
+   - /share/man/man1/*
+   - /bin/*
+  sources:
+   - type: archive
+     url: https://git.openldap.org/openldap/openldap/-/archive/LMDB_0.9.30/openldap-LMDB_0.9.30.tar.bz2
+     sha256: eb16ed6fd535b85857c331b93e7f9fd790bc9fcea3fa26162befdc1ba2775668
+   - type: file
+     path: extra/lmdb.pc
+     dest: libraries/liblmdb/
+
+- name: gir-to-d
+  buildsystem: meson
+  build-options:
+    env:
+      # NOTE: we need --allinst here to work around a compiler bug in the
+      # Flatpak-packaged version of LDC that makes it fail to generate
+      # code for a necessary template instantiation
+      DFLAGS: -O -g -release -wi --allinst
+  sources:
+   - type: git
+     url: https://github.com/gtkd-developers/gir-to-d.git
+     tag: v0.23.1
+
+- name: glib-d
+  buildsystem: meson
+  sources:
+   - type: git
+     url: https://github.com/gtkd-developers/GlibD.git
+     tag: v2.4.2
+
+- name: optipng
+  build-options:
+    config-opts:
+     - --with-system-libs
+  sources:
+   - type: archive
+     url: https://netcologne.dl.sourceforge.net/project/optipng/OptiPNG/optipng-0.7.7/optipng-0.7.7.tar.gz
+     sha256: 4f32f233cef870b3f95d3ad6428bfe4224ef34908f1b42b0badf858216654452
+
+- name: appstream-generator
+  buildsystem: meson
+  config-opts:
+   - -Ddownload-js=false
+  build-options:
+    append-path: /usr/lib/sdk/node18/bin
+    env:
+      XDG_CACHE_HOME: /run/build/appstream-generator/flatpak-node/cache
+  build-commands:
+   - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+   - HOME=$PWD MESON_SOURCE_ROOT=$PWD/.. ASGEN_YARN_EXTRA_ARGS="--offline --ignore-scripts" ../contrib/setup/build_js.sh
+  sources:
+   - yarn-sources.json
+   - type: git
+     url: https://github.com/ximion/appstream-generator.git
+     tag: v0.9.0
+   - type: patch
+     path: patches/asgen-add-yarn-lock.patch
+   - type: patch
+     path: patches/asgen-metainfo-add-release.patch
