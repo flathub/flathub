@@ -4,8 +4,6 @@ This project contains files to build [Total Chaos - Retro Edition](https://www.m
 
 Retro Edition has reduced texture resolutions and poly-counts for improved performance. Save files from other versions of Total Chaos are not compatible.
 
-The game runs using the GZDoom Legacy v3.8.2 engine to ensure more compatibility with old computers. It requires OpenGL 2 or later and at least 1GB of free RAM.
-
 This project is based on [com.moddb.TotalChaos](https://github.com/flathub/com.moddb.TotalChaos).
 
 ### Tips for gaming
