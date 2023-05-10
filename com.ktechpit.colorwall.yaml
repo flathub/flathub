@@ -1,0 +1,89 @@
+app-id: com.ktechpit.colorwall
+runtime: org.kde.Platform
+runtime-version: 5.15-22.08
+sdk: org.kde.Sdk
+command: colorwall
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --device=all
+  - --env=PACKAGE_TYPE=flatpak
+  - --talk-name=org.freedesktop.FileManager1
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+
+modules:
+  - name: lzo
+    config-opts:
+      - --enable-shared
+      - --disable-static
+    cleanup:
+      - /include
+      - /share/doc
+      - '*.la'
+      - /lib/*.so
+    sources:
+      - type: archive
+        url: http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+
+
+  - name: squashfs-tools
+    buildsystem: simple
+    build-commands:
+      - XZ_SUPPORT=1 LZO_SUPPORT=1 make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    cleanup:
+      - '*'
+    sources:
+    - type: git
+      url: https://github.com/plougher/squashfs-tools.git
+      tag: '4.5'
+      commit: '0496d7c3de3e09da37ba492081c86159806ebb07'
+
+
+  - name: libgumbo
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/google/gumbo-parser/archive/v0.10.1.tar.gz
+        sha256: 28463053d44a5dfbc4b77bcf49c8cee119338ffa636cc17fc3378421d714efad
+    cleanup:
+      - /lib/pkgconfig
+      - /include
+      - '*.a'
+      - '*.la'
+
+  - name: colorwall
+    buildsystem: simple
+    build-commands:
+      - unsquashfs -no-progress tPiGTcpRYwWhmLFqKMefGzuC6isfwbci_6.snap
+      - install -Dm755 squashfs-root/usr/bin/colorwall ${FLATPAK_DEST}/bin/colorwall
+      - install -d ${FLATPAK_DEST}/lib
+      - mv squashfs-root/usr/lib/* ${FLATPAK_DEST}/lib/
+      - install -Dm644 squashfs-root/meta/gui/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/com.ktechpit.colorwall.png
+      - install -Dm644 squashfs-root/usr/share/applications/colorwall.desktop ${FLATPAK_DEST}/share/applications/colorwall.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/colorwall.desktop
+      - install -Dm644 com.ktechpit.colorwall.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.ktechpit.colorwall.metainfo.xml
+      - cp -r hicolor/* ${FLATPAK_DEST}/share/icons/hicolor/
+    sources:
+      - type: file
+        path: dist/linux/com.ktechpit.colorwall.xml
+      - type: dir
+        path: dist/linux/
+      - type: file
+        # curl -H 'Snap-Device-Series: 16' https://api.snapcraft.io/v2/snaps/info/colorwall | jq '."channel-map"' | jq '.[]' | jq '[."download"."url"]' | grep -m1 https | tr -d ' ' | tr -d '"'
+        # also update build-command whenever update url
+        url: https://api.snapcraft.io/api/v1/snaps/download/tPiGTcpRYwWhmLFqKMefGzuC6isfwbci_6.snap
+        only-arches:
+          - x86_64
+        sha256: f5a8873ced77b7649cbafd8e0f5006a831131da187e695af5876e2b24edad442
