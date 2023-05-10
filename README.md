@@ -6,12 +6,6 @@ This version of Minion is using Java. As it requires JavaFX and it's not provide
 
 It is also compatible with a flatpak installation of ESO through flatpak Steam.
 
-## Disclaimer
-Because of how flatpak and minion work, the app can not be updated automatically by itself. Meaning all of the micro-changes in-between will not show up
-unless they post a new version of it and it's updated here.
-
-For some reason it is not possible to run this flatpak from a toolbox container on fedora. It works when you install it in a container and then just use the host to start it.
-
 ## Building and runnning
 
 Building:
@@ -29,10 +23,6 @@ Checking Minion version for updates:
 Running:
 
     flatpak run gg.minion.Minion
-
-Running from a silverblue toolbox container:
-
-    DISPLAY=:0 flatpak run gg.minion.Minion
 
 ## Screenshots
 
