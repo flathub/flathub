@@ -5,20 +5,20 @@ Flatpak wrapper for Minion, a premier addon manager.
 
 ### Regarding Hardware Acceleration
 
-As hardware acceleration doesn't work well with XWayland under Wayland with the closed-source Nvidia drivers, hardware acceleration was disabled to have higher coverage for GPUs.
+As hardware acceleration doesn't work well with XWayland under Wayland with the closed-sourced Nvidia drivers, hardware acceleration was disabled to have higher coverage for GPUs.
 
 One may enable hardware acceleration by running `flatpak override --user --device=dri gg.minion.Minion`. Be wary, this will cause flickering for Minion if you're using the proprietary Nvidia driver while running Wayland.
 
 ### First start
 
-After running minion for the first time while there are mods in the folder, minion will seem frozen. After a restart Minion will start working again and the issue shouldn't occur anymore.
+After running minion for the first time while there are AddOns already installed in the newly-added folder, minion will seem frozen. After a restart Minion will start working again and the issue shouldn't occur anymore.
 
 ## Addon snapshots
 
-Minion doesn't support backups of AddOns under Linux as the expected file system path differs than on wdinows. This should be addressed in Minion 4 when it comes out.
+Minion doesn't support backups of AddOns under Linux as the expected file system path differs from Windows. This should be addressed in Minion 4 when it comes out.
 
 ## Information about the project
-This version of Minion is using Java. As it requires JavaFX and it's not provided by OpenJDK it was settled to use [Bellsoft Liberica JRE 11](https://bell-sw.com/pages/downloads/) as it provided all the needed libraries. 
+This version of Minion is using Java. As it requires JavaFX and it's not provided by OpenJDK it was settled to use [Bellsoft Liberica JRE 11](https://bell-sw.com/pages/downloads/) as it provided all the needed libraries.
 
 It is also compatible with a flatpak installation of ESO through flatpak Steam and hopefully Lutris.
 
