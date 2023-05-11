@@ -11,7 +11,7 @@ One may enable hardware acceleration by running `flatpak override --user --devic
 
 ### First start
 
-After running minion for the first time while there are AddOns already installed in the newly-added folder, minion will seem frozen. After a restart Minion will start working again and the issue shouldn't occur anymore.
+After running minion for the first time while there are AddOns already installed in a newly-added game folder, minion will seem frozen. After a restart Minion will start working again and the issue shouldn't occur anymore.
 
 ## Addon snapshots
 
