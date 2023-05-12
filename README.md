@@ -43,11 +43,17 @@ Running:
 ## Screenshots
 
 ### Showing installed addons
-![installed](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/installed.png)
+![installed](./screenshots/installed.png)
 
 ### Showing available addons for download
-![find](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/find.png)
+![find](./screenshots/find.png)
 
 
 ### Searching for addons
-![search](https://raw.githubusercontent.com/zastrixarundell/flathub/gg.minion.Minion/screenshots/search.png)
+![search](./screenshots/search.png)
+
+### Backup
+![backup](./screenshots/backup.png)
+
+### Archived Backup
+![archived backup](./screenshots/archived-backup.png)
