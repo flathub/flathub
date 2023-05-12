@@ -15,7 +15,7 @@ After running minion for the first time while there are AddOns already installed
 
 ## Addon snapshots
 
-Minion doesn't support backups of AddOns under Linux as the expected file system path differs from Windows. This should be addressed in Minion 4 when it comes out.
+Minion doesn't support backups of AddOns with system links as they will appear blank. Using the direct path ex. `~/.var/app/com.valvesoftware.Steam/...` will work.
 
 ## Information about the project
 This version of Minion is using Java. As it requires JavaFX and it's not provided by OpenJDK it was settled to use [Bellsoft Liberica JRE 11](https://bell-sw.com/pages/downloads/) as it provided all the needed libraries.
