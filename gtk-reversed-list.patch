@@ -1,0 +1,220 @@
+From c9aeb732da3e84eae84716ba0a8abc45db685f98 Mon Sep 17 00:00:00 2001
+From: Marco Melorio <marco.melorio@protonmail.com>
+Date: Sun, 23 Apr 2023 18:35:06 +0200
+Subject: [PATCH 1/1] listbase: Add "reversed" property
+
+---
+ gtk/gtklistbase.c | 96 ++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 82 insertions(+), 14 deletions(-)
+
+diff --git a/gtk/gtklistbase.c b/gtk/gtklistbase.c
+index 7044978b26..1d90a38c54 100644
+--- a/gtk/gtklistbase.c
++++ b/gtk/gtklistbase.c
+@@ -66,6 +66,7 @@ struct _GtkListBasePrivate
+   GtkListItemManager *item_manager;
+   GtkSelectionModel *model;
+   GtkOrientation orientation;
++  gboolean reversed;
+   GtkAdjustment *adjustment[2];
+   GtkScrollablePolicy scroll_policy[2];
+ 
+@@ -96,6 +97,7 @@ enum
+   PROP_HADJUSTMENT,
+   PROP_HSCROLL_POLICY,
+   PROP_ORIENTATION,
++  PROP_REVERSED,
+   PROP_VADJUSTMENT,
+   PROP_VSCROLL_POLICY,
+ 
+@@ -147,10 +149,23 @@ static gboolean
+ gtk_list_base_adjustment_is_flipped (GtkListBase    *self,
+                                      GtkOrientation  orientation)
+ {
+-  if (orientation == GTK_ORIENTATION_VERTICAL)
+-    return FALSE;
++  GtkListBasePrivate *priv = gtk_list_base_get_instance_private (self);
++  gboolean rtl = gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL;
+ 
+-  return gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL;
++  if (priv->orientation == GTK_ORIENTATION_VERTICAL)
++    {
++      if (orientation == GTK_ORIENTATION_VERTICAL)
++        return priv->reversed;
++      else
++        return rtl;
++    }
++  else
++    {
++      if (orientation == GTK_ORIENTATION_HORIZONTAL)
++        return rtl ^ priv->reversed;
++      else
++        return false;
++    }
+ }
+ 
+ static void
+@@ -324,8 +339,7 @@ gtk_list_base_move_focus (GtkListBase    *self,
+ {
+   GtkListBasePrivate *priv = gtk_list_base_get_instance_private (self);
+ 
+-  if (orientation == GTK_ORIENTATION_HORIZONTAL &&
+-      gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL)
++  if (gtk_list_base_adjustment_is_flipped (self, orientation))
+     steps = -steps;
+ 
+   if (orientation == priv->orientation)
+@@ -614,6 +628,10 @@ gtk_list_base_get_property (GObject    *object,
+       g_value_set_enum (value, priv->scroll_policy[GTK_ORIENTATION_HORIZONTAL]);
+       break;
+ 
++    case PROP_REVERSED:
++      g_value_set_boolean (value, priv->reversed);
++      break;
++
+     case PROP_ORIENTATION:
+       g_value_set_enum (value, priv->orientation);
+       break;
+@@ -679,6 +697,22 @@ gtk_list_base_set_scroll_policy (GtkListBase         *self,
+                             : properties[PROP_VSCROLL_POLICY]);
+ }
+ 
++static void
++gtk_list_base_set_reversed (GtkListBase *self,
++                            gboolean     reversed)
++{
++  GtkListBasePrivate *priv = gtk_list_base_get_instance_private (self);
++
++  if (priv->reversed == reversed)
++    return;
++
++  priv->reversed = reversed;
++
++  gtk_widget_queue_resize (GTK_WIDGET (self));
++
++  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_REVERSED]);
++}
++
+ static void
+ gtk_list_base_set_property (GObject      *object,
+                             guint         property_id,
+@@ -698,6 +732,10 @@ gtk_list_base_set_property (GObject      *object,
+       gtk_list_base_set_scroll_policy (self, GTK_ORIENTATION_HORIZONTAL, g_value_get_enum (value));
+       break;
+ 
++    case PROP_REVERSED:
++      gtk_list_base_set_reversed (self, g_value_get_boolean (value));
++      break;
++
+     case PROP_ORIENTATION:
+       {
+         GtkOrientation orientation = g_value_get_enum (value);
+@@ -1134,6 +1172,18 @@ gtk_list_base_class_init (GtkListBaseClass *klass)
+       g_param_spec_override ("vscroll-policy",
+                              g_object_interface_find_property (iface, "vscroll-policy"));
+ 
++  /**
++   * GtkListBase:reversed:
++   *
++   * Whether to show the list in reverse or not.
++   *
++   * Since: 4.8
++   */
++  properties[PROP_REVERSED] =
++    g_param_spec_boolean ("reversed", NULL, NULL,
++                          FALSE,
++                          G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY);
++
+   /**
+    * GtkListBase:orientation:
+    *
+@@ -1311,7 +1361,7 @@ update_autoscroll (GtkListBase *self,
+   else
+     delta_x = 0;
+ 
+-  if (gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL)
++  if (gtk_list_base_adjustment_is_flipped (self, GTK_ORIENTATION_HORIZONTAL))
+     delta_x = - delta_x;
+ 
+   height = gtk_widget_get_height (GTK_WIDGET (self));
+@@ -1323,6 +1373,9 @@ update_autoscroll (GtkListBase *self,
+   else
+     delta_y = 0;
+ 
++  if (gtk_list_base_adjustment_is_flipped (self, GTK_ORIENTATION_VERTICAL))
++    delta_y = - delta_y;
++
+   if (delta_x != 0 || delta_y != 0)
+     add_autoscroll (self, delta_x, delta_y);
+   else
+@@ -1354,20 +1407,27 @@ gtk_list_base_size_allocate_child (GtkListBase *self,
+                                    int          height)
+ {
+   GtkAllocation child_allocation;
+-  int self_width;
++  int self_width, self_height;
+ 
+   self_width = gtk_widget_get_width (GTK_WIDGET (self));
++  self_height = gtk_widget_get_height (GTK_WIDGET (self));
+ 
+   if (gtk_list_base_get_orientation (GTK_LIST_BASE (self)) == GTK_ORIENTATION_VERTICAL)
+     {
+-      if (_gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_LTR)
++      if (gtk_list_base_adjustment_is_flipped(self, GTK_ORIENTATION_HORIZONTAL))
++        {
++          child_allocation.x = self_width - x - width;
++        }
++      else
+         {
+           child_allocation.x = x;
+-          child_allocation.y = y;
++        }
++      if (gtk_list_base_adjustment_is_flipped(self, GTK_ORIENTATION_VERTICAL))
++        {
++          child_allocation.y = self_height - y - height;
+         }
+       else
+         {
+-          child_allocation.x = self_width - x - width;
+           child_allocation.y = y;
+         }
+       child_allocation.width = width;
+@@ -1375,14 +1435,20 @@ gtk_list_base_size_allocate_child (GtkListBase *self,
+     }
+   else
+     {
+-      if (_gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_LTR)
++      if (gtk_list_base_adjustment_is_flipped(self, GTK_ORIENTATION_HORIZONTAL))
++        {
++          child_allocation.x = self_width - y - height;
++        }
++      else
+         {
+           child_allocation.x = y;
+-          child_allocation.y = x;
++        }
++      if (gtk_list_base_adjustment_is_flipped(self, GTK_ORIENTATION_VERTICAL))
++        {
++          child_allocation.y = self_height - x - width;
+         }
+       else
+         {
+-          child_allocation.x = self_width - y - height;
+           child_allocation.y = x;
+         }
+       child_allocation.width = height;
+@@ -1446,8 +1512,10 @@ gtk_list_base_widget_to_list (GtkListBase *self,
+   GtkListBasePrivate *priv = gtk_list_base_get_instance_private (self);
+   GtkWidget *widget = GTK_WIDGET (self);
+ 
+-  if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_RTL)
++  if (gtk_list_base_adjustment_is_flipped (self, GTK_ORIENTATION_HORIZONTAL))
+     x_widget = gtk_widget_get_width (widget) - x_widget;
++  if (gtk_list_base_adjustment_is_flipped (self, GTK_ORIENTATION_VERTICAL))
++    y_widget = gtk_widget_get_height (widget) - y_widget;
+ 
+   gtk_list_base_get_adjustment_values (self, OPPOSITE_ORIENTATION (priv->orientation), across_out, NULL, NULL);
+   gtk_list_base_get_adjustment_values (self, priv->orientation, along_out, NULL, NULL);
+-- 
+2.40.0
+
