@@ -5,6 +5,7 @@ I played this game with my dad three decades ago!!
 
 Known issues:
 
-- [ ] Needs a desktop file
+- [x] Needs a desktop file
+- [ ] Needs a (flathub-compliant) icon
 - [ ] Needs AppStream metainfo
 - [ ] Close button on titlebar does not close the game. In fact I can't figure out how to quit at all!
