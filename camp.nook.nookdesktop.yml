@@ -1,0 +1,78 @@
+app-id: camp.nook.nookdesktop
+
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '22.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+
+command: run.sh
+separate-locales: false
+
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=fallback-x11
+  # Wayland access
+  - --socket=wayland
+  # Needs to talk to the network:
+  - --share=network
+  # Audio access
+  - --socket=pulseaudio
+
+build-options:
+  append-path: /usr/lib/sdk/node18/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+
+modules:
+
+  - name: nook-desktop
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/nook-desktop/flatpak-node/cache
+        npm_config_cache: /run/build/nook-desktop/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Copy icons
+      - install -Dm644 icons/nookTray.png /app/main/resources/icons/nookTray.png
+      - install -Dm644 icons/nook.png /app/main/resources/icons/nook.png
+      # Export app icon
+      - install -Dm644 icons/nook.png /app/share/icons/hicolor/512x512/apps/camp.nook.nookdesktop.png
+      # Export desktop file
+      - install -Dm644 nook-desktop.desktop /app/share/applications/camp.nook.nookdesktop.desktop
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+    subdir: main
+
+    sources:
+
+      - type: git
+        url: https://github.com/OpenSauce04/nook-desktop.git
+        commit: bd167b53f8d39264b82e9283383e0c50e9f0c8d8
+        dest: main
+
+      - type: file
+        path: nook-desktop.desktop
+        dest: main
+
+      - generated-sources.json
+
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/nook-desktop "$@"
