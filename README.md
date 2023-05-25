@@ -28,6 +28,13 @@ flatpak install --user mypyfa com.github.Pyfa
 flatpak run com.github.Pyfa
 ```
 
+## Use existing profile
+
+Launch Pyfa and close it to create profile directory structure. Then copy existing profile to flatpak app dir
+```
+cp -a ~/.pyfa/. ~/.var/app/com.github.Pyfa/data/pyfa
+```
+
 ## How to uninstall Pyfa
 
 ```
