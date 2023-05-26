@@ -18,5 +18,5 @@ flatpak run org.flatpak.Builder build rs.ruffle.Ruffle.yaml --force-clean
 
 ### cargo-sources
 ```
-python3 ../../flatpak-builder-tools/cargo/flatpak-cargo-generator.py ./Cargo.lock -o ../cargo-sources.json
+python3 ./flatpak-builder-tools/cargo/flatpak-cargo-generator.py ./ruffle/Cargo.lock -o ./cargo-sources.json
 ```
