@@ -1,0 +1,310 @@
+diff --color -ruN wxWidgets-3.2.2.1/include/wx/defs.h wxWidgets-3.2.2.1_native/include/wx/defs.h
+--- wxWidgets-3.2.2.1/include/wx/defs.h	2023-06-01 19:49:32.132890725 +0100
++++ wxWidgets-3.2.2.1_native/include/wx/defs.h	2023-06-01 19:50:01.583608048 +0100
+@@ -3153,6 +3153,7 @@
+ 
+ /* Stand-ins for GTK types */
+ typedef struct _GtkWidget         GtkWidget;
++typedef struct _GtkNativeDialog   GtkNativeDialog;
+ typedef struct _GtkRcStyle        GtkRcStyle;
+ typedef struct _GtkAdjustment     GtkAdjustment;
+ typedef struct _GtkToolbar        GtkToolbar;
+diff --color -ruN wxWidgets-3.2.2.1/include/wx/gtk/dialog.h wxWidgets-3.2.2.1_native/include/wx/gtk/dialog.h
+--- wxWidgets-3.2.2.1/include/wx/gtk/dialog.h	2023-02-13 14:45:39.000000000 +0000
++++ wxWidgets-3.2.2.1_native/include/wx/gtk/dialog.h	2023-06-01 19:50:50.207138937 +0100
+@@ -39,6 +39,8 @@
+     virtual void EndModal( int retCode ) wxOVERRIDE;
+     virtual bool IsModal() const wxOVERRIDE;
+ 
++    GtkNativeDialog *m_nativedialog;
++
+ private:
+     // common part of all ctors
+     void Init();
+diff --color -ruN wxWidgets-3.2.2.1/src/gtk/dialog.cpp wxWidgets-3.2.2.1_native/src/gtk/dialog.cpp
+--- wxWidgets-3.2.2.1/src/gtk/dialog.cpp	2023-02-13 14:45:39.000000000 +0000
++++ wxWidgets-3.2.2.1_native/src/gtk/dialog.cpp	2023-06-01 23:14:58.901684292 +0100
+@@ -31,6 +31,7 @@
+ 
+ void wxDialog::Init()
+ {
++    m_nativedialog = NULL;
+     m_modalLoop = NULL;
+     m_modalShowing = false;
+ }
+@@ -65,6 +66,14 @@
+         EndModal( wxID_CANCEL );
+     }
+ 
++    if (m_nativedialog && GTK_IS_NATIVE_DIALOG(m_nativedialog)) {
++      if (show)
++          gtk_native_dialog_show(m_nativedialog);
++      else
++          gtk_native_dialog_hide(m_nativedialog);
++      return true;
++    }
++
+     if (show && CanDoLayoutAdaptation())
+         DoLayoutAdaptation();
+ 
+@@ -140,8 +149,12 @@
+     wxWindow * const parent = GetParentForModalDialog();
+     if ( parent )
+     {
+-        gtk_window_set_transient_for( GTK_WINDOW(m_widget),
+-                                      GTK_WINDOW(parent->m_widget) );
++        if (m_nativedialog)
++            gtk_native_dialog_set_transient_for(GTK_NATIVE_DIALOG(m_nativedialog),
++                                                GTK_WINDOW(parent->m_widget));
++        else
++            gtk_window_set_transient_for( GTK_WINDOW(m_widget),
++                                          GTK_WINDOW(parent->m_widget) );
+     }
+ 
+ #if GTK_CHECK_VERSION(2,10,0)
+@@ -156,7 +169,10 @@
+ #endif
+ 
+     // NOTE: this will cause a gtk_grab_add() during Show()
+-    gtk_window_set_modal(GTK_WINDOW(m_widget), true);
++    if (m_nativedialog)
++        gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(m_nativedialog), true);
++    else
++        gtk_window_set_modal(GTK_WINDOW(m_widget), true);
+ 
+     m_modalShowing = true;
+ 
+@@ -167,8 +183,10 @@
+     // Prevent the widget from being destroyed if the user closes the window.
+     // Needed for derived classes which bypass wxTLW::Create(), and therefore
+     // the wxTLW "delete-event" handler is not connected
+-    gulong handler_id = g_signal_connect(
+-        m_widget, "delete-event", G_CALLBACK(gtk_true), this);
++    gulong handler_id;
++    if (!m_nativedialog)
++        handler_id = g_signal_connect(
++            m_widget, "delete-event", G_CALLBACK(gtk_true), this);
+ 
+     // Run modal dialog event loop.
+     {
+@@ -176,13 +194,17 @@
+         m_modalLoop->Run();
+     }
+ 
+-    g_signal_handler_disconnect(m_widget, handler_id);
++    if (!m_nativedialog)
++        g_signal_handler_disconnect(m_widget, handler_id);
+ #if GTK_CHECK_VERSION(2,10,0)
+     if (sigId)
+         g_signal_remove_emission_hook(sigId, hookId);
+ #endif
+ 
+-    gtk_window_set_modal(GTK_WINDOW(m_widget), FALSE);
++    if (m_nativedialog)
++        gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(m_nativedialog), false);
++    else
++        gtk_window_set_modal(GTK_WINDOW(m_widget), false);
+ 
+     return GetReturnCode();
+ }
+diff --color -ruN wxWidgets-3.2.2.1/src/gtk/dirdlg.cpp wxWidgets-3.2.2.1_native/src/gtk/dirdlg.cpp
+--- wxWidgets-3.2.2.1/src/gtk/dirdlg.cpp	2023-02-13 14:45:39.000000000 +0000
++++ wxWidgets-3.2.2.1_native/src/gtk/dirdlg.cpp	2023-06-02 13:05:14.579407212 +0100
+@@ -88,42 +88,37 @@
+     if (parent)
+         gtk_parent = GTK_WINDOW( gtk_widget_get_toplevel(parent->m_widget) );
+ 
+-    m_widget = gtk_file_chooser_dialog_new(
++    m_nativedialog = GTK_NATIVE_DIALOG(gtk_file_chooser_native_new(
+                    wxGTK_CONV(m_message),
+                    gtk_parent,
+                    GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
+ #ifdef __WXGTK4__
+-                   static_cast<const char*>(wxGTK_CONV(wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_CANCEL)))),
+-#else
+-                   "gtk-cancel",
+-#endif
+-                   GTK_RESPONSE_CANCEL,
+-#ifdef __WXGTK4__
+                    static_cast<const char*>(wxGTK_CONV(wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_OPEN)))),
++                   static_cast<const char*>(wxGTK_CONV(wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_CANCEL))))
+ #else
+-                   "gtk-open",
++                   "_Open",
++                   "_Cancel"
+ #endif
+-                   GTK_RESPONSE_ACCEPT,
+-                   NULL);
++));
+ 
+-    g_object_ref(m_widget);
++    g_object_ref(m_nativedialog);
+ 
+-    gtk_dialog_set_default_response(GTK_DIALOG(m_widget), GTK_RESPONSE_ACCEPT);
++    //gtk_dialog_set_default_response(GTK_DIALOG(m_widget), GTK_RESPONSE_ACCEPT);
+ #if GTK_CHECK_VERSION(2,18,0)
+     if (wx_is_at_least_gtk2(18))
+     {
+         gtk_file_chooser_set_create_folders(
+-            GTK_FILE_CHOOSER(m_widget), !HasFlag(wxDD_DIR_MUST_EXIST) );
++            GTK_FILE_CHOOSER(m_nativedialog), !HasFlag(wxDD_DIR_MUST_EXIST) );
+     }
+ #endif
+ 
+     // Enable multiple selection if desired
+     gtk_file_chooser_set_select_multiple(
+-        GTK_FILE_CHOOSER(m_widget), HasFlag(wxDD_MULTIPLE) );
++        GTK_FILE_CHOOSER(m_nativedialog), HasFlag(wxDD_MULTIPLE) );
+ 
+     // Enable show hidden folders if desired
+     gtk_file_chooser_set_show_hidden(
+-        GTK_FILE_CHOOSER(m_widget), HasFlag(wxDD_SHOW_HIDDEN) );
++        GTK_FILE_CHOOSER(m_nativedialog), HasFlag(wxDD_SHOW_HIDDEN) );
+ 
+     // local-only property could be set to false to allow non-local files to be loaded.
+     // In that case get/set_uri(s) should be used instead of get/set_filename(s) everywhere
+@@ -132,7 +127,7 @@
+     // Currently local-only is kept as the default - true:
+     // gtk_file_chooser_set_local_only(GTK_FILE_CHOOSER(m_widget), true);
+ 
+-    g_signal_connect (m_widget, "response",
++    g_signal_connect (m_nativedialog, "response",
+         G_CALLBACK (gtk_dirdialog_response_callback), this);
+ 
+     if ( !defaultPath.empty() )
+@@ -143,7 +138,7 @@
+ 
+ void wxDirDialog::GTKOnAccept()
+ {
+-    GSList *fnamesi = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER(m_widget));
++    GSList *fnamesi = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER(m_nativedialog));
+     GSList *fnames = fnamesi;
+ 
+     while ( fnamesi )
+@@ -188,7 +183,7 @@
+ {
+     if (wxDirExists(dir))
+     {
+-        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(m_widget),
++        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(m_nativedialog),
+                                             wxGTK_CONV_FN(dir));
+     }
+ }
+diff --color -ruN wxWidgets-3.2.2.1/src/gtk/filedlg.cpp wxWidgets-3.2.2.1_native/src/gtk/filedlg.cpp
+--- wxWidgets-3.2.2.1/src/gtk/filedlg.cpp	2023-02-13 14:45:39.000000000 +0000
++++ wxWidgets-3.2.2.1_native/src/gtk/filedlg.cpp	2023-06-02 19:54:54.104905856 +0100
+@@ -159,7 +159,7 @@
+         child->m_widget, child->GetMinWidth(), child->m_height);
+ 
+     gtk_file_chooser_set_extra_widget(
+-        GTK_FILE_CHOOSER(m_widget), child->m_widget);
++        GTK_FILE_CHOOSER(m_nativedialog), child->m_widget);
+ }
+ 
+ //-----------------------------------------------------------------------------
+@@ -221,7 +221,7 @@
+ #ifdef __WXGTK4__
+         ok_btn_stock = wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_SAVE));
+ #else
+-        ok_btn_stock = "gtk-save";
++        ok_btn_stock = "_Save";
+ #endif
+     }
+     else
+@@ -230,29 +230,28 @@
+ #ifdef __WXGTK4__
+         ok_btn_stock = wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_OPEN));
+ #else
+-        ok_btn_stock = "gtk-open";
++        ok_btn_stock = "_Open";
+ #endif
+     }
+ 
+-    m_widget = gtk_file_chooser_dialog_new(
++    m_nativedialog = GTK_NATIVE_DIALOG(gtk_file_chooser_native_new(
+                    wxGTK_CONV(m_message),
+                    gtk_parent,
+                    gtk_action,
++                   static_cast<const gchar*>(wxGTK_CONV(ok_btn_stock)),
+ #ifdef __WXGTK4__
+-                   static_cast<const gchar*>(wxGTK_CONV(wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_CANCEL)))),
++                   static_cast<const gchar*>(wxGTK_CONV(wxConvertMnemonicsToGTK(wxGetStockLabel(wxID_CANCEL))))
+ #else
+-                   "gtk-cancel",
++                   "_Cancel"
+ #endif
+-                   GTK_RESPONSE_CANCEL,
+-                   static_cast<const gchar*>(wxGTK_CONV(ok_btn_stock)), GTK_RESPONSE_ACCEPT,
+-                   NULL);
++));
+ 
+-    g_object_ref(m_widget);
+-    GtkFileChooser* file_chooser = GTK_FILE_CHOOSER(m_widget);
++    g_object_ref(m_nativedialog);
++    GtkFileChooser* file_chooser = GTK_FILE_CHOOSER(m_nativedialog);
+ 
+     m_fc.SetWidget(file_chooser);
+ 
+-    gtk_dialog_set_default_response(GTK_DIALOG(m_widget), GTK_RESPONSE_ACCEPT);
++    //gtk_dialog_set_default_response(GTK_DIALOG(m_widget), GTK_RESPONSE_ACCEPT);
+ 
+     if ( style & wxFD_MULTIPLE )
+         gtk_file_chooser_set_select_multiple(file_chooser, true);
+@@ -265,10 +264,10 @@
+     // as the default - true:
+     // gtk_file_chooser_set_local_only(GTK_FILE_CHOOSER(m_widget), true);
+ 
+-    g_signal_connect (m_widget, "response",
++    g_signal_connect (m_nativedialog, "response",
+         G_CALLBACK (gtk_filedialog_response_callback), this);
+ 
+-    g_signal_connect (m_widget, "selection-changed",
++    g_signal_connect (m_nativedialog, "selection-changed",
+         G_CALLBACK (gtk_filedialog_selchanged_callback), this);
+ 
+      // deal with extensions/filters
+@@ -341,7 +340,7 @@
+         GtkWidget *previewImage = gtk_image_new();
+ 
+         gtk_file_chooser_set_preview_widget(file_chooser, previewImage);
+-        g_signal_connect(m_widget, "update-preview",
++        g_signal_connect(m_nativedialog, "update-preview",
+                          G_CALLBACK(gtk_filedialog_update_preview_callback),
+                          previewImage);
+     }
+@@ -359,7 +358,7 @@
+         // get chooser to drop its reference right now, allowing wxWindow dtor
+         // to verify that ref count drops to zero
+         gtk_file_chooser_set_extra_widget(
+-            GTK_FILE_CHOOSER(m_widget), NULL);
++            GTK_FILE_CHOOSER(m_nativedialog), NULL);
+     }
+ }
+ 
+@@ -368,7 +367,7 @@
+     // Update the current directory from here, accessing it later may not work
+     // due to the strange way GtkFileChooser works.
+     wxGtkString
+-        str(gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(m_widget)));
++        str(gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(m_nativedialog)));
+     m_dir = wxString::FromUTF8(str);
+ 
+     TransferDataFromExtraControl();
+@@ -448,7 +447,7 @@
+ 
+     if (HasFdFlag(wxFD_SAVE))
+     {
+-        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(m_widget), wxGTK_CONV(name));
++        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(m_nativedialog), wxGTK_CONV(name));
+     }
+ 
+     else
+@@ -504,7 +503,7 @@
+ {
+     wxGtkError error;
+ 
+-    if ( !gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(m_widget),
++    if ( !gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(m_nativedialog),
+                                                directory.utf8_str(),
+                                                error.Out()) )
+     {
