@@ -9,26 +9,13 @@ import binascii
 import json
 import subprocess
 import tempfile
-
-# The parent path of the extracted Godot version to use. CHANGE FOR UPDATES
-godot_path = './godot-4.0-stable'
-
-# The projects to generate the sources from. CHANGE IF NECESSARY
-projects = [
-    'modules/mono/glue/GodotSharp/GodotSharp/GodotSharp.csproj',
-    'modules/mono/glue/GodotSharp/Godot.SourceGenerators.Internal/Godot.SourceGenerators.Internal.csproj',
-    'modules/mono/editor/GodotTools/GodotTools/GodotTools.csproj',
-    'modules/mono/editor/GodotTools/GodotTools.BuildLogger/GodotTools.BuildLogger.csproj',
-    'modules/mono/editor/GodotTools/GodotTools.IdeMessaging/GodotTools.IdeMessaging.csproj',
-    'modules/mono/editor/GodotTools/GodotTools.IdeMessaging.CLI/GodotTools.IdeMessaging.CLI.csproj',
-    'modules/mono/editor/GodotTools/GodotTools.OpenVisualStudio/GodotTools.OpenVisualStudio.csproj',
-    'modules/mono/editor/GodotTools/GodotTools.ProjectEditor/GodotTools.ProjectEditor.csproj',
-    'modules/mono/editor/Godot.NET.Sdk/Godot.NET.Sdk/Godot.NET.Sdk.csproj',
-    'modules/mono/editor/Godot.NET.Sdk/Godot.SourceGenerators/Godot.SourceGenerators.csproj'
-]
+import glob
 
 def main():
     sources = []
+
+    # Find all projects to restore for any extracted godot source
+    projects = glob.glob('./godot-*-stable/**/*.csproj', recursive=True)
 
     # Create a temporary directory to store all of the NuGet packages in
     with tempfile.TemporaryDirectory(dir=Path()) as tmp:
@@ -42,7 +29,7 @@ def main():
                 '--command=sh', '--runtime=org.freedesktop.Sdk//22.08', '--share=network',
                 '--filesystem=host', 'org.freedesktop.Sdk.Extension.dotnet7//22.08', '-c',
                 'PATH="${PATH}:/usr/lib/sdk/dotnet7/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib/sdk/dotnet7/lib" exec dotnet restore "$@"',
-                '--', '--packages', tmp, godot_path+'/'+project])
+                '--', '--packages', tmp, project])
 
             # Append the package data to sources
             for path in Path(tmp).glob('**/*.nupkg.sha512'):
