@@ -8,6 +8,6 @@
 - [ ] I own the domain used in the application ID or the domain has a policy for delegating subdomains (e.g. GitHub, SourceForge).
 - [ ] Any additional patches or files have been submitted to the upstream projects concerned. *(If not, explain why.)*
 
-[reqs]: https://github.com/flathub/flathub/wiki/App-Requirements
-[maint]: https://github.com/flathub/flathub/wiki/App-Maintenance
-[submission]: https://github.com/flathub/flathub/wiki/App-Submission
+[reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
+[maint]: https://docs.flathub.org/docs/for-app-authors/maintanance
+[submission]: https://docs.flathub.org/docs/for-app-authors/submission
