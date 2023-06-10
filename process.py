@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 import json
 import argparse
+import sys
 
 from packaging.version import parse
-from fetcher import build_language_list, build_sha256dict, current_esr_version, get_build_info
+from fetcher import build_language_list, build_sha256dict, current_esr_version, get_build_info, BINARY_BASE_URL
 
-BINARY_BASE_URL = 'https://ftp.mozilla.org/pub/firefox/releases'
-VERSIONS_API_URL = 'https://product-details.mozilla.org/1.0/firefox_versions.json'
 
 platform = 'linux'
 arches = ['x86_64']
@@ -99,10 +98,20 @@ def merge_baseapp(json_objects, channel):
     json_objects['base-version'] = channel
 
 
+def write_output_kv(file, new_version):
+    with open(file, 'w', encoding='utf-8') as f:
+        try:
+            f.write(f'new_version={new_version}')
+        except:
+            print('Cannot write to file', file, file=sys.stderr);
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--force_version', type=str,
                         help="Force version", nargs='?')
+    parser.add_argument('--output_kv', type=str,
+                        help='Output result as a key-value pair to a file.', nargs='?')
     parser.add_argument('--skip_check', action='store_true',
                         help='Skip version check', default=False)
     args = parser.parse_args()
@@ -114,6 +123,8 @@ if __name__ == '__main__':
         version_str = current_esr_version()
     if (not args.skip_check) and parse(version_str) <= parse(get_last_ver()):
         print('No update!')
+        if args.output_kv is not None:
+            write_output_kv(args.output_kv, 'na')
         exit(0)
     else:
         set_last_ver(version_str)
@@ -127,4 +138,6 @@ if __name__ == '__main__':
                                                                    sha256_dict, languages, version_str).tap(merge_baseapp, freedesktop_version).tap(set_freedesktop_version, freedesktop_version).output('./org.mozilla.firefox_esr.json')
     varsubst('./in/org.mozilla.firefox_esr.appdata.xml.template',
              './org.mozilla.firefox_esr.appdata.xml', VERSION=version_str, RELEASE_TIMESTAMP=info['date'])
+    if args.output_kv is not None:
+        write_output_kv(args.output_kv, version_str)
     exit(0)
