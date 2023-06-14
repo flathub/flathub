@@ -4,6 +4,14 @@ Pyfa (Python fitting assistant for EVE: Online)
 
 https://github.com/pyfa-org/Pyfa
 
+## How to get flatpak build manifest
+
+```
+git clone https://github.com/asbytes/com.github.Pyfa.git
+cd com.github.Pyfa
+git submodule update --init
+```
+
 ## How to build Pyfa
 
 ```
