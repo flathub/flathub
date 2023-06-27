@@ -44,3 +44,9 @@ Clean the cache:
 ```bash
 make clean
 ```
+
+## 📋 Notes
+
+Examples tauri to flathub:
+* https://github.com/flathub/in.cinny.Cinny/blob/master/in.cinny.Cinny.yml
+* https://github.com/hadess/flathub/blob/d4b53ff829e0917c5129294132f619e5f12d337c/io.github.neil_morrison44.pocket-sync.yaml
