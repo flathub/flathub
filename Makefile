@@ -3,14 +3,15 @@ OS := $(shell uname)
 
 install:
 	flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-	flatpak install flathub -y org.flatpak.Builder org.gnome.Platform//42 \
-		org.gnome.Sdk//42 \
-		runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/21.08 \
-		runtime/org.freedesktop.Sdk.Extension.node16/x86_64/21.08 \
-		org.freedesktop.Sdk.Extension.rust-nightly/x86_64/21.08
+	flatpak install flathub -y org.flatpak.Builder org.gnome.Platform//44 \
+		org.gnome.Sdk//44 \
+		runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/22.08 \
+		runtime/org.freedesktop.Sdk.Extension.node16/x86_64/22.08
 	wget -N https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
 	pip install aiohttp toml
-	pip install -e "git+https://github.com/flatpak/flatpak-builder-tools.git#egg=flatpak_node_generator&subdirectory=node"
+	pip install "git+https://github.com/flatpak/flatpak-builder-tools.git#egg=flatpak_node_generator&subdirectory=node"
+
+# org.freedesktop.Sdk.Extension.rust-nightly/x86_64/22.08
 
 gen:
 	python flatpak-cargo-generator.py -o cargo-sources.json ../EmojiMart/src-tauri/Cargo.lock

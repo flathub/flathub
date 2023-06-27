@@ -4,6 +4,15 @@ Flatpak for [github.com/vemonet/EmojiMart](https://github.com/vemonet/EmojiMart)
 
 ## 🛠️ Development
 
+You might want to create a virtual env for the python dependencies used to generate the sources files:
+
+```bash
+# Create it
+python -m venv .venv
+# Activate it
+source .venv/bin/activate
+```
+
 Install dependencies:
 
 ```bash
