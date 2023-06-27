@@ -13,6 +13,14 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
+Clone this repository, and the EmojiMart repository in the same folder:
+
+```bash
+git clone --recursive https://github.com/vemonet/flathub -b io.github.vemonet.EmojiMart
+git clone https://github.com/vemonet/EmojiMart
+cd flathub
+```
+
 Install dependencies:
 
 ```bash
