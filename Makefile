@@ -26,7 +26,5 @@ flatpak:
 # flatpak build-bundle _repo io.github.vemonet.EmojiMart.flatpak io.github.vemonet.EmojiMart
 
 clean:
-	rm -r .flatpak-builder build/
-	flatpak remove io.github.vemonet.EmojiMart -y --delete-data
-
-# rm -rf ../EmojiMart/src-tauri/target
+	rm -rf .flatpak-builder build/
+# flatpak remove io.github.vemonet.EmojiMart -y --delete-data
