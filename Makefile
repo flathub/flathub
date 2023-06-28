@@ -8,8 +8,7 @@ install:
 		runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/22.08 \
 		runtime/org.freedesktop.Sdk.Extension.node16/x86_64/22.08
 	wget -N https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
-	pip install aiohttp toml
-	pip install "git+https://github.com/flatpak/flatpak-builder-tools.git#egg=flatpak_node_generator&subdirectory=node"
+	pipx install "git+https://github.com/flatpak/flatpak-builder-tools.git#egg=flatpak_node_generator&subdirectory=node"
 
 # org.freedesktop.Sdk.Extension.rust-nightly/x86_64/22.08
 
