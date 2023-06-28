@@ -15,12 +15,12 @@ install:
 
 sources:
 	python flatpak-cargo-generator.py -o cargo-sources.json ../EmojiMart/src-tauri/Cargo.lock
-	flatpak-node-generator --no-requests-cache -r -o node-sources.json npm ../EmojiMart/package-lock.json
+	flatpak-node-generator -r -o node-sources.json yarn ../EmojiMart/yarn.lock
 
 # Gen from Yarn not working: flatpak-node-generator --no-requests-cache -r -o node-sources.json yarn ../EmojiMart/yarn.lock
 
 flatpak:
-	flatpak-builder --ccache --keep-build-dirs --user --install --force-clean build io.github.vemonet.EmojiMart.yml
+	flatpak-builder --keep-build-dirs --user --install --force-clean build io.github.vemonet.EmojiMart.yml
 	flatpak run io.github.vemonet.EmojiMart
 
 # flatpak-builder --user --install --force-clean --download-only build io.github.vemonet.EmojiMart.yml
