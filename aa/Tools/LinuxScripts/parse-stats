@@ -1,0 +1,131 @@
+#!/usr/bin/perl
+
+my @means = ("was blasted by", "was probed by", "was blown away by", "was cut in half by",
+              "was burned by", "ate", "almost dodged", "was melted by", "was disrupted by",
+              "saw the pretty lights from", "was disintegrated by", "couldn't hide from",
+              "had it's mind erased by", "was melted", "tried to invade", "was caught by",
+              "had its head blown off by");
+my $means_re = join '|', @means;
+
+my @suicides = ("suicides", "cratered", "was squished", "sank like a rock", "melted",
+                "does a back flip into the lava", "blew up", "found a way out", "saw the light",
+                "got blasted", "was in the wrong place", "was killed for camping", "melted herself",
+                "melted himself", "blew herself up", "blew himself up", "should have used a smaller gun",
+                "killed herself", "killed himself");
+my $suicides_re = join '|', @suicides;
+
+my @gameover = ("Timelimit hit.", "Blue Team wins!", "Red Team wins!", "Fraglimit hit.", "Server disconnected", "FIGHT!");
+my $gameover_re = join '|', @gameover;
+
+my @ignore = ('\.\.\.', "GL_", "pinging ", "Already have: ", "Out of item", '[^[:print:]]', '\d+\.\d+\.\d+\.\d+:\d+');
+my $ignore_re = join '|', @ignore;
+
+my $in_game = 0;
+my $is_ctf = 0;
+
+sub colorize
+{
+  my $name = shift;
+  $name =~ s/\^(\d)/\e[1;3$1m/g;
+  $name =~ s/^(red)$/\e[1;31m$1\e[0m/i;
+  $name =~ s/^(blue)$/\e[1;34m$1\e[0m/i;
+  return "\e[1;32m$name\e[0m";
+}
+
+# Print report
+sub printReport
+{
+    foreach $i (sort({$killers{$b} <=> $killers{$a}} keys(%killers))) {
+        print colorize($i) . " scored $killers{$i} kills and died $deaths{$i} times. ";
+        if($deaths{$i}) { printf(" (Ratio %.0f%)", 100 * $killers{$i} / $deaths{$i}) }
+        if($is_ctf) {
+            unless ($flags{$i}) {$flags{$i} = 0;}
+            unless ($flagcaps{$i}) {$flagcaps{$i} = 0;}
+            unless ($flagcarriers{$i}) {$flagcarriers{$i} = 0;}
+            unless ($flagreturns{$i}) {$flagreturns{$i} = 0;}
+            print "\n    $flags{$i} pickups, $flagcaps{$i} captures, $flagcarriers{$i} carriers, and $flagreturns{$i} returns.\n";
+        }
+        foreach $j ( sort( { $killed{$i}{$b} <=> $killed{$i}{$a} } keys( %{$killed{$i}})))
+        {
+            print "$killed{$i}{$j} times: " . colorize($i) . " killed " . colorize($j) . "\n";
+        }
+        print "\n";
+    }
+    undef %killed;
+    undef %killers;
+    undef %lastkiller;
+    undef %deaths;
+    undef %flags;
+    undef %flagcaps;
+    undef %flagcarriers;
+    undef %flagreturns;
+    $in_game = 0;
+}
+
+
+# Main loop
+while (<>) {
+  if(m/(.+) ($means_re) (.+)'s /) { $killed{$3}{$1}++; $killers{$3}++; $deaths{$1}++; $lastkiller{$1}=$3}
+  elsif(m/(.+) ($means_re) (.+)$/) { $killed{$3}{$1}++; $killers{$3}++; $deaths{$1}++}
+  elsif(m/(.+) ($suicides_re)/) { $killed{$1}{$1}++; $killers{$1}--; $deaths{$1}++}
+  elsif(m/(.+) got the (Blue|Red) flag/) { $flags{$1}++; print colorize($1) . " got the ". colorize($2) . " flag\n"; $is_ctf = 1;}
+  elsif(m/(.+) lost the (Blue|Red) flag/) { $flagcarriers{$lastkiller{$1}}++ ; print colorize($1) . " lost the ". colorize($2) . " flag\n"; $is_ctf = 1;}
+
+  elsif(m/(.+) returned the (\w+) flag/) { $flagreturns{$1}++;  $is_ctf = 1;}
+  elsif(m/(.+) captured the (\w+) flag/) { $flagcaps{$1}++; $team{$2}++; print colorize($1) . " captured the " . colorize($2) . " flag\n"; $is_ctf = 1;}
+  elsif(m/(\w+) Team scores/) { $team{$1} ++ }
+  elsif(m/(.+) entered the game/) { $in_game = 1; print colorize($1) . " entered the game\n"; }
+  elsif(m/(.+) Joined (\S+) team/) { print colorize($1) . " joined ". colorize($2) . " team\n"; }
+  elsif(m/^($ignore_re)/) {} #noop
+  elsif(m/^(.+): (.*)$/) {print ">>> " . colorize($1) . colorize("\t$2\n"); }
+  elsif(m/^($gameover_re)/) {&printReport;}
+  elsif($in_game) {print "\e[1;30m$_\e[0m";}
+}
+&printReport;
+
+
+=head1 NAME
+
+parse-stats
+
+=head1 SYNOPSIS
+
+Parses STDOUT of alienarena game to provide kill statistics
+
+=head1 DESCRIPTION
+
+Collects who killed whom and prints a concise list of statistics
+
+=head1 OPTIONS
+
+None, works as a simple pipe
+
+=head1 RETURN VALUE
+
+Never exits intentionally. When game exits, (STDIN EOF) it will print the last statistics gathered and exit normally.
+
+=head1 EXAMPLES
+
+To run from game output requires the unbuffer utility on Linux (comes with expect)
+
+C<unbuffer alienarena | ./parse-stats>
+
+To run from a console log:
+
+C<./parse-stats console.log>
+
+=head1 BUGS
+
+Does not account for all possible game output and makes lots of assumptions. Will pass through some random stuff.
+
+Fixed: Spaces in names cause confusion
+
+=head1 NOTES
+
+Pending addition of game start info, will not be fully accurate for tourneys because it cannot differentiate warmups from game.
+
+=head1 AUTHORS
+
+L'Emmerdeur
+
+# vim: set expandtab shiftwidth=2 softtabstop=2:

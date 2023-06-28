@@ -1,0 +1,86 @@
+#!/bin/sh
+
+#####################################
+# ENTER CONFIGURATION DETAILS BELOW #
+#####################################
+
+name='Alien Arena'
+execpath=/usr/local/bin
+execname=alienarena-ded
+if [ ${COR_GAME} ]; then
+cfgpath=${COR_GAME}/arena
+else
+cfgpath=~/.local/share/cor-games/arena
+fi
+
+# use to generate core dumps after crashs
+ulimit -c unlimited
+
+#####################################
+#   END OF CONFIGURATION DETAILS    #
+#   DO NOT EDIT BELOW THIS LINE!    #
+#####################################
+
+# Written by Tony Jackson 14/07/2008
+# Updated for Alien Arena 2011
+# 
+# This script expects you to have screen installed, and soft links in the arena/
+# directory to config files.  The soft links must be named portXXXXX where XXXXX
+# represents the port number that config should be served against.  An example
+# setup might look like this:
+# 
+# lrwxrwxrwx 1 aa aa    7 Oct 13  2009 port27910 -> ffa.cfg
+# lrwxrwxrwx 1 aa aa    7 Oct 13  2009 port27920 -> aoa.cfg
+# lrwxrwxrwx 1 aa aa    9 Oct 13  2009 port27930 -> insta.cfg
+# lrwxrwxrwx 1 aa aa   11 Apr  8  2010 port27940 -> emps1v1.cfg
+# lrwxrwxrwx 1 aa aa    7 Oct 13  2009 port27950 -> ctf.cfg
+# lrwxrwxrwx 1 aa aa   16 May 13  2010 port27960 -> empsinsta1v1.cfg
+# lrwxrwxrwx 1 aa aa   18 Aug 24 00:54 port27970 -> empsrockets1v1.cfg
+# lrwxrwxrwx 1 aa aa    8 Oct 25  2009 port27990 -> ictf.cfg
+#
+# A soft link is created by running 'ln -s ffa.cfg port27910'
+#
+# Running the script will launch each server in turn.
+# If you run 'screen -ls' you will be shown a list of active screen sessions,
+# which should include one called 'Alien_Arena'.  This can be viewed by running
+# 'screen -r Alien_Arena'.  You can then switch between the console of each
+# game as desired - see the screen documentation for how to do this.
+
+cd $execpath
+# remove spaces in name
+sname=`echo ${name} | sed 's/\ /_/g'`
+
+# check for existing screen session or start a new one
+present=`screen -ls $sname | wc -l`
+if [ $present != '2' ]; then
+	sname=`screen -ls $sname | awk 'NR==2{printf $1}'`
+	echo "[OK      ] Screen session $sname"
+else
+	# launch screen
+	screen -dmS $sname -t shell
+	echo "[STARTING] New screen session $sname"
+fi
+
+cd $cfgpath
+for i in `ls port?????`; do
+	cd $cfgpath
+	# search config file for hostname and pull out
+	hostname=`cat $i | grep hostname | sed 's/set\ \|hostname\ \|\"//g'`
+	# extract port number from soft link name
+	port=`echo $i | sed 's/port//'`
+	title="Port $port => $hostname"
+
+	cd ${execpath}
+	
+	# See if this process is already running
+	pid=`ps aux | grep $execname | grep $i | awk '{printf $2}'`
+
+	# See if pid existed for this config
+	if [ -z $pid ]; then
+		echo "[STARTING] $title"
+		# launch server and attach to existing screen session
+		screen -r $sname -X screen -t "$title" ./$execname +set dedicated 1 +set port $port +exec $i
+	else
+		echo "[OK      ] $title"
+	fi
+done

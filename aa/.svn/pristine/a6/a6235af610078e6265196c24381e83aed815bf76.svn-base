@@ -1,0 +1,730 @@
+#
+# Alien Arena Developer's Makefile for Linux
+#
+# $Id$
+#
+# -----------------------------------------------------------------------------
+# 
+# dev-makefile: Makefile base for Linux
+# 
+# This Makefile is a base for experimental, testing and other work
+# where it is useful to have more customization than the Autotools
+# build provides. Flexibility is provided by !not! doing any automatic
+# configuration. This is the Not-Autotools build. It is a developer
+# tool. If you use it, it is expected you know what you are doing.
+# 
+# Removing this documentation from the customized Makefiles is
+# recommended.
+# 
+# 1. Directory Hierarchy
+# 
+#   - Alternate source subdirectories at the same level as source/.
+#   - Build build subdirectories in the alternate source directory.
+#   - A customized version of dev-makefile in each build/ subdirectory
+#     and/or one in the alternate source subdirectory.
+#   - A version of config.h, somewhere, consistent with the custom
+#     Makefile.
+# 
+# Example:
+# 
+# alienarena/
+#   config/
+#     config.h
+#   source/
+#       <official trunk source code subdirectories>
+#   altsrc/
+#       config.h
+#       <alternate source code subdirectories>
+#       Makefile <== customized dev-makefile
+#       build/
+#         config.h
+#         Makefile <== customized dev-makefile
+# 
+# 2. Setup and Use Guidelines
+# 
+#   - Create the alternate directory hierarchy.
+# 
+#     This can contain a copy of the some or all trunk version sources,
+#     but that is not necessary.
+# 
+#   - Set DATADIR to some valid path.
+# 
+#     There is no "install", so DATADIR just needs to be set to
+#     somewhere with valid botinfo/, arena/ and data1/ sub-directories.
+#     The executables may then be run from anywhere.
+# 
+#   - Set the config_dir path variable.
+# 
+#     The config.h in the trunk config/ subdirectory may be used.
+#     Otherwise, autoconfiscate a config.h generated with configure.
+#     Manually edit it, if needed.
+# 
+#   - Customize flags, paths, etc.
+# 
+#     There is only one conditional, debug = yes or no. It affects
+#     which set of CFLAGS are used.
+# 
+#     Note that support for the option to use the system libode 
+#     is not included.
+# 
+#   - Setup VPATH variables.
+# 
+#     If you have a complete copy of sources in the alternate
+#     source subdirectory, and run the Makefile from that source
+#     subdirectory, then vpath's are not needed. Edit the CPPFLAGs
+#     accordingly.
+# 
+#     The VPATH feature allows for referencing source files from
+#     any build location. Refer to GNU make documents and online
+#     info.  Briefly, if make does not find the source/ tree in
+#     the expected location, it looks in the vpath directories,
+#     and applies the paths it finds in the rules.
+# 
+#     Two important things: (1) Set the vpath variables to the path
+#     search sequence you want. (2) Set CPPFLAG -I options to where
+#     the header files really are.
+# 
+#     The dev-makefile setup is for building in a build/ subdirectory
+#     and building from the trunk sources and any trunk sources
+#     that have been copied to the alternate source directory.
+#     Exception: ODE source is assumed to always be in the trunk directory.
+# 
+#   - Customized source code setup
+# 
+#     Existing trunk sources that are copied to an alternate source directory
+#     take precedence (provided the vpath's are set correctly).
+# 
+#     Additional files can be added to the existing sources variables.
+# 
+#     If source groups are added, then targets and rules must be added.
+#     Follow the format of the existing targets and rules.
+# 
+# 3. Notes, tips, etc.
+# 
+# There are "make clean" targets, but no other special targets.
+# 
+# The "COR_GAME" environment variable is handy for setting alternatives
+# to the "$HOME/.codered" directory.
+# 
+# It is a "make" requirement that TABs preceed commands to be executed.
+# (I used spaces to indent elsewhere, just to be different.)
+# 
+# -----------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
+# TOOLS
+#------------------------------------------------------------------------------
+CC  := gcc
+CXX := g++
+AR  := ar
+RANLIB := ranlib
+MKDIR_P := mkdir -p
+
+#------------------------------------------------------------------------------
+# BUILD OPTIONS
+#------------------------------------------------------------------------------
+debug_build := yes
+
+#------------------------------------------------------------------------------
+# PATHS
+#------------------------------------------------------------------------------
+config_dir := ../../config
+
+#
+# Use VPATH to find sources for dependency rules
+#
+# These examples assume the build is done in a build subdirectory
+# and that the search precedence should be the parent alternate 
+# source directory, then the trunk source/ directory.
+# (':' or SPACE are path separators)
+# 
+#
+
+# Using the lower case, file-type specific, vpath's is probably better
+# than using this:
+# VPATH = ..:../../source
+
+vpath %.h \
+ .. \
+ ../game \
+ ../game/acesrc \
+ ../../source \
+ ../../source/game \
+ ../../source/game/acesrc \
+ ../../source/unix/ode
+ 
+vpath %.c ..:../../source
+vpath %.cpp ../../source
+
+# Some of these may be needed sometimes:
+#
+# vpath %.h ..:../../source/client
+# vpath %.c ..:../../source/client
+# vpath %.c ..:../../source/game/acesrc
+# vpath %.c ..:../../source/game
+# vpath %.h ..:../../source/qcommon
+# vpath %.c ..:../../source/qcommon
+# vpath %.h ..:../../source/ref_gl
+# vpath %.c ..:../../source/ref_gl
+# vpath %.h ..:../../source/server
+# vpath %.c ..:../../source/server
+# vpath %.h ..:../../source/unix
+# vpath %.c ..:../../source/unix
+# vpath %.h ..:../../source/null
+# vpath %.c ..:../../source/null
+# vpath %.h ..:../../source/unix/odesrc
+# vpath %.c ..:../../source/unix/odesrc
+# vpath %.cpp ..:../../source/unix/odesrc
+# vpath %.h ..:../../source/unix/odesrc/OPCODE
+# vpath %.cpp ..:../../source/unix/odesrc/OPCODE
+# vpath %.h ..:../../source/unix/odesrc/OPCODE/Ice
+# vpath %.cpp ..:../../source/unix/odesrc/OPCODE/Ice
+# vpath %.h ..:../../source/unix/odesrc/joints
+# vpath %.cpp ..:../../source/unix/odesrc/joints
+
+
+#------------------------------------------------------------------------------
+# CPPFLAGS - Defines and Include Paths
+#------------------------------------------------------------------------------
+cppflags_common  := -DHAVE_CONFIG_H -I$(config_dir)
+cppflags_debug   := -DDEBUG_GDB_NOGRAB
+cppflags_nodebug := -DNDEBUG
+cppflags_datadir := -DDATADIR='"/usr/local/share/alienarena"'
+cppflags_src_inc := -I.. -I../game -I../game/acesrc -I../../source -I../../source/game -I../../source/game/acesrc
+cppflags_ft2_inc := -I/usr/include/freetype2
+cppflags_ode_inc := -isystem ../../source/unix
+cppflags_odemath := -DdDOUBLE
+cppflags_odeopt  := $(cppflags_odemath) -DdTRIMESH_ENABLED -DdTRIMESH_OPCODE
+cppflags_odesrc_inc := $(cppflags_ode_inc) -I../../source/unix/odesrc \
+ -I../../source/unix/odesrc/OPCODE 
+
+
+#------------------------------------------------------------------------------
+# CFLAGS, CXXFLAGS
+#------------------------------------------------------------------------------
+cflags_common := $(CFLAGS) -pipe -ffast-math -fno-strict-aliasing \
+ -march=i686 -msse -mfpmath=sse
+cflags_debug   := -O0 -g3 $(cflags_common)
+cflags_nodebug := -O2 $(cflags_common) -fomit-frame-pointer
+cxxflags_debug   := $(cflags_debug)
+cxxflags_nodebug := $(cflags_nodebug)
+
+#------------------------------------------------------------------------------
+# LDADD, LDFLAGS
+#------------------------------------------------------------------------------
+#
+
+ldadd_pthread   := -pthread
+ldadd_xf86dga   := -lXxf86dga
+ldadd_xf86vm    := -lXxf86vm
+ldadd_xll       := -lX11
+ldadd_curl      := -lcurl
+ldadd_freetype  := -lfreetype
+ldadd_jpeg      := -ljpeg
+ldadd_oggvorbis := -lvorbisfile -lvorbis -logg
+ldadd_m  := -lm
+ldadd_dl := -ldl
+ldadd_rt := -lrt
+ldadd_stdcxx := -lstdc++
+
+ldflags_common := $(LDFLAGS) -Wl,--as-needed
+
+#------------------------------------------------------------------------------
+# TARGET COMPONENT NAMES, FLAGS AND LIBS
+#------------------------------------------------------------------------------
+
+#
+# --- crx ---
+#
+
+crx_exe := crx
+
+ifeq ($(debug_build),$(strip yes))
+
+ crx_cppflags := $(cppflags_common) $(cppflags_datadir) $(cppflags_odemath) \
+  $(cppflags_src_inc) $(cppflags_ft2_inc) $(cppflags_ode_inc) \
+  $(cppflags_debug)
+
+ crx_cflags   := $(cflags_debug)
+
+else
+
+ crx_cppflags := $(cppflags_common) $(cppflags_datadir) $(cppflags_odemath) \
+  $(cppflags_src_inc) $(cppflags_ft2_inc) $(cppflags_ode_inc) \
+  $(cppflags_nodebug)
+
+ crx_cflags   := $(cflags_nodebug)
+
+endif
+
+crx_libs := $(libs_game) $(libs_ode)
+
+crx_ldadd := $(ldadd_pthread) $(ldadd_xf86dga) $(ldadd_xf86vm) $(ldadd_xll) \
+ $(ldadd_freetype) $(ldadd_curl) $(ldadd_jpeg) $(ldadd_oggvorbis) \
+ $(ldadd_m) $(ldadd_dl) $(ldadd_rt) $(ldadd_stdcxx)
+
+crx_ldflags := $(ldflags_common)
+
+#
+# --- crx-ded ---
+#
+crx_ded_exe := crx-ded
+
+ifeq ($(debug_build),$(strip yes))
+
+ crx_ded_cppflags:= $(cppflags_common) -DDEDICATED_ONLY $(cppflags_datadir) \
+  $(cppflags_src_inc) $(cppflags_debug)
+
+ crx_ded_cflags  := $(cflags_debug)
+
+else
+
+ crx_ded_cppflags:= $(cppflags_common) -DDEDICATED_ONLY $(cppflags_datadir) \
+  $(cppflags_src_inc) $(cppflags_nodebug)
+
+ crx_ded_cflags  := $(cflags_nodebug)
+
+endif
+
+crx_ded_libs  := $(libs_game)
+crx_ded_ldadd := $(ldadd_m) $(ldadd_dl) $(ldadd_rt)
+crx_ldflags   := $(ldflags_common)
+
+#
+# --- libgame.a ---
+#
+libs_game := libgame.a
+
+ifeq ($(debug_build),$(strip yes))
+ libgame_cppflags := $(cppflags_common) $(cppflags_src_inc) $(cppflags_debug)
+ libgame_cflags   := $(cflags_debug)
+else
+ libgame_cppflags := $(cppflags_common) $(cppflags_src_inc) $(cppflags_nodebug)
+ libgame_cflags   := $(cflags_nodebug)
+endif
+
+libgame_arflags := cru
+
+#
+# --- libode.a ---
+#
+libs_ode := libode.a
+
+ifeq ($(debug_build),$(strip yes))
+ libode_cppflags:= $(cppflags_common) $(cppflags_odeopt) \
+  $(cppflags_odesrc_inc) $(cppflags_debug)
+ libode_cflags   := $(cflags_debug)
+ libode_cxxflags := $(cxxflags_debug)
+else
+ libode_cppflags:= $(cppflags_common) $(cppflags_odeopt) \
+  $(cppflags_odesrc_inc) $(cppflags_nodebug) -DdNODEBUG
+ libode_cflags  := $(cflags_nodebug)
+ libode_cxxflags:= $(cxxflags_nodebug)
+endif
+
+libode_arflags := cru
+
+#------------------------------------------------------------------------------
+# SOURCES
+#------------------------------------------------------------------------------
+
+crx_sources = \
+ client/cl_ents.c \
+ client/cl_fx.c \
+ client/cl_http.c \
+ client/cl_input.c \
+ client/cl_inv.c \
+ client/cl_irc.c \
+ client/cl_main.c \
+ client/cl_parse.c \
+ client/cl_pred.c \
+ client/cl_scrn.c \
+ client/cl_stats.c \
+ client/cl_tent.c \
+ client/cl_update.c \
+ client/cl_view.c \
+ client/console.c \
+ client/keys.c \
+ client/menu.c \
+ client/qal.c \
+ client/qmenu.c \
+ client/snd_file.c \
+ client/snd_openal.c \
+ client/vid_menu.c \
+ game/q_shared.c \
+ qcommon/cmd.c \
+ qcommon/cmodel.c \
+ qcommon/common.c \
+ qcommon/crc.c \
+ qcommon/cvar.c \
+ qcommon/files.c \
+ qcommon/htable.c \
+ qcommon/md5.c \
+ qcommon/mdfour.c \
+ qcommon/net_chan.c \
+ qcommon/pmove.c \
+ ref_gl/r_bloom.c \
+ ref_gl/r_bmfont.c \
+ ref_gl/r_draw.c \
+ ref_gl/r_image.c \
+ ref_gl/r_iqm.c \
+ ref_gl/r_light.c \
+ ref_gl/r_main.c \
+ ref_gl/r_math.c \
+ ref_gl/r_mesh.c \
+ ref_gl/r_misc.c \
+ ref_gl/r_model.c \
+ ref_gl/r_particle.c \
+ ref_gl/r_postprocess.c \
+ ref_gl/r_program.c \
+ ref_gl/r_ragdoll.c \
+ ref_gl/r_script.c \
+ ref_gl/r_shadowmaps.c \
+ ref_gl/r_shadows.c \
+ ref_gl/r_surf.c \
+ ref_gl/r_text.c \
+ ref_gl/r_ttf.c \
+ ref_gl/r_varray.c \
+ ref_gl/r_vbo.c \
+ ref_gl/r_vlights.c \
+ ref_gl/r_warp.c \
+ server/sv_ccmds.c \
+ server/sv_ents.c \
+ server/sv_game.c \
+ server/sv_init.c \
+ server/sv_main.c \
+ server/sv_send.c \
+ server/sv_user.c \
+ server/sv_world.c \
+ unix/glob.c
+
+
+crx_sources += \
+ unix/gl_glx.c \
+ unix/net_udp.c \
+ unix/qal_unix.c \
+ unix/qgl_unix.c \
+ unix/q_shunix.c \
+ unix/rw_unix.c \
+ unix/sys_unix.c \
+ unix/vid_so.c
+
+# For MinGW build, these will be needed, instead.
+# win32/conproc.c \
+# win32/glw_imp.c \
+# win32/in_win.c \
+# win32/net_wins.c \
+# win32/qal_win.c \
+# win32/qgl_win.c \
+# win32/q_shwin.c \
+# win32/sys_win.c \
+# win32/vid_dll.c
+
+
+crx_ded_sources = \
+ game/q_shared.c \
+ null/cl_null.c \
+ qcommon/cmd.c \
+ qcommon/cmodel.c \
+ qcommon/common.c \
+ qcommon/crc.c \
+ qcommon/cvar.c \
+ qcommon/files.c \
+ qcommon/htable.c \
+ qcommon/mdfour.c \
+ qcommon/net_chan.c \
+ qcommon/pmove.c \
+ server/sv_ccmds.c \
+ server/sv_ents.c \
+ server/sv_game.c \
+ server/sv_init.c \
+ server/sv_main.c \
+ server/sv_send.c \
+ server/sv_user.c \
+ server/sv_world.c \
+ unix/glob.c \
+ unix/net_udp.c \
+ unix/q_shunix.c \
+ unix/sys_unix.c
+
+
+libgame_sources = \
+ game/acesrc/acebot_ai.c \
+ game/acesrc/acebot_cmds.c \
+ game/acesrc/acebot_items.c \
+ game/acesrc/acebot_movement.c \
+ game/acesrc/acebot_nodes.c \
+ game/acesrc/acebot_spawn.c \
+ game/c_cam.c \
+ game/g_ai.c \
+ game/g_chase.c \
+ game/g_cmds.c \
+ game/g_combat.c \
+ game/g_cow.c \
+ game/g_ctf.c \
+ game/g_deathball.c \
+ game/g_deathray.c \
+ game/g_func.c \
+ game/g_items.c \
+ game/g_main.c \
+ game/g_misc.c \
+ game/g_monster.c \
+ game/g_phys.c \
+ game/g_save.c \
+ game/g_spawn.c \
+ game/g_svcmds.c \
+ game/g_target.c \
+ game/g_trigger.c \
+ game/g_unlagged.c \
+ game/g_utils.c \
+ game/g_vehicles.c \
+ game/g_weapon.c \
+ game/m_move.c \
+ game/p_client.c \
+ game/p_hud.c \
+ game/p_trail.c \
+ game/p_view.c \
+ game/p_weapon.c \
+ game/q_shared.c \
+
+
+libode_fast_sources = \
+ unix/odesrc/fastldlt.c \
+ unix/odesrc/fastltsolve.c \
+ unix/odesrc/fastdot.c \
+ unix/odesrc/fastlsolve.c
+
+libode_sources = \
+ unix/odesrc/array.cpp \
+ unix/odesrc/box.cpp \
+ unix/odesrc/capsule.cpp \
+ unix/odesrc/collision_cylinder_box.cpp \
+ unix/odesrc/collision_cylinder_plane.cpp \
+ unix/odesrc/collision_cylinder_sphere.cpp \
+ unix/odesrc/collision_kernel.cpp \
+ unix/odesrc/collision_quadtreespace.cpp \
+ unix/odesrc/collision_sapspace.cpp \
+ unix/odesrc/collision_space.cpp \
+ unix/odesrc/collision_transform.cpp \
+ unix/odesrc/collision_trimesh_disabled.cpp \
+ unix/odesrc/collision_util.cpp \
+ unix/odesrc/convex.cpp \
+ unix/odesrc/cylinder.cpp \
+ unix/odesrc/error.cpp \
+ unix/odesrc/export-dif.cpp \
+ unix/odesrc/heightfield.cpp \
+ unix/odesrc/lcp.cpp \
+ unix/odesrc/mass.cpp \
+ unix/odesrc/mat.cpp \
+ unix/odesrc/matrix.cpp \
+ unix/odesrc/memory.cpp \
+ unix/odesrc/misc.cpp \
+ unix/odesrc/obstack.cpp \
+ unix/odesrc/ode.cpp \
+ unix/odesrc/odeinit.cpp \
+ unix/odesrc/odemath.cpp \
+ unix/odesrc/plane.cpp \
+ unix/odesrc/quickstep.cpp \
+ unix/odesrc/ray.cpp \
+ unix/odesrc/rotation.cpp \
+ unix/odesrc/sphere.cpp \
+ unix/odesrc/step.cpp \
+ unix/odesrc/stepfast.cpp \
+ unix/odesrc/testing.cpp \
+ unix/odesrc/timer.cpp \
+ unix/odesrc/util.cpp \
+ unix/odesrc/collision_cylinder_trimesh.cpp \
+ unix/odesrc/collision_trimesh_box.cpp \
+ unix/odesrc/collision_trimesh_ccylinder.cpp \
+ unix/odesrc/collision_trimesh_distance.cpp \
+ unix/odesrc/collision_trimesh_opcode.cpp \
+ unix/odesrc/collision_trimesh_plane.cpp \
+ unix/odesrc/collision_trimesh_ray.cpp \
+ unix/odesrc/collision_trimesh_sphere.cpp \
+ unix/odesrc/collision_trimesh_trimesh.cpp \
+ unix/odesrc/collision_trimesh_trimesh_new.cpp \
+ unix/odesrc/joints/amotor.cpp \
+ unix/odesrc/joints/ball.cpp \
+ unix/odesrc/joints/contact.cpp \
+ unix/odesrc/joints/fixed.cpp \
+ unix/odesrc/joints/hinge2.cpp \
+ unix/odesrc/joints/hinge.cpp \
+ unix/odesrc/joints/joint.cpp \
+ unix/odesrc/joints/lmotor.cpp \
+ unix/odesrc/joints/null.cpp \
+ unix/odesrc/joints/piston.cpp \
+ unix/odesrc/joints/plane2d.cpp \
+ unix/odesrc/joints/pr.cpp \
+ unix/odesrc/joints/pu.cpp \
+ unix/odesrc/joints/slider.cpp \
+ unix/odesrc/joints/universal.cpp \
+ unix/odesrc/OPCODE/OPC_AABBCollider.cpp \
+ unix/odesrc/OPCODE/OPC_AABBTree.cpp \
+ unix/odesrc/OPCODE/OPC_BaseModel.cpp \
+ unix/odesrc/OPCODE/OPC_Collider.cpp \
+ unix/odesrc/OPCODE/OPC_Common.cpp \
+ unix/odesrc/OPCODE/OPC_HybridModel.cpp \
+ unix/odesrc/OPCODE/OPC_LSSCollider.cpp \
+ unix/odesrc/OPCODE/OPC_MeshInterface.cpp \
+ unix/odesrc/OPCODE/OPC_Model.cpp \
+ unix/odesrc/OPCODE/OPC_OBBCollider.cpp \
+ unix/odesrc/OPCODE/Opcode.cpp \
+ unix/odesrc/OPCODE/OPC_OptimizedTree.cpp \
+ unix/odesrc/OPCODE/OPC_Picking.cpp \
+ unix/odesrc/OPCODE/OPC_PlanesCollider.cpp \
+ unix/odesrc/OPCODE/OPC_RayCollider.cpp \
+ unix/odesrc/OPCODE/OPC_SphereCollider.cpp \
+ unix/odesrc/OPCODE/OPC_TreeBuilders.cpp \
+ unix/odesrc/OPCODE/OPC_TreeCollider.cpp \
+ unix/odesrc/OPCODE/OPC_VolumeCollider.cpp \
+ unix/odesrc/OPCODE/Ice/IceAABB.cpp \
+ unix/odesrc/OPCODE/Ice/IceContainer.cpp \
+ unix/odesrc/OPCODE/Ice/IceHPoint.cpp \
+ unix/odesrc/OPCODE/Ice/IceIndexedTriangle.cpp \
+ unix/odesrc/OPCODE/Ice/IceMatrix3x3.cpp \
+ unix/odesrc/OPCODE/Ice/IceMatrix4x4.cpp \
+ unix/odesrc/OPCODE/Ice/IceOBB.cpp \
+ unix/odesrc/OPCODE/Ice/IcePlane.cpp \
+ unix/odesrc/OPCODE/Ice/IcePoint.cpp \
+ unix/odesrc/OPCODE/Ice/IceRandom.cpp \
+ unix/odesrc/OPCODE/Ice/IceRay.cpp \
+ unix/odesrc/OPCODE/Ice/IceRevisitedRadix.cpp \
+ unix/odesrc/OPCODE/Ice/IceSegment.cpp \
+ unix/odesrc/OPCODE/Ice/IceTriangle.cpp \
+ unix/odesrc/OPCODE/Ice/IceUtils.cpp
+
+
+#------------------------------------------------------------------------------
+# TARGETS and RULES
+#------------------------------------------------------------------------------
+
+.SUFFIXES:
+.SUFFIXES: .c .cpp .o .d
+
+
+all: $(libs_game) $(libs_ode) $(crx_ded_exe) $(crx_exe)
+	@echo "all done"
+
+#
+# Generate object and dependency file names from source names.
+#
+# Note the added suffixes. These are needed to differentiate
+#  objects from shared source files.
+#
+libgame_objects     := $(libgame_sources:%.c=%_g.o)
+libode_fast_objects := $(libode_fast_sources:.c=.o)
+libode_objects      := $(libode_sources:.cpp=.o)
+crx_objects         := $(crx_sources:.c=.o)
+crx_ded_objects     := $(crx_ded_sources:.c=_ded.o)
+
+crx_depinc     := $(crx_sources:.c=.d)
+crx_ded_depinc := $(crx_ded_sources:.c=_ded.d)
+libgame_depinc := $(libgame_sources:.c=_g.d)
+libode_depinc  := $(libode_sources:.cpp=.d)
+libode_fast_depinc := $(libode_fast_sources:.c=.d)
+
+#
+# Include the dependency rules
+#
+# Note: sort removes duplicates, but may not really be needed.
+#
+dependency_inc := $(sort \
+ $(crx_depinc) \
+ $(crx_ded_depinc) \
+ $(libgame_depinc) \
+ $(libode_depinc) \
+ $(libode_fast_depinc) )
+
+
+$(dependency_inc):
+
+
+-include  $(dependency_inc)
+
+
+$(libgame_objects) : %_g.o : %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(libgame_cppflags) $(libgame_cflags) -MMD -c $<  -o $@
+
+
+$(libode_fast_objects) : %.o : %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(libode_cppflags) $(libode_cflags) -MMD -c $<  -o $@
+
+
+$(libode_objects) :  %.o : %.cpp
+	$(MKDIR_P) $(dir $@)
+	$(CXX) $(libode_cppflags) $(libode_cxxflags) -MMD -c $<  -o $@
+
+
+$(crx_objects) :  %.o : %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(crx_cppflags) $(crx_cflags) -MMD -c $<  -o $@
+
+
+$(crx_ded_objects) : %_ded.o : %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(crx_ded_cppflags) $(crx_ded_cflags) -MMD -c $<  -o $@
+
+
+$(libs_game): $(libgame_objects)
+	@echo "building $@"
+	$(MKDIR_P) $(dir $@)
+	@rm -f $@
+	$(AR) $(libgame_arflags)  $@  $(libgame_objects)
+	$(RANLIB) $@
+	@echo "$@ complete"
+
+
+$(libs_ode): $(libode_fast_objects) $(libode_objects)
+	@echo "building $@"
+	$(MKDIR_P) $(dir $@)
+	@rm -f $@
+	$(AR) $(libode_arflags) $@ $(libode_fast_objects) $(libode_objects)
+	$(RANLIB) $@
+	@echo "$@ complete"
+
+
+$(crx_ded_exe): $(crx_ded_objects) $(libs_game)
+	@echo "building $@"
+	$(MKDIR_P) $(dir $@)
+	rm -f  $@
+	$(CC) $(crx_ded_cflags) $(crx_ded_ldflags) -o $@ $(crx_ded_objects) \
+		$(libs_game) $(crx_ded_ldadd)
+	@echo "$@ complete"
+
+
+$(crx_exe): $(crx_objects) $(libs_ode) $(libs_game)
+	@echo "building $@"
+	$(MKDIR_P) $(dir $@)
+	@rm -f  $@
+	$(CC) $(crx_cflags) $(crx_ldflags) -o $@ $(crx_objects) \
+		$(libs_ode) $(libs_game) $(crx_ldadd)
+	@echo "$@ complete"
+
+
+clean: clean_cor clean_ode clean_dep
+
+clean_cor:
+	rm -f $(libgame_objects)
+	rm -f $(libs_game)
+	rm -f $(crx_objects)
+	rm -f $(crx_ded_objects)
+	rm -f $(crx_exe_objects)
+	rm -f $(crx_exe)
+	rm -f $(crx_ded_exe)
+
+
+clean_ode:
+	rm -f $(libode_objects)
+	rm -f $(libode_fast_objects)
+	rm -f $(libs_ode)
+
+clean_dep:
+	rm -f $(dependency_inc)
+
+
+.PHONY:	clean clean_cor clean_ode clean_dep dependency_inc
+
+

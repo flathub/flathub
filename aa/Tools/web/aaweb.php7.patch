@@ -1,0 +1,1578 @@
+diff --git a/browser/flags.php b/browser/flags.php
+index 559d6f2..e1d08ba 100755
+--- a/browser/flags.php
++++ b/browser/flags.php
+@@ -1,4 +1,4 @@
+-<?
++<?php
+ # Many thanks to:
+ #
+ #   phptutorial.info for making this functionality possible
+@@ -12,6 +12,7 @@ include("ip_files/countries.php");
+ 
+ function GetCountryCode($ip)
+ {
++  $two_letter_country_code="";
+     $numbers = preg_split( "/\./", $ip);
+     include("ip_files/".$numbers[0].".php");
+     $code=($numbers[0] * 16777216) + ($numbers[1] * 65536) + ($numbers[2] * 256) + ($numbers[3]);
+diff --git a/browser/graph.php b/browser/graph.php
+index 1c7c033..726f44d 100644
+--- a/browser/graph.php
++++ b/browser/graph.php
+@@ -78,8 +78,7 @@ $control['id'] = intval($control['id']);  /* Just in case someone tries mysql in
+ if($control['id'] < 0)
+ 	$control['id'] = 0;
+ 	
+-$conn = mysql_connect($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass']) or die ('Cannot connect to the database because: ' . mysql_error());
+-mysql_select_db($CONFIG['dbName']) or die ('Database not found on host');
++$conn = new mysqli($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass'],$CONFIG['dbName']) or die ('Cannot connect to the database because: ' . mysqli_error());
+ 
+ /* Find time of last database update */
+ $endtime = GetLastUpdated();
+@@ -105,19 +104,19 @@ switch($control['show'])
+ 	break;
+ }	
+ 
+-$result = mysql_query($query);
++$result = mysqli_query($conn,$query);
+ 
+-$numresults = mysql_num_rows($result);
++$numresults = mysqli_num_rows($result);
+ 
+ //echo "Got {$numresults} results.<br>\n";
+ 
+ $data = array();
+-while($row = mysql_fetch_array($result, MYSQL_ASSOC))
++while($row = mysqli_fetch_array($result, MYSQLI_ASSOC))
+ {
+ 	$data[$row['time']] = $row['value'];
+ }
+-mysql_free_result($result);
+-mysql_close($conn);
++mysqli_free_result($result);
++mysqli_close($conn);
+ 
+ //echo "Last value is ".array_pop($data)."<br>\n";
+ 
+diff --git a/browser/healthcheck-master2.php b/browser/healthcheck-master2.php
+index 73cc641..57b6817 100755
+--- a/browser/healthcheck-master2.php
++++ b/browser/healthcheck-master2.php
+@@ -153,7 +153,7 @@ Function QueryMasterServer()
+ 	{
+ 		$server=substr($buffer,$index,4);
+ 		$port=substr($buffer,$index+4,2);
+-		$serverlist[] = array("ip" => inet_ntop($server), "port" => (("0x".strhex($port))+0));
++		$serverlist[] = array("ip" => inet_ntop($server), "port" => hexdec(strhex($port)));
+ 		$index += 6;
+ 	}
+ 	return $serverlist;
+diff --git a/browser/healthcheck.php b/browser/healthcheck.php
+index 3efa032..3c3a37f 100644
+--- a/browser/healthcheck.php
++++ b/browser/healthcheck.php
+@@ -153,7 +153,7 @@ Function QueryMasterServer()
+ 	{
+ 		$server=substr($buffer,$index,4);
+ 		$port=substr($buffer,$index+4,2);
+-		$serverlist[] = array("ip" => inet_ntop($server), "port" => (("0x".strhex($port))+0));
++		$serverlist[] = array("ip" => inet_ntop($server), "port" => hexdec(strhex($port)));
+ 		$index += 6;
+ 	}
+ 	return $serverlist;
+diff --git a/browser/index.php b/browser/index.php
+index ed21965..fbef2d9 100755
+--- a/browser/index.php
++++ b/browser/index.php
+@@ -21,7 +21,11 @@
+     Tony Jackson can be contacted at tonyj@cooldark.com
+ */
+ 
++global $conn;
+ include '../config.php';
++// connect here : handle $conn visible througout includes
++$conn = new mysqli($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass'],$CONFIG['dbName']) or die ('Cannot connect to the database because: ' . mysqli_error());
++
+ include 'support.php';
+ include 'servers.php';
+ include 'maps.php';
+@@ -33,10 +37,12 @@ Generate_HTML_Headers($CONFIG['baseurl'].'browser/', $CONFIG['title']);
+ 
+ $filename = GetFilename();
+ 
+-InsertAds();
+ 
+-$conn = mysql_connect($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass']) or die ('Cannot connect to the database because: ' . mysql_error());
+-mysql_select_db($CONFIG['dbName']) or die ('Database not found on host');
++// InsertAds();
++
++
++//$conn = mysql_connect($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass']) or die ('Cannot connect to the database because: ' . mysql_error());
++
+ 
+ echo '<p class="cdsubtitle">';
+ echo ' - ';
+@@ -54,61 +60,61 @@ switch ($control['action'])
+ 	case 'liveservers':
+ 		echo "<img alt=\"Player graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=players\"><br><br>\n";
+ 		echo "<img alt=\"Server graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=servers\"><br>\n";
+-		GenerateLiveServerTable(&$control);
++		GenerateLiveServerTable($control);
+ 	break;
+ 	case 'liveplayers':
+ 		echo "<img alt=\"Player graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=players\"><br><br>\n";
+ 		echo "<img alt=\"Server graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=servers\"><br>\n";
+-		GenerateLivePlayerTable(&$control);
++		GenerateLivePlayerTable($control);
+ 	break;
+ 	case 'serverstats':
+ 		/* Section to build table of servers with most playertime*/
+ 		echo "<p class=\"cdsubtitle\">Server usage in the last {$control['history']} hours</p>\n";
+ 		echo "<img alt=\"Server graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=servers&amp;history={$control['history']}\"><br><br>\n";
+-		GenerateTotalServers(&$control);
+-		GenerateServerTable(&$control);
++		GenerateTotalServers($control);
++		GenerateServerTable($control);
+ 		GenerateNumResultsSelector($control);
+ 		GenerateSearchInput("serversearch", "Server search");
+ 	break;
+ 	case 'playerstats':
+ 		echo "<p class=\"cdsubtitle\">Player activity in the last {$control['history']} hours</p>\n";
+ 		echo "<img alt=\"Player graph\" width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} src=\"graph.php?show=players&amp;history={$control['history']}\"><br><br>\n";
+-		GenerateTotalPlayers(&$control);
+-		GeneratePlayerTable(&$control);
++		GenerateTotalPlayers($control);
++		GeneratePlayerTable($control);
+ 		GenerateNumResultsSelector($control);
+ 		GenerateSearchInput("playersearch", "Player search");
+ 	break;
+ 	case 'mapstats':
+ 		/* Get list of most played maps */
+ 		echo "<p class=\"cdsubtitle\">Map usage in the last {$control['history']} hours</p>\n";
+-		GenerateMapTable(&$control);
++		GenerateMapTable($control);
+ 		GenerateNumResultsSelector($control);
+ 		GenerateSearchInput("mapsearch", "Map search");
+ 	break;
+ 	
+ 	case 'serverinfo':
+-		GenerateServerInfo(&$control);
++		GenerateServerInfo($control);
+ 		GenerateSearchInput("serversearch", "Find another server");
+ 	break;
+ 	case 'playerinfo':
+-		GeneratePlayerInfo(&$control);
++		GeneratePlayerInfo($control);
+ 		GenerateSearchInput("playersearch", "Find another player");
+ 	break;
+ 	case 'mapinfo':
+-		GenerateMapInfo(&$control);
++		GenerateMapInfo($control);
+ 		GenerateSearchInput("mapsearch", "Find another map");
+ 	break;
+ 
+ 	case 'serversearch':
+-		DoServerSearch(&$control);
++		DoServerSearch($control);
+ 		GenerateSearchInput("serversearch", "Search for another server");
+ 	break;
+ 	case 'playersearch':
+-		DoPlayerSearch(&$control);
++		DoPlayerSearch($control);
+ 		GenerateSearchInput("playersearch", "Search for another player");
+ 	break;
+ 	case 'mapsearch':
+-		DoMapSearch(&$control);
++		DoMapSearch($control);
+ 		GenerateSearchInput("mapsearch", "Search for another map");
+ 	break;
+ 
+@@ -118,7 +124,7 @@ switch ($control['action'])
+ }
+ 
+ Generate_HTML_Footers();
+-mysql_close($conn);
++// mysql_close($conn);
+ 
+ function InsertAds()
+ {
+diff --git a/browser/ip_files/countries.php b/browser/ip_files/countries.php
+index 40d7391..685502f 100755
+--- a/browser/ip_files/countries.php
++++ b/browser/ip_files/countries.php
+@@ -1,4 +1,4 @@
+-<?
++<?php
+ $countries=Array(
+ "AD" => array("AND","Andorra"),
+ "AE" => array("ARE","United Arab Emirates"),
+@@ -230,5 +230,6 @@ $countries=Array(
+ "ZM" => array("ZMB","Zambia"),
+ "ZW" => array("ZWE","Zimbabwe"),
+ "ZZ" => array("RES","Reserved"),
++"unknown" => array("UNK","Unknown")
+ );
+ ?>
+diff --git a/browser/maps.php b/browser/maps.php
+index 9381599..94d5efc 100644
+--- a/browser/maps.php
++++ b/browser/maps.php
+@@ -70,6 +70,7 @@ function ShowMapImage($mapname, $thumbnail = 0, $addlink = 1)
+ 
+ function GenerateMapTable(&$control)
+ {
++  global $conn;
+ 
+ 	$filename = GetFilename();
+   $endtime = GetLastUpdated();
+@@ -81,7 +82,7 @@ function GenerateMapTable(&$control)
+ 	        . ' GROUP BY mapname '
+ 	        . ' ORDER BY '. $control['orderby'] .' '.$control['sort'].' LIMIT 0, '.$control['results'];
+ 
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 	if($svlog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+@@ -96,7 +97,7 @@ function GenerateMapTable(&$control)
+ 	Insert_Table_Sorter($control, $display = 'Most players at once', $orderby = 'maxplayers'); 
+ 	echo "</tr>\n";
+ 
+-	while($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC))
++	while($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC))
+ 	{
+ 	    echo "<tr>";
+ 		echo "<td>";
+@@ -109,7 +110,7 @@ function GenerateMapTable(&$control)
+ 		echo "<td>{$svlog_row['maxplayers']}</td>";
+ 		echo "</tr>\n";
+ 	} 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 
+ 	echo "</table>\n";
+ }
+@@ -117,6 +118,7 @@ function GenerateMapTable(&$control)
+ 
+ function GenerateMapInfo(&$control)
+ {
++  global $conn;
+   /* Find time of last database update */
+   $endtime = GetLastUpdated();
+   $starttime = $endtime - $control['history']*60*60;
+@@ -130,8 +132,8 @@ function GenerateMapInfo(&$control)
+ 	        . ' GROUP BY mapname ';
+ //	        . ' ORDER BY '. $control['orderby'] .' '.$control['sort'].' LIMIT 0, '.$control['numresults'];
+ 
+-	$svlog_result = mysql_query($query);
+-	$svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC);
++	$svlog_result = mysqli_query($conn,$query);
++	$svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC);
+ 
+ 	echo "<p class=\"cdsubtitle\">Map information covering the last {$control['history']} hours</p>\n";
+ 
+@@ -159,7 +161,7 @@ function GenerateMapInfo(&$control)
+ 	
+ 	echo "</table>\n";
+ 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 	
+ 	/* Now get a list of (real) players that have used this map */
+ 	$query = 'SELECT name, COUNT( name ) as time'
+@@ -172,8 +174,8 @@ function GenerateMapInfo(&$control)
+ 
+ //	echo "Query=".$query."<br>\n";
+ 
+-	$pllog_result = mysql_query($query);
+-	$num_players = mysql_num_rows($pllog_result);
++	$pllog_result = mysqli_query($conn,$query);
++	$num_players = mysqli_num_rows($pllog_result);
+ 	
+ 	if($num_players > 0)
+ 	{
+@@ -187,7 +189,7 @@ function GenerateMapInfo(&$control)
+ 
+ 		$count = 0;
+ 		
+-		while(($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC)) && ($count++ < 50))
++		while(($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 		{
+ 			echo "<tr>";
+ 			if($pllog_row['name'] == 'Player')
+@@ -199,7 +201,7 @@ function GenerateMapInfo(&$control)
+ 		}
+ 		echo "</table>\n";
+ 	}
+-	mysql_free_result($pllog_result);
++	mysqli_free_result($pllog_result);
+ 	
+ 	/* Show which servers this map has been served from */
+ 	$query = 'SELECT serverid, COUNT( serverid ) as servedtime, SUM( realplayers ) as playertime, MAX( realplayers ) AS maxplayers'
+@@ -208,8 +210,8 @@ function GenerateMapInfo(&$control)
+ 	        . ' AND time > '.$starttime.' AND time <= '.$endtime
+ 	        . ' GROUP BY serverid '
+ 			. ' ORDER BY playertime DESC';
+-	$svlog_result = mysql_query($query);
+-	$num_servers = mysql_num_rows($svlog_result);	
++	$svlog_result = mysqli_query($conn,$query);
++	$num_servers = mysqli_num_rows($svlog_result);	
+ 	
+ 	if($num_servers > 0)
+ 	{
+@@ -223,11 +225,11 @@ function GenerateMapInfo(&$control)
+ 
+ 		$count = 0;
+ 		
+-		while(($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC)) && ($count++ < 50))
++		while(($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 		{
+ 			$query  = "SELECT ip, port, hostname FROM servers WHERE serverid = '{$svlog_row['serverid']}'";
+-			$svinfo_result = mysql_query($query);
+-			$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++			$svinfo_result = mysqli_query($conn,$query);
++			$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+ 			echo "<tr>";
+ 			echo "<td>".GetServerNameFromID($svlog_row['serverid'])."</td>";
+@@ -238,11 +240,12 @@ function GenerateMapInfo(&$control)
+ 		}
+ 		echo "</table>\n";
+ 	}
+-	mysql_free_result($svlog_result);	
++	mysqli_free_result($svlog_result);	
+ }
+ 
+ function DoMapSearch(&$control)
+ {
++  global $conn;
+ 	$filename = GetFilename();
+ 
+ 	$searchstring = addslashes($_POST['searchstring']);
+@@ -255,23 +258,23 @@ function DoMapSearch(&$control)
+     			. ' WHERE mapname LIKE \'%'.$searchstring.'%\''
+ 	        . ' GROUP BY mapname ';
+ 					
+-		$svlog_result = mysql_query($query);
++		$svlog_result = mysqli_query($conn,$query);
+ 		if($svlog_result === FALSE)
+ 		{
+ 			echo "<p class=\"cdbody\">Unable to perform search at this time.</p>\n";
+ 			return;
+ 		}
+ 
+-		echo '<p class=cdsubtitle>'.mysql_num_rows($svlog_result).' results for \''.$searchstring.'\'</p>';
++		echo '<p class=cdsubtitle>'.mysqli_num_rows($svlog_result).' results for \''.$searchstring.'\'</p>';
+ 		
+ 		echo "<p style=cdbody>";
+-		while($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC))
++		while($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC))
+ 		{
+ 			$control['action'] = 'mapinfo';
+ 			$control['id'] = $svlog_row['mapname'];
+ 			echo "<a href=\"".Generate_URL($control)."\">".$svlog_row['mapname']."</a><br>\n";
+ 		} 
+-		mysql_free_result($svlog_result);
++		mysqli_free_result($svlog_result);
+ 		echo "</p>\n";
+ 	}
+ 	else
+diff --git a/browser/players.php b/browser/players.php
+index e42a907..122ecfd 100644
+--- a/browser/players.php
++++ b/browser/players.php
+@@ -23,23 +23,24 @@
+ 
+ function GenerateLivePlayerTable(&$control)
+ {
++  global $conn;
+ 	$lastupdated = GetLastUpdated();
+ 	$filename = GetFilename();
+ 	/* Get all servers from last update which responded */
+ 	
+ 	/*  Section to display player list */
+ 	$query  = "SELECT COUNT(name) AS numplayers FROM playerlog WHERE time = '{$lastupdated}' AND ping != '0'";
+-	$pl_result = mysql_query($query);
+-	$numplayers = mysql_fetch_array($pl_result);
++	$pl_result = mysqli_query($conn,$query);
++	$numplayers = mysqli_fetch_array($pl_result);
+ 	$numplayers = $numplayers['numplayers'];
+ 	
+ 	$query  = " SELECT serverlogid, serverid, mapname, realplayers"
+ 			. " FROM serverlog"
+ 			. " WHERE time = '{$lastupdated}' AND realplayers > '0'"
+ 			. " ORDER BY realplayers DESC";
+-	$sv_result = mysql_query($query);
++	$sv_result = mysqli_query($conn,$query);
+ 
+-	$numservers = mysql_num_rows($sv_result);
++	$numservers = mysqli_num_rows($sv_result);
+ 
+ 	echo "<p class=\"cdsubtitle\">{$numplayers} players using {$numservers} servers<p>\n";
+ 
+@@ -47,18 +48,18 @@ function GenerateLivePlayerTable(&$control)
+ 	echo "<p>\n<table id=cdtable>\n";
+ 	echo "<tr><th>Player</th><th>Score</th><th>Ping</th><th>Server</th><th>Country</th><th>Map</th></tr>\n";
+ 
+-	while($sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC))
++	while($sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC))
+ 	{	
+ 		$query  = " SELECT name, score, ping FROM playerlog"
+ 				. " WHERE serverlogid = '{$sv_row['serverlogid']}' AND ping > '0'"
+ 				. " ORDER BY score DESC";
+-		$pl_result = mysql_query($query);
+-		$pl_numrows = mysql_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
++		$pl_result = mysqli_query($conn,$query);
++		$pl_numrows = mysqli_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
+ 		$query  = "SELECT ip, port, hostname, admin, website FROM servers WHERE serverid = '{$sv_row['serverid']}'";
+-		$svinfo_result = mysql_query($query);
+-		$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++		$svinfo_result = mysqli_query($conn,$query);
++		$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+-		while($pl_row = mysql_fetch_array($pl_result, MYSQL_ASSOC))
++		while($pl_row = mysqli_fetch_array($pl_result, MYSQLI_ASSOC))
+ 		{
+ 		    echo "<tr>";
+ 
+@@ -83,25 +84,27 @@ function GenerateLivePlayerTable(&$control)
+ 			echo "</tr>\n";
+ 		}
+ 
+-		mysql_free_result($pl_result);
++		mysqli_free_result($pl_result);
+ 	} 
+ 
+-	mysql_free_result($sv_result);
++	mysqli_free_result($sv_result);
+ 
+ 	echo "</table>\n";
+ }
+ 
+ function GenerateTotalPlayers(&$control)
+ {
++  global $conn;
+ 	$query = 'select count(distinct name) as total_players from playerlog;';
+-	$result = mysql_query($query);
+-	$row = mysql_fetch_array($result, MYSQL_ASSOC);
++	$result = mysqli_query($conn,$query);
++	$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ 	
+ 	echo '<p class="cdsubtitle">'.$row['total_players'].' unique players in the last '.$control['history'].' hours</p>';
+ }
+ 
+ function GeneratePlayerTable(&$control)
+ {
++  global $conn;
+   $endtime = GetLastUpdated();
+   $starttime = $endtime - $control['history']*60*60;
+   
+@@ -115,7 +118,7 @@ function GeneratePlayerTable(&$control)
+ 	
+ 	//echo $query."<br>\n";
+ 	
+-	$pllog_result = mysql_query($query);
++	$pllog_result = mysqli_query($conn,$query);
+ 	if($pllog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+@@ -130,7 +133,7 @@ function GeneratePlayerTable(&$control)
+ //	Insert_Table_Sorter($control, $display = 'Fragrate', $orderby = 'fragrate'); 
+ 	echo "</tr>\n";
+ 
+-	while($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC))
++	while($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC))
+ 	{
+ 	    echo "<tr>";
+ 		
+@@ -140,13 +143,14 @@ function GeneratePlayerTable(&$control)
+ //		echo "<td>{$pllog_row['fragrate']}</td>";
+ 		echo "</tr>\n";
+ 	} 
+-	mysql_free_result($pllog_result);
++	mysqli_free_result($pllog_result);
+ 
+ 	echo "</table>\n";
+ }
+ 
+ function GeneratePlayerInfo(&$control)
+ {
++  global $conn;
+ 	/* Find time of last database update */
+ 	$endtime = GetLastUpdated();
+ 	$starttime = $endtime - $control['history']*60*60;
+@@ -158,8 +162,8 @@ function GeneratePlayerInfo(&$control)
+ 	        . ' GROUP BY name ';
+ //	        . ' ORDER BY '. $control['orderby'] .' '.$control['sort'].' LIMIT 0, '.$control['numresults'];
+ 
+-	$pllog_result = mysql_query($query);
+-	$pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC);
++	$pllog_result = mysqli_query($conn,$query);
++	$pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC);
+ 
+ 	echo "<p class=\"cdsubtitle\">Player information covering the last {$control['history']} hours</p>\n";
+ 
+@@ -172,7 +176,7 @@ function GeneratePlayerInfo(&$control)
+ 	echo "<td>".MinutesToString($pllog_row['playertime'])."</td></tr>\n";
+ 		
+ 	echo "</table>\n";
+-	mysql_free_result($pllog_result);
++	mysqli_free_result($pllog_result);
+ 	
+ 	/* Show which servers this player has been playing on */
+ 	$query = 'SELECT serverid, mapname, COUNT( serverid ) as playertime, ROUND(AVG(ping),1) as avgping'
+@@ -183,8 +187,8 @@ function GeneratePlayerInfo(&$control)
+ 			. ' AND ping > 0'
+ 	        . ' GROUP BY serverid'
+ 			. ' ORDER BY playertime DESC';
+-	$svlog_result = mysql_query($query);
+-	$num_servers = mysql_num_rows($svlog_result);	
++	$svlog_result = mysqli_query($conn,$query);
++	$num_servers = mysqli_num_rows($svlog_result);	
+ 	
+ 	if($num_servers > 0)
+ 	{
+@@ -198,11 +202,11 @@ function GeneratePlayerInfo(&$control)
+ 
+ 		$count = 0;
+ 		
+-		while(($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC)) && ($count++ < 50))
++		while(($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 		{
+ 			$query  = "SELECT ip, port, hostname FROM servers WHERE serverid = '{$svlog_row['serverid']}'";
+-			$svinfo_result = mysql_query($query);
+-			$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++			$svinfo_result = mysqli_query($conn,$query);
++			$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+ 			echo "<tr>";
+ 			echo "<td>".GetServerNameFromID($svlog_row['serverid'])."</td>";
+@@ -212,7 +216,7 @@ function GeneratePlayerInfo(&$control)
+ 		}
+ 		echo "</table>\n";
+ 	}
+-	mysql_free_result($svlog_result);	
++	mysqli_free_result($svlog_result);	
+ 
+ 	/* Now get a list of maps that this player has played on */
+ 	$query = 'SELECT time, mapname, COUNT( mapname ) as playertime'
+@@ -225,8 +229,8 @@ function GeneratePlayerInfo(&$control)
+ 
+ //	echo "Query=".$query."<br>\n";
+ 
+-	$pllog_result = mysql_query($query);
+-	$num_maps = mysql_num_rows($pllog_result);
++	$pllog_result = mysqli_query($conn,$query);
++	$num_maps = mysqli_num_rows($pllog_result);
+ 	
+ 	if($num_maps > 0)
+ 	{
+@@ -240,7 +244,7 @@ function GeneratePlayerInfo(&$control)
+ 
+ 		$count = 0;
+ 		
+-		while(($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC)) && ($count++ < 50))
++		while(($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 		{
+ 			echo "<tr>";
+ 			echo "<td>".GenerateInfoLink("map", $pllog_row['mapname'])."</td>";
+@@ -249,7 +253,7 @@ function GeneratePlayerInfo(&$control)
+ 		}
+ 		echo "</table>\n";
+ 	}
+-	mysql_free_result($pllog_result);
++	mysqli_free_result($pllog_result);
+ 		
+ 		return;
+ 		
+@@ -262,8 +266,8 @@ function GeneratePlayerInfo(&$control)
+ 			. ' AND ping > 0'
+ 	        . ' GROUP BY serverandmap'
+ 			. ' ORDER BY starttime ASC';
+-	$pllog_result = mysql_query($query);
+-	$num_matches = mysql_num_rows($pllog_result);
++	$pllog_result = mysqli_query($conn,$query);
++	$num_matches = mysqli_num_rows($pllog_result);
+ 	
+ 	if($num_matches > 0)
+ 	{
+@@ -277,7 +281,7 @@ function GeneratePlayerInfo(&$control)
+ 
+ 		$count = 0;
+ 		
+-		while(($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC)) && ($count++ < 50))
++		while(($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 		{
+ 
+ 			echo "<tr>";
+@@ -293,8 +297,8 @@ function GeneratePlayerInfo(&$control)
+ 			        . ' FROM playerlog '
+ 		    		. ' WHERE time = '.$pllog_row['endtime']
+ 					. ' AND name = \''.$control['id'].'\'';
+-			$score_result = mysql_query($query);
+-			$score_row = mysql_fetch_array($score_result, MYSQL_ASSOC);*/
++			$score_result = mysqli_query($conn,$query);
++			$score_row = mysqli_fetch_array($score_result, MYSQLI_ASSOC);*/
+ 
+ 			/* Get list of scores for match */
+ 			$query = 'SELECT score'
+@@ -304,22 +308,23 @@ function GeneratePlayerInfo(&$control)
+ 					. ' AND name = \''.$control['id'].'\''
+ 					. ' AND mapname = \''.$pllog_row['mapname'].'\''
+ 					. ' ORDER BY time ASC';
+-			$score_result = mysql_query($query);
+-//			$score_rows = mysql_num_rows($score_result);
++			$score_result = mysqli_query($conn,$query);
++//			$score_rows = mysqli_num_rows($score_result);
+ 			echo "<td>";
+-			while($score_row = mysql_fetch_array($score_result, MYSQL_ASSOC))
++			while($score_row = mysqli_fetch_array($score_result, MYSQLI_ASSOC))
+ 				echo "{$score_row['score']} ";
+ 			echo "</td>\n";
+ 			echo "</tr>\n";
+ 		}
+ 		echo "</table>\n";
+ 	}
+-	mysql_free_result($pllog_result);			
++	mysqli_free_result($pllog_result);			
+ 	
+ }
+ 
+ function DoPlayerSearch(&$control)
+ {
++  global $conn;
+ 	$searchstring = addslashes($_POST['searchstring']);
+ 	
+ 	if($searchstring != "")
+@@ -330,23 +335,23 @@ function DoPlayerSearch(&$control)
+     			. ' WHERE name LIKE \'%'.$searchstring.'%\''
+ 	        . ' GROUP BY name ';
+ 					
+-		$pllog_result = mysql_query($query);
++		$pllog_result = mysqli_query($conn,$query);
+ 		if($pllog_result === FALSE)
+ 		{
+ 			echo "<p class=\"cdbody\">Unable to perform search at this time.</p>\n";
+ 			return;
+ 		}
+ 
+-		echo '<p class=cdsubtitle>'.mysql_num_rows($pllog_result).' results for \''.$searchstring.'\'</p>';
++		echo '<p class=cdsubtitle>'.mysqli_num_rows($pllog_result).' results for \''.$searchstring.'\'</p>';
+ 		
+ 		echo "<p style=cdbody>";
+-		while($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC))
++		while($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC))
+ 		{
+ 			$control['action'] = 'playerinfo';
+ 			$control['id'] = $pllog_row['name'];
+ 			echo "<a href=\"".Generate_URL($control)."\">".$pllog_row['name']."</a><br>\n";
+ 		} 
+-		mysql_free_result($pllog_result);
++		mysqli_free_result($pllog_result);
+ 		echo "</p>\n";
+ 	}
+ 	else
+diff --git a/browser/searchfuncs.php b/browser/searchfuncs.php
+index f084b23..f5199ab 100644
+--- a/browser/searchfuncs.php
++++ b/browser/searchfuncs.php
+@@ -32,6 +32,7 @@ function GenerateSearchInput($searchtype = "serversearch")
+ 
+ function GenerateServerInfo(&$control)
+ {
++  global $conn;
+ 	global $CONFIG;
+ 	echo "<p class=cdbody>Server information for the last ".mins_to_string(($control['endtime'] - $control['starttime'])/60)."</p>\n";
+ //	echo "<p class=cdbody>Eventually there will be lots more information on uptimes, peak usage times, players that have played on it here.</p>\n";
+@@ -43,8 +44,8 @@ function GenerateServerInfo(&$control)
+ 	}
+ 
+ 	$query  = "SELECT ip, port, hostname, admin, website, version FROM servers WHERE serverid = '".$control['id']."'";
+-	$sv_result = mysql_query($query);
+-	$sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC);
++	$sv_result = mysqli_query($conn,$query);
++	$sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC);
+ 	
+ 	$query = 'SELECT SUM( realplayers ) AS playertime , COUNT( serverid ) AS uptime , MAX( realplayers ) AS maxplayers , SUM( realplayers ) / COUNT( serverid ) as popularity '
+ 		. ' FROM serverlog '
+@@ -54,8 +55,8 @@ function GenerateServerInfo(&$control)
+ 				
+ 	//echo $query;
+ 				
+-	$svlog_result = mysql_query($query);
+-	$svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC);
++	$svlog_result = mysqli_query($conn,$query);
++	$svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC);
+ 
+ 
+ 	echo "<table id=cdtable>";
+@@ -86,7 +87,7 @@ function GenerateServerInfo(&$control)
+ 	echo "<td>{$sv_row['version']}</td>";
+ 	echo "</tr>\n";
+ 	echo "</table>";
+-	mysql_free_result($sv_result);	
++	mysqli_free_result($sv_result);	
+ 	echo "<br>\n";
+ 	echo "<img width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} alt=\"Usage graph\" src=\"graph.php?show=server&amp;id={$control['id']}\">\n";
+ 	
+@@ -94,6 +95,7 @@ function GenerateServerInfo(&$control)
+ 
+ function DoServerSearch(&$control, $searchstring)
+ {
++  global $conn;
+ 	$filename = GetFilename();
+ 
+ 	$searchstring = $_POST['searchstring'];
+@@ -106,12 +108,12 @@ function DoServerSearch(&$control, $searchstring)
+ 				. ' WHERE hostname LIKE \'%'.$searchstring.'%\''
+ 		        . ' GROUP BY hostname ';
+ 					
+-		$sv_result = mysql_query($query);
++		$sv_result = mysqli_query($conn,$query);
+ 
+-		echo '<p class=cdbody>'.mysql_num_rows($sv_result).' results for \''.$searchstring.'\'</p>';
++		echo '<p class=cdbody>'.mysqli_num_rows($sv_result).' results for \''.$searchstring.'\'</p>';
+ 		
+ 		echo "<p style=cdbody>";
+-		while($sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC))
++		while($sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC))
+ 		{
+ 			$control['action'] = 'serverinfo';
+ 			$control['id'] = $sv_row['serverid'];
+@@ -119,7 +121,7 @@ function DoServerSearch(&$control, $searchstring)
+ 
+ 			echo $sv_row['hostname']."</a><br>\n";
+ 		} 
+-		mysql_free_result($svlog_result);
++		mysqli_free_result($svlog_result);
+ 		echo "</p>\n";
+ 	}
+ 	else
+@@ -131,6 +133,7 @@ function DoServerSearch(&$control, $searchstring)
+ 
+ function GenerateMapInfo(&$control)
+ {
++  global $conn;
+ 	echo "<p class=cdbody>Map information for the last ".mins_to_string(($control['endtime'] - $control['starttime'])/60)."</p>\n";
+ 	
+ 	if($control['id'] == "")
+@@ -146,7 +149,7 @@ function GenerateMapInfo(&$control)
+ 	        . ' GROUP BY mapname ';
+ //	        . ' ORDER BY '. $control['orderby'] .' '.$control['sort'].' LIMIT 0, '.$control['numresults'];
+ 
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 
+ 	echo "<table id=cdtable>\n";
+ 	echo "<tr>";
+@@ -156,7 +159,7 @@ function GenerateMapInfo(&$control)
+ 	echo "<th>Most players at once</th>";
+ 	echo "</tr>\n";
+ 	
+-	$svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC);
++	$svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC);
+ 	echo "<tr>";
+ 	echo "<td>{$control['id']}</td>";
+ 	echo "<td>".mins_to_string($svlog_row['playertime'])."</td>";
+@@ -164,7 +167,7 @@ function GenerateMapInfo(&$control)
+ 	echo "<td>{$svlog_row['maxplayers']}</td>";
+ 	echo "</tr>\n";
+ 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 
+ 	echo "</table>\n";
+ 
+diff --git a/browser/servers.php b/browser/servers.php
+index fd7b618..380b93a 100644
+--- a/browser/servers.php
++++ b/browser/servers.php
+@@ -23,22 +23,24 @@
+ 
+ include("flags.php");
+ 
++
+ function GenerateLiveServerTable(&$control)
+ {
++  global $conn;
+ 	$lastupdated = GetLastUpdated();
+ 	$filename = GetFilename();
+ 	/* Get all servers from last update which responded */
+ 	
+ 		/*  Section to display player list */
+ 	$query  = "SELECT COUNT(name) AS numplayers FROM playerlog WHERE time = '{$lastupdated}' AND ping != '0'";
+-	$pl_result = mysql_query($query);
+-	$numplayers = mysql_fetch_array($pl_result);
++	$pl_result = mysqli_query($conn,$query);
++	$numplayers = mysqli_fetch_array($pl_result);
+ 	$numplayers = $numplayers['numplayers'];
+ 	
+ 	$query  = "SELECT serverlogid, serverid, mapname, realplayers FROM serverlog WHERE time = '{$lastupdated}' ORDER BY realplayers DESC";
+-	$sv_result = mysql_query($query);
++	$sv_result = mysqli_query($conn,$query);
+ 
+-	$numservers = mysql_num_rows($sv_result);
++	$numservers = mysqli_num_rows($sv_result);
+ 
+ //	echo "<p class=\"cdsubtitle\">{$numservers} live servers</p>\n";
+ 
+@@ -46,14 +48,14 @@ function GenerateLiveServerTable(&$control)
+ 	echo "<p>\n<table id=cdtable>\n";
+ 	echo "<tr><th>Game server ({$numservers} online)</th><th>Map</th><th colspan=3>Players ({$numplayers} human)</th></tr>\n";
+ 
+-	while($sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC))
++	while($sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC))
+ 	{	
+ 		$query  = "SELECT name, score, ping FROM playerlog WHERE serverlogid = '{$sv_row['serverlogid']}' ORDER BY score DESC";
+-		$pl_result = mysql_query($query);
+-		$pl_numrows = mysql_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
++		$pl_result = mysqli_query($conn,$query);
++		$pl_numrows = mysqli_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
+ 		$query  = "SELECT ip, port, hostname, admin, website FROM servers WHERE serverid = '{$sv_row['serverid']}'";
+-		$svinfo_result = mysql_query($query);
+-		$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++		$svinfo_result = mysqli_query($conn,$query);
++		$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+ 		if($pl_numrows > 5)
+ 			$rowspan = $pl_numrows;
+@@ -73,7 +75,7 @@ function GenerateLiveServerTable(&$control)
+ 		echo "</td>";
+ 		
+ 		$count = 0;
+-		while(($pl_row = mysql_fetch_array($pl_result, MYSQL_ASSOC)) or $count < 5)
++		while(($pl_row = mysqli_fetch_array($pl_result, MYSQLI_ASSOC)) or $count < 5)
+ 		{
+ 			
+ 			if($count > 0)  /* no tr tag for first row, completing row above */
+@@ -132,27 +134,29 @@ function GenerateLiveServerTable(&$control)
+ 		}
+ 		echo " {$svinfo_row['ip']}:{$svinfo_row['port']}";
+ 		*/
+-		mysql_free_result($pl_result);
++		mysqli_free_result($pl_result);
+ 		echo "<tr><td colspan=5></td></tr>";
+ 		echo "<tr><td colspan=5></td></tr>";
+ 	} 
+ 
+-	mysql_free_result($sv_result);
++	mysqli_free_result($sv_result);
+ 
+ 	echo "</table>\n";
+ }
+ 
+ function GenerateTotalServers(&$control)
+ {
++  global $conn;
+ 	$query = 'select count(distinct serverid) as total_servers from serverlog;';
+-	$result = mysql_query($query);
+-	$row = mysql_fetch_array($result, MYSQL_ASSOC);
++	$result = mysqli_query($conn,$query);
++	$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ 	
+ 	echo '<p class="cdsubtitle">'.$row['total_servers'].' unique servers in the last '.$control['history'].' hours</p>';
+ }
+ 
+ function GenerateServerTable(&$control)
+ {
++  global $conn;
+ 	$filename = GetFilename();
+   $endtime = GetLastUpdated();
+   $starttime = $endtime - $control['history']*60*60;
+@@ -163,7 +167,7 @@ function GenerateServerTable(&$control)
+ 	        . ' GROUP BY serverid '
+ 	        . ' ORDER BY '.$control['orderby'].' '.$control['sort'].' LIMIT 0, '.$control['results'];
+ 					
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 	if($svlog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+@@ -182,11 +186,11 @@ function GenerateServerTable(&$control)
+ 	
+ 	echo "</tr>\n";
+ 
+-	while($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC))
++	while($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC))
+ 	{
+ 		$query  = "SELECT ip, port, hostname, admin, website FROM servers WHERE serverid = '{$svlog_row['serverid']}'";
+-		$sv_result = mysql_query($query);
+-		$sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC);
++		$sv_result = mysqli_query($conn,$query);
++		$sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC);
+ 
+     $uptime=round(100*$svlog_row['uptime']/($control['history']*60), 1);
+     if($uptime > 100)
+@@ -207,14 +211,15 @@ function GenerateServerTable(&$control)
+ 		echo "<td>".MinutesToString($svlog_row['playertime'])."</td>";
+ 		echo "<td>{$svlog_row['maxplayers']}</td>";
+ 		echo "</tr>\n";
+-		mysql_free_result($sv_result);
++		mysqli_free_result($sv_result);
+ 	} 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 	echo "</table>\n";
+ }
+ 
+ function GenerateServerInfo(&$control)
+ {
++  global $conn;
+ 	global $CONFIG;
+ //	echo "<p class=cdbody>Eventually there will be lots more information on uptimes, peak usage times, players that have played on it here.</p>\n";
+   /* Find time of last database update */
+@@ -225,14 +230,14 @@ function GenerateServerInfo(&$control)
+ 	$query =  'SELECT ip, port, hostname, admin, website, version'
+             .' FROM servers '
+             .' WHERE serverid = \''.$control['id'].'\'';
+-	$sv_result = mysql_query($query);
++	$sv_result = mysqli_query($conn,$query);
+ 	if($sv_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+ 		return;
+ 	}
+ 
+-	$sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC);
++	$sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC);
+ 	
+ 	$query = 'SELECT SUM( realplayers ) AS playertime , COUNT( serverid ) AS uptime , MAX( realplayers ) AS maxplayers '
+ 		. ' FROM serverlog '
+@@ -240,14 +245,14 @@ function GenerateServerInfo(&$control)
+ 		. ' AND time > '.$starttime.' AND time <= '.$endtime
+ 		. ' GROUP BY serverid ';
+ 				
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 	if($svlog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+ 		return;
+ 	}
+ 
+-	$svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC);
++	$svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC);
+ 	$hostname = $sv_row['hostname'];
+ 	
+ 	$uptime=round(100*$svlog_row['uptime']/($control['history']*60), 1);
+@@ -287,7 +292,7 @@ function GenerateServerInfo(&$control)
+ 
+ 	echo "</table>";
+ 
+-	mysql_free_result($sv_result);	
++	mysqli_free_result($sv_result);	
+ 
+ 	/******************************************************
+ 	  Display maps that have been served                           
+@@ -302,8 +307,8 @@ function GenerateServerInfo(&$control)
+ 		
+ 		
+ 				
+-	$svlog_result = mysql_query($query);
+-	$num_maps = mysql_num_rows($svlog_result);
++	$svlog_result = mysqli_query($conn,$query);
++	$num_maps = mysqli_num_rows($svlog_result);
+ 	if($svlog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+@@ -320,7 +325,7 @@ function GenerateServerInfo(&$control)
+ 
+ 	$count = 0;
+ 	
+-	while(($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC)) && ($count++ < 50))
++	while(($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 	{
+ 		echo "<tr>";
+ 		echo "<td>".GenerateInfoLink("map", $svlog_row['mapname'])."</td>";
+@@ -330,7 +335,7 @@ function GenerateServerInfo(&$control)
+ 		echo "</tr>";
+ 	}
+ 	echo "</table>";
+-	mysql_free_result($svlog_result);	
++	mysqli_free_result($svlog_result);	
+ 	
+ 	/******************************************************
+ 	  Display players that have played on this server
+@@ -344,8 +349,8 @@ function GenerateServerInfo(&$control)
+ 	        . ' GROUP BY name '
+ 	        . ' ORDER BY playertime DESC';
+ 				
+-	$pllog_result = mysql_query($query);
+-	$num_players = mysql_num_rows($pllog_result);
++	$pllog_result = mysqli_query($conn,$query);
++	$num_players = mysqli_num_rows($pllog_result);
+ 	if($pllog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+@@ -362,7 +367,7 @@ function GenerateServerInfo(&$control)
+ 
+ 	$count = 0;
+ 	
+-	while(($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC)) && ($count++ < 50))
++	while(($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC)) && ($count++ < 50))
+ 	{
+ 		echo "<tr>";
+ 		echo "<td>".GenerateInfoLink("player", $pllog_row['name'])."</td>";
+@@ -375,20 +380,21 @@ function GenerateServerInfo(&$control)
+ 				. ' AND ping > 0 '
+ 				. ' AND name = \''.addslashes($pllog_row['name']).'\' ';
+ 				
+-		$ping_result = mysql_query($query);
+-		$ping_row = mysql_fetch_array($ping_result, MYSQL_ASSOC);
++		$ping_result = mysqli_query($conn,$query);
++		$ping_row = mysqli_fetch_array($ping_result, MYSQLI_ASSOC);
+ 		echo $ping_row['avping'].' ms';
+-		mysql_free_result($ping_result);
++		mysqli_free_result($ping_result);
+ 		echo "</td>";
+ 		echo "</tr>";
+ 	}
+ 	echo "</table>";
+-	mysql_free_result($pllog_result);		
++	mysqli_free_result($pllog_result);		
+ }
+ 
+ 
+ function OldGenerateServerInfo(&$control)
+ {
++  global $conn;
+ 	global $CONFIG;
+ //	echo "<p class=cdbody>Eventually there will be lots more information on uptimes, peak usage times, players that have played on it here.</p>\n";
+   /* Find time of last database update */
+@@ -396,14 +402,14 @@ function OldGenerateServerInfo(&$control)
+   $starttime = $endtime - $control['history']*60*60;
+ 	
+ 	$query  = "SELECT ip, port, hostname, admin, website, version FROM servers WHERE serverid = '".$control['id']."'";
+-	$sv_result = mysql_query($query);
++	$sv_result = mysqli_query($conn,$query);
+ 	if($sv_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+ 		return;
+ 	}
+ 
+-	$sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC);
++	$sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC);
+ 	
+ 	$query = 'SELECT SUM( realplayers ) AS playertime , COUNT( serverid ) AS uptime , MAX( realplayers ) AS maxplayers '
+ 		. ' FROM serverlog '
+@@ -413,14 +419,14 @@ function OldGenerateServerInfo(&$control)
+ 				
+ 	//echo $query;
+ 				
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 	if($svlog_result === FALSE)
+ 	{
+ 		echo "<p class=\"cdbody\">Unable to display stats at this time.</p>\n";
+ 		return;
+ 	}
+ 
+-	$svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC);
++	$svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC);
+ 
+ 	echo "<p class=\"cdbody\">Server information covering the last {$control['history']} hours</p>\n";
+ 
+@@ -450,7 +456,7 @@ function OldGenerateServerInfo(&$control)
+ 	echo "<td>{$sv_row['version']}</td>";
+ 	echo "</tr>\n";
+ 	echo "</table>";
+-	mysql_free_result($sv_result);	
++	mysqli_free_result($sv_result);	
+ 	echo "<br>\n";
+ 	echo "<img width={$CONFIG['graphwidth']} height={$CONFIG['graphheight']} alt=\"Usage graph\" src=\"graph.php?show=server&amp;id={$control['id']}&amp;history={$control['history']}\">\n";
+ 	
+@@ -458,6 +464,7 @@ function OldGenerateServerInfo(&$control)
+ 
+ function DoServerSearch(&$control)
+ {
++  global $conn;
+ 	$filename = GetFilename();
+ 
+ 	$searchstring = addslashes($_POST['searchstring']);
+@@ -470,17 +477,17 @@ function DoServerSearch(&$control)
+ 				. ' WHERE hostname LIKE \'%'.$searchstring.'%\''
+ 		        . ' GROUP BY hostname ';
+ 					
+-		$sv_result = mysql_query($query);
++		$sv_result = mysqli_query($conn,$query);
+ 		if($sv_result === FALSE)
+ 		{
+ 			echo "<p class=\"cdbody\">Unable to perform search at this time.</p>\n";
+ 			return;
+ 		}
+ 
+-		echo '<p class=cdsubtitle>'.mysql_num_rows($sv_result).' results for \''.$searchstring.'\'</p>';
++		echo '<p class=cdsubtitle>'.mysqli_num_rows($sv_result).' results for \''.$searchstring.'\'</p>';
+ 		
+ 		echo "<p style=cdbody>";
+-		while($sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC))
++		while($sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC))
+ 		{
+ 			$control['action'] = 'serverinfo';
+ 			$control['id'] = $sv_row['serverid'];
+@@ -488,7 +495,7 @@ function DoServerSearch(&$control)
+ 
+ 			echo $sv_row['hostname']."</a><br>\n";
+ 		} 
+-		mysql_free_result($sv_result);
++		mysqli_free_result($sv_result);
+ 		echo "</p>\n";
+ 	}
+ 	else
+diff --git a/browser/statfuncs.php b/browser/statfuncs.php
+index c2deeb2..4058120 100644
+--- a/browser/statfuncs.php
++++ b/browser/statfuncs.php
+@@ -66,10 +66,10 @@ function GetFilename()
+ function GetLastUpdated()
+ {
+ 	$query  = "SELECT lastupdated FROM stats WHERE id = '0'";
+-	$result = mysql_query($query);
+-	$row = mysql_fetch_array($result, MYSQL_ASSOC);
++	$result = mysqli_query($conn,$query);
++	$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ 	$lastupdated = $row['lastupdated'];
+-	mysql_free_result($result);
++	mysqli_free_result($result);
+ 	return $lastupdated;
+ }
+ 
+@@ -130,9 +130,9 @@ function GenerateLiveServerTable(&$control)
+ 	$filename = GetFilename();
+ 	/* Get all servers from last update which responded */
+ 	$query  = "SELECT serverlogid, serverid, mapname, realplayers FROM serverlog WHERE time = '{$lastupdated}' ORDER BY realplayers DESC";
+-	$sv_result = mysql_query($query);
++	$sv_result = mysqli_query($conn,$query);
+ 
+-	$numservers = mysql_num_rows($sv_result);
++	$numservers = mysqli_num_rows($sv_result);
+ 
+ 	echo "<p class=\"cdbody\">{$numservers} live servers:</p>\n";
+ 
+@@ -140,14 +140,14 @@ function GenerateLiveServerTable(&$control)
+ 	echo "<p>\n<table id=cdtable>\n";
+ 	echo "<tr><th>Server</th><th>Map</th><th colspan=3>Players</th></tr>\n";
+ 
+-	while($sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC))
++	while($sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC))
+ 	{	
+ 		$query  = "SELECT name, score, ping FROM playerlog WHERE serverlogid = '{$sv_row['serverlogid']}' ORDER BY score DESC";
+-		$pl_result = mysql_query($query);
+-		$pl_numrows = mysql_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
++		$pl_result = mysqli_query($conn,$query);
++		$pl_numrows = mysqli_num_rows($pl_result);  /* Get number of players (rows) in mysql result */
+ 		$query  = "SELECT ip, port, hostname, admin, website FROM servers WHERE serverid = '{$sv_row['serverid']}'";
+-		$svinfo_result = mysql_query($query);
+-		$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++		$svinfo_result = mysqli_query($conn,$query);
++		$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+ 		if($pl_numrows > 4)
+ 			$rowspan = $pl_numrows;
+@@ -170,7 +170,7 @@ function GenerateLiveServerTable(&$control)
+ 		echo "</td>";
+ 		
+ 		$count = 0;
+-		while(($pl_row = mysql_fetch_array($pl_result, MYSQL_ASSOC)) or $count < 4)
++		while(($pl_row = mysqli_fetch_array($pl_result, MYSQLI_ASSOC)) or $count < 4)
+ 		{
+ 			
+ 			if($count > 0)  /* no tr tag for first row, completing row above */
+@@ -223,12 +223,12 @@ function GenerateLiveServerTable(&$control)
+ 		}
+ 		echo " {$svinfo_row['ip']} port {$svinfo_row['port']}";
+ 		*/
+-		mysql_free_result($pl_result);
++		mysqli_free_result($pl_result);
+ 		echo "<tr><td colspan=3></td><tr>";
+ 		echo "<tr><td colspan=3></td><tr>";
+ 	} 
+ 
+-	mysql_free_result($sv_result);
++	mysqli_free_result($sv_result);
+ 
+ 	echo "</table>\n";
+ }
+@@ -241,20 +241,20 @@ function GenerateLiveUserTable(&$control)
+ 
+ 	/*  Section to display player list */
+ 	$query  = "SELECT name, serverid, score, ping FROM playerlog WHERE time = '{$lastupdated}' AND ping != '0'";
+-	$pl_result = mysql_query($query);
+-	$numplayers = mysql_num_rows($pl_result);
++	$pl_result = mysqli_query($conn,$query);
++	$numplayers = mysqli_num_rows($pl_result);
+ 
+ 	echo "<p class=\"cdbody\">{$numplayers} players online:<p>\n";
+ 	echo "<p>\n<table id=cdtable>\n";
+ 	echo "<tr><th>Name</th><th>Host</th><th>Score</th><th>Ping</th></tr>\n";
+ 
+-	while($pl_row = mysql_fetch_array($pl_result, MYSQL_ASSOC))
++	while($pl_row = mysqli_fetch_array($pl_result, MYSQLI_ASSOC))
+ 	{
+ 		echo "<tr>";
+ 		echo "<td><b>{$pl_row['name']}</b></td>";
+ 		$query  = "SELECT hostname FROM servers WHERE serverid = '{$pl_row['serverid']}'";
+-		$svinfo_result = mysql_query($query);
+-		$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++		$svinfo_result = mysqli_query($conn,$query);
++		$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 
+ 		echo "<td><a href=\"{$filename}?action=serverinfo&amp;id={$pl_row['serverid']}\">{$svinfo_row['hostname']}</a></td>";
+ 		echo "<td>{$pl_row['score']}</td>";
+@@ -262,7 +262,7 @@ function GenerateLiveUserTable(&$control)
+ 		echo "</tr>\n";
+ 	}
+ 	echo "</table>\n";
+-	mysql_free_result($pl_result);
++	mysqli_free_result($pl_result);
+ }
+ 
+ function GenerateServerTable(&$control)
+@@ -285,7 +285,7 @@ function GenerateServerTable(&$control)
+ 	        . ' GROUP BY serverid '
+ 	        . ' ORDER BY '.$control['orderby'].' '.$control['sort'].' LIMIT 0, '.$control['numresults'];
+ 					
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 	
+ 	echo "<table id=cdtable>\n";
+ 	echo "<tr>";
+@@ -300,11 +300,11 @@ function GenerateServerTable(&$control)
+ 	
+ 	echo "</tr>\n";
+ 
+-	while($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC))
++	while($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC))
+ 	{
+ 		$query  = "SELECT ip, port, hostname, admin, website FROM servers WHERE serverid = '{$svlog_row['serverid']}'";
+-		$sv_result = mysql_query($query);
+-		$sv_row = mysql_fetch_array($sv_result, MYSQL_ASSOC);
++		$sv_result = mysqli_query($conn,$query);
++		$sv_row = mysqli_fetch_array($sv_result, MYSQLI_ASSOC);
+ 
+ 	    echo "<tr>";
+ 		echo "<td>{$sv_row['ip']}<br>port {$sv_row['port']}</td>";
+@@ -320,9 +320,9 @@ function GenerateServerTable(&$control)
+ 		echo "<td>{$svlog_row['maxplayers']}</td>";
+ 		echo "<td>{$svlog_row['popularity']}</td>";
+ 		echo "</tr>\n";
+-		mysql_free_result($sv_result);
++		mysqli_free_result($sv_result);
+ 	} 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 	echo "</table>\n";
+ }
+ 
+@@ -344,7 +344,7 @@ function GenerateMapTable(&$control)
+ 	        . ' GROUP BY mapname '
+ 	        . ' ORDER BY '. $control['orderby'] .' '.$control['sort'].' LIMIT 0, '.$control['numresults'];
+ 
+-	$svlog_result = mysql_query($query);
++	$svlog_result = mysqli_query($conn,$query);
+ 
+ 	echo "<table id=cdtable>\n";
+ 	echo "<tr>";
+@@ -354,7 +354,7 @@ function GenerateMapTable(&$control)
+ 	Insert_Table_Sorter($control, $display = 'Most players at once', $orderby = 'maxplayers'); 
+ 	echo "</tr>\n";
+ 
+-	while($svlog_row = mysql_fetch_array($svlog_result, MYSQL_ASSOC))
++	while($svlog_row = mysqli_fetch_array($svlog_result, MYSQLI_ASSOC))
+ 	{
+ 	    echo "<tr>";
+ 		echo "<td>";
+@@ -366,7 +366,7 @@ function GenerateMapTable(&$control)
+ 		echo "<td>{$svlog_row['maxplayers']}</td>";
+ 		echo "</tr>\n";
+ 	} 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 
+ 	echo "</table>\n";
+ }
+@@ -390,7 +390,7 @@ function GeneratePlayerTable(&$control)
+ 	        . ' ORDER BY '.$control['orderby'].' '.$control['sort']
+ 	        . ' LIMIT 0 , '.$control['numresults'];
+ 	
+-	$pllog_result = mysql_query($query);
++	$pllog_result = mysqli_query($conn,$query);
+ 
+ 	echo "<table id=cdtable>\n";
+ 	echo "<tr>";
+@@ -400,7 +400,7 @@ function GeneratePlayerTable(&$control)
+ 	Insert_Table_Sorter($control, $display = 'Fragrate', $orderby = 'fragrate'); 
+ 	echo "</tr>\n";
+ 
+-	while($pllog_row = mysql_fetch_array($pllog_result, MYSQL_ASSOC))
++	while($pllog_row = mysqli_fetch_array($pllog_result, MYSQLI_ASSOC))
+ 	{
+ 	    echo "<tr>";
+ 		echo "<td>{$pllog_row['name']}</td>";
+@@ -409,7 +409,7 @@ function GeneratePlayerTable(&$control)
+ 		echo "<td>{$pllog_row['fragrate']}</td>";
+ 		echo "</tr>\n";
+ 	} 
+-	mysql_free_result($svlog_result);
++	mysqli_free_result($svlog_result);
+ 
+ 	echo "</table>\n";
+ }
+diff --git a/browser/support.php b/browser/support.php
+index 3fdb2d3..f4166f9 100644
+--- a/browser/support.php
++++ b/browser/support.php
+@@ -107,11 +107,13 @@ $actionparams = array(
+ 
+ 	if(array_key_exists('action', $_GET) === FALSE)
+ 	{   /* action= not defined */
+-		$control['action'] = array_shift(array_keys($actionparams)); /* Use first action in array */
++	  $akap = array_keys($actionparams);
++		$control['action'] = array_shift($akap); /* Use first action in array */
+ 	}
+ 	elseif(array_key_exists($_GET['action'], $actionparams) === FALSE)
+ 	{	/* action=<unknown value> */
+-		$control['action'] = array_shift(array_keys($actionparams)); /* Use first action in array */
++	  	  $akap = array_keys($actionparams);
++		$control['action'] = array_shift($akap); /* Use first action in array */
+ 	}
+ 	else
+ 	{	/* action=<valid action> - ready to go! */
+@@ -193,10 +195,11 @@ function GenerateMapLink($name)
+ 
+ function GetServerNameFromID($id = 0)
+ {
++  global $conn;
+ 	$filename = GetFilename();
+ 	$query  = "SELECT ip, port, hostname FROM servers WHERE serverid = '{$id}'";
+-	$svinfo_result = mysql_query($query);
+-	$svinfo_row = mysql_fetch_array($svinfo_result, MYSQL_ASSOC);
++	$svinfo_result = mysqli_query($conn,$query);
++	$svinfo_row = mysqli_fetch_array($svinfo_result, MYSQLI_ASSOC);
+ 	
+ 	$string = "<a href=\"{$filename}?action=serverinfo&amp;id={$id}\">";
+ 	if($svinfo_row['hostname'] == "")
+@@ -212,6 +215,7 @@ function GetServerNameFromID($id = 0)
+ 
+ function GenerateSearchInput($searchtype="serversearch", $description="Search")
+ {
++  
+ 		$filename = GetFilename();
+ 		echo "<form action=\"".$filename."?action=".$searchtype."\" method=\"post\">";
+ 		echo "<p class=cdsubtitle>{$description}<br><input name=\"searchstring\" type=\"text\">"; 
+@@ -232,11 +236,12 @@ function GetFilename()
+ 
+ function GetLastUpdated()
+ {
++  global $conn;
+ 	$query  = "SELECT lastupdated FROM stats WHERE id = '0'";
+-	$result = mysql_query($query);
+-	$row = mysql_fetch_array($result, MYSQL_ASSOC);
++	$result = mysqli_query($conn,$query);
++	$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ 	$lastupdated = $row['lastupdated'];
+-	mysql_free_result($result);
++	mysqli_free_result($result);
+ 	return $lastupdated;
+ }
+ 
+diff --git a/remote.php b/remote.php
+index 6c0886b..d847e87 100755
+--- a/remote.php
++++ b/remote.php
+@@ -18,30 +18,28 @@ foreach ($_GET as $key => $value)
+ $data = array();
+ 
+ // +++++++++ DB section start ++++++++++ //
+-$conn = mysql_connect($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass']) or die ('Error connecting to database');
+-
+-mysql_select_db($CONFIG['dbName']);
++$conn = mysqli_connect($CONFIG['dbHost'], $CONFIG['dbUser'], $CONFIG['dbPass'],$CONFIG['dbName']) or die ('Error connecting to database');
+ 
+ /* Get time of last database update */
+ $query  = "SELECT lastupdated FROM stats WHERE id = '0'";
+-$result = mysql_query($query);
+-$row = mysql_fetch_array($result, MYSQL_ASSOC);
++$result = mysqli_query($conn,$query);
++$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ $data['lastupdated'] = $lastupdated = $row['lastupdated'];
+-mysql_free_result($result);
++mysqli_free_result($result);
+ 
+ /* Get all servers from last update which responded */
+ $query  = "SELECT serverid FROM serverlog WHERE time = '{$lastupdated}'";
+-$sv_result = mysql_query($query);
+-$data['servers'] = mysql_num_rows($sv_result);
+-mysql_free_result($sv_result);
++$sv_result = mysqli_query($conn,$query);
++$data['servers'] = mysqli_num_rows($sv_result);
++mysqli_free_result($sv_result);
+ 
+ /* Get list of all players from last update */
+ $query  = "SELECT name, score, ping FROM playerlog WHERE time = '{$lastupdated}' AND ping != '0'";
+-$pl_result = mysql_query($query);
+-$data['players'] = mysql_num_rows($pl_result);
+-mysql_free_result($pl_result);
++$pl_result = mysqli_query($conn,$query);
++$data['players'] = mysqli_num_rows($pl_result);
++mysqli_free_result($pl_result);
+ 
+-mysql_close($conn);
++mysqli_close($conn);
+ // ++++++++++ DB section end ++++++++++ //
+ 
+ if($settings['format'] == 0)
+diff --git a/scan/scan.php b/scan/scan.php
+index 9513d16..8e2fc0c 100644
+--- a/scan/scan.php
++++ b/scan/scan.php
+@@ -18,10 +18,10 @@ define("MAX_INSTANCES",5); /* Maximum number of instances of this script allowed
+ define("MAX_SERVERS",256); /* Used to be hardcoded to 64! */
+ define("MASTER_QUERY","query"); /* Query string to sent to master server */
+ define("SERVER_QUERY","ÿÿÿÿstatus\n"); /* Query string to send to individual games servers */
+-define("MASTER_ADDRESS",'master.corservers.com');
++define("MASTER_ADDRESS",'master2.corservers.com');
+ define("MASTER_PORT",27900);
+ define("SERVER_RETRIES",3); /* Maximum number of times to try querying a games server */
+-define("SOCKET_TIMEOUT",6); /* socket_select() timeout, in seconds */
++define("SOCKET_TIMEOUT",10); /* socket_select() timeout, in seconds */
+ 
+ $debug = 0; /* Global for debug configuration */
+ 
+@@ -176,7 +176,7 @@ Function QueryMasterServer()
+ 	{
+ 		$server=substr($buffer,$index,4);
+ 		$port=substr($buffer,$index+4,2);
+-		$serverlist[] = array("ip" => inet_ntop($server), "port" => (("0x".strhex($port))+0));
++		$serverlist[] = array("ip" => inet_ntop($server), "port" => hexdec(strhex($port)));
+ 		$index += 6;
+ 	}
+ 	return $serverlist;
+@@ -375,14 +375,13 @@ Function UpdateDatabase($serverlist, $time)
+ 	$dbpass = $CONFIG['dbPass'];
+ 	$dbexpire = $CONFIG['dbExpire'];
+ 
+-	$conn = mysql_connect($dbhost, $dbuser, $dbpass) or die ('Unable to connect database: ' . mysql_error());
+-	mysql_select_db($dbname);
++	$conn = new mysqli($dbhost, $dbuser, $dbpass, $dbname) or die ('Unable to connect database: ' . mysqli_error());
+ 
+ 	// Temporary measure - clear tables and enter new value
+ 	//$query = 'TRUNCATE TABLE `servers`';
+-	//$result = mysql_query($query);
++	//$result = mysqli_query($conn,$query);
+ 	//$query = 'TRUNCATE TABLE `players`';
+-	//$result = mysql_query($query);
++	//$result = mysqli_query($conn,$query);
+ 
+ 	echo "OK<br>\n";
+ 	foreach ($serverlist as $id => $server)
+@@ -394,31 +393,31 @@ Function UpdateDatabase($serverlist, $time)
+ 			$query  = "SELECT serverid FROM servers WHERE ip = '{$server['ip']}' AND port = '{$server['port']}' AND hostname = '{$server['hostname']}' AND admin = '{$server['admin']}' AND version = '{$server['version']}' AND website = '{$server['website']}'";
+ 			if($debug)
+ 				echo $query."<br>\n";
+-			$result = mysql_query($query);
++			$result = mysqli_query($conn,$query);
+ 				
+-			if(mysql_num_rows($result) == 0)
++			if(mysqli_num_rows($result) == 0)
+ 			{ /* Not seen before, add to server list */
+ 				$query = "INSERT INTO servers (ip, port, hostname, admin, version, website, lastseen) VALUES ('{$server['ip']}','{$server['port']}','{$server['hostname']}','{$server['admin']}','{$server['version']}','{$server['website']}','{$time}');";
+ 				if($debug)
+ 					echo $query."<br>\n";
+ 				else
+-					$result = mysql_query($query);		
+-				$serverid = mysql_insert_id();
++					$result = mysqli_query($conn,$query);		
++				$serverid = mysqli_insert_id($conn);
+ 			}
+ 			else
+ 			{ /* We know about this one already */
+ 				if($debug)
+ 					echo "One we know about<br>\n";
+-				$row = mysql_fetch_array($result, MYSQL_ASSOC);
++				$row = mysqli_fetch_array($result, MYSQLI_ASSOC);
+ 				$serverid = $row['serverid'];	
+-				mysql_free_result($result);
++				mysqli_free_result($result);
+ 
+ 				/* Update the time this server was last seen (so we can purge old servers from the database) */
+ 				$query = "UPDATE servers SET lastseen = '{$time}' WHERE serverid = '{$serverid}'";
+ 				if($debug)
+ 					echo $query."<br>\n";
+ 				else		
+-					$result = mysql_query($query);
++					$result = mysqli_query($conn,$query);
+ 
+ 				
+ 			}
+@@ -430,10 +429,10 @@ Function UpdateDatabase($serverlist, $time)
+ 			if($debug)
+ 				echo $query."<br>\n";
+ 			else
+-				$result = mysql_query($query);
++				$result = mysqli_query($conn,$query);
+ 		
+ 			/* Get ID from last inserted auto-increment field, ID */
+-			$lastid = mysql_insert_id();
++			$lastid = mysqli_insert_id($conn);
+ 			
+ 			$realplayers = 0;
+ 			
+@@ -443,7 +442,7 @@ Function UpdateDatabase($serverlist, $time)
+ 				if($debug)
+ 					echo $query."<br>\n";
+ 				else
+-					$result = mysql_query($query);
++					$result = mysqli_query($conn,$query);
+ 				if($player["ping"] > 0) /* Assume real player, rather than bot */
+ 				{
+ 					$realplayers++;
+@@ -453,7 +452,7 @@ Function UpdateDatabase($serverlist, $time)
+ 			if($debug)
+ 				echo $query."<br>\n";
+ 			else		
+-				$result = mysql_query($query);
++				$result = mysqli_query($conn,$query);
+ 		}
+ 	}
+ 
+@@ -461,22 +460,22 @@ Function UpdateDatabase($serverlist, $time)
+ 	if($debug)
+ 		echo $query."<br>\n";
+ 	else
+-		$result = mysql_query($query);
++		$result = mysqli_query($conn,$query);
+ 
+ 	/********* CLEAN OUT OLD ENTRIES ***********/
+ 
+ 	if(!$debug)
+ 	{
+ 		echo "Deleting database entries where time < ".($time - $dbexpire).".<br>\n";
+-		$result = mysql_query("DELETE FROM serverlog WHERE time < ".($time - $dbexpire));
+-		$result = mysql_query("DELETE FROM playerlog WHERE time < ".($time - $dbexpire));
+-		$result = mysql_query("DELETE FROM servers WHERE lastseen < ".($time - $dbexpire));
++		$result = mysqli_query($conn,"DELETE FROM serverlog WHERE time < ".($time - $dbexpire));
++		$result = mysqli_query($conn,"DELETE FROM playerlog WHERE time < ".($time - $dbexpire));
++		$result = mysqli_query($conn,"DELETE FROM servers WHERE lastseen < ".($time - $dbexpire));
+ 		/* Remove all previous bot entries from DB */
+-		$result = mysql_query("DELETE FROM playerlog WHERE time <> '".$time."' AND ping = '0'");
+-		echo "Deleted ".mysql_num_rows($result)." old entries.<br>\n";
++		$result = mysqli_query($conn,"DELETE FROM playerlog WHERE time <> '".$time."' AND ping = '0'");
++		echo "Deleted ".mysqli_num_rows($result)." old entries.<br>\n";
+ 	}
+ 
+-	mysql_close($conn);
++	mysqli_close($conn);
+ }
+ 
+ /* Main program starts here */
+@@ -515,6 +514,7 @@ else
+ CheckInstances();
+ 
+ $serverlist = QueryMasterServer();
++
+ /* $serverlist is our master array of servers, into which we will add information about each server */
+ 
+ /* Add local servers */
