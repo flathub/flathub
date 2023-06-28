@@ -20,8 +20,10 @@ sources:
 # Gen from Yarn not working: flatpak-node-generator --no-requests-cache -r -o node-sources.json yarn ../EmojiMart/yarn.lock
 
 flatpak:
-	flatpak-builder --user --install --force-clean build io.github.vemonet.EmojiMart.yml
+	flatpak-builder --ccache --keep-build-dirs --user --install --force-clean build io.github.vemonet.EmojiMart.yml
 	flatpak run io.github.vemonet.EmojiMart
+
+# flatpak-builder --user --install --force-clean --download-only build io.github.vemonet.EmojiMart.yml
 
 # flatpak build-bundle _repo io.github.vemonet.EmojiMart.flatpak io.github.vemonet.EmojiMart
 
