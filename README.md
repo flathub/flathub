@@ -30,7 +30,7 @@ make install
 Generate `cargo-sources.json` and `node-sources.json`:
 
 ```bash
-make gen
+make sources
 ```
 
 Build flatpak:

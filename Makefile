@@ -1,5 +1,5 @@
 OS := $(shell uname)
-.PHONY: install gen flatpak clean
+.PHONY: install sources flatpak clean
 
 install:
 	flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -13,7 +13,7 @@ install:
 
 # org.freedesktop.Sdk.Extension.rust-nightly/x86_64/22.08
 
-gen:
+sources:
 	python flatpak-cargo-generator.py -o cargo-sources.json ../EmojiMart/src-tauri/Cargo.lock
 	flatpak-node-generator --no-requests-cache -r -o node-sources.json npm ../EmojiMart/package-lock.json
 
