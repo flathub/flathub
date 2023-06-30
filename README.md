@@ -3,7 +3,7 @@ This is the repo for the Flatpak version of [Bforartists](https://www.bforartist
 # Building Instructions
 1. Install `flatpak` and `flatpak-builder` from your distro's repo
 2. Install the SDK `flatpak install flathub org.freedesktop.Platform//22.08 org.freedesktop.Sdk//22.08`
-3. Clone the repo (with `--recurse-submodules` for the shared Flatpak modules) and download the latest Bforartists tar archive
+3. Clone the repo (with `--recurse-submodules` for the shared Flatpak modules)
 4. Create a new folder called `build-dir`
 5. To build for testing, execute `flatpak-builder --user --install --force-clean build-dir de.bforartists.Bforartists.json`. This will build and install Bforartists.
 
