@@ -1,4 +1,4 @@
-This is the repo for the Flatpak version of Bforartists, based on https://github.com/flathub/org.blender.Blender
+This is the repo for the Flatpak version of [Bforartists](https://www.bforartists.de/), based on https://github.com/flathub/org.blender.Blender
 
 # Building Instructions
 1. Install `flatpak` and `flatpak-builder` from your distro's repo
