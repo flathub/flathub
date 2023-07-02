@@ -11,13 +11,24 @@ Note that FFMPEG will be downloaded and compiled too.
 
 # Upgrading to the Newest Version
 Open `org.bforartists.Bforartists.json` and scroll down to this section:
-```json
-    {
-        "type": "archive",
-        "url": "URL FOR BFA ARCHIVE ON GITHUB RELEASES",
-        "sha256": "SHA256 CHECKSUM FOR BFA ARCHIVE",
-        "strip-components": 0 
-    },
+```yaml
+sources:
+  - type: archive
+    url: https://github.com/Bforartists/Bforartists/releases/download/v3.5.1/Bforartists-3-5-1-Linux.tar.xz
+    sha256: a179a87cd295c7d1df4aad0aab4c4a2b14665aa21fd2e822b3583bfba6ed5b6a
+    strip-components: 0
+
+    # This is to verify that the URL indeed 
+    # exists. This is different from the
+    # checksum, which checks if the downloaded 
+    # tar archive is indeed the correct archive
+    x-checker-data:
+      type: anitya
+      project-id: 359756
+      stable-only: true
+      versions:
+        ==: 3.5.1
+      url-template: https://github.com/Bforartists/Bforartists/releases/download/v$version/Bforartists-$version0-$version1-$version2-Linux.tar.xz
 ``` 
 
-Replace the `url` variable with the url of the latest archive (much be from GitHub releases). Replace `sha256` with the result of `sha256sum <Bforartists tar archive>`. In addition, it's important to check the upstream Blender flatpak repo to see if anything in the manifest has changed.
+Replace the `url` variable with the url of the latest archive (much be from GitHub releases), `sha256` with the result of `sha256sum <Bforartists tar archive>`, and the version in `x-checker-data` with the version of the latest release. In addition, it's important to check the upstream Blender flatpak repo to see if anything in the manifest has changed.
