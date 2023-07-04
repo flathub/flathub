@@ -4,4 +4,4 @@
 > This repackaging is not supported by OpenAI
 
 ## Issues
-Please open issues under: https://github.com/flathub/xyz.anirban.ChatGPTElectron/issues
+Please open issues under: https://github.com/flathub/io.github.anirbandey1.ChatGPTElectron/issues
