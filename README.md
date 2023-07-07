@@ -74,11 +74,6 @@ Exec Flags: --host code --reuse-window {project} --goto {file}:{line}:{col}
 
 After the first C# script is created, it is necessary to click `build` within Godot. Alternatively, running `dotnet restore` in the IDE's terminal would work as well.
 
-It is also necessary to add the fallback folder for other flatpaks that use .NET 6. This can be done like so:
-```
-flatpak --user override --filesystem=~/.var/app/org.godotengine.Godot/data/godot/mono/GodotNuGetFallbackFolder
-```
-
 ## Limitations
 
 - The Mono external editor support does not work.
