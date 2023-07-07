@@ -1,0 +1,121 @@
+{
+  "app-id": "io.missioncenter.MissionCenter",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "44",
+  "sdk": "org.gnome.Sdk",
+  "command": "missioncenter",
+  "finish-args": [
+    "--share=network",
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--device=all",
+    "--socket=wayland",
+    "--talk-name=org.freedesktop.Flatpak",
+    "--talk-name=org.gnome.Settings",
+    "--system-talk-name=org.freedesktop.systemd1",
+    "--system-talk-name=org.freedesktop.NetworkManager",
+    "--filesystem=xdg-data/flatpak/exports/share:ro",
+    "--filesystem=/var/lib/flatpak/exports/share:ro",
+    "--filesystem=xdg-data/flatpak/app:ro",
+    "--filesystem=/var/lib/flatpak/app:ro",
+    "--env=XDG_DATA_DIRS=/app/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share:/var/lib/flatpak/exports/share:~/.local/share/flatpak/exports/share"
+  ],
+  "build-options": {
+    "append-path": "/app/tmp/rust/cargo/bin",
+    "build-args": [
+      "--share=network"
+    ],
+    "env": {
+      "RUST_BACKTRACE": "1",
+      "RUSTUP_HOME": "/app/tmp/rust/rustup",
+      "CARGO_HOME": "/app/tmp/rust/cargo"
+    }
+  },
+  "cleanup": [
+    "/include",
+    "/lib/pkgconfig",
+    "/man",
+    "/share/doc",
+    "/share/gtk-doc",
+    "/share/man",
+    "/share/pkgconfig",
+    "*.la",
+    "*.a"
+  ],
+  "modules": [
+    {
+      "name": "missioncenter",
+      "buildsystem": "simple",
+      "build-commands": [
+        "curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path --target x86_64-unknown-linux-musl",
+        "cd src/proxy && env RUSTFLAGS='-C target-feature=+crt-static' /app/tmp/rust/cargo/bin/cargo build --release --target x86_64-unknown-linux-musl",
+        "install -v -p -m 755 src/proxy/target/x86_64-unknown-linux-musl/release/proxy /app/bin/missioncenter-proxy",
+        "rm -rf src/proxy/target",
+        "mv /app/lib/libudev* /app",
+        "mv /app/lib/pkgconfig /app",
+        "rm -rf /app/bin/musl-gcc /app/bin/udevadm /app/etc /app/include /app/sbin /app/lib",
+        "mkdir -p /app/lib/",
+        "mv /app/libudev* /app/lib/",
+        "mv /app/pkgconfig /app/lib/",
+        "rustup default stable-x86_64-unknown-linux-gnu",
+        "meson setup _flatpak_build -Dprefix=/app -Dbuildtype=release -Dflatpak=true",
+        "ninja -C _flatpak_build install",
+        "rm -rf /app/tmp"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://gitlab.com/mission-center-devs/mission-center.git",
+          "tag": "v0.2.0",
+          "commit": "1f44b55e8b8372a7c535b463da34c3a1f5d7bed5"
+        }
+      ],
+      "modules": [
+        {
+          "name": "eudev",
+          "buildsystem": "autotools",
+          "config-opts": [],
+          "cleanup": [
+            "/bin",
+            "/sbin",
+            "/etc",
+            "/lib/udev"
+          ],
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://github.com/eudev-project/eudev.git",
+              "commit": "39979ddf46e75d1b75bf381e1c73914c226c4302"
+            }
+          ]
+        },
+        {
+          "name": "musl-libc",
+          "buildsystem": "autotools",
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://musl.libc.org/releases/musl-1.2.4.tar.gz",
+              "sha256": "7a35eae33d5372a7c0da1188de798726f68825513b7ae3ebe97aaaa52114f039"
+            }
+          ]
+        },
+        {
+          "name": "dmidecode",
+          "buildsystem": "simple",
+          "build-commands": [
+            "make CC=musl-gcc CFLAGS=-static LDFLAGS=-static install-bin prefix=/app",
+            "install -v -p -m 755 /app/sbin/dmidecode /app/bin/dmidecode"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://git.savannah.nongnu.org/cgit/dmidecode.git/snapshot/dmidecode-3-5.tar.gz",
+              "sha256": "8b1465a1afa71f9ffb0206ba5ffc435c46c0281d089552578f600879728a1b23"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
