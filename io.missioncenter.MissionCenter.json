@@ -20,17 +20,6 @@
     "--filesystem=/var/lib/flatpak/app:ro",
     "--env=XDG_DATA_DIRS=/app/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share:/var/lib/flatpak/exports/share:~/.local/share/flatpak/exports/share"
   ],
-  "build-options": {
-    "append-path": "/app/tmp/rust/cargo/bin",
-    "build-args": [
-      "--share=network"
-    ],
-    "env": {
-      "RUST_BACKTRACE": "1",
-      "RUSTUP_HOME": "/app/tmp/rust/rustup",
-      "CARGO_HOME": "/app/tmp/rust/cargo"
-    }
-  },
   "cleanup": [
     "/include",
     "/lib/pkgconfig",
@@ -46,29 +35,45 @@
     {
       "name": "missioncenter",
       "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/run/build/missioncenter/bin",
+        "env": {
+          "RUST_BACKTRACE": "full",
+          "RUSTUP_HOME": "/run/build/missioncenter",
+          "CARGO_HOME": "/run/build/missioncenter/cargo"
+        }
+      },
       "build-commands": [
-        "curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path --target x86_64-unknown-linux-musl",
-        "cd src/proxy && env RUSTFLAGS='-C target-feature=+crt-static' /app/tmp/rust/cargo/bin/cargo build --release --target x86_64-unknown-linux-musl",
-        "install -v -p -m 755 src/proxy/target/x86_64-unknown-linux-musl/release/proxy /app/bin/missioncenter-proxy",
-        "rm -rf src/proxy/target",
-        "mv /app/lib/libudev* /app",
-        "mv /app/lib/pkgconfig /app",
-        "rm -rf /app/bin/musl-gcc /app/bin/udevadm /app/etc /app/include /app/sbin /app/lib",
-        "mkdir -p /app/lib/",
-        "mv /app/libudev* /app/lib/",
-        "mv /app/pkgconfig /app/lib/",
         "rustup default stable-x86_64-unknown-linux-gnu",
-        "meson setup _flatpak_build -Dprefix=/app -Dbuildtype=release -Dflatpak=true",
-        "ninja -C _flatpak_build install",
-        "rm -rf /app/tmp"
+        "cd subprojects/nvtop-* && find ../packagefiles -type f -name 'nvtop-*' -exec sh -c 'patch -p1 < {}' \\;",
+        "meson setup _flatpak_build -Dprefix=/app -Dbuildtype=release -Dflatpak=true -Dcargo_env=\"CARGO_HOME=$CARGO_HOME\"",
+        "ninja -C _flatpak_build install"
       ],
       "sources": [
         {
           "type": "git",
           "url": "https://gitlab.com/mission-center-devs/mission-center.git",
-          "tag": "v0.2.0",
-          "commit": "1f44b55e8b8372a7c535b463da34c3a1f5d7bed5"
-        }
+          "tag": "v0.2.1",
+          "commit": "721d69a7a25f0903512d41e351d10db9db179928"
+        },
+        {
+          "type": "archive",
+          "url": "https://gitlab.com/mission-center-devs/build-tools/-/raw/main/rust-musl-1.70.0.tar.zst",
+          "sha256": "fcc101cd0af292d94e090b79517078c704201adff77817af0f654ca32f086f5b"
+        },
+        {
+          "type": "git",
+          "url": "https://gitlab.gnome.org/jwestman/blueprint-compiler",
+          "commit": "f526cfa4d92a02be1eeb539076e22b06bc9ab887",
+          "dest": "subprojects/blueprint-compiler"
+        },
+        {
+          "type": "archive",
+          "url": "https://github.com/Syllo/nvtop/archive/9a8458b541a195a0c5cadafb66e240962c852b39.tar.gz",
+          "sha256": "290542e3c2203613e18faaa769dcc5479b170c39acbe71c976a7e86ff03ea1a7",
+          "dest": "subprojects/nvtop-9a8458b541a195a0c5cadafb66e240962c852b39"
+        },
+        "cargo-sources.json"
       ],
       "modules": [
         {
@@ -113,6 +118,49 @@
               "url": "https://git.savannah.nongnu.org/cgit/dmidecode.git/snapshot/dmidecode-3-5.tar.gz",
               "sha256": "8b1465a1afa71f9ffb0206ba5ffc435c46c0281d089552578f600879728a1b23"
             }
+          ]
+        },
+        {
+          "name": "proxy",
+          "buildsystem": "simple",
+          "build-options": {
+            "append-path": "/run/build/proxy/bin",
+            "env": {
+              "RUST_BACKTRACE": "full",
+              "RUSTUP_HOME": "/run/build/proxy",
+              "CARGO_HOME": "/run/build/proxy/cargo"
+            }
+          },
+          "build-commands": [
+            "cd src/proxy && env RUSTFLAGS='-C target-feature=+crt-static' cargo build --offline --release --target x86_64-unknown-linux-musl",
+            "install -v -p -m 755 src/proxy/target/x86_64-unknown-linux-musl/release/proxy /app/bin/missioncenter-proxy",
+            "rm -rf src/proxy/target"
+          ],
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://gitlab.com/mission-center-devs/mission-center.git",
+              "tag": "v0.2.1",
+              "commit": "721d69a7a25f0903512d41e351d10db9db179928"
+            },
+            {
+              "type": "archive",
+              "url": "https://gitlab.com/mission-center-devs/build-tools/-/raw/main/rust-musl-1.70.0.tar.zst",
+              "sha256": "fcc101cd0af292d94e090b79517078c704201adff77817af0f654ca32f086f5b"
+            },
+            "cargo-sources-proxy.json"
+          ]
+        },
+        {
+          "name": "remove-leftover-headers-and-libraries",
+          "buildsystem": "simple",
+          "build-commands": [
+            "mv /app/lib/libudev* /app",
+            "mv /app/lib/pkgconfig /app",
+            "rm -rf /app/bin/musl-gcc /app/bin/udevadm /app/etc /app/include /app/sbin /app/lib",
+            "mkdir -p /app/lib/",
+            "mv /app/libudev* /app/lib/",
+            "mv /app/pkgconfig /app/lib/"
           ]
         }
       ]
