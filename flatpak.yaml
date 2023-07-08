@@ -1,0 +1,70 @@
+##########
+# Freeciv21 - flatpak.yaml
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: James Robertson <jwrober@gmail.com>
+#
+# Build Steps:
+#   - (once) sudo apt install flatpak-builder
+#   - (once) sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+#   - flatpak-builder --install-deps-from=flathub --force-clean build/flatpak dist/flatpak.yaml
+#   - flatpak-builder --user --install --force-clean build/flatpak dist/flatpak.yaml
+#   - flatpak run net.longturn.freeciv21
+#   - flatpak remove net.longturn.freeciv21
+#
+##########
+
+app-id: net.longturn.freeciv21
+runtime: org.kde.Platform
+runtime-version: '5.15'
+sdk: org.kde.Sdk
+
+command: freeciv21-client
+modules:
+  - name: freeciv21
+    sources:
+      # Get Lua 5.3 as a dependency not included in the org.kde.Platform package.
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.3.6.tar.gz
+        sha256: fc5fd69bb8736323f026672b1b7235da613d7177e72558893a0bdcd320466d60
+        dest: include/lua5.3
+
+      # Get Libertinus font because the build system does not have access to internet.
+      - type: archive
+        url: https://github.com/alerque/libertinus/releases/download/v7.040/Libertinus-7.040.zip
+        sha256: 2cce08507441d8ae7b835cfe51fb643ad5d9f6b44db4360c4e244f0e474a72f6
+        dest: fonts/Libertinus
+
+      - type: git
+        branch: stable
+        url: https://github.com/longturn/freeciv21
+
+    buildsystem: simple
+    build-commands:
+      # Compile Lua
+      - cd include/lua5.3 && make linux
+      # Configure
+      - cmake -S $PWD -B build-flatpak -G Ninja
+        -DCMAKE_INSTALL_PREFIX=/app
+        -DCMAKE_BUILD_TYPE=Release
+        -DLUA_INCLUDE_DIR=include/lua5.3/src
+        -DLUA_LIBRARY=include/lua5.3/src/liblua.a
+        -DFREECIV_DOWNLOAD_FONTS=OFF
+      # CMake build with Install
+      - cmake --build build-flatpak --target install
+      # Incorporate the Libertinus Font
+      - mkdir -p /app/share/freeciv21/fonts/Libertinus
+      - cp -R fonts/Libertinus/* /app/share/freeciv21/fonts/Libertinus
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --filesystem=home
+  - --filesystem=~/.local/share/freeciv21:create
+
+##########
+# END flatpak.yaml
+##########
