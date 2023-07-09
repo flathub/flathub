@@ -1,0 +1,58 @@
+app-id: io.github.kalaksi.Lightkeeper
+runtime: org.kde.Platform
+runtime-version: '5.15-22.08'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - "org.freedesktop.Sdk.Extension.rust-stable"
+command: lightkeeper
+finish-args:
+  - "--share=ipc"
+  - "--socket=fallback-x11"
+  - "--socket=wayland"
+  - "--share=network"
+  - "--device=dri"
+  - "--socket=ssh-auth"
+build-options:
+    append-path: /usr/lib/sdk/rust-stable/bin
+    build-args:
+      - "--share=network"
+    env:
+      RUSTFLAGS: "--remap-path-prefix =../"
+      CARGO_HOME: /run/build/lightkeeper/cargo
+modules:
+  # Liboping is needed for ping monitoring module.
+  - name: liboping
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://noping.cc/files/liboping-1.10.0.tar.gz
+        sha256: c206b05743d0730814be3115b48abd0b00016677525153c78730da307aba0846
+      # Apparently liboping isn't well maintained upstream, so we need patches from Debian.
+      - type: archive
+        url: https://deb.debian.org/debian/pool/main/libo/liboping/liboping_1.10.0-5.debian.tar.xz
+        sha256: bd2d6bd63d032fb4d5a65ed74467baffea74e902d13fdd8409fba3ede35978a4
+        dest: debian-package
+    build-commands:
+      # Remove one patch that modifies configure.ac to avoid needing aclocal-1.14.
+      - rm debian-package/patches/0002-autoupdate-and-enable-automake-Wall.patch
+      - for patchfile in debian-package/patches/*.patch; do patch -p1 < "$patchfile"; done
+      - ./configure --without-perl-bindings --prefix=/app
+      - make
+      - make install
+    cleanup:
+      - /app/lib/liboping/share/man
+  - name: lightkeeper
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/kalaksi/lightkeeper/archive/refs/tags/v0.1.0.zip
+        sha256: cd3c949cbb239fb4d6fff6500381541afd9b2478d83ca4007a315afb9a1894e7
+      - "cargo-sources.json"
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - cp -r ./src/frontend/qt/qml /app/
+      - install -Dm755 ./target/release/lightkeeper -t /app/bin/
+      - install -Dm644 ./flatpak/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 ./flatpak/${FLATPAK_ID}.desktop -t /app/share/applications/
+      - install -Dm644 ./flatpak/${FLATPAK_ID}.png -t /app/usr/share/icons/hicolor/128x128/apps/
