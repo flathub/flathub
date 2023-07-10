@@ -7,8 +7,8 @@
 # Build Steps:
 #   - (once) sudo apt install flatpak-builder
 #   - (once) sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-#   - flatpak-builder --install-deps-from=flathub --force-clean build/flatpak dist/net.longturn.freeciv21.yaml
-#   - flatpak-builder --user --install --force-clean build/flatpak dist/net.longturn.freeciv21.yaml
+#   - flatpak-builder --install-deps-from=flathub --force-clean build/flatpak net.longturn.freeciv21.yaml
+#   - flatpak-builder --user --install --force-clean build/flatpak net.longturn.freeciv21.yaml
 #   - flatpak run net.longturn.freeciv21
 #   - flatpak remove net.longturn.freeciv21
 #
@@ -25,7 +25,6 @@ finish-args:
   - --share=network
   - --socket=pulseaudio
   - --filesystem=home
-  - --filesystem=~/.local/share/freeciv21
 
 command: freeciv21-client
 modules:
@@ -39,7 +38,9 @@ modules:
     buildsystem: simple
     build-commands:
       - cd include/lua5.3 && make linux
-      - cp -r * /app
+      - cp -rv * ${FLATPAK_DEST}
+    cleanup:
+      - '*'
 
   # Get Libertunus font as a dependency.
   - name: Libertinus
@@ -50,25 +51,39 @@ modules:
         dest: fonts/Libertinus
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/share/freeciv21/fonts/Libertinus
-      - cp -r fonts/Libertinus/* /app/share/freeciv21/fonts/Libertinus
+      - mkdir -p ${FLATPAK_DEST}/share/freeciv21/fonts/Libertinus/static/OTF
+      - cp -rv fonts/Libertinus/static/OTF/*.otf ${FLATPAK_DEST}/share/freeciv21/fonts/Libertinus/static/OTF
 
   # Now build and package freeciv21
   - name: freeciv21
     buildsystem: cmake-ninja
     config-opts:
-      - -DCMAKE_INSTALL_PREFIX=/app
       - -DCMAKE_BUILD_TYPE=Release
       - -DFREECIV_DOWNLOAD_FONTS=OFF
       - -DLUA_INCLUDE_DIR=/app/include/lua5.3/src
       - -DLUA_LIBRARY=/app/include/lua5.3/src/liblua.a
     cleanup:
-      - /app/include
+      - /include
     sources:
       - type: git
         tag: v3.0-patch.1
         url: https://github.com/longturn/freeciv21
 
+  # Finalize
+  - name: Finalize
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps
+      - cp ${FLATPAK_DEST}/share/freeciv21/misc/civicon.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - cp ${FLATPAK_DEST}/share/freeciv21/misc/mpicon.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/net.longturn.freeciv21.modpack-qt.png
+      - mv ${FLATPAK_DEST}/share/applications/net.longturn.freeciv21.client.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - sed -i 's/\/app\/share\/freeciv21\/misc\/civicon/net.longturn.freeciv21/' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - sed -i 's/\/app\/share\/freeciv21\/misc\/mpicon/net.longturn.freeciv21.modpack-qt/' ${FLATPAK_DEST}/share/applications/net.longturn.freeciv21.modpack-qt.desktop
+      - sed -i 's/\/app\/share\/freeciv21\/misc\/server/net.longturn.freeciv21/' ${FLATPAK_DEST}/share/applications/net.longturn.freeciv21.server.desktop
+      - sed -i 's/\/app\/share\/freeciv21\/misc\/civicon/net.longturn.freeciv21/' ${FLATPAK_DEST}/share/applications/net.longturn.freeciv21.ruledit.desktop
+      - mv ${FLATPAK_DEST}/share/metainfo/net.longturn.freeciv21.client.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's/net.longturn.freeciv21.client/net.longturn.freeciv21/' ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
 ##########
-# END flatpak.yaml
+# END net.longturn.freeciv21.yaml
 ##########
