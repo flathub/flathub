@@ -1,0 +1,146 @@
+id: org.freedesktop.Platform.VulkanLayer.gamescope
+branch: '22.08'
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+build-extension: true
+separate-locales: false
+
+build-options:
+  cflags: -I/usr/lib/extensions/vulkan/gamescope/include
+  cxxflags: -I/usr/lib/extensions/vulkan/gamescope/include
+  ldflags: -L/usr/lib/extensions/vulkan/gamescope/lib
+  prefix: /usr/lib/extensions/vulkan/gamescope
+  libdir: /usr/lib/extensions/vulkan/gamescope/lib
+  prepend-path: /usr/lib/extensions/vulkan/gamescope/bin
+  prepend-ld-library-path: /usr/lib/extensions/vulkan/gamescope/lib
+  prepend-pkg-config-path: /usr/lib/extensions/vulkan/gamescope/lib/pkgconfig
+  strip: true
+
+modules:
+  - modules/libevdev.yml
+  - modules/libinput.yml
+  - modules/libseat.yml
+  - modules/xwayland.yml
+  - modules/wlroots.yml
+
+  - name: gamescope
+    buildsystem: meson
+    config-opts:
+      - -Dpipewire=enabled
+      - -Dforce_fallback_for=stb
+    post-install:
+      - mv /usr/lib/extensions/vulkan/gamescope/bin/gamescope /usr/lib/extensions/vulkan/gamescope/bin/gamescope-brokey
+      - install -Dm755 gamescope /usr/lib/extensions/vulkan/gamescope/bin
+    sources:
+      - type: git
+        url: https://github.com/ValveSoftware/gamescope.git
+        commit: 7aef264dfcf81c5f303422d820b7e1ecf81568f3
+        tag: 3.11.51
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          is-main-source: true
+      - type: shell
+        commands:
+          - ln -s ${FLATPAK_DEST}/include/stb subprojects/stb
+          - install -Dm644 subprojects/packagefiles/stb/meson.build -t subprojects/stb/
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a  
+    modules:
+      - name: stb
+        buildsystem: simple
+        build-commands:
+          - |
+            set -e
+            for f in *.h; do
+              install -Dm644 $f -t ${FLATPAK_DEST}/include/stb/
+            done
+        sources:
+          - type: archive
+            url: https://github.com/nothings/stb/archive/5736b15f7ea0ffb08dd38af21067c314d6a3aae9/stb-5736b15f7ea0ffb08dd38af21067c314d6a3aae9.tar.gz
+            sha256: d00921d49b06af62aa6bfb97c1b136bec661dd11dd4eecbcb0da1f6da7cedb4c
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/nothings/stb/commits?sha=master&per_page=1
+              version-query: .[].sha
+              timestamp-query: .[].commit.committer.date
+              url-query: '"https://github.com/nothings/stb/archive/" + $version + "/stb-"
+                + $version + ".tar.gz"'
+        cleanup:
+          - '*'
+
+      - name: glm
+        buildsystem: cmake-ninja
+        no-make-install: true
+        post-install:
+          - install -d ${FLATPAK_DEST}/include
+          - cp -R glm ${FLATPAK_DEST}/include
+          - cp -R cmake/glm ${FLATPAK_DEST}/lib/cmake
+          - cp glm.pc.in ${FLATPAK_DEST}/lib/pkgconfig/glm.pc
+        sources:
+          - type: archive
+            url: https://github.com/g-truc/glm/archive/refs/tags/0.9.9.8.tar.gz
+            sha256: 7d508ab72cb5d43227a3711420f06ff99b0a0cb63ee2f93631b162bfe1fe9592
+            x-checker-data:
+              type: anitya
+              project-id: 1181
+              url-template: https://github.com/g-truc/glm/archive/refs/tags/$version.tar.gz
+          # Upstream hates packagers, so use a hack to make things work for us again.
+          # https://web.archive.org/web/20201214023324/https://github.com/g-truc/glm/pull/968
+          - type: file
+            path: glm.pc.in
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /lib/cmake
+
+      - name: xmu
+        sources:
+          - type: archive
+            url: https://www.x.org/archive/individual/lib/libXmu-1.1.4.tar.xz
+            sha256: 210de3ab9c3e9382572c25d17c2518a854ce6e2c62c5f8315deac7579e758244
+            x-checker-data:
+              type: anitya
+              project-id: 1785
+              url-template: https://www.x.org/archive/individual/lib/libXmu-$version.tar.xz
+        cleanup:
+          - /include
+          - /lib/*.la
+          - /lib/*.a
+          - /share
+          - /lib/pkgconfig
+    
+      - name: benchmark
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DBENCHMARK_ENABLE_GTEST_TESTS=OFF
+          - -DBENCHMARK_USE_BUNDLED_GTEST=OFF
+          - -DCMAKE_CXX_FLAGS=
+        sources:
+          - type: archive
+            url: https://github.com/google/benchmark/archive/refs/tags/v1.8.2.tar.gz
+            sha256: 2aab2980d0376137f969d92848fbb68216abb07633034534fc8c65cc4e7a0e93
+            x-checker-data:
+              type: anitya
+              project-id: 229361
+              url-template: https://github.com/google/benchmark/archive/refs/tags/v$version.tar.gz
+        cleanup:
+          - /include
+          - /lib/*.a
+          - /share
+          - /lib/cmake
+          - /lib/pkgconfig
+
+  - name: metadata
+    buildsystem: simple
+    build-commands: 
+      - install -DCm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak
+        ${FLATPAK_ID}
+    sources:
+      - type: file
+        path: org.freedesktop.Platform.VulkanLayer.gamescope.metainfo.xml
+
