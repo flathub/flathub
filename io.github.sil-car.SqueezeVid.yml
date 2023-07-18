@@ -1,0 +1,59 @@
+# https://docs.flatpak.org/en/latest/flatpak-builder-command-reference.html#flatpak-manifest
+app-id: io.github.sil-car.SqueezeVid
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: squeeze-vid
+modules:
+  - name: libsvtav1
+    # Ref: https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Build-Guide.md#1-build-and-install-svt-av1
+    sources:
+      - type: git
+        url: https://gitlab.com/AOMediaCodec/SVT-AV1.git
+        tag: v1.4.1
+    # source-depth: 1 "shallow clone" is used by default
+    buildsystem: cmake
+    cmake-args: # undocumented?
+      - -G"Unix Makefiles"
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+
+  - name: ffmpeg
+    sources:
+      - type: git
+        url: git://source.ffmpeg.org/ffmpeg.git
+        branch: 'n6.0'
+    buildsystem: autotools
+    config-opts:
+      - --prefix=/usr
+      - --disable-doc # removes all docs --disable-{htmlpages,manpages,txtpages}
+      - --disable-ffplay
+      - --enable-version3
+      - --enable-gpl
+      - --enable-libass         # subtitles support
+      - --enable-libaom         # AV1 video encoder
+      # - --enable-libsvtav1      # SVT-AV1 video encoder; requires 22.04+ packages libsvtav1{,-dev}; or build from src
+      - --enable-libvpx         # VP9 video encoder
+      - --enable-libx264        # H.264 video encoder
+
+  - name: pip-deps
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network # needed for pip installs from internet
+    build-commands:
+      - pip3 install --prefix="${FLATPAK_DEST}" ffmpeg-python
+
+  - name: squeeze-vid
+    sources:
+      - type: git
+        url: https://github.com/sil-car/squeeze-vid.git
+        branch: main
+    buildsystem: simple
+    build-commands:
+      # Ref: https://github.com/pypa/pip/issues/7730 (use --no-build-isolation to access setuptools)
+      - pip3 install --no-build-isolation --prefix="${FLATPAK_DEST}" .
+
+finish-args:
+  - --env=PYTHONPATH=$PYTHONPATH:/app/lib/python3.10/site-packages/squeeze_vid
+  - --filesystem=home
