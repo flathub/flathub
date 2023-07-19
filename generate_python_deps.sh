@@ -3,7 +3,7 @@
 # Mark the script file as executable and run with ./generate_python_deps.sh
 
 # This create some dependencies that is missing
-python3 flatpak-pip-generator setuptools_rust hatchling -o spyder_additional_deps &&
+python3 flatpak-pip-generator setuptools_rust hatchling -o spyder_deps_additional &&
 # Remove previous text file if any
 rm -f spyder_*.txt || true &&
 # pipgrip generate list of dependencies of spyder with pip and write it to a text file, install pipgrip with 'pip3 install pipgrip'
@@ -24,6 +24,6 @@ python3 flatpak-pip-generator pybind11 pyparsing==3.0.9 pillow cppy kiwisolver f
 # Generate deps for spyder terminal plugins
 python3 flatpak-pip-generator terminado tornado coloredlogs -o spyder_deps_terminal &&
 # Remove text files
-rm -f spyder_*.txt || true &&
+rm -f spyder_deps*.txt || true &&
 # Build the manifest, if not, just comment out
 flatpak-builder build --force-clean --install --user *.yaml
