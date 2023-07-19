@@ -1,0 +1,113 @@
+app-id: com.zquestclassic.ZQuest
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+add-extensions:
+  org.gnome.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '44'
+finish-args:
+  - --device=all
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-data/ZQuest Classic:create
+  # Needed for game controllers.
+  - --device=all
+command: entry.sh
+build-options:
+  no-debuginfo: true
+modules:
+  - name: libglu
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/*.a
+      - /lib/*.la
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://ftp.osuosl.org/pub/blfs/conglomeration/glu/glu-9.0.2.tar.xz
+        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+
+  - name: libjpeg # with libjpeg.so.8
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_SKIP_RPATH:BOOL=YES
+      - -DENABLE_STATIC:BOOL=NO
+      - -DWITH_JPEG8:BOOL=YES
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib # uses lib64 by default
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.3.tar.gz
+        sha256: dbda0c685942aa3ea908496592491e5ec8160d2cf1ec9d5fd5470e50768e7859
+
+  - name: zquest
+    buildsystem: simple
+    build-commands:
+      - |
+        set -ex
+        install -Dm 644 -t /app/share/applications com.zquestclassic.ZQuest.desktop
+        install -Dm 644 -t /app/share/metainfo com.zquestclassic.ZQuest.metainfo.xml
+
+        for s in {16,32,64,128,192,256,512}; do
+          install -p -Dm644 com.zquestclassic.ZQuest-$s.png /app/share/icons/hicolor/${s}x${s}/apps/com.zquestclassic.ZQuest.png
+          rm com.zquestclassic.ZQuest-$s.png
+        done
+
+        find . -name "*.so*" -exec mv {} /app/bin/ \;
+        find . -perm /a+x -type f -exec mv {} /app/bin/ \;
+        rm com.zquestclassic.*
+        mkdir /app/resources/
+        mv * /app/resources/
+
+    sources:
+      - type: archive
+        url: https://github.com/ArmageddonGames/ZQuestClassic/releases/download/nightly-2023-07-19/nightly-2023-07-19-linux.tar.gz
+        sha256: bedfea106f72855ab5d1f832547440fdaf1356ba07a6f4533a30e4911371e2ee
+        only-arches: [x86_64]
+        # TODO: enable for next alpha.
+        # x-checker-data:
+        #   type: json
+        #   url: https://api.github.com/repos/ArmageddonGames/ZQuestClassic/releases/latest
+        #   version-query: .tag_name
+        #   url-query: .assets[] | select(.name|endswith("linux.tar.gz")) | .browser_download_url
+      - type: script
+        dest-filename: entry.sh
+        commands:
+          # TODO: remove when we have proper support for user data dirs.
+          # For now, just copy all the base resources to the user data dir,
+          # and run the program from there.
+          - |
+            set -ex
+            DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+            mkdir -p "$DATA_DIR/ZQuest Classic"
+            cp -r /app/resources/* "$DATA_DIR/ZQuest Classic"
+          - |
+            cd "$DATA_DIR/ZQuest Classic"
+            PATH=/app/bin:$PATH zlauncher
+      - type: file
+        path: com.zquestclassic.ZQuest.metainfo.xml
+      - type: file
+        path: com.zquestclassic.ZQuest.desktop
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-16.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-32.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-64.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-128.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-192.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-256.png
+      - type: file
+        path: icons/com.zquestclassic.ZQuest-512.png
