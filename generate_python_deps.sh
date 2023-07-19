@@ -24,6 +24,6 @@ python3 flatpak-pip-generator pybind11 pyparsing==3.0.9 pillow cppy kiwisolver f
 # Generate deps for spyder terminal plugins
 python3 flatpak-pip-generator terminado tornado coloredlogs -o spyder_deps_terminal &&
 # Remove text files
-rm -f spyder_deps*.txt || true &&
+rm -f spyder_*.txt || true &&
 # Build the manifest, if not, just comment out
 flatpak-builder build --force-clean --install --user *.yaml
