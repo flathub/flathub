@@ -1,5 +1,6 @@
 #! /bin/bash
-# This generate dependencies for Spyder
+# This is a bash script that generate dependencies for Spyder
+# The generated files are spyder_deps_additional.json spyder_deps.json spyder_deps_numerical.json spyder_deps_rust.json spyder_deps_terminal.json
 # Mark the script file as executable and run with ./generate_python_deps.sh
 
 # This create some dependencies that is missing
@@ -12,7 +13,7 @@ pipgrip spyder > spyder_pipgrip.txt &&
 cp spyder_pipgrip.txt spyder_deps.txt &&
 # Remove deps that is already installed
 sed -i -E '/^(spyder|pyqt|markupsafe|pygments|six)/d' spyder_deps.txt &&
-# Move python lib that requires rust to spyder_deps_rust.txt. Rust dependencies is complicate
+# Move python lib that requires rust to spyder_deps_rust.txt. Rust dependencies is complicated
 grep -E '^(jellyfish|jsonschema|rpds|cryptography|referencing|keyring|secretstorage|nbconvert|nbclient|nbformat|python-lsp-black|black)' spyder_deps.txt >> spyder_deps_rust.txt &&
 sed -i -E '/^(jellyfish|jsonschema|rpds|cryptography|referencing|keyring|secretstorage|nbconvert|nbclient|nbformat|python-lsp-black|black)/d' spyder_deps.txt &&
 # Generate .json file from spyder_deps.txt while ignoring some deps that is already include in the sdk
