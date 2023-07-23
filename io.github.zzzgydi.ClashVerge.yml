@@ -5,6 +5,7 @@ sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node18
   - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.golang
 command: clash-verge
 rename-icon: clash-verge
 
@@ -19,7 +20,9 @@ finish-args:
   - --talk-name=org.kde.StatusNotifierWatcher
 
 build-options:
-  append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin
+  append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/golang/bin
+  env:
+    GO111MODULE: on
 
 cleanup:
   - /include
@@ -71,6 +74,8 @@ modules:
         CARGO_HOME: /run/build/ClashVerge/cargo
         npm_config_offline: 'true'
     build-commands:
+      - cp /usr/bin/clash src-tauri/sidecar/clash-$(uname -m)-unknown-linux-gnu
+      - cp /usr/bin/clash-meta src-tauri/sidecar/clash-meta-$(uname -m)-unknown-linux-gnu
       - 'HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
       - yarn --offline
       - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
@@ -81,3 +86,41 @@ modules:
       - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/* $FLATPAK_DEST/share/icons/hicolor/
       - mv $FLATPAK_DEST/share/icons/hicolor/256x256@2/ $FLATPAK_DEST/share/icons/hicolor/256x256/
       - install -Dm644 -t $FLATPAK_DEST/share/applications/ io.github.zzzgydi.ClashVerge.desktop
+    modules:
+      - name: clash
+        buildsystem: simple
+        build-options:
+        env:
+          GOPATH: /run/build/clash
+        build-args:
+          - --share=network
+        build-commands:
+          - go build -ldflags="-w -s" -o clash
+          - cp clash $FLATPAK_DEST/bin/
+        sources:
+          - type: git
+            url: https://github.com/Dreamacro/clash
+            tag: v1.17.0
+            x-checker-data:
+              type: anitya
+              project-id: 211719
+              stable-only: true
+              tag-template: v${version}
+
+      - name: clash-meta
+        buildsystem: simple
+        build-options:
+          env:
+            GOPATH: /run/build/clash-meta
+          build-args:
+            - --share=network
+        build-commands:
+          - go build -ldflags="-w -s" -o clash-meta
+          - cp clash-meta $FLATPAK_DEST/bin/
+        sources:
+          - type: git
+            url: https://github.com/MetaCubeX/Clash.Meta
+            tag: v1.15.0
+            x-checker-data:
+              type: git
+              tag-pattern: "^v([\\d.]+)$"
