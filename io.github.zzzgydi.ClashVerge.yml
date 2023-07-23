@@ -23,34 +23,14 @@ build-options:
   append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/golang/bin
   env:
     GO111MODULE: on
+    GOBIN: /app/bin
 
 cleanup:
   - /include
   - /lib/pkgconfig
 
 modules:
-  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
-
-  - name: webkit2gtk-4.0
-    sources:
-      - type: archive
-        url: https://webkitgtk.org/releases/webkitgtk-2.38.6.tar.xz
-        sha256: 1c614c9589389db1a79ea9ba4293bbe8ac3ab0a2234cac700935fae0724ad48b
-        x-checker-data:
-          type: html
-          url: https://webkitgtk.org/releases/
-          version-pattern: <a href="webkitgtk\-(2\.38\.\d+)\.tar\.xz">
-          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DPORT=GTK
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DENABLE_DOCUMENTATION=OFF
-      - -DENABLE_GAMEPAD=OFF
-      - -DUSE_SOUP2=ON
-      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
-    modules:
-      - shared-modules/libsoup/libsoup-2.4.json
+  
 
   - name: ClashVerge
     sources:
@@ -62,11 +42,35 @@ modules:
           project-id: 279267
           stable-only: true
           tag-template: v${version}
+      
       - type: file
         path: io.github.zzzgydi.ClashVerge.metainfo.xml
+
       - type: file
         path: io.github.zzzgydi.ClashVerge.desktop
+
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/Dreamacro/clash/releases/download/v1.17.0/clash-linux-amd64-v1.17.0.gz
+        sha256: 8617b664ad40803a395e5789f45d11d42f42dfc3882da8269684ff2ec87f2e80
+
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/Dreamacro/clash/releases/download/v1.17.0/clash-linux-arm64-v1.17.0.gz
+        sha256: 51400bc59430de3c71367e92af26ea6fc758908c9ee927a9d139fa137e51e0ef
+      
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/MetaCubeX/Clash.Meta/releases/download/v1.15.0/clash.meta-linux-amd64-v1.15.0.gz
+        sha256: eed5d4ca3d0492c5f80d2351458941ad047b33b1cf374477781ce6fdc8fb3acf
+
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/MetaCubeX/Clash.Meta/releases/download/v1.15.0/clash.meta-linux-arm64-v1.15.0.gz
+        sha256: 94f9a0a77a2c54bb544af2daacb27f50add78a2677e926bbac083c472c441b36
+
       - 'cargo-sources.json'
+
       - 'yarn-sources.json'
     buildsystem: simple
     build-options:
@@ -74,8 +78,13 @@ modules:
         CARGO_HOME: /run/build/ClashVerge/cargo
         npm_config_offline: 'true'
     build-commands:
-      - cp /usr/bin/clash src-tauri/sidecar/clash-$(uname -m)-unknown-linux-gnu
-      - cp /usr/bin/clash-meta src-tauri/sidecar/clash-meta-$(uname -m)-unknown-linux-gnu
+      - gzip -dc clash-linux* > clash
+      - gzip -dc clash.meta-linux* > clash-meta
+      - chmod +x ./clash
+      - chmod +x ./clash-meta
+      - mkdir -p src-tauri/sidecar
+      - cp clash src-tauri/sidecar/clash-$(uname -m)-unknown-linux-gnu
+      - cp clash-meta src-tauri/sidecar/clash-meta-$(uname -m)-unknown-linux-gnu
       - 'HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
       - yarn --offline
       - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
@@ -86,41 +95,3 @@ modules:
       - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/* $FLATPAK_DEST/share/icons/hicolor/
       - mv $FLATPAK_DEST/share/icons/hicolor/256x256@2/ $FLATPAK_DEST/share/icons/hicolor/256x256/
       - install -Dm644 -t $FLATPAK_DEST/share/applications/ io.github.zzzgydi.ClashVerge.desktop
-    modules:
-      - name: clash
-        buildsystem: simple
-        build-options:
-        env:
-          GOPATH: /run/build/clash
-        build-args:
-          - --share=network
-        build-commands:
-          - go build -ldflags="-w -s" -o clash
-          - cp clash $FLATPAK_DEST/bin/
-        sources:
-          - type: git
-            url: https://github.com/Dreamacro/clash
-            tag: v1.17.0
-            x-checker-data:
-              type: anitya
-              project-id: 211719
-              stable-only: true
-              tag-template: v${version}
-
-      - name: clash-meta
-        buildsystem: simple
-        build-options:
-          env:
-            GOPATH: /run/build/clash-meta
-          build-args:
-            - --share=network
-        build-commands:
-          - go build -ldflags="-w -s" -o clash-meta
-          - cp clash-meta $FLATPAK_DEST/bin/
-        sources:
-          - type: git
-            url: https://github.com/MetaCubeX/Clash.Meta
-            tag: v1.15.0
-            x-checker-data:
-              type: git
-              tag-pattern: "^v([\\d.]+)$"
