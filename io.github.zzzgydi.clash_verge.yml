@@ -1,0 +1,118 @@
+app-id: io.github.zzzgydi.clash_verge
+runtime: org.gnome.Platform
+runtime-version: '44'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.golang
+command: clash-verge
+rename-icon: clash-verge
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.38.6.tar.xz
+        sha256: 1c614c9589389db1a79ea9ba4293bbe8ac3ab0a2234cac700935fae0724ad48b
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: <a href="webkitgtk\-(2\.38\.\d+)\.tar\.xz">
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts: 
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_SOUP2=ON
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+      - name: bubblewrap
+        sources:
+          - type: archive
+            url: https://github.com/containers/bubblewrap/releases/download/v0.8.0/bubblewrap-0.8.0.tar.xz
+            sha256: 957ad1149db9033db88e988b12bcebe349a445e1efc8a9b59ad2939a113d333a
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/containers/bubblewrap/releases/latest
+              tag-query: .tag_name
+              timestamp-query: .published_at
+              version-query: $tag | sub("^v"; "")
+              url-query: '"https://github.com/containers/bubblewrap/releases/download/\($tag)/bubblewrap-\($version).tar.xz"'
+        buildsystem: meson
+      - name: xdg-dbus-proxy
+        sources:
+          - type: archive
+            url: https://github.com/flatpak/xdg-dbus-proxy/releases/download/0.1.4/xdg-dbus-proxy-0.1.4.tar.xz
+            sha256: 1ec0eab53d1e49966d722352bcfd51ac402dce5190baedc749a8541e761670ab
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/flatpak/xdg-dbus-proxy/releases/latest
+              tag-query: .tag_name
+              timestamp-query: .published_at
+              version-query: $tag
+              url-query: '"https://github.com/flatpak/xdg-dbus-proxy/releases/download/\($tag)/xdg-dbus-proxy-\($version).tar.xz"'
+        buildsystem: meson
+
+  - clash/clash.yml
+
+  - clash-meta/clash-meta.yml
+
+  - name: clash-verge
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/clash-verge/cargo
+        npm_config_offline: 'true'
+    sources:
+      - type: git
+        url: https://github.com/zzzgydi/clash-verge
+        tag: v1.3.5
+        x-checker-data:
+          type: git
+
+      - type: file
+        url: https://github.com/Dreamacro/maxmind-geoip/releases/download/20230712/Country.mmdb
+        sha256: 417c58fd6aee618d3d2cbf8e10a85dfc451bf86388e3d2859c6ef999bc0c5a85
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Dreamacro/maxmind-geoip/releases/latest
+          tag-query: ".tag_name"
+          version-query: "$tag"
+          url-query: https://github.com/Dreamacro/maxmind-geoip/releases/download/\($tag)/Country.mmdb
+
+      - type: file
+        path: io.github.zzzgydi.clash_verge.appdata.xml
+
+      - type: file
+        path: io.github.zzzgydi.clash_verge.desktop
+
+      - "cargo-sources.json"
+
+      - "node-sources.json"
+    buildsystem: simple
+    build-commands:
+      - mkdir -p src-tauri/sidecar
+      - ln -sf /app/bin/clash src-tauri/sidecar/clash-$(uname -m)-unknown-linux-gnu
+      - ln -sf /app/bin/clash-meta src-tauri/sidecar/clash-meta-$(uname -m)-unknown-linux-gnu
+      - mkdir -p src-tauri/resources
+      - cp Country.mmdb src-tauri/resources
+      - 'HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror'
+      - yarn --offline
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - yarn run tauri build
+      - install -Dm644 -t /app/share/metainfo/ io.github.zzzgydi.clash_verge.appdata.xml
+      - install -Dm755 src-tauri/target/release/clash-verge -t /app/bin
+      - install -Dm644 Country.mmdb -t /app/lib/clash-verge/resources
+      - install -Dm644 src/assets/image/logo.svg /app/share/icons/hicolor/scalable/apps/clash-verge.svg
+      - install -Dm644 io.github.zzzgydi.clash_verge.desktop -t /app/share/applications
