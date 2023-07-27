@@ -1,0 +1,70 @@
+id: io.github.searchandrescue2.sar2
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: sar2
+rename-icon: sar2
+rename-desktop-file: sar2.desktop
+rename-appdata-file: sar2.appdata.xml
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --device=all # dri and joysticks
+  - --socket=pulseaudio
+  - --env=SAR2_DATA=/app/share/sar2
+
+modules:
+  - name: scons
+    cleanup:
+      - "*"
+    buildsystem: simple
+    build-commands:
+      - python -mpip install . --no-index --find-links=file://${PWD} --prefix=${FLATPAK_DEST} --no-build-isolation
+      - sed -i '1 s/python/python3/' ${FLATPAK_DEST}/bin/scons
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/scons/files/scons/4.5.2/SCons-4.5.2.tar.gz
+        sha256: ce26aac95d350a79a4192196b0beac3cb24f4ccabce0123eb28d3370f576f072
+
+  - shared-modules/glu/glu-9.json
+
+  - name: freealut
+    sources:
+      - type: git
+        url: https://github.com/vancegroup/freealut.git
+        tag: freealut_1_1_0
+        commit: 570dea5b77493cc9ce0b84f6a0a2ee31ed0b2c73
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+      - /lib/*.la
+
+  - name: xmu
+    sources:
+      - type: archive
+        url: https://www.x.org/archive/individual/lib/libXmu-1.1.4.tar.xz
+        sha256: 210de3ab9c3e9382572c25d17c2518a854ce6e2c62c5f8315deac7579e758244
+        x-checker-data:
+          type: anitya
+          project-id: 1785
+          url-template: https://www.x.org/archive/individual/lib/libXmu-$version.tar.xz
+
+  - name: sar2
+    buildsystem: simple
+    build-commands:
+      - scons --prefix=${FLATPAK_DEST} --ldflags=-L${FLATPAK_DEST}/lib --optflags=-I${FLATPAK_DEST}/include
+    post-install:
+      - mkdir -p ${FLATPAK_DEST}/share/sar2/
+      - cp -ar data/* ${FLATPAK_DEST}/share/sar2/
+      - install -Dm755 bin/sar2 -t ${FLATPAK_DEST}/bin
+      - install -D -m 0644 extra/sar2.desktop ${FLATPAK_DEST}/share/applications/sar2.desktop
+      - install -D -m 0644 extra/sar2.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/sar2.png
+      - install -D -m 0644 extra/sar2.appdata.xml ${FLATPAK_DEST}/share/appdata/sar2.appdata.xml
+    sources:
+    - type: git
+      url: https://github.com/SearchAndRescue2/sar2.git
+      tag: v2.5.0
+      commit: 6373d3471e2bb93486c4215a12059b9a349c6537
+    - type: patch
+      path: appstream.patch
