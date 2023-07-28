@@ -1,0 +1,102 @@
+---
+app-id: com.ghostery.browser
+default-branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '22.08'
+    add-ld-path: "."
+command: com.ghostery.browser
+finish-args:
+- "--share=ipc"
+- "--share=network"
+- "--socket=wayland"
+- "--socket=fallback-x11"
+- "--socket=pcsc"
+- "--socket=pulseaudio"
+- "--socket=cups"
+- "--env=GTK_PATH=/app/lib/gtkmodules"
+- "--persist=.ghostery browser"
+- "--filesystem=xdg-download:rw"
+- "--filesystem=xdg-run/pipewire-0"
+- "--device=dri"
+- "--talk-name=org.freedesktop.FileManager1"
+- "--system-talk-name=org.freedesktop.NetworkManager"
+- "--talk-name=org.a11y.Bus"
+- "--talk-name=org.gnome.SessionManager"
+- "--talk-name=org.freedesktop.ScreenSaver"
+- "--talk-name=org.gtk.vfs.*"
+- "--talk-name=org.freedesktop.Notifications"
+- "--env=MOZ_ENABLE_WAYLAND=1"
+- "--env=MOZ_USE_XINPUT2=1"
+- "--own-name=com.ghostery.browser.*"
+- "--own-name=org.mpris.MediaPlayer2.firefox.*"
+modules:
+- shared-modules/dbus-glib/dbus-glib-0.110.json
+- name: ghostery_browser
+  buildsystem: simple
+  build-commands:
+  - mkdir -p /app/lib
+  - mv ghostery_app/Ghostery /app/lib/ghostery
+  - install -D -m644 /app/lib/ghostery/browser/chrome/icons/default/default128.png
+    /app/share/icons/hicolor/128x128/apps/com.ghostery.browser.png
+  - install -D -m644 /app/lib/ghostery/browser/chrome/icons/default/default128.png
+    /app/usr/share/icons/hicolor/128x128/apps/com.ghostery.browser.png
+  - sed -i 's|"app.update.channel", "release"|"app.update.channel", "flatpak"|' /app/lib/ghostery/defaults/pref/channel-prefs.js
+  - install -D -m644 com.ghostery.browser.desktop -t /app/share/applications
+  - install -D -m644 com.ghostery.browser.metainfo.xml -t /app/share/metainfo
+  - install -D -m755 ghostery.sh /app/bin/com.ghostery.browser
+  - install -d /app/lib/ffmpeg
+  sources:
+  - type: archive
+    url: https://github.com/ghostery/user-agent-desktop/releases/download/2023-07-21/Ghostery-2023.6.en-US.linux.tar.gz
+    sha256: 84bbd2221172e4b78fc88c8f9c46af0a43c8cc9e08d33ec32e7e35334b9e8609
+    dest: ghostery_app
+    strip-components: 0
+    only-arches:
+    - x86_64
+  - type: file
+    path: com.ghostery.browser.desktop
+  - type: file
+    path: ghostery.sh
+  - type: file
+    path: com.ghostery.browser.metainfo.xml
+- name: gtk-cups-backend
+  buildsystem: meson
+  make-args:
+  - modules/printbackends/libprintbackend-cups.so
+  no-make-install: true
+  post-install:
+  - install -Dm 755 modules/printbackends/libprintbackend-cups.so -t /app/lib/gtkmodules/3.0.0/printbackends/
+  sources:
+  - type: archive
+    url: https://download.gnome.org/core/41/41.0/sources/gtk%2B-3.24.30.tar.xz
+    sha256: ba75bfff320ad1f4cfbee92ba813ec336322cc3c660d406aad014b07087a3ba9
+  - type: patch
+    path: gtk3-werror.patch
+- name: gtk-settings
+  buildsystem: simple
+  build-commands:
+  - install -Dm 644 gtk-settings.ini /app/etc/xdg/gtk-3.0/settings.ini
+  sources:
+  - type: file
+    path: gtk-settings.ini
+- name: libnotify
+  buildsystem: meson
+  config-opts:
+  - "-Dtests=false"
+  - "-Dintrospection=disabled"
+  - "-Dman=false"
+  - "-Dgtk_doc=false"
+  - "-Ddocbook_docs=disabled"
+  sources:
+  - sha256: c5f4ed3d1f86e5b118c76415aacb861873ed3e6f0c6b3181b828cf584fc5c616
+    type: archive
+    url: https://download.gnome.org/sources/libnotify/0.8/libnotify-0.8.2.tar.xz
+    x-checker-data:
+      project-id: 13149
+      type: anitya
+      url-template: https://download.gnome.org/sources/libnotify/$major.$minor/libnotify-$version.tar.xz
