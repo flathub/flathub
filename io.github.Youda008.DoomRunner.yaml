@@ -1,0 +1,96 @@
+app-id: io.github.Youda008.DoomRunner
+runtime: org.kde.Platform
+runtime-version: '5.15-22.08'
+sdk: org.kde.Sdk
+command: doomrunner.sh
+finish-args:
+  - --device=all
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --share=network
+  # Allow to execute host engines
+  - --talk-name=org.freedesktop.Flatpak
+  # Allow to access game files (eg .wad and .pk3)
+  - --filesystem=home:ro
+  # Based on GZDoom
+  - --env=DOOMWADDIR=/app/share/games/doom
+  # Redirect the original ~/.config/gzdoom
+  - --persist=.config/gzdoom
+  # Simpler way of preventing KDE related errors
+  - --env=KDE_FULL_SESSION=false
+cleanup:
+  - /include
+  - '*.a'
+  - '*.la'
+  - /lib/pkgconfig
+  - /lib/qt5/mkspecs
+  - /share/man
+  - /share/cmake
+modules:
+
+  # Build GZDoom engine and dependencies
+  - shared-modules/SDL2/SDL2-no-libdecor.json
+  - shared-modules/gzdoom/gzdoom.json
+
+  # Create the GZDoom launcher script
+  - name: gzdoom-launcher
+    buildsystem: simple
+    sources:
+      - type: script
+        commands:
+          # Use config file ${XDG_CONFIG_HOME}/gzdoom.ini
+          - exec gzdoom +fluid_patchset /app/share/sounds/sf2/gzdoom.sf2 -file lights.pk3 brightmaps.pk3 -config ${XDG_CONFIG_HOME}/gzdoom.ini "$@"
+        dest-filename: gzdoom.sh
+    build-commands:
+      - install -D gzdoom.sh /app/bin/GZDoom
+
+  # Build application from Git sources
+  - name: doomrunner-build
+    buildsystem: qmake
+    builddir: true
+    config-opts:
+      - CONFIG+=release flatpak
+      - INSTALL_DIR+=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/Youda008/DoomRunner
+        tag: v1.8.0
+      - type: file
+        path: io.github.Youda008.DoomRunner.appdata.xml
+    post-install:
+      # Patch desktop file using Flatpak references
+      - sed -i 's/^Exec=.*/Exec=/g' $FLATPAK_BUILDER_BUILDDIR/Install/XDG/DoomRunner.desktop
+      - sed -i 's/^Icon=.*/Icon='${FLATPAK_ID}'/g' $FLATPAK_BUILDER_BUILDDIR/Install/XDG/DoomRunner.desktop
+      # Install desktop file and icons
+      - install -Dm 644 $FLATPAK_BUILDER_BUILDDIR/io.github.Youda008.DoomRunner.appdata.xml -t /app/share/appdata
+      - install -Dm 644 $FLATPAK_BUILDER_BUILDDIR/Install/XDG/DoomRunner.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 $FLATPAK_BUILDER_BUILDDIR/Install/XDG/DoomRunner.64x64.png /app/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm 644 $FLATPAK_BUILDER_BUILDDIR/Install/XDG/DoomRunner.128x128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+
+  # Prepare DoomRunner initial configs
+  - name: doomrunner-config
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: config
+    build-commands:
+      - install -dm ug+rwx /app/share/config
+      - install -Dm ug+rw *.json /app/share/config
+
+  # Script for copying initial configs (if not present) and running the application
+  - name: doomrunner-launcher
+    buildsystem: simple
+    sources:
+      - type: script
+        commands:
+          - "app_config_dir=$XDG_DATA_HOME/DoomRunner"
+          - "app_share_dir=$XDG_DATA_HOME/share"
+          - "[ ! -d $app_config_dir ] && mkdir -p $app_config_dir"
+          - "[ ! -d $app_share_dir  ] && mkdir -p $app_share_dir"
+          - "[ ! -f $app_config_dir/options.json ] && envsubst < /app/share/config/options.json > $app_config_dir/options.json"
+          - "exec /app/bin/DoomRunner"
+        dest-filename: doomrunner.sh
+    build-commands:
+      - install -D doomrunner.sh /app/bin/doomrunner.sh
