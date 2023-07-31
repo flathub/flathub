@@ -8,8 +8,13 @@ test compile
 test install
 
 	flatpak remote-add wetgenes wetgenes --no-gpg-verify
-	flatpak remove com.wetgenes.gamecake
 	flatpak install wetgenes com.wetgenes.gamecake
+
+
+test delte
+
+	flatpak remove com.wetgenes.gamecake
+	flatpak remote-delete wetgenes
 
 
 
