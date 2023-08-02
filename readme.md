@@ -11,7 +11,7 @@ test install
 	flatpak install wetgenes com.wetgenes.gamecake
 
 
-test delte
+test delete
 
 	flatpak remove com.wetgenes.gamecake
 	flatpak remote-delete wetgenes
