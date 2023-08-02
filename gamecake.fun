@@ -1,1 +1,1 @@
-/app/bin/gamecake -lfun -- $*
+exec /app/bin/gamecake -lfun -- $*
