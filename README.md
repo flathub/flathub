@@ -1,5 +1,5 @@
 <div>
-<img align="left" style="margin: 0px 15px 0px 0px;" src="DoomRunner.png" alt="Doom Runner Icon" />
+<img align="left" style="margin: 0px 15px 0px 0px;" src="https://raw.githubusercontent.com/Youda008/DoomRunner/master/Install/XDG/DoomRunner.64x64.png" alt="Doom Runner Icon" />
 
 # Doom Runner on Flatpak
 &nbsp;
