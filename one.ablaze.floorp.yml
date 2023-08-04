@@ -40,20 +40,93 @@ finish-args:
   - --own-name=org.mozilla.floorp.*
 
 modules:
+  - shared-modules/dbus-glib/dbus-glib.json
+  - shared-modules/libcanberra/libcanberra.json
+  - shared-modules/intltool/intltool-0.51.json
+
+  - name: kerberos
+    subdir: src
+    config-opts:
+      - --localstatedir=/var/lib
+      - --sbindir=${FLATPAK_DEST}/bin
+      - --disable-rpath
+      - --disable-static
+    post-install:
+      - install -Dm644 ../krb5.conf -t ${FLATPAK_DEST}/etc/
+    sources:
+      - type: archive
+        url: 'https://kerberos.org/dist/krb5/1.20/krb5-1.20.1.tar.gz'
+        sha256: 704aed49b19eb5a7178b34b2873620ec299db08752d6a8574f95d41879ab8851
+      - type: file
+        path: krb5.conf
+    cleanup:
+      - /bin
+      - /share/et
+      - /share/examples
+
+  - name: libnotify
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Dman=false
+      - -Dgtk_doc=false
+      - -Ddocbook_docs=disabled
+    sources:
+      - type: archive
+        url: 'https://download.gnome.org/sources/libnotify/0.8/libnotify-0.8.2.tar.xz'
+        sha256: c5f4ed3d1f86e5b118c76415aacb861873ed3e6f0c6b3181b828cf584fc5c616
+
+  - name: sound-theme-freedesktop
+    sources:
+      - type: git
+        url: 'https://salsa.debian.org/gnome-team/sound-theme-freedesktop.git'
+        tag: upstream/0.8
+
+  - name: pcsc-lite
+    config-opts:
+      - --disable-libudev
+      - --disable-libsystemd
+      - --without-systemdsystemunitdir
+      - --disable-serial
+      - --disable-usb
+      - --disable-documentation
+    post-install:
+      - rm /app/sbin/pcscd
+      - rmdir /app/sbin || true
+    sources:
+      - type: archive
+        url: 'https://salsa.debian.org/rousseau/PCSC/-/archive/1.9.9/PCSC-1.9.9.tar.bz2'
+        sha256: 09067c3d807ab11509565899b7a46aec8dffd9e14bee9e6e2cdfddd9f8f49173
+
   - name: floorp
     buildsystem: simple
+
     build-commands:
       - install -Dm644 one.ablaze.floorp.appdata.xml -t /app/share/metainfo/
-      - mv ${FLATPAK_BUILDER_BUILDDIR}/*.tar.xz ${FLATPAK_BUILDER_BUILDDIR}/floorp.tar.xz
-      - cd /app/ && tar Jxvf ${FLATPAK_BUILDER_BUILDDIR}/floorp.tar.xz
+      - mkdir -p /app/lib/ffmpeg
+      - mv floorp-*.tar.bz2 floorp.tar.bz2
+      - tar -xvf ./floorp.tar.bz2 -C /app/lib
+      - cp -r ./src/* /app/
+      - chmod +x /app/bin/floorp
+      - |
+        for size in 16 32 48 64 128; do
+          mkdir -p "/app/share/icons/hicolor/${size}x${size}/apps"
+          cp "/app/lib/floorp/browser/chrome/icons/default/default${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/one.ablaze.floorp.png"
+        done
+
     sources:
       - type: file
         only-arches: [x86_64]
-        url: 'https://s3.typeling1578.dev/flatpak-floorp/flatpak-base-11.0.0-x86_64.tar.xz'
-        sha256: 7702a9621e5800cac8ded01705367381f06142253b762fb40a61204ea87fce02
+        url: 'https://github.com/Floorp-Projects/Floorp/releases/download/v11.1.0/floorp-11.1.0.en-US.linux-x86_64.tar.bz2'
+        sha256: b292c460c2794c70d9677b3a7567457d7ed09102f6f2ef12d21dc4531baf36a9
       - type: file
         only-arches: [aarch64]
-        url: 'https://s3.typeling1578.dev/flatpak-floorp/flatpak-base-11.0.0-aarch64.tar.xz'
-        sha256: 588059e453f2477f7f54744c52c9bfe877dcdd8fd115398188a255c97605a3fb
+        url: 'https://github.com/Floorp-Projects/Floorp/releases/download/v11.1.0/floorp-11.1.0.en-US.linux-aarch64.tar.bz2'
+        sha256: 3362978a5b19c5390955357e9aefa448f424daeefb6b31b3f3a735b1de0f9695
+
       - type: file
         path: one.ablaze.floorp.appdata.xml
+      - type: dir
+        path: src
+        dest: src
