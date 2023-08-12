@@ -1,6 +1,6 @@
 app-id: eu.cichy1173.tabela
 runtime: org.kde.Platform
-runtime-version: '6.2'
+runtime-version: '6.5'
 sdk: org.kde.Sdk
 command: tabela
 finish-args:
@@ -9,21 +9,49 @@ finish-args:
   - --socket=x11
   - --device=dri
   - --filesystem=host
-desktop-file-name: eu.cichy1173.eu.desktop
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm16
+build-options:
+    append-path: /usr/lib/sdk/llvm16/bin
+    prepend-ld-library-path: /usr/lib/sdk/llvm16/lib
+
 modules:
+  - name: qt-include
+    # https://bugreports.qt.io/projects/PYSIDE/issues/PYSIDE-787
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/include/qt
+      - cp -R /usr/include/Qt* /app/include/qt
+    cleanup:
+      - /include
+
+  - name: PySide6
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.5.1.1-src/pyside-setup-everywhere-src-6.5.1.1.tar.xz
+        sha256: 9741a06f0b7d4b2168818448134bc7e96ddb5efb846a3915b4177ba4159b5b78
+      - type: shell
+        commands:
+          # use qt-include
+          - sed -i 's|\(--include-paths=\)|\1/app/include/qt:|' sources/pyside6/cmake/Macros/PySideModules.cmake
+          # fix python module search path
+          - sed -i '/--sys-path\b/ a "${pysidebindings_BINARY_DIR}/.."' sources/pyside6/cmake/Macros/PySideModules.cmake
+    cleanup:
+      - /plugins
+      - /include
+      - /bin
   - name: tabela
     buildsystem: simple
     build-commands:
-      - python -m pip install --prefix=/app .
+      - python -m pip install --no-deps --no-build-isolation --prefix=/app .
     sources:
       - type: git
         url: https://codeberg.org/cichy1173/tabela-flatpak.git
-        commit: 73753ba98060e0b8f792f306e36eafbe941b6b55
-    build-extensions:
-      - org.freedesktop.Sdk.Extension.python3.9
-    extra-data:
-      - name: icons
-        dest: share/icons/hicolor
-        sources:
-          - type: file
-            path: tabela.png
+        tag: v1.0.4
+        commit: eb9ec97a8119050e654e9e12914e379ba838f9b2
