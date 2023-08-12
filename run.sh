@@ -1,2 +1,2 @@
 #!/usr/bin/bash
-zypak-wrapper /app/bin/penpot-desktop/penpot-desktop "$@"
+exec zypak-wrapper /app/bin/penpot-desktop/penpot-desktop "$@"
