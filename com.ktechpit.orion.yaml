@@ -1,0 +1,195 @@
+app-id: com.ktechpit.orion
+base: io.qt.qtwebkit.BaseApp
+base-version: '5.15-22.08'
+runtime: org.kde.Platform
+runtime-version: 5.15-22.08
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node14
+command: orion
+finish-args:
+  - --device=all
+  - --env=INSTALL_TYPE=flatpak
+  - --filesystem=/tmp:rw
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-pictures:rw
+  - --filesystem=xdg-run/gvfsd
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-videos:rw
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --talk-name=org.freedesktop.FileManager1
+  - --own-name=org.mpris.MediaPlayer2.mpv.*
+  - --talk-name=org.gnome.SessionManager
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+
+modules:
+  - name: lzo
+    config-opts:
+      - --enable-shared
+      - --disable-static
+    cleanup:
+      - /include
+      - /share/doc
+      - '*.la'
+      - /lib/*.so
+    sources:
+      - type: git
+        url: https://github.com/nemequ/lzo.git
+        commit: 0083878c235a89ef96a009d1ff0b500f3a364e4b
+
+  - name: squashfs-tools
+    buildsystem: simple
+    build-commands:
+      - XZ_SUPPORT=1 LZO_SUPPORT=1 make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} install INSTALL_DIR=${FLATPAK_DEST}/bin
+    cleanup:
+      - '*'
+    sources:
+    - type: git
+      url: https://github.com/plougher/squashfs-tools.git
+      tag: '4.5'
+      commit: '0496d7c3de3e09da37ba492081c86159806ebb07'
+
+  - name: x264
+    config-opts:
+      - '--disable-cli'
+      - '--enable-shared'
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: 5db6aa6cab1b146e07b60cc1736a01f21da01154
+
+  - name: x265
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: source
+    config-opts:
+      - '-DCMAKE_BUILD_TYPE=Release'
+      - '-DENABLE_CLI=OFF'
+    sources:
+      - type: archive
+        url: https://deb.debian.org/debian/pool/main/x/x265/x265_3.5.orig.tar.gz
+        sha256: e70a3335cacacbba0b3a20ec6fecd6783932288ebc8163ad74bcc9606477cae8
+
+
+  - name: libass
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.16.0/libass-0.16.0.tar.xz
+        sha256: 5dbde9e22339119cf8eed59eea6c623a0746ef5a90b689e68a090109078e3c08
+      - type: script
+        commands:
+          - autoreconf -fiv
+        dest-filename: autogen.sh
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share
+      - '*.a'
+      - '*.la'
+
+  - name: luajit
+    no-autogen: true
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/LuaJIT/LuaJIT.git
+        #branch: v2.1
+        commit: 4c2441c16ce3c4e312aaefecc6d40c4fe21de97c
+
+  - name: ffmpeg
+    config-opts:
+      - '--disable-debug'
+      - '--disable-doc'
+      - '--enable-rpath'
+      - '--enable-gpl'
+      - '--disable-static'
+      - '--enable-shared'
+      - '--enable-libfontconfig'
+      - '--enable-libfreetype'
+      - '--enable-libopus'
+      - '--enable-libpulse'
+      - '--enable-librsvg'
+      - '--enable-libvpx'
+      - '--enable-libdav1d'
+      - '--enable-libxml2'
+      - '--enable-libx264'
+      - '--enable-libx265'
+      - '--enable-libv4l2'
+      - '--enable-libmp3lame'
+      - '--enable-libass'
+      - '--enable-gnutls'
+      - '--enable-libvorbis'
+      - '--enable-libaom'
+      - '--enable-libopenjpeg'
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://www.ffmpeg.org/releases/ffmpeg-4.4.1.tar.xz
+        sha256: eadbad9e9ab30b25f5520fbfde99fae4a92a1ae3c0257a8d68569a4651e30e02
+
+  - name: mpv
+    buildsystem: simple
+    build-commands:
+      - python3 waf configure --disable-alsa --disable-build-date --disable-manpage-build
+        --prefix=/app
+      - python3 waf build
+      - python3 waf install
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.34.1.tar.gz
+        sha256: 32ded8c13b6398310fa27767378193dc1db6d78b006b70dbcbd3123a1445e746
+      - type: file
+        url: https://waf.io/waf-2.0.24
+        sha256: 93909bca823a675f9f40af7c65b24887c3a3c0efdf411ff1978ba827194bdeb0
+        dest-filename: waf
+    post-install:
+      - mkdir -p /app/etc/mpv/
+      - echo "screenshot-directory=~/Pictures/Orion-screenshots" > /app/etc/mpv/mpv.conf
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share
+
+  - name: socat
+    sources:
+      - type: archive
+        url: http://www.dest-unreach.org/socat/download/socat-1.7.4.4.tar.gz
+        sha256: 0f8f4b9d5c60b8c53d17b60d79ababc4a0f51b3bb6d2bd3ae8a6a4b9d68f195e
+                            
+  - name: orion
+    buildsystem: simple
+    build-commands:
+      - unsquashfs -no-progress mxJjEy7qHbIIUwLKrkjqbuLDSG1GcR5Y*.snap
+      - install -Dm755 squashfs-root/usr/bin/orion ${FLATPAK_DEST}/bin/orion
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/
+      - cp -R squashfs-root/usr/share/icons/hicolor/* ${FLATPAK_DEST}/share/icons/hicolor/
+      - install -Dm644 squashfs-root/usr/share/applications/com.ktechpit.orion.desktop ${FLATPAK_DEST}/share/applications/com.ktechpit.orion.desktop
+      - install -Dm644 squashfs-root/usr/share/metainfo/com.ktechpit.orion.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.ktechpit.orion.metainfo.xml
+      - install -Dm755 squashfs-root/bin/node ${FLATPAK_DEST}/bin/node
+      - cp -axR squashfs-root/lib/node_modules/ ${FLATPAK_DEST}/lib/node_modules/
+      - ln -sf ${FLATPAK_DEST}/lib/node_modules/orion/node_modules ${FLATPAK_DEST}/bin/node_modules
+      - ln -sf ${FLATPAK_DEST}/lib/node_modules/orion/src ${FLATPAK_DEST}/bin/src
+
+    sources:
+      - type: file
+        # curl -H 'Snap-Device-Series: 16' https://api.snapcraft.io/v2/snaps/info/orion-desktop | jq '."channel-map"' | jq '.[]' | jq '[."download"."url"]' | grep -m1 https | tr -d ' ' | tr -d '"'
+        url: https://api.snapcraft.io/api/v1/snaps/download/mxJjEy7qHbIIUwLKrkjqbuLDSG1GcR5Y_69.snap
+        only-arches:
+          - x86_64
+        sha256: 162506669d6db370198581cbecf781628adf269038a16b8fc651cd4b2c3068e3
