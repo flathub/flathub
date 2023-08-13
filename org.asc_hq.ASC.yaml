@@ -1,0 +1,139 @@
+id: org.asc_hq.ASC
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+command: asc-window
+rename-appdata-file: asc.appdata.xml
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+
+modules:
+  - shared-modules/lua5.1/lua-5.1.5.json
+
+  - name: physfs
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPHYSFS_BUILD_TEST=OFF
+      - -DPHYSFS_BUILD_STATIC=OFF
+    sources:
+      - type: archive
+        url: https://icculus.org/physfs/downloads/physfs-2.0.3.tar.bz2
+        sha256: ca862097c0fb451f2cacd286194d071289342c107b6fe69079c079883ff66b69
+
+  - shared-modules/glu/glu-9.json
+
+  - shared-modules/SDL/sdl12-compat.json
+  - shared-modules/SDL/SDL_mixer-1.2.12.json
+  - shared-modules/SDL/SDL_image-1.2.12.json
+  - shared-modules/smpeg/smpeg-0.4.5.json
+  - name: SDL_sound
+    rm-configure: true,
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://icculus.org/SDL_sound/downloads/SDL_sound-1.0.3.tar.gz
+        sha256: 3999fd0bbb485289a52be14b2f68b571cb84e380cc43387eadf778f64c79e6df
+      - type: shell
+        commands:
+          - cp /usr/share/gnu-config/config.sub .
+          - cp /usr/share/gnu-config/config.guess .
+      - type: script
+        dest-filename: autogen.sh
+        commands:
+          - AUTOMAKE="automake --foreign" autoreconf -fiv
+
+  - name: wxWidgets
+    cleanup:
+      - /bin
+      - /include
+      - /lib/cmake
+      - /lib/wx
+      - /share
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.2.1/wxWidgets-3.2.2.1.tar.bz2
+        sha256: dffcb6be71296fff4b7f8840eb1b510178f57aa2eb236b20da41182009242c02
+        x-checker-data:
+          type: anitya
+          project-id: 5150
+          stable-only: true
+          url-template: https://github.com/wxWidgets/wxWidgets/releases/download/v$version/wxWidgets-$version.tar.bz2
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=regex
+      - ./b2 install -j ${FLATPAK_BUILDER_N_JOBS}
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.tar.bz2
+        sha256: 475d589d51a7f8b3ba2ba4eda022b170e562ca3b760ee922c146b6c65856ef39
+        x-checker-data:
+          type: html
+          url: https://www.boost.org/feed/downloads.rss
+          version-pattern: <link>https://www.boost.org/users/history/version_([\d_]+).html</link>
+          url-template: https://boostorg.jfrog.io/artifactory/main/release/$version0.$version2.$version4/source/boost_$version.tar.bz2
+    cleanup:
+      - /include/boost
+      - /lib/libboost*.a
+      - /lib/cmake
+
+  - name: sigc++
+    sources:
+      - sha256: 0b68dfc6313c6cc90ac989c6d722a1bf0585ad13846e79746aa87cb265904786
+        type: archive
+        url: https://ftp.gnome.org/pub/GNOME/sources/libsigc++/2.10/libsigc++-2.10.3.tar.xz
+    config-opts:
+      - --disable-documentation
+    cleanup:
+      - '*.la'
+      - /include/sigc++-2.0
+      - /lib/pkgconfig
+      - /lib/sigc++-2.0
+
+  - name: xvid
+    subdir: build/generic
+    sources:
+      - type: archive
+        url: https://downloads.xvid.com/downloads/xvidcore-1.3.7.tar.gz
+        sha256: abbdcbd39555691dd1c9b4d08f0a031376a3b211652c0d8b3b8aa9be1303ce2d
+
+  - name: asc
+    buildsystem: autotools
+    build-options:
+      cflags: -DUSE_HOME_DIRECTORY=1 -D_ISOC99_SOURCE -D_GNU_SOURCE
+      cxxflags: -std=c++11 -fpermissive -I/usr/include/freetype2 -Wno-error=narrowing
+    post-install:
+      - desktop-file-install --dir=${FLATPAK_DEST}/share/applications/ ${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm755 asc-window.sh ${FLATPAK_DEST}/bin/asc-window
+    sources:
+      - type: git
+        url: https://github.com/ValHaris/asc-hq
+        tag: ASC2-6-1-0
+        commit: 3f59ea9bc8f604c0fda0b3d42e277fd8f382466f
+      - type: patch
+        path: appdata.patch
+        use-git: true
+      - type: file
+        path: asc-window.sh
+      - type: file
+        url: http://www.asc-hq.org/music/frontiers.ogg
+        sha256: eabc9b07d1db07626fa817a30dad23b11aada059e32c08914d2d0cf1d58c7fff
+      - type: file
+        url: http://www.asc-hq.org/music/time_to_strike.ogg
+        sha256: 0334a027b8a45a5df88e1e3e7db9cace2def02396fbcc794d157289e41c9ad05
+      - type: file
+        url: http://www.asc-hq.org/music/machine_wars.ogg
+        sha256: bd7f330c06090d98e5ba0dac5a691af1804ba383b783b7b2f960bc2e53400a77
+      - type: shell
+        commands:
+          - mv frontiers.ogg data/music/frontiers.ogg
+          - mv time_to_strike.ogg data/music/time_to_strike.ogg
+          - mv machine_wars.ogg data/music/machine_wars.ogg
