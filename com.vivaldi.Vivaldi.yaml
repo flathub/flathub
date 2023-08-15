@@ -1,0 +1,136 @@
+app-id: com.vivaldi.Vivaldi
+runtime: org.freedesktop.Platform
+runtime-version: '22.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '22.08'
+command: vivaldi
+separate-locales: false
+finish-args:
+  - --device=all # Webcams and others
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf # For GNOME proxy resolution
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules # For GNOME proxy resolution
+  - --env=GSETTINGS_BACKEND=dconf # For GNOME proxy resolution
+  - --env=GTK_PATH=/app/lib/gtkmodules
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=home/.local/share/applications:create # Allow for PWAs
+  - --filesystem=home/.local/share/icons:create # Allow for PWAs
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-download # Default download directory
+  - --filesystem=xdg-run/dconf # For GNOME proxy resolution
+  - --filesystem=xdg-run/pipewire-0
+  - --filesystem=~/.config/dconf:ro # For GNOME proxy resolution
+  - --filesystem=~/.config/google-chrome:ro # Import bookmarks and other data from a classic Chrome install
+  - --filesystem=~/.config/kioslaverc # For KDE proxy resolution (KDE5 only)
+  - --filesystem=~/.local/lib:create # Extra FFMpeg saved here
+  - --filesystem=~/.mozilla/firefox:ro # Import bookmarks and other data from a classic FF install
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --persist=.pki
+  - --require-version=1.8.2
+  - --share=ipc
+  - --share=network
+  - --socket=cups # Printing
+  - --socket=pcsc # Webauthn / FIDO
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11 # Prefer wayland for security
+  - --system-talk-name=org.freedesktop.Avahi
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=ca.desrt.dconf # For GNOME proxy resolution
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.kde.kwalletd5
+
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2022.04
+        commit: 55a60d110301e8dd37b631503c3524ab7baaf7aa
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: vivaldi
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/vivaldi
+      - bsdtar xf vivaldi.deb
+      - bsdtar -C /app/vivaldi --strip-components 3 -xf data.tar.xz ./opt/vivaldi
+      - sed -i 's/LD_PRELOAD/ZYPAK_LD_PRELOAD/g;/CHROME_VERSION_EXTRA/i export VIVALDI_FFMPEG_FOUND=YES \# Prevents excessive warning on first start for flatpak users' /app/vivaldi/vivaldi
+      - install -Dm 644 com.vivaldi.Vivaldi.desktop /app/share/applications/com.vivaldi.Vivaldi.desktop
+      - install -Dm 755 vivaldi.sh /app/bin/vivaldi
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/metainfo com.vivaldi.Vivaldi.metainfo.xml
+      - |
+        for size in 16 24 32 48 64 128 256; do
+          install -Dm 644 /app/vivaldi/product_logo_${size}.png /app/share/icons/hicolor/${size}x${size}/apps/com.vivaldi.Vivaldi.png
+        done
+    sources:
+      - type: file
+        url: https://downloads.vivaldi.com/stable/vivaldi-stable_6.1.3035.302-1_amd64.deb
+        sha256: 34f9a26ad9462bef06247c035f2399f89d4f48dece8fcb0029f9baaf5bac2351
+        dest-filename: vivaldi.deb
+        only-arches: [x86_64]
+        x-checker-data:
+          type: rotating-url
+          url: https://vivaldi.com/download/vivaldi-stable_amd64.deb
+          pattern: https://downloads.vivaldi.com/stable/vivaldi-stable_([0-9.]+)-1_amd64.deb
+      - type: file
+        url: https://downloads.vivaldi.com/stable/vivaldi-stable_6.1.3035.302-1_arm64.deb
+        sha256: 1d69c7b8b709ad5e3262dfe5d222e5d0dda9f6feebe51c10a1dd6cd28a79d99e
+        dest-filename: vivaldi.deb
+        only-arches: [aarch64]
+        x-checker-data:
+          type: rotating-url
+          url: https://vivaldi.com/download/vivaldi-stable_arm64.deb
+          pattern: https://downloads.vivaldi.com/stable/vivaldi-stable_([0-9.]+)-1_arm64.deb
+      - type: file
+        url: https://downloads.vivaldi.com/stable/vivaldi-stable_6.1.3035.302-1_armhf.deb
+        sha256: dc9e3db9f781875998e7e94b8ef780a4cc58a767ccb0b84524eac4993227f0cc
+        dest-filename: vivaldi.deb
+        only-arches: [arm]
+        x-checker-data:
+          type: rotating-url
+          url: https://vivaldi.com/download/vivaldi-stable_armhf.deb
+          pattern: https://downloads.vivaldi.com/stable/vivaldi-stable_([0-9.]+)-1_arm64.deb
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: com.vivaldi.Vivaldi.metainfo.xml
+      - type: file
+        path: com.vivaldi.Vivaldi.desktop
+      - type: script
+        dest-filename: vivaldi.sh
+        commands:
+          - exec cobalt "$@"
