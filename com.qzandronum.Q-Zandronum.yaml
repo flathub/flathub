@@ -1,0 +1,185 @@
+app-id: com.qzandronum.Q-Zandronum
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: 5.15-22.08
+command: doomseeker.sh
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+
+  # Based on GZDoom
+  # Now for something confusing: Doomseeker honours XDG standards
+  # But Zandronum doesn't. Both persist for consistency.
+  - --env=DOOMWADDIR=/app/share/games/doom
+  - --persist=.config/zandronum
+  - --persist=.config/doomseeker
+
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+
+modules:
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+  - shared-modules/gtk2/gtk2.json
+
+  - shared-modules/SDL2/SDL2-no-libdecor.json
+  - shared-modules/SDL/sdl12-compat.json
+
+  # with libjpeg.so.8
+  - name: libjpeg
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_SKIP_RPATH:BOOL=YES
+      - -DENABLE_STATIC:BOOL=NO
+      - -DWITH_JPEG8:BOOL=YES
+      - -DCMAKE_INSTALL_LIBDIR=/app/lib
+    sources:
+      - type: archive
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.3.tar.gz
+        sha256: dbda0c685942aa3ea908496592491e5ec8160d2cf1ec9d5fd5470e50768e7859
+
+  - name: openssl11
+    buildsystem: simple
+    build-commands:
+      - ./config --prefix=/app
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /share/doc
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.openssl.org/source/openssl-1.1.1v.tar.gz
+        sha256: d6697e2871e77238460402e9362d47d18382b15ef9f246aba6c7bd780d38a6b0
+        x-checker-data:
+          type: anitya
+          project-id: 20333
+          url-template: https://www.openssl.org/source/openssl-$version.tar.gz
+
+  - name: fluidsynth1
+    buildsystem: cmake-ninja
+    disabled: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DLIB_SUFFIX=
+      - -DCMAKE_EXE_LINKER_FLAGS=-lncurse
+      - -DCMAKE_SHARED_LINKER_FLAGS=-lncurses
+    sources:
+      - type: archive
+        url: https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v1.1.11.tar.gz
+        sha256: da8878ff374d12392eecf87e96bad8711b8e76a154c25a571dd8614d1af80de8
+
+  - name: gme
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-0.6.3.tar.gz
+        sha256: 626e8a104e0dadd10ef6519a67aca880c7b40f81471659f1935b61754e12fc7b
+        x-checker-data:
+          type: anitya
+          project-id: 866
+          url-template: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-$version.tar.gz
+
+  - name: bzip2
+    buildsystem: simple
+    build-commands:
+      - make -f Makefile-libbz2_so
+      - install -D libbz2.so.1.0.8 /app/lib/libbz2.so.1.0.8
+      - ln -s /app/lib/libbz2.so.1.0.8 /app/lib/libbz2.so.1.0
+    sources:
+      - type: archive
+        url: https://github.com/opencor/bzip2/archive/refs/tags/bzip2-1.0.8.tar.gz
+        sha256: db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df
+        x-checker-data:
+          type: anitya
+          project-id: 237
+          url-template: https://github.com/opencor/bzip2/archive/refs/tags/bzip2-$version.tar.gz
+
+  - name: doomseeker
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_SKIP_RPATH=true
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: archive
+        url: https://bitbucket.org/Doomseeker/doomseeker/get/1.4.1.tar.bz2
+        sha256: 3983434ebea6aa5dab69d031dddd00caa062407c4e7f688ead47094fcde47dc5
+      - type: shell
+        commands:
+          # Package requires HG_ details for version numbers
+          # Used to be based on Mercurial so that explains the naming
+          - sed -i 's/HG_REVISION_HASH_STRING/"Flatpak Edition"/g' ./src/core/version.cpp
+          - sed -i 's/HG_REVISION_NUMBER/'$(date +%s)'/g' ./src/core/version.cpp
+          - sed -i 's/HG_TIME/"'$(date --iso-8601=seconds)'"/g' ./src/core/version.cpp
+          # Skip irrelevant plugins
+          - sed -i 's/add_opt_subdirectory(chocolate-doom)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(zandronum)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(odamex)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(srb2)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(turok2ex)//g' ./src/plugins/CMakeLists.txt
+
+  # Zandronum is such a work of art, that it's better for all of us to just
+  # take the upstream package and call it a day.
+  - name: q-zandronum
+    buildsystem: simple
+    build-commands:
+      - tar -xf Q-Zandronum_1.4.5_Linux_amd64.tar.gz
+      - install -D q-zandronum /app/bin/q-zandronum
+      - install -D q-zandronum-server /app/bin/q-zandronum-server
+      - install -D q-zandronum.pk3 /app/share/games/doom/q-zandronum.pk3
+      - install -D libfmodex64-4.44.64.so /app/lib/libfmodex64-4.44.64.so
+    sources:
+      - type: file
+        url: https://github.com/IgeNiaI/Q-Zandronum/releases/download/1.4.5/Q-Zandronum_1.4.5_Linux_amd64.tar.gz
+        sha256: c7c506be92e69be576dcfcc563c4e6fceb5a4b0280bf17948f38a2023c7ef2f4
+          #x-checker-data:
+          #type: html
+          #url: https://zandronum.com/download
+          #version-pattern: <p>The latest version is <strong>([\d\.]+)</strong>, released
+          #  on December 2021.</p>
+          #url-template: https://zandronum.com/downloads/zandronum$version-linux-x86_64.tar.bz2
+
+  - name: launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm 744 doomseeker.sh /app/bin/doomseeker.sh
+      - install -Dm 644 gzdoom.sf2 /app/share/sounds/sf2/gzdoom.sf2
+      - install -Dm 644 com.qzandronum.Q-Zandronum.desktop -t /app/share/applications
+      - install -Dm 644 com.qzandronum.Q-Zandronum.appdata.xml -t /app/share/metainfo
+      - install -Dm 644 com.qzandronum.Q-Zandronum.48.png /app/share/icons/hicolor/48x48/apps/com.qzandronum.Q-Zandronum.png
+      - install -Dm 644 com.qzandronum.Q-Zandronum.64.png /app/share/icons/hicolor/64x64/apps/com.qzandronum.Q-Zandronum.png
+      - install -Dm 644 com.qzandronum.Q-Zandronum.128.png /app/share/icons/hicolor/128x128/apps/com.qzandronum.Q-Zandronum.png
+    sources:
+      - type: file
+        path: com.qzandronum.Q-Zandronum.desktop
+      - type: file
+        path: com.qzandronum.Q-Zandronum.appdata.xml
+      - type: file
+        path: com.qzandronum.Q-Zandronum.48.png
+      - type: file
+        path: com.qzandronum.Q-Zandronum.64.png
+      - type: file
+        path: com.qzandronum.Q-Zandronum.128.png
+      - type: file
+        url: https://github.com/coelckers/gzdoom/raw/g4.8.2/soundfont/gzdoom.sf2
+        sha256: fca3e514b635a21789d4224e84865d2954a2a914d46b64aa8219ddb565c44869
+      - type: script
+        dest-filename: doomseeker.sh
+        commands:
+          # Insert clean zandronum config if none defined
+          - ls ~/.config/zandronum/zandronum.ini || /app/bin/q-zandronum -nosound -norun
+          # Neccessery evil to ensure that Zandronum doesn't crash because of the outdated
+          # FMOD library: https://zandronum.com/forum/viewtopic.php?t=9885
+          - sed -i 's|\(snd_output=\)\(.*\)|\1SDL|g' ~/.config/zandronum/zandronum.ini
+          - sed -i 's|\(snd_mididevice=\)\(.*\)|\1-3|g' ~/.config/zandronum/zandronum.ini
+          - /app/bin/doomseeker
+
