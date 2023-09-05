@@ -23,7 +23,7 @@ Example:
 {
   "id" : "org.example.MyApp",
   "runtime" : "org.freedesktop.Platform",
-  "runtime-version" : "22.08",
+  "runtime-version" : "23.08",
   "sdk" : "org.freedesktop.Sdk",
   "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm16" ],
   "modules" : [
