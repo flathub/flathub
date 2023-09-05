@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Check if the script was called with any arguments
 if [ "$#" -eq 0 ]; then
