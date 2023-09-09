@@ -19,3 +19,12 @@ cmake --build build
 cmake --install build
 
 mv -f /app/lib/*Plugin.so*  /app/lib/pdf4qt/
+mv -f /app/usr/share/icons/*.svg /app/share/icons
+mv -f /app/usr/share/applications/*.desktop /app/share/applications
+
+rmdir /app/usr/share/icons
+rmdir /app/usr/share/applications
+rmdir /app/usr/share
+rmdir /app/usr
+
+sed -i 's|/usr/|/app/|g' /app/share/applications/*.desktop
