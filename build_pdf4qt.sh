@@ -29,7 +29,7 @@ mkdir -p /app/share/metainfo
 mv -f /app/lib/*Plugin.so*  /app/lib/pdf4qt/
 mv -f /app/usr/share/icons/*.svg /app/share/icons/
 mv -f /app/usr/share/applications/*.desktop /app/share/applications/
-mv -f .appdata.xml /app/share/metainfo/
+mv -f .appdata.xml /app/share/metainfo/io.github.JakubMelka.Pdf4qt.appdata.xml
 
 rmdir /app/usr/share/icons
 rmdir /app/usr/share/applications
@@ -40,7 +40,6 @@ rmdir /app/usr
 
 sed -i 's|/usr/bin/||g' /app/share/applications/*.desktop
 sed -i 's|/usr/share/icons/||g' /app/share/applications/*.desktop
-#sed -i 's|.svg||g' /app/share/applications/*.desktop
 
 # Rename files - flatpak needs prefix io.github.JakubMelka.Pdf4qt, if
 # file has to be exported.
