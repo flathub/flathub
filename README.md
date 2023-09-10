@@ -1,21 +1,31 @@
-# Flathub
+## Updateing Dependencies
 
-Flathub is the central place for building and hosting Flatpak builds.
+First make sure to clone and checkout the appropirate version of
+[python-crypthography](https://github.com/pyca/cryptography).
 
-Using the Flathub repository
-----------------------------
+The [flatpak-cargo-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo) and
+[flatpak-pip-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/pip) are used
+in order to generate the `pypi-dependencies.json` and `cargo-sources.json`.
 
-To install applications that are hosted on Flathub, use the following:
+```sh
+flatpak-cargo-generator ../cryptography/src/rust/Cargo.lock -o cargo-sources.json
+flatpak-pip-generator --requirements requirements.txt --output pypi-dependencies
 ```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
 
-For more information and more applications see https://flathub.org
+where  `../cryptography/src/rust/Cargo.lock` is from the previusly checked out
+crypthography repo and version. Make sure that the checked out version is in sync with
+the one in `pypi-dependencies.json`.
 
-Contributing to Flathub
------------------------
+Then copy the sources for `cryptography`, `cffi` and `pycparser` from `pypi-dependencies.json`
+into `cryptography.json`.
 
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
+Sometimes the build tools (such as `setuptools_rust`) may have to be updated in
+`python-setuptools-rust.json`.
 
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub/linux-store-frontend*
+## Building Locally
+
+To build the flatpak the same way it is built on the Flathub build servers run:
+
+```sh
+flatpak run org.flatpak.Builder -v --bundle-sources --install-deps-from=flathub --user \
+    --force-clean build-dir org.tabos.saldo.json
