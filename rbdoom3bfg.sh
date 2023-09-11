@@ -27,4 +27,4 @@ then
 fi
 
 # Run game engine
-exec /app/bin/RBDoom3BFG $@
+exec /app/bin/RBDoom3BFG "$@"
