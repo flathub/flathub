@@ -1,0 +1,47 @@
+id: org.libredirect.frontends-manager
+runtime: org.gnome.Platform
+runtime-version: '42'
+command: libredirect-frontends-manager
+rename-icon: libredirect-frontends-manager
+
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+  - org.freedesktop.Sdk.Extension.rust-nightly
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --filesystem=xdg-data
+  - --device=dri
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: libredirect-frontends-manager
+    sources:
+      - type: git
+        url: https://github.com/libredirect/frontends_manager.git
+        branch: main
+      - type: file
+        path: org.libredirect.frontends-manager.desktop
+      - node-sources.json
+      - cargo-sources.json
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-nightly/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node16
+        CARGO_HOME: /run/build/libredirect-frontends-manager/cargo
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/libredirect-frontends-manager/flatpak-node/npm-cache
+    build-commands:
+      - npm ci --offline
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run tauri build -- -b deb
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/bundle/deb/*/data/usr/bin/*
+      - mkdir -p /app/share/icons/hicolor
+      - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/* /app/share/icons/hicolor/
+      - install -Dm644 -t /app/share/applications/ org.libredirect.frontends-manager.desktop
