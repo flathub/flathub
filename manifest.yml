@@ -1,0 +1,91 @@
+app-id: de.cmg.simplethanks
+default-branch: 0.0.1
+runtime: org.gnome.Platform
+runtime-version: '44'
+sdk: org.gnome.Sdk
+command: simplethanks
+cleanup:
+  - /include
+  - /share/man
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Disable Wayland access
+  - --nosocket=wayland
+  # Needs to talk to the network:
+  - --share=network
+  # Needs to save files locally
+  - --filesystem=xdg-cache
+  - --filesystem=xdg-config
+  - --filesystem=xdg-data
+  - --filesystem=xdg-documents
+  # DBus access
+  - --socket=session-bus
+modules:
+  - name: cpython
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+      - cp -r support/python/bin/* /app/bin
+      - mkdir -p /app/include
+      - cp -r support/python/include/* /app/include
+      - mkdir -p /app/lib
+      - cp -r support/python/lib/* /app/lib
+    sources:
+      - type: dir
+        path: support/python
+        dest: support/python
+    cleanup:
+      - /bin/2to3*
+      - /bin/idle*
+      - /lib/python*/config-*
+  - name: bootstrap
+    no-autogen: true
+    sources:
+      - type: dir
+        path: src/bootstrap/
+  - name: resources
+    buildsystem: simple
+    build-commands:
+      - install -D de.cmg.simplethanks.desktop /app/share/applications/de.cmg.simplethanks.desktop
+      - cp -r icons /app/share/icons
+    sources:
+      - type: file
+        path: de.cmg.simplethanks.desktop
+      - type: dir
+        path: icons/
+        dest: icons/
+  - name: upgrade_pip
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network  # For downloaded requirements.
+    build-commands:
+      - /app/bin/python3 -m pip install --upgrade pip
+  - name: app_packages
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --filesystem=host  # For local requirements.
+        - --share=network  # For downloaded requirements.
+    build-commands:
+      - mkdir -p /app/briefcase/app_packages
+      # Python-standalone is configured using clang; but clang isn't in
+      # the Flatpak build environment. However, clang and gcc are (mostly)
+      # command line compatible, and the output objects are compatible,
+      # so we can override the CC build environment variable to force the
+      # use of gcc.
+      - CC="gcc -pthread" /app/bin/python3 -m pip install --no-cache-dir -r requirements.txt --target /app/briefcase/app_packages
+    sources:
+      - type: file
+        path: requirements.txt
+  - name: app
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/briefcase
+      - cp -r src/app/ /app/briefcase/app
+    sources:
+      - type: dir
+        path: src/app/
+        dest: src/app/
