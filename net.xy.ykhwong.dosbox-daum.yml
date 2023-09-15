@@ -1,0 +1,92 @@
+app-id: net.cy.ykhwong.dosbox-daum.yml
+runtime: org.freedesktop.Platform
+runtime-version: '21.08'
+sdk: org.freedesktop.Sdk
+command: dosbox
+build-options:
+  strip: true
+
+finish-args:         # flatpak permissions
+  - --device=all     # needed for OpenGL, gamepads and serial/parallel
+  - --share=ipc      # needed for X11
+  - --share=network  # Needed for IPX and serial over TCP/IP
+  - --socket=x11     # default to X11, as Gnome does not provide SSD
+  - --socket=pulseaudio
+  - --filesystem=home
+cleanup:
+  - '/include'
+  - '/lib/pkgconfig'
+  - '/share/aclocal'
+  - '/share/man'
+  - '*.la'
+  - '*.a'
+  - '/share/doc'
+
+modules:
+  - "shared-modules/glu/glu-9.json"
+  - "shared-modules/glew/glew.json"  
+  - name: SDL-1.2.15-hq
+    buildsystem: simple
+    build-commands:
+      - sh autogen.sh
+      - ./configure --prefix=/app/
+      - make #-e CXXFLAGS="-std=c++0x -stdlib=libstdc++"
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/ebenbruyns/sdl1.2.15-hq.git
+        branch: main #  tag: release-1.2.15
+  - "shared-modules/SDL/SDL_net-1.2.8.json"
+  - name: libtbb
+    buildsystem: simple
+    build-commands:
+      - make -e CXXFLAGS="-std=c++11" # -stdlib=libstdc++" 
+      - install -m755 -t /app/lib/ build/linux_intel64_gcc_*_release/*
+      - mkdir /app/include/tbb
+      - mkdir /app/include/tbb/machine /app/include/tbb/compat /app/include/tbb/internal  
+      - mkdir -p /app/include/serial/tbb  
+      - install -t /app/include/tbb/ include/tbb/*.h
+      - install -t /app/include/serial/tbb include/serial/tbb/*
+      - install -t /app/include/tbb/compat include/tbb//compat/*
+      - install -t /app/include/tbb/machine include/tbb/machine/*
+      - install -t /app/include/tbb/internal include/tbb/internal/*
+    sources:
+      - type: git
+        url: https://github.com/oneapi-src/oneTBB.git
+        branch: tbb_2017
+  - name: open-glide
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap
+      - ./configure --prefix=/app
+      - make #-e CXXFLAGS="-std=c++14 -Iplatform/linux"
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/voyageur/openglide.git
+           
+  - name: dosbox-daum
+    buildsystem: simple
+    build-commands:
+      - sh autogen.sh
+      - cp gl.h /app/include/GL/  
+      - ./configure --enable-core-inline --prefix=/app
+      - make -e CXXFLAGS="-std=c++11 -fpermissive -I/app/include/SDL -ltbb"
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/ykhwong/dosbox-svn-daum.git
+        branch: master
+      - type: file
+        path: ./gl.h
+      - type: patch
+        path: ./flatpak.patch
+      - type: file
+        path: dosboxsvnda.png
+
+    post-install:
+      - install -Dm644 dosboxsvnda.png /app/share/icons/${FLATPAK_ID}.png
+      - echo "[Desktop Entry]" > ${FLATPAK_ID}.desktop && echo "Name=Dosbox Daum" >> ${FLATPAK_ID}.desktop && echo "Type=Application" >> ${FLATPAK_ID}.desktop && echo "Exec=${FLATPAK_ID}" >> ${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Icon --set-value=${FLATPAK_ID}.png ${FLATPAK_ID}.desktop
+      - mkdir /app/share/applications
+      - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/
