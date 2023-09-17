@@ -1,0 +1,57 @@
+---
+id: io.github.btpf.alexandria
+command: "alexandria"
+rename-icon: "alexandria"
+runtime: org.gnome.Platform
+runtime-version: '42'
+sdk: org.gnome.Sdk
+sdk-extensions:
+# Use rust-nightly to get once_cell working on older rust runtime compatible with org.gnome.platform 42
+# https://github.com/tauri-apps/tauri/discussions/4426#discussioncomment-4838945
+# flatpak install runtime/org.freedesktop.Sdk.Extension.rust-nightly/x86_64/21.08
+- org.freedesktop.Sdk.Extension.rust-nightly
+- org.freedesktop.Sdk.Extension.node16
+separate-locales: false
+finish-args:
+- "--socket=wayland"
+- "--socket=fallback-x11"
+- "--share=ipc"
+- "--share=network"
+- "--device=dri"
+- "--filesystem=/run/media"
+modules:
+- name: alexandria
+  buildsystem: simple
+  build-options:
+    append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-nightly/bin
+    env:
+      CARGO_HOME: "/run/build/alexandria/cargo"
+      npm_config_nodedir: /usr/lib/sdk/node16
+      npm_config_offline: 'true'
+  build-commands:
+  # Builds libmobi-rs dependency. Will attempt to run unit test which will fail in flatpak environment
+  - cd ./libmobi-rs && sh build.sh
+  # Fetch packages
+  - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+  - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+  # Build the tauri deb with the opt_once_cell feature enable to get once_cell working on older rust verison
+  - npm run --offline tauri build -- -b deb --features "opt_once_cell"
+  - install -Dm755 -t /app/bin/ src-tauri/target/release/bundle/deb/*/data/usr/bin/*
+  - mkdir -p /app/share/icons/hicolor
+  - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/*
+    /app/share/icons/hicolor/
+  - mv /app/share/icons/hicolor/256x256@2/ /app/share/icons/hicolor/256x256/
+  - install -Dm644 -t /app/share/metainfo/ io.github.btpf.alexandria.metainfo.xml
+  - install -Dm644 -t /app/share/applications/ io.github.btpf.alexandria.desktop
+  sources:
+  - type: git
+    url: ssh://git@github.com/btpf/Alexandria.git
+    branch: main
+  - type: file
+    path: io.github.btpf.alexandria.desktop
+  - type: file
+    path: io.github.btpf.alexandria.metainfo.xml
+  # flatpak-node-generator.py npm package-lock.json
+  - generated-node-sources.json
+  # flatpak-cargo-generator.py src-tauri/Cargo.lock
+  - generated-rust-sources.json
