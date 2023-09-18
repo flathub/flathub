@@ -3,13 +3,13 @@ id: io.github.btpf.alexandria
 command: "alexandria"
 rename-icon: "alexandria"
 runtime: org.gnome.Platform
-runtime-version: '42'
+runtime-version: '44'
 sdk: org.gnome.Sdk
 sdk-extensions:
 # Use rust-nightly to get once_cell working on older rust runtime compatible with org.gnome.platform 42
 # https://github.com/tauri-apps/tauri/discussions/4426#discussioncomment-4838945
 # flatpak install runtime/org.freedesktop.Sdk.Extension.rust-nightly/x86_64/21.08
-- org.freedesktop.Sdk.Extension.rust-nightly
+- org.freedesktop.Sdk.Extension.rust-stable
 - org.freedesktop.Sdk.Extension.node16
 separate-locales: false
 finish-args:
@@ -20,10 +20,58 @@ finish-args:
 - "--device=dri"
 - "--filesystem=/run/media"
 modules:
+# --- Start Build Fix ---
+- shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+- name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.38.6.tar.xz
+        sha256: 1c614c9589389db1a79ea9ba4293bbe8ac3ab0a2234cac700935fae0724ad48b
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: <a href="webkitgtk\-(2\.38\.\d+)\.tar\.xz">
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_SOUP2=ON
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+      - name: bubblewrap
+        sources:
+          - type: archive
+            url: https://github.com/containers/bubblewrap/releases/download/v0.8.0/bubblewrap-0.8.0.tar.xz
+            sha256: 957ad1149db9033db88e988b12bcebe349a445e1efc8a9b59ad2939a113d333a
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/containers/bubblewrap/releases/latest
+              tag-query: .tag_name
+              timestamp-query: .published_at
+              version-query: $tag | sub("^v"; "")
+              url-query: '"https://github.com/containers/bubblewrap/releases/download/\($tag)/bubblewrap-\($version).tar.xz"'
+        buildsystem: meson
+      - name: xdg-dbus-proxy
+        sources:
+          - type: archive
+            url: https://github.com/flatpak/xdg-dbus-proxy/releases/download/0.1.5/xdg-dbus-proxy-0.1.5.tar.xz
+            sha256: 061dcfaf8a0650e5fd9d5432dfe88bda749ea0d079dc136304bfecfbce0661fb
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/flatpak/xdg-dbus-proxy/releases/latest
+              tag-query: .tag_name
+              timestamp-query: .published_at
+              version-query: $tag
+              url-query: '"https://github.com/flatpak/xdg-dbus-proxy/releases/download/\($tag)/xdg-dbus-proxy-\($version).tar.xz"'
+        buildsystem: meson
+# --- End Build Fix ---
 - name: alexandria
   buildsystem: simple
   build-options:
-    append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-nightly/bin
+    append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-stable/bin
     env:
       CARGO_HOME: "/run/build/alexandria/cargo"
       npm_config_nodedir: /usr/lib/sdk/node16
@@ -35,7 +83,7 @@ modules:
   - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
   - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
   # Build the tauri deb with the opt_once_cell feature enable to get once_cell working on older rust verison
-  - npm run --offline tauri build -- -b deb --features "opt_once_cell"
+  - npm run --offline tauri build -- -b deb
   - install -Dm755 -t /app/bin/ src-tauri/target/release/bundle/deb/*/data/usr/bin/*
   - mkdir -p /app/share/icons/hicolor
   - cp -r src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/*
