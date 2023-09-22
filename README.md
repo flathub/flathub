@@ -53,13 +53,6 @@ First you need to have following lines in `sources.json`. These packages are nee
 ```json
 {
     "type": "file",
-    "url": "https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.linux-arm/8.0.0-rc.1.23421.29/microsoft.aspnetcore.app.runtime.linux-arm.8.0.0-rc.1.23421.29.nupkg",
-    "sha512": "ca3bcb64baf61318e71506571fa047b5dda231cbeb45345cbe9e823dc8acfecedc2a9ede51a5b7e03cfa61c3acce24f54f7a44750592ec1d85be89ad34a67d5b",
-    "dest": "nuget-sources",
-    "dest-filename": "microsoft.aspnetcore.app.runtime.linux-arm.8.0.0.nupkg"
-},
-{
-    "type": "file",
     "url": "https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.linux-arm64/8.0.0-rc.1.23421.29/microsoft.aspnetcore.app.runtime.linux-arm64.8.0.0-rc.1.23421.29.nupkg",
     "sha512": "d802e547b4e495f7a6a720857b744e7b78d7d2626e3331935ba90e6c94aba86b8ed122c18306762ff8a4c5bf6739bfbdd332e0dffc58a9efa97336a88e51f2c3",
     "dest": "nuget-sources",
@@ -71,13 +64,6 @@ First you need to have following lines in `sources.json`. These packages are nee
     "sha512": "d7c5380b6d1d1ff1d0370a9975cbba6ec08e2ec601d1d360b7d5aee9e5dfcfc7ed0a480a6c56ed76a3f4f83f2cac22eed6f9d897d3ac332e3dc4c96285ff21c9",
     "dest": "nuget-sources",
     "dest-filename": "microsoft.aspnetcore.app.runtime.linux-x64.8.0.0.nupkg"
-},
-{
-    "type": "file",
-    "url": "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.linux-arm/8.0.0-rc.1.23421.29/microsoft.netcore.app.runtime.linux-arm.8.0.0-rc.1.23421.29.nupkg",
-    "sha512": "f97e971886b99a3aea238e299c57e27096c4d1f6c666f0b029606c94ae5118a08b45ae1121561acd9c698f76153dff27c7ae845aa2226ced7ccd58ffe011ae17",
-    "dest": "nuget-sources",
-    "dest-filename": "microsoft.netcore.app.runtime.linux-arm.8.0.0.nupkg"
 },
 {
     "type": "file",
@@ -100,11 +86,6 @@ Then add build options:
 ```json
 "build-options": {
     "arch": {
-        "arm": {
-            "env" : {
-                "RUNTIME": "linux-arm"
-            }
-        },
         "aarch64": {
             "env" : {
                 "RUNTIME": "linux-arm64"
