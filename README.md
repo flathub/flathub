@@ -1,5 +1,7 @@
 # Floorp for Flatpak (one.ablaze.floorp)
 
+Flathub: https://flathub.org/apps/one.ablaze.floorp
+
 Browser source code: https://github.com/Floorp-Projects/Floorp
 
 ### Based on
