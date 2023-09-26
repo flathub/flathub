@@ -1,0 +1,101 @@
+app-id: org.rphys.srb2
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: srb2
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --device=all
+modules:
+  - name: game-music-emu
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/*.so
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-0.6.3.tar.xz
+        sha256: aba34e53ef0ec6a34b58b84e28bf8cfbccee6585cebca25333604c35db3e051d
+        x-checker-data:
+          type: anitya
+          project-id: 866
+          stable-only: true
+          url-template: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-$version.tar.xz
+
+  - name: libopenmpt
+    config-opts:
+      - --disable-examples
+      - --disable-openmpt123
+      - --disable-static
+      - --disable-tests
+      - --without-portaudio
+      - --without-portaudiocpp
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/*.so
+      - /lib/pkgconfig
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.3+release.autotools.tar.gz
+        sha256: 2cf8369b7916b09264f3f14b9fb6cef35a6e9bee0328dec4f49d98211ccfd722
+        x-checker-data:
+          type: anitya
+          project-id: 141468
+          stable-only: true
+          url-template: https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-$version+release.autotools.tar.gz
+
+  - name: srb2
+    buildsystem: simple
+    build-options:
+      arch:
+        aarch64:
+          env:
+            ARCH_MAKE_ARGS: LINUX64=1
+        x86_64:
+          env:
+            ARCH_MAKE_ARGS: LINUX64=1 X86_64=1
+    build-commands:
+      - make -C src -j $FLATPAK_BUILDER_N_JOBS NOUPX=1 SDL=1 $ARCH_MAKE_ARGS
+      - install -D -m 755 -t $FLATPAK_DEST/bin bin/lsdl2srb2
+      - install -D -m 644 srb2.png $FLATPAK_DEST/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -D -m 755 rphys.sh $FLATPAK_DEST/bin/srb2
+    sources:
+      - type: git
+        url: https://github.com/katsy/srb2
+        tag: rphys_v7
+        commit: ccc64e16a9731f30d8e77e27ece7f70dce5dc8f8
+      - type: script
+        commands:
+          - export SRB2WADDIR=/app/extra
+          - lsdl2srb2 "$@"
+        dest-filename: rphys.sh
+
+  - name: srb2-assets
+    buildsystem: simple
+    build-commands:
+      - install -t $FLATPAK_DEST/bin apply_extra
+    sources:
+      - type: extra-data
+        filename: Full.zip
+        url: https://github.com/STJr/SRB2/releases/download/SRB2_release_2.2.13/SRB2-v2213-Full.zip
+        sha256: 83b91a351135b63705e49daffa44e7ac3cf3e33b397f56ff347ebb71eda27d4a
+        size: 156054029
+      - type: extra-data
+        filename: rphys.zip
+        url: https://github.com/katsy/srb2/releases/download/rphys_v7/rphys-windows.zip
+        sha256: af1e39ceae4236b176cb05f18de678adb98cecd15ac7da75424aa44e02764935
+        size: 2995542
+      - type: script
+        commands:
+          - unzip -o Full.zip "*.dta" "*.pk3" "*.dat" "models/*" > /dev/null && rm
+            Full.zip
+          - unzip -o rphys.zip "*.pk3" > /dev/null && rm
+            rphys.zip
+        dest-filename: apply_extra
