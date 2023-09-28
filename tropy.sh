@@ -1,3 +1,3 @@
 #!/bin/sh
 
-zypak-wrapper /app/tropy/tropy "$@"
+exec zypak-wrapper /app/tropy/tropy "$@"
