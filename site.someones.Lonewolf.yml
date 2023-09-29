@@ -6,7 +6,7 @@ sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node16
   - org.freedesktop.Sdk.Extension.rust-stable
-command: /app/bin/lonewolf
+command: lonewolf
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
@@ -16,16 +16,6 @@ finish-args:
   - --filesystem=home
 
 modules:
-  - name: magick
-    buildsystem: autotools
-    config-opts:
-      - --with-rsvg
-    sources:
-      - type: git
-        url: https://github.com/ImageMagick/ImageMagick.git
-        commit: 32ce406898b6f9992103cc0ee353f31a0e83f063
-    cleanup:
-      - "*"
   - name: lonewolf
     buildsystem: simple
     build-options:
@@ -41,22 +31,27 @@ modules:
     sources:
       - type: git
         url: https://github.com/aichingm/lonewolf.git
-        tag: v1.0.2
-        commit: b8f181047be72e5976c1c67e35ed6a314febf7f7
+        tag: v1.0.3
+        commit: 4af3d05b360dd070321c71fb47edb42db817a30c
       - cargo-sources.json
       - node-sources.json
     build-commands:
+      # install deps
       - (cd lonewolf-tauri; npm ci --no-audit --offline --cache=/run/build/lonewolf/flatpak-node/npm-cache)
       - (cd lonewolf-tauri; cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose)
-      # build image
-      - (cd lonewolf-tauri; convert -background transparent src/assets/lonewolf.svg -resize 512x512 -format png public/lonewolf.png; convert -background transparent src/assets/icon.svg -resize 128x128 -format png public/icon.png)
+      # build images
+      - (cd lonewolf-tauri; rsvg-convert -b "#ffffff00" src/assets/lonewolf.svg --width=512 --height=512 --output public/lonewolf.png)
+      - (cd lonewolf-tauri; rsvg-convert -b "#ffffff00" src/assets/icon.svg --width=128 --height=128 --output public/icon.png)
       # build tauri images
-      - (cd lonewolf-tauri; mkdir -p src-tauri/icons; convert -background transparent src/assets/icon.svg -resize 512x512 -format png src-tauri/icons/512x512-lonewolf.png; npm run tauri icon -- src-tauri/icons/512x512-lonewolf.png -o src-tauri/icons)
+      - (cd lonewolf-tauri; mkdir -p src-tauri/icons)
+      - (cd lonewolf-tauri; rsvg-convert -b "#ffffff00" src/assets/icon.svg --width=512 --height=512 --output src-tauri/icons/512x512-lonewolf.png)
+      - (cd lonewolf-tauri; npm run tauri icon -- src-tauri/icons/512x512-lonewolf.png -o src-tauri/icons)
+      # build
       - (cd lonewolf-tauri; npm run --offline tauri build -- -b deb)
+      # install
       - install -Dm755 -t /app/bin/ lonewolf-tauri/src-tauri/target/release/bundle/deb/*/data/usr/bin/*
       - install -Dm644 -t /app/share/applications/ lonewolf-tauri/site.someones.Lonewolf.desktop
-      - mkdir -p /app/share/icons/hicolor/256x256/apps
-      - convert -background transparent lonewolf/assets/icon.svg -resize 256x256 -format png icon.png
-      - mv icon.png /app/share/icons/hicolor/256x256/apps/site.someones.Lonewolf.png
+      - install -Dm644 -T lonewolf/assets/icon.svg /app/share/icons/hicolor/scalable/apps/site.someones.Lonewolf.svg 
+      - install -Dm644 -t /app/share/metainfo/ lonewolf-tauri/site.someones.Lonewolf.appdata.xml
 
 
