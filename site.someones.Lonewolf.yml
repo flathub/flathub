@@ -1,0 +1,62 @@
+app-id: site.someones.Lonewolf
+runtime: org.gnome.Platform
+# Stuck with GNOME 42 until tauri supports newer webkitgtk
+runtime-version: '42'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node16
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: /app/bin/lonewolf
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --filesystem=home
+
+modules:
+  - name: magick
+    buildsystem: autotools
+    config-opts:
+      - --with-rsvg
+    sources:
+      - type: git
+        url: https://github.com/ImageMagick/ImageMagick.git
+        commit: 32ce406898b6f9992103cc0ee353f31a0e83f063
+    cleanup:
+      - "*"
+  - name: lonewolf
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node16
+        npm_config_offline: 'true'
+        CARGO_HOME: /run/build/lonewolf/cargo
+        XDG_CACHE_HOME: /run/build/lonewolf/flatpak-node/npm-cache
+        npm_config_cache: /run/build/lonewolf/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node16
+        CYPRESS_INSTALL_BINARY: "0"
+    sources:
+      - type: git
+        url: https://github.com/aichingm/lonewolf.git
+        tag: v1.0.2
+        commit: b8f181047be72e5976c1c67e35ed6a314febf7f7
+      - cargo-sources.json
+      - node-sources.json
+    build-commands:
+      - (cd lonewolf-tauri; npm ci --no-audit --offline --cache=/run/build/lonewolf/flatpak-node/npm-cache)
+      - (cd lonewolf-tauri; cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose)
+      # build image
+      - (cd lonewolf-tauri; convert -background transparent src/assets/lonewolf.svg -resize 512x512 -format png public/lonewolf.png; convert -background transparent src/assets/icon.svg -resize 128x128 -format png public/icon.png)
+      # build tauri images
+      - (cd lonewolf-tauri; mkdir -p src-tauri/icons; convert -background transparent src/assets/icon.svg -resize 512x512 -format png src-tauri/icons/512x512-lonewolf.png; npm run tauri icon -- src-tauri/icons/512x512-lonewolf.png -o src-tauri/icons)
+      - (cd lonewolf-tauri; npm run --offline tauri build -- -b deb)
+      - install -Dm755 -t /app/bin/ lonewolf-tauri/src-tauri/target/release/bundle/deb/*/data/usr/bin/*
+      - install -Dm644 -t /app/share/applications/ lonewolf-tauri/site.someones.Lonewolf.desktop
+      - mkdir -p /app/share/icons/hicolor/256x256/apps
+      - convert -background transparent lonewolf/assets/icon.svg -resize 256x256 -format png icon.png
+      - mv icon.png /app/share/icons/hicolor/256x256/apps/site.someones.Lonewolf.png
+
+
