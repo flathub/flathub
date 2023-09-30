@@ -1,41 +1,71 @@
 app-id: app.bbsync.BlackboardSync
 runtime: org.kde.Platform
-runtime-version: '5.15-22.08'
+runtime-version: 5.15-22.08
 sdk: org.kde.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
+- org.freedesktop.Sdk.Extension.rust-stable
 base: com.riverbankcomputing.PyQt.BaseApp
-base-version: '5.15-22.08'
+base-version: 5.15-22.08
 cleanup-commands:
-  - /app/cleanup-BaseApp.sh
+- /app/cleanup-BaseApp.sh
 build-options:
   prepend-path: /usr/lib/sdk/rust-stable/bin
 command: blackboardsync
 finish-args:
-  - --device=dri
-  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
-  - --filesystem=xdg-download
-  - --share=network
-  - --socket=fallback-x11
-  - --socket=wayland
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.kde.StatusNotifierWatcher
+- --device=dri
+- --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+- --filesystem=xdg-download
+- --share=network
+- --socket=fallback-x11
+- --socket=wayland
+- --talk-name=org.freedesktop.Notifications
+- --talk-name=org.kde.StatusNotifierWatcher
 modules:
-  - name: BlackboardSync
+  - name: python-maturin
     buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/python-maturin/cargo
+        RUSTFLAGS: -L /app/lib/
+    cleanup:
+      - '*'
     modules:
-      - python-maturin/python-maturin.json
-      - pydantic-core/pydantic-core.json
-      - python3-requirements.json
-      - name: python-blackboardsync
-        buildsystem: simple
-        build-commands:
-          - pip3 install --verbose --exists-action=i --no-index --prefix=${FLATPAK_DEST} --no-deps . --no-build-isolation
-          - ls .
-          - install -Dm644 packaging/app.bbsync.BlackboardSync.metainfo.xml -t "${FLATPAK_DEST}/share/metainfo"
-          - install -Dm644 packaging/app.bbsync.BlackboardSync.desktop -t "${FLATPAK_DEST}/share/applications"
-          - install -Dm644 /app/lib/python3*/site-packages/blackboard_sync/assets/logo.png "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/app.bbsync.BlackboardSync.png"
-        sources:
-          - type: git
-            url: "https://github.com/jacobszpz/BlackboardSync"
-            tag: "0.9.12-alpha.1.1"
+      - python3-setuptools-rust.json
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/maturin -t ${FLATPAK_DEST}/bin
+      - install -Dm644 maturin/__init__.py -t ${FLATPAK_DEST}/lib/python$(python -c 'import
+    sys; print("%s.%s" %sys.version_info[0:2])')/site-packages/maturin/
+    sources:
+      - generated-sources.json
+      - tag: v1.2.3
+        type: git
+        url: https://github.com/PyO3/maturin/
+  - name: pydantic-core
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/pydantic-core/cargo
+        RUSTFLAGS: -L /app/lib/
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - maturin build --release
+      - pip3 install --verbose --exists-action=i --no-index --find-links=file://${PWD}/target/wheels --prefix=${FLATPAK_DEST} "pydantic-core" --no-build-isolation
+    sources:
+      - generated-sources.json
+      - tag: v9.9.9
+        type: git
+        url: https://github.com/pydantic/pydantic-core/
+  - python3-requirements.json
+  - name: python-blackboardsync
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --prefix=${FLATPAK_DEST} --no-deps . --no-build-isolation
+      - install -Dm644 packaging/app.bbsync.BlackboardSync.metainfo.xml -t "${FLATPAK_DEST}/share/metainfo"
+      - install -Dm644 packaging/app.bbsync.BlackboardSync.desktop -t "${FLATPAK_DEST}/share/applications"
+      - install -Dm644 /app/lib/python3*/site-packages/blackboard_sync/assets/logo.png "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/app.bbsync.BlackboardSync.png"
+    sources:
+      - tag: 0.9.12-alpha.1.1
+        type: git
+        url: https://github.com/jacobszpz/BlackboardSync
