@@ -14,10 +14,9 @@ RUN pacman -Sy archlinux-keyring --noconfirm && \
                             flatpak \
                             flatpak-builder
 
-# for some reason 21.08 == 42!?
+# list available runtimes with `flatpak remote-ls --user flathub | grep org.gnome.Sdk`
 
-RUN flatpak install -y org.gnome.Platform//42 org.gnome.Sdk//42 runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/21.08 runtime/org.freedesktop.Sdk.Extension.node16/x86_64/21.08
-
+RUN flatpak install -y org.gnome.Platform//45 org.gnome.Sdk//45 runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/23.08 runtime/org.freedesktop.Sdk.Extension.node18/x86_64/23.08
 
 RUN git clone https://github.com/flatpak/flatpak-builder-tools.git /opt/flatpak-builder-tools
 
