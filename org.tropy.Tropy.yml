@@ -13,14 +13,16 @@ finish-args:
   #- --socket=wayland
   #- --socket=fallback-x11
   - --socket=x11
-  - --socket=pulseaudio
+  #- --socket=pulseaudio
   - --share=network
   - --device=dri
   - --filesystem=home
   - --filesystem=/media
   - --filesystem=/run/media
+  - --filesystem=/tmp
   - --filesystem=xdg-run/gvfsd
   - --talk-name=org.gtk.vfs.*
+  #- --talk-name=org.freedesktop.Notifications
 
 cleanup:
   - /include
@@ -164,23 +166,41 @@ modules:
     buildsystem: simple
     build-options:
       append-path: /usr/lib/sdk/node18/bin
+      env:
+        XDG_CACHE_HOME: /run/build/tropy/flatpak-node/cache
+        npm_config_cache: /run/build/tropy/flatpak-node/npm-cache
+        npm_config_loglevel: info
+        npm_config_offline: 'true'
+        npm_config_audit: 'false'
+        npm_config_fund: 'false'
     sources:
       - type: archive
         url: https://github.com/tropy/tropy/archive/refs/tags/v1.15.1.tar.gz
         sha256: e4d1b7a36f5cc0c7cd1621b713d7aeb6a6988aa935d4e4d34a488789c85a9e62
         dest: tropy
       - type: file
+        url: https://sqlite.org/2023/sqlite-autoconf-3430100.tar.gz
+        sha256: 39116c94e76630f22d54cd82c3cea308565f1715f716d1b2527f1c9c969ba4d9
+      - generated-sources.json
+      - type: file
         path: tropy.sh
+    subdir: tropy
     build-commands:
-      - install -Dm755 tropy.sh /app/bin/tropy
-      - cd tropy
-      - npm install --no-progress --no-audit --no-fund
-      - npm run rebuild -- --force --global-libvips
+      - install -Dm755 ../tropy.sh /app/bin/tropy
+      - |
+        npm install --ignore-scripts
+        node node_modules/electron/install
+      - |
+        mv ../sqlite-autoconf* node_modules/sqlite3/deps
+        node scripts/rebuild --skip-headers sqlite3
+        npx node-gyp rebuild --target=25.8.4 --verbose -C node_modules/sharp
       - npm run build
-      - cd dist/Tropy-linux-*
-      - install -Dm644 -t /app/share/metainfo org.tropy.Tropy.metainfo.xml
-      - install -Dm644 -t /app/share/applications org.tropy.Tropy.desktop
-      - rm -r resources/icons/hicolor/1024x1024
-      - mv resources/icons /app/share
-      - mv resources/mime /app/share
-      - cp -r * /app
+      - |
+        cd dist/Tropy-linux-*
+        install -Dm644 -t /app/share/metainfo org.tropy.Tropy.metainfo.xml
+        install -Dm644 -t /app/share/applications org.tropy.Tropy.desktop
+        rm -r resources/icons/hicolor/1024x1024
+        mv resources/icons /app/share
+        mv resources/mime /app/share
+        cp -r * /app
+      - install -Dm755 -t /app ../flatpak-node/libffmpeg.so
