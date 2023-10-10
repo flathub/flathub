@@ -1,0 +1,60 @@
+id: io.neovim.nvim.tool.lazygit
+runtime: io.neovim.nvim
+runtime-version: stable
+sdk: org.freedesktop.Sdk//22.08
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-extension: true
+appstream-compose: false
+build-options:
+  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    RUSTFLAGS: -g
+  prefix: /app/tools/lazygit
+modules:
+  - name: delta
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/delta/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 ./target/release/delta -t ${FLATPAK_DEST}/bin/
+    sources:
+      - type: git
+        url: https://github.com/dandavison/delta.git
+        tag: 0.16.5
+        commit: 03f1569a9aff964e9291371d9928d0584327eae2
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/dandavison/delta/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+      - delta-generated-sources.json
+
+  - name: lazygit
+    buildsystem: simple
+    build-options:
+      env:
+        GOBIN: /app/tools/lazygit/bin
+    build-commands:
+      - go install -mod=vendor -v
+      - install -Dm0644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak
+        ${FLATPAK_ID}
+    sources:
+      - type: git
+        url: https://github.com/jesseduffield/lazygit.git
+        tag: v0.38.2
+        commit: 5149b24ab3dfad3860e2300519c7c583dcc8c9ff
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/jesseduffield/lazygit/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v-"; "")
+          timestamp-query: .published_at
+          is-main-source: true
+      - type: file
+        path: io.neovim.nvim.tool.lazygit.metainfo.xml
