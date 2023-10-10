@@ -1,0 +1,133 @@
+app-id: org.godotengine.Godot3
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+  - org.freedesktop.Sdk.Extension.dotnet7
+command: godot
+
+build-options:
+  arch:
+    x86_64:
+      env:
+        # Only enable link-time optimization when targeting x86_64
+        # (causes issues on other architectures)
+        SCONS_FLAGS_EXTRA: lto=full
+
+  append-path: /usr/lib/sdk/dotnet7/bin
+
+  append-ld-library-path: /usr/lib/sdk/dotnet7/lib
+
+  env:
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet7/lib/pkgconfig
+
+    # Will be appended to the version string displayed in the editor and command-line help
+    BUILD_NAME: flathub
+
+    DOTNET_CLI_TELEMETRY_OPTOUT: True
+
+    DOTNET_NOLOGO: True
+
+    DOTNET_ROOT: /usr/lib/sdk/dotnet7/lib
+
+    # SCons flags common to all builds
+    # Shouldn't be quoted when used as it's a single string, not an array
+    SCONS_FLAGS: >
+      platform=linuxbsd
+      CCFLAGS=-I/app/include
+      prefix=/app
+      unix_global_settings_path=/app
+      progress=no
+      builtin_freetype=no
+      builtin_graphite=no
+      builtin_harfbuzz=no
+      builtin_libogg=no
+      builtin_libpng=no
+      builtin_libtheora=no
+      builtin_libvorbis=no
+      builtin_libwebp=no
+      builtin_openssl=no
+      builtin_libvpx=no
+      builtin_zlib=no
+      udev=no
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --socket=pulseaudio
+  - --filesystem=host
+  - --device=all
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - shared-modules/glu/glu-9.json
+
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: dotnet
+    buildsystem: simple
+    build-options:
+        arch:
+            x86_64:
+                env:
+                    RUNTIME: linux-x64
+    build-commands:
+      - /usr/lib/sdk/dotnet7/bin/install-sdk.sh
+      - cp -r /usr/lib/sdk/dotnet7/lib/packs/ /app/lib/dotnet/
+
+  - name: scons
+    buildsystem: simple
+    cleanup: ['*']
+    sources:
+      - type: archive
+        sha256: 3d43b2303a924816ea0e1b345ff04c9b3e27b53eadf0f26012fc0c29b019685f
+        url: https://downloads.sourceforge.net/project/scons/scons/4.4.0/SCons-4.4.0.tar.gz
+    build-commands:
+      - pip3 install --no-index --no-build-isolation --prefix=/app .
+
+  - name: godot-tools
+    buildsystem: simple
+    sources:
+      - type: archive
+        sha256: 3cb48126b76858f40cf54bd345bb84dc1f49d9e6f8a4a7425ad86e805d39701d
+        url: https://downloads.tuxfamily.org/godotengine/3.5.3/godot-3.5.3-stable.tar.xz
+
+      - type: script
+        dest-filename: godot.sh
+        commands:
+          - export APPDATA="$XDG_DATA_HOME"
+          - export PATH="/app/jre/bin:$PATH"
+          - export DOTNET_ROOT="/app/lib/dotnet"
+          - export DOTNET_CLI_TELEMETRY_OPTOUT=true
+          - export DOTNET_NOLOGO=true
+          - /app/bin/godot-bin "$@"
+      - type: file
+        path: nuget/nuget-source.config
+      - type: file
+        url: https://www.nuget.org/api/v2/package/Microsoft.Build.NoTargets/2.0.1
+        sha512: 19fd7d616993d12d633674fe1e9779eab0aa40aa21eec412561e28e8a7e2de3bae8d9fef9595257134d73f33a9dea9ee0e4ebbafbd32525c123320c1eb5bf160
+        dest: nuget-sources
+        dest-filename: microsoft.build.notargets.2.0.1.nupkg
+      - nuget/nuget-sources.json
+      - type: patch
+        path: update-appdata.patch
+
+    build-commands:
+      - cp nuget-source.config modules/mono/glue/GodotSharp/nuget.config
+      - cp nuget-source.config modules/mono/editor/GodotTools/nuget.config
+      - cp nuget-source.config modules/mono/editor/Godot.NET.Sdk/nuget.config
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA target=editor precision=single module_mono_enabled=yes -j "$FLATPAK_BUILDER_N_JOBS"
+      - bin/godot.* --display-driver headless --generate-mono-glue modules/mono/glue
+      - modules/mono/build_scripts/build_assemblies.py --godot-output-dir bin --godot-platform=linuxbsd --precision=single
+      - install -D -m755 bin/godot.* /app/bin/godot-bin
+      - cp -r bin/GodotSharp /app/bin/GodotSharp
+      - install -D -m755 godot.sh /app/bin/godot
+      - desktop-file-edit --set-name="Godot Engine 3" --set-icon=${FLATPAK_ID} misc/dist/linux/org.godotengine.Godot.desktop
+      - install -Dm644 misc/dist/linux/org.godotengine.Godot.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - install -Dm644 misc/dist/linux/org.godotengine.Godot.xml /app/share/mime/packages/$FLATPAK_ID.xml
+      - install -Dm644 misc/dist/linux/org.godotengine.Godot.appdata.xml /app/share/appdata/$FLATPAK_ID.appdata.xml
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
