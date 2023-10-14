@@ -1,3 +1,3 @@
 #!/bin/sh
 
-pd-l2ork -alsa -alsaadd pulse $@
+exec pd-l2ork -alsa -alsaadd pulse "$@"
