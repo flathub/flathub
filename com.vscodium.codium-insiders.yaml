@@ -1,0 +1,143 @@
+id: com.vscodium.codium-insiders
+sdk: org.freedesktop.Sdk
+runtime: org.freedesktop.Sdk
+runtime-version: '23.08'
+command: codium-insiders
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=ssh-auth
+  - --share=network
+  - --device=all
+  - --filesystem=host
+  - --filesystem=xdg-config/gtk-3.0:ro
+  - --persist=.vscode-oss
+  - --allow=devel
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
+  - --env=LD_LIBRARY_PATH=/app/lib
+  - --filesystem=xdg-run/gnupg:ro
+  - --filesystem=xdg-config/kdeglobals:ro
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --system-talk-name=org.freedesktop.login1
+separate-locales: false
+add-extensions:
+  com.visualstudio.code.tool:
+    directory: tools
+    subdirectories: true
+    version: '23.08'
+    add-ld-path: lib
+    no-autodownload: true
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - '*.la'
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - shared-modules/libusb/libusb.json
+  - name: codium-insiders
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 codium-insiders.svg /app/share/icons/hicolor/scalable/apps/com.vscodium.codium-insiders.svg
+      - |
+        for size in 16 32 48 64 128 256 512; do
+          rsvg-convert --width ${size} --keep-aspect-ratio --format png --output codium-insiders_${size}.png codium-insiders.svg || exit 1
+          install -Dm644 codium-insiders_${size}.png /app/share/icons/hicolor/${size}x${size}/apps/com.vscodium.codium-insiders.png || exit 1
+        done
+      - install -Dm644 com.vscodium.codium-insiders.metainfo.xml -t /app/share/metainfo
+      - cp /usr/bin/ar /app/bin
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && cp /usr/lib/${ARCH_TRIPLE}/libbfd-*.so /app/lib
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && ln -s /usr/lib/${ARCH_TRIPLE}/libtinfo.so/app/lib/libtinfo.so.5
+      - ar x codium.deb
+      - tar xf data.tar.xz
+        # HACK: Use directory for IPC sockets that is shared between Flatpak instances
+        # Replace XDG_RUNTIME_DIR by XDG_RUNTIME_DIR/app/FLATPAK_ID
+      - find usr/share/codium-insiders -type f -print0 | xargs -0 sed -i "s/\bjoin([^)]*xdg_\?runtime_\?dir[^,)]*/\0,'app',process.env.FLATPAK_ID/gI"
+        # and disable integrity check
+      - sed -e 's/"checksums":/"_checksums":/' -i usr/share/codium-insiders/resources/app/product.json
+      - mv usr/share/codium-insiders /app/share
+      - sed -e "s|/usr/|/app/|g" -e "s/^Icon=.*/Icon=com.vscodium.codium-insiders/" -i usr/share/applications/*.desktop
+      - sed -e "s|share/codium-insiders/codium-insiders|bin/codium-insiders|g" -i usr/share/applications/*.desktop
+      - install -Dm644 usr/share/applications/codium-insiders.desktop /app/share/applications/com.vscodium.codium-insiders.desktop
+      - install -Dm644 usr/share/applications/codium-insiders-url-handler.desktop /app/share/applications/com.vscodium.codium-insiders-url-handler.desktop
+      - rm -r codium.deb control.tar.* data.tar.xz debian-binary usr
+      - mkdir /app/tools
+    sources:
+      - type: file
+        url: https://github.com/VSCodium/vscodium-insiders/releases/download/1.84.0.23283-insider/codium-insiders_1.84.0.23283_amd64.deb
+        sha256: 94986bb5c34961017d961f6b065da789af68f593ab2f0ebfef88307bdcacde46
+        dest-filename: codium.deb
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/VSCodium/vscodium-insiders/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name
+          timestamp-query: .published_at
+          url-query: '[.assets[] | select(.name|test("codium-insiders_.+_amd64.deb$"))][0]
+            | .browser_download_url'
+      - type: file
+        url: https://github.com/VSCodium/vscodium-insiders/releases/download/1.84.0.23283-insider/codium-insiders_1.84.0.23283_arm64.deb
+        sha256: 564cab8c788545b8751de68cdf37f6b646db653107d60c0b689686346a295c5f
+        dest-filename: codium.deb
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/VSCodium/vscodium-insiders/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name
+          timestamp-query: .published_at
+          url-query: '[.assets[] | select(.name|test("codium-insiders_.+_arm64.deb$"))][0]
+            | .browser_download_url'
+      - type: file
+        url: https://raw.githubusercontent.com/VSCodium/vscodium/f1fa60db6d5332bef6cb2fad55b809a48b76179c/icons/insider/codium_cnl.svg
+        sha256: 0cc2ded6ad8109c59bdfad9ef71c0afda0e6d5d6a26aaf03eac5d4a8a92fa4e5
+        dest-filename: codium-insiders.svg
+      - type: file
+        path: com.vscodium.codium-insiders.metainfo.xml
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak.git
+        branch: main
+        commit: ded79a2f8a509adc21834b95a9892073d4a91fdc
+  - name: wrapper-flatpak-wrapper
+    buildsystem: meson
+    config-opts:
+      - -Deditor_binary=/app/share/codium-insiders/codium-insiders
+      - >-
+        -Deditor_args=[
+        '/app/share/codium-insiders/resources/app/out/cli.js',
+        '--ms-enable-electron-run-as-node',
+        '--extensions-dir', '$XDG_DATA_HOME/codium-insiders/extensions'
+        ]
+      - -Dprogram_name=codium-insiders
+      - -Deditor_title=VSCodium Insiders
+      - -Dzypak=enabled
+      - -Dzypak_args=[ 'host', '-' ]
+      - >-
+        -Denvs=[
+        "ELECTRON_RUN_AS_NODE=1"
+        ]
+      - >-
+        -Denvs_inner=[
+        "ZYPAK_SPAWN_LATEST_ON_REEXEC=0",
+        ]
+      - -Dfirst_run_template=README.md
+      - -Dsdk_update_template=sdk_update.md
+      - -Dflagfile_prefix=flatpak-vscodium-insiders
+    sources:
+      - type: git
+        url: https://github.com/flathub/ide-flatpak-wrapper.git
+        branch: zypak
+        commit: 188d2145b3460173558147ebefa288eb2a7d56f1
+      - type: file
+        path: README.md
+      - type: file
+        path: sdk_update.md
