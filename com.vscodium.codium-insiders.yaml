@@ -47,9 +47,6 @@ modules:
           install -Dm644 codium-insiders_${size}.png /app/share/icons/hicolor/${size}x${size}/apps/com.vscodium.codium-insiders.png || exit 1
         done
       - install -Dm644 com.vscodium.codium-insiders.metainfo.xml -t /app/share/metainfo
-      - cp /usr/bin/ar /app/bin
-      - ARCH_TRIPLE=$(gcc --print-multiarch) && cp /usr/lib/${ARCH_TRIPLE}/libbfd-*.so /app/lib
-      - ARCH_TRIPLE=$(gcc --print-multiarch) && ln -s /usr/lib/${ARCH_TRIPLE}/libtinfo.so/app/lib/libtinfo.so.5
       - ar x codium.deb
       - tar xf data.tar.xz
         # HACK: Use directory for IPC sockets that is shared between Flatpak instances
@@ -58,10 +55,16 @@ modules:
         # and disable integrity check
       - sed -e 's/"checksums":/"_checksums":/' -i usr/share/codium-insiders/resources/app/product.json
       - mv usr/share/codium-insiders /app/share
-      - sed -e "s|/usr/|/app/|g" -e "s/^Icon=.*/Icon=com.vscodium.codium-insiders/" -i usr/share/applications/*.desktop
-      - sed -e "s|share/codium-insiders/codium-insiders|bin/codium-insiders|g" -i usr/share/applications/*.desktop
+        # use sed because because desktop-file-edit can't modify different group keys
+      - sed -e "s/^Icon=.*/Icon=com.vscodium.codium-insiders/" -i usr/share/applications/*.desktop
+      - sed -e "s|/usr/share/codium-insiders/||g" -i usr/share/applications/*.desktop
+        # use install instead of desktop-file-install because can't rename the output file
       - install -Dm644 usr/share/applications/codium-insiders.desktop /app/share/applications/com.vscodium.codium-insiders.desktop
       - install -Dm644 usr/share/applications/codium-insiders-url-handler.desktop /app/share/applications/com.vscodium.codium-insiders-url-handler.desktop
+        # Sugested by desktop-file-validate
+      - desktop-file-edit --add-category="Utility" /app/share/applications/com.vscodium.codium-insiders.desktop
+        # Disable hints because desktop-file-validate warn about the previously suggested hint =)
+      - desktop-file-validate --no-hints /app/share/applications/com.vscodium.codium-insiders.desktop /app/share/applications/com.vscodium.codium-insiders-url-handler.desktop
       - rm -r codium.deb control.tar.* data.tar.xz debian-binary usr
       - mkdir /app/tools
     sources:
@@ -105,7 +108,7 @@ modules:
         url: https://github.com/refi64/zypak.git
         branch: main
         commit: ded79a2f8a509adc21834b95a9892073d4a91fdc
-  - name: wrapper-flatpak-wrapper
+  - name: ide-flatpak-wrapper
     buildsystem: meson
     config-opts:
       - -Deditor_binary=/app/share/codium-insiders/codium-insiders
