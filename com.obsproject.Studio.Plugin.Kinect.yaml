@@ -1,0 +1,70 @@
+id: com.obsproject.Studio.Plugin.Kinect
+branch: stable
+runtime: com.obsproject.Studio
+runtime-version: stable
+sdk: org.kde.Sdk//6.4
+build-extension: true
+separate-locales: false
+appstream-compose: false
+build-options:
+  prefix: /app/plugins/Kinect
+  prepend-pkg-config-path: /app/plugins/Kinect/lib/pkgconfig # Needed for libfreenect2
+cleanup:
+  - /lib/Kinect/*.a
+modules:
+  - shared-modules/libusb/libusb.json
+
+  - name: libfreenect
+    buildsystem: cmake-ninja
+    cleanup:
+      - /lib/pkgconfig
+      - /lib/fakenect
+      - /include
+      - /bin
+    sources:
+      - type: git
+        url: https://github.com/OpenKinect/libfreenect.git
+        commit: f6de60f5291258920ca7d03e8d593f1bab3f7867
+        tag: v0.6.4
+      - type: patch
+        path: sirlynix_libfreenect_fixes.patch
+        x-checker-data:
+          is-main-source: true
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: libfreenect2
+    buildsystem: cmake-ninja
+    cleanup:
+      - /lib/pkgconfig
+      - /lib/cmake
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/OpenKinect/libfreenect2.git
+        commit: fd64c5d9b214df6f6a55b4419357e51083f15d93
+        tag: v0.2.1
+        x-checker-data:
+          is-main-source: true
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: obs-kinect
+    buildsystem: simple
+    build-commands:
+      - install -D 64bit/* ${FLATPAK_DEST}/lib/
+      - mkdir -p ${FLATPAK_DEST}/share/obs/obs-plugins/
+      - mv obs-plugins/obs-kinect/ ${FLATPAK_DEST}/share/obs/obs-plugins/
+    post-install:
+      - install -Dm644 --target-directory=${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak ${FLATPAK_ID}
+
+      - mkdir ${FLATPAK_DEST}/lib/obs-plugins # OBS flatpak only merges /lib/obs-plugins/
+      - cp -a ${FLATPAK_DEST}/lib/{libobs*,libfreenect*,obs-kinect*} ${FLATPAK_DEST}/lib/obs-plugins/
+      - rm ${FLATPAK_DEST}/lib/{libobs*,libfreenect*,obs-kinect*}
+    sources:
+      - type: archive
+        url: https://github.com/SirLynix/obs-kinect/releases/download/v1.0-rc2/linux-1.0rc2-x64-releasedbg.zip
+        sha256: 868475c2a8c7742318162d1f38f2231816e05b531b9b8f6a9c6d6fefcf275555
+      - type: file
+        path: com.obsproject.Studio.Plugin.Kinect.metainfo.xml
