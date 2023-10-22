@@ -1,0 +1,150 @@
+id: io.github.fastrizwaan.WineZGUI
+branch: '23.08'
+version: '0.97.12'
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.winehq.Wine
+base-version: stable-23.08
+command: winezgui
+#rename-icon: winezgui
+#rename-desktop-file: winezgui.desktop
+finish-args:
+  - --allow=devel # For Wine crash handling
+  - --allow=multiarch
+  - --device=all
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib32/gstreamer-1.0:/app/lib/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib:/app/lib32/wine/wined3d:/app/lib/wine/wined3d
+    # Need to link .desktop files
+  - --filesystem=~/.local/share/applications:create
+  - --env=PATH=/app/bin:/usr/bin
+    # Desktop shortcut runs wine script from host
+  #- --talk-name=org.freedesktop.Flatpak
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --talk-name=org.freedesktop.Notifications
+    # Most Games write to their own directories
+#- --filesystem=host
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /share/doc
+  - /share/man
+
+inherit-extensions:
+  - org.freedesktop.Platform.Compat.i386
+  - org.freedesktop.Platform.ffmpeg_full.i386
+  - org.freedesktop.Platform.ffmpeg-full
+  - org.freedesktop.Platform.GL32
+  - org.freedesktop.Platform.VAAPI.Intel.i386
+  - org.winehq.Wine.DLLs
+  - org.winehq.Wine.gecko
+  - org.winehq.Wine.mono
+
+add-extensions:
+  com.valvesoftware.Steam.Utility:
+    subdirectories: true
+    directory: utils
+    versions: stable;beta;test;master
+    add-ld-path: lib
+    merge-dirs: share/vulkan/explicit_layer.d;share/vulkan/implicit_layer.d;
+    no-autodownload: true
+    autodelete: false
+
+modules:
+ 
+  # Create 32-bit directories
+  - name: compat
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/dri/intel-vaapi-driver
+      - mkdir -p /app/lib/i386-linux-gnu/dri/intel-vaapi-driver
+      - mkdir -p /app/lib/udev/rules.d
+      - mkdir -p /app/extensions/Plugins
+      - mkdir -p /app/lib64
+      - mkdir -p /app/lib32
+      - mkdir -p /app/lib/ffmpeg
+      - mkdir -p /app/lib32/ffmpeg
+      - mkdir -p /app/utils
+
+  - name: icoutils
+    build-options:
+      make-args: -j $FLATPAK_BUILDER_N_JOBS
+      #strip: true
+      no-debuginfo: true  
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: http://savannah.nongnu.org/download/icoutils/icoutils-0.32.3.tar.bz2
+        mirror-urls: 
+          - https://download-mirror.savannah.gnu.org/releases/icoutils/icoutils-0.32.3.tar.bz2
+          - https://ftp.up.pt/pub/nongnu/icoutils/icoutils-0.32.3.tar.bz2
+        sha256: 17abe02d043a253b68b47e3af69c9fc755b895db68fdc8811786125df564c6e0
+
+  - name: perl
+    no-autogen: true
+    config-opts:
+    - "-des"
+    - "-Duseshrplib"
+    build-options:
+      make-args: -j $FLATPAK_BUILDER_N_JOBS
+      cflags: "-fPIC"
+      ldflags: "-fpic"
+    sources:
+    - type: archive
+      url: https://www.cpan.org/src/5.0/perl-5.32.0.tar.gz
+      sha256: efeb1ce1f10824190ad1cadbcccf6fdb8a5d37007d0100d2d9ae5f2b5900c0b4
+    - type: script
+      dest-filename: configure
+      commands:
+      - exec ./configure.gnu $@
+    post-install:
+    - chmod -R u+w /app/lib/perl5
+  
+  - name: exiftool
+    buildsystem: simple
+    build-options:
+      make-args: -j $FLATPAK_BUILDER_N_JOBS
+
+    build-commands:
+      - perl Makefile.PL
+      - make
+      - make install 
+    sources:
+      - type: archive
+        url: https://github.com/exiftool/exiftool/archive/refs/tags/12.57.tar.gz
+        sha256: ffc55c1177e50b819072c500cbbd0fecbb1be671584a0f43217bfba597ffa933
+        
+  - name: desktop-file-utils
+    build-options:
+      make-args: -j $FLATPAK_BUILDER_N_JOBS
+      #strip: true
+      no-debuginfo: true  
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/desktop-file-utils/releases/desktop-file-utils-0.26.tar.xz
+        sha256: b26dbde79ea72c8c84fb7f9d870ffd857381d049a86d25e0038c4cef4c747309
+
+  - name: WineZGUI
+    buildsystem: simple
+    build-commands:
+      - ./setup --install --flatpak --prefix=/app
+    sources:
+      - type: git
+        tag: 0.97.12
+        url: https://github.com/fastrizwaan/WineZGUI.git
