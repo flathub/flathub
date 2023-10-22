@@ -7,19 +7,19 @@
 **Install Antares SQL from cli:**
 
 ```shell
-flatpak install -y app.antares.Antares-SQL
+flatpak install -y it.fabiodistasio.AntaresSQL
 ```
 
 **Run Antares:**
 
 ```shell
-flatpak run app.antares.Antares-SQL
+flatpak run it.fabiodistasio.AntaresSQL
 ```
 
 **To uninstall:**
 
 ```shell
-flatpak uninstall -y app.antares.Antares-SQL
+flatpak uninstall -y it.fabiodistasio.AntaresSQL
 ```
 
 ## Build
@@ -35,5 +35,5 @@ flatpak install org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64
 **Build Antares SQL:**
 
 ```shell
-flatpak-builder --user --install --force-clean build app.antares.Antares-SQL.yml
+flatpak-builder --user --install --force-clean build it.fabiodistasio.AntaresSQL.yml
 ```
