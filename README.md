@@ -1,27 +1,39 @@
-# Flathub
+# Antares SQL
 
-Flathub is the central place for building and hosting Flatpak builds.
+## Installation
 
-Using the Flathub repository
-----------------------------
+[**Set up Flatpak**](https://www.flatpak.org/setup/)
 
-To install applications that are hosted on Flathub, use the following:
-```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
+**Install Antares SQL from cli:**
 
-To install applications from the beta branch, use the following:
-```
-flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
-flatpak install flathub-beta org.godotengine.Godot
+```shell
+flatpak install -y app.antares.Antares-SQL
 ```
 
-For more information and more applications see https://flathub.org
+**Run Antares:**
 
-Contributing to Flathub
------------------------
+```shell
+flatpak run app.antares.Antares-SQL
+```
 
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
+**To uninstall:**
 
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub/website*
+```shell
+flatpak uninstall -y app.antares.Antares-SQL
+```
+
+## Build
+
+The `flatpak-builder` package is required.
+
+**Install the SDK:**
+
+```shell
+flatpak install org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64/23.08
+```
+
+**Build Antares SQL:**
+
+```shell
+flatpak-builder --user --install --force-clean build app.antares.Antares-SQL.yml
+```
