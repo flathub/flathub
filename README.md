@@ -10,6 +10,16 @@ https://github.com/flathub/org.mozilla.firefox.BaseApp
 
 https://searchfox.org/mozilla-central/source/taskcluster/docker/firefox-flatpak
 
+## How to install (from Flathub)
+Stable
+```
+flatpak install flathub one.ablaze.floorp
+```
+Lightning
+```
+flatpak install flathub one.ablaze.floorp//lightning
+```
+
 ## How to build
 ```sh
 flatpak-builder build-dir one.ablaze.floorp.yml
