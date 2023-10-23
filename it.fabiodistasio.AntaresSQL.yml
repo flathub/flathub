@@ -1,9 +1,9 @@
 app-id: it.fabiodistasio.AntaresSQL
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '22.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
-base-version: '23.08'
+base-version: '22.08'
 command: startantares
 separate-locales: false
 finish-args:
@@ -15,25 +15,43 @@ finish-args:
   - --filesystem=home
 
 modules:
-  - name: assets
-    buildsystem: simple
-    build-commands:
-      - install -Dm755 assets/startantares /app/bin/startantares
-      - install -D it.fabiodistasio.AntaresSQL.metainfo.xml -t /app/share/metainfo/
-      - install -D assets/it.fabiodistasio.AntaresSQL.desktop -t /app/share/applications/
-      - install -D assets/it.fabiodistasio.AntaresSQL.png /app/share/icons/hicolor/256x256/apps/it.fabiodistasio.AntaresSQL.png
-    sources:
-      - type: dir
-        path: .
-
   - name: antares
     buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/antares/flatpak-node/cache
+        npm_config_cache: /run/build/antares/flatpak-node/npm-cache
+        npm_config_offline: 'true'
     build-commands:
-      - chmod +x Antares.AppImage
-      - ./Antares.AppImage --appimage-extract
-      - mv squashfs-root /app/bin/antares
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `dist` script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run build -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+
+      - install -Dm755 ../startantares /app/bin/startantares
+      - install -D ../it.fabiodistasio.AntaresSQL.metainfo.xml -t /app/share/metainfo/
+      - install -D ../it.fabiodistasio.AntaresSQL.desktop -t /app/share/applications/
+      - install -D ../it.fabiodistasio.AntaresSQL.png /app/share/icons/hicolor/256x256/apps/it.fabiodistasio.AntaresSQL.png
+    subdir: main
     sources:
+      - type: git
+        url: https://github.com/antares-sql/antares.git
+        tag: v0.7.17
+        commit: 71ac3a516404a57cf17c719f4945f529a78785a5
+        dest: main
+      
       - type: file
-        dest-filename: Antares.AppImage
-        url: https://github.com/antares-sql/antares/releases/download/v0.7.17/Antares-0.7.17-linux_x86_64.AppImage
-        sha512: da386355ad79395d2501909ac4a39e4e041e60e97d6e1a7e3c03eebdee8e03c0b414974f22d4708ffbacc66290ea632b21aece57e57c243d4b71fb9e0578dfac
+        path: it.fabiodistasio.AntaresSQL.desktop
+      
+      - type: file
+        path: it.fabiodistasio.AntaresSQL.metainfo.xml
+      
+      - type: file
+        path: it.fabiodistasio.AntaresSQL.png
+      
+      - generated-sources.json
