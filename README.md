@@ -37,3 +37,7 @@ flatpak install org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64
 ```shell
 flatpak-builder --user --install --force-clean build it.fabiodistasio.AntaresSQL.yml
 ```
+
+## Notes
+
+At moment the [flatpak-node-generator](https://github.com/flatpak/flatpak-builder-tools/tree/master/node) tool doesn't support package-lock.json v3. A workaround is generate an Antares `package-lock.json` with `npm i --lockfile-version 2 --package-lock-only` command.
