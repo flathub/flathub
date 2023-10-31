@@ -1,0 +1,177 @@
+id: com.pot_app.pot
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+command: pot
+rename-icon: pot
+rename-desktop-file: pot.desktop
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --share=network
+  - --device=dri
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.42.0.tar.xz
+        sha256: 828f95935861fae583fb8f2ae58cf64c63c178ae2b7c2d6f73070813ad64ed1b
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_MINIBROWSER=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_SOUP2=ON
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - '*'
+
+      - name: libjxl
+        buildsystem: cmake
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_TESTING=OFF
+        sources:
+          - type: git
+            url: https://github.com/libjxl/libjxl.git
+            tag: v0.8.2
+            commit: 954b460768c08a147abf47689ad69b0e7beff65e
+            disable-shallow-clone: true
+            x-checker-data:
+              type: git
+              tag-pattern: ^v([\d.]+)$
+
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make -j$(nproc) PREFIX=/app
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/jordansissel/xdotool.git
+        tag: v3.20211022.1
+        commit: eb489de1b4fb3fd0cd935d68ae16ecd4c653ac7d
+        x-checker-data:
+          type: antiya
+          project-id: 8648
+          tag-template: v$version
+
+  - name: xrandr
+    sources:
+      - type: archive
+        url: https://www.x.org/releases/individual/app/xrandr-1.5.2.tar.xz
+        sha256: c8bee4790d9058bacc4b6246456c58021db58a87ddda1a9d0139bf5f18f1f240
+        x-checker-data:
+          type: antiya
+          project-id: 14957
+          url-template: https://www.x.org/releases/individual/app/xrandr-$version.tar.xz
+
+  - name: tesseract
+    sources:
+      - type: git
+        url: https://github.com/tesseract-ocr/tesseract.git
+        tag: 5.3.3
+        commit: e082522c248d3121e466959a8ba4fd4f7ad1a525
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/tesseract-ocr/tesseract/releases/latest
+          tag-query: .tag_name
+          version-query: $tag
+    modules:
+      - name: leptonica
+        sources:
+          - type: git
+            url: https://github.com/DanBloomberg/leptonica.git
+            tag: 1.83.1
+            commit: b667978e86c4bf74f7fdd75f833127d2de327550
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/DanBloomberg/leptonica/releases/latest
+              tag-query: .tag_name
+              version-query: $tag
+
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -p -D -m 0644 deu.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 nld.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 tur.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 eng.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 jpn.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 rus.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 fra.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 ara.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 chi_sim.traineddata -t /app/share/tessdata/
+      - install -p -D -m 0644 spa.traineddata -t /app/share/tessdata/
+    sources:
+      - type: git
+        url: https://github.com/tesseract-ocr/tessdata_fast.git
+        tag: 4.1.0
+        commit: 65727574dfcd264acbb0c3e07860e4e9e9b22185
+        x-checker-data:
+          type: antiya
+          project-id: 326567
+          tag-template: $version
+
+  - name: pot
+    buildsystem: simple
+    build-commands:
+      - ar x pot.deb
+      - tar xf data.*
+      - install -Dm755 usr/bin/pot /app/bin/pot
+      - cp -a usr/share /app/
+      - install -Dm644 com.pot_app.pot.metainfo.xml -t /app/share/metainfo
+    sources:
+      - type: file
+        dest-filename: pot.deb
+        only-arches:
+          - x86_64
+        url: https://github.com/pot-app/pot-desktop/releases/download/2.6.7/pot_2.6.7_amd64.deb
+        sha256: 7e84534ae24285385dad51d3652816e1fba8c60a3480ac181c9a01c3e2ef799d
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/pot-app/pot-desktop/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/qier222/YesPlayMusic/releases/download/"
+            + $version + "/pot_" + $version + "_amd64.deb"'
+
+      - type: file
+        dest-filename: pot.deb
+        only-arches:
+          - aarch64
+        url: https://github.com/pot-app/pot-desktop/releases/download/2.6.7/pot_2.6.7_arm64.deb
+        sha256: 509d67da979753e57e659fab10354df9e87dcc49c2b0cdc9673ffdf28d9f617e
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/pot-app/pot-desktop/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/qier222/YesPlayMusic/releases/download/"
+            + $version + "/pot_" + $version + "_arm64.deb"'
+
+      - type: file
+        path: com.pot_app.pot.metainfo.xml
