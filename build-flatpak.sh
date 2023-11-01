@@ -13,7 +13,7 @@ set -x
 
 # No spaces in project name.
 projectName=Invoice-Ninja
-projectId=com.invoiceninja.app
+projectId=com.invoiceninja.InvoiceNinja
 executableName=invoiceninja
 
 
