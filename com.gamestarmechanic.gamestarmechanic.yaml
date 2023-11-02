@@ -1,0 +1,82 @@
+app-id: com.gamestarmechanic.app
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: gamestarmechanic-wrapper
+separate-locales: false
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+
+build-options:
+  append-path: /usr/lib/sdk/node18/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=x11
+  - --env=GAMESTAR_PLUGINS_PATH=/app/extra/plugins
+
+modules:
+  - name: gamestar-mechanic
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/gamestar-mechanic/flatpak-node/cache
+    sources:
+      - type: git
+        url: https://github.com/endlessm/gamestar-mechanic-linux.git
+        commit: cc452a751d0e43746a5064be171bcac19edd2e49
+        tag: v1.3.0
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - generated-sources.json
+    build-commands:
+      # With yarn < 2, yarn config only writes to ~/.yarnrc and it can not be reasoned with.
+      - env HOME=$PWD yarn --offline config set yarn-offline-mirror "${FLATPAK_BUILDER_BUILDDIR}/flatpak-node/yarn-mirror"
+      - yarn --offline install --immutable --immutable-cache --inline-builds
+      - yarn --offline run pack --linux
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked ${FLATPAK_DEST}/main
+      # Export app icon and desktop file
+      - install -m644 res/icon/com.gamestarmechanic.gamestarmechanic.png -Dt ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
+      - install -m644 res/com.gamestarmechanic.gamestarmechanic.desktop -Dt ${FLATPAK_DEST}/share/applications
+      - install -m644 res/com.gamestarmechanic.gamestarmechanic.metainfo.xml -Dt ${FLATPAK_DEST}/share/metainfo
+      # Tweak desktop file values
+      - desktop-file-edit --set-key="Exec" --set-value="gamestarmechanic-wrapper %u"
+        ${FLATPAK_DEST}/share/applications/com.gamestarmechanic.gamestarmechanic.desktop
+  - name: libpepflashplayer
+    buildsystem: simple
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - mkdir plugins
+          - tar -zx -f flash_player_ppapi_linux.x86_64.tar.gz -C plugins libpepflashplayer.so
+          - sed -i 's/\x00\x00\x40\x46\x3E\x6F\x77\x42/\x00\x00\x00\x00\x00\x00\xFF\x7F/g'
+            plugins/libpepflashplayer.so
+          - rm flash_player_ppapi_linux.x86_64.tar.gz
+      - type: extra-data
+        filename: flash_player_ppapi_linux.x86_64.tar.gz
+        url: https://web.archive.org/web/20210116212416if_/https://fpdownload.adobe.com/get/flashplayer/pdc/32.0.0.465/flash_player_ppapi_linux.x86_64.tar.gz
+        sha256: 99fcc780897be55bac7d11c0204ba7a3d5e7dc1f1aed75d5e7b5ad28c0b2ff5d
+        size: 9763881
+    build-commands:
+      - install apply_extra -Dt ${FLATPAK_DEST}/bin
+  - name: wrapper
+    buildsystem: simple
+    sources:
+      - type: script
+        dest-filename: gamestarmechanic-wrapper
+        commands:
+          - zypak-wrapper.sh /app/main/gamestarmechanic "$@"
+    build-commands:
+      - install -m755 gamestarmechanic-wrapper -Dt ${FLATPAK_DEST}/bin/
+
