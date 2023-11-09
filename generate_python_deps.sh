@@ -7,7 +7,6 @@
 python3 flatpak-pip-generator setuptools_rust hatchling exceptiongroup -o spyder_deps_additional && # This create some dependencies that is missing. exceptiongroup needed by ipython 8.15.0
 rm -f spyder_*.txt || true && # Remove previous text file if any
 pipgrip spyder > spyder_pipgrip.txt && # pipgrip generate list of dependencies of spyder with pip and write it to a text file, install pipgrip with 'pip3 install pipgrip'
-# sed -i 's/ipython==[0-9.]\+/ipython==8.14.0/' spyder_pipgrip.txt && # Revert ipython to 8.14.0,ERROR: Could not find a version that satisfies the requirement exceptiongroup; python_version < "3.11" (from ipython) (from versions: none)
 cp spyder_pipgrip.txt spyder_deps_list.txt && # Create a copy and we will work with the copy, pipgrip take a long time
 sed -i -E '/^(spyder|pyqt|markupsafe|pygments|six)/d' spyder_deps_list.txt && # Remove deps that is already installed
 # Move python lib that requires rust to spyder_deps_rust.txt. Rust dependencies is complicated
