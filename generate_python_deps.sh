@@ -17,13 +17,13 @@ sed -n '1,50p' spyder_deps_list.txt > spyder_deps_1.txt  # Save the first 50 lin
 sed -n '51,100p' spyder_deps_list.txt > spyder_deps_2.txt
 sed -n '101,$p' spyder_deps_list.txt > spyder_deps_3.txt
 # Generate .json file from spyder_deps_list.txt while ignoring some deps that is already include in the sdk
-python3 flatpak-pip-generator --requirements-file spyder_deps_1.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_1 &&
-python3 flatpak-pip-generator --requirements-file spyder_deps_2.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_2 &&
-python3 flatpak-pip-generator --requirements-file spyder_deps_3.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_3 &&
-# Generate deps with req2flatpak for precompile lib because build from source need rust deps, install req2flatpak with 'pip3 install req2flatpak'
-req2flatpak --requirements-file spyder_deps_rust.txt --target-platforms 310-x86_64 310-aarch64 --outfile spyder_deps_rust.json &&
-# Generate recommended deps for some numerical libs for spyder, Matplotlib have issue building with newer pyparsing
-python3 flatpak-pip-generator pybind11 pyparsing pillow cppy kiwisolver fonttools cycler meson-python contourpy openpyxl versioneer pandas pythran scipy sympy statsmodels --ignore-installed MarkupSafe,pygments,six -o spyder_deps_numerical &&
-python3 flatpak-pip-generator terminado tornado coloredlogs -o spyder_deps_terminal && # Generate deps for spyder terminal plugins
-rm -f spyder_*.txt || true # Remove text files
-flatpak-builder build --force-clean --install --user org.spyder_ide.spyder.yaml # Build the manifest, if not, just comment out
+# python3 flatpak-pip-generator --requirements-file spyder_deps_1.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_1 &&
+# python3 flatpak-pip-generator --requirements-file spyder_deps_2.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_2 &&
+# python3 flatpak-pip-generator --requirements-file spyder_deps_3.txt --ignore-installed MarkupSafe,pygments,six -o spyder_deps_3 &&
+# # Generate deps with req2flatpak for precompile lib because build from source need rust deps, install req2flatpak with 'pip3 install req2flatpak'
+# req2flatpak --requirements-file spyder_deps_rust.txt --target-platforms 310-x86_64 310-aarch64 --outfile spyder_deps_rust.json &&
+# # Generate recommended deps for some numerical libs for spyder, Matplotlib have issue building with newer pyparsing
+# python3 flatpak-pip-generator pybind11 pyparsing pillow cppy kiwisolver fonttools cycler meson-python contourpy openpyxl versioneer pandas pythran scipy sympy statsmodels --ignore-installed MarkupSafe,pygments,six -o spyder_deps_numerical &&
+# python3 flatpak-pip-generator terminado tornado coloredlogs -o spyder_deps_terminal && # Generate deps for spyder terminal plugins
+# rm -f spyder_*.txt || true # Remove text files
+# flatpak-builder build --force-clean --install --user org.spyder_ide.spyder.yaml # Build the manifest, if not, just comment out
