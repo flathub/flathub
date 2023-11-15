@@ -1,0 +1,67 @@
+app-id: org.b3log.siyuan
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '23.08' 
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-siyuan
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: siyuan
+    buildsystem: simple
+    build-commands:
+      - mv "siyuan" ${FLATPAK_DEST}/siyuan
+      - rm ${FLATPAK_DEST}/siyuan/chrome-sandbox
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/siyuan/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/siyuan/locales/$(basename $lang)"
+        done
+
+      - install -Dm644 "${FLATPAK_DEST}/siyuan/resources/stage/icon-large.png" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 org.b3log.siyuan.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 org.b3log.siyuan.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: archive
+        dest: siyuan
+        only-arches: [x86_64]
+        url: https://github.com/siyuan-note/siyuan/releases/download/v2.10.14/siyuan-2.10.14-linux.tar.gz
+        sha256: d41ba5d258996ebc7759418d88680d4c8d8e7b656d7448f5406f1494a8ae6294
+        x-checker-data:
+          is-main-source: true
+          type: anitya
+          project-id: 358424
+          url-template: https://github.com/siyuan-note/siyuan/releases/download/v$version/siyuan-$version-linux.tar.gz
+          stable-only: true
+      - type: file
+        path: org.b3log.siyuan.desktop
+      - type: file
+        path: org.b3log.siyuan.metainfo.xml
+
+  - name: start-script
+    buildsystem: simple
+    build-commands:
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-siyuan.sh /app/bin/start-siyuan
+    sources:
+      - type: script
+        dest-filename: start-siyuan.sh
+        commands:
+          - set -oue pipefail
+
+          - export FLATPAK_ID="${FLATPAK_ID:-org.b3log.siyuan}"
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+
+          - zypak-wrapper /app/siyuan/siyuan --ozone-platform-hint=wayland --enable-features=UseOzonePlatform,WaylandWindowDecorations,Vulkan
+            --gtk-version=4 $@
