@@ -17,4 +17,4 @@ esac
 
 export VIVALDI_FFMPEG_FOUND=YES # Prevents excessive warning for flatpak users
 
-exec cobalt "$@"
+exec cobalt "$@" --no-default-browser-check
