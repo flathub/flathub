@@ -1,0 +1,321 @@
+# Modified from net.brinkervii.grapejuice and org.winehq.Wine
+
+app-id: org.vinegarhq.Vinegar
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+x-gl-version: &gl-version '1.4'
+x-gl-versions: &gl-versions 23.08;1.4
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+  - org.freedesktop.Sdk.Extension.mingw-w64
+command: vinegar
+
+finish-args:
+  - --share=network
+  - --socket=x11 # Will be removed or replaced with fallback-x11 once Wine is improved
+  - --share=ipc
+  #- --socket=wayland
+  #- --device=dri # Uncomment if --device=all is removed/commented to fix graphics issues
+  - --allow=devel # Necessary for VMProtect to function.
+  - --socket=pulseaudio
+  - --allow=multiarch
+  - --device=all # Necessary for controller support (important on Steam Deck)
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib32/gstreamer-1.0:/app/lib/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+  - --env=EDITOR=nano
+  - --env=PATH=/app/bin:/app/utils/bin:/usr/bin:/usr/lib/extensions/vulkan/MangoHud/bin/:/usr/bin:/usr/lib/extensions/vulkan/OBSVkCapture/bin/:/usr/lib/extensions/vulkan/gamescope/bin/
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '23.08'
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 23.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+  org.winehq.Wine.gecko:
+    directory: share/wine/gecko
+  org.winehq.Wine.mono:
+    directory: share/wine/mono
+
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  # Some autotools-based builds will fail if -L/app/lib32 isn't first
+  ldflags: -L/app/lib32 -Wl,-rpath-link=/app/lib32 -Wl,-z,relro,-z,now -Wl,--as-needed
+  ldflags-override: true
+  append-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: ccache i686-unknown-linux-gnu-gcc
+    CXX: ccache i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
+
+separate-locales: false
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /share/man
+  - /bin/function_grep.pl
+  - /bin/widl
+  - /bin/winecpp
+  - /bin/winedump
+  - /bin/wineg++
+  - /bin/winegcc
+  - /bin/winemaker
+  - /bin/wmc
+  - /bin/wrc
+  - /include/wine
+  - /lib/wine/*.def
+  - /lib32/wine/*.def
+
+build-options:
+  append-path: /usr/lib/sdk/mingw-w64/bin
+  env:
+    - PERL5LIB=/app/lib/perl5/
+    - PERL_MM_OPT=INSTALL_BASE=/app
+    - GOBIN=/app/bin
+    - GOROOT=/usr/lib/sdk/golang
+
+modules:
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/{,lib/debug/}lib/i386-linux-gnu/GL
+      - mkdir -p ${FLATPAK_DEST}/dlls
+      - mkdir /app/dlls/lib -p
+      - mkdir /app/dlls/lib32 -p
+      - mkdir -p /app/lib32
+      - mkdir -p /app/lib/i386-linux-gnu
+      - install -Dm644 ld.so.conf -t /app/etc/
+    sources:
+      - type: file
+        path: ld.so.conf
+
+  - name: vinegar
+    buildsystem: simple
+    build-commands:
+      - make install GO=$GOROOT/bin/go PREFIX=/app
+      - install -Dm644 org.vinegarhq.Vinegar.desktop -t /app/share/applications
+      - install -Dm644 org.vinegarhq.Vinegar.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 catglass.svg /app/share/icons/hicolor/scalable/apps/org.vinegarhq.Vinegar.svg
+      - install -Dm644 org.vinegarhq.Vinegar.png /app/share/icons/hicolor/128x128/apps/org.vinegarhq.Vinegar.png
+    sources:
+      - type: archive
+        url: https://github.com/vinegarhq/vinegar/releases/download/v1.5.4/vinegar-v1.5.4.tar.xz
+        sha256: 1b92ed9dbbd81ad160a4aa2a78907d186145eb9669c6c963ba705b94b4da796c
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/vinegarhq/vinegar/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name=="vinegar-\($version).tar.xz") | .browser_download_url
+      - type: file
+        path: org.vinegarhq.Vinegar.metainfo.xml
+      - type: file
+        path: catglass.svg
+      - type: file
+        path: org.vinegarhq.Vinegar.png
+      - type: file
+        path: patches/org.vinegarhq.Vinegar.desktop
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-sd-bus-provider=no-daemon
+      - -Dwith-examples=false
+    sources: &gamemode-sources
+      - type: git
+        url: https://github.com/FeralInteractive/gamemode
+        commit: 4dc99dff76218718763a6b07fc1900fa6d1dafd9
+        tag: '1.7'
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/FeralInteractive/gamemode/releases/latest
+          tag-query: .tag_name
+      - type: patch
+        path: patches/gamemode-pidfd-open.patch
+        use-git: true
+  - name: gamemode-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    buildsystem: meson
+    config-opts:
+      - -Dwith-sd-bus-provider=no-daemon
+      - -Dwith-examples=false
+    sources: *gamemode-sources
+  - name: gamemoderun
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 data/gamemoderun -t /app/bin
+    sources: *gamemode-sources
+
+# ABOVE FOR VINEGAR, BELOW FOR WINE-STAGING
+# Multilib deps
+
+  - name: libusb
+    sources: &libusb-sources
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.26/libusb-1.0.26.tar.bz2
+        sha256: 12ce7a61fc9854d1d2a1ffe095f7b5fac19ddba095c259e6067a46500381b5a5
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/libusb/libusb/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^[vV]"; "")
+          timestamp-query: .published_at
+          url-query: .assets[] | select(.name=="libusb-\($version).tar.bz2") | .browser_download_url
+    modules:
+
+      - name: eudev
+        cleanup: &eudev-cleanup
+          - /bin
+          - /sbin
+          - /lib*/udev
+        post-install:
+          - udevadm hwdb --update --usr
+        sources: &eudev-sources
+          - type: archive
+            url: https://github.com/eudev-project/eudev/releases/download/v3.2.14/eudev-3.2.14.tar.gz
+            sha256: 8da4319102f24abbf7fff5ce9c416af848df163b29590e666d334cc1927f006f
+            x-checker-data:
+              type: json
+              url: https://api.github.com/repos/gentoo/eudev/releases/latest
+              tag-query: .tag_name
+              version-query: $tag | sub("^[vV]"; "")
+              timestamp-query: .published_at
+              url-query: .assets[] | select(.name=="eudev-\($version).tar.gz") | .browser_download_url
+
+  - name: libusb-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    sources: *libusb-sources
+    modules:
+      - name: eudev-32bit
+        build-options:
+          arch:
+            x86_64: *compat_i386_opts
+        cleanup: *eudev-cleanup
+        sources: *eudev-sources
+
+
+  - name: vkd3d
+    sources: &vkd3d-sources
+      - type: archive
+        url: https://dl.winehq.org/vkd3d/source/vkd3d-1.8.tar.xz
+        sha256: e0cec19cc9535715c72ec3a16cdec29dc14d5ccec73526387b5843cf75628ac5
+    modules:
+      - name: spirv-deps
+        buildsystem: cmake-ninja
+        builddir: true
+        config-opts:
+          - -DSPIRV_SKIP_EXECUTABLES=ON
+        cleanup:
+          - /bin
+        sources:
+          - type: git
+            url: https://github.com/KhronosGroup/SPIRV-Headers.git
+            tag: sdk-1.3.261.1
+            commit: 124a9665e464ef98b8b718d572d5f329311061eb
+            x-checker-data:
+              type: git
+              tag-pattern: ^sdk-([\d.]+)$
+
+  - name: vkd3d-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      sources: *vkd3d-sources
+
+  - name: wine
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - --enable-win64
+            - --with-mingw=ccache x86_64-w64-mingw32-gcc
+          libdir: /app/lib
+      env:
+        LIBDIR: lib
+    config-opts: &wine-config-opts
+      - --disable-win16
+      - --disable-tests
+      - --with-x
+      - --with-pulse
+      - --with-dbus
+      - --without-oss
+    make-install-args: &wine-make-install-args
+      - LDCONFIG=/bin/true
+      - UPDATE_DESKTOP_DATABASE=/bin/true
+      - INSTALL_PROGRAM_FLAGS=-s
+    sources: &wine-sources
+      - type: archive
+        url: https://dl.winehq.org/wine/source/8.x/wine-8.18.tar.xz
+        sha256: 30faef14acf70fd5f739d2fece3432839f1f7dd2d3624bcc3662c3b1b83260db
+        x-addons-url: &wine-addons-url >-
+          https://source.winehq.org/git/wine.git/blob_plain/refs/heads/stable:/dlls/appwiz.cpl/addons.c
+          #- type: patch
+          #paths:
+          #- patches/wine/modMsgBoxA.patch
+      - type: patch
+        paths:
+          - patches/wine/segregrevert.patch
+      - type: git
+        url: https://gitlab.winehq.org/wine/wine-staging.git
+        commit: a5625909787122a39f2795a9ebf553a66c6f0a92
+        tag: v8.18
+      # REMOVE BELOW PATCH AFTER MERGE INTO 8.16
+      #- type: patch
+      #  paths:
+      #    - patches/wine/fixcalculation.patch
+      - type: patch
+        paths:
+          - patches/wine/loader-prefer-winedllpath.patch
+      - type: shell
+        commands:
+          - staging/patchinstall.py --destdir=. --all
+      - type: patch
+        paths:
+          - patches/wine/childwindow.patch
+
+  # 32-bit compatibility build
+
+  - name: wine-32bit
+    only-arches:
+      - x86_64
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+      config-opts:
+        - --bindir=${FLATPAK_DEST}/bin32
+        - --with-mingw=ccache i686-w64-mingw32-gcc
+      env:
+        LIBDIR: lib32
+    config-opts: *wine-config-opts
+    make-install-args: *wine-make-install-args
+    post-install:
+      - mv ${FLATPAK_DEST}/bin32/wine{,-preloader} ${FLATPAK_DEST}/bin/
+    sources: *wine-sources
+    cleanup:
+      - /bin32
+
+  # Modified from org.winehq.Wine
+  - name: wine-mono
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/wine/mono/
+      - cp -a wine-mono-* ${FLATPAK_DEST}/share/wine/mono/
+    sources:
+      - type: archive
+        url: https://dl.winehq.org/wine/wine-mono/8.0.0/wine-mono-8.0.0-x86.tar.xz
+        strip-components: 0
+        sha256: 14c7d76780b79dc62d8ed9d1759e7adcfa332bb2406e2e694dee7b2128cc7a77
+        # no x-checker because Wine version and Wine Mono version have to be synced together.
