@@ -1,7 +1,16 @@
 # Install Python modules in Spyder
-Use console in Spyder to install more Python modules.
-For example `!python3 -mpip install thermo`.
-`/.var/app/org.spyder_ide.spyder/data/python/lib/python3.11`
+
+To install more Python modules from pip, use console or spyder-terminal in Spyder, for example:<br />
+In spyder console: `!python3 -mpip install thermo`<br />
+In spyder-terminal: `python3 -mpip install thermo`<br />
+
+After installing Python modules, the Python modules directory below will be created.<br />
+In your file explorer, unhide the hidden folder to see .var folder.<br />
+To make sure Python modules installed from pip are found, add<br />
+  `/home/USER/.var/app/org.spyder_ide.spyder/data/python/lib/python3.11/`<br />
+to PYTHONPATH in Spyder under the tools>PYTHONPATH manager<br />
+Then close the console in Spyder to open a new console to take effect.<br />
+
 # Update Python modules
 The executable generate_python_deps.sh generate dependencies for Spyder.<br />
 Use `./generate_python_deps.sh` to run that script to update dependencies.<br />
