@@ -1,0 +1,63 @@
+From b919b5bd0ed9922376afd8dee753e77fbd706821 Mon Sep 17 00:00:00 2001
+From: Elia Devito <eliadevito@gmail.com>
+Date: Sat, 2 Sep 2023 12:22:18 +0200
+Subject: [PATCH] add support for flatpak in
+ perform_downloader_desktop_integration
+
+---
+ src/slic3r/GUI/DesktopIntegrationDialog.cpp | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/slic3r/GUI/DesktopIntegrationDialog.cpp b/src/slic3r/GUI/DesktopIntegrationDialog.cpp
+index 031001978..78f9ed0e9 100644
+--- a/src/slic3r/GUI/DesktopIntegrationDialog.cpp
++++ b/src/slic3r/GUI/DesktopIntegrationDialog.cpp
+@@ -467,6 +467,8 @@ void DesktopIntegrationDialog::perform_downloader_desktop_integration()
+     BOOST_LOG_TRIVIAL(debug) << "performing downloader desktop integration.";
+     // Path to appimage
+     const char* appimage_env = std::getenv("APPIMAGE");
++    const char* container_env = std::getenv("container");
++	bool is_flatpak = false;
+     std::string excutable_path;
+     if (appimage_env) {
+         try {
+@@ -478,6 +480,11 @@ void DesktopIntegrationDialog::perform_downloader_desktop_integration()
+             return;
+         }
+     }
++    else if (container_env && strcmp(container_env, "flatpak") == 0) {
++		is_flatpak = true;
++        const char* flatpak_id = std::getenv("FLATPAK_ID");
++        excutable_path = "flatpak run " + std::string(flatpak_id);
++    }
+     else {
+         // not appimage - find executable
+         excutable_path = boost::dll::program_location().string();
+@@ -491,9 +498,12 @@ void DesktopIntegrationDialog::perform_downloader_desktop_integration()
+         }
+     }
+ 
+-    // Escape ' characters in appimage, other special symbols will be esacaped in desktop file by 'excutable_path'
+-    //boost::replace_all(excutable_path, "'", "'\\''");
+-    excutable_path = escape_string(excutable_path);
++    // For flatpak there are not required neither quotes nor escape
++    if (!is_flatpak) {
++        // Escape ' characters in appimage, other special symbols will be esacaped in desktop file by 'excutable_path'
++        //boost::replace_all(excutable_path, "'", "'\\''");
++        excutable_path = "\"" + escape_string(excutable_path) + "\"";
++    }
+ 
+     // Find directories icons and applications
+     // $XDG_DATA_HOME defines the base directory relative to which user specific data files should be stored. 
+@@ -539,7 +549,7 @@ void DesktopIntegrationDialog::perform_downloader_desktop_integration()
+     std::string desktop_file_downloader = GUI::format(
+         "[Desktop Entry]\n"
+         "Name=PrusaSlicer URL Protocol%1%\n"
+-        "Exec=\"%2%\" --single-instance %%u\n"
++        "Exec=%2% --single-instance %%u\n"
+         "Terminal=false\n"
+         "Type=Application\n"
+         "MimeType=x-scheme-handler/prusaslicer;\n"
+-- 
+2.41.0
+

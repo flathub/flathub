@@ -1,0 +1,361 @@
+app-id: com.prusa3d.PrusaSlicer
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+command: entrypoint
+separate-locales: true
+finish-args:
+  - --share=ipc
+  #- --socket=wayland
+  #- --socket=fallback-x11
+  - --socket=x11
+  - --share=network
+  - --device=all
+  - --filesystem=home
+  - --filesystem=xdg-run/gvfs # make GnomeVFS accessible
+  - --filesystem=/run/media
+  - --filesystem=/media
+  # Allow PrusaSlicer to own its session bus. 
+  - --own-name=com.prusa3d.prusaslicer.*
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --talk-name=org.freedesktop.DBus.Introspectable.*
+  - --talk-name=com.prusa3d.prusaslicer.InstanceCheck.*
+  # set dark theme 
+  - --env=PRUSA_SLICER_DARK_THEME=false
+
+modules:
+  
+  # xprop, xlib is needed to manipulate the X11 window and set _GTK_THEME_VARIANT dark on X11
+  # and paint the window dark when PRUSA_SLICER_DARK_THEME is true
+  # see: entrypoint & set-dark-theme-variant.py (originated from spotify client flatpak) 
+  - name: xprop
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/xprop-1.2.5.tar.gz
+        sha256: b7bf6b6be6cf23e7966a153fc84d5901c14f01ee952fbd9d930aa48e2385d670
+  - name: python-setuptools_scm
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --verbose --prefix=${FLATPAK_DEST} .
+    sources: 
+      - type: archive
+        url: https://files.pythonhosted.org/packages/57/38/930b1241372a9f266a7df2b184fb9d4f497c2cef2e016b014f82f541fe7c/setuptools_scm-6.0.1.tar.gz
+        sha256: d1925a69cb07e9b29416a275b9fadb009a23c148ace905b2fb220649a6c18e92      
+  - name: python-xlib
+    buildsystem: simple
+    build-commands: 
+      - pip3 install --no-deps --no-build-isolation --verbose --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/86/f5/8c0653e5bb54e0cbdfe27bf32d41f27bc4e12faa8742778c17f2a71be2c0/python-xlib-0.33.tar.gz
+        sha256: 55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32
+  
+  - name: glu
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.2.tar.xz
+        sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
+    cleanup:
+      - /include
+      - /lib/*.a
+      - /lib/*.la
+      - /lib/pkgconfig
+
+  - name: PrusaSlicer
+    buildsystem: simple
+    build-commands:
+      # start build
+      - |
+        mkdir -p deps/build && cd deps/build
+        cmake ../ \
+          -DDEP_WX_GTK3=1 \
+          -DDEP_DOWNLOAD_DIR=/run/build/PrusaSlicer/external-packages
+        cmake --build . --target dep_Boost dep_TBB dep_wxWidgets dep_Cereal dep_NLopt dep_OpenVDB dep_Qhull dep_GLEW dep_OpenCSG dep_CGAL dep_OCCT 
+      - |
+        mkdir -p build && cd build
+        cmake ../ \
+          -GNinja \
+          -DCMAKE_INSTALL_PREFIX=/app \
+          -DCMAKE_INSTALL_LIBDIR=/app/lib \
+          -DCMAKE_PREFIX_PATH=/run/build/PrusaSlicer/deps/build/destdir/usr/local \
+          -DSLIC3R_PCH=OFF \
+          -DSLIC3R_FHS=ON \
+          -DSLIC3R_GTK=3 \
+          -DSLIC3R_STATIC=ON \
+          -DSLIC3R_BUILD_TESTS=OFF \
+          -DSLIC3R_DESKTOP_INTEGRATION=OFF \
+          -DCMAKE_BUILD_TYPE=Release 
+        cmake --build . --target install
+
+    post-install:
+
+      - | # locale l10n
+        mkdir -p /app/share/runtime/locale
+        for i in $(ls /app/share/PrusaSlicer/localization)
+        do
+          lang=${i%[_@]*}
+          mkdir -p /app/share/runtime/locale/${lang}
+          mv /app/share/PrusaSlicer/localization/${i} /app/share/runtime/locale/${lang}
+          ln -rs /app/share/runtime/locale/${lang}/${i} /app/share/PrusaSlicer/localization/${i}
+        done
+
+      - | # Desktop Integration files
+        install -Dm644 com.prusa3d.PrusaSlicer.metainfo.xml /app/share/metainfo/com.prusa3d.PrusaSlicer.metainfo.xml
+        install -Dm644 com.prusa3d.PrusaSlicer.png /app/share/icons/hicolor/128x128/apps/com.prusa3d.PrusaSlicer.png
+        install -Dm644 com.prusa3d.PrusaSlicer.desktop /app/share/applications/com.prusa3d.PrusaSlicer.desktop
+        install -Dm644 com.prusa3d.PrusaSlicer.GCodeViewer.png /app/share/icons/hicolor/128x128/apps/com.prusa3d.PrusaSlicer.GCodeViewer.png
+        install -Dm644 com.prusa3d.PrusaSlicer.GCodeViewer.desktop /app/share/applications/com.prusa3d.PrusaSlicer.GCodeViewer.desktop
+        install set-dark-theme-variant.py /app/bin
+        install entrypoint /app/bin
+        install umount /app/bin
+
+      - | # Desktop Integration .3MF & .GCODE mime support
+        mkdir -p /app/share/mime/packages/
+        install -m644 -p -t /app/share/mime/packages com.prusa3d.PrusaSlicer.mime.xml
+        install -Dm644 com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.svg \
+          /app/share/icons/hicolor/scalable/mimetypes/com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.svg
+        install -Dm644 com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.png \
+          /app/share/icons/hicolor/128x128/mimetypes/com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.png
+        install -Dm644 com.prusa3d.PrusaSlicer.text-x-gcode.svg \
+          /app/share/icons/hicolor/scalable/mimetypes/com.prusa3d.PrusaSlicer.text-x-gcode.svg
+        install -Dm644 com.prusa3d.PrusaSlicer.text-x-gcode.png \
+          /app/share/icons/hicolor/128x128/mimetypes/com.prusa3d.PrusaSlicer.text-x-gcode.png
+        update-mime-database /app/share/mime
+
+    sources:
+      # -
+      # Section bellow fetches all PrusaSlicer dependencies before the build process and stores them in external-packages/*/* .
+      # -DDEP_DOWNLOAD_DIR is set in the build process which has to match with dest.
+      #
+      # NOTE: The url, dest folder name and sha256 must match from PrusaSlicer's cmake scripts and folder names in PrusaSlicer/deps/
+      # -
+
+      # Blosc
+      - type: file
+        url: https://github.com/tamasmeszaros/c-blosc/archive/refs/heads/v1.17.0_tm.zip
+        dest: external-packages/Blosc
+        sha256: dcb48bf43a672fa3de6a4b1de2c4c238709dad5893d1e097b8374ad84b1fc3b3
+
+      # Boost
+      - type: file
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.zip
+        dest: external-packages/Boost
+        sha256: f22143b5528e081123c3c5ed437e92f648fe69748e95fa6e2bd41484e2986cc3
+
+      # boost_polygon
+      - type: file
+        url: https://github.com/prusa3d/polygon/archive/refs/heads/prusaslicer_gmp.zip
+        dest: external-packages/boost_polygon
+        sha256: abeb9710f0a7069fb9b22181ae5c56f6066002f125db210e7ffb27032aed6824
+
+      # Cereal
+      - type: file
+        url: https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.0.zip
+        dest: external-packages/Cereal
+        sha256: 71642cb54658e98c8f07a0f0d08bf9766f1c3771496936f6014169d3726d9657
+
+      # CGAL
+      - type: file
+        url: https://github.com/CGAL/cgal/archive/refs/tags/v5.4.zip
+        dest: external-packages/CGAL
+        sha256: d7605e0a5a5ca17da7547592f6f6e4a59430a0bc861948974254d0de43eab4c0
+
+      # EXPAT
+      - type: file
+        url: https://github.com/libexpat/libexpat/archive/refs/tags/R_2_4_3.zip
+        dest: external-packages/EXPAT
+        sha256: 8851e199d763dc785277d6d414ed3e70ff683915158b51b8d8781df0e3af950a
+
+      # GMP
+      - type: file
+        url: https://gmplib.org/download/gmp/gmp-6.2.1.tar.bz2
+        dest: external-packages/GMP
+        sha256: eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+
+      # JPEG, libjpeg-turbo
+      - type: file
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.0.6.zip
+        dest: external-packages/JPEG
+        sha256: 017bdc33ff3a72e11301c0feb4657cb27719d7f97fa67a78ed506c594218bbf1
+
+      # MPFR
+      - type: file
+        url: https://www.mpfr.org/mpfr-3.1.6/mpfr-3.1.6.tar.bz2
+        dest: external-packages/MPFR
+        sha256: cf4f4b2d80abb79e820e78c8077b6725bbbb4e8f41896783c899087be0e94068
+
+      # NLopt
+      - type: file
+        url: https://github.com/stevengj/nlopt/archive/v2.5.0.tar.gz
+        dest: external-packages/NLopt
+        sha256: c6dd7a5701fff8ad5ebb45a3dc8e757e61d52658de3918e38bab233e7fd3b4ae
+      
+      # OCCT
+      - type: file
+        url: https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_6_2.zip
+        dest: external-packages/OCCT
+        sha256: c696b923593e8c18d059709717dbf155b3e72fdd283c8522047a790ec3a432c5
+
+      # OpenCSG
+      - type: file
+        url: https://github.com/floriankirsch/OpenCSG/archive/refs/tags/opencsg-1-4-2-release.zip
+        dest: external-packages/OpenCSG
+        sha256: 51afe0db79af8386e2027d56d685177135581e0ee82ade9d7f2caff8deab5ec5
+
+      # OpenEXR
+      - type: file
+        url: https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v2.5.5.zip
+        dest: external-packages/OpenEXR
+        sha256: 0307a3d7e1fa1e77e9d84d7e9a8694583fbbbfd50bdc6884e2c96b8ef6b902de
+
+      # OpenSSL
+      - type: file
+        url: https://github.com/openssl/openssl/archive/OpenSSL_1_1_0l.tar.gz
+        dest: external-packages/OpenSSL
+        sha256: e2acf0cf58d9bff2b42f2dc0aee79340c8ffe2c5e45d3ca4533dd5d4f5775b1d
+
+      # OpenVDB
+      - type: file
+        url: https://github.com/tamasmeszaros/openvdb/archive/a68fd58d0e2b85f01adeb8b13d7555183ab10aa5.zip
+        dest: external-packages/OpenVDB
+        sha256: f353e7b99bd0cbfc27ac9082de51acf32a8bc0b3e21ff9661ecca6f205ec1d81
+
+      # GLEW
+      - type: file
+        url: https://sourceforge.net/projects/glew/files/glew/2.2.0/glew-2.2.0.zip
+        dest: external-packages/GLEW
+        sha256: a9046a913774395a095edcc0b0ac2d81c3aacca61787b39839b941e9be14e0d4
+
+      # PNG, libpng
+      - type: file
+        url: https://github.com/glennrp/libpng/archive/refs/tags/v1.6.35.zip
+        dest: external-packages/PNG
+        sha256: 3d22d46c566b1761a0e15ea397589b3a5f36ac09b7c785382e6470156c04247f
+
+      # Qhull
+      - type: file
+        url: https://github.com/qhull/qhull/archive/v8.0.1.zip
+        dest: external-packages/Qhull
+        sha256: 5287f5edd6a0372588f5d6640799086a4033d89d19711023ef8229dd9301d69b
+
+      # TBB
+      - type: file
+        url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.zip
+        dest: external-packages/TBB
+        sha256: 83ea786c964a384dd72534f9854b419716f412f9d43c0be88d41874763e7bb47
+      
+      # NanoSVG
+      - type: file
+        url: https://github.com/fltk/nanosvg/archive/abcd277ea45e9098bed752cf9c6875b533c0892f.zip
+        dest: external-packages/NanoSVG
+        sha256: e859938fbaee4b351bd8a8b3d3c7a75b40c36885ce00b73faa1ce0b98aa0ad34
+
+      # TIFF, libtiff
+      - type: file
+        url: https://gitlab.com/libtiff/libtiff/-/archive/v4.1.0/libtiff-v4.1.0.zip
+        dest: external-packages/TIFF
+        sha256: c56edfacef0a60c0de3e6489194fcb2f24c03dbb550a8a7de5938642d045bd32
+
+      # wxWidgets, Prusa custom patched
+      - type: file
+        url: https://github.com/prusa3d/wxWidgets/archive/78aa2dc0ea7ce99dc19adc1140f74c3e2e3f3a26.zip
+        dest: external-packages/wxWidgets
+        sha256: 94b7d972373503e380e5a8b0ca63b1ccb956da4006402298dd89a0c5c7041b1e
+      
+      # ZLIB
+      - type: file
+        url: https://github.com/madler/zlib/archive/refs/tags/v1.2.11.zip
+        dest: external-packages/ZLIB
+        sha256: f5cc4ab910db99b2bdbba39ebbdc225ffc2aa04b4057bc2817f1b94b6978cfc3
+
+      # PrusaSlicer Source Archive
+      - type: git
+        url: https://github.com/prusa3d/PrusaSlicer.git
+        tag: version_2.6.1
+
+      # Patched TBB cmake to make build without lto flag
+      - type: file
+        dest: deps/TBB
+        path: patches/TBB/GNU.cmake
+        
+      # Apply TTB patches to fix build failure. More info: https://github.com/prusa3d/PrusaSlicer/issues/8922
+      - type: patch
+        path: patches/0001-add-TBB-patch.patch
+
+      # Add printables.com desktop integration support for flatpak builds. More info: https://github.com/prusa3d/PrusaSlicer/pull/11229
+      - type: patch
+        path: patches/add_printables_com_desktop_integration_support_for_flatpak_builds_PR_11229.patch
+
+      # Pre-Build
+      - type: shell
+        commands: 
+          # Set PrusaSlicer version for build and reference Flathub.org for better bug seperation.
+          - sed -i 's/+UNKNOWN/+flathub.org/g' version.inc
+
+          - |
+            cp resources/icons/PrusaSlicer.png ./com.prusa3d.PrusaSlicer.png
+            cp resources/icons/PrusaSlicer-gcodeviewer_128px.png ./com.prusa3d.PrusaSlicer.GCodeViewer.png
+            cp src/platform/unix/PrusaSlicer.desktop ./com.prusa3d.PrusaSlicer.desktop
+            cp src/platform/unix/PrusaGcodeviewer.desktop ./com.prusa3d.PrusaSlicer.GCodeViewer.desktop
+          
+          # Append desktop action section to PrusaSlicer.desktop file
+          # TODO: remove the DesktopAction when #6879 is merged
+          - | # use our own entrypoint as executable
+            sed -i 's/Exec=prusa-slicer/Exec=entrypoint/g' com.prusa3d.PrusaSlicer.desktop
+            sed -i 's/Exec=prusa-slicer/Exec=entrypoint/g' com.prusa3d.PrusaSlicer.GCodeViewer.desktop
+
+            cat <<EOT >> com.prusa3d.PrusaSlicer.desktop
+              Actions=GCodeViewer;
+
+              [Desktop Action GCodeViewer]
+              Exec=entrypoint --gcodeviewer %F
+              Name=G-Code Viewer
+              Name[de]=G-Code Vorschau
+              Icon=com.prusa3d.PrusaSlicer.GCodeViewer
+
+            EOT
+          
+          # Replace icon names with flatpak icon names based on app-id
+          - | 
+            sed -i 's/Icon=PrusaSlicer-gcodeviewer/Icon=com.prusa3d.PrusaSlicer.GCodeViewer/g' com.prusa3d.PrusaSlicer.GCodeViewer.desktop
+            sed -i 's/Icon=PrusaSlicer-gcodeviewer/Icon=com.prusa3d.PrusaSlicer.GCodeViewer/g' com.prusa3d.PrusaSlicer.desktop
+            sed -i 's/Icon=PrusaSlicer/Icon=com.prusa3d.PrusaSlicer/g' com.prusa3d.PrusaSlicer.desktop
+
+      # AppData metainfo for Gnome Software & Co.
+      - type: file
+        path: com.prusa3d.PrusaSlicer.metainfo.xml
+
+      # script to set dark theme variant
+      - type: file
+        path: set-dark-theme-variant.py
+      
+      # start-up script
+      # README: workaround for the following issues, also enables dark theme variant:
+      # SEE: https://github.com/flathub/com.prusa3d.PrusaSlicer/issues/27
+      # SEE: https://github.com/flathub/com.prusa3d.PrusaSlicer/issues/3
+      # SEE: https://github.com/prusa3d/PrusaSlicer/issues/2365
+      - type: file
+        path: entrypoint
+
+      # umount wrapper used to redirect umount calls to udisk2
+      - type: file
+        path: umount
+
+      # TODO: remove mime when PR created and is merged upstream
+      # Adding MIME type for 3mf
+      - type: file
+        path: com.prusa3d.PrusaSlicer.mime.xml
+
+      # icon for 3mf mime type
+      - type: file
+        path: icons/com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.svg
+      - type: file
+        path: icons/com.prusa3d.PrusaSlicer.application-vnd-ms-3mfdocument.png
+
+      # icon for gcode mime type
+      - type: file
+        path: icons/com.prusa3d.PrusaSlicer.text-x-gcode.svg
+      - type: file
+        path: icons/com.prusa3d.PrusaSlicer.text-x-gcode.png
