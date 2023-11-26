@@ -6,7 +6,7 @@ _pwd=$PWD
 Init(){
 	
 	echo "sh --> Starting LyX ..."
-	lyx
+	exec lyx "$@"
 }
 
 Prepare() {
