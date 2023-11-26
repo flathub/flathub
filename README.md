@@ -7,7 +7,7 @@ Asset manager for EVE Online as a Flatpak.
 
 These commands will build and install jEveAssets as a flatpak locally for your user:
 ```bash
-git clone https://github.com/NullsecSpace/io.github.GoldenGnu.jEveAssets.git
+git clone -b io.github.GoldenGnu.jEveAssets https://github.com/Nathan-LS/flathub.git io.github.GoldenGnu.jEveAssets
 cd io.github.GoldenGnu.jEveAssets
 flatpak install --user flathub org.freedesktop.Platform//23.08 org.freedesktop.Sdk//23.08
 flatpak-builder --install --user --force-clean build-dir io.github.GoldenGnu.jEveAssets.yml
