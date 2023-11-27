@@ -34,5 +34,5 @@ flatpak uninstall --user io.github.GoldenGnu.jEveAssets
 
 ## Copying existing data into the flatpak
 ```bash
-rsync --delete -Pacv ~/.jeveassets/ ~/.var/app/io.github.GoldenGnu.jEveAssets/data/.jeveassets/
+rsync --delete -Pacv ~/.jeveassets/ ~/.var/app/io.github.GoldenGnu.jEveAssets/.jeveassets/
 ```
