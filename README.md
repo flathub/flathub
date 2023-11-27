@@ -32,7 +32,14 @@ flatpak uninstall --user io.github.GoldenGnu.jEveAssets
 ```
 
 
-## Copying existing data into the flatpak
+## Migrating existing data into the flatpak
+If you have an existing installation of jEveAssets on your system you can migrate to the Flatpak application with the following command:
 ```bash
 rsync --delete -Pacv ~/.jeveassets/ ~/.var/app/io.github.GoldenGnu.jEveAssets/.jeveassets/
 ```
+
+## Importing and exporting data from the flatpak
+This flatpak has no home directory access unless additional permissions are given with a tool such as [Flatseal](https://flathub.org/apps/com.github.tchx84.Flatseal).
+
+The directory at `~/.var/app/io.github.GoldenGnu.jEveAssets/jEveAssets_mnt/` on the host is mapped to `~/.jEveAssets_mnt/` inside the Flatpak application. 
+Use this folder for importing/exporting filters and exporting data.
