@@ -1,0 +1,141 @@
+app-id: io.github.ja2_stracciatella.JA2-Stracciatella
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - "org.freedesktop.Sdk.Extension.rust-stable"
+command: ja2-launcher-wrapper
+rename-desktop-file: ja2-stracciatella.desktop
+rename-icon: ja2-stracciatella
+finish-args:
+  - "--share=network"
+  - "--socket=x11"
+  - "--socket=wayland"
+  - "--share=ipc"
+  - "--device=dri"
+  - "--socket=pulseaudio"
+  - "--env=SDL_VIDEODRIVER=wayland,x11"
+  # Persist ja2 setting files
+  - "--persist=.ja2"
+  # And allow some filesystem access to let JA2 read the game files
+  - "--filesystem=xdg-documents"
+modules:
+  - name: string_theory
+    buildsystem: cmake-ninja
+    config-opts:
+      - "-DST_BUILD_TESTS=OFF"
+      - "-Wno-dev"
+    sources:
+      - type: archive
+        url: https://github.com/zrax/string_theory/archive/refs/tags/3.8.tar.gz
+        sha256: 9aaee95b7a9166cd37fd28a3cdb4e5d6dc491c2496fd33be82f44b59987fd753
+    cleanup:
+      - /include
+      - /share/doc
+      - /lib/cmake
+      - /lib/pkgconfig
+  - name: fltk
+    buildsystem: cmake-ninja
+    config-opts:
+      - "-DOPTION_BUILD_SHARED_LIBS=ON"
+      - "-DOPTION_BUILD_HTML_DOCUMENTATION=OFF"
+      - "-Wno-dev"
+    sources:
+      - type: archive
+        url: https://github.com/fltk/fltk/archive/release-1.3.8.tar.gz
+        sha512: 197848d3b80a65cca936daf4f0b74609f0fe8332a4cd11af53385fb2aa45ad698b1e239a48732b118cd3cb189bc531711b72fb2eeeb85be887dc6c5a558fa4b3
+    cleanup:
+      - /bin/fluid
+      - /bin/fltk-config
+      - /include
+      - /man
+      - /share/doc
+      - /share/man
+      - /share/applications
+      - /share/icons
+      - /share/mime
+      - /share/fltk
+      - /lib/pkgconfig
+      - /lib/*.a
+  - shared-modules/lua5.3/lua-5.3.5.json
+  - name: sol2
+    buildsystem: cmake-ninja
+    config-opts:
+      - "-DSOL2_LUA_VERSION=5.3"
+      - "-DSOL2_BUILD_LUA=OFF"
+      - "-DSOL2_TESTS_SINGLE=OFF"
+      - "-DSOL2_TESTS_EXAMPLES=OFF"
+      - "-Wno-dev"
+    sources:
+      - type: archive
+        url: "https://github.com/ThePhD/sol2/archive/refs/tags/v3.2.2.tar.gz"
+        sha256: "141790dae0c1821dd2dbac3595433de49ba72545845efc3ec7d88de8b0a3b2da"
+    cleanup:
+      - "/include"
+      - "/share/doc"
+      - "/share/pkgconfig"
+      - "/lib/cmake"
+  - name: ja2-stracciatella
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        # Point cargo to crates downloaded by flatpak from cargo-sources.json
+        CARGO_HOME: "/run/build/ja2-stracciatella/cargo"
+      # Add cargo to $PATH while building this module
+      append-path: "/usr/lib/sdk/rust-stable/bin"
+    config-opts:
+      - "-DEXTRA_DATA_DIR=/app/share/ja2"
+      - "-DLOCAL_LUA_LIB=OFF"
+      - "-DLOCAL_SOL_LIB=OFF"
+      - "-DLOCAL_RAPIDJSON_LIB=OFF"
+      - "-DLOCAL_STRING_THEORY_LIB=OFF"
+      - "-DLOCAL_MINIAUDIO_LIB=OFF"
+      - "-DMINIAUDIO_INCLUDE_DIR=/run/build/ja2-stracciatella/dependencies/lib-miniaudio/src"
+      - "-DLOCAL_MAGICENUM_LIB=OFF"
+      - "-DMAGICENUM_INCLUDE_DIR=/run/build/ja2-stracciatella/dependencies/lib-magic_enum/src"
+      - "-DWITH_UNITTESTS=OFF"
+      - "-Wno-dev"
+    sources:
+      - type: archive
+        url: https://github.com/ja2-stracciatella/ja2-stracciatella/archive/refs/tags/v0.21.0.tar.gz
+        sha256: "1c15b4f281bba9aff1c3409d4308d22840eb815a8a3ab53f7be69a5841f300a2"
+      # Cargo sources, generated with
+      #
+      #   python3 flatpak-cargo-generator.py JA2_CHECKOUT/rust/Cargo.lock -o cargo-sources.json
+      #
+      # See https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo
+      # for details.
+      - cargo-sources.json
+      # Directly download required header-only or direct-include libraries.
+      # Use exactly the same versions as used by JA2 upstream, in the CMake
+      # getters.
+      - type: archive
+        url: "https://github.com/mackron/miniaudio/archive/4dfe7c4c31df46e78d9a1cc0d2d6f1aef5a5d58c.tar.gz"
+        sha256: "76c154a60e320ae2054ac0e93480f2dffc12a5129bdb2ed4a62e0cce8d345c36"
+        dest: "dependencies/lib-miniaudio/src"
+      - type: file
+        url: https://github.com/Neargye/magic_enum/releases/download/v0.8.2/magic_enum.hpp
+        sha256: "f34487663db05b10acae7077dd0b5cf5794112a379567322e251ef0068875dc4"
+        dest: "dependencies/lib-magic_enum/src"
+    cleanup:
+      - /share/ja2/unittests
+      - /share/man
+  # Use a separate module for the launcher script and extra metadata to avoid
+  # rebuilding JA2 when changing these.
+  - name: ja2-flatpak
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 ja2-launcher-wrapper /app/bin/ja2-launcher-wrapper
+      - install -Dm644 io.github.ja2_stracciatella.JA2-Stracciatella.appdata.xml "${FLATPAK_DEST}/share/metainfo/io.github.ja2_stracciatella.JA2-Stracciatella.metainfo.xml"
+    sources:
+      - type: file
+        path: io.github.ja2_stracciatella.JA2-Stracciatella.appdata.xml
+      # Add a separate launcher to override TMPDIR, per documentation at
+      # https://docs.flatpak.org/en/latest/sandbox-permissions.html#filesystem-access
+      # The launcher uses TMPDIR to store its own log files and to read game log
+      # files.
+      - type: script
+        dest-filename: ja2-launcher-wrapper
+        commands:
+          - 'export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"'
+          - 'exec /app/bin/ja2-launcher "$@"'
