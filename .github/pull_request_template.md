@@ -12,4 +12,4 @@
 [reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
 [maint]: https://docs.flathub.org/docs/for-app-authors/maintanance
 [submission]: https://docs.flathub.org/docs/for-app-authors/submission
-[build]: https://docs.flatpak.org/en/latest/first-build.html
+[build]: https://docs.flathub.org/docs/for-app-authors/submission/#before-submission
