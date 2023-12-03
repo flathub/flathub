@@ -1,0 +1,54 @@
+app-id: org.freedesktop.Sdk.Extension.deno
+branch: '23.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-extension: true
+modules:
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -DBUILD_SHARED_LIBS=ON
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: 7f94235e552599141950d7a4a3eaf93bc87d1b22
+        tag: v25.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+  - name: deno
+    buildsystem: simple
+    build-commands:
+      - mv librusty* librusty # unify name for different arch
+      - RUSTY_V8_ARCHIVE=$PWD/librusty cargo build --release
+      - mkdir -p /usr/lib/sdk/deno/bin
+      - install -Dm755 target/release/deno -t /usr/lib/sdk/deno/bin
+    sources:
+      # deno 1.38.4 uses librusty_v8 0.81.0
+      - type: file
+        url:  https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_x86_64-unknown-linux-gnu.a
+        sha256: 7bbecb626fecbacec46387a246e129e86db97630da4f8c120f81410b1cb8bdc1
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_aarch64-unknown-linux-gnu.a
+        sha256: c0f7d472e4f6676b32e672dff314774231902a4e8eb0cff8e639d8bff1f0f99b
+        only-arches:
+          - aarch64
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v1.38.4/deno_src.tar.gz
+        sha256: a041d7407d89b94c7d2d863397159799c44ea5012eb3ff6870277003620b3ef4
+      - cargo-sources.json
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/deno/cargo
