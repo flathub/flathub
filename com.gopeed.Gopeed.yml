@@ -1,49 +1,59 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/master/data/flatpak-manifest.schema.json
 app-id: com.gopeed.Gopeed
-runtime: org.freedesktop.Platform
-runtime-version: '22.08'
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+rename-desktop-file: gopeed.desktop
 command: gopeed
 separate-locales: false
 finish-args:
-  - --socket=fallback-x11
-  - --socket=wayland
-  - --share=network
-  - --share=ipc
-  - --device=dri
-  - --filesystem=home
+  - '--share=ipc'
+  - '--socket=fallback-x11'
+  - '--socket=wayland'
+  - '--share=network'
+  - '--device=dri'
+  - '--talk-name=org.kde.StatusNotifierWatcher'
+  - '--talk-name=org.freedesktop.Notifications'
+  - '--filesystem=home'
+  - '--filesystem=/tmp'
 cleanup:
-  - /git_repo
-  - /com.gopeed.Gopeed.desktop
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  - /share/gtk-doc
+  
 modules:
+  - shared-modules/intltool/intltool-0.51.json
+  - dependencies/libayatana-appindicator3-0.1.yaml
   - name: gopeed
     buildsystem: simple
     build-commands:
-      - cp -r Gopeed /app/
-      - chmod +x /app/Gopeed/gopeed
-      - mkdir -p /app/bin
-      - ln -s /app/Gopeed/gopeed /app/bin/gopeed
-      - install -Dm644 com.gopeed.Gopeed.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
-      - install -Dm644 git_repo/ui/flutter/assets/icon/icon_1024.png "${FLATPAK_DEST}/share/icons/hicolor/1024x1024/apps/${FLATPAK_ID}.png"
+      - bsdtar --to-stdout -xf gopeed.deb data.* | bsdtar -xf -
+      - mv opt/gopeed /app/
+      - cp -a usr/share /app/
+      - chmod +x /app/gopeed/gopeed
+      - install -Dm755 gopeed.sh /app/bin/gopeed
+      - install -Dm644 com.gopeed.Gopeed.metainfo.xml -t /app/share/appdata  
     sources:
-      - type: archive
-        dest: Gopeed
-        url: https://github.com/GopeedLab/gopeed/releases/download/v1.4.4/Gopeed-v1.4.4-linux-amd64-portable.tar.gz
-        sha256: B8BD718A2627EC4A13CC7D9634DA1355F30C5EAAD63B3A92707D9A703E1619C5
+      - type: file
+        url: https://github.com/GopeedLab/gopeed/releases/download/v1.5.1/Gopeed-v1.5.1-linux-amd64.deb
+        dest-filename: gopeed.deb
+        sha256: e3f7382a218a3414a98655fcf6e614e92b8aee0e8e8822381a8afcdb982092bc
         x-checker-data:
           type: json
           url: https://api.github.com/repos/GopeedLab/gopeed/releases/latest
-          tag-query: .tag_name
-          timestamp-query: .published_at
-          version-query: $tag | sub("^[vV]"; "")
-          url-query: '"https://github.com/GopeedLab/gopeed/releases/download/\($tag)/Gopeed-\($tag)-linux-amd64-portable.tar.gz"'
-      - type: git
-        dest: git_repo
-        url: https://github.com/GopeedLab/gopeed
-        tag: v1.4.4
-        commit: 4840c4b8a437c2a01ee4ab68e513dcd305523779
-        x-checker-data:
-          type: git
-          tag-pattern": ^v([0-9.]+)$
+          version-query: .tag_name | sub("^v"; "")
+          url-query: >-
+            .assets[] | select(.name=="Gopeed-v" + $version + "-linux-amd64.deb") |
+            .browser_download_url
       - type: file
-        path: com.gopeed.Gopeed.desktop
+        path: com.gopeed.Gopeed.metainfo.xml
+
+      - type: script
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - /app/gopeed/gopeed
+        dest-filename: gopeed.sh
