@@ -14,11 +14,54 @@ finish-args:
   - --share=network
 
 modules:
+   # Required for deno to build
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: 7f94235e552599141950d7a4a3eaf93bc87d1b22
+        tag: v25.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+
+  - name: deno
+    buildsystem: simple
+    build-commands:
+      - ls -l
+      - mv librusty* librusty # unify name for different arch
+      - RUSTY_V8_ARCHIVE=$PWD/librusty cargo build --release
+      - mkdir /app/bin
+      - install -Dm755 target/release/deno -t /app/bin
+    sources:
+      # deno 1.38.4 uses librusty_v8 0.81.0
+      - type: file
+        url:  https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_x86_64-unknown-linux-gnu.a
+        sha256: 7bbecb626fecbacec46387a246e129e86db97630da4f8c120f81410b1cb8bdc1
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_aarch64-unknown-linux-gnu.a
+        sha256: c0f7d472e4f6676b32e672dff314774231902a4e8eb0cff8e639d8bff1f0f99b
+        only-arches:
+          - aarch64
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v1.38.4/deno_src.tar.gz
+        sha256: a041d7407d89b94c7d2d863397159799c44ea5012eb3ff6870277003620b3ef4
+      - deno-cargo-sources.json
+
   - name: nosleep
     buildsystem: simple
     build-commands:
       - mkdir /app/bin
-      - cp deno /app/bin
       - cp main.ts /app/bin/main.ts
       - cp inhibit.ts /app/bin/inhibit.ts
       - cp main.css /app/bin/main.css
@@ -30,19 +73,6 @@ modules:
       - install -Dm644 distro/io.github.sigmasd.nosleep.metainfo.xml -t /app/share/metainfo/
 
     sources:
-      - type: archive
-        url: https://github.com/denoland/deno/releases/download/v1.38.3/deno-x86_64-unknown-linux-gnu.zip
-        sha256: 01eaef0e7a922324cdeb2ce19f9e2b457feb489b568e9da86c7b4cc8a3c4e0a3
-        only-arches:
-          - x86_64
-      # Deno doesn't have official aarch64 releases for now
-      # This third party is well known though
-      - type: archive
-        url: https://github.com/LukeChannings/deno-arm64/releases/download/v1.38.3/deno-linux-arm64.zip
-        sha256: bf93da47dab70c38dfc336d094147e506d8ff5f501976cc142d665b36343e75e
-        only-arches:
-          - aarch64
-
       - type: archive
         url: https://github.com/sigmaSd/gnome-nosleep/archive/refs/tags/0.2.7.tar.gz
         sha256: 3ec7fc21d92bff9524bfb7576e94a9bf4ff24dc2573a5fcaa50befc114087956
