@@ -1,0 +1,95 @@
+app-id: net.sourceforge.quakespasm.Quakespasm
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: quakespasm.sh
+
+finish-args:
+  # hardware 3D
+  - --device=dri
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Audio
+  - --socket=pulseaudio
+  # Game data directory
+  - --filesystem=~/.config/quakespasm
+
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+
+modules:
+
+  - shared-modules/libmad/libmad.json
+
+  - name: libopusfile
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz
+        sha256: 118d8601c12dd6a44f52423e68ca9083cc9f2bfe72da7a8c1acb22a80ae3550b
+        x-checker-data:
+          type: anitya
+          project-id: 10353
+          url-template: https://downloads.xiph.org/releases/opus/opusfile-$version.tar.gz
+
+  - name: libxmp
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/libxmp/libxmp/
+        tag: libxmp-4.6.0
+        commit: 8201d26cf933688a8be64292457c429fd8e654ab
+        x-checker-data:
+          type: git
+          tag-pattern: ^libxmp-(.*)$
+
+  - name: libflac
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/xiph/flac
+        tag: "1.4.3"
+        commit: 28e4f0528c76b296c561e922ba67d43751990599
+        x-checker-data:
+          type: git
+          tag-pattern: ^(.*)$
+
+  - name: quakespasm
+    sources:
+      - type: git
+        url: https://github.com/sezero/Quakespasm
+        tag: quakespasm-0.96.1
+        commit: 09e086ba955d179e58aaf5c74e256dcdf9dcdad4
+        x-checker-data:
+          type: git
+          tag-pattern: ^quakespasm-(.*)$
+      - type: file
+        path: net.sourceforge.quakespasm.Quakespasm.desktop
+      - type: file
+        path: net.sourceforge.quakespasm.Quakespasm.appdata.xml
+      - type: script
+        dest-filename: quakespasm.sh
+        commands:
+          # Verify game data is present
+          - ls ~/.config/quakespasm/data/id1/pak0.pak || zenity --error --text "Please ensure ~/.config/quakespasm/data/id1/ exists
+            and contains at least Quake's pak0.pak game data file."
+            --ok-label "Close" --width=400
+          # launch the game
+          - /app/bin/quakespasm -basedir ~/.config/quakespasm/data "$@"
+    buildsystem: simple
+    build-commands:
+      # Build
+      - cd Quake && make USE_SDL2=1 USE_CODEC_FLAC=1 USE_CODEC_OPUS=1 USE_CODEC_XMP=1
+      # Install main quakespasm data and executable
+      - install -D -m744 -t /app/bin/ Quake/quakespasm
+      - install -D -m755 -t /app/bin/ Quake/quakespasm.pak
+
+      # Install metadata and launcher files
+      - install -D -m744 -t /app/bin/ quakespasm.sh
+      - install -D -m755 Misc/QuakeSpasm_512.png /app/share/icons/hicolor/512x512/apps/net.sourceforge.quakespasm.Quakespasm.png
+      - install -D -m755 -t /app/share/applications/ net.sourceforge.quakespasm.Quakespasm.desktop
+      - install -D -m755 -t /app/share/metainfo/ net.sourceforge.quakespasm.Quakespasm.appdata.xml
