@@ -1,6 +1,6 @@
 # Flatpak for Linux Show Player
 
-🚧 Files are copied form the [upstream repository](https://github.com/FrancescoCeruti/linux-show-player/tree/master/scripts/flatpak), with minor changes applied, see below.
+🚧 Files are copied from the [upstream repository](https://github.com/FrancescoCeruti/linux-show-player/tree/master/scripts/flatpak), with minor changes applied, see below.
 
 ### When updating:
 
