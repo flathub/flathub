@@ -1,0 +1,316 @@
+app-id: xyz.ayrsd.AudioStellar
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: audiostellar
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  
+  - --socket=pulseaudio
+  # Needs access to webcams and so
+  - --device=all
+  # Needs to talk to the network:
+  - --share=network
+  # Needs to save files locally
+  - --filesystem=host
+  # JACK support
+  - --filesystem=xdg-run/pipewire-0
+
+modules:
+# openFrameworks dependencies
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+  - shared-modules/gtk2/gtk2.json
+  - shared-modules/libusb/libusb.json
+  #- shared-modules/linux-audio/jack2.json
+  - name: iputils
+    buildsystem: meson
+    config-opts:
+      - "-DUSE_CAP=false"
+      - "-DUSE_IDN=false"
+      - "-DBUILD_ARPING=false"
+      - "-DBUILD_CLOCKDIFF=false"
+      - "-DBUILD_RARPD=false"
+      - "-DBUILD_RDISC=false"
+      - "-DENABLE_RDISC_SERVER=false"
+      - "-DBUILD_TFTPD=false"
+      - "-DBUILD_TRACEPATH=false"
+      - "-DBUILD_TRACEROUTE6=false"
+      - "-DBUILD_NINFOD=false"
+      - "-DNINFOD_MESSAGES=false"
+      - "-DBUILD_MANS=false"
+      - "-DBUILD_HTML_MANS=false"
+      - "-DNO_SETCAP_OR_SUID=false"
+      # - "-DSETCAP_OR_SUID_ARPING=false"
+      # - "-DSETCAP_OR_SUID_CLOCKDIFF=false"
+      # - "-DSETCAP_OR_SUID_PING=false"
+      # - "-DSETCAP_OR_SUID_TRACEROUTE6=false"
+      - "-DUSE_GETTEXT=false"
+    sources:
+      - type: archive
+        url: https://github.com/iputils/iputils/archive/s20190709.tar.gz
+        sha256: a15720dd741d7538dd2645f9f516d193636ae4300ff7dbc8bfca757bf166490a
+
+  - name: freeglut
+    build-options:
+      cflags: -fcommon
+      cxxflags: -fcommon
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: "https://sourceforge.net/projects/freeglut/files/freeglut/3.2.1/freeglut-3.2.1.tar.gz"
+        sha256: d4000e02102acaf259998c870e25214739d1f16f67f99cb35e4f46841399da68
+        
+  - name: libxmu
+    sources:
+      - type: archive
+        url: https://www.x.org/archive//individual/lib/libXmu-1.1.3.tar.bz2
+        sha256: 9c343225e7c3dc0904f2122b562278da5fed639b1b5e880d25111561bac5b731
+        
+  - name: libraw1394
+    rm-configure: true
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/linux/libs/ieee1394/libraw1394-2.1.2.tar.xz
+        sha256: 03ccc69761d22c7deb1127fc301010dd13e70e44bb7134b8ff0d07590259a55e
+      - type: script
+        commands: 
+         - autoreconf -fiv
+        dest-filename: autogen.sh
+      
+  - name: freeimage
+    buildsystem: simple
+    build-commands:
+      - sh gensrclist.sh
+      - sh genfipsrclist.sh
+      - sed -i 's/ throw (IEX_NAMESPACE::MathExc)//g' Source/OpenEXR/Imath/ImathVec.h
+      - sed -i 's/ throw (IEX_NAMESPACE::MathExc)//g' Source/OpenEXR/Imath/ImathVec.cpp
+      - sed -i 's/ throw (IEX_NAMESPACE::MathExc)//g' Source/OpenEXR/Imath/ImathMatrix.h
+      - make -f Makefile.gnu -j $FLATPAK_BUILDER_N_JOBS 
+      - make -f Makefile.fip -j $FLATPAK_BUILDER_N_JOBS
+      - make -f Makefile.gnu INCDIR=$FLATPAK_DEST/include INSTALLDIR=$FLATPAK_DEST/lib install
+      - make -f Makefile.fip INCDIR=$FLATPAK_DEST/include INSTALLDIR=$FLATPAK_DEST/lib install
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeimage/Source%20Distribution/3.18.0/FreeImage3180.zip
+        sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+      - type: shell
+        commands:
+          - sed -i 's/-o root -g root //g' Makefile.{gnu,fip}
+
+  - name: assimp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DASSIMP_BUILD_ASSIMP_TOOLS:BOOL=NO
+      - -DASSIMP_BUILD_TESTS:BOOL=NO
+    sources:
+      - type: archive
+        url: https://github.com/assimp/assimp/archive/v4.1.0.tar.gz
+        sha256: 3520b1e9793b93a2ca3b797199e16f40d61762617e072f2d525fad70f9678a71
+
+  - name: rtaudio
+    config-opts:
+    - "--enable-shared"
+    - "--with-alsa"
+    - "--with-jack"
+    - "--with-pulse"
+    sources:
+    - type: archive
+      url: http://www.music.mcgill.ca/~gary/rtaudio/release/rtaudio-5.1.0.tar.gz
+      sha256: ff138b2b6ed2b700b04b406be718df213052d4c952190280cf4e2fab4b61fe09
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS headers
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.bz2
+        sha256: a6e1ab9b0860e6a2881dd7b21fe9f737a095e5f33a3a874afc6a345228597ee6
+
+  - name: glfw
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+    - "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+    - "-DBUILD_SHARED_LIBS:BOOL=ON"
+    sources:
+    - type: archive
+      url: https://github.com/glfw/glfw/releases/download/3.3.2/glfw-3.3.2.zip
+      sha256: 08a33a512f29d7dbf78eab39bd7858576adcc95228c9efe8e4bc5f0f3261efc7
+    cleanup:
+    - "/include"
+    - "/lib/pkgconfig"
+
+  - name: liburiparser
+    buildsystem: cmake-ninja
+    config-opts:
+    - "-DURIPARSER_BUILD_DOCS=OFF"
+    - "-DURIPARSER_BUILD_TESTS=OFF"
+    cleanup:
+    - "/bin/uriparse"
+    sources:
+    - type: archive
+      url: https://github.com/uriparser/uriparser/releases/download/uriparser-0.9.4/uriparser-0.9.4.tar.bz2
+      sha256: b7cdabe5611408fc2c3a10f8beecb881a0c7e93ff669c578cd9e3e6d64b8f87b
+
+  - name: pugixml
+    buildsystem: cmake-ninja
+    build-options:
+      cflags: "-fPIC"
+      cxxflags: "-fPIC"
+    sources:
+    - type: archive
+      url: https://github.com/zeux/pugixml/releases/download/v1.10/pugixml-1.10.tar.gz
+      sha256: 55f399fbb470942410d348584dc953bcaec926415d3462f471ef350f29b5870a
+
+  - name: poco
+    buildsystem: cmake-ninja
+    sources:
+    - type: archive
+      url: https://github.com/pocoproject/poco/archive/refs/tags/poco-1.11.8-release.tar.gz
+      sha256: a59727335a9bf428dc1289cd8ce84f9c1749c1472a0cd3ae86bec85be23d7cbe
+      
+  - name: libdaemon
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: http://git.0pointer.net/clone/libdaemon.git
+        commit: 9fcc28e0e8f84968d1fb8b6d544a42efb13803ec
+        disable-shallow-clone: true # dumb http transport does not support shallow capabilities
+        
+  - name: libevent
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/libevent/libevent
+        tag: release-2.1.12-stable
+        
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - "--with-distro=none"
+      - "--disable-gtk3"
+      - "--disable-mono"
+      - "--disable-qt5"
+      - "--disable-manpages"
+      - "--disable-python"
+      - "--with-systemdsystemunitdir=no"
+    sources:
+      - type: git
+        url: https://github.com/lathiat/avahi
+        tag: v0.8
+  
+  - name: libsnappy
+    buildsystem: cmake-ninja
+    config-opts:
+      - "-DBUILD_SHARED_LIBS=ON"
+      - "-DSNAPPY_BUILD_TESTS=OFF"
+      - "-DCMAKE_BUILD_TYPE=Release"
+    sources:
+      - type: git
+        url: https://github.com/google/snappy
+        tag: 1.1.7
+
+  - name: openframeworks
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/lib/oF
+      - mv * ${FLATPAK_DEST}/lib/oF
+      - sh ${FLATPAK_DEST}/lib/oF/scripts/linux/compileOF.sh -j$FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://github.com/openframeworks/openFrameworks/releases/download/0.12.0/of_v0.12.0_linux64gcc6_release.tar.gz
+        sha256: 942cd299c903e0aeea5f05e429ab813702e0ba4f99a5a3d0e7c21e61be9b3b2b
+      - type: shell
+        commands: 
+          - sed -i '1635s/.*/if(instance->events().notifyExit()) glfwSetWindowShouldClose(windowP_, false);/' libs/openFrameworks/app/ofAppGLFWWindow.cpp
+
+          - sed -e '/GL\/glext.h/ s/^#*/\/\//' -i libs/openFrameworks/utils/ofConstants.h
+          - sed -i '31s/.*//' libs/openFrameworksCompiled/project/linux64/config.linux64.default.mk
+
+          - echo "done oF"
+    # addons
+      - type: git
+        url: https://github.com/danomatika/ofxMidi.git
+        commit: f9d85fd888ba23cf49207b362e2bcc8cfad352ed
+        dest: addons/ofxMidi
+      - type: git
+        url: https://github.com/macramole/ofxJSON.git
+        commit: 8486eee1c752422a1ffd630656c814b2bb53305f
+        dest: addons/ofxJSON
+      - type: git
+        url: https://github.com/genekogan/ofxConvexHull.git
+        commit: 58a1a403e873189c9fb88d9b44988b11bc580821
+        dest: addons/ofxConvexHull
+      - type: git
+        url: https://github.com/macramole/ofxImGui.git
+        commit: 4d2dc03ae1b4c8138caaee4711c3a9c2c71bb7d3
+        dest: addons/ofxImGui       
+      - type: git
+        url: https://github.com/macramole/ofxAudioFile.git
+        commit: a5ed48298f7fa972f32c35e57e5e6d422f4581c5
+        dest: addons/ofxAudioFile
+      - type: git
+        url: https://github.com/macramole/ofxPDSP.git
+        dest: addons/ofxPDSP
+        commit: a001999a55fe1aa0a755fd8c608334882576f5af
+      - type: git
+        url: https://github.com/macramole/ofxAnn.git
+        dest: addons/ofxAnn
+        commit: 3957fdc4a5f56b5da378e1d92e4704212b98f5f2
+      - type: git
+        url: https://github.com/2bbb/ofxAbletonLink.git
+        dest: addons/ofxAbletonLink
+        commit: 4dd95c68337509d34785d0a65eaa7822213b41d6
+        disable-submodules: false
+
+
+  - name: audiostellar
+    buildsystem: simple
+    build-commands:
+      - mkdir -p bin/data
+      - cp -R assets bin/data/
+      - OF_ROOT="$FLATPAK_DEST/lib/oF" make Release -j$FLATPAK_BUILDER_N_JOBS
+      - mkdir $FLATPAK_DEST/audiostellar
+      - cp -ar bin/* $FLATPAK_DEST/audiostellar
+    
+    post-install:
+      - ln -s ../audiostellar/audiostellar $FLATPAK_DEST/bin/audiostellar
+    cleanup:
+      - src
+    sources:
+      - type: git
+        url: https://gitlab.com/ayrsd/audiostellar.git
+        tag: "1.4"
+        commit: "c86be6ad89720678585121175091508c6f2cfd0b"
+#        branch: units
+        # branch: flatpak-test
+        # dest: apps/myApps/audiostellar
+    
+  - name: audiostellarExtra
+    buildsystem: simple
+    build-commands:
+      - cp ./audiostellar-data-analysis $FLATPAK_DEST/audiostellar/
+      - cp ./audiostellar-onset-detection $FLATPAK_DEST/audiostellar/
+      
+      - install -Dm644 xyz.ayrsd.AudioStellar.appdata.xml $FLATPAK_DEST/share/metainfo/xyz.ayrsd.AudioStellar.appdata.xml
+      - install -Dm644 xyz.ayrsd.AudioStellar.desktop $FLATPAK_DEST/share/applications/xyz.ayrsd.AudioStellar.desktop
+      - install -Dm644 ./icon_128.png $FLATPAK_DEST/share/icons/hicolor/128x128/apps/xyz.ayrsd.AudioStellar.png
+    sources:
+      - type: file
+        path: xyz.ayrsd.AudioStellar.appdata.xml
+      - type: file
+        path: xyz.ayrsd.AudioStellar.desktop
+      - type: file
+        path: icon_128.png
+      - type: file
+        path: audiostellar-data-analysis
+      - type: file
+        path: audiostellar-onset-detection
+
