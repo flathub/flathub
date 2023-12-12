@@ -1,0 +1,411 @@
+diff --git a/uppsrc/Core/config.h b/uppsrc/Core/config.h
+index 5a396d00d..93f54ee1e 100644
+--- a/uppsrc/Core/config.h
++++ b/uppsrc/Core/config.h
+@@ -147,6 +147,10 @@
+ 	#endif
+ #endif
+ 
++#ifdef flagFlatpak
++	#define FLATPAK 1
++#endif
++
+ #ifdef _MSC_VER
+ 	#define COMPILER_MSC 1
+ 	#if _MSC_VER <= 1300
+diff --git a/uppsrc/ide/About.cpp b/uppsrc/ide/About.cpp
+index 3dff91072..80ef8e9d9 100644
+--- a/uppsrc/ide/About.cpp
++++ b/uppsrc/ide/About.cpp
+@@ -52,6 +52,9 @@ String SplashCtrl::GenerateVersionInfo(char separator)
+ 
+ #ifdef GUI_GTK
+ 	h << " (Gtk)";
++#endif
++#ifdef FLATPAK
++	h << " (Flatpak)";
+ #endif
+ 	h << separator;
+ #ifdef bmTIME
+diff --git a/uppsrc/ide/Builders/GccBuilder.cpp b/uppsrc/ide/Builders/GccBuilder.cpp
+index ae22ed7b7..515e48918 100644
+--- a/uppsrc/ide/Builders/GccBuilder.cpp
++++ b/uppsrc/ide/Builders/GccBuilder.cpp
+@@ -16,7 +16,7 @@ String GccBuilder::CmdLine(const String& package, const Package& pkg)
+ 	String cc = CompilerName();
+ 	cc << " -c";
+ 	for(String s : pkg_config)
+-		cc << " `pkg-config --cflags " << s << "`";
++		cc << " `" << Host::CMDLINE_PREFIX << "pkg-config --cflags " << s << "`";
+ 	cc << ' ' << IncludesDefinesTargetTime(package, pkg);
+ 	return cc;
+ }
+@@ -558,7 +558,7 @@ bool GccBuilder::Link(const Vector<String>& linkfile, const String& linkoptions,
+ 			if(!HasFlag("SOLARIS") && !HasFlag("OSX") && !HasFlag("OBJC"))
+ 				lnk << " -Wl,--start-group ";
+ 			for(String s : pkg_config)
+-				lnk << " `pkg-config --libs " << s << "`";
++				lnk << " `" << Host::CMDLINE_PREFIX << "pkg-config --libs " << s << "`";
+ 			for(int pass = 0; pass < 2; pass++) {
+ 				for(i = 0; i < lib.GetCount(); i++) {
+ 					String ln = lib[i];
+diff --git a/uppsrc/ide/Builders/Install.cpp b/uppsrc/ide/Builders/Install.cpp
+index df5716769..69f4aecb0 100644
+--- a/uppsrc/ide/Builders/Install.cpp
++++ b/uppsrc/ide/Builders/Install.cpp
+@@ -172,7 +172,7 @@ void CreateBuildMethods()
+ 		SaveFile(bm_path, bm);
+ 	}
+ #else
+-	bool openbsd = ToLower(Sys("uname")).Find("openbsd") >= 0;
++	bool openbsd = ToLower(Sys(Host::AddCmdlinePrefix("uname"))).Find("openbsd") >= 0;
+ 	auto Fix = [=](const char *s) {
+ 		String r = s;
+ 		if(openbsd) {
+@@ -185,8 +185,8 @@ void CreateBuildMethods()
+ 	String bm = ConfigFile("GCC.bm");
+ 	if(IsNull(LoadFile(bm)))
+ 		SaveFile(bm, Fix(gcc_bm));
+-
+-	if(Sys("clang --version").GetCount()) {
++	
++	if(Sys(Host::AddCmdlinePrefix("clang --version")).GetCount()) {
+ 		String bm = ConfigFile("CLANG.bm");
+ 		if(IsNull(LoadFile(bm)))
+ 			SaveFile(bm, Fix(clang_bm));
+diff --git a/uppsrc/ide/Common/Util.cpp b/uppsrc/ide/Common/Util.cpp
+index 869655852..49d0c29cd 100644
+--- a/uppsrc/ide/Common/Util.cpp
++++ b/uppsrc/ide/Common/Util.cpp
+@@ -248,7 +248,7 @@ bool CopyFolder(const char *dst, const char *src, Progress *pi)
+ bool HasSvn()
+ {
+ 	String dummy;
+-	static bool b = Sys("svn", dummy) >= 0;
++	static bool b = HostSys("svn", dummy) >= 0;
+ 	return b;
+ }
+ 
+diff --git a/uppsrc/ide/Console.cpp b/uppsrc/ide/Console.cpp
+index 75155459d..50ed87bcb 100644
+--- a/uppsrc/ide/Console.cpp
++++ b/uppsrc/ide/Console.cpp
+@@ -225,7 +225,9 @@ int Console::Execute(const char *command, Stream *out, const char *envptr, bool
+ 	try {
+ 		Wait();
+ 		One<AProcess> p;
+-		if(p.Create<LocalProcess>().ConvertCharset(!noconvert).Start(command, envptr))
++		if(p.Create<LocalProcess>()
++		       .ConvertCharset(!noconvert)
++		       .Start(Host::AddCmdlinePrefix(command), envptr))
+ 			return Execute(pick(p), command, out, q);
+ 	}
+ 	catch(Exc e) {
+@@ -258,7 +260,8 @@ bool Console::Run(const char *cmdline, Stream *out, const char *envptr, bool qui
+ 		Wait(slot);
+ 		One<AProcess> sproc;
+ 		LLOG("Run " << sCmdLine(cmdline) << " in slot " << slot);
+-		return sproc.Create<LocalProcess>().Start(cmdline, envptr) &&
++		return sproc.Create<LocalProcess>().Start(Host::AddCmdlinePrefix(cmdline),
++		                                          envptr) &&
+ 		       Run(pick(sproc), cmdline, out, quiet, slot, key, blitz_count);
+ 	}
+ 	catch(Exc e) {
+@@ -281,7 +284,7 @@ bool Console::Run(One<AProcess> pick_ process, const char *cmdline, Stream *out,
+ 	Wait(slot);
+ 	Slot& pslot = processes[slot];
+ 	pslot.process = pick(process);
+-	pslot.cmdline = cmdline;
++	pslot.cmdline = Host::AddCmdlinePrefix(cmdline);
+ 	pslot.outfile = out;
+ 	pslot.output = Null;
+ 	pslot.quiet = quiet;
+diff --git a/uppsrc/ide/Core/Host.cpp b/uppsrc/ide/Core/Host.cpp
+index b7f630b19..b6cde408b 100644
+--- a/uppsrc/ide/Core/Host.cpp
++++ b/uppsrc/ide/Core/Host.cpp
+@@ -5,8 +5,19 @@
+ #define LLOG(x)
+ #define METHOD_NAME "Host::" << UPP_FUNCTION_NAME << "(): "
+ 
+-Host::Host()
++#ifdef FLATPAK
++const char* Host::CMDLINE_PREFIX = "host-spawn --no-pty ";
++#else
++const char* Host::CMDLINE_PREFIX = "";
++#endif
++
++String Host::AddCmdlinePrefix(const char* cmdline)
+ {
++#ifdef FLATPAK
++	return String(CMDLINE_PREFIX) + cmdline;
++#else
++	return cmdline;
++#endif
+ }
+ 
+ String Host::GetEnvironment()
+@@ -49,7 +60,7 @@ void Host::ChDir(const String& path)
+ 	SetCurrentDirectory(path);
+ #endif
+ #ifdef PLATFORM_POSIX
+-	IGNORE_RESULT( chdir(path) );
++	IGNORE_RESULT(chdir(path));
+ #endif
+ 	if(cmdout)
+ 		*cmdout << "cd \"" << path << "\"\n";
+@@ -134,7 +145,7 @@ bool Host::StartProcess(LocalProcess& p, const char *cmdline)
+ 	try {
+ 		if(canlog) Log(cmdline);
+ 		p.NoConvertCharset();
+-		if(p.Start(FindCommand(exedirs, cmdline), environment))
++		if(p.Start(FindCommand(exedirs, AddCmdlinePrefix(cmdline)), environment))
+ 			return true;
+ 	}
+ 	catch(...) {
+@@ -196,14 +207,25 @@ String ResolveHostConsole()
+ 		"/usr/local/bin/xterm -e",
+ 	};
+ 	#else
+-	static const char *term[] = {
+-		"/usr/bin/mate-terminal -x",
+-		"/usr/bin/gnome-terminal --window -x",
+-		"/usr/bin/konsole -e",
+-		"/usr/bin/lxterminal -e",
+-		"/usr/bin/io.elementary.terminal -n -x",
+-		"/usr/bin/xterm -e",
+-	};
++		#ifdef FLATPAK
++		static const char *term[] = {
++			"/run/host/bin/mate-terminal -x",
++			"/run/host/bin/gnome-terminal --window -x",
++			"/run/host/bin/konsole -e",
++			"/run/host/bin/lxterminal -e",
++			"/run/host/bin/io.elementary.terminal -n -x",
++			"/run/host/bin/xterm -e",
++		};
++		#else
++		static const char *term[] = {
++			"/usr/bin/mate-terminal -x",
++			"/usr/bin/gnome-terminal --window -x",
++			"/usr/bin/konsole -e",
++			"/usr/bin/lxterminal -e",
++			"/usr/bin/io.elementary.terminal -n -x",
++			"/usr/bin/xterm -e",
++		};
++		#endif
+ 	#endif
+ 	int ii = 0;
+ 	for(;;) { // If (pre)defined terminal emulator is not available, try to find one
+diff --git a/uppsrc/ide/Core/Host.h b/uppsrc/ide/Core/Host.h
+index 2061ea6ac..6c5cb3d3f 100644
+--- a/uppsrc/ide/Core/Host.h
++++ b/uppsrc/ide/Core/Host.h
+@@ -4,22 +4,27 @@ extern String HostConsole;
+ 
+ void AddHostFlags(Index<String>& cfg);
+ 
+-struct Host {
++class Host {
++public:
+ 	struct FileInfo : Time, Moveable<FileInfo> {
+ 		int length;
+ 	};
+-
++	
++public:
++	static const char* CMDLINE_PREFIX;
++	
+ 	Vector<String> exedirs;
+ 	String         environment;
+ 
+ 	String        *cmdout;
+ 	
+ 	bool           canlog = true; // it does PutVerbose for commands
+-
++	
++public:
++	static String AddCmdlinePrefix(const char* cmdline);
++	
+ 	void    DoDir(const String& s);
+ 
+-	Host();
+-	
+ 	void                  Log(const String& s) { if(canlog) PutVerbose(s); }
+ 	
+ 	String                GetEnvironment();
+diff --git a/uppsrc/ide/Debuggers/Gdb.cpp b/uppsrc/ide/Debuggers/Gdb.cpp
+index 765091cba..c391629c4 100644
+--- a/uppsrc/ide/Debuggers/Gdb.cpp
++++ b/uppsrc/ide/Debuggers/Gdb.cpp
+@@ -599,9 +599,10 @@ bool Gdb::Create(Host& host, const String& exefile, const String& cmdline, bool
+ 
+ #ifdef PLATFORM_POSIX
+ #ifndef PLATFORM_MACOS
+-	IGNORE_RESULT(system("setxkbmap -option grab:break_actions")); // to be able to recover capture in breakpoint
++	IGNORE_RESULT(HostSys("setxkbmap -option grab:break_actions")); // to be able to recover capture in breakpoint
+ 	String xdotool_chk = ConfigFile("xdotool_chk");
+-	if(!FileExists(xdotool_chk) && system("xdotool key XF86Ungrab")) {
++	String out;
++	if(!FileExists(xdotool_chk) && HostSys("xdotool key XF86Ungrab", out)) {
+ 		Exclamation("[* xdotool] utility is not installed or does not work properly.&"
+ 		            "Debugger will be unable to ungrab debugee's mouse capture - "
+ 		            "mouse might become unusable when debugee stops.");
+diff --git a/uppsrc/ide/Debuggers/GdbCmd.cpp b/uppsrc/ide/Debuggers/GdbCmd.cpp
+index 36192dcb9..773d6c064 100644
+--- a/uppsrc/ide/Debuggers/GdbCmd.cpp
++++ b/uppsrc/ide/Debuggers/GdbCmd.cpp
+@@ -161,7 +161,7 @@ String Gdb::Cmd(const char *command, bool start)
+ 	PutVerbose(result);
+ 	PutVerbose("===================");
+ #ifdef PLATFORM_POSIX
+-	system("xdotool key XF86Ungrab"); // force X11 to relese the mouse capture
++	HostSys("xdotool key XF86Ungrab"); // force X11 to relese the mouse capture
+ #endif
+ 	return result;
+ }
+diff --git a/uppsrc/ide/Install.cpp b/uppsrc/ide/Install.cpp
+index 562c2a453..db8f84d99 100644
+--- a/uppsrc/ide/Install.cpp
++++ b/uppsrc/ide/Install.cpp
+@@ -85,6 +85,10 @@ bool Install(bool& hasvars)
+ 	#ifdef PLATFORM_COCOA
+ 		Scan(idir + "/uppsrc");
+ 		Scan(idir + "/*");
++	#endif
++	#ifdef FLATPAK
++		Scan(GetHomeDirFile("/.local/src/upp/uppsrc"));
++		Scan(GetHomeDirFile("/.local/src/upp/*"));
+ 	#endif
+ 		Scan(GetExeFolder() + "/uppsrc");
+ 		Scan(GetExeFolder() + "/*");
+diff --git a/uppsrc/ide/Methods.cpp b/uppsrc/ide/Methods.cpp
+index c4903b79b..42b0823de 100644
+--- a/uppsrc/ide/Methods.cpp
++++ b/uppsrc/ide/Methods.cpp
+@@ -808,7 +808,7 @@ String Ide::GetIncludePath()
+ 	ONCELOCK {
+ 		Index<String> r;
+ 		for(int pass = 0; pass < 2; pass++)
+-			ExtractIncludes(r, Sys(pass ? "clang -v -x c++ -E /dev/null" : "gcc -v -x c++ -E /dev/null"));
++			ExtractIncludes(r, HostSys(pass ? "clang -v -x c++ -E /dev/null" : "gcc -v -x c++ -E /dev/null"));
+ 		r.FindAdd("/usr/include_path");
+ 		r.FindAdd("/usr/local/include_path");
+ 		sys_includes = Join(r.GetKeys(), ";");
+@@ -874,8 +874,9 @@ void Ide::IncludeAddPkgConfig(String& include_path, const String& clang_method)
+ 	String main_conf;
+ 	for(int i = 0; i < wspc.GetCount(); i++) {
+ 		const Package& pkg = wspc.GetPackage(i);
+-		for(int j = 0; j < pkg.include.GetCount(); j++)
++		for(int j = 0; j < pkg.include.GetCount(); j++) {
+ 			MergeWith(include_path, ";", SourcePath(wspc[i], pkg.include[j].text));
++		}
+ 		for(String h : Split(Gather(pkg.pkg_config, cfg.GetKeys()), ' '))
+ 			pkg_config.FindAdd(h);
+ 	}
+@@ -885,11 +886,16 @@ void Ide::IncludeAddPkgConfig(String& include_path, const String& clang_method)
+ 		int q = cflags.Find(s);
+ 		if(q < 0) {
+ 			q = cflags.GetCount();
+-			cflags.Add(s, Sys("pkg-config --cflags " + s));
++			cflags.Add(s, HostSys("pkg-config --cflags " + s));
+ 		}
+-		for(String p : Split(cflags[q], CharFilterWhitespace))
+-			if(p.TrimStart("-I"))
++		for(String p : Split(cflags[q], CharFilterWhitespace)) {
++			if(p.TrimStart("-I")) {
++			#ifdef FLATPAK
++				p.Replace("/usr", "/run/host/usr");
++			#endif
+ 				MergeWith(include_path, ";", p);
++			}
++		}
+ 	}
+ #endif
+ }
+@@ -937,7 +943,7 @@ String Ide::GetCurrentIncludePath()
+ 		MergeWith(include_path, ";", inc2);
+ 	
+ 	IncludeAddPkgConfig(include_path, clang_method);
+-
++	
+ 	String main_conf;
+ 	const Workspace& wspc = AssistWorkspace();
+ 	for(int i = 0; i < wspc.GetCount(); i++) {
+diff --git a/uppsrc/ide/clang/clang.cpp b/uppsrc/ide/clang/clang.cpp
+index cab39add6..dcb8dca3e 100644
+--- a/uppsrc/ide/clang/clang.cpp
++++ b/uppsrc/ide/clang/clang.cpp
+@@ -42,7 +42,7 @@ String GetClangInternalIncludes()
+ 			cpp_version = LibClangCppVersion;
+ 			String dummy = ConfigFile("dummy.cpp");
+ 			Upp::SaveFile(dummy, String());
+-			String h = Sys(
++			String h = HostSys(
+ 			#ifdef PLATFORM_WIN32
+ 					GetExeDirFile("bin/clang/bin/c++") +
+ 			#else
+@@ -55,6 +55,9 @@ String GetClangInternalIncludes()
+ 			Vector<String> ln = Split(h, '\n');
+ 			for(int i = 0; i < ln.GetCount(); i++) {
+ 				String dir = TrimBoth(ln[i]);
++			#ifdef FLATPAK
++				dir.Replace("/usr", "/run/host/usr");
++			#endif
+ 				if(DirectoryExists(dir))
+ 					MergeWith(includes, ";", NormalizePath(dir));
+ 			}
+@@ -100,7 +103,7 @@ bool Clang::Parse(const String& filename_, const String& content,
+ 	
+ 	String includes = includes_;
+ 	MergeWith(includes, ";", GetClangInternalIncludes());
+-
++	
+ 	Vector<String> args;
+ 
+ 	INTERLOCKED // as there is just single static 'use'
+diff --git a/uppsrc/ide/idebar.cpp b/uppsrc/ide/idebar.cpp
+index e163e4c33..b74f7ebda 100644
+--- a/uppsrc/ide/idebar.cpp
++++ b/uppsrc/ide/idebar.cpp
+@@ -418,17 +418,20 @@ void Ide::Setup(Bar& menu)
+ 		}
+ 	});
+ 
++#ifndef PLATFORM_FLATPAK
+ 	const Workspace& wspc = IdeWorkspace();
+-	if(wspc[0] == "ide")
+-		for(int i = 0; i < wspc.GetCount(); i++)
++	if(wspc[0] == "ide") {
++		for(int i = 0; i < wspc.GetCount(); i++) {
+ 			if(wspc[i] == "ide/Core") {
+ 				menu.Add("Upgrade TheIDE..", [=] { UpgradeTheIDE(); });
+ 				break;
+ 			}
+-#ifndef PLATFORM_COCOA
+-#ifndef PLATFORM_WIN32
+-	menu.Add("Install theide.desktop", [=] { InstallDesktop(); });
++		}
++	}
+ #endif
++
++#if !defined(PLATFORM_COCOA) && !defined(PLATFORM_WIN32) && !defined(FLATPAK)
++	menu.Add("Install theide.desktop", [=] { InstallDesktop(); });
+ #endif
+ 
+ 	if(menu.IsMenuBar())
+diff --git a/uppsrc/ide/main.cpp b/uppsrc/ide/main.cpp
+index 4b30294c7..7b30d1c2f 100644
+--- a/uppsrc/ide/main.cpp
++++ b/uppsrc/ide/main.cpp
+@@ -126,6 +126,10 @@ bool TryLoadLibClang()
+ 		return true;
+ 	if(LoadLibClang("/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"))
+ 		return true;
++#endif
++#ifdef FLATPAK
++	if(LoadLibClang("/app/lib"))
++		return true;
+ #endif
+ 	// in Mint 21.1, clang installed is 14 but llvm defaults to 15
+ 	for(String s : Split(Sys("clang --version"), [](int c)->int { return !IsDigit(c); })) {
