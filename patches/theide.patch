@@ -50,7 +50,7 @@ index ae22ed7b7..515e48918 100644
  				for(i = 0; i < lib.GetCount(); i++) {
  					String ln = lib[i];
 diff --git a/uppsrc/ide/Builders/Install.cpp b/uppsrc/ide/Builders/Install.cpp
-index df5716769..69f4aecb0 100644
+index df5716769..986a35936 100644
 --- a/uppsrc/ide/Builders/Install.cpp
 +++ b/uppsrc/ide/Builders/Install.cpp
 @@ -172,7 +172,7 @@ void CreateBuildMethods()
@@ -58,7 +58,7 @@ index df5716769..69f4aecb0 100644
  	}
  #else
 -	bool openbsd = ToLower(Sys("uname")).Find("openbsd") >= 0;
-+	bool openbsd = ToLower(Sys(Host::AddCmdlinePrefix("uname"))).Find("openbsd") >= 0;
++	bool openbsd = ToLower(Sys(Host::CMDLINE_PREFIX + "uname")).Find("openbsd") >= 0;
  	auto Fix = [=](const char *s) {
  		String r = s;
  		if(openbsd) {
@@ -69,7 +69,7 @@ index df5716769..69f4aecb0 100644
 -
 -	if(Sys("clang --version").GetCount()) {
 +	
-+	if(Sys(Host::AddCmdlinePrefix("clang --version")).GetCount()) {
++	if(Sys(Host::CMDLINE_PREFIX + "clang --version").GetCount()) {
  		String bm = ConfigFile("CLANG.bm");
  		if(IsNull(LoadFile(bm)))
  			SaveFile(bm, Fix(clang_bm));
@@ -87,7 +87,7 @@ index 869655852..49d0c29cd 100644
  }
  
 diff --git a/uppsrc/ide/Console.cpp b/uppsrc/ide/Console.cpp
-index 75155459d..50ed87bcb 100644
+index 75155459d..576a6a94b 100644
 --- a/uppsrc/ide/Console.cpp
 +++ b/uppsrc/ide/Console.cpp
 @@ -225,7 +225,9 @@ int Console::Execute(const char *command, Stream *out, const char *envptr, bool
@@ -97,7 +97,7 @@ index 75155459d..50ed87bcb 100644
 -		if(p.Create<LocalProcess>().ConvertCharset(!noconvert).Start(command, envptr))
 +		if(p.Create<LocalProcess>()
 +		       .ConvertCharset(!noconvert)
-+		       .Start(Host::AddCmdlinePrefix(command), envptr))
++		       .Start(Host::CMDLINE_PREFIX + command, envptr))
  			return Execute(pick(p), command, out, q);
  	}
  	catch(Exc e) {
@@ -106,7 +106,7 @@ index 75155459d..50ed87bcb 100644
  		One<AProcess> sproc;
  		LLOG("Run " << sCmdLine(cmdline) << " in slot " << slot);
 -		return sproc.Create<LocalProcess>().Start(cmdline, envptr) &&
-+		return sproc.Create<LocalProcess>().Start(Host::AddCmdlinePrefix(cmdline),
++		return sproc.Create<LocalProcess>().Start(Host::CMDLINE_PREFIX + cmdline,
 +		                                          envptr) &&
  		       Run(pick(sproc), cmdline, out, quiet, slot, key, blitz_count);
  	}
@@ -116,36 +116,30 @@ index 75155459d..50ed87bcb 100644
  	Slot& pslot = processes[slot];
  	pslot.process = pick(process);
 -	pslot.cmdline = cmdline;
-+	pslot.cmdline = Host::AddCmdlinePrefix(cmdline);
++	pslot.cmdline = Host::CMDLINE_PREFIX + cmdline;
  	pslot.outfile = out;
  	pslot.output = Null;
  	pslot.quiet = quiet;
 diff --git a/uppsrc/ide/Core/Host.cpp b/uppsrc/ide/Core/Host.cpp
-index b7f630b19..b6cde408b 100644
+index b7f630b19..4ac06cd7f 100644
 --- a/uppsrc/ide/Core/Host.cpp
 +++ b/uppsrc/ide/Core/Host.cpp
-@@ -5,8 +5,19 @@
+@@ -5,9 +5,11 @@
  #define LLOG(x)
  #define METHOD_NAME "Host::" << UPP_FUNCTION_NAME << "(): "
  
 -Host::Host()
+-{
+-}
 +#ifdef FLATPAK
-+const char* Host::CMDLINE_PREFIX = "host-spawn --no-pty ";
++const String Host::CMDLINE_PREFIX = "host-spawn --no-pty ";
 +#else
-+const char* Host::CMDLINE_PREFIX = "";
++const String Host::CMDLINE_PREFIX = "";
 +#endif
-+
-+String Host::AddCmdlinePrefix(const char* cmdline)
- {
-+#ifdef FLATPAK
-+	return String(CMDLINE_PREFIX) + cmdline;
-+#else
-+	return cmdline;
-+#endif
- }
  
  String Host::GetEnvironment()
-@@ -49,7 +60,7 @@ void Host::ChDir(const String& path)
+ {
+@@ -49,7 +51,7 @@ void Host::ChDir(const String& path)
  	SetCurrentDirectory(path);
  #endif
  #ifdef PLATFORM_POSIX
@@ -154,16 +148,16 @@ index b7f630b19..b6cde408b 100644
  #endif
  	if(cmdout)
  		*cmdout << "cd \"" << path << "\"\n";
-@@ -134,7 +145,7 @@ bool Host::StartProcess(LocalProcess& p, const char *cmdline)
+@@ -134,7 +136,7 @@ bool Host::StartProcess(LocalProcess& p, const char *cmdline)
  	try {
  		if(canlog) Log(cmdline);
  		p.NoConvertCharset();
 -		if(p.Start(FindCommand(exedirs, cmdline), environment))
-+		if(p.Start(FindCommand(exedirs, AddCmdlinePrefix(cmdline)), environment))
++		if(p.Start(FindCommand(exedirs, CMDLINE_PREFIX + cmdline), environment))
  			return true;
  	}
  	catch(...) {
-@@ -196,14 +207,25 @@ String ResolveHostConsole()
+@@ -196,14 +198,25 @@ String ResolveHostConsole()
  		"/usr/local/bin/xterm -e",
  	};
  	#else
@@ -198,10 +192,10 @@ index b7f630b19..b6cde408b 100644
  	int ii = 0;
  	for(;;) { // If (pre)defined terminal emulator is not available, try to find one
 diff --git a/uppsrc/ide/Core/Host.h b/uppsrc/ide/Core/Host.h
-index 2061ea6ac..6c5cb3d3f 100644
+index 2061ea6ac..6c7d0cf82 100644
 --- a/uppsrc/ide/Core/Host.h
 +++ b/uppsrc/ide/Core/Host.h
-@@ -4,22 +4,27 @@ extern String HostConsole;
+@@ -4,22 +4,25 @@ extern String HostConsole;
  
  void AddHostFlags(Index<String>& cfg);
  
@@ -214,7 +208,7 @@ index 2061ea6ac..6c5cb3d3f 100644
 -
 +	
 +public:
-+	static const char* CMDLINE_PREFIX;
++	static const String CMDLINE_PREFIX;
 +	
  	Vector<String> exedirs;
  	String         environment;
@@ -225,8 +219,6 @@ index 2061ea6ac..6c5cb3d3f 100644
 -
 +	
 +public:
-+	static String AddCmdlinePrefix(const char* cmdline);
-+	
  	void    DoDir(const String& s);
  
 -	Host();
