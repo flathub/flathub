@@ -3,7 +3,7 @@
 AskContinue() {
   read -p "Continue (Y/n)?" answer
   if [ "$answer" != "${answer//[nN]/x}" ]; then
-    exit
+    exit 1
   fi
 }
 
@@ -66,7 +66,8 @@ else
     echo
     read -p "Everything done! Press enter to continue..."
   else
-    echo Please make sure you install this dependencies.
+    echo
+    echo Please make sure you install these dependencies by your own.
     echo Without them you will not fully enjoy U++ and TheIDE
     AskContinue
   fi

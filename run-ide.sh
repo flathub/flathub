@@ -40,6 +40,10 @@ fi
 
 if [ $first_run -eq 1 ]; then
     upp-term "host-spawn /bin/bash $user_upp_src_dir/run-ide-install-host-deps.sh"
+    if [ $? -eq 1 ]; then
+        rm -rf $user_upp_src_dir
+        exit
+    fi
 fi
 
 theide
