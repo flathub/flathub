@@ -2,11 +2,7 @@
 
 user_src_dir=~/.local/src
 user_upp_src_dir=$user_src_dir/upp
-
-first_run=0
-if [ ! -d $user_src_dir/upp ]; then
-    first_run=1
-fi
+deps_installed_lock_file=$user_upp_src_dir/deps.lock.txt
 
 is_the_same_src_version() {
     upp_ver_file_path=$user_upp_src_dir/ver.txt
@@ -38,12 +34,18 @@ if [ $? -eq 0 ]; then
     cp -r /app/src $user_upp_src_dir
 fi
 
-if [ $first_run -eq 1 ]; then
+deps_installed=0
+if [ -f $deps_installed_lock_file ]; then
+    deps_installed=1
+fi
+
+if [ $deps_installed -eq 0 ]; then
     upp-term "host-spawn /bin/bash $user_upp_src_dir/run-ide-install-host-deps.sh"
     if [ $? -eq 1 ]; then
         rm -rf $user_upp_src_dir
         exit
     fi
+    touch $deps_installed_lock_file
 fi
 
 theide

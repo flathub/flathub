@@ -68,7 +68,9 @@ else
   else
     echo
     echo Please make sure you install these dependencies by your own.
-    echo Without them you will not fully enjoy U++ and TheIDE
+    echo Without them you will not fully enjoy U++ and TheIDE.
+    echo When you agree to continue, you won\'t see this dialog again, so please choose wisely.
+    echo 
     AskContinue
   fi
 fi
