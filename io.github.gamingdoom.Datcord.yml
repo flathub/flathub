@@ -1,7 +1,13 @@
 app-id: io.github.gamingdoom.Datcord
 runtime: org.freedesktop.Platform
 runtime-version: '23.08'
+
 sdk: org.freedesktop.Sdk
+sdk-extensions: 
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm16
+  - org.freedesktop.Sdk.Extension.node18
+
 base: org.mozilla.firefox.BaseApp
 base-version: '23.08'
 command: datcord
@@ -35,43 +41,135 @@ finish-args:
     - --env=DCONF_USER_CONFIG_DIR=.config/dconf
 
 modules:
-  - name: datcord
-    buildsystem: simple
-    build-commands:
-      - mv policies.json distribution/policies.json
+- name: cbindgen
+  buildsystem: simple
+  build-options:
+    append-path: "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin"
+    env:
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: "clang"
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
+      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "clang"
+      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
 
-      - chmod +x launch-datcord
-      - chmod +x open-in-default-browser
-      - mkdir -p /app/lib/datcord
-      - cp -r * /app/lib/datcord
+  build-commands:
+    # Setting cargo home in env didn't work for some reason
+    - CARGO_HOME=${PWD}/cargo cargo --offline fetch --manifest-path Cargo.toml --verbose
+    - CARGO_HOME=${PWD}/cargo cargo --offline build --release --verbose
+    - install -Dm755 ./target/release/cbindgen -t /app/bin/
 
-      - ln -s /app/lib/datcord/launch-datcord /app/bin/datcord
+  sources:
+    # Cbindgen and dependencies
+    - type: git
+      url: https://github.com/mozilla/cbindgen.git
+      tag: "v0.26.0"
 
-      - install -Dm 644 -t /app/share/applications io.github.gamingdoom.Datcord.desktop
-      - install -Dm 644 -t /app/share/metainfo io.github.gamingdoom.Datcord.metainfo.xml
+    - cbindgen-cargo-sources.json
+  
+- name: datcord
+  buildsystem: simple
+  build-options:
+    append-path: "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin:/usr/lib/sdk/node18/bin"
+    env:
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: "clang"
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
+      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "clang"
+      - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
 
-      - install -Dm 644 default256.png /app/share/icons/hicolor/256x256/apps/io.github.gamingdoom.Datcord.png
+  build-commands:
+    # Make temporary mozbuild dir
+    - mkdir mozbuild
+    - mozbuild=${PWD}/mozbuild
 
-    sources:
-      - type: archive
-        url: https://github.com/gamingdoom/datcord/releases/download/0.4.1/datcord-linux-x86_64.tar.bz2
-        sha256: 77383f32695a95a2875e49e3084d58f1d571b726c2c8dd7e30a13e2b1f01cf36
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/gamingdoom/datcord/releases/latest
-          tag-query: ".tag_name"
-          version-query: "$tag"
-          timestamp-query: ".published-at"
-          url-query: ".assets[] | select(.name==\"datcord-linux-x86_64.tar.bz2\") | .browser_download_url"
+    # Extract firefox source
+    - mkdir mozilla-unified
+    - tar --strip-components=1 -xf firefox-120.0.1.source.tar.xz -C mozilla-unified
+
+    # Copy the Datcord changes
+    - cp -r src/changed/* mozilla-unified/
+    - cp src/mozconfig.linux mozilla-unified/mozconfig
+    - patch -p1 -d mozilla-unified < src/mozilla_dirsFromLibreWolf.patch
+
+    # Configure, build, package
+    - export MOZBUILD_STATE_PATH=${PWD}/mozbuild && cd mozilla-unified && ./mach configure --without-wasm-sandboxed-libraries && ./mach build && ./mach package
+
+    # Assemble what will go in /app/lib/datcord
+    - mkdir datcord
+    - tar --strip-components=1 -xvf mozilla-unified/obj-*/dist/*.tar.bz2 -C datcord/
+    - cp -r distribution/ datcord/
+    - mv datcord/distribution/policies-flatpak.json datcord/distribution/policies.json
+    - cp open-in-default-browser/open-in-default-browser datcord/open-in-default-browser
+    - cp src/launch-datcord datcord/launch-datcord
+
+    # Install everything
+    - chmod +x datcord/launch-datcord
+    - chmod +x datcord/open-in-default-browser
+    - mkdir -p /app/lib/datcord
+    - cp -r datcord/* /app/lib/datcord
+
+    - ln -s /app/lib/datcord/launch-datcord /app/bin/datcord
+
+    - install -Dm 644 -t /app/share/applications io.github.gamingdoom.Datcord.desktop
+    - install -Dm 644 -t /app/share/metainfo io.github.gamingdoom.Datcord.metainfo.xml
+
+    - install -Dm 644 default256.png /app/share/icons/hicolor/256x256/apps/io.github.gamingdoom.Datcord.png
+
+  sources:
+    - type: git
+      url: https://github.com/gamingdoom/datcord.git
+      # This is the commit that works with flatpak, will be changed to tag when 0.4.2 comes out
+      commit: 9ab51c203a33de023c81e604d245e1b7ddbcbc0f
+
+    # We extract this during the build.
+    - type: file
+      url: https://ftp.mozilla.org/pub/firefox/releases/120.0.1/source/firefox-120.0.1.source.tar.xz
+      sha256: 76e7bb2a144880158444d8e9014f4d080d219bd150c3db405b27e4c7e3959ae2
+
+    - type: file
+      path: io.github.gamingdoom.Datcord.desktop
+    
+    - type: file
+      path: io.github.gamingdoom.Datcord.metainfo.xml
+
+    - type: file
+      path: default256.png
+
+  # - name: datcord
+  #   buildsystem: simple
+  #   build-commands:
+  #     - mv policies.json distribution/policies.json
+
+  #     - chmod +x launch-datcord
+  #     - chmod +x open-in-default-browser
+  #     - mkdir -p /app/lib/datcord
+  #     - cp -r * /app/lib/datcord
+
+  #     - ln -s /app/lib/datcord/launch-datcord /app/bin/datcord
+
+  #     - install -Dm 644 -t /app/share/applications io.github.gamingdoom.Datcord.desktop
+  #     - install -Dm 644 -t /app/share/metainfo io.github.gamingdoom.Datcord.metainfo.xml
+
+  #     - install -Dm 644 default256.png /app/share/icons/hicolor/256x256/apps/io.github.gamingdoom.Datcord.png
+
+  #   sources:
+  #     - type: archive
+  #       url: https://github.com/gamingdoom/datcord/releases/download/0.4.1/datcord-linux-x86_64.tar.bz2
+  #       sha256: 77383f32695a95a2875e49e3084d58f1d571b726c2c8dd7e30a13e2b1f01cf36
+  #       x-checker-data:
+  #         type: json
+  #         url: https://api.github.com/repos/gamingdoom/datcord/releases/latest
+  #         tag-query: ".tag_name"
+  #         version-query: "$tag"
+  #         timestamp-query: ".published-at"
+  #         url-query: ".assets[] | select(.name==\"datcord-linux-x86_64.tar.bz2\") | .browser_download_url"
            
-      - type: file
-        path: policies.json
+  #     - type: file
+  #       path: policies.json
 
-      - type: file
-        path: io.github.gamingdoom.Datcord.desktop
+  #     - type: file
+  #       path: io.github.gamingdoom.Datcord.desktop
       
-      - type: file
-        path: io.github.gamingdoom.Datcord.metainfo.xml
+  #     - type: file
+  #       path: io.github.gamingdoom.Datcord.metainfo.xml
 
-      - type: file
-        path: default256.png
+  #     - type: file
+  #       path: default256.png
