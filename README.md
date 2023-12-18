@@ -8,10 +8,16 @@ This repository acts as a recipe for building TheIDE as a flatpak package. TheID
 
 ### Requiremenets
 
-To build this flatpak localy, you need to install following packages:
+To build this flatpak localy, you need to install following package:
+```
+flatpak install org.flatpak.Builder
+```
+
+Additionaly, if you want you can install dependencies manualy, by running following commands:
 ```
 flatpak install flathub org.gnome.Platform
 flatpak install org.freedesktop.Sdk.Extension.llvm17
+flatpak install org.freedesktop.Sdk.Extension.golang
 ```
 
 ### Building
