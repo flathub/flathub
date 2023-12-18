@@ -25,7 +25,7 @@ The `--ccache` parameter is higly recommended since it speedsup build time signf
 
 Alternativly, if you want to execute full build with dependency installation run:
 ```
-flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/repo/screenshots --repo=repo builddir org.ultimatepp.TheIDE.yml
+flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/repo/screenshots --repo=repo build-dir org.ultimatepp.TheIDE.yml
 ```
 
 In case if above command fails on install dependencies step try to use following command:
