@@ -4,7 +4,7 @@ bsdtar -Oxf writersolo.deb 'data.tar.xz'|bsdtar -xf - --exclude='usr'
 
 rm writersolo.deb
 
-# For unknown reasons, the actual executable binary is named wrong. Got to fix that.
+# The actual named binary is really funky and weird. This step will rename it so anyone else reading the wrapper or the desktop file can understand it much better.
 mv 'opt/WriterSolo/${productName}-${version}-${arch}.${ext}' opt/WriterSolo/writersolo-desktop
 
 
