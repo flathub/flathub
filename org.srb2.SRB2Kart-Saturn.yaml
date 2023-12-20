@@ -1,0 +1,186 @@
+app-id: org.srb2.SRB2Kart-Saturn
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: srb2kart.sh
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --device=all
+  - --persist=.srb2kart
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+
+add-extensions:
+  com.valvesoftware.Steam.Utility.gamescope:
+    version: stable
+    add-ld-path: lib
+    no-autodownload: true
+    autodelete: true
+    directory: utils/gamescope
+
+cleanup-commands:
+  - mkdir -p /app/utils/gamescope
+
+modules:
+  - shared-modules/glu/glu-9.json
+
+  - name: game-music-emu
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/*.so
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-0.6.3.tar.xz
+        sha256: aba34e53ef0ec6a34b58b84e28bf8cfbccee6585cebca25333604c35db3e051d
+        x-checker-data:
+          type: anitya
+          project-id: 866
+          stable-only: true
+          url-template: https://bitbucket.org/mpyne/game-music-emu/downloads/game-music-emu-$version.tar.xz
+
+  - name: libmodplug
+    buildsystem: autotools
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/modplug-xmms/files/libmodplug/0.8.9.0/libmodplug-0.8.9.0.tar.gz
+        sha256: 457ca5a6c179656d66c01505c0d95fafaead4329b9dbaa0f997d00a3508ad9de
+        x-checker-data:
+          type: anitya
+          project-id: 5669
+          url-template: https://sourceforge.net/projects/modplug-xmms/files/libmodplug/$version/libmodplug-$version.tar.gz
+
+  - name: sdl-mixer
+    buildsystem: autotools
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/*.a
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL_mixer/archive/refs/tags/release-2.6.3.tar.gz
+        sha256: 91dd065e9e63f499e5317350b110184b0ba96bc5f63c39b3a9939a136c40c035
+
+  - name: rapidjson
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DRAPIDJSON_BUILD_DOC=OFF
+      - -DRAPIDJSON_BUILD_EXAMPLES=OFF
+      - -DRAPIDJSON_BUILD_TESTS=OFF
+      - -DRAPIDJSON_BUILD_THIRDPARTY_GTEST=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.tar.gz
+        sha256: bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e
+        x-checker-data:
+          type: anitya
+          project-id: 7422
+          stable-only: true
+          url-template: https://github.com/Tencent/rapidjson/archive/refs/tags/v$version.tar.gz
+
+  - name: discord-rpc
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_EXAMPLES=OFF
+    cleanup:
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/discord/discord-rpc.git
+        commit: 963aa9f3e5ce81a4682c6ca3d136cddda614db33
+
+  - name: libopenmpt
+    config-opts:
+      - --disable-examples
+      - --disable-openmpt123
+      - --disable-static
+      - --disable-tests
+      - --without-portaudio
+      - --without-portaudiocpp
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/*.so
+      - /lib/pkgconfig
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.3+release.autotools.tar.gz
+        sha256: 2cf8369b7916b09264f3f14b9fb6cef35a6e9bee0328dec4f49d98211ccfd722
+        x-checker-data:
+          type: anitya
+          project-id: 141468
+          stable-only: true
+          url-template: https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-$version+release.autotools.tar.gz
+
+  - name: srb2kart
+    buildsystem: simple
+    build-options:
+      arch:
+        aarch64:
+          env:
+            ARCH_MAKE_ARGS: LINUX64=1
+        x86_64:
+          env:
+            ARCH_MAKE_ARGS: LINUX64=1 X86_64=1
+    build-commands:
+      - make -C src -j $FLATPAK_BUILDER_N_JOBS NOUPX=1 SDL=1 NOLIBBACKTRACE=1 HAVE_DISCORDRPC=1 $ARCH_MAKE_ARGS
+      - install -D -m 755 bin/Linux*/Release/lsdl2srb2kart $FLATPAK_DEST/bin/srb2kart
+      - install -D -m 644 srb2.png $FLATPAK_DEST/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -D -m 644 src/sdl/srb2icon.png $FLATPAK_DEST/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/Indev450/SRB2Kart-Saturn.git
+        commit: 040faa4c1c59232e29b462116e951da9468ed563
+
+  - name: other-files
+    buildsystem: simple
+    build-commands:
+      - install -D -m 755 srb2kart.sh $FLATPAK_DEST/bin/srb2kart.sh
+      - install -D -m 644 -t $FLATPAK_DEST/share/applications $FLATPAK_ID.desktop
+      - install -D -m 644 -t $FLATPAK_DEST/share/metainfo $FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        path: srb2kart.sh
+      - type: file
+        path: org.srb2.SRB2Kart-Saturn.desktop
+      - type: file
+        path: org.srb2.SRB2Kart-Saturn.metainfo.xml
+
+  - name: srb2kart-assets
+    buildsystem: simple
+    build-commands:
+      - install -t $FLATPAK_DEST/bin apply_extra
+    sources:
+      - type: extra-data
+        filename: Data.zip
+        url: https://github.com/STJr/Kart-Public/releases/download/v1.6/AssetsLinuxOnly.zip
+        sha256: 7a384fb99d42f0cf41d12e3ed873754f9a5ba2b993d5e54bde7962bea3accdd1
+        size: 220991971
+      - type: extra-data
+        filename: saturn-assets.zip
+        url: https://github.com/Indev450/SRB2Kart-Saturn/releases/download/v5/Srb2_Kart_v1.6_Saturn_v5_64bit.zip
+        sha256: 7a3b4ee5ff2dc694c620848f7272ec65bdf668df6e9d234ae2dd7f87d80520a4
+        size: 5517361
+      - type: script
+        commands:
+          - unzip Data.zip *.kart srb2.srb mdls* > /dev/null
+          - unzip -j saturn-assets.zip '*/*.kart' > /dev/null
+          - rm Data.zip saturn-assets.zip
+        dest-filename: apply_extra
