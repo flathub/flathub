@@ -1,37 +1,186 @@
-app-id: io.github.Tahoma2D
+#Note: Tahoma2D doesn't deviate much from OpenToonz as a policy, I can essentially just tweak the existing opentoonz yaml file to fit it with Tahoma2D.
+app-id: io.github.OpenToonz
 runtime: org.kde.Platform
-runtime-version: '23.08'
-sdk: "org.kde.Sdk" #Just pulling in the KDE stuff in case I truly need it.
+runtime-version: '5.15-23.08'
+sdk: org.kde.Sdk
+command: opentoonz
 finish-args:
   - --share=ipc
-  - --socket=fallback-x11
-  - --socket=wayland
+  - --socket=x11
+  - --device=dri
   - --socket=pulseaudio
-  - --filesystem=xdg-download:rw
-  #Maybe add more later
-command: runtahoma2d
-#Luckily for us, Tahoma2D main dev manongjohn supplies a compiled appimage for us to use
+  - --filesystem=host
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib/opentoonz
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
 modules:
-  - name: tahoma2d
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/libusb/libusb.json
+
+  - name: freeglut
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    build-options: # https://wiki.gentoo.org/wiki/Gcc_10_porting_notes/fno_common
+      cflags: -fcommon
+      cxxflags: -fcommon
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeglut/freeglut/3.2.1/freeglut-3.2.1.tar.gz
+        sha256: d4000e02102acaf259998c870e25214739d1f16f67f99cb35e4f46841399da68
+
+  - name: superlu
+    buildsystem: cmake # ninja broken
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=True
+    sources:
+      - type: archive
+        url: https://github.com/xiaoyeli/superlu/archive/v5.2.1.tar.gz
+        sha256: 77582501dedef295eb74e4dc9433e2816d2d8be211eae307379c13d93c65bc71
+
+  - name: OpenBLAS
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.9.tar.gz
+        sha256: 17d4677264dfbc4433e97076220adc79b050e4f8a083ea3f853a53af253bc380
+
+  - name: lz4
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: contrib/cmake_unofficial
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/lz4/lz4/archive/v1.9.2.tar.gz
+        sha256: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
+
+  - name: lzo
+    cleanup:
+      - /bin
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+
+  - name: json-c
+    sources:
+      - type: archive
+        url: https://github.com/json-c/json-c/archive/json-c-0.13.1-20180305.tar.gz
+        sha256: 5d867baeb7f540abe8f3265ac18ed7a24f91fe3c5f4fd99ac3caba0708511b90
+
+  - name: libmypaint
+    config-opts:
+      - --disable-gegl
+      - --disable-introspection
+    sources:
+      - type: archive
+        url: https://github.com/mypaint/libmypaint/releases/download/v1.5.1/libmypaint-1.5.1.tar.xz
+        sha256: aef8150a0c84ce2ff6fb24de8d5ffc564845d006f8bad7ed84ee32ed1dd90c2b
+
+  - name: boost
     buildsystem: simple
     build-commands:
-      #Grab the official appimage, may need svn and special compiled opencv for extra plugins, maybe later.
-      tar -xf ./Tahoma2d-linux.tar.gz #Just a note, it bundles ffmpeg for us and I really do not suggest extracting the appimage, at least not right now.
-      mv ./Tahoma2D /app/bin #Yes, just keep the main directory within /app/bin
-      #Install rest of the necessary files
-      install -Dm 644 org.tahoma2d.Tahoma2D.desktop /app/share/applications/org.tahoma2d.Tahoma2D.desktop
-      install -Dm 644 org.tahoma2d.Tahoma2D.png /app/share/icons/hicolor/128x128/apps/org.tahoma2d.Tahoma2D.png
-      install -Dm 644 org.tahoma2d.Tahoma2D.appdata.xml /app/share/metainfo/org.tahoma2d.Tahoma2D.appdata.xml
-sources:
-  - type: file
-    url: https://github.com/tahoma2d/tahoma2d/releases/download/v1.4/Tahoma2D-linux.tar.gz
-    sha256: 39616a1157f1fcf250914d737128c60a1e202f93fd91cbb962e4b1b9a07d7c22
-  - type: file
-    path: org.tahoma2d.Tahoma2D.png
-  - type: file
-    path: org.tahoma2d.Tahoma2D.desktop
-  - type: file
-    path: org.tahoma2d.Tahoma2D.appdata.xml
-  - type: file
-    path: runtahoma2d.sh
-   
+      - mkdir -p /app/include/boost
+      - mv -t /app/include/boost *
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.72.0/source/boost_1_72_0.tar.bz2
+        sha256: 59c9b274bc451cf91a9ba1dd2c7fdcaf5d60b1b3aa83f2c9fa143417cc660722
+
+  - name: 'x264'
+    config-opts:
+      - --disable-cli
+      - --enable-shared
+    sources:
+      - type: archive
+        url: https://code.videolan.org/videolan/x264/-/archive/1771b556ee45207f8711744ccbd5d42a3949b14c/x264-1771b556ee45207f8711744ccbd5d42a3949b14c.tar.bz2
+        sha256: b31c5db5337873b9ee42b8cbc60b56d60ce368fa7e4c4eff90a729b36eeb8326
+
+  - name: ffmpeg
+    config-opts:
+      - --enable-gpl
+      - --disable-static
+      - --enable-shared
+      - --disable-doc
+      - --disable-ffplay
+      - --enable-libopus
+      - --enable-libvpx
+      - --enable-libx264
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://www.ffmpeg.org/releases/ffmpeg-4.2.2.tar.xz
+        sha256: cb754255ab0ee2ea5f66f8850e1bd6ad5cac1cd855d0a2f4990fb8c668b0d29c
+      - type: patch
+        path: patches/ffmpeg-as-fix.patch
+
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+      - -DWITH_OPENCL=ON
+      - -DWITH_OPENGL=ON
+      - -DWITH_TBB=ON
+      - -DWITH_VULKAN=ON
+      - -DBUILD_WITH_DEBUG_INFO=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DINSTALL_C_EXAMPLES=OFF
+      - -DINSTALL_PYTHON_EXAMPLES=OFF
+      - -DWITH_1394=OFF
+      - -DWITH_PROTOBUF=ON
+      - -DBUILD_LIST=calib3d,core,dnn,features2d,flann,highgui,imgcodecs,imgproc,java_bindings_generator,ml,objdetect,photo,python_bindings_generator,python_tests,stitching,video,videoio
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
+        sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
+      - type: archive
+        url: https://github.com/opencv/opencv_contrib/archive/4.2.0.tar.gz
+        sha256: 8a6b5661611d89baa59a26eb7ccf4abb3e55d73f99bb52d8f7c32265c8a43020
+        # dest: contrib
+
+  - name: opentoonz
+    buildsystem: cmake
+    builddir: true
+    subdir: toonz/sources
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      # https://github.com/opentoonz/opentoonz/issues/4831
+      - -DWITH_TRANSLATION=OFF
+      - -DBOOST_ROOT=/app/include/boost
+    sources:
+      - type: archive
+        url: https://github.com/opentoonz/opentoonz/archive/refs/tags/v1.7.1.tar.gz
+        sha256: d0daf60d06510efe15d0db3f9eed0162499ed58061504dca27892c2b9ea5f22d
+      - type: patch
+        path: patches/opentoonz-ffmepg.patch
+      - type: shell
+        commands:
+          - cd thirdparty/tiff-4.0.3 &&
+            cp -p /usr/share/automake-*/config.{sub,guess} config &&
+            ./configure --with-pic --disable-jbig &&
+            make -j $FLATPAK_BUILDER_N_JOBS
