@@ -16,25 +16,9 @@ $ source /usr/lib/sdk/ocaml/enable.sh
 
 ## Install packages interactivelly
 
-In order to interactivelly install [OCaml Package Manager (opam)](https://opam.ocaml.org/) packages in a Flatpak environmment you will need to create a switch first:
+In order to interactivelly install [OCaml Package Manager (opam)](https://opam.ocaml.org/) packages in a Flatpak environmment you will need to inicialize a new environment:
 ```
-$ cp -r /usr/lib/sdk/ocaml/ $XDG_DATA_HOME
-$ opam switch --root $XDG_DATA_HOME/ocaml create 5.1.0
-$ eval $(opam env --root=$XDG_DATA_HOME/ocaml --switch=5.1.0 --set-root --set-switch)
-
-$ opam switch
-#  switch  compiler                   description
-→  5.1.0   ocaml-base-compiler.5.1.0  5.1.0
-
-$ ocaml --version
-The OCaml toplevel, version 5.1.0
-
-$ opam install -y PKG
-```
-
-Alternativelly, you can inicialize a new opam environment:
-```
-$ opam init --disable-sandboxing --root $XDG_DATA_HOME/ocaml
+$ opam init --disable-sandboxing --no-setup --root $XDG_DATA_HOME/ocaml
 $ eval $(opam env --root=$XDG_DATA_HOME/ocaml --switch=default --set-root --set-switch)
 
 $ opam switch
