@@ -1,0 +1,205 @@
+id: org.freedesktop.Sdk.Extension.openjdk21
+branch: '23.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '23.08'
+build-extension: true
+sdk: org.freedesktop.Sdk
+separate-locales: false
+appstream-compose: false
+cleanup:
+  - /share/info
+  - /share/man
+build-options:
+  no-debuginfo: true
+  strip: true
+  prefix: /usr/lib/sdk/openjdk21
+  env:
+    V: '1'
+modules:
+  - name: bootstrap_jdk
+    buildsystem: simple
+    cleanup:
+      - '*'
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_linux_hotspot_21.0.1_12.tar.gz
+        dest-filename: java-openjdk.tar.bz2
+        sha512: 496ed15dcba607cd1b9e6786932429f9d213d2ea22203bf8cbed61880655ee046bfc4c07b7b0d54285081ddf242fd8957ba34c8be75f5fb2ae0aac16f9b8ef3a
+        x-checker-data:
+          type: json
+          url: https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&architecture=x64&image_type=jdk
+          version-query: .[0].version.semver
+          url-query: .[0].binary.package.link
+          versions:
+            -  "==": 21
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.1_12.tar.gz
+        dest-filename: java-openjdk.tar.bz2
+        sha512: ed05b9733e8270fe73dab86fb9320689a6613dd2d6a5807a47a2e22f081feefd9729e39521c85f3f443687bd103918850a9bd3a27d1a64b8519bb37c7454e5e8
+        x-checker-data:
+          type: json
+          url: https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&architecture=aarch64&image_type=jdk
+          version-query: .[0].version.semver
+          url-query: .[0].binary.package.link
+          versions:
+            -  "==": 21
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/bootstrap-java
+      - tar xf java-openjdk.tar.bz2 --strip-components=1 --directory=$FLATPAK_DEST/bootstrap-java
+  - name: java
+    buildsystem: autotools
+    no-parallel-make: true
+    config-opts:
+      - --with-boot-jdk=/usr/lib/sdk/openjdk21/bootstrap-java
+      - --with-jvm-variants=server
+      - --with-version-build=2
+      - --with-version-pre=
+      - --with-version-opt=
+      - --with-vendor-version-string=21.9
+      - --with-vendor-name=Flathub
+      - --with-vendor-url=https://flathub.org
+      - --with-vendor-bug-url=https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk21/issues
+      - --with-debug-level=release
+      - --with-native-debug-symbols=internal
+      - --enable-unlimited-crypto
+      - --with-zlib=system
+      - --with-libjpeg=system
+      - --with-giflib=system
+      - --with-libpng=system
+      - --with-lcms=system
+      - --with-harfbuzz=system
+      - --with-stdc++lib=dynamic
+      - --with-extra-cxxflags=-grecord-gcc-switches -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS
+        -fstack-protector-strong -fasynchronous-unwind-tables -fstack-clash-protection
+      - --with-extra-cflags=-grecord-gcc-switches -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS
+        -fstack-protector-strong -fasynchronous-unwind-tables -fstack-clash-protection
+      - --with-extra-ldflags=-Wl,-z,relro -Wl,-z,now -Wl,--as-needed
+      - --disable-javac-server
+      - --disable-warnings-as-errors
+    make-args:
+      - LOG=info
+      - images
+    post-install:
+      - (cd $FLATPAK_DEST/jvm && ln -s openjdk-21.* openjdk-21)
+    sources:
+      - type: archive
+        url: https://github.com/openjdk/jdk21u/archive/refs/tags/jdk-21.0.1+12.tar.gz
+        sha512: a21f39ad489455a25093a7d6e216418efa991aa92dbd631d3dfcb2847ec7f5ca85277cb7a192f44549687fe5323236404c80e4b3e4fe54b7b03230c2fa38e07a
+        x-checker-data:
+          type: json
+          url: https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&architecture=x64&image_type=jdk
+          version-query: .[0].release_name
+          url-query: '"https://github.com/openjdk/jdk21u/archive/refs/tags/" + $version
+            + ".tar.gz"'
+          versions:
+            -  "==": 21
+          is-main-source: true
+      - type: patch
+        path: 0001-Avoid-requiring-pcsc-development-files-at-runtime.patch
+      - type: shell
+        commands:
+          - chmod a+x configure
+          - sed -i -e "s|@prefix@|$FLATPAK_DEST|" make/autoconf/spec.gmk.in
+  - name: cacerts
+    buildsystem: simple
+    sources:
+      - type: file
+        path: extract_cacerts.sh
+    build-commands:
+      - ./extract_cacerts.sh $FLATPAK_DEST/jvm/openjdk-21
+  - name: ant
+    buildsystem: simple
+    cleanup:
+      - '*.bat'
+      - '*.cmd'
+    sources:
+      - type: file
+        url: http://archive.apache.org/dist/ant/binaries/apache-ant-1.10.14-bin.tar.gz
+        dest-filename: apache-ant-bin.tar.gz
+        sha512: 4e74b382dd8271f9eac9fef69ba94751fb8a8356dbd995c4d642f2dad33de77bd37d4001d6c8f4f0ef6789529754968f0c1b6376668033c8904c6ec84543332a
+        x-checker-data:
+          type: anitya
+          project-id: 50
+          stable-only: true
+          url-template: http://archive.apache.org/dist/ant/binaries/apache-ant-$version-bin.tar.gz
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/ant
+      - tar xf apache-ant-bin.tar.gz --strip-components=1 --directory=$FLATPAK_DEST/ant
+      - ln -s $FLATPAK_DEST/ant/bin/ant $FLATPAK_DEST/bin
+  - name: maven
+    buildsystem: simple
+    cleanup:
+      - '*.bat'
+      - '*.cmd'
+    sources:
+      - type: file
+        url: http://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz
+        dest-filename: apache-maven-bin.tar.gz
+        sha512: 706f01b20dec0305a822ab614d51f32b07ee11d0218175e55450242e49d2156386483b506b3a4e8a03ac8611bae96395fd5eec15f50d3013d5deed6d1ee18224
+        x-checker-data:
+          type: anitya
+          project-id: 1894
+          stable-only: true
+          url-template: http://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.tar.gz
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/maven
+      - tar xf apache-maven-bin.tar.gz --strip-components=1 --exclude=jansi-native
+        --directory=$FLATPAK_DEST/maven
+      - ln -s $FLATPAK_DEST/maven/bin/mvn $FLATPAK_DEST/maven/bin/mvnDebug $FLATPAK_DEST/bin
+  - name: gradle
+    buildsystem: simple
+    cleanup:
+      - '*.bat'
+    sources:
+      - type: file
+        url: https://services.gradle.org/distributions/gradle-8.5-bin.zip
+        dest-filename: gradle-bin.zip
+        sha512: c0c07fcee0802cbdf8156475280f961ef9c0d928252642363314e25da69803fd878ab65bdc1647efa5f4b1e9b7f71e6a4daa6946d9f9923628248e9f35e8b14b
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/gradle/gradle/releases
+          version-query: map(select(.prerelease == false)) | first | .name
+          url-query: '["https://services.gradle.org/distributions/gradle-" + $version
+            + "-bin.zip"][0]'
+    build-commands:
+      - unzip -q gradle-bin.zip -d $FLATPAK_DEST
+      - mv $FLATPAK_DEST/gradle-* $FLATPAK_DEST/gradle
+      - ln -s $FLATPAK_DEST/gradle/bin/gradle $FLATPAK_DEST/bin
+  - name: scripts
+    buildsystem: simple
+    sources:
+      - type: script
+        commands:
+          - mkdir -p /app/jre/bin
+          - cd /usr/lib/sdk/openjdk21/jvm/openjdk-21
+          - cp -ra conf lib release /app/jre/
+          - rm /app/jre/lib/src.zip /app/jre/lib/ct.sym
+          - cp -ra bin/{java,keytool,rmiregistry} /app/jre/bin
+        dest-filename: install.sh
+      - type: script
+        commands:
+          - mkdir -p /app/jdk/
+          - cd /usr/lib/sdk/openjdk21/jvm/openjdk-21
+          - cp -ra bin conf include jmods lib release /app/jdk/
+        dest-filename: installjdk.sh
+      - type: script
+        commands:
+          - export JAVA_HOME=/usr/lib/sdk/openjdk21/jvm/openjdk-21
+          - export PATH=$PATH:/usr/lib/sdk/openjdk21/bin
+        dest-filename: enable.sh
+    build-commands:
+      - cp enable.sh install.sh installjdk.sh /usr/lib/sdk/openjdk21/
+  - name: appdata
+    buildsystem: simple
+    sources:
+      - type: file
+        path: org.freedesktop.Sdk.Extension.openjdk.appdata.xml
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/metainfo
+      - cp org.freedesktop.Sdk.Extension.openjdk.appdata.xml ${FLATPAK_DEST}/share/metainfo
+      - appstream-compose --basename=org.freedesktop.Sdk.Extension.openjdk --prefix=${FLATPAK_DEST}
+        --origin=flatpak org.freedesktop.Sdk.Extension.openjdk
