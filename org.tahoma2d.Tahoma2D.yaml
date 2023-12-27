@@ -1,7 +1,3 @@
-#Much of this is copied from the OpenToonz build files and only deviates when it is best to do so
-#
-#
-
 app-id: org.tahoma2d.Tahoma2D
 runtime: org.kde.Platform
 runtime-version: '5.15-23.08'
@@ -12,7 +8,7 @@ finish-args:
   - --socket=x11
   - --device=dri
   - --socket=pulseaudio
-  - --filesystem=home
+  - --filesystem=host
   - --env=LD_LIBRARY_PATH=/app/lib:/app/lib/tahoma2d
 cleanup:
   - /include
@@ -28,13 +24,13 @@ modules:
   - shared-modules/glu/glu-9.json
   - shared-modules/intltool/intltool-0.51.json
   - shared-modules/libusb/libusb.json
-  
+
   - name: freeglut
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-    build-options:
+    build-options: # https://wiki.gentoo.org/wiki/Gcc_10_porting_notes/fno_common
       cflags: -fcommon
       cxxflags: -fcommon
     sources:
@@ -42,152 +38,216 @@ modules:
         url: https://downloads.sourceforge.net/project/freeglut/freeglut/3.2.1/freeglut-3.2.1.tar.gz
         sha256: d4000e02102acaf259998c870e25214739d1f16f67f99cb35e4f46841399da68
 
-    - name: superlu
-      buildsystem: cmake
-      builddir: true
-      config-opts:
-        - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        - -DCMAKE_POSITION_INDEPENDENT_CODE=True
-      sources:
-        - type: archive
-          url: https://github.com/xiaoyeli/superlu/archive/5.2.1.tar.gz
-          sha256: 77582501dedef295eb74e4dc9433e2816d2d8be211eae307379c13d93c65bc71
+  - name: superlu
+    buildsystem: cmake # ninja broken
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=True
+    sources:
+      - type: archive
+        url: https://github.com/xiaoyeli/superlu/archive/v5.2.1.tar.gz
+        sha256: 77582501dedef295eb74e4dc9433e2816d2d8be211eae307379c13d93c65bc71
 
-    - name: OpenBLAS
-      buildsystem: cmake-ninja
-      builddir: true
-      sources:
-        - type: archive
-          url: https://github.com/xianyi/OpenBLAS/archive/v0.3.9.tar.gz
-          sha256: 17d4677264dfbc4433e97076220adc79b050e4f8a083ea3f853a53af253bc380
+  - name: OpenBLAS
+    buildsystem: cmake-ninja
+    builddir: true
+#Needed for local VM building when CORE/LIBCORE not detected
+#    config-opts:
+#      - -DTARGET=NEHALEM
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.9.tar.gz
+        sha256: 17d4677264dfbc4433e97076220adc79b050e4f8a083ea3f853a53af253bc380
 
-    - name: lz4
-      buildsytem: cmake-ninja
-      builddir: true
-      subdir: contrib/cmake_unofficial
-      config-opts:
-        - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-      config:
-        - /bin
-      source:
-        - type: archive
-          url: https://github.com/lz4/lz4/archive/v1.9.2.tar.gz
-          sha256: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
+  - name: lz4
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: contrib/cmake_unofficial
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/lz4/lz4/archive/v1.9.2.tar.gz
+        sha256: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
 
-    - name: lzo
-      cleanup:
-        - /bin
-        - /share/doc
-      sources:
-        - type: archive
-          url: https://oberhumor.com/opensource/lzo/download/lzo-2.10.tar.gz
-          sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+  - name: lzo
+    cleanup:
+      - /bin
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
 
-    - name: json-c
-      sources:
-        - type: archive
-          url: https://github.com/json-c/json-c/archive/json-c-0.13.1-20180305.tar.gz
-          sha256: 5d867baeb7f540abe8f3265ac18ed7a24f91fe3c5f4fd99ac3caba0708511b90
+  - name: json-c
+    sources:
+      - type: archive
+        url: https://github.com/json-c/json-c/archive/json-c-0.13.1-20180305.tar.gz
+        sha256: 5d867baeb7f540abe8f3265ac18ed7a24f91fe3c5f4fd99ac3caba0708511b90
 
-    - name: libmypaint
-      config-opts:
-        - --disable-gegl
-        - --disable-introspection
-      source:
-        - type: archive
-          url: https://github.com/mypaint/libmypaint/releases/download/v1.5.1/libmypaint-1.5.1.tar.xz
-          sha256: aef8150a0c84ce2ff6fb24de8d5ffc564845d006f8bad7ed84ee32ed1dd90c2b
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --without-libraries=python
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2
+        sha256: 83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1 
+ 
+  - name: rhubarb
+    buildsystem: simple
+    build-commands:
+      - cmake . -DBOOST_ROOT=/app/include
+      - make rhubarb
+      - cp -R extras rhubarb/res rhubarb/rhubarb /app/bin
+      - mkdir /app/share/licenses/rhubarb
+      - cp -R CHANGELOG.md LICENSE.md  README.adoc /app/share/licenses/rhubarb
+    sources:
+      # Branch: tahoma2d-version
+      - type: archive
+        url: https://github.com/tahoma2d/rhubarb-lip-sync/archive/fa3177f9aaa5bbcbcfe820023372faf6bf597330.tar.gz
+        sha256: bb949e031c8523f191b24765f8a04cd5773d4edae1d9d1cb600956b2450ba75c
 
-    - name: boost
-      buildsystem: simple
-      build-commands:
-        - mkdir -p /app/include/boost
-        - mv -t /app/include/boost *
-      sources:
-        - type: archive
-          url: https://boostorg.jfrog.io/artifactory/main/release/1.72.0/source/boost_1_72_0.tar.bz2
-          sha256: 59c9b274bc451cf91a9ba1dd2c7fdcaf5d60b1b3aa83f2c9fa143417cc660722
+# Already in environment
+#  - name: openH264
+#    buildsystem: simple
+#    build-commands:
+#      - mv Makefile Makefile.orig
+#      - sed -e"s/usr.local/app/" Makefile.orig > Makefile
+#      - make
+#      - make install
+#    sources:
+#      - type: archive
+#        url: https://github.com/cisco/openh264/archive/v2.4.0.tar.gz
+#        sha256: a44d1ccc348a790f9a272bba2d1c2eb9a9bbd0302e4e9b655d709e1c32f92691
 
-    - name: 'x264'
-      config-opts:
-        - --disable-cli
-        - --enable-shared
-      sources:
-        - type: archive
-          url: https://code.videolan.org/videolan/x264/-/archive/1771b556ee45207f8711744ccbd5d42a3949b14c/x264-1771b556ee45207f8711744ccbd5d42a3949b14c.tar.bz2
-          sha256: b31c5db5337873b9ee42b8cbc60b56d60ce368fa7e4c4eff90a729b36eeb8326
+  - name: ffmpeg
+    config-opts:
+      - --enable-pthreads
+      - --enable-version3
+      - --enable-avresample
+      - --enable-gnutls
+#      - --enable-libbluray
+      - --enable-libmp3lame
+      - --enable-libopus
+#      - --enable-libsnappy
+      - --enable-libtheora
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-libwebp
+      - --enable-libxml2
+      - --enable-lzma
+      - --enable-libfreetype
+#      - --enable-libass
+#      - --enable-libopencore-amrnb
+#      - --enable-libopencore-amrwb
+      - --enable-libopenjpeg
+      - --enable-libspeex
+#      - --enable-libsoxr
+      - --enable-libopenh264
+      - --enable-shared
+      - --disable-static
+      - --disable-libjack
+      - --disable-indev=jack
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://www.ffmpeg.org/releases/ffmpeg-4.3.1.tar.xz
+        sha256: ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb
+      - type: patch
+        path: patches/ffmpeg-as-fix.patch
 
-    - name: ffmpeg
-      config-opts:
-        - --enable-gpl
-        - --disable-static
-        - --enabled-shared
-        - --disable-ffplay
-        - --enable-libopus
-        - --enable-libvpx
-        - --enable-libx264
-      cleanup:
-        - /share/ffmpeg/examples
-      sources:
-        - type: archive
-          url: https://ffmpeg.org/releases/ffmpeg-4.2.2.tar.xz
-          sha256: cb754255ab0ee2ea5f66f8850e1bd6ad5cac1cd855d0a2f4990fb8c668b0d29c
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_JASPER=OFF
+      - -DBUILD_JPEG=OFF
+      - -DBUILD_OPENEXR=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_PNG=OFF
+      - -DBUILD_PROTOBUF=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_TIFF=OFF
+      - -DBUILD_WEBP=OFF
+      - -DBUILD_ZLIB=OFF
+      - -DBUILD_opencv_hdf=OFF
+      - -DBUILD_opencv_java=OFF
+      - -DBUILD_opencv_text=ON
+      - -DOPENCV_ENABLE_NONFREE=ON
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+      - -DPROTOBUF_UPDATE_FILES=ON
+      - -DWITH_1394=OFF
+      - -DWITH_CUDA=OFF
+      - -DWITH_EIGEN=ON
+      - -DWITH_FFMPEG=ON
+      - -DWITH_GPHOTO2=OFF
+      - -DWITH_GSTREAMER=ON
+      - -DWITH_JASPER=OFF
+      - -DWITH_OPENEXR=ON
+      - -DWITH_OPENGL=OFF
+      - -DWITH_QT=OFF
+      - -DWITH_TBB=ON
+      - -DWITH_VTK=ON
+      - -DBUILD_opencv_python2=OFF
+      - -DBUILD_opencv_python3=ON
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.5.1.tar.gz
+        sha256: e27fe5b168918ab60d58d7ace2bd82dd14a4d0bd1d3ae182952c2113f5637513
 
-    - name: opencv
-      buildsystem: cmake-ninja
-      builddir: true
-      config-opts:
-        - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        - -DOPENCV_GENERATE_PKGCONFIG=ON
-        - -DWITH_OPENCL=ON
-        - -DWITH_OPENGL=ON
-        - -DWITH_TBB=ON
-        - -DWITH_VULKAN=ON
-        - -DBUILD_WITH_DEBUG_INFO=OFF
-        - -DBUILD_TESTS=OFF
-        - -DBUILD_PERF_TESTS=OFF
-        - -DBUILD_EXAMPLES=OFF
-        - -DINSTALL_C_EXAMPELS=OFF
-        - -DINSTALL_PYTHON_EXAMPLES=OFF
-        - -DWITH_1394=OFF
-        - -DWITH_PROTOBUF=ON
-        - -DBUILD_LIST=alib3d,core,dnn,features2d,flann,highgui,imgcodecs,imgproc,java_bindings_generator,ml,objdetect,photo,python_bindings_generator,python_tests,stitching,video,videoio
-      cleanup:
-        - /bin
-      sources:
-        - type: archive
-          url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
-          sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
-        - type: archive
-          url: https://github.com/opencv/opencv_contrib/archive/4.2.0.tar.gz
-          sha256: 8a6b5661611d89baa59a26eb7ccf4abb3e55d73f99bb52d8f7c32265c8a43020
-    
-    - name: tahoma2d
-      buildsystem: cmake
-      build-commands:
-        #- install -Dm 644 -t /app/share/applications com.tahoma2d.Tahoma2D.desktop
-        #- install -Dm 644 -t /app/share/icons/hicolor/256x256/apps com.tahoma2d.Tahoma2D.png
-      builddir: true
-      subdir: toonz/sources
-      config-opts:
-        - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        - -DWITH_TRANSLATION=OFF
-        - -DBOOST_ROOT=/app/include/boost
-      sources:
-        - type: archive
-          url: https://github.com/tahoma2d/tahoma2d/releases/download/v1.4/Tahoma2D-linux.tar.gz
-          sha256: 39616a1157f1fcf250914d737128c60a1e202f93fd91cbb962e4b1b9a07d7c22
-        - type: shell
-          commands:
-            - cd thirdparty/tiff-2.0 &&
-              ./configure --with-pic --disable-jbig &&
-              make -j $FLATPAK_BUILDER_N_JOBS
-        - type: file
-          path: com.tahoma2d.Tahoma2D.png
-        - type: file
-          path: com.tahoma2d.Tahoma2.metainfo.xml
-        - type: file
-          path: com.tahoma2d.Tahoma2D.desktop
+  - name: libgphoto2
+    buildsystem: simple
+    build-commands:
+      - autoreconf --install --symlink
+      - ./configure --prefix=/app
+      - make
+      - make install
+    sources:
+      # Branch: tahoma2d-version
+      - type: archive
+        url: https://github.com/tahoma2d/libgphoto2/archive/cb431893a4736853b401d19e66aa48e9f4cecd71.tar.gz
+        sha256: d4a10d1f3d35d31f4b63c1ea1b2fe79d3ae1ecaa0fdf8ddeec8cfed003cd7720
 
+  - name: libmypaint
+    config-opts:
+      - --disable-gegl
+      - --disable-introspection
+    sources:
+      - type: archive
+        url: https://github.com/mypaint/libmypaint/releases/download/v1.4.0/libmypaint-1.4.0.tar.xz
+        sha256: 59d13b14c6aca0497095f29ee7228ca2499a923ba8e1dd718a2f2ecb45a9cbff
 
-#Note to self: Add svn stuff later
+  - name: tahoma2d
+    buildsystem: cmake
+    builddir: true
+    subdir: toonz/sources
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DWITH_GPHOTO2:BOOL=ON
+      - -DWITH_SYSTEM_SUPERLU=ON
+      - -DWITH_TRANSLATION=OFF
+      - -DBOOST_ROOT=/app/include/boost
+    sources:
+      - type: archive
+        url: https://github.com/tahoma2d/tahoma2d/archive/9396f120141ccc4fe375ef25aa7a0643b8692520/v1.4.tar.gz
+        sha256: a15f3c11891477804cc7120a4997837ddc07acf8e9bfd8186018f3a406b7b57e
+      # These patches can be removed after next release
+      - type: patch
+        path: patches/tahoma2d-sysenvvar.patch
+      - type: patch
+        path: patches/tahoma2d-flatpak.patch
+      - type: shell
+        commands:
+          - cd thirdparty/tiff-4.2.0 &&
+            cp -p /usr/share/automake-*/config.{sub,guess} config &&
+            ./configure --with-pic --disable-jbig --disable-webp &&
+            make -j $FLATPAK_BUILDER_N_JOBS
