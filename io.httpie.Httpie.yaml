@@ -1,0 +1,70 @@
+id: io.httpie.Httpie
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: httpie
+finish-args:
+  # An tool for network requests requires network permission to function
+  - --share=network
+
+  # Httpie Desktop currently does not have Wayland support
+  - --socket=x11
+  - --share=ipc
+
+  # Enable GPU acceleration as the app is very slow otherwise
+  - --device=dri
+modules:
+  # ./httpie.appimage --extract-appimage doesn't work inside of Flatpak,
+  # so unappimage is required
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: xrandr
+    sources:
+      - sha256: 7b99edb7970a1365eaf5bcaf552144e4dfc3ccf510c4abc08569849929fb366e
+        type: archive
+        url: https://www.x.org/archive/individual/app/xrandr-1.5.1.tar.gz
+
+  - name: httpie
+    buildsystem: simple
+    sources:
+      - type: script
+        dest-filename: httpie
+        commands:
+          - zypak-wrapper.sh /app/extra/httpie/httpie --no-sandbox "$@"
+
+      - type: extra-data
+        url: https://github.com/httpie/desktop/releases/download/v2023.3.6/HTTPie-2023.3.6.AppImage
+        sha256: 0070f765b5737cc42d6294d6dc5bba232a38d7ff01e0729915f35459a6cb08e3
+        filename: httpie.appimage
+        size: 103644110
+
+      # apply_extra runs at the end of the installation process and extracts
+      # the app from the appimage file
+      - type: file
+        path: apply_extra.sh
+
+      - type: file
+        path: io.httpie.Httpie.desktop
+
+      - type: file
+        path: io.httpie.Httpie.metainfo.xml
+
+      # At least a single icon needs to be available at build time to pass the validation.
+      # The rest of the icons are installed later by apply_extra
+      - type: file
+        path: io.httpie.Httpie.png
+    build-commands:
+      - install -D ./apply_extra.sh "${FLATPAK_DEST}/bin/apply_extra"
+      - install httpie "${FLATPAK_DEST}/bin/"
+      - install -Dm644 "${FLATPAK_ID}.desktop" -t "${FLATPAK_DEST}/share/applications"
+      - install -Dm644 "${FLATPAK_ID}.metainfo.xml" -t "${FLATPAK_DEST}/share/metainfo"
+      - install -Dm644 io.httpie.Httpie.png -t "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps"
