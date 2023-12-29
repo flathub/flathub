@@ -1,0 +1,46 @@
+From 0dfcb4934ccc8a4c70fdb648c8b524bfdaba059c Mon Sep 17 00:00:00 2001
+From: Matthias Klumpp <matthias@tenstral.net>
+Date: Fri, 29 Dec 2023 15:15:58 +0100
+Subject: [PATCH] Fix module loader on older versions of Flatpak / Ubuntu 20.04
+
+Resolves: #2
+---
+ src/modulelibrary.cpp | 6 +++---
+ src/utils/misc.cpp    | 6 +++++-
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/modulelibrary.cpp b/src/modulelibrary.cpp
+index df901bbd..0c9f23ed 100644
+--- a/src/modulelibrary.cpp
++++ b/src/modulelibrary.cpp
+@@ -70,10 +70,10 @@ ModuleLibrary::ModuleLibrary(GlobalConfig *gconf, QObject *parent)
+     d->syntalosApiId = QStringLiteral(SY_MODULE_API_TAG);
+     auto sysInfo = SysInfo::get();
+ 
++    const auto appDirPath = QCoreApplication::applicationDirPath();
+     bool haveLocalModDir = false;
+-    if (!QCoreApplication::applicationDirPath().startsWith("/usr") && !sysInfo->inFlatpakSandbox()) {
+-        const auto path = QDir(QStringLiteral("%1/%2").arg(QCoreApplication::applicationDirPath()).arg("../modules"))
+-                              .canonicalPath();
++    if (!appDirPath.startsWith("/usr/") && !sysInfo->inFlatpakSandbox() && !appDirPath.startsWith("/app/")) {
++        const auto path = QDir(QStringLiteral("%1/%2").arg(appDirPath).arg("../modules")).canonicalPath();
+         if (QDir(path).exists()) {
+             d->locations.append(ModuleLocation(path, true));
+             haveLocalModDir = true;
+diff --git a/src/utils/misc.cpp b/src/utils/misc.cpp
+index 09606a46..5ec7e4c3 100644
+--- a/src/utils/misc.cpp
++++ b/src/utils/misc.cpp
+@@ -137,7 +137,11 @@ QString syntalosVersionFull()
+ 
+ bool isInFlatpakSandbox()
+ {
+-    return qEnvironmentVariable("container") == QStringLiteral("flatpak");
++    if (qEnvironmentVariable("container") == QStringLiteral("flatpak"))
++        return true;
++    if (qEnvironmentVariable("FLATPAK_ID").startsWith("io.github"))
++        return true;
++    return false;
+ }
+ 
+ QString findHostFile(const QString &path)
