@@ -4,6 +4,12 @@ This Flatpak tries to stick as close to possible to the versions required
 by BambuStudio's build scripts. We, however, will update dependencies if
 it fixes build problems.
 
+# Common issues
+
+- Window Manager titlebar is visible in addition to app titlebar ([upstream issue](https://github.com/bambulab/BambuStudio/issues/3313))
+- Lack of Wayland support ([upstream issue](https://github.com/bambulab/BambuStudio/issues/2595))
+- Huge amount of GTK warnings on startup ([upstream issue](https://github.com/bambulab/BambuStudio/issues/3315))
+
 # Reporting problems
 
 Unless problems don't occur with the [BambuLab-provided AppImage](https://github.com/bambulab/BambuStudio/releases), please
