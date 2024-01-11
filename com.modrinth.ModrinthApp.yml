@@ -1,0 +1,137 @@
+id: com.modrinth.ModrinthApp
+
+runtime: org.gnome.Platform
+runtime-version: "45"
+sdk: org.gnome.Sdk//45
+
+rename-icon: modrinth-app
+command: modrinth-app
+finish-args:
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create # allows for discord rpc
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+
+modules:
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.0.tar.xz
+        sha256: c66530e41ba59b1edba4ee89ef20b2188e273bed0497e95084729e3cfbe30c87
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      # taken from https://gitlab.gnome.org/GNOME/gnome-build-meta/-/blob/5a241420c2ee85cc5080dd7cf7ba3049fd80fcf1/elements/world/webkit2gtk-4.0.bst
+      - -DPORT=GTK
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DUSE_GTK4=OFF
+      - -DUSE_LIBBACKTRACE=OFF
+      - -DUSE_SOUP2=ON
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - "*"
+
+  - name: openssl11
+    buildsystem: simple
+    build-commands:
+      - ./config --prefix=${FLATPAK_DEST}
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install_sw
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - "*.a"
+      - "*.la"
+    sources:
+      - type: archive
+        url: https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        sha256: cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8
+        x-checker-data:
+          type: anitya
+          project-id: 20333
+          url-template: https://www.openssl.org/source/openssl-$version.tar.gz
+
+  # for the in-game narrator
+  - name: flite
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+    no-parallel-make: true
+    cleanup:
+      - /bin
+      - /include
+      - "*.a"
+    sources:
+      - type: git
+        url: https://github.com/festvox/flite.git
+        tag: v2.2
+        commit: e9e2e37c329dbe98bfeb27a1828ef9a71fa84f88
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  # for some controller mods (see https://github.com/isXander/Controlify/issues/31)
+  - shared-modules/libusb/libusb.json
+
+  # TODO: compile from source (preferably before the launcher supports arm on linux)
+  - name: modrinth-app
+    buildsystem: simple
+    build-commands:
+      - chmod +x ModrinthApp.AppImage
+      - ./ModrinthApp.AppImage --appimage-extract
+
+      - |
+        desktop-file-edit \
+          --set-name="Modrinth App" \
+          --set-comment="Modrinth's game launcher" \
+          --set-icon="$FLATPAK_ID" \
+          --set-key="StartupNotify" --set-value="true" \
+          --set-key="Categories" --set-value="Game;ActionGame;AdventureGame;Simulation;" \
+          --set-key="Keywords" --set-value="game;minecraft;mc;" \
+          --set-key="StartupWMClass" --set-value="ModrinthApp" \
+          squashfs-root/usr/share/applications/modrinth-app.desktop
+
+      - mkdir -p /app/{bin,share}
+      - cp -r squashfs-root/usr/share/icons /app/share/icons
+      - install -Dm755 squashfs-root/usr/bin/modrinth-app /app/bin/modrinth-app
+      - install -Dm644 squashfs-root/usr/share/applications/modrinth-app.desktop /app/share/applications/com.modrinth.ModrinthApp.desktop
+      - install -Dm644 com.modrinth.ModrinthApp.metainfo.xml /app/share/metainfo/com.modrinth.ModrinthApp.metainfo.xml
+
+    sources:
+      - type: file
+        path: com.modrinth.ModrinthApp.metainfo.xml
+
+      - type: file
+        url: https://launcher-files.modrinth.com/versions/0.7.1/linux/modrinth-app_0.7.1_amd64.AppImage
+        dest-filename: ModrinthApp.AppImage
+        sha256: 24f6a53b34eec89d9f8651daab871d5be0fe2616da8d163609728c2c1906c0c5
+        only-arches: [x86_64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/modrinth/theseus/releases/latest
+          tag-query: '.tag_name'
+          version-query: '$tag | sub("v";"")'
+          timestamp-query: '.published_at'
+          url-query: |
+            "https://launcher-files.modrinth.com/versions/\($version)/linux/modrinth-app_\($version)_amd64.AppImage"
