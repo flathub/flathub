@@ -6,6 +6,7 @@ import argparse
 import json
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,10 @@ parser.add_argument('--runtime',
                     help='Specify a flatpak to run pip inside of a sandbox, ensures python version compatibility')
 parser.add_argument('--yaml', action='store_true',
                     help='Use YAML as output format instead of JSON')
+parser.add_argument('--ignore-errors', action='store_true',
+                    help='Ignore errors when downloading packages')
+parser.add_argument('--ignore-pkg', nargs='*',
+                    help='Ignore a package when generating the manifest. Can only be used with a requirements file')
 opts = parser.parse_args()
 
 if opts.yaml:
@@ -78,7 +83,7 @@ def get_tar_package_url_pypi(name: str, version: str) -> str:
     url = 'https://pypi.org/pypi/{}/{}/json'.format(name, version)
     with urllib.request.urlopen(url) as response:
         body = json.loads(response.read().decode('utf-8'))
-        for ext in ['whl', 'bz2', 'gz', 'xz', 'zip']:
+        for ext in ['bz2', 'gz', 'xz', 'zip']:
             for source in body['urls']:
                 if source['url'].endswith(ext):
                     return source['url']
@@ -156,22 +161,36 @@ def fprint(string: str) -> None:
 
 packages = []
 if opts.requirements_file:
-    requirements_file = os.path.expanduser(opts.requirements_file)
+    requirements_file_input = os.path.expanduser(opts.requirements_file)
     try:
-        with open(requirements_file, 'r') as req_file:
+        with open(requirements_file_input, 'r') as req_file:
             reqs = parse_continuation_lines(req_file)
             reqs_as_str = '\n'.join([r.split('--hash')[0] for r in reqs])
-            packages = list(requirements.parse(reqs_as_str))
-    except FileNotFoundError:
-        pass
+            reqs_list_raw = reqs_as_str.splitlines()
+            py_version_regex = re.compile(r';.*python_version .+$') # Remove when pip-generator can handle python_version
+            reqs_list = [py_version_regex.sub('', p) for p in reqs_list_raw]
+            if opts.ignore_pkg:
+                reqs_new = '\n'.join(i for i in reqs_list if i not in opts.ignore_pkg)
+            else:
+                reqs_new = reqs_as_str
+            packages = list(requirements.parse(reqs_new))
+            with tempfile.NamedTemporaryFile('w', delete=False, prefix='requirements.') as req_file:
+                req_file.write(reqs_new)
+                requirements_file_output = req_file.name
+    except FileNotFoundError as err:
+        print(err)
+        sys.exit(1)
 
 elif opts.packages:
     packages = list(requirements.parse('\n'.join(opts.packages)))
     with tempfile.NamedTemporaryFile('w', delete=False, prefix='requirements.') as req_file:
         req_file.write('\n'.join(opts.packages))
-        requirements_file = req_file.name
+        requirements_file_output = req_file.name
 else:
-    exit('Please specifiy either packages or requirements file argument')
+    if not len(sys.argv) > 1:
+        exit('Please specifiy either packages or requirements file argument')
+    else:
+        exit('This option can only be used with requirements file')
 
 for i in packages:
     if i["name"].lower().startswith("pyqt"):
@@ -180,7 +199,7 @@ for i in packages:
         print("Visit https://github.com/flathub/com.riverbankcomputing.PyQt.BaseApp for more information")
         sys.exit(0)
 
-with open(requirements_file, 'r') as req_file:
+with open(requirements_file_output, 'r') as req_file:
     use_hash = '--hash=' in req_file.read()
 
 python_version = '2' if opts.python2 else '3'
@@ -200,16 +219,18 @@ if opts.runtime:
         opts.runtime
     ]
     if opts.requirements_file:
-        requirements_file = os.path.expanduser(opts.requirements_file)
-        if os.path.exists(requirements_file):
-            prefix = os.path.realpath(requirements_file)
+        if os.path.exists(requirements_file_output):
+            prefix = os.path.realpath(requirements_file_output)
             flag = '--filesystem={}'.format(prefix)
             flatpak_cmd.insert(1,flag)
 else:
     flatpak_cmd = [pip_executable]
 
+output_path = ''
+
 if opts.output:
-    output_package = opts.output
+    output_path = os.path.dirname(opts.output)
+    output_package = os.path.basename(opts.output)
 elif opts.requirements_file:
     output_package = 'python{}-{}'.format(
         python_version,
@@ -222,15 +243,15 @@ elif len(packages) == 1:
 else:
     output_package = 'python{}-modules'.format(python_version)
 if opts.yaml:
-    output_filename = output_package + '.yaml'
+    output_filename = os.path.join(output_path, output_package) + '.yaml'
 else:
-    output_filename = output_package + '.json'
+    output_filename = os.path.join(output_path, output_package) + '.json'
 
 modules = []
 vcs_modules = []
 sources = {}
 
-tempdir_prefix = 'pip-generator-{}'.format(os.path.basename(output_package))
+tempdir_prefix = 'pip-generator-{}'.format(output_package)
 with tempfile.TemporaryDirectory(prefix=tempdir_prefix) as tempdir:
     pip_download = flatpak_cmd + [
         'download',
@@ -238,7 +259,7 @@ with tempfile.TemporaryDirectory(prefix=tempdir_prefix) as tempdir:
         '--dest',
         tempdir,
         '-r',
-        requirements_file
+        requirements_file_output
     ]
     if use_hash:
         pip_download.append('--require-hashes')
@@ -248,19 +269,23 @@ with tempfile.TemporaryDirectory(prefix=tempdir_prefix) as tempdir:
     print('Running: "{}"'.format(cmd))
     try:
         subprocess.run(pip_download, check=True)
+        os.remove(requirements_file_output)
     except subprocess.CalledProcessError:
+        os.remove(requirements_file_output)
         print('Failed to download')
         print('Please fix the module manually in the generated file')
+        if not opts.ignore_errors:
+            print('Ignore the error by passing --ignore-errors')
+            raise
 
-    if not opts.requirements_file:
         try:
-            os.remove(requirements_file)
+            os.remove(requirements_file_output)
         except FileNotFoundError:
             pass
 
     fprint('Downloading arch independent packages')
     for filename in os.listdir(tempdir):
-        if not filename.endswith(('whl', 'bz2', 'any.whl', 'gz', 'xz', 'zip')):
+        if not filename.endswith(('bz2', 'any.whl', 'gz', 'xz', 'zip')):
             version = get_file_version(filename)
             name = get_package_name(filename)
             url = get_tar_package_url_pypi(name, version)
