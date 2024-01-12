@@ -1,0 +1,85 @@
+app-id: io.github.yuki_iptv.yuki-iptv
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.6'
+command: run.sh
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland  
+  - --share=network
+  - --share=ipc
+  - --socket=pulseaudio
+  - --device=dri
+  #  mpris support via dbus
+  - --own-name=org.mpris.MediaPlayer2.yuki_iptv.*
+  - --talk-name=org.gnome.SessionManager  
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+
+  - libmpv.yml
+  - python3-modules.json
+
+  - name: imagemagick
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-docs
+      - --with-modules
+      - --with-threads
+    sources:
+      - type: archive
+        url: https://github.com/ImageMagick/ImageMagick/archive/7.1.1-26.tar.gz
+        sha256: ac21f65936a1fd1a073ebd0e653c6d133c43cc02d77977480f70c89856b1241b
+        x-checker-data:
+          type: anitya
+          project-id: 1372
+          stable-only: true
+          url-template: https://github.com/ImageMagick/ImageMagick/archive/$version.tar.gz
+    cleanup:
+      - /bin/*-config
+      
+
+  - name: yuki-iptv
+    buildsystem: simple
+    build-commands:
+      - ar -x yuki-iptv.deb
+      - tar -xvf data.tar.xz
+     
+      # fix for later dir copy error: cannot overwrite non-directory with directory
+      - mv usr/share/locale/pt_BR/LC_MESSAGES/yuki-iptv.mo /app/share/locale/pt_BR/LC_MESSAGES/
+      - rm -rf usr/share/locale/pt_BR
+
+      - cp -r usr/* /app/
+      - rm -rf usr
+      
+      - install -Dm644 /app/share/metainfo/yuki-iptv.appdata.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's|type="desktop"|type="desktop-application"|g' /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's|<id>yuki-iptv.desktop</id>|<id>io.github.yuki_iptv.yuki-iptv</id>|g' /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's|<launchable type="desktop-id">yuki-iptv.desktop</launchable>|<launchable type="desktop-id">io.github.yuki_iptv.yuki-iptv.desktop</launchable>|g' /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      
+      
+      - sed -i 's|yuki-iptv.desktop|io.github.yuki_iptv.yuki-iptv.desktop|g' /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+      - install -Dm644 /app/share/icons/hicolor/scalable/apps/yuki-iptv.svg /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.svg
+      - install -Dm644 /app/share/applications/yuki-iptv.desktop /app/share/applications/${FLATPAK_ID}.desktop
+
+      - desktop-file-edit --set-key Exec --set-value "/app/bin/run.sh" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon ${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+
+      - install -Dm755 run.sh /app/bin/run.sh   
+    sources:
+    
+      - type: file
+        url: https://github.com/yuki-iptv/yuki-iptv/releases/download/0.0.8/yuki-iptv_0.0.8_all.deb
+        dest-filename: yuki-iptv.deb
+        sha256: 5e300a9bd39364ad83093923b67b2602066e0cf2dbc51b065c3cffd3dee039cb
+
+
+      - type: script
+        commands:
+          - python /app/lib/yuki-iptv/yuki-iptv.py "$@"
+        dest-filename: run.sh
+
