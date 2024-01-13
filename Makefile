@@ -8,7 +8,7 @@ ID := io.github.voxelcubes.panelcleaner
 
 
 generate-dependencies:
-	python flatpak-pip-generator-fix --runtime='org.freedesktop.Sdk//23.08' --yaml --output pypi-dependencies --requirements-file='requirements.txt' --ignore-pkg 'PySide6 numpy pybind11 pythran meson-python scipy lapack openblas'
+	python flatpak-pip-generator-fix --runtime='org.freedesktop.Sdk//23.08' --yaml --output pypi-dependencies --requirements-file='requirements.txt'
 
 build-install:
 	flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/repo/screenshots --repo=repo builddir $(ID).yaml
