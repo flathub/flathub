@@ -22,10 +22,96 @@ finish-args:
   - --device=dri
 modules:
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
-  - libssh2.yaml
-  - c-ares.yaml
-  - aria2.yaml
-  - uGet.yaml
+  - name: aria2
+    config-opts:
+      - --enable-bittorrent
+      - --enable-metalink
+      - --enable-websocket
+      - --enable-epoll
+      # GnuTLS has precedence over OpenSSL if both libraries are installed.
+      - --without-openssl
+      - --with-gnutls
+      - --with-libcares
+      - --with-libxml2
+      - --with-libz
+      - --with-sqlite3
+      - --enable-gnutls-system-crypto-policy
+      - --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt
+    sources:
+      - type: archive
+        url: https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz
+        sha256: 60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b
+        x-checker-data:
+          type: anitya
+          project-id: 109
+          url-template: https://github.com/aria2/aria2/releases/download/release-$version/aria2-$version.tar.xz  
+    post-install:
+      - install -p -D -m 0644 "COPYING" LICENSE* -t "${FLATPAK_DEST}/share/licenses/aria2/";
+
+  - name: c-ares
+    config-opts:
+      - --enable-shared
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://c-ares.haxx.se/download/c-ares-1.25.0.tar.gz
+        sha256: 71832b93a48f5ff579c505f4869120c14e57b783275367207f1a98314aa724e5
+        x-checker-data:
+          type: anitya
+          project-id: 5840
+          url-template: https://c-ares.haxx.se/download/c-ares-$version.tar.gz
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} .;
+          - autoreconf -vfi;
+    post-install:
+      - install -p -D -m 0644 "LICENSE.md" -t "${FLATPAK_DEST}/share/licenses/c-ares/";
+    cleanup:
+      - /include
+      - /share
+
+  - name: libssh2
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+    cleanup:
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://www.libssh2.org/download/libssh2-1.11.0.tar.gz
+        sha256: 3736161e41e2693324deb38c26cfdc3efe6209d634ba4258db1cecff6a5ad461
+        x-checker-data:
+          type: anitya
+          project-id: 1730
+          url-template: https://www.libssh2.org/download/libssh2-$version.tar.gz    
+    post-install:
+      - install -p -D -m 0644 "../COPYING" -t "${FLATPAK_DEST}/share/licenses/libssh2/";
+  
+  - name: uGet
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/urlget/files/uget%20%28stable%29/2.2.3/uget-2.2.3-1.tar.gz
+        sha256: 11356e4242151b9014fa6209c1f0360b699b72ef8ab47dbeb81cc23be7db9049
+      - type: patch
+        path: gcc10.patch
+      - type: file
+        path: com.ugetdm.uGet.desktop
+      - type: file
+        path: com.ugetdm.uGet.appdata.xml
+    
+    post-install:
+      - icon_in="pixmaps/icons/hicolor/scalable/apps/uget-icon.svg";
+        icon_out="uget-icon.png";
+        rsvg-convert "${icon_in}" -w "512" -h "512" -a -f png -o "uget-icon.png";
+        [[ ! -f "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${icon_out}" ]] || continue;
+        install -p -D -m 0644 "${icon_out}" -t "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/";
+    
+      - install -p -D -m 0644 "com.ugetdm.uGet.appdata.xml" -t "${FLATPAK_DEST}/share/appdata/";
+      - install -p -D -m 0644 "com.ugetdm.uGet.desktop" -t "${FLATPAK_DEST}/share/applications/";
+      - install -p -D -m 0644 "COPYING" -t "${FLATPAK_DEST}/share/licenses/uget/";
+
 cleanup:
    - /include
    - /lib/pkgconfig
