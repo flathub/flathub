@@ -1,0 +1,92 @@
+app-id: io.github.sigmasd.stimulator
+
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+# Make sure to remove unneded files to optimize size
+# cleanup treats $FLATPAK_DEST as the root
+cleanup:
+  - /lib
+  - /bin/protoc*
+  - /include
+
+command: stimulator
+
+finish-args: 
+  # display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # gtk4 wants to access gpu
+  - --device=dri
+
+modules:
+   # Required for deno to build
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: 7f94235e552599141950d7a4a3eaf93bc87d1b22
+        tag: v25.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+
+  - name: deno
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/deno/cargo
+    buildsystem: simple
+    build-commands:
+      - mv librusty* librusty # unify name for different arch
+      - RUSTY_V8_ARCHIVE=$PWD/librusty cargo build --release
+      - install -Dm755 target/release/deno -t /app/bin
+    sources:
+      # deno 1.38.4 uses librusty_v8 0.81.0
+      - type: file
+        url:  https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_x86_64-unknown-linux-gnu.a
+        sha256: 7bbecb626fecbacec46387a246e129e86db97630da4f8c120f81410b1cb8bdc1
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/denoland/rusty_v8/releases/download/v0.81.0/librusty_v8_release_aarch64-unknown-linux-gnu.a
+        sha256: c0f7d472e4f6676b32e672dff314774231902a4e8eb0cff8e639d8bff1f0f99b
+        only-arches:
+          - aarch64
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v1.38.4/deno_src.tar.gz
+        sha256: a041d7407d89b94c7d2d863397159799c44ea5012eb3ff6870277003620b3ef4
+      - deno-cargo-sources.json
+
+  - name: stimulator
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin/runtime
+      - cp -r src /app/bin/runtime/src
+      - cp deno.json /app/bin/runtime/deno.json
+      - cp -r vendor /app/bin/runtime/vendor
+
+      - echo "DENO_PYTHON_PATH=/usr/lib/$(uname -m)-linux-gnu/libpython3.11.so.1.0 /app/bin/deno run --allow-read=/app/bin/runtime/src/locales --allow-env=DENO_PYTHON_PATH --allow-ffi --unstable-ffi /app/bin/runtime/src/main.ts" >/app/bin/stimulator
+      - chmod +x /app/bin/stimulator
+
+      - install -Dm644 distro/io.github.sigmasd.stimulator.desktop -t /app/share/applications/
+      - install -Dm644 distro/io.github.sigmasd.stimulator.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 distro/io.github.sigmasd.stimulator.metainfo.xml -t /app/share/metainfo/
+
+    sources:
+      - type: archive
+        url: https://github.com/sigmaSd/stimulator/archive/refs/tags/0.6.0.tar.gz
+        sha256: 5b50cfaa5a4ef433246e976d06b622d9848c4503226cc049a38d7c761d4ed585
+
