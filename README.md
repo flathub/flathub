@@ -35,8 +35,6 @@
   
 'mp3', 'm4a', 'wav', 'wma', 'aac', 'ogg', 'pcm', 'aiff', 'flac' ..etc  
 
-<iframe src="https://snapcraft.io/formatlab/embedded?button=black&summary=true&screenshot=true" frameborder="0" width="100%" height="800px" style="border: 1px solid #CCC; border-radius: 2px;"></iframe>
-
 
 **KEYWORDS:** 
 
