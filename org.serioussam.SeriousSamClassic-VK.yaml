@@ -1,0 +1,118 @@
+app-id: org.serioussam.SeriousSamClassic-VK
+runtime: org.freedesktop.Platform
+sdk: org.freedesktop.Sdk
+runtime-version: '23.08'
+command: serioussam.sh
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+
+modules:
+
+  - name: serioussam
+    buildsystem: cmake-ninja
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX:PATH="/usr"
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    post-install:
+      - install -Dm 755 SamTFE/Sources/serioussam /app/bin/serioussam
+      - install -Dm 755 SamTFE/Sources/Debug/libEngine.so /app/lib/libEngine.so
+      - install -Dm 755 SamTFE/Sources/Debug/libGame.so /app/lib/serioussam/libGame.so
+      - install -Dm 755 SamTFE/Sources/Debug/libEntities.so /app/lib/serioussam/libEntities.so
+      - install -Dm 755 SamTFE/Sources/Debug/libamp11lib.so /app/lib/serioussam/libamp11lib.so
+      - install -Dm 755 SamTFE/Sources/Debug/libShaders.so /app/lib/serioussam/libShaders.so
+      - install -Dm 755 SamTFE/SE1_10b.gro /app/share/serioussam/SE1_10b.gro
+      - install -Dm 755 SamTSE/Sources/serioussamse /app/bin/serioussamse
+      - install -Dm 755 SamTSE/Sources/Debug/libEngineMP.so /app/lib/libEngineMP.so
+      - install -Dm 755 SamTSE/Sources/Debug/libGameMP.so /app/lib/serioussamse/libGameMP.so
+      - install -Dm 755 SamTSE/Sources/Debug/libEntitiesMP.so /app/lib/serioussamse/libEntitiesMP.so
+      - install -Dm 755 SamTSE/Sources/Debug/libamp11lib.so /app/lib/serioussamse/libamp11lib.so
+      - install -Dm 755 SamTSE/Sources/Debug/libShaders.so /app/lib/serioussamse/libShaders.so
+      - install -Dm 755 SamTSE/SE1_10b.gro /app/share/serioussamse/SE1_10b.gro
+    sources:
+      - type: archive
+        url: https://github.com/tx00100xt/SeriousSamClassic-VK/archive/refs/tags/1.10.6d.tar.gz
+        sha256: 768ea6a42e6506ab4619771932032a392c6e3e64be9ecc694b02a172b767b2fa
+        x-checker-data:
+          type: anitya
+          project-id: 9154
+          url-template: https://github.com/tx00100xt/SeriousSamClassic-VK/archive/refs/tags/$version.tar.gz
+      - type: shell
+        commands:
+      # ----------------------------------------------------
+      # This commands adapted source code for create flatpak
+      # ----------------------------------------------------
+      # For amd64/i686 architecture (for any computers)
+          - find . -name "CMakeLists.txt" -exec sed -i 's/-march=native/-mtune=generic/g' {} +
+      # Remove ImageMagick depend (no need this depend for flatpak)
+          - find . -name "CMakeLists.txt" -exec sed -i 's/if(NOT LOCAL_INSTALL)/if(LOCAL_INSTALL)/g' {} +
+      # Replace /usr with /app
+          - find . -name "Engine.cpp" -exec sed -i 's/\/usr\//\/app\//g' {} +
+      # Fix /app/lib (replace "//" with "/")
+          - find . -name "Engine.cpp" -exec sed -i 's/\/app\/lib\/\//\/app\/lib\//g' {} +
+      # sys_iSysPath == 0 (force library path)
+          - find . -name "Engine.cpp" -exec sed -i 's/sys_iSysPath == 0/sys_iSysPath == 1/g' {} +
+      # _fnmModLibPath = _fnmApplicationPath (force library path)
+          - find . -name "Engine.cpp" -exec sed -i 's/_fnmModLibPath = _fnmApplicationPath/_fnmModLibPath = "\/app\/lib\/" + strGameID + "\/"/g' {} +
+      # Fix SDL2 message box
+          - find . -name "Engine.cpp" -exec sed -i 's/~\/.local\/share\/Serious-Engine\///g' {} +
+          - find . -name "Engine.cpp" -exec sed -i 's/_fnmUserDir,(const char \*) strGameID/_fnmUserDir,(const char \*) _fnmUserDir/g' {} +
+      # supresses warnings for a non-used directory
+          - mkdir -p /app/share/serioussam && mkdir -p /app/share/serioussamse
+          - mkdir -p /app/lib/serioussam && mkdir -p /app/lib/serioussamse
+
+  - name: launcher
+    buildsystem: simple
+    sources:
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.SamTFE.desktop
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.SamTSE.desktop
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.metainfo.xml
+      - type: file
+        url: https://raw.githubusercontent.com/tx00100xt/SeriousSamClassic-VK/main/SamTFE/serioussam.png
+        sha256: e12fdccc0ffbbd64ad2d5459d6b1da811fbe099fe8fefc0172bbf7d835648923
+        dest-filename: org.serioussam.SeriousSamClassic-VK.png
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.128.png
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.64.png
+      - type: file
+        path: org.serioussam.SeriousSamClassic-VK.48.png
+      - type: script
+        commands:
+          - ls ~/.var/app/org.serioussam.SeriousSamClassic-VK/data/Serious-Engine/serioussam || zenity --error --text
+            "Game data must be added to:\n~/.var/app/org.serioussam.SeriousSamClassic-VK/serioussam/"
+            --ok-label "Close" --width=400
+          - ls /app/lib/serioussam && ls /app/lib/serioussamse && ls /app/lib 
+          - serioussam "$@"
+        dest-filename: serioussam.sh
+      - type: script
+        commands:
+          - ls ~/.var/app/org.serioussam.SeriousSamClassic-VK/data/Serious-Engine/serioussamse || zenity --error --text
+            "Game data must be added to:\n~/.var/app/org.serioussam.SeriousSamClassic-VK/serioussamse/"
+            --ok-label "Close" --width=400
+          - serioussamse "$@"
+        dest-filename: serioussamse.sh
+    build-commands:
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.SamTFE.desktop -t /app/share/applications
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.SamTSE.desktop -t /app/share/applications
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.128.png -t /app/share/icons/hicolor/128x128/apps/
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.64.png -t /app/share/icons/hicolor/64x64/apps/
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.48.png -t /app/share/icons/hicolor/48x48/apps/
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.png -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm 644 org.serioussam.SeriousSamClassic-VK.metainfo.xml -t /app/share/metainfo
+      - install -Dm 744 serioussam.sh -t /app/bin/
+      - install -Dm 744 serioussamse.sh -t /app/bin/
