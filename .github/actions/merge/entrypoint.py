@@ -233,7 +233,7 @@ def main():
         "\n",
         f"You will receive an invitation to be a collaborator which will grant you write access to the repository above. The invite can be also viewed [here]({repo.html_url}/invitations).",
         "\n",
-        "If you have never maintained an application before, common questions are answered in [the app maintenance guide](https://docs.flathub.org/docs/for-app-authors/maintenance/).",
+        "If you've never maintained an app on Flathub before, common questions are answered in the [app maintenance guide](https://github.com/flathub/flathub/wiki/App-Maintenance). If you're the original developer (or an authorized party), [verify your app](https://docs.flathub.org/docs/for-app-authors/verification) next to let users know it's coming from you.",
         "\n",
         "Thanks!",
     )
