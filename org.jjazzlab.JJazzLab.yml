@@ -1,0 +1,97 @@
+id: org.jjazzlab.JJazzLab
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - 'org.freedesktop.Sdk.Extension.openjdk17'
+
+command: jjazzlab
+separate-locales: false
+finish-args:
+  # X11
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  # audio: pulseaudio, JACK over PipeWire
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # printing
+  - --socket=cups
+  # files
+  - --filesystem=~/JJazzLab
+  # setup Java Runtime Environment
+  - --env=PATH=/usr/bin:/app/jre/bin:/app/bin
+  - --env=JAVA_HOME=/app/jre
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk17/install.sh
+
+  - name: soundfont
+    buildsystem: simple
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/share/sounds/sf2
+      - cp JJazzLab-SoundFont.sf2 $FLATPAK_DEST/share/sounds/sf2/
+    sources:
+      - type: file
+        url: https://archive.org/download/jjazz-lab-sound-font/JJazzLab-SoundFont.sf2
+        sha256: 50ab9eaa711dd3af02544420f75881be833a876f9051c60d80c231f6387d8d80
+        # we slightly abuse the checker by using the modification time (integer) as version
+        x-checker-data:
+          type: json
+          url: https://archive.org/metadata/jjazz-lab-sound-font/files
+          version-query: '.result[] | select(.name=="JJazzLab-SoundFont.sf2") | .mtime'
+          url-query: '"https://archive.org/download/jjazz-lab-sound-font/JJazzLab-SoundFont.sf2"'
+
+  - fluidsynth2.yml
+
+  - xrdb.yml # needed to get GTK / Java theming right
+
+  - name: jjazzlab
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /usr/bin:/usr/lib/sdk/openjdk17/bin
+        JAVA_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+        MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
+      # uncomment the following line when updating maven-dependencies.yml
+      #build-args: ['--share=network']
+    build-commands:
+      - mvn package
+      - find application/target -name \*.dll -o -name \*.exe -o -name .lastModified | xargs rm -f
+      - cp -R application/target/jjazzlab/* $FLATPAK_DEST
+      - sed -i 's/^\(default_options=.*\)"/\1 -J-Dfluidsynthlib.path=\/app\/lib\/libfluidsynth.so.3 -J-DFluidSynthSoundFontFile=\/app\/share\/sounds\/sf2\/JJazzLab-SoundFont.sf2"/' $FLATPAK_DEST/etc/jjazzlab.conf
+      - sed -i 's/^\(default_options=.*\)"/\1 -J-Dmp.token=a67ed8aa58b306c1336dcf74fb99b2f69f1"/' $FLATPAK_DEST/etc/jjazzlab.conf
+      - sed -i 's/${DEFAULT_CACHEDIR_ROOT}/${XDG_CACHE_HOME}\/jjazzlab/' $FLATPAK_DEST/etc/jjazzlab.conf
+      - sed -i 's/${DEFAULT_USERDIR_ROOT}/${XDG_DATA_HOME}\/jjazzlab/' $FLATPAK_DEST/etc/jjazzlab.conf
+    sources:
+      - type: archive
+        dest-filename: JJazzLab.tar.gz
+        url: https://api.github.com/repos/jjazzboss/JJazzLab/tarball/4.0.2
+        sha256: 8b63c3c0193aa295ecb448c04076ff9b124288b5c98296d7c14c2ff6a9b179ca
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/jjazzboss/JJazzLab/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .tarball_url
+      # comment the following line when updating maven-dependencies.yml
+      - maven-dependencies.yml
+
+  - name: desktop
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 org.jjazzlab.JJazzLab.metainfo.xml $FLATPAK_DEST/share/metainfo/org.jjazzlab.JJazzLab.metainfo.xml
+      - install -Dm644 org.jjazzlab.JJazzLab.desktop $FLATPAK_DEST/share/applications/org.jjazzlab.JJazzLab.desktop
+      - install -Dm644 logo.svg $FLATPAK_DEST/share/icons/hicolor/scalable/apps/org.jjazzlab.JJazzLab.svg
+    sources:
+      - type: file
+        dest-filename: logo.svg
+        url: https://github.com/jjazzboss/JJazzLab/raw/242e0855fab432ef0c273e4e604f67b4b1ed456e/graphics/logo-JJazzLab.svg
+        sha256: 69328df4cfffe25331e58af284ffa7320cf99cd242582c2068fd8637111df5ac
+      - type: file
+        path: org.jjazzlab.JJazzLab.metainfo.xml
+      - type: file
+        path: org.jjazzlab.JJazzLab.desktop
+
