@@ -7,7 +7,6 @@ This extension adds Swift support to Flatpak.
 - [Swift](https://swift.org)
 - [SwiftLint](https://realm.github.io/SwiftLint/)
 - [swift-format](https://github.com/apple/swift-format)
-- [Editline Library](https://thrysoee.dk/editline/)
 
 ## Contributors
 
