@@ -1,4 +1,4 @@
-# SDK Extension for Swift
+# SDK Extension for Swift 5
 
 This extension adds Swift support to Flatpak.
 
