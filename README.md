@@ -9,7 +9,7 @@ This folder contains necessary files to repack an GNAT-based Ada development env
 
 ## Includes
 
-- GNAT-FSF (GCC/Ada)
+- GNAT-FSF (Ada/GCC)
 - GNATprove (SPARK)
 - GPRbuild
 - Alire (`alr`)
