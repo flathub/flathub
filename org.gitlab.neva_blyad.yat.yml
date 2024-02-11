@@ -1,0 +1,286 @@
+#    org.gitlab.neva_blyad.yat.yml
+#    Copyright (C) 2024 НЕВСКИЙ БЛЯДИНА <neva_blyad@lovecry.pt>
+#                                       <neva_blyad@lovecri.es>
+#
+#    This file is part of yat.
+#
+#    yat is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    yat is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with yat.  If not, see <https://www.gnu.org/licenses/>.
+
+# TODO:
+# meson-perl
+# libpeas-perl
+
+app-id: org.gitlab.neva_blyad.yat
+command: yat
+
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.vala
+writable-sdk: true
+build-options:
+  prepend-path: /usr/lib/sdk/vala/bin/
+  prepend-ld-library-path: /usr/lib/sdk/vala/lib/
+  build-args:
+    - --filesystem=host
+    - --socket=session-bus
+    #- --socket=system-bus
+    - --socket=wayland
+finish-args:
+  - --devices=all # Webcam, microphone, etc
+  #- --filesystem=xdg-documents # TODO: test
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio # Audiocalls
+  - --socket=session-bus
+  #- --socket=system-bus
+  #- --socket=wayland # Doesn't work =( Well, I hope to fix it later
+  - --socket=x11
+
+modules:
+  #-------------------------------------------------------------------------------
+  # Sodium
+  #-------------------------------------------------------------------------------
+  - name: libsodium
+    sources:
+      - type: git
+        url: 'https://github.com/jedisct1/libsodium'
+        tag: 1.0.18
+        commit: 4f5e89fa84ce1d178a6765b8b46f2b6f91216677
+    cleanup:
+      - /include/sodium/
+      - /include/sodium.h
+      - /lib/pkgconfig/libsodium.pc
+      - /lib/libsodium.a
+
+  #-------------------------------------------------------------------------------
+  # Tox
+  #-------------------------------------------------------------------------------
+  - name: c-toxcore
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DAUTOTEST:BOOL=OFF         # Enable autotests (mainly for CI)
+      - -DBOOTSTRAP_DAEMON:BOOL=OFF # Enable building of tox-bootstrapd
+      - -DBUILD_FUN_UTILS:BOOL=OFF  # Build additional just for fun utilities
+      - -DBUILD_FUZZ_TESTS:BOOL=OFF # Build fuzzing harnesses
+      - -DBUILD_MISC_TESTS:BOOL=OFF # Build additional tests and utilities
+      - -DBUILD_TESTING:BOOL=OFF    # Build the testing tree
+      - -DBUILD_TOXAV:BOOL=ON       # Whether to build the tox AV library
+      - -DDHT_BOOTSTRAP:BOOL=OFF    # Enable building of DHT_bootstrap
+      - -DENABLE_SHARED:BOOL=ON     # Build shared (dynamic) libraries for all modules
+      - -DFULLY_STATIC:BOOL=OFF     # Build fully static executables
+      - -DSTRICT_ABI:BOOL=OFF       # Enforce strict ABI export in dynamic libraries
+      - -Dpkgcfg_lib_LIBSODIUM_sodium:FILEPATH=/app/lib/libsodium.so         # Path to a library. TODO: do cross-platform.
+      - -Dpkgcfg_lib_OPUS_opus:FILEPATH=/usr/lib/x86_64-linux-gnu/libopus.so # Path to a library. TODO: do cross-platform.
+      - -Dpkgcfg_lib_VPX_m:FILEPATH=/usr/lib/x86_64-linux-gnu/libm.so        # Path to a library. TODO: do cross-platform.
+      - -Dpkgcfg_lib_VPX_vpx:FILEPATH=/usr/lib/x86_64-linux-gnu/libvpx.so    # Path to a library. TODO: do cross-platform.
+    sources:
+      - type: git
+        url: 'https://github.com/toktok/c-toxcore'
+        tag: v0.2.18
+        commit: 3a5da3588f693ba17768a9a4cbd67d54d53114ac
+        x-checker-data:
+          - type: git
+            tag-pattern: '^v([\d.]+)$'
+    post-install:
+      - sed -i 's|-I${includedir}|-I${includedir} -I${includedir}/tox -I${includedir}/opus|' /app/lib/pkgconfig/toxcore.pc
+    cleanup:
+      - /include/tox/
+      - /lib/pkgconfig/toxcore.pc
+      - /lib/libtoxcore.a
+
+  #-------------------------------------------------------------------------------
+  # SCons.
+  #
+  # Note. Generated automatically using flatpak-builder-tools:
+  #     $ flatpak-pip-generator --build-only --runtime='org.freedesktop.Platform//23.08' scons
+  #-------------------------------------------------------------------------------
+  - python3-scons.json
+
+  #-------------------------------------------------------------------------------
+  # wxWidgets
+  #-------------------------------------------------------------------------------
+  - name: wxwidgets
+    buildsystem: autotools
+    config-opts:
+      - --enable-display
+      - --enable-geometry
+      - --enable-graphics_ctx
+      - --enable-mediactrl
+      - --enable-sound
+      - --enable-webview
+      - --with-expat=sys
+      - --with-gtk=3
+      - --with-libjpeg=sys
+      - --with-libpng=sys
+      - --with-libtiff=sys
+      #- --with-opengl
+      - --with-zlib
+    sources:
+      - type: archive
+        url: 'https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5.1/wxWidgets-3.0.5.1.tar.bz2'
+        sha1: 406ac736f61d88a3a866aa501e01e408a642c6e7
+    cleanup:
+      - /bin
+      - /include
+      - /lib/wx
+      - /share
+
+  #-------------------------------------------------------------------------------
+  # wxC.
+  #
+  # TODO: use specific module version instead of the last commit
+  #-------------------------------------------------------------------------------
+  - name: wxc
+    buildsystem: simple
+    sources:
+      - type: git
+        url: 'https://gitlab.com/neva_blyad/wxc'
+    build-options:
+      env:
+        - ARCH=x86_64-linux-gnu # TODO: do cross-platform
+    build-commands:
+      - sed -i 's|prefix=/usr|prefix=/app|' wxc.pc.unix
+      - scons
+      - scons install     --prefix=/app/ --arch=$ARCH
+      - scons install-dev --prefix=/app/ --arch=$ARCH
+      - mkdir -p /app/etc/
+      - echo /app/lib/x86_64-linux-gnu/ > /app/etc/ld.so.conf
+    cleanup:
+      - /include
+      - /lib/x86_64-linux-gnu/libwxc.a
+      - /lib/x86_64-linux-gnu/libwxc.so
+      - /lib/x86_64-linux-gnu/pkgconfig
+
+  #-------------------------------------------------------------------------------
+  # libpeas
+  #-------------------------------------------------------------------------------
+  - name: libpeas
+    buildsystem: meson
+    sources:
+      - type: git
+        url: 'https://gitlab.gnome.org/GNOME/libpeas.git'
+        tag: libpeas-1.34.0
+    build-commands:
+      - ln -s /app/share/gir-1.0/Peas-1.0.gir /usr/share/gir-1.0/
+    cleanup:
+      - /bin
+      - /include
+      - /lib/debug
+      - /lib/peas-demo
+      - /lib/pkgconfig
+      - /share
+
+  #-------------------------------------------------------------------------------
+  # meson-perl.
+  #
+  # TODO: patch vs full source.
+  #-------------------------------------------------------------------------------
+  #- name: meson-perl
+  #  buildsystem: meson
+
+  #-------------------------------------------------------------------------------
+  # libpeas-perl.
+  #
+  # TODO
+  #-------------------------------------------------------------------------------
+  #- name: libpeas
+  #  buildsystem: meson
+  #  sources:
+  #    - type: git
+  #      url: 'https://gitlab.com/neva_blyad/libpeas-perl'
+  #      branch: main
+
+  #-------------------------------------------------------------------------------
+  # libgee
+  #-------------------------------------------------------------------------------
+  - name: libgee
+    buildsystem: autotools
+    build-options:
+      env:
+        - ACLOCAL_PATH=/usr/lib/sdk/vala/share/aclocal/
+    sources:
+      - type: git
+        url: 'https://gitlab.gnome.org/GNOME/libgee.git'
+        #branch: master
+        tag: '0.20.6'
+    post-install:
+      - ln -s /app/share/vala/vapi/gee-0.8.vapi /usr/lib/sdk/vala/share/vala-0.56/vapi/
+      - ln -s /app/share/gir-1.0/Gee-0.8.gir /usr/share/gir-1.0/
+    cleanup:
+      - /include
+      - /share
+      - /lib/pkgconfig
+
+  #-------------------------------------------------------------------------------
+  # wxFormBuilder
+  #-------------------------------------------------------------------------------
+  - name: wxformbuilder
+    sources:
+      - type: git
+        url: 'https://github.com/wxFormBuilder/wxFormBuilder'
+        #branch: master
+        tag: v3.9.0
+    buildsystem: simple
+    config-opts:
+      - --disable-mediactrl
+    build-commands:
+      - ./create_build_files4.sh
+      - sed -i "44 a \#include <cstdint>" src/md5/md5.hh
+      - make config=release -C build/3.0/gmake
+      - mv output/bin/wxformbuilder /app/bin/
+      - mkdir /app/share/wxformbuilder/
+      - mv output/xml/ /app/share/wxformbuilder/
+      - mv output/resources/ /app/share/wxformbuilder/
+      - mv output/plugins/ /app/share/wxformbuilder/
+      - mv output/*.* /app/share/wxformbuilder/
+      - mv output/lib/* /app/lib/
+      - mkdir /app/share/applications/
+      - mv install/linux/data/gnome/usr/share/applications/wxformbuilder.desktop /app/share/applications/org.wxformbuilder.wxFormBuilder.desktop
+      - sed -i 's|wxformbuilder.png|org.wxformbuilder.wxFormBuilder.png|' /app/share/applications/org.wxformbuilder.wxFormBuilder.desktop
+      - mkdir -p /app/share/icons/
+      - mv install/linux/data/gnome/usr/share/pixmaps/wxformbuilder.png /app/share/icons/org.wxformbuilder.wxFormBuilder.png
+      - mkdir /app/share/appdata/
+      - mv install/linux/data/gnome/usr/share/appdata/org.wxformbuilder.wxFormBuilder.appdata.xml /app/share/appdata/
+    cleanup:
+      - '*'
+
+  #-------------------------------------------------------------------------------
+  # yat
+  #-------------------------------------------------------------------------------
+  - name: yat
+    sources:
+      - type: dir
+        path: ./
+        skip:
+          - .flatpak-builder/
+          - build/
+          - org.gitlab.neva_blyad.yat.yml
+          - python3-scons.json
+    buildsystem: simple
+    build-options:
+      env:
+        - ARCH=x86_64-linux-gnu # TODO: do cross-platform
+        - PKG_CONFIG_PATH=/app/lib/pkgconfig/:/app/lib/x86_64-linux-gnu/pkgconfig/ # TODO: do cross-platform
+    build-commands:
+      #- ln -s /usr/lib/sdk/vala/share/vala/vapi/gee-0.8.vapi /usr/lib/sdk/vala/share/vala-0.56/vapi/
+      - ln -s /app/lib/libwx_baseu_xml-3.0.so   /usr/lib/x86_64-linux-gnu/
+      - ln -s /app/lib/libwx_baseu_xml-3.0.so.0 /usr/lib/x86_64-linux-gnu/
+      - ln -s /app/lib/libwx_baseu-3.0.so       /usr/lib/x86_64-linux-gnu/
+      - ln -s /app/lib/libwx_baseu-3.0.so.0     /usr/lib/x86_64-linux-gnu/
+      - scons --show-hidden-audio-hw=on --dbg=off
+      - scons install --prefix=/app/
+      #- scons -C plugins/ --dbg=off
+      #- scons -C plugins/ install --prefix=/app/
