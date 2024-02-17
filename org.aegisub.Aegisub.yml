@@ -94,11 +94,159 @@ modules:
         # Source: https://gitlab.archlinux.org/archlinux/packaging/packages/aegisub/-/blob/fef4a8f94ce2fc2e450b608f926a5fd44215e653/boost-1.81.0.patch
         path: boost-1.81.0.patch
     modules:
-      - wxwidgets.yaml
-      - ffms2.yaml
-      - boost.yaml
+      - name: wxwidgets
+        rm-configure: true
+        buildsystem: cmake
+        config-opts:
+        # TODO: Disable more unused features to fast up compiling.
+        - -DCMAKE_INSTALL_PREFIX=/app
+        - -DCMAKE_BUILD_TYPE=Release
+        - -DwxBUILD_TOOLKIT=gtk3
+        - -DwxBUILD_SHARED=OFF
+        - -DwxUSE_BASE64=OFF
+        - -DwxUSE_GIF=OFF
+        - -DwxUSE_LIBJPEG=OFF
+        - -DwxUSE_SVG=OFF
+        - -DwxUSE_TARSTREAM=OFF
+        - -DwxUSE_LIBTIFF=OFF
+        - -DwxUSE_WEBVIEW_WEBKIT=OFF
+        - -DwxUSE_WEBVIEW=OFF
+        - -DwxUSE_LIBPNG=sys
+        cleanup:
+          - /bin
+          - /share/bakefile
+          - /lib/wx
+        sources:
+          - type: git
+            url: https://github.com/wxWidgets/wxWidgets.git
+            tag: v3.2.4
+            commit: 085a136dcb11aca5b1102193f006f8056d5f0876
+            x-checker-data:
+              type: git
+              tag-pattern: ^v(\d.\d.\d)$
+              version-scheme: semantic
+      - name: ffms2
+        buildsystem: autotools
+        build-options:
+          strip: true
+        config-opts:
+          - --prefix=${FLATPAK_DEST}
+          # TODO: Staticly link ffms2 and ffmpeg with aegisub.
+          # - --disable-static
+          # - --enable-shared
+        cleanup:
+          - /bin
+        sources:
+          - type: git
+            url: https://github.com/FFMS/ffms2.git
+            # TODO: Wait for a new release to use it's tag.
+            # tag: "2.40"
+            commit: f20827cf280b669321cd5b62e01d744bc68c21fc
+            # x-checker-data:
+            #   type: git
+            #   tag-pattern: ^[0-9]+\.[0-9]+$
+        modules:
+          - name: ffmpeg
+            buildsystem: autotools
+            build-options:
+              strip: true
+            config-opts:
+              - --prefix=${FLATPAK_DEST}
+              # Should be ok, since ffms2 binaries are GPL.
+              - --enable-gpl
+              # TODO: Consider using GPLv3.
+              - --enable-version3
+              - --enable-static
+              - --enable-shared
+              - --enable-lto
+              # No CLI tool is used.
+              - --disable-programs
+              # No docs are needed in flatpak.
+              - --disable-doc
+              # Those components are not used in ffms2.
+              # TODO: Consider this (libswresample & libavcodec are installed in ffms2's CI build):
+              - --disable-avdevice
+              - --disable-avcodec
+              - --disable-swresample
+              - --disable-postproc
+              - --disable-avfilter
+              - --disable-network
+              # FFMS2 doens't do any encoding, hwaccel, muxing, filtering or use devices.
+              - --disable-encoders
+              - --disable-hwaccels
+              - --disable-muxers
+              - --disable-filters
+              - --disable-devices
+              # External library support:
+              - --disable-alsa
+              - --disable-iconv
+              # TODO: Considor using `aom` over `dav1d`.
+              # - --enable-libaom # AV1 video decoding via libaom
+              - --enable-libdav1d # AV1 decoding via libdav1d
+              - --enable-libjxl # JPEG XL decoding via libjxl
+              - --enable-libopenjpeg # JPEG 2000 decoding via OpenJPEG
+              # FIX: Enable libvpx (can't be detected by ffmpeg)
+              # - --enable-libvpx # VP8 and VP9 decoding via libvpx
+              # Developer options:
+              - --disable-debug
+            cleanup:
+              - /share/ffmpeg
+            sources:
+              - type: git
+                url: https://github.com/FFmpeg/FFmpeg.git
+                mirror-urls:
+                  - https://git.ffmpeg.org/ffmpeg.git
+                tag: n6.1.1
+                commit: e38092ef9395d7049f871ef4d5411eb410e283e0
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^n([\d.]{3,7})$
+            # modules:
+            #   - name: libvpx
+            #     buildsystem: autotools
+            #     config-opts:
+            #       - --prefix=${FLATPAK_DEST}
+            #       - --disable-shared
+            #       - --enable-static
+            #       - --disable-examples
+            #       - --disable-tools
+            #       - --disable-docs
+            #       - --disable-install-docs
+            #       - --disable-install-srcs
+            #       - --disable-install-bins
+            #       - --disable-unit-tests
+            #       - --enable-pic
+            #       - --enable-postproc
+            #       - --enable-runtime-cpu-detect
+            #       - --enable-shared
+            #       - --enable-vp8
+            #       - --enable-vp9
+            #       - --enable-vp9-postproc
+            #       - --enable-vp9-highbitdepth
+            #       - --enable-vp9-temporal-denoising
+            #     sources:
+            #       - type: git
+            #         url: https://chromium.googlesource.com/webm/libvpx
+            #         tag: v1.13.1
+            #         commit: 10b9492dcf05b652e2e4b370e205bd605d421972
+            #         x-checker-data:
+            #           type: git
+            #           version-scheme: semantic
+      - name: boost
+        buildsystem: simple
+        build-commands:
+          - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=chrono,container,filesystem,system,locale,regex,thread --with-icu
+          - ./b2 install variant=release link=static
+        sources:
+          - type: archive
+            url: https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz
+            sha512: 076ef93f14eb2fc956084acf8532459c10877038592c62e0c2afed2d769ccb0cda3c9c4f7112e62fdd59b955dbce037704cbecabf053a634867736d9642aa5cc
+            x-checker-data:
+              type: anitya
+              project-id: 6845
+              stable-only: true
+              url-template: https://boostorg.jfrog.io/artifactory/main/release/$version/source/boost_${major}_${minor}_${patch}.tar.gz
       # TODO: Install luajit with all needed libraries in the system rathen then using bundled.
-      # - luajit.yaml
       - ./shared-modules/linux-audio/fftw3f-static.json
       # TODO: Enable AviSynthPlus support after it's properly supported in up-stream.
       # - name: AviSynthPlus
