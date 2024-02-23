@@ -52,17 +52,19 @@ index a548cd18b..4ae5a3ab1 100644
  extern int32_t texcache_enabled(void);
  extern void texcache_freeptrs(void);
 diff --git a/source/build/include/vfs.h b/source/build/include/vfs.h
-index 4862820b9..3a9266758 100644
+index 4862820b9..b2082edcb 100644
 --- a/source/build/include/vfs.h
 +++ b/source/build/include/vfs.h
-@@ -320,4 +320,9 @@ void dfwrite_LZ4(const void *buffer, int dasizeof, int count, buildvfs_FILE fil)
+@@ -320,4 +320,11 @@ void dfwrite_LZ4(const void *buffer, int dasizeof, int count, buildvfs_FILE fil)
  }
  #endif
  
 +#include <filesystem>
++extern std::filesystem::path redirect_to_user_data(std::string path);
 +extern void create_parent_directory(std::string path);
 +extern std::string get_writable_filename_subdir(std::string filename, std::string subdir);
 +extern std::string get_writable_filename(std::string filename);
++extern std::string get_numbered_writable_filename(std::string filename, std::string extension);
 +
  #endif // vfs_h_
 diff --git a/source/build/src/build.cpp b/source/build/src/build.cpp
@@ -129,63 +131,32 @@ index 18a0aa67a..6769b5b2c 100644
  
      for (i=0; i<krd_numcalls; i++)
 diff --git a/source/build/src/screenshot.cpp b/source/build/src/screenshot.cpp
-index 9003e94db..216f9a3b2 100644
+index 9003e94db..d3adf693c 100644
 --- a/source/build/src/screenshot.cpp
 +++ b/source/build/src/screenshot.cpp
-@@ -27,7 +27,7 @@ buildvfs_FILE OutputFileCounter::opennextfile(char *fn, char *zeros)
-         zeros[3] = (count%10)+'0';
- #ifdef USE_PHYSFS
-         buildvfs_FILE file;
--        if ((file = buildvfs_fopen_read(fn)) == nullptr) break;
-+        if ((file = buildvfs_fopen_read(get_writable_filename(fn).c_str())) == nullptr) break;
-         buildvfs_fclose(file);
- #else
-         struct Bstat st;
-@@ -36,7 +36,7 @@ buildvfs_FILE OutputFileCounter::opennextfile(char *fn, char *zeros)
-         count++;
-     } while (1);
- 
--    return buildvfs_fopen_write(fn);
-+    return buildvfs_fopen_write(get_writable_filename(fn).c_str());
- }
- 
- buildvfs_FILE OutputFileCounter::opennextfile_withext(char *fn, const char *ext)
-@@ -67,32 +67,9 @@ static void screencapture_end(char *fn, buildvfs_FILE * filptr)
- 
- static char* getScreenshotPath(const char* filename)
- {
--    char fn[BMAX_PATH];
--
--    if (screenshot_dir[0] != 0)
--    {
--        struct Bstat st;
--        if (!Bstat(screenshot_dir, &st) && ((st.st_mode & S_IFMT) == S_IFDIR))
--            Bsnprintf(fn, sizeof(fn), "%s/%s", screenshot_dir, filename);
--        else if (buildvfs_mkdir(screenshot_dir, S_IRWXU) == 0)
--        {
--#ifndef NDEBUG
--            OSD_Printf("Directory \"%s\" created successfully!\n", screenshot_dir);
--#endif
--            Bsnprintf(fn, sizeof(fn), "%s/%s", screenshot_dir, filename);
--        }
--        else
--        {
--            OSD_Printf("Failed to create directory \"%s\", using root.\n", screenshot_dir);
--            Bsnprintf(fn, sizeof(fn), "%s", filename);
--        }
--    }
--    else
--        Bsnprintf(fn, sizeof(fn), "%s", filename);
--
--    char* ret = Xstrdup(fn);
--
--    return ret;
-+    std::string screenshot_path(get_writable_filename_subdir(filename, "screenshots"));
-+    create_parent_directory(screenshot_path);
-+    return const_cast<char*>(screenshot_path.c_str());
- }
+@@ -97,8 +97,8 @@ static char* getScreenshotPath(const char* filename)
  
  int videoCaptureScreen(const char *filename, char inverseit)
+ {
+-    char* fn = getScreenshotPath(filename);
+-    buildvfs_FILE fp = capturecounter.opennextfile_withext(fn, "png");
++    char* fn = const_cast<char*>(get_numbered_writable_filename(get_writable_filename_subdir(filename, "screenshots"), "png").c_str());
++    buildvfs_FILE fp = buildvfs_fopen_write(fn);
+ 
+     if (fp == nullptr)
+     {
+@@ -177,9 +177,9 @@ int videoCaptureScreenTGA(const char *filename, char inverseit)
+     int32_t i;
+     char head[18] = { 0,1,1,0,0,0,1,24,0,0,0,0,0/*wlo*/,0/*whi*/,0/*hlo*/,0/*hhi*/,8,0 };
+     //char palette[4*256];
+-    char* fn = getScreenshotPath(filename);
++    char* fn = const_cast<char*>(get_numbered_writable_filename(get_writable_filename_subdir(filename, "screenshots"), "tga").c_str());
+ 
+-    buildvfs_FILE fil = capturecounter.opennextfile_withext(fn, "tga");
++    buildvfs_FILE fil = buildvfs_fopen_write(fn);
+     if (fil == nullptr)
+     {
+         Xfree(fn);
 diff --git a/source/build/src/texcache.cpp b/source/build/src/texcache.cpp
 index e4aad2f0f..0b0026a1c 100644
 --- a/source/build/src/texcache.cpp
@@ -256,53 +227,78 @@ index e4aad2f0f..0b0026a1c 100644
      if (!script) return -1;
  
 diff --git a/source/build/src/vfs.cpp b/source/build/src/vfs.cpp
-index 44a9d212d..c9fd54950 100644
+index 44a9d212d..2790eecc0 100644
 --- a/source/build/src/vfs.cpp
 +++ b/source/build/src/vfs.cpp
-@@ -14,6 +14,8 @@
+@@ -14,6 +14,9 @@
  #include "pragmas.h"
  #include "vfs.h"
  #include "cache1d.h"
 +#include <string>
 +#include <filesystem>
++#include <format>
  
  #ifdef __cplusplus
  extern "C" {
-@@ -58,6 +60,39 @@ static intptr_t kzipopen(const char *filnam)
+@@ -58,6 +61,63 @@ static intptr_t kzipopen(const char *filnam)
  
  #endif
  
-+std::filesystem::path redirect_to_xdg_data_home(std::string path) {
-+    std::string XDG_DATA_HOME(std::getenv("XDG_DATA_HOME"));
++std::filesystem::path redirect_to_user_data(std::string path) {
++    std::string user_data_path(std::getenv("XDG_DATA_HOME"));
 +    std::filesystem::path path_obj;
-+    // Add XDG_DATA_HOME prefix if needed
-+    if (!path.starts_with(XDG_DATA_HOME)) {
-+        path_obj /= XDG_DATA_HOME;
++    // Add user data prefix if needed
++    if (!path.starts_with(user_data_path)) {
++        path_obj /= user_data_path;
 +    }
 +    path_obj /= path;
++    // printf("Redirected %s to %s\n", path.c_str(), path_obj.lexically_normal().c_str());
 +    return path_obj;
 +}
 +
 +void create_parent_directory(std::string filename)
 +{
-+    std::filesystem::path path_obj = redirect_to_xdg_data_home(filename).remove_filename();
++    std::filesystem::path path_obj = redirect_to_user_data(filename).remove_filename();
++    // printf("create_parent_directory \"%s\"\n", path_obj.lexically_normal().c_str());
 +    if (! buildvfs_isdir(path_obj.lexically_normal().c_str()) && buildvfs_mkdir(path_obj.lexically_normal().c_str(), S_IRWXU) != 0)
 +    {
-+        printf("Failed to create directory \"%s\"!\n", path_obj.lexically_normal().c_str());
++        printf("^10^S0Failed to create directory \"%s\"!\n", path_obj.lexically_normal().c_str());
 +    }
 +}
 +
 +std::string get_writable_filename_subdir(std::string filename, std::string subdir)
 +{
-+    std::filesystem::path path_obj = redirect_to_xdg_data_home(subdir);
++    std::filesystem::path path_obj = redirect_to_user_data(subdir);
 +    path_obj /= filename;
++    create_parent_directory(filename);
++    // printf("get_writable_filename_subdir \"%s\"\n", path_obj.lexically_normal().c_str());
 +    return path_obj.lexically_normal().string();
 +}
 +
 +std::string get_writable_filename(std::string filename)
 +{
-+    std::filesystem::path path_obj = redirect_to_xdg_data_home(filename);
++    std::filesystem::path path_obj = redirect_to_user_data(filename);
++    create_parent_directory(filename);
++    // printf("get_writable_filename \"%s\"\n", path_obj.lexically_normal().c_str());
 +    return path_obj.lexically_normal().string();
++}
++
++std::string get_numbered_writable_filename(std::string filename, std::string extension)
++{
++    if (!extension.starts_with(".")) { extension = std::format(".{}", extension); }
++
++    std::string final_filename;
++    int counter = 0;
++    do
++    {
++        if (counter > 9999) { 
++            printf(std::format("^10^S0Too many files using filename {0}{1}\n", filename, extension).c_str());
++            return nullptr;
++        }
++        final_filename = get_writable_filename(std::format("{0}{1:0>4}{2}", filename, counter, extension));
++        counter++;
++    } while (std::filesystem::exists(final_filename));
++    return final_filename;
 +}
 +
  char *kpzbuf = NULL;
@@ -496,7 +492,7 @@ index 32adb1a49..99dbcefc0 100644
          Bstrncpyz(g_setupFileName, temp, sizeof(g_setupFileName));
  
 diff --git a/source/duke3d/src/gameexec.cpp b/source/duke3d/src/gameexec.cpp
-index c19ce1d2b..93095065b 100644
+index c19ce1d2b..5a52ea3ec 100644
 --- a/source/duke3d/src/gameexec.cpp
 +++ b/source/duke3d/src/gameexec.cpp
 @@ -5928,13 +5928,13 @@ badindex:
@@ -528,7 +524,7 @@ index c19ce1d2b..93095065b 100644
  
                      if (kFile == buildvfs_kfd_invalid)
                          dispatch();
-@@ -6068,15 +6068,16 @@ badindex:
+@@ -6068,19 +6068,20 @@ badindex:
  
                      VM_ABORT_IF(bad_quote(quoteFilename), "invalid quote %d", quoteFilename);
  
@@ -552,6 +548,11 @@ index c19ce1d2b..93095065b 100644
  
                      if (EDUKE32_PREDICT_FALSE(fil == NULL))
                      {
+-                        LOG_F(ERROR, "Unable to save array to %s: unknown error.", temp);
++                        LOG_F(ERROR, "Unable to save array to %s: unknown error.", temp.c_str());
+                         abort_after_error();
+                     }
+ 
 diff --git a/source/duke3d/src/grpscan.cpp b/source/duke3d/src/grpscan.cpp
 index 8b5133efe..3258c30ce 100644
 --- a/source/duke3d/src/grpscan.cpp
@@ -566,6 +567,32 @@ index 8b5133efe..3258c30ce 100644
  static struct grpcache
  {
      struct grpcache *next;
+diff --git a/source/duke3d/src/menus.cpp b/source/duke3d/src/menus.cpp
+index 4a558dd2b..f1da62831 100644
+--- a/source/duke3d/src/menus.cpp
++++ b/source/duke3d/src/menus.cpp
+@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ #include "music.h"
+ #include "sbar.h"
+ #include "joystick.h"
++#include "vfs.h"
+ 
+ #ifndef __ANDROID__
+ droidinput_t droidinput;
+@@ -1658,11 +1659,11 @@ static MenuTextForm_t M_CHEAT_SKILL = { NULL, "Enter Skill #:", 2, 0 };
+ #define MAKE_MENUFILESELECT(a, dir, b, c, d) { a, { &MMF_FileSelectLeft, &MMF_FileSelectRight }, { &MF_Minifont, &MF_Minifont }, dir, b, c, d, { NULL, NULL }, { 0, 0 }, { 3<<16, 3<<16 }, FNLIST_INITIALIZER, 0 }
+ 
+ static char lastuserdir[BMAX_PATH];
+-static MenuFileSelect_t M_USERMAP = MAKE_MENUFILESELECT( "Select A User Map", "/usermaps/", "*.map", boardfilename, lastuserdir);
++static MenuFileSelect_t M_USERMAP = MAKE_MENUFILESELECT( "Select A User Map", redirect_to_user_data("usermaps/").c_str(), "*.map", boardfilename, lastuserdir);
+ 
+ #ifndef EDUKE32_RETAIL_MENU
+ static char lastsfdir[BMAX_PATH];
+-static MenuFileSelect_t M_SOUND_SF2 = MAKE_MENUFILESELECT( "Select Sound Bank", "/", "*.sf2", sf2bankfile, lastsfdir);
++static MenuFileSelect_t M_SOUND_SF2 = MAKE_MENUFILESELECT( "Select Sound Bank", redirect_to_user_data("/").c_str(), "*.sf2", sf2bankfile, lastsfdir);
+ #endif
+ 
+ // MUST be in ascending order of MenuID enum values due to binary search
 diff --git a/source/duke3d/src/player.cpp b/source/duke3d/src/player.cpp
 index 48b78cb4f..38db20483 100644
 --- a/source/duke3d/src/player.cpp
@@ -589,10 +616,36 @@ index 48b78cb4f..38db20483 100644
      sjson_context * ctx = sjson_create_context(0, 0, NULL);
      if (!ctx)
 diff --git a/source/duke3d/src/savegame.cpp b/source/duke3d/src/savegame.cpp
-index ce29653e5..63998e2c7 100644
+index ce29653e5..a6036fc84 100644
 --- a/source/duke3d/src/savegame.cpp
 +++ b/source/duke3d/src/savegame.cpp
-@@ -325,13 +325,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
+@@ -209,12 +209,23 @@ static int countcache1dfind(BUILDVFS_FIND_REC *f)
+ 
+ static void ReadSaveGameHeaders_Internal(void)
+ {
+-    static char const DefaultPath[] = "/", SavePattern[] = "*.esv";
++    BUILDVFS_FIND_REC *findfiles_default;
+ 
+-    BUILDVFS_FIND_REC *findfiles_default = klistpath(DefaultPath, SavePattern, BUILDVFS_FIND_FILE);
++    for (auto const& dir_entry : std::filesystem::directory_iterator{redirect_to_user_data("saves").lexically_normal()})
++    {
++        printf("Checking %s\n", dir_entry.path().lexically_normal().c_str());
++        if (! std::filesystem::is_directory(dir_entry.path()) &&
++            dir_entry.path().has_extension() &&
++            dir_entry.path().extension() == ".esv")
++        {
++            printf("Adding %s to savegame list!\n", dir_entry.path().lexically_normal().c_str());
++            klistaddentry(&findfiles_default, dir_entry.path().filename().c_str(), 1, 1);
++        }
++    }
+ 
+     // potentially overallocating but programmatically simple
+     int const numfiles = countcache1dfind(findfiles_default);
++    printf("Found %s savegames\n", numfiles);
+     size_t const internalsavesize = sizeof(menusave_t) * numfiles;
+ 
+     g_internalsaves = (menusave_t *)Xrealloc(g_internalsaves, internalsavesize);
+@@ -325,13 +336,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
  
  #if 0
          // debug code to dump the screenshot
@@ -613,7 +666,7 @@ index ce29653e5..63998e2c7 100644
  #endif
      }
      else
-@@ -784,11 +784,11 @@ void G_DeleteSave(savebrief_t const & sv)
+@@ -784,11 +795,11 @@ void G_DeleteSave(savebrief_t const & sv)
  
      char temp[BMAX_PATH];
  
@@ -630,7 +683,16 @@ index ce29653e5..63998e2c7 100644
  
      buildvfs_unlink(temp);
      Bstrcat(temp, ".ext");
-@@ -840,27 +840,27 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+@@ -833,40 +844,42 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+     Net_WaitForServer();
+     ready2send = 0;
+ 
+-    char fn[BMAX_PATH];
++    char fn[BMAX_PATH] = "save";
+ 
+     errno = 0;
+     buildvfs_FILE fil;
++    std::string savefilename;
  
      if (sv.isValid())
      {
@@ -645,11 +707,13 @@ index ce29653e5..63998e2c7 100644
 +        //     LOG_F(ERROR, "Unable to save %s: unknown fatal error.", sv.path);
 +        //     goto saveproblem;
 +        // }
-+        fil = buildvfs_fopen_write(get_writable_filename_subdir(fn, "saves").c_str());
++        savefilename = get_writable_filename_subdir(sv.path, "saves");
++        printf("sv.isvalid, filename %s\n", savefilename.c_str());
++        fil = buildvfs_fopen_write(savefilename.c_str());
      }
      else
      {
-         static char const SaveName[] = "save0000.esv";
+-        static char const SaveName[] = "save0000.esv";
 -        int const len = G_ModDirSnprintfLite(fn, ARRAY_SIZE(fn), SaveName);
 -        if (len >= ARRAY_SSIZE(fn)-1)
 -        {
@@ -658,21 +722,39 @@ index ce29653e5..63998e2c7 100644
 -        }
 -        char * zeros = fn + (len-8);
 -        fil = savecounter.opennextfile(fn, zeros);
+-        savecounter.count++;
 +        // int const len = G_ModDirSnprintf(fn, ARRAY_SIZE(fn), SaveName);
 +        // if (len >= ARRAY_SSIZE(fn)-1)
 +        // {
 +        //     LOG_F(ERROR, "Resulting save filename is too long.");
 +        //     goto saveproblem;
 +        // }
-+        char * zeros = fn + 4;
-+        fil = savecounter.opennextfile( const_cast<char*>(get_writable_filename_subdir(fn, "saves").c_str()), zeros);
-         savecounter.count++;
++
++        savefilename = get_numbered_writable_filename(get_writable_filename_subdir(fn, "saves"), ".esv");
++        printf("sv.isvalid false, filename %s\n", savefilename.c_str());
++        fil = buildvfs_fopen_write(savefilename.c_str());
          // don't copy the mod dir into sv.path
 -        Bstrcpy(sv.path, fn + (len-(ARRAY_SIZE(SaveName)-1)));
 +        Bstrcpy(sv.path, fn + 4);
      }
  
      if (!fil)
+     {
+-        LOG_F(ERROR, "Unable to open %s for writing: %s.",
+-                   fn, strerror(errno));
++        LOG_F(ERROR, "Unable to open %s for writing: %s.", savefilename.c_str(), strerror(errno));
+         goto saveproblem;
+     }
+ 
+@@ -891,7 +904,7 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+ 
+     if (!g_netServer && ud.multimode < 2)
+     {
+-        OSD_Printf("Saved: %s\n", fn);
++        OSD_Printf("Saved: %s\n", savefilename.c_str());
+ #ifndef AMC_BUILD
+         Bstrcpy(apStrings[QUOTE_RESERVED4], "Game Saved");
+         P_DoQuote(QUOTE_RESERVED4, g_player[myconnectindex].ps);
 diff --git a/source/mact/src/scriplib.cpp b/source/mact/src/scriplib.cpp
 index 4a9dd6cb2..f7b9eb34a 100644
 --- a/source/mact/src/scriplib.cpp
