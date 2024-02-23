@@ -1,0 +1,76 @@
+app-id: io.github.fpiesche.f2bgl
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: io.github.fpiesche.f2bgl.sh
+
+finish-args:
+  # hardware 3D
+  - --device=dri
+  # gamepad support
+  - --device=all
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Audio
+  - --socket=pulseaudio
+
+modules:
+  - shared-modules/linux-audio/fluidsynth2.json
+  - name: wildmidi
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/Mindwerks/wildmidi/archive/wildmidi-0.4.5.tar.gz
+        sha256: 116c0f31d349eaa74a630ed5a9a17b6a351204877a4ed9fb9aacd9dbd7f6c874
+        x-checker-data:
+          type: anitya
+          project-id: 9179
+          stable-only: true
+          url-template: https://github.com/Mindwerks/wildmidi/archive/wildmidi-$version.tar.gz
+
+  - name: f2bgl
+    sources:
+      - type: git
+        url: https://github.com/fpiesche/f2bgl
+        # tag: "4.1.0"
+        # commit: "ff00657204b21625722566008c534dc88d901700"
+        branch: master
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\\d.]+)$
+      - type: patch
+        path: f2bgl_remap_config_files.patch
+      - type: script
+        dest-filename: io.github.fpiesche.f2bgl.sh
+        commands:
+          # Ensure data directories expected by the game exist
+          - if [[ ! -d ${XDG_DATA_HOME}/game ]]; then mkdir ${XDG_DATA_HOME}/game; fi
+          - if [[ ! -d ${XDG_DATA_HOME}/user ]]; then mkdir ${XDG_DATA_HOME}/user; fi
+          # Verify game data is present
+          - if [[ ! -f ${XDG_DATA_HOME}/game/DATA/INTRO.CIN ]]; then
+                zenity --error --text "f2bgl requires the game data from a Fade to Black installation.
+                Please copy at least the game's DATA directory and DELPHINE.INI to ${XDG_DATA_HOME}/game/."
+                --ok-label "Close" --width=400;
+                exit 1;
+            fi
+          # Copy control mapping file to user data if it doesn't exist there
+          - if [[ ! -f ${XDG_CONFIG_HOME}/user/controls.cfg ]]; then
+                echo "Copying controls.cfg to user data...";
+                install -Dm744 /app/bin/controls.cfg -t ${XDG_DATA_HOME}/user/;
+            fi
+          # Launch game
+          - cd /app/bin
+          - ./f2bgl --datapath=$XDG_DATA_HOME/game --savepath=$XDG_DATA_HOME/user --subtitles --mouse
+    buildsystem: simple
+    subdir: src
+    builddir: true
+    build-commands:
+      - make -j$(nproc)
+      - install -Dm 744 f2bgl -t /app/bin
+      - install -Dm 744 controls.cfg -t /app/bin
+      - install -Dm 744 ../io.github.fpiesche.f2bgl.sh -t /app/bin
+      - desktop-file-edit --set-key=Exec --set-value=io.github.fpiesche.f2bgl.sh ../meta/io.github.fpiesche.f2bgl.desktop
+      - install -Dm 644 ../meta/io.github.fpiesche.f2bgl.desktop -t /app/share/applications
+      - install -Dm 644 ../meta/io.github.fpiesche.f2bgl.svg -t /app/share/icons/hicolor/scalable/apps
+      - install -Dm 644 ../meta/io.github.fpiesche.f2bgl.metainfo.xml -t /app/share/metainfo
