@@ -1,6 +1,6 @@
 id: io.github.libredirect.frontends-manager
 runtime: org.gnome.Platform
-runtime-version: '42'
+runtime-version: '44'
 command: libredirect-frontends-manager
 rename-icon: libredirect-frontends-manager
 rename-desktop-file: libredirect-frontends-manager.desktop
@@ -8,7 +8,7 @@ rename-desktop-file: libredirect-frontends-manager.desktop
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node16
-  - org.freedesktop.Sdk.Extension.rust-nightly
+  - org.freedesktop.Sdk.Extension.rust-stable
 
 finish-args:
   - --socket=wayland
@@ -17,13 +17,46 @@ finish-args:
   - --share=network
   - --device=dri
 
-modules:
+modules:  
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.40.5.tar.xz
+        sha256: 7de051a263668621d91a61a5eb1c3771d1a7cec900043d4afef06c326c16037f
+        # Currently version locked because of bug with nvidia cards
+        # https://github.com/flathub/flathub/pull/4520#issuecomment-1728489158
+        # x-checker-data:
+        #   type: html
+        #   url: https://webkitgtk.org/releases/
+        #   version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+        #   url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_SOUP2=ON # This will build webkit2gtk against libsoup 2 which is required with tauri v1
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+      - name: unifdef # Dependency Of Webkit
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - '*'
+  
   - name: libredirect-frontends-manager
     sources:
       - type: git
         url: https://github.com/libredirect/frontends_manager.git
-        tag: v1.0.0
+        tag: v1.0.1
         x-checker-data:
           type: git
           tag-pattern: ^v((?:\d+.)*\d+)$
@@ -33,7 +66,7 @@ modules:
       - cargo-sources.json
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-nightly/bin
+      append-path: /usr/lib/sdk/node16/bin:/usr/lib/sdk/rust-stable/bin
       env:
         npm_config_nodedir: /usr/lib/sdk/node16
         CARGO_HOME: /run/build/libredirect-frontends-manager/cargo
@@ -41,6 +74,7 @@ modules:
         npm_config_cache: /run/build/libredirect-frontends-manager/flatpak-node/npm-cache
     build-commands:
       - npm ci --offline
+      - ls /usr/lib/sdk
       - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
       - npm run tauri build -- -d -b deb
       - install -Dm644 -t /app/share/metainfo/ io.github.libredirect.frontends-manager.metainfo.xml
