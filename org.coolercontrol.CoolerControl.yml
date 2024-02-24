@@ -1,0 +1,87 @@
+id: org.coolercontrol.CoolerControl
+runtime: org.gnome.Platform
+runtime-version: "45"
+sdk: org.gnome.Sdk
+separate-locales: false
+command: coolercontrol
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  # Can be enabled once Tauri bug is fixed: https://github.com/tauri-apps/tauri/issues/8964
+  #- --socket=wayland
+  - --device=dri
+  - --share=network
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  # Required to work on Gnome 44 (tauri@next already migrated to webkit2gtk-4.1 which is integrated in gnome 44)
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.42.1.tar.xz
+        sha256: 6f41fac9989d3ee51c08c48de1d439cdeddecbc757e34b6180987d99b16d2499
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_MINIBROWSER=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_SOUP2=ON
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - "*"
+
+  - name: coolercontrol
+    sources:
+      - type: git
+        url: https://gitlab.com/coolercontrol/coolercontrol.git
+        tag: 1.1.1
+        commit: d39004ec9110d558664fa4220e6e2701bf594098
+        disable-submodules: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\\d.]+)$
+      - type: patch
+        path: metainfo.patch
+      - node-sources.json
+      - cargo-sources.json
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/coolercontrol/cargo
+        XDG_CACHE_HOME: /run/build/coolercontrol/flatpak-node/cache
+        npm_config_cache: /run/build/coolercontrol/flatpak-node/npm-cache
+        npm_config_offline: "true"
+    build-commands:
+      - cd coolercontrol-ui; npm ci --offline
+      - cd coolercontrol-ui; npm run build
+      - cd coolercontrol-ui/src-tauri; cargo --offline fetch --manifest-path Cargo.toml
+      - cd coolercontrol-ui/src-tauri; cargo --offline build --release -F custom-protocol
+      - install -Dm755 coolercontrol-ui/src-tauri/target/release/coolercontrol -t /app/bin/
+      - install -Dm644 packaging/metadata/org.coolercontrol.CoolerControl.png -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 packaging/metadata/org.coolercontrol.CoolerControl.desktop -t /app/share/applications/
+      - install -Dm644 packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml -t /app/share/metainfo
