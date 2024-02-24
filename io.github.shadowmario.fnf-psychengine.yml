@@ -1,0 +1,108 @@
+app-id: io.github.shadowmario.fnf-psychengine
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: io.github.shadowmario.fnf-psychengine.sh
+
+finish-args:
+  # hardware 3D
+  - --device=dri
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Audio
+  - --socket=pulseaudio
+
+modules:
+
+  - name: haxe
+    sources:
+      - type: archive
+        url: https://github.com/HaxeFoundation/neko/releases/download/v2-3-0/neko-2.3.0-linux64.tar.gz
+        sha256: 26dda28d0a51407f26218ba9c2c355c8eb23cf2b0b617274b00e4b9170fe69eb
+        x-checker-data:
+          type: anitya
+          project-id: 10885
+          url-template: https://github.com/HaxeFoundation/neko/releases/download/v$version/neko-$version-linux64.tar.gz
+      - type: archive
+        url: https://github.com/HaxeFoundation/haxe/releases/download/4.3.3/haxe-4.3.3-linux64.tar.gz
+        sha256: ee7dbdad1dbceb0f36a2453cfe36a1310a1b7df4f134f6a8d5d77951edaa18c8
+        x-checker-data:
+          type: anitya
+          project-id: 7883
+          url-template: https://github.com/HaxeFoundation/haxe/releases/download/$version/haxe-$version-linux64.tar.gz
+    buildsystem: simple
+    build-options:
+      strip: false
+      no-debuginfo: true
+    build-commands:
+      - mkdir -p /app/haxe & mv * -t /app/haxe/
+
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-sd-bus-provider=no-daemon
+      - -Dwith-examples=false
+    sources:
+      - type: git
+        url: https://github.com/FeralInteractive/gamemode
+        tag: "1.8.1"
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\\d.]+)$
+
+  - name: fnf-psychengine
+    sources:
+      - type: git
+        url: https://github.com/ShadowMario/FNF-PsychEngine.git
+        # tag: "0.7.3"
+        # commit: 2dfa27773a3668e0c1b043a3fb4348942c8a6fb3
+        branch: main
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\\d.]+)$
+      # Script to set up build dependencies
+      - type: file
+        path: setup-dependencies.sh
+      # temporary fix for broken build in the repo (https://github.com/ShadowMario/FNF-PsychEngine/pull/14170)
+      - type: patch
+        path: fnf-psychengine-fixbuild.patch
+      # redirect crash logs, mods directory and list to XDG_DATA_HOME
+      - type: patch
+        path: fnf-psychengine-fix_user_data.patch
+      # launcher script
+      - type: script
+        dest-filename: io.github.shadowmario.fnf-psychengine.sh
+        commands:
+          # Launch game
+          - cd /app/bin
+          - ./PsychEngine
+      # FreeDesktop stuff
+      - type: file
+        path: io.github.shadowmario.fnf-psychengine.png
+      - type: file
+        path: io.github.shadowmario.fnf-psychengine.desktop
+      - type: file
+        path: io.github.shadowmario.fnf-psychengine.metainfo.xml
+    builddir: true
+    buildsystem: simple
+    build-commands:
+      # skip SScript haxe module setup
+      - echo 'oy9:showMacroty8:loopCosti25y10:includeAllfg' >> ~/settings.cocoa
+      # Set up project dependencies
+      - export PATH=$PATH:/app/haxe && haxelib setup ~/haxelib && haxelib install hxcpp && haxe -cp ./setup -D analyzer-optimize -main Main --interp
+      # Build
+      - export PATH=$PATH:/app/haxe && haxelib run lime build Project.xml linux
+      # Install build
+      - mkdir -p /app/bin && cp -r export/release/linux/bin/* /app/bin/
+      # Purge Haxe
+      - rm -rf /app/haxe
+      # Install launchers
+      - install -m755 io.github.shadowmario.fnf-psychengine.sh -t /app/bin/
+      - desktop-file-edit --set-key=Exec --set-value=io.github.shadowmario.fnf-psychengine.sh io.github.shadowmario.fnf-psychengine.desktop
+      - install -Dm 644 io.github.shadowmario.fnf-psychengine.desktop -t /app/share/applications
+      - install -Dm 644 io.github.shadowmario.fnf-psychengine.png -t /app/share/icons/hicolor/512x512/apps
+      - install -Dm 644 io.github.shadowmario.fnf-psychengine.metainfo.xml -t /app/share/metainfo
+    build-options:
+      build-args:
+        - --share=network
