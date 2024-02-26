@@ -9,6 +9,7 @@ finish-args:
   - --socket=wayland
   - --device=dri
   - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
   - --share=network
   - --own-name=org.mpris.MediaPlayer2.*
 modules:
@@ -33,3 +34,263 @@ modules:
         path: com.unicornsonlsd.Finamp.metainfo.xml
       - type: file
         path: icon_foreground.svg
+    modules:
+
+      - name: libmpv
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /share/applications
+          - /share/bash-completion
+          - /share/doc
+          - /share/icons
+          - /share/man
+          - /share/zsh
+        buildsystem: meson
+        config-opts:
+          - -Dlibmpv=true
+          - -Dbuild-date=false
+          - -Dalsa=disabled
+        sources:
+          - type: archive
+            url: https://github.com/mpv-player/mpv/archive/v0.37.0.tar.gz
+            sha256: 1d2d4adbaf048a2fa6ee134575032c4b2dad9a7efafd5b3e69b88db935afaddf
+            x-checker-data:
+              type: anitya
+              project-id: 5348
+              stable-only: true
+              url-template: https://github.com/mpv-player/mpv/archive/v$version.tar.gz
+              is-important: true
+        modules:
+
+          - name: luajit
+            no-autogen: true
+            cleanup:
+              - /bin
+              - /lib/*.a
+              - /include
+              - /lib/pkgconfig
+              - /share/man
+            sources:
+              - type: archive
+                url: http://luajit.org/download/LuaJIT-2.1.0-beta3.tar.gz
+                sha256: 1ad2e34b111c802f9d0cdf019e986909123237a28c746b21295b63c9e785d9c3
+              - type: shell
+                commands:
+                  - sed -i 's|/usr/local|/app|' ./Makefile
+
+          - name: libv4l2
+            buildsystem: meson
+            cleanup:
+              - /sbin
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /share/man
+            config-opts:
+              - -Dbpf=disabled
+              - -Dudevdir=/app/lib/udev
+              - -Dsystemdsystemunitdir=/dev/null
+            sources:
+              - type: archive
+                url: https://linuxtv.org/downloads/v4l-utils/v4l-utils-1.26.1.tar.xz
+                sha256: 4a71608c0ef7df2931176989e6d32b445c0bdc1030a2376d929c8ca6e550ec4e
+                x-checker-data:
+                  type: anitya
+                  project-id: 9998
+                  stable-only: true
+                  url-template: https://linuxtv.org/downloads/v4l-utils/v4l-utils-$version.tar.xz
+
+          - name: nv-codec-headers
+            cleanup:
+              - '*'
+            no-autogen: true
+            make-install-args:
+              - PREFIX=/app
+            sources:
+              - type: git
+                url: https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+                tag: n12.1.14.0
+                commit: 1889e62e2d35ff7aa9baca2bceb14f053785e6f1
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^n([\d.]+)$
+
+          - name: jpeg-xl
+            buildsystem: cmake-ninja
+            config-opts:
+              - -DCMAKE_BUILD_STATIC_LIBS=OFF
+              - -DJPEGXL_FORCE_SYSTEM_BROTLI=ON
+              - -DJPEGXL_FORCE_SYSTEM_LCMS2=ON
+              - -DJPEGXL_FORCE_SYSTEM_HWY=ON
+              - -DJPEGXL_ENABLE_PLUGINS=OFF
+              - -DJPEGXL_ENABLE_TOOLS=OFF
+              - -DJPEGXL_ENABLE_EXAMPLES=OFF
+              - -DJPEGXL_ENABLE_MANPAGES=OFF
+              - -DJPEGXL_ENABLE_FUZZERS=OFF
+              - -DBUILD_TESTING=OFF
+            post-install:
+              # It doesn't respect disabling static libraries...
+              - rm $FLATPAK_DEST/lib/*.a
+            cleanup:
+              - /include
+              - /lib/pkgconfig
+            sources:
+              - type: git
+                url: https://github.com/libjxl/libjxl.git
+                commit: v0.7.0
+            modules:
+
+              - name: hwy
+                buildsystem: cmake-ninja
+                config-opts:
+                  - -DBUILD_SHARED_LIBS=ON
+                  - -DHWY_ENABLE_TESTS=OFF
+                  - -DHWY_ENABLE_EXAMPLES=OFF
+                  - -DHWY_ENABLE_CONTRIB=OFF
+                post-install:
+                  - rm $FLATPAK_DEST/lib/libhwy_test*
+                cleanup:
+                  - /include
+                  - /lib/pkgconfig
+                sources:
+                  - type: archive
+                    url: https://github.com/google/highway/archive/refs/tags/1.0.2.tar.gz
+                    sha256: e8ef71236ac0d97f12d553ec1ffc5b6375d57b5f0b860c7447dd69b6ed1072db
+
+          - name: ffmpeg
+            cleanup:
+              - /include
+              - /lib/pkgconfig
+              - /share/ffmpeg/examples
+            config-opts:
+              - --enable-shared
+              - --disable-static
+              - --enable-gnutls
+              - --enable-gpl
+              - --disable-doc
+              - --disable-programs
+              - --disable-encoders
+              - --disable-muxers
+              - --enable-encoder=png
+              - --enable-encoder=libjxl
+              - --enable-libv4l2
+              - --enable-libdav1d
+              - --enable-libjxl
+            sources:
+              - type: archive
+                url: https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz
+                sha256: 8684f4b00f94b85461884c3719382f1261f0d9eb3d59640a1f4ac0873616f968
+                x-checker-data:
+                  type: anitya
+                  project-id: 5405
+                  stable-only: true
+                  url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+                  is-important: true
+
+          - name: libass
+            cleanup:
+              - /include
+              - /lib/*.la
+              - /lib/pkgconfig
+            config-opts:
+              - --disable-static
+            sources:
+              - type: archive
+                url: https://github.com/libass/libass/releases/download/0.17.1/libass-0.17.1.tar.xz
+                sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
+                x-checker-data:
+                  type: anitya
+                  project-id: 1560
+                  stable-only: true
+                  url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+
+          - name: uchardet
+            buildsystem: cmake-ninja
+            config-opts:
+              - -DCMAKE_BUILD_TYPE=Release
+              - -DBUILD_STATIC=0
+            cleanup:
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /share/man
+              - /lib/cmake
+            sources:
+              - type: archive
+                url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+                sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+                x-checker-data:
+                  type: anitya
+                  project-id: 9265
+                  stable-only: true
+                  url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
+
+          - name: rubberband
+            buildsystem: meson
+            config-opts:
+              - -Ddefault_library=shared
+            cleanup:
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /lib/ladspa
+            sources:
+              - type: archive
+                url: https://breakfastquay.com/files/releases/rubberband-3.3.0.tar.bz2
+                sha256: d9ef89e2b8ef9f85b13ac3c2faec30e20acf2c9f3a9c8c45ce637f2bc95e576c
+                x-checker-data:
+                  type: anitya
+                  project-id: 4222
+                  stable-only: true
+                  url-template: https://breakfastquay.com/files/releases/rubberband-$version.tar.bz2
+
+          - name: mujs
+            cleanup:
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /lib/libmujs.a
+            no-autogen: true
+            make-args:
+              - release
+              - prefix=/app
+            make-install-args:
+              - prefix=/app
+              - install-shared
+            sources:
+              - type: git
+                url: https://github.com/ccxvii/mujs
+                tag: 1.3.4
+                commit: a76d157bdaa9aec8de5ea5a362eed2f59139152d
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^([\d.]+)$
+
+          - name: libplacebo
+            buildsystem: meson
+            cleanup:
+              - /include
+              - /lib/pkgconfig
+            sources:
+              - type: git
+                url: https://github.com/haasn/libplacebo.git
+                commit: 64c1954570f1cd57f8570a57e51fb0249b57bb90
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^v([\d.]+)$
+                tag: v6.338.2
+            modules:
+
+              - name: glslang
+                buildsystem: cmake-ninja
+                config-opts:
+                  - -DBUILD_SHARED_LIBS=ON
+                cleanup:
+                  - /bin
+                  - /include
+                  - /lib/cmake
+                sources:
+                  - type: archive
+                    url: https://github.com/KhronosGroup/glslang/archive/refs/tags/11.12.0.tar.gz
+                    sha256: 7795a97450fecd9779f3d821858fbc2d1a3bf1dd602617d95b685ccbcabc302f
