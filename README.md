@@ -4,5 +4,5 @@ Install and run:
 
 ```bash
 flatpak-builder --force-clean build-dir com.unicornsonlsd.Finamp.yaml --repo=repo --install --user
-flatpak run org.unicornsonlsd.Finamp
+flatpak run com.unicornsonlsd.Finamp
 ```
