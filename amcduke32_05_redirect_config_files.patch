@@ -1,0 +1,139 @@
+diff --git a/source/build/src/config.cpp b/source/build/src/config.cpp
+index bbcb42a33..a81e776b3 100644
+--- a/source/build/src/config.cpp
++++ b/source/build/src/config.cpp
+@@ -113,7 +113,7 @@ int32_t loadsetup(const char *fn)
+
+     editorgridextent = 131072;
+
+-    if ((fp = buildvfs_fopen_read(fn)) == NULL) return -1;
++    if ((fp = buildvfs_fopen_read(get_writable_filename(fn).c_str())) == NULL) return -1;
+
+     if (readconfig(fp, "usecwd", val, VL) > 0) g_useCwd = (atoi_safe(val) != 0);
+     if (readconfig(fp, "forcesetup", val, VL) > 0) forcesetup = (atoi_safe(val) != 0);
+@@ -323,7 +323,7 @@ void writesettings(void) // save binds and aliases to <cfgname>_m32_settings.cfg
+         Bsprintf(tempbuf, "m32_settings.cfg");
+     else Bsprintf(tempbuf, "%s_m32_settings.cfg", strtok(ptr, "."));
+
+-    fp = buildvfs_fopen_write(tempbuf);
++    fp = buildvfs_fopen_write(get_writable_filename(tempbuf).c_str());
+
+     if (fp)
+     {
+@@ -354,7 +354,7 @@ int32_t writesetup(const char *fn)
+     buildvfs_FILE fp;
+     int32_t i,j,first=1;
+
+-    fp = buildvfs_fopen_write(fn);
++    fp = buildvfs_fopen_write(get_writable_filename(fn).c_str());
+     if (!fp) return -1;
+
+     Bfprintf(fp,
+diff --git a/source/duke3d/src/astub.cpp b/source/duke3d/src/astub.cpp
+index ea83b3c1a..938717149 100644
+--- a/source/duke3d/src/astub.cpp
++++ b/source/duke3d/src/astub.cpp
+@@ -10169,9 +10169,11 @@ int32_t ExtInit(void)
+
+     {
+         char *ptr = Xstrdup(setupfilename), *p = strtok(ptr,".");
++        char m32_settings_p[BMAX_PATH];
++        sprintf(m32_settings_p, "/%s_m32_settings.cfg", p);
+         if (!Bstrcmp(setupfilename, SETUPFILENAME))
+-            Bsprintf(tempbuf, "m32_settings.cfg");
+-        else Bsprintf(tempbuf,"%s_m32_settings.cfg",p);
++            Bsprintf(tempbuf, get_writable_filename(std::string("m32_settings.cfg")).c_str());
++        else Bsprintf(tempbuf, get_writable_filename(std::string(m32_settings_p)).c_str());
+         OSD_Exec(tempbuf);
+         Xfree(ptr);
+     }
+diff --git a/source/duke3d/src/config.cpp b/source/duke3d/src/config.cpp
+index 1f25a2e6b..7e31bfd2c 100644
+--- a/source/duke3d/src/config.cpp
++++ b/source/duke3d/src/config.cpp
+@@ -700,31 +700,33 @@ int CONFIG_ReadSetup(void)
+
+     ud.config.setupread = 1;
+     pathsearchmode = 1;
++    std::string WRITABLE_SETUPFILENAME(get_writable_filename(std::string(SETUPFILENAME)));
++    std::string WRITABLE_BACKUP_SETUPFILENAME(get_writable_filename(std::string(BACKUP_SETUPFILENAME)));
+
+     if (ud.config.scripthandle < 0)
+     {
+-        if (buildvfs_exists(g_setupFileName))  // JBF 20031211
+-            ud.config.scripthandle = SCRIPT_Load(g_setupFileName);
++        if (buildvfs_exists(WRITABLE_SETUPFILENAME.c_str()))  // JBF 20031211
++            ud.config.scripthandle = SCRIPT_Load(WRITABLE_SETUPFILENAME.c_str());
+ #if !defined(EDUKE32_TOUCH_DEVICES) && !defined(EDUKE32_STANDALONE)
+-        else if (buildvfs_exists(SETUPFILENAME))
++        else if (buildvfs_exists(WRITABLE_SETUPFILENAME.c_str()))
+         {
+             int const i = wm_ynbox("Import Configuration Settings",
+                                    "Configuration file %s not found. "
+                                    "Import configuration data from %s?",
+-                                   g_setupFileName, SETUPFILENAME);
++                                   g_setupFileName, WRITABLE_SETUPFILENAME.c_str());
+             if (i)
+-                ud.config.scripthandle = SCRIPT_Load(SETUPFILENAME);
++                ud.config.scripthandle = SCRIPT_Load(WRITABLE_SETUPFILENAME.c_str());
+         }
+ #endif
+ #ifdef BACKUP_SETUPFILENAME
+-        else if (buildvfs_exists(BACKUP_SETUPFILENAME))
++        else if (buildvfs_exists(WRITABLE_BACKUP_SETUPFILENAME.c_str()))
+         {
+             int const i = wm_ynbox("Import Configuration Settings",
+                                    "Configuration file %s not found. "
+                                    "Import configuration data from %s?",
+-                                   g_setupFileName, BACKUP_SETUPFILENAME);
++                                   g_setupFileName, WRITABLE_BACKUP_SETUPFILENAME.c_str());
+             if (i)
+-                ud.config.scripthandle = SCRIPT_Load(BACKUP_SETUPFILENAME);
++                ud.config.scripthandle = SCRIPT_Load(WRITABLE_BACKUP_SETUPFILENAME.c_str());
+         }
+ #endif
+     }
+@@ -841,7 +843,7 @@ void CONFIG_ReadSettings(void)
+
+     Xfree(setupFileName);
+
+-    OSD_Exec(tempbuf);
++    OSD_Exec(get_writable_filename(tempbuf).c_str());
+
+     ud.config.setupread = 2;
+
+@@ -859,7 +861,7 @@ void CONFIG_WriteSettings(void) // save binds and aliases to <cfgname>_settings.
+     else
+         Bsprintf(filename, "%s_settings.cfg", strtok(g_setupFileName, "."));
+
+-    buildvfs_FILE fp = buildvfs_fopen_write(filename);
++    buildvfs_FILE fp = buildvfs_fopen_write(get_writable_filename(filename).c_str());
+
+     if (fp)
+     {
+diff --git a/source/duke3d/src/gamedef.cpp b/source/duke3d/src/gamedef.cpp
+index 32adb1a49..99dbcefc0 100644
+--- a/source/duke3d/src/gamedef.cpp
++++ b/source/duke3d/src/gamedef.cpp
+@@ -2468,7 +2468,7 @@ static void C_SetCfgName(const char *cfgname)
+     CONFIG_WriteSetup(1);
+
+     if (g_modDir[0] != '/')
+-        Bsnprintf(g_setupFileName, sizeof(g_setupFileName), "%s/%s", g_modDir, temp);
++        Bsnprintf(g_setupFileName, sizeof(g_setupFileName), get_writable_filename(temp).c_str());
+     else
+         Bstrncpyz(g_setupFileName, temp, sizeof(g_setupFileName));
+
+diff --git a/source/mact/src/scriplib.cpp b/source/mact/src/scriplib.cpp
+index 4a9dd6cb2..f7b9eb34a 100644
+--- a/source/mact/src/scriplib.cpp
++++ b/source/mact/src/scriplib.cpp
+@@ -481,7 +481,7 @@ void SCRIPT_Save(int32_t scripthandle, char const * filename)
+     if (!filename) return;
+     if (!SC(scripthandle)) return;
+
+-    fp = buildvfs_fopen_write_text(filename);
++    fp = buildvfs_fopen_write_text(get_writable_filename(filename).c_str());
+     if (!fp) return;
+
+     numsect = SCRIPT_NumberSections(scripthandle);
