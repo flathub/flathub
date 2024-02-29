@@ -1,124 +1,68 @@
 diff --git a/source/build/src/vfs.cpp b/source/build/src/vfs.cpp
-index 44a9d212d..d822db87c 100644
+index 44a9d212d..a97900721 100644
 --- a/source/build/src/vfs.cpp
 +++ b/source/build/src/vfs.cpp
-@@ -1162,27 +1162,30 @@ void klistfree(BUILDVFS_FIND_REC *rec)
- BUILDVFS_FIND_REC *klistpath(const char *_path, const char *mask, int32_t type)
- {
-     BUILDVFS_FIND_REC *rec = NULL;
--    char *path;
-+    char *path = const_cast<char*>(std::filesystem::path(_path).lexically_normal().c_str());
-+    printf("klistpath: %s\n", path);
+@@ -331,8 +331,12 @@ int32_t findfrompath(const char *fn, char **where)
  
-     // pathsearchmode == 0: enumerates a path in the virtual filesystem
-     // pathsearchmode == 1: enumerates the system filesystem path passed in
+     char *pfn = (char *)Xmalloc(allocsiz);
  
--    path = Xstrdup(_path);
-+    // path = Xstrdup(_path);
- 
--    // we don't need any leading dots and slashes or trailing slashes either
--    {
--        int32_t i,j;
--        for (i=0; path[i] == '.' || toupperlookup[path[i]] == '/';) i++;
--        for (j=0; (path[j] = path[i]); j++,i++) ;
--        while (j>0 && toupperlookup[path[j-1]] == '/') j--;
--        path[j] = 0;
--        //initprintf("Cleaned up path = \"%s\"\n",path);
--    }
-+    // // we don't need any leading dots and slashes or trailing slashes either
-+    // {
-+    //     int32_t i,j;
-+    //     for (i=0; path[i] == '.' || toupperlookup[path[i]] == '/';) i++;
-+    //     for (j=0; (path[j] = path[i]); j++,i++) ;
-+    //     while (j>0 && toupperlookup[path[j-1]] == '/') j--;
-+    //     path[j] = 0;
-+    //     //initprintf("Cleaned up path = \"%s\"\n",path);
-+    // }
- 
-     if (*path && (type & BUILDVFS_FIND_DIR))
+-    strcpy(pfn, "./");
++    if (!std::string(fn).starts_with(std::getenv("XDG_DATA_HOME")))
++        strcpy(pfn, "./");
++    else
++        strcpy(pfn, "/");
+     strcat(pfn, ffn);
++
+     if (buildvfs_exists(pfn))
      {
-+        printf("path && type & BUILDVFS_FIND_DIR\n");
-         if (klistaddentry(&rec, "..", BUILDVFS_FIND_DIR, BUILDVFS_SOURCE_CURDIR) < 0)
-         {
-+            printf("klistaddentry failed\n");
-             Xfree(path);
-             klistfree(rec);
-             return NULL;
-@@ -1229,7 +1232,8 @@ BUILDVFS_FIND_REC *klistpath(const char *_path, const char *mask, int32_t type)
-         // Adjusted for the following "autoload" dir fix - NY00123
-         searchpath_t *search = NULL;
-         const char *d = pathsearchmode ? _path : CUR_DIR;
--        char buf[BMAX_PATH];
-+        // printf("d = %s\n", *d);
-+        char buf[BMAX_PATH*2];
-         BDIR *dir;
-         struct Bdirent *dirent;
-         do
-@@ -1237,16 +1241,23 @@ BUILDVFS_FIND_REC *klistpath(const char *_path, const char *mask, int32_t type)
+         *where = pfn;
+@@ -1237,7 +1241,11 @@ BUILDVFS_FIND_REC *klistpath(const char *_path, const char *mask, int32_t type)
              if (d==CUR_DIR && (type & BUILDVFS_FIND_NOCURDIR))
                  goto next;
  
 -            strcpy(buf, d);
-+            if (! std::string(path).starts_with("/home/")) {
-+                printf("being a naughty function and prefixing path with ./\n");
++            if (!std::string(_path).starts_with(std::getenv("XDG_DATA_HOME"))) {
 +                strcpy(buf, d);
++            } else {
++                strcpy(buf, "/");
 +            }
              if (!pathsearchmode)
              {
-+                printf("!pathsearchmode\n");
                  // Fix for "autoload" dir in multi-user environments - NY00123
-                 strcat(buf, path);
--                if (*path) strcat(buf, "/");
-+                printf("buf is now %s\n", buf);
-+                // if (*path) strcat(buf, "/");
-             }
-+            printf("bopendir\n");
-             dir = Bopendir(buf);
-             if (dir)
-             {
-+                printf("HERE WE FUCKIN GO\n");
-                 while ((dirent = Breaddir(dir)))
-                 {
-                     if ((dirent->name[0] == '.' && dirent->name[1] == 0) ||
-@@ -1254,7 +1265,9 @@ BUILDVFS_FIND_REC *klistpath(const char *_path, const char *mask, int32_t type)
-                         continue;
-                     if ((type & BUILDVFS_FIND_DIR) && !(dirent->mode & BS_IFDIR)) continue;
-                     if ((type & BUILDVFS_FIND_FILE) && (dirent->mode & BS_IFDIR)) continue;
-+                    printf("klistdir: matching %s, %s\n", dirent->name, mask);
-                     if (!Bwildmatch(dirent->name, mask)) continue;
-+                    printf("klistdir: adding %s, %s\n", dirent->name);
-                     switch (klistaddentry(&rec, dirent->name,
-                                           (dirent->mode & BS_IFDIR) ? BUILDVFS_FIND_DIR : BUILDVFS_FIND_FILE,
-                                           stackdepth))
 diff --git a/source/duke3d/src/player.cpp b/source/duke3d/src/player.cpp
-index 48b78cb4f..268fb9b2f 100644
+index 48b78cb4f..0ff6ed694 100644
 --- a/source/duke3d/src/player.cpp
 +++ b/source/duke3d/src/player.cpp
-@@ -5943,7 +5943,7 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
+@@ -5943,7 +5943,8 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
      if (!FURY)
          return 0;
  
 -    char fn[BMAX_PATH];
 +    char fn[BMAX_PATH] = { *const_cast<char*>(redirect_to_user_data(path).c_str()) };
++    printf("portableBackupSave %s\n", fn);
  
      if (G_ModDirSnprintf(fn, sizeof(fn), "%s.ext", path))
      {
 diff --git a/source/duke3d/src/savegame.cpp b/source/duke3d/src/savegame.cpp
-index ce29653e5..b5ba898b2 100644
+index ce29653e5..200b409f3 100644
 --- a/source/duke3d/src/savegame.cpp
 +++ b/source/duke3d/src/savegame.cpp
-@@ -149,7 +149,9 @@ static void ReadSaveGameHeaders_CACHE1D(BUILDVFS_FIND_REC *f)
+@@ -149,10 +149,12 @@ static void ReadSaveGameHeaders_CACHE1D(BUILDVFS_FIND_REC *f)
  
      for (; f != nullptr; f = f->next)
      {
 -        char const * fn = f->name;
 +        std::string fullpath = (std::filesystem::path(redirect_to_user_data("saves")) / f->name).lexically_normal().string();
 +        char const * fn = fullpath.c_str();
-+        printf("Reading headers from %s", fn);
          buildvfs_kfd fil = kopen4loadfrommod(fn, 0);
-         if (fil == buildvfs_kfd_invalid)
+-        if (fil == buildvfs_kfd_invalid)
++        if (fil == buildvfs_kfd_invalid) {
              continue;
-@@ -209,14 +211,17 @@ static int countcache1dfind(BUILDVFS_FIND_REC *f)
++        }
+ 
+         menusave_t & msv = g_internalsaves[g_numinternalsaves];
+ 
+@@ -209,9 +211,9 @@ static int countcache1dfind(BUILDVFS_FIND_REC *f)
  
  static void ReadSaveGameHeaders_Internal(void)
  {
@@ -127,19 +71,11 @@ index ce29653e5..b5ba898b2 100644
 -    BUILDVFS_FIND_REC *findfiles_default = klistpath(DefaultPath, SavePattern, BUILDVFS_FIND_FILE);
 +    static char const SavePattern[] = "*.esv";
 +    std::string DefaultPath(redirect_to_user_data("saves/"));
-+    printf("DefaultPath for saves: %s\n", DefaultPath);
 +    BUILDVFS_FIND_REC *findfiles_default = klistpath(DefaultPath.c_str(), SavePattern, BUILDVFS_FIND_FILE);
  
      // potentially overallocating but programmatically simple
      int const numfiles = countcache1dfind(findfiles_default);
-+    printf("Found %s savegames\n", numfiles);
-     size_t const internalsavesize = sizeof(menusave_t) * numfiles;
- 
-+    printf("Allocating memory for savegame data...\n");
-     g_internalsaves = (menusave_t *)Xrealloc(g_internalsaves, internalsavesize);
- 
-     for (int x = 0; x < numfiles; ++x)
-@@ -325,13 +330,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
+@@ -325,13 +327,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
  
  #if 0
          // debug code to dump the screenshot
@@ -160,7 +96,7 @@ index ce29653e5..b5ba898b2 100644
  #endif
      }
      else
-@@ -784,11 +789,11 @@ void G_DeleteSave(savebrief_t const & sv)
+@@ -784,11 +786,11 @@ void G_DeleteSave(savebrief_t const & sv)
  
      char temp[BMAX_PATH];
  
@@ -177,7 +113,7 @@ index ce29653e5..b5ba898b2 100644
  
      buildvfs_unlink(temp);
      Bstrcat(temp, ".ext");
-@@ -833,40 +838,42 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+@@ -833,40 +835,40 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
      Net_WaitForServer();
      ready2send = 0;
  
@@ -202,7 +138,6 @@ index ce29653e5..b5ba898b2 100644
 +        //     goto saveproblem;
 +        // }
 +        savefilename = get_writable_filename_subdir(sv.path, "saves");
-+        printf("sv.isvalid, filename %s\n", savefilename.c_str());
 +        fil = buildvfs_fopen_write(savefilename.c_str());
      }
      else
@@ -225,7 +160,6 @@ index ce29653e5..b5ba898b2 100644
 +        // }
 +
 +        savefilename = get_numbered_writable_filename(get_writable_filename_subdir(fn, "saves"), ".esv");
-+        printf("sv.isvalid false, filename %s\n", savefilename.c_str());
 +        fil = buildvfs_fopen_write(savefilename.c_str());
          // don't copy the mod dir into sv.path
 -        Bstrcpy(sv.path, fn + (len-(ARRAY_SIZE(SaveName)-1)));
@@ -240,7 +174,7 @@ index ce29653e5..b5ba898b2 100644
          goto saveproblem;
      }
  
-@@ -891,7 +898,7 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+@@ -891,7 +893,7 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
  
      if (!g_netServer && ud.multimode < 2)
      {
