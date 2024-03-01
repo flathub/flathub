@@ -1,0 +1,105 @@
+app-id: io.github.fm_elpac.pmim_ibus
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+separate-locales: false
+
+command: run.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-run/pmim:create
+
+modules:
+  - name: pmim-ibus
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/pmim-ibus/flatpak-node/cache
+        npm_config_cache: /run/build/pmim-ibus/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+
+      # files for desktop app
+      - install -D -t /app/share/metainfo/ pmim-ibus/flatpak/io.github.fm_elpac.pmim_ibus.metainfo.xml
+      - install -D -t /app/share/applications/ pmim-ibus/flatpak/io.github.fm_elpac.pmim_ibus.desktop
+      - install -D pmim-ibus/logo/pmim-2024-2.svg /app/share/icons/hicolor/scalable/apps/io.github.fm_elpac.pmim_ibus.svg
+
+      - install -D -t /app/ pmim-ibus/LICENSE
+      - install -D -t /app/ pmim-ibus/README.md
+
+      # /app/bin
+      - install -Dm755 -t /app/bin/ run.sh
+      - install -Dm755 -t /app/bin/ pmim-ibus/flatpak/restart.sh
+
+      - install -Dm755 -t /app/bin/ dist-deno/deno
+      - install -Dm755 -t /app/bin/ dist-librush/release/ibrus
+
+      - cp pmim-ibus/ibus_component/pmim_ibrus.xml /app
+
+      # /app/main *.js
+      - mkdir -p /app/main
+      - cp pmim-ibus/electronjs/*.js /app/main
+
+      # pmim-server
+      - cp -r server /app/
+      # ui-vue-dist
+      - cp -r ui/dist/* /app/server/static/
+
+      # electron dist
+      - cp -r dist-electron /app
+
+    sources:
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - env PMIMS_DB=${XDG_CONFIG_HOME}/pmim zypak-wrapper.sh /app/dist-electron/electron /app/main/main.js "$@"
+
+      # pmim-ibus
+      - type: git
+        dest: pmim-ibus
+        url: https://github.com/fm-elpac/pmim-ibus
+        tag: v0.1.1
+        commit: 9033daa9541a615a22765b71cca9edb3e71da144
+
+      # pmim-ibus/ui-vue-dist
+      - type: archive
+        dest: ui
+        url: https://github.com/fm-elpac/pmim-ibus/releases/download/v0.1.0/ui-vue-dist.tar.zst
+        sha256: 4fdaafb499f855f9d4646ad2202ba5cc1041677bb65d18c7381f2b0ef5a5632d
+
+      # pmim-server
+      - type: archive
+        dest: server
+        url: https://github.com/fm-elpac/pmim/releases/download/v0.1.1/pmim-server.tar.zst
+        sha256: d06bd825f04ac5b96ac6e6c6824e83b87849fbb082c10994df226f246689e660
+
+      # deno
+      - type: archive
+        dest: dist-deno
+        url: https://github.com/denoland/deno/releases/download/v1.41.1/deno-x86_64-unknown-linux-gnu.zip
+        sha256: 233377822ad21dd8e90953e0d0301dfa8219379bf0512b1e15aa4f507e830b7b
+
+      # electronjs dist
+      - type: archive
+        dest: dist-electron
+        url: https://github.com/electron/electron/releases/download/v29.1.0/electron-v29.1.0-linux-x64.zip
+        sha256: af7964b3f8c72b5ec1946b46a8396fda67feae71ae0b8bdb329e2abcccf45a81
+
+      # ibrus
+      - type: archive
+        dest: dist-librush
+        url: https://github.com/fm-elpac/librush/releases/download/v0.1.0-a1/librush_release_x86_64-unknown-linux-gnu.tar.zst
+        sha256: 87c842509ffd5d516a505e612c970afb53a9e47c66208f7e07dcc7abea1cd77e
