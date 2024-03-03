@@ -30,39 +30,33 @@ index 44a9d212d..a97900721 100644
              {
                  // Fix for "autoload" dir in multi-user environments - NY00123
 diff --git a/source/duke3d/src/player.cpp b/source/duke3d/src/player.cpp
-index 48b78cb4f..0ff6ed694 100644
+index 48b78cb4f..268fb9b2f 100644
 --- a/source/duke3d/src/player.cpp
 +++ b/source/duke3d/src/player.cpp
-@@ -5943,7 +5943,8 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
+@@ -5943,7 +5943,7 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
      if (!FURY)
          return 0;
  
 -    char fn[BMAX_PATH];
 +    char fn[BMAX_PATH] = { *const_cast<char*>(redirect_to_user_data(path).c_str()) };
-+    printf("portableBackupSave %s\n", fn);
  
      if (G_ModDirSnprintf(fn, sizeof(fn), "%s.ext", path))
      {
 diff --git a/source/duke3d/src/savegame.cpp b/source/duke3d/src/savegame.cpp
-index ce29653e5..200b409f3 100644
+index ce29653e5..0c5b068ef 100644
 --- a/source/duke3d/src/savegame.cpp
 +++ b/source/duke3d/src/savegame.cpp
-@@ -149,10 +149,12 @@ static void ReadSaveGameHeaders_CACHE1D(BUILDVFS_FIND_REC *f)
+@@ -149,7 +149,8 @@ static void ReadSaveGameHeaders_CACHE1D(BUILDVFS_FIND_REC *f)
  
      for (; f != nullptr; f = f->next)
      {
 -        char const * fn = f->name;
-+        std::string fullpath = (std::filesystem::path(redirect_to_user_data("saves")) / f->name).lexically_normal().string();
-+        char const * fn = fullpath.c_str();
++        std::filesystem::path full_save_path((std::filesystem::path(redirect_to_user_data("saves")) / f->name).lexically_normal());
++        char const * fn = full_save_path.c_str();
          buildvfs_kfd fil = kopen4loadfrommod(fn, 0);
--        if (fil == buildvfs_kfd_invalid)
-+        if (fil == buildvfs_kfd_invalid) {
+         if (fil == buildvfs_kfd_invalid)
              continue;
-+        }
- 
-         menusave_t & msv = g_internalsaves[g_numinternalsaves];
- 
-@@ -209,9 +211,9 @@ static int countcache1dfind(BUILDVFS_FIND_REC *f)
+@@ -209,9 +210,9 @@ static int countcache1dfind(BUILDVFS_FIND_REC *f)
  
  static void ReadSaveGameHeaders_Internal(void)
  {
@@ -75,7 +69,7 @@ index ce29653e5..200b409f3 100644
  
      // potentially overallocating but programmatically simple
      int const numfiles = countcache1dfind(findfiles_default);
-@@ -325,13 +327,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
+@@ -325,13 +326,13 @@ int32_t G_LoadSaveHeaderNew(char const *fn, savehead_t *saveh)
  
  #if 0
          // debug code to dump the screenshot
@@ -96,7 +90,7 @@ index ce29653e5..200b409f3 100644
  #endif
      }
      else
-@@ -784,11 +786,11 @@ void G_DeleteSave(savebrief_t const & sv)
+@@ -784,11 +785,11 @@ void G_DeleteSave(savebrief_t const & sv)
  
      char temp[BMAX_PATH];
  
@@ -113,7 +107,7 @@ index ce29653e5..200b409f3 100644
  
      buildvfs_unlink(temp);
      Bstrcat(temp, ".ext");
-@@ -833,40 +835,40 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
+@@ -833,40 +834,41 @@ int32_t G_SavePlayer(savebrief_t & sv, bool isAutoSave)
      Net_WaitForServer();
      ready2send = 0;
  
@@ -168,9 +162,9 @@ index ce29653e5..200b409f3 100644
  
      if (!fil)
      {
--        LOG_F(ERROR, "Unable to open %s for writing: %s.",
+         LOG_F(ERROR, "Unable to open %s for writing: %s.",
 -                   fn, strerror(errno));
-+        LOG_F(ERROR, "Unable to open %s for writing: %s.", savefilename.c_str(), strerror(errno));
++                   savefilename.c_str(), strerror(errno));
          goto saveproblem;
      }
  
