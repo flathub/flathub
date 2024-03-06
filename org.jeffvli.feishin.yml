@@ -1,16 +1,19 @@
 app-id: org.jeffvli.feishin
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: "23.08"
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
-base-version: '23.08'
+base-version: "23.08"
 command: feishin
 separate-locales: false
+
+add-build-extensions:
+  - org.freedesktop.Platform.ffmpeg-full
 
 finish-args:
   - --device=dri
   - --share=ipc
-  - --socket=fallback-x11
+  - --socket=x11
   - --socket=wayland
   - --socket=pulseaudio
   - --share=network
@@ -45,30 +48,6 @@ modules:
         commit: 818ce7c51a6b9179307950e919983e0909942098
         tag: v0.37.0
     modules:
-      - name: ffmpeg
-        config-opts:
-          - --enable-shared
-          - --disable-static
-          - --enable-gnutls
-          - --enable-pic
-          - --disable-doc
-          - --disable-programs
-          - --disable-encoders
-          - --disable-muxers
-          - --disable-devices
-        cleanup:
-          - /lib/pkgconfig
-          - /share
-          - /include
-        sources:
-          - type: git
-            url: https://git.ffmpeg.org/ffmpeg.git
-            x-checker-data:
-              type: git
-              tag-pattern: ^n([\d.]+)$
-
-            commit: e38092ef9395d7049f871ef4d5411eb410e283e0
-            tag: n6.1.1
       - name: libplacebo
         buildsystem: meson
         cleanup:
@@ -153,4 +132,12 @@ modules:
                 test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
             done
           - mkdir -p $XDG_CONFIG_HOME/feishin/ && cp -n /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json
-          - zypak-wrapper /app/main/feishin --ozone-platform-hint=auto
+          - LAUNCH_ARGS=--ozone-platform-hint=auto
+          - |
+            gpu=$(lspci | grep -i '.* vga .* nvidia .*')
+            shopt -s nocasematch
+            if [[ $gpu == *' nvidia '* ]]; then
+              echo "Nvidia GPU is present, disabling wayland support"
+              LAUNCH_ARGS=""
+            fi
+          - zypak-wrapper /app/main/feishin $LAUNCH_ARGS
