@@ -1,4 +1,4 @@
-# Flatpak packaging for [x-11-calc](https://github.com/mike632t/x11-calc) HP RPN calculator emulator
+# Flatpak packaging for [x11-calc](https://github.com/mike632t/x11-calc) HP RPN calculator emulator
 
 Application icon should appear in launcher after install.\
 It can also be launched under terminal (to monitor eventual error messages):\
