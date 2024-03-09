@@ -26,4 +26,4 @@ flatpak-builder --install --user --force-clean repo/ so.libdb.dissent.yml
 go run github.com/tfuxu/flatpak-go-mod@update-deps .
 ```
 
-2. Copy `modules.txt` to the root of this package and copy contents of `go.mod.yml` to `so.libdb.dissent.yml`.
+2. Copy `modules.txt` and `go.mod.yml` to the root of this package.
