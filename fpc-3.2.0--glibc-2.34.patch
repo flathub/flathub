@@ -1,0 +1,141 @@
+From a6c82b6642871e1c68f3839e090b055bee4254b0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dan=20Hor=C3=A1k?= <dan@danny.cz>
+Date: Tue, 21 Sep 2021 12:47:28 +0200
+Subject: [PATCH] update startup data structs for glibc >= 2.34
+
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=2005910
+Fixes: https://gitlab.com/freepascal.org/fpc/source/-/issues/39295
+---
+ rtl/linux/aarch64/cprt0.as   | 6 ++----
+ rtl/linux/i386/si_c21.inc    | 7 +++----
+ rtl/linux/powerpc64/cprt0.as | 4 ++--
+ rtl/linux/powerpc64/gprt0.as | 4 ++--
+ rtl/linux/powerpc64/si_c.inc | 7 ++-----
+ rtl/linux/powerpc64/si_g.inc | 7 ++-----
+ 6 files changed, 13 insertions(+), 22 deletions(-)
+
+diff --git a/rtl/linux/aarch64/cprt0.as b/rtl/linux/aarch64/cprt0.as
+index fd83610fbc..c8f2ca4baa 100644
+--- a/rtl/linux/aarch64/cprt0.as
++++ b/rtl/linux/aarch64/cprt0.as
+@@ -41,10 +41,8 @@ _start:
+ 	                     init, fini, rtld_fini, stack_end) */
+ 	adrp	x0,:got:PASCALMAIN
+ 	ldr	x0,[x0,#:got_lo12:PASCALMAIN]
+-	adrp	x3,:got:__libc_csu_init
+-	ldr	x3,[x3,#:got_lo12:__libc_csu_init]
+-	adrp	x4,:got:__libc_csu_fini
+-	ldr	x4,[x4,#:got_lo12:__libc_csu_fini]
++	mov	x3, #0		/* Used to be init.  */
++	mov	x4, #0		/* Used to be fini.  */
+ 	bl	__libc_start_main
+ 
+ 	/* This should never happen */
+diff --git a/rtl/linux/i386/si_c21.inc b/rtl/linux/i386/si_c21.inc
+index 71df29b6ef..084cdcf3ce 100644
+--- a/rtl/linux/i386/si_c21.inc
++++ b/rtl/linux/i386/si_c21.inc
+@@ -35,8 +35,6 @@
+ 
+ {$asmmode att}
+ 
+-procedure __libc_csu_init; cdecl; external;
+-procedure __libc_csu_fini; cdecl; external;
+ procedure libc_start_main; external name '__libc_start_main';
+ procedure libc_exit(code: longint); cdecl; external name 'exit';
+ 
+@@ -93,8 +91,9 @@ procedure _FPC_libc21_start; assembler; nostackframe; public name '_start';
+         pushl %esp   			{ stack_end }
+         pushl %edx   			{ function to be registered with
+                       			  atexit(), passed by loader }
+-        pushl $__libc_csu_fini
+-        pushl $__libc_csu_init
++        { This used to be the addresses of .fini and .init.  }
++        pushl $0
++        pushl $0
+         pushl %esi                      { Push second argument: argv.  }
+         pushl %ecx                      { Push first argument: argc.  }
+ 
+diff --git a/rtl/linux/powerpc64/cprt0.as b/rtl/linux/powerpc64/cprt0.as
+index 2b8309d4bf..3eace2813d 100644
+--- a/rtl/linux/powerpc64/cprt0.as
++++ b/rtl/linux/powerpc64/cprt0.as
+@@ -351,8 +351,8 @@ _restvr_31: addi r12,r0,-16
+ start_addresses:
+     .quad   0 /* was _SDA_BASE_  but not in 64-bit ABI*/
+     .quad   main_stub
+-    .quad   __libc_csu_init
+-    .quad   __libc_csu_fini
++    .quad   0 /* Used to be init. */
++    .quad   0 /* Used to be fini. */
+     .size   start_adresses, .-start_addresses
+ 
+ /*
+diff --git a/rtl/linux/powerpc64/gprt0.as b/rtl/linux/powerpc64/gprt0.as
+index de31b6b08d..6b6fc9011b 100644
+--- a/rtl/linux/powerpc64/gprt0.as
++++ b/rtl/linux/powerpc64/gprt0.as
+@@ -351,8 +351,8 @@ _restvr_31: addi r12,r0,-16
+ start_addresses:
+     .quad   0 /* was _SDA_BASE_  but not in 64-bit ABI*/
+     .quad   main_stub
+-    .quad   __libc_csu_init
+-    .quad   __libc_csu_fini
++    .quad   0 /* Used to be init. */
++    .quad   0 /* Used to be fini. */
+     .size   start_adresses, .-start_addresses
+ 
+ /*
+diff --git a/rtl/linux/powerpc64/si_c.inc b/rtl/linux/powerpc64/si_c.inc
+index c7e5e353a0..2833258c93 100644
+--- a/rtl/linux/powerpc64/si_c.inc
++++ b/rtl/linux/powerpc64/si_c.inc
+@@ -657,9 +657,6 @@ procedure _restfpr_30; cdecl; public; assembler; nostackframe;
+                           Process start/halt
+  ******************************************************************************}
+ 
+-procedure __libc_csu_init; cdecl; external;
+-procedure __libc_csu_fini; cdecl; external;
+-
+ procedure __libc_start_main(r3,r4,r5,r6,r7,r8,r9: pointer); cdecl; external;
+ 
+ var
+@@ -724,8 +721,8 @@ procedure main_stub(argc: longint; argv, envp: ppchar); cdecl; assembler; nostac
+   end
+   = (sda_base: nil; {* was _SDA_BASE_  but not in 64-bit ABI }
+      main: @main_stub;
+-     libc_csu_init: @__libc_csu_init;
+-     libc_csu_fini: @__libc_csu_fini
++     libc_csu_init: nil;
++     libc_csu_fini: nil
+     );
+ 
+ 
+diff --git a/rtl/linux/powerpc64/si_g.inc b/rtl/linux/powerpc64/si_g.inc
+index 8c99a39bc6..58cdf19f9c 100644
+--- a/rtl/linux/powerpc64/si_g.inc
++++ b/rtl/linux/powerpc64/si_g.inc
+@@ -657,9 +657,6 @@ procedure _restfpr_30; cdecl; public; assembler; nostackframe;
+                           Process start/halt
+  ******************************************************************************}
+ 
+-procedure __libc_csu_init; cdecl; external;
+-procedure __libc_csu_fini; cdecl; external;
+-
+ procedure __libc_start_main(r3,r4,r5,r6,r7,r8,r9: pointer); cdecl; external;
+ 
+ type
+@@ -745,8 +742,8 @@ procedure main_stub(argc: longint; argv, envp: ppchar); cdecl; assembler; nostac
+   end
+   = (sda_base: nil; {* was _SDA_BASE_  but not in 64-bit ABI }
+      main: @main_stub;
+-     libc_csu_init: @__libc_csu_init;
+-     libc_csu_fini: @__libc_csu_fini
++     libc_csu_init: nil;
++     libc_csu_fini: nil
+     );
+ 
+ procedure call_libc_start_main(r3,r4,r5,r6,r7,r8,r9: pointer); cdecl;
+-- 
+2.31.1
+
