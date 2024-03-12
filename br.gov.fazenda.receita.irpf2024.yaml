@@ -1,0 +1,107 @@
+id: br.gov.fazenda.receita.irpf2024
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+tags:
+  - proprietary
+command: irpf2024
+
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=cups
+  - --share=ipc
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+  - --filesystem=xdg-documents # Useful place to save PDF files.
+  - --filesystem=~/ProgramasRFB:create # This path is hardcoded by the app to save all kinds of tax data.
+  - --persist=.java # In-app preferences are stored in: ~/.java/.userPrefs/serpro
+  - --persist=.receitanet # Log files, tokens and whatnot.
+  - --persist=.rfb # User-provided form data (such as CPF and CNPJ numbers) are stored in: ~/.rfb
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: libgnome-stubs
+    no-autogen: true
+    sources:
+      - type: dir
+        path: tools/libgnome-stubs
+
+  - name: irpf2024
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/bin apply_extra
+      - install -Dm755 -t /app/bin irpf2024
+      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
+      - install -Dm644 icon-64.png /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+      - ln -s /usr/bin/xdg-open /app/bin/firefox # Fixes the clickable link on the "About" window.
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - export LC_ALL=C
+          - mkdir share
+          - |
+            bsdtar -C share -xf irpf.zip --strip-components 1 \
+              --include='IRPF*/help' \
+              --include='IRPF*/lib' \
+              --include='IRPF*/lib-modulos' \
+              --include='IRPF*/irpf.jar' \
+              --include='IRPF*/pgd-updater.jar'
+          - rm -f irpf.zip
+          - |
+            for zip in *.zip
+            do
+              bsdtar -C share/lib/resources -xf "${zip}" --strip-components 2
+              rm -f "${zip}"
+            done
+          - chmod -R -x+X share
+      - type: script
+        dest-filename: irpf2024
+        commands:
+          # Briefly explaining the script:
+          #
+          # * -Djdk.gtk.version=2: We use this to "trick" the JRE into lading GTK 2 libraries (which we don't provide), which will
+          #                        fail and make the JRE rely on our libgnome stubs instead (see the 'tools/libgnome-stubs' directory).
+          # * _JAVA_OPTIONS: This env var has to be modified to remove any references to the option above, otherwise the trick we
+          #                  apply above will fail, and will break the single sign-on feature provided by the app.
+          - |
+            unsupported_java_option='-Djdk\.gtk\.version=[[:digit:]]'
+            if [[ "${_JAVA_OPTIONS}" =~ ${unsupported_java_option} ]]
+            then
+              echo "${0}: WARNING: Removing unsupported option '${BASH_REMATCH[0]}' from \$_JAVA_OPTIONS" >&2
+              export _JAVA_OPTIONS="${_JAVA_OPTIONS//${unsupported_java_option}/}"
+            fi
+            exec java -Djdk.gtk.version=2 -jar /app/extra/share/irpf.jar $@
+      - type: file
+        path: br.gov.fazenda.receita.irpf2024.metainfo.xml
+      - type: file
+        path: br.gov.fazenda.receita.irpf2024.desktop
+      - type: file
+        path: icons/icon-64.png
+      - type: file
+        path: icons/icon-128.png
+      - type: file
+        path: icons/icon-256.png
+      - type: extra-data
+        filename: irpf.zip
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/irpf/arquivos/IRPF2024-1.0.zip
+        sha256: ef6ef96a297783f37cd975cb87c3416c72e69a3410f125b1b944075f17667532
+        size: 50379250
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/irpf/update/latest.xml
+          version-pattern: <pkgver>([\d.]+)</pkgver>
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/irpf/arquivos/IRPF2024-$version.zip
+          is-main-source: true
+      - generated-sources.yaml
