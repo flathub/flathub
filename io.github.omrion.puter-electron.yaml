@@ -1,0 +1,60 @@
+app-id: io.github.omrion.puter-electron
+branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+separate-locales: false
+command: start-puter-electron
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=/run/udev:ro
+
+modules:
+  - name: puter-electron
+    buildsystem: simple
+    build-commands:
+      - unzip -d puter-electron puter-electron_*.zip
+      - rm puter-electron_*.zip
+      - cp -r puter-electron /app
+      - install -Dm 644 io.github.omrion.puter-electron.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm 644 io.github.omrion.puter-electron.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 io.github.omrion.puter-electron.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+      - install -Dm 755 start-puter-electron.sh /app/bin/start-puter-electron
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/omrion/puter-electron/releases/download/v1.0.0/puter-electron_1.0.0_linux.zip
+        sha256: cd69cdcefea8bee255a2d0d227fa28d5f6fa455e17a1818b6d3894d4808c163f
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/omrion/puter-electron/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name=="puter-electron_" + $version +
+            "_linux.zip") | .browser_download_url
+      - type: file
+        path: io.github.omrion.puter-electron.metainfo.xml
+      - type: file
+        path: io.github.omrion.puter-electron.png
+      - type: file
+        path: io.github.omrion.puter-electron.desktop
+      - type: script
+        commands:
+          - for i in {0..9}; do
+          - test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+          - done
+      - type: script
+        dest-filename: start-puter-electron.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/puter-electron/puter-electron /app/puter-electron/puter-electron
+            --ozone-platform-hint=auto "$@"
