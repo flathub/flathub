@@ -1,3 +1,5 @@
+<!-- ⚠️  The submission PR must be against the `new-pr` branch ⚠️  -->
+
 ### Please confirm your submission meets all the criteria
 
 <!-- Please replace each `[ ]` by `[X]` when the step is complete -->
