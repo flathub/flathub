@@ -4,8 +4,7 @@
 
 <!-- Please replace each `[ ]` by `[X]` when the step is complete -->
 
-Please describe your application briefly below.
-
+- [ ] Please describe your application briefly.
 - [ ] I have read the [App Requirements][reqs] and [App Maintenance][maint] pages.
 - [ ] My pull request follows the instructions at [App Submission][submission].
 - [ ] I have [built][build] and tested the submission locally.
