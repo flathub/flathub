@@ -1,0 +1,257 @@
+app-id: org.tahoma2d.Tahoma2D
+runtime: org.kde.Platform
+runtime-version: '5.15-23.08'
+sdk: org.kde.Sdk
+command: tahoma2d
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=host
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib/tahoma2d
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/libusb/libusb.json
+
+  - name: freeglut
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    build-options: # https://wiki.gentoo.org/wiki/Gcc_10_porting_notes/fno_common
+      cflags: -fcommon
+      cxxflags: -fcommon
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeglut/freeglut/3.2.1/freeglut-3.2.1.tar.gz
+        sha256: d4000e02102acaf259998c870e25214739d1f16f67f99cb35e4f46841399da68
+
+  - name: superlu
+    buildsystem: cmake # ninja broken
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=True
+    sources:
+      - type: archive
+        url: https://github.com/xiaoyeli/superlu/archive/v5.2.1.tar.gz
+        sha256: 77582501dedef295eb74e4dc9433e2816d2d8be211eae307379c13d93c65bc71
+
+  - name: OpenBLAS
+    buildsystem: cmake-ninja
+    builddir: true
+#Needed for local VM building when CORE/LIBCORE not detected
+#    config-opts:
+#      - -DTARGET=NEHALEM
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.9.tar.gz
+        sha256: 17d4677264dfbc4433e97076220adc79b050e4f8a083ea3f853a53af253bc380
+
+  - name: lz4
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: contrib/cmake_unofficial
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/lz4/lz4/archive/v1.9.2.tar.gz
+        sha256: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
+
+  - name: lzo
+    cleanup:
+      - /bin
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+
+  - name: json-c
+    sources:
+      - type: archive
+        url: https://github.com/json-c/json-c/archive/json-c-0.13.1-20180305.tar.gz
+        sha256: 5d867baeb7f540abe8f3265ac18ed7a24f91fe3c5f4fd99ac3caba0708511b90
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --without-libraries=python
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2
+        sha256: 83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1 
+ 
+  - name: rhubarb
+    buildsystem: simple
+    build-commands:
+      - cmake . -DBOOST_ROOT=/app/include
+      - make rhubarb
+      - cp -R extras rhubarb/res rhubarb/rhubarb /app/bin
+      - mkdir /app/share/licenses/rhubarb
+      - cp -R CHANGELOG.md LICENSE.md  README.adoc /app/share/licenses/rhubarb
+    sources:
+      # Branch: tahoma2d-version
+      - type: archive
+        url: https://github.com/tahoma2d/rhubarb-lip-sync/archive/fa3177f9aaa5bbcbcfe820023372faf6bf597330.tar.gz
+        sha256: bb949e031c8523f191b24765f8a04cd5773d4edae1d9d1cb600956b2450ba75c
+
+# Already in environment
+#  - name: openH264
+#    buildsystem: simple
+#    build-commands:
+#      - mv Makefile Makefile.orig
+#      - sed -e"s/usr.local/app/" Makefile.orig > Makefile
+#      - make
+#      - make install
+#    sources:
+#      - type: archive
+#        url: https://github.com/cisco/openh264/archive/v2.4.0.tar.gz
+#        sha256: a44d1ccc348a790f9a272bba2d1c2eb9a9bbd0302e4e9b655d709e1c32f92691
+
+  - name: ffmpeg
+    config-opts:
+      - --enable-pthreads
+      - --enable-version3
+      - --enable-avresample
+      - --enable-gnutls
+#      - --enable-libbluray
+      - --enable-libmp3lame
+      - --enable-libopus
+#      - --enable-libsnappy
+      - --enable-libtheora
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-libwebp
+      - --enable-libxml2
+      - --enable-lzma
+      - --enable-libfreetype
+#      - --enable-libass
+#      - --enable-libopencore-amrnb
+#      - --enable-libopencore-amrwb
+      - --enable-libopenjpeg
+      - --enable-libspeex
+#      - --enable-libsoxr
+      - --enable-libopenh264
+      - --enable-shared
+      - --disable-static
+      - --disable-libjack
+      - --disable-indev=jack
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://www.ffmpeg.org/releases/ffmpeg-4.3.1.tar.xz
+        sha256: ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb
+      - type: patch
+        path: patches/ffmpeg-as-fix.patch
+
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_JASPER=OFF
+      - -DBUILD_JPEG=OFF
+      - -DBUILD_OPENEXR=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_PNG=OFF
+      - -DBUILD_PROTOBUF=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_TIFF=OFF
+      - -DBUILD_WEBP=OFF
+      - -DBUILD_ZLIB=OFF
+      - -DBUILD_opencv_hdf=OFF
+      - -DBUILD_opencv_java=OFF
+      - -DBUILD_opencv_text=ON
+      - -DOPENCV_ENABLE_NONFREE=ON
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+      - -DPROTOBUF_UPDATE_FILES=ON
+      - -DWITH_1394=OFF
+      - -DWITH_CUDA=OFF
+      - -DWITH_EIGEN=ON
+      - -DWITH_FFMPEG=ON
+      - -DWITH_GPHOTO2=OFF
+      - -DWITH_GSTREAMER=ON
+      - -DWITH_JASPER=OFF
+      - -DWITH_OPENEXR=ON
+      - -DWITH_OPENGL=OFF
+      - -DWITH_QT=OFF
+      - -DWITH_TBB=ON
+      - -DWITH_VTK=ON
+      - -DBUILD_opencv_python2=OFF
+      - -DBUILD_opencv_python3=ON
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.5.1.tar.gz
+        sha256: e27fe5b168918ab60d58d7ace2bd82dd14a4d0bd1d3ae182952c2113f5637513
+
+  - name: libgphoto2
+    config-opts:
+      - --disable-introspection
+      - --disable-docs
+    cleanup:
+      - /bin
+      - /lib/udev
+      - /share/doc
+      - /share/libgphoto2*
+      - /lib/libgphoto2*/*/*.la
+      - /doc
+    sources:
+      # Branch: tahoma2d-version
+      - type: archive
+        url: https://downloads.sourceforge.net/project/gphoto/libgphoto/2.5.31/libgphoto2-2.5.31.tar.bz2
+        sha256: 4f81c34c0b812bee67afd5f144940fbcbe01a2055586a6a1fa2d0626024a545b
+
+  - name: libmypaint
+    config-opts:
+      - --disable-gegl
+      - --disable-introspection
+    sources:
+      - type: archive
+        url: https://github.com/mypaint/libmypaint/releases/download/v1.4.0/libmypaint-1.4.0.tar.xz
+        sha256: 59d13b14c6aca0497095f29ee7228ca2499a923ba8e1dd718a2f2ecb45a9cbff
+
+  - name: tahoma2d
+    buildsystem: cmake
+    builddir: true
+    subdir: toonz/sources
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DWITH_GPHOTO2:BOOL=ON
+      - -DWITH_SYSTEM_SUPERLU=ON
+      - -DWITH_TRANSLATION=OFF
+      - -DBOOST_ROOT=/app/include/boost
+    sources:
+      - type: archive
+        url: https://github.com/tahoma2d/tahoma2d/archive/9396f120141ccc4fe375ef25aa7a0643b8692520/v1.4.tar.gz
+        sha256: a15f3c11891477804cc7120a4997837ddc07acf8e9bfd8186018f3a406b7b57e
+      # These patches can be removed after next release
+      - type: patch
+        path: patches/tahoma2d-sysenvvar.patch
+      - type: patch
+        path: patches/tahoma2d-flatpak.patch
+      - type: shell
+        commands:
+          - cd thirdparty/tiff-4.2.0 &&
+            cp -p /usr/share/automake-*/config.{sub,guess} config &&
+            ./configure --with-pic --disable-jbig --disable-webp &&
+            make -j $FLATPAK_BUILDER_N_JOBS
