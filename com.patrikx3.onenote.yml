@@ -1,0 +1,78 @@
+app-id: org.flathub.p3x-onenote
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+command: run.sh
+separate-locales: false
+finish-args:
+  - "--socket=wayland"
+  - "--socket=x11"
+  - "--share=ipc"
+  - "--device=dri"
+  - "--socket=pulseaudio"
+  - "--filesystem=home"
+  - "--share=network"
+  - "--talk-name=org.freedesktop.Notifications"
+build-options:
+  append-path: /usr/lib/sdk/node18/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: p3x-onenote
+    buildsystem: simple
+    subdir: main
+    build-options:
+      cflags: -O2 -g
+      cxxflags: -O2 -g
+      env:
+        XDG_CACHE_HOME: /run/build/p3x-onenote/flatpak-node/cache
+        npm_config_cache: /run/build/p3x-onenote/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        YARN_CACHE_FOLDER: /run/build/p3x-onenote/flatpak-node/yarn-cache
+    build-commands:
+      - node ./scripts/fix-packages-publish.js flathub-before      
+      - node ./scripts/fix-packages-publish.js before      
+      # Install npm dependencies
+      #- echo $PWD
+      #- npm list --cache
+      #- npm install --offline
+      #- echo $YARN_CACHE_FOLDER
+      #- yarn cache list --offline
+      - echo "yarn-offline-mirror \"/run/build/p3x-onenote/flatpak-node/yarn-mirror\"" >> .yarnrc
+      - yarn cache dir --offline
+      - yarn install --offline
+      # Build the app; in this example the dist script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      #- install -Dm444 logo.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      #- install -Dm444 flatpak/br.com.eduk.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      #- install -Dm444 flatpak/br.com.eduk.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      # Getting project
+      #- type: dir
+      #  path: .
+      #  dest: main
+      #- type: git
+      #  url: https://github.com/patrikx3/onenote.git
+      #  tag: v2024.4.146
+      #  dest: main
+      - type: archive
+        url: https://github.com/patrikx3/onenote/archive/refs/heads/master.tar.gz
+        sha256: 5dce355a4a8682fa8a280aaa8bd915ff2d3f57ebb7b1139b412d7858d8d501b1
+        dest: main
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/p3x-onenote "$@"
