@@ -4,46 +4,59 @@ runtime-version: '6.6'
 sdk: org.kde.Sdk
 base: com.riverbankcomputing.PyQt.BaseApp
 base-version: '6.6'
-command: /app/webappreader.sh
+command: /app/bin/webappreader.sh
 finish-args:
-  - --device=dri
   - --socket=fallback-x11
   - --socket=wayland
-  - --filesystem=home
-  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
-  - --share=network
+  - --filesystem=home  # to be able to save html pages to a hard drive
+  - --share=network # it is necessary to download html from the Internet
+  #- --device=dri # For the Qt webengine module to work perfectly with gpu
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess # necessary for QtWebEngineProcess to work
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
-build-options:
-  env:
-    QTWEBENGINE_DISABLE_SANDBOX: '1'
 modules:
   - python3-requirements.json
-  - name: webappreader
-    subdir: app
+
+  - name: wget2 #  proper workable version = 2.1
     buildsystem: simple
     build-commands:
-      - cp webappreader.py /app/
-      - cp webappreader.sh /app/
-      - chmod +x /app/webappreader.sh
-      - cp constants.py /app/
-      - cp settings.py /app/
-      - cp tools.py /app/
-      - cp tools.py /app/
-      - cp -r ui /app/
-      - cp -r pages /app/
-      - cp -r database /app/
-      - cp -r src /app/
+      - ./bootstrap
+      - ./configure --prefix=/app
+      - make
+      - make install
     sources:
-      - type: dir
-        path: .
-        dest: app
+      - type: git
+        url: https://gitlab.com/gnuwget/wget2.git
+        commit: 657e3d22c488a2d1f173e208e253995e15f8b6db
+
+  - name: webappreader
+    buildsystem: simple
+    build-commands:
+      - install -D /dev/null /app/share/applications/org.mintguide.WebAppReader.desktop
+      - |
+        echo '[Desktop Entry]' > /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Name=WebAppReader' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Comment=Offline web content reader' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Exec=/app/bin/webappreader.sh %U' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Icon=org.mintguide.WebAppReader' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Terminal=false' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Type=Application' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+        echo 'Categories=Utility;' >> /app/share/applications/org.mintguide.WebAppReader.desktop
+      - 'echo "#!/bin/sh" > /app/bin/webappreader.sh'
+      - 'echo "python3 /app/webappreader.py \"$@\"" >> /app/bin/webappreader.sh'
+      - chmod +x /app/bin/webappreader.sh
+      - cp -rT /run/build/webappreader/database /app/database
+      - cp -rT /run/build/webappreader/pages /app/pages
+      - cp -rT /run/build/webappreader/src /app/src
+      - cp -rT /run/build/webappreader/ui /app/ui
+      - cp /run/build/webappreader/constants.py /app
+      - cp /run/build/webappreader/settings.py /app
+      - cp /run/build/webappreader/tools.py /app
+      - cp /run/build/webappreader/webappreader.py /app
+    sources:
+      - type: git
+        url: https://gitverse.ru/sc/shekin/webappreader.git
+        commit: 5d2c72575a468a1c9d90446b4fac9f337a7c98c7
     post-install:
-      - install -Dm644 org.mintguide.WebAppReader.desktop /app/share/applications/org.mintguide.WebAppReader.desktop
       - install -Dm644 src/logo.png /app/share/icons/hicolor/128x128/apps/org.mintguide.WebAppReader.png
-      - install -Dm755 wget2 /app/bin/wget2
-      - install -Dm755 libwget.so.2 /app/lib/libwget.so.2
-      - install -Dm755 libgnutls-dane.so.0 /app/lib/libgnutls-dane.so.0
-      - install -Dm755 libunbound.so.8 /app/lib/libunbound.so.8
-      - install -Dm755 libprotobuf-c.so.1 /app/lib/libprotobuf-c.so.1
-      - install -Dm755 libpython3.12.so.1.0 /app/lib/libpython3.12.so.1.0
+      
