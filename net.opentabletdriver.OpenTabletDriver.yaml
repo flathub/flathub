@@ -1,0 +1,75 @@
+app-id: net.opentabletdriver.OpenTabletDriver
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: start-otd.sh
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet6
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=all
+modules:
+  - name: libnotify
+    buildsystem: meson
+    config-opts:
+      - -Dman=false
+      - -Dgtk_doc=false
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/libnotify.git
+        tag: 0.8.3
+
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/libevdev/libevdev.git
+        tag: libevdev-1.13.1
+
+  - name: opentabletdriver
+    buildsystem: simple
+    build-options:
+      arch:
+        arm:
+          env:
+            RUNTIME: "linux-arm"
+        aarch64:
+          env:
+            RUNTIME: "linux-arm64"
+        x86_64:
+          env:
+            RUNTIME: "linux-x64"
+      append-path: "/usr/lib/sdk/dotnet6/bin"
+      append-ld-library-path: "/usr/lib/sdk/dotnet6/lib"
+      append-pkg-config-path: "/app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet6/lib/pkgconfig"
+    build-commands:
+      - dotnet publish OpenTabletDriver.Console/OpenTabletDriver.Console.csproj -c Release -r $RUNTIME --source nuget-sources -p:PublishSingleFile=true -p:PublishTrimmed=true -p:DebugType=None --self-contained true -o ${FLATPAK_DEST}/bin
+      - dotnet publish OpenTabletDriver.Daemon/OpenTabletDriver.Daemon.csproj -c Release -r $RUNTIME --source nuget-sources -p:PublishSingleFile=true -p:PublishTrimmed=true -p:DebugType=None --self-contained true -o ${FLATPAK_DEST}/bin
+      - dotnet publish OpenTabletDriver.UX.Gtk/OpenTabletDriver.UX.Gtk.csproj -c Release -r $RUNTIME --source nuget-sources -p:PublishSingleFile=true -p:PublishTrimmed=true -p:DebugType=None --self-contained true -o ${FLATPAK_DEST}/bin
+      - install -Dm644 net.opentabletdriver.OpenTabletDriver.desktop ${FLATPAK_DEST}/share/applications/net.opentabletdriver.OpenTabletDriver.desktop
+      - install -Dm644 256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/net.opentabletdriver.OpenTabletDriver.png
+      - install -Dm755 start-otd.sh ${FLATPAK_DEST}/bin/start-otd.sh
+    sources:
+      - ./sources/linux-x64.json
+      - ./sources/linux-arm.json
+      - ./sources/linux-arm64.json
+      - type: git
+        url: https://github.com/OpenTabletDriver/OpenTabletDriver
+        tag: v0.6.4.0
+      - type: file
+        path: ./net.opentabletdriver.OpenTabletDriver.desktop
+      - type: file
+        path: ./256.png
+      - type: file
+        path: ./start-otd.sh
