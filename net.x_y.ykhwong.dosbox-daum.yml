@@ -1,0 +1,75 @@
+app-id: net.x_y.ykhwong.dosbox-daum
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: dosbox
+finish-args:         # flatpak permissions
+  - --device=all     # needed for OpenGL, gamepads and serial/parallel
+  - --share=ipc      # needed for X11
+  - --share=network  # Needed for IPX and serial over TCP/IP
+  - --socket=x11     # default to X11, as Gnome does not provide SSD
+  - --socket=pulseaudio
+  - --filesystem=home
+cleanup:
+  - '/include'
+  - '/lib/pkgconfig'
+  - '/share/aclocal'
+  - '/share/man'
+  - '*.la'
+  - '*.a'
+  - '/share/doc'
+
+modules:
+  - "shared-modules/glu/glu-9.json"
+  - "shared-modules/glew/glew.json"  
+  - name: SDL-1.2.15-hq
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/ebenbruyns/sdl1.2.15-hq.git
+        commit: 8052be3a5d072b499c5f046867086514e0f7e1b4
+  - "shared-modules/SDL/SDL_net-1.2.8.json"
+  - name: libtbb
+    buildsystem: simple
+    build-commands:
+      - make -e CXXFLAGS="-std=c++14"
+      - install -m755 -t /app/lib/ build/linux_*_release/*
+      - install -m755 -t /app/lib/ build/linux_*_debug/concurrent_hash_map.o # the release build of this file crashes on stripping - seems to work
+      - install -D -t /app/include/tbb/ include/tbb/*.h
+      - install -D -t /app/include/serial/tbb include/serial/tbb/*
+      - install -D -t /app/include/tbb/compat include/tbb//compat/*
+      - install -D -t /app/include/tbb/machine include/tbb/machine/*
+      - install -D -t /app/include/tbb/internal include/tbb/internal/*
+    sources:
+      - type: git
+        url: https://github.com/oneapi-src/oneTBB.git
+        tag: 2017_U8
+      - type: patch
+        path: libtbb23.08.patch
+  - name: open-glide
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/voyageur/openglide.git
+        commit: 1ecc60a83d2255bb9ce8a3e53a5c6bcc7dce44b1   
+  - name: dosbox-daum
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/ykhwong/dosbox-svn-daum.git
+        commit: 690080fd63ec3877d110240ccc7f0890e272c984
+      - type: patch
+        path: flatpak.patch
+      - type: file
+        path: net.x_y.ykhwong.dosbox-daum.desktop
+      - type: file
+        path: net.x_y.ykhwong.dosbox-daum.metainfo.xml
+      - type: file
+        path: 128x128.png    
+      - type: shell
+        commands:
+          - chmod 755 autogen.sh 
+    post-install:
+      - install -Dm644 128x128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.desktop -t /app/share/applications/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
