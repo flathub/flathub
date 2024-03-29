@@ -1,0 +1,333 @@
+app-id: ru.linux_gaming.PortProton
+sdk: org.freedesktop.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '23.08'
+base: org.winehq.Wine
+base-version: stable-23.08
+command: portproton
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --allow=per-app-dev-shm
+  - --device=all
+  - --share=network
+  - --allow=multiarch
+  - --allow=bluetooth
+  # For Wine crash handling
+  - --allow=devel
+  # Need to link .desktop files
+  - --filesystem=~/.local/share/applications:create
+  # Wine uses UDisks2 to enumerate disk drives
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=xdg-run/gamescope-0:ro
+  # Should fix access to SD card on the deck
+  - --filesystem=/run/media
+  # Should fix steamdeck controler navigation
+  - --filesystem=/run/udev:ro
+  # There are still quite a few users using /mnt/ for external drives
+  - --filesystem=/mnt
+  # For Debian
+  - --filesystem=/media
+  - --filesystem=host
+  # ENV
+  - --env=PATH=/app/bin:/usr/bin:/app/utils/bin:/usr/lib/extensions/vulkan/MangoHud/bin/:/usr/lib/extensions/vulkan/gamescope/bin:/usr/lib/extensions/vulkan/OBSVkCapture/bin
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib32:/usr/lib/extensions/vulkan/gamescope/lib
+  - --env=XDG_CONFIG_DIRS=/etc/xdg:/usr/lib/x86_64-linux-gnu/GL:/usr/lib/i386-linux-gnu/GL
+  # See: https://github.com/flathub/net.lutris.Lutris/pull/368#issuecomment-1751381312
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0:/app/lib32/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+inherit-extensions:
+  - org.freedesktop.Platform.GL32
+  - org.freedesktop.Platform.ffmpeg-full
+  - org.freedesktop.Platform.ffmpeg_full.i386
+  - org.winehq.Wine.gecko
+  - org.winehq.Wine.mono
+
+add-extensions:
+
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: *runtime-version
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: *runtime-version
+    no-autodownload: true
+
+x-compat-i386-opts: &compat_i386_opts
+  prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+  append-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+  libdir: /app/lib32
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+
+cleanup:
+  - /include
+  - /lib*/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - "*.la"
+  - "*.a"
+  - "*.pod"
+    
+modules:
+
+  - name: yad
+    config-opts:
+        - --enable-standalone
+        - --disable-icon-browser
+        - --disable-tools
+    sources:
+        - type: archive
+          url: https://github.com/v1cont/yad/releases/download/v13.0/yad-13.0.tar.xz
+          sha256: 194198c4a58e20ceffd9a3206633c3726d962d7d4219edb77aeb748897403e34
+          x-checker-data:
+            type: anitya
+            project-id: 5280
+            stable-only: true
+            url-template: https://github.com/v1cont/yad/releases/download/v$version/yad-$version.tar.xz
+    modules:
+      - shared-modules/intltool/intltool-0.51.json
+
+  - name: openssl-1.1
+    buildsystem: simple
+    build-commands:
+      - |
+        set -e
+        ./config --prefix=/app
+        make
+        make install
+    cleanup:
+        # Don't mask CLI tools provided by runtime - we just want the versioned shared library
+        - /bin
+        # Don't mask unversion library symlinks from library
+        - /lib/libcrypto.so
+        - /lib/libssl.so
+    sources:
+      - type: archive
+        url: https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        sha256: cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8
+        x-checker-data:
+            type: anitya
+            project-id: 20333
+            url-template: https://www.openssl.org/source/openssl-$version.tar.gz
+
+  - name: libxmu
+    config-opts: &libxmu_config_opts
+      - --disable-static
+    sources: &libxmu_sources
+      - type: archive
+        url: https://xorg.freedesktop.org/releases/individual/lib/libXmu-1.1.3.tar.bz2
+        sha512: 8c6cc65b22aa031ad870dd92736681a068a0878a425a53dbed909943da1136c4a24034d467cfd3785c3a8d78f66850b69f1ebe1eb24aaf9bc176b1d171a5c762
+
+  - name: xdpyinfo
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/app/xdpyinfo.git
+        tag: xdpyinfo-1.3.4
+        commit: ea4083ccb2a5ce4252acabeb2eb7bf49f7be25e0
+        x-checker-data:
+          type: git
+          tag-pattern: ^xdpyinfo-([\d.]+)$
+
+  - name: xrdb
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/releases/individual/app/xrdb-1.2.2.tar.gz
+        sha256: db2d774a35ae2f7e7ac61cc2de0dcae27fc2aa14399c35721f8300e63ea73549
+        x-checker-data:
+          type: anitya
+          project-id: 14956
+          url-template: https://xorg.freedesktop.org/releases/individual/app/xrdb-$version.tar.gz
+
+  - name: libXaw
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/releases/individual/lib/libXaw-1.0.15.tar.gz
+        sha256: ca8a613884c922985202075b3cc8ee8821bfa83a5eb066189ae3cca131e63972
+        x-checker-data:
+          type: anitya
+          project-id: 1766
+          url-template: https://xorg.freedesktop.org/releases/individual/lib/libXaw-$version.tar.gz
+
+  - name: gamemode
+    buildsystem: meson
+    config-opts: &gamemode_opts
+      - -Dwith-examples=false
+      - -Dwith-util=false
+      - -Dwith-sd-bus-provider=no-daemon
+    sources: &gamemode_sources
+      - type: git
+        url: https://github.com/FeralInteractive/gamemode.git
+        tag: '1.8.1'
+        commit: 5180d89e66830d87f69687b95fb86f622552b94b
+        x-checker-data:
+          type: git
+
+  - name: gamemode-32bit
+    build-options:
+      arch:
+        x86_64: *compat_i386_opts
+    buildsystem: meson
+    config-opts: *gamemode_opts
+    sources: *gamemode_sources
+
+  - name: gamemoderun
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 data/gamemoderun -t /app/bin
+    sources: *gamemode_sources
+                
+  - name: desktop-file-utils
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/desktop-file-utils/releases/desktop-file-utils-0.27.tar.xz
+        sha256: a0817df39ce385b6621880407c56f1f298168c040c2032cedf88d5b76affe836
+        x-checker-data:
+          type: anitya
+          project-id: 421
+          url-template: https://www.freedesktop.org/software/desktop-file-utils/releases/desktop-file-utils-$version.tar.xz
+
+  - name: icoutils
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: http://download.savannah.gnu.org/releases/icoutils/icoutils-0.32.3.tar.bz2
+        sha256: 17abe02d043a253b68b47e3af69c9fc755b895db68fdc8811786125df564c6e0
+        x-checker-data:
+          type: anitya
+          project-id: 1360
+          url-template: http://download.savannah.gnu.org/releases/icoutils/icoutils-$version.tar.bz2
+
+  - name: cabextract
+    sources:
+      - type: archive
+        url: https://www.cabextract.org.uk/cabextract-1.11.tar.gz
+        sha256: b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6
+        x-checker-data:
+          type: anitya
+          project-id: 245
+          url-template: https://www.cabextract.org.uk/cabextract-$version.tar.gz
+
+  - name: vulkan-tools
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DGLSLANG_INSTALL_DIR=/app
+      - -DVULKAN_HEADERS_INSTALL_DIR=/app
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/Vulkan-Tools.git
+        tag: sdk-1.3.261.1
+        commit: a7da7027ca9fd0901639f02619c226da9c6036f1
+        x-checker-data:
+          type: git
+          tag-pattern: ^sdk-([\d.]+)$
+
+  - name: ImageMagick
+    config-opts:
+      - --disable-static
+      - --disable-docs
+      - --with-hdri
+      - --with-pic
+    sources:
+      - type: git
+        url: https://github.com/ImageMagick/ImageMagick
+        tag: 7.1.1-23
+        commit: 54b13e91d262b1083e27fc8c02532c89d3ff649c
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+-[\d]+)$
+
+  - name: xrandr
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/xrandr-1.5.1.tar.gz
+        sha256: 7b99edb7970a1365eaf5bcaf552144e4dfc3ccf510c4abc08569849929fb366e
+
+  - name: setxkbmap
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/setxkbmap-1.3.3.tar.xz
+        sha256: b560c678da6930a0da267304fa3a41cc5df39a96a5e23d06f14984c87b6f587b
+
+  - name: glxinfo
+    buildsystem: meson
+    config-opts:
+      - --bindir=/app/mesa-demos
+      - -Degl=disabled
+      - -Dglut=disabled
+      - -Dosmesa=disabled
+      - -Dvulkan=disabled
+      - -Dwayland=disabled
+    post-install:
+      - mv -v /app/mesa-demos/glxinfo /app/bin
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/demos/mesa-demos-9.0.0.tar.xz
+        sha256: 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b
+        x-checker-data:
+          type: anitya
+          project-id: 16781
+          stable-only: true
+          url-template: https://archive.mesa3d.org/demos/mesa-demos-$version.tar.xz
+    cleanup:
+      - /include
+      - /mesa-demos
+      - /share
+    modules:
+      - shared-modules/glu/glu-9.json
+
+  - name: platform-bootstrap
+    buildsystem: simple
+    build-commands:
+      - |
+        set -e
+        mkdir -p /app/bin
+        mkdir -p /app/utils
+        mkdir -p /app/lib/ffmpeg
+        mkdir -p /app/lib32/ffmpeg
+        mkdir -p /app/lib/i386-linux-gnu
+        mkdir -p /app/lib/debug/lib/i386-linux-gnu
+        mkdir -p /app/lib/i386-linux-gnu/GL
+        install -Dm644 ru.linux_gaming.PortProton.svg /app/share/icons/hicolor/scalable/apps/ru.linux_gaming.PortProton.svg
+        install -Dm644 ru.linux_gaming.PortProton.desktop /app/share/applications/ru.linux_gaming.PortProton.desktop
+        install -D portproton -t /app/bin
+        install -Dm644 -t /app/etc ld.so.conf
+        install -Dm644 ru.linux_gaming.PortProton.metainfo.xml /app/share/metainfo/ru.linux_gaming.PortProton.appdata.xml
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+      - type: file
+        path: ru.linux_gaming.PortProton.metainfo.xml
+      - type: file
+        path: ru.linux_gaming.PortProton.svg
+      - type: file
+        path: portproton
+      - type: file
+        path: ru.linux_gaming.PortProton.desktop
+

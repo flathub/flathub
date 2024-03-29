@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Author: Mikhail Tergoev (linux-gaming.ru)
+# License MIT
+########################################################################
+unset PW_AUTOPLAY PW_SET_LANG PW_SILENT_INSTALL
+export portname="PortProton"
+export port_ver=1.5
+########################################################################
+cd "$(dirname "$(readlink -f "$0")")"
+script_path="$(pwd)"
+########################################################################
+fatal () {
+	echo -e "\n${1}\n"
+	exit 1
+}
+########################################################################
+
+if [ "$script_path" == "/app/bin" ] ; then
+	export PORT_WINE_PATH="${XDG_DATA_HOME}"
+	if [ -f "${PORT_WINE_PATH}/scripts/start.sh" ] ; then
+		echo "${port_ver}" > "${PORT_WINE_PATH}/tmp/${portname}_ver"
+		/usr/bin/env bash "${PORT_WINE_PATH}/scripts/start.sh" "$@"
+		exit 0
+	fi
+fi
+if [[ "${LANG}" == "ru_RU.UTF-8" ]]
+then PW_SET_LANG="Russian"
+else PW_SET_LANG="English"
+fi
+########################################################################
+export PW_SILENT_INSTALL=1
+export PW_AUTOPLAY=1
+export INSTALLING_PORT=1
+########################################################################
+case $PW_SET_LANG in
+	"Russian")
+		progress_bar() {
+		yad --window-icon=portproton.svg --borders=10 --center --text-align=center --progress --title="Установка..." --text="Настройка ${portname}" --pulsate --auto-close --auto-kill --width=500
+		} ;;
+	"English")
+		progress_bar() {
+		yad --window-icon=portproton.svg --borders=10 --center --text-align=center --progress --title="Install..." --text="Install ${portname}" --pulsate --auto-close --auto-kill --width=500
+		} ;;
+esac
+########################################################################
+export PORT_WINE_PATH="${XDG_DATA_HOME}"
+if [ ! -d "${PORT_WINE_PATH}" ] ; then
+    mkdir -p "$PORT_WINE_PATH" || fatal "Cannot create a directory: $PORT_WINE_PATH"
+else
+	rm -fr "${PORT_WINE_PATH}/tmp"
+	rm -f "${PORT_WINE_PATH}/scripts/"* 2>/dev/null
+fi
+########################################################################
+mkdir -p "${PORT_WINE_PATH}/tmp"
+echo "${port_ver}" > "${PORT_WINE_PATH}/tmp/${portname}_ver"
+case "${PW_SET_LANG}" in
+	"Russian") echo "RUS" > "${PORT_WINE_PATH}/tmp/${portname}_loc" ;;
+	"English") echo "ENG" > "${PORT_WINE_PATH}/tmp/${portname}_loc" ;;
+esac
+########################################################################
+export PORT_WINE_TMP_PATH="${PORT_WINE_PATH}/tmp"
+cd "${PORT_WINE_PATH}"
+echo -e "\nTry download scripts from gitlab.eterfund.ru..."
+if ! curl -f -# -A "Mozilla/5.0 (compatible; Konqueror/2.1.1; X11)" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' \
+	-L "https://gitlab.eterfund.ru/Castro-Fidel/PortWINE/-/archive/master/PortWINE-master.tar.gz" \
+	-o "${PORT_WINE_TMP_PATH}/PortWINE-master.tar.gz"
+then
+	echo -e "\nError.\nTry download scripts from github.com..."
+	curl -f -# -A "Mozilla/5.0 (compatible; Konqueror/2.1.1; X11)" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' \
+	-L "https://github.com/Castro-Fidel/PortWINE/archive/refs/heads/master.tar.gz" \
+	-o "${PORT_WINE_TMP_PATH}/PortWINE-master.tar.gz"
+	[ "$?" != "0" ] && fatal "Critical error during file download!"
+fi
+echo "Try unpacking scripts..."
+tar -xvzf "${PORT_WINE_TMP_PATH}/PortWINE-master.tar.gz" -C "${PORT_WINE_TMP_PATH}"
+if [ "$?" = "0" ] ; then
+	[ ! -d "${PORT_WINE_PATH}" ] && mkdir "${PORT_WINE_PATH}"
+	cp -fr "${PORT_WINE_TMP_PATH}/PortWINE-master/data_from_portwine/"* "${PORT_WINE_PATH}"
+	rm -f "${PORT_WINE_TMP_PATH}/PortWINE-master.tar.gz"
+	rm -fr "${PORT_WINE_TMP_PATH}/PortWINE-master/"
+	export scripts_current_ver=$(cat "${PORT_WINE_PATH}/scripts/var" | grep SCRIPTS_NEXT_VERSION | awk -F "=" '{print $2}')
+	echo "${scripts_current_ver}" > "${PORT_WINE_TMP_PATH}/scripts_ver"
+else
+	rm -f "${PORT_WINE_TMP_PATH}/PortWINE-master.tar.gz"
+	[ "$?" != "0" ] && fatal "Critical error during file unpacking!"
+fi
+########################################################################
+cd "${PORT_WINE_PATH}/scripts"
+/usr/bin/env bash "${PORT_WINE_PATH}/scripts/setup.sh" && exit 0
