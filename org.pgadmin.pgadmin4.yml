@@ -1,0 +1,145 @@
+app-id: org.pgadmin.pgadmin4
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+base: org.electronjs.Electron2.BaseApp
+base-version: "23.08"
+sdk: org.freedesktop.Sdk
+command: run.sh
+separate-locales: false
+rename-desktop-file: pgadmin4.desktop
+rename-icon: pgadmin4
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+modules:
+  - name: libpq
+    # Copying build instructions for the libpg client library from
+    # https://src.fedoraproject.org/rpms/libpq/blob/rawhide/f/libpq.spec
+    config-opts:
+      - --disable-rpath
+      #- --with-ldap  # Disabling until somebody actually needs it
+      - --with-openssl
+      #- --with-gssapi  # Disabling until somebody actually needs it
+      - --enable-nls
+      - --without-readline
+    sources:
+      - type: git
+        url: https://git.postgresql.org/git/postgresql.git
+        commit: 3edc6580c0e27fb8f13322efd255a88d20dda6c2
+        tag: REL_16_1
+        x-checker-data:
+          type: git
+          tag-pattern: ^REL_([\d_]+)$
+
+  - name: krb5
+    subdir: src
+    config-opts:
+      - --localstatedir=/var/lib
+      - --sbindir=${FLATPAK_DEST}/bin
+      - --disable-static
+      - --disable-rpath
+    sources:
+      - type: archive
+        url: https://kerberos.org/dist/krb5/1.21/krb5-1.21.2.tar.gz
+        sha256: 9560941a9d843c0243a71b17a7ac6fe31c7cebb5bce3983db79e52ae7e850491
+        x-checker-data:
+          type: html
+          url: https://kerberos.org/dist/
+          version-pattern: Kerberos V5 Release ([\d\.-]*) - current release
+          url-template: https://kerberos.org/dist/krb5/$version0.$version1/krb5-$version.tar.gz
+
+  - name: python3-bcrypt
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app bcrypt-4.1.2-cp39-abi3-manylinux_2_28_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/42/9d/a88027b5a8752f4b1831d957470f48e23cebc112aaf762880f3adbfba9cf/bcrypt-4.1.2-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 2a298db2a8ab20056120b45e86c00a0a5eb50ec4075b6142db35f593b97cb3fb
+        x-checker-data:
+          type: pypi
+          name: bcrypt
+
+  - name: python3-pycparser
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app pycparser-2.21-py2.py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/py2.py3/p/pycparser/pycparser-2.21-py2.py3-none-any.whl
+        sha256: 8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9
+        x-checker-data:
+          type: pypi
+          name: pycparser
+
+  - name: python3-cffi
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app cffi-1.16.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/9b/89/a31c81e36bbb793581d8bba4406a8aac4ba84b2559301c44eef81f4cf5df/cffi-1.16.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 7b78010e7b97fef4bee1e896df8a4bbb6712b7f05b7ef630f9d1da00f6444d2e
+        x-checker-data:
+          type: pypi
+          name: cffi
+
+  - name: python3-cryptography
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-commands:
+      - pip3 install --prefix=/app cryptography-42.0.5-cp37-abi3-manylinux_2_28_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/64/f7/d3c83c79947cc6807e6acd3b2d9a1cbd312042777bc7eec50c869913df79/cryptography-42.0.5-cp37-abi3-manylinux_2_28_x86_64.whl
+        sha256: f8837fe1d6ac4a8052a9a8ddab256bc006242696f03368a4009be7ee3075cdb7
+        x-checker-data:
+          type: pypi
+          name: cryptography
+
+  - python3-requirements_filtered.yaml
+
+  - name: pgadmin4-server
+    buildsystem: simple
+    build-commands:
+      - ar x pgadmin-server.deb
+      - tar -xf data.tar.zst
+      - rm -rf usr/pgadmin4/venv
+      - cp -r usr/* /app/
+      - sed -i "233 i DATA_DIR = os.environ['XDG_CONFIG_HOME']" /app/pgadmin4/web/config.py
+    sources:
+      - type: file
+        url: https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/jammy/dists/pgadmin4/main/binary-amd64/pgadmin4-server_8.4_amd64.deb
+        dest-filename: pgadmin-server.deb
+        sha256: 8dd100abe0c8844e7bdb1c9b32259d1ce7f6342cd6c264d81b9f8910fd43d51e
+
+  - name: pgadmin
+    buildsystem: simple
+    build-commands:
+      - ar x pgadmin-desktop.deb
+      - tar -xf data.tar.zst
+      - cp -r usr/* /app/
+
+      - sed -i "42 i pythonPath = '/usr/bin/python'" ${FLATPAK_DEST}/pgadmin4/bin/src/js/pgadmin.js
+      - sed -i "43 i pgadminFile = '/app/pgadmin4/web/pgAdmin4.py'" ${FLATPAK_DEST}/pgadmin4/bin/src/js/pgadmin.js
+      - desktop-file-edit --set-key="Exec" --set-value="run.sh" ${FLATPAK_DEST}/share/applications/pgadmin4.desktop
+
+      - install -Dm755 run.sh /app/bin/run.sh
+      - install -Dm644 org.pgadmin.pgadmin4.metainfo.xml /app/share/metainfo/org.pgadmin.pgadmin4.metainfo.xml
+    sources:
+      - type: file
+        url: https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/jammy/dists/pgadmin4/main/binary-amd64/pgadmin4-desktop_8.4_amd64.deb
+        dest-filename: pgadmin-desktop.deb
+        sha256: 2ba361406500d71bef9ef22c938aff569c436fa23c965225347809aa57beb064
+
+      - type: script
+        commands:
+          - zypak-wrapper /app/pgadmin4/bin/pgadmin4
+        dest-filename: run.sh
+
+      - type: file
+        path: org.pgadmin.pgadmin4.metainfo.xml
