@@ -2,8 +2,9 @@ app-id: ru.linux_gaming.PortProton
 sdk: org.freedesktop.Sdk
 runtime: org.freedesktop.Platform
 runtime-version: &runtime-version '23.08'
-base: org.winehq.Wine
-base-version: stable-23.08
+x-gl-version: &gl-version '1.4'
+x-gl-versions: &gl-versions 23.08;23.08-extra;1.4
+x-gl-merge-dirs: &gl-merge-dirs vulkan/icd.d;glvnd/egl_vendor.d;egl/egl_external_platform.d;OpenCL/vendors;lib/dri;lib/d3d;lib/gbm;vulkan/explicit_layer.d;vulkan/implicit_layer.d
 command: portproton
 separate-locales: false
 
@@ -36,13 +37,6 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
 
-inherit-extensions:
-  - org.freedesktop.Platform.GL32
-  - org.freedesktop.Platform.ffmpeg-full
-  - org.freedesktop.Platform.ffmpeg_full.i386
-  - org.winehq.Wine.gecko
-  - org.winehq.Wine.mono
-
 add-extensions:
 
   org.freedesktop.Platform.Compat.i386:
@@ -53,6 +47,53 @@ add-extensions:
     directory: lib/debug/lib/i386-linux-gnu
     version: *runtime-version
     no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: *gl-version
+    versions: *gl-versions
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: *gl-merge-dirs
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+  org.freedesktop.Platform.GL32.Debug:
+    directory: lib/debug/lib/i386-linux-gnu/GL
+    version: *gl-version
+    versions: *gl-versions
+    subdirectories: true
+    no-autodownload: true
+    merge-dirs: *gl-merge-dirs
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+  org.freedesktop.Platform.VAAPI.Intel.i386:
+    directory: lib/i386-linux-gnu/dri/intel-vaapi-driver
+    version: *runtime-version
+    versions: *runtime-version
+    autodelete: false
+    no-autodownload: true
+    add-ld-path: lib
+    download-if: have-intel-gpu
+    autoprune-unless: have-intel-gpu
+
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: *runtime-version
+    no-autodownload: true
+    autodelete: false
+
+  org.freedesktop.Platform.ffmpeg_full.i386:
+    directory: lib32/ffmpeg
+    add-ld-path: .
+    version: *runtime-version
+    no-autodownload: true
+    autodelete: false
 
 x-compat-i386-opts: &compat_i386_opts
   prepend-pkg-config-path: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
@@ -290,6 +331,52 @@ modules:
       - /share
     modules:
       - shared-modules/glu/glu-9.json
+
+  - name: wine-gecko
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/wine/gecko/
+      - install -v -Dm755 *.msi -t ${FLATPAK_DEST}/share/wine/gecko/
+    sources:
+      - type: file
+        only-arches:
+          - i386
+          - x86_64
+        url: https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86.msi
+        sha256: 26cecc47706b091908f7f814bddb074c61beb8063318e9efc5a7f789857793d6
+        x-checker-data:
+          type: html
+          url:  &wine-addons-url >-
+            https://source.winehq.org/git/wine.git/blob_plain/refs/heads/stable:/dlls/appwiz.cpl/addons.c
+          version-pattern: &wine-gecko-version-pattern >-
+            GECKO_VERSION\s+"(\d[\d\.]+\d)"
+          url-template: https://dl.winehq.org/wine/wine-gecko/$version/wine-gecko-$version-x86.msi
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi
+        sha256: e590b7d988a32d6aa4cf1d8aa3aa3d33766fdd4cf4c89c2dcc2095ecb28d066f
+        x-checker-data:
+          type: html
+          url: *wine-addons-url
+          version-pattern: *wine-gecko-version-pattern
+          url-template: https://dl.winehq.org/wine/wine-gecko/$version/wine-gecko-$version-x86_64.msi
+
+  - name: wine-mono
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/wine/mono/
+      - cp -a wine-mono-* ${FLATPAK_DEST}/share/wine/mono/
+    sources:
+      - type: archive
+        url: https://dl.winehq.org/wine/wine-mono/8.1.0/wine-mono-8.1.0-x86.tar.xz
+        strip-components: 0
+        sha256: 4e3e8a40729e4c9e3e9e651cebe4f1aed8f9a4d22e991e6cd24608687f0eedd4
+        x-checker-data:
+          type: html
+          url: *wine-addons-url
+          version-pattern: MONO_VERSION\s+"(\d[\d\.]+\d)"
+          url-template: https://dl.winehq.org/wine/wine-mono/$version/wine-mono-$version-x86.tar.xz
 
   - name: platform-bootstrap
     buildsystem: simple
