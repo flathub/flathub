@@ -2,7 +2,6 @@
 
 set -ex
 
-XDG_DATA_HOME=${XDG_DATA_HOME:-~/.var/app/com.todesk.ToDesk/data}
 APP_HOME="$XDG_DATA_HOME/app"
 
 mkdir -p "$APP_HOME/todesk"
@@ -21,4 +20,3 @@ export LIBVA_DRIVERS_PATH="$APP_HOME/todesk/bin"
 
 "$APP_HOME/todesk/bin/ToDesk_Service" &
 exec "$APP_HOME/todesk/bin/ToDesk"
-
