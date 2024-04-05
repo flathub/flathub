@@ -2,21 +2,15 @@
 
 set -ex
 
-APP_HOME="$XDG_DATA_HOME/app"
-
-mkdir -p "$APP_HOME/todesk"
-cur_uuid=$(cat /app/extra/uuid)
-
-if test ! -f "$APP_HOME/uuid" -o "$(cat $APP_HOME/uuid)" != "$cur_uuid"; then
-    rm -rf "$APP_HOME/todesk/bin" "$APP_HOME/todesk/res"
-    cp -a /app/extra/todesk/bin "$APP_HOME/todesk/"
-    cp -a /app/extra/todesk/res "$APP_HOME/todesk/"
-    cp -a /app/extra/uuid "$APP_HOME/uuid"
-fi
+# Cheating the process that the executable files are in FAKE_BIN_DIR
+FAKE_BIN_DIR="$XDG_CONFIG_HOME/bin"
 
 export TODESK_PACK_NAME=todesk
 export LIBVA_DRIVER_NAME=iHD
 export LIBVA_DRIVERS_PATH="$APP_HOME/todesk/bin"
 
-"$APP_HOME/todesk/bin/ToDesk_Service" &
-exec "$APP_HOME/todesk/bin/ToDesk"
+# Load the hack library.
+export LD_PRELOAD=/app/lib/libtodesk_fix.so
+
+TODESK_EXEC_PATH="$FAKE_BIN_DIR/ToDesk_Service" "/app/extra/todesk/bin/ToDesk_Service" &
+TODESK_EXEC_PATH="$FAKE_BIN_DIR/ToDesk" exec "/app/extra/todesk/bin/ToDesk"
