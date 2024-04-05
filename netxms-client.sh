@@ -9,4 +9,4 @@ trimHeights=0 4 6 0 29 23
 _END
 fi
 
-/app/jre/bin/java -jar /app/bin/nxmc.jar "$@"
+exec /app/jre/bin/java -jar /app/bin/nxmc.jar "$@"
