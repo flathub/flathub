@@ -3,7 +3,7 @@
 report_error() {
     read -r -d '|' MESSAGE <<EOF
 Unfortunately, Lemonade seems to have crashed.
-We kindly ask you to submit a bug report to <a href="https://github.com/flathub/org.lemonade_emu.lemonade/issues">https://github.com/flathub/org.lemonade_emu.lemonade/issues</a>.
+We kindly ask you to submit a bug report to <a href="https://github.com/flathub/io.github.lemonade_emu.Lemonade/issues">https://github.com/flathub/io.github.lemonade_emu.Lemonade/issues</a>.
 
 When submitting a bug report, please attach your <b>system information</b> and the <b>Lemonade log file</b>.
 You seem to be using ${XDG_SESSION_DESKTOP} ${DESKTOP_SESSION} (${XDG_SESSION_TYPE}):
