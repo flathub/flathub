@@ -1,0 +1,105 @@
+id: com.tencent.WeChat
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: wechat
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=all
+  # System tray icon
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  # Files
+  - --filesystem=xdg-download
+  - --persist=.xwechat
+  - --persist=xwechat_files
+  # Hidpi scale
+  - --env=QT_AUTO_SCREEN_SCALE_FACTOR=1
+  # Fix `Could not find the Qt platform plugin "wayland"`
+  - --unset-env=QT_QPA_PLATFORM
+
+modules:
+  - name: fontconfig
+    buildsystem: simple
+    build-commands:
+      - install -pDm644 "local.conf" -t "/app/etc/fonts/";
+      - install -pDm644 "70-noto-cjk.conf" -t "/app/etc/fonts/conf.d/";
+      # `||:` return a successful exit status
+      - fc-cache -fsv ||:;
+    sources:
+      - type: file
+        url: https://gitlab.archlinux.org/archlinux/packaging/packages/noto-fonts-cjk/-/raw/5fd3534bf7a6e26c7506dc8f40dcd89f37d35627/70-noto-cjk.conf
+        sha256: 2417ac0e6720fe8da55ee59f16e36cfe96737bc21432460a322bb0f395e3a521
+      - type: file
+        path: patch/local.conf
+
+  - name: bzip2
+    no-autogen: true
+    make-args:
+       - --f=Makefile-libbz2_so
+    no-make-install: true
+    post-install:
+       - install -Dm644 libbz2.so.1.0.8 -t ${FLATPAK_DEST}/lib/
+       - ln -s ${FLATPAK_DEST}/lib/libbz2.so.1.0.8 ${FLATPAK_DEST}/lib/libbz2.so.1.0
+    sources:
+      - type: archive
+        url: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+        sha256: ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+
+  - name: libredirect
+    buildsystem: simple
+    build-commands:
+      - gcc -shared -fPIC redirect.c -o libredirect.so -ldl
+      - install -Dm644 libredirect.so -t $FLATPAK_DEST/lib/
+    sources:
+      - type: file
+        path: patch/redirect.c
+
+  - name: wechat
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra -t $FLATPAK_DEST/bin/
+      - install -Dm755 wechat.sh $FLATPAK_DEST/bin/wechat
+      - install -Dm644 com.tencent.WeChat.metainfo.xml -t $FLATPAK_DEST/share/metainfo
+      - install -Dm644 com.tencent.WeChat.png -t $FLATPAK_DEST/share/icons/hicolor/256x256/apps
+      - install -Dm644 com.tencent.WeChat.desktop -t $FLATPAK_DEST/share/applications
+    sources:
+      - type: script
+        commands:
+          - bsdtar --to-stdout -xf wechat.deb data.* | bsdtar -xf -
+          - mv opt/wechat-beta wechat
+          - mv usr/lib/libactivation.so wechat/
+          - rm -rf wechat.deb usr opt
+        dest-filename: apply_extra
+
+      - type: file
+        path: wechat.sh
+
+      - type: file
+        path: com.tencent.WeChat.metainfo.xml
+
+      - type: file
+        path: com.tencent.WeChat.png
+
+      - type: file
+        path: com.tencent.WeChat.desktop
+
+      - type: extra-data
+        filename: wechat.deb
+        only-arches: [x86_64]
+        url: https://archive2.kylinos.cn/deb/kylin/production/PART-openKylin/custom/partner/openKylin/pool/all/wechat-beta_1.0.0.238_amd64.deb
+        sha256: 912cfd30641ef376a680b05c6bdcb70cb3f154cb9eb6d0d3a57d23befe23b99c
+        size: 116767436
+
+        x-checker-data:
+          type: debian-repo
+          package-name: wechat-beta
+          root: https://https://archive2.kylinos.cn/deb/kylin/production/PART-openKylin/custom/partner/openKylin
+          dist: default
+          component: all
