@@ -1,0 +1,175 @@
+app-id: io.github.ungoogled_software.ungoogled_chromium
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '23.08'
+command: chromium
+finish-args:
+  - --require-version=1.8.2
+  - --filesystem=home
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --device=all
+  - --env=LD_LIBRARY_PATH=/app/chromium/nonfree-codecs/lib
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.Avahi
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+  - --talk-name=org.gnome.SessionManager
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --persist=.pki # https://github.com/flathub/com.github.Eloston.UngoogledChromium/issues/34
+
+add-extensions:
+  io.github.ungoogled_software.ungoogled_chromium.Codecs:
+    directory: chromium/nonfree-codecs
+    add-ld-path: lib
+    bundle: true
+    autodelete: true
+
+  io.github.ungoogled_software.ungoogled_chromium.NativeMessagingHost:
+    version: '1'
+    directory: chromium/native-messaging-hosts
+    merge-dirs: native-messaging-hosts
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+  io.github.ungoogled_software.ungoogled_chromium.Extension:
+    version: '1'
+    directory: chromium/extensions
+    merge-dirs: extensions;native-messaging-hosts;policies/managed;policies/recommended
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+  io.github.ungoogled_software.ungoogled_chromium.Policy:
+    version: '1'
+    directory: chromium/policies
+    merge-dirs: policies/managed;policies/recommended
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm17
+  - org.freedesktop.Sdk.Extension.node18
+  - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.rust-nightly
+
+modules:
+  - name: readelf-symlink
+    only-arches: [aarch64]
+    buildsystem: simple
+    build-commands:
+      # Chromium expects to find readelf with its full toolprefix on arm64
+      - ln -s /usr/bin/readelf /app/bin/aarch64-linux-gnu-readelf
+
+  - name: extensions
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/chromium/{extensions,native-messaging-hosts,policies}
+      - for dir in native-messaging-hosts policies; do ln -s /app/chromium/{$dir,extensions}/$dir;
+        done
+      - touch /app/chromium/extensions/no-mount-stamp
+
+  - name: materialicons
+    buildsystem: simple
+    build-commands:
+      - mkdir --parents /app/share/fonts/
+      - install -D -m 0644 MaterialIcons-Regular.ttf /app/share/fonts/
+      - install -D -m 0644 MaterialIconsOutlined-Regular.otf /app/share/fonts/
+      - install -D -m 0644 MaterialIconsRound-Regular.otf /app/share/fonts/
+      - install -D -m 0644 MaterialIconsSharp-Regular.otf /app/share/fonts/
+      - install -D -m 0644 MaterialIconsTwoTone-Regular.otf /app/share/fonts/
+    sources:
+      - type: file
+        url: https://github.com/google/material-design-icons/raw/f7bd4f25f3764883717c09a1fd867f560c9a9581/font/MaterialIcons-Regular.ttf
+        sha256: ef149f08bdd2ff09a4e2c8573476b7b0f3fbb15b623954ade59899e7175bedda
+      - type: file
+        url: https://github.com/google/material-design-icons/raw/f7bd4f25f3764883717c09a1fd867f560c9a9581/font/MaterialIconsOutlined-Regular.otf
+        sha256: b63fa9edd75e3c20328e04ad31dcc38ce76411f3f9ea1a1ff87f49e5ba874b05
+      - type: file
+        url: https://github.com/google/material-design-icons/raw/f7bd4f25f3764883717c09a1fd867f560c9a9581/font/MaterialIconsRound-Regular.otf
+        sha256: bad85e5454b6288104ce03806c37323bcd8f145e3094e727860173ac8c91062e
+      - type: file
+        url: https://github.com/google/material-design-icons/raw/f7bd4f25f3764883717c09a1fd867f560c9a9581/font/MaterialIconsSharp-Regular.otf
+        sha256: 095a95043a8574c90770ecdc0af53f8b8b5043a816320107e55e2d237d8ff9de
+      - type: file
+        url: https://github.com/google/material-design-icons/raw/f7bd4f25f3764883717c09a1fd867f560c9a9581/font/MaterialIconsTwoTone-Regular.otf
+        sha256: 03ccf13774af5b5cbbad641dfa33038d4e9f4b7979eedc2c0a15f06bf9eb33cd
+
+  - name: ungoogled-chromium
+    buildsystem: simple
+    build-commands:
+      - cp -r "${PWD}" /app/ugc
+    sources:
+      - type: git
+        url: https://github.com/ungoogled-software/ungoogled-chromium-flatpak
+        tag: 123.0.6312.105-1
+        commit: da58890fe3dfad2a2e3d509453807a101c3ff783
+        x-checker-data:
+          type: git
+          tag-pattern: '^\d+\.\d+\.\d+\.\d+-\d+$'
+
+  - name: chromium
+    buildsystem: simple
+    build-commands:
+      - /app/ugc/src/utils/prune_binaries.py ./ /app/ugc/src/pruning.list
+      - /app/ugc/src/utils/patches.py apply ./ /app/ugc/src/patches
+      - /app/ugc/src/utils/domain_substitution.py apply -r /app/ugc/src/domain_regex.list
+        -f /app/ugc/src/domain_substitution.list -c ./domsubcache.tar.gz ./
+      - mv third_party/llvm-fp third_party/llvm || true
+      - ./bootstrap.sh
+      - ./build.sh
+      - ./install.sh
+      - rm -rf /app/ugc
+    sources:
+      - type: archive
+        url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-123.0.6312.105.tar.xz
+        sha256: 0a14fba1fb1a288d99b188160e3138295aa8604bdf492e62a94c0ec35a4e229d
+        x-checker-data:
+          type: chromium
+          component: chromium
+          is-main-source: true
+      - type: archive
+        url: https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64/clang-llvmorg-19-init-2319-g7c4c2746-1.tgz
+        sha256: e065dbcaf9ce5d3fdc6fb3dea1c195b1fc8a0da08cfd40b27ed88857a106e992
+        dest: third_party/llvm-build/Release+Asserts
+        strip-components: 0
+        only-arches: [x86_64]
+        x-checker-data:
+          type: chromium
+          component: llvm-prebuilt
+      - type: shell
+        commands:
+          - rm -rf third_party/llvm
+        only-arches: [aarch64]
+      - type: git
+        url: https://github.com/llvm/llvm-project
+        commit: llvmorg-19-init-2319-g7c4c2746
+        dest: third_party/llvm-fp
+        only-arches: [aarch64]
+        x-checker-data:
+          type: chromium
+          component: llvm-git
+      - patches/chromium/_sources.json
+      - patches/ffmpeg/_sources.json
+      - type: file
+        path: chromium.sh
+      - type: file
+        path: cobalt.ini
+      - type: dir
+        path: build-aux
