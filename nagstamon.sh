@@ -7,4 +7,4 @@ then
     rm -f ~/.nagstamon/nagstamon.pid
 fi
 
-python3 /app/bin/nagstamon.py
+exec python3 /app/bin/nagstamon.py
