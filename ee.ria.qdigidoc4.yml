@@ -1,0 +1,212 @@
+app-id: ee.ria.qdigidoc4
+command: run.sh
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+rename-icon: qdigidoc4
+
+finish-args:
+  # libdigidocpp stores tsl files here
+  - --persist=.digidocpp
+  # Network is needed for some parts of the application's functionality
+  - --share=network
+  # Wayland
+  - --socket=wayland
+  # X11
+  - --socket=fallback-x11
+  - --share=ipc
+  # Smartcard
+  - --socket=pcsc
+  - --device=all
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /etc/bash_completion.d
+  - /share/doc
+  - /share/man
+
+modules:
+  - name: flatbuffers
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.zip
+        sha256: e706f5eb6ca8f78e237bf3f7eccffa1c5ec9a96d3c1c938f08dc09aab1884528
+  - name: xerces-c
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/apache/xerces-c/archive/refs/tags/v3.2.4.tar.gz
+        sha256: 8dfaa30d6a641bda113625ef65e43c433e8ffd94fadd3b8d39dfe6faf450f26d
+
+  - name: xalan-c
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/apache/xalan-c/releases/download/Xalan-C_1_12_0/xalan_c-1.12.tar.gz
+        sha256: ee7d4b0b08c5676f5e586c7154d94a5b32b299ac3cbb946e24c4375a25552da7
+      - type: patch
+        path: xalan-c/CMakeLists.patch
+  
+  # We use prebuilt xsd since its build seems to take a lot of memory and time. Git history has a
+  # non-prebuilt version of the xsd module if needed.
+  - name: xsd
+    sources:
+      - type: archive
+        url: https://www.codesynthesis.com/download/xsd/4.0/linux-gnu/x86_64/xsd-4.0.0-x86_64-linux-gnu.tar.bz2
+        sha256: d01060cbf4b3a1e462a5c5ad1a5a6773b541766dbbb98e50c9efb8f2a2dd55b7
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/xsd /app/bin/xsd
+      - cp -r libxsd/xsd /app/include
+      #- chmod -R 644 /app/include/xsd
+
+  - name: xml-security-c
+    buildsystem: autotools
+    config-opts:
+      # TODO: we actually do have xalan in the build tree, so we could use it?
+      - --with-xalan=no
+    sources:
+      - type: archive
+        url: https://downloads.apache.org/santuario/c-library/xml-security-c-2.0.4.tar.gz
+        sha256: a78da6720f6c2ba14100d2426131e0d33eac5a2dba5cc11bdd04974b7eb89003
+
+  - name: xxd
+    buildsystem: simple
+    build-commands:
+      - cd src && make installtools prefix=/app
+    cleanup:
+      - /share/vim
+    sources:
+      - type: archive
+        url: https://github.com/vim/vim/archive/refs/tags/v9.0.1677.tar.gz
+        sha256: c5750a1d47b514d60d59d9956e2953fb1673d1dd797bfec09c1bff721743e55c
+
+  - name: libdigidocpp
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/open-eid/libdigidocpp/releases/download/v3.17.0/libdigidocpp-3.17.0.tar.gz
+        sha256: 72513d8b6371556deb4faa2ecbb86d35746e71ee30cf12020a31fafcbffcc272
+
+  - name: openldap
+    buildsystem: autotools
+    config-opts:
+      - --disable-backends
+      - --disable-overlays
+      - --disable-slapd
+      - --disable-debug
+      - --enable-dynamic
+      - --without-threads
+      - --with-tls=gnutls
+    cleanup:
+      - /bin
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-2.6.6.tgz
+        sha256: 082e998cf542984d43634442dbe11da860759e510907152ea579bdc42fe39ea0
+      - type: script
+        dest-filename: autogen.sh
+        commands:
+          - AUTOMAKE=/bin/true autoreconf -vfi
+
+  - name: libusb
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /lib/*.la
+      - /lib/pkgconfig
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/archive/v1.0.26.tar.gz
+        sha256: a09bff99c74e03e582aa30759cada218ea8fa03580517e52d463c59c0b25e240
+    post-install:
+      - install -Dm644 COPYING /app/share/licenses/libusb/COPYING
+
+  - name: pcsc-lite
+    config-opts:
+      - --disable-libudev
+      - --disable-libsystemd
+      - --without-systemdsystemunitdir
+      - --disable-serial
+      - --disable-usb
+      - --disable-documentation
+    post-install:
+      - rm /app/sbin/pcscd
+      - rmdir /app/sbin || true
+    sources:
+      - type: archive
+        url: https://github.com/LudovicRousseau/PCSC/archive/refs/tags/2.0.0.tar.gz
+        sha256: 04f5b9d966b2ada91f699f0b968dd716b381b08ae3cf804832c310f65d329066
+
+  - name: opensc
+    cleanup:
+      - /share/applications/org.opensc.notify.desktop
+    sources:
+      - type: archive
+        url: https://github.com/OpenSC/OpenSC/releases/download/0.23.0/opensc-0.23.0.tar.gz
+        sha256: a4844a6ea03a522ecf35e49659716dacb6be03f7c010a1a583aaf3eb915ed2e0
+
+  - name: qdigidoc4
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/open-eid/DigiDoc4-Client/releases/download/v4.5.0/qdigidoc4_4.5.0.4451-2004.tar.xz
+        sha256: ff44f3cadd2d427d0eecba8f8dbc1dd96dceab34ea5237b9c82bfb36f98ad772
+      - type: patch
+        path: qdigidoc4/QPKCS11.patch
+      - type: patch
+        path: qdigidoc4/client-CMakeLists.patch
+      - type: file
+        path: ee.ria.qdigidoc4.metainfo.xml
+      # See guide for building in a sandboxed environment:
+      # https://github.com/open-eid/DigiDoc4-Client/wiki/DeveloperTips#building-in-sandboxed-environment
+      - type: file
+        url: https://ec.europa.eu/tools/lotl/eu-lotl.xml
+        sha256: ccb08c603caea3e5501d30acea41ff5253fbf8f304afea6edaa4b3d537480541
+        dest: client
+        dest-filename: eu-lotl.xml
+      - type: file
+        url: https://sr.riik.ee/tsl/estonian-tsl.xml
+        sha256: 472d248b30c849873173c6dee0a3de417996110c2704cf5a261bca99d3c0d1d4
+        dest: client
+        dest-filename: EE.xml
+      - type: file
+        path: qdigidoc4/TSL.qrc
+        dest: client
+        dest-filename: TSL.qrc
+      - type: file
+        url: https://id.eesti.ee/config.json
+        sha256: 7b3b2af587571d29df3fde21f8d6f86bb6afce0d0325487aedd3fc799d3f65de
+        dest: common
+        dest-filename: config.json
+      - type: file
+        url: https://id.eesti.ee/config.rsa
+        sha256: 4b435b12f142ec41eca87c23c17a868706c38badba573812d96e5dc8230ba714
+        dest: common
+        dest-filename: config.rsa
+      - type: file
+        url: https://id.eesti.ee/config.pub
+        sha256: 29e05778ce98b5197963266bdc292af80a9406cccc3fe5ef7ca2b75b1beb34eb
+        dest: common
+        dest-filename: config.pub
+      - type: patch
+        path: qdigidoc4/common-CMakeLists.patch
+      # qdigidoc4 saves files in $TMPDIR before opening them. Since this is inaccessible, we provide a wrapper script,
+      # as advised here: https://docs.flatpak.org/en/latest/sandbox-permissions.html#filesystem-access
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - env TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID" qdigidoc4 "$@"
+    post-install:
+      - install run.sh "${FLATPAK_DEST}/bin/run.sh"
+      - install -Dm644 ee.ria.qdigidoc4.metainfo.xml $FLATPAK_DEST/share/metainfo/ee.ria.qdigidoc4.metainfo.xml
+      - ln -s $FLATPAK_DEST/share/locale/et/LC_MESSAGES/nautilus-qdigidoc.mo $FLATPAK_DEST/share/locale/et/nautilus-qdigidoc.mo
+      - ln -s $FLATPAK_DEST/share/locale/ru/LC_MESSAGES/nautilus-qdigidoc.mo $FLATPAK_DEST/share/locale/ru/nautilus-qdigidoc.mo
+      - mv $FLATPAK_DEST/share/applications/qdigidoc4.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=Exec --set-value="run.sh" /app/share/applications/${FLATPAK_ID}.desktop
+      - mv $FLATPAK_DEST/share/mime/packages/qdigidoc4.xml $FLATPAK_DEST/share/mime/packages/$FLATPAK_ID.xml
