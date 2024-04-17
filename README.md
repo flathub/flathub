@@ -21,6 +21,7 @@ flatpak --user install local-repo de.nagstamon.nagstamon
 ```
 
 ## How to run Nagstamon
+
 ```bash
 flatpak run de.nagstamon.nagstamon
 ```
