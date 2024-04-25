@@ -11,7 +11,7 @@ if [ ! -x "$NS_BIN" ]; then
 	mkdir -p $NS_DIR/
   #	cp -af /opt/synology-note-station/* $NS_DIR/
   # Changing Path to reduce permissions in Flatpak
-	cp -af /app/opt/synology-note-station/* $NS_DIR/
+	cp -af /app/extra/* $NS_DIR/
 fi
 
 if [ ! -d "$NS_DIR/$NS_DATA_DIR" -a -d "$NS_DIR_BACKUP" -a -d "$NS_DIR_BACKUP/$NS_DATA_DIR" ]; then
