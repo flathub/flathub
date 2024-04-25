@@ -23,7 +23,7 @@ flatpak install --noninteractive --user flathub \
 ```
 # sudo apt install flatpak-builder git-lfs
 # or flatpak install -y flathub org.flatpak.Builder
-flatpak uninstall fan-control -y || true
+flatpak uninstall io.github.wiiznokes.fan-control -y || true
 
 flatpak-builder \
     --force-clean \
@@ -33,13 +33,13 @@ flatpak-builder \
     --install-deps-from=flathub \
     --repo=repo \
     flatpak-out \
-    com.wiiznokes.fan-control.json
+    io.github.wiiznokes.fan-control.json
 ```
 
 # Run app
 
 ```
-flatpak run com.wiiznokes.fan-control
+flatpak run io.github.wiiznokes.fan-control
 ```
 
 # Udev rules
