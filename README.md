@@ -43,3 +43,5 @@ flatpak run com.wiiznokes.fan-control
 ```
 
 # Udev rules
+
+todo
