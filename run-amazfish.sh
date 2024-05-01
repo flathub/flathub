@@ -3,8 +3,6 @@
 cd /app/bin
 ./harbour-amazfishd &
 daemon_pid=$!
-./harbour-amazfish-ui &
-ui_pid=$!
-wait "$ui_pid"
+./harbour-amazfish-ui
 
 kill "$daemon_pid"
