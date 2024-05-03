@@ -1,0 +1,136 @@
+app-id: io.gpt4all.gpt4all
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.6'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --device=dri
+  - --env=LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/app/lib/x86_64-linux-gnu/
+  - --filesystem=xdg-documents:ro
+command: chat
+cleanup:
+  - /include
+  - /lib/*.a
+
+modules:
+  - name: qthttpserver
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://invent.kde.org/qt/qt/qthttpserver/-/archive/v6.6.3/qthttpserver-v6.6.3.zip
+        sha256: 074159fdee37dad876159c52ec69707e93115af7e383ddd93bf5817e957d00aa
+
+  - name: python-html5lib
+    buildsystem: simple
+    build-commands:
+    - 'pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "html5lib" --no-build-isolation'
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/f4/24/2a3e3df732393fed8b3ebf2ec078f05546de641fe1b667ee316ec1dcf3b7/webencodings-0.5.1-py2.py3-none-any.whl
+        sha256: a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78
+        x-checker-data:
+            type: pypi
+            name: webencodings
+            packagetype: bdist_wheel
+      - type: file
+        url: https://files.pythonhosted.org/packages/6c/dd/a834df6482147d48e225a49515aabc28974ad5a4ca3215c18a882565b028/html5lib-1.1-py2.py3-none-any.whl
+        sha256: 0d78f8fde1c230e99fe37986a60526d7049ed4bf8a9fadbad5f00e22e58e041d
+        x-checker-data:
+            type: pypi
+            name: html5lib
+            packagetype: bdist_wheel
+    cleanup:
+    - '*'
+  
+  - name: volk
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+    - -DVOLK_INSTALL=ON
+    sources:
+    - type: archive
+      url: https://github.com/zeux/volk/archive/refs/tags/vulkan-sdk-1.3.280.0.zip
+      sha256: 178875134d36e8b90f7e3ec31171355df3b71f47eba49cca2f98158e6552b011
+
+  - name: vulkan-headers
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+    - type: archive
+      url: https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.283.zip
+      sha256: 2094159c87fb4b6d8f734bd4cad59564cef7ef32feb00cf6d8ca7e75a84df921   
+
+  - name: vulkan-tools
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+    - type: archive
+      url: https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/v1.3.283.zip
+      sha256: 11ec6b474e91dc8cb6e7f22891294ede549bb6ed67c19d230e293b3fc9610883
+
+
+  - name: shaderc
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+     - -DSHADERC_SKIP_COPYRIGHT_CHECK=ON
+     - -DSHADERC_SKIP_EXAMPLES=ON
+     - -DSHADERC_SKIP_TESTS=ON
+     - -DSPIRV_SKIP_EXECUTABLES=ON
+     - -DENABLE_GLSLANG_BINARIES=OFF
+    cleanup:
+     - /bin
+     - /include
+     - /lib/cmake
+     - /lib/pkgconfig
+    sources:
+    - type: git
+      url: https://github.com/google/shaderc.git
+      tag: v2024.1
+      commit: 47a9387ef5b3600d30d84c71ec77a59dc7db46fa
+      # https://github.com/google/shaderc/blob/known-good/known_good.json
+    - type: git
+      url: https://github.com/KhronosGroup/SPIRV-Tools.git
+      commit: dd4b663e13c07fea4fbb3f70c1c91c86731099f7
+      dest: third_party/spirv-tools
+    - type: git
+      url: https://github.com/KhronosGroup/SPIRV-Headers.git
+      commit: 5e3ad389ee56fca27c9705d093ae5387ce404df4
+      dest: third_party/spirv-headers
+    - type: git
+      url: https://github.com/KhronosGroup/glslang.git
+      commit: 142052fa30f9eca191aa9dcf65359fcaed09eeec
+      dest: third_party/glslang   
+
+  - name: fmt
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/fmtlib/fmt/releases/download/10.2.1/fmt-10.2.1.zip
+        sha256: 312151a2d13c8327f5c9c586ac6cf7cddc1658e8f53edae0ec56509c8fa516c9
+
+  - name: gpt4all
+    subdir: gpt4all-chat
+    config-opts:
+      - -DKOMPUTE_OPT_USE_BUILT_IN_VULKAN_HEADER=OFF
+      - -DKOMPUTE_OPT_USE_BUILT_IN_FMT=OFF
+    buildsystem: cmake-ninja
+    post-install:
+      - install -Dm644 icons/logo.svg /app/share/icons/hicolor/scalable/apps/io.gpt4all.gpt4all.svg
+      - install -Dm644 flatpak-manifest/io.gpt4all.gpt4all.desktop /app/share/applications/io.gpt4all.gpt4all.desktop
+      - install -Dm644 ../io.gpt4all.gpt4all.appdata.xml /app/share/appdata/io.gpt4all.gpt4all.appdata.xml
+    sources:
+      - type: git
+        url: https://github.com/nomic-ai/gpt4all.git
+        tag: v2.7.5
+        commit: d7c47fb6f7bb101f69e171d606ab4b4941a74cf8
+      - type: file
+        path: io.gpt4all.gpt4all.appdata.xml
