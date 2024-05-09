@@ -1,0 +1,112 @@
+app-id: net.pokerth.PokerTH
+runtime: org.kde.Platform
+runtime-version: '5.15-23.08'
+sdk: org.kde.Sdk
+command: pokerth
+rename-icon: pokerth
+rename-desktop-file: pokerth.desktop
+rename-appdata-file: pokerth.appdata.xml
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --persist=.pokerth
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+
+modules:
+  - shared-modules/SDL/sdl12-compat.json
+  - shared-modules/SDL/SDL_mixer-1.2.12.json
+
+  - name: tinyxml
+    buildsystem: autotools
+    no-autogen: true
+    sources:
+      - type: archive
+        url: http://downloads.sourceforge.net/tinyxml/tinyxml_2_6_2.tar.gz
+        sha256: 15bdfdcec58a7da30adc87ac2b078e4417dbe5392f3afb719f9ba6d062645593
+      - type: file
+        path: tinyxml/configure.ac
+      - type: file
+        path: tinyxml/Makefile.am
+      - type: file
+        path: tinyxml/tinyxml.h.in
+      - type: shell
+        commands:
+          - autoreconf -fi
+
+  - name: protobuf
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.bz2
+        sha256: ee445612d544d885ae240ffbcbf9267faa9f593b7b101f21d58beceb92661910
+
+  - name: gsasl
+    buildsystem: autotools
+    sources:
+    - type: archive
+      url: https://ftp.gnu.org/gnu/gsasl/gsasl-1.8.1.tar.gz
+      sha256: 4dda162a511976bfef14ad1fecd7733719dfd9c361b5d09dc8414ea9d472d8d2
+    cleanup:
+      - /bin
+      - /share/info
+
+  - name: libircclient
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --enable-ipv6
+      - --enable-openssl
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/libircclient/libircclient-1.10.tar.gz
+        sha256: bbb26f3af348b252c5204917a7f91cfdf172f1b6afbf4df1e561b03e20503c2d
+      - type: shell
+        commands:
+          - sed -i 's#$(DESTDIR)@libdir@#$(DESTDIR)@prefix@@libdir@#' src/Makefile.in
+      - type: script
+        dest-filename: autogen.sh
+        commands:
+          - autoreconf -vfi
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=thread,filesystem,date_time,program_options,iostreams,regex,random,chrono
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS
+      - ./b2 install
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.64.0/source/boost_1_64_0.tar.bz2
+        sha256: 7bcc5caace97baa948931d712ea5f37038dbb1c5d89b43ad4def4ed7cb683332
+
+  - name: pokerth
+    buildsystem: qmake
+    config-opts:
+      - CONFIG+="client"
+      - DEFINES+="BOOST_BIND_GLOBAL_PLACEHOLDERS"
+      - QMAKE_CFLAGS_ISYSTEM=""
+      - QMAKE_LIBDIR+="/app/lib"
+      - pokerth.pro
+    post-install:
+      - install -Dm755 pokerth /app/bin/pokerth
+      - install -Dm644 pokerth.png /app/share/icons/hicolor/128x128/apps/pokerth.png
+      - install -Dm644 pokerth.svg /app/share/icons/hicolor/scalable/apps/pokerth.svg
+      - install -Dm644 pokerth.desktop /app/share/applications/pokerth.desktop
+      - install -Dm644 pokerth.appdata.xml /app/share/appdata/pokerth.appdata.xml
+    sources:
+      - type: git
+        url: https://github.com/pokerth/pokerth.git
+        tag: v1.1.2
+        commit: 2ca2e941a616c200e3ec81243ad0ed4243b3030e
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
+      - type: file
+        path: pokerth.appdata.xml
