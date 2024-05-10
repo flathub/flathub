@@ -1,0 +1,82 @@
+env:
+  # Application id of the app, should be same as id used in flatpak manifest and MetaInfo
+  APP_ID: org.jeffvli.feishin
+  # Location of the flatpak manifest, root of git repository
+  MANIFEST_PATH: org.jeffvli.feishin.yml
+  # Name of flatpak bundle
+  BUNDLE: org.jeffvli.feishin.flatpak
+
+on:
+  push:
+    branches: [org.jeffvli.feishin]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+name: Build Flatpak and push to GH pages repo
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      options: --privileged
+    env:
+      RUNTIME_REPO: "https://flathub.org/repo/flathub.flatpakrepo"
+      BUILD_OUTPUT_PATH: repo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Setup GPG signing
+        run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import
+
+        # - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.3
+      #   with:
+      #     bundle: ${{ env.BUNDLE }}
+      #     manifest-path: ${{ env.MANIFEST_PATH }}
+      #     cache-key: flatpak-builder-${{ github.sha }}
+      #     gpg-sign: ${{ secrets.GPG_KEY_ID }}
+
+      - name: Add Flathub repo for dependencies
+        run: flatpak remote-add --user --if-not-exists flathub ${{ env.RUNTIME_REPO }}
+      - name: Build and install build deps
+        run: flatpak-builder build --user --install-deps-from=flathub --gpg-sign=${{ secrets.GPG_KEY_ID }} --disable-rofiles-fuse --disable-updates --force-clean --repo=repo ${{ env.MANIFEST_PATH }}
+      - name: Generate a Flatpak bundle
+        run: |
+          flatpak build-bundle --gpg-sign=${{ secrets.GPG_KEY_ID }} repo ${{ env.BUNDLE }} --runtime-repo=${{ env.RUNTIME_REPO}} ${{ env.APP_ID }}
+          flatpak build-update-repo --gpg-sign=${{ secrets.GPG_KEY_ID }} --generate-static-deltas --prune ${{ env.BUILD_OUTPUT_PATH }}/
+
+      - name: Install rsync
+        run: dnf -y install rsync
+      # - name: Replace html assets relative path with pages absolute path
+      #   run: find $BUILD_OUTPUT_PATH \( -type d -name .git -prune \) -o -type f -print0 | xargs -0 sed -i -e "s#href=\"\/#href=\"$CI_PAGES_URL/#g" -e "s#src=\"\/#src=\"$CI_PAGES_URL/#g"
+      - name: Move files to public dir
+        run: |
+          mkdir public || true
+          rsync -av --exclude='public' --exclude='.git' ${{ env.BUILD_OUTPUT_PATH }}/ public
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "public"
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
