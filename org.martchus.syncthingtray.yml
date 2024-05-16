@@ -1,0 +1,147 @@
+id: org.martchus.syncthingtray
+runtime: org.kde.Platform
+runtime-version: '6.7'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: syncthingtray
+finish-args:
+  - --device=dri
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=fallback-x11
+  # Wayland access
+  - --socket=wayland
+  # Needs to talk to the network:
+  - --share=network
+  # Needs to save files locally
+  - --filesystem=home
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.KGlobalSettings
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.kde.kconfig.notify
+modules:
+  - name: syncthing
+    buildsystem: simple
+    build-options:
+      env:
+        GOBIN: /app/bin
+    build-commands:
+      - |
+        . /usr/lib/sdk/golang/enable.sh
+        export GOPATH=$PWD/go
+        go version
+        # go mod vendor
+        #go build -mod=vendor
+        #go mod download -json > download.json
+        env GOFLAGS=-mod=vendor go run build.go -no-upgrade build
+      - install -Dm755 -t /app/bin syncthing
+    sources:
+      # Use git will raise `inconsistent vendoring` error, so use archive here.
+      - type: archive
+        url: https://github.com/syncthing/syncthing/releases/download/v1.27.7/syncthing-source-v1.27.7.tar.gz
+        sha256: 2572a2fbb425be2998ff045ea08055710182ced5b3673b96107ccaa56b34c5b5
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 --with-filesystem -j $FLATPAK_BUILDER_N_JOBS link=static install
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.85.0/source/boost_1_85_0.tar.gz
+        sha256: be0d91732d5b0cc6fbb275c7939974457e79b54d6f07ce2e3dfdd68bef883b0b
+  - name: cpp-utilities
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: git
+        url: https://github.com/Martchus/cpp-utilities.git
+        tag: v5.24.8
+  - name: qtutilities
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+      - -DQT_PACKAGE_PREFIX:STRING='Qt6'
+      - -DBUILTIN_TRANSLATIONS:BOOL=ON
+    sources:
+      - type: git
+        url: https://github.com/Martchus/qtutilities.git
+        tag: v6.14.0
+  - name: ForkAwesome
+    buildsystem: simple
+    build-commands:
+      - install -D ./fonts/forkawesome-webfont.woff2 /app/ForkAwesome/forkawesome-webfont.woff2
+      - install -D ./src/icons/icons.yml /app/ForkAwesome/icons.yml
+    sources:
+      - type: archive
+        url: https://github.com/ForkAwesome/Fork-Awesome/archive/refs/tags/1.2.0.tar.gz
+        sha256: 23fba5f191f204e0414c547bf4c9b10fd7ca42c151260e8f64698449a75fbdb3
+  - name: perl-libs
+    buildsystem: simple
+    build-commands:
+      - 'perl-libs/install.sh'
+    post-install:
+      # Fix eu-strip failed with `Permission denied`.
+      - 'chmod -Rf u+w /app/lib/perl5/site_perl'
+    sources:
+      - cpan-generated-sources.json
+  - name: qtforkawesome
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        PERL5LIB: /app/lib/perl5/site_perl
+    config-opts:
+      - -DCMAKE_BUILD_TYPE:STRING=Release
+      - -DQT_PACKAGE_PREFIX:STRING=Qt6
+      - -DBUILTIN_TRANSLATIONS:BOOL=ON
+      - -DFORK_AWESOME_FONT_FILE=/app/ForkAwesome/forkawesome-webfont.woff2
+      - -DFORK_AWESOME_ICON_DEFINITIONS=/app/ForkAwesome/icons.yml
+    sources:
+      - type: git
+        url: https://github.com/Martchus/qtforkawesome.git
+        tag: v0.2.0
+  - name: syncthingtray
+    buildsystem: cmake-ninja
+    post-install:
+      - mv /app/share/applications/syncthingtray.desktop /app/share/applications/org.martchus.syncthingtray.desktop
+      - mv /app/share/icons/hicolor/scalable/apps/syncthingtray.svg /app/share/icons/hicolor/scalable/apps/org.martchus.syncthingtray.svg
+      - sed -i 's/Icon=syncthingtray/Icon=org.martchus.syncthingtray/g' /app/share/applications/org.martchus.syncthingtray.desktop
+      - mv /app/share/metainfo/syncthingtray.appdata.xml /app/share/metainfo/org.martchus.syncthingtray.metainfo.xml
+      - sed -i 's/syncthingtray.desktop/org.martchus.syncthingtray.desktop/g' /app/share/metainfo/org.martchus.syncthingtray.metainfo.xml
+      # TODO: accepted by upstream, can be removed in next release.
+      - sed -i 's/<developer>/<developer id=\"org.martchus\">/g' /app/share/metainfo/org.martchus.syncthingtray.metainfo.xml
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQT_PACKAGE_PREFIX:STRING='Qt6'
+      - -DKF_PACKAGE_PREFIX:STRING='KF6'
+      - -DBUILTIN_TRANSLATIONS:BOOL=ON
+      - -DBUILTIN_TRANSLATIONS_OF_QT:BOOL=OFF
+      - -DJS_PROVIDER=qml
+      - -DSYSTEMD_SUPPORT=ON
+      - -DNO_PLASMOID=ON
+      - -DNO_FILE_ITEM_ACTION_PLUGIN=ON
+    sources:
+      - type: git
+        url: https://github.com/Martchus/syncthingtray.git
+        tag: v1.5.3
+        commit: 744c78f64fc57e344970911724fbd2f41f4a3102
+cleanup:
+  - /ForkAwesome
+  - /include
+  - /lib/cmake
+  - /lib/perl5
+  - /lib/pkgconfig
+  - /share/c++utilities
+  - /share/man
+  - /share/qtforkawesome
+  - /share/qtforkawesomeiconengine
+  - /share/qtquickforkawesome
+  - /share/qtutilities
+  - /share/syncthingconnector
+  - /share/syncthingmodel
+  - /share/syncthingwidgets
+  - '*.cmake'
+  - '*.la'
+  - '*.a'
