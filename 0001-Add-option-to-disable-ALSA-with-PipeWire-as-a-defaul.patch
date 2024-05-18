@@ -1,0 +1,76 @@
+From cbb48d3452f3ac944a51b842c802163be8778347 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Robert-Andr=C3=A9=20Mauchin?=
+ <30413512+eclipseo@users.noreply.github.com>
+Date: Sat, 18 May 2024 16:32:58 +0200
+Subject: [PATCH] Add option to disable ALSA with PipeWire as a default (for
+ Flatpak purpose) (#97)
+
+---
+ CMakeLists.txt                    | 4 ++++
+ cmake/FooyinSummary.cmake         | 1 +
+ src/core/internalcoresettings.cpp | 4 ++++
+ src/plugins/CMakeLists.txt        | 2 ++
+ 4 files changed, 11 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index af8a6eaf..27d98844 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -53,6 +53,7 @@ include(FooyinMacrosInternal)
+ fooyin_option(BUILD_SHARED_LIBS "Build fooyin libraries as shared" ON)
+ fooyin_option(BUILD_TESTING "Build fooyin tests" OFF)
+ fooyin_option(BUILD_PLUGINS "Build plugins included with fooyin" ON)
++fooyin_option(BUILD_ALSA "Build ALSA plugin" ON)
+ fooyin_option(BUILD_TRANSLATIONS "Build translation files" ON)
+ fooyin_option(BUILD_CCACHE "Build using CCache if found" ON)
+ fooyin_option(BUILD_PCH "Build with precompiled header support" OFF)
+@@ -128,7 +129,10 @@ set_package_properties(Qt6Network PROPERTIES TYPE REQUIRED)
+ set_package_properties(Qt6Svg PROPERTIES TYPE REQUIRED)
+ 
+ find_package(Taglib REQUIRED taglib>=1.12)
++if(BUILD_ALSA)
+ find_package(ALSA REQUIRED)
++add_definitions(-DBUILD_ALSA_ENABLED)
++endif()
+ 
+ find_package(
+     FFmpeg REQUIRED
+diff --git a/cmake/FooyinSummary.cmake b/cmake/FooyinSummary.cmake
+index b7ad0642..f1078c5e 100644
+--- a/cmake/FooyinSummary.cmake
++++ b/cmake/FooyinSummary.cmake
+@@ -21,6 +21,7 @@ function (fooyin_print_summary)
+   message(STATUS "  BUILD_SHARED_LIBS     : ${BUILD_SHARED_LIBS}")
+   message(STATUS "  BUILD_TESTING         : ${BUILD_TESTING}")
+   message(STATUS "  BUILD_PLUGINS         : ${BUILD_PLUGINS}")
++  message(STATUS "  BUILD_ALSA            : ${BUILD_ALSA}")
+   message(STATUS "  BUILD_TRANSLATIONS    : ${BUILD_TRANSLATIONS}")
+   message(STATUS "  BUILD_CCACHE          : ${BUILD_CCACHE}")
+   message(STATUS "  BUILD_PCH             : ${BUILD_PCH}")
+diff --git a/src/core/internalcoresettings.cpp b/src/core/internalcoresettings.cpp
+index ae257ed3..d1a246a4 100644
+--- a/src/core/internalcoresettings.cpp
++++ b/src/core/internalcoresettings.cpp
+@@ -41,7 +41,11 @@ CoreSettings::CoreSettings(SettingsManager* settingsManager)
+         QStringLiteral("%albumartist% - %year% - %album% - %disc% - %track% - %title%"),
+         QStringLiteral("Library/SortScript"));
+     m_settings->createSetting<ActivePlaylistId>(0, QStringLiteral("Playlist/ActivePlaylistId"));
++#ifdef BUILD_ALSA_ENABLED
+     m_settings->createSetting<AudioOutput>(QStringLiteral("ALSA|default"), QStringLiteral("Engine/AudioOutput"));
++#else
++    m_settings->createSetting<AudioOutput>(QStringLiteral("PipeWire|default"), QStringLiteral("Engine/AudioOutput"));
++#endif
+     m_settings->createSetting<OutputVolume>(1.0, QStringLiteral("Engine/OutputVolume"));
+     m_settings->createSetting<RewindPreviousTrack>(false, QStringLiteral("Playlist/RewindPreviousTrack"));
+     m_settings->createSetting<GaplessPlayback>(true, QStringLiteral("Engine/GaplessPlayback"));
+diff --git a/src/plugins/CMakeLists.txt b/src/plugins/CMakeLists.txt
+index 3374c02f..056b1ff2 100644
+--- a/src/plugins/CMakeLists.txt
++++ b/src/plugins/CMakeLists.txt
+@@ -1,4 +1,6 @@
++if(BUILD_ALSA)
+ add_subdirectory(alsa)
++endif()
+ add_subdirectory(filters)
+ add_subdirectory(mpris)
+ add_subdirectory(pipewire)
