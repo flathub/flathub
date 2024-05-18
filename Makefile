@@ -27,7 +27,8 @@ lint:
 	flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest $(MANIFEST)
 
 sources:
-	#rm $(APP_ID)-cargo-sources.yaml
-	python3 $(HOME)Developer/flathub/flatpak-builder-tools/cargo/flatpak-cargo-generator.py $(HOME)Developer/zed-industries/zed/Cargo.lock -o zed-cargo-sources.json
-	# $(HOME)Developer/flathub/flatpak-builder-tools/flatpak-json2yaml.py $(APP_ID)-cargo-sources.json --output $(APP_ID)-cargo-sources.yaml
-	# rm $(APP_ID)-cargo-sources.json
+	python3 $(HOME)Developer/flathub/flatpak-builder-tools/cargo/flatpak-cargo-generator.py $(HOME)Developer/zed-industries/zed/Cargo.lock -o sources/Cargo.sources.json
+
+diff:
+	git diff $(HOME)Developer/zed-industries/zed/Cargo.lock > patches/Cargo.lock.diff
+	git diff $(HOME)Developer/zed-industries/zed/Cargo.toml > patches/Cargo.toml.diff
