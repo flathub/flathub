@@ -1,0 +1,91 @@
+# dev.zed.Zed.yaml
+app-id: dev.zed.Zed
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: Zed
+separate-locales: false
+finish-args:
+  # Grant access to Direct Rendering Infrastructure (DRI) for GPU acceleration
+  - --device=dri
+
+  # Allow access to the user's home directory for reading and writing files
+  - --filesystem=home
+
+  # Allow shared memory access for inter-process communication
+  - --share=ipc
+
+  # Enable network access
+  - --share=network
+
+  # Provide access to X11 display server as a fallback
+  - --socket=fallback-x11
+
+  # Enable access to PulseAudio sound server
+  - --socket=pulseaudio
+
+  # Enable access to Wayland display server
+  - --socket=wayland
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+modules:
+  - name: zed
+    buildsystem: simple
+    build-commands:
+      # Fetch dependencies
+      - cargo fetch --manifest-path Cargo.toml --offline --verbose
+
+      # Build Zed with parallel jobs
+      - cargo build --release --locked --all-features --jobs $(nproc)
+
+      # Install Zed
+      - install -Dm 755 target/release/Zed --target-directory ${FLATPAK_DEST}/bin/
+
+      # Install Desktop, MetaInfo, and MIME
+      - install -Dm 644 ${FLATPAK_ID}.desktop --target-directory ${FLATPAK_DEST}/share/applications/
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml --target-directory ${FLATPAK_DEST}/share/metainfo/
+
+      # Install icons
+      - install -Dm 644 ${FLATPAK_ID}.svg --target-directory ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      cxxflags:
+        - -ffat-lto-objects
+      cflags:
+        - -ffat-lto-objects
+      env:
+        - CARGO_HOME=/run/build/zed/cargo
+    sources:
+      # Zed Editor
+      - type: git
+        url: https://github.com/zed-industries/zed.git
+        tag: v0.135.2
+        commit: 25c3c6b6214b49f69cedf0fd63ee797988df93c3
+        x-checker-data:
+          type: git
+          tag-pattern: v([\d.]+)$
+
+      - type: patch
+        path: patches/Cargo.lock.diff
+
+      - type: patch
+        path: patches/Cargo.toml.diff
+
+      # Cargo Dependencies (Generated with: https://github.com/flatpak/flatpak-builder-tools/blob/master/cargo/flatpak-cargo-generator.py)
+      - type: dir
+        path: .
+      - sources/Cargo.sources.json
+
+        # Icon
+      - type: file
+        path: icons/dev.zed.Zed.svg
+
+        # Desktop
+      - type: file
+        path: dev.zed.Zed.desktop
+
+        # MetaInfo
+      - type: file
+        path: dev.zed.Zed.metainfo.xml
