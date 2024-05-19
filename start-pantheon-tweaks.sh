@@ -4,6 +4,7 @@
 
 trap "finalize; exit 1" SIGINT
 
+# Cleanup temporary symlinks and directories this script created.
 finalize()
 {
   for dir in "${HOST_XDG_DATA_DIRS//:/ }"; do
