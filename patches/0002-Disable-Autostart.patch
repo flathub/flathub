@@ -1,0 +1,66 @@
+From 1ca2eecbf1bab96dc9fddd21b50cb95c451b3b9f Mon Sep 17 00:00:00 2001
+From: Martchus <martchus@gmx.net>
+Date: Sat, 18 May 2024 14:13:38 +0200
+Subject: [PATCH] Allow disabling autostart settings
+
+This is useful when the target platform/packaging is not actually supported, e.g.
+currently the code does not work when Syncthing Tray is packaged as Flatpak.
+---
+ syncthingwidgets/CMakeLists.txt              | 11 +++++++++++
+ syncthingwidgets/settings/settingsdialog.cpp |  8 ++++----
+ 2 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/syncthingwidgets/CMakeLists.txt b/syncthingwidgets/CMakeLists.txt
+index 16f337e0..02ec7bfd 100644
+--- a/syncthingwidgets/CMakeLists.txt
++++ b/syncthingwidgets/CMakeLists.txt
+@@ -110,6 +110,17 @@ if (USE_LIBSYNCTHING)
+     list(APPEND META_PUBLIC_COMPILE_DEFINITIONS SYNCTHINGWIDGETS_USE_LIBSYNCTHING)
+ endif ()
+ 
++# allow disabling autostart configuration
++option(NO_AUTOSTART_SETTINGS
++       "whether autostart settings should be disabled - useful if it would not work anyway on the target platform/packaging"
++       OFF)
++if (NO_AUTOSTART_SETTINGS)
++    set_property(
++        SOURCE settings/settingsdialog.cpp
++        APPEND
++        PROPERTY COMPILE_DEFINITIONS SYNCTHINGWIDGETS_AUTOSTART_DISABLED)
++endif ()
++
+ # configure autostart .desktop file exec path
+ set(AUTOSTART_EXEC_PATH
+     ""
+diff --git a/syncthingwidgets/settings/settingsdialog.cpp b/syncthingwidgets/settings/settingsdialog.cpp
+index 8cd7f042..6dcecd32 100644
+--- a/syncthingwidgets/settings/settingsdialog.cpp
++++ b/syncthingwidgets/settings/settingsdialog.cpp
+@@ -818,14 +818,14 @@ QWidget *AutostartOptionPage::setupWidget()
+         setAutostartPath(QString());
+         reset();
+     });
+-#if defined(PLATFORM_LINUX) && !defined(PLATFORM_ANDROID)
++#if !defined(SYNCTHINGWIDGETS_AUTOSTART_DISABLED) && defined(PLATFORM_LINUX) && !defined(PLATFORM_ANDROID)
+     ui()->platformNoteLabel->setText(QCoreApplication::translate("QtGui::AutostartOptionPage",
+         "This is achieved by adding a *.desktop file under <i>~/.config/autostart</i> so the setting only affects the current user."));
+-#elif defined(PLATFORM_WINDOWS)
++#elif !defined(SYNCTHINGWIDGETS_AUTOSTART_DISABLED) && defined(PLATFORM_WINDOWS)
+     ui()->platformNoteLabel->setText(QCoreApplication::translate("QtGui::AutostartOptionPage",
+         "This is achieved by adding a registry key under <i>HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run</i> so the setting "
+         "only affects the current user. Note that the startup entry is invalidated when moving <i>syncthingtray.exe</i>."));
+-#elif defined(PLATFORM_MAC)
++#elif !defined(SYNCTHINGWIDGETS_AUTOSTART_DISABLED) && defined(PLATFORM_MAC)
+     ui()->platformNoteLabel->setText(QCoreApplication::translate("QtGui::AutostartOptionPage",
+         "This is achieved by adding a *.plist file under <i>~/Library/LaunchAgents</i> so the setting only affects the current user."));
+ #else
+@@ -833,7 +833,7 @@ QWidget *AutostartOptionPage::setupWidget()
+         QCoreApplication::translate("QtGui::AutostartOptionPage", "This feature has not been implemented for your platform (yet)."));
+     m_unsupported = true;
+     ui()->pathWidget->setVisible(false);
+-    ui()->autostartCheckBox->setEnabled(false);
++    ui()->autostartCheckBox->setVisible(false);
+ #endif
+     return widget;
+ }
+ 
