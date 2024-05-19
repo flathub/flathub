@@ -1,0 +1,112 @@
+app-id: io.github.pantheon_tweaks.pantheon-tweaks
+# elementary SDK is not available on Flathub, so use GNOME SDK and install elementary stylesheet and granite as modules
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: start-pantheon-tweaks
+finish-args:
+  - '--share=ipc'
+  - '--socket=wayland'
+  - '--socket=fallback-x11'
+
+  # Grant read, write, and create access for settings.ini of GTK and theme dirs
+  - '--filesystem=home/.config/gtk-3.0:create'
+  - '--filesystem=home/.icons:create'
+  - '--filesystem=home/.local/share/sounds:create'
+  - '--filesystem=home/.local/share/themes:create'
+  # Pass the directory where the host's /usr is mounted under, so that we can load system theme files
+  - '--env=USR_DIR_PREFIX=/var/run/host'
+
+  # Needed to read/write GSettings of the host
+  - '--talk-name=ca.desrt.dconf'
+  - '--filesystem=xdg-run/dconf'
+  - '--filesystem=host:ro'
+  - '--env=DCONF_USER_CONFIG_DIR=.config/dconf'
+  - '--env=GIO_EXTRA_MODULES=/app/lib/gio/modules/'
+  # This is not recommended by Flathub though, we need it to access host's GSettings.
+  # From https://docs.flathub.org/docs/for-app-authors/linter/#finish-args-flatpak-spawn-access
+  #   This allows applications to launch arbitrary commands on the host and is restricted and granted on a case-by-case basis.
+  #   This must not be used unless absolutely necessary and when no existing solutions using Flatpak or portals exist.
+  - '--talk-name=org.freedesktop.Flatpak'
+
+  # Needed for PrefersAccentColor
+  - '--system-talk-name=org.freedesktop.Accounts'
+modules:
+  # Patch dconf to read/write GSettings of the host
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - '-Dbash_completion=false'
+      - '-Dman=false'
+      - '-Dsystemduserunitdir=/app/lib/systemd/user'
+    cleanup:
+      - '/include'
+      - '/lib/pkgconfig'
+      - '/libexec'
+      - '/share/dbus-1'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.40/dconf-0.40.0.tar.xz
+        sha256: cf7f22a4c9200421d8d3325c5c1b8b93a36843650c9f95d6451e20f0bcb24533
+      - type: patch
+        path: dconf-override.patch
+
+  - name: elementary-stylesheet
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/elementary/stylesheet/archive/refs/tags/7.3.0.tar.gz
+        sha256: 2fa0428a53ff79a67e518a5883ecfe4e0a7944ad79b3ae070567aad1ea2f459b
+    modules:
+      - name: sassc
+        cleanup:
+          - '*'
+        buildsystem: autotools
+        sources:
+          - type: archive
+            url: https://github.com/sass/sassc/archive/refs/tags/3.6.2.tar.gz
+            sha256: 608dc9002b45a91d11ed59e352469ecc05e4f58fc1259fc9a9f5b8f0f8348a03
+          - type: script
+            dest-filename: autogen.sh
+            commands:
+              - autoreconf -si
+        modules:
+          - name: libsass
+            cleanup:
+              - '*'
+            buildsystem: autotools
+            sources:
+              - type: archive
+                url: https://github.com/sass/libsass/archive/refs/tags/3.6.5.tar.gz
+                sha256: 89d8f2c46ae2b1b826b58ce7dde966a176bac41975b82e84ad46b01a55080582
+              - type: script
+                dest-filename: autogen.sh
+                commands:
+                  - autoreconf -si
+
+  - name: granite
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/elementary/granite/archive/refs/tags/6.2.0.tar.gz
+        sha256: 067d31445da9808a802fca523630c3e4b84d2d7c78ae547ced017cb7f3b9c6b5
+
+  - name: pantheon-tweaks
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/pantheon-tweaks/pantheon-tweaks/archive/refs/tags/2.0.0.tar.gz
+        sha256: b17daaf37c52ae86221c42743395379a9bdfb76a876893b094590b88823bb9f7
+    post-install:
+      # Run the wrapper script instead of the executable
+      - 'desktop-file-edit --set-key=Exec --set-value=start-pantheon-tweaks /app/share/applications/io.github.pantheon_tweaks.pantheon-tweaks.desktop'
+      # Tell the real executable name to the WM to prevent duplicated dock icons
+      - 'desktop-file-edit --set-key=StartupWMClass --set-value=pantheon-tweaks /app/share/applications/io.github.pantheon_tweaks.pantheon-tweaks.desktop'
+
+  - name: wrapper-script
+    buildsystem: simple
+    sources:
+      - type: file
+        path: start-pantheon-tweaks.sh
+    build-commands:
+      - install -Dm 755 start-pantheon-tweaks.sh /app/bin/start-pantheon-tweaks
