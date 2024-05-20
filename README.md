@@ -1,8 +1,8 @@
-# Floorp for Flatpak (one.ablaze.floorp)
+# FireDragon for Flatpak (org.garudalinux.firedragon)
 
-Flathub: https://flathub.org/apps/one.ablaze.floorp
+Flathub: https://flathub.org/apps/org.garudalinux.firedragon
 
-Browser source code: https://github.com/Floorp-Projects/Floorp
+Browser source code: https://gitlab.com/garuda-linux/firedragon/builder
 
 ### Based on
 
@@ -11,15 +11,19 @@ https://github.com/flathub/org.mozilla.firefox.BaseApp
 https://searchfox.org/mozilla-central/source/taskcluster/docker/firefox-flatpak
 
 ## How to install (from Flathub)
-```
-flatpak install flathub one.ablaze.floorp
+
+``` sh
+flatpak install flathub org.garudalinux.firedragon
 ```
 
 ## How to build
-```sh
-flatpak-builder build-dir one.ablaze.floorp.yml
+
+``` sh
+flatpak-builder build org.garudalinux.firedragon.yml
 ```
+
 To test:
-```sh
-flatpak-builder --run build-dir one.ablaze.floorp.yml floorp
+
+``` sh
+flatpak-builder --run build org.garudalinux.firedragon.yml firedragon
 ```
