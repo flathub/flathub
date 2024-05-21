@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 
-# Set FEATURES to what goes after --enable-features; for example, UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc will then get turned into --enable-features=UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc.
 FEATURES="UseSkiaRenderer,VaapiVideoDecoder,VaapiVideoEncoder,PulseaudioLoopbackForScreenShare,VaapiVideoDecodeLinuxGL"
 export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-io.github.milkshiift.GoofCord}"
-declare -a FLAGS=(--ozone-platform-hint=auto --enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --disable-gpu-blocklist)
+# https://wiki.archlinux.org/title/Chromium
+declare -a FLAGS=(
+  --ozone-platform-hint=auto     # To natively run on Wayland
+  --enable-gpu-rasterization     # To support mixed refresh rates + hardware acceleration
+  --ignore-gpu-blocklist         # Forcing hardware acceleration
+  --enable-zero-copy             # Hardware acceleration
+  --enable-drdc                  # Hardware acceleration
+)
 
-if [[ $XDG_SESSION_TYPE == "wayland" ]]
+WAYLAND_SOCKET=${WAYLAND_DISPLAY:-"wayland-0"}
+if [[ -e "$XDG_RUNTIME_DIR/${WAYLAND_SOCKET}" ]] && [[ -c /dev/nvidia0 ]]
 then
-    if [[ -c /dev/nvidia0 ]]
-    then
-      echo "Using NVIDIA on Wayland, applying workaround"
-      FLAGS+=(--disable-gpu-sandbox)
-    fi
+    # When using Bumblebee, WebGL might crash due to GPU sandboxing.
+    # This should ideally check for Bumblebee, not just for Nvidia, but I'm not sure if there's a consistent way to do that
+    echo "Using NVIDIA on Wayland, applying workaround"
+    FLAGS+=(--disable-gpu-sandbox)
 fi
 
 FLAGS+=(--enable-features="${FEATURES}")
