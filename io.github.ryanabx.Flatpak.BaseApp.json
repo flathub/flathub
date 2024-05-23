@@ -1,0 +1,221 @@
+{
+    "id": "io.github.ryanabx.Flatpak.BaseApp",
+    "branch": "23.08",
+    "runtime": "org.freedesktop.Platform",
+    "sdk": "org.freedesktop.Sdk",
+    "runtime-version": "23.08",
+    "separate-locales": false,
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.llvm16"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin",
+        "env": {
+            "BASH_COMPLETIONSDIR": "/app/share/bash-completion/completions",
+            "MOUNT_FUSE_PATH": "../tmp/",
+            "V": "1"
+        }
+    },
+    "modules": [
+        "xvfb.json",
+        "jq.json",
+        "gh.json",
+        {
+            "name": "dbus",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/dbus/dbus.git",
+                    "commit": "fa05c11a0047f2927e76d08f9fcf6638ded7ff50"
+                }
+            ]
+        },
+        {
+            "name": "libyaml",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz",
+                    "sha256": "c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4"
+                }
+            ]
+        },
+        {
+            "name": "stemmer",
+            "buildsystem": "simple",
+            "build-commands": [
+                "make libstemmer.so -j$FLATPAK_BUILDER_N_JOBS",
+                "install -Dm644 include/libstemmer.h /app/include/libstemmer.h",
+                "install -Dm644 libstemmer.so.0.0.0 /app/lib/libstemmer.so.0.0.0",
+                "ln -s libstemmer.so.0.0.0 /app/lib/libstemmer.so.0",
+                "ln -s libstemmer.so.0 /app/lib/libstemmer.so"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/snowballstem/snowball",
+                    "commit": "d29510ae32702a81cdc29177a133e894df854550"
+                },
+                {
+                    "type": "patch",
+                    "path": "patches/stemmer-dynlib.patch"
+                }
+            ]
+        },
+        {
+            "name": "libfuse",
+            "config-opts": [
+                "UDEV_RULES_PATH=/app/etc/udev/rules.d",
+                "INIT_D_PATH=/app/etc/init.d"
+            ],
+            "post-install": [
+                "install -m a+rx fusermount-wrapper.sh /app/bin/fusermount"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz",
+                    "sha256": "d0e69d5d608cc22ff4843791ad097f554dd32540ddc9bed7638cc6fea7c1b4b5"
+                },
+                {
+                    "type": "patch",
+                    "paths": [
+                        "patches/fuse-disable-sys-mount-under-flatpak.patch",
+                        "patches/fuse-2.9.2-namespace-conflict-fix.patch",
+                        "patches/fuse-closefrom.patch"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "path": "fusermount-wrapper.sh"
+                }
+            ]
+        },
+        {
+            "name": "ostree",
+            "config-opts": [
+                "--disable-man",
+                "--with-systemdsystemgeneratordir=/app/lib/systemd/system-generators",
+                "--without-systemdsystemunitdir",
+                "--with-curl"
+            ],
+            "cleanup": [
+                "/etc/grub.d",
+                "/etc/ostree",
+                "/share/ostree",
+                "/libexec"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/ostreedev/ostree/releases/download/v2024.5/libostree-2024.5.tar.xz",
+                    "sha256": "bc12d8493db64152093ee5be77cf62a29cc67a4a9e430dc987103e78aada4a6f",
+                    "x-checker-data": {
+                        "type": "json",
+                        "url": "https://api.github.com/repos/ostreedev/ostree/releases/latest",
+                        "version-query": ".tag_name",
+                        "url-query": ".assets | first | .browser_download_url"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "python3-pyparsing",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --prefix=/app pyparsing-2.4.7-py2.py3-none-any.whl"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/8a/bb/488841f56197b13700afd5658fc279a2025a39e22449b7cf29864669b15d/pyparsing-2.4.7-py2.py3-none-any.whl",
+                    "sha256": "ef9d7589ef3c200abe66653d3f1ab1033c3c419ae9b9bdb1240a85b024efc88b"
+                }
+            ]
+        },
+        {
+            "name": "libxmlb",
+            "buildsystem": "meson",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/hughsie/libxmlb/releases/download/0.3.14/libxmlb-0.3.14.tar.xz",
+                    "sha256": "a2f0056eed14ff791aee2b08b1514a0f1b6cf215f0579138a8cae8c45a0d3b0f"
+                }
+            ]
+        },
+        {
+            "name": "flatpak",
+            "config-opts": [
+                "--disable-documentation",
+                "--disable-seccomp",
+                "--disable-sandboxed-triggers",
+                "--disable-system-helper",
+                "--with-system-install-dir=/var/lib/flatpak"
+            ],
+            "cleanup": [
+                "/etc/profile.d",
+                "/lib/systemd",
+                "/share/dbus-1/interfaces/org.freedesktop.*",
+                "/share/dbus-1/services/org.freedesktop.*",
+                "/share/gdm"
+            ],
+            "post-install": [
+                "cp /usr/bin/update-mime-database /app/bin",
+                "cp /usr/bin/update-desktop-database /app/bin"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/flatpak/flatpak/releases/download/1.14.8/flatpak-1.14.8.tar.xz",
+                    "sha256": "1016b7327f7af87896f95465f7e5813750d3b7049a3740a1a4ddcb5fa8c5348e",
+                    "x-checker-data": {
+                        "type": "json",
+                        "url": "https://api.github.com/repos/flatpak/flatpak/releases/latest",
+                        "version-query": ".tag_name",
+                        "url-query": "\"https://github.com/flatpak/flatpak/releases/download/\\($version)/flatpak-\\($version).tar.xz\""
+                    }
+                },
+                {
+                    "type": "patch",
+                    "paths": [
+                        "patches/flatpak-copy-icon-pass-appstream-cid.patch"
+                    ]
+                }
+            ],
+            "modules": [
+                {
+                    "name": "appstream",
+                    "buildsystem": "meson",
+                    "config-opts": [
+                        "-Dapidocs=false",
+                        "-Dgir=false",
+                        "-Dcompose=true"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://github.com/ximion/appstream/archive/refs/tags/v1.0.3.tar.gz",
+                            "sha256": "dd7222519b5d855124fa803ce82a7cbf090ac6b2e44a5bc515e729b1f20a63ae"
+                        },
+                        {
+                            "type": "patch",
+                            "paths": [
+                                "patches/appstream-demotion-allowlist.patch",
+                                "patches/appstream-compose-default-propagate-custom.patch",
+                                "patches/asc-hint-tags-silence-some-vague-validation-errors.patch"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "cleanup": [
+        "/include",
+        "/share",
+        "*.la",
+        "*.a"
+    ]
+}

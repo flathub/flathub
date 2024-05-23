@@ -1,0 +1,51 @@
+From 3f39faf191c708a218b5eaa517c679bdc54c322a Mon Sep 17 00:00:00 2001
+From: bbhtt <bbhtt.zn0i8@slmail.me>
+Date: Thu, 28 Mar 2024 00:09:25 +0530
+Subject: [PATCH] utils: Drop stripping .desktop suffixes from appstream
+ component ids
+
+This will pass the exact appstream component ID to copy_icon
+
+This was introduced in https://github.com/flatpak/flatpak/commit/7dd92d8a9be2e14313e2cda7dea44298fbb005a4
+to handle appstream component IDs that ended in two `.desktop` suffixes.
+Recent analysis of appstream data shows that on Flathub no such
+appstream cid exists anymore and Telegram has component ID
+`com.telegram.desktop` now.
+
+With the switch to libappstream, appstreamcli-compose produces icons in
+`share/app-info/flatpak` named by the appstream component ID instead of
+the `$FLATPAK_ID` used by appstream-glib. This causes applications whose
+`$FLATPAK_ID` does not end with `.desktop` but their appstream-component
+ID ends in `.desktop` ie. `$FLATPAK_ID != appstream-cid` to loose icons
+from the appstream ostree ref as `copy_icon` was being fed the id
+without `.desktop` but icons were created by appstreamcli
+with `.desktop` in them.
+
+This will avoid adding anymore ID heuristics/workarounds on either side,
+per the discussion in https://github.com/flathub/flathub/issues/4222
+
+An application with `$FLATPAK_ID` `com.telegram.desktop` and appstream ID
+`com.telegram.desktop.desktop` will be broken with this change but such
+dual `.desktop` IDs are non existent and should be fixed individually
+or be blocked on an app store level.
+---
+ common/flatpak-utils.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/common/flatpak-utils.c b/common/flatpak-utils.c
+index b89e2446..4ed2113b 100644
+--- a/common/flatpak-utils.c
++++ b/common/flatpak-utils.c
+@@ -5308,9 +5308,6 @@ extract_appstream (OstreeRepo        *repo,
+               continue;
+             }
+ 
+-          if (g_str_has_suffix (component_id_suffix, ".desktop"))
+-            component_id_suffix[strlen (component_id_suffix) - strlen (".desktop")] = 0;
+-
+           if (!copy_icon (component_id_text, icons_dir, repo, size1_mtree, "64x64", &my_error))
+             {
+               g_print (_("Error copying 64x64 icon for component %s: %s\n"), component_id_text, my_error->message);
+-- 
+2.44.0
+
