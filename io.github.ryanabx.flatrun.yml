@@ -1,0 +1,79 @@
+id: io.github.ryanabx.flatrun
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+base: org.flatpak.Builder.BaseApp
+base-version: "23.08"
+separate-locales: false
+command: flatrun
+finish-args:
+  - "--share=ipc"
+  - "--device=dri"
+  - "--socket=wayland"
+  - "--socket=fallback-x11"
+# Unfortunately, it's necessary for us to have this permission
+# all unsandboxed access is run through flatrun-agent.
+# flatrun-agent installs system runtimes and launches flatpaks
+# from a local repo (non system and non user).
+  - "--talk-name=org.freedesktop.Flatpak"
+build-options:
+  append-path: "/usr/lib/sdk/rust-stable/bin"
+  env:
+    CARGO_HOME: "/run/build/flatrun/cargo"
+modules:
+# Install flatpak
+  - name: flatpak
+    config-opts:
+      - "--disable-documentation"
+      - "--disable-seccomp"
+      - "--disable-sandboxed-triggers"
+      - "--disable-system-helper"
+      - "--with-system-install-dir=/var/lib/flatpak"
+    cleanup:
+      - "/etc/profile.d"
+      - "/lib/systemd"
+      - "/share/dbus-1/interfaces/org.freedesktop.*"
+      - "/share/dbus-1/services/org.freedesktop.*"
+      - "/share/gdm"
+    sources:
+      - type: archive
+        url: "https://github.com/flatpak/flatpak/releases/download/1.14.8/flatpak-1.14.8.tar.xz"
+        sha256: "1016b7327f7af87896f95465f7e5813750d3b7049a3740a1a4ddcb5fa8c5348e"
+        x-checker-data:
+          type: "json"
+          url: "https://api.github.com/repos/flatpak/flatpak/releases/latest"
+          version-query: ".tag_name"
+          url-query: "\"https://github.com/flatpak/flatpak/releases/download/\\($version)/flatpak-\\($version).tar.xz\""
+# Install flatrun
+  - name: just
+    buildsystem: simple
+    build-commands:
+    - install -Dm0755 just /app/bin/just
+    sources:
+      - type: archive
+        dest-filename: just.tar.gz
+        strip-components: 0
+        url: https://github.com/casey/just/releases/download/1.25.2/just-1.25.2-x86_64-unknown-linux-musl.tar.gz
+        sha256: ad56bf1a804243b51ef2c2eec4b3a8177f970ccc414cbbee219c2e5c06f7bcc9
+        only_arches:
+          - x86_64
+      - type: archive
+        dest-filename: just.tar.gz
+        strip-components: 0
+        url: https://github.com/casey/just/releases/download/1.25.2/just-1.25.2-aarch64-unknown-linux-musl.tar.gz
+        sha256: 049d624255d150f18b0f3a1257a163366b0dc22e16526214773903125145e515
+        only_arches:
+          - aarch64
+  - name: flatrun
+    buildsystem: simple
+    build-commands:
+      - just build-flatpak
+      - just flatpak
+    sources:
+      - type: git
+        url: https://github.com/ryanabx/flatrun.git
+        tag: v0.1.2
+      - generated-sources.json
+        
