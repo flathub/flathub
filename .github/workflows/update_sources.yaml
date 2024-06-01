@@ -1,0 +1,73 @@
+name: Update sources
+
+env:
+  MANIFEST: dev.bragefuglseth.Keypunch.json
+  FLATPAK_BUILDER_TOOLS_REPO: https://github.com/flatpak/flatpak-builder-tools.git
+
+on:
+  pull_request:
+    branches: [master, beta]
+    paths:
+      - 'dev.bragefuglseth.Keypunch.json'
+
+jobs:
+  cargo-sources:
+    name: cargo-sources.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          set -e
+          sudo apt install python3-toml python3-aiohttp
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Get project variables
+        run: |
+          echo "UPSTREAM_REPO=$(cat $MANIFEST | jq -r '.modules[-1].sources[0].url')" >> $GITHUB_ENV
+          echo "UPSTREAM_TAG=$(cat $MANIFEST | jq -r '.modules[-1].sources[0].tag')" >> $GITHUB_ENV
+          echo "UPSTREAM_COMMIT=$(cat $MANIFEST | jq -r '.modules[-1].sources[0].commit')" >> $GITHUB_ENV
+
+      - name: Get Cargo.lock
+        run: |
+          git clone -b $UPSTREAM_TAG --depth 1 $UPSTREAM_REPO ci_sources/upstream_source
+
+          # Check that the tag commit matches the one in the Flatpak manifest
+          cd ci_sources/upstream_source
+          tag_commit=$(git rev-parse HEAD)
+          if [[ $tag_commit != $UPSTREAM_COMMIT ]]; then
+            echo "Commit of tag $UPSTREAM_TAG does not match Flatpak manifest commit: $tag_commit"
+            exit 1
+          else
+            echo "Commit of tag $UPSTREAM_TAG matches Flatpak manifest commit: $tag_commit"
+          fi
+
+      - name: Get flatpak-cargo-generator.py
+        run: |
+          git clone --depth 1 $FLATPAK_BUILDER_TOOLS_REPO ci_sources/flatpak-builder-tools
+
+      - name: Regenerate cargo-sources.json
+        run: |
+          python3 ./ci_sources/flatpak-builder-tools/cargo/flatpak-cargo-generator.py ./ci_sources/upstream_source/Cargo.lock -o cargo-sources.json
+
+      - name: Commit changes
+        env:
+          # email sets "github-actions[bot]" as commit author, see https://github.community/t/github-actions-bot-email-address/17204/6
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_AUTHOR_NAME: github-actions[bot]
+        run: |
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git config user.name "$GIT_AUTHOR_NAME"
+          git add cargo-sources.json
+
+          staged_files=`git diff --name-only --cached`
+          if [[ -n $staged_files ]]; then
+            git commit -m "Update cargo-sources.json"
+            git push
+          else
+            echo "cargo-sources.json did not change, commit skipped"
+          fi
