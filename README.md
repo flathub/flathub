@@ -32,7 +32,6 @@ Please make sure you have these dependencies first before building.
 ```
 gtk4
 libadwaita-1
-libsoup-2.4
 meson
 vala
 ```
