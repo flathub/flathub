@@ -1,0 +1,89 @@
+diff --git a/d1/CMakeLists.txt b/d1/CMakeLists.txt
+index 4182852..97d1cb0 100644
+--- a/d1/CMakeLists.txt
++++ b/d1/CMakeLists.txt
+@@ -13,6 +13,7 @@ option(UDP "Enable UDP support [default: ON]" ON)
+ option(TRACKER "Enable Tracker support (requires UDP) [default: ON]" ON)
+ option(PNG "Build with PNG support for screenshots and textures [default: ON]" ON)
+ option(OPENGLMERGE "Use an OpenGL shader for texmerge [default: ON]" ON)
++option(XDGCONFIG "Use XDG_CONFIG_HOME for files [default: OFF]" OFF)
+ 
+ set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} -DRELEASE")
+ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DRELEASE")
+@@ -57,6 +58,9 @@ endif()
+ if(OPENGLMERGE)
+     add_definitions(/DOGL_MERGE)
+ endif()
++if(XDGCONFIG)
++    add_definitions(/DXDGCONFIG)
++endif()
+ 
+ if(WIN32)
+     # WINDOWS_IGNORE_PACKING_MISMATCH is required to suppress asserts in winnt.h that warn about
+diff --git a/d1/main/inferno.c b/d1/main/inferno.c
+index 7547ff3..5bb074f 100644
+--- a/d1/main/inferno.c
++++ b/d1/main/inferno.c
+@@ -311,13 +311,18 @@ int main(int argc, char *argv[])
+ 	if (!PHYSFSX_checkSupportedArchiveTypes())
+ 		return(0);
+ 
+-	if (! PHYSFSX_contfile_init("descent.hog", 1))
++	if (! PHYSFSX_contfile_init("descent.hog", 1)) {
+ #define DXX_NAME_NUMBER	"1"
+ #define DXX_HOGFILE_NAMES	"descent.hog"
+ #if defined(__unix__) && !defined(__APPLE__)
++		char path[PATH_MAX];
++		snprintf(path, sizeof(path), "%s", PHYSFS_getWriteDir());
++		if (path[0] && path[strlen(path) - 1] == '/')
++			path[strlen(path) - 1] = 0;
+ #define DXX_HOGFILE_PROGRAM_DATA_DIRECTORY	\
+-			      "\t$HOME/.d" DXX_NAME_NUMBER "x-rebirth\n"	\
++			      "\t%s\n"	\
+ 			      "\t" SHAREPATH "\n"
++			      //"\t$HOME/.d" DXX_NAME_NUMBER "x-rebirth\n"
+ #else
+ #define DXX_HOGFILE_PROGRAM_DATA_DIRECTORY	\
+ 				  "\tDirectory containing D" DXX_NAME_NUMBER "X-Redux\n" \
+@@ -335,7 +340,12 @@ int main(int argc, char *argv[])
+ 		"\tIn a subdirectory called 'Data'\n"	\
+ 		DXX_HOGFILE_APPLICATION_BUNDLE	\
+ 		"Or use the -hogdir option to specify an alternate location."
+-		Error(DXX_MISSING_HOGFILE_ERROR_TEXT);
++		Error(DXX_MISSING_HOGFILE_ERROR_TEXT
++#if defined(__unix__) && !defined(__APPLE__)
++			, path
++#endif
++		);
++	}
+ 
+ 	switch (PHYSFSX_fsize("descent.hog"))
+ 	{
+diff --git a/d1/misc/physfsx.c b/d1/misc/physfsx.c
+index f79d3ea..5d03c45 100644
+--- a/d1/misc/physfsx.c
++++ b/d1/misc/physfsx.c
+@@ -30,6 +30,10 @@ void PHYSFSX_init(int argc, char *argv[])
+ #endif
+ #if defined(__unix__)
+ 	char *path = NULL;
++# ifdef XDGCONFIG
++	char *config_home;
++	char config_path[PATH_MAX];
++# endif
+ #endif
+ #ifdef macintosh	// Mac OS 9
+ 	char base_dir[PATH_MAX];
+@@ -63,6 +67,12 @@ void PHYSFSX_init(int argc, char *argv[])
+ #if defined(__unix__)
+ # if !(defined(__APPLE__) && defined(__MACH__))
+ 	path = "~/.d1x-rebirth/";
++#  ifdef XDGCONFIG
++	if ((config_home = getenv("XDG_CONFIG_HOME"))) {
++		snprintf(config_path, sizeof(config_path), "%s/d1x-redux/", config_home);
++		path = config_path;
++	}
++#  endif
+ # else
+ 	path = "~/Library/Preferences/D1X Rebirth/";
+ # endif
