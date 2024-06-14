@@ -1,0 +1,102 @@
+app-id: me.proton.Pass
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-proton-pass
+finish-args:
+  # camera access for moments
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --env=USE_WAYLAND=1
+  - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - name: proton-pass
+    buildsystem: simple
+    build-commands:
+      - bsdtar -Oxf ProtonPass.deb data.tar.xz | bsdtar -xf -
+      - mv "usr/lib/proton-pass" ${FLATPAK_DEST}/proton-pass
+      - rm ${FLATPAK_DEST}/proton-pass/chrome-sandbox
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/proton-pass/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/proton-pass/locales/$(basename $lang)"
+        done
+
+      - install -Dm644 proton-pass.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - install -Dm644 usr/share/applications/proton-pass.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=Exec --set-value='start-proton-pass %U' --set-icon=${FLATPAK_ID}
+        "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+    sources:
+      - type: file
+        dest-filename: ProtonPass.deb
+        only-arches: [x86_64]
+        url: https://proton.me/download/PassDesktop/linux/x64/ProtonPass_1.17.5.deb
+        sha256: d9d9d1ff82e92e242525e6efef8fc5ecbfdae6560f87e00c3ea4152011efc5c8
+        x-checker-data:
+          type: anitya
+          project-id: 146681
+          url-template: https://proton.me/download/PassDesktop/linux/x64/ProtonPass_$version.deb
+          stable-only: true
+      # - type: file
+      #   dest-filename: ProtonPass.deb
+      #   only-arches: [aarch64]
+      #   url: https://github.com/standardnotes/app/releases/download/%40standardnotes%2Fdesktop%403.181.19/standard-notes-3.181.19-linux-arm64.deb
+      #   sha256: c24f8b68bd0a054a89e1cfcc7dc66cc70eb4847db232ce9fd39002007238ea53
+      #   x-checker-data:
+      #     type: anitya
+      #     project-id: 146681
+      #     url-template: https://github.com/standardnotes/app/releases/download/%40standardnotes%2Fdesktop%40$version/standard-notes-$version-linux-arm64.deb
+      #     stable-only: true
+
+      - type: file
+        dest-filename: proton-pass.svg
+        url: https://raw.githubusercontent.com/ProtonMail/WebClients/d1a23fc2c4ab1e1632118baaee6f2531022ae4cf/applications/pass-desktop/assets/logo.svg
+        sha256: 485abebe08af491753b9060c539f012c2c0a8d20a1e559d42f623c281ed691b9
+
+  - name: start-script
+    buildsystem: simple
+    build-commands:
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-proton-pass.sh /app/bin/start-proton-pass
+    sources:
+      - type: script
+        dest-filename: start-proton-pass.sh
+        commands:
+          - |
+            set -oue pipefail
+
+            export FLATPAK_ID="${FLATPAK_ID}"
+            export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+
+            # Wayland support can be optionally enabled like so:
+            declare -i USE_WAYLAND="${USE_WAYLAND:-1}"
+            declare -i EXIT_CODE=0
+
+            if [[ "${USE_WAYLAND}" -eq 1 && "${XDG_SESSION_TYPE}" == "wayland" ]]; then
+                exec zypak-wrapper "/app/proton-pass/Proton Pass" --ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations --gtk-version=4 $@ || EXIT_CODE=$?
+                # Fall back to x11 if failed to launch under Wayland. Otherwise, exit normally
+                [[ "${EXIT_CODE}" -ne 133 ]] && exit "${EXIT_CODE}"
+            fi
+
+            exec zypak-wrapper "/app/proton-pass/Proton Pass" $@
+
+  - name: metainfo
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 me.proton.Pass.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        path: me.proton.Pass.metainfo.xml
