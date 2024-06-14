@@ -1,0 +1,83 @@
+app-id: me.proton.Mail
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-proton-mail
+finish-args:
+  # camera access for moments
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.secrets
+  - --env=USE_WAYLAND=1
+  - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - name: proton-mail
+    buildsystem: simple
+    build-commands:
+      - bsdtar -Oxf ProtonMail.deb data.tar.xz | bsdtar -xf -
+      - mv "usr/lib/proton-mail" ${FLATPAK_DEST}/proton-mail
+      - rm ${FLATPAK_DEST}/proton-mail/chrome-sandbox
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/proton-mail/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/proton-mail/locales/$(basename $lang)"
+        done
+
+      - install -Dm644 icon.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - install -Dm644 usr/share/applications/proton-mail.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=Exec --set-value='start-proton-mail %U' --set-icon=${FLATPAK_ID}
+        "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-proton-mail.sh /app/bin/start-proton-mail
+
+      - install -Dm644 me.proton.Mail.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        dest-filename: ProtonMail.deb
+        only-arches: [x86_64]
+        url: https://proton.me/download/mail/linux/ProtonMail-desktop-beta.deb
+        sha256: a296af5695d0980fd50d9f8afe4d0d245c101d4509860f9b526ff0f04aeda29c
+        x-checker-data:
+          type: json
+          url: https://proton.me/download/mail/linux/version.json
+          version-query: .Releases[0].Version
+          url-query: .Releases[0].File[0].Url
+
+      - type: file
+        path: icon.svg
+
+      - type: script
+        dest-filename: start-proton-mail.sh
+        commands:
+          - |
+            set -oue pipefail
+
+            export FLATPAK_ID="${FLATPAK_ID}"
+            export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+
+            # Wayland support can be optionally enabled like so:
+            declare -i USE_WAYLAND="${USE_WAYLAND:-1}"
+            declare -i EXIT_CODE=0
+
+            if [[ "${USE_WAYLAND}" -eq 1 && "${XDG_SESSION_TYPE}" == "wayland" ]]; then
+                exec zypak-wrapper "/app/proton-mail/Proton Mail Beta" --ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations --gtk-version=4 $@ || EXIT_CODE=$?
+                # Fall back to x11 if failed to launch under Wayland. Otherwise, exit normally
+                [[ "${EXIT_CODE}" -ne 133 ]] && exit "${EXIT_CODE}"
+            fi
+
+            exec zypak-wrapper "/app/proton-mail/Proton Mail Beta" $@
+
+      - type: file
+        path: me.proton.Mail.metainfo.xml
