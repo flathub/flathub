@@ -225,8 +225,12 @@ def main():
 
     collaborators = {user.replace("@", "") for user in command.split()[1:]}
     for user in collaborators:
-        print(f"adding {user} to collaborators")
-        repo.add_to_collaborators(user, permission="push")
+        try:
+            print(f"adding {user} to collaborators")
+            repo.add_to_collaborators(user, permission="push")
+        except github.GithubException:
+            print(f"Adding {user} failed")
+            pass
 
     close_comment = (
         f"A repository for this submission has been created: {repo.html_url}",
