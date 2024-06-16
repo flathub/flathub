@@ -235,6 +235,8 @@ def main():
         "\n",
         "If you've never maintained an app on Flathub before, common questions are answered in the [app maintenance guide](https://docs.flathub.org/docs/for-app-authors/maintenance/). If you're the original developer (or an authorized party), [verify your app](https://docs.flathub.org/docs/for-app-authors/verification) next to let users know it's coming from you.",
         "\n",
+        "Please follow the [Flathub blog](https://docs.flathub.org/blog) for the latest announcements.",
+        "\n",
         "Thanks!",
     )
 
