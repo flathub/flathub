@@ -1,4 +1,4 @@
-FROM quay.io/fedora/fedora:38
+FROM quay.io/fedora/fedora:40
 
 RUN dnf install -y flatpak-builder git /usr/bin/pip && \
     dnf clean all
