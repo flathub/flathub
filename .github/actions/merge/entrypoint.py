@@ -97,7 +97,7 @@ def detect_appid(dirname):
                         appid = manifest["id"]
                 else:
                     parser = Json.Parser()
-                    if parser.load_from_file(parser, filename):
+                    if parser.load_from_file(filename):
                         root_node = parser.get_root()
                         if root_node.get_node_type() == Json.NodeType.OBJECT:
                             json_object = root_node.get_object()
