@@ -12,12 +12,12 @@ The extension that should be used to obtain tray icons is [appindicator-support]
 
 ## Discord Rich Presence
 ### Native applications
-A solution that works short-term is to run `ln -sf $XDG_RUNTIME_DIR/{.flatpak/me.verticalsync.sunroof/xdg-run,}/discord-ipc-0`.
+A solution that works short-term is to run `ln -sf $XDG_RUNTIME_DIR/{.flatpak/io.github.verticalsync.sunroof/xdg-run,}/discord-ipc-0`.
 For something longer lasting, run the following:
 
 ```sh
 mkdir -p ~/.config/user-tmpfiles.d
-echo 'L %t/discord-ipc-0 - - - - .flatpak/me.verticalsync.sunroof/xdg-run/discord-ipc-0' > ~/.config/user-tmpfiles.d/discord-rpc.conf
+echo 'L %t/discord-ipc-0 - - - - .flatpak/io.github.verticalsync.sunroof/xdg-run/discord-ipc-0' > ~/.config/user-tmpfiles.d/discord-rpc.conf
 systemctl --user enable --now systemd-tmpfiles-setup.service
 ```
 Now, native applications will be able to use Rich Presence on every system start.
@@ -27,10 +27,10 @@ Now, native applications will be able to use Rich Presence on every system start
 
 Flatpak applications need certain changes inside of the flatpak environment to connect properly:
 
-1. Permission to access `$XDG_RUNTIME_DIR/.flatpak/me.verticalsync.sunroof/`
-2. A symlink at `$XDG_RUNTIME_DIR/discord-ipc-0` pointing to `$XDG_RUNTIME_DIR/.flatpak/me.verticalsync.sunroof/xdg-run/discord-ipc-0`
+1. Permission to access `$XDG_RUNTIME_DIR/.flatpak/io.github.verticalsync.sunroof/`
+2. A symlink at `$XDG_RUNTIME_DIR/discord-ipc-0` pointing to `$XDG_RUNTIME_DIR/.flatpak/io.github.verticalsync.sunroof/xdg-run/discord-ipc-0`
 
 Suggested changes to accomplish these needs :
 
-1. Add `--filesystem=xdg-run/.flatpak/me.verticalsync.sunroof:create` and `--filesystem=xdg-run/discord-ipc-*` to the global Flatpak permissions
+1. Add `--filesystem=xdg-run/.flatpak/io.github.verticalsync.sunroof:create` and `--filesystem=xdg-run/discord-ipc-*` to the global Flatpak permissions
 2. Restart
