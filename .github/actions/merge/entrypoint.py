@@ -167,7 +167,7 @@ def main():
     tmpdir = tempfile.TemporaryDirectory()
     print(f"Cloning {fork_url} (branch: {branch})")
     clone = pygit2.clone_repository(fork_url, tmpdir.name, checkout_branch=branch)
-    clone.update_submodules(init=True)
+    clone.submodules.update(init=True)
 
     manifest_file, appid = detect_appid(tmpdir.name)
     if manifest_file is None or appid is None:
