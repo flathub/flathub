@@ -1,5 +1,7 @@
 # com.chenyifaer.FaForever
 
+[![Flathub Version](https://img.shields.io/flathub/v/com.chenyifaer.FaForever)](https://flathub.org/apps/com.chenyifaer.FaForever)
+
 ## Requirements
 
 ### Add or Update the submodule
