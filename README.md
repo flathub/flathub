@@ -12,7 +12,9 @@ Flathub is the central place for building and hosting Flatpak builds.
 Install dependencies:
 
 ```sh
-flatpak install org.kde.Sdk//5.15-22.08
+flatpak install org.kde.Sdk//5.15-23.08
+flatpak install org.kde.Platform//5.15-23.08
+flatpak install io.qt.qtwebengine.BaseApp//5.15-23.08
 ```
 
 Build the package
