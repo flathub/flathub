@@ -1,0 +1,103 @@
+id: dev.opengoal.OpenGOAL
+
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+command: open-goal-launcher
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --socket=wayland
+  - --socket=x11
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.0.tar.xz
+        sha256: c66530e41ba59b1edba4ee89ef20b2188e273bed0497e95084729e3cfbe30c87
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_MINIBROWSER=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_LIBBACKTRACE=OFF
+      - -DUSE_GTK4=OFF
+      - -DUSE_SOUP2=ON
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+      
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - '*'
+
+  - name: bzip2
+    buildsystem: simple
+    build-commands:
+      - make -f Makefile-libbz2_so
+      - 'install -Dm755 libbz2.so.1.0.8 /app/lib/libbz2.so.1.0'
+      - 'ln -s /app/lib/libbz2.so.1.0 /app/lib/libbz2.so.1'
+      - 'ln -s /app/lib/libbz2.so.1.0 /app/lib/libbz2.so'
+    sources:
+      - type: archive
+        url: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+        sha256: ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+
+  - name: open-goal-launcher
+    sources:
+      - type: git
+        url: https://github.com/open-goal/launcher.git
+        tag: v2.4.6
+        commit: a0294ac9e4459b0e2439e72fd4ea7364027e4def
+      - generated-sources.json
+      - cargo-sources.json
+      - type: file
+        path: dev.opengoal.OpenGOAL.desktop
+      - type: file
+        path: dev.opengoal.OpenGOAL.appdata.xml
+        only-arches:
+          - x86_64
+    buildsystem: simple
+    build-options:
+        append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+        env:
+          CARGO_HOME: /run/build/open-goal-launcher/cargo
+          XDG_CACHE_HOME: /run/build/open-goal-launcher/flatpak-node/cache
+          npm_config_nodedir: /usr/lib/sdk/node20
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn --offline
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run tauri build -- -b deb
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/bundle/deb/*/data/usr/bin/*
+      - install -Dm644 -t /app/share/metainfo/ dev.opengoal.OpenGOAL.appdata.xml
+      - desktop-file-edit --set-icon="dev.opengoal.OpenGOAL" src-tauri/target/release/bundle/deb/*/data/usr/share/applications/open-goal-launcher.desktop
+      - install -Dm644 src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/32x32/apps/open-goal-launcher.png /app/share/icons/hicolor/32x32/apps/dev.opengoal.OpenGOAL.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/128x128/apps/open-goal-launcher.png /app/share/icons/hicolor/128x128/apps/dev.opengoal.OpenGOAL.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/*/data/usr/share/icons/hicolor/256x256@2/apps/open-goal-launcher.png /app/share/icons/hicolor/256x256/apps/dev.opengoal.OpenGOAL.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/*/data/usr/share/applications/open-goal-launcher.desktop /app/share/applications/dev.opengoal.OpenGOAL.desktop
