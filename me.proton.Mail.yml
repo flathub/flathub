@@ -13,7 +13,6 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --talk-name=org.freedesktop.secrets
-  - --env=USE_WAYLAND=1
   - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
 modules:
   - shared-modules/libsecret/libsecret.json
@@ -61,23 +60,24 @@ modules:
       - type: script
         dest-filename: start-proton-mail.sh
         commands:
+          # Reference: https://github.com/flathub/im.riot.Riot/blob/491621f36256eca14609477482cdeeb800714ea5/element.sh
           - |
             set -oue pipefail
 
-            export FLATPAK_ID="${FLATPAK_ID}"
             export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+            
+            FLAGS=''
 
-            # Wayland support can be optionally enabled like so:
-            declare -i USE_WAYLAND="${USE_WAYLAND:-1}"
-            declare -i EXIT_CODE=0
-
-            if [[ "${USE_WAYLAND}" -eq 1 && "${XDG_SESSION_TYPE}" == "wayland" ]]; then
-                exec zypak-wrapper "/app/proton-mail/Proton Mail Beta" --ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations --gtk-version=4 $@ || EXIT_CODE=$?
-                # Fall back to x11 if failed to launch under Wayland. Otherwise, exit normally
-                [[ "${EXIT_CODE}" -ne 133 ]] && exit "${EXIT_CODE}"
+            if [[ $XDG_SESSION_TYPE == "wayland" && -e "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]
+            then
+                FLAGS="$FLAGS --enable-wayland-ime --ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations --gtk-version=4"
+                if  [ -c /dev/nvidia0 ]
+                then
+                    FLAGS="$FLAGS --disable-gpu-sandbox"
+                fi
             fi
 
-            exec zypak-wrapper "/app/proton-mail/Proton Mail Beta" $@
+            exec zypak-wrapper "/app/proton-mail/Proton Mail Beta" $FLAGS "$@"
 
       - type: file
         path: me.proton.Mail.metainfo.xml
