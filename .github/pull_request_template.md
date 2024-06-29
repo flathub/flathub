@@ -10,6 +10,9 @@
 - [ ] I have [built][build] and tested the submission locally.
 - [ ] I am an author/developer/upstream contributor of the project. If not, I contacted upstream developers about this submission. **Link:**
 
+
+<!-- ⚠️  Don't modify anything below this line ⚠️  -->
+
 [appid-domain]: https://docs.flathub.org/docs/for-app-authors/requirements#control-over-domain
 [appid]: https://docs.flathub.org/docs/for-app-authors/requirements#application-id
 [reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
