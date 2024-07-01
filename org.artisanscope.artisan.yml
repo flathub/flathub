@@ -1,0 +1,60 @@
+id: org.artisanscope.artisan
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: '6.7'
+
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.7'
+cleanup-commands:
+  - find /app/lib -name \*.a | xargs rm -f
+  - python3 -m pip uninstall -y pythran pyinstaller pyinstaller-hooks-contrib \
+      pyproject_hooks pyproject_metadata pycparser meson_python expandvars cppy pybind11
+  - /app/cleanup-BaseApp.sh
+build-options:
+  env:
+    - BASEAPP_REMOVE_WEBENGINE=1
+
+command: /app/artisan.py
+separate-locales: false
+finish-args:
+  # Wayland
+  - --socket=wayland
+  # USB
+  - --device=all
+  # PyQt webengine removal
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+
+modules:
+  - ./dep-openblas.yml
+  - ./dep-qhull.yml
+  - ./dep-python3-artisan.json
+
+  - name: artisan
+    buildsystem: simple
+    build-commands:
+      # install without application bundle with dependencies
+      - sed -i 's/^\s*\(pyinstaller\|rm -rf dist\)/#\1/' src/build-linux.sh
+      - mkdir -p src/dist/artisan && touch src/dist/artisan/__dummy__
+      - cd src && PATH=/var/data/python/bin:$PATH ./build-linux.sh
+      - rm -f $FLATPAK_DEST/__dummy__
+      # copy all gathered files to the destination
+      - mkdir $FLATPAK_DEST/includes
+      - cp -Rp src/dist/* $FLATPAK_DEST/includes
+      # and also the Python files
+      - cp -Rp src/{artisan.py,artisanlib,plus,proto,help,uic,misc} $FLATPAK_DEST
+      - chmod a+x $FLATPAK_DEST/artisan.py
+      # workaround for strange recursion error
+      - sed -i 's/^\(\s*import os\s*\)$/\1\nimport snap7/' $FLATPAK_DEST/artisan.py
+      # then compile all Python files
+      - python3 -m compileall $FLATPAK_DEST/{artisanlib,plus,proto,help,uic,misc}
+    sources:
+      - type: archive
+        dest-filename: artisan.tar.gz
+        url: https://api.github.com/repos/artisan-roaster-scope/artisan/tarball/v2.10.4
+        sha256: 34fb8957fba570f6cdd036c3bec84057c86828a723abfaf74373e011f80b6815
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/artisan-roaster-scope/artisan/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .tarball_url
+
