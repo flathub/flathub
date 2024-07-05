@@ -1,1 +1,1 @@
-flatpak-builder --user --install --force-clean build-dir org.jeffvli.feishin.yml
+flatpak-builder --user --install --install-deps-from=flathub --force-clean build-dir org.jeffvli.feishin.yml
