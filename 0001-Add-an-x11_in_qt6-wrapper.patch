@@ -1,0 +1,340 @@
+From 2a0e0b7b3c23022c8302e9cfc8cd5ab04a296702 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jean-Micha=C3=ABl=20Celerier?=
+ <jeanmichael.celerier@gmail.com>
+Date: Mon, 8 Jul 2024 05:17:23 -0400
+Subject: [PATCH] Add an x11_in_qt6 wrapper
+
+---
+ meson.build        |  21 +++++
+ meson_options.txt  |   3 +
+ src/instance.c     |  12 ++-
+ src/x11_in_qt6.cpp | 227 +++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 262 insertions(+), 1 deletion(-)
+ create mode 100644 src/x11_in_qt6.cpp
+
+diff --git a/meson.build b/meson.build
+index 3089ce8..684701a 100644
+--- a/meson.build
++++ b/meson.build
+@@ -124,6 +124,14 @@ qt5_x11_dep = dependency(
+   required: get_option('qt5').enabled() and get_option('x11').enabled(),
+ )
+ 
++qt6_dep = dependency(
++  'Qt6Widgets',
++  include_type: 'system',
++  version: '>=6.2.0',
++  required: get_option('qt6'),
++)
++
++
+ if host_machine.system() == 'darwin' and not get_option('cocoa').disabled()
+   objcpp.has_header(
+     'QMacCocoaViewContainer',
+@@ -308,6 +316,19 @@ if host_machine.system() == 'darwin'
+   endif
+ endif
+ 
++if qt6_dep.found()
++  shared_module(
++    'suil_x11_in_qt6',
++    files('src/x11_in_qt6.cpp'),
++    cpp_args: cpp_suppressions + platform_defines + ['-std=c++17'],
++    dependencies: [lv2_dep, qt6_dep],
++    gnu_symbol_visibility: 'hidden',
++    include_directories: include_dirs,
++    install: true,
++    install_dir: suil_module_dir,
++  )
++endif
++
+ #########
+ # Tests #
+ #########
+diff --git a/meson_options.txt b/meson_options.txt
+index b468923..44e2ce7 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -19,6 +19,9 @@ option('html', type: 'feature', value: 'auto', yield: true,
+ option('qt5', type: 'feature', value: 'auto', yield: true,
+        description : 'Build Qt5 wrappers')
+ 
++option('qt6', type: 'feature', value: 'auto', yield: true,
++       description : 'Build Qt6 wrappers')
++
+ option('singlehtml', type: 'feature', value: 'auto', yield: true,
+        description: 'Build single-page HTML documentation')
+ 
+diff --git a/src/instance.c b/src/instance.c
+index 441176c..0ff1c62 100644
+--- a/src/instance.c
++++ b/src/instance.c
+@@ -17,6 +17,7 @@
+ #define GTK2_UI_URI LV2_UI__GtkUI
+ #define GTK3_UI_URI LV2_UI__Gtk3UI
+ #define QT5_UI_URI LV2_UI__Qt5UI
++#define QT6_UI_URI LV2_UI_PREFIX "Qt6UI"
+ #define X11_UI_URI LV2_UI__X11UI
+ #define WIN_UI_URI LV2_UI_PREFIX "WindowsUI"
+ #define COCOA_UI_URI LV2_UI__CocoaUI
+@@ -43,7 +44,11 @@ suil_ui_supported(const char* host_type_uri, const char* ui_type_uri)
+        !strcmp(ui_type_uri, X11_UI_URI)) ||
+       (!strcmp(host_type_uri, QT5_UI_URI) &&
+        (!strcmp(ui_type_uri, COCOA_UI_URI) ||
+-        !strcmp(ui_type_uri, X11_UI_URI)))) {
++        !strcmp(ui_type_uri, X11_UI_URI))) ||
++      (!strcmp(host_type_uri, QT6_UI_URI) &&
++       (!strcmp(ui_type_uri, X11_UI_URI)))
++     )
++  {
+     return SUIL_WRAPPING_EMBEDDED;
+   }
+ 
+@@ -84,6 +89,11 @@ open_wrapper(SuilHost*      host,
+     module_name = "suil_x11_in_qt5";
+   }
+ 
++  if (!strcmp(container_type_uri, QT6_UI_URI) &&
++      !strcmp(ui_type_uri, X11_UI_URI)) {
++    module_name = "suil_x11_in_qt6";
++  }
++
+   if (!strcmp(container_type_uri, QT5_UI_URI) &&
+       !strcmp(ui_type_uri, COCOA_UI_URI)) {
+     module_name = "suil_cocoa_in_qt5";
+diff --git a/src/x11_in_qt6.cpp b/src/x11_in_qt6.cpp
+new file mode 100644
+index 0000000..ae476d1
+--- /dev/null
++++ b/src/x11_in_qt6.cpp
+@@ -0,0 +1,227 @@
++// Copyright 2011-2022 David Robillard <d@drobilla.net>
++// Copyright 2015 Rui Nuno Capela <rncbc@rncbc.org>
++// SPDX-License-Identifier: ISC
++
++#include "suil_internal.h"
++#include "warnings.h"
++
++#include "lv2/core/lv2.h"
++#include "lv2/ui/ui.h"
++#include "suil/suil.h"
++
++SUIL_DISABLE_QT_WARNINGS
++#include <QResizeEvent>
++#include <QSize>
++#include <QTimerEvent>
++#include <QWidget>
++#include <QGuiApplication>
++#include <Qt>
++#include <X11/X.h>
++#include <X11/Xlib.h>
++#include <X11/Xutil.h>
++SUIL_RESTORE_WARNINGS
++
++#include <cstdlib>
++
++#undef signals
++
++namespace {
++static Display* getX11Display() {
++  auto app_iface = qApp->nativeInterface<QNativeInterface::QX11Application>();
++  return app_iface->display();
++}
++class SuilQt6X11Widget : public QWidget
++{
++public:
++  SuilQt6X11Widget(QWidget* parent, Qt::WindowFlags wflags)
++    : QWidget(parent, wflags)
++  {}
++
++  SuilQt6X11Widget(const SuilQt6X11Widget&)            = delete;
++  SuilQt6X11Widget& operator=(const SuilQt6X11Widget&) = delete;
++
++  SuilQt6X11Widget(SuilQt6X11Widget&&)            = delete;
++  SuilQt6X11Widget& operator=(SuilQt6X11Widget&&) = delete;
++
++  ~SuilQt6X11Widget() override;
++
++  void start_idle(SuilInstance*               instance,
++                  const LV2UI_Idle_Interface* idle_iface)
++  {
++    _instance   = instance;
++    _idle_iface = idle_iface;
++    if (_idle_iface && _ui_timer == 0) {
++      _ui_timer = this->startTimer(30, Qt::CoarseTimer);
++    }
++  }
++
++  void set_window(Window window) { _window = window; }
++
++  QSize sizeHint() const override
++  {
++    if (_window) {
++      XWindowAttributes attrs{};
++      XGetWindowAttributes(getX11Display(), _window, &attrs);
++      return {attrs.width, attrs.height};
++    }
++
++    return {0, 0};
++  }
++
++  QSize minimumSizeHint() const override
++  {
++    if (_window) {
++      XSizeHints hints{};
++      long       supplied{};
++      XGetWMNormalHints(getX11Display(), _window, &hints, &supplied);
++      if ((hints.flags & PMinSize)) {
++        return {hints.min_width, hints.min_height};
++      }
++    }
++
++    return {0, 0};
++  }
++
++protected:
++  void resizeEvent(QResizeEvent* event) override
++  {
++    QWidget::resizeEvent(event);
++
++    if (_window) {
++      XResizeWindow(getX11Display(),
++                    _window,
++                    static_cast<unsigned>(event->size().width()),
++                    static_cast<unsigned>(event->size().height()));
++    }
++  }
++
++  void timerEvent(QTimerEvent* event) override
++  {
++    if (event->timerId() == _ui_timer && _idle_iface) {
++      _idle_iface->idle(_instance->handle);
++    }
++
++    QWidget::timerEvent(event);
++  }
++
++  void closeEvent(QCloseEvent* event) override
++  {
++    if (_ui_timer && _idle_iface) {
++      this->killTimer(_ui_timer);
++      _ui_timer = 0;
++    }
++
++    QWidget::closeEvent(event);
++  }
++
++private:
++  SuilInstance*               _instance{};
++  const LV2UI_Idle_Interface* _idle_iface{};
++  Window                      _window{};
++  int                         _ui_timer{};
++};
++
++SuilQt6X11Widget::~SuilQt6X11Widget() = default;
++
++struct SuilX11InQt5Wrapper {
++  QWidget*        host_widget;
++  SuilQt6X11Widget* parent;
++};
++
++void
++wrapper_free(SuilWrapper* wrapper)
++{
++  auto* impl = static_cast<SuilX11InQt5Wrapper*>(wrapper->impl);
++
++  delete impl->host_widget;
++
++  free(impl);
++}
++
++int
++wrapper_wrap(SuilWrapper* wrapper, SuilInstance* instance)
++{
++  auto* const impl = static_cast<SuilX11InQt5Wrapper*>(wrapper->impl);
++
++  SuilQt6X11Widget* const ew      = impl->parent;
++  Display* const        display = getX11Display();
++  const auto            window  = reinterpret_cast<Window>(instance->ui_widget);
++
++  XWindowAttributes attrs{};
++  XSizeHints        hints{};
++  long              supplied{};
++  XSync(display, False);
++  XGetWindowAttributes(display, window, &attrs);
++  XGetWMNormalHints(display, window, &hints, &supplied);
++
++  impl->parent->set_window(window);
++
++  if ((hints.flags & PBaseSize)) {
++    impl->parent->setBaseSize(hints.base_width, hints.base_height);
++  }
++
++  if ((hints.flags & PMinSize)) {
++    impl->parent->setMinimumSize(hints.min_width, hints.min_height);
++  }
++
++  if ((hints.flags & PMaxSize)) {
++    impl->parent->setMaximumSize(hints.max_width, hints.max_height);
++  }
++
++  if (instance->descriptor->extension_data) {
++    const auto* idle_iface = static_cast<const LV2UI_Idle_Interface*>(
++      instance->descriptor->extension_data(LV2_UI__idleInterface));
++
++    ew->start_idle(instance, idle_iface);
++  }
++
++  impl->host_widget     = ew;
++  instance->host_widget = impl->host_widget;
++
++  return 0;
++}
++
++int
++wrapper_resize(LV2UI_Feature_Handle handle, int width, int height)
++{
++  auto* const ew = static_cast<QWidget*>(handle);
++  ew->resize(width, height);
++  return 0;
++}
++
++} // namespace
++
++extern "C" {
++
++SUIL_LIB_EXPORT
++SuilWrapper*
++suil_wrapper_new(SuilHost*,
++                 const char*,
++                 const char*,
++                 LV2_Feature*** features,
++                 unsigned       n_features)
++{
++  auto* const impl =
++    static_cast<SuilX11InQt5Wrapper*>(calloc(1, sizeof(SuilX11InQt5Wrapper)));
++
++  auto* wrapper = static_cast<SuilWrapper*>(malloc(sizeof(SuilWrapper)));
++  wrapper->wrap = wrapper_wrap;
++  wrapper->free = wrapper_free;
++
++  auto* const ew = new SuilQt6X11Widget(nullptr, Qt::Window);
++
++  impl->parent = ew;
++
++  wrapper->impl             = impl;
++  wrapper->resize.handle    = ew;
++  wrapper->resize.ui_resize = wrapper_resize;
++
++  void* parent_id = reinterpret_cast<void*>(ew->winId());
++  suil_add_feature(features, &n_features, LV2_UI__parent, parent_id);
++  suil_add_feature(features, &n_features, LV2_UI__resize, &wrapper->resize);
++  suil_add_feature(features, &n_features, LV2_UI__idleInterface, nullptr);
++
++  return wrapper;
++}
++
++} // extern "C"
+-- 
+2.45.2
+
