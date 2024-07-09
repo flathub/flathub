@@ -179,7 +179,7 @@ def main():
     print("Creating new repo on Flathub")
     repo = org.create_repo(appid)
     time.sleep(5)
-    repo.edit(homepage=f"https://flathub.org/apps/details/{appid}")
+    repo.edit(homepage=f"https://flathub.org/apps/details/{appid}", delete_branch_on_merge=True)
 
     print("Adding flathub remote")
     clone.remotes.create(
