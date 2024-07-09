@@ -1,3 +1,4 @@
+import datetime
 import os
 import subprocess
 import time
@@ -90,8 +91,12 @@ def main() -> None:
         refname = eols[count]
         try:
             repo = g.get_repo(f"flathub/{refname}")
-            if not repo.archived:
-                print("Archiving {}".format(repo.html_url))
+            if not repo.archived and repo.pushed_at < earliest:
+                print(
+                    "Archiving: {}. Repo is in EOL list. Last push: {}, earlier than: {}".format(
+                        repo.html_url, repo.pushed_at.isoformat(), earliest.isoformat()
+                    )
+                )
                 repo.edit(archived=True)
         except UnknownObjectException:
             pass
