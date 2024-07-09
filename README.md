@@ -26,7 +26,9 @@ flatpak-builder --user --install-deps-from=flathub --repo=repo --install builddi
 
 ### OCR
 
-Application can translate text from the screen using [Tesseract](https://github.com/tesseract-ocr/tesseract). To recognize text you need to additionally install trained models. We provide optional `org.kde.CrowTranslate.tessdata` extension with [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) models. You can install it with the following command:
+The application can translate text from the screen using [Tesseract](https://github.com/tesseract-ocr/tesseract). To recognize text, you need to additionally install trained models and select at least one model in the settings. Choose only the models for the languages you need. The more models there are, the worse the performance and quality of OCR.
+
+ We provide optional `org.kde.CrowTranslate.tessdata` extension with [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) models. You can install it with the following command:
 
 ```bash
 flatpak install flathub org.kde.CrowTranslate.tessdata
