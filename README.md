@@ -18,7 +18,7 @@ flatpak run org.kde.CrowTranslate
 
 ## Building
 
-To compile the app as a Flatpak, you'll need [Flatpak Builder](http://docs.flatpak.org/en/latest/flatpak-builder.html) installed. Just clone this repository and run the following command:
+To compile the app as a Flatpak, you'll need [Flatpak Builder](http://docs.flatpak.org/en/latest/flatpak-builder.html) installed. Just clone this repository and run the following command inside it:
 
 ```bash
 flatpak-builder --user --install-deps-from=flathub --repo=repo --install builddir org.kde.CrowTranslate.yaml
