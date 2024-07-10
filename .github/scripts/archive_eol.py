@@ -85,7 +85,7 @@ def main() -> None:
     if not eols:
         return
 
-    earliest = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=60)
+    earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(weeks=60)
     count = 0
     while count < len(eols):
         refname = eols[count]
