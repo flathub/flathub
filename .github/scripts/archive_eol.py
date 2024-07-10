@@ -93,7 +93,7 @@ def main() -> None:
             repo = g.get_repo(f"flathub/{refname}")
             if not repo.archived and repo.pushed_at < earliest:
                 print(
-                    "Archiving: {}. Repo is in EOL list. Last push: {}, earlier than: {}".format(
+                    "Archiving: {} Repo is in EOL list. Last push: {}, earlier than: {}".format(
                         repo.html_url, repo.pushed_at.isoformat(), earliest.isoformat()
                     )
                 )
