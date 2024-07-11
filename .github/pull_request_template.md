@@ -5,6 +5,8 @@
 <!-- Please replace each `[ ]` with `[X]` when the step is complete -->
 
 - [ ] Please describe the application briefly.
+  <!-- insert the description here -->
+
 - [ ] The domain used for the application ID is [controlled by the application developers][appid-domain] and the [application id guidelines][appid] are followed.
 - [ ] I have read the and followed all the [Submission and licence requirements][reqs].
 - [ ] I have [built][build] and tested the submission locally.
