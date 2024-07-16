@@ -6,13 +6,35 @@ runtime-version: '6.7'
 base: com.riverbankcomputing.PyQt.BaseApp
 base-version: '6.7'
 cleanup-commands:
+  # omit static libraries
   - find /app/lib -name \*.a | xargs rm -f
+  # remove build dependencies
   - python3 -m pip uninstall -y pythran pyinstaller pyinstaller-hooks-contrib \
       pyproject_hooks pyproject_metadata pycparser meson_python expandvars cppy pybind11
-  - /app/cleanup-BaseApp.sh
+  # remove Python test suites
+  - find /app/lib/python* -type d -name tests | xargs rm -Rf
+  # Yoctupuce includes compiled libraries *sigh*, only keep the ones we may need
+  - |
+    python3 <<EOF
+    from os import listdir, remove
+    from os.path import basename, dirname, join
+    from yoctopuce.yocto_api import YAPI
+    try:
+      YAPI.yloadYapiCDLL()
+    except ImportError:
+      pass # ok if actually loading the library fails
+    dir = dirname(YAPI._yApiCLibFile)
+    keep = [basename(f) for f in [YAPI._yApiCLibFile, YAPI._yApiCLibFileFallback]]
+    [remove(join(dir, f)) for f in listdir(dir) if f not in keep]
+    EOF
   # cleanup QtWebEngine dictionaries, which we don't need and use quite some space
   - find /app/share/locale -name \*.bdic | xargs rm -f
   - rm -Rf /app/qtwebengine_dictionaries
+  # we need no QtWebEngine developer tools, nor automation driver
+  - rm -f /app/resources/qtwebengine_devtools_resources.pak
+  - rm -Rf /app/libexec/webenginedriver
+  # cleanup base
+  - /app/cleanup-BaseApp.sh
 
 command: /app/artisan.py
 separate-locales: false
