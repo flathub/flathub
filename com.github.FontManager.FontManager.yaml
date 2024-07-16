@@ -1,0 +1,91 @@
+app-id: com.github.FontManager.FontManager
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+command: font-manager
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+
+  # XDG Data/Fonts location
+  - --filesystem=xdg-data/fonts
+  - --persist=xdg-data/fonts
+
+  # XDG complient locations for font config
+  - --filesystem=xdg-config/fontconfig
+  - --persist=xdg-config/fontconfig
+
+cleanup:
+  - /app/include
+  - /app/lib/*.a
+  - /app/lib/*.la
+  - /app/lib/pkgconfig
+
+modules:
+
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/libsoup/libsoup-2.4.json
+
+  # Borrowed from Poedit
+  # https://github.com/flathub/net.poedit.Poedit
+  - name: unifdef
+    no-autogen: true
+    make-install-args:
+      - prefix=${FLATPAK_DEST}
+    sources:
+      - type: archive
+        url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+        sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+    cleanup:
+      - '*'
+
+  - name: backtrace
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/ianlancetaylor/libbacktrace/archive/7ead8c1ea2f4aeafe9c5b9ef8a9461a9ba781aa8.zip
+        sha256: 3b07ffe9a6302ccfdf5771ab8631814303f5bc15d19a2f5a1907c64a391ec29f
+
+  - name: webkit2gtk-4.0
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.2.tar.xz
+        sha256: 523f42c8ff24832add17631f6eaafe8f9303afe316ef1a7e1844b952a7f7521b
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+
+  - name: fontmanager
+    buildsystem: meson
+    config-opts:
+      - -Dreproducible=true
+      - -Dviewer=false
+      - -Dbuildtype=release
+    sources:
+      - type: git
+        url: https://github.com/FontManager/font-manager.git
+        tag: 0.9.0
+        commit: 091d2896d623c3e5aac7613a95da694a0b36699a
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+    post-install:
+      # Changes to minetype support are currently on the roadmap
+      - rm /app/share/applications/mimeinfo.cache
+      - sed -i '6 i <developer_name>Font Manager project</developer_name>' /app/share/metainfo/com.github.FontManager.FontManager.appdata.xml
+      - desktop-file-edit /app/share/applications/com.github.FontManager.FontManager.desktop --remove-key=MimeType
+
