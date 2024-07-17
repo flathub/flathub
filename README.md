@@ -1,4 +1,4 @@
-# org.artisanscope.artisan
+# org.artisan_scope.artisan
 
 Flatpak for [Artisan](http://artisan-scope.org/).
 
@@ -30,8 +30,8 @@ cppy
 expandvars
 EOF
 cat requirements.txt | \
-  grep -v '\(^PyQt\|^qt[0-9]\+-tools\|^scipy\s*[=<>]\|^numpy\s*[=<>]\|^pydantic\)' | \
-  grep -v "\\(python_version\s*<\\|sys_platform\\s*==\\s*'darwin'\\|platform_system\\s*==\\s*'Windows'\\)" \
+  grep -v '\(^PyQt\|^qt[0-9]\+-tools\|^scipy\s*[=<>]\|^numpy\s*[=<>]\|^pydantic\|^pyinstaller\)' | \
+  grep -v "\\(python_version\s*<\\|;\\s*sys_platform\\s*==\\s*'darwin'\\|;\\s*platform_system\\s*==\\s*'Windows'\\)" \
     >>requirements-filtered.txt
 ```
 
@@ -39,8 +39,8 @@ Then run `flatpak-builder-tools` with the requirements file:
 
 ```sh
 wget -nc https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
-BASEAPP_ID=`cat org.artisanscope.artisan.yml | sed 's/^base:\s*//p;d'`
-BASEAPP_VER=`cat org.artisanscope.artisan.yml | sed 's/^base-version:\s*//p;d' | sed "s/'//g"`
+BASEAPP_ID=`cat org.artisan_scope.artisan.yml | sed 's/^base:\s*//p;d'`
+BASEAPP_VER=`cat org.artisan_scope.artisan.yml | sed 's/^base-version:\s*//p;d' | sed "s/'//g"`
 python3 flatpak-pip-generator --runtime "${BASEAPP_ID}//${BASEAPP_VER}" -r requirements-filtered.txt -o dep-python3-artisan.json
 ```
 
