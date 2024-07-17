@@ -1,0 +1,85 @@
+From 63ad6e7f69acc44e0e4b7ed1509394e928567c51 Mon Sep 17 00:00:00 2001
+From: Shyamnath Premnadh <Shyamnath.Premnadh@qt.io>
+Date: Tue, 9 Jul 2024 15:06:40 +0200
+Subject: [PATCH] PySide Build: Add option to force process system headers
+
+- Expands on 7cc5c139482d735c49002649d26bb524c92cc86b, by creating a
+  build option '-shiboken-foce-process-system-headers' that enables
+  the '--force-process-system-include-paths' option when calling
+  shiboken generator to create PySide6 modules.
+- This is specifically needed for Flatpak build of PySide6, where the
+  Qt is installed globally and Qt headers are located in system
+  header path.
+  The alternative option would be to use CMake instructions directly,
+  but this can make the Flatpak recipe for PySide6 quite cumbersome
+  because on top of the huge CMake command, we need to manually move all
+  the relevant PySide6 packages to the 'site-packages' of the concerned
+  Python environment. The 'setup.py' build instruction automatically
+  does this for us.
+- This can also help OS Distro maintainers to use 'setup.py' instead of
+  CMake instructions to build PySide6 packages, if no other compiler
+  flags or other optimizations are needed.
+
+Pick-to: 6.7
+Task-number: PYSIDE-2702
+Change-Id: I183f480c1fbb2b16badca4a81bf2cd008a6de0b3
+Reviewed-by: Alexandru Croitor <alexandru.croitor@qt.io>
+---
+ build_scripts/main.py    |  4 ++++
+ build_scripts/options.py | 11 ++++++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/build_scripts/main.py b/build_scripts/main.py
+index a7e31e02e..3ad1cb2c5 100644
+--- a/build_scripts/main.py
++++ b/build_scripts/main.py
+@@ -592,6 +592,10 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
+             cmake_cmd.append(f"-DCMAKE_UNITY_BUILD_BATCH_SIZE={batch_size}")
+             log.info("Using UNITY build")
+ 
++        if OPTION['SHIBOKEN_FORCE_PROCESS_SYSTEM_HEADERS']:
++            cmake_cmd.append("-DPYSIDE_TREAT_QT_INCLUDE_DIRS_AS_NON_SYSTEM=ON")
++            log.info("Shiboken will now process system Qt headers")
++
+         cmake_cmd += [
+             "-G", self.make_generator,
+             f"-DBUILD_TESTS={self.build_tests}",
+diff --git a/build_scripts/options.py b/build_scripts/options.py
+index 5465d5026..731ac8087 100644
+--- a/build_scripts/options.py
++++ b/build_scripts/options.py
+@@ -247,7 +247,14 @@ class CommandMixin(object):
+         ('plat-name=', None, 'The platform name for which we are cross-compiling'),
+         ('unity', None, 'Use CMake UNITY_BUILD_MODE (obsolete)'),
+         ('no-unity', None, 'Disable CMake UNITY_BUILD_MODE'),
+-        ('unity-build-batch-size=', None, 'Value of CMAKE_UNITY_BUILD_BATCH_SIZE')
++        ('unity-build-batch-size=', None, 'Value of CMAKE_UNITY_BUILD_BATCH_SIZE'),
++        # shiboken-force-process-system-headers option is specifically used to tell the clang
++        # inside shiboken to process the system headers, when building against a system Qt.
++        #
++        # This option is specific for Flatpak and OS distro builds of PySide6. So, use with
++        # caution as it may also try to parse other global headers.
++        ('shiboken-force-process-system-headers', None,
++         'When building PySide against system Qt, shiboken does not ignore the system Qt headers')
+     ]
+ 
+     def __init__(self):
+@@ -309,6 +316,7 @@ class CommandMixin(object):
+         self.unity = False
+         self.no_unity = False
+         self.unity_build_batch_size = "16"
++        self.shiboken_force_process_system_headers = False
+ 
+         # When initializing a command other than the main one (so the
+         # first one), we need to copy the user options from the main
+@@ -429,6 +437,7 @@ class CommandMixin(object):
+                         "Unity build mode is now the default.")
+         OPTION['UNITY'] = not self.no_unity
+         OPTION['UNITY_BUILD_BATCH_SIZE'] = self.unity_build_batch_size
++        OPTION['SHIBOKEN_FORCE_PROCESS_SYSTEM_HEADERS'] = self.shiboken_force_process_system_headers
+ 
+         qtpaths_abs_path = None
+         if self.qtpaths and Path(self.qtpaths).exists():
+-- 
+2.34.1
+
