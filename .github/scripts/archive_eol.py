@@ -52,28 +52,48 @@ def main() -> None:
     # Exclude refs that have EOL notices but are still maintained
     # in some branch
     excludes = {
+        # Maintainer EOLs old branches
         "com.riverbankcomputing.PyQt.BaseApp",
+        # 19.08 branch is EOL
         "org.freedesktop.LinuxAudio.BaseExtension",
         "org.freedesktop.LinuxAudio.Plugins.LSP",
         "org.freedesktop.LinuxAudio.Plugins.setBfree",
         "org.freedesktop.LinuxAudio.Plugins.sfizz",
         "org.freedesktop.LinuxAudio.Plugins.x42Plugins",
         "org.freedesktop.LinuxAudio.Plugins.ZamPlugins",
+        # 1.6 branch is EOL
         "org.freedesktop.Sdk.Extension.golang",
+        # 19.08, 20.08, 21.08 are EOL
         "org.freedesktop.Sdk.Extension.mono6",
+        # 1.6, 18.08, 19.08 are EOL
         "org.freedesktop.Sdk.Extension.openjdk8",
+        # 18.08 is EOL
         "org.freedesktop.Sdk.Extension.php73",
+        # 1.6 is EOL
         "org.freedesktop.Sdk.Extension.rust-stable",
+        # EOL notice added for special reasons
+        "org.freedesktop.Sdk.Extension.rust-nightly",
+        # 19.08, 20.08 are EOL
         "org.freedesktop.Sdk.Extension.ziglang",
+        # rename is EOL but github repo is
+        # case-insensitive
         "org.gnome.Chess",
         "org.gnome.GHex",
         "org.gnome.Quadrapassel",
         "org.gnome.Tetravex",
+        # EOL-ed to hide from website
         "org.kde.kate",
+        # rename is EOL but github repo is
+        # case-insensitive
         "org.kekikakademi.eFatura",
+        # EOL notice added for special reasons
         "org.mozilla.firefox.BaseApp",
+        # rename is EOL but github repo is
+        # case-insensitive
         "org.tabos.twofun",
+        # 3-18.08 is EOL
         "org.videolan.VLC.Plugin.bdj",
+        # 3-1.6, 3-18.08 is EOL
         "org.videolan.VLC.Plugin.fdkaac",
     }
     # we need to get apps which are EOL on both supported arches
@@ -85,7 +105,9 @@ def main() -> None:
     if not eols:
         return
 
-    earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(weeks=60)
+    earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        weeks=60
+    )
     count = 0
     while count < len(eols):
         refname = eols[count]
