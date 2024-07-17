@@ -75,7 +75,7 @@ def main() -> None:
         "org.freedesktop.Sdk.Extension.rust-nightly",
         # 19.08, 20.08 are EOL
         "org.freedesktop.Sdk.Extension.ziglang",
-        # rename is EOL but github repo is
+        # renamed, previous name is EOL but github repo is
         # case-insensitive
         "org.gnome.Chess",
         "org.gnome.GHex",
@@ -83,12 +83,12 @@ def main() -> None:
         "org.gnome.Tetravex",
         # EOL-ed to hide from website
         "org.kde.kate",
-        # rename is EOL but github repo is
+        # renamed, previous name is EOL but github repo is
         # case-insensitive
         "org.kekikakademi.eFatura",
         # EOL notice added for special reasons
         "org.mozilla.firefox.BaseApp",
-        # rename is EOL but github repo is
+        # renamed, previous name is EOL but github repo is
         # case-insensitive
         "org.tabos.twofun",
         # 3-18.08 is EOL
