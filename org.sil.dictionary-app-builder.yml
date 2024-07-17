@@ -1,0 +1,122 @@
+app-id: org.sil.dictionary-app-builder
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+  - org.freedesktop.Sdk.Extension.node20
+finish-args:
+  # Window x11 socket access
+  - --socket=x11
+  # Audio access
+  - --socket=pulseaudio
+  # Network access
+  - --share=network
+  # XShm access
+  - --share=ipc
+  # All external devices (catch all for devices we interact with and graphical acceleration)
+  - --device=all
+  # Local file browsing access
+  - --filesystem=host
+  # USB Drives
+  - --system-talk-name=org.freedesktop.Udisks2
+  # File saving access
+  - --talk-name=org.freedesktop.FileManager1
+
+# App's run command
+command: dab-run.sh
+
+modules:
+  - name: xterm
+    sources:
+      - type: git
+        url: https://github.com/ThomasDickey/xterm-snapshots.git
+        tag: xterm-394
+        commit: 47a95ffdc1bef07ec62836ed887536b5d92166af
+        x-checker-data:
+          type: anitya
+          project-id: 5272
+          tag-template: xterm-$version
+          is-main-source: true
+    modules:
+      # Added xmu for x-term
+      - name: libxmu
+        buildsystem: autotools
+        cleanup:
+          - /include
+          - '*.a'
+        sources:
+          - type: git
+            url: https://gitlab.freedesktop.org/xorg/lib/libxmu.git
+            commit: cc378e4f0cc2ab5b66d378050ba4956612a01197
+      - name: libXaw
+        sources:
+          - type: archive
+            url: https://www.x.org/archive/individual/lib/libXaw-1.0.16.tar.xz
+            sha256: 731d572b54c708f81e197a6afa8016918e2e06dfd3025e066ca642a5b8c39c8f
+      - name: ncurses
+        sources:
+          - type: archive
+            url: https://invisible-mirror.net/archives/ncurses/ncurses-6.4.tar.gz
+            sha256: 6931283d9ac87c5073f30b6290c4c75f21632bb4fc3603ac8100812bed248159
+
+  - name: openjdk17
+    buildsystem: simple
+    build-commands:
+      # jre install script from extensions location
+      - /usr/lib/sdk/openjdk17/install.sh
+      # jdk
+      - /usr/lib/sdk/openjdk17/installjdk.sh
+      # symlink with version number so App Builder can find JDK version
+      # similar to how version is in folder name when installed to /usr/lib/jvm
+      - ln -s /app/jdk "/app/jdk$(awk -F\" '/JAVA_VERSION=/ {print $2}' /app/jdk/release)"
+
+  - name: openjfx
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/lib/openjfx
+      - unzip -q -j -d /app/lib/openjfx openjfx.zip '*lib/*'
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        dest-filename: openjfx.zip
+        url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11_linux-x64_bin-sdk.zip
+        sha256: f46a1fbea32b83cca6715d74cba7d9c24ce320f1da2daf8ff852f133e9f15674
+
+  - name: dictionary-app-builder
+    buildsystem: simple
+    build-commands:
+      # Prebuilt binaries tarball from build in the private repo
+      # The source has to be private due to agreements with copyright holders of content being included by end users
+      - mkdir /app/dictionary-app-builder
+      - tar xf dictionary-app-builder.tgz -C /app/dictionary-app-builder
+      # Icons, desktop entry, metainfo and runner script
+      - install -Dm644 /app/dictionary-app-builder/app-icons/dictionary-app-builder.png
+        /app/share/icons/hicolor/128x128/apps/org.sil.dictionary-app-builder.png
+      - install -Dm644 /app/dictionary-app-builder/app-icons/dictionary-app-builder.svg
+        /app/share/icons/hicolor/scalable/apps/org.sil.dictionary-app-builder.svg
+      - desktop-file-install --dir /app/share/applications /app/dictionary-app-builder/flatpak/org.sil.dictionary-app-builder.desktop
+      - install -Dm644 /app/dictionary-app-builder/flatpak/org.sil.dictionary-app-builder.metainfo.xml
+        -t /app/share/metainfo/
+      - install -Dm755 dab-run.sh /app/bin/dab-run.sh
+      # Node
+      - /usr/lib/sdk/node20/install-sdk.sh
+      - ln -s /app/node /app/dictionary-app-builder/tools/node
+    cleanup:
+      - /dictionary-app-builder/app-icons
+      - /dictionary-app-builder/flatpak
+      - /dictionary-app-builder/*.sh
+    sources:
+      - type: script
+        dest-filename: dab-run.sh
+        commands:
+          - exec /app/jre/bin/java -Djava.io.tmpdir="/var/tmp" --module-path "/app/lib/openjfx"
+            --add-modules javafx.web,javafx.fxml,javafx.swing,javafx.media --add-opens=javafx.fxml/javafx.fxml=ALL-UNNAMED
+            -jar /app/dictionary-app-builder/bin/dictionary-app-builder.jar "$@"
+      # App Builder prebuilt binaries (update branch/build_number and sha256 before each release)
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://sil-app-builders-linux-artifacts.s3.amazonaws.com/artifacts/61/dictionary-app-builder.tgz
+        sha256: cd1c80ef1e355fe98b77632777a5e88311299da87f4b49b9b0e3264ca40ca87f
