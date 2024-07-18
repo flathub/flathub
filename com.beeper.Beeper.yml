@@ -1,0 +1,75 @@
+id: com.beeper.Beeper
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: beeper
+finish-args:
+  - --device=all
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-videos:ro
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: libfuse
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dinitscriptdir=
+      - -Duseroot=false
+      - -Dtests=false
+      # don't install rules on the host
+      - -Dudevrulesdir=/tmp/
+    sources:
+      - type: archive
+        url: https://github.com/libfuse/libfuse/releases/download/fuse-3.17.4/fuse-3.17.4.tar.gz
+        sha256: df9e40ae927b73dc702d0bce7925c0c618af47ad0b13204fbf2be66e54d8528b
+        x-checker-data:
+          type: anitya
+          project-id: 861
+          url-template: https://github.com/libfuse/libfuse/releases/download/fuse-$version/fuse-$version.tar.gz
+          versions: {<: '4.0'}
+  - name: host-command-wrapper
+  - name: beeper_unofficial
+    buildsystem: simple
+    build-commands:
+      - chmod +x Beeper.AppImage
+      - ./Beeper.AppImage --appimage-extract
+      - rm Beeper.AppImage
+      - desktop-file-edit --set-icon ${FLATPAK_ID} --set-key Exec --set-value 'beeper
+        %u' squashfs-root/beeper.desktop
+      - install -Dm644 squashfs-root/beeper.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm755 beeper.sh ${FLATPAK_DEST}/bin/beeper
+      - install -Dm644 com.beeper.Beeper.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor
+      - cp -r squashfs-root/usr/share/icons/hicolor/* ${FLATPAK_DEST}/share/icons/hicolor
+      - rm -rf ${FLATPAK_DEST}/share/icons/hicolor/1024x1024
+      - rm -rf squashfs-root/resources/icons/win
+      - mv squashfs-root ${FLATPAK_DEST}/beeper
+      - "for lang in ${FLATPAK_DEST}/beeper/locales/*.pak\ndo\n  locale=\"$(basename\
+        \ -s .pak $lang)\"\n  install -Dm644 -t \"${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/\"\
+        \ \"$lang\"\n  ln -sf \"${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename\
+        \ $lang)\" \"${FLATPAK_DEST}/beeper/locales/$(basename $lang)\"\ndone\n"
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://download.todesktop.com/2003241lzgn20jd/beeper-3.111.7-build-250819g4s11p2lb-x86_64.AppImage
+        sha512: 330c83006933fc918a86aaea0af350ef56d771d1ab042ece11ebcbb7cf8166d60f1dcaeb324e1fee256bbead4165c54edc5358b1d674f278da98d6ea50301e07
+        dest_filename: Beeper.AppImage
+        x-checker-data:
+          type: electron-updater
+          url: https://download.todesktop.com/2003241lzgn20jd/latest-linux.yml
+          url-template: https://download.beeper.com/versions/$version/linux/appImage/x64
+      - type: file
+        path: beeper.sh
+      - type: file
+        path: com.beeper.Beeper.metainfo.xml
