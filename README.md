@@ -35,13 +35,13 @@ cat requirements.txt | \
     >>requirements-filtered.txt
 ```
 
-Then run `flatpak-builder-tools` with the requirements file:
+Then run `flatpak-pip-generator` with the requirements file:
 
 ```sh
 wget -nc https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
 BASEAPP_ID=`cat org.artisan_scope.artisan.yml | sed 's/^base:\s*//p;d'`
 BASEAPP_VER=`cat org.artisan_scope.artisan.yml | sed 's/^base-version:\s*//p;d' | sed "s/'//g"`
-python3 flatpak-pip-generator --runtime "${BASEAPP_ID}//${BASEAPP_VER}" -r requirements-filtered.txt -o dep-python3-artisan.json
+python3 flatpak-pip-generator --runtime "${BASEAPP_ID}//${BASEAPP_VER}" -r requirements-filtered.txt -o dep-python3-artisan
 ```
 
 Finally perform following tweaks in `dep-python3-artisan.json`:
