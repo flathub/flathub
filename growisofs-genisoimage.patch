@@ -1,0 +1,78 @@
+--- growisofs.1
++++ growisofs.1
+@@ -24,6 +24,10 @@
+ other file system, if formatted at all) to all supported DVD media
+ types.
+ 
++\fBgrowisofs\fP in SUSE distribution has been patched to prefer
++\fBgenisoimage\fP over \fBmkisofs\fP. You can
++override this behavior by exporting MKISOFS environment variable.
++
+ .SH OPTIONS
+ .TP
+ .BI \-Z\ /dev/dvd
+--- growisofs.c
++++ growisofs.c
+@@ -2543,6 +2543,47 @@
+     }
+ }
+ 
++
++char *check_mkisofs(char *mkisofs)
++{ pid_t mkisofs_pid;
++  int   fildes[2],ret,n,r;
++  static char ret_str[1024];
++
++    if (pipe (fildes) < 0)
++        perror (":-( unable to create pipe"), exit(FATAL_START(errno));
++
++    if ((mkisofs_pid=fork ()) == (pid_t)-1)
++	perror (":-( unable to fork mkisofs"), exit(FATAL_START(errno));
++    else if (mkisofs_pid == 0)
++    {	dup2  (fildes[1],1);
++	close (fildes[0]);
++	close (fildes[1]);
++	setuid(getuid());
++	execlp (mkisofs,mkisofs,"-version",NULL);
++	exit (FATAL_START(errno));
++    }
++
++    close (fildes[1]);
++
++    n=0;
++
++    while (n < sizeof(ret_str) - 1) {
++	r=read(fildes[0], ret_str, sizeof(ret_str) - n - 1);
++	if (r<=0) break;
++	n+=r;
++    }
++    
++    if (n==0 || r < 0) /* mkisofs must have finished, consume the exit code */
++    {	if ((waitpid (mkisofs_pid,&ret,0)) == -1) {
++	    perror (":-( waitpid failed");
++	}
++	return NULL;
++    }
++
++    ret_str[n]=0;
++    return ret_str;
++}
++
+ #elif defined(_WIN32)
+ 
+ void pipe_mkisofs_up (char *mkisofs_argv[],int infd,int outfd,off64_t outoff)
+@@ -2723,7 +2764,13 @@
+ 
+ #if defined(__unix) || defined(__unix__)
+     env = getenv ("MKISOFS");
+-    mkisofs_argv[0] = (env?env:"mkisofs");
++    if (env) 
++	mkisofs_argv[0] = env;
++    else if (check_mkisofs("genisoimage"))
++	mkisofs_argv[0] = "genisoimage";
++    else
++	mkisofs_argv[0] = "mkisofs";
++    
+ #elif defined(_WIN32)
+     /*
+      * On Windows I insist on mkisofs.exe to reside in very same
