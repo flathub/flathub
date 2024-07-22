@@ -1,21 +1,70 @@
 id: dev.overlayed.Overlayed
 
 runtime: org.gnome.Platform
-runtime-version: "45"
+runtime-version: "46"
 sdk: org.gnome.Sdk
 
-rename-icon: overlayed
+rename-icon: Overlayed
 command: overlayed
 finish-args:
-  # NOTE: not sure if this is for both IPC and Websockets transports
-  - --filesystem=xdg-run/app/com.discordapp.Discord:create # allows for discord rpc
-  - --device=all
+  - --socket=wayland
+  - --socket=fallback-x11
   - --share=ipc
   - --share=network
-  - --socket=x11
-  - --socket=wayland
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
 
 modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.0.tar.xz
+        sha256: c66530e41ba59b1edba4ee89ef20b2188e273bed0497e95084729e3cfbe30c87
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_MINIBROWSER=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_LIBBACKTRACE=OFF
+      - -DUSE_GTK4=OFF
+      - -DUSE_SOUP2=ON
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+
+  - name: unifdef
+    no-autogen: true
+    make-install-args:
+      - prefix=${FLATPAK_DEST}
+    sources:
+      - type: archive
+        url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+        sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+    cleanup:
+      - "*"
+
+  - name: libjxl
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: git
+        url: https://github.com/libjxl/libjxl.git
+        tag: v0.10.2
+        commit: e1489592a770b989303b0edc5cc1dc447bbe0515
+        disable-shallow-clone: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
   - name: overlayed
     buildsystem: simple
     build-commands:
@@ -24,12 +73,12 @@ modules:
 
       - |
         desktop-file-edit \
-          --set-name="Overlayed App" \
-          --set-comment="Overlayed's game launcher" \
+          --set-name="Overlayed" \
+          --set-comment="Overlayed's desktop application" \
           --set-icon="$FLATPAK_ID" \
           --set-key="StartupNotify" --set-value="true" \
-          --set-key="Categories" --set-value="Game;ActionGame;AdventureGame;Simulation;" \
-          --set-key="Keywords" --set-value="game;minecraft;mc;" \
+          --set-key="Categories" --set-value="Game;" \
+          --set-key="Keywords" --set-value="discord;overlay;" \
           --set-key="StartupWMClass" --set-value="Overlayed" \
           squashfs-root/usr/share/applications/overlayed.desktop
 
@@ -37,13 +86,15 @@ modules:
       - cp -r squashfs-root/usr/share/icons /app/share/icons
       - install -Dm755 squashfs-root/usr/bin/overlayed /app/bin/overlayed
       - install -Dm644 squashfs-root/usr/share/applications/overlayed.desktop /app/share/applications/dev.overlayed.Overlayed.desktop
-      - install -Dm644 dev.overlayed.Overlayed.metainfo.xml /app/share/metainfo/dev.overlayed.OverlayedApp.metainfo.xml
+      - install -Dm644 dev.overlayed.Overlayed.metainfo.xml /app/share/metainfo/dev.overlayed.Overlayed.metainfo.xml
 
     sources:
       - type: file
-        url: https://raw.githubusercontent.com/overlayeddev/overlayed/main/distribution/dev.overlayed.Overlayed.metainfo.xml
+        url: https://raw.githubusercontent.com/overlayeddev/overlayed/14a6d2c8b022f7d44de4a57350e8f30ff35ef7dc/distribution/dev.overlayed.Overlayed.metainfo.xml
         sha256: 35773ae27a47753852aac2ace795675cef222d5d9681e5cdd93d92b6d16831c5
 
+      # NOTE: we are skipping building from source as there is no direct pnpm support as of yet
+      # i saw this PR has some work to begin efforts on that https://github.com/flathub/flathub/pull/3876
       - type: file
         url: https://github.com/overlayeddev/overlayed/releases/download/v0.5.0/overlayed_0.5.0_amd64.AppImage
         dest-filename: Overlayed.AppImage
