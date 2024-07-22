@@ -30,7 +30,7 @@ cppy
 expandvars
 EOF
 cat requirements.txt | \
-  grep -v '\(^PyQt\|^qt[0-9]\+-tools\|^scipy\s*[=<>]\|^numpy\s*[=<>]\|^pydantic\|^pyinstaller\)' | \
+  grep -v '\(^PyQt\|^qt[0-9]\+-tools\|^scipy\s*[=<>]\|^numpy\s*[=<>]\|^pyinstaller\)' | \
   grep -v "\\(python_version\s*<\\|;\\s*sys_platform\\s*==\\s*'darwin'\\|;\\s*platform_system\\s*==\\s*'Windows'\\)" \
     >>requirements-filtered.txt
 ```
