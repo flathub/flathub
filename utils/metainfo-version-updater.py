@@ -1,3 +1,4 @@
+# Creates a new version entry in the metainfo.xml for the latest version of the package
 # Assumes there is already one manually aded <release> element in the manifest
 
 # /// script

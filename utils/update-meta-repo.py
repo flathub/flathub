@@ -1,3 +1,5 @@
+# Updates the commit hash for the resources repo in the manifest to the current one
+
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
