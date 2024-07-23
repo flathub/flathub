@@ -13,3 +13,4 @@ cd ..
 pdm run utils/update-meta-repo.py resources io.github.qcanvas.QCanvasApp.yaml
 
 git add io.github.qcanvas.QCanvasApp.yaml python3-qcanvas.json
+git commit -m "Update manifest"
