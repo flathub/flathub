@@ -13,14 +13,14 @@ build-options:
    - "CARGO_NET_OFFLINE=true"
 cleanup-commands:
   # we don't need static libraries
-  - find /app/lib -name \*.a | xargs rm -f
+  - find $FLATPAK_DEST/lib -name \*.a | xargs rm -f
   # remove build dependencies
   - python3 -m pip uninstall -y pythran pyproject_hooks pyproject_metadata \
       pycparser meson_python expandvars cppy pybind11 setuptools_rust maturin
   # deduplicate (matplotlib) fonts already in runtime
   - for f in /usr/share/fonts/dejavu/*.ttf; do find /app -name `basename $f` -execdir ln -sf "$f" \; ; done
   # remove Python test suites
-  - find /app/lib/python* -type d -name tests | xargs rm -Rf
+  - find $FLATPAK_DEST/lib/python* -type d -name tests | xargs rm -Rf
   # Yoctupuce includes compiled libraries *sigh*, only keep the ones we may need
   - |
     python3 <<EOF
@@ -32,12 +32,17 @@ cleanup-commands:
     keep = [basename(f) for f in [YAPI._yApiCLibFile, YAPI._yApiCLibFileFallback]]
     [remove(join(dir, f)) for f in listdir(dir) if f not in keep]
     EOF
+  # only keep babel and QtWebEngine locales that the app is translated into
+  - |
+    LANGRE='\('`ls $FLATPAK_DEST/translations/*.qm | sed 's/^.*artisan_\([a-zA-Z]\+\)\(_[a-zA-Z]\+\)\?\.qm$/\1/' | grep -v '^qtbase_' | sort | uniq | tr '\n' '|' | sed 's/|/\\\\|/g'`'en\)'
+    (cd $FLATPAK_DEST/translations/qtwebengine_locales/ && ls *.pak | grep -v "^$LANGRE\([-_][a-zA-Z]\+\)\?\.pak$" | xargs rm -f )
+    (cd $FLATPAK_DEST/lib/python3*/site-packages/babel/locale-data/ && ls *.dat | grep -v "^$LANGRE\([-_][-_a-zA-Z]\+\)\?\.dat$" | xargs rm -f )
   # cleanup QtWebEngine dictionaries, which we don't need and use quite some space
-  - find /app/share/locale -name \*.bdic | xargs rm -f
-  - rm -Rf /app/qtwebengine_dictionaries
+  - find $FLATPAK_DEST/share/locale -name \*.bdic | xargs rm -f
+  - rm -Rf $FLATPAK_DEST/qtwebengine_dictionaries
   # we need no QtWebEngine developer tools, nor automation driver
-  - rm -f /app/resources/qtwebengine_devtools_resources.pak
-  - rm -Rf /app/libexec/webenginedriver
+  - rm -f $FLATPAK_DEST/resources/qtwebengine_devtools_resources.pak
+  - rm -Rf $FLATPAK_DEST/libexec/webenginedriver
   # cleanup base
   - /app/cleanup-BaseApp.sh
 
@@ -76,6 +81,10 @@ modules:
       # and also the Python files
       - cp -Rp src/{artisan.py,artisanlib,plus,proto,help,uic,misc} $FLATPAK_DEST
       - chmod a+x $FLATPAK_DEST/artisan.py
+      # fix translations not being found by default
+      - mv $FLATPAK_DEST/includes/translations/* $FLATPAK_DEST/translations
+      - rmdir $FLATPAK_DEST/includes/translations
+      - sed -i "s/trans_paths\.append('translations')/trans_paths.append('\/app\/translations')/" $FLATPAK_DEST/artisanlib/main.py
       # then compile all Python files
       - python3 -m compileall $FLATPAK_DEST/{artisanlib,plus,proto,help,uic,misc}
       # Flatpak expects Qt plugins in lib/plugins/ instead of plugins/
