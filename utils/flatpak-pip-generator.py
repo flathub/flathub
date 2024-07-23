@@ -9,8 +9,8 @@
 __license__ = "MIT"
 
 import argparse
-import json
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -18,7 +18,6 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
-
 from collections import OrderedDict
 from typing import Dict
 
