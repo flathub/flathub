@@ -35,7 +35,7 @@ processors=8
 swap=8GB
 ```
 
-It also still took me around an hour to compile 😂.
+It also still took me around an hour to compile for the first time 😂. Then after that with the `--ccache` flag it takes around 5-10 mins.
 
 Latest blocker:
 ```
