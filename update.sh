@@ -6,16 +6,9 @@ pyenv local 3.11
 # Pypi doesn't always generate package information until someone installs it
 utils/nudge-pypi
 
+# Doesn't work without arch-dependent-force!
 pdm run utils/flatpak-pip-generator.py qcanvas --arch-dependent-force
-pdm run utils/metainfo-version-updater.py resources/$APP_ID.metainfo.xml
+pdm run utils/metainfo-version-updater.py $APP_ID.metainfo.xml
 
-cd resources || exit
-git add $APP_ID.metainfo.xml
-git commit -m "Update metainfo"
-git push
-cd ..
-
-pdm run utils/update-meta-repo.py resources $APP_ID.yaml
-
-git add $APP_ID.yaml python3-qcanvas.json resources
+git add python3-qcanvas.json $APP_ID.metainfo.xml $APP_ID.yaml 
 git commit -m "Update manifest"
