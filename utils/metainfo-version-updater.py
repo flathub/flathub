@@ -20,9 +20,10 @@ import json
 import xmltodict
 
 try:
-    metainfo_file_path = Path(sys.argv[1])
+    package_name = sys.argv[1]
+    metainfo_file_path = Path(sys.argv[2])
 except IndexError:
-    print("Missing file name/path for metainfo file", file=sys.stderr)
+    print("Expected args: <package name> <path to .metainfo.xml file>", file=sys.stderr)
     exit(1)
 
 
@@ -63,7 +64,7 @@ def get_releases(xml: dict[str, str]) -> list[dict[str, str]]:
 
 
 def update_releases() -> None:
-    latest_version, latest_version_time = get_latest_version("qcanvas")
+    latest_version, latest_version_time = get_latest_version()
     xml = xmltodict.parse(read_file(metainfo_file_path))
     releases: list[dict[str, str]] = get_releases(xml)
 
