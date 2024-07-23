@@ -551,6 +551,9 @@ else:
         "modules": modules,
     }
 
+if opts.arch_dependent_force:
+    pypi_module["only-arches"] = ["x86_64"]
+
 print()
 with open(output_filename, "w") as output:
     if opts.yaml:

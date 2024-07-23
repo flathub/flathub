@@ -64,7 +64,7 @@ def get_releases(xml: dict[str, str]) -> list[dict[str, str]]:
 
 
 def update_releases() -> None:
-    latest_version, latest_version_time = get_latest_version()
+    latest_version, latest_version_time = get_latest_version(package_name)
     xml = xmltodict.parse(read_file(metainfo_file_path))
     releases: list[dict[str, str]] = get_releases(xml)
 
