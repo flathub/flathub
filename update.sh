@@ -10,5 +10,8 @@ utils/nudge-pypi
 pdm run utils/flatpak-pip-generator.py qcanvas --arch-dependent-force
 pdm run utils/metainfo-version-updater.py qcanvas $APP_ID.metainfo.xml
 
-git add python3-qcanvas.json $APP_ID.metainfo.xml $APP_ID.yaml
-git commit -m "Update manifest"
+if [ "$1" != "no-commit" ]; then
+    git add python3-qcanvas.json $APP_ID.metainfo.xml $APP_ID.yaml
+    git commit -m "Update manifest"
+fi
+
