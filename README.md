@@ -66,5 +66,5 @@ for name in pydantic_core maturin cryptography; do
 done
 ```
 
-For each of these packages, locate where it is present in `dep-python3-artisan.json` and add its `dep-rust-$name.json` to the list of files (maybe multiple times per package, if listed as a dependency of another package). For each component where this is used, set its `CARGO_HOME` using `build-options`. The path after `build` needs to be the name of the component, e.g. for `python3-pydantic`, you would specify: `"build-options": { "env": { "CARGO_HOME": "/run/build/python3-pydantic/cargo" } }`. See the existing file for more examples.
+For each of these packages, locate where it is present in `dep-python3-artisan.json` and add its `dep-rust-$name.json` to the list of files (maybe multiple times in the file, if listed multiple times as a dependency of another package). For each component where this is used, also set its `CARGO_HOME` using `build-options`. The path after `build` needs to be the name of the component, e.g. for `python3-pydantic`, you would specify: `"build-options": { "env": { "CARGO_HOME": "/run/build/python3-pydantic/cargo" } }`. See the existing file for more examples.
 
