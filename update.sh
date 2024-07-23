@@ -3,6 +3,8 @@ APP_ID=io.github.qcanvas.QCanvasApp
 
 pyenv local 3.11
 
+./nudge-pip
+
 pdm run utils/flatpak-pip-generator.py qcanvas --arch-dependent-force
 pdm run utils/metainfo-version-updater.py resources/$APP_ID.metainfo.xml
 
@@ -14,5 +16,5 @@ cd ..
 
 pdm run utils/update-meta-repo.py resources $APP_ID.yaml
 
-git add $APP_ID.yaml python3-qcanvas.json
+git add $APP_ID.yaml python3-qcanvas.json resources
 git commit -m "Update manifest"
