@@ -21,7 +21,7 @@ import xmltodict
 try:
     metainfo_file_path = Path(sys.argv[1])
 except IndexError:
-    print("Missing file name/path", file=sys.stderr)
+    print("Missing file name/path for metainfo file", file=sys.stderr)
     exit(1)
 
 
