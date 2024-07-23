@@ -7,4 +7,4 @@ flatpak build-export repo builddir
 
 # attempt to run it
 echo "atempting to run the flatpak..."
-flatpak run dev.overlayed.Overlayed
+flatpak --verbose run dev.overlayed.Overlayed
