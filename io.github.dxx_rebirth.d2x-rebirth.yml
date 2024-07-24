@@ -1,0 +1,61 @@
+app-id: io.github.dxx_rebirth.d2x-rebirth
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: io.github.dxx_rebirth.d2x-rebirth.sh
+
+finish-args:
+  # hardware 3D and controller access
+  - --device=all
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --share=ipc
+  - --socket=pulseaudio
+  # Give permission to use existing setup if available
+  - --filesystem=~/.d2x-rebirth
+
+modules:
+  - shared-modules/glu/glu-9.json
+  - shared-modules/physfs/physfs.json
+
+  - net.sourceforge.scons.scons.yml
+
+  - name: d2x-rebirth
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/dxx-rebirth/dxx-rebirth.git
+        # Pin to recent commit with AppStream metadata for now as latest tag is from 2018
+        commit: 5b8dc756f67d3077cfe171838aa15c798cc67c98
+        # For future releases, use tags
+        x-checker-data:
+          type: git
+          tag-pattern: ^v\d+(\.\d+)+.*$
+      - type: script
+        dest-filename: io.github.dxx_rebirth.d2x-rebirth.sh
+        commands:
+          # Check for game data
+          - |
+            set -e
+            if [[ $(find "$XDG_DATA_HOME/game/" -iname 'descent2.hog') ]]; then
+                # Prefer data and savegames in Flatpak installation
+                D2X_REBIRTH_HOME=$XDG_DATA_HOME/saves d2x-rebirth -hogdir $XDG_DATA_HOME/game
+            elif [[ $(find "$HOME/.d2x-rebirth/data/" -iname 'descent2.hog') ]]; then
+                # Otherwise try and run from existing installation
+                exec d2x-rebirth
+            else
+                # Finally, fail with error message.
+                zenity --error \
+                    --text "<b>Could not find Descent II game data</b>\\n\\nPlease copy the game data files for Descent II to <tt><b>$XDG_DATA_HOME/game/</b></tt>." \
+                    --ok-label 'Close' \
+                    --no-wrap
+            fi
+    build-commands:
+      - scons -j$FLATPAK_BUILDER_N_JOBS install sdl2=1 d2x=1 lto=1 sdlmixer=1 debug=1 sharepath=$XDG_DATA_HOME DESTDIR=/app prefix=/
+    post-install:
+      - desktop-file-edit --set-key=Exec --set-value="io.github.dxx_rebirth.d2x-rebirth.sh" d2x-rebirth/d2x-rebirth.desktop
+      - desktop-file-edit --set-icon=io.github.dxx_rebirth.d2x-rebirth d2x-rebirth/d2x-rebirth.desktop
+      - install -Dm 755 io.github.dxx_rebirth.d2x-rebirth.sh /app/bin/io.github.dxx_rebirth.d2x-rebirth.sh
+      - install -Dm 644 d2x-rebirth/d2x-rebirth.png /app/share/icons/hicolor/128x128/apps/io.github.dxx_rebirth.d2x-rebirth.png
+      - install -Dm 644 d2x-rebirth/d2x-rebirth.desktop /app/share/applications/io.github.dxx_rebirth.d2x-rebirth.desktop
