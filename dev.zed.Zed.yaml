@@ -27,10 +27,6 @@ finish-args:
   # Enable access to Wayland display server
   - --socket=wayland
 
-  # Enable access to Canonical AppMenu
-  - --talk-name=com.canonical.AppMenu.Registrar
-  - --talk-name=com.canonical.AppMenu.Registrar.*
-
   # Enable access to D-Bus session bus (--socket=session-bus is not supported by Flathub's build system)
   - --system-talk-name=org.freedesktop.DBus
   - --talk-name=org.freedesktop.DBus
@@ -64,12 +60,23 @@ modules:
       # Rename zed to ${FLATPAK_ID}
       - rename zed ${FLATPAK_ID} ${FLATPAK_DEST}/share/{applications/*,icons/hicolor/*/apps/*}
 
-      # Modify `.desktop` file to use the correct icon name and add Actions
+      # Modify `.desktop` file to use the correct icon name and add Actions if needed
       - sed -i "s/^Icon=zed$/Icon=${FLATPAK_ID}/" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - sed -i "/^Icon=${FLATPAK_ID}$/a Actions=NewWorkspace;" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
 
-      # Cleanup
-      - rm -rf {bin,lib,libexec,share}
+      # Check if Actions=NewWorkspace exists
+      - |
+        if ! grep -q "^Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"; then
+          # Find the line number where [Desktop Action NewWorkspace] is located
+          line_num=$(grep -n "^\[Desktop Action NewWorkspace\]" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop" | cut -d: -f1)
+          if [ -n "$line_num" ]; then
+            # Insert Actions=NewWorkspace above the line where [Desktop Action NewWorkspace] is located
+            sed -i "${line_num}i Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          else
+            # If [Desktop Action NewWorkspace] doesn't exist, add Actions=NewWorkspace at the end
+            echo "Actions=NewWorkspace" >> "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          fi
+        fi
+
     sources:
       # Zed Editor Releases
       # x86_64
