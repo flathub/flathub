@@ -1,10 +1,8 @@
-# useful info for tauri v1 https://github.com/tauri-apps/tauri/discussions/4426
-
 id: dev.overlayed.Overlayed
 
 runtime: org.gnome.Platform
-runtime-version: "46"
-sdk: org.gnome.Sdk
+runtime-version: '46'
+sdk: org.gnome.Sdk//46
 
 command: overlayed
 finish-args:
@@ -12,31 +10,15 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --share=network
-  - --device=dri
-  - --filesystem=home
   - --socket=pulseaudio
   - --talk-name=org.freedesktop.Notifications
 
 modules:
-  - shared-modules/libsoup/libsoup-2.4.json
-  - name: unifdef
-    no-autogen: true
-    make-install-args:
-      - prefix=${FLATPAK_DEST}
-    sources:
-      - type: archive
-        url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
-        sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
-    cleanup:
-      - "*"
-  # NOTE: native deps
-  # https://github.com/tauri-apps/tauri-docs/blob/v1/docs/guides/building/cross-platform.md?plain=1#L113
-  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
   - name: webkit2gtk-4.0
     sources:
       - type: archive
-        url: https://webkitgtk.org/releases/webkitgtk-2.44.0.tar.xz
-        sha256: c66530e41ba59b1edba4ee89ef20b2188e273bed0497e95084729e3cfbe30c87
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.1.tar.xz
+        sha256: 425b1459b0f04d0600c78d1abb5e7edfa3c060a420f8b231e9a6a2d5d29c5561
         x-checker-data:
           type: html
           url: https://webkitgtk.org/releases/
@@ -44,13 +26,29 @@ modules:
           url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
     buildsystem: cmake-ninja
     config-opts:
-      # NOTE: not sure flat webkit2gtk-4.0 flags tauri requires
+      # taken from https://gitlab.gnome.org/GNOME/gnome-build-meta/-/blob/5a241420c2ee85cc5080dd7cf7ba3049fd80fcf1/elements/world/webkit2gtk-4.0.bst
       - -DPORT=GTK
       - -DENABLE_DOCUMENTATION=OFF
       - -DENABLE_WEBDRIVER=OFF
       - -DUSE_GTK4=OFF
       - -DUSE_LIBBACKTRACE=OFF
       - -DUSE_SOUP2=ON
+    modules:
+      - shared-modules/libsoup/libsoup-2.4.json
+
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - '*'
+
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
   - name: overlayed
     buildsystem: simple
     build-commands:
@@ -59,22 +57,28 @@ modules:
 
       - mkdir -p /app/{bin,share}
       - install -Dm755 squashfs-root/usr/bin/overlayed /app/bin/overlayed
-      # TODO: fix desktop file
-      # - install -Dm644 squashfs-root/usr/share/applications/overlayed.desktop /app/share/applications/dev.overlayed.Overlayed.desktop
-      # TODO: fix icons
-      # - cp -r squashfs-root/usr/share/icons /app/share/icons
+      - install -Dm644 dev.overlayed.Overlayed.metainfo.xml /app/share/metainfo/dev.overlayed.Overlayed.metainfo.xml
 
     sources:
       - type: file
         url: https://raw.githubusercontent.com/overlayeddev/overlayed/14a6d2c8b022f7d44de4a57350e8f30ff35ef7dc/distribution/dev.overlayed.Overlayed.metainfo.xml
         sha256: 35773ae27a47753852aac2ace795675cef222d5d9681e5cdd93d92b6d16831c5
 
-      # NOTE: skipping building from source as there is no direct pnpm support as of yet
-      # https://github.com/flathub/flathub/pull/3876
-      # https://github.com/flatpak/flatpak-builder-tools/issues/383
       - type: file
+        # NOTE: when using modrinth app image this worked fine so it's something with the overlayed app image
+        # url: https://launcher-files.modrinth.com/versions/0.7.1/linux/modrinth-app_0.7.1_amd64.AppImage
+        # sha256: 24f6a53b34eec89d9f8651daab871d5be0fe2616da8d163609728c2c1906c0c5
         url: https://github.com/overlayeddev/overlayed/releases/download/v0.5.0/overlayed_0.5.0_amd64.AppImage
-        dest-filename: Overlayed.AppImage
         sha256: bbcc773e89ba6cdbf4b3e91156b2702b2a82a91b5df7a8bbd2e274d5104a9725
+        dest-filename: Overlayed.AppImage
         # TODO: raise upstream here to support arm build for linux
         only-arches: [x86_64]
+  # Wrap the executable in a wrapper to run scripts before running it
+  - name: wrapper
+    buildsystem: simple
+    build-commands:
+      - mv $FLATPAK_DEST/bin/overlayed $FLATPAK_DEST/bin/overlayed-wrapped
+      - install -Dm755 overlayed-wrapper.sh $FLATPAK_DEST/bin/overlayed
+    sources:
+      - type: file
+        path: overlayed-wrapper.sh
