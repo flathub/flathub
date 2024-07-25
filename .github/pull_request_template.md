@@ -15,7 +15,7 @@
 
 <!-- ⚠️  Don't modify anything below this line ⚠️  -->
 
-[appid-domain]: https://docs.flathub.org/docs/for-app-authors/requirements#control-over-domain
+[appid-domain]: https://docs.flathub.org/docs/for-app-authors/requirements/#control-over-domain-or-repository
 [appid]: https://docs.flathub.org/docs/for-app-authors/requirements#application-id
 [reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
 [build]: https://docs.flathub.org/docs/for-app-authors/submission/#before-submission
