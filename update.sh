@@ -1,7 +1,7 @@
 
 git clone https://github.com/zen-browser/desktop.git browser
 
-icon_id="com.zen.browser"
+icon_id="io.github.zen_browser"
 icon_repo_path="browser/configs/branding"
 
 function icon {
