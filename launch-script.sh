@@ -1,7 +1,6 @@
 #!/bin/bash
 export TMPDIR=$XDG_CACHE_HOME/tmp
 
-MOZ_LAUNCHER="$MOZ_DIST_BIN/launch-script.sh"
 ##
 ## Enable Wayland backend?
 ##
