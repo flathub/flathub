@@ -16,4 +16,4 @@ if ! [ $MOZ_DISABLE_WAYLAND ] && [ "$WAYLAND_DISPLAY" ]; then
   fi
 fi
 
-exec /app/bin/zen "$@"
+exec /app/zen/zen "$@"
