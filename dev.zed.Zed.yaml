@@ -6,25 +6,12 @@ sdk: org.freedesktop.Sdk
 command: zed
 separate-locales: false
 finish-args:
-  # Grant access to Direct Rendering Infrastructure (DRI) for GPU acceleration
   - --device=dri
-
-  # Allow access to the user's home directory for reading and writing files
   - --filesystem=home
-
-  # Allow shared memory access for inter-process communication
   - --share=ipc
-
-  # Enable network access
   - --share=network
-
-  # Provide access to X11 display server as a fallback
   - --socket=fallback-x11
-
-  # Enable access to PulseAudio sound server
   - --socket=pulseaudio
-
-  # Enable access to Wayland display server
   - --socket=wayland
 
   # Enable access to Flatpak host commands (Needs linter exception: https://docs.flathub.org/docs/for-app-authors/linter#exceptions)
@@ -38,75 +25,6 @@ finish-args:
   - --talk-name=org.gnome.keyring.SystemPrompter
 
 modules:
-  - name: zed
-    buildsystem: simple
-    build-commands:
-      # Install Zed
-      - install -Dm 755 bin/* --target-directory ${FLATPAK_DEST}/bin
-      - install -Dm 755 lib/* --target-directory ${FLATPAK_DEST}/lib
-      - install -Dm 755 libexec/* --target-directory ${FLATPAK_DEST}/libexec
-
-      # Install {Desktop,MetaInfo}
-      - install -Dm 644 share/applications/* --target-directory ${FLATPAK_DEST}/share/applications
-      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml --target-directory ${FLATPAK_DEST}/share/metainfo
-
-      # Install Icons (Max. size 512x512)
-      - install -Dm 644 share/icons/hicolor/512x512/apps/zed.png --target-directory ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
-
-      # Rename zed to ${FLATPAK_ID}
-      - rename zed ${FLATPAK_ID} ${FLATPAK_DEST}/share/{applications/*,icons/hicolor/*/apps/*}
-
-        # Ensure `desktop-file-edit` validates; Ensure `[Desktop Action NewWorkspace]` has a matching action
-      - |
-        if ! grep -q "^Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"; then
-          # Find the line number where [Desktop Action NewWorkspace] is located
-          line_num=$(grep -n "^\[Desktop Action NewWorkspace\]" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop" | cut -d: -f1)
-          if [ -n "$line_num" ]; then
-            # Insert Actions=NewWorkspace above the line where [Desktop Action NewWorkspace] is located
-            sed -i "${line_num}i Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
-          else
-            # If [Desktop Action NewWorkspace] doesn't exist, add Actions=NewWorkspace at the end
-            echo "Actions=NewWorkspace" >> "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
-          fi
-        fi
-
-      # Modify `.desktop` file to use the correct icon name
-      - desktop-file-edit --set-icon="${FLATPAK_ID}" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-    sources:
-      # Zed Editor Releases
-      # x86_64
-      - type: archive
-        url: https://github.com/zed-industries/zed/releases/download/v0.144.4/zed-linux-x86_64.tar.gz
-        sha256: 77193187c4e87c743cfcb9a058bfa08b93f6c85d93c8143bab2599dfe8b8346d
-        only-arches:
-          - x86_64
-        x-checker-data:
-          type: github
-          owner: zed-industries
-          repo: zed
-          tag-pattern: ^v(\d+\.\d+\.\d+)$
-          url-template: "https://github.com/zed-industries/zed/releases/download/v$version/zed-linux-x86_64.tar.gz"
-          hash-algo: sha256
-
-      # arm64
-      - type: archive
-        url: https://github.com/zed-industries/zed/releases/download/v0.144.4/zed-linux-aarch64.tar.gz
-        sha256: c3f213952914657a208a2fc4060b4ba7cf3313f4fd6c9b0561377e75bf32747a
-        only-arches:
-          - aarch64
-        x-checker-data:
-          type: github
-          owner: zed-industries
-          repo: zed
-          tag-pattern: ^v(\d+\.\d+\.\d+)$
-          url-template: "https://github.com/zed-industries/zed/releases/download/v$version/zed-linux-aarch64.tar.gz"
-          hash-algo: sha256
-
-      # MetaInfo
-      - type: file
-        path: dev.zed.Zed.metainfo.xml
-
-  # Dependencies
   - shared-modules/libsecret/libsecret.json
 
   - name: gcr
@@ -133,3 +51,62 @@ modules:
       - type: archive
         sha256: 29df50974a90987af694c0fb8926a6b366e68cacd8abd813817cfe1eb5d54524
         url: https://download.gnome.org/sources/gcr/3.34/gcr-3.34.0.tar.xz
+
+  - name: zed
+    buildsystem: simple
+    build-commands:
+      - install -Dm 755 bin/* --target-directory ${FLATPAK_DEST}/bin
+      - install -Dm 755 lib/* --target-directory ${FLATPAK_DEST}/lib
+      - install -Dm 755 libexec/* --target-directory ${FLATPAK_DEST}/libexec
+      - install -Dm 644 share/applications/* --target-directory ${FLATPAK_DEST}/share/applications
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml --target-directory ${FLATPAK_DEST}/share/metainfo
+      - install -Dm 644 share/icons/hicolor/512x512/apps/zed.png --target-directory ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
+
+      # Rename instances of `zed` to `${FLATPAK_ID}`
+      - rename zed ${FLATPAK_ID} ${FLATPAK_DEST}/share/{applications/*,icons/hicolor/*/apps/*}
+
+        # Ensure `desktop-file-edit` validates; Enforce `[Desktop Action NewWorkspace]` has a matching action
+      - |
+        if ! grep -q "^Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"; then
+          # Find the line number where [Desktop Action NewWorkspace] is located
+          line_num=$(grep -n "^\[Desktop Action NewWorkspace\]" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop" | cut -d: -f1)
+          if [ -n "$line_num" ]; then
+            # Insert Actions=NewWorkspace above the line where [Desktop Action NewWorkspace] is located
+            sed -i "${line_num}i Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          else
+            # If [Desktop Action NewWorkspace] doesn't exist, add Actions=NewWorkspace at the end
+            echo "Actions=NewWorkspace" >> "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          fi
+        fi
+
+      # Modify original `.desktop` file to use the correct icon name
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: archive
+        url: https://github.com/zed-industries/zed/releases/download/v0.145.1/zed-linux-x86_64.tar.gz
+        sha256: cafd09c2cdd841f889f3af5763c896da853e33cae89d707f717dc48c1e31da10
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: github
+          owner: zed-industries
+          repo: zed
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+          url-template: "https://github.com/zed-industries/zed/releases/download/v$version/zed-linux-x86_64.tar.gz"
+          hash-algo: sha256
+
+      - type: archive
+        url: https://github.com/zed-industries/zed/releases/download/v0.145.1/zed-linux-aarch64.tar.gz
+        sha256: cafd09c2cdd841f889f3af5763c896da853e33cae89d707f717dc48c1e31da10
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: github
+          owner: zed-industries
+          repo: zed
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+          url-template: "https://github.com/zed-industries/zed/releases/download/v$version/zed-linux-aarch64.tar.gz"
+          hash-algo: sha256
+
+      - type: file
+        path: dev.zed.Zed.metainfo.xml
