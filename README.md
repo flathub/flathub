@@ -33,4 +33,5 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.kjxb
 ## TODO
 
 1. Update sha256
-2. Add `com.kjxbyz.PicGuard.desktop` and `com.kjxbyz.PicGuard.appdata.xml` to main repo
+2. Add screenshots
+3. Update `Version` in `com.kjxbyz.PicGuard.desktop` file
