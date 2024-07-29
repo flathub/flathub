@@ -1,27 +1,28 @@
-# Flathub
+# Calculate Activity Flatpak
 
-Flathub is the central place for building and hosting Flatpak builds.
+This is the place to get the answer to a quick problem, but that is not the limit! You can also explore Algebra, Trigonometry, Boolean and more!
 
-Using the Flathub repository
-----------------------------
+To know more refer https://github.com/sugarlabs/calculate-activity
 
-To install applications that are hosted on Flathub, use the following:
+## How To Build
+
 ```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
-
-To install applications from the beta branch, use the following:
-```
-flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
-flatpak install flathub-beta org.godotengine.Godot
+git clone https://github.com/flathub/org.sugarlabs.Calculate.git
+cd org.sugarlabs.Calculate
+flatpak -y --user install flathub org.gnome.{Platform,Sdk}//46
+flatpak -y --user install org.sugarlabs.BaseApp//24.04
+flatpak-builder --user --force-clean --install build org.sugarlabs.Calculate.json
 ```
 
-For more information and more applications see https://flathub.org
+## Check For Updates
 
-Contributing to Flathub
------------------------
+Install the flatpak external data checker
+```
+flatpak --user install org.flathub.flatpak-external-data-checker
+```
 
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
-
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub-infra/website*
+Now to update every single module to the latest stable version use
+```
+cd org.sugarlabs.Calculate
+flatpak run --filesystem=$PWD org.flathub.flatpak-external-data-checker org.sugarlabs.Calculate.json
+```
