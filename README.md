@@ -21,6 +21,7 @@ python3 -m pip install req2flatpak pip-tools
 wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
 ```
 
-Then copy the file `src/requirements.txt` from the version of Artisan you're updating to, to the current directory,
-and run `update-dependencies.sh`.
+Then copy the file `src/requirements.txt` from the version of Artisan you're updating to, to the current directory
+(e.g. with the help of `tar -x -z --strip-components=2 --wildcards -f vX.Y.Z.tar.gz \*/src/requirements.txt`),
+then run `update-dependencies.sh`.
 
