@@ -40,6 +40,7 @@ if [ ! "$PYTHONVER" ]; then
     exit 1
 fi
 
+# put everything in one file, so that compatible versions can be found
 cat >requirements-filtered.txt <<EOF
 # build-dependencies for matplotlib
 meson-python
@@ -52,29 +53,48 @@ cat requirements.txt | \
     >>requirements-filtered.txt
 pip-compile -q -o requirements-filtered.frozen.txt requirements-filtered.txt
 
-cat requirements-filtered.frozen.txt | grep -v '\(^pillow\|^matplotlib\)' >requirements-binary.frozen.txt
+# then split off to parts we handle differently
+cat requirements-filtered.frozen.txt | grep -v '\(^pillow\|^matplotlib\|^meson-python\|^cppy\|^pybind11\)' >requirements-binary-run.frozen.txt
+cat requirements-filtered.frozen.txt | grep    '\(^meson-python\|^cppy\|^pybind11\)' >requirements-binary-build.frozen.txt
 cat requirements-filtered.frozen.txt | grep    '\(^pillow\|^matplotlib\)' >requirements-source.frozen.txt
-req2flatpak --requirements-file requirements-binary.frozen.txt --target-platforms $PYTHONVER-x86_64 $PYTHONVER-aarch64 >dep-python3-wheels.json
+# runtime, from binary wheels
+req2flatpak --requirements-file requirements-binary-run.frozen.txt --target-platforms $PYTHONVER-x86_64 $PYTHONVER-aarch64 >dep-python3-wheels-run.json
+# build-time, from binary wheels
+req2flatpak --requirements-file requirements-binary-build.frozen.txt --target-platforms $PYTHONVER-x86_64 $PYTHONVER-aarch64 >dep-python3-wheels-build.json
 
-python3 flatpak-pip-generator --runtime "${BASEAPP_ID}//${BASEAPP_VER}" -r requirements-source.frozen.txt -o dep-python3-source-full
+# runtime, from source (to reuse system libraries)
+python3 flatpak-pip-generator --runtime "${BASEAPP_ID}//${BASEAPP_VER}" -r requirements-source.frozen.txt -o dep-python3-source
 
-# remove source dependencies already present as binary
+# remove dependencies already present in previous steps
 python3 <<EOF
 import json
 import re
 
-wheeldata = json.load(open('dep-python3-wheels.json'))
-installed = [d for d in wheeldata['build-commands'][0].split()[2:] if not d.startswith('-')]
-installed_re = re.compile('^.*/(' + '|'.join(installed) + ')-\d.*')
-sourcedata = json.load(open('dep-python3-source-full.json'))
-for m in sourcedata['modules']:
-  m['sources'] = [s for s in m['sources'] if not installed_re.match(s['url'])]
-json.dump(sourcedata, open('dep-python3-source.json', 'w'), indent=4)
+def get_installed(data):
+  return [d for d in data['build-commands'][0].split()[2:] if not d.startswith('-')]
+
+def filter_sources(filename, installed, cleanup=None):
+  data = json.load(open(filename))
+  installed_re = re.compile('^.*/(' + '|'.join(installed) + ')-\d.*')
+  for m in data.get('modules', [data]):
+    m['sources'] = [s for s in m['sources'] if not installed_re.match(s['url'])]
+    if cleanup is not None:
+      m['cleanup'] = cleanup
+  json.dump(data, open(filename, 'w'), indent=4)
+  return data
+
+wheel_run_data = json.load(open('dep-python3-wheels-run.json'))
+installed_run = get_installed(wheel_run_data)
+
+wheel_build_data = filter_sources('dep-python3-wheels-build.json', installed_run, cleanup=["*"])
+installed_build = get_installed(wheel_build_data)
+
+filter_sources('dep-python3-source.json', installed_run + installed_build)
 EOF
 
 # let matplotlib use system libraries
 sed -i 's/\("pip3 install .*matplotlib.*\)"$/\1 --config-settings=setup-args=\\"-Dsystem-freetype=true\\" --config-settings=setup-args=\\"-Dsystem-qhull=true\\""/' dep-python3-source.json
 
 # cleanup (comment when debugging this file)
-rm -f requirements-filtered.txt requirements-filtered.frozen.txt requirements-binary.frozen.txt requirements-source.frozen.txt dep-python3-source-full.json
+rm -f requirements-filtered.txt requirements-filtered.frozen.txt requirements-binary-run.frozen.txt requirements-binary-build.frozen.txt requirements-source.frozen.txt
 
