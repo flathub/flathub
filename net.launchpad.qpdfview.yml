@@ -1,0 +1,149 @@
+app-id: net.launchpad.qpdfview
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: "6.7"
+command: qpdfview
+copy-icon: true
+rename-icon: qpdfview
+rename-desktop-file: qpdfview.desktop
+rename-appdata-file: qpdfview.appdata.xml
+
+finish-args:
+  - --filesystem=host:ro # open file dialog; drag & drop
+  - --device=dri # hardware acceleration
+  - --share=ipc # x11
+  - --socket=wayland # gui
+  - --socket=fallback-x11 # gui
+  - --socket=cups # printing
+  - --own-name=local.qpdfview # unique instance
+
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+
+modules:
+  # Recommended for better performance by the poppler splash backend
+  - name: boost
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://boostorg.jfrog.io/artifactory/main/release/1.85.0/source/boost_1_85_0.tar.bz2
+        sha256: 7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=container
+      - ./b2 headers
+      - ./b2 -j$FLATPAK_BUILDER_N_JOBS install variant=release cxxstd=17 --layout=system
+    x-checker-data:
+      type: anitya
+      project-id: 6845
+      stable-only: true
+      url-template: https://boostorg.jfrog.io/artifactory/main/release/$version/source/boost_${major}_${minor}_${patch}.tar.bz2
+
+  - name: poppler
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_CPP_TESTS=OFF
+      - -DBUILD_GTK_TESTS=OFF
+      - -DBUILD_MANUAL_TESTS=OFF
+      - -DBUILD_QT5_TESTS=OFF
+      - -DBUILD_QT6_TESTS=OFF
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_BOOST=ON
+      - -DENABLE_CPP=OFF
+      - -DENABLE_GLIB=OFF
+      - -DENABLE_LIBCURL=OFF
+      - -DENABLE_QT5=OFF
+      - -DENABLE_UTILS=OFF
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
+        sha256: 97453fbddf0c9a9eafa0ea45ac710d3d49bcf23a62e864585385d3c0b4403174
+        x-checker-data:
+          type: anitya
+          project-id: 3686
+          stable-only: true
+          url-template: https://poppler.freedesktop.org/poppler-$version.tar.xz
+    cleanup:
+      - /bin
+
+  - name: djvulibre
+    sources:
+      - type: archive
+        url: http://downloads.sourceforge.net/djvu/djvulibre-3.5.28.tar.gz
+        sha256: fcd009ea7654fde5a83600eb80757bd3a76998e47d13c66b54c8db849f8f2edc
+        x-checker-data:
+          type: anitya
+          project-id: 10159
+          stable-only: true
+          url-template: http://downloads.sourceforge.net/djvu/djvulibre-$version.tar.gz
+    cleanup:
+      - /bin
+
+  - name: ghostscript
+    config-opts:
+      - --disable-cups
+      - --disable-dbus
+      - --disable-gtk
+      - --with-drivers=FILES
+    cleanup:
+      - /bin
+    make-args:
+      - so
+    make-install-args:
+      - soinstall
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10031/ghostscript-10.03.1.tar.gz
+        sha256: 31cd01682ad23a801cc3bbc222a55f07c4ea3e068bdfb447792d54db21a2e8ad
+        x-checker-data:
+          type: anitya
+          project-id: 1157
+          stable-only: true
+          url-template: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs${major}0$minor$patch/ghostscript-$version.tar.gz
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} freetype/builds/unix/
+          - cp -p /usr/share/automake-*/config.{sub,guess} ijs/
+          - cp -p /usr/share/automake-*/config.{sub,guess} jpeg/
+          - cp -p /usr/share/automake-*/config.{sub,guess} libpng/
+          - cp -p /usr/share/automake-*/config.{sub,guess} lcms2mt/
+          - cp -p /usr/share/automake-*/config.{sub,guess} tiff/config/
+          - rm -rf libpng/pngread.c
+
+  - name: libspectre
+    sources:
+      - type: archive
+        url: http://libspectre.freedesktop.org/releases/libspectre-0.2.12.tar.gz
+        sha256: 55a7517cd3572bd2565df0cf450944a04d5273b279ebb369a895391957f0f960
+        x-checker-data:
+          type: anitya
+          project-id: 1724
+          stable-only: true
+          url-template: http://libspectre.freedesktop.org/releases/libspectre-$version.tar.gz
+
+  - name: qpdfview
+    buildsystem: qmake
+    config-opts:
+      - qpdfview.pro
+      - LIBS+=-L/app/lib
+    sources:
+      - type: archive
+        url: https://launchpad.net/qpdfview/trunk/0.5.0/+download/qpdfview-0.5.tar.gz
+        sha256: 44efc440a461cbdd757a9b396f1461ee7a2f4364e81df55bd0221f910219be99
+        x-checker-data:
+          type: anitya
+          project-id: 8263
+          stable-only: true
+          url-template: https://launchpad.net/qpdfview/trunk/$version/+download/qpdfview-$version.tar.gz
+      - type: patch
+        path: patches/metainfo.patch
+      - type: patch
+        path: patches/prefix.patch
+      - type: patch
+        path: patches/disable-save.patch
