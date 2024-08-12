@@ -2,7 +2,7 @@
 
 app-id: com.surfshark.Surfshark
 runtime: org.gnome.Platform
-runtime-version: '45'
+runtime-version: '46'
 base: org.electronjs.Electron2.BaseApp
 base-version: '23.08'
 sdk: org.gnome.Sdk
@@ -14,61 +14,144 @@ finish-args:
   - --share=network
   - --system-talk-name=org.freedesktop.NetworkManager
   - --talk-name=org.freedesktop.secrets
-  - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 modules:
-  - 'libndp.yaml'
-  - 'network-manager.yaml'
-  - 'libnma.yaml'
-  - 'network-manager-openvpn.yaml'
+  - name: libndp
+    buildsystem: autotools
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/jpirko/libndp/archive/v1.9.tar.gz
+        sha256: e564f5914a6b1b799c3afa64c258824a801c1b79a29e2fe6525b682249c65261
+        x-checker-data:
+          type: anitya
+          project-id: 14944
+          stable-only: true
+          url-template: https://github.com/jpirko/libndp/archive/v$version.tar.gz
+# https://github.com/flathub/org.gnome.NetworkDisplays/blob/5a3369d04e32ccd092e42463de5171f473a8601d/org.gnome.NetworkDisplays.json#LL177C11-L230C11
+  - name: NetworkManager
+    buildsystem: meson
+    build-options:
+      cflags: -ltinfo
+      cxxflags: -ltinfo
+    config-opts:
+      - -Dsystemdsystemunitdir=no
+      - -Ddbus_conf_dir=/app/etc/dbus-1/system.d
+      - -Diptables=/usr/bin/true
+      - -Ddnsmasq=/usr/bin/true
+      - -Dsession_tracking=no
+      - -Dselinux=false
+      - -Dsystemd_journal=false
+      - -Dlibaudit=no
+      - -Dwext=false
+      - -Dwifi=false
+      - -Dppp=false
+      - -Dmodem_manager=false
+      - -Dovs=false
+      - -Dnmcli=false
+      - -Dnmtui=false
+      - -Dintrospection=true
+      - -Dvapi=false
+      - -Ddocs=false
+      - -Dtests=no
+      - -Dfirewalld_zone=false
+      - -Dlibpsl=false
+      - -Dqt=false
+    cleanup:
+      - /sbin
+      - /etc
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /var
+      - /share/bash-completion
+      - /share/doc
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/NetworkManager/NetworkManager.git
+        commit: 2db3748ec8162ce948ba52f71b42a258ff8d64ba
+        tag: 1.40.18
+# https://github.com/flathub/com.github.jkotra.eovpn/blob/670f19e2aee1c9559fbe4eed904e35500843ae88/com.github.jkotra.eovpn.yml#L133C17-L151
+  - name: libnma
+    buildsystem: meson
+    config-opts:
+      - -Dmobile_broadband_provider_info=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dvapi=false
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://gitlab.gnome.org/GNOME/libnma/-/archive/1.10.6/libnma-1.10.6.tar.gz
+        sha256: c88fd3408c4ff166b06179b5ce5186e08a57b64eb8c9b22e055ca0dbc5e8002b
+        x-checker-data:
+          type: anitya
+          project-id: 230112
+          stable-only: true
+          url-template: https://gitlab.gnome.org/GNOME/libnma/-/archive/$version/libnma-$version.tar.gz
+  - name: NetworkManager-openvpn
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/NetworkManager/NetworkManager-openvpn.git
+        tag: 1.10.2
+        commit: ae9575dd07cc2d2d51ec8d0297823e07017cb6e6
   - name: surfshark
     buildsystem: simple
     build-commands:
-      - ar -x surfshark_*.deb
-      - rm -f surfshark_*.deb
-      - tar -xf data.tar.xz
-
-      - install surfshark $FLATPAK_DEST/bin/
-      - install -D "usr/share/applications/surfshark.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
-      - install -D "usr/share/icons/hicolor/128x128/apps/surfshark.png" "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png"
-      - install -D "usr/share/icons/hicolor/256x256/apps/surfshark.png" "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png"
-      - install -D "usr/share/icons/hicolor/512x512/apps/surfshark.png" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -D apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install -Dm0755 surfshark $FLATPAK_DEST/bin/
       - install -D com.surfshark.Surfshark.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
-
-      - cp -r opt $FLATPAK_DEST
-      - cp -r usr/* $FLATPAK_DEST
-      - cp -r var $FLATPAK_DEST
-
+      - install -D "surfshark.png" "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -D "surfshark.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
       - desktop-file-edit --set-key=Icon --set-value="${FLATPAK_ID}" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
       - desktop-file-edit --set-key=Exec --set-value="surfshark %U" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
     sources:
+      - type: file
+        path: com.surfshark.Surfshark.metainfo.xml
+      - type: file
+        path: surfshark.desktop
+      - type: file
+        path: surfshark.png
       - type: script
         dest-filename: surfshark
         commands:
-        - TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID" zypak-wrapper /app/opt/Surfshark/surfshark "$@"
-      - type: file
-        path: com.surfshark.Surfshark.metainfo.xml
+          - TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID" zypak-wrapper /app/extra/opt/Surfshark/surfshark "$@"
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - bsdtar -Oxf surfshark.deb 'data.tar.xz' | bsdtar -xf -
+          - cp -r usr/lib usr/share .
+          - rm -rf usr surfshark.deb
 #
-      - type: file
+      - type: 'extra-data'
+        filename: surfshark.deb
+        size: 77077030
         only-arches:
           - x86_64
-        url: https://ocean.surfshark.com/debian/pool/main/s/surfshark_3.0.3_amd64.deb
-        sha256: 534a46d0994f28cca0155efc625d949d810221d3d244681dc6b8f4b46b1efaf8
+        url: https://ocean.surfshark.com/debian/pool/main/s/surfshark_3.0.4_amd64.deb
+        sha256: f7790097212def265b50ac8b51e3737710c846afb496cfb1a62610e708e9dc38
         x-checker-data:
           type: anitya
           project-id: 372017
           is-main-source: true
           url-template: https://ocean.surfshark.com/debian/pool/main/s/surfshark_${version}_amd64.deb
-      - type: file
+      - type: 'extra-data'
+        filename: surfshark.deb
+        size: 74024878
         only-arches:
           - aarch64
-        url: https://ocean.surfshark.com/debian/pool/main/s/surfshark_3.0.3_arm64.deb
-        sha256: 7ed2100c19ddedc17ed059296a6ac602cf27b3d8bbf619d3235fd93c3e47a2bb
+        url: https://ocean.surfshark.com/debian/pool/main/s/surfshark_3.0.4_arm64.deb
+        sha256: 91b59c1a016c24cc1e1668142a999e79147facb87bf7aaf69d3505e1528d44e1
         x-checker-data:
           type: anitya
           project-id: 372017
           is-main-source: true
           url-template: https://ocean.surfshark.com/debian/pool/main/s/surfshark_${version}_arm64.deb
 #
-
