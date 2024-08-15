@@ -29,9 +29,3 @@ flatpak run com.kjxbyz.PicGuard
 ```shell
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.kjxbyz.PicGuard.yml
 ```
-
-## TODO
-
-1. Update sha256
-2. Add screenshots
-3. Update `Version` in `com.kjxbyz.PicGuard.desktop` file
