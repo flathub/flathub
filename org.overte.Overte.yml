@@ -1,0 +1,88 @@
+app-id: org.overte.Overte
+runtime: org.kde.Platform
+runtime-version: '5.15-23.08'
+sdk: org.kde.Sdk
+# QtWebEngine is not part of the KDE runtime,
+# so we use this package, which is also maintained by KDE developers.
+base: io.qt.qtwebengine.BaseApp
+base-version: '5.15-23.08'
+command: Overte
+separate-locales: false
+rename-icon: Overte
+finish-args:
+  - --share=network
+  - --share=ipc # For Discord integration
+  - --device=dri # Graphics driver
+  - --socket=pulseaudio
+  # Overte requires OpenGL ES 3.2. While most Mesa drivers don't have this fully implemented,
+  # we try anyway, since it works on some devices.
+  - --env=MESA_GLES_VERSION_OVERRIDE=3.2
+  # QtWebEngine is shipped by the baseapp and not by the Sdk, which makes it use a non-standard path.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  # KDE seems to do some aggressive theming which breaks things.
+  # See issue: https://github.com/overte-org/overte/issues/167
+  - --env=XDG_CURRENT_DESKTOP=foo
+  # While we technically support Wayland, there are issues with mouse capture: https://github.com/overte-org/overte/issues/628
+  - --socket=x11
+  - --env=QT_QPA_PLATFORM=xcb
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: Overte
+    buildsystem: simple
+    cleanup:
+      - squashfs-root
+    sources:
+      - type: extra-data
+        only-arches:
+          - x86_64
+        url: https://public.overte.org/build/overte/release/2024.07.1/Overte-2024.07.1-x86_64.AppImage
+        size: 534262976
+        sha256: f916ea2b9c6d6cd7667cb8cf2cbf3fde9fbe261031bc17072b93ab45cb4c9e2b
+        filename: Overte.AppImage
+        # This update checker may be unreliable.
+        x-checker-data:
+          type: html
+          url: https://overte.org/downloads.html
+          version-pattern: "The current release of Overte is version ([\\d\\.-]+)"
+          url-pattern: "(https://public.overte.org/build/overte/release/([\\d\\.-]+)/Overte-([\\d\\.-]+)-x86_64.AppImage)"
+
+      - type: extra-data
+        only-arches:
+          - aarch64
+        url: http://188.245.105.160/Overte-colorspace-x86_64.AppImage
+        size: 374834368
+        sha256: 391b45f36ac8d4441ca0b532abc48d5c1ce5c9ff067c6d1901338ba099640912
+        filename: Overte.AppImage
+
+
+      - type: script
+        dest-filename: Overte
+        commands:
+          - exec /app/extra/bin/overte/interface/interface $@
+
+      - type: file
+        path: org.overte.Overte.appdata.xml
+
+      - type: file
+        path: org.overte.Overte.desktop
+
+      - type: file
+        path: apply_extra.sh
+
+      - type: file
+        path: icons/Overte.png
+
+    build-commands:
+      - install -D ./apply_extra.sh "${FLATPAK_DEST}/bin/apply_extra"
+      - install Overte "${FLATPAK_DEST}/bin/"
+      - install -Dm644 org.overte.Overte.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 org.overte.Overte.appdata.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
+      - install -Dm644 -t ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps Overte.png
