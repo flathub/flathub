@@ -1,4 +1,4 @@
-id: io.github.bothlab.syntalos
+id: org.syntalos.syntalos
 runtime: org.kde.Platform
 runtime-version: 5.15-23.08
 sdk: org.kde.Sdk
@@ -21,27 +21,13 @@ finish-args:
   - --allow=devel
   - --allow=bluetooth
   - --env=PATH=/app/bin:/usr/bin:/usr/sbin
-  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0
   - --require-version=1.12.0
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
 
-add-extensions:
-  org.freedesktop.Platform.GL:
-    directory: lib/GL
-    version: '23.08'
-    subdirectories: true
-    add-ld-path: lib
-    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d
-    download-if: active-gl-driver
-    enable-if: active-gl-driver
-
 modules:
-- name: essential-dirs
-  buildsystem: simple
-  build-commands:
-    - mkdir -p /app/lib/GL
 
 - name: OpenCL
   buildsystem: cmake-ninja
@@ -58,7 +44,9 @@ modules:
   sources:
     - type: git
       url: https://github.com/mesonbuild/meson.git
-      tag: '1.2.2'
+      tag: '1.5.1'
+  cleanup:
+    - '*'
 
 - name: xxhash
   no-autogen: true
@@ -66,23 +54,34 @@ modules:
     - PREFIX=${FLATPAK_DEST}
   cleanup:
     - /bin/*
-    - /lib/pkgconfig
-    - /lib/*.a
+    - '*.a'
     - /share
   sources:
     - type: archive
-      url: https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.1.tar.gz
-      sha256: 3bb6b7d6f30c591dd65aaaff1c8b7a5b94d81687998ca9400082c739a690436c
+      url: https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz
+      sha256: baee0c6afd4f03165de7a4e67988d16f0f2b257b51d0e3cb91909302a26a79c4
 
 - name: toml++
   buildsystem: meson
   builddir: true
-  config-opts:
-    - --libdir=lib
   sources:
     - type: archive
-      url: https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.3.0.tar.gz
-      sha256: fc1a5eb410f3c67e90e5ad1264a1386d020067cfb01b633cc8c0441789aa6cf2
+      url: https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
+      sha256: 8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155
+
+- name: iceoryx
+  buildsystem: cmake-ninja
+  builddir: true
+  subdir: iceoryx_meta/
+  config-opts:
+    - -DBUILD_DOC=OFF
+    - -DBUILD_SHARED_LIBS=ON
+    - -DINTROSPECTION=ON
+    - -DTOML_CONFIG=OFF
+  sources:
+    - type: archive
+      url: https://github.com/eclipse-iceoryx/iceoryx/archive/refs/tags/v2.0.6.tar.gz
+      sha256: a2add8ffee0c3357ef985cc46c7de79ccb754ea2bed02c61f2ff805ab2c869f1
 
 - name: openblas
   no-autogen: true
@@ -97,8 +96,8 @@ modules:
     - PREFIX=/app
   sources:
     - type: archive
-      url: https://github.com/xianyi/OpenBLAS/releases/download/v0.3.23/OpenBLAS-0.3.23.tar.gz
-      sha256: 5d9491d07168a5d00116cdc068a40022c3455bf9293c7cb86a65b1054d7e5114
+      url: https://github.com/xianyi/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28.tar.gz
+      sha256: f1003466ad074e9b0c8d421a204121100b0751c96fc6fcf3d1456bd12f8a00a1
   cleanup:
     - "*.a"
     - "/include"
@@ -138,7 +137,6 @@ modules:
     - -DBUILD_EXAMPLES=OFF
     - -DINSTALL_C_EXAMPLES=OFF
     - -DINSTALL_PYTHON_EXAMPLES=OFF
-    # - -DOPENCV_EXTRA_MODULES_PATH="contrib/modules"
     - -DCPU_BASELINE=AVX2
     - -DCPU_DISPATCH=AVX,AVX2
     - -DWITH_1394=OFF
@@ -146,27 +144,32 @@ modules:
     - -DWITH_PROTOBUF=ON
     - -DWITH_QT=ON
     - -DWITH_GTK=OFF
-    - -DWITH_CAROTENE=OFF # fails on Flathub ARM builders and is only relevant for ARM
-    - -DBUILD_LIST=core,dnn,features2d,flann,highgui,imgcodecs,imgproc,ml,objdetect,photo,python_bindings_generator,python_tests,stitching,video,videoio
+    - -DBUILD_LIST=core,dnn,features2d,flann,highgui,imgcodecs,imgproc,ml,objdetect,photo,python_bindings_generator,stitching,video,videoio
   build-options:
     env:
       BLAS: "/app/lib"
       LAPACK: "/app/lib"
+    arch:
+      aarch64:
+        config-opts:
+          - -DWITH_CAROTENE=OFF # fails on Flathub ARM builders and is only relevant for ARM
+          # reduced featureset for ARM64 for now: dnn disabled due to build failure
+          - -DBUILD_LIST=core,features2d,flann,highgui,imgcodecs,imgproc,ml,objdetect,photo,python_bindings_generator,stitching,video,videoio
   cleanup:
     - /bin
   sources:
     - type: archive
-      url: https://github.com/opencv/opencv/archive/refs/tags/4.8.0.tar.gz
-      sha256: cbf47ecc336d2bff36b0dcd7d6c179a9bb59e805136af6b9670ca944aef889bd
+      url: https://github.com/opencv/opencv/archive/refs/tags/4.10.0.tar.gz
+      sha256: b2171af5be6b26f7a06b1229948bbb2bdaa74fcf5cd097e0af6378fce50a6eb9
     - type: archive
-      url: https://github.com/opencv/opencv_contrib/archive/refs/tags/4.8.0.tar.gz
-      sha256: b4aef0f25a22edcd7305df830fa926ca304ea9db65de6ccd02f6cfa5f3357dbb
+      url: https://github.com/opencv/opencv_contrib/archive/refs/tags/4.10.0.tar.gz
+      sha256: 65597f8fb8dc2b876c1b45b928bbcc5f772ddbaf97539bf1b737623d0604cba1
 
 - name: pybind11
   buildsystem: simple
   build-commands:
     - python3 setup.py build
-    - cmake -DPYBIND11_INSTALL=ON -DPYBIND11_TEST=OFF -DCMAKE_INSTALL_INCLUDEDIR:PATH=${FLATPAK_DEST}/include
+    - cmake -G Ninja -DPYBIND11_INSTALL=ON -DPYBIND11_TEST=OFF -DCMAKE_INSTALL_INCLUDEDIR:PATH=${FLATPAK_DEST}/include
       -DCMAKE_INSTALL_LIBDIR:PATH=${FLATPAK_DEST}/lib -DCMAKE_INSTALL_DATAROOTDIR:PATH=${FLATPAK_DEST}/share
       .
     - python3 setup.py install --prefix=${FLATPAK_DEST}
@@ -174,30 +177,16 @@ modules:
     - cmake --install .
   sources:
     - type: archive
-      url: https://github.com/pybind/pybind11/archive/refs/tags/v2.10.4.tar.gz
-      sha256: 832e2f309c57da9c1e6d4542dedd34b24e4192ecb4d62f6f4866a737454c9970
-
-- name: python3-numpy
-  buildsystem: simple
-  build-commands:
-    - python3 setup.py build -j6
-    - python3 setup.py install --prefix=/app --root=/ --optimize=1
-  build-options:
-    env:
-      ATLAS: None
-      BLAS: "/app/lib"
-      LAPACK: "/app/lib"
-  cleanup:
-    - "/bin"
-  sources:
-    - type: archive
-      url: https://github.com/numpy/numpy/releases/download/v1.26.2/numpy-1.26.2.tar.gz
-      sha256: f65738447676ab5777f11e6bbbdb8ce11b785e105f690bc45966574816b6d3ea
+      url: https://github.com/pybind/pybind11/archive/refs/tags/v2.13.4.tar.gz
+      sha256: efc901aa0aab439a3fea6efeaf930b5a349fb06394bf845c64ce15a9cf8f0240
 
 - modules/git.yaml
+- modules/numpy.yaml
 - modules/python/module-requirements.yaml
 - modules/python/tkinter.yaml
+- modules/aravis.yaml
 - modules/tiscamera.yaml
+- modules/qtermwidget.yaml
 
 - name: pomidaq
   buildsystem: cmake-ninja
@@ -208,21 +197,20 @@ modules:
   sources:
     - type: git
       url: https://github.com/bothlab/pomidaq.git
-      commit: e82bbe3aed435178a3f86d2f831c1ea1b591f82b
+      tag: v0.5.2
 
 - name: syntalos
   buildsystem: meson
   builddir: true
   config-opts:
-    - --libdir=lib
     - -Doptimize-modern-amd64=true
     - -Dudevdir=/app/lib/udev
   build-options:
     arch:
       aarch64:
         config-opts:
-          - -Dmodules=camera-tis,miniscope,plot
+          - -Dmodules=camera-arv,camera-tis,miniscope,plot
   sources:
     - type: git
-      url: https://github.com/bothlab/syntalos.git
-      tag: v1.1.0
+      url: https://github.com/syntalos/syntalos.git
+      commit: d4b1a6afa17f7159b096522f3368c8043f969727
