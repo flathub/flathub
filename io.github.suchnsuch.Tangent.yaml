@@ -1,0 +1,64 @@
+id: io.github.suchnsuch.Tangent
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+# Electron doesn't use a traditional locale format
+separate-locales: false
+writable-sdk: true
+command: run.sh
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  # Probably not needed
+  #- --socket=pulseaudio
+  # Also probably not needed
+  #- --share=network
+  - --filesystem=home
+modules:
+  - name: tangent
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+        XDG_CACHE_HOME: /run/build/tangent/flatpak-node/cache
+        npm_config_cache: /run/build/tangent/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node20
+        npm_config_offline: 'true'
+    # Don't use - causes an error
+    #subdir: main
+    sources:
+      - type: git
+        url: https://github.com/k8ieone/Tangent
+        tag: main
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/tangent_electron "$@"
+      - type: file
+        path: io.github.suchnsuch.Tangent.desktop
+      - type: file
+        path: io.github.suchnsuch.Tangent.metainfo.xml
+      - generated-sources.json
+    build-commands:
+      # build linux
+      - npm install --offline
+      - npm run build
+      - |
+        . flatpak-node/electron-builder-arch-args.sh
+        npm run --workspace apps/tangent-electron package:linux -- $ELECTRON_BUILDER_ARCH_ARGS --dir
+      # install
+      - |
+        if [ "$(uname -m)" = "aarch64" ]; then
+          ARCH="-arm64"
+        fi
+        cp -a apps/tangent-electron/dist/linux$ARCH-unpacked /app/main
+      - install -Dm644 -T apps/tangent-electron/static/tangent-icon.svg /app/share/icons/hicolor/scalable/apps/io.github.suchnsuch.Tangent.svg
+      - install -Dm644 -t /app/share/applications io.github.suchnsuch.Tangent.desktop
+      - install -Dm644 -t /app/share/metainfo io.github.suchnsuch.Tangent.metainfo.xml
+      - install -Dm755 -t /app/bin/ run.sh
