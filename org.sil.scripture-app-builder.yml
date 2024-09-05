@@ -1,0 +1,114 @@
+# REFERENCES:
+  # Python2.7:  https://github.com/flathub/shared-modules/blob/cc50bdbb34cc3d29bf61cfea5e27cd980b7bda04/python2.7/python-2.7.json
+  # OpenJDK17: https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/blob/branch/23.08/org.freedesktop.Sdk.Extension.openjdk17.yaml
+  # Node20:    https://github.com/flathub/org.freedesktop.Sdk.Extension.node20/blob/branch/23.08/org.freedesktop.Sdk.Extension.node20.yaml
+# FIRST-TIME-BUILD: ~30m on 10-20Mb/s download speed
+app-id: org.sil.scripture-app-builder
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+  # - org.freedesktop.Sdk.Extension.openjdk21
+finish-args:
+  # Window x11 socket access
+  - --socket=x11
+  # Audio access
+  - --socket=pulseaudio
+  # Unsure if the program absolutely needs ssh
+  # - --socket=ssh-auth
+  # Or the printer socket
+  # - --socket=cups
+  # Network access
+  - --share=network
+  # XShm access
+  - --share=ipc
+  # All external devices (catch all for devices we interact with and graphical acceleration)
+  - --device=all
+  # Local file browsing access
+  - --filesystem=host
+  # Temporary file access
+  - --filesystem=/tmp
+  # Filesystem mounts
+  - --filesystem=/mnt
+  # USB Drives
+  - --system-talk-name=org.freedesktop.Udisks2
+  # File saving access
+  - --system-talk-name=org.freedesktop.FileManager1
+
+# Build args give resource access during the build
+build-options:
+  build-args:
+    - --share=network
+
+# App's run command
+command: sab-run.sh
+
+modules:
+
+# For in-app terminal
+- xterm.yml
+
+- python3-aeneas.yml
+
+# For python scripts
+- python3-requests.yaml
+
+# For pwa
+- sab-node20.yml
+
+- openjdk17.yml
+
+- name: scripture-app-builder
+  buildsystem: simple
+  build-commands:
+    - pwd
+    # Source tarball from a docker image and extract to flatpak app
+    - cd /tmp
+    - python3 /run/build/scripture-app-builder/docker_pull.py ghcr.io/sillsdev/scripture-app-builder:12.0
+    - python3 /run/build/scripture-app-builder/extract_layer.py /app/output
+    - rm sillsdev_scripture-app-builder.tar
+    - cd /run/build/scripture-app-builder
+    # Copy only the necessary files
+    - mkdir -p app/scripture-app-builder
+    - mkdir -p /app/scripture-app-builder/bin
+    - cp -RPn /app/output/bin/* /app/scripture-app-builder/bin/
+    - cp -RPn /app/output/fonts /app/output/images /app/output/html /app/output/info /app/output/lib /app/output/docs /app/output/tools /app/output/pwa /app/scripture-app-builder/
+    # JavaFX SDK
+    - unzip -q -j -d sdk sdk.zip '*lib/*'
+      #- mkdir /app/lib
+    - mv sdk /app/lib/sdk
+    # Icons, desktop entry, metainfo and runner script
+    - mkdir -p /app/share/icons/hicolor/128x128/apps
+    - mkdir -p /app/share/icons/hicolor/scalable/apps
+    - mv /app/output/app-icons/scripture-app-builder.png /app/share/icons/hicolor/128x128/apps/org.sil.scripture-app-builder.png
+    - mv /app/output/app-icons/scripture-app-builder.svg /app/share/icons/hicolor/scalable/apps/org.sil.scripture-app-builder.svg
+    - mkdir -p  /app/share/applications
+    - desktop-file-install --dir /app/share/applications org.sil.scripture-app-builder.desktop
+    - install -Dm644 org.sil.scripture-app-builder.metainfo.xml -t /app/share/metainfo/
+    - install -Dm755 sab-run.sh /app/bin/sab-run.sh
+    - rm -rf /app/output/*
+  sources:
+    - type: file
+      path: docker_pull.py
+    - type: file
+      path: extract_layer.py
+    - type: file
+      path: sab-run.sh
+    - type: file
+      path: org.sil.scripture-app-builder.desktop
+    - type: file
+      path: org.sil.scripture-app-builder.metainfo.xml
+    # JavaFX .zip archive
+    - type: file
+      only-arches:
+      - x86_64
+      dest-filename: sdk.zip
+      url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11_linux-x64_bin-sdk.zip
+      sha256: f46a1fbea32b83cca6715d74cba7d9c24ce320f1da2daf8ff852f133e9f15674
+    - type: file
+      only-arches:
+      - aarch64
+      dest-filename: sdk.zip
+      url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11-javadoc.zip
+      sha256: 92695d1be7bd1d08562444ad5325cc9f08410b18a1f1aebb4a7cc96d854d6cfc
