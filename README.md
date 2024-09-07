@@ -9,13 +9,13 @@
 To install Kazumi via Flatpak, run the following commands:
 
 ```bash
-flatpak install flathub com.github.Predidit.Kazumi
+flatpak install flathub io.github.Predidit.Kazumi
 ```
 
 Once installed, you can launch the application with:
 
 ```bash
-flatpak run com.github.Predidit.Kazumi
+flatpak run io.github.Predidit.Kazumi
 ```
 Or you can simply launch it by clicking the icon in your desktop environment.
 
