@@ -13,4 +13,4 @@
 # echo " "
 # echo "$@"
 # echo " "
-exec /app/jre/bin/java --module-path "/app/lib/sdk" --add-modules javafx.web,javafx.fxml,javafx.swing,javafx.media --add-opens=javafx.fxml/javafx.fxml=ALL-UNNAMED -jar /app/scripture-app-builder/bin/scripture-app-builder.jar $@
+exec /app/jre/bin/java --module-path "/app/lib/sdk" --add-modules javafx.web,javafx.fxml,javafx.swing,javafx.media --add-opens=javafx.fxml/javafx.fxml=ALL-UNNAMED -jar /app/scripture-app-builder/bin/scripture-app-builder.jar "$@"
