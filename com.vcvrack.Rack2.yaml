@@ -12,15 +12,46 @@ finish-args:
   - --device=dri
 
 modules:
+  - name: markdown
+    buildsystem: cmake-ninja
+    config-opts:
+      - "-DCMAKE_BUILD_TYPE=Release"
+    sources:
+    - type: git
+      url: https://github.com/fletcher/MultiMarkdown-6.git
+      tag: 6.7.0
+
   - name: rack2free
     buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
     build-commands:
-      - install -Dm644 metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - install -Dm755 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644  res/icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/com.vcvrack.Rack2.png
-      - install -Dm755 rack_wrapper.sh ${FLATPAK_DEST}/bin/rack
-      - cp -a ./ ${FLATPAK_DEST}/
+      - |
+        set -e
+        J_CPUS=$(($(getconf _NPROCESSORS_ONLN)+1))
+        rm -rf plugins/.gitignore
+        make -j${J_CPUS} dep
+        make -j${J_CPUS}
+        pushd plugins/Fundamental
+        make -j${J_CPUS} dist
+        popd
+        make -j${J_CPUS} dist
+        cp -R dist/Rack2Free/* ${FLATPAK_DEST}/
+        install -Dm644 metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+        install -Dm755 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+        install -Dm644  res/icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/com.vcvrack.Rack2.png
+        install -Dm755 rack_wrapper.sh ${FLATPAK_DEST}/bin/rack
+        rm -rf ${FLATPAK_DEST}/bin/m* ${FLATPAK_DEST}/lib/ ${FLATPAK_DEST}/share/doc/ ${FLATPAK_DEST}/share/texmf/
     sources:
+      - type: git
+        url: https://github.com/VCVRack/Rack.git
+        commit: 58f2482df860fe878581423aedc8cadb1d94eb50
+        dest: .
+      - type: git
+        url: https://github.com/VCVRack/Fundamental.git
+        commit: b453f192d22b1c951d71e8a73f28a37cd96a7b6c
+        dest: plugins/Fundamental
       - type: file
         path: com.vcvrack.Rack2.desktop
       - type: file
@@ -30,6 +61,3 @@ modules:
         commands:
           - cd /app
           - exec /app/Rack --system /app --user ${XDG_DATA_HOME} "$@"
-      - type: archive
-        url: https://vcvrack.com/downloads/RackFree-2.5.2-lin-x64.zip
-        sha256: 6c7bba5f3ccf8fe667771ddd2619c6a17f84b5dfd31d3683f56c253e27629ca1
