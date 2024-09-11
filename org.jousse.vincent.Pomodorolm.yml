@@ -3,6 +3,9 @@ id: org.jousse.vincent.Pomodorolm
 runtime: org.gnome.Platform
 runtime-version: "46"
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
 
 command: pomodorolm
 finish-args:
@@ -11,35 +14,70 @@ finish-args:
   - --socket=pulseaudio # We want to be able to play sounds
   - --device=dri # OpenGL
   - --share=ipc
-  - --env=APPDIR=/app # Fake AppImage env for Tauri. Needed so than it will look for assets in /app
+  - --env=FLATPAK=1 # Used to tell the app to look for assets in /app/lib/pomodorolm
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
-  # Required for the systray to work
-  - --own-name=org.kde.*
   # Needed for the systray to work properly. libappindicator emits a dbus signal with the systray icon absolute path
   # so flatpak and the host need to both have access to the icon for the systray to work properly
-  - --filesystem=xdg-data
+  - --filesystem=xdg-data/tray-icon
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
 
 modules:
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
-  - name: binary
+  - name: pomodorolm
     buildsystem: simple
     sources:
+      - type: git
+        url: https://github.com/vjousse/pomodorolm.git
+        tag: app-v0.1.10
+        commit: 73597e8f09120588fd2b5cc0f3c0d3e22e3eb306
+
+      # flatpak-node-generator npm -o flatpak/node-sources.json package-lock.json
+      - node-sources.json
+
+      # flatpak-cargo-generator.py -d ./src-tauri/Cargo.lock -o flatpak/cargo-sources.json
+      - cargo-sources.json
+
+      # flatpak-elm-generator.py ../elm.json elm-sources.json
+      - elm-sources.json
+
       - type: file
-        url: https://github.com/vjousse/pomodorolm/releases/download/app-v0.1.8/pomodorolm_0.1.8_amd64.deb
-        sha256: ff1b5b6ed87489f446c852ef47e5bec1018347a371518bfe7411f932ecad88a4
-      - type: file
-        path: org.jousse.vincent.Pomodorolm.metainfo.xml
-      - type: file
-        path: org.jousse.vincent.Pomodorolm.desktop
+        path: registry.dat
+
+    build-options:
+      env:
+        CARGO_HOME: /run/build/pomodorolm/cargo
+        XDG_CACHE_HOME: /run/build/pomodorolm/flatpak-node/cache
+        npm_config_cache: /run/build/pomodorolm/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        ELM_HOME: /run/build/pomodorolm/elm-stuff/home/.elm/
     build-commands:
-      - ar -x *.deb
-      - tar -xf data.tar.gz
-      - "install -Dm755 usr/bin/pomodorolm /app/bin/pomodorolm"
-      - mkdir -p /app/usr/lib
-      - cp -rf usr/lib/pomodorolm /app/usr/lib/
-      - install -Dm644 usr/share/icons/hicolor/128x128/apps/pomodorolm.png /app/share/icons/hicolor/128x128/apps/org.jousse.vincent.Pomodorolm.png
-      - install -Dm644 usr/share/icons/hicolor/32x32/apps/pomodorolm.png /app/share/icons/hicolor/32x32/apps/org.jousse.vincent.Pomodorolm.png
-      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/pomodorolm.png /app/share/icons/hicolor/256x256@2/apps/org.jousse.vincent.Pomodorolm.png
+      # To work offline, Elm needs a proper registry.dat than can only be generated
+      # when connected to internet, so we provide one with the bundle
+      - mv registry.dat elm-stuff/home/.elm/0.19.1/packages/registry.dat
+      # Node packages
+      - npm ci --offline --legacy-peer-deps
+      # Rust packages
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose
+      # Compile the app without creating any bundle
+      - npm run --offline tauri build -- --no-bundle
+
       - install -Dm644 -t /app/share/metainfo/ org.jousse.vincent.Pomodorolm.metainfo.xml
       - install -Dm644 -t /app/share/applications/ org.jousse.vincent.Pomodorolm.desktop
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/pomodorolm
+
+      # Install icons
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/org.jousse.vincent.Pomodorolm.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/org.jousse.vincent.Pomodorolm.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/org.jousse.vincent.Pomodorolm.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/256x256@2/apps/org.jousse.vincent.Pomodorolm.png
+
+      # Copy the assets
+      - mkdir -p /app/lib/pomodorolm
+      - cp -rf src-tauri/themes /app/lib/pomodorolm
+      - cp -rf src-tauri/audio /app/lib/pomodorolm
+
+    post-install:
+      - install -Dm644 LICENSE /app/share/licenses/org.jousse.vincent.Pomodorolm/LICENSE
