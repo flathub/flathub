@@ -1,5 +1,5 @@
 #!/bin/sh
 
-export PYTHONPATH="/app/opt/trelby-2.4.10/:/app/opt/trelby-2.4.10/bin:/app/opt/trelby-2.4.10/src"
+export PYTHONPATH="/app/opt/trelby/:/app/opt/trelby/bin:/app/opt/trelby/src"
 
-exec "/app/opt/trelby-2.4.10/bin/trelby" "$@"
+exec "/app/opt/trelby/bin/trelby" "$@"
