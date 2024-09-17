@@ -1,0 +1,110 @@
+app-id: io.ente.auth
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: ente_auth
+finish-args:
+  # X11 + XShm access  
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # Flutter needs GPU permission.
+  - --device=dri
+  # Needs to talk to the network for authentication
+  - --share=network
+  # For desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.93
+        commit: 238c8b02718fa5b4af95ede72beeed762094f4cc
+        x-checker-data:
+          type: git
+    modules:
+      - shared-modules/intltool/intltool-0.51.json
+      - name: ayatana-ido
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/ayatana-ido.git
+            tag: 0.10.4
+      - name: libayatana-indicator
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DENABLE_LOADER=NO
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+            tag: 0.9.4
+            commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+            x-checker-data:
+              type: git
+      - name: libdbusmenu-gtk3
+        buildsystem: autotools
+        build-options:
+          cflags: -Wno-error
+        config-opts:
+          - --with-gtk=3
+          - --disable-dumper
+          - --disable-static
+          - --disable-gtk-doc
+          - --enable-introspection=no
+          - --disable-vala
+        cleanup:
+          - /share/gtk-doc
+          - /share/libdbusmenu
+        sources:
+          - type: archive
+            url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+            sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      # Context on disabling crypto: https://gitlab.gnome.org/GNOME/libsecret/-/issues/58
+      - -Dcrypto=disabled
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dmanpage=false
+      - -Dvapi=false
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
+        sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
+
+  - name: ente_auth
+    buildsystem: simple
+    build-commands:
+      - bsdtar --to-stdout -xf ente-auth*.deb data.* | bsdtar -xf -
+      - mkdir ${FLATPAK_DEST}/bin ${FLATPAK_DEST}/share
+      - mv share/* ${FLATPAK_DEST}/share
+      - sed -i 's/<id>ente_auth/<id>io.ente.auth/' ${FLATPAK_DEST}/share/metainfo/ente_auth.appdata.xml
+      - "ln -s /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 /app/lib/libsqlite3.so"
+      - "if [ ! -e '/app/lib/libsqlite3.so' ]; then ln -s -f /usr/lib/aarch64-linux-gnu/libsqlite3.so.0 /app/lib/libsqlite3.so; fi"
+      - ln -s ${FLATPAK_DEST}/share/ente_auth/ente_auth ${FLATPAK_DEST}/bin/ente_auth
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/ente-io/ente/releases/download/auth-v3.1.3/ente-auth-v3.1.3-x86_64.deb
+        sha256: 03eaabcb14b2af781fb3feec4905b8695422294292546245252567b5500e242c
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ente-io/ente/releases/latest
+          version-query: '[.[].tag_name | select(startswith("auth-"))] | 
+          url-query: .assets[] | select(.name=="ente-auth-" + $version + "-x86_64.deb")
+            | .browser_download_url
