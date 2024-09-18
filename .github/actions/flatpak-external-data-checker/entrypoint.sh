@@ -12,7 +12,7 @@ mkdir flathub
 cd flathub || exit
 
 gh-ls-org flathub | parallel "git clone --depth 1 {}"
-mapfile -t checker_apps < <( grep -rl -E 'extra-data|x-checker-data|\.AppImage' | cut -d/ -f1 | sort -u )
+mapfile -t checker_apps < <( grep -rl -E 'extra-data|x-checker-data|\.AppImage' | cut -d/ -f1 | sort -u | shuf )
 
 for repo in "${checker_apps[@]}"; do
     FEDC_OPTS=()
