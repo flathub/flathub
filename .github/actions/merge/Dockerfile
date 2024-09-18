@@ -7,7 +7,7 @@ RUN apt-get update && \
 ADD requirements.txt .
 
 RUN python -m venv /venv && \
-    /venv/bin/python -m pip install -r requirements.txt
+    /venv/bin/python -m pip install -r requirements.txt PyGObject
 
 FROM python:3.12-slim
 ENV PATH="/venv/bin:$PATH"
