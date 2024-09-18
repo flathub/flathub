@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
+import datetime
 import os
 
 import github
@@ -14,6 +15,10 @@ if __name__ == "__main__":
     parser.add_argument("organization", help="name of github organization")
     args = parser.parse_args()
 
+    earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        weeks=5
+    )
+
     github_token = os.environ['GITHUB_TOKEN']
     g = github.Github(github_token, per_page=200)
 
@@ -21,4 +26,24 @@ if __name__ == "__main__":
 
     for repo in org.get_repos():
         if not repo.archived:
+            try:
+                default_branch = repo.default_branch
+                branch = repo.get_branch(default_branch)
+                last_commit = repo.get_commit(branch.commit.sha)
+                last_commit_time = last_commit.commit.committer.date.astimezone(
+                    datetime.timezone.utc
+                )
+                pr_count = [
+                    pr
+                    for pr in repo.get_pulls(state="open")
+                    if pr.user.login == "flathubbot"
+                ]
+            except github.GithubException.GithubException:
+                pr_count = []
+                last_commit_time = datetime.datetime.now(
+                    datetime.timezone.utc
+                ) + datetime.timedelta(seconds=10)
+                pass
+            if len(pr_count) >= 10 and last_commit_time < earliest:
+                continue
             print(repo.html_url)
