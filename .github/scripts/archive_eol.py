@@ -118,11 +118,12 @@ def main() -> None:
         # 3-1.6, 3-18.08 is EOL
         "org.videolan.VLC.Plugin.fdkaac",
     }
-    # we need to get apps which are EOL on both supported arches
-    # as there are apps which are only EOL on one arch but maintained
-    # in another. This might miss some refs but LBYL!
-    stable = get_eol_refs("x86_64", "flathub") & get_eol_refs("aarch64", "flathub")
-    eols = list(stable - excludes)
+
+    stable = get_eol_refs("x86_64", "flathub") | get_eol_refs("aarch64", "flathub")
+    beta = get_eol_refs("x86_64", "flathub-beta") | get_eol_refs(
+        "aarch64", "flathub-beta"
+    )
+    eols = list((stable | beta) - excludes)
 
     if not eols:
         return
