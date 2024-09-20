@@ -4,7 +4,11 @@ import subprocess
 import time
 
 import github
-from github.GithubException import RateLimitExceededException, UnknownObjectException
+from github.GithubException import (
+    RateLimitExceededException,
+    UnknownObjectException,
+    GithubException,
+)
 
 
 def ignore_ref(ref: str) -> bool:
@@ -132,12 +136,18 @@ def main() -> None:
         try:
             repo = g.get_repo(f"flathub/{refname}")
             if not repo.archived:
-                default_branch = repo.default_branch
-                branch = repo.get_branch(default_branch)
-                last_commit = repo.get_commit(branch.commit.sha)
-                last_commit_time = last_commit.commit.committer.date.astimezone(
-                    datetime.timezone.utc
-                )
+                try:
+                    default_branch = repo.default_branch
+                    branch = repo.get_branch(default_branch)
+                    last_commit = repo.get_commit(branch.commit.sha)
+                    last_commit_time = last_commit.commit.committer.date.astimezone(
+                        datetime.timezone.utc
+                    )
+                except GithubException:
+                    last_commit_time = datetime.datetime.now(
+                        datetime.timezone.utc
+                    ) + datetime.timedelta(seconds=10)
+                    pass
                 if last_commit_time < earliest:
                     print(
                         "Archiving: {} Repo is in EOL list. Last push: {}, earlier than: {}".format(
