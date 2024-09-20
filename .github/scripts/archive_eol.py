@@ -119,6 +119,8 @@ def main() -> None:
                         repo.html_url, repo.pushed_at.isoformat(), earliest.isoformat()
                     )
                 )
+                desc = "This repo is archived as the app is EOL."
+                repo.edit(description=desc)
                 repo.edit(archived=True)
         except UnknownObjectException:
             pass
