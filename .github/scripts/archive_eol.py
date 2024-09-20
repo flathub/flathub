@@ -83,6 +83,10 @@ def main() -> None:
         "org.freedesktop.LinuxAudio.Plugins.swh",
         "org.freedesktop.LinuxAudio.Plugins.GxPlugins",
         "org.freedesktop.LinuxAudio.Plugins.KapitonovPluginsPack",
+        "org.freedesktop.LinuxAudio.Plugins.ArtyFX",
+        "org.freedesktop.LinuxAudio.Plugins.Sorcer",
+        "org.freedesktop.LinuxAudio.Plugins.ADLplug",
+        "org.freedesktop.LinuxAudio.Plugins.Fabla",
         # 1.6 branch is EOL
         "org.freedesktop.Sdk.Extension.golang",
         # 19.08, 20.08, 21.08 are EOL
