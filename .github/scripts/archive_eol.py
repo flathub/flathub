@@ -128,7 +128,7 @@ def main() -> None:
                             earliest.isoformat(),
                         )
                     )
-                    desc = "This repo is archived as the app is EOL."
+                    desc = "This repo is archived by Flathub as the app is EOL. If this was done in error, please open an issue at https://github.com/flathub/flathub/issues"
                     repo.edit(description=desc)
                     repo.edit(archived=True)
         except UnknownObjectException:
