@@ -43,5 +43,5 @@ for repo in "${checker_apps[@]}"; do
     fi
 
     echo "==> checking ${repo}"
-    /app/flatpak-external-data-checker --verbose --update "${FEDC_OPTS[@]}" "$repo/$manifest"
+    /app/flatpak-external-data-checker --verbose --update "${FEDC_OPTS[@]}" "$repo/$manifest" || true
 done
