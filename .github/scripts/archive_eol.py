@@ -113,15 +113,24 @@ def main() -> None:
         refname = eols[count]
         try:
             repo = g.get_repo(f"flathub/{refname}")
-            if not repo.archived and repo.pushed_at < earliest:
-                print(
-                    "Archiving: {} Repo is in EOL list. Last push: {}, earlier than: {}".format(
-                        repo.html_url, repo.pushed_at.isoformat(), earliest.isoformat()
-                    )
+            if not repo.archived:
+                default_branch = repo.default_branch
+                branch = repo.get_branch(default_branch)
+                last_commit = repo.get_commit(branch.commit.sha)
+                last_commit_time = last_commit.commit.committer.date.astimezone(
+                    datetime.timezone.utc
                 )
-                desc = "This repo is archived as the app is EOL."
-                repo.edit(description=desc)
-                repo.edit(archived=True)
+                if last_commit_time < earliest:
+                    print(
+                        "Archiving: {} Repo is in EOL list. Last push: {}, earlier than: {}".format(
+                            repo.html_url,
+                            last_commit_time.isoformat(),
+                            earliest.isoformat(),
+                        )
+                    )
+                    desc = "This repo is archived as the app is EOL."
+                    repo.edit(description=desc)
+                    repo.edit(archived=True)
         except UnknownObjectException:
             pass
         except RateLimitExceededException:
