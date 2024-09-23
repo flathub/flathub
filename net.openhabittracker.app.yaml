@@ -1,0 +1,85 @@
+id: net.openhabittracker.app
+#runtime: org.freedesktop.Platform
+#runtime-version: '23.08'
+#sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet8/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet8/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet8/lib/pkgconfig"
+
+command: OpenHT
+
+finish-args:
+  - --device=dri
+  # TODO: Replace this with wayland and fallback-x11 once Wayland support
+  #       becomes available:
+  #       https://github.com/AvaloniaUI/Avalonia/pull/8003
+  - --socket=x11
+  - --share=ipc
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+modules:
+  - name: webkit2gtk-4.0
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.44.4.tar.xz
+        sha256: 2ce4ec1b78413035037aba8326b31ed72696626b7bea7bace5e46ac0d8cbe796
+        x-checker-data:
+          type: html
+          url: https://webkitgtk.org/releases/
+          version-pattern: LATEST-STABLE-(\d[\.\d]+\d)
+          url-template: https://webkitgtk.org/releases/webkitgtk-$version.tar.xz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DENABLE_DOCUMENTATION=OFF
+      - -DENABLE_MINIBROWSER=OFF
+      - -DENABLE_WEBDRIVER=OFF
+      - -DENABLE_GAMEPAD=OFF
+      - -DUSE_LIBBACKTRACE=OFF
+      - -DUSE_GTK4=OFF
+      - -DUSE_SOUP2=ON
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+    modules:
+      - name: libsoup-2.4
+        buildsystem: meson
+        config-opts:
+        - "-Dtests=false"
+        sources:
+        - type: archive
+          url: https://download.gnome.org/sources/libsoup/2.74/libsoup-2.74.3.tar.xz
+          sha256: e4b77c41cfc4c8c5a035fcdc320c7bc6cfb75ef7c5a034153df1413fa1d92f13
+
+      - name: unifdef
+        no-autogen: true
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - '*'
+
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet8/bin/install.sh
+
+  - name: OpenHabitTracker
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/Jinjinov/OpenHabitTracker.git
+        tag: 1.0.7
+      - ./nuget-sources.json
+    build-commands:
+      - dotnet publish OpenHabitTracker.Blazor.Photino/OpenHabitTracker.Blazor.Photino.csproj -c Release -r linux-x64 -p:PublishSingleFile=true -p:SelfContained=true --source ./nuget-sources
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r OpenHabitTracker.Blazor.Photino/bin/Release/net8.0/linux-x64/publish/* ${FLATPAK_DEST}/bin
