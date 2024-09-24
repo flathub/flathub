@@ -1,0 +1,92 @@
+app-id: io.github.mrstickypiston.stickyhours
+default-branch: 1.0.2
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+command: stickyhours
+cleanup:
+  - /include
+  - /share/man
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+modules:
+  - name: cpython
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+      - cp --archive support/python/bin/* /app/bin
+      - mkdir -p /app/include
+      - cp --archive support/python/include/* /app/include
+      - mkdir -p /app/lib
+      - cp --archive support/python/lib/* /app/lib
+      # Update installation prefix for pip package builds
+      - sed --follow-symlinks -i 's/prefix="\/install"/prefix="\/app"/g' /app/bin/python3-config
+      - sed --follow-symlinks -i 's/prefix=\/install/prefix=\/app/g' /app/lib/pkgconfig/python3.pc /app/lib/pkgconfig/python3-embed.pc
+    sources:
+      - type: dir
+        path: support/python
+        dest: support/python
+    cleanup:
+      - /bin/2to3*
+      - /bin/idle*
+      - /lib/python*/config-*
+  - name: bootstrap
+    no-autogen: true
+    sources:
+      - type: dir
+        path: src/bootstrap/
+  - name: resources
+    buildsystem: simple
+    build-commands:
+      - install -D io.github.mrstickypiston.stickyhours.desktop /app/share/applications/io.github.mrstickypiston.stickyhours.desktop
+      - cp --archive icons /app/share/icons
+    sources:
+      - type: file
+        path: io.github.mrstickypiston.stickyhours.desktop
+      - type: dir
+        path: icons/
+        dest: icons/
+  - name: upgrade_pip
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network  # For downloaded requirements.
+    build-commands:
+      - /app/bin/python3 -m pip install --upgrade pip
+
+  - name: app_packages
+    buildsystem: simple
+    build-options:
+      strip: false
+      no-debuginfo: true
+      build-args:
+        - --filesystem=host  # For local requirements.
+        - --share=network  # For downloaded requirements.
+    build-commands:
+      - mkdir -p /app/briefcase/app_packages
+      # Python-standalone is configured using clang; but clang isn't in
+      # the Flatpak build environment. However, clang and gcc are (mostly)
+      # command line compatible, and the output objects are compatible,
+      # so we can override the CC build environment variable to force the
+      # use of gcc.
+      - CC="gcc -pthread" /app/bin/python3 -m pip install --no-cache-dir -r requirements.txt --target /app/briefcase/app_packages
+    sources:
+      - type: file
+        path: requirements.txt
+  - name: app
+    buildsystem: simple
+    build-options:
+      strip: false
+      no-debuginfo: true
+    build-commands:
+      - mkdir -p /app/briefcase
+      - cp --archive src/app/ /app/briefcase/app
+    sources:
+      - type: dir
+        path: src/app/
+        dest: src/app/
