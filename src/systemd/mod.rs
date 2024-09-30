@@ -3,7 +3,7 @@ pub mod data;
 mod sysdbus;
 mod systemctl;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::process::{Command, Stdio};
 use std::string::FromUtf8Error;
@@ -12,6 +12,7 @@ use data::UnitInfo;
 use enums::{EnablementStatus, UnitType};
 use gtk::glib::GString;
 use log::{error, info, warn};
+use zvariant::OwnedValue;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 
@@ -286,6 +287,11 @@ pub fn fetch_system_info() -> Result<BTreeMap<String, String>, SystemdErrors> {
 pub fn fetch_system_unit_info(unit: &UnitInfo) -> Result<BTreeMap<String, String>, SystemdErrors> {
     let level: DbusLevel = PREFERENCES.dbus_level().into();
     sysdbus::fetch_system_unit_info(level, &unit.object_path())
+}
+
+pub fn fetch_system_unit_info_native(unit: &UnitInfo) -> Result<HashMap<String, OwnedValue>, SystemdErrors> {
+    let level: DbusLevel = PREFERENCES.dbus_level().into();
+    sysdbus::fetch_system_unit_info_native(level, &unit.object_path())
 }
 
 pub fn test_flatpak_spawn(window: &window::Window) {

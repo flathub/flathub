@@ -4,10 +4,9 @@ use gtk::{gdk, gio, prelude::ActionMapExtManual};
 
 use crate::analyze::build_analyze_window;
 use crate::info;
-use log::warn;
+use log::{error, warn};
 
 use super::preferences;
-
 
 pub const APP_TITLE: &str = "SysD Manager";
 
@@ -79,19 +78,25 @@ pub fn on_startup(app: &gtk::Application) {
         .build();
 
     let preferences = gio::ActionEntry::builder("preferences")
-        .activate(|application: &gtk::Application, _, _| {
-            let preferences_window = preferences::build_preferences();
+        .activate(
+            |application: &gtk::Application, _, _| match preferences::build_preferences() {
+                Ok(preferences_window) => {
+                    if let Some(first_window) = application.windows().first() {
+                        preferences_window.set_transient_for(Some(first_window));
+                    }
 
-            if let Some(first_window) = application.windows().first() {
-                preferences_window.set_transient_for(Some(first_window));
-                preferences_window.set_modal(true);
-            }
-
-            preferences_window.present();
-        })
+                    preferences_window.present();
+                }
+                Err(e) => {
+                    error! {"{:?}",e}
+                }
+            },
+        )
         .build();
 
     app.add_action_entries([about, analyze_blame, systemd_info, preferences]);
+
+    app.set_accels_for_action("app.preferences", &["<Ctrl>comma"]);
 }
 
 fn create_about() -> gtk::AboutDialog {

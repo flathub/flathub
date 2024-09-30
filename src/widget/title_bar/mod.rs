@@ -3,6 +3,7 @@ mod menu;
 use super::preferences;
 use gtk::pango::{AttrInt, AttrList, Weight};
 use gtk::prelude::*;
+use crate::widget::button_icon::ButtonIcon;
 
 pub fn build_title_bar(search_bar: &gtk::SearchBar) -> TitleBar {
     // ----------------------------------------------
@@ -35,10 +36,8 @@ pub fn build_title_bar(search_bar: &gtk::SearchBar) -> TitleBar {
     search_button.set_tooltip_text(Some("Filter results"));
     title_bar.pack_start(&search_button);
 
-    let refresh_button = gtk::Button::builder()
-        .label("Refresh")
-        .tooltip_text("Refresh results")
-        .build();
+    let refresh_button = ButtonIcon::new("Refresh", "view-refresh");
+    refresh_button.set_tooltip_text(Some("Refresh results"));
 
     title_bar.pack_start(&refresh_button);
 
@@ -66,5 +65,5 @@ pub struct TitleBar {
     pub title_bar: gtk::HeaderBar,
     pub right_bar_label: gtk::Label,
     pub search_button: gtk::ToggleButton,
-    pub refresh_button: gtk::Button,
+    pub refresh_button: ButtonIcon,
 }

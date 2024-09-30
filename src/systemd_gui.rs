@@ -4,7 +4,7 @@ use gtk::{Application, Orientation};
 
 use crate::systemd::enums::{ActiveState, EnablementStatus, UnitType};
 use crate::widget::button_icon::ButtonIcon;
-use crate::widget::{self, title_bar};
+use crate::widget::{self, title_bar, unit_info};
 use log::{debug, error, info, warn};
 
 use crate::systemd;
@@ -16,14 +16,17 @@ use gtk::glib::{self, BoxedAnyObject, Propagation};
 
 use std::cell::RefMut;
 use std::rc::Rc;
+use std::sync::{LazyLock, RwLock};
 
 use crate::info::rowitem;
 use strum::IntoEnumIterator;
 
 pub const APP_ID: &str = "io.github.plrigaux.sysd-manager";
 
+pub static SELECTED_UNIT: LazyLock<RwLock<Option<UnitInfo>>> = LazyLock::new(|| RwLock::new(None));
+
 #[macro_export]
-macro_rules! get_selected_unit {
+macro_rules! get_selected_unit_old {
     ( $column_view:expr  ) => {{
         let Some(model) = $column_view.model() else {
             panic!("Can't find model")
@@ -46,6 +49,25 @@ macro_rules! get_selected_unit {
             }
         };
         unit
+    }};
+}
+
+macro_rules! selected_unit {
+    ($closure:expr) => {{
+        let unit_read = match SELECTED_UNIT.read() {
+            Ok(unit_read) => unit_read,
+            Err(e) => {
+                warn!("Failed to unlock unit {:?}", e);
+                return;
+            }
+        };
+
+        let Some(unit_ref) = &*unit_read else {
+            error!("No selected unit");
+            return;
+        };
+
+        $closure(&unit_ref)
     }};
 }
 
@@ -326,11 +348,9 @@ fn build_ui(application: &Application) {
         .orientation(Orientation::Vertical)
         .build();
 
-    let refresh_log_button = gtk::Button::builder()
-        .label("Refresh")
-        .focusable(true)
-        .receives_default(true)
-        .build();
+    let refresh_log_button = ButtonIcon::new("Refresh", "view-refresh");
+    refresh_log_button.set_focusable(true);
+    refresh_log_button.set_receives_default(true);
 
     unit_journal_box.append(&unit_journal_scrolled_window);
     unit_journal_box.append(&refresh_log_button);
@@ -347,25 +367,6 @@ fn build_ui(application: &Application) {
             .attributes(&attribute_list)
             .build()
     });
-
-    /*     let attribute_list = AttrList::new();
-     attribute_list.insert(AttrInt::new_weight(Weight::Medium));
-     let total_time_label = gtk::Label::builder()
-         .label("seconds ...")
-         .attributes(&attribute_list)
-         .build();
-
-     // Setup the Analyze stack
-    // let analyze_tree = setup_systemd_analyze_tree(&total_time_label);
-
-     let unit_analyse_scrolled_window = gtk::ScrolledWindow::builder()
-         .vexpand(true)
-         .focusable(true)
-         .child(&analyze_tree)
-         .build();
-
-         unit_analyse_box.append(&total_time_label);
-     unit_analyse_box.append(&unit_analyse_scrolled_window); */
 
     let unit_prop_store = gio::ListStore::new::<rowitem::Metadata>();
 
@@ -405,13 +406,17 @@ fn build_ui(application: &Application) {
             .xalign(0.0)
             .max_width_chars(30)
             .single_line_mode(true)
+            .selectable(true)
             .build();
 
         if long_text {
             l1.set_tooltip_text(Some(&meta.col1()));
         }
 
-        let l2 = gtk::Label::new(Some(&meta.col2()));
+        let l2 = gtk::Label::builder()
+            .label(&meta.col2())
+            .selectable(true)
+            .build();
 
         box_.append(&l1);
         box_.append(&l2);
@@ -422,7 +427,6 @@ fn build_ui(application: &Application) {
     let unit_analyse_scrolled_window = gtk::ScrolledWindow::builder()
         .vexpand(true)
         .focusable(true)
-        .child(&unit_prop_list_box)
         .build();
 
     let info_stack = gtk::Notebook::builder()
@@ -554,49 +558,47 @@ fn build_ui(application: &Application) {
     control_box.append(&restart_button);
 
     {
-        // NOTE: Implement the start button
-        let column_view = units_browser.clone();
         start_button.connect_clicked(move |_button| {
-            let unit = get_selected_unit!(column_view);
-
-            match systemd::start_unit(&unit) {
+            let lambda = |unit: &UnitInfo| match systemd::start_unit(&unit) {
                 Ok(_job) => {
                     info!("Unit \"{}\" has been started!", unit.primary());
                     update_active_state(&unit, ActiveState::Active);
                 }
                 Err(e) => error!("Can't start the unit {}, because: {:?}", unit.primary(), e),
-            }
+            };
+
+            selected_unit!(lambda);
         });
     }
 
     {
-        let column_view = units_browser.clone();
         stop_button.connect_clicked(move |_button| {
-            let unit = get_selected_unit!(column_view);
-
-            match systemd::stop_unit(&unit) {
+            let lambda = |unit: &UnitInfo| match systemd::stop_unit(&unit) {
                 Ok(_job) => {
                     info!("Unit \"{}\" stopped!", unit.primary());
                     update_active_state(&unit, ActiveState::Inactive)
                 }
 
                 Err(e) => error!("Can't stop the unit {}, because: {:?}", unit.primary(), e),
-            }
+            };
+
+            selected_unit!(lambda);
         });
     }
 
     {
-        let column_view = units_browser.clone();
         restart_button.connect_clicked(move |_| {
-            let unit = get_selected_unit!(column_view);
-
-            match systemd::restart_unit(&unit) {
-                Ok(_job) => {
-                    info!("Unit {} restarted!", unit.primary());
-                    update_active_state(&unit, ActiveState::Active);
+            fn lambda(unit: &UnitInfo) {
+                match systemd::restart_unit(&unit) {
+                    Ok(_job) => {
+                        info!("Unit {} restarted!", unit.primary());
+                        update_active_state(&unit, ActiveState::Active);
+                    }
+                    Err(e) => error!("Can't stop the unit {}, because: {:?}", unit.primary(), e),
                 }
-                Err(e) => error!("Can't stop the unit {}, because: {:?}", unit.primary(), e),
             }
+
+            selected_unit!(lambda);
         });
     }
 
@@ -611,6 +613,19 @@ fn build_ui(application: &Application) {
 
     main_box.set_start_child(Some(&left_pane));
     main_box.set_end_child(Some(&right_pane));
+
+    /*     main_box.set_shrink_end_child(false);
+    main_box.set_shrink_start_child(false);
+    main_box.set_resize_start_child(false);
+    main_box.set_resize_end_child(false);
+
+    println!(
+        "rs {} re {} ss {} se {}",
+        main_box.resizes_start_child(),
+        main_box.resizes_end_child(),
+        main_box.shrinks_start_child(),
+        main_box.shrinks_end_child()
+    ); */
 
     let search_bar = gtk::SearchBar::builder()
         .valign(gtk::Align::Start)
@@ -761,24 +776,23 @@ fn build_ui(application: &Application) {
         // NOTE: Journal Refresh Button
         let refresh_button = refresh_log_button.clone();
         let unit_journal = unit_journal_view.clone();
-        let column_view = units_browser.clone();
+
         refresh_button.connect_clicked(move |_| {
-            let unit = get_selected_unit!(column_view);
-            update_journal(&unit_journal, &unit);
+            selected_unit!(|unit: &UnitInfo| update_journal(&unit_journal, &unit));
         });
     }
 
     {
         // NOTE: Save Button
         let unit_info = unit_info.clone();
-        let column_view = units_browser.clone();
+
         save_unit_file_button.connect_clicked(move |_| {
             let buffer = unit_info.buffer();
             let start = buffer.start_iter();
             let end = buffer.end_iter();
             let text = buffer.text(&start, &end, true);
-            let unit = get_selected_unit!(column_view);
-            systemd::save_text_to_file(&unit, &text);
+
+            selected_unit!(|unit: &UnitInfo| systemd::save_text_to_file(&unit, &text));
         });
     }
     {
@@ -801,6 +815,11 @@ fn build_ui(application: &Application) {
                     return;
                 }
             };
+
+            {
+                let mut selected_unit = SELECTED_UNIT.write().unwrap();
+                *selected_unit = Some(unit.clone());
+            }
 
             let description = systemd::get_unit_info(&unit);
 
@@ -828,14 +847,8 @@ fn build_ui(application: &Application) {
 
             unit_prop_store.remove_all();
 
-            match systemd::fetch_system_unit_info(&unit) {
-                Ok(map) => {
-                    for (key, value) in map {
-                        unit_prop_store.append(&rowitem::Metadata::new(key, value));
-                    }
-                }
-                Err(e) => error!("Fail to retreive Unit info: {:?}", e),
-            }
+            let info_panel = unit_info::fill_data(&unit);
+            unit_analyse_scrolled_window.set_child(Some(&info_panel));
         });
     }
     window.present();

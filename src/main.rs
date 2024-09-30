@@ -9,6 +9,7 @@ mod systemd_gui;
 use gtk::gio;
 use gtk::glib;
 mod analyze;
+mod errors;
 mod info;
 mod settings;
 mod widget;

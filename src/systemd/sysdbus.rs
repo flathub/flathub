@@ -74,26 +74,6 @@ impl StartMode {
     }
 }
 
-/* /// Takes a systemd dbus function as input and returns the result as a `dbus::Message`.
-fn dbus_message(function: &str) -> Result<Message, SystemdErrors> {
-    let dest = DESTINATION_SYSTEMD;
-    let path = PATH_SYSTEMD;
-    let interface = INTERFACE_SYSTEMD_MANAGER;
-    match dbus::Message::new_method_call(dest, path, interface, function) {
-        Ok(message) => Ok(message),
-        Err(error) => Err(SystemdErrors::DBusErrorStr(error)),
-    }
-}
-
-/// Takes a `dbus::Message` as input and makes a connection to dbus, returning the reply.
-fn dbus_connect(message: Message) -> Result<Message, SystemdErrors> {
-    let connection = dbus::ffidisp::Connection::get_private(dbus::ffidisp::BusType::System)?;
-
-    let message = connection.send_with_reply_and_block(message, 30000)?;
-
-    Ok(message)
-} */
-
 /// Communicates with dbus to obtain a list of unit files and returns them as a `Vec<SystemdUnit>`.
 pub fn list_unit_files(connection: &Connection) -> Result<Vec<SystemdUnit>, SystemdErrors> {
     let message = connection.call_method(
@@ -201,7 +181,10 @@ fn list_units_description(
 }
 
 /// Returns the current enablement status of the unit
-pub fn get_unit_file_state_path(level: DbusLevel, unit_file: &str) -> Result<EnablementStatus, SystemdErrors> {
+pub fn get_unit_file_state_path(
+    level: DbusLevel,
+    unit_file: &str,
+) -> Result<EnablementStatus, SystemdErrors> {
     let connection = get_connection(level)?;
 
     let message = connection.call_method(
@@ -338,6 +321,7 @@ fn convert_to_string(value: &zvariant::Value) -> String {
             d_str
         }
         zvariant::Value::Fd(fd) => fd.to_string(),
+        zvariant::Value::Maybe(maybe) => maybe.to_string(),
     };
     str_value
 }
@@ -350,19 +334,11 @@ pub fn fetch_system_unit_info(
     level: DbusLevel,
     path: &str,
 ) -> Result<BTreeMap<String, String>, SystemdErrors> {
-    let connection = get_connection(level)?;
-
-    let properties_proxy: zbus::blocking::fdo::PropertiesProxy =
-        fdo::PropertiesProxy::builder(&connection)
-            .destination(DESTINATION_SYSTEMD)?
-            .path(path)?
-            .build()?;
-
-    let hm: HashMap<String, OwnedValue> = properties_proxy.get_all(None.into())?;
+    let properties: HashMap<String, OwnedValue> = fetch_system_unit_info_native(level, path)?;
 
     let mut map = BTreeMap::new();
 
-    for (key, value) in hm.iter() {
+    for (key, value) in properties.iter() {
         debug!("{:?} {:?}", key, value);
 
         let str_val = convert_to_string(value);
@@ -372,10 +348,27 @@ pub fn fetch_system_unit_info(
     Ok(map)
 }
 
+pub fn fetch_system_unit_info_native(
+    level: DbusLevel,
+    path: &str,
+) -> Result<HashMap<String, OwnedValue>, SystemdErrors> {
+    let connection = get_connection(level)?;
+
+    let properties_proxy: zbus::blocking::fdo::PropertiesProxy =
+        fdo::PropertiesProxy::builder(&connection)
+            .destination(DESTINATION_SYSTEMD)?
+            .path(path)?
+            .build()?;
+
+    let properties: HashMap<String, OwnedValue> = properties_proxy.get_all(None.into())?;
+
+    Ok(properties)
+}
+
 #[cfg(test)]
 mod tests {
 
-    use std::collections::HashSet;
+    /*     use std::collections::HashSet;
 
     /* use crate::systemd::collect_togglable_services; */
 
@@ -395,9 +388,9 @@ mod tests {
     fn stop_service_test() -> Result<(), SystemdErrors> {
         stop_unit(DbusLevel::System, TEST_SERVICE)?;
         Ok(())
-    }
+    } */
 
-/*     #[test]
+    /*     #[test]
     fn dbus_test() -> Result<(), SystemdErrors> {
         // let file: &str = "/etc/systemd/system/jackett.service";
         let file1: &str = TEST_SERVICE;
@@ -415,66 +408,66 @@ mod tests {
         }
     } */
 
-    #[test]
-    fn test_get_unit_file_state() {
-        // let file: &str = "/etc/systemd/system/jackett.service";
-        let file1: &str = TEST_SERVICE;
+    /*    #[test]
+       fn test_get_unit_file_state() {
+           // let file: &str = "/etc/systemd/system/jackett.service";
+           let file1: &str = TEST_SERVICE;
 
-        let status = get_unit_file_state_path(DbusLevel::System, file1);
-        debug!("Status: {:?}", status);
-    }
+           let status = get_unit_file_state_path(DbusLevel::System, file1);
+           debug!("Status: {:?}", status);
+       }
 
-    #[test]
-    fn test_list_unit_files() -> Result<(), SystemdErrors> {
-        let units = list_unit_files(&get_connection(DbusLevel::System)?)?;
+       #[test]
+       fn test_list_unit_files() -> Result<(), SystemdErrors> {
+           let units = list_unit_files(&get_connection(DbusLevel::System)?)?;
 
-        let serv = units
-            .iter()
-            .filter(|ud| ud.full_name() == TEST_SERVICE)
-            .nth(0);
+           let serv = units
+               .iter()
+               .filter(|ud| ud.full_name() == TEST_SERVICE)
+               .nth(0);
 
-        debug!("{:#?}", serv);
-        Ok(())
-    }
+           debug!("{:#?}", serv);
+           Ok(())
+       }
 
-    #[test]
-    fn test_list_units() -> Result<(), SystemdErrors> {
-        let units = list_units_description(&get_connection(DbusLevel::System)?)?;
+       #[test]
+       fn test_list_units() -> Result<(), SystemdErrors> {
+           let units = list_units_description(&get_connection(DbusLevel::System)?)?;
 
-        let serv = units.get(TEST_SERVICE);
-        debug!("{:#?}", serv);
-        Ok(())
-    }
+           let serv = units.get(TEST_SERVICE);
+           debug!("{:#?}", serv);
+           Ok(())
+       }
 
-    #[test]
-    fn test_list_units_merge() -> Result<(), SystemdErrors> {
-        let mut units_map = list_units_description(&get_connection(DbusLevel::System)?)?;
+       #[test]
+       fn test_list_units_merge() -> Result<(), SystemdErrors> {
+           let mut units_map = list_units_description(&get_connection(DbusLevel::System)?)?;
 
-        let mut units = list_unit_files(&get_connection(DbusLevel::System)?)?;
+           let mut units = list_unit_files(&get_connection(DbusLevel::System)?)?;
 
-        let mut set: HashSet<String> = HashSet::new();
-        for unit_file in units.drain(..) {
-            match units_map.get_mut(&unit_file.full_name().to_ascii_lowercase()) {
-                Some(unit_info) => {
-                    unit_info.set_file_path(unit_file.path);
-                    unit_info.set_enable_status(unit_file.status_code.to_string());
-                    unit_info.set_enable_status(unit_file.status_code.to_string());
-                }
-                None => debug!("unit \"{}\" not found!", unit_file.full_name()),
-            }
-        }
+           let mut set: HashSet<String> = HashSet::new();
+           for unit_file in units.drain(..) {
+               match units_map.get_mut(&unit_file.full_name().to_ascii_lowercase()) {
+                   Some(unit_info) => {
+                       unit_info.set_file_path(unit_file.path);
+                       unit_info.set_enable_status(unit_file.status_code.to_string());
+                       unit_info.set_enable_status(unit_file.status_code.to_string());
+                   }
+                   None => debug!("unit \"{}\" not found!", unit_file.full_name()),
+               }
+           }
 
-        debug!("{:#?}", units_map.get(TEST_SERVICE));
+           debug!("{:#?}", units_map.get(TEST_SERVICE));
 
-        for unit in units_map.values() {
-            set.insert(unit.unit_type().to_owned());
-        }
+           for unit in units_map.values() {
+               set.insert(unit.unit_type().to_owned());
+           }
 
-        debug!("Unit types {:#?}", set);
+           debug!("Unit types {:#?}", set);
 
-        Ok(())
-    }
-
+           Ok(())
+       }
+    */
     /*  #[test]
         fn test_list_units_description_and_state() -> Result<(), SystemdErrors> {
            let units_map = list_units_description_and_state()?;
@@ -490,7 +483,7 @@ mod tests {
            Ok(())
        }
     */
-/* 
+    /*
     #[test]
     fn test_prop() {
         init();
@@ -526,7 +519,7 @@ mod tests {
         Ok(())
     } */
 
-/*     #[test]
+    /*     #[test]
     fn test_prop2() {
         init();
         let c = dbus::ffidisp::Connection::new_system().unwrap();
@@ -538,7 +531,7 @@ mod tests {
         debug!("Version: {:?}", prop.get("Version").unwrap());
         debug!("Architecture: {:?}", prop.get("Architecture").unwrap());
     } */
-/* 
+    /*
     #[test]
     fn test_prop33() {
         init();
@@ -557,39 +550,39 @@ mod tests {
         debug!("Architecture: {:?}", prop.get("Architecture").unwrap()); */
     } */
 
-/*     #[test]
-    fn test_prop34() -> Result<(), Box<dyn std::error::Error>> {
-        let dest = "org.freedesktop.portal.Desktop";
-        let path = "/org/freedesktop/portal/desktop";
-        let interface = "org.freedesktop.portal.Settings.Read";
-        let connection = dbus::blocking::Connection::new_session()?;
-        let proxy = connection.with_proxy(dest, path, std::time::Duration::from_millis(5000));
+    /*     #[test]
+       fn test_prop34() -> Result<(), Box<dyn std::error::Error>> {
+           let dest = "org.freedesktop.portal.Desktop";
+           let path = "/org/freedesktop/portal/desktop";
+           let interface = "org.freedesktop.portal.Settings.Read";
+           let connection = dbus::blocking::Connection::new_session()?;
+           let proxy = connection.with_proxy(dest, path, std::time::Duration::from_millis(5000));
 
-        use super::dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
+           use super::dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
 
-        let metadata: super::dbus::arg::Variant<String> = proxy.get(interface, "Version")?;
+           let metadata: super::dbus::arg::Variant<String> = proxy.get(interface, "Version")?;
 
-        debug!("Meta: {:?}", metadata);
-        Ok(())
-    }
+           debug!("Meta: {:?}", metadata);
+           Ok(())
+       }
 
-    #[test]
-    fn test_prop3() -> Result<(), Box<dyn std::error::Error>> {
-        let dest = DESTINATION_SYSTEMD;
-        let path = "/org/freedesktop/systemd1";
-        let interface = "org.freedesktop.systemd1.Manager";
-        let connection = dbus::blocking::Connection::new_session()?;
-        let proxy = connection.with_proxy(dest, path, std::time::Duration::from_millis(5000));
+       #[test]
+       fn test_prop3() -> Result<(), Box<dyn std::error::Error>> {
+           let dest = DESTINATION_SYSTEMD;
+           let path = "/org/freedesktop/systemd1";
+           let interface = "org.freedesktop.systemd1.Manager";
+           let connection = dbus::blocking::Connection::new_session()?;
+           let proxy = connection.with_proxy(dest, path, std::time::Duration::from_millis(5000));
 
-        use super::dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
+           use super::dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
 
-        let metadata: super::dbus::arg::Variant<String> = proxy.get(interface, "Version")?;
+           let metadata: super::dbus::arg::Variant<String> = proxy.get(interface, "Version")?;
 
-        debug!("Meta: {:?}", metadata);
-        Ok(())
-    }
- */
-/*     #[test]
+           debug!("Meta: {:?}", metadata);
+           Ok(())
+       }
+    */
+    /*     #[test]
     pub fn test_get_unit_path() -> Result<(), SystemdErrors> {
         let unit_file: &str = TEST_SERVICE;
         let mut message = dbus_message("GetUnit")?;
@@ -614,7 +607,7 @@ mod tests {
         debug!("ALL PARAM: {:#?}", p.get_all());
     } */
 
-    #[test]
+    /*     #[test]
     pub fn test_fetch_system_unit_info() -> Result<(), SystemdErrors> {
         init();
 
@@ -625,9 +618,9 @@ mod tests {
 
         debug!("ALL PARAM: {:#?}", btree_map);
         Ok(())
-    }
+    } */
 
-/*     #[test]
+    /*     #[test]
     pub fn test_load_unit_() -> Result<(), SystemdErrors> {
         let unit_file: &str = TEST_SERVICE;
         let mut message = dbus_message("LoadUnit")?;
