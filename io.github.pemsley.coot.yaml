@@ -1,3 +1,8 @@
+# python: setuptools, numpy , make, markup, markupsafe, pyGObject
+# C++: eigen(for RDkit)
+# guile, GObject-Introspection
+
+
 app-id: io.github.pemsley.coot
 runtime: org.freedesktop.Platform
 runtime-version: "24.08"
@@ -53,9 +58,7 @@ modules:
       - type: archive
         url: https://github.com/cctbx/ccp4io/archive/b58c4fb68902e4e6a58f4a585d0722e542516076.tar.gz
         sha256: f1edc5a830cd4a078eae700e14b1d89612fb7a12318094363642340aafe41af6
-      - type: archive
-        url: https://www.python.org/ftp/python/3.12.6/Python-3.12.6.tgz
-        sha256: 85a4c1be906d20e5c5a69f2466b00da769c221d6a684acfd3a514dbf5bf10a66
+    buildsystem: simple
     build-options:
       env:
         CPPFLAGS: "-I${FLATPAK_BUILDIR}/libccp4/lib"
@@ -103,9 +106,9 @@ modules:
 
   - name: gemmi
     sources:
-      - type: archive
-        url: https://github.com/project-gemmi/gemmi/archive/refs/tags/v0.6.7.tar.gz
-        sha256: f3dd7c3aac0b01f0338ff5034c11be0e7b23639f018c8d6b1db7cc9d77a8dee9
+      - type: git
+        url: https://github.com/project-gemmi/gemmi.git
+        branch: master
     buildsystem: cmake
     config-opts:
       - -DCMAKE_INSTALL_PREFIX=/app
@@ -181,17 +184,6 @@ modules:
       - make
       - make install
 
-  - name: Catch2
-    sources:
-      - type: archive
-        url: https://github.com/catchorg/Catch2/archive/refs/tags/v3.7.1.tar.gz
-        sha256: c991b247a1a0d7bb9c39aa35faf0fe9e19764213f28ffba3109388e62ee0269c
-    buildsystem: cmake
-    builddir: true
-    config-opts:
-      - "-DCMAKE_CXX_STANDARD=17"
-      - "-DCMAKE_PREFIX_PATH=/app"
-
   - name: boost
     sources:
       - type: archive
@@ -209,27 +201,36 @@ modules:
       env:
         CXXFLAGS: "-std=c++14"
 
-  - name: python3
+  # - name: python3
+  #   sources:
+  #     - type: archive
+  #       url: https://www.python.org/ftp/python/3.11.10/Python-3.11.10.tgz
+  #       sha256: 92f2faf242681bfa406d53a51e17d42c5373affe23a130cd9697e132ef574706
+  #   buildsystem: autotools
+  #   build-commands:
+  #     - ./configure --prefix=/app --with-ensurepip=install --enable-shared
+  #                   # --with-openssl=/app \
+  #     - make
+  #     - make install
+
+  - deps/pypi-dependencies.json
+
+  - name: gobject-introspection
+    buildsystem: meson
+    config-opts:
+      - -Dpython=/usr/bin/python3
+    builddir: true
     sources:
       - type: archive
-        url: https://www.python.org/ftp/python/3.12.6/Python-3.12.6.tgz
-        sha256: 85a4c1be906d20e5c5a69f2466b00da769c221d6a684acfd3a514dbf5bf10a66
-    buildsystem: autotools
-    build-commands:
-      - ./configure --prefix=/app --with-ensurepip=install --enable-shared
-                    # --with-openssl=/app \
-                    # --enable-loadable-sqlite-extensions \
-                    # --enable-ipv6
-      - make
-      - make install
+        url: https://download.gnome.org/sources/gobject-introspection/1.82/gobject-introspection-1.82.0.tar.xz
+        sha256: 0f5a4c1908424bf26bc41e9361168c363685080fbdb87a196c891c8401ca2f09
+    post-install:
+      - ln -sf /app/libexec/bin/* /app/bin/
 
-  - name: numpy
-    buildsystem: simple
-    build-options:
-      build-args:
-        - --share=network
-    build-commands:
-      - /app/bin/python3 -m pip install numpy==1.26.3
+    cleanup:
+      - /usr/include
+      - /usr/share
+      - /usr/lib/python*/site-packages/__pycache__
 
   - name: boost-python3
     sources:
@@ -240,20 +241,46 @@ modules:
     build-commands:
       - echo "using python" > user-config.jam
       - echo ": 3.12" >> user-config.jam
-      - echo ": /app/bin/python3" >> user-config.jam
-      - echo ": /app/include/python3.12" >> user-config.jam
-      - echo ": /app/lib" >> user-config.jam
+      - echo ": /usr/bin/python3" >> user-config.jam
+      - echo ": /usr/include/python3.12" >> user-config.jam
+      - echo ": /usr/lib" >> user-config.jam
       - echo ";" >> user-config.jam
-      - ./bootstrap.sh --prefix=/app --libdir=/app/lib --with-python=python3.12 --with-python-root=/app --with-libraries=python
-      - ./b2 --build-dir=build-python3 --stagedir=stage-python3 --prefix=/app --libdir=/app/lib abi=sysv linkflags=-L/app/lib --user-config=user-config.jam python=3.12 -d2 -j$(nproc) --layout=system threading=multi,single link=shared,static install
+      - ./bootstrap.sh --prefix=/app --libdir=/app/lib --with-python=python3.12 --with-python-root=/usr --with-libraries=python
+      - ./b2 --build-dir=build-python3 --stagedir=stage-python3 --prefix=/app --libdir=/app/lib abi=sysv linkflags=-L/usr/lib --user-config=user-config.jam python=3.12 -d2 -j$(nproc) --layout=system threading=multi,single link=shared,static install
     build-options:
       env:
         CXXFLAGS: "-std=c++14"
-        PYTHON: "/app/bin/python3"
-        PYTHONINCLUDE: "/app/include/python3.12"
-        PYTHONLIB: "/app/lib"
+        PYTHON: "/usr/bin/python3"
+        PYTHONINCLUDE: "/usr/include/python3.12"
+        PYTHONLIB: "/usr/lib"
     cleanup:
       - /app/share/boost
+
+  - name: Catch2
+    sources:
+      - type: archive
+        url: https://github.com/catchorg/Catch2/archive/refs/tags/v3.7.1.tar.gz
+        sha256: c991b247a1a0d7bb9c39aa35faf0fe9e19764213f28ffba3109388e62ee0269c
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - "-DCMAKE_CXX_STANDARD=17"
+      - "-DCMAKE_PREFIX_PATH=/app"
+
+  - name: eigen
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.3.9/eigen-3.3.9.tar.gz
+        sha256: 7985975b787340124786f092b3a07d594b2e9cd53bbfe5f3d9b1daee7d55f56f
+    build-commands:
+      - mkdir -p build-eigen
+      - cd build-eigen
+      - cmake -DCMAKE_INSTALL_PREFIX=/app ..
+      - make -j$(nproc)
+      - make install
 
   - name: rdkit
     sources:
@@ -261,10 +288,6 @@ modules:
         url: https://github.com/rdkit/rdkit/archive/refs/tags/Release_2024_09_1.tar.gz
         sha256: 034c00d6e9de323506834da03400761ed8c3721095114369d06805409747a60f
     buildsystem: cmake
-
-    build-options:
-      build-args:
-        - --share=network
     config-opts:
       - "-DCMAKE_INSTALL_PREFIX=/app"
       - "-DRDK_INSTALL_INTREE=OFF"
@@ -300,9 +323,8 @@ modules:
         url: https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz
         sha256: 6a99eeed15632c6354895b1dd542ed5a855c0f15d9ad1326c6fe2b2c9e423190
     buildsystem: simple
-    builddir: true
-    config-opts:
-      - --prefix=/app
+    builddir: true      # - -Dextra_library_paths=/app/lib
+
     build-commands:
       - ./configure --prefix=/app
       - make
@@ -329,14 +351,6 @@ modules:
         Description: OpenGL Mathematics
         Version: 1.0.1
         Cflags: -I${includedir}' > /app/lib/pkgconfig/glm.pc
-
-  - name: setuptools
-    buildsystem: simple
-    build-options:
-      build-args:
-        - --share=network
-    build-commands:
-      - /app/bin/python3 -m pip install setuptools
 
   - name: gtk4
     sources:
@@ -409,4 +423,4 @@ modules:
       environment:
         CXXFLAGS: "-fPIC"
         CPPFLAGS: "-D_USE_BOOST=1"
-        LDFLAGS: "-L/lib/python3.12/lib -lpython3.12"
+        LDFLAGS: "-L/usr/lib/python3.12 -lpython3.12"
