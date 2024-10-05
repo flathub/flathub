@@ -2,7 +2,7 @@ NAME=net.sourceforge.fuse_emulator.Fuse
 BUNDLE=$(NAME).flatpak
 MANIFEST=$(NAME).yaml
 APPDATA=$(NAME).appdata.xml
-BRANCH_ID=stable
+BRANCH_ID=master
 
 default: $(BUNDLE)
 
