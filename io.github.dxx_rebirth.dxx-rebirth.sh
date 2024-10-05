@@ -5,21 +5,19 @@ echo "Game: $GAME"
 echo "Arguments: $ARGS"
 
 if [[ -z $GAME ]]; then
-    if [[ ! -f $XDG_DATA_HOME/.default_game ]]; then
-        defaultgame=$(zenity --question --title="Select default game" --text "Choose whether to launch Descent or Descent II by default" --extra-button="Descent" --extra-button="Descent II" --extra-button="Cancel" --switch)
-        case $defaultgame in
-            "Descent")
-                echo "d1x" > $XDG_DATA_HOME/.default_game
-                ;;
-            "Descent II")
-                echo "d2x" > $XDG_DATA_HOME/.default_game
-                ;;
-            *)
-                exit 1
-                ;;
-        esac
-    fi
-    GAME=$(cat $XDG_DATA_HOME/.default_game)
+    selection=$(zenity --question --title="Select game" --text "Select whether to launch Descent or Descent II" --extra-button="Descent" --extra-button="Descent II" --extra-button="Cancel" --switch)
+    case $selection in
+        "Descent")
+            GAME="d1x"
+            ;;
+        "Descent II")
+            GAME="d2x"
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+fi
 fi
 
 case $GAME in
