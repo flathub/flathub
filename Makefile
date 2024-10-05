@@ -1,4 +1,4 @@
-NAME=net.sf.fuse_emulator
+NAME=net.sourceforge.fuse_emulator.Fuse
 BUNDLE=$(NAME).flatpak
 MANIFEST=$(NAME).yaml
 APPDATA=$(NAME).appdata.xml
