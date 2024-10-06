@@ -1,0 +1,82 @@
+app-id: org.freedesktop.Sdk.Extension.node22
+branch: "23.08"
+runtime: org.freedesktop.Sdk
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+build-extension: true
+separate-locales: false
+appstream-compose: false
+build-options:
+  prefix: /usr/lib/sdk/node22
+  prepend-path: /usr/lib/sdk/node22/bin
+  prepend-ld-library-path: /usr/lib/sdk/node22/lib
+  strip: true
+cleanup:
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - /share/systemtap
+modules:
+  - name: node
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v22.9.0/node-v22.9.0.tar.xz
+        sha256: a55aeb368dee93432f610127cf94ce682aac07b93dcbbaadd856df122c9239df
+        x-checker-data:
+          type: json
+          url: https://nodejs.org/dist/index.json
+          tag-query: >-
+            map(select(.version|startswith("v20."))) | sort_by(.date) | last | .version
+          version-query: >-
+            $tag | sub("^[vV]"; "")
+          url-query: >-
+            "https://nodejs.org/dist/\($tag)/node-\($tag).tar.xz"
+          is-main-source: true
+    config-opts:
+      - --openssl-use-def-ca-store
+      - --shared-openssl
+      - --shared-zlib
+      - --with-intl=system-icu
+
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/{bin,share}
+      - cp -a . ${FLATPAK_DEST}/share/yarn
+      - ln -sr ${FLATPAK_DEST}/share/yarn/bin/yarn ${FLATPAK_DEST}/bin/yarn
+      - ln -sr ${FLATPAK_DEST}/share/yarn/bin/yarnpkg ${FLATPAK_DEST}/bin/yarnpkg
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.21/yarn-v1.22.21.tar.gz
+        sha256: a55bb4e85405f5dfd6e7154a444e7e33ad305d7ca858bad8546e932a6688df08
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yarnpkg/yarn/releases/latest
+          version-query: >-
+            .tag_name | sub("^[vV]"; "")
+          url-query: >-
+            .assets | map(select(.name|endswith(".tar.gz"))) | first | .browser_download_url
+
+  - name: scripts
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 {enable,install{,-sdk}}.sh -t ${FLATPAK_DEST}/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - appstream-compose --basename=${FLATPAK_ID} --prefix=${FLATPAK_DEST} --origin=flatpak
+        ${FLATPAK_ID}
+    sources:
+      - type: script
+        dest-filename: install.sh
+        commands:
+          - install -Dm 755 /usr/lib/sdk/node22/bin/node ${FLATPAK_DEST}/node/bin/node
+      - type: script
+        dest-filename: install-sdk.sh
+        commands:
+          - cp -r /usr/lib/sdk/node22 ${FLATPAK_DEST}/node
+      - type: script
+        commands:
+          - export PATH=$PATH:/usr/lib/sdk/node22/bin
+          - export npm_config_nodedir=/usr/lib/sdk/node22
+        dest-filename: enable.sh
+      - type: file
+        path: org.freedesktop.Sdk.Extension.node22.metainfo.xml
