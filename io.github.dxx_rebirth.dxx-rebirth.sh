@@ -18,7 +18,6 @@ if [[ -z $GAME ]]; then
             ;;
     esac
 fi
-fi
 
 case $GAME in
     "d1x")
