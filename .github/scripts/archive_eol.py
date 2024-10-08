@@ -97,8 +97,6 @@ def main() -> None:
         "org.freedesktop.Sdk.Extension.php73",
         # 1.6 is EOL
         "org.freedesktop.Sdk.Extension.rust-stable",
-        # EOL notice added for special reasons
-        "org.freedesktop.Sdk.Extension.rust-nightly",
         # 19.08, 20.08 are EOL
         "org.freedesktop.Sdk.Extension.ziglang",
         # renamed, previous name is EOL but github repo is
