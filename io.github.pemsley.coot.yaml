@@ -1,7 +1,7 @@
 app-id: io.github.pemsley.coot
-runtime: org.freedesktop.Platform
-runtime-version: "24.08"
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
 command: coot
 finish-args:
   - --socket=wayland
@@ -23,7 +23,7 @@ modules:
         if [ "$(uname -m)" = "aarch64" ]; then
           sed -i 's/-flat_namespace -undefined suppress/-undefined dynamic_lookup/g' configure
         fi
-        ./configure --prefix=/app --enable-shared --enable-float --disable-static
+        ./configure
         make
         make install
     sources:
@@ -37,13 +37,7 @@ modules:
       - --enable-shared
       - --disable-static
     build-options:
-      env:
-        CXXFLAGS: "-g -O2"
-    build-commands:
-      - |
-        ./configure --prefix=/app --enable-shared --disable-static
-        make
-        make install
+      cxxflags: "-g -O2"
     sources:
       - type: archive
         url: https://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/dependencies/mmdb2-2.0.22.tar.gz
@@ -58,14 +52,13 @@ modules:
     build-commands:
       - |
         cd libccp4
-        ./configure --prefix="/app" --enable-shared --disable-static --disable-fortran
+        ./configure --enable-shared --disable-static --disable-fortran
         make
         make install
     sources:
       - type: archive
         url: https://github.com/cctbx/ccp4io/archive/b58c4fb68902e4e6a58f4a585d0722e542516076.tar.gz
         sha256: f1edc5a830cd4a078eae700e14b1d89612fb7a12318094363642340aafe41af6
-
 
   - name: clipper4coot
     buildsystem: autotools
@@ -82,16 +75,6 @@ modules:
       env:
         LDFLAGS: "-L/app/lib"
         CPPFLAGS: "-I/app/include"
-    build-commands:
-      - |
-        export CXXFLAGS="-g -O2 -fno-strict-aliasing -Wno-narrowing"
-        export LDFLAGS="-L${FLATPAK_DEST}/usr/lib/fftw2/lib"
-        export CPPFLAGS="-I${FLATPAK_DEST}/usr/include/fftw2"
-
-        # Configure and build Clipper4coot
-        ./configure --prefix=/app --enable-mmdb --enable-ccp4 --enable-cif --enable-minimol --enable-cns --enable-shared --disable-static
-        make
-        make install
     sources:
       - type: archive
         url: https://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/dependencies/clipper-2.1.20180802.tar.gz
@@ -105,10 +88,6 @@ modules:
     config-opts:
       - --without-x
       - --without-xpm
-    build-commands:
-      - ./configure --prefix=/app --with-fontconfig=/app --with-freetype=/app --with-jpeg=/app --with-avif=/app --with-png=/app --with-tiff=/app --with-webp=/app --without-x --without-xpm
-      - make
-      - make install
     sources:
       - type: archive
         url: https://github.com/libgd/libgd/releases/download/gd-2.3.3/libgd-2.3.3.tar.xz
@@ -118,23 +97,20 @@ modules:
         sha256: 1015f6e125f139a1e922ac4bc2a18abbc498b0142193fa692846bf0f344a3691
 
   - name: raster3d
+    buildsystem: simple
+    build-options:
+      cxxflags: "-g -O2 -fno-strict-aliasing -Wno-narrowing"
+      env:
+        LDFLAGS: "-L/app/lib"
+        CFLAGS: "-I/app/include"
+    build-commands:
+      - make linux
+      - make all
+      - make install
     sources:
       - type: archive
         url: http://www.bmsc.washington.edu/raster3d/Raster3D_3.0-7.tar.gz
         sha256: f566b499fee341db3a95229672c6afdbdb69da7faabdbe34f6e0d332d766160c
-    buildsystem: simple
-    build-commands:
-      - |
-        export CFLAGS="-I${FLATPAK_DEST}/include"
-        export LDFLAGS="-L${FLATPAK_DEST}/lib"
-        export PATH="${FLATPAK_DEST}/bin:$PATH"
-        sed -i 's|prefix  = /usr/local|prefix  = /app|' Makefile.template
-        sed -i 's|INCDIRS  =	-I/usr/include -I/usr/local/include|INCDIRS  = -I/app/include|' Makefile.template
-        sed -i 's|LIBDIRS  =	-L/usr/local/lib|LIBDIRS  = -L/app/lib|' Makefile.template
-        sed -i 's|mandir  = $(prefix)/man/manl|mandir  = /app/man/manl|' Makefile.template
-        make linux
-        make all
-        make install
 
   - name: ssm
     buildsystem: autotools
@@ -143,11 +119,7 @@ modules:
       - --enable-shared
       - --disable-static
     build-options:
-      cflags: "-fPIC"
-    build-commands:
-      - ./configure --prefix=/app --enable-ccp4 --enable-shared --disable-static
-      - make
-      - make install
+      cflags: -fPIC
     sources:
       - type: archive
         url: https://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/dependencies/ssm-1.4.tar.gz
@@ -161,8 +133,7 @@ modules:
     config-opts:
       - --without-libraries=[python, mpi]
     build-options:
-      env:
-        CXXFLAGS: "-std=c++14"
+      cxxflags: "-std=c++14"
     cleanup:
       - /app/share/boost
     sources:
@@ -196,11 +167,11 @@ modules:
       - ./bootstrap.sh --prefix=/app --libdir=/app/lib --with-python=python3.12 --with-python-root=/usr --with-libraries=python
       - ./b2 --build-dir=build-python3 --stagedir=stage-python3 --prefix=/app --libdir=/app/lib abi=sysv linkflags=-L/usr/lib --user-config=user-config.jam python=3.12 -d2 -j$(nproc) --layout=system threading=multi link=shared,static install
     build-options:
+      cxxflags: "-std=c++14"
       env:
-        CXXFLAGS: "-std=c++14"
-        PYTHON: "/usr/bin/python3"
-        PYTHONINCLUDE: "/usr/include/python3.12"
-        PYTHONLIB: "/usr/lib"
+        - PYTHON: "/usr/bin/python3"
+        - PYTHONINCLUDE: "/usr/include/python3.12"
+        - PYTHONLIB: "/usr/lib"
     cleanup:
       - /app/share/boost
     sources:
@@ -209,28 +180,20 @@ modules:
         sha256: 0c6049764e80aa32754acd7d4f179fd5551d8172a83b71532ae093e7384e98da
 
   - name: libdwarf
-    buildsystem: simple
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
     build-options:
-      environment:
+      env:
         PKG_CONFIG_PATH: /app/lib/pkgconfig
-    build-commands:
-      - if [ "${FLATPAK_BUILDER}" = "true" ]; then sh autogen.sh; fi
-      - ./configure --prefix=/app --enable-shared
-      - make
-      - make install
     sources:
       - type: archive
         url: https://www.prevanders.net/libdwarf-0.11.0.tar.xz
         sha256: 846071fb220ac1952f9f15ebbac6c7831ef50d0369b772c07a8a8139a42e07d2
 
   - name: gsl
-        sha256: 6a99eeed15632c6354895b1dd542ed5a855c0f15d9ad1326c6fe2b2c9e423190
-    buildsystem: simple
-    builddir: true
-    build-commands:
-      - ./configure --prefix=/app
-      - make
-      - make install
+    sha256: 6a99eeed15632c6354895b1dd542ed5a855c0f15d9ad1326c6fe2b2c9e423190
+    buildsystem: autotools
     sources:
       - type: archive
         url: https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz
@@ -256,34 +219,6 @@ modules:
       - type: archive
         url: https://github.com/g-truc/glm/archive/refs/tags/1.0.1.tar.gz
         sha256: 9f3174561fd26904b23f0db5e560971cbf9b3cbda0b280f04d5c379d03bf234c
-
-  - name: gtk4
-    buildsystem: meson
-    config-opts:
-      - -Dbuild-examples=false
-      - -Dbuild-tests=false
-      - -Dintrospection=enabled
-      - -Dman-pages=false
-      - -Dmedia-gstreamer=disabled
-      - -Dvulkan=disabled
-    build-options:
-      environment:
-        DESTDIR: "/app"
-        CPPFLAGS: "-DG_DISABLE_ASSERT -DG_DISABLE_CAST_CHECKS"
-    build:
-      commands:
-        - meson setup build
-        - meson compile -C build
-        - meson install -C build
-    post-install:
-      commands:
-        - glib-compile-schemas /app/share/glib-2.0/schemas
-        - gtk4-update-icon-cache -f -t /app/share/icons/hicolor
-        - gio-querymodules /app/lib/gtk-4.0/4.0.0/printbackends
-    sources:
-      - type: archive
-        url: https://download.gnome.org/sources/gtk/4.16/gtk-4.16.2.tar.xz
-        sha256: 34b624848e5de22a138b675ad6f39c0c7b9d67907c10e1fc7e5b03060e8d5437
 
   - name: openblas
     buildsystem: simple
@@ -376,7 +311,7 @@ modules:
         sha256: c991b247a1a0d7bb9c39aa35faf0fe9e19764213f28ffba3109388e62ee0269c
 
   - name: eigen
-    buildsystem: simple
+    buildsystem: cmake-ninja
     build-commands:
       - cmake -S . -B eigen-build -Dpkg_config_libdir=/app/lib/pkgconfig -DCMAKE_INSTALL_PREFIX=/app
       - cmake --install eigen-build --prefix=/app
@@ -387,7 +322,6 @@ modules:
         sha256: 7985975b787340124786f092b3a07d594b2e9cd53bbfe5f3d9b1daee7d55f56f
 
   - name: maeparser
-    buildsystem: cmake
     buildsystem: simple
     build-commands:
       - mkdir -p /app/tmp/maeparser
@@ -438,7 +372,7 @@ modules:
         commit: 858451e5b7d1c56cf8f6d58f88cf958351837e53
 
   - name: rdkit
-    buildsystem: simple
+    buildsystem: cmake-ninja
     build-commands:
       - cp -r /app/tmp/RingDecomposerLib External/RingFamilies/
       - cp -r /app/tmp/pubchem-align3d External/pubchem_shape/
@@ -468,8 +402,8 @@ modules:
       append-path:
         - /app/lib
         - /app/bin
-      environment:
-        CXXFLAGS: "-g -O -fPIC"
+      cxxflags: "-g -O -fPIC"
+      env:
         CPPFLAGS: "-D_USE_BOOST=1"
         LDFLAGS: "-L/app/lib -L/app/lib64 -L/usr/lib -lpython3.12"
         LD_LIBRARY_PATH: "/app/lib64:/app/lib:/usr/lib"
@@ -478,7 +412,6 @@ modules:
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     cleanup:
-      - /usr/lib/python*/site-packages/__pycache__
       - /lib/pkgconfig
       - /share/aclocal
       - /share/doc
