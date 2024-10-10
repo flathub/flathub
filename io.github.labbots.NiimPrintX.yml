@@ -1,0 +1,92 @@
+app-id: io.github.labbots.NiimPrintX
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: NiimPrintX.ui
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --system-talk-name=org.bluez
+  - --env=PYTHONPATH=/app/lib/python3.12/site-packages
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+modules:
+  - name: imagemagick
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-docs
+      - --with-modules
+      - --with-threads
+    sources:
+      - type: archive
+        url: https://github.com/ImageMagick/ImageMagick/archive/7.1.1-39.tar.gz
+        sha256: b2eb652d9221bdeb65772503891d8bfcfc36b3b1a2c9bb35b9d247a08965fd5d
+        x-checker-data:
+          type: anitya
+          project-id: 1372
+          stable-only: true
+          url-template: https://github.com/ImageMagick/ImageMagick/archive/$version.tar.gz
+    cleanup:
+      - /bin/*-config
+
+  - pre-pypi-dependencies.json
+  - rust-pypi-dependencies.json
+  - python3-poetry.json
+  - pyinstaller.json
+  # flatpak-builder-tools/pip/flatpak-pip-generator --yaml -r requirements.txt
+  # FIXME pyobjc-core* was removed from the list:
+  # See https://github.com/flatpak/flatpak-builder-tools/issues/394
+  - python3-requirements.yaml
+
+  - name: NiimPrintX
+    buildsystem: simple
+    build-commands:
+      - cp -r NiimPrintX/ /app/lib/python3.12/site-packages/
+      # FIXME metainfo
+      - install -Dm755 NiimPrintX.ui /app/bin/NiimPrintX.ui
+      - install -Dm755 NiimPrintX.cli /app/bin/NiimPrintX.cli
+      - install -Dm755 bluetoothctl /app/bin/bluetoothctl
+      - install -Dm644 -t /app/share/applications/ ${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - |
+        for i in {128,256,512} ; do
+          install -Dm644 ./NiimPrintX/ui/assets/icon.iconset/icon_${i}x${i}.png /app/share/icons/hicolor/${i}x${i}/apps/${FLATPAK_ID}.png ;
+        done;
+
+    sources:
+      - type: git
+        url: https://github.com/labbots/NiimPrintX
+        tag: v0.0.47
+      - type: patch
+        path: add-b1-support.patch
+        use-git-am: true
+      - type: patch
+        path: 0001-Look-for-assets-in-the-right-place.patch
+        use-git-am: true
+      - type: patch
+        path: 0001-Use-magick-on-Linux-as-well.patch
+        use-git-am: true
+      - type: script
+        dest-filename: NiimPrintX.ui
+        commands:
+          - python -m NiimPrintX.ui
+      - type: script
+        dest-filename: NiimPrintX.cli
+        commands:
+          - python -m NiimPrintX.cli
+      # Work-around warning:
+      # WARNING:root:Could not determine BlueZ version, bluetoothctl not available, assuming 5.51+
+      - type: script
+        dest-filename: bluetoothctl
+        commands:
+          - echo "bluetoothctl: 5.99"
+      - type: file
+        path: io.github.labbots.NiimPrintX.desktop
+      - type: file
+        path: io.github.labbots.NiimPrintX.metainfo.xml
+
