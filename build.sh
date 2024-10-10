@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 
 set -e
-set -x
 
 bsdtar -Oxf sketcher.deb 'data.tar.*' |
   bsdtar -xf - \
