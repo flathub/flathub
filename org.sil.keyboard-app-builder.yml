@@ -1,21 +1,15 @@
-# REFERENCES:
-# OpenJDK: https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk17/blob/branch/23.08/org.freedesktop.Sdk.Extension.openjdk17.yaml
 app-id: org.sil.keyboard-app-builder
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: "23.08"
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.openjdk17
-  # - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.node20
 finish-args:
   # Window x11 socket access
   - --socket=x11
   # Audio access
   - --socket=pulseaudio
-  # Unsure if the program absolutely needs ssh
-  # - --socket=ssh-auth
-  # Or the printer socket
-  # - --socket=cups
   # Network access
   - --share=network
   # XShm access
@@ -24,81 +18,72 @@ finish-args:
   - --device=all
   # Local file browsing access
   - --filesystem=host
-  # Temporary file access
-  - --filesystem=/tmp
-  # Filesystem mounts
-  - --filesystem=/mnt
   # USB Drives
   - --system-talk-name=org.freedesktop.Udisks2
   # File saving access
-  - --system-talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.FileManager1
 
-# Build args give resource access during the build
-build-options:
-  build-args:
-    - --share=network
-
+# App's run command
 command: kab-run.sh
 
 modules:
+  - name: openjdk17
+    buildsystem: simple
+    build-commands:
+      # jre install script from extensions location
+      - /usr/lib/sdk/openjdk17/install.sh
+      # jdk
+      - /usr/lib/sdk/openjdk17/installjdk.sh
+      # symlink with version number so App Builder can find JDK version
+      # similar to how version is in folder name when installed to /usr/lib/jvm
+      - ln -s /app/jdk "/app/jdk$(awk -F\" '/JAVA_VERSION=/ {print $2}' /app/jdk/release)"
 
-# Need "requests" to run docker_pull script in org.sil.app-builders module
-- python3-requests.yaml
+  - name: openjfx
+    buildsystem: simple
+    build-commands:
+      - mkdir /app/lib/openjfx
+      - unzip -q -j -d /app/lib/openjfx openjfx.zip '*lib/*'
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        dest-filename: openjfx.zip
+        url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11_linux-x64_bin-sdk.zip
+        sha256: f46a1fbea32b83cca6715d74cba7d9c24ce320f1da2daf8ff852f133e9f15674
 
-- openjdk17.yml
-
-- name: keyboard-app-builder
-  buildsystem: simple
-  build-commands:
-    - pwd
-    # Source tarball from a docker image and extract to flatpak app
-    - cd /tmp
-    - python3 /run/build/keyboard-app-builder/docker_pull.py ghcr.io/sillsdev/keyboard-app-builder:12.0
-    - python3 /run/build/keyboard-app-builder/extract_layer.py /app/output
-    - rm sillsdev_keyboard-app-builder.tar
-    - cd /run/build/keyboard-app-builder
-    # Copy only the necessary files
-    - mkdir -p app/keyboard-app-builder
-    - mkdir -p /app/keyboard-app-builder/bin
-    - cp -RPn /app/output/bin/* /app/keyboard-app-builder/bin/
-    - cp -RPn /app/output/fonts /app/output/images /app/output/html /app/output/info /app/output/lib /app/output/docs /app/output/tools /app/keyboard-app-builder/
-    # JavaFX SDK
-    - unzip -q -j -d sdk sdk.zip '*lib/*'
-    #- mkdir /app/lib
-    - mv sdk /app/lib/sdk
-    # Icons, desktop entry, metainfo and runner script
-    - mkdir -p /app/share/icons/hicolor/128x128/apps
-    - mkdir -p /app/share/icons/hicolor/scalable/apps
-    - mv /app/output/app-icons/keyboard-app-builder.png /app/share/icons/hicolor/128x128/apps/org.sil.keyboard-app-builder.png
-    - mv /app/output/app-icons/keyboard-app-builder.svg /app/share/icons/hicolor/scalable/apps/org.sil.keyboard-app-builder.svg
-    - mkdir -p  /app/share/applications
-    - desktop-file-install --dir /app/share/applications org.sil.keyboard-app-builder.desktop
-    - install -Dm644 org.sil.keyboard-app-builder.metainfo.xml -t /app/share/metainfo/
-    - install -Dm755 kab-run.sh /app/bin/kab-run.sh
-    - rm -rf /app/output/*
-
-  sources:
-    - type: file
-      path: docker_pull.py
-    - type: file
-      path: extract_layer.py
-    - type: file
-      path: kab-run.sh
-    - type: file
-      path: org.sil.keyboard-app-builder.desktop
-    - type: file
-      path: org.sil.keyboard-app-builder.metainfo.xml
-    # JavaFX .zip archive
-    - type: file
-      only-arches:
-      - x86_64
-      dest-filename: sdk.zip
-      url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11_linux-x64_bin-sdk.zip
-      sha256: f46a1fbea32b83cca6715d74cba7d9c24ce320f1da2daf8ff852f133e9f15674
-    - type: file
-      only-arches:
-      - aarch64
-      dest-filename: sdk.zip
-      url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11-javadoc.zip
-      sha256: 92695d1be7bd1d08562444ad5325cc9f08410b18a1f1aebb4a7cc96d854d6cfc
-
+  - name: keyboard-app-builder
+    buildsystem: simple
+    build-commands:
+      # Prebuilt binaries tarball from build in the private repo
+      # The source has to be private due to agreements with copyright holders of content being included by end users
+      - mkdir /app/keyboard-app-builder
+      - tar xf keyboard-app-builder.tgz -C /app/keyboard-app-builder
+      # Icons, desktop entry, metainfo and runner script
+      - install -Dm644 /app/keyboard-app-builder/app-icons/keyboard-app-builder.png
+        /app/share/icons/hicolor/128x128/apps/org.sil.keyboard-app-builder.png
+      - install -Dm644 /app/keyboard-app-builder/app-icons/keyboard-app-builder.svg
+        /app/share/icons/hicolor/scalable/apps/org.sil.keyboard-app-builder.svg
+      - desktop-file-install --dir /app/share/applications /app/keyboard-app-builder/flatpak/org.sil.keyboard-app-builder.desktop
+      - install -Dm644 /app/keyboard-app-builder/flatpak/org.sil.keyboard-app-builder.metainfo.xml
+        -t /app/share/metainfo/
+      - install -Dm755 kab-run.sh /app/bin/kab-run.sh
+      # Node
+      - /usr/lib/sdk/node20/install-sdk.sh
+      - ln -s /app/node /app/keyboard-app-builder/tools/node
+    cleanup:
+      - /keyboard-app-builder/app-icons
+      - /keyboard-app-builder/flatpak
+      - /keyboard-app-builder/*.sh
+    sources:
+      - type: script
+        dest-filename: kab-run.sh
+        commands:
+          - exec /app/jre/bin/java -Djava.io.tmpdir="/var/tmp" --module-path "/app/lib/openjfx"
+            --add-modules javafx.web,javafx.fxml,javafx.swing,javafx.media --add-opens=javafx.fxml/javafx.fxml=ALL-UNNAMED
+            -jar /app/keyboard-app-builder/bin/keyboard-app-builder.jar "$@"
+      # App Builder prebuilt binaries (update branch/build_number and sha256 before each release)
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://sil-app-builders-linux-artifacts.s3.amazonaws.com/refs/tags/v12.2/65/keyboard-app-builder.tgz
+        sha256: a557969760e29157a337c8d456d840b938e31265165aa893c12be36ae032df37
