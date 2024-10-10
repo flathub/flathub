@@ -1,0 +1,85 @@
+app-id: org.sil.keyboard-app-builder
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+finish-args:
+  # Window x11 socket access
+  - --socket=x11
+  # Audio access
+  - --socket=pulseaudio
+  # Network access
+  - --share=network
+  # XShm access
+  - --share=ipc
+  # All external devices (catch all for devices we interact with and graphical acceleration)
+  - --device=all
+  # Local file browsing access
+  - --filesystem=host
+  # USB Drives
+  - --system-talk-name=org.freedesktop.Udisks2
+  # File saving access
+  - --talk-name=org.freedesktop.FileManager1
+
+# App's run command
+command: kab-run.sh
+
+modules:
+  - name: openjdk17
+    buildsystem: simple
+    build-commands:
+      # jre install script from extensions location
+      - /usr/lib/sdk/openjdk17/install.sh
+      # jdk
+      - /usr/lib/sdk/openjdk17/installjdk.sh
+      # symlink with version number so App Builder can find JDK version
+      # similar to how version is in folder name when installed to /usr/lib/jvm
+      - ln -s /app/jdk "/app/jdk$(awk -F\" '/JAVA_VERSION=/ {print $2}' /app/jdk/release)"
+
+  - name: openjfx
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/openjfx
+      - unzip -q -j -d /app/lib/openjfx openjfx.zip '*lib/*'
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        dest-filename: openjfx.zip
+        url: https://download2.gluonhq.com/openjfx/17.0.11/openjfx-17.0.11_linux-x64_bin-sdk.zip
+        sha256: f46a1fbea32b83cca6715d74cba7d9c24ce320f1da2daf8ff852f133e9f15674
+
+  - name: keyboard-app-builder
+    buildsystem: simple
+    build-commands:
+      # Prebuilt binaries tarball from build in the private repo
+      # The source has to be private due to agreements with copyright holders of content being included by end users
+      - mkdir /app/keyboard-app-builder
+      - tar xf keyboard-app-builder.tgz -C /app/keyboard-app-builder
+      # Icons, desktop entry, metainfo and runner script
+      - install -Dm644 /app/keyboard-app-builder/app-icons/keyboard-app-builder.png
+        /app/share/icons/hicolor/128x128/apps/org.sil.keyboard-app-builder.png
+      - install -Dm644 /app/keyboard-app-builder/app-icons/keyboard-app-builder.svg
+        /app/share/icons/hicolor/scalable/apps/org.sil.keyboard-app-builder.svg
+      - desktop-file-install --dir /app/share/applications /app/keyboard-app-builder/flatpak/org.sil.keyboard-app-builder.desktop
+      - install -Dm644 /app/keyboard-app-builder/flatpak/org.sil.keyboard-app-builder.metainfo.xml
+        -t /app/share/metainfo/
+      - install -Dm755 kab-run.sh /app/bin/kab-run.sh
+    cleanup:
+      - /keyboard-app-builder/app-icons
+      - /keyboard-app-builder/flatpak
+      - /keyboard-app-builder/*.sh
+    sources:
+      - type: script
+        dest-filename: kab-run.sh
+        commands:
+          - exec /app/jre/bin/java -Djava.io.tmpdir="/var/tmp" --module-path "/app/lib/openjfx"
+            --add-modules javafx.web,javafx.fxml,javafx.swing,javafx.media --add-opens=javafx.fxml/javafx.fxml=ALL-UNNAMED
+            -jar /app/keyboard-app-builder/bin/keyboard-app-builder.jar "$@"
+      # App Builder prebuilt binaries (update branch/build_number and sha256 before each release)
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://sil-app-builders-linux-artifacts.s3.amazonaws.com/refs/tags/v12.2/65/keyboard-app-builder.tgz
+        sha256: a557969760e29157a337c8d456d840b938e31265165aa893c12be36ae032df37
