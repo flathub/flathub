@@ -1,0 +1,342 @@
+From cb86f23c8e8c24a355b05b858ffd819d6aa6a7bf Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Sun, 21 Jul 2024 21:32:57 +0200
+Subject: [PATCH 1/6] feat(cli&ui): add basic support for B1 printer
+
+---
+ NiimPrintX/cli/command.py                | 13 ++++++--
+ NiimPrintX/nimmy/printer.py              | 39 +++++++++++++++++++++++-
+ NiimPrintX/ui/AppConfig.py               |  8 +++++
+ NiimPrintX/ui/main.py                    |  3 +-
+ NiimPrintX/ui/widget/PrintOption.py      |  2 +-
+ NiimPrintX/ui/widget/PrinterOperation.py |  6 +++-
+ 6 files changed, 65 insertions(+), 6 deletions(-)
+
+diff --git a/NiimPrintX/cli/command.py b/NiimPrintX/cli/command.py
+index f7b109062ad0..b72cbf109dbd 100644
+--- a/NiimPrintX/cli/command.py
++++ b/NiimPrintX/cli/command.py
+@@ -85,7 +85,7 @@ def print_command(model, density, rotate, image, quantity, vertical_offset, hori
+     logger.info(f"Niimbot Printing Start")
+ 
+     if model in ("b1", "b18", "b21"):
+-        max_width_px = 384
++        max_width_px = 400
+     if model in ("d11", "d110"):
+         max_width_px = 240
+ 
+@@ -110,8 +110,17 @@ async def _print(model, density, image, quantity, vertical_offset, horizontal_of
+         printer = PrinterClient(device)
+         if await printer.connect():
+             print(f"Connected to {device.name}")
+-        await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
++        # await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
++        #                           horizontal_offset=horizontal_offset)
++    
++        if model == "b1":
++            await printer.print_imageV2(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
+                                   horizontal_offset=horizontal_offset)
++        else:
++            await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
++                                  horizontal_offset=horizontal_offset)
++        
++
+         print_success("Print job completed")
+         await printer.disconnect()
+     except Exception as e:
+diff --git a/NiimPrintX/nimmy/printer.py b/NiimPrintX/nimmy/printer.py
+index 299de904e2f7..11dfd8914ccf 100644
+--- a/NiimPrintX/nimmy/printer.py
++++ b/NiimPrintX/nimmy/printer.py
+@@ -91,9 +91,14 @@ class PrinterClient:
+             packet = NiimbotPacket(request_code, data)
+             await self.transport.start_notification(self.char_uuid, self.notification_handler)
+             await self.transport.write(packet.to_bytes(), self.char_uuid)
+-            logger.debug(f"Printer command sent - {RequestCodeEnum(request_code).name}")
++            logger.debug(
++                f"Printer command sent - {RequestCodeEnum(request_code).name}:{request_code} - {[b for b in data]}")
++
+             await asyncio.wait_for(self.notification_event.wait(), timeout)  # Wait until the notification event is set
+             response = NiimbotPacket.from_bytes(self.notification_data)
++            logger.debug(
++                f"Printer response received - {[b for b in response.data]} - {len(response.data)} bytes")
++
+             await self.transport.stop_notification(self.char_uuid)
+             self.notification_event.clear()  # Reset the event for the next notification
+             return response
+@@ -151,6 +156,27 @@ class PrinterClient:
+ 
+         await self.end_print()
+ 
++    async def print_imageV2(self, image: Image, density: int = 3, quantity: int = 1, vertical_offset=0,
++                            horizontal_offset=0):
++        await self.set_label_density(density)
++        await self.set_label_type(1)
++        await self.start_printV2()
++        await self.start_page_print()
++        await self.set_dimensionV2(image.height, image.width, quantity)
++
++        for pkt in self._encode_image(image, vertical_offset, horizontal_offset):
++            logger.debug(f"Sending packet: {pkt}")
++            # Send each line and wait for a response or status check
++            await self.write_raw(pkt)
++            # Adding a short delay or status check here can help manage buffer issues
++            # Adjust the delay as needed based on printer feedback
++            await asyncio.sleep(0.01)
++
++        while not await self.end_page_print():
++            await asyncio.sleep(0.5)
++
++        await self.end_print()
++
+     def _encode_image(self, image: Image, vertical_offset=0, horizontal_offset=0):
+         # Convert the image to monochrome
+         img = ImageOps.invert(image.convert("L")).convert("1")
+@@ -265,6 +291,10 @@ class PrinterClient:
+     async def start_print(self):
+         packet = await self.send_command(RequestCodeEnum.START_PRINT, b"\x01")
+         return bool(packet.data[0])
++    
++    async def start_printV2(self):
++        packet = await self.send_command(RequestCodeEnum.START_PRINT, b"\x00\x01\x00\x00\x00\x00\x00")
++        return bool(packet.data[0])
+ 
+     async def end_print(self):
+         packet = await self.send_command(RequestCodeEnum.END_PRINT, b"\x01")
+@@ -287,6 +317,13 @@ class PrinterClient:
+             RequestCodeEnum.SET_DIMENSION, struct.pack(">HH", w, h)
+         )
+         return bool(packet.data[0])
++    
++    async def set_dimensionV2(self, w, h, copies):
++        logger.debug(f"Setting dimension: {w}x{h}")
++        packet = await self.send_command(
++            RequestCodeEnum.SET_DIMENSION, struct.pack(">HHH", w, h, copies)
++        )
++        return bool(packet.data[0])
+ 
+     async def set_quantity(self, n):
+         packet = await self.send_command(RequestCodeEnum.SET_QUANTITY, struct.pack(">H", n))
+diff --git a/NiimPrintX/ui/AppConfig.py b/NiimPrintX/ui/AppConfig.py
+index fba35a1fdcf4..a04d9b39d6f6 100644
+--- a/NiimPrintX/ui/AppConfig.py
++++ b/NiimPrintX/ui/AppConfig.py
+@@ -53,6 +53,14 @@ class AppConfig:
+                     "120mm x 14mm": (120, 14),
+                 },
+                 "density": 3
++            },
++            "b1": {
++                "size": {
++                    "50mm x 30mm": (50, 30),
++                    "50mm x 15mm": (50, 14),
++                    "60mm x 40mm": (60, 40),
++                },
++                "density": 3
+             }
+         }
+         self.current_label_size = None
+diff --git a/NiimPrintX/ui/main.py b/NiimPrintX/ui/main.py
+index 390ff8dbbd8a..fdd781572f49 100644
+--- a/NiimPrintX/ui/main.py
++++ b/NiimPrintX/ui/main.py
+@@ -20,7 +20,8 @@ import threading
+ from loguru import logger
+ 
+ 
+-logger.disable('NiimPrintX.nimmy')
++# logger.disable('NiimPrintX.nimmy')
++logger.enable('NiimPrintX.nimmy')
+ 
+ # import sys
+ # import logging
+diff --git a/NiimPrintX/ui/widget/PrintOption.py b/NiimPrintX/ui/widget/PrintOption.py
+index 9778951e9eba..c04e34a326a1 100644
+--- a/NiimPrintX/ui/widget/PrintOption.py
++++ b/NiimPrintX/ui/widget/PrintOption.py
+@@ -277,7 +277,7 @@ class PrintOption:
+         self.print_button.config(state=tk.DISABLED)
+         self.config.print_job = True
+ 
+-        image = image.rotate(-int(90), PIL.Image.NEAREST, expand=True)
++        image = image.rotate(-int(0), PIL.Image.NEAREST, expand=True) #TODO: Add rotation option
+         future = asyncio.run_coroutine_threadsafe(
+             self.print_op.print(image, density, quantity), self.root.async_loop
+         )
+diff --git a/NiimPrintX/ui/widget/PrinterOperation.py b/NiimPrintX/ui/widget/PrinterOperation.py
+index b6075cbb8dde..6ba63247ddae 100644
+--- a/NiimPrintX/ui/widget/PrinterOperation.py
++++ b/NiimPrintX/ui/widget/PrinterOperation.py
+@@ -40,7 +40,11 @@ class PrinterOperation:
+             if not self.config.printer_connected or not self.printer:
+                 await self.printer_connect(self.config.device)
+ 
+-            await self.printer.print_image(image, density, quantity)
++            if self.config.device == "b1":
++                await self.printer.print_imageV2(image, density, quantity)
++            else:
++                await self.printer.print_image(image, density, quantity)
++
+             return True
+         except Exception as e:
+             messagebox.showerror("Error", f"{str(e)}.")
+-- 
+2.46.2
+
+
+From db42e325a4948b8467bc7be5a881d99a037fdfb4 Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Mon, 22 Jul 2024 00:32:33 +0200
+Subject: [PATCH 2/6] feat(print): remove end print command for B1 as it looks
+ like it is not needed?
+
+---
+ NiimPrintX/nimmy/printer.py | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/NiimPrintX/nimmy/printer.py b/NiimPrintX/nimmy/printer.py
+index 11dfd8914ccf..94b81c830bf0 100644
+--- a/NiimPrintX/nimmy/printer.py
++++ b/NiimPrintX/nimmy/printer.py
+@@ -172,10 +172,7 @@ class PrinterClient:
+             # Adjust the delay as needed based on printer feedback
+             await asyncio.sleep(0.01)
+ 
+-        while not await self.end_page_print():
+-            await asyncio.sleep(0.5)
+-
+-        await self.end_print()
++        await self.end_page_print()
+ 
+     def _encode_image(self, image: Image, vertical_offset=0, horizontal_offset=0):
+         # Convert the image to monochrome
+-- 
+2.46.2
+
+
+From 4f9a7acc53231ff9bc0a5c06f8f0bf6bfb3ec6ea Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Mon, 22 Jul 2024 16:10:51 +0200
+Subject: [PATCH 3/6] feat(cli): add implementation for V2 / B1 printer
+
+---
+ NiimPrintX/cli/command.py | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/NiimPrintX/cli/command.py b/NiimPrintX/cli/command.py
+index b72cbf109dbd..c31f1a0b0535 100644
+--- a/NiimPrintX/cli/command.py
++++ b/NiimPrintX/cli/command.py
+@@ -110,13 +110,12 @@ async def _print(model, density, image, quantity, vertical_offset, horizontal_of
+         printer = PrinterClient(device)
+         if await printer.connect():
+             print(f"Connected to {device.name}")
+-        # await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
+-        #                           horizontal_offset=horizontal_offset)
+-    
++
+         if model == "b1":
+-            await printer.print_imageV2(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
+-                                  horizontal_offset=horizontal_offset)
++            print_info("Printing with B1 model")
++            await printer.print_imageV2(image, density=density, quantity=quantity)
+         else:
++            print_info("Printing with D model")
+             await printer.print_image(image, density=density, quantity=quantity, vertical_offset=vertical_offset,
+                                   horizontal_offset=horizontal_offset)
+         
+-- 
+2.46.2
+
+
+From 8a6bfe4a33de32cfcfb508b76909a70af63966ea Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Mon, 22 Jul 2024 16:13:28 +0200
+Subject: [PATCH 4/6] feat(nimmy): add timeout to enhance reliability in print
+ job
+
+---
+ NiimPrintX/nimmy/printer.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/NiimPrintX/nimmy/printer.py b/NiimPrintX/nimmy/printer.py
+index 94b81c830bf0..091096ce3156 100644
+--- a/NiimPrintX/nimmy/printer.py
++++ b/NiimPrintX/nimmy/printer.py
+@@ -174,6 +174,8 @@ class PrinterClient:
+ 
+         await self.end_page_print()
+ 
++        await asyncio.sleep(2) # Sleep for some time, looks like it enhances the reliability of the print job
++
+     def _encode_image(self, image: Image, vertical_offset=0, horizontal_offset=0):
+         # Convert the image to monochrome
+         img = ImageOps.invert(image.convert("L")).convert("1")
+-- 
+2.46.2
+
+
+From f7a174dc20c936a87cbbae7cd28946110635a231 Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Mon, 22 Jul 2024 16:14:28 +0200
+Subject: [PATCH 5/6] feat(ui): add new label size
+
+---
+ NiimPrintX/ui/AppConfig.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/NiimPrintX/ui/AppConfig.py b/NiimPrintX/ui/AppConfig.py
+index a04d9b39d6f6..a1eb3993b66c 100644
+--- a/NiimPrintX/ui/AppConfig.py
++++ b/NiimPrintX/ui/AppConfig.py
+@@ -59,6 +59,7 @@ class AppConfig:
+                     "50mm x 30mm": (50, 30),
+                     "50mm x 15mm": (50, 14),
+                     "60mm x 40mm": (60, 40),
++                    "40mm x 30mm": (40, 30),
+                 },
+                 "density": 3
+             }
+-- 
+2.46.2
+
+
+From 93bcf49fa006518463642adedcda3d7355e92a5c Mon Sep 17 00:00:00 2001
+From: Loris Polenz <contact@lorispolenz.com>
+Date: Sun, 4 Aug 2024 02:24:11 +0200
+Subject: [PATCH 6/6] feat(print): add variable quantity
+
+---
+ NiimPrintX/nimmy/printer.py | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/NiimPrintX/nimmy/printer.py b/NiimPrintX/nimmy/printer.py
+index 091096ce3156..0811e9896b37 100644
+--- a/NiimPrintX/nimmy/printer.py
++++ b/NiimPrintX/nimmy/printer.py
+@@ -160,7 +160,7 @@ class PrinterClient:
+                             horizontal_offset=0):
+         await self.set_label_density(density)
+         await self.set_label_type(1)
+-        await self.start_printV2()
++        await self.start_printV2(quantity=quantity)
+         await self.start_page_print()
+         await self.set_dimensionV2(image.height, image.width, quantity)
+ 
+@@ -291,8 +291,11 @@ class PrinterClient:
+         packet = await self.send_command(RequestCodeEnum.START_PRINT, b"\x01")
+         return bool(packet.data[0])
+     
+-    async def start_printV2(self):
+-        packet = await self.send_command(RequestCodeEnum.START_PRINT, b"\x00\x01\x00\x00\x00\x00\x00")
++    async def start_printV2(self, quantity):
++        assert 0 <= quantity <= 65535  # assume quantity can not be greater than 65535 (2 bytes)
++
++        command = struct.pack('H', quantity)
++        packet = await self.send_command(RequestCodeEnum.START_PRINT, b'\x00' + command + b'\x00\x00\x00\x00')
+         return bool(packet.data[0])
+ 
+     async def end_print(self):
+-- 
+2.46.2
+
