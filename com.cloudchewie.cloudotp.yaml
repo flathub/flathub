@@ -1,0 +1,158 @@
+app-id: com.cloudchewie.cloudotp
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.vala
+command: CloudOTP
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/cmake
+  - /lib/debug
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  - /share/gtk-doc
+build-options:
+  append-path: /usr/lib/sdk/vala/bin
+  prepend-ld-library-path: /usr/lib/sdk/vala/lib
+
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: keybinder3
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/kupferlauncher/keybinder/releases/download/keybinder-3.0-v0.3.2/keybinder-3.0-0.3.2.tar.gz
+        sha256: e6e3de4e1f3b201814a956ab8f16dfc8a262db1937ff1eee4d855365398c6020
+        x-checker-data:
+          project-id: 13401
+          type: anitya
+          url-template: https://github.com/kupferlauncher/keybinder/releases/download/keybinder-3.0-v$version/keybinder-3.0-$version.tar.gz
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.93
+        commit: 238c8b02718fa5b4af95ede72beeed762094f4cc
+        x-checker-data:
+          type: anitya
+          project-id: 18446
+          tag-template: $version
+
+    modules:
+      - shared-modules/intltool/intltool-0.51.json
+
+      - name: ayatana-ido
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/ayatana-ido.git
+            tag: 0.10.4
+            commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+            x-checker-data:
+              type: anitya
+              project-id: 18445
+              tag-template: $version
+
+      - name: libayatana-indicator
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+            tag: 0.9.4
+            commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+            x-checker-data:
+              type: anitya
+              project-id: 18447
+              tag-template: $version
+
+      - name: libdbusmenu-gtk3
+        buildsystem: autotools
+        build-options:
+          cflags: -Wno-error
+        config-opts:
+          - --with-gtk=3
+          - --disable-dumper
+          - --disable-static
+          - --enable-tests
+          - --disable-gtk-doc
+          - --enable-introspection=no
+          - --disable-vala
+        cleanup:
+          - /share/gtk-doc
+          - /share/libdbusmenu
+        sources:
+          - type: archive
+            url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+            sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: sqlcipher
+    buildsystem: autotools
+    build-options:
+      cflags: -DSQLITE_SECURE_DELETE -DSQLITE_ENABLE_COLUMN_METADATA -DSQLITE_ENABLE_FTS3
+        -DSQLITE_ENABLE_RTREE=1 -DSQLITE_SOUNDEX=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY -DSQLITE_OMIT_LOOKASIDE=1
+        -DSQLITE_ENABLE_UPDATE_DELETE_LIMIT=1 -DSQLITE_MAX_SCHEMA_RETRY=25 -DSQLITE_HAS_CODEC
+        -DHAVE_USLEEP=1
+      ldflags: -lcrypto
+    config-opts:
+      - --enable-tempstore
+      - --enable-threadsafe
+      - --disable-tcl
+    cleanup:
+      - /bin/sqlcipher
+    sources:
+      - type: git
+        url: https://github.com/sqlcipher/sqlcipher.git
+        tag: v4.6.1
+        commit: c5bd336ece77922433aaf6d6fe8cf203b0c299d5
+        x-checker-data:
+          type: anitya
+          project-id: 11213
+          stable-only: true
+          tag-template: v$version
+
+  - name: cloudotp
+    buildsystem: simple
+    build-commands:
+      - bsdtar --to-stdout -xf CloudOTP.deb data.tar.zst | bsdtar -xf -
+      - cp -r opt/CloudOTP ${FLATPAK_DEST}/
+      - cp -r usr/share ${FLATPAK_DEST}/
+      - install -Dm755 CloudOTP.sh ${FLATPAK_DEST}/bin/CloudOTP
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/Robert-Stackflow/CloudOTP/releases/download/V2.4.6/CloudOTP-2.4.6-linux-amd64.deb
+        sha256: d2d6a7dc38490a4e29add2e68f2534e51f45fd35b7137d36cd94e5433249093b
+        dest-filename: CloudOTP.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Robert-Stackflow/CloudOTP/releases/latest
+          version-query: .tag_name | sub("^V"; "")
+          url-query: >-
+            .assets[] | select(.name=="CloudOTP-" + $version + "-linux-amd64.deb")
+            |
+            .browser_download_url
+
+      - type: script
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - /app/CloudOTP/CloudOTP
+        dest-filename: CloudOTP.sh
