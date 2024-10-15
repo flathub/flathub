@@ -2,17 +2,23 @@ id: dev.neovide.Neovide
 runtime: org.freedesktop.Platform
 runtime-version: "23.08"
 sdk: org.freedesktop.Sdk
-# sdk-extensions:
-#   - org.freedesktop.Sdk.Extension.rust-stable
 command: neovide
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
-  - --talk-name=org.freedesktop.Flatpak # ability to launch nvim via `flatpak-spawn`
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host
+  - --filesystem=/tmp
+  - --filesystem=/var/tmp
+  - --share=network
+build-options:
+  env:
+    NEOVIM_BIN: /app/bin/nvim
 modules:
   - name: wl-clipboard
+    buildsystem: meson
     config-opts:
       - -Dzshcompletiondir=no
       - -Dfishcompletiondir=no
@@ -20,20 +26,200 @@ modules:
       - type: archive
         url: https://github.com/bugaevc/wl-clipboard/archive/v2.2.1.tar.gz
         sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
-        x-checker-data:
-          type: anitya
-          project-id: 49082
-          url-template: https://github.com/bugaevc/wl-clipboard/archive/v$version.tar.gz
-    buildsystem: meson
     cleanup:
       - /share/man
-
-  - name: neovide
+  - name: xclip
     sources:
-      # - type: archive
-      #   url: https://github.com/neovide/neovide/archive/refs/tags/0.12.2.tar.gz
-      #   sha256: 5425c60454388651fd79757bde7c4d7499cdc49b375f7697b48d8366d45d08e4
-      # - generated-sources.json
+      - type: archive
+        url: https://github.com/astrand/xclip/archive/0.13.tar.gz
+        sha256: ca5b8804e3c910a66423a882d79bf3c9450b875ac8528791fb60ec9de667f758
+    cleanup:
+      - /share/man
+      - /bin/xclip-*file
+    modules:
+      - name: libXmu
+        config-opts:
+          - --disable-static
+          - --disable-docs
+        sources:
+          - type: archive
+            url: https://www.x.org/releases/individual/lib/libXmu-1.1.3.tar.bz2
+            sha256: 9c343225e7c3dc0904f2122b562278da5fed639b1b5e880d25111561bac5b731
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - '*.la'
+  - name: LuaJIT
+    no-autogen: true
+    make-args:
+      - PREFIX=/app
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: https://github.com/LuaJIT/LuaJIT/archive/97813fb924edf822455f91a5fbbdfdb349e5984f.tar.gz
+        sha256: cbf1647acbd340c62b9c342dae43290762efa1b26d8bf8457f143fabf8ed86c7
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+      - '*.a'
+  - name: lpeg
+    no-autogen: true
+    no-make-install: true
+    make-args:
+      - LUADIR=/app/include/luajit-2.1/
+    post-install:
+      - install -Dm755 -t /app/lib/lua/5.1/ lpeg.so
+      - install -Dm644 -t /app/share/lua/5.1/ re.lua
+    sources:
+      - type: archive
+        url: https://github.com/neovim/deps/raw/d495ee6f79e7962a53ad79670cb92488abe0b9b4/opt/lpeg-1.1.0.tar.gz
+        sha256: 4b155d67d2246c1ffa7ad7bc466c1ea899bbc40fef0257cc9c03cecbaed4352a
+  - name: mpack-lua
+    no-autogen: true
+    make-args:
+      - USE_SYSTEM_MPACK=yes
+      - LUA_INCLUDE=-I/app/include/luajit-2.1/
+    make-install-args:
+      - USE_SYSTEM_MPACK=yes
+    sources:
+      - type: archive
+        url: https://github.com/libmpack/libmpack-lua/archive/1.0.8.tar.gz
+        sha256: 6d84d272bff27800ba1d7b718d1005ac6bfe35c5f3a5bf5d07e6ffd7e341d560
+      - type: shell
+        commands:
+          - sed -i 's|/usr/lib|/app/lib|' ./Makefile
+    cleanup:
+      - '*'
+    modules:
+      - name: mpack
+        no-autogen: true
+        make-install-args:
+          - PREFIX=/app
+        sources:
+          - type: archive
+            url: https://github.com/libmpack/libmpack/archive/1.0.5.tar.gz
+            sha256: 4ce91395d81ccea97d3ad4cb962f8540d166e59d3e2ddce8a22979b49f108956
+        cleanup:
+          - '*'
+  - name: luv
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_MODULE=OFF
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWITH_SHARED_LIBUV=ON
+      - -DLUA_BUILD_TYPE=System
+    sources:
+      - type: archive
+        url: https://github.com/luvit/luv/releases/download/1.48.0-2/luv-1.48.0-2.tar.gz
+        sha256: 2c3a1ddfebb4f6550293a40ee789f7122e97647eede51511f57203de48c03b7a
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.a'
+      - '*.la'
+    modules:
+      - name: libuv
+        sources:
+          - type: archive
+            url: https://github.com/libuv/libuv/archive/v1.48.0.tar.gz
+            sha256: 8c253adb0f800926a6cbd1c6576abae0bc8eb86a4f891049b72f9e5b7dc58f33
+  - name: msgpack-c
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/msgpack/msgpack-c/releases/download/c-4.0.0/msgpack-c-4.0.0.tar.gz
+        sha256: 420fe35e7572f2a168d17e660ef981a589c9cbe77faa25eb34a520e1fcc032c8
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - '*.a'
+  - name: unibilium
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: https://github.com/neovim/unibilium/archive/v2.1.1.tar.gz
+        sha256: 6f0ee21c8605340cfbb458cbd195b4d074e6d16dd0c0e12f2627ca773f3cabf1
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+      - '*.la'
+  - name: libvterm
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: https://github.com/neovim/libvterm/archive/0a15c6e983b0db7ef8276e0792414a805d01bdaf.tar.gz
+        sha256: c4683e7a2d71c04781fd0ab7719a94202800e97a9e091514c16983bb732b0fa7
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - '*.a'
+      - '*.la'
+  - name: libtermkey
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: http://www.leonerd.org.uk/code/libtermkey/libtermkey-0.22.tar.gz
+        sha256: 6945bd3c4aaa83da83d80a045c5563da4edd7d0374c62c0d35aec09eb3014600
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+      - '*.la'
+  - name: tree-sitter
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: archive
+        url: https://github.com/tree-sitter/tree-sitter/archive/c3d45a0153e2985e386dd7172dd55026bb38c9ee.tar.gz
+        sha256: 88961080f0e1413a3975a640e6e879b2233fee3353c68d129332ccf0a04ff8bc
+    cleanup:
+      - /lib/pkgconfig
+  - name: neovim
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DUSE_BUNDLED=OFF
+    post-install:
+      # Install AppData
+      - install -Dm644 ../runtime/nvim.appdata.xml -t /app/share/metainfo
+      # Install icon
+      - install -Dm644 ../neovim-mark.svg /app/share/icons/hicolor/scalable/apps/nvim.svg
+    sources:
+      - type: archive
+        url: https://github.com/neovim/neovim/archive/v0.10.2.tar.gz
+        sha256: 546cb2da9fffbb7e913261344bbf4cf1622721f6c5a67aa77609e976e78b8e89
+        x-checker-data:
+          is-main-source: true
+          type: anitya
+          project-id: 9037
+          url-template: https://github.com/neovim/neovim/archive/v$version.tar.gz
+      - type: file
+        url: https://raw.githubusercontent.com/flathub/io.neovim.nvim/refs/heads/master/neovim-mark.svg
+        sha256: ee145e0449d86fc45bd34512f94365deb46d2adbd852d7d8c7ef08a8162424e3
+        dest-filename: neovim-mark.svg
+  - name: neovide
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 repo/assets/neovide.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 repo/assets/neovide.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 repo/flatpak/dev.neovide.Neovide.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm755 neovide -t /app/bin
+    sources:
       - type: git
         url: https://github.com/sqwxl/neovide.git
         commit: d8c73ffe7d450c4da92d2601a26246d222a32cab
@@ -41,19 +227,4 @@ modules:
       - type: archive
         url: https://github.com/sqwxl/neovide/releases/download/0.12.3/neovide-linux-x86_64.tar.gz
         sha256: 2307e7c9599f3e32dfbd61054e49ed1c41945a399286a75b52a5d3bc0bdd021a
-        strip-components: 0 # needed cause the binary is in the root of the tarball
-    buildsystem: simple
-    # build-options:
-    # append-path: /usr/lib/sdk/rust-stable/bin
-    # env:
-    #   CARGO_HOME: /run/build/neovide/cargo
-    build-commands:
-      # - cargo --offline fetch --manifest-path Cargo.toml --verbose
-      # - cargo --offline build --release --verbose
-      - install -Dm644 repo/assets/neovide.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      - install -Dm644 repo/assets/neovide.desktop /app/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-icon="${FLATPAK_ID}" /app/share/applications/${FLATPAK_ID}.desktop
-
-      - install -Dm644 repo/flatpak/dev.neovide.Neovide.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
-
-      - install -Dm755 neovide -t /app/bin
+        strip-components: 0
