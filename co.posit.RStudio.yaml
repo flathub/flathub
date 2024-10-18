@@ -1,0 +1,159 @@
+id: co.posit.RStudio
+runtime: org.freedesktop.Sdk
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.openjdk21
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+    RSTUDIO_VERSION_MAJOR: "2024"
+    RSTUDIO_VERSION_MINOR: "09"
+    RSTUDIO_VERSION_PATCH: "0"
+    RSTUDIO_VERSION_SUFFIX: +375~flathub
+
+command: run.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --env=ELECTRON_TRASH=gio
+  - --env=PATH=/app/jre/bin:/app/node/bin:/usr/bin
+  - --filesystem=host
+
+modules:
+  - name: yaml-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=True
+    sources:
+      - type: archive
+        url: https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz
+        sha256: fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16
+
+  - name: Boost
+    # Docs for building boost binaries: https://www.boost.org/doc/libs/1_86_0/more/getting_started/unix-variants.html#prepare-to-use-a-boost-library-binary
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh
+      - ./b2 install --prefix=${FLATPAK_DEST} link=shared runtime-link=shared -j ${FLATPAK_BUILDER_N_JOBS}
+        --with-chrono
+        --with-context
+        --with-date_time
+        --with-filesystem
+        --with-iostreams
+        --with-program_options
+        --with-random
+        --with-regex
+        --with-system
+        --with-test
+        --with-thread
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.bz2
+        sha256: 6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e
+
+  - name: SOCI
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=True
+      - -DSOCI_CXX11=ON
+      - -DSOCI_STATIC=OFF
+      - -DSOCI_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/SOCI/soci/archive/refs/tags/v4.0.3.tar.gz
+        sha256: 4b1ff9c8545c5d802fbe06ee6cd2886630e5c03bf740e269bb625b45cf934928
+
+  - name: R
+    buildsystem: autotools
+    config-opts:
+      - --enable-R-shlib
+    sources:
+      - type: archive
+        url: https://cran.r-project.org/src/base/R-4/R-4.4.1.tar.xz
+        sha256: fbd755314a5cc08c57aabff839ff791fb43a9052a2c6524ec3be96075fd34dde
+
+  - name: Node.js
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/node20/install-sdk.sh
+
+  - name: RStudio
+    buildsystem: cmake-ninja
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/openjdk21/bin
+      env:
+        RSTUDIO_VERSION_MAJOR: "2024"
+        RSTUDIO_VERSION_MINOR: "09"
+        RSTUDIO_VERSION_PATCH: "0"
+        RSTUDIO_VERSION_SUFFIX: +375~flathub
+        JAVA_HOME: /usr/lib/sdk/openjdk21
+        XDG_CACHE_HOME: /run/build/RStudio/flatpak-node/cache
+        NPM_CONFIG_CACHE: /run/build/RStudio/flatpak-node/npm-cache
+        NPM_CONFIG_NODEDIR: /usr/lib/sdk/node20
+        NPM_CONFIG_OFFLINE: "1"
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebugInfo
+      - -DRSTUDIO_USE_SYSTEM_YAML_CPP=True
+      - -DRSTUDIO_USE_SYSTEM_BOOST=True
+      - -DRSTUDIO_USE_SYSTEM_SOCI=True
+      - -DRSTUDIO_UNIT_TESTS_DISABLED=True
+      - -DRSTUDIO_TARGET=Electron
+      - -DRSTUDIO_ELECTRON=True
+      - -DRSTUDIO_SERVER=False
+      - -DNODEJS=/usr/lib/sdk/node20/bin/node
+      - -DNPM=/usr/lib/sdk/node20/bin/npm
+      - -DNPX=/usr/lib/sdk/node20/bin/npx
+    post-install:
+      - install -Dm755 -t /app/bin/ run.sh
+    sources:
+      - type: archive
+        url: https://github.com/rstudio/rstudio/archive/refs/tags/v2024.09.0+375.tar.gz
+        sha256: 8a29b77c53a3db8379d824a9f4a491843036003d105ed71981cd40fe39d2c8c8
+      - packages-rstudio.json
+      - type: archive
+        url: https://rstudio-buildtools.s3.amazonaws.com/dictionaries/core-dictionaries.zip
+        sha256: 4341a9630efb9dcf7f215c324136407f3b3d6003e1c96f2e5e1f9f14d5787494
+        dest: dependencies/dictionaries
+      - type: archive
+        url: https://github.com/mathjax/MathJax/archive/refs/tags/2.7.9.tar.gz
+        sha256: c9167279c87da044f2ff910ad573a02ce90354cb59440ae568eb86e1630f65df
+        dest: dependencies/mathjax-27
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.5.57/quarto-1.5.57-linux-amd64.tar.gz
+        sha256: 6418effd9f7c8a5f043197bcf1f30a4a2d588de399f23121ecec580ca5133296
+        dest: dependencies/quarto
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.5.57/quarto-1.5.57-linux-arm64.tar.gz
+        sha256: 6418effd9f7c8a5f043197bcf1f30a4a2d588de399f23121ecec580ca5133296
+        dest: dependencies/quarto
+      - type: archive
+        url: https://github.com/quarto-dev/quarto/archive/refs/heads/release/rstudio-cherry-blossom.zip
+        sha256: df3a040f0cf4ce1892519082dd6822a8ca433e9e4f02d9394ab2931733f7e5a6
+        dest: src/gwt/lib/quarto
+      - packages-panmirror.json
+      - type: patch
+        path: offline-yarn.patch
+      - type: patch
+        path: fix-node-gyp-nodedir.patch
+      - type: inline
+        dest: src/gwt/lib/quarto/apps/panmirror
+        dest-filename: .yarnrc
+        contents: |
+          yarn-offline-mirror "/run/build/RStudio/flatpak-node/yarn-mirror"
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/bin/rstudio "$@"
