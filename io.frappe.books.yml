@@ -1,0 +1,47 @@
+app-id: io.frappe.books
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: run.sh
+separate-locales: false
+rename-desktop-file: frappe-books.desktop
+rename-icon: frappe-books
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=home
+  - --env=ELECTRON_TRASH=gio
+modules:
+  - name: books
+    buildsystem: simple
+    build-commands:
+      # copy the contents from the builddir to the flatpak's filesystem
+      - cp -ra ./'Frappe Books'/ /app/frappe-books
+      # Install app wrapper
+      - install -Dm755 run.sh -t /app/bin/
+      - cp -r ./share /app/
+      # patch the desktop file
+      - desktop-file-edit --set-key="Exec" --set-value="run.sh %U" ${FLATPAK_DEST}/share/applications/frappe-books.desktop
+      # install the metainfo
+      - install -Dm0644 io.frappe.books.appdata.xml ${FLATPAK_DEST}/share/appdata/${FLATPAK_ID}.appdata.xml
+      # fix the 512x512 icon size as it causes build issue due to wrong size
+      - ffmpeg -i ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/frappe-books.png -vf scale=512:512 frappe-icon.png
+      - mv frappe-icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/frappe-books.png
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: "https://github.com/frappe/books/releases/download/v0.23.0/frappe-books-0.23.0.x86_64.rpm"
+        sha256: fb3f8b5db499cc892cbaedfb23bbef99fa22bf89017d973eea91d7a554657b68
+
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/frappe-books/frappe-books "$@"
+
+      - type: file
+        path: io.frappe.books.appdata.xml
