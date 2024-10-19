@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec zypak-wrapper /app/dir/apipost
+exec zypak-wrapper /app/extra/apipost
