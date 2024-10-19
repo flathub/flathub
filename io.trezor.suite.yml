@@ -1,0 +1,72 @@
+app-id: io.trezor.suite
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: trezor-suite
+separate-locales: false
+rename-icon: trezor-suite
+finish-args:
+# Essential to get the autostart working.
+  - --filesystem=~/.config/autostart
+  - --share=network
+# Trezor USB devices can be detected only when using "all."
+  - --device=all
+#  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=x11
+#  - --socket=wayland
+# There are plans to possibly introduce sound effects in the future.
+#  - --socket=pulseaudio
+# There are plans to possibly introduce the status icon in the future.
+#  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: trezor-suite
+    buildsystem: simple
+    cleanup:
+      - squashfs-root
+    sources:
+      - type: extra-data
+        url: https://data.trezor.io/suite/releases/desktop/latest/Trezor-Suite-24.10.1-linux-x86_64.AppImage
+        size: 167290331
+        sha256: 2d3ae954339c2fc2fe82df88842fdf2a6521e37033929dbd1572a325fca98638
+        filename: Trezor-Suite.AppImage
+        #SHA256 is not included in the latest-linux.yml, only SHA512 :( but it could be used in the future.        
+        #x-checker-data:
+          #ype: electron-updater
+
+      - type: script
+        dest-filename: trezor-suite
+        commands:
+          - exec zypak-wrapper /app/extra/bin/trezor-suite "$@" --no-sandbox --skip-new-bridge-rollout
+          # Wayland still causes issues with electron:( Xwayland works better.
+          # --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform-hint=auto
+
+      - type: file
+        path: io.trezor.suite.appdata.xml
+
+      - type: file
+        path: io.trezor.suite.desktop
+
+      - type: file
+        path: apply_extra.sh
+
+      - type: file
+        path: icons/trezor-suite.png
+
+    build-commands:
+      - install -D ./apply_extra.sh "${FLATPAK_DEST}/bin/apply_extra"
+      - install trezor-suite "${FLATPAK_DEST}/bin/"
+      - install -Dm644 io.trezor.suite.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 io.trezor.suite.appdata.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
+      - install  -Dm644 -t ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps trezor-suite.png
