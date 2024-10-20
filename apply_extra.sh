@@ -8,7 +8,7 @@ chmod +x $APP_IMAGE
 
 # Extract image
 
-unappimage $APP_IMAGE
+unappimage $APP_IMAGE > /dev/null
 
 # Install data
 DEST="/app/extra/bin/"
