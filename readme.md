@@ -1,4 +1,14 @@
-### neovide flatpak
+## neovide flatpak
+
+### building
+
+```
+git clone https://github.com/gmanka-flatpaks/dev.neovide.neovide
+cd dev.neovide.neovide
+flatpak run org.flatpak.Builder ./build --install --user --force-clean dev.neovide.neovide.yml
+```
+
+### how to use neovim instance
 
 by default, neovide uses sandboxed nvim
 
