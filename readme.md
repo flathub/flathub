@@ -15,7 +15,8 @@ by default, neovide uses sandboxed nvim
 you can tell neovide to use host nvim:
 
 ```shell
-echo 'neovim-bin = "flatpak-spawn --host nvim"' > ~/.var/app/dev.neovide.neovide/config/neovide/config.toml
+nvim=$(which nvim)
+echo "neovim-bin = \"flatpak-spawn --host $nvim\"" | tee ~/.var/app/dev.neovide.neovide/config/neovide/config.toml
 ```
 
 tell neovide to use nvim from toolbox:
