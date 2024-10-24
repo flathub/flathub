@@ -35,6 +35,6 @@ flatpak run org.flatpak.Builder \
   --ccache \
   --mirror-screenshots-url=https://dl.flathub.org/media/ \
   --repo=repo \
-  builddir org.cosinus.mailviewer.json
+  builddir io.github.alescdb.mailviewer.json
 
 
