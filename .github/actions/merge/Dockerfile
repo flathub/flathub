@@ -14,7 +14,7 @@ ENV PATH="/venv/bin:$PATH"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        git libcairo2 libgirepository-1.0-1 gir1.2-json-1.0 && \
+        git gh libcairo2 libgirepository-1.0-1 gir1.2-json-1.0 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /venv /venv
