@@ -35,6 +35,7 @@ flatpak run org.flatpak.Builder \
   --ccache \
   --mirror-screenshots-url=https://dl.flathub.org/media/ \
   --repo=repo \
-  builddir io.github.alescdb.mailviewer.json
-
-
+  builddir io.github.alescdb.mailviewer.json && {
+  rm -rf /tmp/mailviewer
+  RUST_LOG=mailviewer=debug flatpak run io.github.alescdb.mailviewer sample.eml
+}
