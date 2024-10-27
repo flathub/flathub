@@ -36,8 +36,3 @@ cd Projects
 git clone https://github.com/SwordPuffin/Splices
 ```
 Open Gnome-Builder and it should appear at the top in 'Recent Projects'
-
-<<<<<<< HEAD
-=======
-
->>>>>>> 18022d0 (Update all files before upload to Flathub)
