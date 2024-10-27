@@ -1,10 +1,6 @@
 # Splices
 
-A word building game made with GTK4 and Python.
-
-The game will be pushed to Flathub soon.
-
-***UNLESS I GET A REASON TO, THIS GAME WILL ONLY BE AVAILABLE FOR LINUX***
+A small time killing game where you build words with a random set of letters. Made with GTK4 and Python.
 
 # How To Play
 
