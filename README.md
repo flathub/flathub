@@ -3,7 +3,7 @@
 ## Building
 
 ```
-flatpak run org.flatpak.Buider build-dir --user --ccache --force-clean --install org.pgadmin.pgadmin4.yml
+flatpak run org.flatpak.Builder build-dir --user --ccache --force-clean --install org.pgadmin.pgadmin4.yml
 ```
 
 Then you can run it via the command line:
