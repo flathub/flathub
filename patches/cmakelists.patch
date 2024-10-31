@@ -1,0 +1,78 @@
+Description: Remove all FetchContent from CMakeLists
+ It seems like network fetching during build is discouraged
+ in flatpak, so I am removing all FetchContent.
+ Also, I had missed a #include for uint8_t (<cstdint>)
+Forwarded: not-needed
+Author: Shriram Ravindranathan <s20n@ters.dev>
+
+---
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 37da06e..5bae18a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -13,27 +13,19 @@ include(FetchContent)
+ find_package(SFML COMPONENTS graphics audio system REQUIRED)
+ 
+ # REMIDI
+-FetchContent_Declare(REMIDI
+-    GIT_REPOSITORY https://github.com/jcelerier/libremidi.git
+-    GIT_TAG v4.5.0)
+-FetchContent_MakeAvailable(REMIDI)
++find_package(libremidi 4.5.0 REQUIRED)
+ 
+ # FluidSynth
+ find_package(FluidSynth REQUIRED)
+ 
+-# ImGui
+-FetchContent_Declare(ImGui
+-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+-    GIT_TAG v1.90.1)
+-FetchContent_MakeAvailable(ImGui)
+-
+-# ImGui-SFML
+-set(IMGUI_DIR ${imgui_SOURCE_DIR})
++# ImGui-SFML + OpenGL
++set(IMGUI_DIR "imgui-1.90.1")
++set(IMGUI_SFML_DIR "imgui-sfml-2.6")
+ set(IMGUI_SFML_FIND_SFML OFF)
+-FetchContent_Declare(ImGui-SFML
+-    GIT_REPOSITORY https://github.com/SFML/imgui-sfml.git
+-    GIT_TAG v2.6)
+-FetchContent_MakeAvailable(ImGui-SFML)
++include_directories(${IMGUI_DIR})
++include_directories(${IMGUI_SFML_DIR})
++find_package(OpenGL REQUIRED)
++include_directories( ${OPENGL_INCLUDE_DIRS} )
+ 
+ # Boost Property Tree
+ set(Boost_USE_STATIC_LIBS OFF)
+@@ -63,14 +55,15 @@ message(STATUS "Chordcat assets path: ${APP_ASSETS_PATH}")
+ configure_file(src/config.h.in config/config.h)
+ 
+ file(GLOB src_files CONFIGURE_DEPENDS "src/*.cpp")
++file(GLOB imgui_srcs CONFIGURE_DEPENDS "${IMGUI_DIR}/*.cpp")
+ include_directories(${CMAKE_BINARY_DIR}/config)
+ 
+ if(WIN32)
+   set(desktop_files desktop/chordcat.rc)
+ endif()
+ 
+-add_executable(${PROJECT_NAME} ${src_files} ${desktop_files})
+-target_link_libraries(${PROJECT_NAME} PRIVATE sfml-graphics sfml-audio sfml-system fluidsynth ImGui-SFML::ImGui-SFML Boost::boost)
++add_executable(${PROJECT_NAME} ${src_files} ${desktop_files} ${IMGUI_SFML_DIR}/imgui-SFML.cpp ${imgui_srcs} ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
++target_link_libraries(${PROJECT_NAME} PRIVATE sfml-graphics sfml-audio sfml-system fluidsynth Boost::boost ${OPENGL_LIBRARIES})
+ target_link_libraries(${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:libremidi>)
+ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+ 
+diff --git a/src/piano.cpp b/src/piano.cpp
+index 7406b13..de3e556 100644
+--- a/src/piano.cpp
++++ b/src/piano.cpp
+@@ -2,6 +2,7 @@
+ #include "piano.hpp"
+ #include <SFML/Window/Keyboard.hpp>
+ #include <fluidsynth/synth.h>
++#include <cstdint>
+ 
+ inline int getNoteFromKeyCode(sf::Keyboard::Key keycode) {
+     int index = 21 + 3; // 21 is A0, 21 + 3 is C1
