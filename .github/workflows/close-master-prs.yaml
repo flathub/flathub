@@ -7,26 +7,30 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  pull-requests: write
+
 jobs:
   close:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: Check and close
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ORG_NAME: ${{ github.repository_owner }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          COMMENT: >
+              This PR is automatically closed because application submission
+              PRs must be made against the new-pr branch. If this is done
+              in error, please comment or reopen!
+          REPO: flathub/flathub
         run: |
-          has_label=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '.labels | any(.name == "master-leave-open")')
+          has_label=$(gh pr --repo "$REPO" view ${{ github.event.pull_request.number }} --json labels -q '.labels | any(.name == "leave-open")')
 
           if [[ "$has_label" != "true" ]]; then
-            if gh api orgs/$ORG_NAME/members/$PR_AUTHOR --silent; then
+            if gh api orgs/${{ github.repository_owner }}/members/${{ github.event.pull_request.user.login }} --silent; then
               echo "User $PR_AUTHOR is a member of $ORG_NAME. Skipping"
             else
-              echo "User $PR_AUTHOR is not a member of $ORG_NAME and no 'master-leave-open' label is found. Closing PR."
-              gh pr close ${{ github.event.pull_request.number }} -c "This PR is automatically closed because submission PRs must be made against the new-pr branch. If this is done in error, please comment!"
-              fi
+              echo "User $PR_AUTHOR is not a member of $ORG_NAME and no 'leave-open' label is found"
+              gh pr --repo "$REPO" close ${{ github.event.pull_request.number }} -c "$COMMENT"
           else
-            echo "PR has 'master-leave-open' label. Skipping"
+            echo "PR has 'leave-open' label. Skipping"
           fi
