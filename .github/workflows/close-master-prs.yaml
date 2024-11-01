@@ -1,0 +1,30 @@
+name: Close PRs to master
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - master
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR author is an org member and PR does not have no-close label
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
+          ORG_NAME: ${{ github.repository_owner }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          has_label=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '.labels | any(.name == "master-leave-open")')
+
+          if [[ "$has_label" != "true" ]]; then
+            if gh api orgs/$ORG_NAME/members/$PR_AUTHOR --silent; then
+              echo "User $PR_AUTHOR is a member of $ORG_NAME. Skipping"
+            else
+              echo "User $PR_AUTHOR is not a member of $ORG_NAME and no 'master-leave-open' label is found. Closing PR."
+              gh pr close ${{ github.event.pull_request.number }} -c "This PR is automatically closed because submission PRs must be made against the new-pr branch. If this is done in error, please comment!"
+              fi
+          else
+            echo "PR has 'master-leave-open' label. Skipping"
+          fi
