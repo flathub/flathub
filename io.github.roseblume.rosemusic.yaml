@@ -6,7 +6,7 @@ command: rosary-music
 rename-icon: rosary-music
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node20
-  - org.freedesktop.Sdk.Extension.rust-stable
+  #- org.freedesktop.Sdk.Extension.rust-stable
 build-options:
   append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
 finish-args:
@@ -21,26 +21,43 @@ modules:
   - name: rose-music
     buildsystem: simple
     env:
-        CARGO_HOME: /run/build/rose-music/cargo
+        HOME: /run/build/rose-music
+        CARGO_HOME: /run/build/rose-music/src-tauri
         XDG_CACHE_HOME: /run/build/rose-music/flatpak-node/cache
-        npm_config_offline: true
-        npm_config_cache: /run/build/rose-music/flatpak-node/npm-cache
+        yarn_config_offline: 'true'
+        yarn_config_cache: /run/build/rose-music/flatpak-node/npm-cache
     sources:
       - type: git
         url: https://github.com/RoseBlume/RoseMusic.git
-        tag: v1.2.0
+        tag: v1.2.1
       - cargo-sources.json
       - node-sources.json
     build-commands:
-      #- npm install --cache node_modules --offline
-      - npm install --cache node_modules --offline --legacy-peer-deps
-      - npm run tauri build -- -b deb
+      #- flatpak-node/patch-all.sh
+      #- rm -r src-tauri/target
+      #- rm -r src-tauri/gen
+      #- npm install --cache flatpak-node/yarn-cache --offline --legacy-peer-deps #--cache node_modules --offline
+      #- yarn --offline config set yarn-offline-mirror ./flatpak-node/yarn-mirror
+      #- yarn config set yarn-offline-mirror-pruning true
+      - ./flatpak-node/setup_sdk_node_headers.sh
+      - echo -e 'yarn-offline-mirror "/run/build/rose-music/flatpak-node/yarn-mirror"\nyarn-offline-mirror-pruning true' > /run/build/rose-music/.yarnrc
+      - mkdir -p src-tauri/.cargo && echo -e '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/rose-music/cargo/vendor"' > src-tauri/.cargo/config.toml
+      - yarn install  --offline --immutable --immutable-cache --inline-builds
+      #- cp -r cargo/vendor src-tauri
+      #- mkdir src-tauri/.cargo
+      #- mv cargo/config src-tauri/.cargo/config.toml
+      #- cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - yarn run tauri build -- -b deb
       - ar -x src-tauri/target/release/bundle/deb/*.deb
       - tar -xf src-tauri/target/release/bundle/deb/Rosary*/data.tar.gz
       - install -Dm755 src-tauri/target/release/bundle/deb/Rosary*/data/usr/bin/rosary-music /app/bin/rosary-music
+      #- sed -i -e 's|Categories=|Categories=Music|g' usr/share/applications/Rosary-Music.desktop
+      #- sed -i -e 's|Icon=rosary-music|Icon=io.github.roseblume.rosemusic|g' usr/share/applications/Rosary-Music.desktop
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/applications/Rosary-Music.desktop /app/share/applications/io.github.roseblume.rosemusic.desktop
+      #- cat app/share/applications/*.desktop
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/icons/hicolor/128x128/apps/rosary-music.png /app/share/icons/hicolor/128x128/apps/rosary-music.png
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/icons/hicolor/32x32/apps/rosary-music.png /app/share/icons/hicolor/32x32/apps/rosary-music.png
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/icons/hicolor/256x256@2/apps/rosary-music.png /app/share/icons/hicolor/512x512/apps/rosary-music.png
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/icons/hicolor/scalable/apps/rosary-music.svg /app/share/icons/hicolor/scalable/apps/rosary-music.svg
+
       - install -Dm644 src-tauri/target/release/bundle/deb/Rosary*/data/usr/share/metainfo/io.github.roseblume.rosemusic.metainfo.xml /app/share/metainfo/io.github.roseblume.rosemusic.metainfo.xml
