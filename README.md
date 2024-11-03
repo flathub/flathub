@@ -5,6 +5,8 @@ TODO:
 - Test on more hardware other than nvidia gpus
 - Add CI
 - Publish to flathub so people can install with `flatpak install`
+- Add GPG key signing to flatpak build process
+- troubleshoot some valve pressure vessel bugs with detecting certain hardware libs like intel iris
 
 # Build
 
