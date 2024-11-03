@@ -17,10 +17,11 @@ const (
 )
 
 type MPRISPlayer struct {
+	Done           chan struct{}
+	Name           string
 	serviceName    string
 	objectPath     dbus.ObjectPath
 	conn           *dbus.Conn
-	name           string
 	duration       time.Duration
 	startTime      time.Time
 	isPaused       bool
@@ -36,11 +37,12 @@ func NewMPRISPlayer(seconds int, name string) (*MPRISPlayer, error) {
 	}
 
 	return &MPRISPlayer{
-		name:           name,
+		Name:           name,
 		duration:       time.Duration(seconds) * time.Second,
 		objectPath:     "/org/mpris/MediaPlayer2",
 		playbackStatus: "Playing",
 		tickerDone:     make(chan struct{}),
+		Done:           make(chan struct{}, 1),
 	}, nil
 }
 
@@ -55,7 +57,7 @@ func (p *MPRISPlayer) Start() error {
 
 	reply, err := conn.RequestName(p.serviceName, dbus.NameFlagDoNotQueue)
 	if err != nil {
-		return fmt.Errorf("failed to request name: %w", err)
+		return fmt.Errorf("failed to request Name: %w", err)
 	}
 
 	if reply != dbus.RequestNameReplyPrimaryOwner {
@@ -95,6 +97,7 @@ func (p *MPRISPlayer) tick() {
 	for {
 		select {
 		case <-p.tickerDone:
+			p.Done <- struct{}{}
 			return
 		case <-ticker.C:
 			if p.isPaused {
@@ -105,7 +108,8 @@ func (p *MPRISPlayer) tick() {
 			progress := math.Min(100, (float64(elapsed)/float64(p.duration))*100)
 
 			if progress >= 100 {
-				os.Exit(0)
+				p.Done <- struct{}{}
+				return
 			}
 
 			timeLeft := p.duration - elapsed
@@ -117,7 +121,7 @@ func (p *MPRISPlayer) tick() {
 
 			metadata := map[string]dbus.Variant{
 				"mpris:trackid": dbus.MakeVariant(dbus.ObjectPath("/track/1")),
-				"xesam:title":   dbus.MakeVariant(p.name),
+				"xesam:title":   dbus.MakeVariant(p.Name),
 				"xesam:artist":  dbus.MakeVariant([]string{util.FormatDuration(timeLeft)}),
 				"mpris:artUrl":  dbus.MakeVariant("file://" + progressImg),
 			}
