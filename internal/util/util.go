@@ -3,9 +3,12 @@ package util
 import (
 	"bytes"
 	"fmt"
+	"github.com/diamondburned/gotk4/pkg/gdk/v4"
+	"log"
 	"math"
 	"os"
 	"path"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -43,6 +46,22 @@ const svgTemplate = `
 
 func init() {
 	_ = os.MkdirAll(tmpDir, 0755)
+}
+
+func ParseKeyval(keyval uint) string {
+	return strings.ReplaceAll(gdk.KeyvalName(keyval), "KP_", "")
+}
+
+func IsGdkKeyvalNumber(keyval uint) bool {
+	return (keyval >= gdk.KEY_0 && keyval <= gdk.KEY_9) || (keyval >= gdk.KEY_KP_0 && keyval <= gdk.KEY_KP_9)
+}
+
+func NumToLabelText(num int) string {
+	if num > 59 || num < 0 {
+		log.Fatalf("NumToLabelText: num must be between 0 and 59")
+	}
+
+	return fmt.Sprintf("%02d", num)
 }
 
 func MakeProgressCircle(progress float64) (string, error) {
