@@ -4,6 +4,11 @@
 
 Run:
 
-```bash
+```shell
 go run cmd/main.go 
+```
+
+Build:
+```shell
+go build -ldflags="-s -w" -o ./.bin/app ./cmd/main.go
 ```
