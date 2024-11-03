@@ -44,7 +44,7 @@ func NewMPRISPlayer(seconds int, name string) (*MPRISPlayer, error) {
 	}, nil
 }
 
-func (p *MPRISPlayer) Init() error {
+func (p *MPRISPlayer) Start() error {
 	conn, err := dbus.SessionBus()
 	if err != nil {
 		return fmt.Errorf("failed to connect to session bus: %w", err)

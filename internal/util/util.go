@@ -1,21 +1,45 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
 	"path"
-	"strings"
+	"text/template"
 	"time"
 )
 
 const (
-	tmpDir      = "/tmp/.mpris-timer"
-	width       = 256
-	height      = 256
-	padding     = 16
-	strokeWidth = 32
+	tmpDir        = "/tmp/.mpris-timer"
+	width         = 256
+	height        = 256
+	padding       = 16
+	strokeWidth   = 32
+	fgStrokeColor = "#535353"
+	bgStrokeColor = "#2190a4"
 )
+
+type svgParams struct {
+	Width         int
+	Height        int
+	CenterX       int
+	CenterY       int
+	Radius        float64
+	FgStrokeColor string
+	BaseWidth     int
+	BgStrokeColor string
+	StrokeWidth   int
+	Circumference float64
+	DashOffset    float64
+}
+
+const svgTemplate = `
+<svg width="{{.Width}}" height="{{.Height}}">
+    <circle cx="{{.CenterX}}" cy="{{.CenterY}}" r="{{.Radius}}" fill="none" stroke="{{.FgStrokeColor}}" stroke-width="{{.BaseWidth}}" />
+    <circle cx="{{.CenterX}}" cy="{{.CenterY}}" r="{{.Radius}}" fill="none" stroke="{{.BgStrokeColor}}" stroke-width="{{.StrokeWidth}}" stroke-dasharray="{{.Circumference}}" stroke-dashoffset="{{.DashOffset}}" transform="rotate(-90 {{.CenterX}} {{.CenterY}})" />
+</svg>
+`
 
 func init() {
 	_ = os.MkdirAll(tmpDir, 0755)
@@ -23,7 +47,7 @@ func init() {
 
 func MakeProgressCircle(progress float64) (string, error) {
 	progress = math.Max(0, math.Min(100, progress))
-	filename := path.Join(tmpDir, fmt.Sprintf("_c.%.1f.svg", progress))
+	filename := path.Join(tmpDir, fmt.Sprintf("_f4g.%.1f.svg", progress))
 
 	if _, err := os.Stat(filename); err == nil {
 		return filename, nil
@@ -32,34 +56,36 @@ func MakeProgressCircle(progress float64) (string, error) {
 	centerX := width / 2
 	centerY := height / 2
 	radius := float64(width)/2 - float64(strokeWidth) - float64(padding)
-	baseWidth := strokeWidth * 0.25
+	baseWidth := int(math.Round(strokeWidth * 0.25))
 	circumference := 2 * math.Pi * radius
 	dashOffset := circumference * (1 - progress/100)
 
-	svg := fmt.Sprintf(`<svg width="%d" height="%d">
-		<circle
-			cx="%d"
-			cy="%d"
-			r="%.1f"
-			fill="none"
-			stroke="#535353"
-			stroke-width="%d"
-		/>
-		<circle
-			cx="%d"
-			cy="%d"
-			r="%.1f"
-			fill="none"
-			stroke="#2190a4"
-			stroke-width="%d"
-			stroke-dasharray="%.1f"
-			stroke-dashoffset="%.1f"
-			transform="rotate(-90 %d %d)"
-		/>
-	</svg>`, width, height, centerX, centerY, radius, baseWidth,
-		centerX, centerY, radius, strokeWidth, circumference, dashOffset, centerX, centerY)
+	data := svgParams{
+		Width:         width,
+		Height:        height,
+		CenterX:       centerX,
+		CenterY:       centerY,
+		Radius:        radius,
+		BaseWidth:     baseWidth,
+		StrokeWidth:   strokeWidth,
+		FgStrokeColor: fgStrokeColor,
+		BgStrokeColor: bgStrokeColor,
+		Circumference: circumference,
+		DashOffset:    dashOffset,
+	}
 
-	err := os.WriteFile(filename, []byte(strings.TrimSpace(svg)), 0644)
+	tmpl, err := template.New("svg").Parse(svgTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	var svgBuffer bytes.Buffer
+	err = tmpl.Execute(&svgBuffer, data)
+	if err != nil {
+		return "", err
+	}
+
+	err = os.WriteFile(filename, svgBuffer.Bytes(), 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to write SVG file: %w", err)
 	}
