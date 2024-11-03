@@ -1,31 +1,54 @@
 package main
 
 import (
-	"fmt"
+	"flag"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"log"
 	"mpris-timer/internal/player"
+	"mpris-timer/internal/ui"
 	"os"
 	"os/signal"
-	"strconv"
+)
+
+var (
+	useUI     = flag.Bool("ui", false, "Show timepicker UI")
+	autoStart = flag.Bool("start", false, "Start immediately")
+	title     = flag.String("title", "Timer", "Name/title of the timer")
+	duration  = flag.Int("duration", 0, "Duration in seconds")
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: mpris-timer <seconds> [<title>]")
-		os.Exit(1)
+	flag.Parse()
+
+	// sanity check
+	if *useUI && *autoStart {
+		log.Fatalf("UI can't be used with --start")
 	}
 
-	seconds, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		log.Fatalf("Invalid duration: %v", err)
+	// use UI by default
+	if !*useUI && !*autoStart {
+		*useUI = true
+	}
+
+	// show UI
+	if *useUI {
+		ui.Init(func(app *adw.Application) {
+			ui.NewTimePicker(app, duration)
+		})
+	}
+
+	// check duration
+	if *duration <= 0 {
+		log.Fatalf("duration must be a positive integer")
 	}
 
 	name := "Timer"
-	if len(os.Args) > 2 {
-		name = os.Args[2]
+	if title != nil {
+		name = *title
 	}
 
-	timer, err := player.NewMPRISPlayer(seconds, name)
+	// start timer
+	timer, err := player.NewMPRISPlayer(*duration, name)
 	if err != nil {
 		log.Fatalf("Failed to create player: %v", err)
 	}
