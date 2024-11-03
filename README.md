@@ -43,3 +43,4 @@ flatpak run com.projectrk.launcher
 
 - https://github.com/KhronosGroup/Vulkan-Loader/blob/main/docs/LoaderLayerInterface.md#linux-layer-discovery for pressure-vessel behavior with certain vulkan libs when in a flatpak container
   - https://github.com/flathub/com.valvesoftware.Steam/commit/0538256facdb0837c33232bc65a9195a8a5bc750 notes on the above issue, which is currently a workaround
+- https://github.com/ValveSoftware/steam-runtime/issues/474 for weird GL driver missing links between pressure vessel sub container and flatpak container 
