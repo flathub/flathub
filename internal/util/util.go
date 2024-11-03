@@ -18,7 +18,7 @@ const (
 )
 
 func init() {
-	_ = os.MkdirAll(tmpDir, 0644)
+	_ = os.MkdirAll(tmpDir, 0755)
 }
 
 func MakeProgressCircle(progress float64) (string, error) {
