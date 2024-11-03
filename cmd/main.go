@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"mpris-timer/internal/player"
 	"os"
 	"os/signal"
 	"strconv"
-	"v2/internal/player"
 )
 
 func main() {
