@@ -1,4 +1,4 @@
-module v2
+module mpris-timer
 
 go 1.23.1
 
