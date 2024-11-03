@@ -34,11 +34,11 @@ var (
 	}
 )
 
-func Init(callback func(app *adw.Application)) {
+func Init(result *int) {
 	log.Println("Started time picker UI")
 
 	app := adw.NewApplication("com.github.diamondburned.gotk4-examples.gtk4.simple", gio.ApplicationDefaultFlags)
-	app.ConnectActivate(func() { callback(app) })
+	app.ConnectActivate(func() { NewTimePicker(app, result) })
 
 	if code := app.Run(nil); code > 0 {
 		os.Exit(code)
