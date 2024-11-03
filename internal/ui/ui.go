@@ -2,12 +2,12 @@ package ui
 
 import (
 	_ "embed"
-	"fmt"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gdk/v4"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"log"
+	"mpris-timer/internal/util"
 	"os"
 )
 
@@ -23,11 +23,12 @@ const (
 )
 
 var (
-	win          *adw.ApplicationWindow
-	hoursLabel   *gtk.Label
-	minutesLabel *gtk.Label
-	secondsLabel *gtk.Label
-	startBtn     *gtk.Button
+	win           *adw.ApplicationWindow
+	initialPreset *gtk.FlowBoxChild
+	hoursLabel    *gtk.Entry
+	minutesLabel  *gtk.Entry
+	secondsLabel  *gtk.Entry
+	startBtn      *gtk.Button
 )
 
 func Init(result *int) {
@@ -56,6 +57,7 @@ func NewTimePicker(app *adw.Application, result *int) {
 		log.Fatalf("invalid result pointer")
 	}
 
+	*result = 0
 	win = adw.NewApplicationWindow(&app.Application)
 	box := gtk.NewBox(gtk.OrientationVertical, 0)
 	header := adw.NewHeaderBar()
@@ -64,6 +66,19 @@ func NewTimePicker(app *adw.Application, result *int) {
 	box.Append(header)
 	box.Append(body)
 
+	escCtrl := gtk.NewEventControllerKey()
+	escCtrl.SetPropagationPhase(gtk.PhaseCapture)
+	escCtrl.ConnectKeyPressed(func(keyval, keycode uint, state gdk.ModifierType) (ok bool) {
+		if keyval != gdk.KEY_Escape {
+			return false
+		}
+
+		win.Close()
+		os.Exit(0)
+		return true
+	})
+
+	win.AddController(escCtrl)
 	win.SetContent(box)
 	win.SetTitle("MPRIS Timer")
 	win.SetSizeRequest(minWidth, minHeight)
@@ -81,18 +96,19 @@ func NewTimePicker(app *adw.Application, result *int) {
 	body.SetSidebarWidthFraction(.35)
 
 	win.SetVisible(true)
-	*result = 0
+	initialPreset.Activate()
+	initialPreset.GrabFocus()
 }
 
-func NewSidebar(result *int) *adw.NavigationPage {
+func NewSidebar(_ *int) *adw.NavigationPage {
 	sidebar := adw.NewNavigationPage(gtk.NewBox(gtk.OrientationVertical, 0), "Presets")
-	flowBox := gtk.NewFlowBox()
+	presetsFlowBox := gtk.NewFlowBox()
 
-	flowBox.SetSelectionMode(gtk.SelectionBrowse)
-	flowBox.SetVAlign(gtk.AlignCenter)
-	flowBox.SetColumnSpacing(16)
-	flowBox.SetRowSpacing(16)
-	flowBox.AddCSSClass("flow-box")
+	presetsFlowBox.SetSelectionMode(gtk.SelectionBrowse)
+	presetsFlowBox.SetVAlign(gtk.AlignCenter)
+	presetsFlowBox.SetColumnSpacing(16)
+	presetsFlowBox.SetRowSpacing(16)
+	presetsFlowBox.AddCSSClass("flow-box")
 
 	for idx, preset := range DefaultPresets {
 		label := gtk.NewLabel(preset)
@@ -100,27 +116,34 @@ func NewSidebar(result *int) *adw.NavigationPage {
 		label.AddCSSClass("preset-lbl")
 		label.SetHAlign(gtk.AlignCenter)
 		label.SetVAlign(gtk.AlignCenter)
+		presetsFlowBox.Append(label)
 
-		flowBox.Append(label)
-
-		child := flowBox.ChildAtIndex(idx)
-		child.ConnectActivate(func() {
+		onActivate := func() {
 			time := fromPreset(preset)
-			*result = time.Minute()*60 + time.Second()
 
 			if hoursLabel == nil || minutesLabel == nil || secondsLabel == nil {
 				return
 			}
 
-			hoursLabel.SetText(NumToLabelText(0))
-			minutesLabel.SetText(NumToLabelText(time.Minute()))
-			secondsLabel.SetText(NumToLabelText(time.Second()))
+			hoursLabel.SetText(util.NumToLabelText(0))
+			minutesLabel.SetText(util.NumToLabelText(time.Minute()))
+			secondsLabel.SetText(util.NumToLabelText(time.Second()))
 			startBtn.SetCanFocus(true)
 			startBtn.GrabFocus()
+		}
+
+		mouseCtrl := gtk.NewGestureClick()
+		mouseCtrl.ConnectPressed(func(nPress int, x, y float64) {
+			onActivate()
 		})
 
+		child := presetsFlowBox.ChildAtIndex(idx)
+		child.ConnectActivate(onActivate)
+		child.AddController(mouseCtrl)
+
 		if preset == defaultPreset {
-			flowBox.SelectChild(child)
+			presetsFlowBox.SelectChild(child)
+			initialPreset = child
 		}
 	}
 
@@ -128,14 +151,33 @@ func NewSidebar(result *int) *adw.NavigationPage {
 	scrolledWindow.SetVExpand(true)
 	scrolledWindow.SetOverlayScrolling(true)
 	scrolledWindow.SetMinContentHeight(minHeight)
-	scrolledWindow.SetChild(flowBox)
+	scrolledWindow.SetChild(presetsFlowBox)
+
+	kbCtrl := gtk.NewEventControllerKey()
+	kbCtrl.SetPropagationPhase(gtk.PhaseBubble)
+	kbCtrl.ConnectKeyPressed(func(keyval, keycode uint, state gdk.ModifierType) (ok bool) {
+		isNumber := util.IsGdkKeyvalNumber(keyval)
+		if !isNumber {
+			return false
+		}
+
+		minutesLabel.SetText(util.ParseKeyval(keyval))
+		minutesLabel.Activate()
+		minutesLabel.GrabFocus()
+		minutesLabel.SelectRegion(1, 1)
+
+		return true
+	})
+
 	sidebar.SetChild(scrolledWindow)
-	sidebar.SetReceivesDefault(true)
+	sidebar.AddController(kbCtrl)
 
 	return sidebar
 }
 
 func NewContent(result *int) *adw.NavigationPage {
+	startBtn = gtk.NewButton()
+
 	vBox := gtk.NewBox(gtk.OrientationVertical, 8)
 	hBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
 	clamp := adw.NewClamp()
@@ -144,13 +186,18 @@ func NewContent(result *int) *adw.NavigationPage {
 	clamp.SetChild(vBox)
 	vBox.Append(hBox)
 
-	hoursLabel = gtk.NewLabel("00")
-	minutesLabel = gtk.NewLabel("00")
-	secondsLabel = gtk.NewLabel("00")
+	hoursLabel = gtk.NewEntry()
+	hoursLabel.AddCSSClass("entry")
 
-	hoursLabel.AddCSSClass("timer-lbl")
-	minutesLabel.AddCSSClass("timer-lbl")
-	secondsLabel.AddCSSClass("timer-lbl")
+	minutesLabel = gtk.NewEntry()
+	minutesLabel.AddCSSClass("entry")
+
+	secondsLabel = gtk.NewEntry()
+	secondsLabel.AddCSSClass("entry")
+
+	setupTimeEntry(hoursLabel, &minutesLabel.Widget, 23)
+	setupTimeEntry(minutesLabel, &secondsLabel.Widget, 59)
+	setupTimeEntry(secondsLabel, &startBtn.Widget, 59)
 
 	hBox.Append(hoursLabel)
 	hBox.Append(gtk.NewLabel(":"))
@@ -168,16 +215,25 @@ func NewContent(result *int) *adw.NavigationPage {
 	btnContent.SetLabel("Start")
 	btnContent.SetIconName("play")
 
-	startBtn = gtk.NewButton()
 	startBtn.SetCanFocus(false)
 	startBtn.SetChild(btnContent)
 	startBtn.SetHExpand(false)
 	startBtn.AddCSSClass("control-btn")
-	startBtn.ConnectActivate(func() {
-		time := fromStringParts(hoursLabel.Label(), minutesLabel.Label(), secondsLabel.Label())
-		*result = time.Hour()*60*60 + time.Minute()*60 + time.Second()
-		win.Close()
-	})
+
+	startFn := func() {
+		time := fromStringParts(hoursLabel.Text(), minutesLabel.Text(), secondsLabel.Text())
+		seconds := time.Hour()*60*60 + time.Minute()*60 + time.Second()
+		if seconds > 0 {
+			*result = seconds
+			win.Close()
+			return
+		}
+
+		os.Exit(1)
+	}
+
+	startBtn.ConnectClicked(startFn)
+	startBtn.ConnectActivate(startFn)
 
 	footer := gtk.NewBox(gtk.OrientationHorizontal, 8)
 	footer.SetVAlign(gtk.AlignCenter)
@@ -186,12 +242,4 @@ func NewContent(result *int) *adw.NavigationPage {
 	vBox.Append(footer)
 
 	return content
-}
-
-func NumToLabelText(num int) string {
-	if num > 60 || num < 0 {
-		log.Fatalf("NumToLabelText: num must be between 0 and 60")
-	}
-
-	return fmt.Sprintf("%02d", num)
 }
