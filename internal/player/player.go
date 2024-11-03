@@ -5,10 +5,10 @@ import (
 	"github.com/godbus/dbus/v5"
 	"log"
 	"math"
+	"mpris-timer/internal/util"
 	"os"
 	"path"
 	"time"
-	"v2/internal/util"
 )
 
 const (
