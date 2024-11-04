@@ -16,10 +16,10 @@ var cssString string
 
 const (
 	minWidth      = 400
-	minHeight     = 200
-	collapseWidth = 460
+	minHeight     = 210
+	collapseWidth = 500
 	defaultWidth  = 550
-	defaultHeight = 250
+	defaultHeight = 210
 )
 
 var (
@@ -59,12 +59,9 @@ func NewTimePicker(app *adw.Application, result *int) {
 
 	*result = 0
 	win = adw.NewApplicationWindow(&app.Application)
-	box := gtk.NewBox(gtk.OrientationVertical, 0)
-	header := adw.NewHeaderBar()
+	handle := gtk.NewWindowHandle()
 	body := adw.NewOverlaySplitView()
-
-	box.Append(header)
-	box.Append(body)
+	handle.SetChild(body)
 
 	escCtrl := gtk.NewEventControllerKey()
 	escCtrl.SetPropagationPhase(gtk.PhaseCapture)
@@ -79,7 +76,7 @@ func NewTimePicker(app *adw.Application, result *int) {
 	})
 
 	win.AddController(escCtrl)
-	win.SetContent(box)
+	win.SetContent(handle)
 	win.SetTitle("MPRIS Timer")
 	win.SetSizeRequest(minWidth, minHeight)
 	win.SetDefaultSize(defaultWidth, defaultHeight)
@@ -94,21 +91,26 @@ func NewTimePicker(app *adw.Application, result *int) {
 	body.SetContent(NewContent(result))
 	body.SetSidebar(NewSidebar(result))
 	body.SetSidebarWidthFraction(.35)
+	body.SetEnableShowGesture(true)
+	body.SetEnableHideGesture(true)
 
 	win.SetVisible(true)
 	initialPreset.Activate()
+	minutesLabel.SetText("00")
+	secondsLabel.SetText("00")
+
 	initialPreset.GrabFocus()
 }
 
 func NewSidebar(_ *int) *adw.NavigationPage {
 	sidebar := adw.NewNavigationPage(gtk.NewBox(gtk.OrientationVertical, 0), "Presets")
-	presetsFlowBox := gtk.NewFlowBox()
+	flowBox := gtk.NewFlowBox()
 
-	presetsFlowBox.SetSelectionMode(gtk.SelectionBrowse)
-	presetsFlowBox.SetVAlign(gtk.AlignCenter)
-	presetsFlowBox.SetColumnSpacing(16)
-	presetsFlowBox.SetRowSpacing(16)
-	presetsFlowBox.AddCSSClass("flow-box")
+	flowBox.SetSelectionMode(gtk.SelectionBrowse)
+	flowBox.SetVAlign(gtk.AlignCenter)
+	flowBox.SetColumnSpacing(16)
+	flowBox.SetRowSpacing(16)
+	flowBox.AddCSSClass("flow-box")
 
 	for idx, preset := range DefaultPresets {
 		label := gtk.NewLabel(preset)
@@ -116,7 +118,7 @@ func NewSidebar(_ *int) *adw.NavigationPage {
 		label.AddCSSClass("preset-lbl")
 		label.SetHAlign(gtk.AlignCenter)
 		label.SetVAlign(gtk.AlignCenter)
-		presetsFlowBox.Append(label)
+		flowBox.Append(label)
 
 		onActivate := func() {
 			time := fromPreset(preset)
@@ -137,12 +139,12 @@ func NewSidebar(_ *int) *adw.NavigationPage {
 			onActivate()
 		})
 
-		child := presetsFlowBox.ChildAtIndex(idx)
+		child := flowBox.ChildAtIndex(idx)
 		child.ConnectActivate(onActivate)
 		child.AddController(mouseCtrl)
 
 		if preset == defaultPreset {
-			presetsFlowBox.SelectChild(child)
+			flowBox.SelectChild(child)
 			initialPreset = child
 		}
 	}
@@ -151,7 +153,7 @@ func NewSidebar(_ *int) *adw.NavigationPage {
 	scrolledWindow.SetVExpand(true)
 	scrolledWindow.SetOverlayScrolling(true)
 	scrolledWindow.SetMinContentHeight(minHeight)
-	scrolledWindow.SetChild(presetsFlowBox)
+	scrolledWindow.SetChild(flowBox)
 
 	kbCtrl := gtk.NewEventControllerKey()
 	kbCtrl.SetPropagationPhase(gtk.PhaseBubble)
@@ -199,10 +201,16 @@ func NewContent(result *int) *adw.NavigationPage {
 	setupTimeEntry(minutesLabel, &secondsLabel.Widget, 59)
 	setupTimeEntry(secondsLabel, &startBtn.Widget, 59)
 
+	scLabel1 := gtk.NewLabel(":")
+	scLabel1.AddCSSClass("sc-label")
+
+	scLabel2 := gtk.NewLabel(":")
+	scLabel2.AddCSSClass("sc-label")
+
 	hBox.Append(hoursLabel)
-	hBox.Append(gtk.NewLabel(":"))
+	hBox.Append(scLabel1)
 	hBox.Append(minutesLabel)
-	hBox.Append(gtk.NewLabel(":"))
+	hBox.Append(scLabel2)
 	hBox.Append(secondsLabel)
 
 	hBox.SetVAlign(gtk.AlignCenter)
@@ -219,6 +227,7 @@ func NewContent(result *int) *adw.NavigationPage {
 	startBtn.SetChild(btnContent)
 	startBtn.SetHExpand(false)
 	startBtn.AddCSSClass("control-btn")
+	startBtn.AddCSSClass("suggested-action")
 
 	startFn := func() {
 		time := fromStringParts(hoursLabel.Text(), minutesLabel.Text(), secondsLabel.Text())
