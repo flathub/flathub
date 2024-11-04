@@ -16,6 +16,16 @@ const (
 	baseInterval = time.Second / baseFPS
 )
 
+// RequestNames for possible instances
+var RequestNames = []string{
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer",
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer-0",
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer-1",
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer-2",
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer-3",
+	"org.mpris.MediaPlayer2.io.github.efogdev.mpris-timer-4",
+}
+
 type MPRISPlayer struct {
 	Done           chan struct{}
 	Name           string
@@ -53,15 +63,17 @@ func (p *MPRISPlayer) Start() error {
 	}
 
 	p.conn = conn
-	p.serviceName = fmt.Sprintf("org.mpris.MediaPlayer2.mpris-timer-%d", time.Now().UnixNano())
 
-	reply, err := conn.RequestName(p.serviceName, dbus.NameFlagDoNotQueue)
-	if err != nil {
-		return fmt.Errorf("failed to request Name: %w", err)
+	for _, name := range RequestNames {
+		reply, err := conn.RequestName(name, dbus.NameFlagDoNotQueue)
+		if err == nil && reply == dbus.RequestNameReplyPrimaryOwner {
+			p.serviceName = name
+			break
+		}
 	}
 
-	if reply != dbus.RequestNameReplyPrimaryOwner {
-		return fmt.Errorf("name already taken")
+	if p.serviceName == "" {
+		return fmt.Errorf("could not find free service name")
 	}
 
 	if err := p.exportInterfaces(); err != nil {

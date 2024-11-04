@@ -23,7 +23,7 @@ func main() {
 
 	flag.BoolVar(&notify, "notify", true, "Send desktop notification")
 	flag.BoolVar(&useUI, "ui", false, "Show timepicker UI (default true)")
-	flag.IntVar(&duration, "start", 0, "Start the timer immediadety")
+	flag.IntVar(&duration, "start", 0, "Start the timer immediately")
 	flag.StringVar(&title, "title", "Timer", "Name/title of the timer")
 	flag.StringVar(&text, "text", "Time is up!", "Notification text")
 	flag.Parse()
@@ -36,7 +36,6 @@ func main() {
 		useUI = true
 	}
 
-	// show UI
 	if useUI {
 		log.Println("UI launched")
 		ui.Init(&duration)
