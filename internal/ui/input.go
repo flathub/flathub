@@ -32,7 +32,6 @@ func setupTimeEntry(entry *gtk.Entry, next *gtk.Widget, maxVal int) {
 	focusCtrl.SetPropagationPhase(gtk.PhaseTarget)
 	focusCtrl.ConnectLeave(func() {
 		val := entry.Text()
-		log.Printf("val: %s", val)
 
 		if len(val) == 0 {
 			entry.SetText("00")
