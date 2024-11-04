@@ -9,7 +9,7 @@ import (
 	"strconv"
 )
 
-func setupTimeEntry(entry *gtk.Entry, prev *gtk.Entry, next *gtk.Entry, maxVal int) {
+func setupTimeEntry(entry *gtk.Entry, next *gtk.Widget, maxVal int) {
 	if maxVal <= 0 {
 		maxVal = 59
 	}
@@ -29,20 +29,26 @@ func setupTimeEntry(entry *gtk.Entry, prev *gtk.Entry, next *gtk.Entry, maxVal i
 	entry.SelectRegion(0, -1)
 
 	focusCtrl := gtk.NewEventControllerFocus()
-	focusCtrl.SetPropagationPhase(gtk.PhaseCapture)
+	focusCtrl.SetPropagationPhase(gtk.PhaseTarget)
 	focusCtrl.ConnectLeave(func() {
 		val := entry.Text()
-		if len(val) != 2 {
+		log.Printf("val: %s", val)
+
+		if len(val) == 0 {
+			entry.SetText("00")
+		}
+
+		if len(val) == 1 {
 			entry.SetText("0" + val)
 		}
+
+		entry.SelectRegion(0, 0)
 	})
 
 	ctrl := gtk.NewEventControllerKey()
 	ctrl.SetPropagationPhase(gtk.PhaseCapture)
 	ctrl.SetPropagationLimit(gtk.LimitNone)
 	ctrl.ConnectKeyPressed(func(keyval, keycode uint, state gdk.ModifierType) (ok bool) {
-		log.Printf("keyval = %v (keycode = %v), state: %v", keyval, keycode, state)
-
 		// allow some basic keys
 		allowedKeyvals := []uint{
 			gdk.KEY_Tab,
@@ -112,13 +118,19 @@ func setupTimeEntry(entry *gtk.Entry, prev *gtk.Entry, next *gtk.Entry, maxVal i
 		}
 
 		if newVal > maxVal {
-			entry.SetText(strconv.Itoa(maxVal))
-			next.GrabFocus()
+			entry.SetText(util.NumToLabelText(maxVal))
 			return true
 		}
 
-		next.GrabFocus()
 		return false
+	})
+
+	entry.ConnectChanged(func() {
+		val := entry.Text()
+
+		if len(val) == 2 {
+			next.GrabFocus()
+		}
 	})
 
 	entry.AddController(ctrl)
