@@ -16,7 +16,7 @@ go build -ldflags="-s -w" -o ./.bin/app ./cmd/main.go
 Flatpak:
 ```shell
 go run github.com/dennwc/flatpak-go-mod@latest .
-flatpak-builder --user --force-clean .build tech.efog.mpris-timer.yml
+flatpak-builder --user --force-clean .build io.github.efogdev.mpris-timer.yml
 ```
 
 ## ToDo
