@@ -66,6 +66,19 @@ func NewTimePicker(app *adw.Application, result *int) {
 	box.Append(header)
 	box.Append(body)
 
+	escCtrl := gtk.NewEventControllerKey()
+	escCtrl.SetPropagationPhase(gtk.PhaseCapture)
+	escCtrl.ConnectKeyPressed(func(keyval, keycode uint, state gdk.ModifierType) (ok bool) {
+		if keyval != gdk.KEY_Escape {
+			return false
+		}
+
+		win.Close()
+		os.Exit(0)
+		return true
+	})
+
+	win.AddController(escCtrl)
 	win.SetContent(box)
 	win.SetTitle("MPRIS Timer")
 	win.SetSizeRequest(minWidth, minHeight)
@@ -87,7 +100,7 @@ func NewTimePicker(app *adw.Application, result *int) {
 	initialPreset.GrabFocus()
 }
 
-func NewSidebar(result *int) *adw.NavigationPage {
+func NewSidebar(_ *int) *adw.NavigationPage {
 	sidebar := adw.NewNavigationPage(gtk.NewBox(gtk.OrientationVertical, 0), "Presets")
 	presetsFlowBox := gtk.NewFlowBox()
 
@@ -163,6 +176,8 @@ func NewSidebar(result *int) *adw.NavigationPage {
 }
 
 func NewContent(result *int) *adw.NavigationPage {
+	startBtn = gtk.NewButton()
+
 	vBox := gtk.NewBox(gtk.OrientationVertical, 8)
 	hBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
 	clamp := adw.NewClamp()
@@ -172,12 +187,17 @@ func NewContent(result *int) *adw.NavigationPage {
 	vBox.Append(hBox)
 
 	hoursLabel = gtk.NewEntry()
-	minutesLabel = gtk.NewEntry()
-	secondsLabel = gtk.NewEntry()
+	hoursLabel.AddCSSClass("entry")
 
-	setupTimeEntry(hoursLabel, secondsLabel, minutesLabel, 23)
-	setupTimeEntry(minutesLabel, hoursLabel, secondsLabel, 59)
-	setupTimeEntry(secondsLabel, minutesLabel, hoursLabel, 59)
+	minutesLabel = gtk.NewEntry()
+	minutesLabel.AddCSSClass("entry")
+
+	secondsLabel = gtk.NewEntry()
+	secondsLabel.AddCSSClass("entry")
+
+	setupTimeEntry(hoursLabel, &minutesLabel.Widget, 23)
+	setupTimeEntry(minutesLabel, &secondsLabel.Widget, 59)
+	setupTimeEntry(secondsLabel, &startBtn.Widget, 59)
 
 	hBox.Append(hoursLabel)
 	hBox.Append(gtk.NewLabel(":"))
@@ -195,7 +215,6 @@ func NewContent(result *int) *adw.NavigationPage {
 	btnContent.SetLabel("Start")
 	btnContent.SetIconName("play")
 
-	startBtn = gtk.NewButton()
 	startBtn.SetCanFocus(false)
 	startBtn.SetChild(btnContent)
 	startBtn.SetHExpand(false)
