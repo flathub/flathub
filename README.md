@@ -10,9 +10,16 @@ TODO:
 
 # Build
 
+Requirements:
+
+- Have `flatpak` installed
+- Have `flathub` installed and configured [Flathub Install Guide](https://flathub.org/setup)
+
 ```bash
 ./build.sh
 ```
+
+The build script will install `org.flatpak.Builder` for you, which is used to run `flatpak-builder` to build this flatpak.
 
 # Debug
 
