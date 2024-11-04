@@ -34,7 +34,7 @@ var (
 func Init(result *int) {
 	log.Println("started time picker UI")
 
-	app := adw.NewApplication("com.efogdev.mpris-timer", gio.ApplicationDefaultFlags)
+	app := adw.NewApplication("io.github.efogdev.mpris-timer", gio.ApplicationNonUnique)
 	app.ConnectActivate(func() {
 		prov := gtk.NewCSSProvider()
 		prov.ConnectParsingError(func(sec *gtk.CSSSection, err error) {
