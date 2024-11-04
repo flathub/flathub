@@ -14,6 +14,7 @@ func setupTimeEntry(entry *gtk.Entry, next *gtk.Widget, maxVal int) {
 		maxVal = 59
 	}
 
+	entry.AddCSSClass("monospace")
 	entry.SetSensitive(true)
 	entry.SetCanFocus(true)
 	entry.SetCanTarget(true)
