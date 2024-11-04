@@ -222,8 +222,14 @@ func NewContent(result *int) *adw.NavigationPage {
 
 	startFn := func() {
 		time := fromStringParts(hoursLabel.Text(), minutesLabel.Text(), secondsLabel.Text())
-		*result = time.Hour()*60*60 + time.Minute()*60 + time.Second()
-		win.Close()
+		seconds := time.Hour()*60*60 + time.Minute()*60 + time.Second()
+		if seconds > 0 {
+			*result = seconds
+			win.Close()
+			return
+		}
+
+		os.Exit(1)
 	}
 
 	startBtn.ConnectClicked(startFn)
