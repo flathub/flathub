@@ -238,6 +238,7 @@ func NewContent(result *int) *adw.NavigationPage {
 	footer := gtk.NewBox(gtk.OrientationHorizontal, 8)
 	footer.SetVAlign(gtk.AlignCenter)
 	footer.SetHAlign(gtk.AlignCenter)
+	footer.SetMarginBottom(16)
 	footer.Append(startBtn)
 	vBox.Append(footer)
 
