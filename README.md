@@ -18,11 +18,7 @@ For more information and more applications see https://flathub.org
 To install NEST Desktop application from Flathub, use the following:
 
 ```
-flatpak install --user io.github.nest-desktop
+flatpak install --user org.nest_simulator.nest-desktop
 ```
 
-To run it, use the following:
-
-```
-flatpak run io.github.nest-desktop
-```
+Run it from the application desktop.
