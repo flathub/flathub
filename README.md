@@ -8,7 +8,7 @@ To install applications that are hosted on Flathub, use the following:
 
 ```
 flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
+flatpak install flathub <appId>
 ```
 
 For more information and more applications see https://flathub.org
@@ -18,7 +18,7 @@ For more information and more applications see https://flathub.org
 To install NEST Desktop application from Flathub, use the following:
 
 ```
-flatpak install io.github.nest-desktop
+flatpak install --user io.github.nest-desktop
 ```
 
 To run it, use the following:
