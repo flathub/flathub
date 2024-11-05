@@ -1,6 +1,6 @@
 #! /bin/env bash
 
-if [[ ! (flatpak list --app -u | grep org.flatpak.Builder)  ]]; then
+if [[ ! $(flatpak list --app -u | grep org.flatpak.Builder)  ]]; then
   flatpak install -u --noninteractive -y org.flatpak.Builder
 fi
 
