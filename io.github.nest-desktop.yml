@@ -1,0 +1,83 @@
+id: io.github.nest-desktop
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+base: org.electronjs.Electron2.BaseApp
+base-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.typescript
+command: nest-desktop-launch
+separate-locales: false
+rename-desktop-file: nest-desktop.desktop
+rename-icon: nest-desktop
+rename-appdata: nest-desktop
+finish-args:
+  # GPU acceleration if needed
+  - --device=dri
+  # Needs to save files locally
+  - --filesystem=home
+  # XShm access
+  - --share=ipc
+  # Needs to talk to the network:
+  - --share=network
+  # Display access (X11 or Wayland)
+  # - --socket=fallback-x11
+  - --socket=system-bus
+  - --socket=x11
+  # - --socket=wayland
+modules:
+  - name: nest-desktop
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/nest-desktop/nest-desktop
+        tag: v4.0.0
+        commit: 81bab14049ed82abe05b7ca38e57d7d82e582964
+      - type: file
+        path: nest-desktop-launch
+      - type: file
+        path: nest-desktop.desktop
+      - type: file
+        path: nest-desktop.appdata.xml
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - exec zypak-wrapper.sh /app/main/nest-desktop "$@"
+    build-options:
+      build-args:
+        - --share=network
+      append-path: /usr/lib/sdk/node20/bin
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+    build-commands:
+      - |
+        npm install yarn
+        rm package-lock.json
+      # Install node modules
+      - yarn install
+      # Build the electron app
+      - yarn app:build
+      # Bundle app and dependencies
+      - mv release/linux-unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t ${FLATPAK_DEST}/bin/ ./run.sh
+      - install -Dm0755 run.sh "${FLATPAK_DEST}/bin/nest-desktop"
+      - install -Dm644 public/pwa-512x512.png /app/share/icons/hicolor/512x512/apps/nest-desktop.png
+      - install -Dm0755 nest-desktop-launch "${FLATPAK_DEST}/bin/nest-desktop-launch"
+      - install -Dm0755 nest-desktop.desktop "${FLATPAK_DEST}/share/applications/nest-desktop.desktop"
+      - install -Dm644 nest-desktop.appdata.xml ${FLATPAK_DEST}/share/appdata/nest-desktop.appdata.xml
+
+  - name: nest-simulator
+    buildsystem: cmake
+    sources:
+      - type: git
+        url: https://github.com/nest/nest-simulator
+        tag: v3.8
+        commit: 6dca9500e512da50fa730a7b62ce4b05c77e2bfd
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - python3 -m pip install --prefix=/app numpy pandas
+      - python3 -m pip install --prefix=/app -r requirements_nest_server.txt
