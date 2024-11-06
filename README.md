@@ -1,27 +1,35 @@
 # Project Rubi-Ka Flatpak
 
-TODO:
-
-- Test on more hardware other than nvidia gpus
 - Add CI
 - Publish to flathub so people can install with `flatpak install`
 - Add GPG key signing to flatpak build process
-- troubleshoot some valve pressure vessel bugs with detecting certain hardware libs like intel iris
 
 # Build
 
 Requirements:
 
 - Have `flatpak` installed
-- Have `flathub` installed and configured [Flathub Install Guide](https://flathub.org/setup)
 
 ```bash
 ./build.sh
 ```
 
-The build script will install `org.flatpak.Builder` for you, which is used to run `flatpak-builder` to build this flatpak.
+The build script does the following:
+
+- Installs the `flathub` named flatpak remote for the `user` instead of `system`, since many distros will already have `flathub` pre-configured for `system`.
+- Installs org.freedesktop.Platform.Compat.i386//$FDO_VERSION to enable multiarch lib compatibility for 32-bit applications and graphics drivers
+- Installs org.freedesktop.Platform.GL32.nvidia-(your kernel module version) if you're on nvidia
+- Installs org.freedesktop.Platform.GL32.default//$FDO_VERSION if you're on intel/amd
+- Installs the org.flatpak.Builder flatpak to allow you to build the flatpak from the project manifest
+
+We have to pre-install supplementary 32-Bit drivers beforehand since they're not listed as dependencies of the org.freedesktop.Platform runtimes, they're treated as optional application dependencies- so when the flatpak gets installed from the local `repo/` directory that gets created from build output, there's no available refs that flatpak can auto-resolve and install from (GL32 and i386 extensions will not exist in `repo/`, they exist in `flathub`)
+
+When this package is hosted on flathub, dep resolution will function.
+
 
 # Debug
+
+- adds --devel flag to the run command and overrides the flatpak/container entry point with `bash` to get you into an interactive shell.
 
 ```bash
 ./debug.sh
@@ -30,24 +38,34 @@ The build script will install `org.flatpak.Builder` for you, which is used to ru
 
 # Run
 
-a) the icon should pop up in your gnome/kde search automatically
+## From Native Search (GNOME/KDE)
 
-b)
+- Search "Project Rubi-Ka"
+- Click the application shortcut
+
+## From CLI
 
 ```bash
 flatpak run com.projectrk.launcher
 ```
 
-# Notes
+### Environment Variable Options (tweaking/customization)
 
-- Running `flatpak run com.projectrk.launcher` from commandline will mount `data/project-rk` and create the directory automatically based on whatever path you're currently on in your shell, so if you're in `$HOME` for example, it will build a new prefix in `$HOME/data/project-rk`.
-  - If you don't want this behavior on command line, you can use something like Flatseal to remove `--persist=.` from the flatpak config, or use `flatpak override` commands on CLI to do the same. It will use the default flatpak XDG data dir when this happens.
-  - I don't know if the above change (removing persist=.) negatively impacts how umu/pressure-vessel behaves. I think there's a lot of compatibility stuff in there that mounts your host's $HOME/.Steam and $HOME/.local dirs inside the flatpak container to expose it to pressure-vessel at runtime so proton can play nice with some calls. It also means you won't be able to use previously installed copies of Proton-GE that live in the `.Steam/compatibilitytools.d` directory.
-  - In the future, we could change the `--env=WINEPREFIX=xx` settings in the flatpak build manifest to use explicit paths such as `$HOME/.var/apps/${FLATPAK_ID}/data/project-rk` to avoid this behavior difference between shortcut-launched and shell-launched altogether.
-- Running the flatpak from GNOME using the desktop shortcut, for example, means the flatpak is running from the `$HOME/.var/apps/com.projectrk.launcher` and the default WINEPREFIX that will generate and manage will be in `$HOME/.var/apps/com.projectrk.launcher/data/project-rk`. This is the intended way to use this.
+#### Wine/Proton
+```bash
+# flatpak run <options> com.projectrk.launcher
+--env=WINEDLLOVERRIDES='example.dll,example2.dll=n,b' # overrides these dlls and sets them to priority Native>Builtin. 
+```
 
-# Tracking list
+#### UMU Launcher
 
-- https://github.com/KhronosGroup/Vulkan-Loader/blob/main/docs/LoaderLayerInterface.md#linux-layer-discovery for pressure-vessel behavior with certain vulkan libs when in a flatpak container
-  - https://github.com/flathub/com.valvesoftware.Steam/commit/0538256facdb0837c33232bc65a9195a8a5bc750 notes on the above issue, which is currently a workaround
-- https://github.com/ValveSoftware/steam-runtime/issues/474 for weird GL driver missing links between pressure vessel sub container and flatpak container 
+- See [UMU Documentation](https://github.com/Open-Wine-Components/umu-launcher/blob/main/docs/umu.1.scd) for more details
+```bash
+--env=PROTONPATH=xxx-Proton # GE or UMU will change the version of proton that gets installed dynamically by umu-run, the launcher
+--env=GAMEID=x # setting this number/ID will make umu automatically apply ecosystem-managed protonfixes to your prefix.
+```
+
+#### Steam Linux Runtime (Pressure Vessel)
+```bash
+--env=PRESSURE_VESSEL_SHELL=instead # super useful, interrupts the game launch and drops you into an interactive xterm window that comes from the nested Steam Linux Runtime container spawned from bwrap, which is 2 layers in. Good if you need to see how the actual linux filesystem looks to the actual proton/game executable.
+```
