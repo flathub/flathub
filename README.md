@@ -69,3 +69,5 @@ flatpak run com.projectrk.launcher
 ```bash
 --env=PRESSURE_VESSEL_SHELL=instead # super useful, interrupts the game launch and drops you into an interactive xterm window that comes from the nested Steam Linux Runtime container spawned from bwrap, which is 2 layers in. Good if you need to see how the actual linux filesystem looks to the actual proton/game executable.
 ```
+
+- If you use PRESSURE_VESSEL_SHELL=instead, and the terminal is really hard to see, hold CTRL+right mouse click to see the xterm context menu, then enable the fonts supported by your host.
