@@ -1,9 +1,7 @@
 app-id: app.bluebubbles.BlueBubbles
 runtime: org.gnome.Platform
-runtime-version: '44'
+runtime-version: '46'
 sdk: org.gnome.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.llvm16
 command: bluebubbles
 separate-locales: false
 finish-args:
@@ -16,6 +14,7 @@ finish-args:
   - --system-talk-name=org.freedesktop.NetworkManager.Connection.Active
   - --system-talk-name=org.freedesktop.FileManager1
   - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
   - --env=NOTIFY_IGNORE_PORTAL=1
   - --share=network
   - --filesystem=home
@@ -36,8 +35,8 @@ modules:
     sources:
       - type: git
         url: https://gitlab.freedesktop.org/xorg/lib/libxmu.git
-        tag: libXmu-1.1.4
-        commit: b29c739b577ee142877e69eb3fb07c7312d81557
+        tag: libXmu-1.2.1
+        commit: 792f80402ee06ce69bca3a8f2a84295999c3a170
   - name: wmctrl
     sources:
       - type: git
@@ -53,39 +52,36 @@ modules:
       - type: archive
         only-arches:
           - x86_64
-        url: https://github.com/objectbox/objectbox-c/releases/download/v0.19.0/objectbox-linux-x64.tar.gz
-        sha256: 9e3c3c30737ee32950a6492ebe792df58013a0b8dca834f08fe71dde9feaf4bf
+        url: https://github.com/objectbox/objectbox-c/releases/download/v4.0.2/objectbox-linux-x64.tar.gz
+        sha256: 2cbf4fcacfed056b1b223db3fdfd5dbcf1c71d6eb349a914c07261e54c4d3c92
       - type: archive
         only-arches:
           - aarch64
-        url: https://github.com/objectbox/objectbox-c/releases/download/v0.19.0/objectbox-linux-aarch64.tar.gz
-        sha256: 61b35fd6c3bb735ee776ef82cf17ef53e83799d261f4d01616443ac78abe14fa
+        url: https://github.com/objectbox/objectbox-c/releases/download/v4.0.2/objectbox-linux-aarch64.tar.gz
+        sha256: ff8babb59423312c5f6cee58533c9e20a3970c2c0f7eb9082ef220a93cd8ce5f
   - name: libidn
     config-opts:
       - --disable-static
     sources:
       - type: archive
-        url: https://ftp.gnu.org/gnu/libidn/libidn-1.41.tar.gz
-        sha256: 884d706364b81abdd17bee9686d8ff2ae7431c5a14651047c68adf8b31fd8945
+        url: https://ftp.gnu.org/gnu/libidn/libidn-1.42.tar.gz
+        sha256: d6c199dcd806e4fe279360cb4b08349a0d39560ed548ffd1ccadda8cdecb4723
     cleanup:
       - /bin/*
       - /include/*
       - /share/*
   - name: libmpv
-    buildsystem: simple
-    build-commands:
-      - 'python3 waf configure --prefix=/app --enable-libmpv-shared --disable-cplayer --disable-alsa --disable-manpage-build --disable-debug-build'
-      - 'python3 waf build'
-      - 'python3 waf install'
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
     sources:
       - type: git
         url: https://github.com/mpv-player/mpv.git
-        tag: v0.34.1
-        commit: 349e437466163cb52f7d0aa227d4606edd9db501
-      - type: file
-        url: https://waf.io/waf-2.0.26
-        sha256: dcec3e179f9c33a66544f1b3d7d91f20f6373530510fa6a858cddb6bfdcde14b
-        dest-filename: waf
+        tag: v0.39.0
+        commit: a0fba7be57f3822d967b04f0f6b6d6341e7516e7
     cleanup:
       - /include
       - /lib/pkgconfig
@@ -98,8 +94,8 @@ modules:
         sources:
           - type: git
             url: https://github.com/FFmpeg/nv-codec-headers.git
-            tag: n12.1.14.0
-            commit: 1889e62e2d35ff7aa9baca2bceb14f053785e6f1
+            tag: n12.2.72.0
+            commit: c69278340ab1d5559c7d7bf0edf615dc33ddbba7
         cleanup:
           - '*'
       - name: libass
@@ -107,9 +103,77 @@ modules:
           - --disable-static
         sources:
           - type: archive
-            url: https://github.com/libass/libass/releases/download/0.17.1/libass-0.17.1.tar.xz
-            sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
-
+            url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+            sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+      - name: ffmpeg
+        sources:
+          - type: archive
+            url: https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz
+            sha256: 3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38
+      - name: libplacebo  # Almost entirely copied from https://github.com/flathub/io.github.KikoPlayProject.KikoPlay/blob/master/io.github.KikoPlayProject.KikoPlay.yaml#L37
+        buildsystem: meson
+        config-opts:
+          - -Dshaderc=enabled
+          - -Dvulkan=enabled
+          - -Dd3d11=disabled
+          - -Ddemos=false
+        sources:
+          - type: git
+            url: https://code.videolan.org/videolan/libplacebo.git
+            tag: v7.349.0
+            commit: 1fd3c7bde7b943fe8985c893310b5269a09b46c5
+            x-checker-data:
+              type: git
+              tag-pattern: ^v([\d.]+)$
+        modules:
+          - name: shaderc
+            buildsystem: cmake-ninja
+            builddir: true
+            config-opts:
+              - -DSHADERC_SKIP_COPYRIGHT_CHECK=ON
+              - -DSHADERC_SKIP_EXAMPLES=ON
+              - -DSHADERC_SKIP_TESTS=ON
+              - -DSPIRV_SKIP_EXECUTABLES=ON
+              - -DENABLE_GLSLANG_BINARIES=OFF
+            cleanup:
+              - /bin
+              - /include
+              - /lib/cmake
+              - /lib/pkgconfig
+            sources:
+              - type: git
+                url: https://github.com/google/shaderc.git
+                tag: v2024.3
+                commit: ff84893dd52d28f0b1737d2635733d952013bd9c
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^v(\d{4}\.\d{1,2})$
+              - type: archive
+                url: https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/sdk-1.3.261.1.tar.gz
+                sha256: ead95c626ad482882a141d1aa0ce47b9453871f72c42c0b28d39c82f60a52008
+                dest: third_party/spirv-tools
+                x-checker-data:
+                  type: anitya
+                  stable-only: true
+                  project-id: 334920
+                  url-template: https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/sdk-$version.tar.gz
+              - type: archive
+                url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/sdk-1.3.261.1.tar.gz
+                sha256: 32b4c6ae6a2fa9b56c2c17233c8056da47e331f76e117729925825ea3e77a739
+                dest: third_party/spirv-headers
+                x-checker-data:
+                  type: anitya
+                  stable-only: true
+                  project-id: 334920
+                  url-template: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/sdk-$version.tar.gz
+              - type: git
+                url: https://github.com/KhronosGroup/glslang.git
+                tag: 15.0.0
+                commit: 46ef757e048e760b46601e6e77ae0cb72c97bd2f
+                dest: third_party/glslang
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^(\d{1,2}\.\d{1,2}\.\d{1,4})$
   - name: fmedia
     buildsystem: simple
     only_arches:
@@ -123,8 +187,16 @@ modules:
         dest: fmedia-1
         url: https://github.com/stsaz/fmedia/releases/download/v1.31/fmedia-1.31-linux-amd64.tar.xz
         sha256: 9f2347b0316275b081e98feaaed8b17c4750c2855f85606b79b26f6e62ba8ab0
-
-  - name: bluebubbles
+  - name: arp
+    buildsystem: simple
+    build-commands:
+      - 'yes "" | make arp'
+      - 'install -Dm755 arp /app/bin/arp'
+    sources:
+      - type: git
+        url: https://github.com/ecki/net-tools.git
+        tag: v2.10
+        commit: 80d7b95067f1f22fece9537dea6dff53081f4886
     buildsystem: simple
     build-commands:
       - 'cp -r bluebubbles /app/'
@@ -138,14 +210,14 @@ modules:
         only_arches:
           - x86_64
         dest: bluebubbles
-        url: https://github.com/BlueBubblesApp/bluebubbles-app/releases/download/v1.12.7%2B61/bluebubbles-linux-x86_64.tar
-        sha256: 8c0c3487062cb7546b5208b85cbda6794251e046256f9c422fee1ce067ffc34c
+        url: https://github.com/BlueBubblesApp/bluebubbles-app/releases/download/v1.14.0%2B69/bluebubbles-linux-x86_64.tar
+        sha256: ac8cab19ebcd45c741c2e110b0ce651938c3239c2027e6092022f67d35eb9116
       - type: archive
         only_arches:
           - aarch64
         dest: bluebubbles
-        url: https://github.com/BlueBubblesApp/bluebubbles-app/releases/download/v1.12.7%2B61/bluebubbles-linux-aarch64.tar
-        sha256: 6df20701f6a7087d362f0b27e294929d259896bd2f36908053d00cf713e7a08b
+        url: https://github.com/BlueBubblesApp/bluebubbles-app/releases/download/v1.14.0%2B69/bluebubbles-linux-aarch64.tar
+        sha256: 39c90bb570e2b831a7d234240485b45a29c9ac4da7051874adcf86373c42e94c
       - type: file
         path: app.bluebubbles.BlueBubbles.metainfo.xml
       - type: file
@@ -164,14 +236,15 @@ modules:
       - type: archive
         only_arches:
           - x86_64
-        url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6150/pdfium-linux-x64.tgz
-        sha256: 178b7bd8b798243e83b786836707f3cacca6d8a60282029b308e77cb35b7512c
+        url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6721/pdfium-linux-x64.tgz
+        sha256: 8783e0e46d846125227b7735d5625c2844a25ff315c0bf60a2834d457622b921
         dest: libpdfium
       - type: archive
         only_arches:
           - aarch64
-        url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6150/pdfium-linux-arm64.tgz
-        sha256: edf6c7aa826a66508e491977fd79e63888649d4fec7e11cfd05aedaf57cff3c2
+        url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6721/pdfium-linux-arm64.tgz
+        sha256: a0098cf9a945ef4e3b1ea7c777707e9c53d8c3c1918893a72cf1fc6c3e919c14
         dest: libpdfium
     cleanup:
       - /libpdfium
+
