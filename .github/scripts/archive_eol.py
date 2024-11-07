@@ -48,7 +48,6 @@ def get_eol_refs(arch: str, remote: str) -> set:
 
 
 def main() -> None:
-
     token = os.environ["GITHUB_TOKEN"]
 
     g = github.Github(auth=github.Auth.Token(token))
