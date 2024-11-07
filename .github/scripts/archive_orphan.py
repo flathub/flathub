@@ -10,13 +10,12 @@ from github.GithubException import (
 
 
 def main() -> None:
-
     token = os.environ["GITHUB_TOKEN"]
     g = github.Github(auth=github.Auth.Token(token))
 
     org = g.get_organization("flathub")
 
-    excludes = {}
+    #    excludes = {}
 
     earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         weeks=60
