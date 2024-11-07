@@ -232,11 +232,13 @@ def main():
             pass
 
     close_comment = (
-        f"A repository for this submission has been created: {repo.html_url}",
+        f"A repository for this submission has been created: {repo.html_url} and it will be published to Flathub in 4-5 hours.",
         "\n",
-        f"You will receive an invitation to be a collaborator which will grant you write access to the repository above. The invite can be also viewed [here]({repo.html_url}/invitations).",
+        f"You will receive an [invite]({repo.html_url}/invitations) to be a collaborator which will grant you write access to the above repository. Please accept the invite within one week.",
         "\n",
-        "If you've never maintained an app on Flathub before, common questions are answered in the [app maintenance guide](https://docs.flathub.org/docs/for-app-authors/maintenance/). If you're the original developer (or an authorized party), [verify your app](https://docs.flathub.org/docs/for-app-authors/verification) next to let users know it's coming from you.",
+        "Please go through the [App maintenance guide](https://docs.flathub.org/docs/for-app-authors/maintenance/) if you have never maintained an app on Flathub before.",
+        "\n",
+        "If you're the original developer (or an authorized party), please [verify your app](https://docs.flathub.org/docs/for-app-authors/verification) to let users know it's coming from you.",
         "\n",
         "Please follow the [Flathub blog](https://docs.flathub.org/blog) for the latest announcements.",
         "\n",
