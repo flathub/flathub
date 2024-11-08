@@ -1,4 +1,4 @@
-![Project Rubi-Ka](icons/icon128.png)
+![Project Rubi-Ka](metadata/icons/icon128.png)
 
 # Project Rubi-Ka Flatpak
 
