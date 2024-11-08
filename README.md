@@ -2,6 +2,10 @@
 
 # Project Rubi-Ka
 
+Join on Discord!
+
+[![](https://dcbadge.limes.pink/api/server/https://discord.gg/znDnHPspT4)](https://discord.gg/znDnHPspT4)
+
 ## Build
 
 ### Requirements:
@@ -26,6 +30,11 @@
 ./debug.sh
 ```
 
+## Install 
+
+```bash
+flatpak install com.projectrk.launcher
+```
 
 
 ## Run from CLI
