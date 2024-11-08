@@ -39,7 +39,7 @@ flatpak run com.projectrk.launcher
 #### dgVoodooCpl.exe
 
 > [!TIP]
-> This flatpak contains an optional/additional shortcut and entrypoint that invokes dgVoodooCpl.exe from within the client application folder, which is used to configure dgVoodoo2. dgVoodoo is used to translate the game's original DX7 graphics calls to DX11 and DX12. For some people, depending on their hardware, they may want to downgrade their graphics API version.
+> This flatpak contains an optional/additional shortcut and entrypoint that invokes dgVoodooCpl.exe from within the client application folder, which is used to configure dgVoodoo2. dgVoodoo is used to translate the game's original DX7 graphics calls to DX11 and DX12. Some people may want to downgrade their graphics API version depending on hardware capability.
 
 - More about dgVoodoo2 can be read [here](https://dege.freeweb.hu/dgVoodoo2/). 
 
