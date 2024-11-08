@@ -1,0 +1,143 @@
+app-id: net.shadps4.shadps4
+runtime: org.kde.Platform
+runtime-version: '6.7'
+sdk: org.kde.Sdk
+command: shadps4
+
+# TODO: vvvvv These can go away once shadPS4 PRs 1494 and 1495 are merged vvvvv
+rename-icon: shadps4
+rename-desktop-file: shadps4.desktop
+# TODO: ^^^^^ These can go away once shadPS4 PRs 1494 and 1495 are merged ^^^^^
+
+finish-args:
+  # gamepad and 3D hardware support
+  - --device=dri
+  - --device=input
+  - --allow=bluetooth
+  # Wayland + fallback
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio
+  - --socket=pulseaudio
+  # Discord rich presence?
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Netplay? Does shadps4 even support that?
+  - --share=network
+  # I don't think we need filesystem access, do we?
+  # - --filesystem=home
+  # - --filesystem=/media
+  # - --filesystem=/run/media
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm18
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: '24.08'
+    no-autodownload: false
+    autodelete: false
+
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+
+modules:
+  - name: rapidjson
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DRAPIDJSON_BUILD_DOC=OFF
+      - -DRAPIDJSON_BUILD_EXAMPLES=OFF
+      - -DRAPIDJSON_BUILD_TESTS=OFF
+      - -DRAPIDJSON_BUILD_THIRDPARTY_GTEST=OFF
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/Tencent/rapidjson/zipball/v1.1.0
+        dest-filename: rapidjson.zip
+        sha256: 7fb9f29b86f6842a6f67ebdf6b56b3fc25671b3bca50448e1505f47f37eb19d5
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/tencent/rapidjson/releases/latest
+          version-query: .tag_name
+          url-query: .zipball_url
+    cleanup:
+      - '*'
+
+  # TODO: libfmt is included as a submodule in externals - do we need to build it separately?
+  # - name: libfmt
+  #   buildsystem: cmake-ninja
+  #   config-opts:
+  #     - -DFMT_TEST=OFF
+  #   sources:
+  #     - type: archive
+  #       url: https://api.github.com/repos/fmtlib/fmt/zipball/11.0.2
+  #       dest-filename: fmtlib.zip
+  #       sha256: 441b654cfeca7dab0b457e8c327b150f4af3fbf908f55d2adb0d2a27fcfcfa41
+  #       x-checker-data:
+  #           type: json
+  #           url: https://api.github.com/repos/fmtlib/fmt/releases/latest
+  #           version-query: .tag_name
+  #           url-query: .zipball_url
+  #   cleanup:
+  #     - '*'
+
+  # TODO: Original manifest by deadmeu included libevdev. Do we need this?
+  # TODO: shadps4 seems to build fine without it, even though it's listed as a requirement
+  # TODO: in https://github.com/shadps4-emu/shadPS4/blob/main/documents/building-linux.md
+  - name: evdev
+    buildsystem: meson
+    config-opts:
+      - -Dtools=disabled
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.la
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.3.tar.xz
+        sha256: abf1aace86208eebdd5d3550ffded4c8d73bb405b796d51c389c9d0604cbcfbf
+        x-checker-data:
+          type: anitya
+          project-id: 20540
+          stable-only: true
+          url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+
+  - name: shadps4
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      append-path: /usr/lib/sdk/llvm18/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm18/lib
+    config-opts:
+      - -DENABLE_UPDATER=OFF
+      - -DENABLE_QT_GUI=ON
+      - -DCMAKE_C_COMPILER=clang
+      - -DCMAKE_CXX_COMPILER=clang++
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      # We're using a git source here rather than a zipball because zip/tarballs
+      # don't include submodules, which shadps4 depends on (in the externals directory)
+      - type: git
+        url: https://github.com/shadps4-emu/shadPS4
+        tag: v.0.4.0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/shadps4-emu/shadps4/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name | sub("^v."; "")
+    # TODO: vvvvv These can go away once shadPS4 PRs 1494 and 1495 are merged vvvvv
+      - type: file
+        path: net.shadps4.shadps4.metainfo.xml
+      - type: file
+        path: net.shadps4.shadps4.releases.xml
+      - type: file
+        path: net.shadps4.shadps4.svg
+    post-install:
+      - install -Dm 644 ../${FLATPAK_ID}.releases.xml -t /app/share/metainfo/releases/
+      - install -Dm 644 ../${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      - install -Dm 644 ../${FLATPAK_ID}.svg -t /app/share/icons/hicolor/scalable/apps
+    # TODO: ^^^^^ These can go away once shadPS4 PRs 1494 and 1495 are merged ^^^^^
