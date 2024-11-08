@@ -1,10 +1,10 @@
-<p style="text-align: center;"> <img src="metadata/icons/icon128.png" /> </p>
+![image](metadata/icons/icon128.png)
 
-<h1><p style="text-align: center;">Project Rubi-Ka</p><h1>
+# Project Rubi-Ka
 
-# Build
+## Build
 
-## Requirements:
+### Requirements:
 
 - Have `flatpak` installed
 
@@ -15,6 +15,9 @@
 > [!NOTE]
 > We have to pre-install supplementary 32-Bit drivers beforehand since they're not listed as dependencies of the org.freedesktop.Platform runtimes, they're treated as optional application dependencies- so when the flatpak gets installed from the local `repo/` directory that gets created from build output, there's no available refs that flatpak can auto-resolve and install from (GL32 and i386 extensions will not exist in `repo/`, they exist in `flathub`)
 
+
+
+
 # Debug
 
 - adds --devel flag to the run command and overrides the flatpak/container entry point with `bash` to get you into an interactive shell.
@@ -24,9 +27,8 @@
 ```
 
 
-# Features
 
-## Run from CLI
+### Run from CLI
 
 ```bash
 flatpak run com.projectrk.launcher
