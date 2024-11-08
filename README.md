@@ -40,7 +40,8 @@ flatpak run com.projectrk.launcher
 
 > [!TIP]
 > This flatpak contains an optional/additional shortcut and entrypoint that invokes dgVoodooCpl.exe from within the client application folder, which is used to configure dgVoodoo2. dgVoodoo is used to translate the game's original DX7 graphics calls to DX11 and DX12. For some people, depending on their hardware, they may want to downgrade their graphics API version.
-> More about dgVoodoo2 can be read [here](https://dege.freeweb.hu/dgVoodoo2/). 
+
+- More about dgVoodoo2 can be read [here](https://dege.freeweb.hu/dgVoodoo2/). 
 
 ```bash
 flatpak run --command=dgVoodooCpl com.projectrk.launcher
@@ -68,9 +69,12 @@ flatpak run --env=GAMEID=x com.projectrk.launcher
 ```
 
 #### Steam Linux Runtime (Pressure Vessel)
+
+- See [Steam Runtime Tools Documentation](https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/tree/main/docs) for more details
 ```bash
 # For advanced users
 # Will get you into the steam linux runtime sub-container xterm based terminal emu+shell
 flatpak run --env=PRESSURE_VESSEL_SHELL=instead com.projectrk.launcher
 ```
-> [!IMPORTANT] If you use PRESSURE_VESSEL_SHELL=instead, and the terminal is really hard to see, hold CTRL+right mouse click to see the xterm context menu, then enable the fonts supported by your host.
+> [!IMPORTANT]
+> If you use PRESSURE_VESSEL_SHELL=instead, and the terminal is really hard to see, hold CTRL+right mouse click to see the xterm context menu, then enable the fonts supported by your host.
