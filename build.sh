@@ -33,4 +33,4 @@ if [[ ! $(flatpak list --app --user | grep org.flatpak.Builder) ]]; then
   flatpak install -u --noninteractive -y org.flatpak.Builder
 fi
 
-flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir com.projectrk.launcher.yml
+flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir com.project_rk.launcher.yml

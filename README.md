@@ -31,14 +31,14 @@
 ## Install 
 
 ```bash
-flatpak install com.projectrk.launcher
+flatpak install com.project_rk.launcher
 ```
 
 
 ## Run from CLI
 
 ```bash
-flatpak run com.projectrk.launcher
+flatpak run com.project_rk.launcher
 ```
 
 ### Environment Variable Options (tweaking/customization)
@@ -51,7 +51,7 @@ flatpak run com.projectrk.launcher
 - More about dgVoodoo2 can be read [here](https://dege.freeweb.hu/dgVoodoo2/). 
 
 ```bash
-flatpak run --command=dgVoodooCpl com.projectrk.launcher
+flatpak run --command=dgVoodooCpl com.project_rk.launcher
 ```
 
 This flatpak also has a desktop shortcut for dgVoodooCpl.exe. ("Project RK (DGV)")
@@ -69,10 +69,10 @@ flatpak run --env=WINEDLLOVERRIDES='DDraw.dll,D3DImm.dll=n,b' # overrides these 
 - See [UMU Documentation](https://github.com/Open-Wine-Components/umu-launcher/blob/main/docs/umu.1.scd) for more details
 ```bash
 # GE or UMU will change the version of proton that gets installed dynamically by umu-run, the launcher
-flatpak run --env=PROTONPATH=UMU-Proton com.projectrk.launcher
+flatpak run --env=PROTONPATH=UMU-Proton com.project_rk.launcher
 
 # setting this number/ID will make umu automatically apply ecosystem-managed protonfixes to your prefix.
-flatpak run --env=GAMEID=x com.projectrk.launcher
+flatpak run --env=GAMEID=x com.project_rk.launcher
 ```
 
 #### Steam Linux Runtime (Pressure Vessel)
@@ -81,7 +81,7 @@ flatpak run --env=GAMEID=x com.projectrk.launcher
 ```bash
 # For advanced users
 # Will get you into the steam linux runtime sub-container xterm based terminal emu+shell
-flatpak run --env=PRESSURE_VESSEL_SHELL=instead com.projectrk.launcher
+flatpak run --env=PRESSURE_VESSEL_SHELL=instead com.project_rk.launcher
 ```
 > [!IMPORTANT]
 > If you use PRESSURE_VESSEL_SHELL=instead, and the terminal is really hard to see, hold CTRL+right mouse click to see the xterm context menu, then enable the fonts supported by your host.
