@@ -1,5 +1,7 @@
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/znDnHPspT4)](https://discord.gg/znDnHPspT4)  [![](https://img.shields.io/badge/Project%20Rubi-Ka%20Website-8A2BE2)](https://project-rk.com/)
+[![](https://dcbadge.limes.pink/api/server/https://discord.gg/znDnHPspT4?style=flat)](https://discord.gg/znDnHPspT4)  [![](https://img.shields.io/badge/Project%20Rubi--Ka%20Website-8A2BE2)](https://project-rk.com/)
+
 ![image](metadata/icons/icon128.png)
+
 
 # Project Rubi-Ka
 
