@@ -18,7 +18,7 @@
 
 
 
-# Debug
+## Debug
 
 - adds --devel flag to the run command and overrides the flatpak/container entry point with `bash` to get you into an interactive shell.
 
@@ -28,7 +28,7 @@
 
 
 
-### Run from CLI
+## Run from CLI
 
 ```bash
 flatpak run com.projectrk.launcher
