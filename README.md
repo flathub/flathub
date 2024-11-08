@@ -1,8 +1,6 @@
-![Project Rubi-Ka](metadata/icons/icon128.png)
+<p style="text-align: center;"> <img src="metadata/icons/icon128.png" /> </p>
 
-# Project Rubi-Ka Flatpak
-
-
+<h1><p style="text-align: center;">Project Rubi-Ka</p><h1>
 
 # Build
 
