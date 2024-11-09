@@ -6,7 +6,7 @@ export C=$WINEPREFIX/drive_c
 # Gens wineprefix on first start
 (
   if [[ ! -d $WINEPREFIX ]]; then
-    umu-run winetricks win7 dxvk corefonts
+    umu-run winetricks win7 dxvk allfonts
   fi
 ) | zenity --progress --title="Project Rubi-Ka" --text="Installing and configuring prefix..." --pulsate --auto-close --percentage=0 --no-cancel --width=360 --height=90
 
