@@ -1,0 +1,131 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/main/data/flatpak-manifest.schema.json
+id: io.github.khaled_0.TubeSync
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+command: tubesync
+finish-args:
+  - --socket=wayland # Wayland by default
+  - --socket=fallback-x11 # Fallback x11
+  - --share=ipc # X11 performance
+  - --device=dri # OpenGL rendering
+  - --socket=pulseaudio # Audio Playback
+  - --socket=system-bus # Flutter seems to complain without it
+  - --share=network
+  - --own-name=org.mpris.MediaPlayer2.TubeSync.*
+
+modules:
+  - name: libmpv
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    buildsystem: simple
+    build-commands:
+      - python3 waf configure --prefix=/app --enable-libmpv-shared --disable-cplayer --disable-build-date
+        --disable-alsa
+      - python3 waf build
+      - python3 waf install
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.35.1
+      - type: file
+        url: https://waf.io/waf-2.0.25
+        sha256: 21199cd220ccf60434133e1fd2ab8c8e5217c3799199c82722543970dc8e38d5
+        dest-filename: waf
+    modules:
+      - name: libass
+        cleanup:
+          - /include
+          - /lib/*.la
+          - /lib/pkgconfig
+        config-opts:
+          - --disable-static
+        sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.17.1/libass-0.17.1.tar.xz
+            sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
+        modules:
+          - name: fribidi
+            cleanup:
+              - /bin
+              - /include
+              - /lib/pkgconfig
+              - /lib/*.la
+              - /share/man
+            buildsystem: meson
+            config-opts:
+              - --buildtype=release
+              - -Ddocs=false
+            sources:
+              - type: git
+                url: https://github.com/fribidi/fribidi.git
+                tag: v1.0.13
+                commit: b54871c339dabb7434718da3fed2fa63320997e5
+      - name: x264
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /share/man
+        config-opts:
+          - --disable-cli
+          - --enable-shared
+        sources:
+          - type: git
+            url: https://code.videolan.org/videolan/x264.git
+            commit: a8b68ebfaa68621b5ac8907610d3335971839d52
+            x-checker-data:
+              type: json
+              url: https://code.videolan.org/api/v4/projects/536/repository/commits
+              commit-query: first( .[].id )
+              version-query: first( .[].id )
+              timestamp-query: first( .[].committed_date )
+      - name: nv-codec-headers
+        cleanup:
+          - "*"
+        no-autogen: true
+        make-install-args:
+          - PREFIX=/app
+        sources:
+          - type: git
+            url: https://github.com/FFmpeg/nv-codec-headers.git
+            commit: 855f8263d97bbdcaeabaaaa2997e1ccad7c52dc3
+      - name: ffmpeg
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+          - /share/ffmpeg/examples
+        config-opts:
+          - --enable-shared
+          - --disable-static
+          - --enable-gnutls
+          - --disable-doc
+          - --disable-programs
+          - --disable-encoders
+          - --disable-muxers
+          - --enable-encoder=png
+          - --enable-libv4l2
+          - --enable-libdav1d
+        sources:
+          - type: git
+            url: https://git.ffmpeg.org/ffmpeg.git
+            branch: release/6.0
+            commit: 769c36b01378d1d860150cea535dea1128abde0b
+
+  - name: tubesync
+    buildsystem: simple
+    build-commands:
+      - chmod +x build-flatpak.sh
+      - ./build-flatpak.sh
+    sources:
+      - type: file
+        path: ./build-flatpak.sh
+      - type: file
+        path: ./io.github.khaled_0.TubeSync.desktop
+      - type: file
+        path: ./io.github.khaled_0.TubeSync.metainfo.xml
+      - type: file
+        url: https://github.com/khaled-0/TubeSync/releases/download/0.1.3/tubesync_linux.zip
+        sha256: 200c19159c206c8cba9bfd0245b190b4fb22a53b4569f33a25bf7344152d012d
+        dest-filename: tubesync.zip
