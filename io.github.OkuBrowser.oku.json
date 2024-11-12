@@ -1,0 +1,109 @@
+{
+    "app-id" : "io.github.OkuBrowser.oku",
+    "runtime" : "org.gnome.Platform",
+    "runtime-version" : "47",
+    "sdk" : "org.gnome.Sdk",
+    "sdk-extensions" : [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ],
+    "command" : "oku",
+    "finish-args" : [
+        "--share=network",
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=all",
+        "--socket=pulseaudio",
+        "--socket=cups",
+        "--filesystem=xdg-download",
+        "--filesystem=xdg-pictures",
+        "--filesystem=host",
+        "--filesystem=xdg-run/gvfs",
+        "--filesystem=xdg-run/gvfsd",
+        "--talk-name=org.freedesktop.Flatpak",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.gtk.vfs.*"
+    ],
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/man",
+        "/share/doc",
+        "/share/gtk-doc",
+        "/share/man",
+        "/share/pkgconfig",
+        "*.la",
+        "*.a"
+    ],
+    "build-options" : {
+        "append-path" : "/usr/lib/sdk/rust-stable/bin",
+        "env" : {
+            "RUSTFLAGS" : "--remap-path-prefix =../",
+            "CARGO_HOME" : "/run/build/oku/cargo"
+        }
+    },
+    "modules" : [
+        {
+            "name": "flatpak-cargo-generator",
+            "buildsystem": "simple",
+            "build-commands" : [
+                "python3 ./flatpak-cargo-generator.py ./Cargo.lock -o \"./build-aux/cargo-sources.json\""
+            ],
+            "sources": [
+                {
+                    "type" : "git",
+                    "url" : "https://github.com/OkuBrowser/oku.git",
+                    "tag": "v0.1.0"
+                }
+            ]
+        },
+        {
+            "name": "libfuse",
+            "buildsystem": "meson",
+            "config-opts": [
+                "-Dexamples=false",
+                "-Dutils=false"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/libfuse/libfuse.git",
+                    "tag": "fuse-3.16.1",
+                    "commit": "1f0dfae4084577997291bb0e1b94aeff89a5e70f"
+                }
+            ]
+        },
+        {
+            "name" : "oku",
+            "buildsystem" : "simple",
+            "build-commands" : [
+                "cargo --offline fetch --manifest-path Cargo.toml --verbose",
+                "cargo --offline build --release --verbose",
+                "install -Dm755 ./target/release/oku -t /app/bin/",
+                "install -Dm755 ./resources.gresource -t /app/bin/",
+                "install -Dm644 ./data/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/",
+                "install -Dm644 ./data/${FLATPAK_ID}.desktop -t /app/share/applications/",
+                "mkdir -p /app/share/icons/hicolor",
+                "cp -avr ./data/hicolor /app/share/icons/",
+                "install -Dm644 ./README.md -t /app/share/doc/oku/",
+                "install -Dm644 ./COPYING -t /app/share/doc/oku/"
+            ],
+            "sources" : [
+                "cargo-sources.json"
+            ]
+        },
+        {
+            "name": "host-command-wrapper",
+            "buildsystem": "simple",
+            "build-commands": [
+              "install fusermount-wrapper.sh /app/bin/fusermount3"
+            ],
+            "sources": [
+              {
+                "type": "file",
+                "path": "./fusermount-wrapper.sh"
+              }
+            ]
+        }
+    ]
+}
