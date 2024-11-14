@@ -1,0 +1,81 @@
+id: studio.eufonia.EufoniaClient
+
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+tags:
+  - proprietary
+
+command: eufonia-client
+finish-args:
+  - --device=dri # Hardware acceleration
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all
+  - --share=network
+  - --socket=pulseaudio
+    # for Discord RPC
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+    # Userspace visibility for manual hugepages configuration
+    # Required for -XX:+UseLargePages
+  - --filesystem=/sys/kernel/mm/hugepages:ro
+    # Userspace visibility for transparent hugepages configuration
+    # Required for -XX:+UseTransparentHugePages
+  - --filesystem=/sys/kernel/mm/transparent_hugepage:ro
+
+modules:
+  - name: xrandr
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/xrandr-1.5.2.tar.xz
+        sha256: c8bee4790d9058bacc4b6246456c58021db58a87ddda1a9d0139bf5f18f1f240
+        x-checker-data:
+          type: anitya
+          project-id: 14957
+          stable-only: true
+          url-template: https://xorg.freedesktop.org/archive/individual/app/xrandr-$version.tar.xz
+  - name: glfw
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DGLFW_USE_WAYLAND:BOOL=ON
+      - -DGLFW_BUILD_DOCS:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/glfw/glfw.git
+        commit: 3fa2360720eeba1964df3c0ecf4b5df8648a8e52
+      - type: patch
+        path: patches/0003-Don-t-crash-on-calls-to-focus-or-icon.patch
+      - type: patch
+        path: patches/0005-Add-warning-about-being-an-unofficial-patch.patch
+      - type: patch
+        path: patches/0007-Platform-Prefer-Wayland-over-X11.patch
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+  - name: binary
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://client.eufonia.studio/api/v2/download?file_type=installer&platform=debian-x86_64&version=2.0.1
+        dest-filename: Eufonia-Client-linux-v2.0.1.deb
+        sha256: 69561e9b820492c4e0e76410c3e463ea0b365359cafce1c105c5bc50113f1fe2
+        only-arches: [x86_64] #This source is only used on x86_64 Computers
+      - type: file
+        path: studio.eufonia.EufoniaClient.metainfo.xml
+    build-commands:
+      - ar -x Eufonia-Client-linux-v2.0.1.deb
+      - tar -xf data.tar.gz
+      - 'install -Dm755 usr/bin/eufonia-client /app/bin/eufonia-client'
+      - 'install -Dm755 usr/bin/cloudflared /app/bin/cloudflared'
+      - install -Dm644 usr/share/applications/Eufonia\ Client.desktop /app/share/applications/studio.eufonia.EufoniaClient.desktop
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/eufonia-client.png /app/share/icons/hicolor/128x128/apps/studio.eufonia.EufoniaClient.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/eufonia-client.png /app/share/icons/hicolor/256x256@2/apps/studio.eufonia.EufoniaClient.png
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/eufonia-client.png /app/share/icons/hicolor/32x32/apps/studio.eufonia.EufoniaClient.png
+      - sed -i 's/Icon=eufonia-client/Icon=studio.eufonia.EufoniaClient/g' /app/share/applications/studio.eufonia.EufoniaClient.desktop
+      - install -Dm644 studio.eufonia.EufoniaClient.metainfo.xml /app/share/metainfo/studio.eufonia.EufoniaClient.rosary.metainfo.xml
