@@ -31,7 +31,8 @@ flatpak --user run page.codeberg.terratactician_expandoria.game
 
 
 ## 🆕 Updating
-When the `Cargo.lock` changes, the `cargo-sources.json` has to be regenerated:
+When the `Cargo.lock` changes, the `cargo-sources.json` has to be regenerated.
+This can be done [using the flatpak-cargo-generator.py](https://github.com/flatpak/flatpak-builder-tools/blob/master/cargo/flatpak-cargo-generator.py) script
 ```sh
 python flatpak-cargo-generator.py ../game/Cargo.lock -o cargo-sources.json
 ```
