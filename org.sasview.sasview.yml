@@ -4,6 +4,7 @@ runtime-version: "6.7"
 sdk: org.kde.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm15
 base: com.riverbankcomputing.PyQt.BaseApp
 base-version: 6.7
 command: sasview
@@ -13,6 +14,9 @@ finish-args:
   - "--socket=wayland"
   - "--device=dri"
   - "--persist=."
+build-options:
+  append-path: /usr/lib/sdk/llvm15/bin
+  append-ld-library-path: /usr/lib/sdk/llvm15/lib
 modules:
   - name: hdf5
     buildsystem: autotools
@@ -35,10 +39,44 @@ modules:
       - "/share/doc"
   - shared-modules/glu/glu-9.json
   - python3-requirements.json
+  - name: pyside
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      cxxflags: -I/run/build/pyside/sources/shiboken6/libshiboken/signature -I/usr/include/python3.11
+      cflags: -I/usr/include/python3.11
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTS=OFF
+      - -DCMAKE_SKIP_RPATH:BOOL=YES
+      - -DFORCE_LIMITED_API=OFF
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.7.2-src/pyside-setup-everywhere-src-6.7.2.tar.xz
+        sha256: 3a2b0d0d6e78c9aa5ddc7f06ca4b6f11a3fe14560baeb148eea53b5d98e368c7
+      - type: shell
+        commands:
+          - cp -R /usr/include/Qt* sources/pyside6/PySide6/
+    modules:
+      # needed as the cmake super project doesn't find the shiboken python module
+      - name: shiboken
+        buildsystem: cmake-ninja
+        builddir: true
+        subdir: sources/shiboken6
+        config-opts:
+          - -DBUILD_TESTS=OFF
+          - -DFORCE_LIMITED_API=OFF
+        sources:
+          - type: archive
+            url: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.7.2-src/pyside-setup-everywhere-src-6.7.2.tar.xz
+            sha256: 3a2b0d0d6e78c9aa5ddc7f06ca4b6f11a3fe14560baeb148eea53b5d98e368c7
+
   - name: sasview
     buildsystem: simple
     build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --no-build-isolation
+      - pip3 install  --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --global-option rebuild_ui --no-build-isolation
     post-install:
       - install -Dm0644 build_tools/application_metadata/org.sasview.sasview.metainfo.xml -t /app/share/metainfo/
       - install -Dm0644 build_tools/application_metadata/org.sasview.sasview.png -t /app/share/icons/hicolor/512x512/apps/
@@ -46,7 +84,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/SasView/sasview.git
-        commit: 2e519c48373a4ebe3266225c5fccb3870f6403b2
+        commit: 76030a6fa4a30266644ed57cc5a84983b42045da
       - type: file
         url: https://raw.githubusercontent.com/SasView/sasview/2e519c48373a4ebe3266225c5fccb3870f6403b2/build_tools/application_metadata/org.sasview.sasview.png
         sha256: fa4e310c68c88ad7f6ebdd4cf4b4e91fac1b729c71624fe6c971970640e5766d
