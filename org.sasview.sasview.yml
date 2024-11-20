@@ -4,7 +4,7 @@ runtime-version: "6.7"
 sdk: org.kde.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm15
+  - org.freedesktop.Sdk.Extension.llvm16
 base: com.riverbankcomputing.PyQt.BaseApp
 base-version: 6.7
 command: sasview
@@ -15,8 +15,11 @@ finish-args:
   - "--device=dri"
   - "--persist=."
 build-options:
-  append-path: /usr/lib/sdk/llvm15/bin
-  append-ld-library-path: /usr/lib/sdk/llvm15/lib
+  append-path: /usr/lib/sdk/llvm16/bin
+  append-ld-library-path: /usr/lib/sdk/llvm16/lib
+  env:
+    LLVM_INSTALL_DIR: /usr/lib/sdk/llvm16
+    SHIBOKEN_DEBUG_LEVEL: 'full'
 modules:
   - name: hdf5
     buildsystem: autotools
@@ -39,43 +42,23 @@ modules:
       - "/share/doc"
   - shared-modules/glu/glu-9.json
   - python3-requirements.json
-  - name: pyside
-    buildsystem: cmake-ninja
-    builddir: true
-    build-options:
-      cxxflags: -I/run/build/pyside/sources/shiboken6/libshiboken/signature -I/usr/include/python3.11
-      cflags: -I/usr/include/python3.11
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DBUILD_TESTS=OFF
-      - -DCMAKE_SKIP_RPATH:BOOL=YES
-      - -DFORCE_LIMITED_API=OFF
-    cleanup:
-      - /bin
+  - name: patchelf
+    buildsystem: autotools
     sources:
-      - type: archive
-        url: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.7.2-src/pyside-setup-everywhere-src-6.7.2.tar.xz
-        sha256: 3a2b0d0d6e78c9aa5ddc7f06ca4b6f11a3fe14560baeb148eea53b5d98e368c7
-      - type: shell
-        commands:
-          - cp -R /usr/include/Qt* sources/pyside6/PySide6/
-          # Needed as the build ui scripts look for pyside6-* not *
-          - ln -s /app/bin/rcc /app/bin/pyside6-rcc
-          - ln -s /app/bin/uic /app/bin/pyside6-uic
-    modules:
-      # needed as the cmake super project doesn't find the shiboken python module
-      - name: shiboken
-        buildsystem: cmake-ninja
-        builddir: true
-        subdir: sources/shiboken6
-        config-opts:
-          - -DBUILD_TESTS=OFF
-          - -DFORCE_LIMITED_API=OFF
-        sources:
-          - type: archive
-            url: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.7.2-src/pyside-setup-everywhere-src-6.7.2.tar.xz
-            sha256: 3a2b0d0d6e78c9aa5ddc7f06ca4b6f11a3fe14560baeb148eea53b5d98e368c7
-
+      - type: git
+        url: "https://github.com/NixOS/patchelf.git"
+        commit: 769337c227799aa60911562b6940530f4a86eb3c
+  - name: pyside-setup
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py build --qtpaths=/usr/bin/qtpaths --ignore-git --parallel=8
+        --log-level=verbose --flatpak
+      - python3 create_wheels.py --build-dir ./build/qfp-*-release
+      - pip install ./dist/*.whl --prefix=${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: "https://code.qt.io/pyside/pyside-setup.git"
+        tag: "6.7.3"
   - name: sasview
     buildsystem: simple
     build-commands:
