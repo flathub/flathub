@@ -1,0 +1,54 @@
+id: com.daniel15.wcc
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet8/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet8/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet8/lib/pkgconfig"
+  arch:
+    aarch64:
+      env:
+        - RUNTIME=linux-arm64
+    x86_64:
+      env:
+        - RUNTIME=linux-x64
+
+command: webcamcontrol
+
+finish-args:
+  - --device=dri
+  # Required for access to webcams (/sys/class/video4linux/ and /dev/video*) 
+  - --device=all
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+modules:
+  - name: blueprint-compiler
+    buildsystem: meson
+    cleanup:
+      - "*"
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+        tag: v0.14.0
+
+  - name: WebCamControl
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/Daniel15/WebCamControl.git
+        commit: f1c4a644101b2010ccfa3d767bcd95299eceb735
+      - ./nuget-sources.json
+    build-commands:
+      - dotnet msbuild src/WebCamControl.Gtk/WebCamControl.Gtk.csproj /t:BlueprintBuild
+      - dotnet publish src/WebCamControl.Gtk/WebCamControl.Gtk.csproj -c Release --runtime $RUNTIME --source ./nuget-sources --source /usr/lib/sdk/dotnet8/nuget/packages --self-contained true
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r --remove-destination src/WebCamControl.Gtk/bin/Release/net8.0/linux-x64/publish/* ${FLATPAK_DEST}/bin
+      - install -D src/WebCamControl.Gtk/icon-512x512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/com.daniel15.wcc.png
+      - install -D src/WebCamControl.Gtk/com.daniel15.wcc.desktop ${FLATPAK_DEST}/share/applications/com.daniel15.wcc.desktop
+      - install -D src/WebCamControl.Gtk/com.daniel15.wcc.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.daniel15.wcc.metainfo.xml
