@@ -1,0 +1,53 @@
+app-id: org.gitfourchette.gitfourchette
+runtime: org.kde.Platform
+runtime-version: '6.7'  # PyQt.BaseApp doesn't support 6.8 yet (https://github.com/flathub/com.riverbankcomputing.PyQt.BaseApp#branch-comparison)
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.7'
+cleanup-commands:
+ - /app/cleanup-BaseApp.sh
+build-options:
+  env:
+    - BASEAPP_REMOVE_WEBENGINE=1
+
+command: gitfourchette
+
+finish-args:
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Talk to git remotes
+  - --share=network
+  # Discover ".git" dir associated with files dropped by the user
+  - --filesystem=host:rw
+  # Open directories in system file manager via DBus
+  - --talk-name=org.freedesktop.FileManager1
+  # Start external merge tool via flatpak-spawn
+  - --talk-name=org.freedesktop.Flatpak
+  # Don't mix .pyc files with host environment
+  - --env=PYTHONPYCACHEPREFIX=
+
+modules:
+  - python3-packages.yml
+
+  - name: gitfourchette
+    buildsystem: simple
+    build-commands:
+      - python update_resources.py --freeze pyqt6
+      - python -m pip install --verbose --no-index --prefix=${FLATPAK_DEST} '.[pyqt6]' --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/jorio/gitfourchette.git
+        #######################################################################
+        ## TODO: Replace "commit: ..." with "tag: v1.0.1" when the next tag is created upstream.
+        ##       Can't use tag 'v1.0.0' because AppStream files were fixed in a later commit.
+        #######################################################################
+        commit: dd2a4842e5ee19842073d3635a8a701b385e0f3e
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+    post-install:
+      - install -D ./pkg/flatpak/org.gitfourchette.gitfourchette.desktop      ${FLATPAK_DEST}/share/applications/org.gitfourchette.gitfourchette.desktop
+      - install -D ./pkg/flatpak/org.gitfourchette.gitfourchette.png          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/org.gitfourchette.gitfourchette.png
+      - install -D ./pkg/flatpak/org.gitfourchette.gitfourchette.metainfo.xml ${FLATPAK_DEST}/share/metainfo/org.gitfourchette.gitfourchette.metainfo.xml
