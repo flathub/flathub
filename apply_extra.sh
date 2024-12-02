@@ -4,9 +4,9 @@ set -e
 
 FLATPAK_ID=com.tracktion.Waveform13
 
-function extract_deb{
+function extract_deb () {
     cat $1 | bsdtar x $2
-    tar -zxf $2 -C deb-package
+    tar -xf $2 -C deb-package
     rm $2 # Clean up tar archive
 }
 
