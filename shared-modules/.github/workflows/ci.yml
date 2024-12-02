@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: master
+  pull_request:
+    branches: master
+  workflow_dispatch:
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: |
+          sudo add-apt-repository ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install flathub -y org.flatpak.Builder
+
+      - name: Validate manifests
+        run: |
+          set -e
+          for i in $(find . -type f -name "*.json"); do flatpak run org.flatpak.Builder --show-manifest "$i"; done
+          rm -rf .flatpak-builder
+
+          find . -maxdepth 1 -mindepth 1 -type d ! -path './.github' ! -path './.git' | while read dir; do
+            if [ "$(find "$dir" -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 0 ]; then
+              echo "Error: $dir has no JSON manifest"
+              exit 1
+            fi
+          done
+
+          files="$(find . -type f \( -name '*.yml' -o -name '*.yaml' \) ! -path './.github/*' ! -path './.git')"
+          if [ -n "$files" ]; then
+            echo "Error: YML/YAML file found: $files"
+            exit 1
+          fi
