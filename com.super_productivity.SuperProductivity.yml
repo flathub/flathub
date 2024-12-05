@@ -4,53 +4,52 @@ runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '24.08'
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node20
 command: run.sh
 separate-locales: false
+rename-icon: superproductivity
 finish-args:
   - --share=ipc
   - --socket=x11
   - --socket=pulseaudio
   - --share=network
-build-options:
-  append-path: /usr/lib/sdk/node20/bin
-  env:
-    NPM_CONFIG_LOGLEVEL: info
 modules:
   - name: super-productivity
     buildsystem: simple
-    build-options:
-      env:
-        XDG_CACHE_HOME: /run/build/super-productivity/flatpak-node/cache
-        npm_config_cache: /run/build/super-productivity/flatpak-node/npm-cache
-        npm_config_offline: 'true'
     build-commands:
-      # Install npm dependencies
-      - npm install --offline
-      # Build the app; in this example the `dist` script
-      # in package.json runs electron-builder
-      - |
-        . ../flatpak-node/electron-builder-arch-args.sh
-        npm run electron-builder -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
-      # Bundle app and dependencies
-      - cp -a app-builds/linux*unpacked /app/main
+      # Extract contents of .deb package
+      - ar x super-productivity.deb
+      - rm super-productivity.deb
+      - tar xvf data.tar.xz
+
+      # Install files from .deb
+      - mv "opt/Super Productivity" ${FLATPAK_DEST}/superproductivity
+
+      # Install desktop file
+      - install -Dm644 -T usr/share/applications/superproductivity.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Exec --set-value='run.sh %U' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+
+      # Install icons
+      - mkdir -p ${FLATPAK_DEST}/share/icons
+      - mv "usr/share/icons/hicolor" ${FLATPAK_DEST}/share/icons
+
+      # Remove too-large icon that flatpak-builder doesn't like
+      - rm -r ${FLATPAK_DEST}/share/icons/hicolor/1024x1024
+
       # Install app wrapper
-      - install -Dm755 -t /app/bin/ ../run.sh
-    subdir: main
+      - install -Dm755 run.sh -t ${FLATPAK_DEST}/bin/run.sh
     sources:
-      - type: archive
-        url: https://github.com/johannesjo/super-productivity/archive/refs/tags/v10.2.3.tar.gz
-        sha256: c2469cb875b06f8bf3f994476b1a3219991833ee0faf15cab4f13c6589c46484
-        dest: main
+      - type: file
+        only-arches: [x86_64]
+        dest-filename: super-productivity.deb
+        url: https://github.com/johannesjo/super-productivity/releases/download/v10.2.3/superProductivity-amd64.deb
+        sha256: acc555ec639917982b1f80c4b1855c8fc5fe9231edf4eb9f60a44c087b34c65d
         x-checker-data:
           type: json
           url: https://api.github.com/repos/johannesjo/super-productivity/releases/latest
           tag-query: .tag-name
           timestamp-query: .published_at
           version-query: .name
-          url-query: .tarball_url
-      - generated-sources.json
+          url-query: '.assets[] | select(.name == "superProductivity-amd64.deb") | .browser_download_url'
       # Wrapper to launch the app
       - type: script
         dest-filename: run.sh
