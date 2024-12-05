@@ -8,7 +8,7 @@ PACKAGE_NAME="ci.not.Rune"
 SOURCE_APP="$(pwd)/release"
 SOURCE_APPSTREAM="$(pwd)/tools/$PACKAGE_NAME.metainfo.xml"
 SOURCE_DESKTOP_FILE="$(pwd)/tools/$PACKAGE_NAME.desktop"
-SOURCE_ICONS="$(pwd)/source/assets/icons/Papirus"
+SOURCE_ICONS="$(pwd)"
 
 TARGET_PREFIX="/app"
 TARGET_APP="$TARGET_PREFIX/$BIN_NAME"
@@ -20,6 +20,7 @@ TARGET_ICONS="$TARGET_PREFIX/share/icons/hicolor"
 echo "Installing binary ..."
 mkdir -pv "$TARGET_APP"
 cp -rv "$SOURCE_APP"/* "$TARGET_APP"
+chmod +x "$TARGET_APP/lib"/*
 chmod +x "$TARGET_APP/$BIN_NAME"
 
 mkdir -pv "${TARGET_BIN}"
@@ -29,7 +30,7 @@ echo "Installing icons ..."
 mkdir -p "$TARGET_ICONS"
 for i in "16x16" "32x32" "64x64" "128x128" "256x256" "512x512"; do
 	mkdir -p "$TARGET_ICONS/$i/apps"
-	install -Dvm644 "$SOURCE_ICONS/$i/apps/$BIN_NAME.png" \
+	install -Dvm644 "$SOURCE_ICONS/$BIN_NAME-$i.png" \
  		"$TARGET_ICONS/$i/apps/$PACKAGE_NAME.png"
 done
 
