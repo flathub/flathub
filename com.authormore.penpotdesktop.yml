@@ -1,0 +1,68 @@
+app-id: com.authormore.penpotdesktop
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # required to fix cursor scaling on wayland
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --share=network
+  - --device=dri
+
+  # Static access until electron gets fixed
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: penpot-desktop
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/penpot-desktop/flatpak-node/cache
+        npm_config_cache: /run/build/penpot-desktop/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    subdir: main
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `build` script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run build -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      - install -Dm644 build/flatpak/icons/${FLATPAK_ID}.svg -t /app/share/icons/hicolor/scalable/apps
+      - install -Dm644 build/flatpak/icons/${FLATPAK_ID}.application-x-penpot.svg -t /app/share/icons/hicolor/scalable/mimetypes
+      - install -Dm644 build/flatpak/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 build/flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 build/flatpak/$FLATPAK_ID-mime.xml -t /app/share/mime/packages/
+    sources:
+      - type: git
+        url: https://github.com/author-more/penpot-desktop.git
+        tag: v0.6.0
+        commit: 46ae554779de048e03e49cd60338c47a8a2e060d
+        dest: main
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/penpot-desktop --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations "$@"
