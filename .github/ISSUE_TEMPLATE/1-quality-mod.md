@@ -4,12 +4,9 @@ about: "Feedback or support regarding Flathub Quality Guidelines"
 labels: "quality-guidelines"
 ---
 
-## **Flathub store page link**
+### Flathub store page link
 
 <!-- https://flathub.org/apps/com.example.myapp -->
 
----
 
-## Questions or Feedback
-
----
+### Questions or Feedback
