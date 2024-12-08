@@ -98,6 +98,8 @@ def main() -> None:
         "org.freedesktop.Sdk.Extension.rust-stable",
         # 19.08, 20.08 are EOL
         "org.freedesktop.Sdk.Extension.ziglang",
+        # master branch is EOL
+        "org.freedesktop.Platform.VulkanLayer.vkBasalt",
         # renamed, previous name is EOL but github repo is
         # case-insensitive
         "org.gnome.Chess",
