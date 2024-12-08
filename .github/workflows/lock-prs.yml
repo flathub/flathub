@@ -4,7 +4,6 @@ on:
   schedule:
   - cron: "0 */6 * * *"
   workflow_dispatch:
-  workflow_call:
 
 jobs:
   lock:
@@ -12,19 +11,19 @@ jobs:
     steps:
       - name: Lock closed PRs
         run: |
-          pr_list=$(gh pr list --repo "$REPO" -L 100000 --state closed --json number,updatedAt)
+          pr_list=$(gh pr list -L 100000 --state closed --json number,updatedAt)
           recent_prs=$(echo "$pr_list" | jq '[.[] | select(.updatedAt >= (now - (7 * 24 * 60 * 60) | todate))]')
           sorted_prs=$(echo "$recent_prs" | jq 'sort_by(.updatedAt) | .[] | {number: .number, updatedAt: .updatedAt}')
           cmd=$(echo "$sorted_prs" | jq '.number' | head -n 100)
 
           for num in $cmd; do
-            if [ "$(gh api repos/"$REPO"/issues/"$num" --jq '.locked')" = "false" ]; then
-              if ! gh pr view --repo "$REPO" --json labels -q '.labels[].name' "$num"|grep -qE "^(Stale|leave-open)$"; then
+            if [ "$(gh api repos/"$GH_REPO"/issues/"$num" --jq '.locked')" = "false" ]; then
+              if ! gh pr view --json labels -q '.labels[].name' "$num"|grep -qE "^(Stale|leave-open)$"; then
                 echo "Locking pull request $num"
-                gh pr lock --repo "$REPO" --reason "resolved" "$num"
+                gh pr lock --reason "resolved" "$num"
               fi
             fi
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: flathub/flathub
+          GH_REPO: ${{ github.repository }}
