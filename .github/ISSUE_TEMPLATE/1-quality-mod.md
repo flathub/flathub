@@ -1,6 +1,7 @@
 ---
 name: "Quality Guidelines"
 about: "Feedback or support regarding Flathub Quality Guidelines"
+title: "Quality guideline problems for <app name>"
 labels: "quality-guidelines"
 ---
 
