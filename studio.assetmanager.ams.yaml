@@ -1,0 +1,77 @@
+app-id: studio.assetmanager.ams
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: ams
+finish-args:
+  # X11 performance
+  - --share=ipc
+  # Access to network
+  - --share=network
+  # Access to X11
+  - --socket=x11
+  # Access to wayland
+  - --socket=wayland
+  # Audio Access
+  - --socket=pulseaudio
+  # Access to all files
+  - --filesystem=host
+  # Access to OpenGL
+  - --device=dri
+  # Use same mouse cursors as host
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --talk-name=org.freedesktop.secrets
+
+rename-desktop-file: asset-manager-studio.desktop
+rename-icon: asset-manager-studio
+modules:
+  - name: ams-desktop
+    buildsystem: simple
+    build-commands:
+      # Extract .deb & cleanup
+      - ar -x asset-manager-studio*.deb
+      - rm -f asset-manager-studio*.deb
+      - tar -xf data.tar.xz
+      - rm -f control.tar.gz data.tar.xz debian-binary
+
+      # Copy application to Flatpack destination, and then clean it up
+      - cp --preserve --recursive opt/* usr/* $FLATPAK_DEST
+      - rm -rf opt usr
+
+      # Install our two data files
+      - install ams.sh $FLATPAK_DEST/bin/ams
+      - install -Dm0644 "${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+
+      # update Desktop file
+      - desktop-file-edit --set-key=Exec --set-value="ams %U" $FLATPAK_DEST/share/applications/asset-manager-studio.desktop
+      - desktop-file-edit --set-key=Icon --set-value="${FLATPAK_ID}" "${FLATPAK_DEST}/share/applications/asset-manager-studio.desktop"
+      - desktop-file-edit --set-key=X-Flatpak-RenamedFrom --set-value='asset-manager-studio.desktop;' "${FLATPAK_DEST}/share/applications/asset-manager-studio.desktop"
+
+      # required to patch the app.asar file of an extracted application
+      - patch-desktop-filename "${FLATPAK_DEST}/asset-manager-studio/resources/app.asar"
+
+      # To allow separate locales
+      # https://searchfox.org/mozilla-central/rev/8a4f55bc09ffc5c25dcb4586c51ae4a9fee77b4c/taskcluster/docker/firefox-flatpak/runme.sh#131-133
+      - |
+        for lang in ${FLATPAK_DEST}/asset-manager-studio/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/asset-manager-studio/locales/$(basename $lang)"
+        done
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://assetmanager.studio/dl/0.0.26/asset-manager-studio_0.0.26_amd64.deb
+        sha256: 38acc88672801bbfad15663679dd39bcacfec71b8421cf25c4d26dc2c6d27660
+      - type: script
+        dest-filename: ams.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/asset-manager-studio/asset-manager-studio "$@"
+      - type: file
+        path: studio.assetmanager.ams.metainfo.xml
+
