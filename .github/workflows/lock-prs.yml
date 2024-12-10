@@ -7,6 +7,8 @@ on:
 
 jobs:
   lock:
+    permissions:
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Lock closed PRs
@@ -14,9 +16,11 @@ jobs:
           pr_list=$(gh pr list -L 100000 --state closed --json number,updatedAt)
           recent_prs=$(echo "$pr_list" | jq '[.[] | select(.updatedAt >= (now - (7 * 24 * 60 * 60) | todate))]')
           sorted_prs=$(echo "$recent_prs" | jq 'sort_by(.updatedAt) | .[] | {number: .number, updatedAt: .updatedAt}')
-          cmd=$(echo "$sorted_prs" | jq '.number' | head -n 100)
+          list=$(echo "$sorted_prs" | jq '.number' | head -n 100)
 
-          for num in $cmd; do
+          unset pr_list recent_prs sorted_prs
+
+          for num in $list; do
             if [ "$(gh api repos/"$GH_REPO"/issues/"$num" --jq '.locked')" = "false" ]; then
               if ! gh pr view --json labels -q '.labels[].name' "$num"|grep -qE "^(Stale|leave-open)$"; then
                 echo "Locking pull request $num"
