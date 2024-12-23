@@ -47,7 +47,7 @@ def get_yaml_file():
 def main():
     ensure_flatpak_cargo_generator_exists()
     yaml_file = get_yaml_file()
-    for library in ("sxyazi/yazi", "ajeetdsouza/zoxide"):
+    for library in ("sxyazi/yazi", "ajeetdsouza/zoxide", "BurntSushi/ripgrep", "sharkdp/fd"):
         tag = get_tag(yaml_file, library)
         target = f"cargo-sources-{library.split('/')[-1]}.json"
         update_library(library, tag, target)
