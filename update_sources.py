@@ -1,4 +1,5 @@
 import re
+import shutil
 import subprocess
 from pathlib import Path
 import requests
@@ -36,17 +37,18 @@ def get_tag(yaml_file: str, library: str) -> str:
     return re.search(rf"{library}.git.*\n.*tag: (.*)\n", yaml_file).group(1)
 
 
-def get_yaml_file():
+def get_yaml_file_as_text() -> str:
     yml_files = list(Path(".").glob("*.yml"))
-    assert len(yml_files) == 1
-    yml_file = yml_files[0]
-    with yml_file.open("r") as f:
-        return f.read()
+    result = []
+    for yml_file in yml_files:
+        with yml_file.open("r") as f:
+            result.append(f.read())
+    return "\n".join(result)
 
 
-def main():
+def cargo_main():
     ensure_flatpak_cargo_generator_exists()
-    yaml_file = get_yaml_file()
+    yaml_file = get_yaml_file_as_text()
     for library in ("sxyazi/yazi", "ajeetdsouza/zoxide", "BurntSushi/ripgrep", "sharkdp/fd"):
         tag = get_tag(yaml_file, library)
         target = f"cargo-sources-{library.split('/')[-1]}.json"
@@ -54,5 +56,19 @@ def main():
     cleanup_flatpak_cargo_generator()
 
 
+def golang_main():
+    project_dir = Path("fzf")
+    yaml_file = get_yaml_file_as_text()
+    tag = get_tag(yaml_file, "junegunn/fzf")
+    subprocess.run(["git",
+                    "clone",
+                    "--depth", "1",
+                    "--branch", tag,
+                    "https://github.com/junegunn/fzf"])
+    subprocess.run(["flatpak-go-mod", project_dir])
+    shutil.rmtree(project_dir)
+
+
 if __name__ == "__main__":
-    main()
+    cargo_main()
+    golang_main()
