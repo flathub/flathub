@@ -5,16 +5,16 @@ Directories in the home folder should have accompanying icons out of the box. If
 ## Launching
 
 ```shell
-flatpak run io.github.yazi-rs
+flatpak run io.github.sxyazi.yazi
 ```
 
 You can make a few functions to directly invoke `yazi` and `yz` in the command line. These functions are tested in `zsh` and may need to be adapted to be used in other shells.
 ```shell
 function yazi() {
-    flatpak run --command=yazi io.github.yazi-rs $@
+    flatpak run --command=yazi io.github.sxyazi.yazi $@
 }
 function ya() {
-    flatpak run --command=ya io.github.yazi-rs $@
+    flatpak run --command=ya io.github.sxyazi.yazi $@
 }
 ```
 
