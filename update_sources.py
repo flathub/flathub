@@ -1,7 +1,9 @@
 import re
 import shutil
 import subprocess
+from itertools import takewhile
 from pathlib import Path
+
 import requests
 
 flatpak_cargo_generator_path = Path("./flatpak-cargo-generator.py")
@@ -66,7 +68,17 @@ def golang_main():
                     "--branch", tag,
                     "https://github.com/junegunn/fzf"])
     subprocess.run(["flatpak-go-mod", project_dir])
+    result_file = Path("go.mod.yml")
+    extra_sources = result_file.open("r").readlines()
+    result_file.unlink()
     shutil.rmtree(project_dir)
+
+    config_path = Path("fzf.yml")
+    with config_path.open("r") as f:
+        part1 = "".join(takewhile(lambda line: not "Workaround for Go modules" in line, f.readlines()))
+        part2 = "".join("  " + s for s in extra_sources)
+    with config_path.open("w") as f:
+        f.write(part1 + part2.rstrip())
 
 
 if __name__ == "__main__":
