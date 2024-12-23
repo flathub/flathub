@@ -18,4 +18,8 @@ function ya() {
 }
 ```
 
-`flatpak` also installs a desktop file by default. Supported DEs can launch `yazi` from an application launcher.
+`flatpak` also installs a desktop file by default. DEs that support desktop files can launch `yazi` from an application launcher.
+
+## What does not work
+
+[Shell wrappers](https://yazi-rs.github.io/docs/quick-start#shell-wrapper)
