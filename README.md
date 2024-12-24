@@ -1,6 +1,8 @@
-# org.freedesktop.Sdk.Extension.php84-full
+# org.freedesktop.Sdk.Extension.symfony
 
-This extension adds PHP 8.4 support to Flatpak.
+This extension adds [Symfony](https://symfony.com/) support to Flatpak.
+
+Compared to [org.freedesktop.Sdk.Extension.php84](https://github.com/flathub/org.freedesktop.Sdk.Extension.php84), it offers more extensions but this package is large in size.
 
 PHP installs to `/usr/lib/sdk/php84` inside the sandbox.
 
@@ -52,24 +54,30 @@ To use the [Laravel extension](https://marketplace.visualstudio.com/items?itemNa
 bash-5.0$ php -m
 [PHP Modules]
 apcu
+bcmath
 bz2
 Core
 ctype
 curl
 date
 dom
+exif
 fileinfo
 filter
+gd
+gettext
 hash
 iconv
 intl
 json
 libxml
 mbstring
+mysqlnd
 openssl
 pcntl
 pcre
 PDO
+pdo_mysql
 pdo_sqlite
 Phar
 posix
@@ -78,6 +86,7 @@ redis
 Reflection
 session
 SimpleXML
+sockets
 SPL
 sqlite3
 standard
@@ -86,6 +95,7 @@ xdebug
 xml
 xmlreader
 xmlwriter
+xsl
 Zend OPcache
 zip
 zlib
@@ -98,5 +108,5 @@ Zend OPcache
 ## Build
 
 ```bash
-flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --repo=repo builddir org.freedesktop.Sdk.Extension.php84-full.json
+flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --repo=repo builddir org.freedesktop.Sdk.Extension.symfony.json
 ```
