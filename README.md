@@ -98,5 +98,5 @@ Zend OPcache
 ## Build
 
 ```bash
-flatpak-builder --repo repo .build org.freedesktop.Sdk.Extension.php84.json --force-clean
+flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --repo=repo builddir org.freedesktop.Sdk.Extension.php84-full.json
 ```
