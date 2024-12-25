@@ -23,3 +23,5 @@ function ya() {
 ## What does not work
 
 [Shell wrappers](https://yazi-rs.github.io/docs/quick-start#shell-wrapper)
+
+Running custom commands that are not included in the flatpak sandbox. For example, if a plugin requires [glow](https://github.com/charmbracelet/glow) to function, it will be unable to access `glow` on the host system. The solution is to use `host-spawn`, but it requires upstream changes.
