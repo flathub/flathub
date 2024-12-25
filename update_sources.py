@@ -21,7 +21,7 @@ def cleanup_flatpak_cargo_generator():
     flatpak_cargo_generator_path.unlink()
 
 
-def update_library(library: str, tag: str, out_file: str | Path) -> None:
+def update_library(library: str, tag: str, out_path: str) -> None:
     url = f"https://raw.githubusercontent.com/{library}/refs/tags/{tag}/Cargo.lock"
     res = requests.get(url)
     cargo_lock_path = Path("./cargo.lock")
@@ -31,7 +31,7 @@ def update_library(library: str, tag: str, out_file: str | Path) -> None:
                     flatpak_cargo_generator_path,
                     cargo_lock_path,
                     "-o",
-                    out_file])
+                    out_path])
     cargo_lock_path.unlink()
 
 
@@ -40,9 +40,11 @@ def get_tag(yaml_file: str, library: str) -> str:
 
 
 def get_yaml_file_as_text() -> str:
-    yml_files = list(Path(".").glob("*.yml"))
+    yml_files = list(Path(".").rglob("*.yml"))
     result = []
     for yml_file in yml_files:
+        if not yml_file.is_file():
+            continue
         with yml_file.open("r") as f:
             result.append(f.read())
     return "\n".join(result)
@@ -53,32 +55,36 @@ def cargo_main():
     yaml_file = get_yaml_file_as_text()
     for library in ("sxyazi/yazi", "ajeetdsouza/zoxide", "BurntSushi/ripgrep", "sharkdp/fd"):
         tag = get_tag(yaml_file, library)
-        target = f"cargo-sources-{library.split('/')[-1]}.json"
+        library_name = library.split('/')[-1]
+        if library_name == "yazi":
+            target = f"cargo-sources-{library_name}.json"
+        else:
+            target = f"modules/{library_name}/cargo-sources.json"
         update_library(library, tag, target)
     cleanup_flatpak_cargo_generator()
 
 
 def golang_main():
-    project_dir = Path("fzf")
     yaml_file = get_yaml_file_as_text()
-    tag = get_tag(yaml_file, "junegunn/fzf")
-    subprocess.run(["git",
-                    "clone",
-                    "--depth", "1",
-                    "--branch", tag,
-                    "https://github.com/junegunn/fzf"])
-    subprocess.run(["flatpak-go-mod", project_dir])
-    result_file = Path("go.mod.yml")
-    extra_sources = result_file.open("r").readlines()
-    result_file.unlink()
-    shutil.rmtree(project_dir)
+    for library in ("junegunn/fzf", ):
+        library_name = library.split('/')[-1]
+        library_path = Path(f"modules/{library_name}")
+        tag = get_tag(yaml_file, library)
 
-    config_path = Path("fzf.yml")
-    with config_path.open("r") as f:
-        part1 = "".join(takewhile(lambda line: not "Workaround for Go modules" in line, f.readlines()))
-        part2 = "".join("  " + s for s in extra_sources)
-    with config_path.open("w") as f:
-        f.write(part1 + part2.rstrip())
+        clone_dir = Path(library_name)
+        subprocess.run(["git",
+                        "clone",
+                        "--depth", "1",
+                        "--branch", tag,
+                        f"https://github.com/{library}"])
+        subprocess.run(["flatpak-go-mod", clone_dir])
+        shutil.rmtree(clone_dir)
+
+        # First file produced by flatpak-go-mod: yml file containing all the dependencies. Need to move it.
+        Path("go.mod.yml").rename(library_path / "sources.yml")
+
+        # Second file produced by flatpak-go-mod: modules.txt file. Just need t
+        Path("modules.txt").rename(library_path / "modules.txt")
 
 
 if __name__ == "__main__":
