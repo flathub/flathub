@@ -2,8 +2,9 @@
 
 Directories in the home folder should have accompanying icons out of the box. If they are garbled or not present, you may want to install [nerd-fonts](https://www.nerdfonts.com/). See [official documentation](https://yazi-rs.github.io/docs/faq#dont-like-nerd-fonts) for details. 
 
-## Launching
+## Launching `yazi` and `ya`
 
+To launch `yazi`, run
 ```shell
 flatpak run io.github.sxyazi.yazi
 ```
@@ -25,3 +26,10 @@ function ya() {
 [Shell wrappers](https://yazi-rs.github.io/docs/quick-start#shell-wrapper)
 
 Running custom commands that are not included in the flatpak sandbox. For example, if a plugin requires [glow](https://github.com/charmbracelet/glow) to function, it will be unable to access `glow` on the host system. The solution is to use `host-spawn`, but it requires upstream changes.
+
+## Updating
+```shell
+flatpak run org.flathub.flatpak-external-data-checker io.github.sxyazi.yazi.yml --edit
+python update_sources.py
+```
+You can then run `flatpak-builder` to make a test build.
