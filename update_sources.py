@@ -1,7 +1,6 @@
 import re
 import shutil
 import subprocess
-from itertools import takewhile
 from pathlib import Path
 
 import requests
@@ -21,7 +20,7 @@ def cleanup_flatpak_cargo_generator():
     flatpak_cargo_generator_path.unlink()
 
 
-def update_library(library: str, tag: str, out_path: str) -> None:
+def update_rust_library(library: str, tag: str, out_path: str) -> None:
     url = f"https://raw.githubusercontent.com/{library}/refs/tags/{tag}/Cargo.lock"
     res = requests.get(url)
     cargo_lock_path = Path("./cargo.lock")
@@ -50,6 +49,12 @@ def get_yaml_file_as_text() -> str:
     return "\n".join(result)
 
 
+def get_library_path(library_name: str) -> Path:
+    p = Path(f"modules/{library_name}")
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def cargo_main():
     ensure_flatpak_cargo_generator_exists()
     yaml_file = get_yaml_file_as_text()
@@ -59,16 +64,17 @@ def cargo_main():
         if library_name == "yazi":
             target = f"cargo-sources-{library_name}.json"
         else:
-            target = f"modules/{library_name}/cargo-sources.json"
-        update_library(library, tag, target)
+            library_path = get_library_path(library_name)
+            target = library_path/ "cargo-sources.json"
+        update_rust_library(library, tag, target)
     cleanup_flatpak_cargo_generator()
 
 
 def golang_main():
     yaml_file = get_yaml_file_as_text()
-    for library in ("junegunn/fzf", ):
+    for library in ("junegunn/fzf", "1player/host-spawn"):
         library_name = library.split('/')[-1]
-        library_path = Path(f"modules/{library_name}")
+        library_path = get_library_path(library_name)
         tag = get_tag(yaml_file, library)
 
         clone_dir = Path(library_name)
