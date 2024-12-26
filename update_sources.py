@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024 - lihaohong6
+License: MIT
+"""
 import re
 import shutil
 import subprocess
