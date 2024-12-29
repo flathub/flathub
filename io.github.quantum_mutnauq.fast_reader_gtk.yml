@@ -1,0 +1,78 @@
+app-id: io.github.quantum_mutnauq.fast_reader_gtk
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: fast-reader
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=wayland
+  
+modules:
+  - name: libconfig
+    buildsystem: simple
+    build-commands:
+      - autoreconf -i
+      - ./configure --prefix=/app
+      - make
+      - make install
+      - rm -r -f ${FLATPAK_DEST}/share/info/
+    sources:
+      - type: git
+        url: https://github.com/hyperrealm/libconfig.git
+        tag: v1.5
+    post-install:
+      # Manuelle Generierung der libconfig.pc Datei
+      - |
+        echo "Generating libconfig.pc"
+        mkdir -p ${FLATPAK_DEST}/lib/pkgconfig
+        cat > ${FLATPAK_DEST}/lib/pkgconfig/libconfig.pc <<EOF
+        prefix=/app
+        exec_prefix=\${prefix}
+        libdir=\${prefix}/lib
+        includedir=\${prefix}/include
+
+        Name: libconfig
+        Description: A library for processing structured configuration files
+        Version: 1.5
+        Libs: -L\${libdir} -lconfig
+        Cflags: -I\${includedir}
+        EOF
+
+
+  - name: FastReader
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DFLATPAK_BUILD=ON
+    sources:
+      - type: git
+        url: https://github.com/Quantum-mutnauQ/Fast-Reader-GTK.git
+        tag: v6
+    post-install:
+      # Sicherstellen, dass die ausführbare Datei nach /app/bin kopiert wird
+      - |
+        echo "Ensuring FastReader binary exists in /app/bin"
+        mkdir -p /app/bin
+        find ${FLATPAK_BUILDER_BUILDDIR} -type f -name "FastReader" -exec install -Dm755 {} /app/bin/fast-reader \;
+      - |
+        echo "Creating .desktop file for FastReader"
+        mkdir -p /assets
+        cat > /assets/${FLATPAK_ID}.desktop <<EOF
+        [Desktop Entry]
+        Name=Fast Reader
+        Name[de]=Geschwindigkeitsleser
+        Name[en]=Fast Reader
+        Comment=Fast Reader helps you read quickly by displaying only one word at a time
+        Exec=fast-reader
+        Icon=${FLATPAK_ID}
+        Terminal=false
+        Type=Application
+        Categories=Education;
+        EOF
+        install -Dm 0644 /assets/${FLATPAK_ID}.desktop  "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - |
+        mv ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/fastreader.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+        mv ${FLATPAK_DEST}/share/metainfo/metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
