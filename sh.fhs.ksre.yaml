@@ -1,0 +1,124 @@
+app-id: sh.fhs.ksre
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: ksre
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: '23.08'
+    autodelete: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all
+  - --socket=pulseaudio
+  - --persist=.renpy
+  - --filesystem=xdg-run/discord-ipc-0
+cleanup:
+  - /include
+modules:
+  - python3-modules.yaml
+  - name: pygame_sdl2
+    buildsystem: simple
+    build-options:
+      arch:
+        aarch64:
+          env:
+            RENPY_DEPS_INSTALL: /app::/usr::/lib::/lib64::/lib/aarch64-linux-gnu
+            CFLAGS: -fcommon
+        x86_64:
+          env:
+            RENPY_DEPS_INSTALL: /app::/usr::/lib::/lib64::/lib/x86_64-linux-gnu
+            CFLAGS: -fcommon
+    build-commands:
+      - python setup.py install --root="/" --prefix="${FLATPAK_DEST}" --optimize=1
+      - mv "${FLATPAK_DEST}/include/python3.11/pygame_sdl2" "${FLATPAK_DEST}/include/pygame_sdl2"
+    sources:
+      - type: git
+        url: https://github.com/renpy/pygame_sdl2.git
+        tag: renpy-8.3.1.24090601
+
+  - name: mbrola
+    buildsystem: simple
+    build-commands:
+      - make
+      - cp Bin/mbrola /app/bin
+    sources:
+      - type: archive
+        url: https://github.com/numediart/MBROLA/archive/refs/tags/3.3.tar.gz
+        sha256: c01ded2c0a05667e6df2439c1c02b011a5df2bfdf49e24a524630686aea2b558
+
+  - name: espeak
+    buildsystem: autotools
+    cleanup:
+      - '*.la'
+    sources:
+      - type: git
+        url: https://github.com/espeak-ng/espeak-ng.git
+        tag: 1.51.1
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+        commit: 34762a2b9621d3643e67a00642984c21f0626bdc
+    post-install:
+      - ln -s /app/lib/libespeak-ng.so /app/lib/libespeak.so
+      - ln -s /app/lib/libespeak-ng.a /app/lib/libespeak.a
+
+  - name: renpy
+    buildsystem: simple
+    build-options:
+      arch:
+        aarch64:
+          env:
+            RENPY_DEPS_INSTALL: /app::/usr::/lib::/lib64::/lib/aarch64-linux-gnu
+            CFLAGS: -fcommon
+        x86_64:
+          env:
+            RENPY_DEPS_INSTALL: /app::/usr::/lib::/lib64::/lib/x86_64-linux-gnu
+            CFLAGS: -fcommon
+    build-commands:
+      - python module/setup.py build
+      - python module/setup.py install --root="/" --prefix="${FLATPAK_DEST}" --optimize=1
+      - install -dm755 "${FLATPAK_DEST}/share/renpy"
+      - cp -r doc launcher renpy renpy.py sdk-fonts "${FLATPAK_DEST}/share/renpy/"
+      - install -Dm755 renpy.sh "${FLATPAK_DEST}/bin/renpy"
+    sources:
+      - type: archive
+        url: https://www.renpy.org/dl/8.3.4/renpy-8.3.4-source.tar.bz2
+        sha256: a814ff436082f7dab97037044d53c78fbd11accca1d53a0b9d6dc384f25e1862
+      - type: script
+        commands:
+          - python /app/share/renpy/renpy.py "$@"
+        dest-filename: renpy.sh
+
+  - name: ksre
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/ffmpeg
+      - cp -R game "${FLATPAK_DEST}/game"
+      - install -Dm755 launcher.sh "${FLATPAK_DEST}/bin/ksre"
+      - install -Dm644 -t "${FLATPAK_DEST}/share/appdata/" sh.fhs.ksre.appdata.xml
+      - install -Dm644 -t "${FLATPAK_DEST}/share/applications/" sh.fhs.ksre.desktop
+      - install -Dm644 KSRE_Logo.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - sed -i 's/config.developer = "auto"/config.developer = False/g' /app/game/config.rpy
+      - renpy /app/game compile
+    sources:
+      - type: git
+        url: https://codeberg.org/fhs/katawa-shoujo-re-engineered.git
+        tag: v1.4.9
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: script
+        dest-filename: launcher.sh
+        commands:
+          - renpy /app/game "$@"
+      - type: file
+        path: sh.fhs.ksre.appdata.xml
+      - type: file
+        path: sh.fhs.ksre.desktop
+      - type: file
+        path: KSRE_Logo.svg
