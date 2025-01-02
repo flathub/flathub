@@ -22,12 +22,15 @@ function ya() {
 `flatpak` also installs a `.desktop` file by default. DEs that support desktop files can launch `yazi` from an application launcher.
 
 ## Tweaking config files
-By default, all configurations are stored under `$HOME/.var/app/io.github.yazi-rs`. Plugins and themes installed by `ya` are also stored there. If you already have `yazi` configs or a `zoxide` database, you may need to move them. For example, the `zoxide` database is in `$HOME/.local/share/zoxide` by default, but would be in `$HOME/.var/app/io.github.yazi-rs/data/zoxide` for `flatpak`. 
+By default, all configurations are stored under `$HOME/.var/app/io.github.sxyazi.yazi`. Plugins and themes installed by `ya` are also stored there. If you already have `yazi` configs or a `zoxide` database, you may need to move them. For example, the `zoxide` database is in `$HOME/.local/share/zoxide` by default, but would be in `$HOME/.var/app/io.github.sxyazi.yazi/data/zoxide` for `flatpak`. 
 
 You can also run `zoxide` through `flatpak`. For example, the following command creates a `zoxide` database by importing existing `zsh-z` data. 
 ```shell
 flatpak run --command=zoxide io.github.sxyazi.yazi import --from=z $HOME/.z
 ```
+
+### Enabling nerd-fonts
+For the best out-of-the-box experience, nerd-fonts is disabled by default. To enable it, go to the `theme.toml` file located in `$HOME/.var/app/io.github.sxyazi.yazi/config/yazi` and remove the section that disables nerd-fonts.
 
 ## Running commands on the host
 
