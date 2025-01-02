@@ -237,7 +237,7 @@ def main():
     close_comment = (
         f"A repository for this submission has been created: {repo.html_url} and it will be published to Flathub in 4-5 hours.",
         "\n",
-        f"You will receive an [invite]({repo.html_url}/invitations) to be a collaborator which will grant you write access to the above repository. Please accept the invite within one week.",
+        f"You will receive an [invite]({repo.html_url}/invitations) to be a collaborator to the above repository. Please make sure to enable 2FA on GitHub and accept the invite within one week.",
         "\n",
         "Please go through the [App maintenance guide](https://docs.flathub.org/docs/for-app-authors/maintenance/) if you have never maintained an app on Flathub before.",
         "\n",
