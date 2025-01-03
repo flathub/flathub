@@ -1,0 +1,102 @@
+app-id: gg.sprawl.sprawl96
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: gg.sprawl.sprawl96.sh
+
+finish-args:
+  # hardware 3D
+  - --device=dri
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  # Audio
+  - --socket=pulseaudio
+
+cleanup:
+  - /include
+  - '*.a'
+  - '*.la'
+  - /lib/pkgconfig
+
+modules:
+  - shared-modules/libmad/libmad.json
+  - name: libxmp
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/libxmp/libxmp/zipball/libxmp-4.6.1
+        dest-filename: libxmp.zip
+        sha256: 88a2edd48aaf61899b0a379daabc68148482a300884113ba61cc248d10faa12b
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/libxmp/libxmp/releases/latest
+          version-query: .tag_name | sub("^libxmp-"; "")
+          url-query: .zipball_url
+  - name: sprawl96-data
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://drive.usercontent.google.com/download?export=download&confirm=yes&id=1ip_KFlA8BFRMbnvuOvTl2V_B-HOcqEHc
+        dest-filename: sprawl96.zip
+        sha256: 94c4be7b94c91e8b7683b6a50a40585be7eadd2440dd361ab14d0e79fb20e76e
+    build-commands:
+      - mkdir -p /app/bin/sprawl/music
+      - install -vm644 -t /app/bin/sprawl/ pak0.pak sprawl.pak sprawl.dat
+      - install -vm644 -t /app/bin/sprawl/music music/*
+      - mv /app/bin/sprawl/pak0.pak /app/bin/sprawl/pak2.pak
+  - name: librequake-data
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: "https://github.com/lavenderdotpet/LibreQuake/releases/download/v0.08-beta/full.zip"
+        sha256: "b360ff9b2ba3c01da79616fb8d433abe4bbcbe38ec10b8eb71884eba3ac09534"
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/lavenderdotpet/LibreQuake/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name=="full.zip") | .browser_download_url
+    build-commands:
+      - mkdir -p /app/bin/sprawl
+      - install -vm644 -t /app/bin/sprawl id1/pak0.pak id1/pak1.pak
+  - name: qsprawl
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/VoidForce/QSprawl/zipball/0aaec351aa6ffa4906d368b43165f4627563a560
+        dest-filename: qsprawl.zip
+        sha256: fff875d2f9688d3998b5f717c2c23098ce6d46edc84749532384b6c6c76218fd
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/voidforce/qsprawl/branches/main
+          tag-query: .tag
+          commit-query: .commit.sha
+      - type: script
+        dest-filename: gg.sprawl.sprawl96.sh
+        commands:
+          - cd /app/bin
+          - sprawl96 +game sprawl "$@"
+          - if [[ "$?" != "0" ]]; then
+          - zenity --error --width=400 --title "SPRAWL 96 exited with an error" \
+              --text "For a detailed error message, please run SPRAWL 96 from a terminal window using\n \
+              <tt><b>flatpak run $FLATPAK_ID</b></tt>." --ok-label "Quit"
+          - fi
+      - type: patch
+        path: makefile-installer.patch
+      - type: patch
+        path: userdir-log.patch
+      - type: patch
+        path: remove-registered-check.patch
+    buildsystem: simple
+    build-commands:
+      # Build
+      - cd Quake && make -j${FLATPAK_BUILDER_JOBS} LDFLAGS=-L/app/lib USE_CODEC_FLAC=1
+        USE_CODEC_OPUS=1 USE_CODEC_XMP=1 DO_USERDIRS=1 DEBUG=1
+      - cd Quake && make install PREFIX=/app
+    post-install:
+      # move sprawl96.pak
+      - mv /app/share/games/quake/sprawl96.pak /app/bin/
+      # Install launcher script
+      - install -Dm744 -t /app/bin/ ${FLATPAK_ID}.sh
+      - desktop-file-edit --set-key=Exec --set-value=${FLATPAK_ID}.sh /app/share/applications/${FLATPAK_ID}.desktop
