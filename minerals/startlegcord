@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# Set FEATURES to what goes after --enable-features; for example, UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc will then get turned into --enable-features=UseSkiaRenderer,WebRTCPipeWireCapturer,etc,etc.
+FEATURES="UseSkiaRenderer"
+TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-app.legcord.Legcord}"
+declare -a FLAGS=(--enable-gpu-rasterization --enable-zero-copy --enable-gpu-compositing --enable-native-gpu-memory-buffers --enable-oop-rasterization --disable-gpu-blocklist)
+
+if [[ $XDG_SESSION_TYPE == "wayland" ]]
+then
+    FEATURES="${FEATURES},WebRTCPipeWireCapturer"
+
+    WAYLAND_SOCKET=${WAYLAND_DISPLAY:-"wayland-0"}
+    
+    echo "Using Wayland, enabling PipeWire for video capture."
+
+    FEATURES="${FEATURES},WebRTCPipeWireCapturer"
+    
+    if [[ -e "$XDG_RUNTIME_DIR/${WAYLAND_SOCKET}" ]]
+    then
+      echo "Wayland socket is available, running natively on Wayland."
+      echo "To disable, remove the --socket=wayland permission."
+      FLAGS+=(--ozone-platform=wayland)
+    else
+      echo "Wayland socket not available, running through Xwayland."
+    fi
+    if [[ -c /dev/nvidia0 ]]
+    then
+      echo "Using NVIDIA on Wayland, applying workaround"
+      FLAGS+=(--disable-gpu-sandbox)
+    fi
+fi
+
+
+
+FLAGS+=(--enable-features="${FEATURES}")
+echo "Passing the following arguments to Electron:" "${FLAGS[@]}"
+zypak-wrapper /app/bin/legcord/legcord "${FLAGS[@]}" "$@"
