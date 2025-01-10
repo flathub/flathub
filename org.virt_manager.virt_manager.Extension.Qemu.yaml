@@ -1,0 +1,132 @@
+app-id: org.virt_manager.virt_manager.Extension.Qemu
+runtime: org.virt_manager.virt-manager
+sdk: org.freedesktop.Sdk//24.08
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: /app/lib/extensions/qemu
+  cflags: -I/app/lib/extensions/qemu/include
+  cxxflags: -I/app/lib/extensions/qemu/include
+  ldflags: -L/app/lib/extensions/qemu/lib
+  libdir: /app/lib/extensions/qemu/lib
+  prepend-path: /app/lib/extensions/qemu/bin
+  prepend-ld-library-path: /app/lib/extensions/qemu/lib
+  prepend-pkg-config-path: /app/lib/extensions/qemu/lib/pkgconfig:/app/lib/extensions/qemu/share/pkgconfig
+  strip: true
+
+modules:
+  - name: qemu
+    config-opts:
+    - "--disable-download"
+    - "--enable-kvm"
+    - "--enable-spice"
+    - "--enable-opengl"
+    - "--enable-virglrenderer"
+    - "--enable-usb-redir"
+    - "--disable-debug-info"
+    # Flatpak currently does not have smartcard support https://github.com/flatpak/flatpak/issues/4723
+    # - "--enable-smartcard"
+    - "--enable-slirp"
+    - "--disable-docs"
+    - "--disable-user"
+    - "--python=/bin/python3"
+    - "--target-list=x86_64-softmmu,i386-softmmu"
+    - "--disable-bsd-user"
+    - "--disable-debug-info"
+    - "--disable-glusterfs"
+    - "--disable-linux-user"
+    - "--disable-oss"
+    - "--disable-werror"
+    - "--disable-xen"
+    post-install:
+      - mv ${FLATPAK_DEST}/qemu/bin/qemu-system-x86_64 ${FLATPAK_DEST}/qemu/bin/qemu-system-x86_64-brokey
+      - mv ${FLATPAK_DEST}/qemu/bin/qemu-system-i386 ${FLATPAK_DEST}/qemu/bin/qemu-system-i386-brokey
+    sources:
+    - type: archive
+      url: https://download.qemu.org/qemu-9.2.0.tar.xz
+      sha256: f859f0bc65e1f533d040bbe8c92bcfecee5af2c921a6687c652fb44d089bd894
+    modules:
+    - name: slirp
+      buildsystem: meson
+      sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.8.0.tar.gz
+        sha256: 378216c88c021c9ed7de9006db291127d30a0da94a23dffefdb26b26a5849bf7
+    - name: usbredir
+      buildsystem: meson
+      # FIXME: check if this is necessary
+      # config-opts:
+      #   - --sbindir=/app/lib/extensions/qemu/bin
+      modules:
+        - shared-modules/libusb/libusb.json
+      sources:
+        - type: archive
+          url: https://spice-space.org/download/usbredir/usbredir-0.14.0.tar.xz
+          sha256: 924dfb5c78328fae45a4c93a01bc83bb72c1310abeed119109255627a8baa332
+          x-checker-data:
+            type: anitya
+            project-id: 16012
+            stable-only: true
+            url-template: https://spice-space.org/download/usbredir/usbredir-$version.tar.xz
+    - name: virglrenderer
+      buildsystem: meson
+      sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/virgl/virglrenderer/-/archive/1.1.0/virglrenderer-1.1.0.tar.gz
+        sha256: 9996b87bda2fbf515473b60f32b00ed58847da733b47053923fd2cb035a6f5a2
+    - name: spice
+      buildsystem: autotools
+      config-opts:
+        - --disable-lz4
+        - --disable-manual
+        - --disable-test
+      sources:
+      - type: archive
+        url: https://www.spice-space.org/download/releases/spice-0.15.1.tar.bz2
+        sha256: ada9af67ab321916bd7eb59e3d619a4a7796c08a28c732edfc7f02fc80b1a37a
+      modules:
+      - name: spice-protocol
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://gitlab.freedesktop.org/spice/spice-protocol/-/archive/v0.14.4/spice-protocol-v0.14.4.tar.gz
+            sha256: 9c31fa533ad531d1b816ffd0c24b4785d133e7bb397f72d35f7a6d59bcd7d53a
+            x-checker-data:
+              type: anitya
+              project-id: 14892
+              stable-only: true
+              url-template: https://gitlab.freedesktop.org/spice/spice-protocol/-/archive/v$version/spice-protocol-v$version.tar.gz
+      - name: dtc
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/v1.7.2.tar.gz
+            sha256: 04a30bd38b426ed771b8a8b5d9b773e54976d4f5d51a80a9e76a45b20c9a8272  
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 qemu-system-x86_64 /app/lib/extensions/qemu/bin
+      - install -Dm755 qemu-system-i386 /app/lib/extensions/qemu/bin
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/qemu/share/metainfo
+    sources:
+      - type: file
+        path: org.virt_manager.virt_manager.Extension.Qemu.metainfo.xml
+        
+      - type: script
+        dest-filename: qemu-system-x86_64
+        commands:
+          - |
+            #!/usr/bin/env bash
+            LD_LIBRARY_PATH=/app/lib/extensions/qemu/lib:$LD_LIBRARY_PATH
+            PATH=/app/lib/extensions/qemu/bin:$PATH
+
+            exec qemu-system-x86_64-brokey "$@"
+      - type: script
+        dest-filename: qemu-system-i386
+        commands:
+          - |
+            #!/usr/bin/env bash
+            LD_LIBRARY_PATH=/app/lib/extensions/qemu/lib:$LD_LIBRARY_PATH
+            PATH=/app/lib/extensions/qemu/bin:$PATH
+
+            exec qemu-system-i386-brokey "$@"
