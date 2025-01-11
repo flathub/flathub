@@ -1,0 +1,67 @@
+id: org.meshtastic.meshtasticd
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: meshtasticd-wrapper.sh
+modules:
+  - name: meshtasticd
+    buildsystem: simple
+    build-options:
+      build-args:
+        # PlatformIO requires internet access at build-time to download pkgs
+        - --share=network
+    build-commands:
+      - platformio run -e native
+      - install -Dm755 .pio/build/native/program /app/bin/meshtasticd
+      # Install the default config files and directories
+      - install -d /app/share/meshtasticd
+      - install -d /app/share/meshtasticd/config.d
+      - install -d /app/share/meshtasticd/available.d
+      - cp -R bin/config.d/* /app/share/meshtasticd/available.d
+      - install -m644 bin/config-dist.yaml /app/share/meshtasticd/config-dist.yaml
+    sources:
+      - type: git
+        url: https://github.com/meshtastic/firmware.git
+        tag: v2.5.18.89ebafc
+        commit: 89ebafc8b8d85ee12002b9c574f8472d99e9ec50
+      - type: patch
+        paths:
+          - patches/stdcppfs.patch
+    modules:
+      - python3-modules.json
+      - modules/yaml-cpp.yaml
+      - modules/libgpiod.yaml
+      - modules/i2c-tools.yaml
+      - modules/microhttpd.yaml
+      - modules/jansson.yaml
+      - modules/orcania.yaml
+      - modules/yder.yaml
+      - modules/ulfius.yaml
+      - shared-modules/libusb/libusb.json
+  - name: meshtasticd-web
+    buildsystem: simple
+    build-commands:
+      # All the files within the tarball are individually gzipped
+      - gzip -dr .
+      # Copy the web files to the share directory
+      - install -d /app/share/meshtasticd/web
+      - cp -r ./* /app/share/meshtasticd/web
+    sources:
+      - type: archive
+        url: https://github.com/meshtastic/web/releases/download/v2.5.4/build.tar
+        sha256: 9aded26483a8bee4e8811f33744da2016ad4bca4894f6d4cbdea79a53b0a7eaa
+  - name: meshtasticd-wrapper
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 meshtasticd-wrapper.sh /app/bin/meshtasticd-wrapper.sh
+    sources:
+      - type: file
+        path: meshtasticd-wrapper.sh
+finish-args:
+  # Required for CH341 USB radio
+  - --device=usb
+  # Needs to talk to the network:
+  - --share=network
+  # Persist the meshtasticd configs
+  - --filesystem=xdg-config
+  - --filesystem=xdg-data
