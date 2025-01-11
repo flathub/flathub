@@ -1,0 +1,198 @@
+id: org.meshtastic.meshtasticd
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: meshtasticd-wrapper.sh
+
+finish-args:
+  - --share=ipc
+  # Allow the app to communicate with the X server
+  - --socket=x11
+  # Required for CH341 USB radio
+  - --device=all
+  # Needs network access
+  - --share=network
+  # Allow bluetooth if available
+  - --allow=bluetooth
+
+modules:
+  - name: meshtasticd-wrapper
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 meshtasticd-wrapper.sh /app/bin/meshtasticd-wrapper.sh
+      - install -Dm644 -t /app/share/icons/hicolor/scalable/apps/ org.meshtastic.meshtasticd.svg
+      - install -Dm644 -t /app/share/applications org.meshtastic.meshtasticd.desktop
+      - install -Dm644 -t /app/share/metainfo org.meshtastic.meshtasticd.metainfo.xml
+    sources:
+      - type: file
+        path: meshtasticd-wrapper.sh
+      - type: file
+        path: org.meshtastic.meshtasticd.desktop
+      - type: file
+        path: org.meshtastic.meshtasticd.svg
+      - type: file
+        path: org.meshtastic.meshtasticd.metainfo.xml
+  - name: meshtasticd
+    buildsystem: simple
+    build-options:
+      env:
+        # Use the Flatpak lib directory for the build
+        PLATFORMIO_BUILD_FLAGS: -L/app/lib
+        # Use PlatformIO dependencies from the source bundle
+        PLATFORMIO_LIBDEPS_DIR: pio/libdeps
+        PLATFORMIO_PACKAGES_DIR: pio/packages
+        PLATFORMIO_CORE_DIR: pio/core
+    build-commands:
+      - platformio run -e native-tft
+      - install -Dm755 .pio/build/native-tft/program /app/bin/meshtasticd
+      # Install the default config files and directories
+      - install -d /app/share/meshtasticd
+      - install -d /app/share/meshtasticd/config.d
+      - install -d /app/share/meshtasticd/available.d
+      - cp -R bin/config.d/* /app/share/meshtasticd/available.d
+      - install -m644 bin/config-dist.yaml /app/share/meshtasticd/config-dist.yaml
+      # Install the default maps
+      - install -d /app/share/meshtasticd/maps
+      - for file in pio/libdeps/native-tft/meshtastic-device-ui/maps/*.zip; do bsdtar -xf "$file" --no-same-owner --strip-components=1 -C /app/share/meshtasticd/maps; done
+    sources:
+      - type: git
+        url: https://github.com/meshtastic/firmware.git
+        tag: v2.6.4.b89355f
+        commit: b89355ffa60b3893417004b07e7b96f04b17022c
+      - type: patch
+        paths:
+          - patches/stdcppfs.patch
+      - type: archive
+        url: https://github.com/meshtastic/firmware/releases/download/v2.6.4.b89355f/platformio-deps-native-tft-2.6.4.b89355f.zip
+        sha256: de27192190e22b1d6af511c56c19a53b1fcadcff84db5ea63093c607c90c5f32
+        strip-components: 1
+        dest: pio
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/cmake
+      - /lib/*.a
+      - /share/man
+    modules:
+      - python3-requirements.json
+      - shared-modules/libusb/libusb.json
+      - name: yaml-cpp
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DBUILD_SHARED_LIBS=ON
+          - -DYAML_BUILD_SHARED_LIBS=ON
+          - -DYAML_CPP_BUILD_TOOLS=OFF
+          - -DYAML_CPP_BUILD_TESTS=OFF
+          - -DYAML_CPP_BUILD_CONTRIB=OFF
+        sources:
+          - type: archive
+            url: https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz
+            sha256: fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16
+      - name: libgpiod
+        buildsystem: autotools
+        sources:
+          - type: archive
+            url: https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/snapshot/libgpiod-2.2.tar.gz
+            sha256: ae35329db7027c740e90c883baf27c26311f0614e6a7b115771b28188b992aec
+      - name: i2c-tools
+        buildsystem: simple
+        build-commands:
+          - make PREFIX=${FLATPAK_DEST} install
+        sources:
+          - type: archive
+            url: https://git.kernel.org/pub/scm/utils/i2c-tools/i2c-tools.git/snapshot/i2c-tools-4.4.tar.gz
+            sha256: af01d0fbe78e109a2db7137c7e9bfda3f3fb236c3177744c0f2695d1056cde71
+      - name: libuv
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+        sources:
+          - type: git
+            url: https://github.com/libuv/libuv/
+            tag: v1.50.0
+            x-checker-data:
+              type: anitya
+              project-id: 10784
+              stable-only: true
+              tag-template: v${version}
+            commit: 8fb9cb919489a48880680a56efecff6a7dfb4504
+        cleanup:
+          - /bin
+      - name: libevdev
+        buildsystem: meson
+        config-opts:
+          - -Dtests=disabled
+          - -Ddocumentation=disabled
+        sources:
+          - type: archive
+            url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.3.tar.xz
+            sha256: abf1aace86208eebdd5d3550ffded4c8d73bb405b796d51c389c9d0604cbcfbf
+            x-checker-data:
+              type: anitya
+              project-id: 20540
+              stable-only: true
+              url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+        cleanup:
+          - /bin
+      - name: libinput
+        buildsystem: meson
+        config-opts:
+          - --libexec=lib
+          - -Dlibwacom=false
+          - -Ddebug-gui=false
+          - -Dtests=false
+          - -Ddocumentation=false
+          - -Dzshcompletiondir=no
+        sources:
+          - type: archive
+            url: https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.27.0/libinput-1.27.0.tar.gz
+            sha256: b11b900bf88ef68fe688c107226bb453ef26faf461ae2dcf9690b00009d660a6
+            x-checker-data:
+              type: anitya
+              project-id: 5781
+              stable-only: true
+              url-template: https://gitlab.freedesktop.org/libinput/libinput/-/archive/$version/libinput-$version.tar.gz
+        cleanup:
+          - /bin
+          - /etc
+          - /lib/libinput
+          - /lib/udev
+          - /share
+        modules:
+          - name: mtdev
+            buildsystem: autotools
+            config-opts:
+              - --disable-static
+            sources:
+              - type: archive
+                url: https://bitmath.org/code/mtdev/mtdev-1.1.7.tar.bz2
+                sha256: a107adad2101fecac54ac7f9f0e0a0dd155d954193da55c2340c97f2ff1d814e
+                x-checker-data:
+                  type: anitya
+                  project-id: 8868
+                  stable-only: true
+                  url-template: https://bitmath.org/code/mtdev/mtdev-$version.tar.bz2
+              # Upstream uses an outdated version of the config.guess/config.sub script,
+              # so we override it here to fix aarch64 builds.
+              - type: shell
+                commands:
+                  - cp -p /usr/share/automake-*/config.{sub,guess} config-aux/
+            cleanup:
+              - /bin
+              - /lib/*.la
+      - name: xkbcommon
+        buildsystem: meson
+        config-opts:
+          - --buildtype=release
+          - -Ddefault_library=static
+          - -Denable-docs=false
+          - -Denable-tools=false
+          - -Denable-bash-completion=false
+          - -Dx-locale-root=/usr/share/X11/locale
+        cleanup:
+          - /bin
+          - /libexec
+        sources:
+          - type: archive
+            url: https://xkbcommon.org/download/libxkbcommon-1.6.0.tar.xz
+            sha256: 0edc14eccdd391514458bc5f5a4b99863ed2d651e4dd761a90abf4f46ef99c2b
