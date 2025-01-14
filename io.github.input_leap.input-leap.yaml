@@ -1,0 +1,127 @@
+# Note: mDNS (foo.local) does NOT work, so server.name needs to be a FQDN or an ip address
+# https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/issues/1013
+app-id: io.github.input_leap.input-leap
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: input-leap
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - --with-distro=none
+      - --enable-compat-libdns_sd
+      - --disable-qt5
+      - --disable-mono
+      - --disable-monodoc
+      - --disable-gtk
+      - --disable-gtk3
+      - --disable-compat-howl
+      - --disable-python
+      - --disable-core-docs
+      - --disable-manpages
+      - --disable-xmltoman
+      - --disable-tests
+    sources:
+      - type: archive
+        url: https://github.com/avahi/avahi/archive/refs/tags/v0.8.tar.gz
+        sha256: c15e750ef7c6df595fb5f2ce10cac0fee2353649600e6919ad08ae8871e4945f
+    modules:
+      - name: libevent
+        buildsystem: cmake-ninja
+        sources:
+          - type: archive
+            url: https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.tar.gz
+            sha256: 7180a979aaa7000e1264da484f712d403fcf7679b1e9212c4e3d09f5c93efc24
+      - name: libdaemon
+        buildsystem: autotools
+        config-opts:
+          - --disable-lynx
+        sources:
+          - type: archive
+            url: https://0pointer.de/lennart/projects/libdaemon/libdaemon-0.14.tar.gz
+            sha256: fd23eb5f6f986dcc7e708307355ba3289abe03cc381fc47a80bca4a50aa6b834
+
+  - name: input-leap
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DQT_DEFAULT_MAJOR_VERSION=6
+      - -DINPUTLEAP_BUILD_GUI=ON
+      - -DINPUTLEAP_BUILD_TESTS=OFF
+      - -DINPUTLEAP_BUILD_X11=ON
+      - -DINPUTLEAP_BUILD_LIBEI=ON
+    post-install:
+      - install -Dm0644 -t /app/share res/${FLATPAK_ID}.appdata.xml
+      - install -Dm0644 -t /app/share/applications res/${FLATPAK_ID}.desktop
+      - install -Dm0644 -t /app/share/icons/hicolor/scalable res/${FLATPAK_ID}.svg
+    sources:
+      - type: git
+        url: https://github.com/tulilirockz/input-leap.git
+        commit: 84f6546149ca579a8de05a82bd9bbf7d6c02fe18
+      - type: patch
+        path: xdg-location-for-config.patch
+    modules:
+      - name: libei
+        buildsystem: meson
+        config-opts:
+          - -Dtests=disabled
+          - -Dliboeffis=disabled
+        sources:
+          - type: archive
+            url: https://gitlab.freedesktop.org/libinput/libei/-/archive/1.3.0/libei-1.3.0.tar.gz
+            sha256: 162dc7b0d86a4575cdde1d3cb04f364f89a8b1ba6d95fe0b442564e0444d851d
+            x-checker-data:
+              type: anitya
+              project-id: 350087
+              url-template: https://gitlab.freedesktop.org/libinput/libei/-/archive/$version/libei-$version.tar.gz
+        modules:
+          - name: python3-attrs
+            buildsystem: simple
+            build-commands:
+              - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+                --prefix=${FLATPAK_DEST} --no-build-isolation attrs
+            sources:
+              - type: file
+                url: https://files.pythonhosted.org/packages/e0/44/827b2a91a5816512fcaf3cc4ebc465ccd5d598c45cefa6703fcf4a79018f/attrs-23.2.0-py3-none-any.whl
+                sha256: 99b87a485a5820b23b879f04c2305b44b951b502fd64be915879d77a7e8fc6f1
+            cleanup:
+              - /lib/python*
+          - name: python3-Jinja2
+            buildsystem: simple
+            build-commands:
+              - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+                --prefix=${FLATPAK_DEST} --no-build-isolation Jinja2
+            sources:
+              - type: file
+                url: https://files.pythonhosted.org/packages/30/6d/6de6be2d02603ab56e72997708809e8a5b0fbfee080735109b40a3564843/Jinja2-3.1.3-py3-none-any.whl
+                sha256: 7d6d50dd97d52cbc355597bd845fabfbac3f551e1f99619e39a35ce8c370b5fa
+              - type: file
+                url: https://files.pythonhosted.org/packages/87/5b/aae44c6655f3801e81aa3eef09dbbf012431987ba564d7231722f68df02d/MarkupSafe-2.1.5.tar.gz
+                sha256: d283d37a890ba4c1ae73ffadf8046435c76e7bc2247bbb63c00bd1a709c6544b
+            cleanup:
+              - /lib/python*
+        cleanup:
+          - /include
+          - /bin
+          - /lib/pkgconfig
+
+      - name: libportal
+        buildsystem: meson
+        config-opts:
+          - -Ddocs=false
+          - -Dtests=false
+          - -Dportal-tests=false
+          - -Dvapi=false
+          - -Dbackend-qt5=auto
+          - -Dbackend-qt6=auto
+          - -Dbackend-gtk4=auto
+        sources:
+        - type: archive
+          url: https://github.com/flatpak/libportal/releases/download/0.9.0/libportal-0.9.0.tar.xz
+          sha256: 113910f06f39387328805397053d20c7acafb7388d8e6cd5e06e05efb9690735
