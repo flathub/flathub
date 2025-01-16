@@ -4,7 +4,7 @@ Flatpak package for [moonlight installer](https://github.com/moonlight-mod/moonl
 
 ## TODO
 
-- [ ] .desktop file
+- [x] .desktop file
 - [x] correct versioning
 
 ## Building
