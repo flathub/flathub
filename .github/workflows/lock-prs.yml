@@ -1,0 +1,33 @@
+name: "Lock closed PRs"
+
+on:
+  schedule:
+  - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  lock:
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lock closed PRs
+        run: |
+          pr_list=$(gh pr list -L 100000 --state closed --json number,updatedAt)
+          recent_prs=$(echo "$pr_list" | jq '[.[] | select(.updatedAt >= (now - (7 * 24 * 60 * 60) | todate))]')
+          sorted_prs=$(echo "$recent_prs" | jq 'sort_by(.updatedAt) | .[] | {number: .number, updatedAt: .updatedAt}')
+          list=$(echo "$sorted_prs" | jq '.number' | head -n 100)
+
+          unset pr_list recent_prs sorted_prs
+
+          for num in $list; do
+            if [ "$(gh api repos/"$GH_REPO"/issues/"$num" --jq '.locked')" = "false" ]; then
+              if ! gh pr view --json labels -q '.labels[].name' "$num"|grep -qE "^(Stale|leave-open)$"; then
+                echo "Locking pull request $num"
+                gh pr lock --reason "resolved" "$num"
+              fi
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}

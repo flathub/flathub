@@ -1,0 +1,44 @@
+name: Label and tag quality guidelines issues
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+
+jobs:
+  label:
+    if: startsWith(github.event.issue.title, 'Quality guideline problems for')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add quality-guidelines label
+        run: |
+          has_label=$(gh issue view "$ISSUE_NUM" --json labels -q '.labels | any(.name == "quality-guidelines")')
+          if [[ "$has_label" != "true" ]]; then
+              gh issue edit "$ISSUE_NUM" --add-label "quality-guidelines"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+
+  tag:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'quality-guidelines'
+    steps:
+      - name: Find Comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          comment-author: 'flathubbot'
+          body-regex: '^Thank you for opening this issue! cc @flathub\/quality-moderation$'
+
+      - name: Add comment tagging the team
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.FLATHUBBOT_TOKEN }}
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Thank you for opening this issue! cc @flathub/quality-moderation
+          edit-mode: replace
