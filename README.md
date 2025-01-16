@@ -1,4 +1,4 @@
-# io.github.moonlight_mod.MoonlightInstaller
+# io.github.moonlight_mod.moonlight-installer
 
 Flatpak package for [moonlight installer](https://github.com/moonlight-mod/moonlight-installer)
 
@@ -14,10 +14,10 @@ Flatpak package for [moonlight installer](https://github.com/moonlight-mod/moonl
 flatpak install --user org.flatpak.Builder
 
 # build and install
-flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir io.github.moonlight_mod.MoonlightInstaller.yml
+flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir io.github.moonlight_mod.moonlight-installer.yml
 
 # build single-file bundle (optional)
-flatpak build-bundle repo moonlight-installer.flatpak io.github.moonlight_mod.MoonlightInstaller --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+flatpak build-bundle repo moonlight-installer.flatpak io.github.moonlight_mod.moonlight-installer --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 ```
 
 ## Generating sources
