@@ -34,4 +34,3 @@ flatpak-builder-tools/cargo/flatpak-cargo-generator.py ../path/to/moonlight-mod/
 
 1. [Generate sources](#generating-sources)
 2. Change commit ID in the YML file
-3. Add release information `<release/>` to the XML file
