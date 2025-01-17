@@ -2,7 +2,7 @@
 
 ## TODO metainfo.xml
 
-Will be part of upstream in the next tag (probably 16.9.0), replace file with `src/ocrympdf/data/io.ocrmypdf.ocrmypdf.xml` in manifest and remove the file from the GitHub repository.
+Will be part of upstream in the next tag (probably 16.9.0), replace file path in install command with `misc/flatpak/io.ocrmypdf.ocrmypdf.xml` in manifest and remove the file download from the manifest.
 
 ## flatpak-external-data-checker and updates
 
