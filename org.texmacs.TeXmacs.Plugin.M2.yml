@@ -1,0 +1,282 @@
+id: org.texmacs.TeXmacs.Plugin.M2
+runtime: org.texmacs.TeXmacs
+runtime-version: stable
+sdk: org.kde.Sdk//5.15-24.08
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: "/app/plugins/M2"
+  prepend-path: "/app/plugins/M2/bin"
+  append-ld-library-path: "/app/plugins/M2/lib:/app/plugins/M2/lib64"
+  append-pkg-config-path: "/app/plugins/M2/lib/pkgconfig:/app/plugins/M2/lib64/pkgconfig"
+  env:
+    C_INCLUDE_PATH: "/app/plugins/M2/include"
+    CPLUS_INCLUDE_PATH: "/app/plugins/M2/include"
+    LDFLAGS: "-L/app/plugins/M2/lib -L/app/plugins/M2/lib64"
+cleanup:
+  - "/include"
+  - "/lib/pkgconfig"
+  - "/lib/cmake"
+  - "/lib64/pkgconfig"
+  - "/lib64/cmake"
+  - "*.la"
+  - "*.a"
+modules:
+  - name: tbb
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DTBB_TEST=OFF
+    sources:
+      - type: archive
+        url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2022.0.0.tar.gz
+        sha256: e8e89c9c345415b17b30a2db3095ba9d47647611662073f7fbf54ad48b7f3c2a
+        
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app/plugins/M2 --with-libraries=filesystem,system,regex,stacktrace,headers
+      - ./b2 install -j$FLATPAK_BUILDER_N_JOBS variant=release link=shared runtime-link=shared cxxstd=17
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/boost/boost/1.85.0/boost_1_85_0.tar.bz2
+        sha256: 7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617
+        
+  - name: openblas #macaulay2 #fflas-ffpack
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DDYNAMIC_ARCH:BOOL=ON
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/releases/download/v0.3.28/OpenBLAS-0.3.28.tar.gz
+        sha256: f1003466ad074e9b0c8d421a204121100b0751c96fc6fcf3d1456bd12f8a00a1
+        
+  - name: givaro
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+    sources:
+      - type: git
+        url: https://github.com/linbox-team/givaro.git
+        tag: v4.2.1rc0
+        commit: c4090f55844f056ebb5d430a78232d60de5da1f6
+        
+  - name: fflas-ffpack
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --with-blas-libs=/app/plugins/M2/lib64/libopenblas.so
+    sources:
+      - type: git
+        url: https://github.com/linbox-team/fflas-ffpack.git
+        tag: v2.5.0
+        commit: 497d81cbc6a8539857e8b4c7d9bca5d1828b6739
+        
+  - name: cddlib #macaulay2 #gfan
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/cddlib/cddlib/releases/download/0.94m/cddlib-0.94m.tar.gz
+        sha256: 70dffdb3369b8704dc75428a1b3c42ab9047b81ce039f12f427e2eb2b1b0dee2
+        
+  - name: gfan
+    buildsystem: simple
+    build-commands:
+      - ln -s /app/plugins/M2/include/cddlib /app/plugins/M2/include/cdd
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install BINDIR=/app/plugins/M2/bin
+    sources:
+      - type: archive
+        url: http://deb.debian.org/debian/pool/main/g/gfan/gfan_0.7.orig.tar.gz
+        sha256: ab833757e1e4d4a98662f4aa691394013ea9a226f6416b8f8565356d6fcc989e
+      - type: patch
+        paths:
+          - patches/gfan/fix-build.patch
+          - patches/gfan/gcc-14.patch
+          - patches/gfan/gfan-cflags.patch
+          
+  - name: cohomcalg
+    buildsystem: simple
+    build-commands:
+      - make
+      - cp ./bin/cohomcalg /app/plugins/M2/bin/
+    sources:
+      - type: git
+        url: https://github.com/BenjaminJurke/cohomCalg.git
+        tag: v0.32
+        commit: c663c8e37cceab3cc0b2bcc57d35cb895930ab1f
+        
+  - name: nauty
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: http://deb.debian.org/debian/pool/main/n/nauty/nauty_2.8.9+ds.orig.tar.xz
+        sha256: 17426fd0f8536ef393580f1c78b2b6fafafae1ee6b69ed9b61cec9b42e59b887
+      - type: shell
+        commands:
+          - rm aclocal.m4
+          - aclocal
+          - autoconf
+          - autoreconf -i
+        
+  - name: flint
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://flintlib.org/flint-3.1.2.tar.gz
+        sha256: fdb3a431a37464834acff3bdc145f4fe8d0f951dd5327c4c6f93f4cbac5c2700
+        
+  - name: frobby
+    buildsystem: simple
+    build-commands:
+      - make CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS"
+      - RANLIB=/usr/bin/ranlib make CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" library
+      - install -Dm 755 bin/frobby -t /app/plugins/M2/bin/
+      - install -Dm 644 bin/libfrobby.a -t /app/plugins/M2/lib/
+      - install -Dm 644 src/frobby.h -t /app/plugins/M2/include/
+      - install -Dm 644 src/stdinc.h -t /app/plugins/M2/include/
+    sources:
+      - type: git
+        url: https://github.com/Macaulay2/frobby.git
+        tag: v0.9.5
+      - type: patch
+        paths:
+          - patches/frobby/frobby-version.patch #debian patches
+          - patches/frobby/frobgrob.patch
+        
+  - name: Normaliz
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/Normaliz/Normaliz.git
+        tag: v3.10.4
+        commit: 1cdd4a7c6c4ecc074a3527162befc2fe892e6254
+        
+  - name: lapack
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DLAPACKE=ON
+      - -DCBLAS=ON
+    sources:
+      - type: archive
+        url: https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.12.0.tar.gz
+        sha256: eac9570f8e0ad6f30ce4b963f4f033f0f643e7c3912fc9ee6cd99120675ad48b
+        
+  - name: csdp
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install PREFIX=/app/plugins/M2
+    sources:
+      - type: archive
+        url: https://github.com/coin-or/Csdp/archive/refs/tags/releases/6.2.0.tar.gz
+        sha256: 3d341974af1f8ed70e1a37cc896e7ae4a513375875e5b46db8e8f38b7680b32f
+      - type: patch
+        path: patches/csdp/Makefile.patch
+        
+  - name: topcom
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://macaulay2.com/Downloads/OtherSourceCode/TOPCOM-0.17.8.tar.gz
+        sha256: 3f83b98f51ee859ec321bacabf7b172c25884f14848ab6c628326b987bd8aaab
+        
+  - name: lrs
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install prefix=/app/plugins/M2
+    sources:
+      - type: archive
+        url: http://cgm.cs.mcgill.ca/~avis/C/lrslib/archive/lrslib-073.tar.gz
+        sha256: c49a4ebd856183473d1d5a62785fcdfe1057d5d671d4b96f3a1250eb1afe4e83
+
+  - name: mpsolve
+    buildsystem: autotools
+    config-opts:
+      - --disable-examples
+    sources:
+      - type: archive
+        url: https://numpi.dm.unipi.it/_media/software/mpsolve/mpsolve-3.2.1.tar.bz2
+        sha256: 45b22f6b04544b9eda2457eec58580d892c7e00824ebd2d6e31fe24cdd763804
+
+  - name: MPFR
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.mpfr.org/mpfr-current/mpfr-4.2.1.tar.bz2
+        sha256: b9df93635b20e4089c29623b19420c4ac848a1b29df1cfd59f26cab0d2666aa0
+
+  - name: macaulay2
+    buildsystem: autotools
+    config-opts:
+      - --with-boost-libdir=/app/plugins/M2/lib
+      - --enable-shared
+      - --enable-download
+      - --disable-documentation
+    subdir: M2
+    build-options:
+      cppflags: "-I/usr/include/python3.12/"
+      env:
+        C_INCLUDE_PATH: "/app/plugins/M2/include:/app/plugins/M2/include/cddlib"
+        CPLUS_INCLUDE_PATH: "/app/plugins/M2/include:/app/plugins/M2/include/cddlib"
+    post-install:
+      - install -Dm644 --target-directory=${FLATPAK_DEST}/share/metainfo ../${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Macaulay2/M2.git
+        tag: release-1.24.11
+      - type: patch
+        paths:
+          - patches/texmacs/mathml.m2.patch
+          - patches/texmacs/texmacs.m2.patch
+      - type: file
+        path: org.texmacs.TeXmacs.Plugin.M2.metainfo.xml
+        
+      - type: file
+        url: http://macaulay2.com/Downloads/OtherSourceCode/mpfi-1.5.4.tar.gz
+        sha256: 32e6ad529c97aa5ce03e28d01c921d1bce1a464fb4c57fbc248d7be21e652782
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/n/ntl/ntl_11.5.1.orig.tar.gz
+        dest-filename: ntl-11.5.1.tar.gz
+        sha256: 210d06c31306cbc6eaf6814453c56c776d9d8e8df36d74eb306f6a523d1c6a8a
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: https://www.singular.uni-kl.de/ftp/pub/Math/Factory/factory-4.4.0.tar.gz
+        sha256: baf31159578463e26bf18ec68ec901228d79a819866dd96c02d85c73dfbaf030
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: http://macaulay2.com/Downloads/OtherSourceCode/glpk-4.59.tar.gz
+        sha256: e398be2e7cb8a98584325268704729872558a4a88555bc8a54139d017eb9ebae
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: https://github.com/4ti2/4ti2/releases/download/Release_1_6_10/4ti2-1.6.10.tar.gz
+        sha256: f7c191beb14246b643e4fd5b18b53d9966693b9e6d3a569441a0e3ca14b1a86b
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+        sha256: 8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: http://macaulay2.com/Downloads/OtherSourceCode/factory.4.0.1-gftables.tar.gz
+        sha256: 9cd158ceb1c2b1c47bdca2c0b004bba92cb0e0aaa0ea6a43ca784ebdce10eebd
+        dest: 'M2/BUILD/tarfiles'
+        
+      - type: file
+        url: https://github.com/algebraic-solving/msolve/archive/refs/tags/v0.7.3.tar.gz
+        dest-filename: v0.7.3.tar.gz
+        sha256: b82bf7dfe1fb7d3064ecf95e0d0a01334820b09b1107368ca9b4d05ba9ee1241
+        dest: 'M2/BUILD/tarfiles'
