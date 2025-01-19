@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# If we're outside the flatpak, we will run the flatpak command
+if [ -z "${FLATPAK_ID}" ]; then
+	flatpak run --branch=master --arch=x86_64 --command=devpod-cli sh.loft.devpod "$@"
+	result="$?"
+
+	# In case of error check if the flatpak has been uninstalled, and prompt to
+	# clean up this leftover
+	if [ "${result}" -gt 0 ]; then # I: Check exit code directly with e.g. 'if ! mycmd;', not indirectly with $?.
+		if ! flatpak list --app | grep -q sh.loft.devpod; then
+			echo "Devpod flatpak is not installed anymore"
+			rm -i "$0"
+		fi
+	fi
+
+	exit "${result}"
+fi
+
+# copy over the binary file if absend
+if [ ! -e "${XDG_DATA_HOME}/devpod-cli" ]; then
+	/usr/bin/cp /app/bin/devpod-bin "${XDG_DATA_HOME}/devpod-cli"
+else
+	# or if it differs IE after an update
+	if ! /usr/bin/cmp --silent /app/bin/devpod-bin "${XDG_DATA_HOME}/devpod-cli"; then
+		/usr/bin/rm -f "${XDG_DATA_HOME}/devpod-cli"
+		/usr/bin/cp /app/bin/devpod-bin "${XDG_DATA_HOME}/devpod-cli"
+	fi
+fi
+# We need to have it into this path so that the host is able to open it with flatpak-spawn
+#
+/usr/bin/flatpak-spawn --host "${XDG_DATA_HOME}/devpod-cli" "$@"

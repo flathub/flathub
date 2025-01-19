@@ -1,0 +1,124 @@
+name: Publish release
+on:
+  release:
+    types: [prereleased]
+
+jobs:
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v') == true
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    outputs:
+      package_version: ${{ steps.get-version.outputs.package_version }}
+      original_package_version: ${{ steps.get-version.outputs.original_package_version }}
+      release_id: ${{ steps.get-release.outputs.id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - run: npm install semver
+
+      - name: Get Version
+        uses: actions/github-script@v6
+        id: get-version
+        with:
+          script: |
+            const semver = require("semver")
+            const refName = `${process.env.GITHUB_REF_NAME}`
+            let version = refName.split("v")[1]
+
+            core.info(`Original Version: ${version}`)
+            core.setOutput("original_package_version", version)
+
+            const parsed = semver.parse(version);
+            const supportedPreleases = [
+              { tag: "alpha", number: 1 },
+              { tag: "beta", number: 2 },
+              { tag: "rc", number: 3 },
+            ];
+            const maybePrelease = semver.prerelease(version);
+            const maybeSupported = supportedPreleases.find(
+              (p) => p.tag === maybePrelease?.[0]
+            );
+
+            // If we have a prelease and it is in the supported range, then we can use it
+            if (maybePrelease && maybeSupported) {
+              version = `${parsed.major}.${parsed.minor}.${parsed.patch}-${
+                maybeSupported.number
+              }${maybePrelease[1] ?? 0}`;
+            }
+
+            if(maybePrelease && !maybeSupported) {
+              core.setFailed(`Unsupported prerelease: ${version}`)
+            }
+
+            core.info(`Version: ${version}`)
+            core.setOutput("package_version", version)
+
+      - name: Get Release
+        uses: actions/github-script@v6
+        id: get-release
+        with:
+          script: |
+            // Find the prerelease release in our repo that triggered this workflow
+            const refName = `${process.env.GITHUB_REF_NAME}`
+
+            const res = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 10,
+            })
+            const release = res.data.find((r) => r.tag_name === refName && r.prerelease)
+            if(!release) { core.setFailed("Unable to find prerelease for this workflow") }
+
+            core.setOutput("id", release.id)
+
+  flatpak:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-46
+      options: --privileged
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: devpod.flatpak
+        manifest-path: desktop/src-tauri/org.loft.devpod.yaml
+        cache-key: flatpak-builder-${{ github.sha }}
+    - name: Build single file bundle of flatpak
+      run: flatpak build-bundle ./repo devpod.flatpak org.loft.devpod
+    - name: Upload bundle
+      if: matrix.settings.host != 'windows-latest'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require("fs")
+
+          const releaseId = "${{ needs.flatpak.outputs.release_id }}"
+          const assetName = "devpod-${{ matrix.settings.os }}-${{ matrix.settings.arch }}"
+          const assetPath = "desktop/src-tauri/devpod.flatpak"
+
+          console.log("Attempting to upload release asset: ", assetName)
+
+          await github.rest.repos.uploadReleaseAsset({
+            headers: {
+              "content-type": "application/zip",
+              "content-length": fs.statSync(assetPath).size
+            },
+            name: assetName,
+            data: fs.readFileSync(assetPath),
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: releaseId
+          })
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
