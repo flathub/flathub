@@ -1,0 +1,131 @@
+From ed81cd124bb283539a14d79c7ba89d3222669bd2 Mon Sep 17 00:00:00 2001
+From: nmlgc <nmlgc@nmlgc.net>
+Date: Mon, 23 Dec 2024 17:23:02 +0100
+Subject: [PATCH] Revert "layout: Handle baselines"
+
+Restores a common baseline when mixing Asian and Latin glyphs with MS Gothic.
+See:
+
+  https://discourse.gnome.org/t/16010
+  https://github.com/harfbuzz/harfbuzz/issues/4311
+---
+ pango/pango-layout.c | 74 +++-----------------------------------------
+ 1 file changed, 4 insertions(+), 70 deletions(-)
+
+diff --git a/pango/pango-layout.c b/pango/pango-layout.c
+index 894c0773..b73c43ec 100644
+--- a/pango/pango-layout.c
++++ b/pango/pango-layout.c
+@@ -6735,12 +6735,6 @@ apply_baseline_shift (PangoLayoutLine *line,
+ {
+   int y_offset = 0;
+   PangoItem *prev = NULL;
+-  hb_position_t baseline_adjustment = 0;
+-#if HB_VERSION_ATLEAST(4,0,0)
+-  hb_ot_layout_baseline_tag_t baseline_tag = 0;
+-  hb_position_t baseline;
+-  hb_position_t run_baseline;
+-#endif
+ 
+   for (GSList *l = line->runs; l; l = l->next)
+     {
+@@ -6748,76 +6742,16 @@ apply_baseline_shift (PangoLayoutLine *line,
+       PangoItem *item = run->item;
+       int start_x_offset, end_x_offset;
+       int start_y_offset, end_y_offset;
+-#if HB_VERSION_ATLEAST(4,0,0)
+-      hb_font_t *hb_font;
+-      hb_script_t script;
+-      hb_language_t language;
+-      hb_direction_t direction;
+-      hb_tag_t script_tags[HB_OT_MAX_TAGS_PER_SCRIPT];
+-      hb_tag_t lang_tags[HB_OT_MAX_TAGS_PER_LANGUAGE];
+-      unsigned int script_count = HB_OT_MAX_TAGS_PER_SCRIPT;
+-      unsigned int lang_count = HB_OT_MAX_TAGS_PER_LANGUAGE;
+-#endif
+-
+-      if (item->analysis.font == NULL)
+-        continue;
+-
+-#if HB_VERSION_ATLEAST(4,0,0)
+-      hb_font = pango_font_get_hb_font (item->analysis.font);
+-
+-      script = (hb_script_t) g_unicode_script_to_iso15924 (item->analysis.script);
+-      language = hb_language_from_string (pango_language_to_string (item->analysis.language), -1);
+-      hb_ot_tags_from_script_and_language (script, language,
+-                                           &script_count, script_tags,
+-                                           &lang_count, lang_tags);
+-
+-      if (item->analysis.flags & PANGO_ANALYSIS_FLAG_CENTERED_BASELINE)
+-        direction = HB_DIRECTION_TTB;
+-      else
+-        direction = HB_DIRECTION_LTR;
+-
+-      if (baseline_tag == 0)
+-        {
+-          if (item->analysis.flags & PANGO_ANALYSIS_FLAG_CENTERED_BASELINE)
+-            baseline_tag = HB_OT_LAYOUT_BASELINE_TAG_IDEO_EMBOX_CENTRAL;
+-          else
+-            baseline_tag = hb_ot_layout_get_horizontal_baseline_tag_for_script (script);
+-          hb_ot_layout_get_baseline_with_fallback (hb_font,
+-                                                   baseline_tag,
+-                                                   direction,
+-                                                   script_tags[script_count - 1],
+-                                                   lang_count ? lang_tags[lang_count - 1] : HB_TAG_NONE,
+-                                                   &run_baseline);
+-          baseline = run_baseline;
+-        }
+-      else
+-        {
+-          hb_ot_layout_get_baseline_with_fallback (hb_font,
+-                                                   baseline_tag,
+-                                                   direction,
+-                                                   script_tags[script_count - 1],
+-                                                   lang_count ? lang_tags[lang_count - 1] : HB_TAG_NONE,
+-                                                   &run_baseline);
+-        }
+-
+-      /* Don't do baseline adjustment in vertical, since the renderer
+-       * is still doing its own baseline shifting there
+-       */
+-      if (item->analysis.flags & PANGO_ANALYSIS_FLAG_CENTERED_BASELINE)
+-        baseline_adjustment = 0;
+-      else
+-        baseline_adjustment = baseline - run_baseline;
+-#endif
+ 
+       collect_baseline_shift (state, item, prev, &start_x_offset, &start_y_offset, &end_x_offset, &end_y_offset);
+ 
+-      y_offset += start_y_offset + baseline_adjustment;
++      y_offset += start_y_offset;
+ 
+       run->y_offset = y_offset;
+       run->start_x_offset = start_x_offset;
+       run->end_x_offset = end_x_offset;
+ 
+-      y_offset += end_y_offset - baseline_adjustment;
++      y_offset += end_y_offset;
+ 
+       prev = item;
+     }
+@@ -6829,7 +6763,7 @@ pango_layout_line_postprocess (PangoLayoutLine *line,
+                                gboolean         wrapped)
+ {
+   gboolean ellipsized = FALSE;
+-  
++
+   DEBUG1 ("postprocessing line, %s", wrapped ? "wrapped" : "not wrapped");
+ 
+   add_missing_hyphen (line, state, line->runs->data);
+@@ -8019,7 +7953,7 @@ pango_layout_iter_get_baseline (PangoLayoutIter *iter)
+ /**
+  * pango_layout_iter_get_run_baseline:
+  * @iter: a `PangoLayoutIter`
+- * 
++ *
+  * Gets the Y position of the current run's baseline, in layout
+  * coordinates.
+  *
+-- 
+2.47.1
+

@@ -1,0 +1,110 @@
+id: net.nmlgc.rec98.sh01
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm19
+build-options:
+  append-path: /usr/lib/sdk/llvm19/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm19/lib
+finish-args:
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+cleanup:
+  - /bin/pango*
+  - /bin/tup*
+  - /include
+  - /lib/*.a
+  - /lib/libc++.modules.json
+  - /lib/pkgconfig
+  - /share/libc++
+  - /share/man
+
+command: GIAN07
+modules:
+  # See https://aur.archlinux.org/packages/ttf-ipa-mona
+  - name: ttf-ipa-mona
+    sources:
+      - type: archive
+        url: https://web.archive.org/web/20111108024313if_/http://www.geocities.jp/ipa_mona/opfc-ModuleHP-1.1.1_withIPAMonaFonts-1.0.8.tar.gz
+        dest-filename: ttf-ipa-mona.tar # It's actually uncompressed!
+        sha256: cb7b6975faf5caa070ffa1699a241d1c093f3b74c54696e5af23b5bc3b118a44
+    buildsystem: simple
+    subdir: fonts
+    build-commands:
+      - install -Dm644 ipag-mona.ttf -t "$FLATPAK_DEST/share/fonts/TTF/"
+      - install -Dm644 COPYING.font.ja -t "$FLATPAK_DEST/share/licenses/ttf-ipa-mona/"
+
+  - name: pango
+    sources:
+      - type: archive
+        url: https://gitlab.gnome.org/GNOME/pango/-/archive/1.56.0/pango-1.56.0.tar.bz2
+        sha256: d444ef9a8cec24b6ffc989a4e23bc9c60c290b7218327847a4e712e1c7a9ca70
+      - type: patch
+        path: pango-workaround-harfbuzz-issue-4311.patch
+    buildsystem: meson
+    config-opts:
+      - -Dbuild-testsuite=false
+      - -Dbuild-examples=false
+      - -Dintrospection=disabled
+      - -Dxft=disabled
+
+  # Required for C++23 Standard Library Module support, and not part of the
+  # LLVM SDK extension.
+  - name: libcxx
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: runtimes
+    sources:
+      - type: archive
+        url: https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.6/llvm-project-19.1.6.src.tar.xz
+        sha256: e3f79317adaa9196d2cfffe1c869d7c100b7540832bc44fe0d3f44a12861fa34
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_C_COMPILER=clang
+      - -DCMAKE_CXX_COMPILER=clang++
+      - -DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind
+
+  - name: tup
+    sources:
+      - type: archive
+        url: https://gittup.org/tup/releases/tup-v0.8.tar.gz
+        sha512: 3f09a3defc97d174ed85d84679ad4a41bd83e12d84fa151a38c2aedd613f2739989fd9ebeb2d316bd716cf5afd3aead64d7d0cad968e705fe4092c5e7fd9a0ee
+      - type: patch
+        path: tup-disable-unconditional-x86-arch-siblings.patch
+      - type: script
+        dest-filename: tup.config
+        commands:
+          - CONFIG_TUP_USE_SYSTEM_PCRE=y
+          - CONFIG_TUP_USE_SYSTEM_SQLITE=y
+          - CONFIG_TUP_SERVER=ldpreload
+          - CONFIG_X86_ARCH_SIBLINGS=n
+    buildsystem: simple
+    build-options:
+      env:
+        TUP_SERVER: ldpreload
+    build-commands:
+      - ./bootstrap.sh
+      - install -Dm755 ./build/tup -t $FLATPAK_DEST/bin/
+      - install -Dm755 ./build/tup-ldpreload.so -t $FLATPAK_DEST/bin/
+
+  - name: sh01
+    sources:
+      - type: git
+        url: https://github.com/nmlgc/ssg.git
+        tag: P0303
+      - type: file
+        path: net.nmlgc.rec98.sh01.metainfo.xml
+    buildsystem: simple
+    build-options:
+      env:
+        COMPILER_PATH: /app/lib # for finding `libc++.modules.json`
+        CFLAGS: -isystem /app/include/c++/v1/ -DPATH_XDG_DATA_HOME_HAS_APP_ID
+        APP_NAME: net.nmlgc.rec98.sh01
+    build-commands:
+      - PATH_SKELETON="/app/share/skel" ./build.sh bin/GIAN07
+      - ROOT="/app/" ./install.sh "$APP_NAME"
+      - install -Dm644 net.nmlgc.rec98.sh01.metainfo.xml -t /app/share/metainfo
