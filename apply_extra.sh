@@ -8,5 +8,3 @@ bsdtar -Oxf ulaa.deb 'data.tar*' |
     --strip-components=4 \
     --exclude='./opt/zoho/ulaa/nacl*'
 rm ulaa.deb
-
-install -Dm755 /app/bin/stub_sandbox ulaa-sandbox
