@@ -1,0 +1,139 @@
+app-id: info.exult.exult
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: info.exult.exult.sh
+
+finish-args:
+  # hardware 3D
+  - --device=dri
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Audio
+  - --socket=pulseaudio
+  - --env=TIMIDITY_CFG=/app/share/freepats/freepats.cfg
+
+cleanup:
+  - /share/icons/*.png
+  - /share/icons/*.svg
+  - /share/man
+  - /share/doc
+  - /include
+  - /lib/cmake
+
+modules:
+  - shared-modules/linux-audio/fluidsynth2.json
+  - name: vorbis
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/xiph/vorbis/zipball/v1.3.7
+        dest-filename: libvorbis.zip
+        sha256: ec2fbe8ef8cb705481b57dcd3cad37b3dfaa59ed0ac6a386ca675d28b23b3157
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/xiph/vorbis/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .zipball_url
+
+  # Build mt32emu for MT-32 MIDI emulation
+  - name: mt32emu
+    buildsystem: cmake-ninja
+    config-opts:
+      - -Dmunt_WITH_MT32EMU_SMF2WAV=FALSE
+      - -Dmunt_WITH_MT32EMU_QT=FALSE
+      - -Dlibmt32emu_WITH_VERSION_TAGGING=TRUE
+      - -Dlibmt32emu_WITH_SYMBOL_VERSIONING=TRUE
+    sources:
+      - type: archive
+        url: https://github.com/munt/munt/archive/libmt32emu_2_7_1.tar.gz
+        sha256: e4524d52d6799a4e32a961a2e92074f14adcb2f110a4e7a06bede77050cfdaf4
+        x-checker-data:
+          type: anitya
+          project-id: 220368
+          url-template: https://github.com/munt/munt/archive/libmt32emu_$version.tar.gz
+
+  # These will change extremely rarely
+  - name: exult-audio
+    sources:
+      - type: archive
+        dest-filename: exult_audio.zip
+        url: https://downloads.sourceforge.net/project/exult/exult-data/exult_audio.zip
+        sha256: 72e10efa8664a645470ceb99f6b749ce99c3d5fd1c8387c63640499cfcdbbc68
+      - type: archive
+        dest-filename: freepats.tar.bz2
+        url: https://mse.uk.distfiles.macports.org/freepats/freepats-20060219.tar.bz2
+        sha256: 0261ea1057b232183fa472432d5cedb0dca33698a5319328cdf193d4b2193c8a
+    buildsystem: simple
+    build-commands:
+      - install -Dm 644 *.ogg -t ${FLATPAK_DEST}/share/exult/music
+      - install -Dm 644 *.flx -t ${FLATPAK_DEST}/share/exult
+      - install -Dm 644 -t ${FLATPAK_DEST}/share/freepats/ freepats.cfg
+      - install -Dm 644 -t ${FLATPAK_DEST}/share/freepats/Tone_000/ Tone_000/*
+      - install -Dm 644 -t ${FLATPAK_DEST}/share/freepats/Drum_000/ Drum_000/*
+
+  - name: exult
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/exult/exult/zipball/v1.10.1
+        dest-filename: exult.zip
+        sha256: 8e732acc2011beafa2060fd94be02d3e2a9b081e8252f813f1ae0d58e9ee0798
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/exult/exult/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .zipball_url
+      - type: patch
+        path: info.exult.exult.mt32emu-rompath.patch
+      - type: patch
+        path: info.exult.exult.modmgr-multipaths.patch
+      - type: file
+        path: info.exult.exult.sh
+      - type: file
+        path: info.exult.exult.studio.sh
+      - type: file
+        path: exult.default.cfg
+      - type: file
+        path: exult-studio.default.cfg
+    buildsystem: simple
+    build-commands:
+      - autoreconf -v -i
+      - >
+          ./configure --prefix=${FLATPAK_DEST} --with-debug=symbols
+          --enable-exult-studio --enable-exult-studio-support
+          --enable-compiler
+          --enable-zip-support --enable-shared --enable-midi-sfx
+          --enable-data --enable-mods
+          --enable-usecode-container --enable-nonreadied-objects
+          --disable-oggtest --disable-vorbistest
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    post-install:
+      - install -Dm 755 *.sh ${FLATPAK_DEST}/bin/
+      - desktop-file-edit --set-key=Exec --set-value=info.exult.exult.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps ${FLATPAK_DEST}/share/icons/info.exult.exult.svg
+
+      # Replace external release file reference with actual release XML in metainfo
+      - sed -i -e '/<releases.*$/r desktop/info.exult.exult.releases.xml' -e '/<releases.*$/d' desktop/${FLATPAK_ID}.metainfo.xml
+      # Fix typo-ed version number and missing XML closing tags in tagged metainfo file
+      - sed -i 's/1.11/1.10.1/' desktop/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's|<url>\(.*\)/v1.10.1</url>$|</description><url>\1/v1.10.1</url>|' desktop/${FLATPAK_ID}.metainfo.xml
+      - sed -i 's|<url>\(.*\)/v1.10</url>$|</description><url>\1/v1.10</url>|' desktop/${FLATPAK_ID}.metainfo.xml
+      # Install metainfo
+      - install -Dm 644 -t ${FLATPAK_DEST}/share/metainfo/ desktop/${FLATPAK_ID}.metainfo.xml
+
+      # Rename Exult Studio files for Flatpak compliance
+      - install -Dm644 ${FLATPAK_DEST}/share/icons/info.exult.studio.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.studio.svg
+      - mv ${FLATPAK_DEST}/share/applications/info.exult.studio.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      - desktop-file-edit --set-key=Comment --set-value="Exult game engine editor" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID}.studio ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      - desktop-file-edit --set-key=Exec --set-value=${FLATPAK_ID}.studio.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+
+      # Autonotes add-ons
+      - install -Dm 644 data/si/autonotes.txt ${FLATPAK_DEST}/share/exult/si_autonotes.txt
+      - install -Dm 644 data/bg/autonotes.txt ${FLATPAK_DEST}/share/exult/bg_autonotes.txt
+
+      # Default configuration files
+      - install -Dm 644 -t ${FLATPAK_DEST}/share/exult/ *.default.cfg
+
