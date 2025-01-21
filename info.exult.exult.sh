@@ -9,4 +9,4 @@ fi
 sed -i "s|\$XDG_DATA_HOME|$XDG_DATA_HOME|g" $XDG_CONFIG_HOME/exult.cfg
 sed -i "s|/app/share/data|$XDG_DATA_HOME|g" $XDG_CONFIG_HOME/exult.cfg
 
-exult -c $XDG_CONFIG_HOME/exult.cfg
+exult -c $XDG_CONFIG_HOME/exult.cfg $@
