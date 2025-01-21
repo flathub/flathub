@@ -1,0 +1,111 @@
+id: app.freelens.Freelens
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: freelens
+separate-locales: false
+finish-args:
+  # X11 performance
+  - --share=ipc
+  # We need X11
+  - --socket=fallback-x11
+  # Access to wayland
+  - --socket=wayland
+  # Audio Access
+  - --socket=pulseaudio
+  # Access to all files
+  - --filesystem=host
+  # All devices (camera, microphone for calls)
+  - --device=all
+  # User's files
+  - --filesystem=~/.freelens:rw
+  - --filesystem=~/.kube:rw
+  # Run commands on host
+  - --talk-name=org.freedesktop.Flatpak
+  - --allow=devel
+  - --filesystem=host
+  # Network Access
+  - --share=network
+  # We need to be able to inhibit sleep
+  - --system-talk-name=org.freedesktop.login1
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Secrets storage
+  - --talk-name=org.freedesktop.secrets
+  # These are for notifications/tray icons
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.ayatana.indicator.application
+  # Use same mouse cursors as host
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: freelens
+    buildsystem: simple
+    build-commands:
+      - |
+        bsdtar -Oxf freelens.deb 'data.tar.xz' |
+          bsdtar -xf - \
+            --exclude='./usr/share/doc'
+      - mv opt/Freelens "${FLATPAK_DEST}/Freelens"
+      - install -Dm0755 freelens-launch.sh "${FLATPAK_DEST}/bin/freelens"
+      - |
+        for cmd in assume aws gke-gcloud-auth-plugin kubelogin; do
+          install -Dm0755 host-spawn.sh "${FLATPAK_DEST}/bin/$cmd"
+        done
+      - install -Dm0644 usr/share/applications/freelens.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - |
+        for size in 512; do
+          install -Dm0644 "usr/share/icons/hicolor/${size}x${size}/apps/freelens.png" "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png"
+        done
+      - install -Dm0644 "${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - desktop-file-edit --set-key=Exec --set-value='freelens %U' "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=Icon --set-value="${FLATPAK_ID}" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=X-Flatpak-RenamedFrom --set-value='freelens.desktop;' "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - patch-desktop-filename "${FLATPAK_DEST}/Freelens/resources/app.asar"
+    sources:
+      - type: file
+        dest-filename: freelens.deb
+        url: https://github.com/freelensapp/freelens/releases/download/v0.1.2/Freelens-0.1.2-linux-amd64.deb
+        sha256: c8e78c88880f80b15c63e68d860362e733a1aaf264f9f5cd5e457005d8514c7e
+        x-checker-data:
+          type: debian-repo
+          package-name: freelens
+        only-arches:
+          - x86_64
+      - type: file
+        dest-filename: freelens.deb
+        url: https://github.com/freelensapp/freelens/releases/download/v0.1.2/Freelens-0.1.2-linux-arm64.deb
+        sha256: cf718f52df5f322594ba105a4d7e476ef845e1ed0b35c0cbb80c5e7293e6f5f9
+        x-checker-data:
+          type: debian-repo
+          package-name: freelens
+        only-arches:
+          - aarch64
+      - type: file
+        path: app.freelens.Freelens.metainfo.xml
+      - type: file
+        path: freelens-launch.sh
+      - type: file
+        path: host-spawn.sh
+
+  - name: host-spawn
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 host-spawn /app/bin/host-spawn
+    sources:
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/v1.6.1/host-spawn-x86_64
+        sha256: 733746ab498e07d065cbecf80bacd447eb21846d1462e8fe23fdd9d9dc977b50
+        dest-filename: host-spawn
+        only-arches: [x86_64]
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/v1.6.1/host-spawn-aarch64
+        sha256: 71b7744a4d0b29279523cc0f0ed1a7af5e9555510bd9e6d4685391b59faefaac
+        dest-filename: host-spawn
+        only-arches: [aarch64]
