@@ -1,9 +1,7 @@
 #!/bin/bash
 
 EXTRA_ARGS+=(
-  "--no-sandbox"
   "--ozone-platform-hint=auto"
-  "--disable-seccomp-filter-sandbox"
 )
 
 export PTYSHELL=/bin/bash
