@@ -15,8 +15,8 @@ finish-args:
   - --env=TIMIDITY_CFG=/app/share/freepats/freepats.cfg
 
 cleanup:
-  - /share/icons/*.png
-  - /share/icons/*.svg
+  # we don't need the png *and* svg icons
+  - /share/icons/hicolor/512x512
   - /share/man
   - /share/doc
   - /include
@@ -74,66 +74,99 @@ modules:
       - install -Dm 644 -t ${FLATPAK_DEST}/share/freepats/Drum_000/ Drum_000/*
 
   - name: exult
+    buildsystem: autotools
     sources:
       - type: archive
         url: https://api.github.com/repos/exult/exult/zipball/v1.10.1
-        dest-filename: exult.zip
         sha256: 8e732acc2011beafa2060fd94be02d3e2a9b081e8252f813f1ae0d58e9ee0798
+        dest-filename: exult.zip
         x-checker-data:
           type: json
           url: https://api.github.com/repos/exult/exult/releases/latest
           version-query: .tag_name | sub("^v"; "")
           url-query: .zipball_url
+      # Fix lookup paths for mt32emu ROMs
       - type: patch
         path: info.exult.exult.mt32emu-rompath.patch
+      # Allow mod manager to load from both within the bundle and user data
       - type: patch
         path: info.exult.exult.modmgr-multipaths.patch
-      - type: file
-        path: info.exult.exult.sh
-      - type: file
-        path: info.exult.exult.studio.sh
+      - type: script
+        dest-filename: info.exult.exult.sh
+        commands:
+          - |
+            # Deploy default configuration file if needed
+            if [[ ! -f $XDG_CONFIG_HOME/exult.cfg ]]; then
+              cp /app/share/exult/exult.default.cfg $XDG_CONFIG_HOME/exult.cfg
+            fi
+            # Replace XDG_DATA_HOME variable in configuration file with actual path
+            sed -i "s|\$XDG_DATA_HOME|$XDG_DATA_HOME|g" $XDG_CONFIG_HOME/exult.cfg
+            exult -c $XDG_CONFIG_HOME/exult.cfg $@
+      - type: script
+        dest-filename: info.exult.exult.studio.sh
+        commands:
+          - |
+            # Deploy default configuration file if needed
+            if [[ ! -f $XDG_CONFIG_HOME/exult-studio.cfg ]]; then
+              cp /app/share/exult/exult-studio.default.cfg $XDG_CONFIG_HOME/exult-studio.cfg
+            fi
+            # Replace XDG_DATA_HOME variable in configuration file with actual path
+            sed -i "s|\$XDG_DATA_HOME|$XDG_DATA_HOME|g" $XDG_CONFIG_HOME/exult-studio.cfg
+            # Studio needs Exult running too
+            exult -c $XDG_CONFIG_HOME/exult.cfg &
+            exult_studio -c $XDG_CONFIG_HOME/exult-studio.cfg --cssdir $XDG_DATA_HOME/studio $@
       - type: file
         path: exult.default.cfg
       - type: file
         path: exult-studio.default.cfg
-    buildsystem: simple
-    build-commands:
-      - autoreconf -v -i
-      - >
-          ./configure --prefix=${FLATPAK_DEST} --with-debug=symbols
-          --enable-exult-studio --enable-exult-studio-support
-          --enable-compiler
-          --enable-zip-support --enable-shared --enable-midi-sfx
-          --enable-data --enable-mods
-          --enable-usecode-container --enable-nonreadied-objects
-          --disable-oggtest --disable-vorbistest
-      - make -j$FLATPAK_BUILDER_N_JOBS
-      - make install
+      - type: file
+      # FIXME: Delete this after the next Exult stable release
+        # FIXME: swap URLs once https://github.com/exult/exult/pull/617 is merged
+        # url: https://cdn.jsdelivr.net/gh/exult/exult/desktop/info.exult.exult.metainfo.xml
+        url: https://raw.githubusercontent.com/fpiesche/exult/refs/heads/fpiesche/update-freedesktop/desktop/info.exult.exult.metainfo.xml
+        sha256: 07d1967e3399007a4ead8de685ae5dc0374554549109523503e8ec00338ef924
+      # Fix installing icons and metainfo
+      - type: patch
+        path: info.exult.exult.fix-install.patch
+      # Exult does not provide autogen.sh or bootstrap
+      - type: script
+        dest-filename: bootstrap
+        commands:
+          - autoreconf -vi
+      # END FIXME
+    config-opts:
+      - --with-debug=symbols
+      - --prefix=${FLATPAK_DEST}
+      - --enable-exult-studio
+      - --enable-exult-studio-support
+      - --enable-compiler
+      - --enable-zip-support
+      - --enable-shared
+      - --enable-midi-sfx
+      - --enable-data
+      - --enable-mods
+      - --enable-usecode-container
+      - --enable-nonreadied-objects
+      - --disable-oggtest
+      - --disable-vorbistest
     post-install:
-      - install -Dm 755 *.sh ${FLATPAK_DEST}/bin/
-      - desktop-file-edit --set-key=Exec --set-value=info.exult.exult.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps ${FLATPAK_DEST}/share/icons/info.exult.exult.svg
-
-      # Replace external release file reference with actual release XML in metainfo
-      - sed -i -e '/<releases.*$/r desktop/info.exult.exult.releases.xml' -e '/<releases.*$/d' desktop/${FLATPAK_ID}.metainfo.xml
-      # Fix typo-ed version number and missing XML closing tags in tagged metainfo file
-      - sed -i 's/1.11/1.10.1/' desktop/${FLATPAK_ID}.metainfo.xml
-      - sed -i 's|<url>\(.*\)/v1.10.1</url>$|</description><url>\1/v1.10.1</url>|' desktop/${FLATPAK_ID}.metainfo.xml
-      - sed -i 's|<url>\(.*\)/v1.10</url>$|</description><url>\1/v1.10</url>|' desktop/${FLATPAK_ID}.metainfo.xml
-      # Install metainfo
-      - install -Dm 644 -t ${FLATPAK_DEST}/share/metainfo/ desktop/${FLATPAK_ID}.metainfo.xml
-
+      # FIXME: Delete this after the next Exult stable release
       # Rename Exult Studio files for Flatpak compliance
-      - install -Dm644 ${FLATPAK_DEST}/share/icons/info.exult.studio.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.studio.svg
       - mv ${FLATPAK_DEST}/share/applications/info.exult.studio.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      - mv ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/info.exult.studio.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.studio.svg
       - desktop-file-edit --set-key=Comment --set-value="Exult game engine editor" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
       - desktop-file-edit --set-icon=${FLATPAK_ID}.studio ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
       - desktop-file-edit --set-key=Exec --set-value=${FLATPAK_ID}.studio.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      # Install fixed metainfo to avoid broken file from v1.10.1 release
+      - install -Dvm 644 -t ${FLATPAK_DEST}/share/metainfo/ ${FLATPAK_BUILDER_BUILDDIR}/${FLATPAK_ID}.metainfo.xml
+      # END FIXME
 
-      # Autonotes add-ons
-      - install -Dm 644 data/si/autonotes.txt ${FLATPAK_DEST}/share/exult/si_autonotes.txt
-      - install -Dm 644 data/bg/autonotes.txt ${FLATPAK_DEST}/share/exult/bg_autonotes.txt
-
-      # Default configuration files
-      - install -Dm 644 -t ${FLATPAK_DEST}/share/exult/ *.default.cfg
-
+      # Install launcher scripts
+      - install -Dvm 755 -t ${FLATPAK_DEST}/bin/ *.sh
+      - desktop-file-edit --set-key=Exec --set-value=info.exult.exult.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Exec --set-value=info.exult.exult.studio.sh ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.studio.desktop
+      # Install default configuration files
+      - install -Dvm 644 -t ${FLATPAK_DEST}/share/exult/ *.default.cfg
+      # Install autonotes add-ons
+      - install -Dvm 644 data/si/autonotes.txt ${FLATPAK_DEST}/share/exult/si_autonotes.txt
+      - install -Dvm 644 data/bg/autonotes.txt ${FLATPAK_DEST}/share/exult/bg_autonotes.txt
