@@ -8,7 +8,7 @@ rm-repo:
     flatpak --user remote-delete local-ryubing
 
 install: add-repo
-    flatpak install --user -y local-ryubing io.github.ryubing.Ryujinx
+    flatpak install --user --reinstall -y local-ryubing io.github.ryubing.Ryujinx
 
 run: install
     flatpak run io.github.ryubing.Ryujinx
