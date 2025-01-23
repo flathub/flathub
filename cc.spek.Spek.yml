@@ -1,0 +1,66 @@
+app-id: cc.spek.Spek
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: spek
+cleanup:
+  - /bin/wx-config
+  - /bin/wxrc
+  - /bin/wxrc-3.2
+  - /include
+  - /lib/wx/include
+  - /share/aclocal
+  - /share/bakefile
+  - /share/man
+  - /lib/wx/config 
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  # Required for opening files, saving images, and drag-and-drop:
+  # https://github.com/wxWidgets/wxWidgets/issues/24486
+  - --filesystem=home
+modules:
+  - name: wxWidgets
+    config-opts:
+      - --with-gtk=3
+      - --enable-unicode
+      - --enable-intl
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6.tar.bz2
+        sha256: 939e5b77ddc5b6092d1d7d29491fe67010a2433cf9b9c0d841ee4d04acb9dce7
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/wxWidgets/wxWidgets/releases/latest
+          url-query: .assets[] | select(.name=="wxWidgets-" + $version + ".tar.bz2")
+            | .browser_download_url
+          version-query: .tag_name | sub("^v"; "")
+  - name: spek
+    buildsystem: simple
+    build-commands:
+    # Files have to be patched and renamed *before* building. Using rename-icon and rename-desktop-file doesn't appear to work
+    - sed -i "s@\"spek\"@\"${FLATPAK_ID}\"@" src/spek-artwork.cc
+    - for SIZE in {16,22,24,32,48}; do mv data/icons/${SIZE}x${SIZE}/spek.png data/icons/${SIZE}x${SIZE}/${FLATPAK_ID}.png; done
+    - mv data/icons/scalable/spek.svg data/icons/scalable/${FLATPAK_ID}.svg
+    - sed -i "s@spek.png@${FLATPAK_ID}.png@g; s@spek.svg@${FLATPAK_ID}.svg@g" data/icons/*/Makefile.am
+    - ./autogen.sh --prefix="${FLATPAK_DEST}"
+    - make install
+    post-install:
+    - mv ${FLATPAK_DEST}/share/applications/spek.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    - mkdir -p ${FLATPAK_DEST}/share/metainfo
+    - appstreamcli news-to-metainfo --format=markdown NEWS ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/alexkay/spek
+        tag: v0.8.5
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+        commit: bf4ea059f6f87cf0f2c379f890115173fa04ce57
+      - type: file
+        path: NEWS
+      - type: file
+        path: cc.spek.Spek.metainfo.xml
