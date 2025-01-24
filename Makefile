@@ -3,7 +3,10 @@ deps:
 	flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46
 
 build:
-	flatpak-builder --force-clean --user --install-deps-from=flathub --repo=repo --install builddir org.loft.devpod.yaml
+	flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir org.loft.devpod.yaml
+
+lint:
+	flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
 bundle:
 	flatpak build-bundle ./repo devpod.flatpak org.loft.devpod
@@ -15,5 +18,5 @@ run:
 	flatpak run --user org.loft.devpod
 
 clean:
-	rm -rf repo builddir devpod.flatpak
+	rm -rf repo builddir devpod.flatpak .flatpak-builder
 	
