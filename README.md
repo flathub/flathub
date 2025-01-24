@@ -19,5 +19,5 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream zone.do
 # Run flatpak
 
 ```
-flatpak run zone.dos.browser
+flatpak run zone.dos.Browser
 ```
