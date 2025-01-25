@@ -20,18 +20,16 @@ modules:
       - |
         cp -R ControllerBuddy/* /app/ &&
         install -Dm 755 launch.sh -t /app/bin &&
-        install -Dm 755 update-profiles.sh -t /app/bin &&
-        install -Dm 755 InstallControllerBuddy.sh /app/bin/InstallControllerBuddy.sh &&
         install -Dm 644 icon.svg "/app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg" &&
         install -Dm 644 "$FLATPAK_ID.desktop" -t /app/share/applications &&
-        install -Dm 644 "$FLATPAK_ID-update-profiles.desktop" -t /app/share/applications &&
-        install -Dm 644 "$FLATPAK_ID.metainfo.xml" -t /app/share/metainfo
+        install -Dm 644 "$FLATPAK_ID.metainfo.xml" -t /app/share/metainfo &&
+        cp -R ControllerBuddy-Profiles /app/share/
     sources:
       - type: archive
         only-arches:
           - x86_64
-        url: https://github.com/bwRavencl/ControllerBuddy/releases/download/1.3.58-c8b1fde/ControllerBuddy-linux-x86-64-1.3.58-c8b1fde.tgz
-        sha256: b65d33b9cf872ef0923e32efa87f85c5e0ce4f3df76190a2f2d89f4475a01310
+        url: https://github.com/bwRavencl/ControllerBuddy/releases/download/1.3.66-639d789/ControllerBuddy-linux-x86-64-1.3.66-639d789.tgz
+        sha256: f139aecc5f16575d32b614b0abed585a28b2e27c9b89d8918cc1ed044bbbda79
         strip-components: 0
         x-checker-data:
           type: anitya
@@ -41,8 +39,8 @@ modules:
       - type: archive
         only-arches:
           - aarch64
-        url: https://github.com/bwRavencl/ControllerBuddy/releases/download/1.3.58-c8b1fde/ControllerBuddy-linux-aarch64-1.3.58-c8b1fde.tgz
-        sha256: e3e1f553c5ce2b8db6639806de6aeb16295a43c5442bd3976996f5b4976bd648
+        url: https://github.com/bwRavencl/ControllerBuddy/releases/download/1.3.66-639d789/ControllerBuddy-linux-aarch64-1.3.66-639d789.tgz
+        sha256: b9896700fd131ce78295020bea5b6e2e71ce158099552b0155d1f21b1c6a8b30
         strip-components: 0
         x-checker-data:
           type: anitya
@@ -50,98 +48,103 @@ modules:
           stable-only: false
           url-template: https://github.com/bwRavencl/ControllerBuddy/releases/download/$version/ControllerBuddy-linux-aarch64-$version.tgz
       - type: file
-        url: https://raw.githubusercontent.com/bwRavencl/ControllerBuddy/refs/tags/1.3.58-c8b1fde/icon.svg
+        url: https://raw.githubusercontent.com/bwRavencl/ControllerBuddy/refs/tags/1.3.66-639d789/icon.svg
         sha256: 22cb081b000a30f248e6c5f842a9519d933339d01449fe2889e3379cc5628523
         x-checker-data:
           type: anitya
           project-id: 376393
           stable-only: false
           url-template: https://raw.githubusercontent.com/bwRavencl/ControllerBuddy/refs/tags/$version/icon.svg
-      - type: file
-        url: https://github.com/bwRavencl/ControllerBuddy-Install-Script/releases/download/1.0.82-07b845a/InstallControllerBuddy.sh
-        sha256: 0cfe30ef1f118ebd33ba83f358fdb9b0ddea11adac1128b79d183b50acb4fc20
-        x-checker-data:
-          type: anitya
-          project-id: 376395
-          stable-only: false
-          url-template: https://github.com/bwRavencl/ControllerBuddy-Install-Script/releases/download/$version/InstallControllerBuddy.sh
       - type: script
         dest-filename: launch.sh
         commands:
           - |
-            script_file="$XDG_RUNTIME_DIR/app/$FLATPAK_ID/InstallControllerBuddy.sh"
-            install -Dm 755 /app/bin/InstallControllerBuddy.sh "$script_file"
-            status_file="$script_file.status"
-            rm -f "$status_file"
-            xterm -fa Mono -e 'flatpak-spawn --host '"$script_file"' prepare ; echo $? > '"$status_file"
-            status=$(cat "$status_file" 2>/dev/null)
-            rm -f "$status_file"
-            if [ "$status" -ne 0 ]
+            script=$(cat << 'EOF'
+            function check_pkexec_installed() {
+                which pkexec >/dev/null 2>/dev/null
+                check_retval 'pkexec is not installed. Please restart this script after manually installing pkexec.'
+            }
+
+            function show_message() {
+                flatpak run --command=zenity "$FLATPAK_ID" --window-icon /app/share/icons/hicolor/scalable/apps/"$FLATPAK_ID".svg --"$1" --text "$2" --width 450
+            }
+
+            function check_retval() {
+                if [ "$?" -ne 0 ]
+                then
+                    show_message error "<b>Error:</b> $1"
+                    exit 1
+                fi
+            }
+
+            function add_line_if_missing() {
+                if [ ! -f "$1" ] || ! grep -qxF "$2" "$1"
+                then
+                    show_message info "Please authenticate to add missing line\n<tt><small>$2</small></tt>\nto file <tt><small>$1</small></tt>."
+                    check_pkexec_installed
+                    echo "$2" | pkexec tee -a "$1" >/dev/null 2>/dev/null
+                    check_retval "Failed to write file <tt><small>$1</small></tt>."
+                    reboot_required=true
+                fi
+            }
+
+            cb_group=controllerbuddy
+            if ! getent group "$cb_group" >/dev/null
             then
-              exit "$status"
+                show_message info "Please authenticate to create the '$cb_group' group."
+                check_pkexec_installed
+                pkexec groupadd -f "$cb_group"
+                check_retval "Failed to create the '$cb_group' group."
+                reboot_required=true
             fi
-            if [ ! -d "$(xdg-user-dir DOCUMENTS)/ControllerBuddy-Profiles" ]
+
+            if ! id -nGz "$USER" | grep -qzxF "$cb_group"
             then
-              /app/bin/update-profiles.sh
+                show_message info "Please authenticate to add user '$USER' to the '$cb_group' group."
+                check_pkexec_installed
+                pkexec gpasswd -a "$USER" "$cb_group"
+                check_retval "Failed to add user '$USER' to the '$cb_group' group."
+                reboot_required=true
             fi
-            /app/bin/ControllerBuddy "$@"
-      - type: script
-        dest-filename: update-profiles.sh
-        commands:
-          - xterm -fa Mono -e /app/bin/InstallControllerBuddy.sh profiles
+
+            add_line_if_missing '/etc/udev/rules.d/99-controllerbuddy.rules' 'KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="controllerbuddy"'
+            add_line_if_missing '/etc/udev/rules.d/99-controllerbuddy.rules' 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="05c4", MODE="0660", GROUP="controllerbuddy"'
+            add_line_if_missing '/etc/udev/rules.d/99-controllerbuddy.rules' 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", MODE="0660", GROUP="controllerbuddy"'
+            add_line_if_missing '/etc/udev/rules.d/99-controllerbuddy.rules' 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ba0", MODE="0660", GROUP="controllerbuddy"'
+            add_line_if_missing '/etc/udev/rules.d/99-controllerbuddy.rules' 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ce6", MODE="0660", GROUP="controllerbuddy"'
+            add_line_if_missing '/etc/modules-load.d/uinput.conf' 'uinput'
+
+            if [ "$reboot_required" = true ]
+            then
+                show_message warning '<b>Important:</b> System configuration has been modified.\nPlease reboot your system!'
+                exit 1
+            fi
+            EOF
+            )
+
+            if ! flatpak-spawn --host /bin/bash -c "FLATPAK_ID=$FLATPAK_ID ; $script"
+            then
+                exit "$?"
+            fi
+
+            CONTROLLER_BUDDY_PROFILES_DIR=/app/share/ControllerBuddy-Profiles ControllerBuddy "$@"
       - type: file
         path: de.bwravencl.ControllerBuddy.desktop
       - type: file
-        path: de.bwravencl.ControllerBuddy-update-profiles.desktop
-      - type: file
         path: de.bwravencl.ControllerBuddy.metainfo.xml
-  - name: git
-    make-args:
-      - INSTALL_SYMLINKS=1
-    make-install-args:
-      - INSTALL_SYMLINKS=1
-    cleanup:
-      - /lib/pkgconfig
-      - /man
+      - type: git
+        url: https://github.com/bwRavencl/ControllerBuddy-Profiles.git
+        branch: 1.3
+        commit: 0e2deb591d6695aba4d4ae51ddc6bc43572a8359
+        dest: ControllerBuddy-Profiles
+  - name: zenity
+    buildsystem: meson
     sources:
       - type: archive
-        url: https://www.kernel.org/pub/software/scm/git/git-2.48.1.tar.xz
-        sha256: 1c5d545f5dc1eb51e95d2c50d98fdf88b1a36ba1fa30e9ae5d5385c6024f82ad
+        url: https://download.gnome.org/sources/zenity/3.44/zenity-3.44.5.tar.xz
+        sha256: 29ac447f4246b1da783a3c28ddc80b0ef7c80eccd5836ad9140abf89841d0eab
         x-checker-data:
-          type: anitya
-          project-id: 5350
-          stable-only: true
-          url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.xz
-  - name: xterm
-    buildsystem: autotools
-    config-opts:
-      - --disable-full-tgetent
-    sources:
-      - type: archive
-        url: https://invisible-mirror.net/archives/xterm/xterm-397.tgz
-        sha256: 2e9b742b9cba44ecec58074e513237f6cd6d5923f1737cb36a4e5625f4ae8662
-        x-checker-data:
-          type: anitya
-          project-id: 5272
-          url-template: https://invisible-mirror.net/archives/xterm/xterm-$version.tgz
-    modules:
-      - name: libXmu
-        buildsystem: autotools
-        sources:
-          - type: archive
-            url: https://xorg.freedesktop.org/releases/individual/lib/libXmu-1.2.1.tar.gz
-            sha256: bf0902583dd1123856c11e0a5085bd3c6e9886fbbd44954464975fd7d52eb599
-            x-checker-data:
-              type: anitya
-              project-id: 1785
-              url-template: https://xorg.freedesktop.org/releases/individual/lib/libXmu-$version.tar.gz
-      - name: libXaw
-        buildsystem: autotools
-        sources:
-          - type: archive
-            url: https://xorg.freedesktop.org/releases/individual/lib/libXaw-1.0.16.tar.gz
-            sha256: 012f90adf8739f2f023d63a5fee1528949cf2aba92ef7ac1abcfc2ae9cf28798
-            x-checker-data:
-              type: anitya
-              project-id: 1766
-              url-template: https://xorg.freedesktop.org/releases/individual/lib/libXaw-$version.tar.gz
+          type: gnome
+          name: zenity
+          versions:
+            <: 3.90.0
