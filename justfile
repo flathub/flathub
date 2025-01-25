@@ -16,3 +16,8 @@ run: install
 lint:
     flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.github.ryubing.Ryujinx.yml
     flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+
+gen-sources csproj="../Ryujinx/src/Ryujinx/Ryujinx.csproj":
+    flatpak-builder-tools/dotnet/flatpak-dotnet-generator.py -d 9 -f 24.08 tmp.json {{csproj}}
+    cat tmp.json extra-sources.json | jq -s 'add' > nuget_sources.json
+    rm tmp.json
