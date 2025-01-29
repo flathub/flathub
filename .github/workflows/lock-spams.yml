@@ -1,13 +1,15 @@
-name: Close and lock spam issues
+name: Close and lock spam issues and PRs
 
 on:
   issues:
     types: [labeled]
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
 
 jobs:
-  handle_spam:
-    if: github.event.label.name == 'spam'
+  spam_issues:
+    if: github.event.label.name == 'spam' && github.event_name == 'issue'
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -23,3 +25,21 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ISSUE_NUM: ${{ github.event.issue.number }}
+
+  spam_prs:
+    if: github.event.label.name == 'spam' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Close the PR
+        run: gh pr close "$PR_NUM"
+      - name: Lock the PR
+        run: |
+          if [ "$(gh api repos/"$GH_REPO"/issues/"$PR_NUM" --jq '.locked')" = "false" ]; then
+            gh pr lock "$PR_NUM" --reason "spam"
+          fi
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUM: ${{ github.event.pull_request.number }}
