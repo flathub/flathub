@@ -1,0 +1,130 @@
+id: io.github.vpelss.snis_flatpak
+runtime: org.freedesktop.Platform
+# 24.08 will quietly break this : Can't find libglu.so.1 even though it is there
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: snis.sh
+
+build-options:
+  append-ld-library-path: "/app/lib64/"
+  #for some reason /app/lib64/pkgconfig/ is not in search path
+  append-pkg-config-path: "/app/lib64/pkgconfig/"
+
+modules:
+
+  - name: opus
+    buildsystem: simple
+    build-commands: 
+      - ./configure
+      - make
+      - mkdir -p ${FLATPAK_DEST}/lib
+      - cp ./.libs/libopus.a ${FLATPAK_DEST}/lib/
+    sources:
+      - type: archive 
+        url: https://archive.mozilla.org/pub/opus/opus-1.3.1.tar.gz
+        sha256: 65b58e1e25b2a114157014736a3d9dfeaad8d41be1c8179866f144a2fb44ff9d
+
+  - name: lua
+    buildsystem: simple
+    build-commands: 
+      - make generic
+      - make linux
+      - make local
+      - mkdir -p ${FLATPAK_DEST}/include
+      - mkdir -p ${FLATPAK_DEST}/lib
+      - cp -r install/include/* ${FLATPAK_DEST}/include/
+      - cp -r install/lib/* ${FLATPAK_DEST}/lib/
+    sources:
+      - type: archive 
+        url: https://www.lua.org/ftp/lua-5.2.0.tar.gz
+        sha256: cabe379465aa8e388988073d59b69e76ba0025429d2c1da80821a252cdf6be0d
+ 
+  - name: portaudio
+    buildsystem: cmake-ninja
+    build-commands: 
+    sources:
+      - type: git
+        url: https://github.com/PortAudio/portaudio.git
+        commit: 242a024
+
+  - name: glu
+    buildsystem: meson
+    build-commands: 
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/glu/glu-9.0.3.tar.xz
+        sha256: bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f
+
+  - name: glew
+    buildsystem: cmake-ninja
+    config-opts: 
+      # adds glew.pc for /app/lib/pkg-config folder
+      - -D PKG_CONFIG_REPRESENTATIVE_TARGET=libglew_static
+    build-commands: 
+    sources:
+      - type: git 
+        url: https://github.com/Perlmint/glew-cmake.git
+        commit: master
+
+  - name: snis
+    buildsystem: simple
+    build-commands:
+      # some built library modules are not correctly reporting to pkg-config
+      - make WITHVOICECHAT=no -e LUALIBS=-llua 
+      - rm -r object_files
+      #copy compiled files to flatpak /app folder and set permissions
+      - mkdir -p /app/bin/bin
+      - mkdir -p /app/bin/share
+      #copy it all, as there are tools everywhere
+      - cp -r * ${FLATPAK_DEST}/bin/
+      #- cp -r bin/snis_launcher ${FLATPAK_DEST}/bin/
+      #- cp -r bin/* ${FLATPAK_DEST}/bin/bin/
+      #- cp -r share/* ${FLATPAK_DEST}/bin/share/
+      #- chmod +x ${FLATPAK_DEST}/bin/bin/*
+    sources:
+      - type: git
+        url: https://github.com/smcameron/space-nerds-in-space.git
+        commit: 388d3a3
+
+  - name: snis_meta
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
+      - mkdir -p ${FLATPAK_DEST}/share/metainfo
+      - mkdir -p ${FLATPAK_DEST}/share/applications
+      - ls -l
+      - install -Dm0644 logo.svg "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.svg"
+      - install -Dm0644 ${FLATPAK_ID}.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm0644 ${FLATPAK_ID}.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - ls -l ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/
+      - ls -l ${FLATPAK_DEST}/share/metainfo/
+      - ls -l ${FLATPAK_DEST}/share/applications/
+    sources:
+      - type: git
+        url: https://github.com/vpelss/snis_flatpak.git
+        commit: main
+
+  #we need this as program needs to be run with us in correct pwd folder : /app/bin
+  - name: snis.sh
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 snis.sh ${FLATPAK_DEST}/bin/snis.sh
+    sources:
+      - type: script
+        dest-filename: snis.sh
+        commands:
+          - cd /app/bin
+          - echo "snis.sh Ver 1.1"
+          - ./snis_launcher
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --socket=pulseaudio
+
+cleanup:
+  - /bin/bin/snis_launcher
+  - /tmp
