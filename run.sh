@@ -1,5 +1,4 @@
 #!/bin/bash
 
-cd /app
-export LD_LIBRARY_PATH=usr/lib
-exec ./server_box
+export LD_LIBRARY_PATH=/app/usr/lib
+exec /app/server_box
