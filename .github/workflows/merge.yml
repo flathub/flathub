@@ -1,0 +1,32 @@
+name: Automatic application merge
+
+on: 
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/merge') }}
+    container:
+      image: ghcr.io/flathub/actions/merge:latest
+    steps:
+      - name: Check if actor is reviewer
+        id: check_reviewer
+        run: |
+          if gh api /orgs/"$REPO_OWNER"/teams/reviewers/memberships/"$ACTOR" --silent; then
+            echo "is-reviewer=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-reviewer=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+
+      - run: /app/entrypoint.py
+        if: ${{ steps.check_reviewer.outputs.is-reviewer == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
