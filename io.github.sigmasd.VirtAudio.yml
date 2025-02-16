@@ -1,0 +1,268 @@
+app-id: io.github.sigmasd.VirtAudio
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+command: virtaudio
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+  # Audio access
+  - --socket=pulseaudio
+  # Network access for local server and WebSocket connections
+  - --share=network
+  # Needed for libinput
+  - --device=input
+  # Needed for mesa
+  - --device=dri
+  # Allow creating temporary files (for creating virtual mics)
+  - --filesystem=/tmp:create
+modules:
+  # needed for libinput
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/libevdev/libevdev-1.13.3.tar.xz
+        sha256: abf1aace86208eebdd5d3550ffded4c8d73bb405b796d51c389c9d0604cbcfbf
+        x-checker-data:
+          type: anitya
+          project-id: 20540
+          stable-only: true
+          url-template: https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+  # needed for libinput
+  - name: mtdev
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://bitmath.org/code/mtdev/mtdev-1.1.7.tar.bz2
+        sha256: a107adad2101fecac54ac7f9f0e0a0dd155d954193da55c2340c97f2ff1d814e
+        x-checker-data:
+          type: anitya
+          project-id: 8868
+          stable-only: true
+          url-template: https://bitmath.org/code/mtdev/mtdev-$version.tar.bz2
+      # Upstream uses an outdated version of the config.guess/config.sub script,
+      # so we override it here to fix aarch64 builds.
+      - type: shell
+        commands:
+          - cp -p /usr/share/automake-*/config.{sub,guess} config-aux/
+    cleanup:
+      - /bin
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+  # needed for slint
+  - name: libinput
+    buildsystem: meson
+    config-opts:
+      - --libexec=lib
+      - -Dlibwacom=false
+      - -Ddebug-gui=false
+      - -Dtests=false
+      - -Ddocumentation=false
+      - -Dzshcompletiondir=no
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.27.0/libinput-1.27.0.tar.gz
+        sha256: b11b900bf88ef68fe688c107226bb453ef26faf461ae2dcf9690b00009d660a6
+        x-checker-data:
+          type: anitya
+          project-id: 5781
+          stable-only: true
+          url-template: https://gitlab.freedesktop.org/libinput/libinput/-/archive/$version/libinput-$version.tar.gz
+    cleanup:
+      - /bin
+      - /etc
+      - /lib/libinput
+      - /lib/udev
+      - /share
+      - /include
+      - /lib/pkgconfig
+  - name: virtaudio
+    buildsystem: simple
+    build-options:
+      env:
+        DENO_DIR: /app/deno_dir
+    build-commands:
+      # Prepare dependencies
+      #
+      # @jsquash/png 3.0.1
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@jsquash/png
+      - tar xf png-3.0.1.tgz
+      - mv package $DENO_DIR/npm/registry.npmjs.org/@jsquash/png/3.0.1
+      - mv ./png-registry.json $DENO_DIR/npm/registry.npmjs.org/@jsquash/png/registry.json
+      #
+      # @napi-rs/cli 2.18.4
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@napi-rs/cli
+      - tar xf cli-2.18.4.tgz
+      - mv package $DENO_DIR/npm/registry.npmjs.org/@napi-rs/cli/2.18.4/
+      - mv ./cli-registry.json $DENO_DIR/npm/registry.npmjs.org/@napi-rs/cli/registry.json
+      #
+      # slint-ui
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/slint-ui
+      - tar xf slint-ui-1.9.2.tgz
+      - mv package $DENO_DIR/npm/registry.npmjs.org/slint-ui/1.9.2
+      - mv ./slint-ui-registry.json $DENO_DIR/npm/registry.npmjs.org/slint-ui/registry.json
+      #
+      # @types/node 22.5.4
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@types/node
+      - tar xf node-22.5.4.tgz
+      - mv node $DENO_DIR/npm/registry.npmjs.org/@types/node/22.5.4
+      - mv ./types-node-registry.json $DENO_DIR/npm/registry.npmjs.org/@types/node/registry.json
+      #
+      # @slint-ui/slint-ui-binary-linux-x64-gnu
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-x64-gnu
+      - mv ./slint-ui-binary-linux-x64-gnu-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-x64-gnu/registry.json
+      #
+      # @slint-ui/slint-ui-binary-linux-x64-gnu
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu
+      - mv ./slint-ui-binary-linux-arm64-gnu-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu/registry.json
+      #
+      # Install the native slint library
+      - |
+        if [ "$(uname -m)" = "aarch64" ]; then
+          ARCH=arm64
+        elif [ "$(uname -m)" = "x86_64" ]; then
+          ARCH=x64
+        fi
+        tar xf slint-ui-binary-linux-${ARCH}-gnu-1.9.2.tgz
+        mv package $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-${ARCH}-gnu/1.9.2
+      #
+      # These next one are not needed we just install its meta file
+      # undici-types 6.19.8
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/undici-types/6.19.8
+      - mv ./undici-types-registry.json $DENO_DIR/npm/registry.npmjs.org/undici-types/registry.json
+      # @slint-ui/slint-ui-binary-darwin-arm64
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-arm64
+      - mv ./slint-ui-binary-darwin-arm64-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-arm64/registry.json
+      # @slint-ui/slint-ui-binary-darwin-x64
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-x64
+      - mv ./slint-ui-binary-darwin-x64-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-x64/registry.json
+      # @slint-ui/slint-ui-binary-win32-ia32-msvc
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-ia32-msvc
+      - mv ./slint-ui-binary-win32-ia32-msvc-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-ia32-msvc/registry.json
+      # @slint-ui/slint-ui-binary-win32-x64-msvc
+      - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-x64-msvc
+      - mv ./slint-ui-binary-win32-x64-msvc-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-x64-msvc/registry.json
+
+      # Create directory for the application
+      - mkdir -p /app/bin/virtaudio_dir
+      # Copy source files
+      - cp -r src/* /app/bin/virtaudio_dir/
+
+      # Vendor dependencies and fixup cache
+      - ./deno compile --cached-only /app/bin/virtaudio_dir/gui.ts &>/dev/null || true
+      - cp ./setup-cache.bin /app/bin/virtaudio_dir/node_modules/.deno/.setup-cache.bin
+
+      # Create wrapper script
+      - install -D virtaudio.sh /app/bin/virtaudio
+      - install -D ./deno /app/bin/deno
+
+    sources:
+      # app
+      - type: archive
+        url: https://github.com/sigmaSd/virtaudio/archive/refs/heads/master.tar.gz
+        sha256: 6730048f9c5d150d55754e54ca130d06d7663f63d4cf0743b1a8950073bac33e
+
+      # deno
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v2.1.7/deno-x86_64-unknown-linux-gnu.zip
+        sha256: 8ea47ace85a2daadb60165d2aa519e11aef023d74441a24c4dc1d106dffdd19b
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v2.1.7/deno-aarch64-unknown-linux-gnu.zip
+        sha256: fb37f230b55898660807247ea28a37afead40bc3713e2ee022a5c1e9476ac9aa
+        only-arches:
+          - aarch64
+
+      - type: file
+        url: https://registry.npmjs.org/@napi-rs/cli/-/cli-2.18.4.tgz
+        sha256: 9dad5aa440d89b197e88bec6c32f552bc99eaee3117bf263c3c57bbfe8b3c5fa
+      - type: file
+        url: https://registry.npmjs.org/@napi-rs/cli
+        dest-filename: cli-registry.json
+        sha256: 3d3873dc474734b62d8d95b3a06e1a2fa351952ce4e304336ec4ffca682c9a04
+
+      - type: file
+        url: https://registry.npmjs.org/@jsquash/png/-/png-3.0.1.tgz
+        sha256: 7529b1f4c0e78c4acad1a54eed18633a1b6f5188f46e8e37389b84acf7c31c1d
+      - type: file
+        url: https://registry.npmjs.org/@jsquash/png
+        dest-filename: png-registry.json
+        sha256: e20d2a70bdc312a40f28e6d2517449c835eede3fe733713390c51d825f8a399f
+
+      - type: file
+        url: https://registry.npmjs.org/slint-ui/-/slint-ui-1.9.2.tgz
+        sha256: ec15303c199de0394bc6148eeb2deefdb9eb07fea6854dd517df955136f9ccbe
+      - type: file
+        url: https://registry.npmjs.org/slint-ui
+        dest-filename: slint-ui-registry.json
+        sha256: 17467adb4fc05aa02b499a4fea75916981cae6ebffcf6d860f09b9038a1cbefc
+
+      - type: file
+        url: https://registry.npmjs.org/@types/node/-/node-22.5.4.tgz
+        sha256: f807339f94bd29b5776191dc24807b3a7ab2266b979951a10569b45a44d49235
+      - type: file
+        url: https://registry.npmjs.org/@types/node
+        dest-filename: types-node-registry.json
+        sha256: cc69a327cd7f6f7782709c2ecbf45029ca2fbf938cb2588e0a25ba73e9c0d63b
+
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-linux-x64-gnu/-/slint-ui-binary-linux-x64-gnu-1.9.2.tgz
+        sha256: f46bbb8cb30473bd3fb02f26937c14096c4d39fa694a9fc77d4943345a1cb950
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-linux-x64-gnu
+        dest-filename: slint-ui-binary-linux-x64-gnu-registry.json
+        sha256: 3adc779af6eb13485566689b8e1c49e5e5ee227cd1b5e7031968b324b3ba230a
+
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu/-/slint-ui-binary-linux-arm64-gnu-1.9.2.tgz
+        sha256: c6851ac65c1fb930d8347d838f710075c2415fa89a1518d924830efaa5bd0cf9
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu
+        dest-filename: slint-ui-binary-linux-arm64-gnu-registry.json
+        sha256: 21e9e3a80cfb438c58dae140c0707c06ee3f70b70f3d1c49a45e27dddd812cea
+
+      - type: script
+        dest-filename: virtaudio.sh
+        commands:
+          - DENO_DIR=/app/deno_dir exec deno run --quiet --cached-only --allow-all /app/bin/virtaudio_dir/gui.ts
+
+      - type: file
+        path: ./setup-cache.bin
+
+      # Not really needed, we just install the meta file
+      - type: file
+        url: https://registry.npmjs.org/undici-types
+        dest-filename: undici-types-registry.json
+        sha256: 879d9ce49c40e511b23f488dcc12608cc1dc477b14afae1c8f3157278436d401
+
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-arm64
+        dest-filename: slint-ui-binary-darwin-arm64-registry.json
+        sha256: b1d2bb9cf931cb3415e91f5ea99fac592af04302528a16ae04d085ab1e39f573
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-darwin-x64
+        dest-filename: slint-ui-binary-darwin-x64-registry.json
+        sha256: 60cc5d759880fc83715252dfc728043702693226425e93ac99baa81244f0c457
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-win32-ia32-msvc
+        dest-filename: slint-ui-binary-win32-ia32-msvc-registry.json
+        sha256: 89bbf2b8f2a09ef8420ce024b7f1e390d166736ed00779fe49c6a259752dba33
+      - type: file
+        url: https://registry.npmjs.org/@slint-ui/slint-ui-binary-win32-x64-msvc
+        dest-filename: slint-ui-binary-win32-x64-msvc-registry.json
+        sha256: 4f92c2559e9483b1f11f8fb15595c5c9cec00981598831a960ee1a0a23dfcc77
