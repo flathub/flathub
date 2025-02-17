@@ -6,7 +6,7 @@ APP_IMAGE="/app/extra/lmstudio.appimage"
 chmod +x $APP_IMAGE
 
 # Extract image
-unappimage $APP_IMAGE
+unappimage $APP_IMAGE > /dev/null 2>&1
 
 # Install data
 DEST="/app/extra/bin/"
