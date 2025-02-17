@@ -122,7 +122,7 @@ modules:
       - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu
       - mv ./slint-ui-binary-linux-arm64-gnu-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-arm64-gnu/registry.json
       #
-      # Install the native slint library
+      # Prepare the native slint library location
       - |
         if [ "$(uname -m)" = "aarch64" ]; then
           ARCH=arm64
@@ -131,12 +131,18 @@ modules:
         fi
         tar xf slint-ui-binary-linux-${ARCH}-gnu-1.9.2.tgz
         mv package $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-${ARCH}-gnu/1.9.2
-      #
-      # These next one are not needed we just install its meta file
+        # We point the app to the library location at runtime, it can't be embedded in the compiled executable because deno won't be able to dlopen it (current limitation)
+        mkdir -p /app/lib
+        mv $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-linux-${ARCH}-gnu/1.9.2/index.linux-${ARCH}-gnu.node /app/lib/index.linux-gnu.node
       #
       # @types/node 22.5.4
       - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@types/node
+      - tar xf node-22.5.4.tgz
+      - mv node $DENO_DIR/npm/registry.npmjs.org/@types/node/22.5.4
       - mv ./types-node-registry.json $DENO_DIR/npm/registry.npmjs.org/@types/node/registry.json
+      #
+      # These next one are not needed we just install its meta file
+      #
       # undici-types 6.19.8
       - mkdir -p $DENO_DIR/npm/registry.npmjs.org/undici-types/6.19.8
       - mv ./undici-types-registry.json $DENO_DIR/npm/registry.npmjs.org/undici-types/registry.json
@@ -153,13 +159,13 @@ modules:
       - mkdir -p $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-x64-msvc
       - mv ./slint-ui-binary-win32-x64-msvc-registry.json $DENO_DIR/npm/registry.npmjs.org/@slint-ui/slint-ui-binary-win32-x64-msvc/registry.json
 
-      # Create directory for the application
-      - mkdir -p /app/bin/virtaudio_dir
-      # Copy source files
-      - cp -r src/* /app/bin/virtaudio_dir/
-
-      # Vendor dependencies and fixup cache
-      - ./deno compile --cached-only /app/bin/virtaudio_dir/gui.ts &>/dev/null || true
+      # Patches for deno compile to work
+      # allow runtime loading of native library htps://github.com/napi-rs/napi-rs/issues/2468
+      - patch $DENO_DIR/npm/registry.npmjs.org/slint-ui/1.9.2/rust-module.cjs < rust-module.cjs.patch
+      # https://github.com/denoland/deno/issues/28129
+      - patch $DENO_DIR/npm/registry.npmjs.org/@jsquash/png/3.0.1/codec/pkg/squoosh_png.js < squoosh_png.js.patch
+      # Compile App
+      - DENORT_BIN=$PWD/denort ./deno compile --output virtaudio-bin --cached-only --allow-all --include ./src/gui.slint --include ./src/client.html ./src/gui.ts
 
       # Install metadata
       - install -D distro/io.github.sigmasd.VirtAudio.desktop -t /app/share/applications/
@@ -168,13 +174,16 @@ modules:
 
       # Create wrapper script
       - install -D virtaudio.sh /app/bin/virtaudio
-      - install -D ./deno /app/bin/deno
+      - install -D ./virtaudio-bin /app/bin/virtaudio-bin
+    cleanup:
+      - /app/deno_dir
 
     sources:
       # app
       - type: archive
-        url: https://github.com/sigmaSd/virtaudio/archive/refs/tags/0.0.9.tar.gz
-        sha256: 9830afa9750bf02a5e984bdd9133b5d43fe905d7aa6130cd91843722b51650c6
+        # url: https://github.com/sigmaSd/virtaudio/archive/refs/heads/master.tar.gz
+        url: https://github.com/sigmaSd/virtaudio/archive/refs/tags/0.0.10.tar.gz
+        sha256: 5e5c4d9484470e7e412e497be9ade4ae6a8c509be1690e366c96c9169d01ddab
 
       # deno
       - type: archive
@@ -183,8 +192,18 @@ modules:
         only-arches:
           - x86_64
       - type: archive
+        url: https://github.com/denoland/deno/releases/download/v2.1.7/denort-x86_64-unknown-linux-gnu.zip
+        sha256: f00adc493667d5e414165d102d537023109dbd35d62b254566caa1485e0d2bd0
+        only-arches:
+          - x86_64
+      - type: archive
         url: https://github.com/denoland/deno/releases/download/v2.1.7/deno-aarch64-unknown-linux-gnu.zip
         sha256: fb37f230b55898660807247ea28a37afead40bc3713e2ee022a5c1e9476ac9aa
+        only-arches:
+          - aarch64
+      - type: archive
+        url: https://github.com/denoland/deno/releases/download/v2.1.7/denort-aarch64-unknown-linux-gnu.zip
+        sha256: 0773c54ab7a76658a6d32067cec41d87f2845f1eaca1a057a35ad2590028e8e9
         only-arches:
           - aarch64
 
@@ -235,13 +254,22 @@ modules:
       - type: script
         dest-filename: virtaudio.sh
         commands:
-          - DENO_DIR=/app/deno_dir exec deno run --quiet --cached-only --allow-all /app/bin/virtaudio_dir/gui.ts
+          - NAPI_RS_NATIVE_LIBRARY_PATH=/app/lib/index.linux-gnu.node exec virtaudio-bin
 
-      # Not really needed, we just install the meta file
+      - type: file
+        path: ./rust-module.cjs.patch
+      - type: file
+        path: ./squoosh_png.js.patch
+
+      - type: file
+        url: https://registry.npmjs.org/@types/node/-/node-22.5.4.tgz
+        sha256: f807339f94bd29b5776191dc24807b3a7ab2266b979951a10569b45a44d49235
       - type: file
         url: https://registry.npmjs.org/@types/node
         dest-filename: types-node-registry.json
         sha256: cc69a327cd7f6f7782709c2ecbf45029ca2fbf938cb2588e0a25ba73e9c0d63b
+
+      # Not really needed, we just install the meta file
       - type: file
         url: https://registry.npmjs.org/undici-types
         dest-filename: undici-types-registry.json
