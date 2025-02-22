@@ -1,17 +1,23 @@
 # Rimsort Flatpak
 
 ## To install
-flatpak run org.flatpak.Builder --sandbox --user --force-clean --install --install-deps-from=flathub  --repo=repo builddir org.RimSort.RimSort.yaml
+flatpak run org.flatpak.Builder --sandbox --user --force-clean --install --install-deps-from=flathub  --repo=repo builddir io.github.rimsort.yaml
 
 ## To run
-flatpak run org.RimSort.RimSort
+flatpak run io.github.rimsort
 
 ## To debug
 
-flatpak --command=bash run org.RimSort.RimSort
+flatpak --command=bash run io.github.rimsort
 
-flatpak run --command=sh --devel org.RimSort.RimSort
+flatpak run --command=sh --devel io.github.rimsort
 
+
+## To make a bundle
+
+flatpak build-bundle repo hello.flatpak io.github.rimsort --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+
+flatpak build-bundle repo/ RimSortflatpak io.github.rimsort
 
 
 # To fix
