@@ -1,0 +1,106 @@
+id: io.github.Faithlife_Community.OuDedetai
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '24.08'
+sdk: org.freedesktop.Sdk
+command: entrypoint.sh
+
+base: org.winehq.Wine
+base-version: &app-version 'stable-24.08'
+inherit-extensions:
+- org.freedesktop.Platform.Compat.i386
+- org.freedesktop.Platform.Compat.i386.Debug
+- org.freedesktop.Platform.GL32
+- org.freedesktop.Platform.GL32.Debug
+- org.freedesktop.Platform.VAAPI.Intel.i386
+- org.freedesktop.Platform.ffmpeg-full
+- org.freedesktop.Platform.ffmpeg_full.i386
+- org.winehq.Wine.gecko
+- org.winehq.Wine.mono
+- org.winehq.Wine.DLLs
+
+appstream-compose: false
+
+modules:
+  # Create 32-bit directories so the extentions can mount at runtime
+  # https://github.com/fastrizwaan/flatpak-wine/blob/95aec77b49e545319e20c4b7936835002b422b3c/flatpak-winezgui/io.github.fastrizwaan.WineZGUI.yml#L61C2-L77C28
+  - name: i386-dirs
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/dri/intel-vaapi-driver
+      - mkdir -p /app/lib/i386-linux-gnu/dri/intel-vaapi-driver
+      - mkdir -p /app/lib/udev/rules.d
+      - mkdir -p /app/extensions/Plugins
+      - mkdir -p /app/lib64
+      - mkdir -p /app/lib32
+      - mkdir -p /app/lib/ffmpeg
+      - mkdir -p /app/lib32/ffmpeg
+      - mkdir -p /app/utils
+      - install -Dm644 ld.so.conf ${FLATPAK_DEST}/etc/ld.so.conf
+      - mkdir -p ${FLATPAK_DEST}/{,lib/debug/}lib/i386-linux-gnu/GL
+      - mkdir -p ${FLATPAK_DEST}/dlls
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+  - name: oudedetai
+    buildsystem: simple
+    build-commands:
+      # Our installer expects sudo to be installed. Make it happy.
+      - install -Dm755 sudo /app/bin/sudo
+      - install -Dm755 sudo /app/bin/pkexec
+      # Add entrypoints
+      - install -Dm755 entrypoint.sh /app/bin/entrypoint.sh
+      - install -Dm755 oudedetai /app/bin/oudedetai
+      # Copy metadata information
+      - install -Dm644 appdata.xml ${FLATPAK_DEST}/share/appdata/${FLATPAK_ID}.appdata.xml
+      - install -Dm644 oudedetai.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 oudedetai.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/oudedetai.png
+      - install -Dm644 logos.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/logos.png
+      - install -Dm644 verbum.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/verbum.png
+      - install -Dm644 oudedetai.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: script
+        dest-filename: sudo
+        commands: []
+      - type: script
+        dest-filename: entrypoint.sh
+        commands:
+          - export WINE_EXE=/app/bin/wine64
+          - export DIALOG=tk
+          - export INSTALLDIR=$XDG_DATA_HOME/Faithlife-Community/oudedetai
+          - /app/bin/oudedetai "$@"
+      - type: file
+        url: https://github.com/FaithLife-Community/LogosLinuxInstaller/releases/download/v4.0.0-beta.8/oudedetai
+        sha256: b07b6d209bdc5271b979ab10b668a433c77f87b63a37918bd5ac519fef9d4aab
+        dest-filename: oudedetai
+      - type: file
+        path: ./icons/oudedetai.png
+        dest-filename: oudedetai.png
+      - type: file
+        path: ./icons/logos.png
+        dest-filename: logos.png
+      - type: file
+        path: ./icons/verbum.png
+        dest-filename: verbum.png
+      - type: file
+        dest-filename: oudedetai.desktop
+        path: ./oudedetai.desktop
+      - type: file
+        dest-filename: appdata.xml
+        path: ./appdata.xml
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --allow=multiarch
+  - --allow=devel
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib32/gstreamer-1.0:/app/lib/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
