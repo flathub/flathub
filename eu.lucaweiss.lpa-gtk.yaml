@@ -1,0 +1,82 @@
+app-id: eu.lucaweiss.lpa-gtk
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: lpa-gtk
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pcsc
+  - --share=ipc
+  - --device=dri
+cleanup: []
+modules:
+  - lib/blueprint-compiler.yaml
+  - name: pcsclite # Dependency of lpac
+    config-opts:
+      - --disable-libsystemd
+      - --disable-polkit
+      - --disable-documentation
+    sources:
+      - type: archive
+        url: https://github.com/LudovicRousseau/PCSC/archive/refs/tags/2.3.1.tar.gz
+        sha256: 7fcb59f66a323f63cf1ab492579a57d899806835c52ba377af9ac57df68bf39b
+        x-checker-data:
+          type: anitya
+          project-id: 2611
+          stable-only: true
+          url-template: https://github.com/LudovicRousseau/PCSC/archive/refs/tags/$version.tar.gz
+  - name: lpac # Dependency of lpa-gtk
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/estkme-group/lpac/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 3d87080a625b10430eebb82f89e2d24e16a84a8435a9c40b3718fd88c82028ba
+        x-checker-data:
+          type: anitya
+          project-id: 371628
+          stable-only: true
+          url-template: https://github.com/estkme-group/lpac/archive/refs/tags/v$version.tar.gz
+  - name: lpac-logo # As long as lpa-gtk doesn't have it's own
+    sources:
+      - type: file
+        url: https://avatars.githubusercontent.com/u/151148370
+        sha256: e03fa7c49b70397458c0759c78e50db7a755af27c618683b444d589b7000a4a3
+        dest-filename: eSTK_me.jpeg
+    buildsystem: simple
+    build-commands:
+      - for s in {32,64,128,256,512}; do ffmpeg -i eSTK_me.jpeg
+        -s "${s}x${s}" -update true "eSTK_me_${s}x${s}.png";
+        install -Dm644 "eSTK_me_${s}x${s}.png" "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png";
+        done;
+  - name: lpa-gtk
+    sources:
+      - type: git
+        url: https://codeberg.org/lucaweiss/lpa-gtk
+        branch: main
+        commit: a3df7a60ecf16d651996b46ed9eba445a58ebf85
+#     - type: archive
+#       url: https://codeberg.org/lucaweiss/lpa-gtk/archive/0.1.tar.gz
+#       sha256: c55adf95d3029a90a0a62fcce7039d64399cf762870bb44cb2b07122dc61aad1
+#       x-checker-data:
+#         type: json
+#         # Once there are releases:
+#         # url: https://codeberg.org/api/v1/repos/lucaweiss/lpa-gtk/releases/latest
+#         # version-query: .tag_name
+#         # As long as there are no releases:
+#         url: https://codeberg.org/api/v1/repos/lucaweiss/lpa-gtk/tags/
+#         version-query: '.[0].name'
+      - type: patch
+        path: ./desktopfile-icon.patch
+      - type: patch
+        path: ./metainfo-compulsory-release.patch
+      - type: patch
+        path: ./metainfo-screenshot.patch
+      - type: patch
+        path: ./metainfo-rename.patch
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/glib-2.0/schemas ${FLATPAK_DEST}/share/icons/hicolor
+      - meson setup builddir -Dprefix=${FLATPAK_DEST}
+      - meson compile -C builddir
+      - meson install -C builddir
