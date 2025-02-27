@@ -1,0 +1,70 @@
+app-id: com.automattic.beeper
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+#sdk-extensions:
+#  - org.freedesktop.Sdk.Extension.node20
+command: start-beeper
+separate-locales: false
+rename-icon: beepertexts
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-pictures:ro
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=com.canonical.Unity
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=FLATPAK_HOST=1
+  - --env=GTK_USE_PORTAL=1
+  - --env=ELECTRON_TRASH=gio
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+modules:
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: beeper
+    buildsystem: simple
+    cleanup:
+      - squashfs-root
+    sources:
+      - type: file
+        url: https://beeper-desktop.download.beeper.com/builds/Beeper-4.0.478.AppImage
+        sha256: 49a60e62b4afce1602f2e3cf11b04c4d3663381483c60e22537a807f965a413b
+        dest-filename: beeper.AppImage
+
+      - type: script
+        dest-filename: start-beeper.sh
+        commands:
+          - exec zypak-wrapper /app/beeper/beepertexts -no-sandbox "$@"
+
+      - type: file
+        path: com.automattic.beeper.metainfo.xml
+
+    build-commands:
+      - chmod +x beeper.AppImage
+      - ./beeper.AppImage --appimage-extract
+      - mkdir -p "${FLATPAK_DEST}/beeper"
+      - cp -r squashfs-root/* "${FLATPAK_DEST}/beeper"
+      - mv "${FLATPAK_DEST}/beeper/usr/share/icons" "${FLATPAK_DEST}/share"
+      - install -Dm644 "${FLATPAK_DEST}/beeper/beepertexts.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=Exec --set-value="start-beeper" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 com.automattic.beeper.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm 755 start-beeper.sh "${FLATPAK_DEST}/bin/start-beeper"
+      - rm -rf "${FLATPAK_DEST}/share/icons/hicolor/1024x1024/" # a 1024 is too large
