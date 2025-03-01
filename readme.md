@@ -46,3 +46,8 @@ ERROR: todds was not found. If you are running from source, please ensure you ha
 https://github.com/RimSort/RimSort/wiki/Development-Guide
 
 Please reach out to us for support at: https://github.com/oceancabbage/RimSort/issues
+
+
+themes/default-icons/RimSort_Icon_64x64.svg
+
+create a data folder and put desktop ?
