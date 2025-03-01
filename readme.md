@@ -51,3 +51,14 @@ Please reach out to us for support at: https://github.com/oceancabbage/RimSort/i
 themes/default-icons/RimSort_Icon_64x64.svg
 
 create a data folder and put desktop ?
+
+
+### Locally testing the x-checker-data
+
+Install flatpak-external-data-checker:
+
+`flatpak install --from https://dl.flathub.org/repo/appstream/org.flathub.flatpak-external-data-checker.flatpakref`
+
+Run flatpak-external-data-checker:
+
+`flatpak run org.flathub.flatpak-external-data-checker io.github.rimsort.RimSort.yaml --update`
