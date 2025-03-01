@@ -1,0 +1,82 @@
+app-id: io.github.Geocld.XStreamingDesktop
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --allow=bluetooth
+  - --device=all
+  - --filesystem=/run/udev:ro
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: XStreamingDesktop
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/XStreamingDesktop/flatpak-node/cache
+        npm_config_cache: /run/build/XStreamingDesktop/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        yarn_config_cache: /run/build/XStreamingDesktop/flatpak-node/yarn-mirror
+    build-commands:
+      - |
+        if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+          cp -a ../extralib/extralib -t /app/
+          gunzip /app/extralib/libLLVM-16.0.6.so.gz
+          cp -a ../extralib/reduceSoFiles.sh -t /app/extralib
+          pushd /app/extralib && ln -s libLLVM-16.0.6.so libLLVM-16.so && chmod +x reduceSoFiles.sh && ./reduceSoFiles.sh && popd
+        else
+          echo "Skipping x86_64 specific libraries for $FLATPAK_ARCH architecture"
+        fi
+      - yarn --offline
+      - yarn run flatpak-build --offline -- --linux
+      # Add icon, metadata and desktop file
+      - install -Dm 644 flatpak/io.github.Geocld.XStreamingDesktop.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm 644 flatpak/io.github.Geocld.XStreamingDesktop.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 flatpak/io.github.Geocld.XStreamingDesktop.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+    subdir: main
+    sources:
+      # Build from source
+      - type: git
+        url: https://github.com/Geocld/XStreaming-desktop
+        tag: v1.4.0
+        commit: 4ea9aa6aecc4ba44426d8e54b5ce988ab0d39027
+        dest: main
+      - type: git
+        url: https://github.com/Originalimoc/amd-patched-mesa
+        dest: extralib
+        commit: "a70058baf35f1823613f2577c30a477e93cd106a"
+        only-arches:
+          - x86_64
+      - yarn-sources.json
+      - type: inline
+        dest-filename: .yarnrc
+        contents: |
+          yarn-offline-mirror "/run/build/XStreamingDesktop/flatpak-node/yarn-mirror"
+          yarn-offline-mirror-pruning true
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - export LIBGL_DRIVERS_PATH=/app/extralib/dri:/usr/lib/$FLATPAK_ARCH-linux-gnu/dri:/usr/lib/$FLATPAK_ARCH-linux-gnu/GL/default/lib/dri/:${LIBGL_DRIVERS_PATH}
+          - export LIBVA_DRIVERS_PATH=/app/extralib/dri:/usr/lib/$FLATPAK_ARCH-linux-gnu/dri:/usr/lib/$FLATPAK_ARCH-linux-gnu/GL/default/lib/dri/:${LIBVA_DRIVERS_PATH}
+          - export VK_ICD_FILENAMES=/app/extralib/icd.d/intel_icd.$FLATPAK_ARCH.json:/app/extralib/icd.d/radeon_icd.$FLATPAK_ARCH.json:/app/extralib/icd.d/virtio_icd.$FLATPAK_ARCH.json:/app/extralib/icd.d/intel_hasvk_icd.$FLATPAK_ARCH.json:/app/extralib/icd.d/lvp_icd.$FLATPAK_ARCH.json:${VK_ICD_FILENAMES}
+          - export LD_LIBRARY_PATH=/app/extralib:${LD_LIBRARY_PATH}
+          - echo runtime LD_LIBRARY_PATH = $LD_LIBRARY_PATH
+          - echo runtime ARCH = $(uname -m)-$(uname -s | tr '[:upper:]' '[:lower:]')
+          - zypak-wrapper.sh /app/main/XStreamingDesktop "$@"
