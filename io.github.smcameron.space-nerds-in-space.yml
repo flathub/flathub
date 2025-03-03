@@ -10,15 +10,45 @@ finish-args:
   - --device=dri
   - --share=network
   - --socket=pulseaudio
+
+cleanup:
+  - '/patches'
  
 modules:
 
+  # author prefers not to host asset binaries on git. So I host them. 
+  #This module removes the need to download many assets on the first run. 
+  - name: assets_not_hosted 
+    buildsystem: simple
+    build-commands:
+      - cp -R share ${FLATPAK_DEST}/share
+      - cp -R patches ${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: https://github.com/vpelss/snis_flatpak.git
+        commit: aa8785b1165aa6feb164b140c235d9ba1832278f
+
   - name: portaudio
     buildsystem: cmake-ninja
+    build-commands: 
     sources:
       - type: git
         url: https://github.com/PortAudio/portaudio.git
         commit: 242a0241f69bd359b692004f3974ce39ec5137fd #Aug 11, 2021
+
+  - name: nanotts_pico2wav
+    buildsystem: simple
+    build-commands: 
+      - patch svoxpico/picoapi.c  -i ${FLATPAK_DEST}/patches/picoapi_patch.txt 
+      - mkdir -p ${FLATPAK_DEST}/bin/lang
+      - cd svoxpico; ./autogen.sh && ./configure --host `uname -m` && make -j 
+      - make
+      -  install -Dm755 nanotts ${FLATPAK_DEST}/bin/nanotts
+      - cp -R lang ${FLATPAK_DEST}/bin
+    sources:
+      - type: git
+        url: https://github.com/gmn/nanotts.git
+        commit: d8b91f3d9d524c30f6fe8098ea7a0a638c889cf9
 
   - shared-modules/lua5.3/lua-5.3.5.json
   - shared-modules/glu/glu-9.json
@@ -27,26 +57,17 @@ modules:
   - name: snis
     buildsystem: simple
     build-commands: 
-      - make install PREFIX=${FLATPAK_DEST} WITHVOICECHAT=yes
+      - make install PREFIX=${FLATPAK_DEST} WITHVOICECHAT=yes 
+      - install -Dm0644 share/applications/${FLATPAK_ID}.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - install -Dm0644 share/metainfo/${FLATPAK_ID}.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm0644 share/applications/${FLATPAK_ID}.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
       - install -Dm755 snis.sh ${FLATPAK_DEST}/bin/snis.sh
-      - mv ${FLATPAK_DEST}/bin/snis_launcher ${FLATPAK_DEST}/snis_launcher
     sources:
       - type: git
         url: https://github.com/smcameron/space-nerds-in-space.git
-        commit: e7b0ceb5cde8d420420a08b90bca03f6e9c96410
+        commit: 23cea40e9bb77932e0f66ed2fbf3f7b9a6cb30f1
       - type: script
         dest-filename: snis.sh
         commands:
-          - cd /app 
-          - exec ./snis_launcher
-
-  - name: goodies
-    buildsystem: simple
-    build-commands:
-      - install -Dm0644 logo.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
-      - install -Dm0644 ${FLATPAK_ID}.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
-      - install -Dm0644 ${FLATPAK_ID}.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
-    sources:
-      - type: git
-        url: https://github.com/vpelss/snis_flatpak.git
-        commit: ba46d58d5d6417c2bf627d45436290dfb46da641
+          - cd /app/bin
+          - exec ./snis_client --fullscreen --auto-download-assets
