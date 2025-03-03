@@ -1,4 +1,7 @@
 build:
+	flatpak-builder --user --install build-dir app.grayjay.Desktop.yaml
+
+clean-build:
 	flatpak-builder --user --install --force-clean build-dir app.grayjay.Desktop.yaml
 
 run:
