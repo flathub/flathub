@@ -25,6 +25,7 @@ patch:
 
 
 	rm -f "Grayjay.Desktop-linux-x64.zip"
+	rm -rf "Grayjay.Desktop-linux-x64-v5/"
 
 unpatch:
 	rm -r ~/.var/app/app.grayjay.Desktop/data/Grayjay/wwwroot/
