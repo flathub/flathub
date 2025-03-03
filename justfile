@@ -6,3 +6,7 @@ run:
 
 debugshell:
 	flatpak-builder --run ./build-dir ./app.grayjay.Desktop.yaml sh
+
+
+bundle:
+	flatpak build-bundle ~/.local/share/flatpak/repo GrayjayDesktop.flatpak app.grayjay.Desktop
