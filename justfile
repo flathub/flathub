@@ -9,9 +9,3 @@ debugshell:
 
 bundle:
 	flatpak build-bundle ~/.local/share/flatpak/repo GrayjayDesktop.flatpak app.grayjay.Desktop
-
-patch:
-	./patch.sh
-
-unpatch:
-	./unpatch.sh
