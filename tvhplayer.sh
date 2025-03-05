@@ -22,16 +22,6 @@ fi
 # Make sure Qt can find its plugins
 export QT_PLUGIN_PATH=/app/lib/qt5/plugins:/app/lib/plugins:/usr/lib/qt5/plugins
 
-# Try to detect the display environment
-if [ -z "$DISPLAY" ] && [ -n "$WAYLAND_DISPLAY" ]; then
-  # We're on Wayland
-  export QT_QPA_PLATFORM=wayland
-  echo "Detected Wayland environment, using wayland platform"
-else
-  # Default to X11
-  export QT_QPA_PLATFORM=xcb
-  echo "Using X11 platform"
-fi
 
 # Debug info
 echo "Display: $DISPLAY"
