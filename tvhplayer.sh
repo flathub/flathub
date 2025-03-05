@@ -1,16 +1,16 @@
 #!/bin/bash
 # Check for FFmpeg in Flatpak extension first
-if [ -d "/app/lib/ffmpeg" ]; then
-  export PATH="/app/lib/ffmpeg:$PATH"
-  export LD_LIBRARY_PATH="/app/lib/ffmpeg:$LD_LIBRARY_PATH"
-  echo "Using FFmpeg from Flatpak extension"
-fi
+# if [ -d "/app/lib/ffmpeg" ]; then
+#   export PATH="/app/lib/ffmpeg:$PATH"
+#   export LD_LIBRARY_PATH="/app/lib/ffmpeg:$LD_LIBRARY_PATH"
+#   echo "Using FFmpeg from Flatpak extension"
+# fi
 
 
 
 
 # Make sure Qt can find its plugins
-export QT_PLUGIN_PATH=/app/lib/qt5/plugins:/app/lib/plugins:/usr/lib/qt5/plugins
+# export QT_PLUGIN_PATH=/app/lib/qt5/plugins:/app/lib/plugins:/usr/lib/qt5/plugins
 
 
 # Debug info
