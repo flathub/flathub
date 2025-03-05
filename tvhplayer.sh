@@ -25,12 +25,6 @@ else
   echo "Warning: FFmpeg not found. Local recording functionality will be unavailable."
 fi
 
-# Set XDG_RUNTIME_DIR if not set
-if [ -z "$XDG_RUNTIME_DIR" ]; then
-  export XDG_RUNTIME_DIR=/tmp/runtime-$USER
-  mkdir -p $XDG_RUNTIME_DIR
-  chmod 700 $XDG_RUNTIME_DIR
-fi
 
 # Make sure Qt can find its plugins
 export QT_PLUGIN_PATH=/app/lib/qt5/plugins:/app/lib/plugins:/usr/lib/qt5/plugins
