@@ -17,13 +17,6 @@ else
   exit 1
 fi
 
-# Print FFmpeg version for debugging
-if command -v ffmpeg >/dev/null 2>&1; then
-  echo "Using FFmpeg: $(which ffmpeg)"
-  ffmpeg -version | head -n 1
-else
-  echo "Warning: FFmpeg not found. Local recording functionality will be unavailable."
-fi
 
 
 # Make sure Qt can find its plugins
