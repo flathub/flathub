@@ -6,16 +6,6 @@ if [ -d "/app/lib/ffmpeg" ]; then
   echo "Using FFmpeg from Flatpak extension"
 fi
 
-# Check for VLC in Flatpak extension
-if [ -d "/app/lib/vlc" ]; then
-  export VLC_PLUGIN_PATH="/app/lib/vlc/plugins"
-  export LD_LIBRARY_PATH="/app/lib/vlc:/app/lib/vlc/plugins:$LD_LIBRARY_PATH"
-  echo "Using VLC from Flatpak extension"
-else
-  echo "Warning: VLC extension not found. Please install the VLC Flatpak extension."
-  echo "Run: flatpak install flathub org.videolan.VLC"
-  exit 1
-fi
 
 
 
