@@ -1,0 +1,114 @@
+app-id: "in.varb.Ausweiskopie"
+runtime: "org.freedesktop.Platform"
+runtime-version: "24.08"
+sdk: "org.freedesktop.Sdk"
+command: ausweiskopie
+finish-args:
+  - --socket=x11
+  - --share=ipc
+modules:
+  # Step 1.1: Requirements for Tcl/Tk with proper font rendering.
+  # Freetype renders font, and fontconfig finds them.
+  - name: "freetype"
+    sources:
+      - type: archive
+        url: https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz
+        sha256: 0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289
+        x-checker-data:
+          type: html
+          url: "https://download.savannah.gnu.org/releases/freetype/"
+          version-pattern: "freetype-([\\d\\.]+\\d).tar.xz"
+          url-template: "https://download.savannah.gnu.org/releases/freetype/freetype-$version.tar.xz"
+
+  - name: "fontconfig"
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.16.0.tar.xz
+        sha256: 6a33dc555cc9ba8b10caf7695878ef134eeb36d0af366041f639b1da9b6ed220
+        x-checker-data:
+          type: html
+          url: "https://www.freedesktop.org/software/fontconfig/release/"
+          version-pattern: "fontconfig-([\\d\\.]+\\d).tar.xz"
+          url-template: "https://www.freedesktop.org/software/fontconfig/release/fontconfig-$version.tar.xz"
+  # Step 1.2: Install a current version of Tcl/Tk
+  - name: "tcl"
+    sources:
+      - type: archive
+        url: http://prdownloads.sourceforge.net/tcl/tcl8.6.16-src.tar.gz
+        sha256: 91cb8fa61771c63c262efb553059b7c7ad6757afa5857af6265e4b0bdc2a14a5
+        x-checker-data:
+          type: html
+          url: "https://sourceforge.net/projects/tcl/rss"
+          version-pattern: "https://sourceforge.net/.+/tcl(8\\.6\\.[\\d\\.]*\\d)-src.tar.gz/download"
+          url-template: "http://prdownloads.sourceforge.net/tcl/tcl$version-src.tar.gz"
+    subdir: unix
+    post-install:
+      - "chmod +w ${FLATPAK_DEST}/lib/libtcl8.6.so"
+  - name: "tk"
+    sources:
+      - type: archive
+        url: http://prdownloads.sourceforge.net/tcl/tk8.6.16-src.tar.gz
+        sha256: be9f94d3575d4b3099d84bc3c10de8994df2d7aa405208173c709cc404a7e5fe
+        x-checker-data:
+          type: html
+          url: "https://sourceforge.net/projects/tcl/rss"
+          version-pattern: "https://sourceforge.net/.+/tk(8\\.6\\.[\\d\\.]*\\d)-src.tar.gz/download"
+          url-template: "http://prdownloads.sourceforge.net/tcl/tk$version-src.tar.gz"
+    subdir: unix
+    post-install:
+      - "chmod +w ${FLATPAK_DEST}/lib/libtk8.6.so"
+
+  # Step 2: Get a new python installation with our Tk version
+  - name: "python"
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.13.2/Python-3.13.2.tar.xz
+        sha256: d984bcc57cd67caab26f7def42e523b1c015bbc5dc07836cf4f0b63fa159eb56
+        x-checker-data:
+          type: html
+          url: https://www.python.org/ftp/python/
+          version-pattern: "<a href=\"(3\\.[\\d\\.]+\\d)/\">"
+          url-template: "https://www.python.org/ftp/python/$version/Python-$version.tar.xz"
+          versions:
+            "<": "3.14"
+
+  # Step 3.1: Install requirements for requirements...
+  - name: "dbus"
+    buildsystem: simple
+    build-commands:
+        - meson setup builddir --prefix=/app --libdir=/app/lib -Dsystemd_system_unitdir=/tmp -Dsystemd_user_unitdir=/tmp
+        - ninja -C builddir install
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
+        sha256: 0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2
+        x-checker-data:
+          type: html
+          url: "https://dbus.freedesktop.org/releases/dbus/"
+          version-pattern: "dbus-([\\d\\.]+\\d).tar.xz"
+          url-template: "https://dbus.freedesktop.org/releases/dbus/dbus-$version.tar.xz"
+  - name: "patchelf"
+    sources:
+      - type: archive
+        url: https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0.tar.gz
+        sha256: 64de10e4c6b8b8379db7e87f58030f336ea747c0515f381132e810dbf84a86e7
+
+  # Step 3.2: Install packages.
+  - "python3-build-requirements.json"  # meson, setuptools
+  - "python3-dbus-python.json"         # custom env variables
+  - "python3-requirements.json"        # actual installation
+
+  # Step 4: Install desktop integration packages.
+  - name: "metadata"
+    buildsystem: simple
+    build-commands:
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm 644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: file
+        path: in.varb.Ausweiskopie.desktop
+      - type: file
+        path: in.varb.Ausweiskopie.metainfo.xml
+      - type: file
+        path: in.varb.Ausweiskopie.svg
