@@ -1,10 +1,8 @@
-# Flatpak for [Ausweiskopie](https://github.com/varbin/ausweiskopie)
+# Flatpak for [Meine Ausweiskopie](https://github.com/varbin/ausweiskopie)
 
 This is the repository to build a flatpak for _Meine Ausweiskopie_, a tool to create redacted and watermarked copies of German identity documents (passport and identity cards).
 
-## Notes for maintainers
-
-### Build Process
+## Build Process
 
 The build instruction installs the following packages:
   - freetype (font/text rendering engine)
@@ -17,13 +15,12 @@ The build instruction installs the following packages:
 
 Idiosyncrasies:
  - A custom Tcl/Tk and therefore Python version are only used because the provided Tk/Tcl is build without proper font support.
- - Currently (2025-03-06) Tk/Tcl 9.0 is not installed, therefore Tcl/Tk 8.6 is used.
- - meson and setuptools must be manually added to the respective file, as flatpak-pip-generator will ignore them
- - python-dbus needs special care: It needs a dbus binary, meson, and environment variables to link to libm...
+ - meson and setuptools must be manually updated in the respective file, as flatpak-pip-generator will ignore them
+ - python-dbus needs to be manually updated, too: Besides that it needs a dbus binary, meson, it requires custom environment variables to link to libm...
 
-### Updating
+## Updating
 
-Most sources are to be compatible with
+Most sources are to be compatible with the [flatpak external data checker](https://github.com/flathub-infra/flatpak-external-data-checker).
 
 Rerun the flatpak-pip-generator on the requirements.txt:
 ```
