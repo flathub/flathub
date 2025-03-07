@@ -51,7 +51,7 @@ chmod u=rwx FUTO.Updater.Client
 chmod u=rwx ffmpeg
 
 cd ../
-mv publish "${destination}"
+mv publish/* "${destination}"
 
 cd "${OWD}"
 
