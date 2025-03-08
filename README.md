@@ -20,9 +20,6 @@ Idiosyncrasies:
 
 ## Updating
 
-Most sources are to be compatible with the [flatpak external data checker](https://github.com/flathub-infra/flatpak-external-data-checker).
-
-Rerun the flatpak-pip-generator on the requirements.txt:
-```
-flatpak-pip-generate -r requirements.txt
-```
+1. Most sources are to be compatible with the [flatpak external data checker](https://github.com/flathub-infra/flatpak-external-data-checker).
+2. Rerun the *flatpak-pip-generator* on the requirements.txt: `flatpak-pip-generate -r requirements.txt --ignore-pkg ausweiskopie`
+3. Update the tag for the metadata.
