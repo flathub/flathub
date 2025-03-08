@@ -5,6 +5,9 @@
 # - removing upload of artifacts to server
 # - removing cleanup of artifacts (flatpak builds run from a clean clone)
 
+# cause script to fail as soon as one command has a failing exit code,
+# rather than trying to continue. See: https://stackoverflow.com/a/1379904/
+set -e
 
 if [[ "$1" != "" ]]; then
    version="$1"
