@@ -20,10 +20,3 @@ To figure out why my version worked, I created a fresh venv and installed torch 
 https://pytorch.org/get-started/locally/: pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 Rather than using the index site myself. Pip grabbed a different file than the one on the index site, torchvision remained the
 same. The new file worked in the venv, so I incorporated that into the flatpak.
-
-# About DBus-python
-this package would be required to provide support for the --notify command line option, but in the gui we don't need to support that,
-and since it only causes strange problems, it shall be forcefully ignored.
-
-# About nvidia
-Simple lama inpainting introduces many optional nvidia dependencies. Be sure to nuke them from auto-generated pypi dependencies.
