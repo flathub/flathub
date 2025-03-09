@@ -18,3 +18,7 @@ prep-nuget:
 	DOTNET_CLI_TELEMETRY_OPTOUT=true DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true flatpak-builder --run build-dir ./app.grayjay.Desktop.yaml dotnet restore --packages ./packages /run/build/grayjay/Grayjay.Desktop.CEF/Grayjay.Desktop.CEF.csproj
 	flatpak-builder --run build-dir ./app.grayjay.Desktop.yaml python3 ./scripts/flatpak-dotnet-generator.py nuget-sources.json /run/build/grayjay/Grayjay.Desktop.CEF/Grayjay.Desktop.CEF.csproj
 	rm -rf ./packages
+
+lint:
+	flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest ./app.grayjay.Desktop.yaml
+	flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
