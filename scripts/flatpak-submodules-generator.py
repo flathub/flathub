@@ -58,7 +58,7 @@ def generate_flatpak_sources(submodules, output_file):
 
 
 def main():
-	repo_path = Path(input("Enter the path to the Git repository: ")).resolve()
+	repo_path = Path().resolve()
 	output_file = repo_path / "submodule-sources.json"
 
 	if not (repo_path / ".gitmodules").exists():
