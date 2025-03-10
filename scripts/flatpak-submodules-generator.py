@@ -3,7 +3,6 @@
 import os
 import json
 import subprocess
-import requests
 from pathlib import Path
 
 def get_git_submodules(repo_path):
@@ -57,27 +56,11 @@ def generate_flatpak_sources(submodules, output_file):
 		json.dump(sources, f, indent=4)
 	print(f"Flatpak sources JSON saved to {output_file}")
 
-def download_submodules_as_zip(submodules, output_dir):
-	"""Download submodules as zip archives."""
-	output_dir.mkdir(parents=True, exist_ok=True)
-	for submodule in submodules:
-		zip_url = f"{submodule['url']}/archive/{submodule['commit']}.zip"
-		zip_path = output_dir / f"{submodule['name']}.zip"
-		print(f"Downloading {zip_url}...")
-		response = requests.get(zip_url, stream=True)
-		if response.status_code == 200:
-			with open(zip_path, "wb") as f:
-				for chunk in response.iter_content(chunk_size=8192):
-					f.write(chunk)
-			print(f"Saved to {zip_path}")
-		else:
-			print(f"Failed to download {zip_url}")
 
 def main():
 	repo_path = Path(input("Enter the path to the Git repository: ")).resolve()
 	output_file = repo_path / "flatpak-sources.json"
-	zip_output_dir = repo_path / "submodules_zips"
-	
+
 	if not (repo_path / ".gitmodules").exists():
 		print("No .gitmodules file found.")
 		generate_flatpak_sources([], output_file)
@@ -85,9 +68,6 @@ def main():
 	
 	submodules = get_git_submodules(repo_path)
 	generate_flatpak_sources(submodules, output_file)
-	
-	if input("Download submodules as zip? (y/n): ").strip().lower() == "y":
-		download_submodules_as_zip(submodules, zip_output_dir)
 
 if __name__ == "__main__":
 	main()
