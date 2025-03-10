@@ -8,6 +8,9 @@ git clone https://github.com/MoralCode/flatpak-builder-tools --single-branch --b
 cd flatpak-builder-tools/node
 pip install .
 cd ../../
-rm -rf flatpak-builder-tools
 
 python3 -m flatpak_node_generator -o "$1" npm "$2"
+
+pip uninstall flatpak_node_generator -y
+
+rm -rf flatpak-builder-tools
