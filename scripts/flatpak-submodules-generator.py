@@ -69,32 +69,34 @@ def generate_flatpak_sources(submodules, output_file):
 		json.dump(sources, f, indent=4)
 	print(f"Flatpak sources JSON saved to {output_file}")
 
-def get_sha_for_submodule(submodule):
+def get_sha_for_submodule(submodule, progress=False):
 	zip_url = transform_url_for_zip_download(submodule["url"], submodule["commit"], submodule["name"])
 	print(f"Downloading and hashing {zip_url}...")
 	response = requests.get(zip_url, stream=True)
-	chunk_start_time = time.perf_counter()
-	total_length = int(response.headers.get('content-length'))
-	dl_total = 0
-	dl_chunk = 0
-	MEASUREMENT_INTERVAL_BYTES = 5 * 1024 * 1024 # 2 Mi bytes
-	MEGABYTE = 1024* 1024
+	if progress:
+		chunk_start_time = time.perf_counter()
+		total_length = int(response.headers.get('content-length'))
+		dl_total = 0
+		dl_chunk = 0
+		MEASUREMENT_INTERVAL_BYTES = 5 * 1024 * 1024 # 2 Mi bytes
+		MEGABYTE = 1024* 1024
 	sha256 = hashlib.sha256()
 	if response.status_code == 200:
 		# with open(zip_path, "wb") as f:
 		for chunk in response.iter_content(chunk_size=1024):
-			dl_chunk += len(chunk)
 			sha256.update(chunk)
-			if dl_chunk > MEASUREMENT_INTERVAL_BYTES:
-				chunk_elapsed = (time.perf_counter() - chunk_start_time)
-				
-				overall_progress = dl_total/total_length
-				# avg_speed = 
-				chunk_bytes_per_sec = dl_chunk/chunk_elapsed
-				print("\r {:03d} MiB/s ({:03.2%} complete)".format(int(chunk_bytes_per_sec/MEGABYTE), overall_progress), end="")
-				dl_total += dl_chunk
-				dl_chunk = 0
-				chunk_start_time = time.perf_counter()
+			if progress:
+				dl_chunk += len(chunk)
+				if dl_chunk > MEASUREMENT_INTERVAL_BYTES:
+					chunk_elapsed = (time.perf_counter() - chunk_start_time)
+					
+					overall_progress = dl_total/total_length
+					# avg_speed = 
+					chunk_bytes_per_sec = dl_chunk/chunk_elapsed
+					print("\r {:03d} MiB/s ({:03.2%} complete)".format(int(chunk_bytes_per_sec/MEGABYTE), overall_progress), end="")
+					dl_total += dl_chunk
+					dl_chunk = 0
+					chunk_start_time = time.perf_counter()
 		
 	return sha256.hexdigest()
 
