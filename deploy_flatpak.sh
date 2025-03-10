@@ -23,6 +23,13 @@ else
   read destination
 fi
 
+packagecache=""
+if [[ "$3" != "" ]]; then
+  packagecache="$3"
+fi
+
+echo "$packagecache"
+
 printf "Version to deploy: $version\n"
 
 # Build front-end
@@ -38,8 +45,13 @@ echo "Building for $runtime"
 OWD=$(pwd)
 
 # Publish CEF
-cd Grayjay.Desktop.CEF
-dotnet publish -r $runtime -c Release -p:AssemblyVersion=1.$version.0.0
+if [[ -z "$packagecache" ]]; then
+  cd Grayjay.Desktop.CEF
+  dotnet publish --no-restore -r $runtime -c Release -p:AssemblyVersion=1.$version.0.0
+else 
+  cd Grayjay.Desktop.CEF
+  dotnet publish --source "$packagecache" -r $runtime -c Release -p:AssemblyVersion=1.$version.0.0
+fi
 cd "${OWD}"
 
 # Copy wwwroot

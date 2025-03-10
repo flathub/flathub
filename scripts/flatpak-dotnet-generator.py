@@ -34,44 +34,28 @@ def main():
     args = parser.parse_args()
 
     sources = []
-    with tempfile.TemporaryDirectory(dir=Path()) as tmp:
-        def restore_project(project, runtime):
-            subprocess.run([
-                'flatpak', 'run',
-                '--env=DOTNET_CLI_TELEMETRY_OPTOUT=true',
-                '--env=DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true',
-                '--command=sh', f'--runtime=org.freedesktop.Sdk//{args.freedesktop}', '--share=network',
-                '--filesystem=host', f'org.freedesktop.Sdk.Extension.dotnet{args.dotnet}//{args.freedesktop}', '-c',
-                f'PATH="${{PATH}}:/usr/lib/sdk/dotnet{args.dotnet}/bin" LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib/sdk/dotnet{args.dotnet}/lib" exec dotnet restore "$@"',
-                '--', '--packages', tmp, project] + (['-r', runtime] if runtime else []) + (args.dotnet_args or []))
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = []
-            for project in args.project:
-                if args.runtime:
-                    for runtime in args.runtime:
-                        futures.append(executor.submit(restore_project, project, runtime))
-                else:
-                    futures.append(executor.submit(restore_project, project, None))
-            concurrent.futures.wait(futures)
+    for path in Path("packages").glob('**/*.nupkg.sha512'):
+        name = path.parent.parent.name
+        version = path.parent.name
+        filename = '{}.{}.nupkg'.format(name, version)
+        url = 'https://api.nuget.org/v3-flatcontainer/{}/{}/{}'.format(name, version,
+                                                                        filename)
 
-        for path in Path(tmp).glob('**/*.nupkg.sha512'):
-            name = path.parent.parent.name
-            version = path.parent.name
-            filename = '{}.{}.nupkg'.format(name, version)
-            url = 'https://api.nuget.org/v3-flatcontainer/{}/{}/{}'.format(name, version,
-                                                                           filename)
+        destpath = f"{args.destdir}" #/{name}/{version}"
+        # destpath.mkdir(exist_ok=True)
+        with path.open() as fp:
+            sha512 = binascii.hexlify(base64.b64decode(fp.read())).decode('ascii')
 
-            with path.open() as fp:
-                sha512 = binascii.hexlify(base64.b64decode(fp.read())).decode('ascii')
-
-            sources.append({
-                'type': 'file',
-                'url': url,
-                'sha512': sha512,
-                'dest': args.destdir,
-                'dest-filename': filename,
-            })
+        sources.append({
+            'type': 'file',
+            # 'archive-type': 'zip',
+            'url': url,
+            'sha512': sha512,
+            'dest': destpath,
+            'dest-filename': filename,
+            # 'strip-components': '0'
+        })
 
     with open(args.output, 'w') as fp:
         json.dump(
@@ -79,7 +63,6 @@ def main():
             fp,
             indent=4
         )
-
 
 if __name__ == '__main__':
     main()
