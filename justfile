@@ -9,3 +9,6 @@ debugshell:
 
 bundle:
 	flatpak build-bundle ~/.local/share/flatpak/repo GrayjayDesktop.flatpak app.grayjay.Desktop
+
+prep-npm:
+	flatpak-builder --run build-dir ./app.grayjay.Desktop.yaml ./scripts/npm-deps.sh npm-sources.json /run/build/grayjay/Grayjay.Desktop.Web/package-lock.json
