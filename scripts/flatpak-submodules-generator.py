@@ -113,22 +113,23 @@ def main():
 
 	parser.add_argument('--upstream-url', help="the url to the upstream repository")
 	parser.add_argument("--quiet", "-q", action="store_true", default=False, help="make output quieter"  )
+	parser.add_argument('--output', default=Path("submodule-sources.json"), help="the path to the file to write the final json to")
 	args = parser.parse_args()
 
 	repo_path = Path().resolve()
-	output_file = repo_path / "submodule-sources.json"
 
 	if not (repo_path / ".gitmodules").exists():
 		print("No .gitmodules file found.")
-		generate_flatpak_sources([], output_file)
+		generate_flatpak_sources([], Path(args.output))
 		return
 
 	submodules = get_git_submodules(repo_path, args.upstream_url)
+
 	for submodule in submodules:
 		sha = get_sha_for_submodule(submodule, progress=not args.quiet)
 		submodule["filesha"] = sha
 
-	generate_flatpak_sources(submodules, output_file)
+	generate_flatpak_sources(submodules, Path(args.output))
 
 if __name__ == "__main__":
 	main()
