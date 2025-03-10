@@ -27,7 +27,7 @@ printf "Version to deploy: $version\n"
 
 # Build front-end
 cd Grayjay.Desktop.Web
-npm install
+npm install --offline
 npm run build
 cd ..
 
