@@ -66,6 +66,13 @@ def generate_flatpak_sources(submodules, output_file):
 	print(f"Flatpak sources JSON saved to {output_file}")
 
 
+def transform_url_for_zip_download(url, commit, name):
+	if url.endswith("/"):
+		url = url[:-1]
+	if url.endswith(".git"):
+		url = url[:-4]
+	return f"{url}/-/archive/{commit}/{name}.zip"
+
 def main():
 
 	parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
