@@ -4,11 +4,11 @@ Chunker is an open-source GUI application that allows you to convert your Minecr
 
 Note that this Flatpak is a community effort and currently isn't officially supported by the developers of Chunker.
 
-This repo hosts the Flatpak version of [Chunker](https://oss.chunker.app), available on [Flathub](https://flathub.org/apps/details/app.chunker.oss.chunker).
+This repo hosts the Flatpak version of [Chunker](https://chunker.app), available on [Flathub](https://flathub.org/apps/details/app.chunker.chunker).
 
 ```
-flatpak install app.chunker.oss.chunker
-flatpak run app.chunker.oss.chunker
+flatpak install app.chunker.chunker
+flatpak run app.chunker.chunker
 ```
 
 ## Running the CLI
@@ -19,5 +19,5 @@ Unfortunately, there is currently no way to expose a binary from a Flatpak in a 
 In the meantime you can run the CLI in the following way:
 
 ```
-flatpak run --command="/app/chunker/resources/chunker-cli/bin/chunker-cli --help" app.chunker.oss.chunker
+flatpak run --command="/app/chunker/resources/chunker-cli/bin/chunker-cli --help" app.chunker.chunker
 ```
