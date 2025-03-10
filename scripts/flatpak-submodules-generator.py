@@ -44,10 +44,10 @@ def generate_flatpak_sources(submodules, output_file):
 	
 	for submodule in submodules:
 		sources.append({
-			"type": "git",
-			"url": submodule["url"],
+			"type": "archive",
+			"url": transform_url_for_zip_download(submodule["url"], submodule["commit"], submodule["name"]),
 			"sha256": submodule["filesha"],
-			"commit": submodule["commit"],
+			# "commit": submodule["commit"],
 			"dest": submodule["name"]
 		})
 	
