@@ -7,6 +7,7 @@ import requests
 from pathlib import Path
 import argparse
 from urllib.parse import urlparse
+import hashlib
 
 def get_git_submodules(repo_path, upstream_url=None):
 	"""Retrieve submodule details from a Git repository."""
@@ -66,21 +67,17 @@ def generate_flatpak_sources(submodules, output_file):
 		json.dump(sources, f, indent=4)
 	print(f"Flatpak sources JSON saved to {output_file}")
 
-def download_submodules_as_zip(submodules, output_dir):
-	"""Download submodules as zip archives."""
-	output_dir.mkdir(parents=True, exist_ok=True)
-	for submodule in submodules:
-		zip_url = transform_url_for_zip_download(submodule["url"], submodule["commit"], submodule["name"])
-		zip_path = output_dir / f"{submodule['name']}.zip"
-		print(f"Downloading {zip_url}...")
-		response = requests.get(zip_url, stream=True)
-		if response.status_code == 200:
-			with open(zip_path, "wb") as f:
-				for chunk in response.iter_content(chunk_size=8192):
-					f.write(chunk)
-			print(f"Saved to {zip_path}")
-		else:
-			print(f"Failed to download {zip_url}")
+def get_sha_for_submodule(submodule):
+	zip_url = transform_url_for_zip_download(submodule["url"], submodule["commit"], submodule["name"])
+	print(f"Downloading and hashing {zip_url}...")
+	response = requests.get(zip_url, stream=True)
+	sha256 = hashlib.sha256()
+	if response.status_code == 200:
+		# with open(zip_path, "wb") as f:
+		for chunk in response.iter_content(chunk_size=8192):
+			sha256.update(chunk)
+		
+	return sha256.hexdigest()
 
 def transform_url_for_zip_download(url, commit, name):
 	if url.endswith("/"):
