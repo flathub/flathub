@@ -5,8 +5,9 @@ import json
 import subprocess
 from pathlib import Path
 import argparse
+from urllib.parse import urlparse
 
-def get_git_submodules(repo_path):
+def get_git_submodules(repo_path, upstream_url=None):
 	"""Retrieve submodule details from a Git repository."""
 	os.chdir(repo_path)
 	result = subprocess.run(["git", "submodule", "status"], capture_output=True, text=True, check=True)
@@ -19,6 +20,13 @@ def get_git_submodules(repo_path):
 		commit, path = parts[:2]
 		url = subprocess.run(["git", "config", f"--file=.gitmodules", f"submodule.{path}.url"],
 							capture_output=True, text=True, check=True).stdout.strip()
+		if url.startswith("..") and upstream_url is not None:
+			urlparsed = urlparse(upstream_url)
+			# this is unconventional, but it works
+			modified_url_path = Path(urlparsed.path).joinpath(url).resolve()
+
+			url = urlparsed._replace(path=str(modified_url_path)).geturl()
+
 		submodules.append({
 			"name": path.replace("/", "-"),
 			"url": url,
