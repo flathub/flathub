@@ -59,6 +59,7 @@ def generate_flatpak_sources(submodules, output_file):
 		sources.append({
 			"type": "git",
 			"url": submodule["url"],
+			"sha256": submodule["filesha"],
 			"commit": submodule["commit"],
 			"dest": submodule["name"]
 		})
@@ -100,8 +101,12 @@ def main():
 		print("No .gitmodules file found.")
 		generate_flatpak_sources([], output_file)
 		return
-	
-	submodules = get_git_submodules(repo_path)
+
+	submodules = get_git_submodules(repo_path, args.upstream_url)
+	for submodule in submodules:
+		sha = get_sha_for_submodule(submodule)
+		submodule["filesha"] = sha
+
 	generate_flatpak_sources(submodules, output_file)
 
 if __name__ == "__main__":
