@@ -4,6 +4,7 @@ import os
 import json
 import subprocess
 from pathlib import Path
+import argparse
 
 def get_git_submodules(repo_path):
 	"""Retrieve submodule details from a Git repository."""
@@ -58,6 +59,12 @@ def generate_flatpak_sources(submodules, output_file):
 
 
 def main():
+
+	parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
+
+	parser.add_argument('--upstream-url', help="the url to the upstream repository")
+	args = parser.parse_args()
+
 	repo_path = Path().resolve()
 	output_file = repo_path / "submodule-sources.json"
 
