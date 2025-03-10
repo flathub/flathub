@@ -112,6 +112,7 @@ def main():
 	parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
 
 	parser.add_argument('--upstream-url', help="the url to the upstream repository")
+	parser.add_argument("--quiet", "-q", action="store_true", default=False, help="make output quieter"  )
 	args = parser.parse_args()
 
 	repo_path = Path().resolve()
@@ -124,7 +125,7 @@ def main():
 
 	submodules = get_git_submodules(repo_path, args.upstream_url)
 	for submodule in submodules:
-		sha = get_sha_for_submodule(submodule)
+		sha = get_sha_for_submodule(submodule, progress=not args.quiet)
 		submodule["filesha"] = sha
 
 	generate_flatpak_sources(submodules, output_file)
