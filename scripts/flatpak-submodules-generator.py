@@ -26,6 +26,21 @@ def get_git_submodules(repo_path):
 		})
 	return submodules
 
+def get_current_remote_url():
+	"""Retrieve the remote URL associated with the current branch."""
+	result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
+	branch = result.stdout.strip()
+	
+	remote_result = subprocess.run(["git", "config", f"branch.{branch}.remote"], capture_output=True, text=True)
+	remote = remote_result.stdout.strip()
+	
+	if not remote:
+		return None
+	
+	url_result = subprocess.run(["git", "remote", "get-url", remote], capture_output=True, text=True)
+	return url_result.stdout.strip() if url_result.returncode == 0 else None
+
+
 def generate_flatpak_sources(submodules, output_file):
 	"""Generate a Flatpak sources JSON file from the submodule list."""
 	sources = []
