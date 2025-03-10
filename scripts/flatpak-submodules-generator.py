@@ -64,7 +64,8 @@ def main():
 	zip_output_dir = repo_path / "submodules_zips"
 	
 	if not (repo_path / ".gitmodules").exists():
-		print("No .gitmodules file found. Exiting.")
+		print("No .gitmodules file found.")
+		generate_flatpak_sources([], output_file)
 		return
 	
 	submodules = get_git_submodules(repo_path)
