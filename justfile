@@ -1,6 +1,11 @@
 build:
 	flatpak-builder --user --install --force-clean build-dir app.grayjay.Desktop.yaml
 
+
+build-sandbox:
+	flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir app.grayjay.Desktop.yaml
+
+
 run:
 	flatpak run app.grayjay.Desktop
 
