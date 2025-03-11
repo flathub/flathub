@@ -38,8 +38,15 @@ npm install --offline
 npm run build
 cd ..
 
-runtime="linux-x64"
 
+if [ "${FLATPAK_ARCH}" == "x86_64" ]; then
+  runtime="linux-x64"
+elif [ "${FLATPAK_ARCH}" == "arm64" ]; then
+  runtime="linux-arm64"
+else
+  echo "Unsupported Arch present $FLATPAK_ARCH"
+  exit 1
+fi
 echo "Building for $runtime"
 
 OWD=$(pwd)
