@@ -5,9 +5,9 @@ This is a flatpak for Grayjay Desktop. Please help test and report any issues yo
 ## Building Locally
 
 1. install `flatpak-builder` (required) and `just` (optional)
-2. run `just build` or `flatpak-builder --user --install build-dir app.grayjay.Desktop.yaml` to build the flatpak
+2. run `just build` or `flatpak-builder --user --install build-dir app.grayjay.Grayjay.yaml` to build the flatpak
    1. there is also the `clean-build` shortcut which adds the `--force-clean` arg
-3. run `just run` or `flatpak run app.grayjay.Desktop` or open it from your system menu to run the flatpak.
+3. run `just run` or `flatpak run app.grayjay.Grayjay` or open it from your system menu to run the flatpak.
 
 ## Documentation
 
