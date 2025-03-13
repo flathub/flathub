@@ -1,0 +1,81 @@
+id: br.gov.fazenda.receita.irpf2025
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+tags:
+  - proprietary
+command: irpf2025
+
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=cups
+  - --share=ipc
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+  - --filesystem=xdg-documents # Useful place to save PDF files.
+  - --filesystem=~/ProgramasRFB:create # This path is hardcoded by the app to save all kinds of tax data.
+  - --persist=.java # In-app preferences are stored in: ~/.java/.userPrefs/serpro
+  - --persist=.receitanet # Log files, tokens and whatnot.
+  - --persist=.rfb # User-provided form data (such as CPF and CNPJ numbers) are stored in: ~/.rfb
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: irpf2025
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/bin apply_extra
+      - install -Dm755 -t /app/bin irpf2025
+      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+      - ln -s /usr/bin/xdg-open /app/bin/firefox # Fixes Single Sign-On (SSO).
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - export LC_ALL=C # Suppresses a warning from bsdtar: "bsdtar: Failed to set default locale".
+          - mkdir share
+          - |
+            bsdtar -C share -xf irpf.zip --no-same-permissions --no-same-owner --strip-components 1 \
+              --include='IRPF*/help' \
+              --include='IRPF*/lib' \
+              --include='IRPF*/lib-modulos' \
+              --include='IRPF*/irpf.jar' \
+              --include='IRPF*/pgd-updater.jar'
+          - rm -f irpf.zip
+          - |
+            for zip in *.zip
+            do
+              bsdtar -C share/lib/resources -xf "${zip}" --no-same-permissions --no-same-owner --strip-components 2
+              rm -f "${zip}"
+            done
+      - type: script
+        dest-filename: irpf2025
+        commands:
+          - exec java -jar /app/extra/share/irpf.jar $@
+      - type: file
+        path: br.gov.fazenda.receita.irpf2025.metainfo.xml
+      - type: file
+        path: br.gov.fazenda.receita.irpf2025.desktop
+      - type: file
+        path: icon-256.png
+      - type: extra-data
+        filename: irpf.zip
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2025/irpf/arquivos/IRPF2025-1.0.zip
+        sha256: 7788aa75344ce7e2b50c22829e676e193d501b2fd565b73ffe282f8e29a52812
+        size: 50616171
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2025/irpf/update/latest.xml
+          version-pattern: <pkgver>([\d.]+)</pkgver>
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2025/irpf/arquivos/IRPF2025-$version.zip
+          is-main-source: true
+      - generated-sources.yaml
