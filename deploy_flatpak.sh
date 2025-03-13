@@ -41,7 +41,7 @@ cd ..
 
 if [ "${FLATPAK_ARCH}" == "x86_64" ]; then
   runtime="linux-x64"
-elif [ "${FLATPAK_ARCH}" == "arm64" ]; then
+elif [ "${FLATPAK_ARCH}" == "aarch64" ]; then
   runtime="linux-arm64"
 else
   echo "Unsupported Arch present $FLATPAK_ARCH"
