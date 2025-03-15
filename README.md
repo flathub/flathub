@@ -1,11 +1,11 @@
 Build:
 ```
-flatpak-builder build org.flathub.electron-sample-app.yml --install-deps-from=flathub --force-clean --user --install
+flatpak-builder build io.github.piotrek_k._2dTaskBoard.yml --install-deps-from=flathub --force-clean --user --install
 ```
 
 Run:
 ```
-flatpak run org.flathub.electron-sample-app
+flatpak run io.github.piotrek_k._2dTaskBoard
 ```
 
 To build `generated-sources.json` use `flatpak-node-generator`.
