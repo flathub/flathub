@@ -10,6 +10,7 @@ With **2dTaskBoard** you can track the progress of your daily tasks. Key feature
 - **Mermaid** support - flowcharts rendering
 - **Attachments** - attach files of any kind to your tasks
 - **Obsidian** compatibility - open tasks in Obsidian and link to existing notes
+- **Full keyboard support** - every part of this app is accessible just by pressing keyboard shortcuts
 
 <img src="screenshots/board_view.png" alt="Board view" style="max-width: 300px; height: auto;">
 <img src="screenshots/task_view.png" alt="Task view" style="max-width: 300px; height: auto;">
