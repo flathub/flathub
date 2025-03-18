@@ -12,8 +12,8 @@ With **2dTaskBoard** you can track the progress of your daily tasks. Key feature
 - **Obsidian** compatibility - open tasks in Obsidian and link to existing notes
 - **Full keyboard support** - every part of this app is accessible just by pressing keyboard shortcuts
 
-<img src="screenshots/board_view.png" alt="Board view" style="max-width: 300px; height: auto;">
-<img src="screenshots/task_view.png" alt="Task view" style="max-width: 300px; height: auto;">
+<img src="https://github.com/piotrek-k/2dTaskBoard/blob/90f2f90f31fcf96119082573044eea8fa0fb57b6/screenshots/board_view.png?raw=true" alt="Board view" style="max-width: 300px; height: auto;">
+<img src="https://github.com/piotrek-k/2dTaskBoard/blob/90f2f90f31fcf96119082573044eea8fa0fb57b6/screenshots/task_view.png?raw=true" alt="Task view" style="max-width: 300px; height: auto;">
 
 
 ## Useful commands
