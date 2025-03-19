@@ -1,0 +1,117 @@
+id: space.celestiaproject.Celestia
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: celestia-qt6
+rename-icon: celestia
+rename-desktop-file: space.celestiaproject.celestia_qt6.desktop
+rename-appdata-file: space.celestiaproject.celestia_qt6.metainfo.xml
+finish-args:
+  - --device=dri
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=ipc
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-pictures
+  - --filesystem=~/.celestia
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: '24.08'
+    no-autodownload: true
+    autodelete: false
+
+modules:
+  - shared-modules/luajit/luajit.json
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-toolset=gcc --with-libraries=system
+      - ./b2 install variant=release link=shared runtime-link=shared cxxflags="$CXXFLAGS"
+        linkflags="$LDFLAGS" -j ${FLATPAK_BUILDER_N_JOBS}
+    cleanup:
+      - /include
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://archives.boost.org/release/1.86.0/source/boost_1_86_0.tar.bz2
+        sha256: 1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://archives.boost.org/release/$version/source/boost_${major}_${minor}_${patch}.tar.bz2
+
+  - name: Eigen3
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2
+        sha256: b4c198460eba6f28d34894e3a5710998818515104d6e74e5cc331ce31e46e626
+        x-checker-data:
+          type: anitya
+          project-id: 13751
+          stable-only: true
+          url-template: https://gitlab.com/libeigen/eigen/-/archive/${version}/eigen-${version}.tar.bz2
+    cleanup:
+      - '*'
+
+  - name: celestia
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DUSE_WAYLAND=ON
+      - -DENABLE_SDL=ON
+      - -DENABLE_QT5=OFF
+      - -DENABLE_QT6=ON
+      - -DENABLE_FFMPEG=ON
+      - -DENABLE_LIBAVIF=ON
+      - -DCELCFG_EXTRAS_DIRS="~/.var/app/space.celestiaproject.Celestia/data/Celestia/extras"
+    post-install:
+      #- desktop-file-edit --set-icon="${FLATPAK_ID}" ${FLATPAK_DEST}/share/applications/celestia-sdl.desktop
+      #- mv ${FLATPAK_DEST}/share/applications/celestia-sdl.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}-sdl.desktop
+      # Remove desktop / metainfo files for non qt6 backends
+      - rm ${FLATPAK_DEST}/share/applications/space.celestiaproject.celestia_sdl.desktop
+      - rm ${FLATPAK_DEST}/share/metainfo/space.celestiaproject.celestia_sdl.metainfo.xml
+      # Add directories extra "extras" directories to the config
+      #- |
+      #  EXTRA_DIRS_LIST=(
+      #    '~/.var/app/space.celestiaproject.Celestia/data/Celestia/extras'
+      #  )
+      #  for f in "${EXTRA_DIRS_LIST[@]}" ; do EXTRA_DIRS="${EXTRA_DIRS} \"${f}\"" ; done
+      #  sed -ri "s|(^\s+ExtrasDirectories\s+\[)|\1${EXTRA_DIRS}|g" ${FLATPAK_DEST}/share/celestia/celestia.cfg
+      - |
+        ICON_IN="./celestia-logo.png"
+        ICON_OUT="celestia.png"
+        SIZES='16 24 32 48 64 128 256'
+        for s in ${SIZES} ; do
+          SIZE="${s}x${s}"
+          ffmpeg -y -i "${ICON_IN}" -update 1 -s "${SIZE}" "${ICON_OUT}"
+          install -p -Dm644 "${ICON_OUT}" -t "${FLATPAK_DEST}/share/icons/hicolor/${SIZE}/apps/"
+        done
+      - mkdir -p /app/lib/ffmpeg
+    sources:
+      - type: git
+        url: https://github.com/CelestiaProject/Celestia.git
+        commit: ee6c609549314c04e41629f9926772fb85d2357b
+        disable-shallow-clone: true
+      - type: patch
+        path: xdg_cfg.patch
+      - type: patch
+        path: metainfo_releases.patch
+        #tag: '1.6.4'
+        #commit: 315b2d798496898c69240ec68e2059bd7d8c246e
+        #x-checker-data:
+        #  is-main-source: true
+        #  type: git
+
+  - name: celestia-content
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/CelestiaProject/CelestiaContent.git
+        commit: caa5c8b3780c229edad369d4768856fe27e213aa
