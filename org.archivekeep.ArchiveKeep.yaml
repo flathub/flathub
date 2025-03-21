@@ -1,0 +1,66 @@
+id: org.archivekeep.ArchiveKeep
+
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+
+finish-args:
+  - --socket=x11
+  - --device=dri
+  - --share=network
+  - --share=ipc
+  # access to /dev/disk/by-uuid/ and /dev/mapper/ needed for disk UUID resolution
+  - --device=all
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  - --env=PATH=/usr/bin:/app/bin:/app/jre/bin
+  - --env=JAVA_HOME=/app/jre
+
+command: archivekeep-desktop
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk17/install.sh
+
+  - name: archivekeep-desktop
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-options:
+      append-path: "/usr/lib/sdk/openjdk17/bin"
+    build-commands:
+      - "sed -i s/distributionUrl.*/distributionUrl=gradle-bin.zip/ gradle/wrapper/gradle-wrapper.properties"
+      - ./gradlew --no-daemon --offline --console=plain createReleaseDistributable
+      - find
+      - mkdir /app/bin/
+      - mkdir /app/lib/
+      - cp -r modules/app-desktop/build/compose/binaries/main-release/app/archivekeep-desktop/bin/* /app/bin/
+      - cp -r modules/app-desktop/build/compose/binaries/main-release/app/archivekeep-desktop/lib/* /app/lib/
+      - install -Dm644 modules/app-desktop/src/main/composeResources/drawable/ic_app.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 distribution/resources/$FLATPAK_ID.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - install -Dm644 $FLATPAK_ID.appdata.xml /app/share/appdata/$FLATPAK_ID.appdata.xml
+      - find /app
+    sources:
+      - type: git
+        url: https://github.com/archivekeep/archivekeep.git
+        commit: 693dbb6f2e13bf164721445637e8bdde129eae72
+        tag: v0.3.0
+      - type: file
+        url: "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+        sha256: "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
+        dest: "gradle/wrapper"
+        dest-filename: "gradle-bin.zip"
+      - "gradle-sources-root.json"
+      - "gradle-sources-app-core.json"
+      - "gradle-sources-app-desktop.json"
+      - "gradle-sources-cli.json"
+      - "gradle-sources-files.json"
+      - type: file
+        path: org.archivekeep.ArchiveKeep.appdata.xml
