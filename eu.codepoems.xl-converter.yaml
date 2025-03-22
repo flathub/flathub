@@ -1,0 +1,336 @@
+id: eu.codepoems.xl-converter
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+base: io.qt.PySide.BaseApp
+base-version: '6.8'
+command: run.sh
+build-options:
+  env:
+    - BASEAPP_REMOVE_WEBENGINE=1
+    - BASEAPP_DISABLE_NUMPY=1
+  append-path: /usr/lib/sdk/rust-stable/bin
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --filesystem=host
+  - --socket=pulseaudio
+  - --share=network
+modules:
+  
+  - name: libjxl
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=OFF
+      - -DJPEGXL_ENABLE_VIEWERS=OFF
+      - -DJPEGXL_ENABLE_PLUGINS=OFF
+      - -DJPEGXL_ENABLE_OPENEXR=OFF
+      - -DJPEGXL_ENABLE_DEVTOOLS=OFF
+    post-install:
+      - mkdir -p /app/xl-converter/bin/linux
+      - install -Dm755 /app/bin/cjxl /app/xl-converter/bin/linux/cjxl
+      - install -Dm755 /app/bin/djxl /app/xl-converter/bin/linux/djxl
+      - install -Dm755 /app/bin/jxlinfo /app/xl-converter/bin/linux/jxlinfo
+      - install -Dm755 /app/bin/cjpegli /app/xl-converter/bin/linux/cjpegli
+    cleanup:
+      - /bin/benchmark_xl
+      - /bin/cjpegli
+      - /bin/djpegli
+      - /bin/cjxl
+      - /bin/djxl
+      - /bin/jxlinfo
+    sources:
+      - type: git
+        url: https://github.com/libjxl/libjxl.git
+        tag: v0.11.1
+        commit: 794a5dcf0d54f9f0b20d288a12e87afb91d20dfc
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: libjpeg-turbo
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_STATIC=TRUE
+    no-make-install: true
+    post-install:
+      - install -Dm755 jpegtran-static /app/xl-converter/bin/linux/jpegtran
+    sources:
+      - type: git
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        tag: 3.0.4
+        commit: f29eda648547b36aa594c4116c7764a6c8a079b9
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+  
+  - name: oxipng
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/oxipng/cargo
+    build-commands:
+      - ln -s config cargo/config.toml
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - cargo --offline build --release
+      - install -Dm755 target/release/oxipng /app/xl-converter/bin/linux/oxipng
+    sources:
+      - oxipng_sources.json
+      - type: git
+        url: https://github.com/shssoichiro/oxipng.git
+        tag: v9.1.3
+        commit: e8e8309c2da99676d2be0859df66314fa4fd42c3
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+  
+  - name: libavif
+    buildsystem: simple
+    build-commands:
+      - |
+        cd ext &&
+        sed -i -E "/git clone/d" libyuv.cmd libsharpyuv.cmd libjpeg.cmd svt.sh aom.cmd &&
+        chmod +x libyuv.cmd libsharpyuv.cmd libjpeg.cmd svt.sh aom.cmd &&
+        ./libyuv.cmd && ./libsharpyuv.cmd && ./libjpeg.cmd && ./svt.sh && ./aom.cmd
+      - |
+        mkdir -p build &&
+        cd build &&
+        cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=0 \
+          -DAVIF_BUILD_APPS=1 \
+          -DAVIF_LIBYUV=LOCAL \
+          -DAVIF_LIBSHARPYUV=LOCAL \
+          -DAVIF_JPEG=LOCAL \
+          -DAVIF_ZLIBPNG=LOCAL \
+          -DAVIF_CODEC_SVT=LOCAL \
+          -DAVIF_CODEC_AOM=LOCAL \
+          -DCMAKE_AR=$(which gcc-ar) \
+          -DCMAKE_RANLIB=$(which gcc-ranlib) \
+          -DCMAKE_INSTALL_PREFIX=/app \
+          .. &&
+        make -j$FLATPAK_BUILDER_N_JOBS
+    post-install:
+      - install -Dm755 build/avifenc /app/xl-converter/bin/linux/avifenc
+      - install -Dm755 build/avifdec /app/xl-converter/bin/linux/avifdec
+    sources:
+      - type: git
+        url: https://aomedia.googlesource.com/libavif.git
+        tag: v1.1.1
+        commit: bb24db03cd99befe09c87b602e36f24d75a980d1
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: git
+        url: https://chromium.googlesource.com/libyuv/libyuv.git
+        dest: ext/libyuv
+        commit: a6a2ec65
+      - type: git
+        url: https://chromium.googlesource.com/webm/libwebp.git
+        dest: ext/libwebp
+        tag: v1.4.0
+        commit: a443170fc0ebdfc3abbf89ac81f35e7eb656a3da
+      - type: git
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        dest: ext/libjpeg-turbo
+        tag: 3.0.3
+        commit: 7fa4b5b762c9a99b46b0b7838f5fd55071b92ea5
+      - type: git
+        url: https://github.com/madler/zlib.git
+        dest: ext/zlib
+        tag: v1.3.1
+        commit: 51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf
+      - type: git
+        url: https://github.com/glennrp/libpng.git
+        dest: ext/libpng
+        tag: v1.6.40
+        commit: f135775ad4e5d4408d2e12ffcc71bb36e6b48551
+      - type: git
+        url: https://github.com/psy-ex/svt-av1-psy.git
+        dest: ext/SVT-AV1
+        tag: v2.3.0-B
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)-[A-Z]$
+        commit: ec65071b65ee70078229182ce6e1d0f6a4aa1a47
+      - type: git
+        url: https://aomedia.googlesource.com/aom.git
+        dest: ext/aom
+        tag: v3.11.0
+        commit: d6f30ae474dd6c358f26de0a0fc26a0d7340a84c
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: ImageMagick
+    buildsystem: autotools
+    config-opts:
+      - --enable-static
+      - --disable-shared
+      - --enable-hdri
+      - --with-quantum-depth=16
+      - --with-modules
+      - --without-perl
+      - --without-magick-plus-plus
+      - --with-png
+      - --with-jpeg
+      - --with-tiff
+      - --with-webp
+      - --with-jxl
+      - --with-zstd
+      - --with-bzlib
+      - --with-lzma
+      - --with-openjp2
+      - --with-heic
+      - --without-raw
+      - --disable-opencl
+      - --without-wmf
+      - --without-uhdr
+      - --without-djvu
+      - --without-openexr
+      - --without-raqm
+      - --without-jbig
+    post-install:
+      - install -Dm755 utilities/magick /app/xl-converter/bin/linux/imagemagick/magick
+    cleanup:
+      - /bin/magick
+      - /share/doc/ImageMagick-7
+    sources:
+      - type: git
+        url: https://github.com/ImageMagick/ImageMagick.git
+        tag: 7.1.1-43
+        commit: a2d96f40e707ba54b57e7d98c3277d3ea6611ace
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+-\d+)$
+
+  - name: exiftool
+    buildsystem: simple
+    build-commands:
+      - perl Makefile.PL
+      - make install
+    cleanup:
+      - '*.pod'
+    sources:
+      - type: git
+        url: https://github.com/exiftool/exiftool.git
+        tag: '13.25'
+        commit: 15d7ae9e464f43ecaede14335f757a04e5b4f472
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d+.\d+)$
+    modules:
+      - name: exiftool-brotli
+        buildsystem: simple
+        build-commands:
+          - perl-libs/install.sh
+        post-install:
+          - chmod -Rf u+w /app/lib/perl5/site_perl
+        sources:
+          - cpan_brotli_sources.json
+        cleanup:
+          - /bin
+          - /man
+        modules:
+          - name: brotli
+            buildsystem: cmake-ninja
+            sources:
+              - type: git
+                url: https://github.com/google/brotli.git
+                tag: v1.1.0
+                commit: ed738e842d2fbdf2d6459e39267a633c4a9b2f5d
+                x-checker-data:
+                  type: git
+                  tag-pattern: ^v([\d.]+)$
+          - name: perl
+            buildsystem: simple
+            build-commands:
+              - ./Configure -des -Duseshrplib -Dman3dir=none -Dman1dir=none -Dprefix=/app
+              - make
+              - make install
+            cleanup:
+              - /bin/corelist
+              - /bin/cpan
+              - /bin/enc2xs
+              - /bin/encguess
+              - /bin/h2ph
+              - /bin/h2xs
+              - /bin/instmodsh
+              - /bin/json_pp
+              - /bin/libnetcfg
+              - /bin/perl5*
+              - /bin/perlbug
+              - /bin/perldoc
+              - /bin/perlivp
+              - /bin/perlthanks
+              - /bin/piconv
+              - /bin/pl2pm
+              - /bin/pod2html
+              - /bin/pod2man
+              - /bin/pod2text
+              - /bin/pod2usage
+              - /bin/podchecker
+              - /bin/prove
+              - /bin/ptar
+              - /bin/ptardiff
+              - /bin/ptargrep
+              - /bin/shasum
+              - /bin/splain
+              - /bin/streamzip
+              - /bin/xsubpp
+              - /bin/zipdetails
+              - '*.pod'
+            build-options:
+              cflags: -fPIC
+              ldflags: -fpic
+            post-install:
+              - find ${FLATPAK_DEST}/lib/perl5/ -name \*.so -exec chmod u+w {} \;
+            sources:
+              - type: archive
+                url: https://www.cpan.org/src/5.0/perl-5.40.1.tar.xz
+                sha256: dfa20c2eef2b4af133525610bbb65dd13777ecf998c9c5b1ccf0d308e732ee3f
+                x-checker-data:
+                  type: anitya
+                  project-id: 13599
+                  stable-only: true
+                  url-template: https://www.cpan.org/src/${major}.0/perl-$version.tar.xz
+              - type: script
+                dest-filename: configure
+                commands:
+                  - exec ./configure.gnu $@
+
+  - name: xl-converter
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eu.codepoems.xl-converter.metainfo.xml /app/share/metainfo/eu.codepoems.xl-converter.metainfo.xml
+      - sed -i -E "s/^Icon=.*$/Icon=eu.codepoems.xl-converter/" xl-converter/misc/xl-converter.desktop
+      - install -Dm644 xl-converter/misc/xl-converter.desktop /app/share/applications/eu.codepoems.xl-converter.desktop
+      - install -Dm644 xl-converter/assets/icons/logo.svg /app/share/icons/hicolor/scalable/apps/eu.codepoems.xl-converter.svg
+      - install -Dm755 run.sh /app/bin/run.sh
+      - mkdir -p /app/xl-converter
+      - cp -r xl-converter/* /app/xl-converter/
+    modules:
+      - xl_converter_modules.yaml
+    sources:
+      - type: file
+        path: eu.codepoems.xl-converter.metainfo.xml
+      - type: git
+        url: https://github.com/JacobDev1/xl-converter.git
+        dest: xl-converter
+        tag: v1.2.0
+        commit: bbd7f0a8e0116babcc7900adf15a25f32da78796
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: script
+        commands:
+          - python3 /app/xl-converter/main.py
+        dest-filename: run.sh
