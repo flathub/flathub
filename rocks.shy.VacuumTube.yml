@@ -1,5 +1,3 @@
-# based on dev.vencord.Vesktop's yml
-
 app-id: rocks.shy.VacuumTube
 
 runtime: org.freedesktop.Platform
@@ -8,6 +6,12 @@ sdk: org.freedesktop.Sdk
 
 base: org.electronjs.Electron2.BaseApp
 base-version: *runtime-version
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
 
 command: startvacuumtube
 separate-locales: false
@@ -18,49 +22,36 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc # required by x11
   - --share=network
-  - --device=all # for controllers, not using input for backwards compat
+  - --device=all # for gpu (video decoding) and controllers
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # this is used to show the correct cursor on Wayland
 
 modules:
   - name: VacuumTube
     buildsystem: simple
+    subdir: main
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/VacuumTube/flatpak-node/cache
+        npm_config_cache: /run/build/VacuumTube/flatpak-node/npm-cache
+        npm_config_offline: "true"
     build-commands:
-      - chmod +x VacuumTube.AppImage
-      - ./VacuumTube.AppImage --appimage-extract
-      - desktop-file-edit --set-key="Exec" --set-value="startvacuumtube %U" --set-icon=$FLATPAK_ID squashfs-root/vacuumtube.desktop
-      - install -D squashfs-root/usr/share/icons/hicolor/256x256/apps/vacuumtube.png /app/share/icons/hicolor/256x256/apps/rocks.shy.VacuumTube.png
-      - install -D squashfs-root/vacuumtube.desktop /app/share/applications/rocks.shy.VacuumTube.desktop
-      - install -Dm755 startvacuumtube /app/bin/startvacuumtube
-      - install -D rocks.shy.VacuumTube.metainfo.xml -t /app/share/metainfo/
-      - mv squashfs-root /app/bin/vacuumtube
+      - npm install --offline
+      - ../flatpak-node/electron-builder-arch-args.sh
+      - npm run flatpak:build-unpacked -- $ELECTRON_BUILDER_ARCH_ARGS
+      - cp -a dist/linux*unpacked /app/bin/vacuumtube
+
+      - install -Dm755 ../startvacuumtube /app/bin/startvacuumtube
+      - install -Dm644 flatpak/rocks.shy.VacuumTube.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 flatpak/rocks.shy.VacuumTube.desktop -t /app/share/applications/
+      - install -Dm644 flatpak/rocks.shy.VacuumTube.png -t /app/share/icons/hicolor/256x256/apps
 
     sources:
+      - flatpak-sources.json
+
+      - type: git
+        url: https://github.com/shy1132/VacuumTube.git
+        branch: main
+        dest: main
+
       - type: file
         path: startvacuumtube
-
-      - type: file
-        url: https://github.com/shy1132/VacuumTube/releases/latest/download/rocks.shy.VacuumTube.metainfo.xml
-        sha512: 8b6e36e75d6625c00b130f21bca9977b462f812cb7d61e8cc91f5160e7a23d972458a624f372a73c9decc2a67fa2b18620e0b12172dea6a706d08559bdb6f696
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/shy1132/VacuumTube/releases/latest
-          version-query: '.tag_name | sub("v"; "")'
-          url-query: '.assets[] | select(.name == "rocks.shy.VacuumTube.metainfo.xml") | .browser_download_url'
-
-      - type: file
-        url: https://github.com/shy1132/VacuumTube/releases/latest/download/VacuumTube-x86_64.AppImage
-        dest-filename: VacuumTube.AppImage
-        sha512: 387d0f55f81f8461837406168e091bb9aacaf5cac7a1420298e3a1773447578d896273ccd15f2b660f2726fac1be1d81bfcc843832e5fa59eac833d93ef04745
-        only-arches: [x86_64]
-        x-checker-data:
-          type: electron-updater
-          url: https://github.com/shy1132/VacuumTube/releases/latest/download/latest-linux.yml
-
-      - type: file
-        url: https://github.com/shy1132/VacuumTube/releases/latest/download/VacuumTube-arm64.AppImage
-        dest-filename: VacuumTube.AppImage
-        sha512: 26d42812f046d39ee96c03f90afba54a6efa9bfbdc65c7754adecb7c6f6ea5a2b3b0ce00007ea77e6bdc05de3be1f1456dc88715aa53f8d4c7a1fdd190ad4ad0
-        only-arches: [aarch64]
-        x-checker-data:
-          type: electron-updater
-          url: https://github.com/shy1132/VacuumTube/releases/latest/download/latest-linux-arm64.yml
