@@ -9,6 +9,8 @@ on:
 jobs:
   merge:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/merge') }}
     container:
       image: ghcr.io/flathub/actions/merge:latest@sha256:ebeb5c952d8277b56ac96c72c66205c32d241119d086e9e7fa8848e80df39107
@@ -16,15 +18,24 @@ jobs:
       - name: Check if actor is reviewer
         id: check_reviewer
         run: |
-          if gh api /orgs/"$REPO_OWNER"/teams/reviewers/memberships/"$ACTOR" --silent; then
+          if [ "$(gh api --silent repos/"$GH_REPO"/collaborators/"$ACTOR"/permission | jq -r '.user.permissions.push')" == "true" ]; then
             echo "is-reviewer=true" >> "$GITHUB_OUTPUT"
           else
             echo "is-reviewer=false" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
-          REPO_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
+
+      - name: Add ready label
+        run: |
+          if ! gh pr view --json labels -q '.labels[].name' "$PR_NUMBER"|grep -qE "^ready$"; then
+            gh pr edit "$PR_NUMBER" --add-label "ready"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
 
       - run: /app/entrypoint.py
         if: ${{ steps.check_reviewer.outputs.is-reviewer == 'true' }}
