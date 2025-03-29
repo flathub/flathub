@@ -1,0 +1,71 @@
+app-id: org.vinegarhq.Sober
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: sober
+separate-locales: false
+finish-args:
+  # For controller support on old Flatpak versions. Optional.
+  # SECURITY: this allows for a sandbox escape
+  # TODO: don't ship this by default. Like, really.
+  - --device=all
+  # Controller support, though this only works on newer Flatpak versions. Optional.
+  # SECURITY: shouldn't have much of an impact, although the user should disable this from Flatseal if controller support is unwanted
+  # We don't ship this by default for backwards compat :( See above.
+  # - --device=input
+  # DRI device. Required for graphics acceleration. Non-optional, since Roblox is a 3D game.
+  - --device=dri
+  # Required by the game. Non-optional for now, sadly.
+  # SECURITY: How bad is device=shm? should we try making a workaround?
+  # SECURITY: ptrace access inside the sandbox should be no big deal, really :)
+  - --device=shm
+  - --allow=devel
+  # X11 performance, also required by the game. Non-optional for now, sadly.
+  # SECURITY: How bad is sharing IPC namespaces? should we try making a workaround?
+  - --share=ipc
+  # Both Sober & Roblox require network access to work. Non-optional.
+  - --share=network
+  # Window server access is required to display the game & menus. Non-optional.
+  # SECURITY: users should try using Wayland where possible
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Required for game audio & microphone access when using the optional voice chat feature. Optional, but heavily recommended.
+  # SECURITY: allows unprompted microphone access. This is a limitation of the sandbox for now.
+  - --socket=pulseaudio
+  # Required to share what Roblox experience you're playing to your Discord servers & contacts. Optional
+  # SECURITY: Sober sees your Discord username and Discord ID due to how Discord IPC works, but it shouldn't be allowed to make actions on your behalf. Also, we obviously don't send that stuff to our server.
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+  # Required for a workaround. Has no security or UX impact, since Sober is sadly English-only for now
+  # TODO: fix the bug and remove this
+  - --env=LC_ALL=en_US.UTF-8
+
+# We download prebuilt binaries from our infra.
+# We build them using GitHub Actions in a private GitHub repository, which pulls from our private source repo (not on GitHub), compiles the code, and uploads the artifact to our S3 bucket.
+# S3 bucket is hosted by Cloudflare.
+# We confirm this workflow produces working binaries that are compatible with the Flatpak runtime environment.
+# The url and sha256 of the archive below will be manually updated with each application release.
+# The `sober` binary is the main application which provides the downloading & runtime code.
+# The `sober_services` binary is launched by `sober`, it provides a libadwaita UI (used for stuff like the Onboarding Flow) and GTK WebKit APIs (Roblox sometimes opens WebViews)
+# Sober does *not* repackage or redistribute Roblox's intellectual property. We download game code at runtime.
+# Please read the metainfo.xml for more specific information about the app.
+# SECURITY: We force 2FA, protect branches, and use the principle of least privilege, and we have many people auditing our workflow and getting involved.
+#           Even so, it would be beneficial to sign these archives to attest they came from GitHub Actions, and to attest they used a specific version of our source tree.
+modules:
+  - name: sober
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 sober -t /app/bin/
+      - install -Dm755 sober_services -t /app/bin/
+      - install -Dm644 org.vinegarhq.Sober.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 org.vinegarhq.Sober.desktop /app/share/applications/org.vinegarhq.Sober.desktop
+      - install -Dm644 sober.svg /app/share/icons/hicolor/scalable/apps/org.vinegarhq.Sober.svg
+    sources:
+      - type: archive
+        # *** The notice applies to the binaries we distribute. See: https://sober.vinegarhq.org/notice.txt
+        url: https://sober.vinegarhq.org/artifacts/2025-03-29_bbfda2c-1.0.0/prod/sober-binaries-unified.zip
+        sha256: fdd151adebe0629a3880a7de790bcbcd181226fbebd8725f5df97033a2518733
+        # I mean, we only support x86_64 anyway. But annotating is probably helpful.
+        only-arches:
+          - x86_64
+
