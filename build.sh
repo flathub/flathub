@@ -1,1 +1,0 @@
-flatpak-builder --user --install --install-deps-from=flathub --force-clean build-dir it.es5.whoisavailable.yml
