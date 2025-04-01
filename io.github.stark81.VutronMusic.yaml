@@ -1,0 +1,86 @@
+app-id: io.github.stark81.VutronMusic
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+separate-locales: false
+rename-icon: vutron
+rename-desktop-file: vutron.desktop
+command: vutronmusic
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.mpris.MediaPlayer2.vutronmusic
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  - /share/gtk-doc
+
+modules:
+  - name: yt-dlp
+    no-autogen: true
+    no-make-install: true
+    make-args:
+      - yt-dlp
+      - PYTHON=/usr/bin/python3
+    post-install:
+      - install yt-dlp /app/bin
+    sources:
+      - type: git
+        url: https://github.com/yt-dlp/yt-dlp.git
+        tag: 2025.03.26
+        commit: 6eaa574c8217ea9b9c5177fece0714fa622da34c
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d{4}\.\d{2}\.\d{2})$
+
+  - name: vutronmusic
+    buildsystem: simple
+    build-options:
+      no-debuginfo: true
+    build-commands:
+      - bsdtar --to-stdout -xf vutronmusic.deb data.* | bsdtar -xf -
+      - cp -a opt/VutronMusic $FLATPAK_DEST/
+      - rm -r usr/share/doc
+      - rm -r usr/share/icons/hicolor/1024x1024
+      - cp -a usr/share $FLATPAK_DEST/
+      - desktop-file-edit --set-key="Exec" --set-value="vutronmusic %U" $FLATPAK_DEST/share/applications/*.desktop
+      - desktop-file-edit --set-key="Categories" --set-value="AudioVideo" $FLATPAK_DEST/share/applications/*.desktop
+      - install -Dm644 io.github.stark81.VutronMusic.metainfo.xml -t /app/share/metainfo
+      - install -Dm755 vutronmusic.sh /app/bin/vutronmusic
+    sources:
+      - type: file
+        dest-filename: vutronmusic.deb
+        only-arches:
+          - x86_64
+        url: https://github.com/stark81/VutronMusic/releases/download/v1.6.0/VutronMusic.1.6.0_amd64.deb
+        sha256: 9dd16e042fe54fcd45b2ee9442cdcd94028e2caa00ff4e553ca60286ac3e8faa
+        x-checker-data:
+          is-main-source: true
+          type: json
+          url: https://api.github.com/repos/stark81/my_vutronmusic/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: >-
+            .assets[] | select(.name | test("vutronmusic_" + $version + "_amd64.deb"))
+            |
+            .browser_download_url
+
+      - type: file
+        path: io.github.stark81.VutronMusic.metainfo.xml
+
+      - type: script
+        dest-filename: vutronmusic.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - exec zypak-wrapper.sh /app/VutronMusic/vutron "$@"
