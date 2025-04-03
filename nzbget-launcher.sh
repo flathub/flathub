@@ -6,7 +6,7 @@ mkdir -p ~/.nzbget
 # create config from defaults if not exist
 NZBGET_CONF=~/.nzbget/nzbget.conf
 if [ ! -f "$NZBGET_CONF" ]; then
-    cp /app/bin/webui/nzbget.conf.template "$NZBGET_CONF";
+    cp /app/bin/webui/nzbget.conf.template "$NZBGET_CONF"
 fi
 
 if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
@@ -17,10 +17,10 @@ if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
         NZBGET_PORT=6789
     fi
     if ! curl --silent --output /dev/null "http://127.0.0.1:$NZBGET_PORT"; then
-        nzbget -D -c ~/.nzbget/nzbget.conf;
+        nzbget -D -c ~/.nzbget/nzbget.conf
     fi
     xdg-open "http://127.0.0.1:$NZBGET_PORT"
 else
     # run nzbget as terminal application
-    nzbget -s -c ~/.nzbget/nzbget.conf;
+    nzbget -s -c ~/.nzbget/nzbget.conf
 fi
