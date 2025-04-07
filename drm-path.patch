@@ -1,13 +1,83 @@
 diff --git a/lact/src/flatpak.rs b/lact/src/flatpak.rs
-index beabca31..a83f5b67 100644
+index beabca31..abdce357 100644
 --- a/lact/src/flatpak.rs
 +++ b/lact/src/flatpak.rs
-@@ -36,7 +36,7 @@ fn generate_daemon_cmd(info: &Ini) -> anyhow::Result<()> {
+@@ -7,6 +7,8 @@ use std::{
+     process::Command,
+ };
+ 
++const FLATPAK_GL_EXTENSION: &str = "org.freedesktop.Platform.GL";
++
+ pub fn cmd(cmd: FlatpakCommand) -> anyhow::Result<()> {
+     let info = get_flatpak_info()?;
+     match cmd {
+@@ -15,6 +17,20 @@ pub fn cmd(cmd: FlatpakCommand) -> anyhow::Result<()> {
+ }
+ 
+ fn generate_daemon_cmd(info: &Ini) -> anyhow::Result<()> {
++    let runtime_name = info
++        .get("Application", "runtime")
++        .context("Could not get runtime name")?;
++    let runtime_name = runtime_name.trim_start_matches("runtime/");
++
++    let runtime_architecture = runtime_name
++        .split('/')
++        .nth(1)
++        .context("Could not extract architecture from runtime name")?;
++
++    let runtime_commit = info
++        .get("Instance", "runtime-commit")
++        .context("Could not extract runtime commit")?;
++
+     let app_path = info
+         .get("Instance", "app-path")
+         .context("Could not get app path")?;
+@@ -23,6 +39,39 @@ fn generate_daemon_cmd(info: &Ini) -> anyhow::Result<()> {
+         .get("Instance", "runtime-path")
+         .context("Could not get runtime path")?;
+ 
++    let base_runtime_path = runtime_path
++        .strip_suffix("/files")
++        .context("Unexpected runtime path format")?;
++    let runtime_metadata_path = format!("{base_runtime_path}/metadata");
++
++    let expected_suffix = format!("/{runtime_name}/{runtime_commit}");
++    let base_runtimes_path = base_runtime_path
++        .strip_suffix(&expected_suffix)
++        .context("Unexpected runtime path format")?;
++
++    eprintln!("Reading runtime metadata from {runtime_metadata_path}");
++
++    let raw_runtime_metadata = Command::new("flatpak-spawn")
++        .args(["--host", "cat", &runtime_metadata_path])
++        .output()
++        .context("Could not get host runtime metadata")?;
++
++    let mut runtime_metadata = Ini::new();
++    runtime_metadata
++        .read(String::from_utf8(raw_runtime_metadata.stdout)?)
++        .map_err(|err| anyhow!("Could not parse runtime metadata: {err}"))?;
++
++    let gl_extension_version = runtime_metadata
++        .get(&format!("Extension {FLATPAK_GL_EXTENSION}"), "versions")
++        .context("Could not get extension versions")?;
++    let gl_extension_version = gl_extension_version
++        .split(";")
++        .next()
++        .context("Empty version list")?;
++
++    let gl_extension_lib_path = format!("{base_runtimes_path}/{FLATPAK_GL_EXTENSION}.default/{runtime_architecture}/{gl_extension_version}/active/files/lib");
++    eprintln!("Detected flatpak GL extension at {gl_extension_lib_path}");
++
+     let relative_ld_path = get_relative_ld_path()?;
+     let relative_ld_path_parts = relative_ld_path.components().collect::<Vec<Component>>();
+ 
+@@ -36,7 +85,7 @@ fn generate_daemon_cmd(info: &Ini) -> anyhow::Result<()> {
              .display()
      );
      let app_bin_path = format!("{app_path}/bin");
 -    let library_paths = format!("{app_path}/lib:{runtime_lib_path}");
-+    let library_paths = format!("{app_path}/lib:{app_path}/drm/lib:{runtime_lib_path}");
++    let library_paths = format!("{app_path}/lib:{gl_extension_lib_path}:{runtime_lib_path}");
  
      println!("{ld_path} --library-path {library_paths} {app_bin_path}/lact daemon");
  
