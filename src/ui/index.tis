@@ -1,0 +1,1425 @@
+if (is_osx) view.windowBlurbehind = #light;
+//stdout.println("current platform:", OS);
+//stdout.println("is_xfce: ", is_xfce);
+				
+// html min-width, min-height not working on mac, below works for all
+view.windowMinSize = (scaleIt(560), scaleIt(300));
+
+var app;
+var tmp = handler.get_connect_status();
+var connect_status = tmp[0];
+var service_stopped = handler.get_option("stop-service") == "Y";
+var show_settings_button = handler.get_config_option("show-settings-button") == "Y";
+var software_update_url = "";
+var key_confirmed = tmp[1];
+var system_error = "";
+var showingupdate = "";
+
+var svg_menu = <svg #menu title={translate('Menu')} tabindex="0" viewBox="0 0 512 512">
+	<circle cx="256" cy="256" r="64"/>
+	<circle cx="256" cy="448" r="64"/>
+	<circle cx="256" cy="64" r="64"/>
+</svg>;
+var svg_refresh_password = <svg #refresh-password tabindex="0" title={translate('Refresh Password')} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38"/></svg>;
+var svg_alert = <svg width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 1.67c.955 0 1.845 .467 2.39 1.247l.105 .16l8.114 13.548a2.914 2.914 0 0 1 -2.307 4.363l-.195 .008h-16.225a2.914 2.914 0 0 1 -2.582 -4.2l.099 -.185l8.11 -13.538a2.914 2.914 0 0 1 2.491 -1.403zm.01 13.33l-.127 .007a1 1 0 0 0 0 1.986l.117 .007l.127 -.007a1 1 0 0 0 0 -1.986l-.117 -.007zm-.01 -7a1 1 0 0 0 -.993 .883l-.007 .117v4l.007 .117a1 1 0 0 0 1.986 0l.007 -.117v-4l-.007 -.117a1 1 0 0 0 -.993 -.883z" stroke-width="0" fill="currentColor" /></svg>;
+
+var my_id = "";
+function get_id() {
+  my_id = handler.get_id();
+  return my_id;
+}
+
+class ConnectStatus: Reactor.Component {
+    function render() {
+        return
+            <div .connect-status>
+                <span class={"connect-status-icon connect-status" + (service_stopped ? 0 : connect_status)} />
+                {this.getConnectStatusStr()}
+                {service_stopped ? <span .link #start-service>{translate('Start Service')}</span> : ""}
+            </div>;
+    }
+
+    function getConnectStatusStr() {
+        if (service_stopped) {
+            return translate("Service is not running");
+        } else if (connect_status == -1) {
+            return translate('not_ready_status');
+        } else if (connect_status == 0) {
+            return translate('connecting_status');
+        }
+        return translate("Ready");
+    }
+
+    event click $(#start-service) () {
+        handler.set_option("stop-service", "");
+    }
+}
+
+function createNewConnect(id, type) {
+    id = id.replace(/\s/g, "");
+    app.remote_id.value = formatId(id);
+    if (!id) return;
+    var force_relay = false; 
+    if (id == my_id) {
+        msgbox("custom-error", "Error", "You cannot connect to your own computer");
+        return;
+    }
+    handler.set_remote_id(id);
+    handler.new_remote(id, type, force_relay);
+	app.update();
+}
+
+class ShareRdp: Reactor.Component {
+    function render() {
+        var rdp_shared_string = translate("Enable RDP session sharing");
+        var cls = handler.is_share_rdp()  ? "selected" : "line-through";
+        return <li class={cls}><span>{svg_checkmark}</span>{rdp_shared_string}</li>;
+    }
+
+    function onClick() {
+        handler.set_share_rdp(!handler.is_share_rdp());
+        this.update();
+    }
+}
+
+var direct_server;
+class DirectServer: Reactor.Component {
+    function this() {
+        direct_server = this;
+    }
+
+    function render() {
+        var text = translate("Enable Direct IP Access");
+        var enabled = handler.get_option("direct-server") == "Y";
+        var cls = enabled ? "selected" : "line-through";
+        return <li class={cls} title={translate(text)}><span>{svg_checkmark}</span>{text}{enabled && <EditDirectAccessPort />}</li>;
+    }
+
+    function onClick() {
+        if (is_edit_rdp_port) {
+            is_edit_rdp_port = false;
+            return;
+        }
+        handler.set_option("direct-server", handler.get_option("direct-server") == "Y" ? "" : "Y");
+        this.update();
+    }
+}
+
+var myIdMenu;
+var audioInputMenu;
+class AudioInputs: Reactor.Component {
+    function this() {
+        audioInputMenu = this;
+    }
+
+    function render() {
+        if (!this.show) return <li />;
+        var inputs = handler.get_sound_inputs();
+        if (is_win) inputs = ["System Sound"].concat(inputs);
+        if (!inputs.length) return <li style="display:hidden" />;
+        var me = this;
+        self.timer(1ms, function() { me.toggleMenuState() });
+        return <li>{translate('Audio Input')}
+            <menu #audio-input key={inputs.length}>
+                <li #enable-audio><span>{svg_checkmark}</span>{translate("Mute")}</li>
+                <div .separator />
+                {inputs.map(function(name) {
+                return <li id={name}><span>{svg_checkmark}</span>{translate(name)}</li>;
+                })}
+            </menu>
+        </li>;
+    }
+
+    function get_default() {
+        if (is_win) return "System Sound";
+        return "";
+    }
+
+    function get_value() {
+        return handler.get_option("audio-input") || this.get_default();
+    }
+
+    function toggleMenuState() {
+        var el = this.$(li#enable-audio);
+        var enabled = handler.get_option(el.id) != "N";
+        el.attributes.toggleClass("selected", !enabled);
+        var v = this.get_value();
+        for (var el in this.$$(menu#audio-input>li)) {
+            if (el.id == 'enable-audio') continue;
+            var selected = el.id == v;
+            el.attributes.toggleClass("selected", selected);
+        }
+    }
+
+    event click $(menu#audio-input>li) (_, me) {
+        var v = me.id;
+        if (v == 'enable-audio') {
+            handler.set_option(v, handler.get_option(v) != 'N' ? 'N' : '');
+        } else {
+          if (v == this.get_value()) return;
+          if (v == this.get_default()) v = "";
+          handler.set_option("audio-input", v);
+        }
+        this.toggleMenuState();
+    }
+};
+
+class Languages: Reactor.Component {
+    function render() {
+        var langs = JSON.parse(handler.get_langs());
+		var cur = handler.get_local_option("lang") || "default";
+		var noneng;
+        var me = this;
+        self.timer(1ms, function() { me.toggleMenuState() });
+		if (cur != "en" && cur != "default") {
+			noneng = " " + "(Language)";
+		}
+				
+        return <li>{translate('Language')} {noneng}
+            <menu #languages key={langs.length}>
+                {langs.map(function(lang) {
+                return <li id={lang[0]} title={lang[1]}><span>{svg_checkmark}</span>{lang[1]}</li>;
+                })}
+            </menu>
+        </li>;
+    }
+
+
+    function toggleMenuState() {
+        var cur = handler.get_local_option("lang") || "default";
+        for (var el in this.$$(menu#languages>li)) {
+            var selected = cur == el.id;
+            el.attributes.toggleClass("selected", selected);
+        }
+    }
+
+    event click $(menu#languages>li) (_, me) {
+        var v = me.id;
+        if (v == "default") v = "";
+        handler.set_local_option("lang", v);
+        app.update();
+        this.toggleMenuState();
+    }
+}
+
+var enhancementsMenu;
+class Enhancements: Reactor.Component {
+    function this() {
+        enhancementsMenu = this;
+    }
+
+    function render() {
+        var support_remove_wallpaper = handler.support_remove_wallpaper();
+        var me = this;
+        self.timer(1ms, function() { me.toggleMenuState() });
+        return <li>{translate('Enhancements')}
+            <menu #enhancements-menu>
+                <li #enable-abr><span>{svg_checkmark}</span>{translate("Adaptive Bitrate")} (beta)</li>
+                <li #screen-recording>{translate("Recording")}</li>
+                {support_remove_wallpaper ? <li #allow-remove-wallpaper><span>{svg_checkmark}</span>{translate("Remove wallpaper during incoming sessions")}</li> : ""}
+            </menu>
+        </li>;
+    }
+
+    function toggleMenuState() {
+        for (var el in $$(menu#enhancements-menu>li)) {
+            if (el.id && el.id.indexOf("enable-") == 0) {
+                var enabled = handler.get_option(el.id) != "N";
+                el.attributes.toggleClass("selected", enabled);
+            } else if (el.id && el.id.indexOf("allow-") == 0) {
+                var enabled = handler.get_option(el.id) == "Y";
+                el.attributes.toggleClass("selected", enabled);
+            }
+        }
+
+    }
+
+    event click $(menu#enhancements-menu>li) (_, me) {
+        var v = me.id;
+        if (v.indexOf("enable-") == 0) {
+            handler.set_option(v, handler.get_option(v) != 'N' ? 'N' : '');
+        } else if (v.indexOf("allow-") == 0) {
+            handler.set_option(v, handler.get_option(v) == 'Y' ? '' : 'Y');
+        } else if (v == 'screen-recording') {
+            var show_root_dir = is_win && handler.is_installed();
+            var user_dir = handler.video_save_directory(false);
+            var root_dir = show_root_dir ? handler.video_save_directory(true) : "";
+            var ts0 = handler.get_option("enable-record-session") == '' ? { checked: true } : {};
+            var ts1 = handler.get_option("allow-auto-record-incoming") == 'Y' ? { checked: true } : {};
+            msgbox("custom-recording", translate('Recording'),
+                <div .form>
+                    <div><button|checkbox(enable_record_session) {ts0}>{translate('Enable recording session')}</button></div>
+                    <div><button|checkbox(auto_record_incoming) {ts1}>{translate('Automatically record incoming sessions')}</button></div>
+                    <div>
+                        {show_root_dir ? <div style="word-wrap:break-word"><span>{translate("Incoming")}:&nbsp;&nbsp;</span><span>{root_dir}</span></div> : ""}
+                        <div style="word-wrap:break-word"><span>{translate(show_root_dir ? "Outgoing" : "Directory")}:&nbsp;&nbsp;</span><span #folderPath>{user_dir}</span></div>
+                        <div> <button #select_directory .link>{translate('Change')}</button> </div>
+                    </div>
+                </div>
+                , "", function(res=null) {
+                if (!res) return;
+                handler.set_option("enable-record-session", res.enable_record_session ? '' : 'N');
+                handler.set_option("allow-auto-record-incoming", res.auto_record_incoming ? 'Y' : '');
+                handler.set_option("video-save-directory", $(#folderPath).text);
+            });
+        }
+        this.toggleMenuState();
+    }
+}
+
+function getUserName() {
+    try {
+        return JSON.parse(handler.get_local_option("user_info")).name;
+    } catch(e) {}
+    return '';
+}
+
+function updateTheme() {
+    var root_element = self;
+    if (handler.get_option("allow-darktheme") == "Y") {
+        // enable dark theme
+        root_element.attributes.toggleClass("darktheme", true);
+    } else {
+        // disable dark theme
+        root_element.attributes.toggleClass("darktheme", false);
+    }
+}
+
+class MyIdMenu: Reactor.Component {
+    function this() {
+        myIdMenu = this;
+    }
+
+    function render() {
+        return <div #myid>
+            {this.renderPop()}
+            ID{svg_menu}
+        </div>;
+    }
+
+    function renderPop() {
+        return <popup>
+            <menu.context #config-options title={translate('Menu')}>
+                <li #enable-keyboard tabindex="0"><span>{svg_checkmark}</span>{translate('Enable Keyboard/Mouse')}</li>
+                <li #enable-clipboard title={translate('Enable Clipboard')}><span>{svg_checkmark}</span>{translate('Enable Clipboard')}</li>
+                <li #enable-file-transfer title={translate('Enable File Transfer')}><span>{svg_checkmark}</span>{translate('Enable File Transfer')}</li>
+                <li #enable-remote-restart title={translate('Enable Remote Restart')}><span>{svg_checkmark}</span>{translate('Enable Remote Restart')}</li>
+                <li #enable-tunnel title={translate('Enable TCP Tunneling')}><span>{svg_checkmark}</span>{translate('Enable TCP Tunneling')}</li>
+                <li #enable-lan-discovery title={translate('Enable LAN Discovery')}><span>{svg_checkmark}</span>{translate('Enable LAN Discovery')}</li>
+                <AudioInputs />
+                <div .separator />
+                <li #custom-api-url title={translate('Choose Network')}>{translate('Choose Network')}</li>
+                <li #whitelist style="display:none" title={translate('whitelist_tip')}>{translate('IP Whitelisting')}</li>
+                <li #socks5-server title={translate('SOCKS5 Proxy')}>{translate('SOCKS5 Proxy')}</li>
+                <div .separator />
+				<li #enable-wol title={translate('Enable Wake On LAN')}><span>{svg_checkmark}</span>{translate("Enable Wake On LAN")}</li>
+                <li #stop-service title={translate('Enable Service')} class={service_stopped ? "line-through" : "selected"}><span>{svg_checkmark}</span>{translate("Enable Service")}</li>
+                <li #tfa title={translate('enable-2fa-title')} class={!handler.has_valid_2fa() ? "line-through" : "selected"}><span>{svg_checkmark}</span>{translate('enable-2fa-title')}</li>
+                <DirectServer />
+				<li #show-settings-button style="display:none">{show_settings_button ? translate("Hide Settings Button") : translate("Show Settings Button")}</li>
+                <div .separator />
+                <li #allow-darktheme><span>{svg_checkmark}</span>{translate('Dark Theme')}</li>
+                <Languages />
+                <li #about title={translate('About')}>{translate('About')} {" "} {handler.get_app_name()}</li>
+            </menu>
+        </popup>;
+    }
+
+    event click $(svg#menu) (_, me) {
+        this.showSettingMenu();
+    }
+
+
+
+    
+    
+	event keypress $(svg#menu) (evt)
+	{
+		var scanCode = evt.keyCode;
+		for(var (name,code) in Event) {
+		  if( typeof code == #integer && (code == 13 || code == 32)) {
+				this.showSettingMenu();
+				this.$(svg#menu).focus();
+		  }
+		}
+	}
+	
+	event focusout $(svg#menu) (evt)
+	{
+		this.toggleMenuState();
+	}	
+
+    function showSettingMenu() {
+        audioInputMenu.update({ show: true });
+        this.toggleMenuState();
+        if (direct_server) direct_server.update();
+        var menu = this.$(menu#config-options);
+        this.$(svg#menu).popup(menu);
+    }
+/*
+    event click $(li#login) () {
+        login();
+    }
+
+    event click $(li#logout) () {
+        logout();
+    }
+*/	
+
+    function toggleMenuState() {
+		for (var el in $$(menu#config-options>li)) {
+			if (el.id && el.id.indexOf("enable-") == 0) {
+				var enabled = handler.get_option(el.id) != "N";
+                if (enabled) {
+					el.attributes["title"] = translate(el.value) + " " + "(On)";
+				} else {
+					el.attributes["title"] = translate(el.value) + " " + "(Off)";
+				}
+				
+				el.attributes.toggleClass("selected", enabled);
+                el.attributes.toggleClass("line-through", !enabled);
+            } else if (el.id && el.id === "stop-service") {
+                el.attributes.toggleClass("selected", !service_stopped);
+                el.attributes.toggleClass("line-through", service_stopped);
+            }
+        }
+    }
+
+    function showGen2FA() {
+        var me = this;
+        var has_valid_2fa = handler.has_valid_2fa();
+        if (has_valid_2fa) {
+            handler.set_option('2fa', '');
+            me.update();
+        } else {
+            var new2fa = handler.generate2fa();
+            var src = handler.generate_2fa_img_src(new2fa);
+            msgbox("custom-2fa-setting", translate('enter-2fa-title'),
+                <div .form>
+                    <div>{translate('enable-2fa-desc')}</div>
+                    <center><img title='QR' style='height:160px; width:160px' src={src} /></center>
+					<div>{translate('enable-2fa-desc-verify')}</div>
+                    <center><div .code><input name='code' type='text' maxlength='6' style='width:150px; font-family: \"Courier New\"' .outline-focus /></div></center>
+					<div #wrongalert style='float:left; display:none; margin-right: 10px'>{svg_alert}</div><div #wrongcode style='font-size: 11px; font-weight: 300; display:none; '>{translate('wrong-2fa-code')}</div>
+                </div>
+                , "", function(res=null) {
+                if (!res) return;
+                if (!res.code) return;
+                if (!handler.verify2fa(res.code)) {
+					var el = $(#wrongcode);
+					el.style.set{display: "block"};
+					var elalert = $(#wrongalert);
+					elalert.style.set{display: "block"};					
+					return <div></div>;
+                }
+                me.update();
+            }, 470);
+        }
+        
+    }
+    
+    function showAbout() {
+        var name = handler.get_app_name();
+            msgbox("custom-nocancel-nook-hasclose", translate('About') + " " + name, "<div style='line-height: 2em'> \
+                <div>Version: " + handler.get_version() + " \
+                <div>TeamID: " + handler.get_teamid() + " \
+            </div>
+			<div style='font-size: 13px; color: #000; text-decoration: none;'>
+				<div .link .custom-event url='https://www.hoptodesk.com'>Website</div> \
+				<div .link .custom-event url='https://www.hoptodesk.com/privacy'>Privacy Statement</div> \
+			<br><br>
+			<div .link .custom-event url='https://www.gnu.org/licenses/agpl-3.0.en.html'><span style='text-decoration: none'>This software is licensed under&nbsp;</span>AGPL 3.0</div> \
+			<div .link .custom-event url='https://gitlab.com/hoptodesk/hoptodesk/'><span style='text-decoration: none'>Source code is available&nbsp;</span>here</div><br>
+			</div><br>
+			<div style='font-size: 9px; color: #888; text-decoration: none;' .link .custom-event url='http://sciter.com/'>This Application (or Component) uses Sciter Engine, copyright Terra Informatica Software, Inc.</div>
+			<div style='font-size: 9px; color: #888; text-decoration: none;'>Copyright &copy; HopToDesk. Originally forked from RustDesk.</div>			\
+			", "", function(el) {
+                if (el && el.attributes) {
+                    handler.open_url(el.attributes['url']);
+                };
+            }, 400);
+    }
+	
+    function showUpdatePopup() {
+			let dontshowbox;
+			showingupdate = "1";
+			dontshowbox = ".checkboxunchecked";
+			
+            msgbox("custom-nocancel-nook-hasyes-hasno", translate('Update Available'), " \
+			<center><svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 500 500' version='1.1'><path d='M 245.110 155.396 C 240.061 158.194, 240.073 158.055, 240.035 210.489 C 240 259.477, 240 259.477, 223.750 243.376 C 214.813 234.520, 206.387 226.538, 205.027 225.637 C 201.480 223.288, 197.611 223.615, 194.111 226.560 C 189.994 230.024, 189.125 234.855, 191.835 239.213 C 192.959 241.021, 205.529 254.088, 219.770 268.250 C 245.643 293.983, 245.664 294, 250 294 C 254.336 294, 254.357 293.983, 280.230 268.250 C 294.471 254.088, 307.041 241.021, 308.165 239.213 C 310.875 234.855, 310.006 230.024, 305.889 226.560 C 302.389 223.615, 298.520 223.288, 294.973 225.637 C 293.613 226.538, 285.188 234.520, 276.250 243.376 C 260 259.477, 260 259.477, 260 210.786 C 260 175.165, 259.679 161.390, 258.805 159.472 C 256.616 154.666, 249.986 152.693, 245.110 155.396 M 163.329 287.471 C 159.858 290.942, 159.858 290.942, 160.179 306.298 C 160.489 321.111, 160.607 321.864, 163.518 327.549 C 165.564 331.545, 168.140 334.658, 171.518 337.218 C 180.864 344.299, 178.112 344.073, 251.572 343.771 C 317.500 343.500, 317.500 343.500, 322.484 341.047 C 329.324 337.682, 335.444 331.103, 337.939 324.433 C 339.661 319.830, 340 316.615, 340 304.862 C 340 290.800, 340 290.800, 336.600 287.400 C 332.220 283.020, 328.296 282.871, 323.766 286.915 C 320.500 289.829, 320.500 289.829, 320 303.894 C 319.227 325.644, 326.893 323.500, 249.895 323.500 C 185.836 323.500, 185.836 323.500, 182.918 320.234 C 180.009 316.979, 180 316.928, 180 303.884 C 180 290.800, 180 290.800, 176.600 287.400 C 171.962 282.762, 168.017 282.783, 163.329 287.471' stroke='none' fill='#fbfbfc' fill-rule='evenodd'/><path d='M 231 41.508 C 214.372 45.563, 198.875 55.787, 163.502 86.041 C 154.151 94.039, 135.925 109.383, 123 120.140 C 87.615 149.590, 73.550 164.194, 64.128 181.272 C 48.452 209.683, 48.679 248.787, 64.794 296 C 79.796 339.955, 101.438 374.993, 129.572 400.873 C 159.582 428.480, 196.679 444.080, 232.500 444.158 C 263.964 444.226, 288.488 434.355, 335.864 402.552 C 395.603 362.451, 411.631 349.864, 428.146 330.080 C 447.857 306.468, 455.853 282.928, 454.670 252 C 454.052 235.869, 452.113 226.019, 447.088 213.500 C 437.050 188.489, 424.093 175.172, 376.004 140.441 C 352.185 123.238, 344.463 116.565, 315.993 88.576 C 301.964 74.784, 286.702 60.479, 282.077 56.786 C 263.580 42.020, 248.005 37.361, 231 41.508 M 245.110 155.396 C 240.061 158.194, 240.073 158.055, 240.035 210.489 C 240 259.477, 240 259.477, 223.750 243.376 C 214.813 234.520, 206.387 226.538, 205.027 225.637 C 201.480 223.288, 197.611 223.615, 194.111 226.560 C 189.994 230.024, 189.125 234.855, 191.835 239.213 C 192.959 241.021, 205.529 254.088, 219.770 268.250 C 245.643 293.983, 245.664 294, 250 294 C 254.336 294, 254.357 293.983, 280.230 268.250 C 294.471 254.088, 307.041 241.021, 308.165 239.213 C 310.875 234.855, 310.006 230.024, 305.889 226.560 C 302.389 223.615, 298.520 223.288, 294.973 225.637 C 293.613 226.538, 285.188 234.520, 276.250 243.376 C 260 259.477, 260 259.477, 260 210.786 C 260 175.165, 259.679 161.390, 258.805 159.472 C 256.616 154.666, 249.986 152.693, 245.110 155.396 M 163.329 287.471 C 159.858 290.942, 159.858 290.942, 160.179 306.298 C 160.489 321.111, 160.607 321.864, 163.518 327.549 C 165.564 331.545, 168.140 334.658, 171.518 337.218 C 180.864 344.299, 178.112 344.073, 251.572 343.771 C 317.500 343.500, 317.500 343.500, 322.484 341.047 C 329.324 337.682, 335.444 331.103, 337.939 324.433 C 339.661 319.830, 340 316.615, 340 304.862 C 340 290.800, 340 290.800, 336.600 287.400 C 332.220 283.020, 328.296 282.871, 323.766 286.915 C 320.500 289.829, 320.500 289.829, 320 303.894 C 319.227 325.644, 326.893 323.500, 249.895 323.500 C 185.836 323.500, 185.836 323.500, 182.918 320.234 C 180.009 316.979, 180 316.928, 180 303.884 C 180 290.800, 180 290.800, 176.600 287.400 C 171.962 282.762, 168.017 282.783, 163.329 287.471' stroke='none' fill='#bce4fc' fill-rule='evenodd'/></svg></center><br></br> \
+			<span style=\"margin-top: 5px; margin-bottom: 15px;\">" + translate("An update is available, do you want to update to the new version?") + "</span><br></br> \
+				<div style=\"margin-top: 30px; display: flex; align-items: center; \"> \
+					<div id='dontshowagain' .custom-event style=\"float:left; width: 20px; height: 20px; border: 4px solid #2196F3; border-radius: 8px; cursor: pointer;\"> \
+						<div id='dontshowagainchecked'></div> \
+					</div> \
+					<div style=\"height:32px; vertical-align: middle; \"><div style=\"margin-left: 40px; display:block; \">" + translate("Don't show this again.") + "</div></div> \
+				</div> \
+			<br></br> \
+			", "", function(el) {
+				if (el) {
+					if (el.type === "custom-nocancel-nook-hasyes-hasno"){
+						if ($(#dontshowagainchecked).attributes.hasClass("checkboxunchecked")) {
+							showingupdate = "";
+						}
+										
+						view.windowState = View.WINDOW_MINIMIZED;
+						handler.run_temp_update();
+						
+						if ($(#dontshowagainchecked).attributes.hasClass("checkboxchecked")) {
+							showingupdate = "";
+						}				
+						
+						return;						
+					}
+					if (el.id === 'dontshowagain') {
+						if ($(#dontshowagain).attributes.hasClass("checkedtrue")) {
+							$(#dontshowagain).attributes.removeClass("checkedtrue");
+							$(#dontshowagain).html = '';
+							handler.set_local_option("dontshowagain", "");
+						} else {
+							$(#dontshowagain).html = '<div id="dontshowagainchecked" style="margin-top: -7px; margin-left: 2px;  font-weight: 900; font-size: 25px; color: #2196F3; cursor: pointer; ">&#10003;</div>';
+							$(#dontshowagain).attributes.addClass("checkedtrue");
+							handler.set_local_option("dontshowagain", "1");
+						}
+					}
+                } {
+					showingupdate = "";
+				}
+				
+            }, 240);
+    }	
+
+    event click $(menu#config-options>li) (_, me) {
+        if (me.id && me.id.indexOf("enable-") == 0) {
+            handler.set_option(me.id, handler.get_option(me.id) == "N" ? "" : "N");
+        }
+        if (me.id && me.id.indexOf("allow-") == 0) {
+            handler.set_option(me.id, handler.get_option(me.id) == "Y" ? "" : "Y");
+        }
+        if (me.id == "whitelist") {
+            var old_value = handler.get_option("whitelist").split(",").join("\n");
+            msgbox("custom-whitelist", translate("IP Whitelisting"), "<div .form> \
+            <div>" + translate("whitelist_sep") + "</div> \
+            <textarea spellcheck=\"false\" name=\"text\" novalue=\"0.0.0.0\" style=\"overflow: scroll-indicator; width:*; height: 140px; font-size: 1.2em; padding: 0.5em; margin-bottom: 10px; \">" + old_value + "</textarea>\
+            </div> \
+            ", "", function(res=null) {
+                if (!res) return;
+                var value = (res.text || "").trim();
+                if (value) {
+                    var values = value.split(/[\s,;\n]+/g);
+                    for (var ip in values) {
+                        if (!ip.match(/^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)(\/([1-9]|[1-2][0-9]|3[0-2])){0,1}$/)
+                            && !ip.match(/^(((?:[0-9A-Fa-f]{1,4}))*((?::[0-9A-Fa-f]{1,4}))*::((?:[0-9A-Fa-f]{1,4}))*((?::[0-9A-Fa-f]{1,4}))*|((?:[0-9A-Fa-f]{1,4}))((?::[0-9A-Fa-f]{1,4})){7})(\/([1-9]|[1-9][0-9]|1[0-1][0-9]|12[0-8])){0,1}$/)) {
+                            return translate("Invalid IP") + ": " + ip;
+                        }
+                    }
+                    value = values.join("\n");
+                }
+                if (value == old_value) return;
+                stdout.println("whitelist updated");
+                handler.set_option("whitelist", value.replace("\n", ","));
+            }, 300);
+        } else if (me.id == "custom-api-url") {
+            let old_url = handler.get_custom_api_url();
+			let uncheckedimg;
+			let selectedhopnetwork;
+			let selectedcustomnetwork;
+			if (old_url) {selectedhopnetwork = ".uncheckednetwork"; selectedcustomnetwork = ".checkednetwork";} else {selectedhopnetwork = ".checkednetwork"; selectedcustomnetwork = ".uncheckednetwork";}
+			
+            msgbox("custom", translate('Choose Network'), "<div .form> \
+            <div> \
+			<div #networkhoptodesk .custom-event title='HopToDesk Network' " + selectedhopnetwork + " network='networkhoptodesk' style=\"height: 30px; display:block;\"><div style=\"padding-top: 1px; margin-top: 5px; margin-left: 35px; display: block;\">" + translate("HopToDesk Network (Default)") + "</div></div><br></br> \
+			<div #networkcustom .custom-event title='Custom Network Settings' " + selectedcustomnetwork + " network='networkcustom' id='networkcustom' style=\"height: 30px; display:block;\"><div style=\"padding-top: 1px; margin-top: 5px; margin-left: 35px; display: block;\">" + translate("Custom Network Settings") + "</div></div><br></br> \
+			<span style=\"margin-top: 5px; margin-bottom: 15px;\">" + translate("Enter your custom network settings URL:") + "</span><br></br><br></br> \
+			<input|text .outline-focus name='url' value='" + old_url + "' placeholder='" + translate('Custom network settings URL') + "' style=\"margin-bottom: 15px; max-width: 100%; font-size: 14px\" #customurl/></div> \
+            </div> \
+			", "", function(el) {
+				if (el) {
+					if (el.id !== 'networkcustom' && el.id !== 'networkhoptodesk' ) {
+						let resurl = $(#customurl).value;
+						if (!resurl) {handler.set_custom_api_url('');return;};
+								
+						if (old_url != resurl) {
+							let valid_url = () => {
+								handler.set_custom_api_url(resurl);
+							}
+							if (resurl == "") return valid_url();
+
+							httpGetRequest(resurl, #get, {}, function(data) {
+								if (data.error) {
+									msgbox("custom-error", translate("Custom Network Error"), translate("The custom network URL provided was not valid, please try again.") + "<br/>" + data.error, () => {});
+									return;
+								}
+
+								let jsontemp = JSON.stringify(data);
+								let text_res = jsontemp.toString();
+								let json;
+								try {
+									json = JSON.parse(text_res);
+								} catch (e) {
+									return msgbox("custom-error", translate("Custom Network Error"), translate("The custom network URL provided was not valid, please try again.") + "<br/>" + text_res , () => {});
+								}
+								
+								if (data instanceof Object && data.turnservers && data.rendezvous) {
+									let host = data.rendezvous.host;
+									let port = data.rendezvous.port.toInteger();
+									if (port == undefined || port < 0 || port > 65536) return msgbox("custom-error", translate("Custom Network Error"), "Port `" + data.rendezvous.port + "` is an invalid port.");
+									valid_url();
+								} else msgbox("custom-error", translate("Custom Network Error"), "The custom network URL provided did not return a correct response: (`" + text_res + "`).");
+							}, function(err, status) {
+								msgbox("custom-error", translate("Custom Network Error"), translate("The custom network URL provided was not valid, please try again.") + "<br/>Status " + status + ": `" + err + "`", () => {});
+							});
+						}
+					} else {
+						if (el && el.attributes['network'] === 'networkhoptodesk') {
+							$(#customurl).value = '';
+							$(#networkhoptodesk).attributes.addClass("checkednetwork");
+							$(#networkhoptodesk).attributes.removeClass("uncheckednetwork");
+							$(#networkcustom).attributes.removeClass("checkednetwork");
+							$(#networkcustom).attributes.addClass("uncheckednetwork");
+						}
+						if (el && el.attributes['network'] === 'networkcustom') {
+							$(#customurl).state.focus = true;
+							$(#networkhoptodesk).attributes.removeClass("checkednetwork");
+							$(#networkhoptodesk).attributes.addClass("uncheckednetwork");
+							$(#networkcustom).attributes.addClass("checkednetwork");
+							$(#networkcustom).attributes.removeClass("uncheckednetwork");
+						}
+						return;
+					}
+                }
+				
+				if (!resurl) return;
+
+            }, 240)
+        } else if (me.id == "show-settings-button") {
+            handler.set_config_option("show-settings-button", (show_settings_button = !show_settings_button) ? "Y" : "");
+            app.update(true);
+        } else if (me.id == "socks5-server") {
+            var socks5 = handler.get_socks() || {};
+            var old_proxy = socks5[0] || "";
+            var old_username = socks5[1] || "";
+            var old_password = socks5[2] || "";
+            msgbox("custom-server", "SOCKS5 Proxy", <div .form .set-password>
+            <div><span>{translate("Hostname")}:</span><input|text name='proxy' value={old_proxy} /></div>
+            <div><span>{translate("Username")}:</span><input|text name='username' value={old_username} /></div>
+            <div><span>{translate("Password")}:</span><PasswordComponent value={old_password} /></div>
+            </div>
+            , "", function(res=null) {
+                if (!res) return;
+                var proxy = (res.proxy || "").trim();
+                var username = (res.username || "").trim();
+                var password = (res.password || "").trim();
+                if (proxy == old_proxy && username == old_username && password == old_password) return;
+                if (proxy) {
+                    var err = handler.test_if_valid_server(proxy);
+                    if (err) return translate("Server") + ": " + err;
+                }
+                handler.set_socks(proxy, username, password);
+            }, 240);
+        } else if (me.id == "stop-service") {
+            handler.set_option("stop-service", service_stopped ? "" : "Y");
+        } else if (me.id == "allow-darktheme") {
+            updateTheme();
+        } else if (me.id == "tfa") {
+            this.showGen2FA()
+        } else if (me.id == "about") {
+            this.showAbout()
+        } else if (me.id == "enable-wol") {
+            var enable_wol = handler.get_option("enable-wol") ? "N" : "Y"
+            handler.set_option("enable-wol", enable_wol);
+        }
+    }
+}
+
+var is_edit_direct_access_port;
+class EditDirectAccessPort: Reactor.Component {
+    function render() {
+        return <span style="margin-left: 12px; padding: 0 6px; display: inline-block;" .link>{svg_edit}</span>;
+    }
+
+    function onMouse(evt) {
+        if (evt.type == Event.MOUSE_DOWN) {
+            is_edit_direct_access_port = true;
+            editDirectAccessPort();
+        }
+    }
+}
+
+function editDirectAccessPort() {
+    var p0 = handler.get_option('direct-access-port');
+    var port = p0 ? <input|text name='port' value={p0} /> :
+                    <input|text name='port' novalue={21118} />;
+    msgbox("custom-direct-access-port", translate('Direct IP Access Settings'), <div .form .set-password>
+            <div><span style="width: 60px; ">{translate('Port')}:</span>{port}</div>
+        </div>, "", function(res=null) {
+        if (!res) return;
+        var p = (res.port || '').trim();
+        if (p) {
+            p = p.toInteger();
+            if (!(p > 0)) {
+                return translate("Invalid port");
+            }
+            p = p + '';
+        }
+        if (p != p0) handler.set_option('direct-access-port', p);
+      });
+}
+
+class App: Reactor.Component
+{
+    function this() {
+        app = this;
+    }
+
+    function render() {
+        var is_can_screen_recording = handler.is_can_screen_recording(false);
+        return
+            <div .app>
+                    <popup><menu.context #edit-password-context tabindex="0">
+                        <li #refresh-password title={translate('Refresh random password')}>{translate('Refresh random password')}</li>
+                        <li #set-password title={translate('Set your own password')}>{translate('Set your own password')}</li>
+                    </menu></popup>
+                    <div .left-pane>
+                    <div>
+                        <div .title>{translate('Your Desktop')}</div>
+                        <div .lighter-text>{translate('desk_tip')}</div>
+                        <div .your-desktop style="min-height: 70px">
+                            {!show_settings_button ? <MyIdMenu>{translate("ID")}<div tabindex="0">{svg_menu}</div></MyIdMenu> : ""}
+                            {key_confirmed ? <input #idbox .idbox type="text" readonly title={translate('ID (Click to Copy)')} value={formatId(get_id())}/> : translate("Generating ...")}
+                        </div>
+                        <PasswordArea />
+                    </div>
+
+                    {!is_win || handler.is_installed() ? "": <InstallMe />}
+                    {is_win && handler.is_installed() ? <EmptyMe />: ""}
+					<div #launch-update style="display:none" .update_available .link url='https://www.hoptodesk.com/'>{translate('New Update Available')}</div>
+                    {is_can_screen_recording ? "": <CanScreenRecording />}
+                    {is_can_screen_recording && !handler.is_process_trusted(false) ? <TrustMe /> : ""}
+                    {!service_stopped && is_can_screen_recording && handler.is_process_trusted(false) && handler.is_installed() && !handler.is_installed_daemon(false) ? <InstallDaemon /> : ""}
+                    {is_osx && !service_stopped && is_can_screen_recording && handler.is_process_trusted(false) && !handler.is_installed() && handler.is_installed_daemon(false) ? <EmptyMe />: ""}
+                    {system_error ? <SystemError /> : ""}
+                    {!system_error && handler.is_login_wayland() && !handler.current_is_wayland() ? <FixWayland /> : ""}
+                    {!system_error && handler.current_is_wayland() ? <ModifyDefaultLogin /> : ""}
+                    {is_linux && !system_error && !handler.is_login_wayland() && !handler.current_is_wayland() ? <EmptyMe />: ""}
+                </div>
+                <div .right-pane>
+                    <div .right-content>
+                        <div .top-line>
+                            <div .title>{translate('Control Remote Desktop')}</div>
+                            {show_settings_button ? <MyIdMenu><div style="margin:top: -20px; position: fixed; top: 10; border-radius: 50px; width: 100px;float:right;padding: 10px;background: #2D81D4 url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAkCAYAAAD7PHgWAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAASASURBVHjaYvz//z/DYAYAAcTEMMgBQAANegcCBNCgdyBAANHKgcZAvAmIXwPxGyA+BMQe5BgEEEAMoExCZewAxG//Y4LfQBxDqnkAAcRI5VzMBsRngVgHh/w9INYC4p/EGggQQCxkOoQXiB2BWA2If0AddQYqhuy4biB+B8R1QMwJxEpAHAjEa4BYE4itgJgfiB8C8QEgfoluEUAAkROFukB8Dkv0nQXil0hil5H0rEMS/wzEp4D4K5oZ94HYGd0+gAAi1XF8QHzpP3EgDkmfDRD/JELPPSAWQLYTIIBIdaA/moEngPgWmtgnIK7AojcKiF+gqX0ExPuB+C+SWAqyPoAAIjUNqiOxTwKxLTQ9+gGxKhB/BuItQHwFi95lUD0BQCwMxE+AeDMQP4bKRULVmQDxHJgmgAAi1YE/kNggS3igmWABkfrvAnEvlrJYDIn/FVkSIIBILahBIfAbylaB5khcQAMaWiFAbIgnMCyB2AnK/gPEO5ElAQKInFx8Bim9dGGRB+XEXUD8DUndLyA+CcTBWNSnIam7ii4PEECkhCAHELsBsTSS2Ac0NQlAvA2IXaHlHgywArEZEK8C4hI0Pe+Q2GLQUOeHCQAEELGh5gTE54H4H5JvfwCxDloV9wstl96Chso/NPFkJH1C0NyMDO7AqkWAACLGcYZA/B5LmVWOpIYJiPchyYGKkxAg5gJiDiB2hDoUuVDmR9IfgsVzIE/5AwQQMQ5cgaYRFJLxaGo0kSz4iyOtGUBrERjwRZP3BOLDaHbtBQggYhz4FElDNxCzYlETjKTmNg41ILwNSR22whwUE7lISeI5QAAxkdigeINUzOAqrkAtlb9ElKPMWOT/oTUYWAACiJgQ3I7ka1AFvwqI7bGk079IRYotFnNkgfg1klnhaPKgDDcfLRkcBwggYhzoilZXgsB3II5EUsOK1sIBZQgTJHllUHpCkn8DxOJI8tZY6mkQSAUIIGKLmVggvo6mGdRqVkJSEwDEf9BCG5TmNkAdhAxKkPSBcvMVLI0IUBplBAggUmoQbmi0fEAyqBRNTQkRTao+PC2kT9AyUhgmDxBA5FR1JwlUdSlYmmAg8AyLh0A4HUnNRXR5gAAitTWjg9akf4RFDaiptBraFNOC5ta70J7dCyzq7yOx1aBV4imYAEAAkRp6mWjpRIYKvUBOaMMXBtqR5QECiNQQ5Edr24EanYxAbA31/Ucg3o/WAEAGPNCmlSg09EGh+h2ILwKxOVSNCLIGgAAi1beRaB2lpUC8B60YAlX0YVj02kCrSWRwHIhnAfEXJLECZH0AAUSqA8XRqj5cAOR4N7S6+jUR+kDFkTSynQABRE6aATVIb2Ax/BraiMIJJD0L0crHy1h6eU/RCn8wBgggckcWBKHNfSMg/gbEe5DGX9YjqcsH4udAPB+IuaFiqUC8GNoN8IamuetQfY/RLQIIIGoPfYAywTUglsUh/xKamT4RayBAAFF7dOsLEFdAWyXYQD8pjgMBgACidgjCAKhfkQ7EetCC+ia07zuTVIMAAgwABC/z2Wrp3KsAAAAASUVORK5CYII=');" #menu><span style="font-size: 16px; float:right; color: #FFFFFF">{translate('Settings')}</span></div></MyIdMenu> : ""}
+                        </div>
+						<div .card-connect>
+                            <ID @{this.remote_id} />
+                            <div .right-buttons>
+                                <button .button .outline #file-transfer title={translate('Transfer File')}>{translate('Transfer File')}</button>
+                                <button .button #connect title={translate('Connect')}>{translate('Connect')}</button>
+                            </div>
+                        </div>
+                        <MultipleSessions @{this.multipleSessions} />
+                    </div>
+                    <ConnectStatus @{this.connect_status} />
+                </div>
+                <div #overlay style="position: absolute;size:*;background:black;opacity:0.5;display:none" />
+            </div>;
+    }
+
+	event focus $(.idbox) {
+		var el = $(#idbox);
+		handler.copy_text(el.value);
+	}
+
+	event click $(button#connect) {
+        this.newRemote("connect");
+    }
+
+    event click $(button#file-transfer) {
+        this.newRemote("file-transfer");
+    }
+
+    function newRemote(type) {
+        createNewConnect(this.remote_id.value, type);
+    }
+
+    event click $(#launch-update) {
+        handler.open_url("https://www.hoptodesk.com");
+    }
+}
+
+class InstallMe: Reactor.Component {
+    function render() {
+        return <div .install-me style="margin-top: -5px;">
+            <span />
+            <div id="installtip">{translate('install_tip')}</div>
+            <div><center><button #install-me .button title={translate('Install')}>{translate('Install')}</button></center></div>
+        </div>;
+    }
+
+    event click $(#install-me) {
+        handler.goto_install();
+    }
+}
+
+class EmptyMe: Reactor.Component {
+    function render() {
+        return <div .install-me style="min-width: 170px; background-color: #ECF4FF; position: absolute; margin-top: -5px; font-family: 'opensans-semb';height:10%">
+            <span />
+            <div style="font-size: 30px; color: #2D81D4; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; font-weight: 800;"><center>HopToDesk</center></div>
+            <div></div>
+        </div>;
+    }
+
+    event click $(#install-me) {
+        handler.goto_install();
+    }
+}
+
+function download(from, to, args..) {
+    var rqp = { type:#get, url: from, toFile: to, noCache: true };
+    var fn = 0;
+    var on = 0;
+    for( var p in args ) {
+        if( p instanceof Function ) {
+            switch(++fn) {
+                case 1: rqp.success = p; break;
+                case 2: rqp.error = p; break;
+                case 3: rqp.progress = p; break;
+            }
+        } else if( p instanceof Object ) {
+            switch(++on) {
+                case 1: rqp.params = p; break;
+                case 2: rqp.headers = p; break;
+            }
+        }
+    }
+    view.request(rqp);
+}
+
+/*
+class UpdateMe: Reactor.Component {
+    function render() {
+        var update_or_download = "download"; // !is_win ? "download" : "update";
+        return <div .install-me>
+            <div>{translate('Status')}</div>
+            <div>There is a newer version of {handler.get_app_name()} ({handler.get_new_version()}) available.</div>
+            <div #install-me.link>{translate('Click to ' + update_or_download)}</div>
+            <div #download-percent style="display:hidden; padding-top: 1em;" />
+        </div>;
+    }
+
+    event click $(#install-me) {
+        handler.open_url("https://www.hoptodesk.com");
+        return;
+    }
+}
+*/
+class SystemError: Reactor.Component {
+    function render() {
+        return <div .install-me>
+            <div>{system_error}</div>
+        </div>;
+    }
+}
+
+class TrustMe: Reactor.Component {
+    function render() {
+        return <div .trust-me #trust-me-box style="margin-top: -5px;">
+            <div style="margin-top: 10px;">{translate('Permissions')}</div>
+            <div style="text-align: center">{translate('config_acc')}</div>
+            <div #trust-me .link>{translate('Configure')}</div>
+        </div>;
+    }
+
+    event click $(#trust-me) {
+        handler.is_process_trusted(true);
+        watch_trust();
+    }
+}
+
+class CanScreenRecording: Reactor.Component {
+    function render() {
+        return <div .trust-me #screen-recording-box style="margin-top: -5px;">
+            <div>{translate('Permissions')}</div>
+            <div>{translate('config_screen')}</div>
+            <div #screen-recording .link>{translate('Configure')}</div>
+            <div #help-me style="display:none" .link>{translate('Help')}</div>
+        </div>;
+    }
+
+    event click $(#screen-recording) {
+        handler.is_can_screen_recording(true);
+        watch_screen_recording();
+    }
+
+    event click $(#help-me) {
+        handler.open_url(translate("doc_mac_permission"));
+    }
+}
+
+class InstallDaemon: Reactor.Component {
+    function render() {
+        return <div .install-me>
+            <span />
+            <div>{translate('install_daemon_tip')}</div>
+            <div #install-me.link>{translate('Install')}</div>
+        </div>;
+    }
+
+    event click $(#install-me) {
+        handler.is_installed_daemon(true);
+    }
+}
+
+class FixWayland: Reactor.Component {
+    function render() {
+        return <div .trust-me style="margin-top: -5px;">
+            <div style="margin-top: 10px; padding-top: 5px;">{translate('Change Display')}</div>
+            <div>{translate('Login screen using Wayland is not supported.')}</div>
+            <div #fix-wayland .link>{translate('Disable Wayland')}</div>
+            <div style="text-align: center">({translate('Reboot required')})</div>
+        </div>;
+    }
+
+    event click $(#fix-wayland) {
+        handler.fix_login_wayland();
+        app.update();
+    }
+}
+
+class ModifyDefaultLogin: Reactor.Component {
+    function render() {
+        return <div .trust-me>
+            <div style="margin-top: 10px; padding-top: 5px;">{translate('Change Display')}</div>
+            <div>{translate('Current Wayland display server is not supported.')}</div>
+            <div #modify-default-login .link>{translate('Disable Wayland')}</div>
+            <div style="text-align: center">({translate('Reboot required')})</div>
+        </div>;
+    }
+
+    event click $(#modify-default-login) {
+        if (var r = handler.modify_default_login()) {
+            // without handler, will fail, fucking stupid sciter
+            handler.msgbox("custom-error", "Error", r);
+        }
+        app.update();
+    }
+
+    event click $(#help-me) {
+        handler.open_url(translate("doc_fix_wayland"));
+    }
+}
+
+function watch_trust() {
+    // not use TrustMe::update, because it is buggy
+    var trusted = handler.is_process_trusted(false);
+    var el = $(div#trust-me-box);
+    if (el) {
+        el.style.set {
+            display: trusted ? "none" : "block",
+        };
+    }
+    if (trusted) {
+        app.update();
+        return;
+    }
+    self.timer(1s, watch_trust);
+}
+
+function watch_screen_recording() {
+    var trusted = handler.is_can_screen_recording(false);
+    var el = $(div#screen-recording-box);
+    if (el) {
+        el.style.set {
+            display: trusted ? "none" : "block",
+        };
+    }
+    if (trusted) {
+        app.update();
+        return;
+    }
+    self.timer(1s, watch_screen_recording);
+}
+
+class PasswordEyeArea : Reactor.Component {
+    render() {
+        var method = handler.get_option('verification-method');
+        var mode= handler.get_option('approve-mode');
+        var value = mode == 'click' ||  method == 'use-permanent-password' ? "-" : password_cache[0];
+        return
+            <div .eye-area style="width: *">
+                <input|text @{this.input} #passwordbox .passwordbox readonly value={value} title={translate('Password (Click to Copy)')}/>
+                {svg_refresh_password}
+            </div>;
+    }
+
+	event focus $(.passwordbox) {
+		var el = $(#passwordbox);
+		handler.copy_text(el.value);
+	}
+	
+    event click $(#passwordbox) (_, me) {
+        var el = $(#passwordbox);
+		handler.copy_text(el.value);
+    }
+	
+    event click $(svg#refresh-password) (_, me) {
+        handler.update_temporary_password();
+        this.update();
+    }
+}
+
+var temporaryPasswordLengthMenu;
+class TemporaryPasswordLengthMenu: Reactor.Component {
+    function this() {
+        temporaryPasswordLengthMenu = this;
+    }
+
+    function render() {
+        if (!this.show) return <li />;
+        var me = this;
+        var method = handler.get_option('verification-method');
+        self.timer(1ms, function() { me.toggleMenuState() });
+        return <li disabled={ method == 'use-permanent-password' ? "true" : "false" }>{translate("One-time password length")}
+            <menu #temporary-password-length>
+                <li #temporary-password-length-6><span>{svg_checkmark}</span>6</li>
+                <li #temporary-password-length-8><span>{svg_checkmark}</span>8</li>
+                <li #temporary-password-length-10><span>{svg_checkmark}</span>10</li>
+            </menu>
+        </li>;
+    }
+
+    function toggleMenuState() {
+        var length = handler.get_option("temporary-password-length");
+        var index = ['6', '8', '10'].indexOf(length);
+        if (index < 0) index = 0;
+        for (var (i, el) in this.$$(menu#temporary-password-length>li)) {
+            el.attributes.toggleClass("selected", i == index);
+        }
+    }
+
+    event click $(menu#temporary-password-length>li) (_, me) {
+        var length = me.id.substring('temporary-password-length-'.length);
+        var old_length = handler.get_option('temporary-password-length');
+        if (length != old_length) {
+            handler.set_option('temporary-password-length', length);
+            handler.update_temporary_password();
+            this.toggleMenuState();
+            passwordArea.update();
+        }
+    }
+}
+
+var passwordArea;
+class PasswordArea: Reactor.Component {
+    function this() {
+        passwordArea = this;
+    }
+
+    function render() {
+        var me = this;
+        self.timer(1ms, function() { me.toggleMenuState() });
+        var isunattended = handler.get_option("unattended-access");
+		if (isunattended) {
+			return
+			<div .your-desktop>
+				<div>{translate('Password')}</div>
+				<div .password style="flow:horizontal">
+					{this.renderPop()}
+					<PasswordEyeArea />
+					{svg_edit}
+				</div>
+				<span></span><div style="text-align: center; font-size: 13px">
+				<label style="display: flex; align-items: center; justify-content: flex-end; flex-direction: row-reverse;">
+				  <input type="checkbox" id="unattendedcheckbox" name="unattendedcheckbox" style="margin-right: 8px; background-color: #FFFFFF" checked />
+				  <span id="unattendedlabel">{translate('Unattended Access')}</span>
+				</label>
+				</div>
+			</div>;
+		} else {
+			return
+			<div .your-desktop>
+				<div>{translate('Password')}</div>
+				<div .password style="flow:horizontal">
+					{this.renderPop()}
+					<PasswordEyeArea />
+					{svg_edit}
+				</div>
+				<span></span><div style="text-align: center; font-size: 13px">
+				<label style="display: flex; align-items: center; justify-content: flex-end; flex-direction: row-reverse;">
+				  <input type="checkbox" id="unattendedcheckbox" name="unattendedcheckbox" style="margin-right: 8px; background-color: #FFFFFF" />
+				  <span id="unattendedlabel">{translate('Unattended Access')}</span>
+				</label>
+				</div>
+			</div>;
+		}
+
+    }
+
+    function renderPop() {
+        var method = handler.get_option('verification-method');
+        var approve_mode= handler.get_option('approve-mode');
+        var show_password = approve_mode != 'click';
+        return <popup><menu.context #edit-password-context>
+            <li #approve-mode-password><span>{svg_checkmark}</span>{translate('Accept sessions via password')}</li>
+            <li #approve-mode-click><span>{svg_checkmark}</span>{translate('Accept sessions via click')}</li>
+            <li #approve-mode-both><span>{svg_checkmark}</span>{translate('Accept sessions via both')}</li>
+            { !show_password ? '' : <div .separator /> }
+            { !show_password ? '' : <li #use-temporary-password><span>{svg_checkmark}</span>{translate('Use one-time password')}</li> }
+            { !show_password ? '' : <li #use-permanent-password><span>{svg_checkmark}</span>{translate('Use permanent password')}</li> }
+            { !show_password ? '' : <li #use-both-passwords><span>{svg_checkmark}</span>{translate('Use both passwords')}</li> }
+            { !show_password ? '' : <div .separator /> }
+            { !show_password ? '' : <li #set-password  disabled={ method == 'use-temporary-password' ? "true" : "false" }>{translate('Set permanent password')}</li> }
+            { !show_password ? '' : <TemporaryPasswordLengthMenu /> }
+            <div .separator />
+            <li #tfa><span>{svg_checkmark}</span>{translate('enable-2fa-title')}</li>
+        </menu></popup>;
+    }
+
+    function toggleMenuState() {
+         var mode= handler.get_option('approve-mode');
+        var mode_id;
+        if (mode == 'password')
+            mode_id = 'approve-mode-password';
+        else if (mode == 'click')
+            mode_id = 'approve-mode-click';
+        else
+            mode_id = 'approve-mode-both';
+        var pwd_id = handler.get_option('verification-method');
+        if (pwd_id != 'use-temporary-password' && pwd_id != 'use-permanent-password')
+            pwd_id = 'use-both-passwords';
+        var has_valid_2fa = handler.has_valid_2fa();
+        for (var el in this.$$(menu#edit-password-context>li)) {
+            if (el.id.indexOf("approve-mode-") == 0)
+                el.attributes.toggleClass("selected", el.id == mode_id);
+            if (el.id.indexOf("use-") == 0)
+                el.attributes.toggleClass("selected", el.id == pwd_id);
+            if (el.id == "tfa")
+                el.attributes.toggleClass("selected", has_valid_2fa);
+        }
+    }
+
+
+
+
+      
+        
+        
+    event click $(svg#edit) (_, me) {
+        var approve_mode= handler.get_option('approve-mode');
+        var show_password = approve_mode != 'click';
+        if(show_password && temporaryPasswordLengthMenu) temporaryPasswordLengthMenu.update({show: true });
+    }
+
+	event keypress $(svg#edit) (evt, me)
+	{
+		var scanCode = evt.keyCode;
+		for(var (name,code) in Event) {
+		  if( typeof code == #integer && (code == 13 || code == 32)) {
+				stdout.println(code);
+				var approve_mode= handler.get_option('approve-mode');
+				var show_password = approve_mode != 'click';
+				if(show_password && temporaryPasswordLengthMenu) temporaryPasswordLengthMenu.update({show: true });
+				var menu = $(menu#edit-password-context);
+				me.popup(menu);
+		  }
+		}
+	}
+
+    event click $(svg#edit) {
+        var me = this;
+        var password = handler.permanent_password();
+        var value_field = password.length == 0 ? "" : "value=" + password;
+        msgbox("custom-password", translate("Set Password"), "<div .form .set-password> \
+            <div><span>" + translate('Password') + ":</span><input|password(password) .outline-focus " + value_field + " /></div> \
+            <div><span>" + translate('Confirmation') + ":</span><input|password(confirmation) " + value_field + " /></div> \
+        </div> \
+        ", "", function(res=null) {
+            if (!res) return;
+            var p0 = (res.password || "").trim();
+            var p1 = (res.confirmation || "").trim();
+            if (p0.length < 6 && p0.length != 0) {
+                return translate("Too short, at least 6 characters.");
+            }
+            if (p0 != p1) {
+                return translate("The confirmation is not identical.");
+            }
+            handler.set_permanent_password(p0);
+            me.update();
+        });
+    }
+
+    event click $(#unattendedcheckbox) (_, me) {
+        var v = me.id;
+		if (me.state.checked) {
+			handler.set_option("unattended-access", "true");
+			$(#unattendedlabel).style.set{color: "#222222"};
+		} else {
+			handler.set_option("unattended-access", "");
+			$(#unattendedlabel).style.set{color: "#666"};
+		}
+    }
+    
+    
+    event click $(menu#edit-password-context>li) (_, me) {
+        if (me.id.indexOf('use-') == 0) {
+            handler.set_option('verification-method', me.id);
+            this.toggleMenuState();
+            passwordArea.update();
+        } else if (me.id.indexOf('approve-mode') == 0) {
+            var approve_mode;
+            if (me.id == 'approve-mode-password')
+                approve_mode = 'password';
+            else if (me.id == 'approve-mode-click')
+                approve_mode = 'click';
+            else
+                approve_mode = '';
+            handler.set_option('approve-mode', approve_mode);
+            this.toggleMenuState();
+            passwordArea.update();
+        }
+    }
+
+    
+}
+
+var password_cache = ["","","",""];
+function updatePasswordArea() {
+    self.timer(1s, function() {
+        var temporary_password = handler.temporary_password();
+        var verification_method = handler.get_option('verification-method');
+        var temporary_password_length = handler.get_option('temporary-password-length');
+        var approve_mode = handler.get_option('approve-mode');
+        var update = false;
+        if (password_cache[0] != temporary_password) {
+            password_cache[0] = temporary_password;
+            update = true;
+        }
+        if (password_cache[1] != verification_method) {
+            password_cache[1] = verification_method;
+            update = true;
+        }
+        if (password_cache[2] != temporary_password_length) {
+            password_cache[2] = temporary_password_length;
+            update = true;
+        }
+        if (password_cache[3] != approve_mode) {
+            password_cache[3] = approve_mode;
+            update = true;
+        }
+        if (update) passwordArea.update();
+        updatePasswordArea();
+    });
+}
+updatePasswordArea();
+
+class ID: Reactor.Component {
+    function render() {
+        return <input type="text" #remote_id .outline-focus title={translate('Enter Remote ID')} novalue={translate("Enter Remote ID")} maxlength="21"
+        value={formatId(handler.get_remote_id())} />;
+    }
+
+    // https://github.com/c-smile/sciter-sdk/blob/master/doc/content/sciter/Event.htm
+    event change {
+        var fid = formatId(this.value);
+        var d = this.value.length - (this.old_value || "").length;
+        this.old_value = this.value;
+        var start = this.xcall(#selectionStart) || 0;
+        var end = this.xcall(#selectionEnd);
+        if (fid == this.value || d <= 0 || start != end) {
+            return;
+        }
+        // fix Caret position
+        this.value = fid;
+        var text_after_caret = this.old_value.substr(start);
+        var n = fid.length - formatId(text_after_caret).length;
+        this.xcall(#setSelection, n, n);
+    }
+}
+
+var reg = /^\d+$/;
+function formatId(id) {
+    id = id.replace(/\s/g, "");
+    if (reg.test(id) && id.length > 3) {
+        var n = id.length;
+        var a = n % 3 || 3;
+        var new_id = id.substr(0, a);
+        for (var i = a; i < n; i += 3) {
+            new_id += " " + id.substr(i, 3);
+        }
+        return new_id;
+    }
+    return id;
+}
+
+event keydown (evt) {
+    if (view.focus && view.focus.id != 'remote_id') {
+        return;
+    }
+    if (!evt.shortcutKey) {
+        if (isEnterKey(evt)) {
+            var el = $(button#connect);
+            view.focus = el;
+            el.sendEvent("click");
+            // simulate button click effect, windows does not have this issue
+            el.attributes.toggleClass("active", true);
+            self.timer(0.3s, function() {
+                el.attributes.toggleClass("active", false);
+            });
+        }
+    }
+}
+
+$(body).content(<div style="size:*"><App /><div #msgbox /></div>);
+
+function self.closing() {
+    var (x, y, w, h) = view.box(#rectw, #border, #screen);
+    handler.closing(x, y, w, h);
+    return true;
+}
+
+function self.ready() {
+    var r = handler.get_size();
+    if (isReasonableSize(r) && r[2] > 0) {
+        var (sx, sy, sw, sh) = view.screenBox(#workarea, #rectw);
+		if (sw <= 800) {
+			var el = $(#installtip);
+			el.style.set{display: "none"};
+		}
+        if (r[2] >= sw && r[3] >= sh) {
+            self.timer(1ms, function() { view.windowState = View.WINDOW_MAXIMIZED; });
+        } else {
+            view.move(r[0], r[1], r[2], r[3]);
+        }
+    } else {
+		centerize(scaleIt(800), scaleIt(600));
+    }
+    if (!handler.get_remote_id()) {
+        view.focus = $(#remote_id);
+    }
+	//refreshCurrentUser();
+    updateTheme();
+	
+	var (sxm, sym, swm, shm) = view.screenBox(#workarea, #rectw);
+	if (swm <= 800) {
+		var el = $(#installtip);
+		el.style.set{display: "none"};
+	}
+
+	
+}
+
+function showGen2FA() {
+    myIdMenu.showGen2FA();
+}
+
+function showAbout() {
+    myIdMenu.showAbout();
+}
+
+function showSettings() {
+	if ($(#overlay).style#display == 'block') return;
+    myIdMenu.showSettingMenu();
+}
+
+if (handler.requires_update()) {
+	//var el = $(#launch-update);
+	//el.style.set{display: "inline-block"};
+}
+
+function showUpdatePopup() {
+    myIdMenu.showUpdatePopup();
+}
+
+//hophere update
+function updateCheck() {
+	if (showingupdate === "1") {return;}
+	if (handler.get_local_option("dontshowagain") === "1") {return;}
+	
+	if (handler.requires_update()) {
+		showUpdatePopup();
+	}
+	
+	//check for update every 12 hours
+	self.timer(43200s, function() {
+		handler.set_version_sync();
+		if (handler.requires_update()) {
+			showUpdatePopup();
+		}
+		updateCheck();
+    });		
+}
+updateCheck();
+
+function checkConnectStatus() {
+    //handler.check_mouse_time(); // trigger connection status updater
+
+    self.timer(1s, function() {
+        var tmp = !!handler.get_option("stop-service");
+        if (tmp != service_stopped) {
+            service_stopped = tmp;
+            app.update();
+        }
+        tmp = handler.get_connect_status();
+        if (tmp[0] != connect_status) {
+            connect_status = tmp[0];
+            app.connect_status.update();
+        }
+        if (tmp[1] != key_confirmed) {
+            key_confirmed = tmp[1];
+            app.update();
+        }
+        if (tmp[2] && tmp[2] != my_id) {
+            app.update();
+        }
+        tmp = handler.get_error();
+        if (system_error != tmp) {
+            system_error = tmp;
+            app.update();
+        }
+        if (handler.recent_sessions_updated()) {
+            stdout.println("recent sessions updated");
+            updateAbPeer();
+            app.update();
+        }
+		check_if_overlay();
+        checkConnectStatus();
+    });
+}
+
+var enter = false;
+function self.onMouse(evt) {
+	switch(evt.type) {
+    case Event.MOUSE_ENTER:
+		enter = true;
+        check_if_overlay();
+        break;
+    case Event.MOUSE_LEAVE:
+		$(#overlay).style#display = 'none';
+        enter = false;
+        break;
+    }
+}
+
+function check_if_overlay() {
+    if (handler.get_option('allow-remote-config-modification') != 'Y') {
+        var time0 = getTime();
+        handler.check_mouse_time();
+        self.timer(120ms, function() {
+            if (!enter) return;
+            var d = time0 - handler.get_mouse_time();
+            if (d < 120) $(#overlay).style#display = 'block';
+        });
+    }
+}
+
+checkConnectStatus();
+
+function set_local_user_info(user) {
+    var user_info = {name: user.name};
+    if (user.status) {
+        user_info.status = user.status;
+    }
+    handler.set_local_option("user_info", JSON.stringify(user_info));
+}
+
+
