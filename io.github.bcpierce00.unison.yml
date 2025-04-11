@@ -1,0 +1,102 @@
+app-id: "io.github.bcpierce00.unison"
+runtime: "org.gnome.Platform"
+runtime-version: "48"
+sdk: "org.gnome.Sdk"
+sdk-extensions:
+  - "org.freedesktop.Sdk.Extension.ocaml"
+
+command: "unison-gui"
+finish-args:
+  # must be able to sync anything
+  - "--filesystem=home"
+  # external backup media
+  - "--filesystem=/run/media"
+# is there some use case for expanding this to "host"?
+#  - "--filesystem=host"
+  - "--share=network"
+  # need ssh-agent
+  - "--socket=ssh-auth"
+  - "--socket=wayland"
+  # required for x11
+  - "--share=ipc"
+  - "--socket=fallback-x11"
+
+build-options:
+  append-path: "/usr/lib/sdk/ocaml/bin"
+  env:
+    OCAMLPATH: "/app/share/runtime/ocaml/lib"
+
+modules:
+  - name: "camlp-streams"
+    sources:
+      - type: "git"
+        url: "https://github.com/ocaml/camlp-streams"
+        tag: "v5.0.1"
+        commit: "567fa15f32192a6a7cd12e6c9e804fec43460126"
+    buildsystem: "simple"
+    build-commands:
+      - "dune build"
+      - "dune install --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "ocaml-cairo"
+    sources:
+      - type: "archive"
+        url: "https://github.com/Chris00/ocaml-cairo/releases/download/0.6.5/cairo2-0.6.5.tbz"
+        sha256: "25dc41c9436d9abcf56caad9a105944ff7346041b8cc6a2a654ab8848b657372"
+    buildsystem: "simple"
+    build-commands:
+      # avoid building stuff that depends on lablgtk...
+      - "dune build -p cairo2 @install"
+      - "dune install -p cairo2 --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "lablgtk"
+    sources:
+      - type: "archive"
+        url: "https://github.com/garrigue/lablgtk/releases/download/3.1.5/lablgtk3-3.1.5.tbz"
+        sha256: "d4821cdbecf3ae374f20317d63e43fe58030c3ba9657b51a2e83e652197e8eac"
+    buildsystem: "simple"
+    build-commands:
+      - "dune build -p lablgtk3"
+      - "dune install -p lablgtk3 --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "unison"
+    sources:
+      - type: "git"
+        url: "https://github.com/bcpierce00/unison.git"
+        tag: "v2.53.7"
+        commit: "96e15a800bb0e619da6f7092ddefc47101c3092f"
+    build-options:
+      - cflags: "-O2 -g"
+      - cflags-override: true
+    buildsystem: "simple"
+    build-commands:
+      # note: make fails to find "Gpointer" module - unclear why but dune works!
+      #- "make -j${FLATPAK_BUILDER_N_JOB} tui gui fsmonitor"
+      #- "ls -l src/unison*"
+      #- "install -Dm0755 -t ${FLATPAK_DEST}/bin src/unison"
+      #- "install -Dm0755 -t ${FLATPAK_DEST}/bin src/unison-gui"
+      # fsmonitor is untested, no idea how to use it
+      #- "install -Dm0755 -t ${FLATPAK_DEST}/bin src/unison-fsmonitor"
+      - "dune build -p unison"
+      - "install -Dm0755 -t ${FLATPAK_DEST}/bin _build/install/default/bin/unison"
+      - "dune build -p unison-gui"
+      - "install -Dm0755 -t ${FLATPAK_DEST}/bin _build/install/default/bin/unison-gui"
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/doc/unison LICENSE README.md NEWS.md"
+      - "install -Dm0644 icons/U.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.bcpierce00.unison.svg"
+
+  - name: "unison-extras"
+    sources:
+      - type: "file"
+        path: "io.github.bcpierce00.unison.desktop"
+      - type: "file"
+        path: "io.github.bcpierce00.unison.metainfo.xml"
+    buildsystem: "simple"
+    build-commands:
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/applications io.github.bcpierce00.unison.desktop"
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/metainfo io.github.bcpierce00.unison.metainfo.xml"
+
+cleanup:
+  # delete ocaml static libs, leave license files in place (in doc/)...
+  - "/share/runtime/ocaml/bin"
+  - "/share/runtime/ocaml/lib"
+
