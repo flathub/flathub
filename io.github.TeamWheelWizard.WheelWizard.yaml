@@ -1,0 +1,72 @@
+id: io.github.TeamWheelWizard.WheelWizard
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+build-options:
+  prepend-path: '/usr/lib/sdk/dotnet8/bin'
+  append-ld-library-path: '/usr/lib/sdk/dotnet8/lib'
+  prepend-pkg-config-path: '/usr/lib/sdk/dotnet8/lib/pkgconfig'
+  arch:
+    aarch64:
+      env:
+        RUNTIME: 'linux-arm64'
+    x86_64:
+      env:
+        RUNTIME: 'linux-x64'
+
+command: WheelWizard
+
+finish-args:
+  - --device=dri
+  # TODO: Replace this with wayland and fallback-x11 once Wayland support
+  #       becomes available:
+  #       https://github.com/AvaloniaUI/Avalonia/pull/8003
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  # This effectively disables sandboxing (`flatpak-spawn --host -- ...`)
+  - --talk-name=org.freedesktop.Flatpak
+  # To also support native Dolphin
+  - --filesystem=~/.dolphin-emu
+  - --filesystem=xdg-config/dolphin-emu
+  - --filesystem=xdg-data/dolphin-emu
+  # To have access to the directories from the start for Flatpak Dolphin
+  - --filesystem=~/.var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu:create
+  - --filesystem=~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu:create
+
+modules:
+  - name: WheelWizard
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/TeamWheelWizard/WheelWizard.git
+        commit: 80db8548987d444c5810ca75c762153b60b69f8c
+      - ./nuget-sources.json
+      - type: script
+        commands:
+          - exec flatpak-spawn --directory="$HOME" --env=QT_QPA_PLATFORM="${QT_QPA_PLATFORM}" --host -- dolphin-emu $@
+        dest-filename: dolphin-emu
+      - type: script
+        commands:
+          - exec flatpak-spawn --directory="$HOME" --host -- flatpak $@
+        dest-filename: flatpak
+      - type: script
+        commands:
+          - exec flatpak-spawn --directory="$HOME" --host -- pkexec $@
+        dest-filename: pkexec
+    build-commands:
+      - dotnet publish WheelWizard/WheelWizard.csproj -c Release --source ./nuget-sources --source /usr/lib/sdk/dotnet8/nuget/packages --self-contained true
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r --remove-destination WheelWizard/bin/Release/net*/$RUNTIME/publish/* "${FLATPAK_DEST}/bin"
+      # Expost host `dolphin-emu` if available
+      - install -m0755 ./dolphin-emu "${FLATPAK_DEST}/bin/dolphin-emu"
+      # Expose host `flatpak` for Dolphin interaction
+      - install -m0755 ./flatpak "${FLATPAK_DEST}/bin/flatpak"
+      # Expose host `pkexec` for authentication of administrative actions
+      - install -m0755 ./pkexec "${FLATPAK_DEST}/bin/pkexec"
+      # Install metadata files
+      - install -D -m0644 "Flatpak/${FLATPAK_ID}.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -D -m0644 "Flatpak/${FLATPAK_ID}.png" "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png"
+      - install -D -m0644 "Flatpak/${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
