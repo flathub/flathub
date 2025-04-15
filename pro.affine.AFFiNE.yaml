@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/refs/heads/main/data/flatpak-manifest.schema.json
+app-id: pro.affine.AFFiNE
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: start-affine.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - name: AFFiNE
+    buildsystem: simple
+    build-commands:
+      - bsdtar -Oxf affine.deb 'data.tar.zst' | bsdtar -xf -
+      - mv "usr/lib/affine" "${FLATPAK_DEST}/lib/affine"
+      - install -Dm0644 "${FLATPAK_ID}.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm0644 "${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - |
+        for path in *.png; do
+          size=$(basename $path .png)
+          install -Dm0644 $path "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png"
+        done
+      - install -Dm0755 start-affine.sh "${FLATPAK_DEST}/bin/start-affine.sh"
+    sources:
+      - type: file
+        dest-filename: affine.deb
+        url: https://github.com/toeverything/AFFiNE/releases/download/v0.21.2/affine-0.21.2-stable-linux-x64.deb
+        sha256: 'eec535c6b45f7378786d2b085e96e1b72c7d9061bb95cf3804386bb4f12828aa'
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/toeverything/AFFiNE/releases/latest
+          version-query: '.tag_name | sub("^v"; "")'
+          url-query: '.assets[] | select(.name=="affine-" + $version + "-stable-linux-x64.deb") | .browser_download_url'
+          timestamp-query: '.published_at'
+      - type: file
+        path: pro.affine.AFFiNE.desktop
+      - type: file
+        path: pro.affine.AFFiNE.metainfo.xml
+      - type: dir
+        path: icons
+      - type: script
+        dest-filename: start-affine.sh
+        commands:
+          - zypak-wrapper.sh /app/lib/affine/AFFiNE "$@"
