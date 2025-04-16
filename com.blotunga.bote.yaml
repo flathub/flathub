@@ -1,0 +1,71 @@
+app-id: com.blotunga.bote
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: bote.sh
+modules:
+  # Install JRE
+  - name: java
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  - name: bote
+    sources:
+      # Main repo
+      - type: git
+        # TODO: Before flathub: upstream changes
+        url: 'https://git.sr.ht/~tobtobxx/bote-libgdx'
+        tag: 'v0.7.51'
+        commit: e6909039ed783ec7ebdc55fbd4cc3da811485234
+      # Use externally downloaded gradle wrapper
+      - type: patch
+        path: local-gradle-wrapper.patch
+      - type: file
+        url: 'https://services.gradle.org/distributions/gradle-8.13-bin.zip'
+        sha256: 20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78
+        dest: 'gradle/wrapper/'
+      # Use externally downloaded dependencies
+      - type: patch
+        path: local-maven-repo.patch
+      - gradle-sources.json
+    buildsystem: simple
+    build-options:
+      env:
+        JAVA_HOME: /usr/lib/sdk/openjdk21/
+    build-commands:
+      - './gradlew -g ./ desktop:dist --no-daemon --offline'
+      - 'install -D desktop/build/libs/desktop-0.7.51.jar /app/bote.jar'
+      - 'install -D core/assets/graphics/ui/iconl.png /app/share/icons/hicolor/128x128/apps/com.blotunga.bote.png'
+      - 'install -D core/assets/graphics/ui/iconm.png /app/share/icons/hicolor/64x64/apps/com.blotunga.bote.png'
+      - 'install -D core/assets/graphics/ui/icons.png /app/share/icons/hicolor/32x32/apps/com.blotunga.bote.png'
+
+  - name: misc
+    sources:
+      - type: script
+        commands:
+          # Save files are generated at pwd. By changing to the data dir, the
+          # files are automatically at the correct position
+          - 'cd ~/.var/app/com.blotunga.bote/data/'
+          - 'java -jar /app/bote.jar'
+        dest-filename: bote.sh
+      - type: file
+        path: 'com.blotunga.bote.desktop'
+      - type: file
+        path: 'com.blotunga.bote.appdata.xml'
+    buildsystem: simple
+    build-commands:
+      - 'install -Dm755 bote.sh /app/bin/bote.sh'
+      - 'install -D com.blotunga.bote.desktop /app/share/applications/com.blotunga.bote.desktop'
+      - 'install -D com.blotunga.bote.appdata.xml /app/share/metainfo/com.blotunga.bote.appdata.xml'
+
+finish-args:
+  # Include the jre into path
+  - --env=PATH=/app/bin:/app/jre/bin:/usr/bin
+  # Wayland not supported
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
