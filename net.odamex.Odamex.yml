@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/main/data/flatpak-manifest.schema.json
+---
+app-id: net.odamex.Odamex
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: select-exe
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --device=all # change this to device=input + device=dri when available more widely
+  - --socket=pulseaudio
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --filesystem=host
+  - --env=TIMIDITY_CFG=/app/etc/timidity.cfg
+modules:
+  - name: timidity-instruments
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/etc/
+      - install timidity.cfg /app/etc/sdl_timidity.cfg
+      - mkdir -p /app/share/timidity/
+      - cp -r instruments /app/share/timidity/instruments
+    sources:
+      - type: archive
+        url: http://www.libsdl.org/projects/mixer/timidity/timidity.tar.gz
+        sha256: ee7c59bb5d5fae206d53eef0e82b5ed739e7cbf69252a3754024f8f52ebe77aa
+  - name: SDL2-mixer
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -D SDL2MIXER_VENDORED=ON
+      - -D SDL2MIXER_DEPS_SHARED=OFF
+      - -D SDL2MIXER_SAMPLES=OFF
+      - -D CMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_mixer.git
+        tag: release-2.8.1
+  # cpptrace dependencies
+  - name: zstd
+    buildsystem: cmake-ninja
+    subdir: build/cmake
+    sources:
+      - type: git
+        url: https://github.com/facebook/zstd.git
+        tag: v1.5.7
+  - name: libdwarf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -D BUILD_DWARFDUMP=OFF
+    sources:
+      - type: git
+        url: https://github.com/jeremy-rifkin/libdwarf-lite.git
+        tag: v0.12.0
+  # Odamex (combined)
+  - name: Odamex
+    buildsystem: simple
+    build-commands:
+      - chmod +x packaging/flatpak/flatpak-buildgen.sh
+      - IS_FLATHUB=1
+      - "./packaging/flatpak/flatpak-buildgen.sh"
+    sources:
+      - type: file
+        url: https://github.com/Doom-Utils/deutex/releases/download/v5.2.2/deutex-5.2.2.tar.zst
+        sha256: 10ed0e7a533ec97cb6d03548d4258fbec88852a45b5ea4cf5434376ad4174b5f
+      - type: file
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.0.5/wxWidgets-3.0.5.tar.bz2
+        sha256: 8aacd56b462f42fb6e33b4d8f5d40be5abc3d3b41348ea968aa515cc8285d813
+      - type: git
+        url: https://github.com/odamex/odamex.git
+        commit: ae717f2a2837b937f76e054a8b5676ee5c7f8c80
+      - type: patch
+        path: metainfo.patch
