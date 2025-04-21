@@ -10,8 +10,6 @@ Checks every module for updates, but will only raise a PR when `ocrmypdf` gets a
 
 `pngquant` is built using rust and will require new, manually generated `cargo-sources-pngquant.json` when updated.
 
-`cryptography`(dep of `pdfminer.six`) installs arch-dependend wheels and has to be updated manually.
-
 ## python modules
 
 `python3-sphinx`is required to build documentation of `pngquant`
@@ -19,9 +17,10 @@ Checks every module for updates, but will only raise a PR when `ocrmypdf` gets a
 `python3-requirements.json` includes the following packages in this order:
 
 ```
+setuptools
 lxml
 pybind11
-pikepdf (requires qpdf)
+pikepdf
 deprecation
 img2pdf
 packaging
@@ -33,6 +32,10 @@ rich
 hatch-vcs
 pygments
 ```
+
+`pikepdf` requires qpdf
+
+`setuptools` is required to build pikepdf > v9.7.0; version from runtime 24.08 is too old
 
 `cryptography`(dep of `pdfminer.six`) uses arch-dependend wheels and requires manual updates.
 
