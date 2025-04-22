@@ -1,0 +1,150 @@
+id: io.github.q962.ClipboardServer
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+command: ClipboardServer
+
+finish-args:
+  - --socket=x11
+  - --share=network
+  - --device=dri
+  - --share=ipc
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    npm_config_cache: /app/tmp/npm-cache
+    npm_config_offline: "true"
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /tmp
+
+modules:
+  - name: xmake
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/xmake-io/xmake.git
+        tag: v2.9.8
+    cleanup:
+      - '*'
+
+  - name: luajit
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: git
+        url: https://github.com/LuaJIT/LuaJIT.git
+        tag: v2.1
+    cleanup:
+      - '*'
+
+  - name: penlight
+    sources:
+      - type: archive
+        url: https://github.com/luarocks/luarocks/archive/refs/tags/v3.11.1.zip
+        strip-components: 1
+        sha256: 698444ba69cfb7b8933aaf97ccddcf61c52bc84d585eb0fef5de02a185af40ff
+      - type: file
+        url: https://luarocks.org/manifests/hisham/luafilesystem-1.8.0-1.src.rock
+        sha256: 576270a55752894254c2cba0d49d73595d37ec4ea8a75e557fdae7aff80e19cf
+      - type: file
+        url: https://luarocks.org/manifests/tieske/penlight-1.14.0-2.src.rock
+        sha256: f36affa14fb43e208a59f2e96d214f774b957bcd05d9c07ec52b39eac7f4a05d
+    post-install:
+      - |
+        mkdir -p /app/tmp/luatree
+        luarocks config rocks_trees\[2\].root /app/tmp/luatree
+        luarocks config local_cache /tmp
+
+        luarocks install luafilesystem-1.8.0-1.src.rock
+        luarocks install penlight-1.14.0-2.src.rock
+    cleanup:
+      - '*'
+
+  - name: dnssd
+    buildsystem: simple
+    build-commands:
+      - chmod u+x dnssd
+      - cp dnssd /app/
+    sources:
+      - type: file
+        only-arches: ['x86_64']
+        url: https://github.com/q962/dnssd/releases/download/v1.2.14/dnssd-Linux-x86_64
+        sha256: 98877a1c57d677169ea8f8b81e6ff95b5404451c7cc43395310449a60113e8c8
+        dest-filename: dnssd
+      - type: file
+        only-arches: ['aarch64']
+        url: https://github.com/q962/dnssd/releases/download/v1.2.14/dnssd-Linux-aarch64
+        sha256: ef82ab5abea4b5625157b196027c2d3807395e8caa89711206caab59e010ec1e
+        dest-filename: dnssd
+    cleanup:
+      - '*'
+
+  - name: luvit
+    buildsystem: simple
+    build-commands:
+      - |
+        chmod +x luvi
+        cp luvi luvit.zip /app
+    sources:
+      - type: file
+        only-arches: ['x86_64']
+        url: https://github.com/luvit/luvi/releases/download/v2.15.0/luvi-Linux-x86_64-luajit-regular
+        dest-filename: luvi
+        sha256: 609b3de65b84b4d21878b7324ec57d9119f7f1d1df56505ec043ce6790a9930f
+      - type: file
+        only-arches: ['aarch64']
+        url: https://github.com/luvit/luvi/releases/download/v2.15.0/luvi-Linux-aarch64-luajit-regular
+        dest-filename: luvi
+        sha256: ae3ed680ba97da211e27bdb1971098f930da96daff9b47cfe1a9220b65da5802
+      - type: file
+        url: https://github.com/luvit/luvit/archive/refs/tags/2.18.1.zip
+        sha256: 72fb5fae30ac2500c66080d74530ce37315135df041db330b82bb8d9948d4a10
+        dest-filename: luvit.zip
+    cleanup:
+      - '*'
+
+  - name: npm-packages
+    buildsystem: simple
+    build-commands:
+      - for file in ./npm-cache/*.tgz ; do npm cache add $file; done
+    sources:
+      - npm-packages.json
+
+  - name: ClipboardServer
+    buildsystem: simple
+    build-commands:
+      - |
+        sed -i '/capacitor\/assets/d' web/package.json
+        mkdir -p build/bin && cp /app/{luvi*,dnssd} build/bin
+        unzip /app/luvit.zip -d build/bin/luvit_scripts
+
+        export XMAKE_GLOBALDIR=/run/temp/xmake
+        export XMAKE_ROOT=y
+        xmake g --network=private
+        xmake
+        xmake install -o /app
+
+        echo "package.cpath = package.cpath .. ';' .. '/app/lib/?.so'" > build/bin/lua_root/local-env.lua
+        cp -r build/bin/lua_root /app/scripts
+
+        mv /app/bin/{ClipboardServer,ClipboardServer.elf}
+
+        cat << EOF > /app/bin/ClipboardServer
+        #!/usr/bin/bash
+        exec ClipboardServer.elf /app/scripts -- "\$@"
+        EOF
+
+        chmod +x /app/bin/ClipboardServer
+    sources:
+      - type: git
+        url: https://github.com/q962/ClipboardServer.git
+        tag: v1.0.2
