@@ -2,7 +2,7 @@ id: io.github.q962.ClipboardServer
 runtime: org.gnome.Platform
 runtime-version: "48"
 sdk: org.gnome.Sdk
-command: ClipboaredServer
+command: ClipboardServer
 
 finish-args:
   - --socket=x11
@@ -12,8 +12,12 @@ finish-args:
 
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node22
+
 build-options:
   append-path: /usr/lib/sdk/node22/bin
+  env:
+    npm_config_cache: /app/tmp/npm-cache
+    npm_config_offline: "true"
 
 cleanup:
   - /include
@@ -28,8 +32,7 @@ modules:
         url: https://github.com/xmake-io/xmake.git
         tag: v2.9.8
     cleanup:
-      - /bin
-      - /share
+      - '*'
 
   - name: luajit
     buildsystem: simple
@@ -41,9 +44,7 @@ modules:
         url: https://github.com/LuaJIT/LuaJIT.git
         tag: v2.1
     cleanup:
-      - /bin
-      - /lib
-      - /share
+      - '*'
 
   - name: penlight
     sources:
@@ -66,9 +67,7 @@ modules:
         luarocks install luafilesystem-1.8.0-1.src.rock
         luarocks install penlight-1.14.0-2.src.rock
     cleanup:
-      - /bin
-      - /etc
-      - /share
+      - '*'
 
   - name: dnssd
     buildsystem: simple
@@ -91,9 +90,6 @@ modules:
 
   - name: luvit
     buildsystem: simple
-    build-options:
-      # bundle: [elf][zip]
-      no-debuginfo: true
     build-commands:
       - |
         chmod +x luvi
@@ -118,38 +114,37 @@ modules:
 
   - name: npm-packages
     buildsystem: simple
-    build-options:
-      env:
-        npm_config_cache: /app/npm-cache
-        npm_config_offline: "true"
     build-commands:
       - for file in ./npm-cache/*.tgz ; do npm cache add $file; done
     sources:
       - npm-packages.json
-    cleanup:
-      - /npm-cache
 
   - name: ClipboardServer
     buildsystem: simple
-    build-options:
-      # bundle: [elf][zip]
-      no-debuginfo: true
-      env:
-        npm_config_cache: /app/npm-cache
-        npm_config_offline: "true"
     build-commands:
-      - sed -i '/capacitor\/assets/d' web/package.json
-      - mkdir -p build/bin && cp /app/{luvi*,dnssd} build/bin
-      - unzip /app/luvit.zip -d build/bin/luvit_scripts
       - |
+        sed -i '/capacitor\/assets/d' web/package.json
+        mkdir -p build/bin && cp /app/{luvi*,dnssd} build/bin
+        unzip /app/luvit.zip -d build/bin/luvit_scripts
+
         export XMAKE_GLOBALDIR=/run/temp/xmake
         export XMAKE_ROOT=y
         xmake g --network=private
         xmake
         xmake install -o /app
+
+        echo "package.cpath = package.cpath .. ';' .. '/app/lib/?.so'" > build/bin/lua_root/local-env.lua
+        cp -r build/bin/lua_root /app/scripts
+
+        mv /app/bin/{ClipboardServer,ClipboardServer.elf}
+
+        cat << EOF > /app/bin/ClipboardServer
+        #!/usr/bin/bash
+        exec ClipboardServer.elf /app/scripts -- "\$@"
+        EOF
+
+        chmod +x /app/bin/ClipboardServer
     sources:
       - type: git
         url: https://github.com/q962/ClipboardServer.git
-        tag: v1.0.1
-    cleanup:
-      - /npm-cache
+        tag: v1.0.2
