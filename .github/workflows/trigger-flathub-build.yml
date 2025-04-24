@@ -1,0 +1,39 @@
+name: Trigger Flathub Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_branch:
+        description: 'Git branch to build'
+        required: true
+        default: 'master'
+      flatpak_id:
+        description: 'Flatpak ID'
+        required: true
+
+env:
+  API_URL: https://flathub-vorarbeiter.apps.openshift.gnome.org/api/pipelines
+  FLATPAK_ID: ${{ github.event.inputs.flatpak_id }}
+  GIT_BRANCH: ${{ github.event.inputs.git_branch }}
+
+jobs:
+  build:
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check for existence of repo and branch
+        run: |
+            git -c credential.interactive=false ls-remote --heads --exit-code \
+                https://github.com/flathub/"$FLATPAK_ID".git "$GIT_BRANCH"
+            
+      - name: Trigger build
+        run: |
+          echo "Triggering build for \"$FLATPAK_ID\" for branch \"$GIT_BRANCH\""
+          JSON_PAYLOAD="{\"app_id\": \"$FLATPAK_ID\", \"params\": {\"ref\": \"refs/heads/$GIT_BRANCH\"}}"
+          curl -X POST "$API_URL" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD"
+        env:
+          TOKEN: ${{ secrets.VORO_AUTH_TOKEN }}
