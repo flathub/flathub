@@ -1,0 +1,94 @@
+app-id: app.ryujinx.Ryujinx
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: ryujinx-wrapper
+
+rename-icon: Ryujinx
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: "24.08"
+    directory: lib/ffmpeg
+    add-ld-path: .
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet9
+
+build-options:
+  prepend-path: /usr/lib/sdk/dotnet9/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet9/lib
+  prepend-pkg-config-path: /usr/lib/sdk/dotnet9/lib/pkgconfig
+
+finish-args:
+  # Wayland/X11
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Controllers, audio and networking for online connectivity
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+  # Browsing large through a portal is slow
+  - --filesystem=home:ro
+  # Screenshot path
+  - --filesystem=xdg-pictures:rw
+  # Discord Rich Presence
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+
+modules:
+  - name: dotnet-setup
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/dotnet9/bin/install.sh
+
+  - name: ryujinx
+    buildsystem: simple
+    build-options:
+      arch:
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+        aarch64:
+          env:
+            RUNTIME: linux-arm64
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    build-commands:
+      - mkdir -p /app/bin
+      - sed -r --in-place "s/\%\%RYUJINX_BUILD_VERSION\%\%/$(git describe --tags)/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place "s/\%\%RYUJINX_BUILD_GIT_HASH\%\%/$(git rev-parse --short HEAD)/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_NAME\%\%/main/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_OWNER\%\%/flathub/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_SOURCE_REPO\%\%/io.github.ryubing.ryujinx/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place "s/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_REPO\%\%/io.github.ryubing.ryujinx/g;" src/Ryujinx.Common/ReleaseInformation.cs
+      - sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/Config\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+      - >
+        dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r $RUNTIME -property:DebugType=embedded -property:Platform=anyCPU
+        -property:Version=$(git describe --tags) -property:SourceRevisionId=$(git rev-parse --short HEAD)
+        -property:ExtraDefineConstants=DISABLE_UPDATER --self-contained --source nuget-sources
+      - cp -r --remove-destination ${FLATPAK_BUILDER_BUILDDIR}/src/Ryujinx/bin/Release/net9.0/$RUNTIME/publish/* /app/bin/
+      - chmod +x /app/bin/Ryujinx.sh
+      - mkdir -p /app/lib/ffmpeg
+      - install -vDm644 $FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+      - install -vDm755 ryujinx-wrapper /app/bin/ryujinx-wrapper
+      - install -vDm644 distribution/misc/Logo.svg /app/share/icons/hicolor/scalable/apps/Ryujinx.svg
+      - install -vDm644 distribution/linux/mime/Ryujinx.xml /app/share/mime/packages/$FLATPAK_ID.mime.xml
+      - install -vDm644 distribution/linux/Ryujinx.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-name="Ryujinx" /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key="Exec" --set-value="ryujinx-wrapper %f" /app/share/applications/$FLATPAK_ID.desktop
+    sources:
+      - extra-sources.json
+      - nuget-sources.json
+      - type: git
+        url: https://git.ryujinx.app/ryubing/ryujinx.git
+        tag: "1.3.1"
+        x-checker-data:
+          type: anitya
+          project-id: 377871
+          stable-only: true
+      - type: file
+        path: ryujinx-wrapper
+      - type: file
+        path: app.ryujinx.Ryujinx.metainfo.xml
