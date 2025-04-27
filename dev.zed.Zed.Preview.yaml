@@ -1,0 +1,210 @@
+# dev.zed.Zed.Preview.yaml
+app-id: dev.zed.Zed.Preview
+runtime: org.freedesktop.Sdk
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: zed-wrapper
+separate-locales: false
+finish-args:
+  - --device=dri
+  - --filesystem=home
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+
+  # Enable access to Flatpak host commands (Needs linter exception: https://docs.flathub.org/docs/for-app-authors/linter#exceptions)
+  - --talk-name=org.freedesktop.Flatpak
+
+  # Enable access to Freedesktop Secret Service & related auth services since Zed uses Git heavily
+  - --talk-name=org.freedesktop.secrets
+  - --socket=ssh-auth
+  - --socket=gpg-agent
+
+modules:
+  - shared-modules/libsecret/libsecret.json
+
+  - name: gcr
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/debug
+      - /lib/girepository-1.0
+      - /lib/pkgconfig
+      - /man
+      - /share/gir-1.0
+      - /share/doc
+      - /share/gtk-doc
+      - /share/info
+      - /share/man
+      - /share/pkgconfig
+      - "*.a"
+      - "*.la"
+    config-opts:
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+    sources:
+      - type: archive
+        sha256: bad10f3c553a0e1854649ab59c5b2434da22ca1a54ae6138f1f53961567e1ab7
+        url: https://download.gnome.org/sources/gcr/3.41/gcr-3.41.2.tar.xz
+
+  - name: libmd
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://libbsd.freedesktop.org/releases/libmd-1.1.0.tar.xz
+        sha256: 1bd6aa42275313af3141c7cf2e5b964e8b1fd488025caf2f971f43b00776b332
+        x-checker-data:
+          type: anitya
+          project-id: 15525
+          stable-only: true
+          url-template: https://libbsd.freedesktop.org/releases/libmd-$version.tar.xz
+    cleanup:
+      - /lib/pkgconfig
+      - /share/man
+
+  - name: libbsd
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://libbsd.freedesktop.org/releases/libbsd-0.12.2.tar.xz
+        sha256: b88cc9163d0c652aaf39a99991d974ddba1c3a9711db8f1b5838af2a14731014
+        x-checker-data:
+          type: anitya
+          project-id: 1567
+          stable-only: true
+          url-template: https://libbsd.freedesktop.org/releases/libbsd-$version.tar.xz
+    cleanup:
+      - /lib/pkgconfig
+      - /share/man
+
+  - name: netcat
+    buildsystem: simple
+    build-commands:
+      - |
+        while read patch; do
+          echo "Applying $patch..."
+          patch -Np1 -i "debian/patches/$patch"
+        done < debian/patches/series
+      - make CFLAGS="$CFLAGS -I/usr/include/libbsd" LDFLAGS="$LDFLAGS -lbsd"
+      - install -Dm0755 nc /app/bin/nc
+    sources:
+      - type: archive
+        url: https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/1.228-1/netcat-openbsd-debian-1.228-1.tar.gz
+        sha256: a1eb2593335123efc6e9c12a7e73c72cbf0b665739130fc383322f36757f37cc
+        x-checker-data:
+          type: anitya
+          project-id: 21535
+          stable-only: true
+          url-template: https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/$version-1/netcat-openbsd-debian-$version-1.tar.gz
+
+  - name: zed
+    buildsystem: simple
+    build-commands:
+      - install -Dm 755 bin/* --target-directory ${FLATPAK_DEST}/bin
+      - install -Dm 755 lib/* --target-directory ${FLATPAK_DEST}/lib
+      - install -Dm 755 libexec/* --target-directory ${FLATPAK_DEST}/libexec
+      - install -Dm 644 share/applications/* --target-directory ${FLATPAK_DEST}/share/applications
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml --target-directory ${FLATPAK_DEST}/share/metainfo
+      - install -Dm 644 share/icons/hicolor/512x512/apps/zed.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/zed-preview.png
+
+      # Rename instances of `zed` to `${FLATPAK_ID}`
+      - rename zed-preview ${FLATPAK_ID} ${FLATPAK_DEST}/share/{applications/*,icons/hicolor/*/apps/*}
+
+      # Ensure `desktop-file-edit` validates; Enforce `[Desktop Action NewWorkspace]` has a matching action
+      - |
+        if ! grep -q "^Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"; then
+          # Find the line number where [Desktop Action NewWorkspace] is located
+          line_num=$(grep -n "^\[Desktop Action NewWorkspace\]" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop" | cut -d: -f1)
+          if [ -n "$line_num" ]; then
+            # Insert Actions=NewWorkspace above the line where [Desktop Action NewWorkspace] is located
+            sed -i "${line_num}i Actions=NewWorkspace" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          else
+            # If [Desktop Action NewWorkspace] doesn't exist, add Actions=NewWorkspace at the end
+            echo "Actions=NewWorkspace" >> "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+          fi
+        fi
+
+      # Ensure zed-wrapper is used as the Exec command in the `.desktop` file
+      - desktop-file-edit --set-key="Exec" --set-value="zed-wrapper %U" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # Modify original `.desktop` file to use the correct icon name
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: archive
+        url: https://github.com/zed-industries/zed/releases/download/v0.184.4-pre/zed-linux-x86_64.tar.gz
+        sha256: 16f51a57dda2f05fd1e17e370c0447446e6afb05c565f61f85c9f309c8f4f134
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/zed-industries/zed/releases
+          version-query: map(select(.prerelease)) | first | .tag_name
+          url-query:
+            map(select(.prerelease)) | first | .assets[] | select(.name=="zed-linux-x86_64.tar.gz")
+            | .browser_download_url
+          is-main-source: true
+      - type: archive
+        url: https://github.com/zed-industries/zed/releases/download/v0.184.4-pre/zed-linux-aarch64.tar.gz
+        sha256: fdaf297297bdcc12859364d2f0303666565d7d2b818dd738e63cf1373f227178
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/zed-industries/zed/releases
+          version-query: map(select(.prerelease)) | first | .tag_name
+          url-query:
+            map(select(.prerelease)) | first | .assets[] | select(.name=="zed-linux-aarch64.tar.gz")
+            | .browser_download_url
+          is-main-source: true
+      - type: file
+        path: dev.zed.Zed.Preview.metainfo.xml
+
+  - name: host-spawn
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 host-spawn /app/bin/host-spawn
+    sources:
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/v1.6.1/host-spawn-x86_64
+        sha256: 733746ab498e07d065cbecf80bacd447eb21846d1462e8fe23fdd9d9dc977b50
+        dest-filename: host-spawn
+        only-arches: [x86_64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/1player/host-spawn/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name
+          timestamp-query: .published_at
+          url-query: '[.assets[] | select(.name|test(".+x86_64$"))][0] | .browser_download_url'
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/v1.6.1/host-spawn-aarch64
+        sha256: 71b7744a4d0b29279523cc0f0ed1a7af5e9555510bd9e6d4685391b59faefaac
+        dest-filename: host-spawn
+        only-arches: [aarch64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/1player/host-spawn/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name
+          timestamp-query: .published_at
+          url-query: '[.assets[] | select(.name|test(".+aarch64$"))][0] | .browser_download_url'
+
+  - name: zed-wrapper
+    buildsystem: meson
+    config-opts:
+      - -Deditor_binary=/app/bin/zed
+      - -Deditor_title=Zed
+      - -Dprogram_name=zed-wrapper
+      - -Dfirst_run_template=README.md
+      - -Dsdk_update_template=sdk_update.md
+      - -Dflagfile_prefix=flatpak-zed
+      - -Ddefault_loglevel=0
+    sources:
+      - type: git
+        commit: 3314b55ccd4ece8810715787e246f8407e20caab
+        url: https://github.com/flathub-infra/ide-flatpak-wrapper
+      - type: file
+        path: README.md
+      - type: file
+        path: sdk_update.md
