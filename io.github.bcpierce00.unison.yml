@@ -1,0 +1,85 @@
+app-id: "io.github.bcpierce00.unison"
+runtime: "org.freedesktop.Platform"
+runtime-version: "24.08"
+sdk: "org.freedesktop.Sdk"
+sdk-extensions:
+  - "org.freedesktop.Sdk.Extension.ocaml"
+
+command: "unison-gui"
+finish-args:
+  # must be able to sync anything
+  - "--filesystem=home"
+  # user may want to sync flatpak apps' data/config, is not included in "=home"
+  - "--filesystem=~/.var/app"
+  # external backup media
+  - "--filesystem=/run/media"
+  - "--share=network"
+  - "--socket=ssh-auth"
+  - "--socket=wayland"
+  - "--share=ipc"
+  - "--socket=fallback-x11"
+
+build-options:
+  append-path: "/usr/lib/sdk/ocaml/bin"
+  env:
+    OCAMLPATH: "/app/share/runtime/ocaml/lib"
+
+cleanup:
+  # delete ocaml static libs, leave license files in place (in doc/)...
+  - "/share/runtime/ocaml/bin"
+  - "/share/runtime/ocaml/lib"
+
+modules:
+  - name: "camlp-streams"
+    sources:
+      - type: "git"
+        url: "https://github.com/ocaml/camlp-streams"
+        tag: "v5.0.1"
+        commit: "567fa15f32192a6a7cd12e6c9e804fec43460126"
+    buildsystem: "simple"
+    build-commands:
+      - "dune build"
+      - "dune install --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "ocaml-cairo"
+    sources:
+      - type: "archive"
+        url: "https://github.com/Chris00/ocaml-cairo/releases/download/0.6.5/cairo2-0.6.5.tbz"
+        sha256: "25dc41c9436d9abcf56caad9a105944ff7346041b8cc6a2a654ab8848b657372"
+    buildsystem: "simple"
+    build-commands:
+      # avoid building stuff that depends on lablgtk...
+      - "dune build -p cairo2 @install"
+      - "dune install -p cairo2 --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "lablgtk"
+    sources:
+      - type: "archive"
+        url: "https://github.com/garrigue/lablgtk/releases/download/3.1.5/lablgtk3-3.1.5.tbz"
+        sha256: "d4821cdbecf3ae374f20317d63e43fe58030c3ba9657b51a2e83e652197e8eac"
+    buildsystem: "simple"
+    build-commands:
+      - "dune build -p lablgtk3"
+      - "dune install -p lablgtk3 --prefix ${FLATPAK_DEST}/share/runtime/ocaml"
+
+  - name: "unison"
+    sources:
+      - type: "git"
+        url: "https://github.com/bcpierce00/unison.git"
+        tag: "v2.53.7"
+        commit: "96e15a800bb0e619da6f7092ddefc47101c3092f"
+      - type: "file"
+        path: "io.github.bcpierce00.unison.desktop"
+      - type: "file"
+        path: "io.github.bcpierce00.unison.metainfo.xml"
+    buildsystem: "simple"
+    build-commands:
+      - "dune build -p unison"
+      - "install -Dm0755 -t ${FLATPAK_DEST}/bin _build/install/default/bin/unison"
+      - "dune build -p unison-gui"
+      - "install -Dm0755 -t ${FLATPAK_DEST}/bin _build/install/default/bin/unison-gui"
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/doc/unison LICENSE README.md NEWS.md"
+      - "install -Dm0644 icons/U.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.bcpierce00.unison.svg"
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/applications io.github.bcpierce00.unison.desktop"
+      - "install -Dm0644 -t ${FLATPAK_DEST}/share/metainfo io.github.bcpierce00.unison.metainfo.xml"
+
