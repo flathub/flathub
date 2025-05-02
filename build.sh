@@ -2,7 +2,7 @@
 
 rm -rf build-dir repo
 
-flatpak-builder --user --install --mirror-screenshots-url=URL --force-clean \
+flatpak-builder --user --install --mirror-screenshots-url=https://dl.flathub.org/media --force-clean \
                --repo=repo build-dir de.stefan_oltmann.mines.yml
 
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
@@ -10,4 +10,3 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
 
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
             repo repo
-
