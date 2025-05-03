@@ -1,6 +1,5 @@
 #!/bin/bash
 
-rm -rf build-dir repo
 
 flatpak-builder --user --install --mirror-screenshots-url=https://dl.flathub.org/media --force-clean \
                --repo=repo build-dir de.stefan_oltmann.mines.yml
