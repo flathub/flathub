@@ -2,6 +2,8 @@ app-id: de.stefan_oltmann.mines
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
 command: Mines
 
 finish-args:
@@ -10,23 +12,39 @@ finish-args:
   - --filesystem=home
   - --device=dri
   - --socket=x11
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
 
 modules:
-  - name: Mines
+  - name: openjdk
     buildsystem: simple
     build-commands:
-      - install -Dm 644 -t /app/share/applications de.stefan_oltmann.mines.desktop
-      - install -Dm 644 -t /app/share/metainfo/ de.stefan_oltmann.mines.metainfo.xml
-      - mkdir -p /app/bin
-      - mkdir -p /app/lib
-      - cp -ru bin/* /app/bin/
-      - cp -ru lib/* /app/lib/
-      - install -Dm 644 lib/Mines.png /app/share/icons/hicolor/256x256/apps/de.stefan_oltmann.mines.png
+      - /usr/lib/sdk/openjdk17/install.sh
+  - name: Mines
+    buildsystem: simple
+    build-options:
+      env:
+        JAVA_HOME: /usr/lib/sdk/openjdk17
+      build-args:
+        - --share=network
+    build-commands:
+      # 1) Construire l’artefact
+      - ./gradlew createReleaseDistributable
+
+      # 2) Chemin vers les fichiers produits
+      - export DIST_DIR=app/build/compose/binaries/main-release/app/Mines
+
+      # 3) Fichiers desktop & metainfo
+      - install -Dm644 flatpak/de.stefan_oltmann.mines.desktop /app/share/applications/de.stefan_oltmann.mines.desktop
+      - install -Dm644 flatpak/de.stefan_oltmann.mines.metainfo.xml /app/share/metainfo/de.stefan_oltmann.mines.metainfo.xml
+
+      # 4) Binaires et bibliothèques
+      - install -Dm755 -t /app/bin $DIST_DIR/bin/*
+      - install -Dm644 -t /app/lib $DIST_DIR/lib/*
+
+      # 5) Icône (256×256)
+      - install -Dm644 $DIST_DIR/Mines.png /app/share/icons/hicolor/256x256/apps/de.stefan_oltmann.mines.png
     sources:
       - type: archive
-        url: https://github.com/StefanOltmann/mines/releases/download/flatpak-1.3.6/de.stefan_oltmann.mines-1.3.6.tar.gz
-        sha256: 3af8cec3346c939d3cf6b666e300e7b8870c93a573a66a484f534e56e11b3404
-      - type: file
-        path: de.stefan_oltmann.mines.desktop
-      - type: file
-        path: de.stefan_oltmann.mines.metainfo.xml
+        url: https://github.com/StefanOltmann/mines/archive/refs/tags/1.3.6.tar.gz
+        sha256: b9203117b513a94e386c23cc94997772499dbed0e3efd008b471aa8c9a93ee78
