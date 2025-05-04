@@ -1,0 +1,11 @@
+#!/bin/bash
+
+
+flatpak-builder --user --install --mirror-screenshots-url=https://dl.flathub.org/media --force-clean \
+               --repo=repo build-dir de.stefan_oltmann.mines.yml
+
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+            manifest de.stefan_oltmann.mines.yml
+
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+            repo repo
