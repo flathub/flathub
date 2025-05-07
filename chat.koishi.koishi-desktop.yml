@@ -1,0 +1,101 @@
+id: chat.koishi.koishi-desktop
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node22
+command: koi
+rename-appdata-file: chat.koishi.desktop.appdata.xml
+rename-desktop-file: chat.koishi.desktop.desktop
+rename-icon: koishi-app
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: libvips
+    buildsystem: meson
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/libvips/libvips/releases/download/v8.16.1/vips-8.16.1.tar.xz
+        sha256: d114d7c132ec5b45f116d654e17bb4af84561e3041183cd4bfd79abfb85cf724
+
+  - name: gotext
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOBIN: /app/bin
+    build-commands:
+      - go install -mod=vendor ./cmd/gotext
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://go.googlesource.com/text.git
+        tag: v0.25.0
+      - gotext/go.mod.yml
+
+  - name: koishi-desktop
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node22/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node22
+        CI: 'true'
+    build-commands:
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn install --offline
+      - mkdir build/assets
+      - yarn run --offline gulp build
+      - mv build/varients/portable/bin build/varients/portable/koi build/varients/portable/koishell koi.yml /app/bin
+      - mv bin/node /app/bin/bin/koishi
+      - cd build/varients/portable && zip -r ../../../packages/unfold/portabledata.zip .
+      - go build -o /app/bin/unfold -trimpath -ldflags -w ./packages/unfold
+      - install -D -t /app/share/metainfo packages/build/templates/linux/chat.koishi.desktop.appdata.xml
+      - install -D packages/build/templates/linux/chat.koishi.desktop.desktop.hbs /app/share/applications/chat.koishi.desktop.desktop
+      - desktop-file-edit --remove-key X-AppImage-Name --remove-key X-AppImage-Version --remove-key X-AppImage-Arch /app/share/applications/chat.koishi.desktop.desktop
+      - install -D -t /app/share/icons/hicolor/scalable/apps build/assets/koishi-app.svg
+    sources:
+      - type: git
+        url: https://github.com/koishijs/koishi-desktop.git
+        tag: v1.1.2
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/koishijs/boilerplate/releases/download/v1.15.0/boilerplate-v1.15.0-linux-amd64-node20.zip
+        sha256: a5c3262eee1315bde31934e2aa8017a2ebc75deb6fd8c39c44be33ebbfe8bc88
+        dest: build/caches
+        dest-filename: boilerplate.zip
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/koishijs/boilerplate/releases/download/v1.15.0/boilerplate-v1.15.0-linux-arm64-node20.zip
+        sha256: 14709843e9f9d397504803c46a04ffdd74866e7c84330ddf532edb8230f86747
+        dest: build/caches
+        dest-filename: boilerplate.zip
+      - type: archive
+        only-arches: [x86_64]
+        url: https://nodejs.org/dist/v22.15.0/node-v22.15.0-linux-x64.tar.xz
+        sha256: dafe2e8f82cb97de1bd10db9e2ec4c07bbf53389b0799b1e095a918951e78fd4
+      - type: archive
+        only-arches: [aarch64]
+        url: https://nodejs.org/dist/v22.15.0/node-v22.15.0-linux-arm64.tar.xz
+        sha256: d68adf72c531f1118bee75b20ffbc5911accfda5e73454a798625464b40a4adf
+      - type: file
+        url: https://repo.yarnpkg.com/4.9.1/packages/yarnpkg-cli/bin/yarn.js
+        sha256: 6ffc213b3ce0af5c92507977d9537ea3cc085caa52d1c3f08e94d613407fed19
+        dest: build/varients/portable/bin
+        dest-filename: yarn.cjs
+      - type: inline
+        dest-filename: koi.yml
+        contents: 'redirect: USERDATA'
+      - generated-sources.json
+      - go.mod.yml
