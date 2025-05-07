@@ -1,46 +1,58 @@
 app-id: io.github.serial_studio.Serial_Studio
 runtime: org.kde.Platform
-runtime-version: '6.8'
+runtime-version: '6.9'
 sdk: org.kde.Sdk
 command: serial-studio
 separate-locales: false
+rename-icon: serial-studio
+rename-desktop-file: serial-studio.desktop
 
 finish-args:
   - --share=ipc
   - --share=network
-  - --socket=x11
+  - --socket=wayland
   - --device=dri
   - --device=all
-  - --filesystem=home
+  - --filesystem=xdg-documents
+cleanup:
+  - /include
+  - /lib/metatypes
+  - /lib/modules
+  - /lib/qml
+  - /lib/sbom
+  - /mkspecs
+  - /lib/*-linux-gnu/cmake
+  - /lib/*-linux-gnu/pkgconfig
+  - /lib/*-linux-gnu/*.prl
 modules:
+  - name: qt6-graphs
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/qt/6.9/6.9.0/submodules/qtgraphs-everywhere-src-6.9.0.tar.xz
+        sha256: 9e5b08cdc1934b2525b5586a458861c180ee9f3aaccf6c36bac37b502afaa0c6
+
   - name: serial-studio
     buildsystem: simple
     build-commands:
-      - install -Dpm644 io.github.serial_studio.Serial_Studio.desktop -t $FLATPAK_DEST/share/applications
-      - install -Dpm644 io.github.serial_studio.Serial_Studio.png -t $FLATPAK_DEST/share/icons/hicolor/256x256/apps
+      - sed -i -e 's|/usr/bin|bin|g' -e 's|/usr/share|share|g' -e 's|share/pixmaps|share/icons/hicolor/256x256/apps|g' -e '/# Qt Deployment/,$d' app/CMakeLists.txt
+      - mkdir build && cd build && cmake ../ -DPRODUCTION_OPTIMIZATION=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FLATPAK_DEST}
+      - cmake --build build --config Release -j $FLATPAK_BUILDER_N_JOBS
+      - cmake --install build
+    post-install:
+      - install -Dpm755 build/app/serial-studio -t $FLATPAK_DEST/bin
       - install -Dpm644 io.github.serial_studio.Serial_Studio.metainfo.xml -t $FLATPAK_DEST/share/metainfo
-      - bsdtar -O -xf Serial-Studio*.deb data.* | bsdtar --no-same-owner -xf -
-      - install -Dpm755 opt/serial-studio.AppDir/usr/bin/serial-studio -t $FLATPAK_DEST/bin
-      - mkdir -p $FLATPAK_DEST/lib
-      - cp -r opt/serial-studio.AppDir/usr/lib/* $FLATPAK_DEST/lib
-      - cp -r opt/serial-studio.AppDir/usr/qml $FLATPAK_DEST/lib
-      - cp -r opt/serial-studio.AppDir/usr/plugins $FLATPAK_DEST/lib
-      - cp -r opt/serial-studio.AppDir/usr/translations $FLATPAK_DEST
     sources:
-      - type: file
-        path: io.github.serial_studio.Serial_Studio.desktop
-      - type: file
-        path: io.github.serial_studio.Serial_Studio.png
-      - type: file
-        path: io.github.serial_studio.Serial_Studio.metainfo.xml
-      - type: file
-        only-arches:
-          - x86_64
-        url: https://github.com/Serial-Studio/Serial-Studio/releases/download/v3.0.6/Serial-Studio-3.0.6-Linux-x86_64.deb
-        sha256: a0454bc4c8410892a1da77ca09f34e27cff9284bf2f996be5452bbaa7932bdfb
+      - type: git
+        url: https://github.com/Serial-Studio/Serial-Studio.git
+        tag: v3.0.6
+        commit: 2d8de725b63d67c33cc193991a36cb06ee355f6f
         x-checker-data:
+          is-main-source: true
           type: json
           url: https://api.github.com/repos/Serial-Studio/Serial-Studio/releases/latest
           tag-query: .tag_name
           version-query: $tag | sub("^v"; "")
-          url-query: .assets[] | select(.name=="Serial-Studio-" + $version + "-Linux-x86_64.deb") | .browser_download_url
+          timestamp-query: .published_at
+      - type: file
+        path: io.github.serial_studio.Serial_Studio.metainfo.xml
