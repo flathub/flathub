@@ -1,5 +1,5 @@
 {
-  description = "all dependencies for generating dependencies for deltachat tauri";
+  description = "all dependencies for running the ./generate.sh script which generates manifests for deltachat tauri";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
