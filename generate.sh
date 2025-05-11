@@ -8,9 +8,10 @@ DESKTOP_CHECKOUT=origin/simon/tauri-flatpak
 
 # this script needs:
 # - that you have run setup.sh before
-# - python3, nodejs 20, flatpak-node-generator
+# - python3, nodejs 20
 # - jq
-# you can call "nix develop" if you are doing this on nix
+# - flatpak-node-generator (setup.sh installs this for you)
+# you can call "nix develop" to install those dependencies if you are doing this on nix
 
 export PATH=$PATH:$HOME/.local/bin
 
