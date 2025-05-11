@@ -1,4 +1,8 @@
 {
+  # This file is a convinience helper for maintainers that use nix(os).
+  # it is not required to build the package:
+  # you can also install the dependencies like nodejs and flatpak-builder manually.
+  
   description = "all dependencies for running the ./generate.sh script which generates manifests for deltachat tauri";
 
   inputs = {
