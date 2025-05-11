@@ -1,0 +1,111 @@
+app-id: chat.delta.DeltaChatTauri
+
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: deltachat-tauri
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all # Webcam access for QR code scans and DRI for OpenGL
+  - --socket=pulseaudio # Record and play voice messages
+  # we use this for the moment, because the portal api also had some problems
+  # (https://github.com/deltachat/deltachat-desktop/pull/4929)
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.kde.StatusNotifierItem
+  - --talk-name=org.freedesktop.StatusNotifier.Watcher
+  - --talk-name=com.canonical.Unity.LauncherEntry
+  # do we need this?
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --share=network
+  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1 # without this it crashes on wayland with nvidia gpu - atleast on nixos
+
+rename-icon: deltachat-tauri
+rename-desktop-file: deltachat-tauri.desktop
+rename-appdata-file: deltachat-tauri.appdata.xml
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: deltachat-tauri
+    buildsystem: simple
+    build-options:
+      # somehow env is ignored -which is really unexpected
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+
+        XDG_CACHE_HOME: /run/build/deltachat-tauri/flatpak-node/cache
+
+        # This overwrites the git-ref version info for the about- and crash-screen
+        VERSION_INFO_GIT_REF: "flathub"
+
+        # It does not work to dereference the variable here :-/
+        # CARGO_HOME: $FLATPAK_BUILDER_BUILDDIR/cargo
+        CARGO_HOME: /run/build/deltachat-tauri/cargo
+
+        # The intention is to have a release build with debugging symbols.
+        # The flatpak build process should separate the debug symbols.
+        RUSTFLAGS: "-g"
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin:/run/build/deltachat-tauri/pnpm/bin
+    build-commands:
+      # fixup manually installed pnpm package (why manual? because global npm install is not possible because global node modules dir is read-only)
+      - mv pnpm/bin/pnpm.cjs pnpm/bin/pnpm
+      - mkdir flatpak-node
+      - node --version
+      - pnpm --version
+      - python --version
+      - pnpm config set registry http://localhost:3000 --location project
+
+      # install the core we build locally instead of the prebuild
+      # patch package.json to exclude the extra architectures that we excluded when building the pnpm store
+      # also exclude electron from allowed install script
+      - |
+        jq ".pnpm.supportedArchitectures.os = [\"linux\"] | .pnpm.supportedArchitectures.cpu = [\"x64\",\"arm64\"] | del(.pnpm.onlyBuiltDependencies[] | select(. == \"electron\"))" package.json > package.new.json
+        mv package.new.json package.json
+
+      # install dependencies from store by replaying the packages that we recorded to pnpm
+      # the replay tool does only reading, so it can be safely killed once is is not needed anymore
+      - |
+        node tool_replay.mjs &
+        REPLAY_PID=$!
+        env DEBUG="*" pnpm install --prefer-offline --frozen-lockfile
+        kill $REPLAY_PID
+
+      # patching some cargo files
+      # for some reason this is needed as soon as we enable the flatpak feature
+      - mv cargo/config cargo/config.toml
+      - sed -i 's/\\\\"/\"/g' cargo/vendor/tauri-plugin-single-instance/Cargo.toml
+      - sed -i 's/\\\\"/\"/g' cargo/vendor/tao/Cargo.toml
+
+      # build & package
+      - |
+        export CARGO_HOME=/run/build/deltachat-tauri/cargo
+        pnpm --filter @deltachat-desktop/target-tauri tauri build -b deb -- --offline --features=flatpak
+
+      # extract deb and install it
+
+      - ar x target/release/bundle/deb/*.deb
+      - mkdir deb_data
+      - tar -xvzf data.tar.gz -C deb_data
+      - cp -r deb_data/usr/* /app
+
+      # modify desktop file (name, icon and add `StartupWMClass`)
+      # renaming old filename, because `rename-desktop-file` is run afterwards 
+      - desktop-file-edit --set-name="Delta Chat Tauri" /app/share/applications/deltachat-tauri.desktop
+
+    sources:
+      # Delta Chat
+      - generated/desktop-git.json
+
+      # dependencies
+      - generated/proxy-registry-cache-manifest.json
+      - generated/proxy-registry-cache-indices.json
+      - generated/sources-rust.json
+      - generated/pnpm.json
+
+      # build tools
+      - type: file
+        path: tool_replay.mjs

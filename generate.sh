@@ -101,8 +101,8 @@ else:
     sys.exit(1)
 EOL
 
-echo "[strip unused versions from pnpm package indices]"
-node tool_strip.mjs
+echo "[strip unused versions from pnpm package indices and unify them into one file]"
+node tool_process.mjs
 rm generated/used_versions_strip_info.json
 
 echo "[done]"

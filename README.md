@@ -46,7 +46,7 @@ flatpak remote-add --if-not-exists \
 To simply build the application in a build-directory invoke
 `flatpak-builder` pointing to the manifest:
 ```
-flatpak-builder --install-deps-from=flathub build-dir chat.delta.desktop.tauri.yml
+flatpak-builder --install-deps-from=flathub build-dir chat.delta.DeltaChatTauri.yml
 ```
 
 To install the local build you can add the `--install` flag.  To
@@ -56,7 +56,7 @@ local directory, add the `--repo=repo` flag.
 
 ### Uploading to flathub
 
-Each commit to the https://github.com/flathub/chat.delta.desktop.tauri
+Each commit to the https://github.com/flathub/chat.delta.DeltaChatTauri
 master branch will result in a new release being published to
 flathub.  So once a pull request is merged no more work needs to be
 done to publish the release.
@@ -76,8 +76,6 @@ DESKTOP_CHECKOUT=v1.45.4
 
 After that, build it locally (if your computer is likely faster than CI, so debugging locally is quicker).
 ```
-rm -r build-dir/ || true && flatpak-builder --install-deps-from=flathub build-dir chat.delta.desktop.tauri.yml --ccache
+rm -r build-dir/ || true && flatpak-builder --install-deps-from=flathub build-dir chat.delta.DeltaChatTauri.yml
 ```
-
-> `--ccache` enables sccache, which speeds up subsequent builds.
 

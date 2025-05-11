@@ -26,7 +26,8 @@ function stripSuffix(str, suffix) {
 /* Hosts a proxy to npmjs on http://localhost:3000
 that records what packages are accessed
 and saves them in the manifest generated/proxy-registry-cache-manifest.json
-and the package indices to generated/proxy-registry-cache-indices
+and the package indices to generated/proxy-registry-cache-indices2
+which gets converted by tool_process.mjs to proxy-registry-cache-indices.json
 
 This proxy pretends to be a registry, we set the pnpm registry to it to make pnpm use it.
 */
@@ -63,7 +64,7 @@ const server = createServer((req, res) => {
                     if (!req.url.endsWith(".tgz")) {
                         const filename = join(req.url, 'index.json')
                         const dest = join(
-                            'generated/proxy-registry-cache-indices/',
+                            'generated/proxy-registry-cache-indices2/',
                             dirname(filename))
                         mkdirSync(dest, { recursive: true })
                         const the_path = join(
@@ -84,6 +85,7 @@ const server = createServer((req, res) => {
                         delete parsed_data["maintainers"]
                         delete parsed_data["homepage"]
                         delete parsed_data["description"]
+                        delete parsed_data["bugs"]
 
                         for (const key in parsed_data["versions"]) {
                             if (Object.prototype.hasOwnProperty.call(parsed_data["versions"], key)) {
@@ -97,6 +99,7 @@ const server = createServer((req, res) => {
                                 delete element["_npmUser"]
                                 delete element["_npmOperationalInternal"]
                                 delete element["description"]
+                                delete element["bugs"]
                             }
                         }
 
@@ -107,12 +110,6 @@ const server = createServer((req, res) => {
                             // make it take multiple lines, otherwise git diff would not be more efficient than with inlining into builder manifest
                             JSON.stringify(parsed_data, null, 1),
                             'utf-8')
-                        flatpakManifestIndices.push({
-                            type: "file",
-                            path: the_path,
-                            dest: join('npm-registry-proxy-offline-cache', req.url),
-                            "dest-filename": basename(the_path)
-                        })
                     }
                 } else {
                     console.log("req.url is undefined");
