@@ -1,0 +1,46 @@
+name: theia_ide
+buildsystem: simple
+build-options:
+  env:
+    ELECTRON_SKIP_BINARY_DOWNLOAD: 'true'
+    HOME: /run/build/theia_ide
+    NODE_OPTIONS: '--max-old-space-size=4096'
+    PUPPETEER_SKIP_DOWNLOAD: 'true'
+    XDG_CACHE_HOME: /run/build/theia_ide/flatpak-node/cache
+    npm_config_nodedir: /usr/lib/sdk/node20
+  append-path: /usr/lib/sdk/node20/bin
+build-commands:
+  - |
+    cp -a flatpak-node/tmp/* /tmp
+    yarn
+  - |
+    unzip -o flatpak-node/cache/electron/electron-v*-linux-*.zip -d node_modules/electron/dist/
+    yarn build
+  - |
+    . flatpak-node/electron-builder-arch-args.sh
+    yarn electron package -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+    mv applications/electron/dist/linux-unpacked /app/main
+  - install -Dm0755 -t /app/bin run.sh
+  - install -Dm0644 -t /app/share/applications ${FLATPAK_ID}.desktop
+  - install -Dm0644 -t /app/share/metainfo ${FLATPAK_ID}.metainfo.xml
+  - install -Dm0644 /app/main/resources/app/resources/icons/WindowIcon/512-512.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+sources:
+  - type: archive
+    url: https://github.com/eclipse-theia/theia-ide/archive/refs/tags/v1.60.200.tar.gz
+    sha256: 55a45d593c80b885d8fe59ca677326448a822ed8595d2f38fd10dd29a3d949b4
+  - generated-sources.json
+  - type: inline
+    contents: |
+      yarn-offline-mirror /run/build/theia_ide/flatpak-node/yarn-mirror
+      --install.offline true
+      --run.offline true
+    dest-filename: .yarnrc
+  - type: script
+    dest-filename: run.sh
+    commands:
+      - zypak-wrapper /app/main/theia-ide-electron-app.bin --no-sandbox --ozone-platform-hint=auto "$@"
+  - type: file
+    path: org.theia_ide.theia_ide.desktop
+  - type: file
+    path: org.theia_ide.theia_ide.metainfo.xml
+
