@@ -5,7 +5,7 @@ import { join } from 'path';
 /** @type {Record<string,string[]>} */
 const stripInfo = JSON.parse(await readFile("generated/used_versions_strip_info.json"))
 
-const flatpakManifestIndices = []
+let flatpakManifestIndices = []
 
 for (const packageName in stripInfo) {
     if (packageName === "pnpm") {
@@ -61,4 +61,15 @@ try {
     await writeFile(pathToManifest, JSON.stringify(manifest, null, 2), 'utf-8')
 } catch (error) { }
 
+flatpakManifestIndices = flatpakManifestIndices.sort((a, b) => {
+    const pathA = a.dest.toUpperCase();
+    const pathB = b.dest.toUpperCase();
+    if (pathA < pathB) {
+        return -1;
+    }
+    if (pathA > pathB) {
+        return 1;
+    }
+    return 0;
+})
 await writeFile("generated/proxy-registry-cache-indices.json", JSON.stringify(flatpakManifestIndices, null, 2), 'utf-8')
