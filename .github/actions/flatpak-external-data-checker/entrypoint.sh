@@ -32,6 +32,10 @@ for repo in "${checker_apps[@]}"; do
         if jq -e '."require-important-update"' < "$repo"/flathub.json > /dev/null; then
             FEDC_OPTS+=("--require-important-update")
         fi
+        # disable sending PRs and only commit
+        if jq -e '."fedc-commit-only" == true' < "$repo"/flathub.json > /dev/null; then
+            FEDC_OPTS+=("--commit-only")
+        fi
     fi
 
     if [[ -f $repo/${repo}.yml ]]; then
