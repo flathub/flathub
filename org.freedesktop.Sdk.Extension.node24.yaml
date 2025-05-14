@@ -1,0 +1,79 @@
+app-id: org.freedesktop.Sdk.Extension.node24
+branch: "24.08"
+runtime: org.freedesktop.Sdk
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: /usr/lib/sdk/node24
+  prepend-path: /usr/lib/sdk/node24/bin
+  prepend-ld-library-path: /usr/lib/sdk/node24/lib
+  strip: true
+cleanup:
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - /share/systemtap
+modules:
+  - name: node
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v24.0.1/node-v24.0.1.tar.xz
+        sha256: 70271026971808409a7ed6444360d5fe3ef4146c1ca53f2ca290c60d214be84e
+        x-checker-data:
+          type: json
+          url: https://nodejs.org/dist/index.json
+          tag-query: >-
+            map(select(.version|startswith("v24."))) | sort_by(.date) | last | .version
+          version-query: >-
+            $tag | sub("^[vV]"; "")
+          url-query: >-
+            "https://nodejs.org/dist/\($tag)/node-\($tag).tar.xz"
+          is-main-source: true
+    config-opts:
+      - --openssl-use-def-ca-store
+      - --shared-openssl
+      - --shared-zlib
+      - --with-intl=system-icu
+
+  - name: yarn
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/{bin,share}
+      - cp -a . ${FLATPAK_DEST}/share/yarn
+      - ln -sr ${FLATPAK_DEST}/share/yarn/bin/yarn ${FLATPAK_DEST}/bin/yarn
+      - ln -sr ${FLATPAK_DEST}/share/yarn/bin/yarnpkg ${FLATPAK_DEST}/bin/yarnpkg
+    sources:
+      - type: archive
+        url: https://github.com/yarnpkg/yarn/releases/download/v1.22.22/yarn-v1.22.22.tar.gz
+        sha256: 88268464199d1611fcf73ce9c0a6c4d44c7d5363682720d8506f6508addf36a0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yarnpkg/yarn/releases/latest
+          version-query: >-
+            .tag_name | sub("^[vV]"; "")
+          url-query: >-
+            .assets | map(select(.name|endswith(".tar.gz"))) | first | .browser_download_url
+
+  - name: scripts
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 {enable,install{,-sdk}}.sh -t ${FLATPAK_DEST}/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+    sources:
+      - type: script
+        dest-filename: install.sh
+        commands:
+          - install -Dm 755 /usr/lib/sdk/node24/bin/node ${FLATPAK_DEST}/node/bin/node
+      - type: script
+        dest-filename: install-sdk.sh
+        commands:
+          - cp -r /usr/lib/sdk/node24 ${FLATPAK_DEST}/node
+      - type: script
+        commands:
+          - export PATH=$PATH:/usr/lib/sdk/node24/bin
+          - export npm_config_nodedir=/usr/lib/sdk/node24
+        dest-filename: enable.sh
+      - type: file
+        path: org.freedesktop.Sdk.Extension.node24.metainfo.xml
