@@ -8,11 +8,10 @@
 
 - [ ] Please describe the application briefly. <!-- insert the description here -->
 - [ ] The domain used for the application ID is [controlled by the application developer(s)][appid-domain] and the [application id guidelines][appid] are followed.
-- [ ] I have read and followed all the [Submission requirements][reqs] and the [Submission guide][reqs2].
-- [ ] I have [built][build] and tested the submission locally.
-- [ ] I am an author/developer/upstream contributor to the project. If not, I contacted upstream developers about this submission. **Link:**
+- [ ] I have read and followed all the [Submission requirements][reqs] and the [Submission guide][reqs2] and I agree to them.
+- [ ] I am an _(please write whichever is applicable)_ author/developer/upstream contributor to the project. If not, I contacted upstream developers about this submission. **Link:**
 
-<!-- 💡 Mention any additional maintainers needed below 💡 -->
+<!-- 💡 Mention the GitHub usernames of any additional maintainers needed below 💡 -->
 
 <!-- ⚠️⚠️ DO NOT modify anything below this line ⚠️⚠️  -->
 
@@ -20,4 +19,3 @@
 [appid]: https://docs.flathub.org/docs/for-app-authors/requirements#application-id
 [reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
 [reqs2]: https://docs.flathub.org/docs/for-app-authors/submission
-[build]: https://docs.flathub.org/docs/for-app-authors/submission/#before-submission
