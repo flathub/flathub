@@ -1,0 +1,50 @@
+name: Close and lock spam issues and PRs
+
+# WARNING: Do NOT use org level secrets or checkout any code in this
+# workflow
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  spam_issues:
+    if: github.event.label.name == 'spam' && github.event.issue != null
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close the issue
+        run: gh issue close "$ISSUE_NUM" --reason "not planned"
+      - name: Lock the issue
+        run: |
+          if [ "$(gh api repos/"$GH_REPO"/issues/"$ISSUE_NUM" --jq '.locked')" = "false" ]; then
+            gh issue lock "$ISSUE_NUM" --reason "spam"
+          fi
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUM: ${{ github.event.issue.number }}
+
+  spam_prs:
+    if: github.event.label.name == 'spam' && github.event.pull_request != null
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Close the PR
+        run: gh pr close "$PR_NUM"
+      - name: Lock the PR
+        run: |
+          if [ "$(gh api repos/"$GH_REPO"/issues/"$PR_NUM" --jq '.locked')" = "false" ]; then
+            gh pr lock "$PR_NUM" --reason "spam"
+          fi
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUM: ${{ github.event.pull_request.number }}
