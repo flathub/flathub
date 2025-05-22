@@ -39,7 +39,7 @@ class FlatconvertApplication(Adw.Application):
     """The main application singleton class."""
 
     def __init__(self, VERSION):
-        super().__init__(application_id='com.qsk.flatconvert',
+        super().__init__(application_id='org.devsk.flatconvert',
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.create_action('quit', lambda *_: self.quit(), ['<primary>q'])
         self.create_action('about', self.on_about_action)
@@ -68,7 +68,7 @@ class FlatconvertApplication(Adw.Application):
         """Callback for the app.about action."""
         about = Adw.AboutWindow(transient_for=self.props.active_window,
                                 application_name="gnome convert",
-                                application_icon='com.qsk.flatconvert',
+                                application_icon='org.devsk.flatconvert',
                                 developer_name='Quentin Soranzo Krebs',
                                 version=self.version,
                                 developers=['Quentin Soranzo Krebs',

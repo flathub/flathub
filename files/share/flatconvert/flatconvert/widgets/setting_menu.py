@@ -27,7 +27,7 @@ from flatconvert import main
 logger = logging.getLogger(__name__)
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/SettingMenu.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/SettingMenu.ui")
 class SettingMenu(Gtk.Popover):
 
     __gtype_name__ = 'SettingMenu'

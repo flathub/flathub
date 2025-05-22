@@ -29,7 +29,7 @@ from flatconvert.utils import find_key
 from flatconvert.widgets.setting_menu import SettingMenu
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/SelectRowbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/SelectRowbox.ui")
 class SelectRowbox(Gtk.ListBoxRow, FileRowBase):
 
     __gtype_name__ = 'SelectRowbox'

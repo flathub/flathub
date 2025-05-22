@@ -28,7 +28,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/OpenListbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/OpenListbox.ui")
 class OpenListbox(Gtk.ListBox):
 
     __gtype_name__ = 'OpenListbox'

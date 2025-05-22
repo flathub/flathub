@@ -37,7 +37,7 @@ GObject.threads_init()
 logger = logging.getLogger(__name__)
 
 
-@Gtk.Template(resource_path='/com/qsk/flatconvert/window.ui')
+@Gtk.Template(resource_path='/org/devsk/flatconvert/window.ui')
 class FlatconvertWindow(Adw.ApplicationWindow):
 
     __gtype_name__ = 'FlatconvertWindow'

@@ -35,7 +35,7 @@ def find_key(valeur_cible: str, dictionnaire):
     return clé
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/OpenRowbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/OpenRowbox.ui")
 class OpenRowbox(Gtk.ListBoxRow, FileRowBase):
 
     __gtype_name__ = 'OpenRowbox'

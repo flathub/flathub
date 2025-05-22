@@ -39,7 +39,7 @@ def find_key(valeur_cible: str, dictionnaire):
     return clé
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/ConvertRowbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/ConvertRowbox.ui")
 class ConvertRowbox(Gtk.ListBoxRow, FileRowBase):
 
     __gtype_name__ = 'ConvertRowbox'

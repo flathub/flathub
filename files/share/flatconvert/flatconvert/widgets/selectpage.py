@@ -22,7 +22,7 @@ from gi.repository import Gtk
 from flatconvert.widgets.selectlistbox import SelectListbox
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/SelectPage.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/SelectPage.ui")
 class SelectPage(Gtk.Box):
 
     __gtype_name__ = 'SelectPage'

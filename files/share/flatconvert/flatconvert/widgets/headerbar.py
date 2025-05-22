@@ -22,7 +22,7 @@ from gi.repository import Gtk, Gio
 from flatconvert import main
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/HeaderBar.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/HeaderBar.ui")
 class HeaderBar(Adw.Bin):
 
     __gtype_name__ = 'HeaderBar'

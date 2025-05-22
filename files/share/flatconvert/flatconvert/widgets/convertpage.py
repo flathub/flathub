@@ -22,7 +22,7 @@ from gi.repository import Gtk
 from flatconvert.widgets.convertlistbox import ConvertListbox
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/ConvertPage.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/ConvertPage.ui")
 class ConvertPage(Gtk.Box):
 
     __gtype_name__ = 'ConvertPage'

@@ -25,7 +25,7 @@ import logging
 from .circularprogress import CircularProgress
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/CircularProgressMenu.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/CircularProgressMenu.ui")
 class CircularProgressMenu(Gtk.MenuButton, CircularProgress):
     """
     CircularProgressMenu is a custom widget that combines the functionality

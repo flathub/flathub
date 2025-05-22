@@ -21,7 +21,7 @@ from gi.repository import Adw
 from gi.repository import Gtk
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/Settings.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/Settings.ui")
 class AdwDemoWindow(Adw.PreferencesWindow):
 
     __gtype_name__ = 'AdwDemoWindow'

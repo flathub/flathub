@@ -25,7 +25,7 @@ from flatconvert.filters import filters
 from flatconvert.widgets.convert_row_box import ConvertRowbox
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/ConvertListbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/ConvertListbox.ui")
 class ConvertListbox(Gtk.ListBox):
 
     __gtype_name__ = 'ConvertListbox'

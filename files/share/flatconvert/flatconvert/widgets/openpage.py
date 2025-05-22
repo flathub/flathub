@@ -22,7 +22,7 @@ from gi.repository import Gtk
 from flatconvert.widgets.open_listbox import OpenListbox
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/OpenPage.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/OpenPage.ui")
 class OpenPage(Gtk.Box):
 
     __gtype_name__ = 'OpenPage'

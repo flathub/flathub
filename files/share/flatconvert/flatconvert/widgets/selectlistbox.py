@@ -24,7 +24,7 @@ from flatconvert import main
 from flatconvert.widgets.select_row_box import SelectRowbox
 
 
-@Gtk.Template(resource_path="/com/qsk/flatconvert/SelectListbox.ui")
+@Gtk.Template(resource_path="/org/devsk/flatconvert/SelectListbox.ui")
 class SelectListbox(Gtk.ListBox):
 
     __gtype_name__ = 'SelectListbox'
