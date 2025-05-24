@@ -1,6 +1,9 @@
 build:
 	flatpak-builder --user --install --force-clean build-dir app.grayjay.Grayjay.yaml
 
+build-offline:
+	flatpak-builder --user --install --disable-download --force-clean build-dir app.grayjay.Grayjay.yaml
+
 
 build-sandbox:
 	flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo ./build-dir app.grayjay.Grayjay.yaml
