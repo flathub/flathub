@@ -7,8 +7,8 @@ from pathlib import Path
 import shutil
 
 # --- Configuration ---
-MANIFEST = "io.github.voxelum.xmcl.yaml"
-# Get the project root directory (one level up from scripts directory)
+MANIFEST = "io.github.voxelum.XMCL.yaml"
+# Get the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPO_OWNER = "Voxelum"
 REPO_NAME = "x-minecraft-launcher"
