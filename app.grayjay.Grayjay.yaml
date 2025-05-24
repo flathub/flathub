@@ -1,0 +1,76 @@
+app-id: app.grayjay.Grayjay
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+command: Grayjay
+finish-args:
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-download
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  # - --own-name=org.mpris.MediaPlayer2.grayjay
+  # - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.freedesktop.ScreenSaver
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+  - org.freedesktop.Sdk.Extension.node22
+build-options:
+  prepend-path: /usr/lib/sdk/dotnet8/bin:/usr/lib/sdk/node22/bin
+  prefix: /usr/lib/sdk/dotnet8
+  append-ld-library-path: /usr/lib/sdk/dotnet8/lib
+  prepend-pkg-config-path: /usr/lib/sdk/dotnet8/lib/pkgconfig
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet8/bin/install.sh
+  - name: grayjay
+    buildsystem: simple
+    build-options:
+      env:
+        # Set the cache directory, used to find Electron and some other helper
+        # tools.
+        # (The directory format is: /run/build/MODULE_NAME/flatpak-node/cache)
+        XDG_CACHE_HOME: ${FLATPAK_BUILDER_BUILDDIR}/flatpak-node/cache
+        # Set the npm cache directory, used by npm to find its package metadata.
+        npm_config_cache: ${FLATPAK_BUILDER_BUILDDIR}/flatpak-node/npm-cache
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/grayjay
+      - ./deploy_flatpak.sh 5 "${FLATPAK_DEST}/grayjay" "${FLATPAK_BUILDER_BUILDDIR}/nuget-sources"
+      - dotnet nuget locals all --clear
+      - install -Dm 0644 app.grayjay.Grayjay.desktop ${FLATPAK_DEST}/share/applications/app.grayjay.Grayjay.desktop
+      - install -Dm 0644 app.grayjay.Grayjay.metainfo.xml  ${FLATPAK_DEST}/share/metainfo/app.grayjay.Grayjay.metainfo.xml
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps
+      - ffmpeg -i Grayjay.Desktop.CEF/grayjay.png -vf scale=128:-1 ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/app.grayjay.Grayjay.png
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps
+      - ffmpeg -i Grayjay.Desktop.CEF/grayjay.png -vf scale=256:-1 ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/app.grayjay.Grayjay.png
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
+      - ffmpeg -i Grayjay.Desktop.CEF/grayjay.png -vf scale=512:-1 ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/app.grayjay.Grayjay.png
+      - rm ${FLATPAK_DEST}/grayjay/Portable # https://github.com/futo-org/Grayjay.Desktop/issues/14#issuecomment-2692940623
+      - rm ${FLATPAK_DEST}/grayjay/FUTO.Updater.Client
+      - ln -s "${FLATPAK_DEST}/grayjay/Grayjay" "${FLATPAK_DEST}/bin/Grayjay" 
+
+    sources:
+      - type: git
+        # use if developing locally, and adjust/remove branch/tag/commit below accordingly
+        # url: file:///path/to/Grayjay.Desktop 
+        url: https://gitlab.futo.org/videostreaming/Grayjay.Desktop.git
+        #branch: flatpak-v5
+        commit: 3fe58d739e0ab87c5bd2dde165267a79a0173d4a
+        x-checker-data:
+          type: git
+          url: https://gitlab.futo.org/videostreaming/Grayjay.Desktop/-/tags
+          tag-pattern: ^([\d]+)$
+          is-main-source: true
+
+      - type: file
+        path: deploy_flatpak.sh
+
+      - npm-sources.json
+
+      - nuget-sources.json
