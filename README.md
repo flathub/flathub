@@ -1,1 +1,0 @@
-X Minecraft Launcher (XMCL) is a modern Minecraft launcher that lets you manage your massive resources like modpacks, resource packs, mods, shader packs... It also has integration with Minecraft Forge, Fabric, Quilt, CurseForge and Modrinth.
