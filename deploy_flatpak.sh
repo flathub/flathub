@@ -1,5 +1,8 @@
 #!/bin/bash
-# This is a copy of the linux build steps, except modified for Flatpak.
+# This is a copy of the linux build steps from FUTO, except modified for Flatpak.
+
+# SPDX-License-Identifier: LicenseRef-Source-First-1.1
+
 
 # Changes include:
 # - removing upload of artifacts to server

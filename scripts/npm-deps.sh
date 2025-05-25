@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# SPDX-License-Identifier: MIT
+
 # pip install 
 # This is a temporary workaround for https://github.com/flatpak/flatpak-builder-tools/issues/445
 # once https://github.com/flatpak/flatpak-builder-tools/pull/446 is merged, replace the below line with

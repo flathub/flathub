@@ -1,5 +1,7 @@
 # While flatpak module sources supports git submodules, it does not support git-lfs. This generator sets up each submodule as an archive source, because gitlab zips seem to include files stored in LFS.
 
+# SPDX-License-Identifier: MIT
+
 import os
 import json
 import subprocess

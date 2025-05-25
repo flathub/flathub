@@ -19,3 +19,12 @@ Here is some documentation on building flatpaks that has been helpful
 - https://docs.flathub.org/docs/for-app-authors/metainfo-guidelines/
 - https://flatpak-docs.readthedocs.io/en/latest/first-build.html
 - https://docs.flatpak.org/en/latest/sandbox-permissions.html
+
+
+## Licensing
+
+Grayjay is [licensed](https://github.com/futo-org/Grayjay.Desktop/blob/master/LICENSE.md) under the FUTO Source First License 1.1, a source-available noncommercial license.
+
+Original scripts in this repo are licensed MIT to the extent that they can be (some, such as `scripts/flatpak-submodules-generator.py` were initially created with generative AI).
+
+These scripts should be marked with SPDX license identifiers. Where not marked, files should be treated as being under the MIT license.
