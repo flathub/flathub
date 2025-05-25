@@ -1,0 +1,113 @@
+name: Check PRs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-prs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Fetch recent PR numbers
+        run: |
+          prs_raw=$(gh pr list --base "new-pr" -L 100 --state open --json number,createdAt,isDraft \
+            | jq -r '[.[]
+              | select(.isDraft == false
+                and .createdAt >= (now - (1 * 24 * 60 * 60) | todate))
+              | .number]
+            | .[]')
+
+            unreviewed_prs=()
+            while IFS= read -r pr_num; do
+              review_count=$(gh pr view "$pr_num" --json reviews -q '.reviews | length')
+              if [ "$review_count" -eq 0 ]; then
+                unreviewed_prs+=("$pr_num")
+              fi
+            done <<< "$prs_raw"
+            prs_list=$(printf '%s\n' "${unreviewed_prs[@]}" | head -30 | paste -sd "," -)
+            echo "PR_LIST=$prs_list" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
+      - name: Validate PRs
+        run: |
+          IFS=',' read -ra PR_NUMBERS <<< "${{ env.PR_LIST }}"
+
+          if [ ${#PR_NUMBERS[@]} -eq 0 ] || [ -z "${PR_NUMBERS[0]}" ]; then
+            echo "No PRs found, exiting."
+            exit 0
+          fi
+
+          for PR_NUM in "${PR_NUMBERS[@]}"; do
+            echo "Checking PR #$PR_NUM"
+
+            json=$(gh pr view "$PR_NUM" --json body,title -q '{body: .body, title: .title}')
+            PR_BODY=$(echo "$json" | jq -r .body)
+            PR_TITLE=$(echo "$json" | jq -r .title)
+
+            unset $PR_TITLE
+            export PR_TITLE="$PR_TITLE"
+
+            EXIT_CODE=$(curl -sSL "$SCRIPT_URL" | python3 | grep 'EXIT_CODE=' | cut -d= -f2)
+            echo "EXIT_CODE is $EXIT_CODE"
+            unset $PR_TITLE
+
+            BLOCKED=0
+
+            comment_exists() {
+              gh pr view "$PR_NUM" --json comments -q '.comments[].body' | grep -Fq "$PART_COMMENT"
+            }
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "PR title validation failed"
+              BLOCKED=1
+            fi
+
+            CHECKLIST_PRESENT=$(printf "%s\n" "$PR_BODY" | grep -cE '^- \[.?] [A-Za-z]+' || true)
+            echo "Total checklists found: $CHECKLIST_PRESENT"
+            UNCHECKED=$(printf "%s\n" "$PR_BODY" | grep -Ec '^- \[ \] [A-Za-z]+' || true)
+            echo "Unchecked checklists found: $UNCHECKED"
+
+            if [ "$CHECKLIST_PRESENT" -eq 0 ]; then
+              echo "No checklist present in PR body"
+              BLOCKED=1
+            elif [ "$UNCHECKED" -gt 0 ]; then
+              echo "Checklist incomplete in PR body"
+              BLOCKED=1
+            fi
+
+            echo "BLOCKED is set to $BLOCKED"
+
+            if [ "$BLOCKED" -eq 0 ]; then
+              echo "Marking as awaiting-review"
+              gh pr edit "$PR_NUM" --add-label "awaiting-review" --remove-label "blocked" || true
+            else
+              echo "Marking as blocked"
+              gh pr edit "$PR_NUM" --add-label "blocked" --remove-label "awaiting-review"
+              if ! comment_exists; then
+                echo "Did not find comment, commenting"
+                gh pr comment "$PR_NUM" --body "$COMMENT"
+              else
+                echo "Found comment, skipping commenting"
+              fi
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SCRIPT_URL: https://raw.githubusercontent.com/flathub/flathub/refs/heads/master/.github/scripts/validate.py
+          PART_COMMENT: "This pull request is temporarily marked as blocked as some"
+          COMMENT: >
+            This pull request is temporarily marked as blocked as some
+            automated checks failed on it. Please make sure the pull
+            request title is `Add $FLATPAK_ID` and that all checklist
+            items in the pull request body are marked as complete.
