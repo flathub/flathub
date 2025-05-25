@@ -1,0 +1,80 @@
+id: org.texmacs.TeXmacs.Plugin.cadabra
+runtime: org.texmacs.TeXmacs
+runtime-version: stable
+sdk: org.kde.Sdk//6.8
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: "/app/plugins/cadabra"
+  prepend-path: "/app/plugins/cadabra/bin"
+  append-ld-library-path: "/app/plugins/cadabra/lib:/app/plugins/cadabra/lib64"
+  append-pkg-config-path: "/app/plugins/cadabra/lib/pkgconfig:/app/plugins/cadabra/lib64/pkgconfig"
+  ldflags: "-L/app/plugins/cadabra/lib64 -L/app/plugins/cadabra/lib"
+  env:
+    C_INCLUDE_PATH: "/app/plugins/cadabra/include"
+    CPLUS_INCLUDE_PATH: "/app/plugins/cadabra/include"
+cleanup:
+  - "/include"
+  - "/lib/pkgconfig"
+  - "/lib/cmake"
+  - "/lib64/pkgconfig"
+  - "/lib64/cmake"
+  - "*.la"
+  - "*.a"
+
+modules:
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app/plugins/cadabra --with-toolset=gcc --with-icu --with-python=python3
+      #- ./bootstrap.sh --prefix=/app/plugins/cadabra --with-libraries=filesystem,log,thread,system,regex,stacktrace,headers,program_options
+      - ./b2 install -j$FLATPAK_BUILDER_N_JOBS variant=release debug-symbols=off threading=multi runtime-link=shared link=shared,static toolset=gcc cxxstd=23 cflags="$CPPFLAGS $CFLAGS -fPIC -O3 -ffat-lto-objects" cxxflags="$CPPFLAGS $CXXFLAGS -fPIC -O3 -ffat-lto-objects" linkflags="$LDFLAGS" --layout=system --prefix=/app/plugins/cadabra
+
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2
+        sha256: af57be25cb4c4f4b413ed692fe378affb4352ea50fbe294a11ef548f4d527d89
+
+  - name: sigc++-2
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsigc++/2.12/libsigc++-2.12.1.tar.xz
+        sha256: a9dbee323351d109b7aee074a9cb89ca3e7bcf8ad8edef1851f4cf359bd50843
+
+  - name: glibmm
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/glibmm/2.66/glibmm-2.66.7.tar.xz
+        sha256: fe02c1e5f5825940d82b56b6ec31a12c06c05c1583cfe62f934d0763e1e542b3
+
+  - python-deps.yml
+
+  - name: cadabra
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -DBUILD_SHARED_LIBS=TRUE
+      - -DCMAKE_CXX_STANDARD=17
+      - -DCMAKE_C_COMPILER=gcc
+      - -DCMAKE_CXX_COMPILER=g++
+      - -DENABLE_FRONTEND=OFF
+      - -DENABLE_JUPYTER=OFF
+      - -DENABLE_MATHEMATICA=OFF
+      - -DENABLE_PY_JUPYTER=OFF
+      - -DENABLE_SYSTEM_JSONCPP=ON
+      - -DUSE_PYTHON_3=ON
+      - -DPYTHON_SITE_PATH=PYTHONPATH=python
+    post-install:
+      - ln -s /app/plugins/cadabra/bin/cadabra2 /app/plugins/cadabra/bin/cadabra
+      - cp -ru /app/plugins/cadabra/PYTHONPATH=python/cdb/* /app/plugins/cadabra/lib/python3.12/site-packages/cdb/
+      - rm -r /app/plugins/cadabra/PYTHONPATH=python/cdb
+      - cp -ru /app/plugins/cadabra/PYTHONPATH=python/* /app/plugins/cadabra/lib/python3.12/site-packages/cdb/
+    cleanup:
+      - "PYTHONPATH=python/*"
+    sources:
+      - type: git
+        url: https://github.com/kpeeters/cadabra2.git
+        commit: 337b83016d267b3f5b9947a56dfb0013f8941871
