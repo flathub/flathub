@@ -1,0 +1,75 @@
+app-id: app.xmcl.voxelum
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: xmcl-wrapper.sh
+build-options:
+  no-debuginfo: true
+finish-args:
+  # Basic System Access
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=home
+  # Media & Communication
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --filesystem=xdg-run/discord-ipc-0:ro
+  # System Integration
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=com.feralinteractive.GameMode
+  # Electron Settings
+  - --env=ELECTRON_ENABLE_STACK_DUMPING=false
+  - --env=ELECTRON_ENABLE_LOGGING=false
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+
+modules:
+  - name: xrandr
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/xrandr-1.5.3.tar.xz
+        sha256: f8dd7566adb74147fab9964680b6bbadee87cf406a7fcff51718a5e6949b841c
+    cleanup:
+      - /share/man
+      - /bin/xkeystone
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2024.01.17
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app install
+
+  - name: XMCL
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 metadata/icons/${FLATPAK_ID}.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 metadata/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 metadata/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm755 xmcl-wrapper.sh ${FLATPAK_DEST}/bin/xmcl-wrapper.sh
+      - install -d ${FLATPAK_DEST}/opt/xmcl
+      - cp -r * ${FLATPAK_DEST}/opt/xmcl/
+      - chmod +x /app/opt/xmcl/xmcl
+    sources:
+      - type: script
+        dest-filename: xmcl-wrapper.sh
+        commands:
+          - export LD_LIBRARY_PATH=/app/opt/xmcl:$LD_LIBRARY_PATH
+          - export APPIMAGE=1
+          - zypak-wrapper /app/opt/xmcl/xmcl --enable-webrtc-pipewire-capturer "$@"
+
+      - type: archive
+        url: https://github.com/Voxelum/x-minecraft-launcher/releases/download/v0.51.0/xmcl-0.51.0-x64.tar.xz
+        sha256: 4ed46f0cdac3945353a406c029e1bae9e151aeb859aabcf6f12dd3bcfdee2406
+
+      - type: archive
+        url: https://github.com/Voxelum/flatpak-metadata/releases/download/v0.51.0/archive.tar.gz
+        sha256: 69a5e760726e6c37447efc4c0176ee24bd26aaa7f354aca881adc88e9d279346
+        dest: metadata
