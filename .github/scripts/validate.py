@@ -3,10 +3,12 @@ import os
 
 
 def validate_title(title: str) -> int:
-    if not title.startswith("Add "):
+    prefix_pattern = r"(?i)^add\s+"
+    matched = re.match(prefix_pattern, title)
+    if not matched:
         return 42
 
-    appid = title[len("Add ") :].strip()
+    appid = title[matched.end() :].strip()
     regex = r"^[A-Za-z_][\w\-]*$"
     split = appid.split(".")
 
