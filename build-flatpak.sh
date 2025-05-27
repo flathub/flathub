@@ -1,8 +1,5 @@
 #!/bin/bash
 
-echo "Don't use this until this issue is fixed: https://github.com/flatpak/flatpak-builder-tools/issues/381"
-exit
-
 cd source/
 npm install --offline
 
@@ -15,4 +12,4 @@ npm install --offline
 npm run build
 
 cd ../../
-npm run package:linux
+npx electron-builder --dir --linux --publish never

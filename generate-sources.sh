@@ -1,8 +1,5 @@
 #!/bin/bash
 
-echo "Don't use this until this issue is fixed: https://github.com/flatpak/flatpak-builder-tools/issues/381"
-exit
-
 git clone https://github.com/hperrin/stream-overlay.git
 PIPX_BIN_DIR='bin' pipx install git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node
 
