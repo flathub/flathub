@@ -1,0 +1,175 @@
+{
+    "app-id": "com.stremio.App",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "24.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ],
+    "add-extensions": {
+        "org.freedesktop.Platform.ffmpeg-full": {
+            "version": "24.08",
+            "directory": "lib/ffmpeg",
+            "add-ld-path": "."
+        },
+        "org.freedesktop.Platform.VAAPI.Intel": {
+            "version": "24.08",
+            "directory": "lib/intel-vaapi-driver",
+            "add-ld-path": ".",
+            "download-if": "have-intel-gpu",
+            "enable-if": "have-intel-gpu"
+        }
+    },
+    "command": "stremio",
+    "finish-args": [
+        "--socket=wayland",
+        "--socket=x11",
+        "--socket=pulseaudio",
+        "--share=ipc",
+        "--share=network",
+        "--device=dri",
+        "--filesystem=home/.stremio-server:create",
+        "--filesystem=xdg-data/stremio:create",
+        "--filesystem=xdg-run/stremio:create",
+        "--env=LD_LIBRARY_PATH=/app/lib/:/app/lib64/:/app/share/stremio",
+        "--system-talk-name=org.freedesktop.systemd1",
+        "--system-talk-name=org.freedesktop.UPower",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--talk-name=org.kde.kwalletd6"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin",
+        "env": {
+            "PKG_CONFIG_PATH": "/app/lib/pkgconfig:/app/lib64/pkgconfig",
+            "CEF_PATH": "/app/share/stremio"
+        }
+    },
+    "modules": [
+        {
+            "name": "stremio",
+            "buildsystem": "simple",
+            "build-options": {
+                "env": {
+                    "CARGO_HOME": "/run/build/stremio/cargo",
+                    "RUSTFLAGS": "-L /app/lib -L /app/lib64 -C link-arg=-Wl,-rpath-link=/app/lib -C link-arg=-Wl,-rpath-link=/app/lib64"
+                }
+            },
+            "build-commands": [
+                "cargo --offline fetch --manifest-path Cargo.toml --verbose",
+                "cargo --offline build --release --verbose -F offline-build"
+            ],
+            "post-install": [
+                "install -Dm755 data/stremio -t /app/bin/",
+                "install -Dm755 target/release/stremio-linux-shell /app/share/stremio/stremio",
+                "install -Dm644 data/icons/com.stremio.App.svg -t /app/share/icons/hicolor/scalable/apps/",
+                "install -Dm644 data/com.stremio.App.desktop /app/share/applications/com.stremio.App.desktop",
+                "install -Dm644 data/com.stremio.App.metainfo.xml /app/share/metainfo/com.stremio.App.metainfo.xml",
+                "mkdir -p /app/lib/ffmpeg",
+                "mkdir -p /app/lib/intel-vaapi-driver"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/Stremio/stremio-linux-shell.git",
+                    "tag": "v1.0.0"
+                },
+                "./cargo-sources.json"
+            ],
+            "modules": [
+                {
+                    "name": "libmpv",
+                    "buildsystem": "meson",
+                    "config-opts": [
+                        "-Dbuild-date=false",
+                        "-Dcplayer=false",
+                        "-Dlibmpv=true",
+                        "-Dmanpage-build=disabled"
+                    ],
+                    "cleanup": [
+                        "/include",
+                        "/lib/pkgconfig"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz",
+                            "sha256": "10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3"
+                        }
+                    ],
+                    "modules": [
+                        {
+                            "name": "libplacebo",
+                            "buildsystem": "meson",
+                            "config-opts": [
+                                "-Ddemos=false"
+                            ],
+                            "cleanup": [
+                                "/include",
+                                "/lib/pkgconfig"
+                            ],
+                            "sources": [
+                                {
+                                    "type": "git",
+                                    "url": "https://github.com/haasn/libplacebo.git",
+                                    "tag": "v7.349.0"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "libass",
+                            "buildsystem": "meson",
+                            "cleanup": [
+                                "/include",
+                                "/lib/pkgconfig"
+                            ],
+                            "sources": [
+                                {
+                                    "type": "archive",
+                                    "url": "https://github.com/libass/libass/archive/0.17.3.tar.gz",
+                                    "sha256": "26fbfb7a7bd3e6d5c713f8a65a12b36084d1dde6efaed8a9996489054c4aeca0"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "cef",
+                    "buildsystem": "simple",
+                    "build-commands": [
+                        "install -D Release/libcef.so -t /app/share/stremio/",
+                        "install -D Release/libEGL.so -t /app/share/stremio/",
+                        "install -D Release/libGLESv2.so -t /app/share/stremio/",
+                        "install -D Release/libvk_swiftshader.so -t /app/share/stremio/",
+                        "install -D Release/v8_context_snapshot.bin -t /app/share/stremio/",
+                        "install -D Resources/*.pak -t /app/share/stremio/",
+                        "install -D Resources/icudtl.dat -t /app/share/stremio/",
+                        "install -D Resources/locales/*.pak -t /app/share/stremio/locales/"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://cef-builds.spotifycdn.com/cef_binary_135.0.22+g442c600+chromium-135.0.7049.115_linux64_minimal.tar.bz2",
+                            "sha256": "f1915eadae05a3db7c3d0256d9aef191da06ef4bf7d906504aab248904557245"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "nodejs",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -D bin/node -t /app/bin/"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://nodejs.org/dist/v22.15.0/node-v22.15.0-linux-x64.tar.xz",
+                    "path": "node-v22.15.0-linux-x64.tar.xz",
+                    "sha256": "dafe2e8f82cb97de1bd10db9e2ec4c07bbf53389b0799b1e095a918951e78fd4"
+                }
+            ]
+        },
+        "shared-modules/libappindicator/libappindicator-gtk3-12.10.json"
+    ]
+}
