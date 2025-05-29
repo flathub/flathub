@@ -1,0 +1,179 @@
+app-id: co.anysphere.cursor
+runtime: org.freedesktop.Sdk
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: cursor
+tags: [proprietary]
+separate-locales: false
+finish-args:
+  - --require-version=0.10.3
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --socket=ssh-auth
+  - --device=all
+  - --allow=devel
+  - --filesystem=host
+  - --env=NPM_CONFIG_GLOBALCONFIG=/app/etc/npmrc
+  - --env=LD_LIBRARY_PATH=/app/lib
+  # required to fix cursor scaling on wayland
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --system-talk-name=org.freedesktop.login1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.AppMenu.Registrar.*
+add-extensions:
+  com.visualstudio.code.tool:
+    directory: tools
+    subdirectories: true
+    version: '24.08'
+    add-ld-path: lib
+    no-autodownload: true
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - '*.la'
+modules:
+  - shared-modules/libusb/libusb.json
+
+  # Provide libsecret without gcrypt, forcing it to use the D-Bus backend
+  # https://github.com/flathub/org.signal.Signal/pull/756/commits/2caf105b18f906e7707f67b3cf7384a21f461564
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      - -Dmanpage=false
+      - -Dcrypto=disabled
+      - -Dvapi=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dbash_completion=disabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz
+        sha256: 6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e
+        x-checker-data:
+          type: gnome
+          name: libsecret
+          stable-only: true
+
+  - name: kerberos
+    subdir: src
+    post-install:
+      - install -Dm644 ../krb5.conf /app/etc/krb5.conf
+    sources:
+      - type: archive
+        url: https://kerberos.org/dist/krb5/1.20/krb5-1.20.tar.gz
+        sha256: 7e022bdd3c851830173f9faaa006a230a0e0fdad4c953e85bff4bf0da036e12f
+      - type: file
+        path: krb5.conf
+
+  - name: host-spawn
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 host-spawn /app/bin/host-spawn
+    sources:
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/1.5.0/host-spawn-x86_64
+        sha256: dbf67e7e111c4fe1edb0c642cbb4193064ca5b384aeb1054fc2befba6ed88b83
+        dest-filename: host-spawn
+        only-arches: [x86_64]
+      - type: file
+        url: https://github.com/1player/host-spawn/releases/download/1.5.0/host-spawn-aarch64
+        sha256: c42c12be6cdd83e374b847bec836659fb45231215797777c9ee1c9c0ae9e3783
+        dest-filename: host-spawn
+        only-arches: [aarch64]
+
+  - name: unappimage
+    buildsystem: simple
+    build-commands:
+      - make -C squashfs-tools install INSTALL_DIR=/app/bin
+    sources:
+      - type: git
+        url: https://github.com/refi64/unappimage
+        commit: d7f86f2a0d7ec3a69211125207d5f127386b849a
+
+  - name: cursor
+    buildsystem: simple
+    build-commands:
+      - install -D cursor.sh /app/bin/cursor
+      - install -Dm644 cursor_64.png /app/share/icons/hicolor/64x64/apps/co.anysphere.cursor.png
+      - install -Dm644 cursor_128.png /app/share/icons/hicolor/128x128/apps/co.anysphere.cursor.png
+      - install -Dm644 cursor_256.png /app/share/icons/hicolor/256x256/apps/co.anysphere.cursor.png
+      - install -Dm644 cursor_512.png /app/share/icons/hicolor/512x512/apps/co.anysphere.cursor.png
+      - install -Dm644 co.anysphere.cursor.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 co.anysphere.cursor.desktop -t /app/share/applications
+      - install -Dm644 co.anysphere.cursor-url-handler.desktop -t /app/share/applications
+      - install -Dm644 co.anysphere.cursor-workspace.xml -t /app/share/mime/packages
+      - install -Dm644 npmrc -t /app/etc
+      - install -Dm644 flatpak-warning.txt -t /app/share/cursor
+      - install -D apply_extra -t /app/bin
+      - cp /usr/bin/ar /app/bin
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && cp /usr/lib/${ARCH_TRIPLE}/libbfd-*.so
+        /app/lib
+      - ARCH_TRIPLE=$(gcc --print-multiarch) && ln -s /usr/lib/${ARCH_TRIPLE}/libtinfo.so/app/lib/libtinfo.so.5
+      - mkdir /app/tools
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - chmod +x cursor.AppImage
+          - unappimage ./cursor.AppImage
+          - mv squashfs-root/usr/share/cursor cursor
+          - rm -rf cursor.AppImage squashfs-root
+      - type: file
+        path: cursor.sh
+      - type: file
+        path: flatpak-warning.txt
+      - type: file
+        path: npmrc
+      - type: file
+        path: co.anysphere.cursor.metainfo.xml
+      - type: file
+        path: co.anysphere.cursor.desktop
+      - type: file
+        path: co.anysphere.cursor-url-handler.desktop
+      - type: file
+        path: co.anysphere.cursor-workspace.xml
+      - type: file
+        path: icons/cursor_64.png
+      - type: file
+        path: icons/cursor_128.png
+      - type: file
+        path: icons/cursor_256.png
+      - type: file
+        path: icons/cursor_512.png
+      - type: extra-data
+        filename: cursor.AppImage
+        only-arches: [x86_64]
+        url: https://downloads.cursor.com/production/96e5b01ca25f8fbd4c4c10bc69b15f6228c80771/linux/x64/Cursor-0.50.5-x86_64.AppImage
+        sha256: 0d4588810603dd68fa845ecd05bd343864729ca99770595d585500e96f0265e3
+        size: 188150976
+        x-checker-data:
+          type: json
+          url: https://www.cursor.com/api/download?platform=linux-x64&releaseTrack=stable
+          version-query: .version
+          url-query: .downloadUrl
+          is-main-source: true
+
+      - type: extra-data
+        filename: cursor.AppImage
+        only-arches: [aarch64]
+        url: https://downloads.cursor.com/production/96e5b01ca25f8fbd4c4c10bc69b15f6228c80771/linux/arm64/Cursor-0.50.5-aarch64.AppImage
+        sha256: e75cd3620e00fb86546c667afd0a7777968bf0869f7b018e5186d75861bc20b6
+        size: 172489224
+        x-checker-data:
+          type: json
+          url: https://www.cursor.com/api/download?platform=linux-arm64&releaseTrack=stable
+          version-query: .version
+          url-query: .downloadUrl
