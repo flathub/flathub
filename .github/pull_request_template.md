@@ -9,7 +9,7 @@
 <!-- 💡 Please tick and write 'N/A' with a reason if a checklist item below is not applicable 💡 -->
 
 - [ ] Please describe the application briefly. <!-- insert the description here -->
-- [ ] Please include a screenrecord (10-20s) showcasing the application.
+- [ ] Please attach or link a screenrecord showcasing the application on Linux using the Flatpak. <!-- insert screenrecord link/attachment here -->
 - [ ] The Flatpak ID follows all the rules listed in the [Application ID requirements][appid].
 - [ ] I have read and followed all the [Submission requirements][reqs] and the [Submission guide][reqs2] and I agree to them.
 - [ ] I am an _(please write whichever is applicable)_ author/developer/upstream contributor to the project.
