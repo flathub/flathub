@@ -4,7 +4,7 @@ set -e
 # must be tags for now
 # (if you want to use sth else, you need to read this script and modify it accordingly)
 # DESKTOP_CHECKOUT=v1.57.0
-DESKTOP_CHECKOUT=origin/simon/tauri-flatpak
+DESKTOP_CHECKOUT=origin/main
 
 # this script needs:
 # - that you have run setup.sh before
@@ -23,6 +23,7 @@ echo "[git checkout desktop]"
 cd working_dir/deltachat-desktop
 git fetch --all
 git fetch --all --tags
+git reset --hard
 git checkout $DESKTOP_CHECKOUT
 git clean -d -x -f
 DESKTOP_COMMIT_HASH=$(git rev-parse HEAD)
