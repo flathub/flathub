@@ -1,33 +1,49 @@
 # WSelector
 
-A modern GTK4/libadwaita application for browsing and setting wallpapers from Wallhaven.cc.
+WSelector, a modern GTK4/libadwaita application for browsing and setting wallpapers from Wallhaven.cc.
 
-## Flatpak Installation
+## Installation
 
 ### From Flathub (Recommended)
-```bash
-flatpak install flathub io.github.Cookiiieee.WSelector
-```
 
-### Building from Source
+1. Add the Flathub repository if you haven't already:
+   ```bash
+   flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+   ```
 
-#### Prerequisites
-- Flatpak
-- Flathub repository
+2. Install WSelector:
+   ```bash
+   flatpak install flathub io.github.Cookiiieee.WSelector
+   ```
 
-```bash
-# Add Flathub repository
-flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+3. Run the application:
+   ```bash
+   flatpak run io.github.Cookiiieee.WSelector
+   ```
 
-# Install required SDK
-flatpak install flathub org.gnome.Sdk//48 org.gnome.Platform//48
+### Building from source
 
-# Build and install
-flatpak-builder --user --install --force-clean build-dir io.github.Cookiiieee.WSelector.json
+1. Install Flatpak and Flatpak Builder:
+   ```bash
+   sudo apt install flatpak flatpak-builder
+   flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+   ```
 
-# Run the application
-flatpak run io.github.Cookiiieee.WSelector
-```
+2. Clone this repository:
+   ```bash
+   git clone https://github.com/flathub/io.github.Cookiiieee.WSelector.git
+   cd io.github.Cookiiieee.WSelector
+   ```
+
+3. Build and install:
+   ```bash
+   flatpak-builder --user --install --force-clean build-dir io.github.Cookiiieee.WSelector.json
+   ```
+
+4. Run the application:
+   ```bash
+   flatpak run io.github.Cookiiieee.WSelector
+   ```
 
 ## Features
 - Browse wallpapers from Wallhaven.cc
