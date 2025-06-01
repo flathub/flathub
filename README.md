@@ -16,6 +16,7 @@ A comprehensive web launcher and session management application that transforms 
 - [Contributing](#contributing)
 - [License](#license)
 
+
 ## 🚀 Overview
 **Version:** 1.0.0  
 **Built with:** Qt Framework  
