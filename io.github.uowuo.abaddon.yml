@@ -1,0 +1,158 @@
+app-id: io.github.uowuo.abaddon
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: abaddon
+finish-args:
+  # Wayland access
+  - --socket=wayland
+  # X11 fallback
+  - --socket=fallback-x11
+  - --share=ipc #x11 depends on this
+  # Needs network
+  - --share=network
+  # Needs sound + mic
+  - --socket=pulseaudio
+  - --device=all
+  - --env=LD_LIBRARY_PATH=/app/lib/
+  - --env=LD_LIBRARY_PATH=/app/lib/lib64/
+  # Prevents freeze when closing while connected.
+  #- --socket=session-bus
+  - --talk-name=org.gtk.vfs.*
+  - --own-name=com.github.uowuo.abaddon
+
+modules:
+  - name: abaddon
+    buildsystem: simple
+    build-commands:
+
+      - install -D abaddon.sh /app/bin/abaddon
+      - install -Dm6444 io.github.uowuo.abaddon.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 io.github.uowuo.abaddon.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      #- mkdir /app/abaddon
+      - cp -r * /app/
+      - chmod +x /app/abaddon
+    sources:
+      - type: archive
+        only-archives:
+          - x86_64
+          #nightly has commits only a few times per month
+        url: https://nightly.link/uowuo/abaddon/workflows/ci/master/build-linux-MinSizeRel.zip
+        sha256: 887a054770aa0cd4ce97948465312a9fbe1f791268a486f700e2da46c9799586
+      - type: file
+        path: abaddon.sh
+      - type: file
+        path: io.github.uowuo.abaddon.metainfo.xml
+      - type: file
+        path: io.github.uowuo.abaddon.desktop
+      - type: file
+        path: icon.svg
+
+  - name: spdlog
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/gabime/spdlog/archive/refs/tags/v1.9.2.zip
+        sha256: 130bd593c33e2e2abba095b551db6a05f5e4a5a19c03ab31256c38fa218aa0a6
+
+  - name: mm-common
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/mm-common/1.0/mm-common-1.0.6.tar.xz
+        sha256: b55c46037dbcdabc5cee3b389ea11cc3910adb68ebe883e9477847aa660862e7
+
+
+
+#-----------libsodium-----------
+  - name: libsodium
+    sources:
+      - type: archive
+        url: https://github.com/jedisct1/libsodium/archive/refs/tags/1.0.20-RELEASE.tar.gz
+        sha256: 8e5aeca07a723a27bbecc3beef14b0068d37e7fc0e97f51b3f1c82d2a58005c1
+
+
+#-----------libfmt-------------
+  - name: libfmt
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/fmtlib/fmt/archive/refs/tags/11.0.2.tar.gz
+        sha256: 6cb1e6d37bdcb756dbbe59be438790db409cdb4868c66e888d5df9f13f7c027f
+
+#-----------patchelf-------------
+
+  - name: patchelf
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 ./bin/patchelf /app/bin/patchelf
+    sources:
+      - type: archive
+        url: https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-aarch64.tar.gz
+        sha256: ae13e2effe077e829be759182396b931d8f85cfb9cfe9d49385516ea367ef7b2
+#-----------libhandy-------------
+
+
+  - name: libhandy
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libhandy/1.6/libhandy-1.6.1.tar.xz
+        sha256: 6eab0384404d56bd1b1fa059d9a081177778f6ae080ffc2120f28656ca7462a4
+
+#-----------patching--------------
+
+  - name: curlfix
+    buildsystem: simple
+    build-commands:
+      -  patchelf --replace-needed libcurl-gnutls.so.4 libcurl.so.4 /app/abaddon
+      -  patchelf --replace-needed libfmt.so.8 libfmt.so.11 /app/abaddon
+      -  patchelf --replace-needed libsodium.so.23 libsodium.so.26 /app/abaddon
+
+#-----------GTKMM-----------------
+
+  - name: sigc
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsigc++/2.10/libsigc++-2.10.4.tar.xz
+        sha256: 1f5874358d9a21379024a4f4edba80a8a3aeb33f0531b192a6b1c35ed7dbfa3e
+
+
+  - name: glibmm
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/glibmm/2.66/glibmm-2.66.2.tar.xz
+        sha256: b2a4cd7b9ae987794cbb5a1becc10cecb65182b9bb841868625d6bbb123edb1d
+
+  - name: atkmm
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/atkmm/2.28/atkmm-2.28.2.tar.xz
+        sha256: a0bb49765ceccc293ab2c6735ba100431807d384ffa14c2ebd30e07993fd2fa4
+
+  - name: cairomm
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/cairomm/1.12/cairomm-1.12.0.tar.xz
+        sha256: a54ada8394a86182525c0762e6f50db6b9212a2109280d13ec6a0b29bfd1afe6
+
+  - name: pangom
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/pangomm/2.46/pangomm-2.46.2.tar.xz
+        sha256: 57442ab4dc043877bfe3839915731ab2d693fc6634a71614422fb530c9eaa6f4
+
+  - name: gtkmm
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtkmm/3.24/gtkmm-3.24.5.tar.xz
+        sha256: 856333de86689f6a81c123f2db15d85db9addc438bc3574c36f15736aeae22e6
+
