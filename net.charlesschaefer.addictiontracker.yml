@@ -7,13 +7,12 @@ sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: addiction-tracker
 finish-args:
-  - --env=LD_LIBRARY_PATH=/app/lib
   - --env=FLATPAK_ENV=1
   - --device=dri
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
-  - --share=network # Permission needed to access the network
+  - --share=network
 
 modules:
   - name: node22
@@ -21,31 +20,7 @@ modules:
     build-commands:
       - /usr/lib/sdk/node22/install-sdk.sh
 
-  - name: lib-dependencies
-    buildsystem: simple
-    build-commands:
-      - mkdir -p /app/lib
-      # - cp /usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1.0.0 /app/lib/
-      # - cp /usr/lib/x86_64-linux-gnu/libappindicator.so.1.0.0 /app/lib/
-      # - cp /usr/lib/x86_64-linux-gnu/libcanberra-gtk-module.so /app/lib/
-      # - cp /usr/lib/x86_64-linux-gnu/libcanberra-gtk3-module.so /app/lib/
-      # - cp /usr/lib/x86_64-linux-gnu/libcanberra.so.0.2.5 /app/lib/
-      # - mkdir -p /run/build/addiction-tracker/addiction-tracker/bundle-scripts/
-      # - cp shared-modules /run/build/addiction-tracker/addiction-tracker/bundle-scripts/ -Rf
-      - ls -al /app/
-    sources: 
-      - type: git
-        url: https://github.com/flathub/shared-modules.git
-        dest: shared-modules
-        commit: a34a31e4dd50a0b38d1725f6881d1bedb0948b38
-      - type: patch
-        path: libayatana-appindicator-gtk3.json.diff
-        options:
-          - "-p1"
-          # - use-git: true
-    modules:
-      # - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
-      - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
   
   - name: addiction-tracker
     buildsystem: simple
@@ -53,43 +28,29 @@ modules:
       append-path: /usr/lib/sdk/rust-stable/bin/:/usr/lib/sdk/node22/bin
       env: 
         CARGO_HOME: /run/build/addiction-tracker/cargo
-        # Set the cache directory, used to find Electron and some other helper
-        # tools.
-        # (The directory format is: /run/build/MODULE_NAME/flatpak-node/cache)
         XDG_CACHE_HOME: /run/build/addiction-tracker/flatpak-node/cache
-        # Set the npm cache directory, used by npm to find its package metadata.
         npm_config_cache: /run/build/addiction-tracker/flatpak-node/npm-cache
-        # Sets the directory where Node is located so that npm won't download the headers.
         npm_config_nodedir: /usr/lib/sdk/node22
     build-commands:
       - npm --prefix=addiction-tracker install --offline &&
         npm --prefix=addiction-tracker run tauri build -- --bundles deb --config src-tauri/flatpak-tauri.conf.json &&
         VERSION=$(npm --prefix=addiction-tracker pkg get version | sed "s/\"//g") &&
-        cp "addiction-tracker/src-tauri/target/release/bundle/deb/Addiction Tracker_${VERSION}_amd64.deb" addictiontracker.deb &&
-        ls -al 
+        cp "addiction-tracker/src-tauri/target/release/bundle/deb/Addiction Tracker_${VERSION}_amd64.deb" addictiontracker.deb
       - ar -x addictiontracker.deb
       - tar -xf data.tar.gz
       - install -Dm755 usr/bin/addiction-tracker /app/bin/addiction-tracker
       - install -Dm644 usr/share/applications/Addiction\ Tracker.desktop /app/share/applications/net.charlesschaefer.addictiontracker.desktop
-      - sed -i -e "s|Icon=addiction-tracker|Icon=net.charlesschaefer.addictiontracker|g" /app/share/applications/net.charlesschaefer.addictiontracker.desktop
+      - desktop-file-edit --set-icon="net.charlesschaefer.addictiontracker" /app/share/applications/net.charlesschaefer.addictiontracker.desktop
+      - install -Dm644 addiction-tracker/bundle-scripts/net.charlesschaefer.addictiontracker.metainfo.xml /app/share/metainfo/net.charlesschaefer.addictiontracker.metainfo.xml
+      - install -Dm644 addiction-tracker/src-tauri/app-icon.svg /app/share/icons/hicolor/scalable/apps/net.charlesschaefer.addictiontracker.svg
       - install -Dm644 usr/share/icons/hicolor/32x32/apps/addiction-tracker.png /app/share/icons/hicolor/32x32/apps/net.charlesschaefer.addictiontracker.png
       - install -Dm644 usr/share/icons/hicolor/128x128/apps/addiction-tracker.png /app/share/icons/hicolor/128x128/apps/net.charlesschaefer.addictiontracker.png
       - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/addiction-tracker.png /app/share/icons/hicolor/256x256@2/apps/net.charlesschaefer.addictiontracker.png
-      # adding an icon to keep the addiction-tracker name
-      - install -Dm644 usr/share/icons/hicolor/128x128/apps/addiction-tracker.png /app/share/icons/hicolor/128x128/apps/addiction-tracker.png
-      - install -Dm644 usr/share/icons/hicolor/32x32/apps/addiction-tracker.png /app/share/icons/hicolor/32x32/apps/addiction-tracker.png
-      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/addiction-tracker.png /app/share/icons/hicolor/256x256@2/apps/addiction-tracker.png
-      - install -Dm644 addiction-tracker/bundle-scripts/net.charlesschaefer.addictiontracker.metainfo.xml /app/share/metainfo/net.charlesschaefer.addictiontracker.metainfo.xml
     sources:
       - type: "git"
         url: "https://github.com/charlesschaefer/addiction-tracker.git"
         tag: "app-v0.0.16"
         #commit: "089aec3f53b47b10472041bc00edfbcd56563284"
         dest: addiction-tracker
-      # - type: dir
-      #   path: ../
-      #   dest: addiction-tracker
       - cargo-sources.json
-      - npm-sources.0.json
-      #- type: file
-        
+      - npm-sources.0.json     
