@@ -1,0 +1,63 @@
+id: com.sciactive.QuickDAV
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: run.sh
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --share=network
+  - --device=dri
+  # Needed for game controller support in SteamOS.
+  - --device=input
+  - --filesystem=/run/udev:ro # overkill, but necessary: https://github.com/flathub/org.chromium.Chromium/issues/40
+  # Needed for sharing files.
+  - --filesystem=home
+  # Needed for sharing SD cards and other removable media.
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: quickdav
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/quickdav/flatpak-node/cache
+        npm_config_cache: /run/build/quickdav/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node22
+        npm_config_offline: "true"
+    build-commands:
+      - bash build-flatpak.sh
+      - cp -a source/dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ./run.sh
+      - install -D -m644 -t /app/share/applications ./com.sciactive.QuickDAV.desktop
+      - install -D -m644 -t /app/share/metainfo ./com.sciactive.QuickDAV.metainfo.xml
+      - install -D -m644 -T ./source/app/assets/icons/png/512x512.png /app/share/icons/hicolor/512x512/apps/com.sciactive.QuickDAV.png
+      - install -D -m644 -T ./source/appicon.svg /app/share/icons/hicolor/scalable/apps/com.sciactive.QuickDAV.svg
+    sources:
+      - generated-sources.json
+      - type: git
+        url: https://github.com/sciactive/quickdav.git
+        commit: f33f00681494a8c46bd652906f160abe126ddef8
+        dest: source
+      - type: file
+        path: build-flatpak.sh
+      - type: file
+        path: com.sciactive.QuickDAV.desktop
+      - type: file
+        path: com.sciactive.QuickDAV.metainfo.xml
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          # Set AUTOUPDATE to off to prevent Electron Updater from being called.
+          - AUTOUPDATE="off" zypak-wrapper.sh /app/main/quickdav "$@"
