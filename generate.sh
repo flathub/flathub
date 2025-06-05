@@ -4,7 +4,7 @@ set -e
 # must be tags for now
 # (if you want to use sth else, you need to read this script and modify it accordingly)
 # DESKTOP_CHECKOUT=v1.57.0
-DESKTOP_CHECKOUT=origin/main
+DESKTOP_CHECKOUT=main
 
 # this script needs:
 # - that you have run setup.sh before
