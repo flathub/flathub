@@ -176,6 +176,22 @@ def main():
 
     print(f"Detected {appid} as appid from {manifest_file}")
 
+    try:
+        org.get_repo(appid)
+        print(
+            f"Repository {appid} already exists in the flathub organisation, exiting."
+        )
+        sys.exit(1)
+    except github.GithubException as err:
+        if err.status == 404:
+            print(
+                f"Repository {appid} does not exist in the flathub organisation, continuing."
+            )
+            pass
+        else:
+            print(f"Unexpected error while checking for repository {appid}: {err}")
+            raise
+
     print("Creating new repo on Flathub")
     repo = org.create_repo(appid)
     time.sleep(5)
