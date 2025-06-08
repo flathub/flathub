@@ -161,7 +161,7 @@ def main():
 
     pr_id = int(github_event["issue"]["number"])
     pr = flathub.get_pull(pr_id)
-    branch = pr.head.label.split(":")[1]
+    pr_branch = pr.head.label.split(":")[1]
     fork_url = pr.head.repo.clone_url
     pr_author = pr.user.login
 
@@ -172,8 +172,8 @@ def main():
         sys.exit(1)
 
     tmpdir = tempfile.TemporaryDirectory()
-    print(f"Cloning {fork_url} (branch: {branch})")
-    clone = pygit2.clone_repository(fork_url, tmpdir.name, checkout_branch=branch)
+    print(f"Cloning {fork_url} (branch: {pr_branch})")
+    clone = pygit2.clone_repository(fork_url, tmpdir.name, checkout_branch=pr_branch)
     clone.submodules.update(init=True)
 
     manifest_file, appid = detect_appid(tmpdir.name)
@@ -220,7 +220,7 @@ def main():
         remote_branch = "master"
 
     print("Pushing changes to the new Flathub repo")
-    git_push = f"cd {tmpdir.name} && git push flathub {branch}:{remote_branch}"
+    git_push = f"cd {tmpdir.name} && git push flathub {pr_branch}:{remote_branch}"
     ret = subprocess.run(
         git_push,
         shell=True,
