@@ -137,7 +137,13 @@ def main():
         print("The issue is not a pull request")
         sys.exit(0)
 
-    command_re = re.search("^/merge.*", github_event["comment"]["body"], re.M)
+    github_comment = github_event["comment"]["body"]
+
+    if not github_comment.startswith("/merge"):
+        print("The comment does not start with '/merge'")
+        sys.exit(0)
+
+    command_re = re.search("^/merge.*", github_comment, re.M)
     if not command_re:
         print("The comment doesn't contain '/merge' command")
         sys.exit(0)
