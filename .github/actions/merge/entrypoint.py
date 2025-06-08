@@ -143,12 +143,13 @@ def main():
         print("The comment does not start with '/merge'")
         sys.exit(0)
 
-    command_pattern = re.compile(r"^/merge(?::([\w.-]+))?(.*)$")
+    command_pattern = re.compile(r"^/merge(?::([\w.-]+))? head=([a-fA-F0-9]{40})(.*)$")
     matched = command_pattern.search(github_comment)
     if not matched:
         print(
             "The comment is not a valid '/merge' command.\n"
             "Format: '/merge:<optional target repo default branch, default: master> "
+            "head=<pr head commit sha 40 chars> "
             "<optional extra collaborators @foo @baz, default: pr author>'"
         )
         sys.exit(1)
@@ -161,7 +162,10 @@ def main():
 
     print(f"Got target branch {target_repo_default_branch} from comment")
 
-    rest_comment = matched.group(2)
+    pr_head_sha = str(matched.group(2))
+    print(f"Got PR HEAD SHA from comment: {pr_head_sha}")
+
+    rest_comment = matched.group(3)
 
     # https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/iam-configuration-reference/username-considerations-for-external-authentication#about-username-normalization
     # > Usernames for user accounts on GitHub can only contain alphanumeric characters and dashes
