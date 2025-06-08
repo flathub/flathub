@@ -253,8 +253,11 @@ def main():
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    print(ret.stdout)
-    print(ret.stderr)
+    if ret.stdout:
+        print(f"Git push stdout:\n{ret.stdout.decode().strip()}")
+    if ret.stderr:
+        print(f"Git push stderr:\n{ret.stderr.decode().strip()}")
+
     repo.remove_from_collaborators("flathubbot")
 
     print("Setting protected branches")
