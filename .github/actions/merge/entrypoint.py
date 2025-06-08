@@ -265,6 +265,10 @@ def main():
     print(f"Remote HEAD SHA: {remote_head_sha}")
     assert pr_head_sha == remote_head_sha
 
+    assert remote_branch_obj.protected is True, (
+        f"Branch '{target_repo_default_branch}' is not protected"
+    )
+
     print(f"Adding {pr_author} to collaborators")
     repo.add_to_collaborators(pr_author, permission="push")
 
