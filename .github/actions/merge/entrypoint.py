@@ -272,21 +272,21 @@ def main():
     print(f"Adding {pr_author} to collaborators")
     repo.add_to_collaborators(pr_author, permission="push")
 
-    print("Add trusted maintainers to collaborators")
+    print("Adding 'trusted-maintainers' to collaborators")
     trusted_maintainers = org.get_team_by_slug("trusted-maintainers")
     trusted_maintainers.update_team_repository(repo, "push")
 
     if repo.name.startswith("org.kde."):
-        print("Add KDE maintainers to collaborators")
+        print("Adding KDE maintainers to collaborators")
         kde_maintainers = org.get_team_by_slug("KDE")
         kde_maintainers.update_team_repository(repo, "push")
 
     for user in additional_colbs:
         try:
-            print(f"adding {user} to collaborators")
+            print(f"Adding mentioned {user} to collaborators")
             repo.add_to_collaborators(user, permission="push")
         except github.GithubException as err:
-            print(f"Adding {user} failed")
+            print(f"Adding mentioned {user} failed")
             print(err)
             pass
 
