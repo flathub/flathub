@@ -203,6 +203,12 @@ def main():
     print(f"Clone HEAD SHA: {clone_head_sha}")
     clone.submodules.update(init=True)
 
+    assert flathub.get_pull(pr_id).state == "open"
+
+    assert flathub.get_pull(pr_id).head.sha == pr_head_sha, (
+        f"Current PR HEAD SHA {flathub.get_pull(pr_id).head.sha} does not match approved SHA"
+    )
+
     assert clone_head_sha == pr_head_sha
 
     manifest_file, appid = detect_appid(tmpdir.name)
@@ -266,6 +272,9 @@ def main():
 
     remote_branch_obj = repo.get_branch(target_repo_default_branch)
     remote_head_sha = str(remote_branch_obj.commit.sha)
+
+    assert flathub.get_pull(pr_id).state == "open"
+
     print(f"Remote HEAD SHA: {remote_head_sha}")
     assert pr_head_sha == remote_head_sha
 
@@ -298,6 +307,8 @@ def main():
             print(f"Adding mentioned {user} failed")
             print(err)
             pass
+
+    assert flathub.get_pull(pr_id).state == "open"
 
     final_colbs = [user.login for user in repo.get_collaborators(affiliation="outside")]
     print(f"External colloborators added: {final_colbs}")
