@@ -151,18 +151,19 @@ def main():
     reviewers = org.get_team_by_slug("reviewers")
     comment_author = gh.get_user(github_event["comment"]["user"]["login"])
 
+    flathub = org.get_repo("flathub")
+
+    pr_id = int(github_event["issue"]["number"])
+    pr = flathub.get_pull(pr_id)
+    branch = pr.head.label.split(":")[1]
+    fork_url = pr.head.repo.clone_url
+    pr_author = pr.user.login
+
     if not admins.has_in_members(comment_author) and not reviewers.has_in_members(
         comment_author
     ):
         print(f"{comment_author} is not a reviewer")
         sys.exit(1)
-
-    flathub = org.get_repo("flathub")
-    pr_id = int(github_event["issue"]["number"])
-    pr = flathub.get_pull(pr_id)
-    pr_author = pr.user.login
-    branch = pr.head.label.split(":")[1]
-    fork_url = pr.head.repo.clone_url
 
     tmpdir = tempfile.TemporaryDirectory()
     print(f"Cloning {fork_url} (branch: {branch})")
