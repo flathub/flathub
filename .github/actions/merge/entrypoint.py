@@ -143,12 +143,33 @@ def main():
         print("The comment does not start with '/merge'")
         sys.exit(0)
 
-    command_re = re.search("^/merge.*", github_comment, re.M)
-    if not command_re:
-        print("The comment doesn't contain '/merge' command")
-        sys.exit(0)
+    command_pattern = re.compile(r"^/merge(?::([\w.-]+))?(.*)$")
+    matched = command_pattern.search(github_comment)
+    if not matched:
+        print(
+            "The comment is not a valid '/merge' command.\n"
+            "Format: '/merge:<optional target repo default branch, default: master> "
+            "<optional extra collaborators @foo @baz, default: pr author>'"
+        )
+        sys.exit(1)
+
+    branch_match = matched.group(1) or "master"
+    if branch_match in ("master", "beta"):
+        target_repo_default_branch = branch_match
     else:
-        command = command_re.group()
+        target_repo_default_branch = f"branch/{branch_match}"
+
+    print(f"Got target branch {target_repo_default_branch} from comment")
+
+    rest_comment = matched.group(2)
+
+    # https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/iam-configuration-reference/username-considerations-for-external-authentication#about-username-normalization
+    # > Usernames for user accounts on GitHub can only contain alphanumeric characters and dashes
+    # > If the username is longer than 39 characters (including underscore and short code),
+    # > the provisioning attempt will fail with a 400 error.
+    additional_colbs = [m[1:] for m in re.findall(r"@[a-zA-Z0-9-]{1,39}", rest_comment)]
+
+    print(f"Got additional collaborators {additional_colbs} from comment")
 
     gh = github.Github(github_token)
     org = gh.get_organization("flathub")
@@ -212,15 +233,10 @@ def main():
         "flathub", f"https://x-access-token:{github_token}@github.com/flathub/{appid}"
     )
 
-    try:
-        remote_branch = command.split()[0].split(":")[1]
-        if remote_branch != "beta":
-            remote_branch = f"branch/{remote_branch}"
-    except IndexError:
-        remote_branch = "master"
-
     print("Pushing changes to the new Flathub repo")
-    git_push = f"cd {tmpdir.name} && git push flathub {pr_branch}:{remote_branch}"
+    git_push = (
+        f"cd {tmpdir.name} && git push flathub {pr_branch}:{target_repo_default_branch}"
+    )
     ret = subprocess.run(
         git_push,
         shell=True,
@@ -248,8 +264,7 @@ def main():
         kde_maintainers = org.get_team_by_slug("KDE")
         kde_maintainers.update_team_repository(repo, "push")
 
-    collaborators = {user.replace("@", "") for user in command.split()[1:]}
-    for user in collaborators:
+    for user in additional_colbs:
         try:
             print(f"adding {user} to collaborators")
             repo.add_to_collaborators(user, permission="push")
