@@ -296,6 +296,9 @@ def main():
             print(err)
             pass
 
+    final_colbs = [user.login for user in repo.get_collaborators(affiliation="outside")]
+    print(f"External colloborators added: {final_colbs}")
+
     close_comment = (
         f"A repository for this submission has been created: {repo.html_url} and it will be published to Flathub in 4-5 hours.",
         "\n",
