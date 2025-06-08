@@ -276,8 +276,9 @@ def main():
         try:
             print(f"adding {user} to collaborators")
             repo.add_to_collaborators(user, permission="push")
-        except github.GithubException:
+        except github.GithubException as err:
             print(f"Adding {user} failed")
+            print(err)
             pass
 
     close_comment = (
