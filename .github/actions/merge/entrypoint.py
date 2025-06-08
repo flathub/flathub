@@ -230,6 +230,7 @@ def main():
 
     print("Creating new repo on Flathub")
     repo = org.create_repo(appid)
+    repo_name = repo.name
     time.sleep(5)
     repo.edit(
         homepage=f"https://flathub.org/apps/details/{appid}",
@@ -276,10 +277,15 @@ def main():
     trusted_maintainers = org.get_team_by_slug("trusted-maintainers")
     trusted_maintainers.update_team_repository(repo, "push")
 
-    if repo.name.startswith("org.kde."):
+    if repo_name.startswith("org.kde."):
         print("Adding KDE maintainers to collaborators")
         kde_maintainers = org.get_team_by_slug("KDE")
         kde_maintainers.update_team_repository(repo, "push")
+
+    if repo_name.startswith("org.gnome.") and repo_name.count(".") == 2:
+        print("Adding GNOME maintainers to collaborators")
+        gnome_maintainers = org.get_team_by_slug("GNOME")
+        gnome_maintainers.update_team_repository(repo, "push")
 
     for user in additional_colbs:
         try:
