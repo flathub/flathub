@@ -260,6 +260,11 @@ def main():
     for branch in ("master", "main", "stable", "branch/*", "beta", "beta/*"):
         set_protected_branch(github_token, appid, branch)
 
+    remote_branch_obj = repo.get_branch(target_repo_default_branch)
+    remote_head_sha = str(remote_branch_obj.commit.sha)
+    print(f"Remote HEAD SHA: {remote_head_sha}")
+    assert pr_head_sha == remote_head_sha
+
     print(f"Adding {pr_author} to collaborators")
     repo.add_to_collaborators(pr_author, permission="push")
 
