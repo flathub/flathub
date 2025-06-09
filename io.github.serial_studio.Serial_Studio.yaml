@@ -13,6 +13,8 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=all
+  - --allow=bluetooth
+  - --system-talk-name=org.bluez
   - --filesystem=xdg-documents
 cleanup:
   - /include
@@ -23,6 +25,24 @@ cleanup:
   - /mkspecs
   - /lib/*-linux-gnu
 modules:
+  - name: qtmqtt
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/qt/qtmqtt.git
+        tag: v6.9.0
+        commit: f3ef845e68fd5887b8518582546137d4635d552a
+
+  - name: qtserialbus
+    buildsystem: cmake-ninja
+    post-install:
+      - cp -P ${FLATPAK_DEST}/lib/*-linux-gnu/*.so* ${FLATPAK_DEST}/lib
+    sources:
+      - type: git
+        url: https://github.com/qt/qtserialbus.git
+        tag: v6.9.0
+        commit: e547637195589dea21094d670c675b9793197b73
+
   - name: qt6-graphs
     buildsystem: cmake-ninja
     post-install:
@@ -35,16 +55,20 @@ modules:
   - name: serial-studio
     buildsystem: cmake-ninja
     config-opts:
-      - -DPRODUCTION_OPTIMIZATION=ON
       - -DCMAKE_BUILD_TYPE=Release
     post-install:
-      - install -Dpm644 app/deploy/icon.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/serial-studio.png
-      - install -Dpm644 io.github.serial_studio.Serial_Studio.metainfo.xml -t $FLATPAK_DEST/share/metainfo
+      - rename serial-studio ${FLATPAK_ID} ${FLATPAK_DEST}/share/pixmaps/serial-studio.png
+      - sed -i -e '/X-AppImage/,$d' ${FLATPAK_DEST}/share/applications/serial-studio.desktop
+      - |
+        for s in {32,64,128,256,512}; do
+          ffmpeg -i $FLATPAK_DEST/share/pixmaps/${FLATPAK_ID}.png -vf "scale=${s}:${s}:flags=lanczos,format=rgba" "${s}.png"
+          install -Dm644 "${s}.png" "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/serial-studio.png"
+        done
     sources:
       - type: git
         url: https://github.com/Serial-Studio/Serial-Studio.git
-        tag: v3.0.6
-        commit: 2d8de725b63d67c33cc193991a36cb06ee355f6f
+        tag: v3.1.1
+        commit: 8fd1bec8920ab429154644a6e15da35977281562
         x-checker-data:
           is-main-source: true
           type: json
@@ -52,7 +76,6 @@ modules:
           tag-query: .tag_name
           version-query: $tag | sub("^v"; "")
           timestamp-query: .published_at
-      - type: file
-        path: io.github.serial_studio.Serial_Studio.metainfo.xml
-      - type: patch
-        path: patch/cmakefile.patch
+      - type: shell
+        commands:
+          - sed -i -e '/# Qt Deployment/,$d' app/CMakeLists.txt
