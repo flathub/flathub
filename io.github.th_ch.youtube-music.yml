@@ -1,0 +1,93 @@
+app-id: io.github.th_ch.youtube-music
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-youtube-music
+separate-locales: false
+finish-args:
+  # Share IPC namespace with the host, without it the X11 shared memory extension will not work.
+  - --share=ipc
+  # Allow access to the network.
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Pulseaudio for audio.
+  - --socket=pulseaudio
+  # Required for hardware acceleration.
+  - --device=dri
+  # Allow access to MPRIS controls.
+  # Broken until https://github.com/ytmdesktop/ytmdesktop/pull/1359 is merged upstream.
+  - --own-name=org.mpris.MediaPlayer2.YoutubeMusic.*
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --filesystem=xdg-music:rw
+  # Allow talking to Flatpak and native discord sockets.
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+  # Allow access to appindicator icons
+  - --talk-name=org.ayatana
+  - --talk-name=com.canonical.AppMenu.Registrar
+  # Allow access to appindicator icons on KDE
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: youtube-music
+    buildsystem: simple
+    build-commands:
+      # Extract debian package.
+      - bsdtar --to-stdout -xf youtube-music_*.deb data.* | bsdtar -xf -
+      # Copy extracted bin and data directories to the deployment location.
+      - mkdir -p ${FLATPAK_DEST}/opt/YoutubeMusic
+      - cp -r opt/*/* ${FLATPAK_DEST}/opt/YoutubeMusic/
+      - cp -r usr/share/* ${FLATPAK_DEST}/share/
+      # Cleanup upstream desktop file and pixmaps folder.
+      - rm ${FLATPAK_DEST}/share/applications/*
+      - rm -rf ${FLATPAK_DEST}/share/pixmaps
+      # Install upstream icon correctly.
+      - for size in {16,24,32,48,64,128,256,512}; do install -Dm644 usr/share/icons/hicolor/${size}x${size}/apps/youtube-music.png ${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png; done
+      # Install Flatpak specific wrapper.
+      - install -Dm755 start-youtube-music.sh ${FLATPAK_DEST}/bin/start-youtube-music
+      # Install Flatpak specific metainfo and desktop files.
+      - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/th-ch/youtube-music/releases/download/v3.9.0/youtube-music_3.9.0_amd64.deb
+        sha512: fca0f4049bc984b58ea009ee54ef68503d6dd4218ef78900e65d70201db0cbcffe05fd2adc29e824951c6054719bc9d955f6f0ee7c4c7bc2fb0f668aeaf81621
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/th-ch/youtube-music/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name|endswith("_amd64.deb")) | .browser_download_url
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://github.com/th-ch/youtube-music/releases/download/v3.9.0/youtube-music_3.9.0_arm64.deb
+        sha512: 3e6f44babc81c745f50cec3fbdcfa870527dfebdb33859acf0b982b9879a4a77490c38c7b6d2c29592ebae12ff5009f2e9148267d642eba491e7e09199cab5a1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/th-ch/youtube-music/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name|endswith("_arm64.deb")) | .browser_download_url
+      - type: script
+        dest-filename: start-youtube-music.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - WAYLAND_SOCKET=${WAYLAND_DISPLAY:-"wayland-0"}
+          - if [[ -e "$XDG_RUNTIME_DIR/${WAYLAND_SOCKET}" || -e "${WAYLAND_DISPLAY}"
+            ]] then
+          - FLAGS="--enable-features=WaylandWindowDecorations --ozone-platform-hint=auto"
+          - fi
+          - for i in {0..9}; do
+          - test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+          - done
+          - FLATPAK_HOST=1 zypak-wrapper.sh /app/opt/YoutubeMusic/youtube-music
+            $FLAGS "$@"
+      - type: file
+        path: io.github.th_ch.youtube-music.desktop
+      - type: file
+        path: io.github.th_ch.youtube-music.metainfo.xml
+    cleanup:
+      # Add bad future files here.
