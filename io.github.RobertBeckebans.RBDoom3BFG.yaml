@@ -1,0 +1,133 @@
+app-id: io.github.RobertBeckebans.RBDoom3BFG
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm18
+command: rbdoom3bfg.sh
+finish-args:
+  - --device=all
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --share=network
+cleanup:
+  - /bin/7zr
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+  - /share/cmake
+  - /share/man
+modules:
+
+  # build DirectXShaderCompiler from Git sources
+  - name: directxshader-compiler-build
+    buildsystem: cmake-ninja
+    builddir: true
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DDXC_COVERAGE=Off
+      - -C ../cmake/caches/PredefinedParams.cmake
+    build-options:
+      env:  
+        CXXFLAGS: -fvisibility-inlines-hidden -fvisibility=hidden
+    sources:
+      - type: git
+        url: https://github.com/microsoft/DirectXShaderCompiler
+        tag: v1.8.2405
+    post-install:
+      # Install binaries
+      - install -Dm 755 bin/dxc /app/bin/dxc
+      - install -Dm 755 lib/libdxcompiler.so /app/lib/libdxcompiler.so
+      # Install headers
+      - install -D ../include/dxc/dxcapi.h /app/include/dxc/dxcapi.h
+      - install -D ../include/dxc/dxcerrors.h /app/include/dxc/dxcerrors.h
+      - install -D ../include/dxc/dxcisense.h /app/include/dxc/dxcisense.h
+      - install -D ../include/dxc/WinAdapter.h /app/include/dxc/WinAdapter.h
+
+  # build application from Git sources
+  - name: rbdoom3bfg-build
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: neo
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DFFMPEG=Off
+      - -DBINKDEC=On
+      - -DRETAIL=Off
+      - -DFLATPAK=On
+      - -DUSE_PRECOMPILED_HEADERS=Off
+      - -DUSE_INTRINSICS_SSE=Off
+      - -DUSE_INTRINSICS_NEON=Off
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - -DUSE_INTRINSICS_SSE=On
+        aarch64:
+          config-opts:
+            - -DUSE_INTRINSICS_SSE=Off
+    sources:
+      - type: git
+        url: https://github.com/RobertBeckebans/RBDOOM-3-BFG
+        #branch: flatpak
+        commit: 5d6216b93a3cd194797271e17533bda81b57f142
+      - type: patch
+        path: shader-compiler.patch
+      - type: patch
+        path: shader-make.patch
+    post-install:
+      # install executable
+      - install -Dm 755 RBDoom3BFG /app/bin/RBDoom3BFG
+      # install base files
+      - mkdir -p /app/share/rbdoom3bfg/base
+      - cp ../../base/default.cfg /app/share/rbdoom3bfg/base/default.cfg
+      - cp -R ../../base/renderprogs2 /app/share/rbdoom3bfg/base/
+      # install desktop files
+      - install -Dm 644 ../../install/desktop/RBDoom3BFG.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm 644 ../../install/desktop/RBDoom3BFG.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ../../install/desktop/RBDoom3BFG.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+
+  # module to install p7zip
+  - name: p7zip
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/refs/tags/v17.05.tar.gz
+        sha256: d2788f892571058c08d27095c22154579dfefb807ebe357d145ab2ddddefb1a6
+    buildsystem: cmake-ninja
+    subdir: CPP/7zip/CMAKE/7zr
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    no-make-install: true
+    post-install:
+      - install -Dm 755 7zr /app/bin/7zr
+
+  # install .pk4 files from Windows version
+  - name: rbdoom3bfg-assets
+    buildsystem: simple
+    #cleanup: ['*']  # Remove extracted files after installation
+    sources:
+      - type: file
+        url: https://github.com/RobertBeckebans/RBDOOM-3-BFG/releases/download/v1.6.0/RBDOOM-3-BFG-1.6.0.22-full-win64-20250510-git-ba39ba6.7z
+        sha256: f1b9a325cede2a281ece7d10a1a8bc48ce760d12ae23e37c62308631a886abae
+        dest: rbdoom-assets.7z
+    build-commands:
+      - mkdir assets_unpacked
+      - 7zr x rbdoom-assets.7z -oassets_unpacked
+      - install -Dm 644 assets_unpacked/base/_rbdoom_core.pk4 /app/share/rbdoom3bfg/base/_rbdoom_core.pk4
+      - install -Dm 644 assets_unpacked/base/_rbdoom_blood.pk4 /app/share/rbdoom3bfg/base/_rbdoom_blood.pk4
+      - install -Dm 644 assets_unpacked/base/_rbdoom_global_illumination_data.pk4 /app/share/rbdoom3bfg/base/_rbdoom_global_illumination_data.pk4
+
+  # install app launcher
+  - name: rbdoom3bfg-launcher
+    buildsystem: simple
+    sources:
+      - type: file
+        path: rbdoom3bfg.sh
+    build-commands:
+      - install -Dm 755 rbdoom3bfg.sh -t /app/bin
+      - desktop-file-edit --set-key=Exec --set-value=/app/bin/rbdoom3bfg.sh /app/share/applications/${FLATPAK_ID}.desktop
