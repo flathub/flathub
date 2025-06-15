@@ -10,3 +10,10 @@ flatpak install org.flatpak.Builder
 flatpak run org.flatpak.Builder --user --install --install-deps-from=flathub --force-clean --repo=repo build io.github.gmankab.handyfox.yml
 ```
 
+### license
+
+- [firefox](https://github.com/mozilla-firefox/firefox) license is mpl-2.0
+- [mobile-config-firefox](https://gitlab.postmarketos.org/postmarketOS/mobile-config-firefox) license is mpl-2.0
+- [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme) license is unlicense
+- [handyfox](https://github.com/gmanka-flatpaks/io.github.gmankab.handyfox) manifest and metadata license is agpl 3
+
