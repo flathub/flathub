@@ -1,5 +1,7 @@
 # handyfox is a firefox for mobile devices
 
+<img src="https://raw.githubusercontent.com/gmanka-flatpaks/io.github.gmankab.handyfox/refs/heads/main/modules/metainfo/screenshot.png" height="400" />
+
 local build and install guide:
 
 ```sh
