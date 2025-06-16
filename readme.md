@@ -21,7 +21,8 @@ support for firefox-gnome-theme is currently work in progress, and gnome-theme.y
 ### special thanks to
 
 - [mobile-config-firefox](https://gitlab.postmarketos.org/postmarketOS/mobile-config-firefox) for making firefox usable on mobile devices
-- [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme) for awesome theme
+- [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme) for awesome theme and icon idea
+- [gnome web](https://gitlab.gnome.org/GNOME/epiphany) for icon idea
 
 ### license
 
