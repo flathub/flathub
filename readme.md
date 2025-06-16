@@ -28,5 +28,6 @@ support for firefox-gnome-theme is currently work in progress, and gnome-theme.y
 - [firefox](https://github.com/mozilla-firefox/firefox) license is mpl-2.0
 - [mobile-config-firefox](https://gitlab.postmarketos.org/postmarketOS/mobile-config-firefox) license is mpl-2.0
 - [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme) license is unlicense
-- [handyfox](https://github.com/gmanka-flatpaks/io.github.gmankab.handyfox) manifest and metadata license is agpl 3
+- [handyfox](https://github.com/gmanka-flatpaks/io.github.gmankab.handyfox) manifest license is agpl 3
+- [handyfox](https://github.com/gmanka-flatpaks/io.github.gmankab.handyfox) metadata license is cc0
 
