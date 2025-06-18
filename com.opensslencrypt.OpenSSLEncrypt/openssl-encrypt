@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+import os
+
+# Force set environment variables at the very start
+os.environ["DISPLAY"] = ":0"
+os.environ["XAUTHORITY"] = "/run/user/1000/xauth_PaSUjl"
+"""
+Launcher script for OpenSSL Encrypt Flatpak package.
+Handles both CLI and GUI modes based on command line arguments.
+"""
+
+import os
+import sys
+
+# Add the application directory to Python path
+app_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, app_dir)
+
+
+def main():
+    """Main launcher function."""
+    # Check if GUI mode is requested
+    if len(sys.argv) > 1 and "--gui" in sys.argv:
+        # Remove --gui from arguments to avoid conflicts
+        sys.argv = [arg for arg in sys.argv if arg != "--gui"]
+
+        # Launch GUI
+        try:
+            # Check display environment
+            import os
+
+            print(f"DISPLAY environment: {os.environ.get('DISPLAY', 'NOT SET')}")
+            print(f"WAYLAND_DISPLAY environment: {os.environ.get('WAYLAND_DISPLAY', 'NOT SET')}")
+            print(f"XAUTHORITY environment: {os.environ.get('XAUTHORITY', 'NOT SET')}")
+            print(
+                f"Available display vars: {sorted([k for k in os.environ.keys() if 'DISPLAY' in k.upper() or 'WAYLAND' in k.upper() or 'AUTH' in k.upper()])}"
+            )
+            print(f"X11 socket exists: {os.path.exists('/tmp/.X11-unix/X0')}")
+
+            # Try to force set environment from command line args
+            for arg in sys.argv:
+                if arg.startswith("--env=DISPLAY="):
+                    display_val = arg.split("=", 2)[2]
+                    os.environ["DISPLAY"] = display_val
+                    print(f"Set DISPLAY from command line: {display_val}")
+                    break
+
+            # First check if tkinter is available
+            import tkinter
+
+            print("✓ tkinter is available")
+
+            # Force set DISPLAY and XAUTHORITY if not set
+            if not os.environ.get("DISPLAY"):
+                os.environ["DISPLAY"] = ":0"
+                print("Force setting DISPLAY to :0")
+
+            if not os.environ.get("XAUTHORITY"):
+                os.environ["XAUTHORITY"] = "/run/user/1000/xauth_PaSUjl"
+                print("Force setting XAUTHORITY")
+
+            print(f"Final DISPLAY: {os.environ.get('DISPLAY')}")
+            print(f"Final XAUTHORITY: {os.environ.get('XAUTHORITY')}")
+
+            # Test if we can create a simple tkinter window
+            try:
+                test_root = tkinter.Tk()
+                test_root.withdraw()
+                test_root.destroy()
+                print("✓ tkinter X11 connection successful")
+            except Exception as e:
+                print(f"✗ tkinter X11 connection failed: {e}")
+                print("This is likely a Flatpak sandbox issue with X11/XWayland access")
+                raise Exception(f"Cannot connect to X11 display: {e}")
+
+            # Then try to import the GUI module
+            from openssl_encrypt.crypt_gui import main as gui_main
+
+            print("✓ GUI module imported successfully")
+
+            gui_main()
+        except ImportError as e:
+            print(f"Error: GUI components not available - {e}", file=sys.stderr)
+            print("Python path:", sys.path, file=sys.stderr)
+
+            # Try to give more specific error information
+            try:
+                import tkinter
+
+                print(
+                    "✓ tkinter is available, issue is with openssl_encrypt module", file=sys.stderr
+                )
+            except ImportError:
+                print("✗ tkinter is not available", file=sys.stderr)
+
+            sys.exit(1)
+    else:
+        # Launch CLI
+        try:
+            from openssl_encrypt.cli import main as cli_main
+
+            cli_main()
+        except ImportError:
+            print("Error: CLI components not available", file=sys.stderr)
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
