@@ -1,0 +1,132 @@
+app-id: net.devolutions.RDM
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+sdk-extensions: [org.freedesktop.Sdk.Extension.rust-stable]
+command: remotedesktopmanager
+tags: [proprietary]
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=ssh-auth
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=~/.rdm:create
+  - --filesystem=xdg-run/keyring
+  - --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+modules:
+  - name: rdm
+    buildsystem: simple
+    build-commands:
+      - ar x RemoteDesktopManager.deb
+      - tar -xf data.tar.xz
+      - rm usr/lib/devolutions/RemoteDesktopManager/libWebView-4.0.so
+      - mv usr/lib/* ${FLATPAK_DEST}/
+      - install -D remotedesktopmanager ${FLATPAK_DEST}/bin/remotedesktopmanager
+    post-install:
+      - install -Dm644 net.devolutions.RDM.metainfo.xml ${FLATPAK_DEST}/share/metainfo/net.devolutions.RDM.metainfo.xml
+      - desktop-file-edit --set-key='Icon' --set-value="$FLATPAK_ID" usr/share/applications/com.devolutions.remotedesktopmanager.desktop
+      - sed -i "s/com.devolutions.remotedesktopmanager/$FLATPAK_ID/g" usr/share/mime/packages/*
+      - for f in $(find usr/share/ -type f -not -path usr/share/metainfo/*); do install -Dm644 "$f" `f=${f[@]##usr/} && echo "${FLATPAK_DEST}/${f/com.devolutions.remotedesktopmanager/$FLATPAK_ID}"`; done
+    cleanup:
+      - control.tar.xz
+      - data.tar.xz
+      - debian-binary
+      - usr
+    sources:
+      - type: file
+        url: https://cdn.devolutions.net/download/Linux/RDM/2024.2.2.3/RemoteDesktopManager_2024.2.2.3_amd64.deb
+        dest-filename: RemoteDesktopManager.deb
+        sha256: d3330e886f9a1506cfba9188de5afa23243ab46d902f83ec0f7f095e824013d5
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://cdn.devolutions.net/download/Linux/RDM/2024.2.2.3/RemoteDesktopManager_2024.2.2.3_arm64.deb
+        dest-filename: RemoteDesktopManager.deb
+        sha256: 8dffdadf3e9cec0b91b746873132d34c7360536e14d40d85e801a12ba8a50ca1
+        only-arches:
+          - aarch64
+      - type: file
+        path: remotedesktopmanager
+      - type: file
+        path: net.devolutions.RDM.metainfo.xml
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: gdk-pixbuf
+    buildsystem: meson
+    config-opts:
+      - -Dothers=enabled # needed for svg
+      - -Dman=false
+      - -Dgtk_doc=false
+      - -Dbuiltin_loaders=icns,png,bmp,ico
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gdk-pixbuf.git
+        tag: 2.42.12
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+  - name: librsvg
+    buildsystem: autotools
+    sources:
+      - librsvg.json
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/librsvg/cargo
+  - name: vte
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=false
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/vte.git
+        tag: 0.72.4
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+  - name: xdotool
+    no-autogen: true
+    make-args:
+      - WITHOUT_RPATH_FIX=1
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+      - INSTALLMAN=${FLATPAK_DEST}/share/man
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/archive/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 82b15a944a5e82fee15e0f6116bd9f642bc3d0bb6989fc0ca5ad9dfe35de0847
+  - name: lsof
+    buildsystem: simple
+    build-commands:
+      - ./Configure -n linux
+      - make CC="cc ${CFLAGS} ${CPPFLAGS} ${LDFLAGS}"
+      - install -Dm755 lsof -t ${FLATPAK_DEST}/bin
+    sources:
+      - type: git
+        url: https://github.com/lsof-org/lsof.git
+        tag: 4.99.3
+#  - name: gnome-keyring # enabling filesystem=xdg-run/keyring should suffice
+#    config-opts:
+#      - --disable-static
+#      - --disable-gtk-doc
+#      - --disable-coverage
+
+#      - --disable-introspection
+
+#    rm-configure: true
+
+#    sources:
+
+#      - type: archive
+
+#        url: https://download.gnome.org/sources/libgnome-keyring/3.12/libgnome-keyring-3.12.0.tar.xz
+
+#        sha256: c4c178fbb05f72acc484d22ddb0568f7532c409b0a13e06513ff54b91e947783
+
+#      - type: shell
+
+#        conmmands: [autoreconf -vfi]
