@@ -1,0 +1,63 @@
+id: com.fightcade.Fightcade.Steamos
+runtime: com.fightcade.Fightcade
+runtime-version: stable
+sdk: org.freedesktop.Sdk//24.08
+build-extension: true
+separate-locales: false
+
+modules:
+  - name: libsecret
+    buildsystem: meson
+    build-options:
+      prefix: /app/steamos
+      lib: lib
+    config-opts:
+      - -Dmanpage=false
+      - -Dvapi=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+    cleanup:
+      - "/bin"
+      - "/include"
+      - "/lib/pkgconfig"
+      - "/share/gir-1.0"
+      - "/share/man"
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.6.tar.xz
+        sha256: 747b8c175be108c880d3adfb9c3537ea66e520e4ad2dccf5dce58003aeeca090 
+  - name: min
+    buildsystem: simple
+    build-commands:
+      # Replace the placeholder PREFIX with the actual destination path in the run script
+      - sed -i "s|PREFIX|${FLATPAK_DEST}|g" run.sh
+      # Install the run script for the Min browser
+      - install -Dm755 run.sh ${FLATPAK_DEST}/bin/min-browser
+      - install -Dm755 apply_extra ${FLATPAK_DEST}/bin/apply_extra
+    post-install:
+      # Install the metainfo file for the Min browser
+      - >-
+        install -Dm644
+        -t ${FLATPAK_DEST}/share/metainfo/
+        ${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: extra-data
+        filename: min.deb
+        only-arches:
+          - x86_64
+        url: https://github.com/minbrowser/min/releases/download/v1.35.0/min-1.35.0-amd64.deb
+        sha256: 6d066842e8d0f0fa9aad0bd7cb5f56a32a67937ac75e8710c3b229cbcfc89220
+        size: 79754278
+      - type: file
+        path: com.fightcade.Fightcade.Steamos.metainfo.xml
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper PREFIX/extra/min/min --no-gpu-sandbox --no-sandbox "$@" 2>&1
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - bsdtar -xOf min.deb data.tar.xz | bsdtar -xJf -
+          - mv opt/Min min
+          - rm -rf opt usr
+          - rm min.deb
