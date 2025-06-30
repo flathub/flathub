@@ -1,0 +1,52 @@
+app-id: de.sebastianruziczka.looksyk
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: looksyk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin
+  env:
+    CARGO_HOME: cargo-cache
+modules:
+  - name: looksyk-desktop
+    buildsystem: simple
+    build-commands:
+      # This does not work. flatpak-node-generator does not support git-sources-lockfile-v2 and electron-forge does not
+      # support caching of electron and is trying to fetch it every time with electron/@get, even if caching and offline
+      # mode is active
+      #- cd application-wrapper/Looksyk && npm install --offline --cache ./npm-cache && npm run package --offline --cache ./npm-cache && cd ..
+      - cd frontend/looksyk && npm install --offline --cache ./npm-cache && npm run build --configuration=production && cd ..
+      - cd backend && cargo build --release && cd ..
+      - install -Dm755 backend/target/release/looksyk /app/bin/looksyk-backend
+      - cp -r application-wrapper/Looksyk/out/looksyk-linux-x64/* /app/bin/
+      - chmod +x /app/bin/looksyk
+      - ls -lah /app/bin
+      - install -Dm644 application-wrapper/Looksyk/out/looksyk-linux-x64/resources/app.asar /app/share/looksyk/app.asar
+      - install -Dm644 de.sebastianruziczka.looksyk.metainfo.xml /app/share/metainfo/de.sebastianruziczka.looksyk.metainfo.xml
+      - install -Dm644 icon/Looksyk_256.png /app/share/icons/hicolor/256x256/apps/de.sebastianruziczka.looksyk.png
+      - install -Dm644 icon/Looksyk_512.png /app/share/icons/hicolor/512x512/apps/de.sebastianruziczka.looksyk.png
+      - install -Dm644 LICENSE /app/share/licenses/looksyk/LICENSE
+      - install -Dm644 application-wrapper/de.sebastianruziczka.looksyk.desktop /app/share/applications/de.sebastianruziczka.looksyk.desktop
+      - mkdir -p /app/share/looksyk/static
+      - cp -r frontend/looksyk/dist/looksyk/browser/* /app/share/looksyk/static/
+    sources:
+      - type: archive
+        url: https://github.com/SebastianRzk/Looksyk/releases/download/v1.11.1/looksyk-source.tar.gz
+        sha256: 3fa08ecc9cd01b4bd14b205ec1a61a0172cc4f9bcb3e7efc7f5df99c4f8a4a23
+      - type: file
+        path: de.sebastianruziczka.looksyk.metainfo.xml
+
+finish-args:
+  - --share=ipc
+  - --filesystem=~/graph
+  - --filesystem=~/.config/looksyk
+  - --device=dri
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --env=ELECTRON_TRASH=gio
