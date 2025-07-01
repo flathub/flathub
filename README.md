@@ -11,13 +11,13 @@ flatpak-node-generator npm ../sphereview/resources/photosphereviewer/package-loc
 ## Build & install
 
 ```sh
-flatpak-builder --install-deps-from=flathub --install --user --force-clean build-dir com.github.dynobo.sphereview.yml
+flatpak-builder --install-deps-from=flathub --install --user --force-clean build-dir io.github.dynobo.sphereview.yml
 ```
 
 ## Run
 
 ```sh
-flatpak run com.github.dynobo.sphereview
+flatpak run io.github.dynobo.sphereview
 ```
 
 ## Application Source
