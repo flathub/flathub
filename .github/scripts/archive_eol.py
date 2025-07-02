@@ -124,6 +124,10 @@ def main() -> None:
         # 3-1.6, 3-18.08 is EOL
         "org.videolan.VLC.Plugin.fdkaac",
         "org.kde.PlatformTheme.QGnomePlatform",
+        "com.github.wwmm.easyeffects",
+        "com.yubico.yubioath",
+        "com.icanblink.blink",
+        "com.github.wwmm.pulseeffects",
     }
 
     stable = get_eol_refs("x86_64", "flathub") | get_eol_refs("aarch64", "flathub")
