@@ -86,6 +86,9 @@ def main() -> None:
         "org.freedesktop.LinuxAudio.Plugins.Sorcer",
         "org.freedesktop.LinuxAudio.Plugins.ADLplug",
         "org.freedesktop.LinuxAudio.Plugins.Fabla",
+        "org.freedesktop.LinuxAudio.Plugins.Geonkick",
+        "org.freedesktop.LinuxAudio.Plugins.Helm",
+        "org.freedesktop.LinuxAudio.Plugins.Dexed",
         # 1.6 branch is EOL
         "org.freedesktop.Sdk.Extension.golang",
         # 19.08, 20.08, 21.08 are EOL
@@ -120,6 +123,7 @@ def main() -> None:
         "org.videolan.VLC.Plugin.bdj",
         # 3-1.6, 3-18.08 is EOL
         "org.videolan.VLC.Plugin.fdkaac",
+        "org.kde.PlatformTheme.QGnomePlatform",
     }
 
     stable = get_eol_refs("x86_64", "flathub") | get_eol_refs("aarch64", "flathub")
