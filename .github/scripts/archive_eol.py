@@ -132,7 +132,7 @@ def main() -> None:
         return
 
     earliest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-        weeks=60
+        weeks=13
     )
     count = 0
     while count < len(eols):
