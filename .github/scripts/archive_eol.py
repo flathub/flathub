@@ -130,7 +130,7 @@ def main() -> None:
     beta = get_eol_refs("x86_64", "flathub-beta") | get_eol_refs(
         "aarch64", "flathub-beta"
     )
-    eols = {x.lower() for x in (stable | beta)} - {x.lower() for x in excludes}
+    eols = list({x.lower() for x in (stable | beta)} - {x.lower() for x in excludes})
 
     if not eols:
         return
