@@ -1,0 +1,58 @@
+id: org.beagleboard.imagingutility
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: bb-imager-gui
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/bb-imager-gui/cargo
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --filesystem=xdg-download
+  - --socket=wayland
+  - --socket=fallback-x11
+  # SD Card permissions
+  - --system-talk-name=org.freedesktop.UDisks2
+  # BeagleConnect Freedom
+  - --device=all
+
+modules:
+  - name: bb-imager-gui
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --verbose --manifest-path bb-imager-gui/Cargo.toml
+      - cargo --offline build --release --verbose -p bb-imager-gui -F bcf_cc1352p7 -F bcf_msp430
+      - install -Dm755 ./target/release/bb-imager-gui -t /app/bin/
+      - install -Dm644 ./bb-imager-gui/assets/packages/linux/BeagleBoardImager.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ./bb-imager-gui/assets/icons/icon.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 ./bb-imager-gui/assets/packages/linux/flatpak/org.beagleboard.imagingutility.metainfo.xml $FLATPAK_DEST/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/beagleboard/bb-imager-rs/archive/refs/tags/v0.0.9.tar.gz
+        sha256: e4a41324f32818a006583b862fe496d9135f613aec43c6a1ea6ff7244af17ed2
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/beagleboard/bb-imager-rs/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '@uri "https://github.com/beagleboard/bb-imager-rs/archive/refs/tags/\(.tag_name).tar.gz"'
+          timestamp-query: .published_at
+      - type: archive
+        url: https://github.com/beagleboard/bb-imager-rs/releases/download/v0.0.9/cargo-vendor.tar.gz
+        sha256: 2f24724421cce8d10d32a50fb3c410183028471114ad6960b6dd7b4a135fffa9
+        dest: vendor
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/beagleboard/bb-imager-rs/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '@uri "https://github.com/beagleboard/bb-imager-rs/archive/refs/tags/\(.tag_name)/cargo-vendor.tar.gz"'
+          timestamp-query: .published_at
+      - type: file
+        path: config.toml
+        dest: .cargo/
