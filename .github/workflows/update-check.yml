@@ -1,0 +1,55 @@
+name: Check for updates
+on:
+  schedule:
+    - cron: '0 14 * * 1' # Run once a week, on Monday, at 14:00
+  workflow_dispatch: {}
+
+jobs:
+  update-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: pip
+      - run: pip install -r .github/requirements.txt
+
+      - name: Fetch latest release details
+        run: |
+          curl -sSL -o org.mozilla.vpn.releases.xml \
+            https://mozilla.github.io/mozillavpn-product-details/org.mozilla.vpn.releases.xml
+
+          python .github/parse-appstream-releases.py org.mozilla.vpn.releases.xml >> $GITHUB_ENV
+          echo CURRENT_TAG=$(python -m yq -r '.modules[-1].sources[0].tag' org.mozilla.vpn.yml) >> $GITHUB_ENV
+
+      - name: Update flatpak manifests
+        if: ${{ env.APPSTREAM_TAG != env.CURRENT_TAG }}
+        run: |
+          TAG_LINE_NUM=$(sed -n '/\s*tag:/=' org.mozilla.vpn.yml | tail -1)
+          sed -i "$TAG_LINE_NUM s/tag:.*/tag: ${APPSTREAM_TAG}/g" org.mozilla.vpn.yml
+
+          ./flatpak-update-crates.sh
+
+      - name: Create Pull Request
+        if: ${{ env.APPSTREAM_TAG != env.CURRENT_TAG }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: upstream-release-${{ env.APPSTREAM_TAG }}
+          commit-message: "Upstream release ${{ env.APPSTREAM_TAG }}"
+          title: "Upstream release ${{ env.APPSTREAM_TAG }}"
+          author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+          add-paths: |
+            flatpak-vpn-crates.json
+            org.mozilla.vpn.releases.xml
+            org.mozilla.vpn.yml
+          body: |
+            Automated update created by [create-pull-request][2] to version [${{ env.APPSTREAM_TAG }}][1]
+
+            [1]: ${{ env.APPSTREAM_URL }}
+            [2]: https://github.com/peter-evans/create-pull-request
