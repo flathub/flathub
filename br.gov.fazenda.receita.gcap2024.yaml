@@ -1,0 +1,73 @@
+id: br.gov.fazenda.receita.gcap2024
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk11
+tags:
+  - proprietary
+command: gcap2024
+
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=cups
+  - --share=ipc
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+  - --filesystem=xdg-documents # Useful place to save PDF files.
+  - --filesystem=~/ProgramasRFB:create # This path is hardcoded by the app to save all kinds of tax data.
+  - --persist=.java # In-app preferences are stored in: ~/.java/.userPrefs/serpro
+  - --persist=.receitanet # Log files, tokens and whatnot.
+  - --persist=.rfb # User-provided form data (such as CPF and CNPJ numbers) are stored in: ~/.rfb
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk11/install.sh
+
+  - name: gcap2024
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/bin apply_extra
+      - install -Dm755 -t /app/bin gcap2024
+      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+      - ln -s /usr/bin/xdg-open /app/bin/firefox # Fixes Single Sign-On (SSO).
+    sources:
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - export LC_ALL=C # Suppresses a warning from bsdtar: "bsdtar: Failed to set default locale".
+          - mkdir share
+          - |
+            bsdtar -C share -xf gcap.zip --no-same-permissions --no-same-owner --strip-components 1 \
+              --include='GCAP*/help' \
+              --include='GCAP*/lib' \
+              --include='GCAP*/GCAP.jar' \
+              --include='GCAP*/pgd-updater.jar'
+          - rm -f gcap.zip
+      - type: script
+        dest-filename: gcap2024
+        commands:
+          - exec java -jar /app/extra/share/GCAP.jar $@
+      - type: file
+        path: br.gov.fazenda.receita.gcap2024.metainfo.xml
+      - type: file
+        path: br.gov.fazenda.receita.gcap2024.desktop
+      - type: file
+        path: icon-128.png
+      - type: extra-data
+        filename: gcap.zip
+        url: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/gcap/GCAP2024v1.6.zip
+        sha256: d05605c9697a6ebcd2276e62535a848523bc69622df47b88208221042a86bf73
+        size: 24723004
+        x-checker-data:
+          type: html
+          url: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/gcap/update/latest.xml
+          version-pattern: <pkgver>([\d.]+)</pkgver>
+          url-template: https://downloadirpf.receita.fazenda.gov.br/irpf/2024/gcap/GCAP2024v$version.zip
+          is-main-source: true
