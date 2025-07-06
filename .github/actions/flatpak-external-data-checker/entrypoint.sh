@@ -17,7 +17,7 @@ echo "==> Deleting inactive repos"
 base_url="https://raw.githubusercontent.com/flathub-infra/flathub-inactive-repo-list/refs/heads/main/"
 for file in inactive.txt manual_inactive.txt; do
   curl -s "${base_url}${file}" | while read folder; do
-    test -d "$folder" && echo "==> Deleting $folder" && rm -rf "$folder"
+    test -d "$folder" && echo "==> Deleting $folder" && rm -rf "$folder" || true
   done
 done
 
