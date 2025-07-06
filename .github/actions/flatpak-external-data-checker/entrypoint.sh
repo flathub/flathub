@@ -12,8 +12,15 @@ mkdir flathub
 cd flathub || exit
 
 gh repo list flathub --visibility public -L 8000 --json url --json isArchived --jq '.[] | select(.isArchived == false)|.url' | parallel "git clone --depth 1 {}"
+
 echo "==> Deleting inactive repos"
-curl -s https://raw.githubusercontent.com/flathub-infra/flathub-inactive-repo-list/refs/heads/main/inactive.txt | while read folder; do test -d "$folder" && echo "==> Deleting $folder" && rm -rf "$folder" || true; done
+base_url="https://raw.githubusercontent.com/flathub-infra/flathub-inactive-repo-list/refs/heads/main/"
+for file in inactive.txt manual_inactive.txt; do
+  curl -s "${base_url}${file}" | while read folder; do
+    test -d "$folder" && echo "==> Deleting $folder" && rm -rf "$folder"
+  done
+done
+
 mapfile -t checker_apps < <( grep -rl -E 'extra-data|x-checker-data|\.AppImage' | cut -d/ -f1 | sort -u | shuf )
 
 for repo in "${checker_apps[@]}"; do
