@@ -14,42 +14,76 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-python@v5
+      - name: Run external data checker
+        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
         with:
-          python-version: 3.11
+          args: --update --edit-only --never-fork org.mozilla.vpn.yml
+
+      - name: Check for updates and reset
+        id: check-updates
+        run: |
+          UPSTREAM_REF=$(.github/parse-git-ref.py --module mozillavpn org.mozilla.vpn.yml)
+          echo "upstream-ref=${UPSTREAM_REF}" >> $GITHUB_OUTPUT
+          if ! git diff --exit-code org.mozilla.vpn.yml; then
+            echo "updates=true" >> $GITHUB_OUTPUT
+          fi
+
+          git checkout -- org.mozilla.vpn.yml
+          CURRENT_REF=$(.github/parse-git-ref.py --module mozillavpn org.mozilla.vpn.yml)
+          echo "current-ref=${CURRENT_REF}" >> $GITHUB_OUTPUT
+          if [ "${CURRENT_REF}" != "${UPSTREAM_REF}" ]; then
+            echo "upstream=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.check-updates.outputs.upstream == 'true'
+        with:
+          python-version: 3.12
           cache: pip
       - run: pip install -r .github/requirements.txt
+        if: steps.check-updates.outputs.upstream == 'true'
+
+      - name: Checkout upstream
+        if: steps.check-updates.outputs.upstream == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: upstream
+          repository: mozilla-mobile/mozilla-vpn-client
+          ref: ${{ steps.check-updates.outputs.upstream-ref }}
+          sparse-checkout: |
+            Cargo.lock
+            requirements.in
+
+      - name: Checkout tools
+        if: steps.check-updates.outputs.upstream == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: tools
+          repository: flatpak/flatpak-builder-tools
+          ref: master
 
       - name: Fetch latest release details
+        if: steps.check-updates.outputs.upstream == 'true'
         run: |
           curl -sSL -o org.mozilla.vpn.releases.xml \
             https://mozilla.github.io/mozillavpn-product-details/org.mozilla.vpn.releases.xml
 
-          python .github/parse-appstream-releases.py org.mozilla.vpn.releases.xml >> $GITHUB_ENV
-          echo CURRENT_TAG=$(python -m yq -r '.modules[-1].sources[0].tag' org.mozilla.vpn.yml) >> $GITHUB_ENV
-
-      - name: Update flatpak manifests
-        if: ${{ env.APPSTREAM_TAG != env.CURRENT_TAG }}
+      - name: Update dependencies
+        if: steps.check-updates.outputs.upstream == 'true'
         run: |
-          TAG_LINE_NUM=$(sed -n '/\s*tag:/=' org.mozilla.vpn.yml | tail -1)
-          sed -i "$TAG_LINE_NUM s/tag:.*/tag: ${APPSTREAM_TAG}/g" org.mozilla.vpn.yml
+          python tools/cargo/flatpak-cargo-generator.py -o flatpak-vpn-crates.json upstream/Cargo.lock
+          python tools/pip/flatpak-pip-generator.py -o flatpak-glean-parser.yaml --yaml --build-only $(cat upstream/requirements.in | grep ^glean-parser)
 
-          ./flatpak-update-crates.sh
-
-      - name: Create Pull Request
-        if: ${{ env.APPSTREAM_TAG != env.CURRENT_TAG }}
-        uses: peter-evans/create-pull-request@v7
+      - name: Create pull request
+        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        if: steps.check-updates.outputs.updates == 'true'
+        env:
+          GIT_AUTHOR_NAME: Flatpak External Data Checker
+          GIT_COMMITTER_NAME: Flatpak External Data Checker
+          # email sets "github-actions[bot]" as commit author, see https://github.community/t/github-actions-bot-email-address/17204/6
+          GIT_AUTHOR_EMAIL: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+          GIT_COMMITTER_EMAIL: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          branch: upstream-release-${{ env.APPSTREAM_TAG }}
-          commit-message: "Upstream release ${{ env.APPSTREAM_TAG }}"
-          title: "Upstream release ${{ env.APPSTREAM_TAG }}"
-          author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
-          add-paths: |
-            flatpak-vpn-crates.json
-            org.mozilla.vpn.releases.xml
-            org.mozilla.vpn.yml
-          body: |
-            Automated update created by [create-pull-request][2] to version [${{ env.APPSTREAM_TAG }}][1]
+          args: --update --never-fork org.mozilla.vpn.yml
 
-            [1]: ${{ env.APPSTREAM_URL }}
-            [2]: https://github.com/peter-evans/create-pull-request
