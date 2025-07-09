@@ -1,0 +1,68 @@
+name: Trigger Flathub Build
+run-name: Build of ${{ inputs.flatpak_id }} from ref ${{ inputs.git_branch }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_branch:
+        description: 'Git branch to build'
+        required: true
+        default: 'master'
+      flatpak_id:
+        description: 'Flatpak ID'
+        required: true
+      force_test:
+        description: 'Force test build on master'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  API_URL: https://flathub-vorarbeiter.apps.openshift.gnome.org/api/pipelines
+  FLATPAK_ID: ${{ github.event.inputs.flatpak_id }}
+  GIT_BRANCH: ${{ github.event.inputs.git_branch }}
+  FORCE_TEST: ${{ github.event.inputs.force_test }}
+  GITHUB_URL: https://github.com/flathub
+
+jobs:
+  build:
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check for existence of repo and branch
+        run: |
+            git -c credential.interactive=false ls-remote --heads --exit-code \
+                "$GITHUB_URL"/"$FLATPAK_ID".git "$GIT_BRANCH"
+
+      - name: Print information
+        shell: bash
+        run: |
+            if [ "$FORCE_TEST" == "true" ]; then
+              echo -e "\n\n"
+              echo "Triggering test build from master branch of $FLATPAK_ID"
+            elif [ "$GIT_BRANCH" == "master" ] || [ "$GIT_BRANCH" == "beta" ]; then
+              echo -e "\n\n"
+              echo "Triggering official build from $GIT_BRANCH branch of $FLATPAK_ID"
+            else
+              echo -e "\n\n"
+              echo "Triggering test build from $GIT_BRANCH of $FLATPAK_ID"
+            fi
+
+      - name: Trigger build
+        run: |
+          if [ "$FORCE_TEST" == "true" ]; then
+            JSON_PAYLOAD="{\"app_id\": \"$FLATPAK_ID\", \"params\": {}}"
+          else
+            JSON_PAYLOAD="{\"app_id\": \"$FLATPAK_ID\", \"params\": {\"ref\": \"refs/heads/$GIT_BRANCH\"}}"
+          fi
+
+          curl -X POST "$API_URL" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD"
+        env:
+          TOKEN: ${{ secrets.VORO_AUTH_TOKEN }}
