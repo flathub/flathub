@@ -5,6 +5,10 @@ id: com.zaaane.pianotrainer
 runtime: org.gnome.Platform
 runtime-version: "48"
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
 
 command: piano-trainer
 finish-args:
@@ -16,35 +20,65 @@ finish-args:
   - --share=network
   - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1 # Optional: may solve some issues with black webviews on Wayland
 
+# modules:
+#   - name: piano-trainer-binary
+#     buildsystem: simple
+
+#     sources:
+#       - type: file
+#         url: https://github.com/ZaneH/piano-trainer/releases/download/app-v1.3.2/Piano.Trainer_1.3.2_amd64.deb
+#         sha256: b2ffd1e699655e83417dd233965910e3641c2d5c46494c86438f6a20b29439ca
+#         only-arches: [x86_64]
+#     build-commands:
+#       # Extract the deb package
+#       - mkdir deb-extract
+#       - ar -x *.deb --output deb-extract
+#       - tar -C deb-extract -xf deb-extract/data.tar.gz
+
+#       # Copy binary
+#       - mkdir -p /app/bin
+#       - "install -Dm755 deb-extract/usr/bin/piano-trainer /app/bin/piano-trainer"
+
+#       # Copy desktop file + ensure the right icon is set
+#       - desktop-file-edit  --set-icon=com.zaaane.pianotrainer deb-extract/usr/share/applications/Piano\ Trainer.desktop
+#       - install -Dm644 deb-extract/usr/share/applications/Piano\ Trainer.desktop /app/share/applications/com.zaaane.pianotrainer.desktop
+
+#       # Copy icons
+#       - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/piano-trainer.png /app/share/icons/hicolor/128x128/apps/com.zaaane.pianotrainer.png
+#       - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/piano-trainer.png /app/share/icons/hicolor/32x32/apps/com.zaaane.pianotrainer.png
+#       - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/piano-trainer.png /app/share/icons/hicolor/256x256@2/apps/com.zaaane.pianotrainer.png
+
+#       # Copy metainfo
+#       - install -Dm644 com.zaaane.pianotrainer.metainfo.xml /app/share/metainfo/com.zaaane.pianotrainer.metainfo.xml
+#
 modules:
-  - name: piano-trainer-binary
+  - name: piano-trainer
     buildsystem: simple
-
+    env:
+      HOME: /run/build/piano-trainer
+      CARGO_HOME: /run/build/piano-trainer/src-tauri
+      XDG_CACHE_HOME: /run/build/piano-trainer/flatpak-node/cache
+      yarn_config_offline: "true"
+      yarn_config_cache: /run/build/piano-trainer/flatpak-node/npm-cache
     sources:
-      - type: file
-        path: com.zaaane.pianotrainer.metainfo.xml
-      - type: file
-        url: https://github.com/ZaneH/piano-trainer/releases/download/app-v1.3.2/Piano.Trainer_1.3.2_amd64.deb
-        sha256: b2ffd1e699655e83417dd233965910e3641c2d5c46494c86438f6a20b29439ca
-        only-arches: [x86_64]
+      - type: git
+        url: https://github.com/ZaneH/piano-trainer.git
+        tag: app-v1.3.2
+      - cargo-sources.json
+      - node-sources.json
     build-commands:
-      # Extract the deb package
-      - mkdir deb-extract
-      - ar -x *.deb --output deb-extract
-      - tar -C deb-extract -xf deb-extract/data.tar.gz
+      - echo -e 'yarn-offline-mirror "/run/build/piano-trainer/flatpak-node/yarn-mirror"\nyarn-offline-mirror-pruning true' > /run/build/piano-trainer/.yarnrc
+      - mkdir -p src-tauri/.cargo && echo -e '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/piano-trainer/cargo/vendor"' > src-tauri/.cargo/config.toml
+      - ls .
+      - yarn install --offline --immutable --immutable-cache --inline-builds
+      - yarn run tauri build -- -b deb
+      - ar -x src-tauri/target/release/bundle/deb/*.deb
+      - tar -xf src-tauri/target/release/bundle/deb/Piano*/data.tar.gz
+      - install -Dm755 src-tauri/target/release/bundle/deb/Piano*/data/usr/bin/com.zaaane.pianotrainer /app/bin/com.zaaane.pianotrainer
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/applications/Rosary-Music.desktop /app/share/applications/com.zaaane.pianotrainer.desktop
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/icons/hicolor/128x128/apps/com.zaaane.pianotrainer.png /app/share/icons/hicolor/128x128/apps/com.zaaane.pianotrainer.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/icons/hicolor/32x32/apps/com.zaaane.pianotrainer.png /app/share/icons/hicolor/32x32/apps/com.zaaane.pianotrainer.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/icons/hicolor/256x256@2/apps/com.zaaane.pianotrainer.png /app/share/icons/hicolor/512x512/apps/com.zaaane.pianotrainer.png
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/icons/hicolor/scalable/apps/com.zaaane.pianotrainer.svg /app/share/icons/hicolor/scalable/apps/com.zaaane.pianotrainer.svg
 
-      # Copy binary
-      - mkdir -p /app/bin
-      - "install -Dm755 deb-extract/usr/bin/piano-trainer /app/bin/piano-trainer"
-
-      # Copy desktop file + ensure the right icon is set
-      - desktop-file-edit  --set-icon=com.zaaane.pianotrainer deb-extract/usr/share/applications/Piano\ Trainer.desktop
-      - install -Dm644 deb-extract/usr/share/applications/Piano\ Trainer.desktop /app/share/applications/com.zaaane.pianotrainer.desktop
-
-      # Copy icons
-      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/piano-trainer.png /app/share/icons/hicolor/128x128/apps/com.zaaane.pianotrainer.png
-      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/piano-trainer.png /app/share/icons/hicolor/32x32/apps/com.zaaane.pianotrainer.png
-      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/piano-trainer.png /app/share/icons/hicolor/256x256@2/apps/com.zaaane.pianotrainer.png
-
-      # Copy metainfo
-      - install -Dm644 com.zaaane.pianotrainer.metainfo.xml /app/share/metainfo/com.zaaane.pianotrainer.metainfo.xml
+      - install -Dm644 src-tauri/target/release/bundle/deb/Piano*/data/usr/share/metainfo/com.zaaane.pianotrainer.metainfo.xml /app/share/metainfo/com.zaaane.pianotrainer.metainfo.xml
