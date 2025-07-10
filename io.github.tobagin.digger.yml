@@ -12,7 +12,7 @@ finish-args:
   # Wayland and X11 display
   - --socket=wayland
   - --socket=fallback-x11
-
+  
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -36,21 +36,19 @@ modules:
       - --disable-static
       - --enable-shared
 
-  # DNS tools including dig command
-  - name: bind-utils
+  # BIND dig command using older version to avoid crypto issues  
+  - name: bind-dig
     buildsystem: autotools
     sources:
       - type: archive
-        url: https://downloads.isc.org/isc/bind9/9.18.32/bind-9.18.32.tar.xz
-        sha256: dc840cdf9d54578d98400f2edf7008b1b33a1721be6e490eb1e42d0d11d9cff4
+        url: https://downloads.isc.org/isc/bind9/9.16.48/bind-9.16.48.tar.xz
+        sha256: 8d3814582348f90dead1ad410b1019094cd399d3d83930abebb2b3b1eb0b2bbb
     config-opts:
       - --disable-static
       - --enable-shared
-      - --with-libtool
-      - --disable-backtrace
-      - --disable-symtable
-      - --disable-linux-caps
-      - --without-python
+      - --without-openssl
+      - --disable-dnssec-tools
+      - --disable-dnssec-validation
       - --without-gssapi
       - --without-readline
       - --without-libedit
@@ -62,12 +60,33 @@ modules:
       - --disable-dnsrps
       - --disable-dnstap
       - --disable-doh
+      - --disable-backtrace
+      - --disable-symtable
+      - --disable-linux-caps
+      - --without-python
+      - --prefix=/app
+    build-options:
+      env:
+        OPENSSL_CFLAGS: ""
+        OPENSSL_LIBS: ""
+        ac_cv_lib_crypto_EVP_sha256: "no"
+        ac_cv_lib_ssl_SSL_new: "no"
+    build-commands:
+      # Build only what we need for dig
+      - make -C lib/isc
+      - make -C lib/dns  
+      - make -C lib/bind9
+      - make -C bin/dig
+    install-commands:
+      # Install libraries and dig
+      - make -C lib/isc install
+      - make -C lib/dns install
+      - make -C lib/bind9 install
+      - make -C bin/dig install
     post-install:
-      # Only keep the dig tool and its dependencies
-      - rm -rf /app/bin/delv /app/bin/host /app/bin/nslookup
-      - rm -rf /app/bin/named* /app/bin/rndc* /app/bin/dnssec*
-      - rm -rf /app/sbin /app/share/man /app/include
-      - rm -rf /app/lib/*.la /app/lib/pkgconfig
+      # Clean up unnecessary files
+      - rm -rf /app/include /app/lib/pkgconfig /app/lib/*.la /app/share/man
+      - rm -rf /app/bin/delv /app/bin/host /app/bin/nslookup /app/bin/named* /app/bin/rndc* /app/bin/dnssec* /app/sbin || true
 
   # All Python wheel dependencies verified with correct SHA256 hashes for Flathub
   - name: python3-packages
@@ -134,5 +153,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/tobagin/Digger.git
-        tag: v0.1.0
-        commit: e5f5c310159cba9928e2b546cc233222cc519755
+        tag: v0.2.0
+        commit: 24b57a959b9a333036047dd647a048e59cfed16c
