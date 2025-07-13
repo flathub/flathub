@@ -2,11 +2,17 @@ id: nl.flyingpie.wtq
 runtime: org.gnome.Platform
 runtime-version: "48"
 sdk: org.gnome.Sdk
+sdk-extensions:
+ - org.freedesktop.Sdk.Extension.dotnet9
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet9/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet9/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet9/lib/pkgconfig"
 
 command: wtq
 
 finish-args:
-  - --own-name=nl.flyingpie.wtq.svc             # Exposes DBus service for the KWin script to talk to
+  - --env=DOTNET_ROOT=/app/lib/dotnet           # .Net root
   - --socket=wayland                            # So we can run the GUI
   - --talk-name=org.freedesktop.Flatpak         # So we can start processes ("flatpak-spawn --host dolphin")
   - --talk-name=org.kde.KWin                    # So we can talk to KWin for querying windows
@@ -17,33 +23,29 @@ modules:
   # libappindicator
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
 
+  # .Net
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet9/bin/install.sh
+
   # WTQ
   - name: wtq
 
     buildsystem: simple
-    build-commands:
-      - cp -R . /app/bin/
-      - install -D nl.flyingpie.wtq-white.svg /app/share/icons/hicolor/scalable/apps/nl.flyingpie.wtq.svg
-      - install -D nl.flyingpie.wtq-white.svg /app/share/icons/hicolor/scalable/apps/nl.flyingpie.wtq-white.svg
-      - install -D nl.flyingpie.wtq.desktop /app/share/applications/nl.flyingpie.wtq.desktop
-      - install -D nl.flyingpie.wtq.metainfo.xml /app/share/metainfo/nl.flyingpie.wtq.metainfo.xml
 
     sources:
-      # App
-      - type: archive
-        url: https://github.com/flyingpie/windows-terminal-quake/releases/download/vNextFlatpak/linux-x64_self-contained.tar.gz
-        sha256: 68937d6bbbea2aaa51fad5dfa67fc72168bc4b3475f8d39f71ca6adb37d8833c
-        dest-filename: linux-x64_self-contained.tar.gz
-        strip-components: 0
+      - type: git
+        url: https://github.com/flyingpie/windows-terminal-quake.git
+        commit: 8adeeb1c8a6980a69b7c5c7f86709df2e3a82179
+      - ./nuget-sources.json
 
-      # Desktop file
-      - type: file
-        path: nl.flyingpie.wtq.desktop
-
-      # Icon
-      - type: file
-        path: nl.flyingpie.wtq-white.svg
-
-      # Metainfo
-      - type: file
-        path: nl.flyingpie.wtq.metainfo.xml
+    build-commands:
+      - dotnet publish -c Release --no-self-contained --source ./nuget-sources ./src/30-Host/Wtq.Host.Linux/Wtq.Host.Linux.csproj
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - rm _output/build/bin/Wtq.Host.Linux/net9.0/publish/wtq.jsonc
+      - cp -Rv _output/build/bin/Wtq.Host.Linux/net9.0/publish/* ${FLATPAK_DEST}/bin
+      - install -D assets/nl.flyingpie.wtq-white.svg /app/share/icons/hicolor/scalable/apps/nl.flyingpie.wtq.svg
+      - install -D assets/nl.flyingpie.wtq-white.svg /app/share/icons/hicolor/scalable/apps/nl.flyingpie.wtq-white.svg
+      - install -D flatpak/nl.flyingpie.wtq.desktop /app/share/applications/nl.flyingpie.wtq.desktop
+      - install -D flatpak/nl.flyingpie.wtq.metainfo.xml /app/share/metainfo/nl.flyingpie.wtq.metainfo.xml
