@@ -1,0 +1,94 @@
+diff --git a/source/build/include/vfs.h b/source/build/include/vfs.h
+index 4862820b9..b2082edcb 100644
+--- a/source/build/include/vfs.h
++++ b/source/build/include/vfs.h
+@@ -320,4 +320,11 @@ void dfwrite_LZ4(const void *buffer, int dasizeof, int count, buildvfs_FILE fil)
+ }
+ #endif
+
++#include <filesystem>
++extern std::filesystem::path redirect_to_user_data(std::string path);
++extern void create_parent_directory(std::string path);
++extern std::string get_writable_filename_subdir(std::string filename, std::string subdir);
++extern std::string get_writable_filename(std::string filename);
++extern std::string get_numbered_writable_filename(std::string filename, std::string extension);
++
+ #endif // vfs_h_
+diff --git a/source/build/src/vfs.cpp b/source/build/src/vfs.cpp
+index 44a9d212d..2790eecc0 100644
+--- a/source/build/src/vfs.cpp
++++ b/source/build/src/vfs.cpp
+@@ -14,6 +14,9 @@
+ #include "pragmas.h"
+ #include "vfs.h"
+ #include "cache1d.h"
++#include <string>
++#include <filesystem>
++#include <format>
+
+ #ifdef __cplusplus
+ extern "C" {
+@@ -58,6 +61,63 @@ static intptr_t kzipopen(const char *filnam)
+
+ #endif
+
++std::filesystem::path redirect_to_user_data(std::string path) {
++    std::string user_data_path(std::getenv("XDG_DATA_HOME"));
++    std::filesystem::path path_obj;
++    // Add user data prefix if needed
++    if (!path.starts_with(user_data_path)) {
++        path_obj /= user_data_path;
++    }
++    path_obj /= path;
++    // printf("Redirected %s to %s\n", path.c_str(), path_obj.lexically_normal().c_str());
++    return path_obj;
++}
++
++void create_parent_directory(std::string filename)
++{
++    std::filesystem::path path_obj = redirect_to_user_data(filename).remove_filename();
++    // printf("create_parent_directory \"%s\"\n", path_obj.lexically_normal().c_str());
++    if (! buildvfs_isdir(path_obj.lexically_normal().c_str()) && buildvfs_mkdir(path_obj.lexically_normal().c_str(), S_IRWXU) != 0)
++    {
++        printf("^10^S0Failed to create directory \"%s\"!\n", path_obj.lexically_normal().c_str());
++    }
++}
++
++std::string get_writable_filename_subdir(std::string filename, std::string subdir)
++{
++    std::filesystem::path path_obj = redirect_to_user_data(subdir);
++    path_obj /= filename;
++    create_parent_directory(filename);
++    // printf("get_writable_filename_subdir \"%s\"\n", path_obj.lexically_normal().c_str());
++    return path_obj.lexically_normal().string();
++}
++
++std::string get_writable_filename(std::string filename)
++{
++    std::filesystem::path path_obj = redirect_to_user_data(filename);
++    create_parent_directory(filename);
++    // printf("get_writable_filename \"%s\"\n", path_obj.lexically_normal().c_str());
++    return path_obj.lexically_normal().string();
++}
++
++std::string get_numbered_writable_filename(std::string filename, std::string extension)
++{
++    if (!extension.starts_with(".")) { extension = std::format(".{}", extension); }
++
++    std::string final_filename;
++    int counter = 0;
++    do
++    {
++        if (counter > 9999) {
++            printf(std::format("^10^S0Too many files using filename {0}{1}\n", filename, extension).c_str());
++            return nullptr;
++        }
++        final_filename = get_writable_filename(std::format("{0}{1:0>4}{2}", filename, counter, extension));
++        counter++;
++    } while (std::filesystem::exists(final_filename));
++    return final_filename;
++}
++
+ char *kpzbuf = NULL;
+ int32_t kpzbufsiz;
+

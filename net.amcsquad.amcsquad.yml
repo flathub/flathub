@@ -1,0 +1,114 @@
+app-id: net.amcsquad.amcsquad
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: net.amcsquad.amcsquad.sh
+
+finish-args:
+  # hardware 3D + gamepads
+  - --device=all
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Audio
+  - --socket=pulseaudio
+
+modules:
+  - name: amcduke32
+    modules:
+      - shared-modules/glu/glu-9.json
+      - name: amc-data
+        buildsystem: simple
+        sources:
+          - type: archive
+            url: https://gitlab.com/fpiesche/amc-squad-data/-/archive/v4.5.2-1/amc-squad-data-v4.5.2-1.tar.bz2
+            sha256: 6c384a79ca1c8dde7fb504d28c095ddd4e38f0e5124bb05a4c974f257ea5eeab
+            x-checker-data:
+              type: json
+              url: https://gitlab.com/api/v4/projects/fpiesche%2Famc-squad-data/repository/tags
+              tag-query: first | .name
+              commit-query: first | .commit.id
+              timestamp-query: first | .commit.committed_date
+              version-query: $tag | sub(\"^[vV]\"; \"\")
+              is-main-source: true
+              url-template: https://gitlab.com/fpiesche/amc-squad-data/-/archive/v$version/amc-squad-data-v$version.tar.bz2
+        build-commands:
+          - desktop-file-edit --set-key="Exec" --set-value="net.amcsquad.amcsquad.sh"
+            meta/net.amcsquad.amcsquad.desktop
+          - desktop-file-edit --set-key="Exec" --set-value="net.amcsquad.mapster32.sh"
+            meta/net.amcsquad.mapster32.desktop
+          - desktop-file-edit --set-key="Icon" --set-value="net.amcsquad.amcsquad.mapster32"
+            meta/net.amcsquad.mapster32.desktop
+          - install -Dm 644 meta/net.amcsquad.amcsquad.desktop -t /app/share/applications
+          - install -Dm 644 meta/net.amcsquad.mapster32.desktop -T /app/share/applications/net.amcsquad.amcsquad.mapster32.desktop
+          - install -Dm 644 meta/net.amcsquad.amcsquad.png -t /app/share/icons/hicolor/256x256/apps
+          - install -Dm 644 meta/net.amcsquad.mapster32.png -T /app/share/icons/hicolor/256x256/apps/net.amcsquad.amcsquad.mapster32.png
+          - install -Dm 644 meta/net.amcsquad.amcsquad.metainfo.xml -t /app/share/metainfo
+          - rm -rf meta
+          - mkdir -p /app/bin
+          - cp -rv ./* /app/bin/
+    sources:
+      - type: archive
+        url: https://api.github.com/repos/dibollinger/amcduke32/zipball/4.5.0
+        archive-type: zip
+        dest-filename: amcduke.zip
+        sha256: b07cfdf8409ecd313b900e83e41afc8445106914743adf897c0c7a1d084c7216
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/dibollinger/amcduke32/releases
+          version-query: .[0].tag_name
+          url-query: .[0].zipball_url
+      # Silence compiler warning spam
+      - type: patch
+        path: amcduke32_01_basic_fixes.patch
+      # Add new filesystem functionality used by further patches
+      - type: patch
+        path: amcduke32_02_new_filesystem_functions.patch
+      # Redirect texture cache to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_03_redirect_texture_cache.patch
+      # Redirect GRP file list caceh to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_04_redirect_grpcache.patch
+      # Redirect configuration files to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_05_redirect_config_files.patch
+      # Redirect log files to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_06_redirect_logs.patch
+      # Redirect menus for selecting user maps and soundfonts to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_07_redirect_menus.patch
+      # Redirect read/write from game scripts to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_08_redirect_gamescript_rw.patch
+      # Redirect demo recording to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_09_redirect_demos.patch
+      # Redirect screenshots to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_10_redirect_screenshots.patch
+      # Redirect savegames to XDG_DATA_HOME
+      - type: patch
+        path: amcduke32_11_redirect_savegames.patch
+      # launcher script
+      - type: script
+        dest-filename: net.amcsquad.amcsquad.sh
+        commands:
+          - cd /app/bin
+          - ./amcsquad
+      - type: script
+        dest-filename: net.amcsquad.mapster32.sh
+        commands:
+          - cd /app/bin
+          - ./mapster32
+    buildsystem: simple
+    builddir: true
+    build-options:
+      cxxflags: -std=c++20
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS FORCEDEBUG=1 LF=
+      - install -Dm 755 amcsquad -t /app/bin
+      - install -Dm 755 mapster32 -t /app/bin
+      - install -Dm 755 net.amcsquad.amcsquad.sh -t /app/bin
+      - install -Dm 755 net.amcsquad.mapster32.sh -t /app/bin
