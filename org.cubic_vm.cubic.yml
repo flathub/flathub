@@ -1,0 +1,69 @@
+app-id: org.cubic_vm.cubic
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: cubic
+finish-args:
+  - --device=kvm
+  - --filesystem=xdg-run/cubic
+  - --share=ipc
+  - --share=network
+  - --socket=ssh-auth
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/cubic/cargo
+modules:
+  - name: cdrkit
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_C_FLAGS="-Wno-error=implicit-function-declaration"
+    sources:
+      - type: archive
+        url: https://salsa.debian.org/debian/cdrkit/-/archive/debian/9%251.1.11-3.5/cdrkit-debian-9%251.1.11-3.5.tar.gz
+        sha256: d0170a0496b879903fd59f3a40d1d75060fabff0f85f3ce832d6d5d3fb32dff0
+      - type: patch
+        path: patches/0001-cdrkit-extern-outfile.patch
+        options:
+          - -p0
+    post-install:
+      - ln -sr /app/bin/genisoimage /app/bin/mkisofs
+  - name: libslirp
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.9.1/libslirp-v4.9.1.tar.gz
+        sha256: 3970542143b7c11e6a09a4d2b50f30a133473c41f15ed0bdcc3b7a1c450d9a5c
+  - name: qemu
+    config-opts:
+      - --prefix=/app
+      - --disable-download
+      - --disable-docs
+      - --disable-rust
+      - --disable-fdt
+      - --enable-kvm
+      - --enable-tcg
+      - --target-list=x86_64-softmmu
+      - --enable-slirp
+    sources:
+      - type: archive
+        url: https://download.qemu.org/qemu-10.0.2.tar.xz
+        sha256: ef786f2398cb5184600f69aef4d5d691efd44576a3cff4126d38d4c6fec87759
+  - name: openssh
+    sources:
+      - type: archive
+        url: https://github.com/openssh/openssh-portable/archive/refs/tags/V_10_0_P2.tar.gz
+        sha256: a25b32645dc6b474064b9deb07afc9d8e37b127d026a1170b54feb929145140c
+  - name: cubic
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 ./target/release/cubic -t /app/bin/
+    sources:
+      - type: git
+        url: https://github.com/cubic-vm/cubic.git
+        commit: 0e7d048b14607c0e9580a20fe608348697875b32
+      - cargo-sources.json
