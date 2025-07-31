@@ -5,12 +5,9 @@ A modern network scanner for GNOME that helps you discover devices on your local
 ## 📷 Screenshots
 
 
-![Home Page](data/screenshots/1.png)
+![Home Page](https://raw.githubusercontent.com/ZingyTomato/NetPeek/refs/heads/master/data/screenshots/1.png)
 
-![Results Page](data/screenshots/2.png)
-
-![No Devices Found](data/screenshots/3.png)
-
+![Results Page](https://raw.githubusercontent.com/ZingyTomato/NetPeek/refs/heads/master/data/screenshots/2.png)
 
 ## ⭐ Features
 
