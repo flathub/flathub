@@ -1,0 +1,61 @@
+# Based on https://github.com/flathub/me.proton.Pass/blob/a9e4af016548350e0d978297cbb4094ff39c6f24/me.proton.Pass.yml
+
+app-id: me.proton.Authenticator
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: start-proton-authenticator
+finish-args:
+  - --share=ipc
+  - --share=network
+  # - --socket=wayland
+  - --socket=x11
+  - --device=all
+  # DBus-based libsecret
+  - --talk-name=org.freedesktop.secrets
+  # Tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Disable wayland due to bugs: right click menu disappearing and timers flickering
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=x11
+  - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - name: proton-authenticator
+    buildsystem: simple
+    build-commands:
+      - bsdtar -Oxf ProtonAuthenticator.deb data.tar.gz | bsdtar -xf -
+      - mv "usr/bin/proton-authenticator" ${FLATPAK_DEST}/proton-authenticator
+      # No svg icon found so using png for now.
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/proton-authenticator.png "${FLATPAK_DEST}/share/icons/hicolor/256x256@2/apps/${FLATPAK_ID}.png"
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/proton-authenticator.png "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png"
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/proton-authenticator.png "${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png"
+      - install -Dm644 "usr/share/applications/Proton Authenticator.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=Exec --set-value='start-proton-authenticator %U' --set-icon=${FLATPAK_ID}
+        "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      # - patch-desktop-filename "${FLATPAK_DEST}/proton-authenticator/resources/app.asar"
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-proton-authenticator.sh /app/bin/start-proton-authenticator
+      - install -Dm644 me.proton.Authenticator.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        dest-filename: ProtonAuthenticator.deb
+        only-arches: [x86_64]
+        url: https://proton.me/download/authenticator/linux/ProtonAuthenticator_1.0.0_amd64.deb
+        # Checksum is published upstream at https://proton.me/download/authenticator/linux/version.json
+        sha512: d384ba2c16a342d2acb4a35c654d76123c476289ca41a033c863edd6865efca4140491de3231ac31549e3148f964d9c389fd967ef91b4896e74529f9f494b6e6
+        x-checker-data:
+          type: json
+          url: https://proton.me/download/authenticator/linux/version.json
+          version-query: .Releases[0].Version
+          url-query: .Releases[0].File[0].Url
+          is-main-source: true
+
+      - type: script
+        dest-filename: start-proton-authenticator.sh
+        commands:
+          - env TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-me.proton.Authenticator}" zypak-wrapper
+            "/app/proton-authenticator" "$@"
+
+      - type: file
+        path: me.proton.Authenticator.metainfo.xml
