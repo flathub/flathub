@@ -5,3 +5,4 @@ Please report issues with the package here on GitHub.
 
 ## To Do
 - [ ] Find `.svg` icon to replace `.png` icons
+- [ ] Change to build from source if packaging method published upstream and/or app is added to https://github.com/ProtonMail/WebClients/tree/main/applications
