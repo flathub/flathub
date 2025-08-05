@@ -24,40 +24,15 @@ modules:
     build-options:
       append-path: "/usr/lib/sdk/openjdk21/bin"
     build-commands:
-      - echo "is_release=true" >> desktopApp/src/jvmMain/resources/props.properties
-      - echo "version=1.3.0" >> desktopApp/src/jvmMain/resources/props.properties
-      - echo "flatpak=true" >> desktopApp/src/jvmMain/resources/props.properties
-      - "sed -i s/distributionUrl.*/distributionUrl=gradle-bin.zip/ gradle/wrapper/gradle-wrapper.properties"
-      - |
-        sed -i \
-          -e 's/alias(libs\.plugins\.triplet\.play) apply false/\/\/ &/' \
-          -e 's/alias(libs\.plugins\.crashlytics) apply false/\/\/ &/' \
-          -e 's/alias(libs\.plugins\.google\.services) apply false/\/\/ &/' \
-          build.gradle.kts || true
-      - |
-        # Replace JetBrains JDK 17 toolchain with OpenJDK 21
-        find . -name "*.gradle.kts" -exec sed -i \
-         -e 's/vendor\s*=\s*JvmVendorSpec\.JETBRAINS/\/\/ vendor = JvmVendorSpec.JETBRAINS/' \
-         {} \;
-        
-        # Disable toolchain auto-provisioning
-        echo "org.gradle.java.installations.auto-detect=false" >> gradle.properties
-        echo "org.gradle.java.installations.auto-download=false" >> gradle.properties
-      - ./disable-android-for-flatpak.sh
+      - ./.scripts/flatpak-build-setup.sh
+      - ./.scripts/disable-android-for-flatpak.sh
       - ./gradlew desktopApp:packageReleaseUberJarForCurrentOS --no-daemon --offline -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=2g" -Dorg.gradle.daemon=true -Dorg.gradle.parallel=false --no-configuration-cache
-      - ls -la desktopApp/build/compose/jars/ || echo "Directory doesn't exist"
       - JAR_FILE=$(find desktopApp/build/compose/jars/ -name "*.jar" -type f | head -1) && install -Dm755 "$JAR_FILE" /app/lib/feedflow.jar
       - install -Dm644 desktopApp/packaging/flatpak/com.prof18.feedflow.desktop /app/share/applications/com.prof18.feedflow.desktop
       - install -Dm644 desktopApp/packaging/flatpak/com.prof18.feedflow.metainfo.xml /app/share/metainfo/com.prof18.feedflow.metainfo.xml
       - install -Dm644 desktopApp/packaging/flatpak/com.prof18.feedflow.png /app/share/icons/hicolor/512x512/apps/com.prof18.feedflow.png
       - mkdir -p /app/bin
-      - |
-        cat > /app/bin/feedflow << 'EOF'
-        #!/bin/bash
-        export JAVA_HOME=/app/jre
-        exec /app/jre/bin/java -Djava.awt.headless=false -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -jar /app/lib/feedflow.jar "$@"
-        EOF
-      - chmod +x /app/bin/feedflow
+      - install -Dm755 desktopApp/packaging/flatpak/feedflow /app/bin/feedflow
     sources:
       - type: git
         url: https://github.com/prof18/feed-flow
