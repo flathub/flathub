@@ -1,16 +1,18 @@
+## CoMaps Desktop
+
 To install the Beta (needed once only):
 ```
-flatpak install --user https://flathub.org/beta-repo/appstream/app.organicmaps.desktop.flatpakref
-flatpak make-current --user app.organicmaps.desktop stable
+flatpak install --user https://flathub.org/beta-repo/appstream/app.comaps.desktop.flatpakref
+flatpak make-current --user app.comaps.desktop stable
 ```
 To run the Beta:
 ```
-flatpak run app.organicmaps.desktop//beta
+flatpak run app.comaps.desktop//beta
 ```
 
 To update the Beta:
 ```
-flatpak update app.organicmaps.desktop//beta
+flatpak update app.comaps.desktop//beta
 ```
 
 References:  
