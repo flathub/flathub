@@ -1,0 +1,72 @@
+app-id: com.binarynonsense.acbr
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+command: run.sh
+separate-locales: false
+rename-icon: acbr
+finish-args:
+  - --socket=wayland,
+  - --socket=x11,
+  - --share=ipc,
+  - --device=dri,
+  - --socket=pulseaudio,
+  - --filesystem=home,
+  - --filesystem=host,
+  - --share=network,
+  - --talk-name=org.freedesktop.Notifications,
+  - --socket=system-bus,
+  # needed to access the gamepad
+  - --device=all,
+  - --filesystem=/run/udev:ro,
+  # needed to avoid some crashes caused by sharp in some systems
+  - --env=G_SLICE=always-malloc
+  # use same mouse cursors as host, to avoid weird cursor sizing under Wayland with mixed DPI
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - name: acbr
+    buildsystem: simple
+    build-commands:
+      # extract zip and then deb
+      - unzip ACBR_Linux_deb.zip
+      - cd ACBR_Linux_deb
+      - ar x *.deb
+      - tar xvf data.tar.xz
+      # install files from .deb
+      - mv "opt/ACBR Comic Book Reader" ${FLATPAK_DEST}/acbr
+      # install desktop file
+      - install -Dm644 usr/share/applications/acbr-comic-book-reader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Exec --set-value='run.sh %U' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # Patch desktop filename in built-in package.json
+      - patch-desktop-filename ${FLATPAK_DEST}/acbr/resources/app.asar
+      # install icons
+      - mkdir -p ${FLATPAK_DEST}/share/icons
+      - mv "usr/share/icons/hicolor" ${FLATPAK_DEST}/share/icons/
+      # install app wrapper
+      - install -Dm755 run.sh ${FLATPAK_DEST}/bin/
+      # install metadata
+      - install -Dm644 com.binarynonsense.acbr.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        dest-filename: ACBR_Linux_deb.zip
+        url: https://github.com/binarynonsense/comic-book-reader/releases/download/v3.12.1/ACBR_Linux_deb.zip
+        sha256: 71e45c3a5674470b7a5e799c92567e3a653e76817eb373e0d4d1d45900b4f906
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/binarynonsense/comic-book-reader/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: .name
+          stable-only: true
+          url-query: .assets[] | select(.name == "ACBR_Linux_deb.zip") |
+            .browser_download_url
+      - type: file
+        path: com.binarynonsense.acbr.metainfo.xml
+      # wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/acbr/acbr-comic-book-reader "$@"
