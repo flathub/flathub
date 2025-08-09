@@ -16,6 +16,10 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Install deps
+        run: |
+          pip install 'publicsuffixlist==1.0.2.20250802'
+
       - name: Fetch recent PR numbers
         run: |
           CUTOFF_DATE="2025-05-25T00:00:00Z"
@@ -101,6 +105,17 @@ jobs:
             if [ "$EXIT_CODE" -ne 0 ]; then
               echo "PR title validation failed"
               BLOCKED=1
+            else
+              APPID=$(echo "$PR_TITLE" | sed -E 's/^[[:space:]]*[Aa]dd[[:space:]]+//')
+              DOMAIN=$(curl -sSL "$DOMAIN_SCRIPT_URL" | python3 - "$APPID")
+              if [ "$DOMAIN" != "None" ] && [ -n "$DOMAIN" ]; then
+                echo "Domain is: $DOMAIN"
+                if ! comment_exists "$DOMAIN_COMMENT_PARTIAL"; then
+                  echo "Did not find domain comment, commenting"
+                  DOMAIN_COMMENT="$DOMAIN_COMMENT_PARTIAL $DOMAIN. Please comment if incorrect."
+                  gh pr comment "$PR_NUM" --body "$DOMAIN_COMMENT"
+                fi
+              fi
             fi
 
             CHECKLIST_PRESENT=$(printf "%s\n" "$PR_BODY" | grep -cE '^- ?\[[xX]\] [A-Za-z]+' || true)
@@ -162,6 +177,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           SCRIPT_URL: https://raw.githubusercontent.com/flathub/flathub/refs/heads/master/.github/scripts/validate.py
+          DOMAIN_SCRIPT_URL: https://raw.githubusercontent.com/flathub/flathub/refs/heads/master/.github/scripts/domain_from_appid.py
           BUILD_SUCCESS_COMMENT: "[Test build succeeded]"
           BUILD_START_COMMENT: |
             Starting a test build of the submission. Please fix any
@@ -182,3 +198,4 @@ jobs:
             it locally following the instructions and push the relevant
             changes first.
           REVIEW_COMMENT_PARTIAL: "This pull request is temporarily marked as blocked as some"
+          DOMAIN_COMMENT_PARTIAL: "The domain to be used for verification is"
