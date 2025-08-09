@@ -23,9 +23,9 @@ def demangle(name: str) -> str:
     return name.replace("_", "-")
 
 
-def get_domain(appid: str) -> str | None:
+def get_domain(appid: str) -> str:
     if appid.startswith(LOGINS) or appid.count(".") < 2:
-        return None
+        return "None"
     elif appid.startswith(
         ("io.frama.", "page.codeberg.", "io.sourceforge.", "net.sourceforge.")
     ):
