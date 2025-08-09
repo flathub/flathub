@@ -68,6 +68,9 @@ jobs:
 
             PR_LABELS="$(gh pr view "$PR_NUM" --json labels -q '.labels[].name')"
 
+            PR_THREAD_COUNT=$(gh api repos/$GH_REPO/pulls/$PR_NUM/comments \
+                --jq '[.[] | select(.position != null)] | length')
+
             BLOCKED=0
 
             comment_exists() {
@@ -176,6 +179,10 @@ jobs:
                 echo "PR is blocked and too many failing builds. Locking"
                 gh pr comment "$PR_NUM" --body "$LOCKED_COMMENT"
                 gh pr lock "$PR_NUM" || true
+            fi
+            if label_exists_any "awaiting-review" && [ "$PR_THREAD_COUNT" -gt 0 ]; then
+                echo "Has awaiting-review label and review comments, marking as awaiting-changes"
+                gh pr edit "$PR_NUM" --add-label "awaiting-changes" --remove-label "awaiting-review" || true
             fi
           done
         env:
