@@ -24,8 +24,30 @@ def demangle(name: str) -> str:
 
 
 def get_domain(appid: str) -> str:
+    ret_none = "None"
+
     if appid.startswith(LOGINS) or appid.count(".") < 2:
-        return "None"
+        return ret_none
+
+    if appid.endswith(".BaseApp"):
+        return ret_none
+
+    # correctly checking for extension requires checking out
+    # untrusted code from PRs so rely on some heuristics
+
+    if appid.split(".")[-2].lower() in (
+        "addon",
+        "addons",
+        "extension",
+        "extensions",
+        "plugin",
+        "plugins",
+    ):
+        return ret_none
+
+    if appid.startswith("org.gtk.Gtk3theme."):
+        return ret_none
+
     elif appid.startswith(
         ("io.frama.", "page.codeberg.", "io.sourceforge.", "net.sourceforge.")
     ):
