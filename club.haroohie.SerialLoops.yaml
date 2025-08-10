@@ -1,0 +1,89 @@
+id: club.haroohie.SerialLoops
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+  - org.freedesktop.Sdk.Extension.llvm20
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet8/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet8/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet8/lib/pkgconfig"
+
+command: SerialLoops
+
+finish-args:
+  - --device=dri
+  - --socket=x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --filesystem=~/SerialLoops:create
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+  - --env=SL_LLVM_PATH=/app/lib/llvm20
+  - --env=SL_NINJA_PATH=/app/bin/ninja
+  - --env=SL_FLATPAK_PROC=flatpak-spawn
+  - --env=SL_FLATPAK_PROC_ARG=--host flatpak
+  - --env=SL_FLATPAK_RUN_PROC=flatpak-spawn
+  - --env=SL_FLATPAK_RUN_PROC_ARG=--host
+  - --env=SL_USE_UPDATER=false
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet8/bin/install.sh
+
+  - name: SDL
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-2.32.8
+    build-commands:
+      - mkdir build
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - cmake --build build --config Release --parallel
+      - cmake --install build --config Release --prefix ${FLATPAK_DEST}
+      - ln -s /app/lib/libSDL2.so ${FLATPAK_DEST}/bin/libSDL2.so
+
+  - name: Ninja
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip
+        sha256: 0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238
+        dest-filename: ninja.zip
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux-aarch64.zip
+        sha256: 740f1b9f9d8ae68438240a6a2f3f7a27fc8b1946d2024a6a6b25857ee877987b
+        only-arches:
+          - aarch64
+    build-commands:
+      - mv ninja ${FLATPAK_DEST}/bin/ninja
+
+  - name: SerialLoops
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/haroohie-club/SerialLoops.git
+        tag: 0.3.3
+      - ./nuget-sources.json
+      - type: file
+        path: club.haroohie.SerialLoops.metainfo.xml
+      - type: file
+        path: club.haroohie.SerialLoops.desktop
+      - type: file
+        path: ../../../src/SerialLoops/Assets/Icons/AppIcon.svg
+      - type: file
+        path: VERSION
+    build-commands:
+      - SLVersion=$(cat VERSION) SLAssemblyVersion=$(sed -n 's/apre/8888/p' VERSION) dotnet publish src/SerialLoops/SerialLoops.csproj -c Release -f net8.0 --no-self-contained --source ./nuget-sources /p:PublishSingleFile=false /p:PublishTrimmed=false
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r src/SerialLoops/bin/Release/net8.0/publish/* ${FLATPAK_DEST}/bin
+      - sed -i "s/#VERSION#/$(cat VERSION)/g" club.haroohie.SerialLoops.desktop
+      - install -Dm644 AppIcon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/club.haroohie.SerialLoops.svg
+      - install -Dm644 club.haroohie.SerialLoops.metainfo.xml ${FLATPAK_DEST}/share/metainfo/club.haroohie.SerialLoops.metainfo.xml
+      - install -Dm644 club.haroohie.SerialLoops.desktop ${FLATPAK_DEST}/share/applications/club.haroohie.SerialLoops.desktop
