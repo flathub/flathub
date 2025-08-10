@@ -45,7 +45,19 @@ def get_domain(appid: str) -> str:
     ):
         return ret_none
 
-    if appid.startswith("org.gtk.Gtk3theme."):
+    if appid.startswith(
+        (
+            "org.freedesktop.Platform.GStreamer.",
+            "org.freedesktop.Platform.Icontheme.",
+            "org.freedesktop.Platform.VulkanLayer.",
+            "org.freedesktop.Sdk.Extension.",
+            "org.gtk.Gtk3theme.",
+            "org.kde.KStyle.",
+            "org.kde.PlatformInputContexts.",
+            "org.kde.PlatformTheme.",
+            "org.kde.WaylandDecoration.",
+        )
+    ):
         return ret_none
 
     elif appid.startswith(
