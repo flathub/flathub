@@ -4,6 +4,8 @@ runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: "24.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
 command: run.sh
 separate-locales: false
 rename-icon: acbr-comic-book-reader
@@ -21,42 +23,59 @@ finish-args:
   - --env=G_SLICE=always-malloc
   # use same mouse cursors as host, to avoid weird cursor sizing under Wayland with mixed DPI
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
 modules:
   - name: acbr
     buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/acbr/flatpak-node/cache
+        npm_config_cache: /run/build/acbr/flatpak-node/npm-cache
+        npm_config_offline: "true"
     build-commands:
-      # extract deb
-      - ar x *.deb
-      - tar xvf data.tar.xz
-      # install files from .deb
-      - mv "opt/ACBR Comic Book Reader" ${FLATPAK_DEST}/acbr
+      - jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
+      - npm install --offline
+      - chmod +x node_modules/7zip-bin/linux/x64/7za
+      - npm run build:linux
+      - mv "dist/linux-unpacked" ${FLATPAK_DEST}/acbr
       # install desktop file
-      - install -Dm644 usr/share/applications/acbr-comic-book-reader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # for now at least, I create the desktop file manually
+      - echo '[Desktop Entry]' > acbr-comic-book-reader.desktop
+      - echo 'Name=ACBR Comic Book Reader' >> acbr-comic-book-reader.desktop
+      - echo 'Exec="/opt/ACBR Comic Book Reader/acbr-comic-book-reader" %U' >> acbr-comic-book-reader.desktop
+      - echo 'Terminal=false' >> acbr-comic-book-reader.desktop
+      - echo 'Type=Application' >> acbr-comic-book-reader.desktop
+      - echo 'Icon=acbr-comic-book-reader' >> acbr-comic-book-reader.desktop
+      - echo 'StartupWMClass=ACBR Comic Book Reader' >> acbr-comic-book-reader.desktop
+      - echo 'Comment=Comic book reader and converter for CBZ, CBR, CB7, EPUB and PDF files' >> acbr-comic-book-reader.desktop
+      - echo 'Categories=Graphics;' >> acbr-comic-book-reader.desktop
+      #
+      - install -Dm644 acbr-comic-book-reader.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - desktop-file-edit --set-key=Exec --set-value='run.sh %U' ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      # Patch desktop filename in built-in package.json
+      # patch desktop filename in built-in package.json
       - patch-desktop-filename ${FLATPAK_DEST}/acbr/resources/app.asar
       # install icons
-      - mkdir -p ${FLATPAK_DEST}/share/icons
-      - mv "usr/share/icons/hicolor" ${FLATPAK_DEST}/share/icons/
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps
+      - install -Dm644 src/assets/images/icon_256x256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/acbr-comic-book-reader.png
       # install app wrapper
       - install -Dm755 run.sh ${FLATPAK_DEST}/bin/
       # install metadata
       - install -Dm644 com.binarynonsense.acbr.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
     sources:
       - type: archive
-        only-arches: [x86_64]
-        dest-filename: ACBR_Linux_deb.zip
-        url: https://github.com/binarynonsense/comic-book-reader/releases/download/v3.12.1/ACBR_Linux_deb.zip
-        sha256: 71e45c3a5674470b7a5e799c92567e3a653e76817eb373e0d4d1d45900b4f906
+        archive-type: tar-gzip
+        url: https://github.com/binarynonsense/comic-book-reader/archive/refs/tags/v3.12.1.tar.gz
+        sha256: 06ac8224a1c865dc31d1c1019bf70e222253f0ba0d95bd7d66f18b3c455dbb6f
         x-checker-data:
           type: json
           url: https://api.github.com/repos/binarynonsense/comic-book-reader/releases/latest
-          tag-query: .tag_name
-          timestamp-query: .published_at
-          version-query: .name
-          stable-only: true
-          url-query: .assets[] | select(.name == "ACBR_Linux_deb.zip") |
-            .browser_download_url
+          version-query: .tag_name
+          url-query: .tarball_url
+          is-main-source: true
+      - generated-sources.json
       - type: file
         path: com.binarynonsense.acbr.metainfo.xml
         url: https://raw.githubusercontent.com/binarynonsense/flathub/a77eaac43e86454a1a99fe31732377f2dbd5b97a/com.binarynonsense.acbr.metainfo.xml
