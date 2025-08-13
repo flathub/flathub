@@ -2,7 +2,7 @@
 
 set -xeuo pipefail
 
-GLYCIN_TARGET_VERSION="${1:-1.2.2}"
+GLYCIN_TARGET_VERSION="${1:-1.2.3}"
 
 GLYCIN_LOCK_FILE_DIR=$(mktemp -d)
 trap 'rm -r "${GLYCIN_LOCK_FILE_DIR}"' EXIT
