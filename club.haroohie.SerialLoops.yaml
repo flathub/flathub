@@ -1,0 +1,70 @@
+id: club.haroohie.SerialLoops
+runtime: org.kde.Platform
+runtime-version: '6.9'
+base: net.kuribo64.melonDS
+base-version: stable
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+  - org.freedesktop.Sdk.Extension.llvm20
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet8/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet8/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet8/lib/pkgconfig"
+
+command: SerialLoops
+
+finish-args:
+  - --device=dri
+  - --socket=x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --persist=SerialLoops
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+  - --env=SL_LLVM_PATH=/app/lib/llvm20
+  - --env=SL_NINJA_PATH=/app/bin/ninja
+  - --env=SL_BUNDLED_EMULATOR=/app/bin/melonDS
+  - --env=SL_STORE_SYS_CONFIG=false
+  - --env=SL_USE_UPDATER=false
+
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet8/bin/install.sh
+
+  - name: llvm
+    buildsystem: simple
+    build-commands:
+    - mkdir -p ${FLATPAK_DEST}/lib/llvm20/bin/
+    - mkdir -p ${FLATPAK_DEST}/lib/llvm20/lib/
+    - cp /usr/lib/sdk/llvm20/bin/clang ${FLATPAK_DEST}/lib/llvm20/bin
+    - cp /usr/lib/sdk/llvm20/bin/ld.lld ${FLATPAK_DEST}/lib/llvm20/bin
+    - cp /usr/lib/sdk/llvm20/bin/llvm-objcopy ${FLATPAK_DEST}/lib/llvm20/bin
+    - cp /usr/lib/sdk/llvm20/bin/llvm-objdump ${FLATPAK_DEST}/lib/llvm20/bin
+    - cp -ra /usr/lib/sdk/llvm20/lib/* ${FLATPAK_DEST}/lib/llvm20/lib/
+
+  - name: Ninja
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/ninja-build/ninja.git
+        tag: v1.13.1
+    build-commands:
+      - python3 ./configure.py --bootstrap
+      - mv ninja ${FLATPAK_DEST}/bin/ninja
+
+  - name: SerialLoops
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/haroohie-club/SerialLoops.git
+        tag: 0.3.3
+      - ./nuget-sources.json
+    build-commands:
+      - SLVersion=0.3.3 SLAssemblyVersion=0.3.3 dotnet publish src/SerialLoops/SerialLoops.csproj -c Release -f net8.0 --no-self-contained --source ./nuget-sources /p:PublishSingleFile=false /p:PublishTrimmed=false
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r src/SerialLoops/bin/Release/net8.0/publish/* ${FLATPAK_DEST}/bin
+      - install -Dm644 src/SerialLoops/Assets/Icons/AppIcon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/club.haroohie.SerialLoops.svg
+      - install -Dm644 install/linux/flatpak/club.haroohie.SerialLoops.metainfo.xml ${FLATPAK_DEST}/share/metainfo/club.haroohie.SerialLoops.metainfo.xml
+      - install -Dm644 install/linux/flatpak/club.haroohie.SerialLoops.desktop ${FLATPAK_DEST}/share/applications/club.haroohie.SerialLoops.desktop
