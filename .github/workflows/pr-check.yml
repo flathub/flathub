@@ -1,0 +1,214 @@
+name: Check PRs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */5 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-prs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Install deps
+        run: |
+          pip install 'publicsuffixlist==1.0.2.20250802'
+
+      - name: Fetch recent PR numbers
+        run: |
+          CUTOFF_DATE="2025-05-25T00:00:00Z"
+          prs_raw=$(gh pr list --base "new-pr" -L 50 --state open --json number,createdAt,updatedAt,isDraft,labels \
+            | jq -r --arg cutoff "$CUTOFF_DATE" '[.
+              []
+              | select(
+                  .isDraft == false
+                  and .createdAt >= $cutoff
+                  and .updatedAt >= (now - (2 * 24 * 60 * 60) | todate)
+                  and (all(.labels[].name; . != "Stale") or (.labels == []))
+                )
+              | .number
+            ] | .[]')
+            prs_list=$(printf '%s\n' $prs_raw | head -30 | paste -sd "," -)
+            echo "PR_LIST=$prs_list" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
+      - name: Validate PRs
+        run: |
+          IFS=',' read -ra PR_NUMBERS <<< "${{ env.PR_LIST }}"
+
+          if [ ${#PR_NUMBERS[@]} -eq 0 ] || [ -z "${PR_NUMBERS[0]}" ]; then
+            echo "No PRs found, exiting."
+            exit 0
+          fi
+
+          for PR_NUM in "${PR_NUMBERS[@]}"; do
+            echo "Checking PR https://github.com/flathub/flathub/pull/$PR_NUM"
+
+            json=$(gh pr view "$PR_NUM" --json body,title -q '{body: .body, title: .title}')
+            PR_BODY=$(echo "$json" | jq -r .body)
+            PR_TITLE=$(echo "$json" | jq -r .title)
+            NORMALIZED_PR_BODY=$(printf "%s\n" "$PR_BODY" | tr -d '\r')
+
+            unset "$PR_TITLE"
+            export PR_TITLE="$PR_TITLE"
+
+            EXIT_CODE=$(curl -sSL "$SCRIPT_URL" | python3 | grep 'EXIT_CODE=' | cut -d= -f2)
+            echo "EXIT_CODE is $EXIT_CODE"
+            unset "$PR_TITLE"
+
+            PR_COMMENTS="$(gh pr view "$PR_NUM" --json comments -q '.comments[].body')"
+
+            PR_LABELS="$(gh pr view "$PR_NUM" --json labels -q '.labels[].name')"
+
+            PR_THREAD_COUNT=$(gh api repos/$GH_REPO/pulls/$PR_NUM/comments \
+                --jq '[.[] | select(.position != null)] | length')
+
+            BLOCKED=0
+
+            comment_exists() {
+              local comment="$1"
+              echo "$PR_COMMENTS" | grep -Fq "$comment"
+            }
+
+            comment_exists_full() {
+              local comment="$1"
+              echo "$PR_COMMENTS" | grep -Fxq "$comment"
+            }
+
+            comment_exists_any() {
+              for comment in "$@"; do
+                if echo "$PR_COMMENTS" | grep -Fq "$comment"; then
+                  return 0
+                fi
+              done
+              return 1
+            }
+
+            label_exists_any() {
+              for label in "$@"; do
+                if echo "$PR_LABELS" | grep -Fxq "$label"; then
+                  return 0
+                fi
+              done
+              return 1
+            }
+
+            start_build() {
+              if ! label_exists_any "pr-check-blocked" "blocked"; then
+                if ! comment_exists_any "$BUILD_START_COMMENT_PARTIAL" "$BUILD_SUCCESS_COMMENT"; then
+                  echo "PR is not marked as blocked and none of the build comments exist. Starting a build"
+                  gh pr comment "$PR_NUM" --body "$BUILD_START_COMMENT"
+                fi
+              fi
+            }
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "PR title validation failed"
+              BLOCKED=1
+            else
+              DOMAIN=$(curl -sSL "$DOMAIN_SCRIPT_URL" | python3 - "$PR_TITLE")
+              if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "None" ]; then
+                echo "Domain is: $DOMAIN"
+                VERIF_URL="https://$DOMAIN/.well-known/org.flathub.VerifiedApps.txt"
+                VERIF_COMMENT="If you intend to verify this app, please confirm that you can upload $VERIF_URL. Otherwise, ignore this"
+                DOMAIN_COMMENT="$DOMAIN_COMMENT_PARTIAL $DOMAIN. $VERIF_COMMENT. Please comment if this incorrect."
+                if ! comment_exists_full "$DOMAIN_COMMENT"; then
+                  echo "Did not find domain comment, commenting"
+                  gh pr comment "$PR_NUM" --body "$DOMAIN_COMMENT"
+                fi
+              fi
+            fi
+
+            CHECKLIST_PRESENT=$(printf "%s\n" "$PR_BODY" | grep -cE '^- ?\[[xX]\] [A-Za-z]+' || true)
+            echo "Total checklists found: $CHECKLIST_PRESENT"
+            UNCHECKED=$(printf "%s\n" "$PR_BODY" | grep -Ec '^- \[ \] [A-Za-z]+' || true)
+            echo "Unchecked checklists found: $UNCHECKED"
+
+            if [ "$CHECKLIST_PRESENT" -eq 0 ]; then
+              echo "No checklist present in PR body"
+              BLOCKED=1
+            elif [ "$UNCHECKED" -gt 0 ]; then
+              echo "Checklist incomplete in PR body"
+              BLOCKED=1
+            fi
+
+            REQUIRED_ITEM="I have read and followed all the [Submission requirements]"
+            REQUIRED_CHECKED=$(printf "%s\n" "$NORMALIZED_PR_BODY" | grep -Fi "[x] $REQUIRED_ITEM" || true)
+
+            if [ -z "$REQUIRED_CHECKED" ]; then
+              echo "Required checklist not found in PR body"
+              BLOCKED=1
+            fi
+
+            echo "BLOCKED is set to $BLOCKED"
+
+            if [ "$BLOCKED" -eq 0 ]; then
+              if label_exists_any "pr-check-blocked"; then
+                echo "Removing pr-check-blocked label"
+                gh pr edit "$PR_NUM" --remove-label "pr-check-blocked" || true
+              fi
+              if ! label_exists_any "awaiting-changes" "awaiting-upstream" "blocked" "reviewed-waiting"; then
+                echo "Marking as awaiting-review"
+                gh pr edit "$PR_NUM" --add-label "awaiting-review" --remove-label "pr-check-blocked" || true
+              fi
+              start_build
+            elif [ "$BLOCKED" -eq 1 ]; then
+              echo "Marking as blocked"
+              gh pr edit "$PR_NUM" --add-label "pr-check-blocked" --remove-label "awaiting-review"
+              if ! comment_exists "$REVIEW_COMMENT_PARTIAL"; then
+                echo "Did not find comment, commenting"
+                gh pr comment "$PR_NUM" --body "$REVIEW_COMMENT"
+              else
+                echo "Found comment, skipping commenting"
+              fi
+            else
+              echo "Nothing to do"
+              start_build
+            fi
+            if [ "$BLOCKED" -eq 1 ] \
+              && label_exists_any "pr-check-blocked" "blocked" \
+              && ! comment_exists_any "$BUILD_SUCCESS_COMMENT" \
+              && [ "$(echo "$PR_COMMENTS" | grep -E -c 'Test build.*failed')" -gt 10 ]; then
+                echo "PR is blocked and too many failing builds. Locking"
+                gh pr comment "$PR_NUM" --body "$LOCKED_COMMENT"
+                gh pr lock "$PR_NUM" || true
+            fi
+            if label_exists_any "awaiting-review" && [ "$PR_THREAD_COUNT" -gt 0 ]; then
+                echo "Has awaiting-review label and review comments, marking as awaiting-changes"
+                gh pr edit "$PR_NUM" --add-label "awaiting-changes" --remove-label "awaiting-review" || true
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SCRIPT_URL: https://raw.githubusercontent.com/flathub/flathub/refs/heads/master/.github/scripts/validate.py
+          DOMAIN_SCRIPT_URL: https://raw.githubusercontent.com/flathub/flathub/refs/heads/master/.github/scripts/domain_from_appid.py
+          BUILD_SUCCESS_COMMENT: "[Test build succeeded]"
+          BUILD_START_COMMENT: |
+            Starting a test build of the submission. Please fix any
+            issues reported in the build log. You can restart the build
+            once the issue is fixed by commenting the phrase below.
+
+            bot, build
+          BUILD_START_COMMENT_PARTIAL: "Starting a test build of the submission"
+          REVIEW_COMMENT: >
+            This pull request is temporarily marked as blocked as some
+            automated checks failed on it. Please make sure the pull
+            request title is `Add $FLATPAK_ID` and that all
+            [checklist items](https://github.com/flathub/flathub/blob/master/.github/pull_request_template.md)
+            in the pull request body are marked as complete.
+          LOCKED_COMMENT: >
+            This pull request is marked as blocked and has too many
+            builds failing. Locking this PR temporarily. Please build
+            it locally following the instructions and push the relevant
+            changes first.
+          REVIEW_COMMENT_PARTIAL: "This pull request is temporarily marked as blocked as some"
+          DOMAIN_COMMENT_PARTIAL: "The domain to be used for verification is"
