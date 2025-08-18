@@ -1,0 +1,236 @@
+{
+    "id": "io.github.cacheuseonly.graphite",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "48",
+    "sdk": "org.gnome.Sdk",
+    "command": "graphite",
+    "finish-args": [
+        "--socket=fallback-x11",
+        "--share=ipc",
+        "--socket=wayland",
+        "--device=dri",
+        "--filesystem=/var/lib/apt:ro",
+        "--filesystem=/var/cache/apt:ro",
+        "--filesystem=/var/lib/dpkg:ro"
+    ],
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/man",
+        "/share/doc",
+        "/share/gtk-doc",
+        "/share/man",
+        "/share/pkgconfig",
+        "*.la",
+        "*.a"
+    ],
+    "build-options": {
+        "env": {
+            "PERL5LIB": "/app/lib/perl5/vendor_perl/5.40.2"
+        }
+    },
+    "modules": [
+        {
+            "name": "python3-setuptools",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"setuptools\" --no-build-isolation --ignore-installed"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/4e/6e/abdfaaf5c294c553e7a81cf5d801fbb4f53f5c5b6646de651f92a2667547/setuptools-75.7.0-py3-none-any.whl",
+                    "sha256": "84fb203f278ebcf5cd08f97d3fb96d3fbed4b629d500b29ad60d11e00769b183"
+                }
+            ]
+        },
+        {
+            "name": "apt",
+            "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DWITH_DOC:BOOL=OFF",
+                "-DUSE_NLS:BOOL=OFF",
+                "-DWITH_TESTS=OFF",
+                "-DROOT_GROUP=root",
+                "-DCMAKE_INSTALL_LOCALSTATEDIR:PATH=/var",
+                "-DCMAKE_INSTALL_SYSCONFDIR:PATH=/etc",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "http://deb.debian.org/debian/pool/main/a/apt/apt_2.6.1.tar.xz",
+                    "sha256": "86b888c901fa2e78f1bf52a2aaa2f400ff82a472b94ff0ac6631939ee68fa6fd"
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "sed '/add_subdirectory(doc)/d' -i CMakeLists.txt"
+                    ]
+                }
+            ],
+            "modules": [
+                {
+                    "name": "libdb",
+                    "config-opts": [
+                        "cross_compiling=yes",
+                        "--enable-cxx",
+                        "--enable-shared",
+                        "--disable-static",
+                        "--enable-dbm"
+                    ],
+                    "subdir": "build_unix",
+                    "build-options": {
+                        "cflags": "-Wno-error=implicit-int -Wno-error=implicit-function-declaration"
+                    },
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "http://download.oracle.com/berkeley-db/db-5.3.28.tar.gz",
+                            "sha256": "e0a992d740709892e81f9d93f06daf305cf73fb81b545afe72478043172c3628"
+                        },
+                        {
+                            "type": "patch",
+                            "paths": [
+                                "patches/db-5.3.28-atomic_compare_exchange.patch"
+                            ]
+                        },
+                        {
+                            "type": "shell",
+                            "commands": [
+                                "for dir in dist lang/sql/sqlite lang/sql/jdbc lang/sql/odbc; do\n  cp -v /usr/share/gnu-config/config.{guess,sub} \"$dir/\"\ndone"
+                            ]
+                        },
+                        {
+                            "type": "script",
+                            "dest": "build_unix",
+                            "dest-filename": "configure",
+                            "commands": [
+                                "exec ../dist/configure \"$@\""
+                            ]
+                        }
+                    ],
+                    "cleanup": [
+                        "/bin",
+                        "/docs"
+                    ]
+                },
+                {
+                    "name": "dpkg",
+                    "build-options": {
+                        "ldflags": "-ltinfo"
+                    },
+                    "config-opts": [
+                        "--sbindir=/app/bin",
+                        "--localstatedir=/var"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "http://deb.debian.org/debian/pool/main/d/dpkg/dpkg_1.21.22.tar.xz",
+                            "sha256": "5a1d15481bba79d7a4899fd55b4b6b18a987ca8d56ee8c43e9cab63b8a0a3545"
+                        }
+                    ],
+                    "modules": [
+                        {
+                            "name": "libmd",
+                            "sources": [
+                                {
+                                    "type": "archive",
+                                    "url": "https://archive.hadrons.org/software/libmd/libmd-1.0.4.tar.xz",
+                                    "sha256": "f51c921042e34beddeded4b75557656559cf5b1f2448033b4c1eec11c07e530f"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "triehash",
+                    "buildsystem": "simple",
+                    "build-commands": [
+                        "install -Dm755 triehash.pl $FLATPAK_DEST/bin/triehash"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://github.com/julian-klode/triehash/archive/v0.3.tar.gz",
+                            "sha256": "289a0966c02c2008cd263d3913a8e3c84c97b8ded3e08373d63a382c71d2199c"
+                        }
+                    ]
+                },
+                {
+                    "name": "xxhash",
+                    "no-autogen": true,
+                    "make-install-args": [
+                        "PREFIX=/app"
+                    ],
+                    "sources": [
+                        {
+                            "type": "archive",
+                            "url": "https://github.com/Cyan4973/xxHash/archive/v0.8.0.tar.gz",
+                            "sha256": "7054c3ebd169c97b64a92d7b994ab63c70dd53a06974f1f630ab782c28db0f4f"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "python-apt",
+            "buildsystem": "simple",
+            "build-options": {
+                "append-ld-library-path": "/app/lib64"
+            },
+            "build-commands": [
+                "python3 setup.py build",
+                "python3 setup.py install --prefix=/app --root=/"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "http://deb.debian.org/debian/pool/main/p/python-apt/python-apt_2.6.0.tar.xz",
+                    "sha256": "557a705723f8acbb62c8af2989d0258dccb0a71f35e34aca53a9b492dbfbcfdd"
+                }
+            ]
+        },
+        {
+            "name": "networkx",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation networkx"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/source/n/networkx/networkx-3.5.tar.gz",
+                    "sha256": "d4c6f9cf81f52d69230866796b82afbccdec3db7ae4fbd1b65ea750feed50037"
+                }
+            ]
+        },
+        {
+            "name": "cython",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation cython"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/18/ab/915337fb39ab4f4539a313df38fc69938df3bf14141b90d61dfd5c2919de/cython-3.1.3.tar.gz",
+                    "sha256": "10ee785e42328924b78f75a74f66a813cb956b4a9bc91c44816d089d5934c089"
+                }
+            ]
+        },
+        {
+            "name": "graphite",
+            "builddir": true,
+            "buildsystem": "meson",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/CacheUseOnly/graphite.git",
+                    "tag": "v1.0"
+                }
+            ]
+        }
+    ]
+}
