@@ -1,0 +1,59 @@
+#!/usr/bin/env -S /bin/sh -c '"$(dirname "$0")/.venv/bin/python3" "$0" "$@"'
+
+import json
+import os
+import subprocess
+import requests
+
+
+if __name__ == "__main__":
+    if not os.path.exists(".venv"):
+        print("Error: .venv not found. Please create a virtual environment first. Follow the README for instructions.")
+        exit(1)
+
+    if not os.path.exists(".venv/bin/flatpak-node-generator"):
+        print("Error: 'flatpak-node-generator' not found in .venv. Follow the README to install it.")
+        exit(1)
+
+    root = os.path.dirname(__file__)
+    generated_sources_path = f"{root}/generated-sources.json"
+    subprocess.call(
+        [
+            ".venv/bin/flatpak-node-generator",
+            "yarn",
+            "--electron-node-headers",
+            "--node-chromedriver-from-electron",
+            "9.3.1",
+            "-r",
+            f"{root}/github-desktop-plus/yarn.lock",
+            "-R",
+            "yarn.lock",
+            "-R",
+            "app/yarn.lock",
+        ],
+        cwd=root,
+    )
+
+    with open(generated_sources_path, "r") as fp:
+        generated_sources = json.load(fp)
+
+    # Move electron-cache files to match what @electron/get expects
+    # https://github.com/electron/get/blob/master/src/Cache.ts
+    for source in generated_sources:
+        if source.get("dest"):
+            if source["dest"] == "flatpak-node/electron-cache":
+                cache_dir = (
+                    source["url"]
+                    .split("?")[0]
+                    .split("#")[0]
+                    .translate(str.maketrans("", "", '<>:"/\\|?*'))[:255]
+                )
+                source["dest"] = f"flatpak-node/electron-cache/{cache_dir}"
+                del source["dest-filename"]
+        if source.get("type")=="git" and source.get("url") == "https://github.com/sergiou87/prebuild":
+            req = requests.get("https://api.github.com/repos/sergiou87/prebuild/commits/master")
+            jsn = req.json()
+            source["commit"] = jsn["sha"]
+
+    with open(generated_sources_path, "w") as fp:
+        json.dump(generated_sources, fp, indent=4)

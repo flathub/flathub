@@ -1,0 +1,115 @@
+app-id: io.github.pol_rivero.DesktopPlus
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: start-github-desktop-plus
+separate-locales: false
+rename-icon: io.github.pol_rivero.DesktopPlus
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=ssh-auth
+  - --socket=gpg-agent
+  - --share=network
+  - --device=all
+  - --filesystem=host
+  - --filesystem=/opt/:ro
+  - --filesystem=/var/lib/flatpak/app:ro
+  - --filesystem=xdg-run/keyring
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gtk.vfs.*
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --env=FLATPAK_HOST=1
+  - --env=ELECTRON_TRASH=gio
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+modules:
+  - shared-modules/libsecret/libsecret.json
+  - name: gpg
+    config-opts:
+      - --disable-doc
+      - --enable-gpg-is-gpg2
+      - --disable-tests
+    sources:
+      # latest long term support release
+      - type: archive
+        url: https://gnupg.org/ftp/gcrypt/gnupg/gnupg-2.4.7.tar.bz2
+        sha256: 7b24706e4da7e0e3b06ca068231027401f238102c41c909631349dcc3b85eb46
+  - name: node-gyp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755  node-gyp /app/bin
+    cleanup:
+      - "*"
+    sources:
+      - type: script
+        dest-filename: node-gyp
+        commands:
+          - node /usr/lib/sdk/node22/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js
+            $@
+  - name: github-desktop-plus
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory & yarn directory.
+      append-path: /app/bin:/usr/lib/sdk/node22/bin:/run/build/github-desktop-plus/flatpak-node/chromedriver:/usr/lib/sdk/node22/lib/node_modules/npm/node_modules/node-gyp/bin
+      env:
+        # Sets the directory where Node is located so way npm won't download the headers.
+        npm_config_nodedir: /usr/lib/sdk/node22
+        # Set the Electron cache directory.
+        ELECTRON_CACHE: /run/build/github-desktop-plus/flatpak-node/electron-cache
+        # Skip Electron related downloads
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        OFFLINE: "1"
+        CHROMEDRIVER_SKIP_DOWNLOAD: "true"
+        # Use predownloaded dugite-native
+        TMPDIR: /run/build/github-desktop-plus/flatpak-node/tmp
+        XDG_CACHE_HOME: /run/build/github-desktop-plus/flatpak-node/cache
+    build-commands:
+      - HOME=$PWD node ./vendor/yarn-1.21.1.js config --offline set yarn-offline-mirror
+        $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
+      - node ./vendor/yarn-1.21.1.js --offline --verbose
+      # Run electron-builder, passing the architecture arguments to it.
+      - . flatpak-node/electron-builder-arch-args.sh; node ./vendor/yarn-1.21.1.js
+        run --offline build:prod $ELECTRON_BUILDER_ARCH_ARGS
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - cp -r dist/github-desktop-plus-linux-* /app/github-desktop-plus
+      # Install the wrapper script to start it.
+      - install -Dm755 start-github-desktop-plus.sh /app/bin/start-github-desktop-plus
+    post-install:
+      - install -D io.github.pol_rivero.DesktopPlus.desktop -t  /app/share/applications/
+      - install -D io.github.pol_rivero.DesktopPlus.metainfo.xml -t  /app/share/metainfo/
+      - install -Dm644 app/static/linux/logos/32x32.png  /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/linux/logos/64x64.png  /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/linux/logos/128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/linux/logos/256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 app/static/linux/logos/512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+      # https://github.com/shiftkey/desktop/issues/21
+      - find "/app" -type f -executable -exec sed -i 's/libcurl-gnutls\.so\.4/libcurl.so.4\x00\x00\x00\x00\x00\x00\x00/g' {} \; 2>/dev/null || true
+    sources:
+      - type: git
+        url: https://github.com/pol-rivero/github-desktop-plus.git
+        tag: v3.5.2.2
+        commit: d03d393fd881ced155dead5a86cddc18c122b395
+        x-checker-data:
+          type: git
+          tag-pattern: v(\d+(?:\.\d+)*)
+      - type: patch
+        path: node_options.patch
+      - generated-sources.json
+      - type: file
+        path: io.github.pol_rivero.DesktopPlus.desktop
+      - type: file
+        path: io.github.pol_rivero.DesktopPlus.metainfo.xml
+      - type: script
+        dest-filename: start-github-desktop-plus.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - exec zypak-wrapper /app/github-desktop-plus/github-desktop-plus "$@"
