@@ -8,7 +8,7 @@ if [ -n "${APP_EXEC:-}" ] && [ -x "$ROOT/$APP_EXEC" ]; then
 fi
 
 # Try common names
-for c in "alderon-games-launcher" "Alderon Games Launcher" "launcher" "com.alderongames.launcher" "electron"; do
+for c in "alderon-games-launcher" "Alderon Games Launcher" "launcher" "com.alderongames.alderonlauncher" "electron"; do
   if [ -x "$ROOT/$c" ]; then
     exec zypak-wrapper "$ROOT/$c" "$@"
   fi
