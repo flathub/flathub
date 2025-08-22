@@ -1,0 +1,62 @@
+id: com.scaletictactoe.app
+
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+command: scaletictactoe
+finish-args:
+  - --socket=wayland # Permission needed to show the window
+  - --socket=fallback-x11 # Permission needed to show the window
+  - --device=dri # OpenGL, not necessary for all projects
+  - --share=ipc
+  - --share=network
+  - --own-name=org.com_scaletictactoe_app.SingleInstance
+  - --talk-name=org.kde.StatusNotifierWatcher # Optional: needed only if your app uses the tray icon
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --filesystem=xdg-run/tray-icon:create # Optional: needed only if your app uses the tray icon - see an alternative way below
+  
+  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1 # Optional: may solve some issues with black webviews on Wayland
+  - --env=GTK_USE_PORTAL=1
+  
+
+modules:
+  - name: binary
+    buildsystem: simple
+
+    sources:
+      # A reference to the previously generated flatpak metainfo file
+      - type: file
+        path: flatpak.metainfo.xml
+      # If you use GitHub releases, you can target an existing remote file
+      - type: file
+        path: 'src-tauri/target/release/bundle/deb/Scale Tic Tac Toe_0.1.0_amd64.deb'
+        only-arches: [x86_64] # This source is only used on x86_64 Computers
+      # You can also use a local file for testing
+      # - type: file
+      #   path: yourapp_1.0.1_amd64.deb
+    build-commands:
+      - set -e
+
+      # Extract the deb package
+      - mkdir deb-extract
+      - ar -x *.deb --output deb-extract
+      - tar -C deb-extract -xf deb-extract/data.tar.gz
+
+      # Copy binary
+      - 'install -Dm755 deb-extract/usr/bin/scaletictactoe /app/bin/scaletictactoe'
+
+      # If you bundle files with additional resources, you should copy them:
+      # - mkdir -p '/app/lib/Scale Tic Tac Toe'
+      # - cp -r 'deb-extract/usr/lib/Scale Tic Tac Toe/.' '/app/lib/Scale Tic Tac Toe'
+      # - find '/app/lib/Scale Tic Tac Toe' -type f -exec chmod 644 {} \;
+
+      # Copy desktop file + ensure the right icon is set
+      - sed -i 's/^Icon=.*/Icon=com.scaletictactoe.app/' 'deb-extract/usr/share/applications/Scale Tic Tac Toe.desktop'
+      - install -Dm644 'deb-extract/usr/share/applications/Scale Tic Tac Toe.desktop' /app/share/applications/com.scaletictactoe.app.desktop
+
+      # Copy icons
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/scaletictactoe.png /app/share/icons/hicolor/128x128/apps/com.scaletictactoe.app.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/scaletictactoe.png /app/share/icons/hicolor/32x32/apps/com.scaletictactoe.app.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/scaletictactoe.png /app/share/icons/hicolor/256x256@2/apps/com.scaletictactoe.app.png
+      - install -Dm644 flatpak.metainfo.xml /app/share/metainfo/com.scaletictactoe.app.metainfo.xml
