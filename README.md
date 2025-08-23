@@ -25,13 +25,13 @@ Installation
 To build and install this Flatpak, you have to [install Flatpak, Flatpak builder and the Flathub repo](https://flatpak.org/setup/). Don't forget to initialize this repo submodules. Then run:
 
 ```sh
-flatpak-builder build io.github.pol_rivero.DesktopPlus.yaml --repo=repo --install --force-clean --install-deps-from=flathub
+flatpak-builder build io.github.pol_rivero.github-desktop-plus.yaml --repo=repo --install --force-clean --install-deps-from=flathub
 ```
 
 Once installed, launch GitHub Desktop Plus by running:
 
 ```sh
-flatpak run io.github.pol_rivero.DesktopPlus
+flatpak run io.github.pol_rivero.github-desktop-plus
 ```
 
 Updating `github-desktop-plus` repo and dependencies
@@ -54,7 +54,7 @@ To update `github-desktop-plus` repo to its latest commit and update the depende
     git checkout <commit hash or tag>
     ```
 
-1. Change the commit in `io.github.pol_rivero.DesktopPlus.yaml` to the desired one:
+1. Change the commit in `io.github.pol_rivero.github-desktop-plus.yaml` to the desired one:
 
     ```yaml
     ...
