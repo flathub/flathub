@@ -1,0 +1,135 @@
+app-id: com.cyberbotics.webots
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: webots
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+
+cleanup:
+  - /bin/*swig
+  - /bin/distro
+  - /bin/assimp
+  - /bin/pico*
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /lib/python*
+  - /lib/*.a
+  - /lib/*.la
+  - /share/swig
+  - /share/locale
+  - /share/man
+modules:
+  - python3-modules.json
+  - shared-modules/glu/glu-9.json
+
+  - name: swig
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/swig/swig.git
+        tag: v4.3.1
+        commit: f8611c6288dfc38f838e9eab61aa802c46b21189
+
+  - name: libassimp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_CXX_FLAGS='-Wno-error=array-compare -Wno-error=dangling-reference'
+    sources:
+      - type: git
+        url: https://github.com/assimp/assimp.git
+        tag: v5.2.3
+        commit: 19f2a624a9d69aa8d1680685766b76bd8983ffe8
+
+  - name: libOIS
+    buildsystem: autotools
+    post-install:
+      - mv ${FLATPAK_DEST}/include/ois ${FLATPAK_DEST}/include/OIS
+    sources:
+      - type: git
+        url: https://github.com/wgois/OIS.git
+        tag: v1.4
+        commit: 78fea9ef397cf28f512b8a8d662afd898da6dcc4
+
+  - name: popt
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/rpm-software-management/popt.git
+        tag: popt-1.19-release
+        commit: 916e61045d268f7e37ade5ec047eb77e8299e6ad
+
+  - name: picotts
+    buildsystem: autotools
+    subdir: pico
+    post-install:
+      # Word this is a keyword in C++, and will cause errors
+      - sed -i 's/\bthis\b/that/g' ${FLATPAK_DEST}/include/pico*.h
+    sources:
+      - type: git
+        url: https://github.com/cyberbotics/picotts.git
+        commit: 470531ab6296a3cb7c83ae5e6ef0db8573b54a8d
+
+  - name: webots
+    buildsystem: simple
+    build-options:
+      cflags: -Wno-unused-result
+    build-commands:
+      - install -Dpm644 scripts/packaging/webots.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dpm644 scripts/packaging/webots.png     ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dpm644 -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
+      - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key="Categories" --set-value="Application;Education;Robotics;" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # Install deps
+      - mv xc16-1.24.zip projects/robots/gctronic/e-puck/transfer
+      - ln -s /usr/bin/lrelease ${FLATPAK_BUILDER_BUILDDIR}/bin/qt
+      - ln -s /usr/lib/libexec/moc ${FLATPAK_BUILDER_BUILDDIR}/bin/qt
+      # Enable openjdk & Build webots
+      - source /usr/lib/sdk/openjdk/enable.sh &&
+        make distrib -j${FLATPAK_BUILDER_N_JOBS}
+      # Install
+      - tar xjf distribution/webots-*.tar.bz2 -C ${FLATPAK_DEST}
+      - rm -rf ${FLATPAK_DEST}/webots/bin/{qt,qt.conf}
+      - mv ${FLATPAK_DEST}/share/pico ${FLATPAK_DEST}/webots/resources
+      - mkdir -p ${FLATPAK_DEST}/bin && ln -s ${FLATPAK_DEST}/webots/webots ${FLATPAK_DEST}/bin
+      - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+    sources:
+      - type: git
+        url: https://github.com/cyberbotics/webots.git
+        tag: R2025a
+        commit: c6793d8f7230a311c4bc2a3101d9f1a8bc0aa01b
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/cyberbotics/webots/releases/latest
+          version-query: .tag_name
+          timestamp-query: .published_at
+      - type: patch
+        path: patches/generate_projects_files.patch
+      - type: patch
+        path: patches/makefile.patch
+      - type: patch
+        path: patches/webots_makefile.patch
+      - type: patch
+        path: patches/linux_distro.patch
+      - type: patch
+        path: patches/webots_distro.patch
+      - type: file
+        path: com.cyberbotics.webots.metainfo.xml
+      - type: file
+        url: https://www.cyberbotics.com/files/repository/dependencies/linux64/release/xc16-1.24.zip
+        sha256: c57816d5aa0ed9da2c4de510a4f3a1cb0c4e16e2d9c191411d0830032c761aee
