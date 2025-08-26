@@ -1,41 +1,35 @@
 app-id: org.jeffvli.feishin
 runtime: org.freedesktop.Platform
-runtime-version: "24.08"
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
-base-version: "24.08"
+base-version: "25.08"
 command: feishin
 separate-locales: false
-
-add-build-extensions:
-  - org.freedesktop.Platform.ffmpeg-full
 
 finish-args:
   - --device=dri
   - --share=ipc
   - --socket=x11
-  - --socket=wayland
   - --socket=pulseaudio
   - --share=network
   - --filesystem=xdg-music
   - --filesystem=xdg-run/pipewire-0:ro
   - --filesystem=xdg-run/app/com.discordapp.Discord:create
   - --own-name=org.mpris.MediaPlayer2.Feishin
-  - --talk-name=org.gnome.SettingsDaemon.MediaKeys
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.kde.kwalletd5
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 
 modules:
   - name: mpv
-    buildsystem: simple
-    build-commands:
-      - meson setup build
-      - meson configure build -Dbuildtype=release -Ddebug=false -Dstrip=true -Dbuild-date=false -Dmanpage-build=disabled -Dprefix=/app
-      - meson compile -C build
-      - meson install -C build
+    buildsystem: meson
+    config-opts:
+      - -Dbuildtype=release
+      - -Ddebug=false
+      - -Dstrip=true
+      - -Dbuild-date=false
+      - -Dmanpage-build=disabled
     cleanup:
       - /lib/pkgconfig
       - /share
@@ -46,11 +40,16 @@ modules:
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
-        commit: e48ac7ce08462f5e33af6ef9deeac6fa87eef01e
-        tag: v0.40.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+        tag: v0.41.0
+    post-install:
+      - install -Dm0644 ../LICENSE.LGPL -t ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/mpv
     modules:
       - name: libplacebo
         buildsystem: meson
+        config-opts:
+          - -Ddemos=false
+          - -Dshaderc=disabled
         cleanup:
           - /include
           - /lib/pkgconfig
@@ -62,24 +61,10 @@ modules:
               tag-pattern: ^v([\d.]+)$
             commit: 3188549fba13bbdf3a5a98de2a38c2e71f04e21e
             tag: v7.351.0
-        modules:
-          - name: glslang
-            buildsystem: cmake-ninja
-            config-opts:
-              - -DBUILD_SHARED_LIBS=ON
-              - -DENABLE_OPT=0
-            cleanup:
-              - /bin
-              - /include
-              - /lib/cmake
-            sources:
-              - type: git
-                url: https://github.com/KhronosGroup/glslang.git
-                x-checker-data:
-                  type: git
-                  tag-pattern: ^([\d.]+)$
-                commit: 8a85691a0740d390761a1008b4696f57facd02c4
-                tag: 15.4.0
+          - type: patch
+            path: 0001-vulkan-utils_gen-fix-for-python-3.14.patch
+        post-install:
+          - install -Dm0644 ../LICENSE -t ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/libplacebo
       - name: libass
         config-opts:
           - --enable-shared
@@ -96,23 +81,27 @@ modules:
               tag-pattern: ^([\d.]+)$
             commit: bbb3c7f1570a4a021e52683f3fbdf74fe492ae84
             tag: 0.17.4
+        post-install:
+          - install -Dm0644 COPYING -t ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/libass
   - name: jq
-    buildsystem: simple
-    subdir: main
-    build-commands:
-      - install -Dm 755 jq-linux-amd64 /app/bin/jq
+    config-opts:
+      - --disable-docs
+      - --with-oniguruma=builtin
     sources:
-      - type: file
-        url: https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64
-        sha256: 020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d
-        dest: main
+      - type: git
+        url: https://github.com/jqlang/jq.git
+        commit: 4467af7068b1bcd7f882defff6e7ea674c5357f4
+        tag: jq-1.8.1
         x-checker-data:
-          type: json
-          url: https://api.github.com/repos/jqlang/jq/releases/latest
-          tag-query: .tag_name
-          version-query: $tag | sub("^v"; "")
-          url-query: .assets[] | select(.name == "jq-linux-amd64") | .browser_download_url
-
+          type: git
+          tag-pattern: ^jq-([\d.]+)$
+      - type: script
+        commands: [autoreconf -i]
+        dest-filename: autogen.sh
+    post-install:
+      - install -Dm0644 COPYING -t ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/jq
+    cleanup:
+      - /bin/onig-config
   - name: feishin
     buildsystem: simple
     subdir: main
@@ -122,24 +111,43 @@ modules:
           install -Dm 644 resources/assets/icons/${i}.png /app/share/icons/hicolor/${i}/apps/${FLATPAK_ID}.png
         done
       - cp -ar . /app/main
-      - install -Dm 644 ../flatpak/default.json /app/main/resources/default.json
-      - install -Dm 644 ../flatpak/org.jeffvli.feishin.desktop /app/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm 644 ../flatpak/org.jeffvli.feishin.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - envsubst < ../feishin.desktop.tmpl > /app/share/applications/${FLATPAK_ID}.desktop
+      - chmod 0644 /app/share/applications/${FLATPAK_ID}.desktop
+
+      # Update version in metainfo.xml
+      - |
+        VERSION=$(jq -r '.version' ../package.json)
+        python3 ../update_metainfo_version.py --version "$VERSION" --metainfo ../org.jeffvli.feishin.metainfo.xml
+
+      - install -Dm 644 ../default.json /app/main/resources/default.json
+      - install -Dm 644 ../org.jeffvli.feishin.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - install -Dm 755 ../feishin.sh /app/bin/feishin
     sources:
       - type: archive
-        url: https://github.com/jeffvli/feishin/releases/download/v0.18.0/Feishin-0.18.0-linux-x64.tar.xz
-        sha256: 37d7eb56b034bf0db188cda48f1353ed46656e2d14cdbb14479bf1bb23ece0b8
+        url: https://github.com/jeffvli/feishin/releases/download/v1.3.0/Feishin-linux-x64.tar.xz
+        sha256: c1327bb6bd44b564bbac924efe24f6a9f28077779d63e46838916f09bc348376
         dest: main
+        only-arches:
+          - x86_64
         x-checker-data:
           type: json
           url: https://api.github.com/repos/jeffvli/feishin/releases/latest
           tag-query: .tag_name
           version-query: $tag | sub("^v"; "")
-          url-query: .assets[] | select(.name=="Feishin-" + $version + "-linux-x64.tar.xz") | .browser_download_url
-      - type: dir
-        path: .
-        dest: flatpak
+          url-query: .assets[] | select(.name == "Feishin-linux-x64.tar.xz") | .browser_download_url
+      - type: git
+        url: https://github.com/jeffvli/feishin.git
+        tag: v1.3.0
+        commit: c5d2c60d706c26870590da363162ea0c0239a40c
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: file
+        path: default.json
+        dest-filename: default.json
+      - type: file
+        path: update_metainfo_version.py
+        dest-filename: update_metainfo_version.py
       - type: script
         dest-filename: feishin.sh
         commands:
@@ -154,12 +162,4 @@ modules:
               /app/bin/jq -sS '.[0] * .[1]' /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json > /tmp/config.json
               mv /tmp/config.json $XDG_CONFIG_HOME/feishin/config.json
             } || true
-          - LAUNCH_ARGS=--ozone-platform-hint=auto
-          - |
-            gpu=$(lspci | grep -i '.* vga .* nvidia .*')
-            shopt -s nocasematch
-            if [[ $gpu == *' nvidia '* ]]; then
-              echo "Nvidia GPU is present, disabling wayland support"
-              LAUNCH_ARGS=""
-            fi
-          - zypak-wrapper /app/main/feishin $LAUNCH_ARGS
+          - zypak-wrapper /app/main/feishin "$@"
