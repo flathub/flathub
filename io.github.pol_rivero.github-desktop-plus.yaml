@@ -26,6 +26,7 @@ finish-args:
   - --env=FLATPAK_HOST=1
   - --env=ELECTRON_TRASH=gio
   - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib/x86_64-linux-gnu
 modules:
   - shared-modules/libsecret/libsecret.json
   - name: node-gyp
@@ -58,10 +59,15 @@ modules:
         TMPDIR: /run/build/github-desktop-plus/flatpak-node/tmp
         XDG_CACHE_HOME: /run/build/github-desktop-plus/flatpak-node/cache
     build-commands:
+      # Build libcurl-gnutls, since it is not included in the runtime
+      - cd curl && autoreconf -fi && ./configure --disable-docs --with-gnutls --prefix=/app/libcurl && make && make install
+      - mkdir -p /app/lib && cp /app/libcurl/lib/libcurl.so.4 /app/lib/libcurl-gnutls.so.4
+      - rm -rf /app/libcurl
+
       - HOME=$PWD node ./vendor/yarn-1.21.1.js config --offline set yarn-offline-mirror
         $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
       - ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
-      - node ./vendor/yarn-1.21.1.js --offline --verbose
+      - node ./vendor/yarn-1.21.1.js --offline
       # Run electron-builder, passing the architecture arguments to it.
       - . flatpak-node/electron-builder-arch-args.sh; node ./vendor/yarn-1.21.1.js
         run --offline build:prod $ELECTRON_BUILDER_ARCH_ARGS
@@ -78,13 +84,16 @@ modules:
       - install -Dm644 publish/flatpak/logos/128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
       - install -Dm644 publish/flatpak/logos/256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
       - install -Dm644 publish/flatpak/logos/512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
-      # https://github.com/shiftkey/desktop/issues/21
-      - find "/app" -type f -executable -exec sed -i 's/libcurl-gnutls\.so\.4/libcurl.so.4\x00\x00\x00\x00\x00\x00\x00/g' {} \; 2>/dev/null || true
     sources:
       - type: git
         url: https://github.com/pol-rivero/github-desktop-plus.git
         tag: v3.5.3.1
         commit: bd7192daed1ebff8ae667fa10377f78eb1b112f2
+      - type: git
+        url: https://github.com/curl/curl.git
+        tag: curl-8_15_0
+        commit: cfbfb65047e85e6b08af65fe9cdbcf68e9ad496a
+        dest: curl
       - type: patch
         path: node_options.patch
       - generated-sources.json
