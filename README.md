@@ -72,7 +72,7 @@ To update `github-desktop-plus` repo to its latest commit and update the depende
     .venv/bin/pip install -r requirements.txt
     ```
 
-1. Run `generate-sources` script to update `generated-sources.json`.
+1. Run `./generate-sources` to update `generated-sources.json`.
 
 1. Make sure the patches in the `patches` directory still apply.
 
