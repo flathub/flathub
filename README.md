@@ -22,7 +22,7 @@ Known Issues
 Installation
 ------------
 
-To build and install this Flatpak, you have to [install Flatpak, Flatpak builder and the Flathub repo](https://flatpak.org/setup/). Don't forget to initialize this repo submodules. Then run:
+To build and install this Flatpak, you have to [install Flatpak, Flatpak builder and the Flathub repo](https://flatpak.org/setup/). Don't forget to initialize this repo submodules (`git submodule update --init --recursive`). Then run:
 
 ```sh
 flatpak-builder build io.github.pol_rivero.github-desktop-plus.yaml --repo=repo --install --force-clean --install-deps-from=flathub
