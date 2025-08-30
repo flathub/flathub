@@ -1,0 +1,88 @@
+id: io.gitlab.dork_farm_gmbh.cyberchef
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+# Electron BaseApp (matches runtime branch)
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+command: run.sh
+
+separate-locales: false
+finish-args:
+  - --socket=pulseaudio # for playing media
+  - --share=ipc # share IPC namespace with the host. This is not necessarily required, but without it the X11 shared memory extension will not work, which is very bad for X11 performance.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # required to fix cursor scaling on wayland
+  - --device=dri
+
+  # saving output to file does not work currently because CyberChef opens a `prompt()` and electron does not support it
+  # - --filesystem=xdg-documents # needed to save files locally
+  # - --filesystem=xdg-download 
+
+modules:
+  - name: cyberchef-electron
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/cyberchef-electron/flatpak-node/cache
+        npm_config_cache: /run/build/cyberchef-electron/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - mv cyberchef/CyberChef_*.html cyberchef/index.html # Rename versioned HTML to index.html
+
+      # Install npm dependencies
+      - npm install --offline
+      
+      # Build via electron-builder (dir target for Flatpak bundling)
+      - |
+        set -euo pipefail
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+
+      # Bundle app and dependencies
+      - mkdir -p /app/main/cyberchef
+      - cp -a dist/linux*unpacked/* /app/main
+      - cp -a cyberchef/* /app/main/cyberchef
+
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+
+      # MetaInfo files
+      - install -Dm644 icons/${FLATPAK_ID}.svg -t /app/share/icons/hicolor/scalable/apps # icon
+      - install -Dm644 ${FLATPAK_ID}.desktop -t /app/share/applications # desktop entry
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo # metainfo
+    subdir: main
+    sources:
+      - type: archive
+        # Release asset (standalone static site)
+        url: https://github.com/gchq/CyberChef/releases/download/v10.19.4/CyberChef_v10.19.4.zip
+        # IMPORTANT: update the sha256 to match the exact asset you are using.
+        # You can compute it with: sha256sum <downloaded zip>
+        sha256: 3788b29ffb54f5784968fcf998286f0f75670be8a92e40eb683743ebaab97510
+        strip-components: 0
+        # dest-filename: CyberChef.zip
+        dest: main/cyberchef
+      - type: git
+        url: https://gitlab.com/dork-farm-gmbh/cyberchef.git
+        branch: main
+        dest: main
+      - type: dir
+        path: .
+        dest: main
+      - generated-sources.json
+      # Wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/cyberchef-electron  --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations "$@"
