@@ -36,9 +36,39 @@ jobs:
             ] | .[]')
             prs_list=$(printf '%s\n' $prs_raw | head -30 | paste -sd "," -)
             echo "PR_LIST=$prs_list" >> "$GITHUB_ENV"
+            draft_prs_raw=$(gh pr list --base "new-pr" -L 50 --state open --json number,createdAt,updatedAt,isDraft,labels \
+              | jq -r --arg cutoff "$CUTOFF_DATE" '[.
+                []
+                | select(
+                    .isDraft == true
+                    and .createdAt >= $cutoff
+                    and .updatedAt >= (now - (2 * 24 * 60 * 60) | todate)
+                    and (all(.labels[].name; . != "Stale") or (.labels == []))
+                  )
+                | .number
+              ] | .[]')
+            draft_prs_list=$(printf '%s\n' $draft_prs_raw | head -30 | paste -sd "," -)
+            echo "DRAFT_PR_LIST=$draft_prs_list" >> "$GITHUB_ENV"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+
+      - name: Label draft PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          IFS=',' read -ra PR_NUMBERS <<< "${{ env.DRAFT_PR_LIST }}"
+
+          if [ ${#PR_NUMBERS[@]} -eq 0 ] || [ -z "${PR_NUMBERS[0]}" ]; then
+            echo "No PRs found, exiting."
+            exit 0
+          fi
+
+          for PR_NUM in "${PR_NUMBERS[@]}"; do
+            echo "Checking PR https://github.com/flathub/flathub/pull/$PR_NUM"
+            gh pr edit "$PR_NUM" --add-label "work-in-progress" || true
+          done
 
       - name: Validate PRs
         run: |
