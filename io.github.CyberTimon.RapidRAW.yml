@@ -1,0 +1,80 @@
+id: io.github.CyberTimon.RapidRAW
+
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+
+command: RapidRAW
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  - name: RapidRAW
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/CyberTimon/RapidRAW.git
+        tag: v1.3.11
+        commit: 36013d5036cf3160457ffcdc1134778bd8b3c259
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+      - type: file
+        url: https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/onnxruntimes/libonnxruntime-linux-x86_64.so?download=true
+        sha256: a6f4b5dc4312d72488d108ad8cbc555c1c52ac58f7f79eb67aa9f73331745192
+        dest-filename: libonnxruntime.so
+        only-arches:
+          - x86_64
+
+      - type: file
+        url: https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/onnxruntimes/libonnxruntime-linux-aarch64.so?download=true
+        sha256: a423523eb36b843d33c642169f5fd76af586401b440feb199d868d5edfb30b0d
+        dest-filename: libonnxruntime.so
+        only-arches:
+          - aarch64
+
+      - node-sources.json
+      - cargo-sources.json
+
+    build-options:
+      env:
+        CARGO_HOME: /run/build/RapidRAW/cargo
+        XDG_CACHE_HOME: /run/build/RapidRAW/flatpak-node/cache
+        npm_config_cache: /run/build/RapidRAW/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        ORT_STRATEGY: "system"
+
+    build-commands:
+      - mkdir -p /run/build/RapidRAW/src-tauri/resources
+      - cp -rf libonnxruntime.so /run/build/RapidRAW/src-tauri/resources
+
+      - npm ci --offline --legacy-peer-deps
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose
+      - npm run --offline tauri build -- --no-bundle
+
+      - install -Dm644 -t /app/share/metainfo/ data/io.github.CyberTimon.RapidRAW.metainfo.xml
+      - install -Dm644 -t /app/share/applications/ data/io.github.CyberTimon.RapidRAW.desktop
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/RapidRAW
+
+      - desktop-file-edit --set-key=Icon --set-value="io.github.CyberTimon.RapidRAW" /app/share/applications/io.github.CyberTimon.RapidRAW.desktop
+
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.CyberTimon.RapidRAW.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.CyberTimon.RapidRAW.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.CyberTimon.RapidRAW.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/256x256@2/apps/io.github.CyberTimon.RapidRAW.png
+
+      - mkdir -p /app/lib/RapidRAW
+      - cp -rf src-tauri/resources /app/lib/RapidRAW
+      - cp -rf src-tauri/workflows /app/lib/RapidRAW
+
+      - install -Dm644 LICENSE /app/share/licenses/io.github.CyberTimon.RapidRAW/LICENSE
