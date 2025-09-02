@@ -4,7 +4,40 @@ import json
 import os
 import subprocess
 import requests
+import re
+import hashlib
 
+def create_dugite_architecture(arch, url_prefix, file_prefix, file_suffix):
+    filename = f"{file_prefix}{arch}{file_suffix}"
+    url = f"{url_prefix}{filename}"
+    # fetch the url and compute the sha256
+    response = requests.get(url)
+    file_sha256 = hashlib.sha256(response.content).hexdigest()
+    return {
+        "type": "file",
+        "url": url,
+        "sha256": file_sha256,
+        "dest-filename": filename,
+        "dest": "flatpak-node/tmp",
+        "only-arches": [ arch ]
+    }
+
+def create_complementary_dugite_architecture(existing_url):
+    regex = r"(https://github.com/desktop/dugite-native/releases/download/.*/)(dugite-native-.*-ubuntu-)([a-z0-9_]+)(\.tar\.gz)"
+    match = re.match(regex, existing_url)
+    if not match:
+        raise ValueError(f"Unexpected URL format for dugite-native source: {existing_url}")
+
+    url_prefix = match.group(1)
+    file_prefix = match.group(2)
+    existing_arch = match.group(3)
+    file_suffix = match.group(4)
+    if existing_arch == 'x64':
+        return create_dugite_architecture('arm64', url_prefix, file_prefix, file_suffix)
+    elif existing_arch == 'arm64':
+        return create_dugite_architecture('x64', url_prefix, file_prefix, file_suffix)
+    else:
+        raise ValueError(f"Unknown architecture in dugite-native URL: {existing_arch}")
 
 if __name__ == "__main__":
     if not os.path.exists(".venv"):
@@ -37,23 +70,32 @@ if __name__ == "__main__":
     with open(generated_sources_path, "r") as fp:
         generated_sources = json.load(fp)
 
-    # Move electron-cache files to match what @electron/get expects
-    # https://github.com/electron/get/blob/master/src/Cache.ts
+    append_sources = []
+
     for source in generated_sources:
-        if source.get("dest"):
-            if source["dest"] == "flatpak-node/electron-cache":
-                cache_dir = (
-                    source["url"]
-                    .split("?")[0]
-                    .split("#")[0]
-                    .translate(str.maketrans("", "", '<>:"/\\|?*'))[:255]
-                )
-                source["dest"] = f"flatpak-node/electron-cache/{cache_dir}"
-                del source["dest-filename"]
-        if source.get("type")=="git" and source.get("url") == "https://github.com/sergiou87/prebuild":
+    
+        # Move electron-cache files to match what @electron/get expects
+        # https://github.com/electron/get/blob/master/src/Cache.ts
+        if source.get("dest") == "flatpak-node/electron-cache":
+            cache_dir = (
+                source["url"]
+                .split("?")[0]
+                .split("#")[0]
+                .translate(str.maketrans("", "", '<>:"/\\|?*'))[:255]
+            )
+            source["dest"] = f"flatpak-node/electron-cache/{cache_dir}"
+            del source["dest-filename"]
+
+        if source.get("dest") == "flatpak-node/tmp" and source["dest-filename"].startswith("dugite-native"):
+            other = create_complementary_dugite_architecture(source["url"])
+            append_sources.append(other)
+
+        if source.get("type") == "git" and source.get("url") == "https://github.com/sergiou87/prebuild":
             req = requests.get("https://api.github.com/repos/sergiou87/prebuild/commits/master")
             jsn = req.json()
             source["commit"] = jsn["sha"]
+
+    generated_sources.extend(append_sources)
 
     with open(generated_sources_path, "w") as fp:
         json.dump(generated_sources, fp, indent=4)
