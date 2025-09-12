@@ -1,0 +1,121 @@
+app-id: com.oracle.VirtualBox
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+command: VirtualBox
+rename-icon: virtualbox
+rename-desktop-file: virtualbox.desktop
+# rename-appdata-file: virt-manager.appdata.xml
+finish-args:
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=wayland
+  - "--filesystem=~/VirtualBox VMs"
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/applications/mimeinfo.cache
+  - /share/bash-completion
+  - /share/icons/hicolor/icon-theme.cache
+  - /share/man
+  - /share/pkgconfig
+  - "*.la"
+modules:
+  - name: virtualbox
+    buildsystem: simple
+    build-options:
+      env:
+        LIBRARY_PATH: /app/lib/X11:/app/lib
+    build-commands:
+      - echo "VBOX_GCC_OPT=$CXXFLAGS" >> LocalConfig.kmk
+      - echo "VBOX_SVN_REV=7" >> LocalConfig.kmk
+      - sed -i "s/python3.7 python3.7m/python3.13 python3.13m/" ./configure
+      - ./configure --disable-kmods --disable-docs --disable-java --disable-vmmraw --enable-vde --disable-hardening --with-makeself=/usr/bin/echo
+      - bash -c "source ./env.sh ; kmk VBOX_VERSION_STRING='$(VBOX_VERSION_MAJOR).$(VBOX_VERSION_MINOR).$(VBOX_VERSION_BUILD)'_flathub"
+      - bash install.sh
+      - ln -s /bin/true /app/bin/lsmod
+    sources:
+      - type: archive
+        url: https://download.virtualbox.org/virtualbox/7.2.2/VirtualBox-7.2.2.tar.bz2
+        sha256: b0e63bfb855327aecf1122cda33390c33734e5ffed72f123f5edf786a8ce1393
+      - type: file
+        path: LocalConfig.kmk
+      - type: file
+        path: install.sh
+    modules:
+      - shared-modules/SDL/SDL-1.2.15.json
+      - name: pam
+        disabled: false
+        sources:
+          - type: git
+            url: https://github.com/linux-pam/linux-pam.git
+            tag: v1.6.1
+        buildsystem: autotools
+        config-opts:
+          - --disable-doc
+        post-install:
+          - cp -r libpam/include/* $FLATPAK_DEST/include
+      - name: gsoap
+        build-options:
+          make-args:
+            # Necessary because dependency resolution is not declared properly upstream
+            - -j1
+          env:
+            SOAPCPP2_IMPORTPATH: -DSOAPCPP2_IMPORT_PATH="${FLATPAK_DEST}/share/gsoap/import:${FLATPAK_DEST}/share/gsoap"
+        config-opts:
+          - --disable-static
+          - --enable-ipv6
+          - --enable-samples
+        sources:
+          - type: archive
+            url: https://downloads.sourceforge.net/gsoap2/gsoap_2.8.135.zip
+            sha256: b11757e405d55d4674dfbf88c4fa6d7e24155cf64ed8ed578ccad2f2b555e98d
+      - name: yasm
+        cleanup:
+          - "*"
+        sources:
+          - type: archive
+            url: https://www.tortall.net/projects/yasm/releases/yasm-1.3.0.tar.gz
+            sha256: 3dce6601b495f5b3d45b59f7d2492a340ee7e84b5beca17e48f862502bd5603f
+      - name: xmu
+        sources:
+          - type: archive
+            url: https://xorg.freedesktop.org/releases/individual/lib/libXmu-1.2.1.tar.xz
+            sha256: fcb27793248a39e5fcc5b9c4aec40cc0734b3ca76aac3d7d1c264e7f7e14e8b2
+            x-checker-data:
+              type: anitya
+              project-id: 1785
+              stable-only: true
+              url-template: https://xorg.freedesktop.org/releases/individual/lib/libXmu-$version.tar.xz
+      - name: glu
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://archive.mesa3d.org/glu/glu-9.0.3.tar.xz
+            sha256: bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f
+      - name: lvm2
+        buildsystem: simple
+        build-options:
+          strip: false
+          no-debuginfo: true
+        build-commands:
+          - ./configure --prefix=/app
+          - make
+          - make install_device-mapper
+        sources:
+          - type: git
+            url: https://gitlab.com/lvmteam/lvm2.git
+            tag: v2_03_35
+            commit: 38c1124a478fa3889c649338b6e8ccdc0370e201
+        modules:
+          - name: libaio
+            no-autogen: true
+            make-install-args:
+              - prefix=${FLATPAK_DEST}
+            sources:
+              - type: archive
+                url: https://releases.pagure.org/libaio/libaio-0.3.112.tar.gz
+                sha256: ab0462f2c9d546683e5147b1ce9c195fe95d07fac5bf362f6c01637955c3b492
