@@ -19,5 +19,5 @@ Unfortunately, there is currently no way to expose a binary from a Flatpak in a 
 In the meantime you can run the CLI in the following way:
 
 ```
-flatpak run --command="/app/chunker/resources/chunker-cli/bin/chunker-cli --help" app.chunker.chunker
+flatpak run --command="/app/chunker/resources/chunker-cli/bin/chunker-cli" app.chunker.chunker --help
 ```
