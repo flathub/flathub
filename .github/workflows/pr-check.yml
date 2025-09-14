@@ -106,6 +106,7 @@ jobs:
             CONTAINS_MASTER=$(gh api repos/$GH_REPO/pulls/$PR_NUM/commits --jq '.[1] | (.commit.author.email == "mclasen@redhat.com" and .commit.message == "Add some instructions")')
 
             BLOCKED=0
+            REVIEW_COMMENT_LINES=()
 
             gh pr view $PR_NUM --json isDraft --jq '.isDraft' | grep -q false && \
               gh pr edit $PR_NUM --remove-label "work-in-progress" || true
@@ -149,11 +150,13 @@ jobs:
 
             if [ "$CONTAINS_MASTER" = "true" ]; then
               echo "PR contains commits from master branch"
+              REVIEW_COMMENT_LINES+=("- PR contains commits from master branch")
               BLOCKED=1
             fi
 
             if [ "$EXIT_CODE" -ne 0 ]; then
               echo "PR title validation failed"
+              REVIEW_COMMENT_LINES+=("- PR title should be `Add $FLATPAK_ID`")
               BLOCKED=1
             fi
 
@@ -164,9 +167,11 @@ jobs:
 
             if [ "$CHECKLIST_PRESENT" -eq 0 ]; then
               echo "No checklist present in PR body"
+              REVIEW_COMMENT_LINES+=("- No checklist present in PR body")
               BLOCKED=1
             elif [ "$UNCHECKED" -gt 0 ]; then
               echo "Checklist incomplete in PR body"
+              REVIEW_COMMENT_LINES+=("- Some checklist items are not checked")
               BLOCKED=1
             fi
 
@@ -175,6 +180,7 @@ jobs:
 
             if [ -z "$REQUIRED_CHECKED" ]; then
               echo "Required checklist not found in PR body"
+              REVIEW_COMMENT_LINES+=("- Required submission checklist not marked as complete")
               BLOCKED=1
             fi
 
@@ -208,6 +214,10 @@ jobs:
               gh pr edit "$PR_NUM" --add-label "pr-check-blocked" --remove-label "awaiting-review"
               if ! comment_exists "$REVIEW_COMMENT_PARTIAL"; then
                 echo "Did not find comment, commenting"
+                REVIEW_COMMENT="$BASE_REVIEW_COMMENT"
+                for line in "${REVIEW_COMMENT_LINES[@]}"; do
+                  REVIEW_COMMENT="$REVIEW_COMMENT"$'\n'"$line"
+                done
                 gh pr comment "$PR_NUM" --body "$REVIEW_COMMENT"
               else
                 echo "Found comment, skipping commenting"
@@ -242,16 +252,10 @@ jobs:
 
             bot, build
           BUILD_START_COMMENT_PARTIAL: "Starting a test build of the submission"
-          REVIEW_COMMENT: |
+          BASE_REVIEW_COMMENT: |
             This pull request is temporarily marked as blocked as some
             automated checks failed on it. Please make sure the
             following are items are done:
-
-            1. The title of the pull request is `Add $FLATPAK_ID`.
-            2. All [checklist items](https://github.com/flathub/flathub/blob/master/.github/pull_request_template.md) in the pull request body
-               are marked as complete.
-            3. The pull request does not contain commits from the `master`
-               branch of [this repository](https://github.com/flathub/flathub/commits/master/).
           LOCKED_COMMENT: >
             This pull request is marked as blocked and has too many
             builds failing. Locking this PR temporarily. Please build
