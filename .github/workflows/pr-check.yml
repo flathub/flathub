@@ -101,6 +101,8 @@ jobs:
             PR_THREAD_COUNT=$(gh api repos/$GH_REPO/pulls/$PR_NUM/comments \
                 --jq '[.[] | select(.position != null)] | length')
 
+            PR_FILES=$(gh pr view "$PR_NUM" --json files --jq '.files[].path')
+
             COMMIT_COUNT="(gh api repos/$GH_REPO/pulls/$PR_NUM --jq '.commits')"
 
             CONTAINS_MASTER=$(gh api repos/$GH_REPO/pulls/$PR_NUM/commits --jq '.[1] | (.commit.author.email == "mclasen@redhat.com" and .commit.message == "Add some instructions")')
@@ -159,6 +161,18 @@ jobs:
               echo "PR title validation failed"
               REVIEW_COMMENT_LINES+=("- PR title is `Add $FLATPAK_ID`")
               BLOCKED=1
+            fi
+
+            if echo "$PR_FILES" | grep -qE '.*/flathub\.json$'; then
+              echo "flathub.json not at toplevel"
+              BLOCKED=1
+              REVIEW_COMMENT_LINES+=("- `flathub.json` file is at toplevel")
+            fi
+
+            if ! echo "$PR_FILES" | grep -qE '^[^/]+\.(ya?ml|json)$'; then
+              echo "No JSON/YAML files at toplevel"
+              BLOCKED=1
+              REVIEW_COMMENT_LINES+=("- Flatpak manifest is at toplevel)
             fi
 
             CHECKLIST_PRESENT=$(printf "%s\n" "$PR_BODY" | grep -cE '^- ?\[[xX]\] [A-Za-z]+' || true)
