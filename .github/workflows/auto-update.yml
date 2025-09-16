@@ -1,0 +1,76 @@
+name: Auto-update
+
+on:
+  schedule:
+    - cron: "0 0 */2 * *" # Check every 2 days at 00:00
+  workflow_dispatch:
+
+env:
+  GIT_USER_NAME: github-actions[bot]
+  GIT_USER_EMAIL: github-actions[bot]@users.noreply.github.com
+  FLATPAK_ID: io.github.CyberTimon.RapidRAW
+
+jobs:
+  flatpak-external-data-checker:
+    name: "Check update (${{ matrix.branch || github.ref_name }})"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        branch: ["master"]
+
+    steps:
+      - uses: actions/checkout@v3.1.0
+        with:
+          submodules: true
+          ref: ${{ matrix.branch }}
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        with:
+          args: --edit-only ${{ env.FLATPAK_ID }}.yml
+
+      - name: Check updated
+        id: is-updated
+        run: |
+          git status -s -uno
+          [ -z "$(git status -s -uno)" ] || echo "updated=true" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-python@v2
+        if: steps.is-updated.outputs.updated
+        with:
+          python-version: 3.9
+
+      - name: Install flatpak-node-generator and requirements
+        if: steps.is-updated.outputs.updated
+        run: |
+          python3 -m pip install pipx
+          python3 -m pip install pipreqs
+          pipreqs flatpak-builder-tools
+          python3 -m pip install -r flatpak-builder-tools/requirements.txt
+          cd flatpak-builder-tools/node && pipx install .
+
+      - name: Generate node/cargo sources
+        if: steps.is-updated.outputs.updated
+        run: |
+          git submodule update --init
+          git clone https://github.com/CyberTimon/RapidRAW.git
+          ver=$(git -C RapidRAW describe --tags --match="v[0-9]*" --abbrev=0 HEAD)
+          git -C RapidRAW checkout "${ver}"
+          flatpak-builder-tools/cargo/flatpak-cargo-generator.py -o cargo-sources.json RapidRAW/src-tauri/Cargo.lock
+          flatpak-node-generator --no-requests-cache -r -o node-sources.json npm RapidRAW/package-lock.json
+          rm -rf RapidRAW
+
+      - name: Reset
+        run: |
+          git checkout -- ${FLATPAK_ID}.yml
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        name: Recheck and open PR
+        env:
+          GIT_AUTHOR_NAME: Flatpak External Data Checker
+          GIT_COMMITTER_NAME: Flatpak External Data Checker
+          GIT_AUTHOR_EMAIL: ${{ env.GIT_USER_NAME }}
+          GIT_COMMITTER_EMAIL: ${{ env.GIT_USER_EMAIL }}
+          EMAIL: ${{ env.GIT_USER_EMAIL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --update --never-fork ${{ env.FLATPAK_ID }}.yml
