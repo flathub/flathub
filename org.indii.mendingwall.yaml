@@ -1,0 +1,89 @@
+id: org.indii.mendingwall
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: mendingwall
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+
+  # directories for writing autostart files; the background portal is not used
+  # as it does not support the earlier init phases needed to restore themes
+  # before first use, specifically the X-GNOME-Autostart-Phase key and, for KDE,
+  # the ~/.config/plasma-workspace/env directory
+  - --filesystem=xdg-config/autostart:create
+  - --filesystem=xdg-config/plasma-workspace/env:create
+
+  # dconf backend for GSettings, so that can save and restore configuration of
+  # desktop environments
+  - --filesystem=xdg-run/dconf
+  - --filesystem=xdg-config/dconf:rw
+  - --talk-name=ca.desrt.dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules/
+  - --env=GSETTINGS_BACKEND=dconf
+
+  # config files, so that can save and restore configuration of desktop
+  # environments
+  - --filesystem=xdg-config:rw
+  - --filesystem=xdg-config/gtk-3.0:create
+  - --filesystem=xdg-config/gtk-4.0:create
+  - --filesystem=xdg-config/xsettingsd:create
+
+  # application directories, to find .desktop files of installed applications
+  - --filesystem=xdg-data/flatpak/exports/share/applications:ro
+  - --filesystem=/var/lib/flatpak/exports/share/applications:ro
+  - --filesystem=/var/lib/snapd/desktop/applications:ro
+  - --filesystem=host-os:ro
+
+  # user application directory, to write updated .desktop files of installed
+  # applications
+  - --filesystem=xdg-data/applications:create
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dsystemduserunitdir=' '
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share/dbus-1
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/dconf
+        tag: 0.40.0
+
+  - name: mendingwall
+    buildsystem: meson
+    config-opts:
+      - "-Dc_args=-DBUILD_FOR_FLATPAK"
+    sources:
+      - type: git
+        url: https://github.com/lawmurray/mendingwall.git
+        tag: v0.3.3
+    post-install:
+      # for autostart files, which will launch from outside flatpak, wrap
+      # calls to mendingwalld with flatpak run...
+      - sed -i -E "s,/app/bin/mendingwalld,flatpak run --command=/app/bin/mendingwalld org.indii.mendingwall,g" /app/share/mendingwall/org.indii.mendingwall.watch.desktop
+
+      # ...and calls to mendingwallcli
+      - sed -i -E "s,/app/bin/mendingwallcli,flatpak run --command=/app/bin/mendingwallcli org.indii.mendingwall,g" /app/share/mendingwall/org.indii.mendingwall.restore.desktop /app/share/mendingwall/org.indii.mendingwall.restore.sh
+
