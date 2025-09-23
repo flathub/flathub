@@ -1,0 +1,112 @@
+diff --git a/src/utils.vala b/src/utils.vala
+index c964e2b..1f916e8 100644
+--- a/src/utils.vala
++++ b/src/utils.vala
+@@ -53,6 +53,10 @@ namespace LiveChart {
+                 }
+             }
+         }
++
++        if (divs.size == 0)
++            return new Gee.ArrayList<float?>();
++
+         divs.sort((a, b) => {
+             return a - b;
+         });
+diff --git a/src/axis.vala b/src/axis.vala
+index e72068f..394e20f 100644
+--- a/src/axis.vala
++++ b/src/axis.vala
+@@ -29,8 +29,8 @@ namespace LiveChart {
+     }
+ 
+     public class YAxis {
+-        private Bounds bounds = new Bounds();
+-        private double ratio = 1;
++        public Bounds bounds = new Bounds();
++        protected double ratio = 1;
+ 
+         public float ratio_threshold { get; set; default = 1.118f;}
+         public float tick_interval { get; set; default = 60;}
+@@ -72,7 +72,7 @@ namespace LiveChart {
+             return this.bounds.update(value);
+         }
+ 
+-        public void update(int area_height) {
++        public virtual void update(int area_height) {
+             if (bounds.has_upper() && this.fixed_max == null) {
+                 this.ratio = (double) area_height / ((double) bounds.upper * ratio_threshold);
+             }
+diff --git a/src/background.vala b/src/background.vala
+index c7fc239..27cb47f 100644
+--- a/src/background.vala
++++ b/src/background.vala
+@@ -1,10 +1,18 @@
+ using Cairo;
+ 
+ namespace LiveChart { 
+-    public class Background : Drawable, Object {
++
++    public abstract class AbstractBackground : Drawable, Colorable, Object {
++        public abstract bool visible { get; set; default = true; }
++        public abstract Gdk.RGBA main_color { get; set; }
++        public abstract void draw(Context ctx, Config config);
++
++    }
++
++    public class Background : AbstractBackground {
+         private BackgroundDrawer drawer = new BackgroundDrawer();
+         
+-        public bool visible { get; set; default = true; }
++        public override bool visible { get; set; default = true; }
+ 
+         public Gdk.RGBA color { 
+             get {
+@@ -16,7 +24,7 @@ namespace LiveChart {
+         }
+ 
+         [Version (deprecated = true, deprecated_since = "1.8.0", replacement = "Background.color")]
+-        public Gdk.RGBA main_color { 
++        public override Gdk.RGBA main_color { 
+             get; set; default = Gdk.RGBA() {
+                 red = 0.1f,
+                 green = 0.1f,
+@@ -25,7 +33,7 @@ namespace LiveChart {
+             };
+         }
+ 
+-        public void draw(Context ctx, Config config) {
++        public override void draw(Context ctx, Config config) {
+             if (visible) {
+                 drawer.draw(ctx, config, this.color);
+             }
+diff --git a/src/bounds.vala b/src/bounds.vala
+index c16dd5e..c9801eb 100644
+--- a/src/bounds.vala
++++ b/src/bounds.vala
+@@ -3,10 +3,10 @@ namespace LiveChart {
+     public class Bounds : Object {
+ 
+         public double lower {
+-            get; private set;
++            get; set;
+         }
+         public double upper {
+-            get; private set;
++            get; set;
+         }
+ 
+         public Bounds(double lower = double.NAN, double upper = double.NAN) {
+diff --git a/src/chart.vala b/src/chart.vala
+index 613a7a2..264fc07 100644
+--- a/src/chart.vala
++++ b/src/chart.vala
+@@ -12,7 +12,7 @@ namespace LiveChart {
+         private Cairo.Context? cairo_context = null;
+ 
+         public Grid grid { get; set; default = new Grid(); }
+-        public Background background { get; set; default = new Background(); } 
++        public AbstractBackground background { get; set; default = new Background(); } 
+         public Legend legend { get; set; default = new HorizontalLegend(); } 
+         public Config config;
+         public Series series;
