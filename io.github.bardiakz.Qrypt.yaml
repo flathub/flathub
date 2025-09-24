@@ -1,0 +1,113 @@
+id: io.github.bardiakz.Qrypt
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: qrypt
+separate-locales: false
+#appstream-compose: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=network
+  - --filesystem=xdg-documents
+  - --device=dri
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/man
+  - "*.a"
+  - "*.la"
+  - /git_repo
+  - /io.github.bardiakz.Qrypt.desktop
+modules:
+  - name: liboqs
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DOQS_BUILD_ONLY_LIB=ON
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/open-quantum-safe/liboqs.git
+        tag: 0.14.0
+  - name: lz4
+    buildsystem: simple
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/lz4/lz4.git
+        tag: v1.10.0 # Latest stable
+  - name: brotli
+    buildsystem: cmake
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/google/brotli.git
+        tag: v1.1.0
+  - name: zstd
+    buildsystem: simple
+    build-commands:
+      - cmake -S build/cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DBUILD_SHARED_LIBS=ON -DZSTD_BUILD_STATIC=ON
+      - cmake --build build -j$FLATPAK_BUILDER_N_JOBS
+      - cmake --install build
+    sources:
+      - type: git
+        url: https://github.com/facebook/zstd.git
+        tag: v1.5.7
+  - name: qrypt
+    buildsystem: simple
+    build-commands:
+      - cp -r Qrypt /app/
+      - chmod +x /app/Qrypt/qrypt
+      - mkdir -p /app/bin
+      - ln -s /app/Qrypt/qrypt /app/bin/qrypt
+      - cp /app/lib/*.so /app/Qrypt/lib/
+      - mv git_repo/data/${FLATPAK_ID}.desktop ${FLATPAK_ID}.desktop
+      - desktop-file-edit ${FLATPAK_ID}.desktop --set-icon=${FLATPAK_ID}
+      - install -Dm644 -t "${FLATPAK_DEST}/share/applications/" ${FLATPAK_ID}.desktop
+      - install -Dm644 git_repo/assets/icon/qrypt_icon.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+      - install -Dm644 git_repo/data/${FLATPAK_ID}.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        dest: Qrypt
+        url: https://github.com/bardiakz/qrypt/releases/download/v4.4.9/qrypt-linux-x86_64.tar.gz
+        sha256: a1f8f14f580a04140088b96536b2ac8f114093628de213b3461f30c5c4903b0d
+        strip-components: 1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/bardiakz/qrypt/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+          url-query: '"https://github.com/bardiakz/qrypt/releases/download/\($tag)/qrypt-linux-x86_64-bundle.tar.gz"'
+      # - type: archive
+      #   only-arches: [aarch64]
+      #   dest: Qrypt
+      #   url: https://github.com/bardiakz/qrypt/releases/download/v4.4.6/qrypt-linux-aarch64.tar.gz
+      #   sha256:
+      #   strip-components: 1
+      #   x-checker-data:
+      #     type: json
+      #     url: https://api.github.com/repos/bardiakz/qrypt/releases/latest
+      #     tag-query: .tag_name
+      #     timestamp-query: .published_at
+      #     version-query: $tag | sub("^[vV]"; "")
+      #     url-query: '"https://github.com/bardiakz/qrypt/releases/download/\($tag)/qrypt-linux-aarch64.tar.gz"'
+      - type: git
+        dest: git_repo
+        url: https://github.com/bardiakz/qrypt.git
+        tag: v4.4.9
+#        branch: main
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([0-9.]+)$
