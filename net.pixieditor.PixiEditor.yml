@@ -1,0 +1,45 @@
+id: net.pixieditor.PixiEditor
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet8/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet8/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet8/lib/pkgconfig"
+
+command: PixiEditor.Desktop
+
+finish-args:
+  - --device=dri
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet8/bin/install.sh
+
+  - name: binary
+    buildsystem: simple
+    sources:
+      - output-sources.json
+      - type: file
+        path: appsettings.json
+      - type: archive
+        url: https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-27/wasi-sdk-27.0-x86_64-linux.tar.gz
+        sha256: b7d4d944c88503e4f21d84af07ac293e3440b1b6210bfd7fe78e0afd92c23bc2
+      - type: git
+        url: https://github.com/PixiEditor/PixiEditor.git
+        commit: 35d816e985cdabfca953ba3f51d37b6108fd676a
+        dest: 'PixiEditor'
+    build-commands:
+      - export WASI_SDK_PATH="$(realpath wasi-sdk-27.0-x86_64-linux)"
+      - dotnet publish PixiEditor/src/PixiEditor.Desktop/PixiEditor.Desktop.csproj --source nuget-sources -r linux-x64 -c ReleaseNoUpdate --no-self-contained -o publish
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r publish/* ${FLATPAK_DEST}/bin
+      - cp appsettings.json ${FLATPAK_DEST}/bin
