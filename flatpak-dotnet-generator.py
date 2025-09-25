@@ -13,8 +13,7 @@ from pathlib import Path
 
 
 def main() -> None:
-    # Bump this to latest freedesktop runtime version.
-    freedesktop_default = "24.08"
+    freedesktop_default = "25.08"
     # Bump this to an LTS dotnet version.
     dotnet_default = "8"
 
