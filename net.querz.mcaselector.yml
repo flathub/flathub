@@ -1,0 +1,79 @@
+id: net.querz.mcaselector
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: mcaselector
+finish-args:
+  # JavaFX doesn't yet support native Wayland
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  # JavaFX doesn't support portals
+  - --filesystem=home
+modules:
+  - name: mcaselector
+    buildsystem: simple
+    build-commands:
+      - source /usr/lib/sdk/openjdk21/enable.sh && gradle build shadowJar --stacktrace --warning-mode all --offline
+      - ls build/libs/
+      - mv build/libs/mcaselector-2.5.3.jar /app/lib/mcaselector.jar
+      # ignoring the exit code, it will complain about unregistered categories that are in the spec
+      - desktop-file-edit --set-key=Exec --set-value="mcaselector" ${FLATPAK_ID}.desktop || true
+      - install -Dm644 ${FLATPAK_ID}.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Querz/mcaselector.git
+        tag: 2.5.3
+        commit: 830d659f018b1106b81176be52516b71960863b2
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d*\.\d*\.\d*)$
+          version-scheme: semantic
+      - type: patch
+        path: 0001-gradle-generate-flatpak-sources.patch
+      - type: file
+        url: https://github.com/zefr0x/mcaselector/blob/648a870759bc25d600085ba2359b5df951859b26/installer/linux/net.querz.mcaselector.metainfo.xml
+        sha512: 77864bb3d5ee8fe09b10db6762289dc03ac853e375fb0720c2f91bc406f68b8cd6440fdfd329c4ba82f8fc71be195301570482c1e649549bfa9009e3a041e80b
+      - type: file
+        url: https://raw.githubusercontent.com/Scrumplex/mcaselector/c12b99c16cb70e3eeea9832d638f1743170a8682/contrib/net.querz.mcaselector.png
+        sha512: 7bbcfd8db23f2b6a654226c2921e03055338a4b0760dce85eb68e729da3b7ccb85ea339f13a35da06e05b02832088f759f32d1da38b6490caeda099d9237b913
+      - type: file
+        url: https://github.com/Scrumplex/mcaselector/raw/c12b99c16cb70e3eeea9832d638f1743170a8682/contrib/net.querz.mcaselector.desktop.in
+        sha512: 993cfc4c033478a9786253f9f76052f32df5881c417e32dcddded62055b012732f2351d13f7efc596a0ef18c5fcbb366192fc95e5aa0ef6279215dc7ecd75484
+        dest-filename: net.querz.mcaselector.desktop
+      - gradle-sources.json
+    modules:
+      - name: openjdk
+        buildsystem: simple
+        build-commands:
+          - /usr/lib/sdk/openjdk21/install.sh
+      - name: javafx
+        buildsystem: simple
+        build-commands:
+          - mkdir /app/lib
+          - mv ./lib /app/lib/javafx
+        sources:
+          - type: archive
+            url: https://download2.gluonhq.com/openjfx/21/openjfx-21_linux-x64_bin-sdk.zip
+            sha512: 47b5dc83cc676bae59695bbc896f161f09d087a806a71a6db698ca33dafc563b5c3cabbead8b4dce4aebb45ef2ea38accd7864ef7b360ecf64a565dac4669b42
+            only-arches:
+              - x86_64
+          - type: archive
+            dest-filename: sdk.zip
+            url: https://download2.gluonhq.com/openjfx/21/openjfx-21_linux-aarch64_bin-sdk.zip
+            sha512: 6563e0ff68550e3c80b89bf43784420f1829b110e494de9f86e753b3cda61dcda7c0d3ee6c51cc48905f2a2c6617a85c90d8b79fb214a6e7404ac884e74e238f
+            only-arches:
+              - aarch64
+      - name: launcher
+        buildsystem: simple
+        build-commands:
+          - install -Dm755 mcaselector /app/bin/mcaselector
+        sources:
+          - type: script
+            dest-filename: mcaselector
+            commands:
+              - exec /app/jre/bin/java --module-path /app/lib/javafx --add-modules ALL-MODULE-PATH -jar /app/lib/mcaselector.jar "$@"
