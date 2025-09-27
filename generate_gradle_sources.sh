@@ -1,4 +1,20 @@
 #!/usr/bin/sh
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+#
+# Few portions of this program are based on:
+#   https://github.com/flathub/org.ghidra_sre.Ghidra/blob/47e852fe969f351502be8b8bc23189368f8da6c1/generate-deps.sh#L3-L26
 
 REPO_URL='https://github.com/Querz/mcaselector.git'
 WORKDIR='_generate_deps_sources'
