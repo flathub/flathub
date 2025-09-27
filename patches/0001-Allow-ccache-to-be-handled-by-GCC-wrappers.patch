@@ -1,0 +1,52 @@
+From 6748e46be3f5ad201cd885caf29c55aefaad70a4 Mon Sep 17 00:00:00 2001
+From: guihkx <626206+guihkx@users.noreply.github.com>
+Date: Tue, 15 Jul 2025 17:23:58 -0300
+Subject: [PATCH] Allow ccache to be handled by GCC wrappers
+
+This allows flatpak-builder not to fail at the configure step when
+invoked with the --ccache option:
+
+===
+$ flatpak run org.flatpak.Builder -v --install-deps-from flathub \
+    --arch x86_64 --delete-build-dirs --force-clean --repo repo/ \
+    --sandbox --ccache builddir/ org.freedesktop.Sdk.Extension.openjdk.yaml
+[...]
+checking for gcc... /run/ccache/bin/gcc
+checking resolved symbolic links for CC... /usr/bin/ccache
+configure: Please use --enable-ccache instead of providing a wrapped compiler.
+configure: error: /run/ccache/bin/gcc is a symbolic link to ccache. This is not supported.
+configure exiting with result code 1
+FB: host_command_exited_cb 8189 256
+
+Error: module java: Child process exited with code 1
+===
+
+This patch is required because Flathub builders use --ccache now:
+
+https://github.com/flathub-infra/vorarbeiter/blob/7f2f04a562e73ba4f46044dae7c99f8e9e64a39d/justfile#L181
+---
+ make/autoconf/toolchain.m4 | 8 --------
+ 1 file changed, 8 deletions(-)
+
+diff --git a/make/autoconf/toolchain.m4 b/make/autoconf/toolchain.m4
+index b7a01074686..1a36e1f72f7 100644
+--- a/make/autoconf/toolchain.m4
++++ b/make/autoconf/toolchain.m4
+@@ -481,14 +481,6 @@ AC_DEFUN([TOOLCHAIN_FIND_COMPILER],
+     AC_MSG_RESULT([no symlink])
+   else
+     AC_MSG_RESULT([$SYMLINK_ORIGINAL])
+-
+-    # We can't handle ccache by gcc wrappers, since we need to know if we're
+-    # using ccache. Instead ccache usage must be controlled by a configure option.
+-    COMPILER_BASENAME=`$BASENAME "$SYMLINK_ORIGINAL"`
+-    if test "x$COMPILER_BASENAME" = "xccache"; then
+-      AC_MSG_NOTICE([Please use --enable-ccache instead of providing a wrapped compiler.])
+-      AC_MSG_ERROR([$TEST_COMPILER is a symbolic link to ccache. This is not supported.])
+-    fi
+   fi
+ 
+   TOOLCHAIN_EXTRACT_COMPILER_VERSION([$1], [$COMPILER_NAME])
+-- 
+2.51.0
+

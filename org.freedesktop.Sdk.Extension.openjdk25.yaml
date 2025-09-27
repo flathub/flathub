@@ -1,0 +1,188 @@
+id: org.freedesktop.Sdk.Extension.openjdk25
+branch: '25.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '25.08'
+build-extension: true
+sdk: org.freedesktop.Sdk
+separate-locales: false
+
+build-options:
+  no-debuginfo: true
+  strip: true
+  prefix: /usr/lib/sdk/openjdk25
+
+modules:
+  - name: bootstrap_jdk
+    buildsystem: simple
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/bootstrap-java
+      - tar xf java-openjdk.tar.bz2 --strip-components=1 --directory=$FLATPAK_DEST/bootstrap-java
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_x64_linux_hotspot_25_36.tar.gz
+        dest-filename: java-openjdk.tar.bz2
+        sha512: 83254b8af4fb9dde568c50716adc6070bf12f2a612d2cdb2c4b1edeabb8b0b5c2b87fadd47532a01f9d16df069e5bca985a4b24bcfd36e34ffa2f5b0c77c9637
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_aarch64_linux_hotspot_25_36.tar.gz
+        dest-filename: java-openjdk.tar.bz2
+        sha512: 787af8846a3af90f0e9a3c1ad91c9b0c9ed6064d7c19cc0fc325516bde4e09a9f25d664af03fdb156b679046cc221e7755fead33087bbcca5fd50d3b393664f7
+    cleanup:
+      - '*'
+
+  - name: java
+    buildsystem: simple
+    build-commands:
+      - |
+        bash configure \
+           --with-boot-jdk=/usr/lib/sdk/openjdk25/bootstrap-java \
+           --with-jvm-variants=server \
+           --with-version-pre= \
+           --with-version-opt= \
+           --with-vendor-version-string=25.08 \
+           --with-vendor-name=Flathub \
+           --with-vendor-url=https://flathub.org \
+           --with-vendor-bug-url=https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk25/issues \
+           --with-vendor-vm-bug-url=https://github.com/flathub/org.freedesktop.Sdk.Extension.openjdk25/issues \
+           --with-debug-level=release \
+           --with-native-debug-symbols=internal \
+           --enable-unlimited-crypto \
+           --with-zlib=system \
+           --with-libjpeg=system \
+           --with-giflib=system \
+           --with-libpng=system \
+           --with-lcms=system \
+           --with-harfbuzz=system \
+           --with-stdc++lib=dynamic \
+           --with-extra-cflags="${CFLAGS}" \
+           --with-extra-cxxflags="${CXXFLAGS}" \
+           --with-extra-ldflags="${LDFLAGS}" \
+           --disable-javac-server \
+           --disable-warnings-as-errors
+      - make -j1 LOG=info images
+      - mkdir -p $FLATPAK_DEST/jvm $FLATPAK_DEST/bin
+      - cp -Lr build/linux-*-server-release/images/jdk $FLATPAK_DEST/jvm/openjdk-25
+      - ln -sr $FLATPAK_DEST/jvm/openjdk-25/bin/* $FLATPAK_DEST/bin
+    sources:
+      - type: archive
+        url: https://github.com/openjdk/jdk25u/archive/refs/tags/jdk-25+36.tar.gz
+        sha512: 3a1075486cc471162234b4f7f6390625a832307856b5eaba335072052f49e64ee48f964d39701885185acade65889dec210c1b5af7ed4c439c9c0584df0c747f
+        x-checker-data:
+          is-main-source: true
+          type: json
+          url: https://api.adoptium.net/v3/assets/latest/25/hotspot?os=linux&architecture=x64&image_type=jdk
+          version-query: .[0].release_name
+          url-query: '"https://github.com/openjdk/jdk25u/archive/refs/tags/" + $version
+            + ".tar.gz"'
+          versions:
+            - ==: 25
+      - type: patch
+        paths:
+          - patches/0001-Allow-ccache-to-be-handled-by-GCC-wrappers.patch
+          - patches/0002-FORBID_C_FUNCTION-needs-exception-spec-consistent-wi.patch
+
+  - name: cacerts
+    buildsystem: simple
+    build-commands:
+      - ./extract_cacerts.sh $FLATPAK_DEST/jvm/openjdk-25
+    sources:
+      - type: file
+        path: extract_cacerts.sh
+
+  - name: ant
+    buildsystem: simple
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/ant
+      - tar xf apache-ant-bin.tar.gz --strip-components=1 --directory=$FLATPAK_DEST/ant
+      - ln -sr $FLATPAK_DEST/ant/bin/ant $FLATPAK_DEST/bin
+    sources:
+      - type: file
+        url: http://archive.apache.org/dist/ant/binaries/apache-ant-1.10.15-bin.tar.gz
+        dest-filename: apache-ant-bin.tar.gz
+        sha512: d78427aff207592c024ff1552dc04f7b57065a195c42d398fcffe7a0145e8d00cd46786f5aa52e77ab0fdf81334f065eb8011eecd2b48f7228e97ff4cb20d16c
+        x-checker-data:
+          type: anitya
+          project-id: 50
+          stable-only: true
+          url-template: http://archive.apache.org/dist/ant/binaries/apache-ant-$version-bin.tar.gz
+    cleanup:
+      - '*.bat'
+      - '*.cmd'
+
+  - name: maven
+    buildsystem: simple
+    build-commands:
+      - mkdir -p $FLATPAK_DEST/maven
+      - tar xf apache-maven-bin.tar.gz --strip-components=1 --exclude=jansi-native
+        --directory=$FLATPAK_DEST/maven
+      - ln -sr $FLATPAK_DEST/maven/bin/mvn $FLATPAK_DEST/maven/bin/mvnDebug $FLATPAK_DEST/bin
+    sources:
+      - type: file
+        url: http://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz
+        dest-filename: apache-maven-bin.tar.gz
+        sha512: bcfe4fe305c962ace56ac7b5fc7a08b87d5abd8b7e89027ab251069faebee516b0ded8961445d6d91ec1985dfe30f8153268843c89aa392733d1a3ec956c9978
+        x-checker-data:
+          type: anitya
+          project-id: 1894
+          stable-only: true
+          url-template: http://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.tar.gz
+    cleanup:
+      - '*.bat'
+      - '*.cmd'
+
+  - name: gradle
+    buildsystem: simple
+    build-commands:
+      - unzip -q gradle-bin.zip -d $FLATPAK_DEST
+      - mv $FLATPAK_DEST/gradle-* $FLATPAK_DEST/gradle
+      - ln -sr $FLATPAK_DEST/gradle/bin/gradle $FLATPAK_DEST/bin
+    sources:
+      - type: file
+        url: https://services.gradle.org/distributions/gradle-9.1.0-bin.zip
+        dest-filename: gradle-bin.zip
+        sha512: 4210dd9c4f9d987e1349ee9c238eec9893eb4429a9d44ac96174530a6516fb87f0db70cd2c591d5df07ef67db46d8a5f70eb0e1bcd236b9c806973019101f687
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/gradle/gradle/releases
+          version-query: map(select(.prerelease == false)) | sort_by(.name) | last
+            | .name
+          url-query: '["https://services.gradle.org/distributions/gradle-" + $version
+            + "-bin.zip"][0]'
+    cleanup:
+      - '*.bat'
+
+  - name: scripts
+    buildsystem: simple
+    build-commands:
+      - cp enable.sh install.sh installjdk.sh /usr/lib/sdk/openjdk25
+    sources:
+      - type: script
+        dest-filename: install.sh
+        commands:
+          - mkdir -p /app/jre/bin
+          - cd /usr/lib/sdk/openjdk25/jvm/openjdk-25
+          - cp -ra conf lib release /app/jre
+          - rm /app/jre/lib/src.zip /app/jre/lib/ct.sym
+          - cp -ra bin/{java,keytool,rmiregistry} /app/jre/bin
+      - type: script
+        dest-filename: installjdk.sh
+        commands:
+          - mkdir -p /app/jdk
+          - cd /usr/lib/sdk/openjdk25/jvm/openjdk-25
+          - cp -ra bin conf include jmods lib release /app/jdk
+      - type: script
+        dest-filename: enable.sh
+        commands:
+          - export JAVA_HOME=/usr/lib/sdk/openjdk25/jvm/openjdk-25
+          - export PATH=$PATH:/usr/lib/sdk/openjdk25/bin
+
+  - name: appdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: file
+        path: org.freedesktop.Sdk.Extension.openjdk25.metainfo.xml
