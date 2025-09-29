@@ -63,4 +63,4 @@ If you're new about flathub, it's a good idea to read [submission](https://docs.
    git push origin master
    ```
 
-5. Make a [PR](https://docs.flathub.org/docs/for-app-authors/updates#creating-updates) to the [project flathub repo master branch](https://github.com/flathub/io.github.DamnedAngel.msx-tile-forge).
+5. Make a [PR](https://docs.flathub.org/docs/for-app-authors/updates#creating-updates) to the [project flathub repo](https://github.com/flathub/io.github.DamnedAngel.msx-tile-forge) master branch.
