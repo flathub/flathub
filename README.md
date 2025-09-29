@@ -35,7 +35,7 @@ If you're new about flathub, it's a good idea to read [submission](https://docs.
 
 1. Partial test:  
    ```
-   flatpak-builder --user --install --force-clean build-dir io.github.DamnedAngel.msx-tile-forge.yaml &&  
+   flatpak-builder --user --install --force-clean build-dir io.github.DamnedAngel.msx-tile-forge.yaml
    flatpak run io.github.DamnedAngel.msx-tile-forge
    ```
 
@@ -59,7 +59,7 @@ If you're new about flathub, it's a good idea to read [submission](https://docs.
 
 4. Update your repo master branch:  
    ```
-   git commit -m "Release <write_here_the_new_release_version>" && 
+   git commit -m "Release <write_here_the_new_release_version>"
    git push origin master
    ```
 
