@@ -60,7 +60,7 @@ If you're new about flathub, it's a good idea to read [submission](https://docs.
 4. Update your repo master branch:  
    ```
    git commit -m "Release <write_here_the_new_release_version>" && 
-   git push  
+   git push origin master
    ```
 
 5. Make a [PR to the project flathub repo master branch](https://docs.flathub.org/docs/for-app-authors/updates#creating-updates).
