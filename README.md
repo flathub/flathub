@@ -26,38 +26,43 @@ If you're new about flathub, it's a good idea to read [submission](https://docs.
 
 2. Create a folder in your local machine;
 
-3. Clone the repo files:  
+3. Clone the repo files:
    ```
    git clone https://github.com/<your_user_name>/io.github.DamnedAngel.msx-tile-forge.git
    ```
 
 ### How to do a local test
 
-1. Partial test:  
+1. Smoke test:
+
    ```
-   flatpak-builder --user --install --force-clean build-dir io.github.DamnedAngel.msx-tile-forge.yaml
-   flatpak run io.github.DamnedAngel.msx-tile-forge
+   ./install.sh
+   ./test.sh
+   ./uninstall.sh
    ```
 
-2. Full test:  
-   ```  
-   ./build.sh
-   ```  
+2. Full test (with linting):
+   ```
+   ./linting.sh
+   ```
    Note: this flatpak requires Python3+TK+TCL, so the building process can spend a little more time than usual.
 
 ### How to upload a new release
 
 1. Open `io.github.DamnedAngel.msx-tile-forge.metainfo.xml` and add a new `release version` row into `releases` tag;
 
-2. Open `io.github.DamnedAngel.msx-tile-forge.yaml` and change `TAG_NAME`, `tag` and `commit`;
+2. Open `io.github.DamnedAngel.msx-tile-forge.yaml` and change `APP_VERSION`, `tag` and `commit`;
 
-3. Do a full test:  
-   ```  
-   ./build.sh
-   ```  
+3. Do a full test (with linting):
+
+   ```
+   ./linting.sh
+   ```
+
    Note: this flatpak requires Python3+TK+TCL, so the building process can spend a little more time than usual.
 
-4. Update your repo master branch:  
+4. Update your repo master branch:
+
    ```
    git commit -m "Release <write_here_the_new_release_version>"
    git push origin master
