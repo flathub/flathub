@@ -14,13 +14,21 @@ finish-args:
   - --device=dri
   - --filesystem=xdg-documents
 
+cleanup:
+  - "/share/doc"
+  - "/share/man"
+  - "/share/pkgconfig"
+  - "*.egg-info"
+  - "__pycache__"
+  - "*.pyc"
+  - "*.pyo"
+
 modules:
   # tkinter dependencies
   - name: tkinter
     buildsystem: simple
     build-options:
-      env:
-        CFLAGS: "-I/app/include/python3.12 -I/app/include/python3.12/internal -I/app/include"
+      cflags: "-I/app/include/python3 -I/app/include/python3/internal -I/app/include"
     build-commands:
       - pip3 install --prefix=${FLATPAK_DEST} . --use-pep517 --no-build-isolation
     sources:
@@ -31,8 +39,8 @@ modules:
       - name: python-internal-headers
         buildsystem: simple
         build-commands:
-          - mkdir -p /app/include/python3.12
-          - cp -r Include/* /app/include/python3.12/
+          - mkdir -p /app/include/python3
+          - cp -r Include/* /app/include/python3/
         sources:
           - type: archive
             url: https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz
@@ -45,25 +53,18 @@ modules:
         build-options:
           no-debuginfo: true
           strip: false
-          env:
-            MAKEFLAGS: "-s -j$(nproc) V=0"    
         post-install:
           - chmod 755 ${FLATPAK_DEST}/lib/libtcl*.so
         sources:
           - type: archive
             url: https://prdownloads.sourceforge.net/tcl/tcl9.0.0-src.tar.gz
             sha256: 3bfda6dbaee8e9b1eeacc1511b4e18a07a91dff82d9954cdb9c729d8bca4bbb7
-        cleanup:
-          - /share/man
-          - /share/doc
       - name: tk
         buildsystem: autotools
         subdir: unix
         build-options:
           no-debuginfo: true
           strip: false
-          env:
-            MAKEFLAGS: "-s -j$(nproc) V=0"    
         post-install:
           - chmod +w ${FLATPAK_DEST}/lib/libtcl9tk9.0.so
           - ln -sf /app/bin/wish9.0 /app/bin/wish
@@ -71,9 +72,6 @@ modules:
           - type: archive
             url: https://prdownloads.sourceforge.net/tcl/tk9.0.0-src.tar.gz
             sha256: f166e3c20773c82243f753cef4b091d05267cb7f87da64be88cb2ca5a2ba027e
-        cleanup:
-          - /share/man
-          - /share/doc
 
   # numpy dependencies
   - name: numpy-deps
@@ -104,13 +102,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/d0/19/95b3d357407220ed24c139018d2518fab0a61a948e68286a25f1a4d049ff/numpy-2.3.3.tar.gz
         sha256: ddc7c39727ba62b80dfdbedf400d1c10ddfa8eefbd7ec8dcb118be8b56d31029
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - "/share/man"
-      - "/share/doc"
 
   # scipy dependencies
   - name: openblas
@@ -119,26 +110,20 @@ modules:
     config-opts:
       - -DBUILD_TESTING:BOOL=OFF
       - -DDYNAMIC_ARCH:BOOL=ON
+      # required to generate a new lib/libopenblas.so
       - -DBUILD_SHARED_LIBS:BOOL=ON 
       - -DCMAKE_INSTALL_LIBDIR=lib
       - -DCMAKE_BUILD_TYPE=Release
-    build-options:
-      env:
-        MAKEFLAGS: -j$(nproc) VERBOSE=0
-        NINJA_STATUS: "[%f/%t %es] "
     sources:
       - type: archive
         url: https://github.com/xianyi/OpenBLAS/archive/v0.3.29.tar.gz
         sha256: 38240eee1b29e2bde47ebb5d61160207dc68668a54cac62c076bb5032013b1eb
     post-install:
+      # new lib/libopenblas.so is required to scipy bind correctly
       - |
         if [ -f ${FLATPAK_DEST}/lib/libopenblas.so.0 ]; then
           ln -sf libopenblas.so.0 ${FLATPAK_DEST}/lib/libopenblas.so
         fi
-    cleanup:
-      - /share/doc
-      - /share/man
-      - /share/pkgconfig
 
   - name: scipy-deps
     buildsystem: simple
@@ -162,13 +147,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/cd/8a/37362fc2b949d5f733a8b0f2ff51ba423914cabefe69f1d1b6aab710f5fe/pybind11-3.0.1-py3-none-any.whl
         sha256: aa8f0aa6e0a94d3b64adfc38f560f33f15e589be2175e103c0a33c6bce55ee89
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - "/share/man"
-      - "/share/doc"
 
   - name: scipy
     buildsystem: simple
@@ -182,13 +160,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/4c/3b/546a6f0bfe791bbb7f8d591613454d15097e53f906308ec6f7c1ce588e8e/scipy-1.16.2.tar.gz
         sha256: af029b153d243a80afb6eabe40b0a07f8e35c9adc269c019f364ad747f826a6b
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - "/share/man"
-      - "/share/doc"
 
   # python dependencies
   - name: python-extras
@@ -204,13 +175,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl
         sha256: 26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - "/share/man"
-      - "/share/doc"
 
   - name: pillow
     buildsystem: simple
@@ -220,13 +184,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/f3/0d/d0d6dea55cd152ce3d6767bb38a8fc10e33796ba4ba210cbab9354b6d238/pillow-11.3.0.tar.gz
         sha256: 3828ee7586cd0b2091b6209e5ad53e20d0649bbe87164a459d0676e035e8f523
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - "/share/man"
-      - "/share/doc"
 
   # main application build
   - name: msx-tile-forge
@@ -239,27 +196,17 @@ modules:
         url: https://github.com/DamnedAngel/msx-tile-forge.git
         tag: v01.00.00_rc20_5
         commit: 9d5ee12897f7cff657c396c8afe05dec1465beaf
+      # temporary, for building test only
+      # begin
       - type: archive
-        url: https://github.com/amaurycarvalho/msx-tile-forge/archive/refs/tags/flathub_v1.tar.gz
-        sha256: fe17c28ad6204874f7f6cb762a0c27d8bb827a454d2ea9f234e28324dc1ce8d6
+        url: https://github.com/amaurycarvalho/msx-tile-forge/archive/refs/tags/flathub_v4.tar.gz
+        sha256: db712553acb98e47867b87960af0af1126b0fc1cced85bbf6a8d3e203c32fec5
         dest: temp
+      # end 
     build-commands:
-      - mv temp/flatpak .
-      - find . -type f -name "*.py" -exec sed -i "s/<unreleased>/${APP_VERSION}/g" {} +
-      - install -Dm644 msxtileforge.py /app/bin/msxtileforge.py
-      - install -Dm644 msxtileexport.py /app/bin/msxtileexport.py
-      - install -Dm644 msxtilemagic.py /app/bin/msxtilemagic.py
-      - install -Dm644 supertilerandomizer.py /app/bin/supertilerandomizer.py
-      - install -Dm644 tilerandomizer.py /app/bin/tilerandomizer.py
-      - install -Dm755 flatpak/wrapper.sh /app/bin/msxtileforge
-      - install -Dm644 flatpak/io.github.DamnedAngel.msx-tile-forge.png /app/share/icons/hicolor/256x256/apps/io.github.DamnedAngel.msx-tile-forge.png
-      - install -Dm644 flatpak/io.github.DamnedAngel.msx-tile-forge.desktop /app/share/applications/io.github.DamnedAngel.msx-tile-forge.desktop
-      - install -Dm644 flatpak/io.github.DamnedAngel.msx-tile-forge.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml    
-    cleanup:
-      - "*.egg-info"
-      - "__pycache__"
-      - "*.pyc"
-      - "*.pyo"
-      - /share/doc
-      - /share/man
+      # temporary, for building test only
+      # begin
+      - mv temp/flatpak .   
+      # end 
+      - sh flatpak/build.sh
 
