@@ -7,6 +7,16 @@ build:
     --verbose \
     build --user org.kde.discover.yaml
 
+rebuild:
+  flatpak run org.flatpak.Builder \
+    --install \
+    --keep-build-dirs \
+    --install-deps-from=flathub \
+    --force-clean \
+    --verbose \
+    --disable-updates \
+    build --user org.kde.discover.yaml
+
 run:
   flatpak run org.kde.discover
 
