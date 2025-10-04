@@ -26,4 +26,8 @@ debug:
 devel:
   flatpak run --command=bash --devel org.kde.discover
 
+lint:
+  flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest org.kde.discover.yaml
 
+data-checker:
+  flatpak run org.flathub.flatpak-external-data-checker org.kde.discover.yaml
