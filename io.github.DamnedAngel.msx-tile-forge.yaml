@@ -1,0 +1,212 @@
+app-id: io.github.DamnedAngel.msx-tile-forge
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+
+command: msxtileforge
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=network
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-documents
+
+cleanup:
+  - "/share/doc"
+  - "/share/man"
+  - "/share/pkgconfig"
+  - "*.egg-info"
+  - "__pycache__"
+  - "*.pyc"
+  - "*.pyo"
+
+modules:
+  # tkinter dependencies
+  - name: tkinter
+    buildsystem: simple
+    build-options:
+      cflags: "-I/app/include/python3 -I/app/include/python3/internal -I/app/include"
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} . --use-pep517 --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone
+        commit: 35bde961500fc39ebc5587dcc032a6de31adfe4a
+    modules:
+      - name: python-internal-headers
+        buildsystem: simple
+        build-commands:
+          - mkdir -p /app/include/python3
+          - cp -r Include/* /app/include/python3/
+        sources:
+          - type: archive
+            url: https://www.python.org/ftp/python/3.12.0/Python-3.12.0.tgz
+            sha256: 51412956d24a1ef7c97f1cb5f70e185c13e3de1f50d131c0aac6338080687afb
+        cleanup:
+          - '*'
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        build-options:
+          no-debuginfo: true
+          strip: false
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl*.so
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.0-src.tar.gz
+            sha256: 3bfda6dbaee8e9b1eeacc1511b4e18a07a91dff82d9954cdb9c729d8bca4bbb7
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        build-options:
+          no-debuginfo: true
+          strip: false
+        post-install:
+          - chmod +w ${FLATPAK_DEST}/lib/libtcl9tk9.0.so
+          - ln -sf /app/bin/wish9.0 /app/bin/wish
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.0-src.tar.gz
+            sha256: f166e3c20773c82243f753cef4b091d05267cb7f87da64be88cb2ca5a2ba027e
+
+  # numpy dependencies
+  - name: numpy-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --exists-action=i --find-links=file://${PWD} --prefix=${FLATPAK_DEST} meson-python
+    sources:
+      # meson-python
+      - type: file
+        url: https://files.pythonhosted.org/packages/28/58/66db620a8a7ccb32633de9f403fe49f1b63c68ca94e5c340ec5cceeb9821/meson_python-0.18.0-py3-none-any.whl
+        sha256: 3b0fe051551cc238f5febb873247c0949cd60ded556efa130aa57021804868e2
+      # pyproject-metadata
+      - type: file
+        url: https://files.pythonhosted.org/packages/7e/b1/8e63033b259e0a4e40dd1ec4a9fee17718016845048b43a36ec67d62e6fe/pyproject_metadata-0.9.1-py3-none-any.whl
+        sha256: ee5efde548c3ed9b75a354fc319d5afd25e9585fa918a34f62f904cc731973ad
+      # packing
+      - type: file
+        url: https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl
+        sha256: 29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484
+    cleanup:
+      - '*'
+
+  - name: numpy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links=file://${PWD} --prefix=${FLATPAK_DEST} numpy --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/d0/19/95b3d357407220ed24c139018d2518fab0a61a948e68286a25f1a4d049ff/numpy-2.3.3.tar.gz
+        sha256: ddc7c39727ba62b80dfdbedf400d1c10ddfa8eefbd7ec8dcb118be8b56d31029
+
+  # scipy dependencies
+  - name: openblas
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING:BOOL=OFF
+      - -DDYNAMIC_ARCH:BOOL=ON
+      # required to generate a new lib/libopenblas.so
+      - -DBUILD_SHARED_LIBS:BOOL=ON 
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.29.tar.gz
+        sha256: 38240eee1b29e2bde47ebb5d61160207dc68668a54cac62c076bb5032013b1eb
+    post-install:
+      # new lib/libopenblas.so is required to scipy bind correctly
+      - |
+        if [ -f ${FLATPAK_DEST}/lib/libopenblas.so.0 ]; then
+          ln -sf libopenblas.so.0 ${FLATPAK_DEST}/lib/libopenblas.so
+        fi
+
+  - name: scipy-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --exists-action=i --find-links=file://${PWD} --prefix=${FLATPAK_DEST} pythran pybind11
+    sources:
+      # pythran dependencies
+      - type: file
+        url: https://files.pythonhosted.org/packages/a2/49/c5c72ebb49edf56bb06d3b805870cf6598565461670d88d292085ac96bfe/pythran-0.18.0-py3-none-any.whl
+        sha256: 405ecf2100d4926d1a15640c36bd1b19a560386653d0ee4d5234f9421ef4034b
+      - type: file
+        url: https://files.pythonhosted.org/packages/a3/58/35da89ee790598a0700ea49b2a66594140f44dec458c07e8e3d4979137fc/ply-3.11-py2.py3-none-any.whl
+        sha256: 096f9b8350b65ebd2fd1346b12452efe5b9607f7482813ffca50c22722a807ce
+      - type: file
+        url: https://files.pythonhosted.org/packages/a3/61/8001b38461d751cd1a0c3a6ae84346796a5758123f3ed97a1b121dfbf4f3/gast-0.6.0-py3-none-any.whl
+        sha256: 52b182313f7330389f72b069ba00f174cfe2a06411099547288839c6cbafbd54
+      - type: file
+        url: https://files.pythonhosted.org/packages/44/e4/6e8731d4d10dd09942a6f5015b2148ae612bf13e49629f33f9fade3c8253/beniget-0.4.2.post1-py3-none-any.whl
+        sha256: e1b336e7b5f2ae201e6cc21f533486669f1b9eccba018dcff5969cd52f1c20ba
+      # pybind11
+      - type: file
+        url: https://files.pythonhosted.org/packages/cd/8a/37362fc2b949d5f733a8b0f2ff51ba423914cabefe69f1d1b6aab710f5fe/pybind11-3.0.1-py3-none-any.whl
+        sha256: aa8f0aa6e0a94d3b64adfc38f560f33f15e589be2175e103c0a33c6bce55ee89
+
+  - name: scipy
+    buildsystem: simple
+    build-options:
+      env:
+        BLAS: /app/lib/libopenblas.so
+        LAPACK: /app/lib/libopenblas.so
+    build-commands:
+      - pip3 install --no-index --exists-action=i --find-links=file://${PWD} --prefix=${FLATPAK_DEST} --no-build-isolation scipy
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/4c/3b/546a6f0bfe791bbb7f8d591613454d15097e53f906308ec6f7c1ce588e8e/scipy-1.16.2.tar.gz
+        sha256: af029b153d243a80afb6eabe40b0a07f8e35c9adc269c019f364ad747f826a6b
+
+  # python dependencies
+  - name: python-extras
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --exists-action=i --find-links=file://${PWD} --prefix=${FLATPAK_DEST} platformdirs tqdm
+    sources:
+      # platformdirs
+      - type: file
+        url: https://files.pythonhosted.org/packages/40/4b/2028861e724d3bd36227adfa20d3fd24c3fc6d52032f4a93c133be5d17ce/platformdirs-4.4.0-py3-none-any.whl
+        sha256: abd01743f24e5287cd7a5db3752faf1a2d65353f38ec26d98e25a6db65958c85
+      # tqdm
+      - type: file
+        url: https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl
+        sha256: 26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2
+
+  - name: pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --exists-action=i --find-links=file://${PWD} --prefix=${FLATPAK_DEST} Pillow --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/f3/0d/d0d6dea55cd152ce3d6767bb38a8fc10e33796ba4ba210cbab9354b6d238/pillow-11.3.0.tar.gz
+        sha256: 3828ee7586cd0b2091b6209e5ad53e20d0649bbe87164a459d0676e035e8f523
+
+  # main application build
+  - name: msx-tile-forge
+    buildsystem: simple
+    build-options:
+      env:
+        APP_VERSION: 01.00.00_rc20_5
+    sources:
+      - type: git
+        url: https://github.com/DamnedAngel/msx-tile-forge.git
+        tag: v01.00.00_rc20_5
+        commit: 9d5ee12897f7cff657c396c8afe05dec1465beaf
+      # temporary, for building test only
+      # begin
+      - type: archive
+        url: https://github.com/amaurycarvalho/msx-tile-forge/archive/refs/tags/flathub_v5.tar.gz
+        sha256: 321ef3c48ebb0ee83e8cddf70198c268fe66e9be170069d33977f389fd1d9fcb
+        dest: temp
+      # end 
+    build-commands:
+      # temporary, for building test only
+      # begin
+      - mv temp/flatpak .   
+      # end 
+      - make -C flatpak install
+
