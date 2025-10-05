@@ -12,11 +12,12 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 
 # broken stuff
 - launch button doesn't do anything
-~- no --user flatpaks~
-- KNS
+- ~- no --user flatpaks~
+- ~FWUPD backend~
+- KNS backend
 - kcm_updates
-- can't launch kcm_flatpak 
-- kuserfeedback (why I didn't include it)
-[See](https://github.com/renner0e/flathub/commit/1c25f82a28e2dcf5fa00a7c9eda23f9513e4ddb5)
+- can't launch kcm_flatpak
+- kuserfeedback [See](https://github.com/renner0e/flathub/commit/1c25f82a28e2dcf5fa00a7c9eda23f9513e4ddb5)
 
-- no idea if the fwupd stuff would actually work in practice
+
+- no idea if the fwupd stuff would actually work in practice, I don't know how to test it
