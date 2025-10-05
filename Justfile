@@ -26,6 +26,10 @@ debug:
 devel:
   flatpak run --command=bash --devel org.kde.discover
 
+strace:
+  flatpak run --command=strace --devel org.kde.discover /app/bin/plasma-discover
+
+
 lint:
   flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest org.kde.discover.yaml
 

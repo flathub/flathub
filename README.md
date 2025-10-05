@@ -6,9 +6,13 @@ https://release-monitoring.org/project/236343/
 https://invent.kde.org/plasma/discover
 
 
+## Patches
+
+stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [bazaar](https://github.com/flathub/io.github.kolunmi.Bazaar)
+
 # broken stuff
 - launch button doesn't do anything
-- no --user flatpaks
+~- no --user flatpaks~
 - KNS
 - kcm_updates
 - can't launch kcm_flatpak 
