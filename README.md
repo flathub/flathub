@@ -6,7 +6,7 @@ Task management and productivity application for individuals and teams.
 
 - **App ID**: app.towdow.TowDow
 - **Version**: 1.3.5
-- **Commit SHA**: ef122c279a533af2f217596277decd6b0d841294
+- **Commit SHA**: 9a875ecf75924031d8dc7a9674a613f88448ee65
 - **License**: AGPL-3.0-or-later
 - **Homepage**: https://towdow.app
 - **Repository**: https://gitlab.com/towdow/towdow-flutter
