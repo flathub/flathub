@@ -1,0 +1,173 @@
+app-id: net.imput.Helium
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '24.08'
+rename-icon: helium
+rename-desktop-file: helium.desktop
+command: chromium
+separate-locales: false
+finish-args:
+  - --require-version=1.8.2
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --allow=bluetooth # FIDO2 CTAP hybrid transport
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.Avahi
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.ScreenSaver
+  - --talk-name=org.gnome.Mutter.IdleMonitor.*
+  - --talk-name=org.cinnamon.ScreenSaver
+  - --talk-name=org.mate.ScreenSaver
+  - --talk-name=org.xfce.ScreenSaver
+  - --own-name=org.mpris.MediaPlayer2.helium.*
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=xdg-run/pipewire-0
+  # To install a PWA application
+  - --filesystem=home/.local/share/applications:create
+  - --filesystem=home/.local/share/icons:create
+  # To allow installing shortcuts on the desktop
+  - --filesystem=xdg-desktop
+  # For default download directory to work as expected
+  - --filesystem=xdg-download
+  # For MPRIS media cover art
+  - --filesystem=/tmp
+  # For imported CA certificates
+  - --persist=.pki
+  # For GNOME proxy resolution
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
+  - --env=GSETTINGS_BACKEND=dconf
+  # For KDE proxy resolution (KDE5 only)
+  - --filesystem=~/.config/kioslaverc
+
+add-extensions:
+  net.imput.Helium.NativeMessagingHost:
+    version: '1'
+    directory: chromium/native-messaging-hosts
+    merge-dirs: native-messaging-hosts
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+  net.imput.Helium.Extension:
+    version: '1'
+    directory: chromium/extensions
+    merge-dirs: extensions;native-messaging-hosts;policies/managed;policies/recommended
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+  net.imput.Helium.Policy:
+    version: '1'
+    directory: chromium/policies
+    merge-dirs: policies/managed;policies/recommended
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+
+modules:
+  - name: extensions
+    buildsystem: simple
+    build-commands:
+      - mkdir -pv "${FLATPAK_DEST}"/helium/{extensions,native-messaging-hosts,policies}
+      - for dir in native-messaging-hosts policies; do ln -sfv "${FLATPAK_DEST}/helium/"{"${dir}",extensions}"/${dir}";
+        done
+      - touch "${FLATPAK_DEST}/helium/extensions/no-mount-stamp"
+
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz
+        sha256: 16a47e49a58156dbb96578e1708325299e4c19eea9be128d5bd12fd0963d6c36
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2025.09
+        commit: 693a71c5ffa80ec9c9ce2ae03b1ccc493c698e53
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: helium
+    buildsystem: simple
+    build-commands:
+      - mv helium/* /app/helium/
+      - install -Dm755 chromium.sh /app/bin/chromium
+      - install -Dm644 /app/helium/product_logo_256.png /app/share/icons/hicolor/256x256/apps/helium.png
+      - install -Dm644 -t /app/share/applications helium.desktop
+      - install -Dm644 -t /app/share/metainfo "${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: file
+        path: net.imput.Helium.metainfo.xml
+      - type: file
+        path: chromium.sh
+      - type: file
+        url: https://raw.githubusercontent.com/imputnet/helium-linux/refs/tags/0.5.5.2/package/helium.desktop
+        sha256: cce8668c18d33077a585cb5d96522e5a02ae017a2baf800f8d7214ce6d05d3d2
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          version-scheme: semantic
+          url-template: https://raw.githubusercontent.com/imputnet/helium-linux/refs/tags/$version/package/helium.desktop
+      - type: archive
+        dest: helium
+        url: https://github.com/imputnet/helium-linux/releases/download/0.5.5.2/helium-0.5.5.2-x86_64_linux.tar.xz
+        sha256: 10f5bb0e2714e7cd28dd80be4df7eaf00584a62bb274fd072ac50e7e1eb4bb54
+        dest-filename: helium.tar.xz
+        only-arches: [x86_64]
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          version-scheme: semantic
+          url-template: https://github.com/imputnet/helium-linux/releases/download/$version/helium-$version-x86_64_linux.tar.xz
+      - type: archive
+        dest: helium
+        url: https://github.com/imputnet/helium-linux/releases/download/0.5.5.2/helium-0.5.5.2-arm64_linux.tar.xz
+        sha256: 0a284ab75c61a2bccd30065483ee43523df11cc9ff0366a5e76f71062324ff11
+        dest-filename: helium.tar.xz
+        only-arches: [aarch64]
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          version-scheme: semantic
+          url-template: https://github.com/imputnet/helium-linux/releases/download/$version/helium-$version-arm64_linux.tar.xz
