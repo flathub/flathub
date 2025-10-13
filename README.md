@@ -1,7 +1,3 @@
-# TODO: annoy the KDE people about anitya pre-release for discover for x-data-checker
-https://release-monitoring.org/project/236343/
-
-
 ## Upstream
 https://invent.kde.org/plasma/discover
 
