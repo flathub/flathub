@@ -19,6 +19,7 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 
 # Need to be investigated
 - fiwrmware upgrades with fwupd backend
+- PackageKit
 
 # confirmed working
 - right clicking in kickoff to uninstall
