@@ -16,6 +16,7 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 - can't launch kcm_flatpak
 - [extra flatpak installations](https://docs.flatpak.org/en/latest/tips-and-tricks.html#adding-a-custom-installation) even if you give permission to host-etc and the path you are installing to
 - kuserfeedback [See](https://github.com/renner0e/flathub/commit/1c25f82a28e2dcf5fa00a7c9eda23f9513e4ddb5)
+- WebFlow stuff authenticating to a flatpak repository and handling that authentication via browser (needs qtwebengine)
 
 # Need to be investigated
 - fiwrmware upgrades with fwupd backend
