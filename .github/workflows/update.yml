@@ -1,4 +1,8 @@
 name: Check for updates
+
+permissions:
+  contents: write
+
 on:
   schedule: # for scheduling to work this file must be in the default branch
     - cron: "0 * * * *" # run every hour
@@ -25,6 +29,14 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('flatpak-builder-tools/cargo/requirements.txt', 'flatpak-builder-tools/node/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install pip dependencies for cargo generator
         run: pip install tomlkit aiohttp
 
@@ -36,33 +48,39 @@ jobs:
 
       - name: Generate cargo-sources.json
         run: |
-          python3 flatpak-builder-tools/cargo/flatpak-cargo-generator.py noriskclient-launcher/src-tauri/Cargo.lock -o flathub/cargo-sources.json
+          if [ -f noriskclient-launcher/src-tauri/Cargo.lock ]; then
+            python3 flatpak-builder-tools/cargo/flatpak-cargo-generator.py noriskclient-launcher/src-tauri/Cargo.lock -o flathub/cargo-sources.json
+          fi
 
       - name: Install flatpak-node-generator
         run: pipx install git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node
 
       - name: Generate node-sources.json (Yarn)
         run: |
-          if [ -f yarn.lock ]; then
+          if [ -f noriskclient-launcher/yarn.lock ]; then
             flatpak-node-generator yarn noriskclient-launcher/yarn.lock -o flathub/node-sources.json
           fi
 
       - name: Commit changes
         run: |
+          cd flathub
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Get latest version info for better commit messages
+          LAUNCHER_VERSION=$(cd ../noriskclient-launcher && git describe --tags --always)
+
           FILES_TO_COMMIT=""
-          if [ -f packaging/flatpak/cargo-sources.json ]; then
-            FILES_TO_COMMIT="$FILES_TO_COMMIT packaging/flatpak/cargo-sources.json"
+          if [ -f cargo-sources.json ]; then
+            FILES_TO_COMMIT="$FILES_TO_COMMIT cargo-sources.json"
           fi
-          if [ -f packaging/flatpak/node-sources.json ]; then
-            FILES_TO_COMMIT="$FILES_TO_COMMIT packaging/flatpak/node-sources.json"
+          if [ -f node-sources.json ]; then
+            FILES_TO_COMMIT="$FILES_TO_COMMIT node-sources.json"
           fi
 
           if [ -n "$FILES_TO_COMMIT" ] && [[ $(git status --porcelain $FILES_TO_COMMIT) ]]; then
             git add -- $FILES_TO_COMMIT
-            git commit -m "chore: update flatpak dependency manifests"
+            git commit -m "chore: update flatpak dependency manifests for launcher ${LAUNCHER_VERSION}"
             git push
           else
             echo "No changes to commit."
@@ -74,10 +92,10 @@ jobs:
 
     strategy:
       matrix:
-        branch: [master] # list all branches to check
+        branch: [master, noriskclientlauncher-submission] # list all branches to check
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
 
