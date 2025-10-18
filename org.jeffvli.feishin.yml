@@ -1,0 +1,138 @@
+app-id: org.jeffvli.feishin
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+command: feishin
+separate-locales: false
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-music
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --own-name=org.mpris.MediaPlayer2.Feishin
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dbuildtype=release
+      - -Ddebug=false
+      - -Dstrip=true
+      - -Dbuild-date=false
+      - -Dmanpage-build=disabled
+    cleanup:
+      - /lib/pkgconfig
+      - /share
+      - /include
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+        commit: e48ac7ce08462f5e33af6ef9deeac6fa87eef01e
+        tag: v0.40.0
+    modules:
+      - name: libplacebo
+        buildsystem: meson
+        config-opts:
+          - -Ddemos=false
+          - -Dshaderc=disabled
+        cleanup:
+          - /include
+          - /lib/pkgconfig
+        sources:
+          - type: git
+            url: https://github.com/haasn/libplacebo.git
+            x-checker-data:
+              type: git
+              tag-pattern: ^v([\d.]+)$
+            commit: 3188549fba13bbdf3a5a98de2a38c2e71f04e21e
+            tag: v7.351.0
+          - type: patch
+            path: "0001-vulkan-utils_gen-fix-for-python-3.14.patch"
+      - name: libass
+        config-opts:
+          - --enable-shared
+          - --disable-static
+        cleanup:
+          - /lib/*.la
+          - /lib/pkgconfig
+          - /include
+        sources:
+          - type: git
+            url: https://github.com/libass/libass.git
+            x-checker-data:
+              type: git
+              tag-pattern: ^([\d.]+)$
+            commit: bbb3c7f1570a4a021e52683f3fbdf74fe492ae84
+            tag: 0.17.4
+  - name: jq
+    buildsystem: simple
+    subdir: main
+    build-commands:
+      - install -Dm 755 jq-linux-amd64 /app/bin/jq
+    sources:
+      - type: file
+        url: https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64
+        sha256: 020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d
+        dest: main
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/jqlang/jq/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v"; "")
+          url-query: .assets[] | select(.name == "jq-linux-amd64") | .browser_download_url
+
+  - name: feishin
+    buildsystem: simple
+    subdir: main
+    build-commands:
+      - >
+        for i in 128x128 256x256 512x512; do 
+          install -Dm 644 resources/assets/icons/${i}.png /app/share/icons/hicolor/${i}/apps/${FLATPAK_ID}.png
+        done
+      - cp -ar . /app/main
+      - install -Dm 644 ../flatpak/default.json /app/main/resources/default.json
+      - install -Dm 644 ../flatpak/org.jeffvli.feishin.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ../flatpak/org.jeffvli.feishin.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm 755 ../feishin.sh /app/bin/feishin
+    sources:
+      - type: archive
+        url: https://github.com/jeffvli/feishin/releases/download/v0.21.1/Feishin-linux-x64.tar.xz
+        sha256: 3cdbd79b9a8efb6a111fd14144614663576c94af97bcf62aefe4a7c3c45fe8a2
+        dest: main
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/jeffvli/feishin/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v"; "")
+          url-query: .assets[] | select(.name == "Feishin-linux-x64.tar.xz") | .browser_download_url
+      - type: dir
+        path: .
+        dest: flatpak
+      - type: script
+        dest-filename: feishin.sh
+        commands:
+          - >
+            for i in {0..9}; do
+                test -S $XDG_RUNTIME_DIR/discord-ipc-$i || ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+            done
+          - mkdir -p $XDG_CONFIG_HOME/feishin/ && cp -n /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json
+          # Merge default.json and existing.json if it exists
+          - >
+            {
+              /app/bin/jq -sS '.[0] * .[1]' /app/main/resources/default.json $XDG_CONFIG_HOME/feishin/config.json > /tmp/config.json
+              mv /tmp/config.json $XDG_CONFIG_HOME/feishin/config.json
+            } || true
+          - zypak-wrapper /app/main/feishin $LAUNCH_ARGS
