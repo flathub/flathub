@@ -8,9 +8,7 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 
 # broken stuff
 - launch button doesn't do anything
-- ~- no --user flatpaks~
 - can't install .flatpak bundle files (needs permission to the path, inside the sandbox flatpak install --user /run/user/1000/doc/xxx/ works)
-- ~FWUPD backend~
 - KNS backend
 - kcm_updates
 - can't launch kcm_flatpak
@@ -19,11 +17,14 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 - WebFlow stuff authenticating to a flatpak repository and handling that authentication via browser (needs qtwebengine)
 
 # Need to be investigated
-- fiwrmware upgrades with fwupd backend
 - PackageKit
+- systemd-sysupdate backend etc.
 
 # confirmed working
 - right clicking in kickoff to uninstall
+- installing removing system/user flatpaks
+- removing leftover user data of flatpaks
+- [upgrading firmware](https://github.com/flathub/flathub/pull/7037#discussion_r2443327649)
 
 https://github.com/user-attachments/assets/fd0bf708-b011-44ff-9e3f-b49febf9f9fb
 
