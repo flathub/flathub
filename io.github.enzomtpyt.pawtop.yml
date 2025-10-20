@@ -1,0 +1,78 @@
+app-id: io.github.enzomtpyt.pawtop
+
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '24.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+
+command: startpawtop
+separate-locales: false
+
+finish-args:
+  - --socket=pulseaudio
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher # Tray functionalities on KDE
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --device=all # Needed for GPU acceleration and the webcam
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-download # This and the above two are used for drag-n-drop, and download managing
+  - --filesystem=xdg-run/pipewire-0 # Pipewire interfacing
+  - --filesystem=xdg-run/speech-dispatcher # For TTS and VcNarrator
+  - --filesystem=~/.steam # Needed for SteamOS integration, as the XDG OpenURL portal doesn't work properly in Game Mode. We only need ~/.steam/steam.pipe but Flatpak can't correctly mount just that: 'File "/home/deck/.steam/steam.pipe" has unsupported type 0o10000'
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
+
+modules:
+  - name: Pawtop
+    buildsystem: simple
+    build-commands:
+      - chmod +x Pawtop.AppImage
+      - ./Pawtop.AppImage --appimage-extract
+      - desktop-file-edit --set-key="Exec" --set-value="startpawtop %U" --set-icon=$FLATPAK_ID
+        squashfs-root/pawtop.desktop
+      - |
+        for icon in 16 32 48 64 128 256 512; do
+          install -D squashfs-root/usr/share/icons/hicolor/${icon}x${icon}/apps/pawtop.png \
+              /app/share/icons/hicolor/${icon}x${icon}/apps/io.github.enzomtpyt.pawtop.png
+        done
+      - install -D squashfs-root/pawtop.desktop /app/share/applications/io.github.enzomtpyt.pawtop.desktop
+      - install -Dm755 startpawtop /app/bin/startpawtop
+      - install -D io.github.enzomtpyt.pawtop.metainfo.xml -t /app/share/metainfo/
+      - mv squashfs-root /app/bin/pawtop
+
+    sources:
+      - type: file
+        path: startpawtop
+
+      - type: file
+        url: https://raw.githubusercontent.com/enzomtpYT/Pawtop/main/meta/io.github.enzomtpyt.pawtop.metainfo.xml
+        sha512: d3bf222cc78d85a5b97417ef3744a21be3d8840ccf5d5ec4e545b8aadbf423e00b5df9da9396f21bb69e969d019cdac8788bdbe6138cbc77c97f04439c521719
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/enzomtpYT/Pawtop/releases/latest
+          version-query: .tag_name | sub("v"; "")
+          url-query: .assets[] | select(.name == "io.github.enzomtpyt.pawtop.metainfo.xml")
+            | .browser_download_url
+
+      - type: file
+        url: https://github.com/enzomtpYT/Pawtop/releases/latest/download/Pawtop-linux-x86_64.AppImage
+        dest-filename: Pawtop.AppImage
+        sha512: cd3b63d5415fac2ba1a77741669a944096450a4580115a03c665e5364fea82d2307076d3b225755feb1bccb999cf092e2e2f9481ab7baf614e1b62fc3721f0f7
+        only-arches: [x86_64]
+        x-checker-data:
+          type: electron-updater
+          url: https://github.com/enzomtpYT/Pawtop/releases/latest/download/latest-linux.yml
+
+      - type: file
+        url: https://github.com/enzomtpYT/Pawtop/releases/latest/download/Pawtop-linux-arm64.AppImage
+        dest-filename: Pawtop.AppImage
+        sha512: e6e012db99bb55a0078da0a4ce4f9b0e8b6015f4556a7f9a5c5835352c81e9fede273030414b687f0efd663ca7b0f82b308bc43375f672be9eaa7bd4f8ca943d
+        only-arches: [aarch64]
+        x-checker-data:
+          type: electron-updater
+          url: https://github.com/enzomtpYT/Pawtop/releases/latest/download/latest-linux-arm64.yml
