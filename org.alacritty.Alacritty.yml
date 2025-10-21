@@ -1,0 +1,46 @@
+app-id: org.alacritty.Alacritty
+command: alacritty-wrapper
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.golang
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - modules/host-spawn/host-spawn.yml
+  - name: alacritty
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/alacritty/cargo
+    sources:
+      - modules/alacritty/alacritty-cargo-sources.yml
+      - type: git
+        url: https://github.com/alacritty/alacritty
+        tag: v0.16.1
+      - type: file
+        path: modules/alacritty/alacritty.toml
+      - type: script
+        dest-filename: alacritty-wrapper
+        commands:
+          - '[[ -e $XDG_CONFIG_HOME/alacritty.toml ]] || cp /app/etc/alacritty.toml $XDG_CONFIG_HOME'
+          - exec /app/bin/alacritty "$@"
+    build-commands:
+      - cargo --frozen fetch
+      - cargo --frozen build --release
+      - install -Dm755 alacritty-wrapper -t /app/bin
+      - install -Dm755 target/release/alacritty -t /app/bin
+      - install -Dm644 alacritty.toml /app/etc/alacritty.toml
+      - install -Dm644 extra/linux/org.alacritty.Alacritty.appdata.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 extra/logo/alacritty-term.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 extra/linux/Alacritty.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-key=Exec --set-value=alacritty-wrapper /app/share/applications/${FLATPAK_ID}.desktop
+      - tic -x -o /app/share/terminfo extra/alacritty.info
