@@ -1,0 +1,96 @@
+app-id: com.pragmar.interrobot
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: interrobot
+
+finish-args:
+
+  # base permissions
+  - --share=network
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+  # graphics
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+modules:
+  - name: interrobot
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin
+      - install -d /app/lib
+      - install -d /app/share/InterroBot
+
+      # copy files (publish directory contents are extracted to current directory)
+      - cp -r . /app/share/InterroBot/
+
+      # copy .so files to /app/lib for LD_LIBRARY_PATH
+      - mkdir -p /app/lib
+      - find /app/share/InterroBot -name "*.so*" -type f -exec cp -t /app/lib {} + 2>/dev/null || true
+
+      # main executable
+      - chmod +x /app/share/InterroBot/InterroBot
+
+      # create wrapper script
+      - |
+        cat > /app/bin/interrobot << 'EOF'
+        #!/bin/bash
+
+        # InterroBot wrapper for Flatpak
+        export LD_LIBRARY_PATH="/app/lib:${LD_LIBRARY_PATH}"
+        cd /app/share/InterroBot
+
+        # stderr filtering for common GTK/Mesa/DRI issues (noise)
+        exec ./InterroBot "$@" 2> >(
+          grep -v \
+            -e "gtk-application-prefer-dark-theme" \
+            -e "libEGL warning" \
+            -e "DRI3 error" \
+            -e "MESA" \
+            >&2
+        )
+        EOF
+      - chmod +x /app/bin/interrobot
+
+      - install -Dm644 interrobot.desktop /app/share/applications/com.pragmar.interrobot.desktop
+
+      # Flatpak desktop file paths diverge from default system install
+      # (deb/rpm) defaults, align to Flatpak environment
+      - sed -i 's|Icon=interrobot|Icon=com.pragmar.interrobot|' /app/share/applications/com.pragmar.interrobot.desktop
+      - sed -i 's|Exec=/usr/bin/interrobot|Exec=interrobot|' /app/share/applications/com.pragmar.interrobot.desktop
+
+      # install icons
+      - |
+        for size in 48 64 128 256; do
+          icon_file="wwwroot/images/icons/appicon.${size}.png"
+          if [ -f "$icon_file" ]; then
+            install -Dm644 "$icon_file" "/app/share/icons/hicolor/${size}x${size}/apps/com.pragmar.interrobot.png"
+          fi
+        done
+
+      # install metadata
+      - install -Dm644 com.pragmar.interrobot.metainfo.xml /app/share/metainfo/com.pragmar.interrobot.metainfo.xml
+
+    sources:
+
+      # local publish directory, required to write tar (debug)
+      # - type: dir
+      #   path: publish
+
+      # local gz archive (debug)
+      # - type: archive
+      #   path: ./packaged/interrobot-2.9.3.tar.gz
+
+      - type: archive
+        url: https://interro.bot/media/uploads/bin/interrobot-2.9.3.tar.gz
+        sha256: 37f27d981e073a2e9bc76449651ab69b397a0d219cface482a5b5fbd7a42f77b      
+
+      - type: file
+        path: interrobot.desktop
+
+      - type: file
+        path: com.pragmar.interrobot.metainfo.xml
