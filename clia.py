@@ -44,7 +44,7 @@ class ConfigManager:
     """Manages application configuration and API key storage"""
     
     def __init__(self):
-        self.config_dir = Path.home() / ".config" / "clia"
+        self.config_dir = Path(GLib.get_user_config_dir()) / "clia"
         self.config_file = self.config_dir / "config.json"
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.config = self.load_config()
