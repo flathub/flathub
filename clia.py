@@ -1751,7 +1751,7 @@ class CliAApplication(Adw.Application):
     """Main application class"""
     
     def __init__(self):
-        super().__init__(application_id="net.bloupla.CliA")
+        super().__init__(application_id="net.bloupla.clia")
         self.config_manager = ConfigManager()
         self.apply_theme()
         self.connect("startup", self.on_startup)
