@@ -6,7 +6,7 @@ To build and install locally, first install `flatpak-builder` with your package 
 Then run:
 
 ```
-flatpak-builder build net.mullvad.mullvadvpn.yaml --force-clean --ccache --user --install
+flatpak-builder build net.mullvad.mullvadvpn.yaml --force-clean --ccache --user --install --install-deps-from=flathub
 ```
 
 ## Contributing
