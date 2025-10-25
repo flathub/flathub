@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-org.equicord.equibop}"
+
+declare -a FLAGS=(--enable-speech-dispatcher)
+
+if [[ " $* " == *" --toggle-deafen "* ]]; then
+    echo "VCD_TOGGLE_SELF_DEAF" >> "$XDG_RUNTIME_DIR/vesktop-ipc"
+    exit
+fi
+
+if [[ " $* " == *" --toggle-mic "* ]]; then
+    echo "VCD_TOGGLE_SELF_MUTE" >> "$XDG_RUNTIME_DIR/vesktop-ipc"
+    exit
+fi
+
+if [[ $XDG_SESSION_TYPE == "wayland" && " $* " == *" --disable-gpu-sandbox"* ]]; then
+    echo "Force disabling gpu sandbox"
+    FLAGS+=(--disable-gpu-sandbox)
+fi
+
+if [[ $XDG_SESSION_TYPE == "wayland" ]]; then
+    if [[ -c /dev/nvidia0 ]]; then
+        echo "Using NVIDIA on Wayland, disabling gpu sandbox"
+        FLAGS+=(--disable-gpu-sandbox)
+    fi
+
+    WAYLAND_SOCKET=${WAYLAND_DISPLAY:-"wayland-0"}
+    if [[ "${WAYLAND_SOCKET:0:1}" != "/" ]]; then
+        WAYLAND_SOCKET="$XDG_RUNTIME_DIR/$WAYLAND_SOCKET"
+    fi
+
+    if [[ -e "$WAYLAND_SOCKET" ]]; then
+        echo "Wayland socket is available, running natively on Wayland."
+        echo "To disable, remove the --socket=wayland permission."
+        FLAGS+=(--ozone-platform-hint=auto)
+        FLAGS+=(--enable-wayland-ime)
+    fi
+fi
+
+echo "Passing the following arguments to Electron:" "${FLAGS[@]}"
+zypak-wrapper /app/bin/equibop/equibop.bin "${FLAGS[@]}" "$@"
