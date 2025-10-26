@@ -6,6 +6,8 @@ sdk: org.freedesktop.Sdk
 
 base: org.electronjs.Electron2.BaseApp
 base-version: *runtime-version
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.node20
 
 command: startequibop
 separate-locales: false
@@ -28,33 +30,104 @@ finish-args:
     - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
 
 modules:
+    - name: bun
+      buildsystem: simple
+      build-commands:
+          - install -Dm755 bun /app/bin/bun
+      sources:
+          - type: archive
+            url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-linux-x64.zip
+            sha512: 1fd367254ccff89163b32ee8bf76b7f013855043bf828d36300aaeef95b72139ed6afdab4446e11e85b56b4a57cfd45a2c4d02460a5f1172e35493ad603fc010
+            only-arches: [x86_64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/oven-sh/bun/releases/latest
+                version-query: .tag_name | sub("bun-v"; "")
+                url-query: .assets[] | select(.name == "bun-linux-x64.zip") | .browser_download_url
+          - type: archive
+            url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-linux-aarch64.zip
+            sha512: 28f96904bcf24f133fedeb0995970ad4f085d16bc700dea46a66c1736074c642034edd445c03153b966cada551df8dd4c86fd85f03a4f820963666da6ea020c5
+            only-arches: [aarch64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/oven-sh/bun/releases/latest
+                version-query: .tag_name | sub("bun-v"; "")
+                url-query: .assets[] | select(.name == "bun-linux-aarch64.zip") | .browser_download_url
+
     - name: Equibop
       buildsystem: simple
       build-commands:
-          - chmod +x Equibop.AppImage
-          - ./Equibop.AppImage --appimage-extract
+          - tar xzf node_modules.tar.gz
+
           - |
-              if [ -d "squashfs-root/resources/bun/linux-x64" ]; then
-                install -Dm755 squashfs-root/resources/bun/linux-x64/bun-linux-x64/bun /app/bin/bun
+              # Backup electron package files before replacing dist
+              mkdir -p electron-backup
+              cp node_modules/electron/package.json electron-backup/
+              cp node_modules/electron/path.txt electron-backup/
+
+              # Replace electron dist with our downloaded version
+              rm -rf node_modules/electron/dist
+              mkdir -p node_modules/electron/dist
+              unzip -q electron-*.zip -d node_modules/electron/dist
+
+              # Create version file
+              echo '{"version":"38.4.0"}' > node_modules/electron/dist/version
+
+              # Restore electron package files
+              cp electron-backup/package.json node_modules/electron/
+              cp electron-backup/path.txt node_modules/electron/
+
+          - patch -p1 < sandboxFix.patch
+          - patch -p1 < beforePack.patch
+
+          - |
+              # Copy Bun binary to resources directory for runtime use
+              # This mimics what downloadBun.mts would do, but using our pre-installed Bun
+              mkdir -p resources/bun/linux-x64/bun-linux-x64
+              cp /app/bin/bun resources/bun/linux-x64/bun-linux-x64/bun
+
+          - bun run build
+          - . /usr/lib/sdk/node20/enable.sh && node_modules/.bin/electron-builder --dir --linux dir --config.electronDist=node_modules/electron/dist
+
+          - |
+              if [ -d "dist/linux-unpacked" ]; then
+                DIST_DIR="dist/linux-unpacked"
+              elif [ -d "dist/linux-arm64-unpacked" ]; then
+                DIST_DIR="dist/linux-arm64-unpacked"
               else
-                install -Dm755 squashfs-root/resources/bun/linux-arm64/bun-linux-aarch64/bun /app/bin/bun
+                echo "Error: Could not find unpacked directory"
+                exit 1
               fi
-          - desktop-file-edit --set-key="Exec" --set-value="startequibop %U" --set-icon=$FLATPAK_ID
-            squashfs-root/equibop.desktop
-          - install -D squashfs-root/equibop.svg /app/share/icons/hicolor/scalable/apps/org.equicord.equibop.svg
-          - install -D squashfs-root/.DirIcon /app/share/icons/hicolor/256x256/apps/org.equicord.equibop.png
-          - install -D squashfs-root/equibop.desktop /app/share/applications/org.equicord.equibop.desktop
-          - install -Dm755 startequibop /app/bin/startequibop
-          - install -D org.equicord.equibop.metainfo.xml -t /app/share/metainfo/
-          - mv squashfs-root /app/bin/equibop
+
+              # Install icons
+              install -Dm644 build/icon.svg /app/share/icons/hicolor/scalable/apps/org.equicord.equibop.svg
+
+              # Install desktop file
+              if [ -f "$DIST_DIR/equibop.desktop" ]; then
+                desktop-file-edit --set-key="Exec" --set-value="startequibop %U" --set-icon=$FLATPAK_ID "$DIST_DIR/equibop.desktop"
+                install -D "$DIST_DIR/equibop.desktop" /app/share/applications/org.equicord.equibop.desktop
+              fi
+
+              # Install startup script and metainfo
+              install -Dm755 startequibop /app/bin/startequibop
+              install -D org.equicord.equibop.metainfo.xml -t /app/share/metainfo/
+
+              # Install the application
+              mv "$DIST_DIR" /app/bin/equibop
 
       sources:
           - type: file
             path: startequibop
 
           - type: file
-            url: https://github.com/Equicord/Equibop/releases/download/v3.0.4/org.equicord.equibop.metainfo.xml
-            sha512: c871d362f9a1652ee45e7f1c743f647698f262e7345bdae7fe14bbad770280a8f6b0a71822263bbb65bfd6879a2dca307a7502ffa45f28166bae2c9cd0ecbde5
+            path: sandboxFix.patch
+
+          - type: file
+            path: beforePack.patch
+
+          - type: file
+            url: https://github.com/Equicord/Equibop/releases/latest/download/org.equicord.equibop.metainfo.xml
+            sha512: 63ddf1712c6ccfe1ead7087207c102b77dee30757214996305d69f128cbc2fb8943b69ed7767a7b7fb9adb86f77064ed76f5c8ea09c39c2f30a0864eb70a5e80
             x-checker-data:
                 type: json
                 url: https://api.github.com/repos/Equicord/Equibop/releases/latest
@@ -63,20 +136,36 @@ modules:
                     .assets[] | select(.name == "org.equicord.equibop.metainfo.xml")
                     | .browser_download_url
 
-          - type: file
-            url: https://github.com/Equicord/Equibop/releases/download/v3.0.4/Equibop-3.0.4.AppImage
-            dest-filename: Equibop.AppImage
-            sha512: c99d487a7c5fe9f0531c0cf46a6952a39330dac63b51327a1caced372bbdf2e34aa07bdec901db571eb894f39ebdf13647cf59326c0ac3cd023da6f499e03cd6
-            only-arches: [x86_64]
+          - type: archive
+            url: https://github.com/Equicord/Equibop/archive/refs/tags/v3.0.5.tar.gz
+            sha512: 0080fad9b4f64f919f049c065081e1b0f7e02c6d42a5fd89a6a29d73b30645ba0b75d6fbe839d4a3dd8d212009e807167ebda75ed8e1cd37fedbaac46aaeaae6
+            strip-components: 1
             x-checker-data:
-                type: electron-updater
-                url: https://github.com/Equicord/Equibop/releases/latest/download/latest-linux.yml
+                type: json
+                url: https://api.github.com/repos/Equicord/Equibop/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query: .tarball_url
+                is-main-source: true
 
           - type: file
-            url: https://github.com/Equicord/Equibop/releases/download/v3.0.4/Equibop-3.0.4-arm64.AppImage
-            dest-filename: Equibop.AppImage
-            sha512: 18f0e8d972442d2f76503277f3aa8bde4288f8c2f82d419e0c49c67f0b6cad5ce050f79c8c2fbacb08a42ec8fa49e7fe0110b138bf06fd4cac93f4aa247497bb
-            only-arches: [aarch64]
+            url: https://github.com/Equicord/Equibop/releases/latest/download/node_modules.tar.gz
+            sha512: a3de3b19185dbd407174396ef9548906916aba183b44c76b27d92d68d10b623c1bda5c91591bb90f5cc639f047eceb17b3fe913eb3b68d4e8e004c43bf304cca
             x-checker-data:
-                type: electron-updater
-                url: https://github.com/Equicord/Equibop/releases/latest/download/latest-linux-arm64.yml
+                type: json
+                url: https://api.github.com/repos/Equicord/Equibop/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query: .assets[] | select(.name == "node_modules.tar.gz")
+                    | .browser_download_url
+
+          # Electron binaries for building
+          - type: file
+            url: https://github.com/electron/electron/releases/download/v38.4.0/electron-v38.4.0-linux-x64.zip
+            sha512: b20ed3f62b408b69b0d64413b13efd3da3cffa7f16d7c5d658ada05f7975961c9127711cf2dab2023a2de6d9c5085dd83b35f6de3e1c602e283b9703642ea3d7
+            dest-filename: electron-v38.4.0-linux-x64.zip
+            only-arches: [x86_64]
+
+          - type: file
+            url: https://github.com/electron/electron/releases/download/v38.4.0/electron-v38.4.0-linux-arm64.zip
+            sha512: 729ed9f30e1bf0e4e108474c6356b0437379268c57791ebb4cadaaffc273dc1f585fd7a7e4e4ebbe23f801623feca0e5d4443dc8f5ce4080de17b034d221fee4
+            dest-filename: electron-v38.4.0-linux-arm64.zip
+            only-arches: [aarch64]
