@@ -16,15 +16,18 @@ stolen from [gnome builder](https://github.com/flathub/org.gnome.Builder) and [b
 - kuserfeedback [See](https://github.com/renner0e/flathub/commit/1c25f82a28e2dcf5fa00a7c9eda23f9513e4ddb5)
 - WebFlow stuff authenticating to a flatpak repository and handling that authentication via browser (needs qtwebengine at build time)
 
-# Need to be investigated/not working yet
+# Need to be investigated/packaged + not working yet
 - PackageKit
-- systemd-sysupdate backend etc.
+- systemd-sysupdate backend
+- Snap
+- Button prompting for reboot on non-KDE [See](https://github.com/flathub/flathub/pull/7037#discussion_r2450604937)
 
 # confirmed working
 - right clicking in kickoff to uninstall
 - installing removing system/user flatpaks
 - removing leftover user data of flatpaks
 - [upgrading firmware](https://github.com/flathub/flathub/pull/7037#discussion_r2443327649)
+- button prompting for reboot on KDE
 
 https://github.com/user-attachments/assets/fd0bf708-b011-44ff-9e3f-b49febf9f9fb
 
