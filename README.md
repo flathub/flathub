@@ -7,7 +7,7 @@ A modern GNOME application for managing system notifications and background proc
 ![Main Interface](https://github.com/Leeuw-Maluleka/flathub/raw/1320790d6c4fe5f63b108fb6d97f8e464bb3193b/Screenshot-13-51-54.png)
 *Main interface showing notifications and processes tabs*
 
-![Preferences](https://raw.githubusercontent.com/flathub/org.example.NotifyHub/main/Screenshot-13-52-18.png)
+![Preferences](https://github.com/Leeuw-Maluleka/flathub/raw/401a74b82107921ca9657300b6162430956d7eeb/Screenshot-13-52-18.png)
 *Preferences window with filter settings*
 
 ## Features
