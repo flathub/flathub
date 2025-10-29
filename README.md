@@ -1,27 +1,31 @@
-# Flathub
+# NotifyHub
 
-Flathub is the central place for building and hosting Flatpak builds.
+A modern GNOME application for managing system notifications and background processes.
 
-Using the Flathub repository
-----------------------------
+## Screenshots
 
-To install applications that are hosted on Flathub, use the following:
-```
-flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.gnome.Recipes
-```
+![Main Interface](https://raw.githubusercontent.com/flathub/org.example.NotifyHub/main/Screenshot From 2025-10-29 13-51-54.png)
+*Main interface showing notifications and processes tabs*
 
-To install applications from the beta branch, use the following:
-```
-flatpak remote-add flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
-flatpak install flathub-beta org.godotengine.Godot
-```
+![Preferences](https://raw.githubusercontent.com/flathub/org.example.NotifyHub/main/Screenshot From 2025-10-29 13-52-18.png)
+*Preferences window with filter settings*
 
-For more information and more applications see https://flathub.org
+## Features
 
-Contributing to Flathub
------------------------
+- View and search recent notifications (past 24 hours)
+- Manage background processes with visibility toggles
+- Smart filtering: mute notifications by app or keyword
+- Snooze support: one-click quiet hours
+- Export/import filter rules
+- Modern libadwaita UI following GNOME HIG
 
-For information on creating packages or reporting issues please see the [contributing page](/CONTRIBUTING.md).
+## Links
 
-***Note:*** *this repository is not for reporting issues related to the flathub.org website itself or contributing to its development. For that, go to https://github.com/flathub-infra/website*
+- **Homepage**: https://lmconsulting.co.za
+- **Source**: https://github.com/Leeuw-Maluleka/notifyhub
+- **Issues**: https://github.com/Leeuw-Maluleka/notifyhub/issues
+- **Support**: support@lmconsulting.co.za
+
+## License
+
+MIT License - see LICENSE file in source repository.
