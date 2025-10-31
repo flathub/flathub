@@ -547,7 +547,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             if data["error"] == "Binary Missing":
                 return 
             
-            self.setIcon(load_icon("audio-headset-symbolic"))
+            self.setIcon(load_icon("battery-missing-symbolic"))
             self.setToolTip(f"Headset: {data['error']}")
             self.info_name_action.setText("Headset")
             self.info_status_action.setText(f"Status: {data['error']}")
