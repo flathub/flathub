@@ -1,7 +1,7 @@
 app-id: com.pragmar.interrobot
-runtime: org.gnome.Platform
-runtime-version: '49'
-sdk: org.gnome.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
 command: interrobot
 
 finish-args:
@@ -18,6 +18,132 @@ finish-args:
   - --device=dri
 
 modules:
+
+  # org.freedesktop.Platform webkit2gtk-6 requirements: gtk4, libadwaita, libsoup3, woff2
+  - name: gtk4
+    buildsystem: meson
+    config-opts:
+      - -Dbuild-examples=false
+      - -Dbuild-tests=false
+      - -Dbuild-testsuite=false
+      - -Dintrospection=disabled
+      - -Ddocumentation=false
+      - -Dmedia-gstreamer=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk/4.21/gtk-4.21.0.tar.xz
+        sha256: f52475c5041dfd02cc4eed22ee94f12ec310c16a68fda9203dc54ffd5daa6e6f
+
+  - name: libadwaita
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Dvapi=false
+      - -Dgtk_doc=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.1.tar.xz
+        sha256: d00ac845a4545d92e6805e31095a51c68f9f4e02426900472084b0cddce3f833
+
+  - name: libsoup3
+    buildsystem: meson
+    config-opts:
+      - -Dgssapi=disabled
+      - -Dvapi=disabled
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Ddocs=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsoup/3.6/libsoup-3.6.0.tar.xz
+        sha256: 62959f791e8e8442f8c13cedac8c4919d78f9120d5bb5301be67a5e53318b4a3
+
+  - name: woff2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/google/woff2/archive/v1.0.2/woff2-1.0.2.tar.gz
+        sha256: add272bb09e6384a4833ffca4896350fdb16e0ca22df68c0384773c67a175594
+      # GCC compatibility patch, `uint8_t` undefined with GCC 15
+      - type: file
+        url: https://sources.debian.org/data/main/w/woff2/1.0.2-3/debian/patches/cstdint-uint8.patch
+        sha256: 5029a95862dc5bc16b4d42d807a49395023a292c77300eae26b4ce589e268065
+      - type: shell
+        commands:
+          - patch -p1 -i cstdint-uint8.patch
+
+  - name: webkit2gtk-6.0
+    buildsystem: cmake-ninja
+    build-options:
+      strip: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_C_FLAGS_RELEASE=-g0 -DNDEBUG
+      - -DCMAKE_CXX_FLAGS_RELEASE=-g0 -DNDEBUG
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF     # defer to Flatpak sandbox
+      - -DENABLE_DOCUMENTATION=OFF          # requires GIDocgen
+      - -DENABLE_ENCRYPTED_MEDIA=OFF        # nonessential DRM for content
+      - -DENABLE_GAMEPAD=OFF                # requires Mannette
+      - -DENABLE_GEOLOCATION=OFF            # requires geoclue
+      - -DENABLE_INTROSPECTION=OFF          # nonessential metadata
+      - -DENABLE_MEDIA_SOURCE=OFF           # extensions for streaming
+      - -DENABLE_MINIBROWSER=OFF            # nonessential browser mode
+      - -DENABLE_PDFJS=OFF                  # nonessential PDF viewer
+      - -DENABLE_SPEECH_SYNTHESIS=OFF       # requires Flite
+      - -DENABLE_SPELLCHECK=OFF             # requires enchant
+      - -DENABLE_WEBDRIVER=OFF              # nonessential WebDriver protocol
+      - -DPORT=GTK                          # platform implementation
+      - -DUSE_AVIF=OFF                      # nonessential image format
+      - -DUSE_JPEGXL=OFF                    # nonessential image format
+      - -DUSE_LCMS=OFF                      # nonessential color management
+      - -DUSE_LIBBACKTRACE=OFF              # requires libbacktrace
+      - -DUSE_LIBSECRET=OFF                 # nonessential password storage
+      - -DUSE_SYSTEM_SYSPROF_CAPTURE=OFF    # requires sysprof-capture
+      - -DUSE_WOFF2=ON                      # utilized font format
+      - -DUNIFDEF_EXECUTABLE=/app/bin/unifdef
+
+    modules:
+
+      # ruby required for webkit (build-only)
+      - name: ruby
+        buildsystem: autotools
+        config-opts:
+          - --disable-install-doc
+          - --disable-install-rdoc
+          - --disable-install-capi
+        sources:
+          - type: archive
+            url: https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.9.tar.xz
+            sha256: 2b24a2180a2f7f63c099851a1d01e6928cf56d515d136a91bd2075423a7a76bb
+        cleanup:
+          - '*'
+
+      # unifdef for webkit2gtk (build-only)
+      - name: unifdef
+        no-autogen: true
+        build-options:
+          env:
+            CC: gcc
+            CFLAGS: "-std=gnu99"
+        make-install-args:
+          - prefix=${FLATPAK_DEST}
+        sources:
+          - type: archive
+            url: https://dotat.at/prog/unifdef/unifdef-2.12.tar.xz
+            sha256: 43ce0f02ecdcdc723b2475575563ddb192e988c886d368260bc0a63aee3ac400
+        cleanup:
+          - "*"
+
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.51.1.tar.xz
+        sha256: 01d0aa6375a60188b5835d91e75daf8f5f734d2ff906f37e89c4a632123c3fe9
+
   - name: interrobot
     buildsystem: simple
     build-commands:
@@ -52,4 +178,3 @@ modules:
       - type: archive
         url: https://interro.bot/media/uploads/bin/interrobot-2.9.3.3.tar.gz
         sha256: 8d5262a7fd323ec6c45a41d0e53defbcfb5eb9aeaf55d5b7338c0251609cc3f1
-
