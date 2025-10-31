@@ -1,0 +1,69 @@
+app-id: io.github.N3kosempai.klia-store
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: klia-store
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=xdg-data/flatpak:ro
+  - --filesystem=xdg-data/applications:ro
+  - --filesystem=/var/lib/flatpak:ro
+  - --filesystem=host-os:ro
+  - --filesystem=host-etc:ro
+  - --talk-name=org.freedesktop.Flatpak
+  - --system-talk-name=org.freedesktop.Flatpak
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin:/run/build/klia-store/npm-global/bin
+  env:
+    CARGO_HOME: /run/build/klia-store/cargo
+    RUST_BACKTRACE: '1'
+    NODE_ENV: production
+modules:
+  - name: klia-store
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+      env:
+        XDG_CACHE_HOME: /run/build/klia-store/cache
+        CARGO_HOME: /run/build/klia-store/cargo
+        npm_config_cache: /run/build/klia-store/npm-cache
+        npm_config_prefix: /run/build/klia-store/npm-global
+        CI: 'true'
+        TAURI_PLATFORM_TYPE: 'Linux'
+        TAURI_ENV_PRODUCTION: 'true'
+    build-commands:
+      # Install pnpm globally in a writable location
+      - npm install -g pnpm@10.13.1
+
+      # Install dependencies with pnpm (--force to skip prompts)
+      - pnpm install --frozen-lockfile --force
+
+      # Build using Tauri CLI (creates binary and deb, skips appimage/rpm that fail)
+      - pnpm tauri build --bundles deb
+
+      # Install the binary
+      - install -Dm755 src-tauri/target/release/klia-store -t /app/bin/
+
+      # Copy deb package for later use
+      - mkdir -p /app/share/packages
+      - cp src-tauri/target/release/bundle/deb/*.deb /app/share/packages/ || true
+
+      # Install desktop file
+      - install -Dm644 io.github.N3kosempai.klia-store.desktop -t /app/share/applications/
+
+      # Install icon
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.N3kosempai.klia-store.png
+
+      # Install metainfo
+      - install -Dm644 io.github.N3kosempai.klia-store.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: dir
+        path: .
