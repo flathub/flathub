@@ -1,0 +1,155 @@
+app-id: dev.ruflas.HeadsetBatteryIndicator
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+command: headset-battery-indicator
+
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  - --socket=session-bus
+  - --talk-name=org.freedesktop.Notifications
+  - --device=dri
+  - --filesystem=home
+  - --share=ipc
+  - --env=QT_QPA_PLATFORMTHEME=qt5ct
+  - --env=QT_ICON_PATH=/app/share/headset-battery-indicator/icons
+  - --env=XDG_DATA_DIRS=/app/share:$XDG_DATA_DIRS
+  - --device=dri          # Para gráficos
+  - --device=usb      # Para dispositivos USB
+  - --filesystem=/dev/hidraw
+  - --device=all
+
+
+modules:
+  # --- MÓDULO 1: LIBUSB ---
+  - name: libusb
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+    config-opts:
+      - --prefix=/app
+
+  # --- MÓDULO 2: HIDAPI (usa libusb y hidraw) ---
+  - name: hidapi
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/libusb/hidapi.git
+        tag: hidapi-0.14.0
+    config-opts:
+      - --prefix=/app
+      - --enable-shared
+      - --disable-static
+    build-options:
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+        CFLAGS: -I/app/include
+        LDFLAGS: -L/app/lib
+
+  # --- MÓDULO 3: HEADSETCONTROL ---
+  - name: headsetcontrol
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_DOC=OFF
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/Sapd/HeadsetControl.git
+        tag: 3.0.0
+    build-options:
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+        CFLAGS: -I/app/include
+        LDFLAGS: -L/app/lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+
+  # --- MÓDULO 4: FRONTEND PYTHON (PySide6 + tu app) ---
+  - name: headset-battery-indicator-app
+    buildsystem: simple
+    build-commands:
+      # 1. INSTALAR HERRAMIENTAS DE CONSTRUCCIÓN EN /app (SIN FALLAR)
+      # Instalamos setuptools y wheel ANTES del conflicto.
+      #- pip3 install --no-index --prefix=/app --find-links . setuptools-*.tar.gz
+      #- pip3 install --no-index --prefix=/app --find-links . wheel-*.tar.gz
+
+      # 2. INSTALACIÓN DE LIBRERÍAS DE LA GUI EN /app
+      - pip3 install --no-index --prefix=/app --find-links . pyside6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+      - pip3 install --no-index --prefix=/app --find-links . shiboken6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+      - pip3 install --no-index --prefix=/app --find-links . pyside6_essentials-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+
+      # 3. INSTALACIÓN DE TU APLICACIÓN
+      # Forzamos la instalación de tu app usando el nuevo método autónomo
+      - pip3 install --no-cache-dir --no-build-isolation --prefix=/app --no-deps . 
+
+      # 4. Copia el lanzador (launcher)
+      #- install -Dm755 /app/bin/headset-battery-indicator /app/bin/headset-battery-indicator
+    sources:
+      # 1. FUENTE PRINCIPAL: El WHEEL (¡Ahora en este módulo!)
+      - type: file
+        url: https://files.pythonhosted.org/packages/18/5d/3bf57dcd21979b887f014ea83c24ae194cfcd12b9e0fda66b957c69d1fca/setuptools-80.9.0.tar.gz
+        sha256: f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c 
+      - type: file
+        url: https://files.pythonhosted.org/packages/8a/98/2d9906746cdc6a6ef809ae6338005b3f21bb568bea3165cfc6a243fdc25c/wheel-0.45.1.tar.gz
+        sha256: 661e1abd9198507b1409a20c02106d9670b2576e916d58f520316666abca6729
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/59/b6fc2188dfc7ea4f936cd12b49d707f66a1cb7a1d2c16172963534db741b/flit_core-3.12.0.tar.gz
+        sha256: 18f63100d6f94385c6ed57a72073443e1a71a4acb4339491615d0f16d6ff01b2
+      - type: file
+        url: https://files.pythonhosted.org/packages/b7/b8/d129210f2c7366b4e1bf5bb6230be42052b29e8ba1b1d7db6ef333cf5a39/pyside6_addons-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: 08d4ed46c4c9a353a9eb84134678f8fdd4ce17fb8cce2b3686172a7575025464
+      - type: file
+        url: https://files.pythonhosted.org/packages/5c/75/e17efc7eb900993e0e3925885635c6cf373c817196f09bcbcc102b00ac94/pyside6_essentials-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: 1d5e013a8698e37ab8ef360e6960794eb5ef20832a8d562e649b8c5a0574b2d8
+      - type: file
+        url: https://files.pythonhosted.org/packages/ea/09/4ffa3284a17b6b765d45b41c9a7f1b2cde6c617c853ac6f170fb62bbbece/shiboken6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: e612734da515d683696980107cdc0396a3ae0f07b059f0f422ec8a2333810234
+      - type: file
+        url: https://files.pythonhosted.org/packages/4e/76/0961c8c5653ecb60a6881b649dcb6b71a6be5bd1c8d441ecc48ac7f50b1a/pyside6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: ae8c3c8339cd7c3c9faa7cc5c52670dcc8662ccf4b63a6fed61c6345b90c4c01
+      
+      - type: dir
+        path: .
+
+  - name: pyside6-module
+    buildsystem: simple
+    build-options:
+      env:
+        QT_VERSION: 6.5.0
+    build-commands:
+      - pip3 install --no-index --prefix=/app --find-links . pyside6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+      - pip3 install --no-index --prefix=/app --find-links . shiboken6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+      - pip3 install --no-index --prefix=/app --find-links . pyside6_essentials-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/4e/76/0961c8c5653ecb60a6881b649dcb6b71a6be5bd1c8d441ecc48ac7f50b1a/pyside6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: ae8c3c8339cd7c3c9faa7cc5c52670dcc8662ccf4b63a6fed61c6345b90c4c01
+      - type: file
+        url: https://files.pythonhosted.org/packages/ea/09/4ffa3284a17b6b765d45b41c9a7f1b2cde6c617c853ac6f170fb62bbbece/shiboken6-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: e612734da515d683696980107cdc0396a3ae0f07b059f0f422ec8a2333810234
+      - type: file
+        url: https://files.pythonhosted.org/packages/5c/75/e17efc7eb900993e0e3925885635c6cf373c817196f09bcbcc102b00ac94/pyside6_essentials-6.10.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: 1d5e013a8698e37ab8ef360e6960794eb5ef20832a8d562e649b8c5a0574b2d8
+
+  - name: app-icons
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: icons
+    build-commands:
+      # Crea la carpeta dentro del sandbox
+      - mkdir -p /app/share/headset-battery-indicator/icons
+      # Copia los iconos
+      - cp -r * /app/share/headset-battery-indicator/icons/
+
+
+
+    
