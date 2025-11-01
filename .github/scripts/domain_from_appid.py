@@ -47,14 +47,16 @@ def get_domain(appid: str) -> str:
 
     if appid.startswith(
         (
-            "org.freedesktop.Platform.GStreamer.",
-            "org.freedesktop.Platform.Icontheme.",
-            "org.freedesktop.Platform.VulkanLayer.",
-            "org.freedesktop.Sdk.Extension.",
+            "org.freedesktop.Platform.",
+            "org.freedesktop.Sdk.",
+            "org.gnome.Platform.",
+            "org.gnome.Sdk.",
             "org.gtk.Gtk3theme.",
             "org.kde.KStyle.",
+            "org.kde.Platform.",
             "org.kde.PlatformInputContexts.",
             "org.kde.PlatformTheme.",
+            "org.kde.Sdk.",
             "org.kde.WaylandDecoration.",
         )
     ):
