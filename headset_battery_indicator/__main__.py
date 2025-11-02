@@ -557,7 +557,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         # === NORMAL OPERATION ===
         level = data["level"]
         level_str = data["level_str"]
-        icon_name = "audio-headset-symbolic"
+        icon_name = "battery-missing-symbolic"
         device_name = "Headset"  # Nombre fijo
 
         if data["is_charging"]:
