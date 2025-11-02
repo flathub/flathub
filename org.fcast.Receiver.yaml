@@ -1,0 +1,74 @@
+app-id: org.fcast.Receiver
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+
+command: run.sh
+finish-args:
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --env=ELECTRON_TRASH=gio
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+# add-extensions:
+#   org.freedesktop.Platform.ffmpeg-full:
+#     version: '24.08' # replace by appropriate version
+#     directory: lib/ffmpeg
+#     add-ld-path: .
+# cleanup-commands:
+#   - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+#   prepend-path: /usr/lib/sdk/llvm19/bin:/usr/lib/sdk/dotnet8/bin:/usr/lib/sdk/node22/bin
+#   prefix: /usr/lib/sdk/llvm19:/usr/lib/sdk/dotnet8
+#   append-ld-library-path: /usr/lib/sdk/llvm19/lib:/usr/lib/sdk/dotnet8/lib
+#   prepend-pkg-config-path: /usr/lib/sdk/llvm19/pkgconfig/usr/lib/sdk/dotnet8/lib/pkgconfig
+modules:
+  # - name: dotnet
+  #   buildsystem: simple
+  #   build-commands:
+  #   - /usr/lib/sdk/dotnet8/bin/install.sh
+  # note: the builder should NOT hang after starting to build this module and printing some "is not a valid attribute name" git LFS errors. If it does this, you need to remove or disable the git LFS config from your ~/.gitconfig file.
+  # see https://github.com/flatpak/flatpak-builder/blob/e2f9ffc4655e1f80e1ef2edf205942d59cc01fb7/doc/flatpak-manifest.xml#L776
+  - name: fcast-receiver
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/fcast-receiver/flatpak-node/cache
+        npm_config_cache: /run/build/fcast-receiver/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node22
+        npm_config_offline: 'true'
+    # subdir: receivers/electron/
+    build-commands:
+      - ls -al
+      # Install npm dependencies
+      - npm install --offline
+      # run the build
+      - npm run make -- --platform="linux" --arch="x64"
+      # npm run make -- --platform="linux" --arch="arm64"
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+    sources:
+      - type: git
+        url: https://gitlab.futo.org/videostreaming/fcast.git
+        commit: c3bedbb1d7a9c7c1c399cd69f654512f435316ef
+      
+      - npm-sources.json
+
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper /app/main/fcast-receiver "$@"
+  
