@@ -23,7 +23,6 @@ for a in wps wpp et pdf prometheus xiezuo; do
     desktop_file="export/share/applications/${FLATPAK_ID}.$a.desktop"
     appbin="$a %F"
     appicon="${FLATPAK_ID}.${a}main"
-    renamedfrom="wps-office-$a.desktop"
     case "$a" in
         pdf)
             appbin="wpspdf %F"
@@ -39,14 +38,12 @@ for a in wps wpp et pdf prometheus xiezuo; do
         xiezuo)
             appbin="/app/extra/opt/xiezuo/xiezuo --no-sandbox --disable-gpu-sandbox --disable-setuid-sandbox --package-format=deb %U"
             appicon="${FLATPAK_ID}.xiezuo"
-            renamedfrom="xiezuo.desktop"
         ;;
     esac
     sed -i 's|Categories=.*|&Office;|' "$desktop_file"
     desktop-file-edit \
         --set-key="Exec" --set-value="$appbin" \
         --set-key="Icon" --set-value="$appicon" \
-        --set-key="X-Flatpak-RenamedFrom" --set-value="$renamedfrom" \
         "$desktop_file"
 done
 
