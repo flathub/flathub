@@ -17,7 +17,7 @@ prep-npm:
 	./scripts/npm-deps.sh https://gitlab.futo.org/videostreaming/fcast/-/raw/master/receivers/electron
 
 lint:
-	flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream ./org.fcast.Receiver.metainfo.xml
+	flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream build-dir/files/share/metainfo/org.fcast.Receiver.metainfo.xml
 	flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest ./org.fcast.Receiver.yaml
 	flatpak run --command=flatpak-builder-lint org.flatpak.Builder builddir build-dir
 	flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
