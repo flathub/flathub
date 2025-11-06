@@ -36,7 +36,7 @@ for a in wps wpp et pdf prometheus xiezuo; do
             desktop_file=$new_desktop_file
         ;;
         xiezuo)
-            appbin="/app/extra/opt/xiezuo/xiezuo --no-sandbox --disable-gpu-sandbox --disable-setuid-sandbox --package-format=deb %U"
+            appbin="xiezuo %U"
             appicon="${FLATPAK_ID}.xiezuo"
         ;;
     esac
