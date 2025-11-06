@@ -40,10 +40,10 @@ for a in wps wpp et pdf prometheus xiezuo; do
             appicon="${FLATPAK_ID}.xiezuo"
         ;;
     esac
-    sed -i 's|Categories=.*|&Office;|' "$desktop_file"
     desktop-file-edit \
         --set-key="Exec" --set-value="$appbin" \
         --set-key="Icon" --set-value="$appicon" \
+        --add-category="Office" \
         "$desktop_file"
 done
 
