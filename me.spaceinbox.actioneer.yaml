@@ -10,8 +10,8 @@ sdk-extensions:
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
   env:
-    CARGO_HOME: /var/tmp/cargo
-    RUSTUP_HOME: /var/tmp/rustup
+    CARGO_HOME: /run/build/actioneer/cargo
+    RUSTUP_HOME: /run/build/actioneer/rustup
 # The rust extension is part of the freedesktop SDK namespace; keep the rust extension so cargo/toolchain
 # is available inside the build environment. If this extension is unavailable for the GNOME SDK in your
 # environment, try switching sdk back to org.freedesktop.Sdk and runtime-version to a freedesktop-supported
@@ -32,27 +32,17 @@ modules:
   - name: actioneer
     buildsystem: simple
     build-commands:
-      # Build-time vendoring: create a vendor/ tree inside the build sandbox
-      # and configure cargo to use it. This keeps the repository small while
-      # still producing reproducible builds on Flathub (the manifest is
-      # pinned to a commit and Cargo.lock is used by `cargo vendor`).
+      - mkdir -p .cargo
+      - mkdir -p cargo/vendor
       - |-
-        if [ -d vendor ]; then
-          echo "vendor/ exists; skipping cargo generate-lockfile & cargo vendor (local test)"
-        else
-          cargo generate-lockfile --manifest-path Cargo.toml
-          cargo vendor --locked --versioned-dirs vendor
-        fi
-      - |-
-        mkdir -p .cargo
         cat > .cargo/config.toml <<'EOF'
         [source.crates-io]
         replace-with = "vendored-sources"
         [source.vendored-sources]
-        directory = "vendor"
+        directory = "cargo/vendor"
         EOF
-      - cargo fetch --locked --offline || true
-      - cargo build --release --locked --offline
+      - cargo --offline fetch
+      - cargo --offline build --release
       - install -Dm755 target/release/actioneer /app/bin/actioneer
       # Install desktop file, D-Bus service, and AppStream metadata so Flatpak/desktop environments discover the app
       - install -Dm644 data/me.spaceinbox.actioneer.desktop /app/share/applications/me.spaceinbox.actioneer.desktop
@@ -63,16 +53,13 @@ modules:
       - cp -a icons/icons/hicolor/* /app/share/icons/hicolor/
       - find /app/share/icons/hicolor -type f -name 'actioneer.*' -delete
     sources:
-      # For Flathub submission the source should be a pinned git checkout
-      # instead of a local dir. We pin to the current commit; update this
-      # to a release tag if you prefer to track a tag instead.
-      - type: dir
-        path: source
-      # Use the locally vendored crates when running the before-submission
-      # checks so the sandbox build does not require network access.
-      - type: dir
-        path: vendor
-        dest: vendor
+      # Use the upstream Git repository as the canonical source. When
+      # submitting to Flathub, pin this to a release tag or commit.
+      - type: git
+        url: https://github.com/makoni/Actioneer-gtk.git
+        tag: 1.0.0
+      # flatpak-cargo-generator -d Cargo.lock -o flatpak/me.spaceinbox.actioneer.cargo-sources.json
+      - me.spaceinbox.actioneer.cargo-sources.json
 
 # Notes:
 # - This is a starter manifest for local development and testing. For Flathub submission you should
