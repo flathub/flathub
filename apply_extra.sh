@@ -51,7 +51,7 @@ done
 sed -i "s/generic-icon name=\"wps-office-/generic-icon name=\"${FLATPAK_ID}./g" "export/share/mime/packages/${FLATPAK_ID}.xml"
 
 # Fix hardcoded /opt paths in binaries
-sed -i 's|/opt|/app/extra/opt|' usr/bin/*
+sed -i 's|/opt|/app/extra/opt|' usr/bin/{et,misc,wpp,wps,wpspdf}
 
 # use system libraries
 rm opt/kingsoft/wps-office/office6/lib{jpeg,stdc++}.so*
