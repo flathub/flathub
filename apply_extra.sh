@@ -48,7 +48,7 @@ for a in wps wpp et pdf prometheus xiezuo; do
 done
 
 # Edit mime XML files to adjust generic-icon names
-sed -i "s/generic-icon name=\"wps-office-/icon name=\"${FLATPAK_ID}./g" "export/share/mime/packages/${FLATPAK_ID}".xml
+sed -i "s/generic-icon name=\"wps-office-/generic-icon name=\"${FLATPAK_ID}./g" "export/share/mime/packages/${FLATPAK_ID}.xml"
 
 # Fix hardcoded /opt paths in binaries
 sed -i 's|/opt|/app/extra/opt|' usr/bin/*
