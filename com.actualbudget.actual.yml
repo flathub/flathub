@@ -1,0 +1,67 @@
+id: com.actualbudget.actual
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+separate-locales: false
+command: actual
+
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+
+finish-args:
+  # D-Bus
+  - --share=ipc
+
+  # Network access
+  - --share=network
+
+  # Use wayland but allow X11 fallback
+  - --socket=fallback-x11
+  - --socket=wayland
+
+  # Documents access for automated backups of budget files to the default budget directory location
+  # User will have to manually configure access using flatseal/alternatives if they change this directory
+  # Any file chooser dialogs will work without any explicit permissions
+  - --filesystem=xdg-documents
+
+modules:
+  - name: wrapper
+    buildsystem: simple
+    build-commands:
+      - install actual-wrapper.sh /app/bin/actual
+    sources:
+      - type: script
+        dest-filename: actual-wrapper.sh
+        commands:
+          - exec zypak-wrapper /app/main/actual "$@"
+
+  - name: actual
+    buildsystem: simple
+    build-commands:
+      # Unable to build from source due to flatpak-node-generator not supporting yarn v4, so using AppImage extraction
+      - chmod +x ./Actual.AppImage
+      - ./Actual.AppImage --appimage-extract
+      - mkdir -p /app/main
+      - cp -R squashfs-root/. /app/main
+      - desktop-file-edit --set-icon ${FLATPAK_ID} --set-key Exec --set-value 'actual %u' /app/main/actual.desktop
+      - install -Dm644 /app/main/actual.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 /app/main/usr/share/icons/hicolor/256x256/apps/actual.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 /app/main/resources/extra-resources/linux/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: file
+        dest-filename: Actual.AppImage
+        url: https://github.com/actualbudget/actual/releases/download/v25.11.0/Actual-linux-x86_64.AppImage
+        sha256: 45d3a11d7997c742e2fe715872b4e7360040bf3e821570313f799c2bfdc3410d
+        only-arches:
+          - x86_64
+
+      - type: file
+        dest-filename: Actual.AppImage
+        url: https://github.com/actualbudget/actual/releases/download/v25.11.0/Actual-linux-arm64.AppImage
+        sha256: f4b0ae9db1b46949e4241584cb29c12043687d8b951d295e627518dae89788a1
+        only-arches:
+          - aarch64
