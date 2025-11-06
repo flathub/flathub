@@ -1,9 +1,9 @@
 id: nl.jknaapen.fladder
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '49'
 sdk: org.gnome.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.llvm18
+  - org.freedesktop.Sdk.Extension.llvm21
 
 command: fladder
 add-extensions:
@@ -33,10 +33,6 @@ finish-args:
   - --filesystem=xdg-run/pipewire-0:ro
   # Hardware acceleration
   - --device=dri
-  # Allow notification access
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.PowerManagement
-  - --talk-name=org.freedesktop.ScreenSaver
   # DBus system bus access for NetworkManager (connectivity checking)
   - --system-talk-name=org.freedesktop.NetworkManager
 
@@ -66,21 +62,6 @@ modules:
           type: git
           tag-pattern: ^v([\d.]+)$
     modules:
-      - name: ffnvcodec
-        buildsystem: simple
-        build-commands:
-          - make install PREFIX=/app
-        cleanup:
-          - /lib/pkgconfig
-          - /include
-        sources:
-          - type: git
-            url: https://github.com/FFmpeg/nv-codec-headers.git
-            tag: n13.0.19.0
-            commit: e844e5b26f46bb77479f063029595293aa8f812d
-            x-checker-data:
-              type: git
-              tag-pattern: ^n([\d.]+)$
       - shared-modules/luajit/luajit.json
       - name: libass
         config-opts:
@@ -110,28 +91,23 @@ modules:
           - /share
           - /include
         sources:
-          - type: archive
-            url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
-            sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
-            x-checker-data:
-              type: html
-              url: https://www.freedesktop.org/software/uchardet/releases/
-              version-pattern: uchardet-(\d+\.\d+\.\d+)\.tar\.xz
-              url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
+          - type: git
+            url: https://gitlab.freedesktop.org/uchardet/uchardet.git
+            commit: 06029ec3340cdf6bf9a6a537dafb3f39eda0560e
       - name: libplacebo
         buildsystem: meson
         config-opts:
           - -Dvulkan=enabled
           - -Dshaderc=enabled
           - --libdir=lib
+          - -Ddemos=false
+        cleanup:
+          - /lib/pkgconfig
+          - /include
         sources:
           - type: git
             url: https://code.videolan.org/videolan/libplacebo.git
-            tag: v7.349.0
-            commit: 1fd3c7bde7b943fe8985c893310b5269a09b46c5
-            x-checker-data:
-              type: git
-              tag-pattern: ^v([\d.]+)$
+            commit: 06992a53fafc1549843c8b36751e166cfe3a4079
 
   - name: zenity
     buildsystem: meson
@@ -147,6 +123,8 @@ modules:
       # Flutter needs network access to download dependencies during build
       build-args:
         - --share=network
+    cleanup:
+      - '*'
     build-commands:
       - mkdir -p /app/flutter
       - cp -r . /app/flutter/
@@ -168,7 +146,7 @@ modules:
       build-args:
         - --share=network
       # Make LLVM/clang available for Flutter build
-      append-path: /usr/lib/sdk/llvm18/bin
+      append-path: /usr/lib/sdk/llvm21/bin
       env:
         CC: clang
         CXX: clang++
@@ -178,26 +156,25 @@ modules:
       - flutter build linux --release
       
       # Install the app (works for both x64 and aarch64)
-      - mkdir -p /app/bin
-      - |
-        set -e
-        BUNDLE_DIR=$(find build/linux -type d -name bundle | head -n1)
-        echo "Found bundle at: $BUNDLE_DIR"
-        cp -rv "$BUNDLE_DIR"/* /app/bin/
-        # Rename the executable to lowercase to match command in manifest
-        mv /app/bin/Fladder /app/bin/fladder
-        chmod +x /app/bin/fladder
+      - sh install-bundle.sh
       
       # Install desktop file and icon
-      - mkdir -p /app/share/applications
-      - mkdir -p /app/share/icons/hicolor/scalable/apps
       - install -Dm644 flatpak/Fladder.desktop /app/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 icons/fladder_icon.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
       
       # Install metainfo
-      - mkdir -p /app/share/metainfo
       - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
+      - type: script
+        dest-filename: install-bundle.sh
+        commands:
+          - set -e
+          - BUNDLE_DIR=$(find build/linux -type d -name bundle | head -n1)
+          - echo "Found bundle at: $BUNDLE_DIR"
+          - mkdir -p /app/bin
+          - cp -rv "$BUNDLE_DIR"/* /app/bin/
+          - mv /app/bin/Fladder /app/bin/fladder
+          - chmod +x /app/bin/fladder
       - type: git
         url: https://github.com/DonutWare/Fladder.git
         tag: v0.8.0
