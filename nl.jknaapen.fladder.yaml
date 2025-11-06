@@ -1,9 +1,19 @@
 id: nl.jknaapen.fladder
 runtime: org.gnome.Platform
-runtime-version: '49'
+runtime-version: '48'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm18
 
-command: Fladder
+command: fladder
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
 
 finish-args:
   # X11/Wayland access
@@ -23,6 +33,10 @@ finish-args:
   - --filesystem=xdg-run/pipewire-0:ro
   # Hardware acceleration
   - --device=dri
+  # Allow notification access
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.freedesktop.ScreenSaver
   # DBus system bus access for NetworkManager (connectivity checking)
   - --system-talk-name=org.freedesktop.NetworkManager
 
@@ -38,7 +52,7 @@ modules:
       - -Dcuda-hwaccel=enabled
       - -Dpulse=enabled
       - -Dalsa=enabled
-      - -Duchardet=disabled
+      - -Duchardet=enabled
     cleanup:
       - /lib/pkgconfig
       - /share
@@ -84,12 +98,31 @@ modules:
             x-checker-data:
               type: git
               tag-pattern: ^([\d.]+)$
+      - name: uchardet
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DCMAKE_INSTALL_LIBDIR=lib
+          - -DBUILD_BINARY=OFF
+        cleanup:
+          - /lib/*.a
+          - /lib/pkgconfig
+          - /share
+          - /include
+        sources:
+          - type: archive
+            url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+            sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+            x-checker-data:
+              type: html
+              url: https://www.freedesktop.org/software/uchardet/releases/
+              version-pattern: uchardet-(\d+\.\d+\.\d+)\.tar\.xz
+              url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
       - name: libplacebo
         buildsystem: meson
         config-opts:
           - -Dvulkan=enabled
           - -Dshaderc=enabled
-          - -Ddemos=false
           - --libdir=lib
         sources:
           - type: git
@@ -99,8 +132,6 @@ modules:
             x-checker-data:
               type: git
               tag-pattern: ^v([\d.]+)$
-          - type: patch
-            path: patches/libplacebo-python313.patch
 
   - name: zenity
     buildsystem: meson
@@ -110,79 +141,52 @@ modules:
         tag: 4.0.3
         commit: 7f7ac1840cfd914dfac69d947f0849dc50b0f695
 
-    # Flutter SDK
-  - name: flutter-sdk
+  - name: flutter-git
     buildsystem: simple
+    build-options:
+      # Flutter needs network access to download dependencies during build
+      build-args:
+        - --share=network
     build-commands:
       - mkdir -p /app/flutter
       - cp -r . /app/flutter/
-      - mkdir -p /app/flutter/bin/cache
-      - unzip -q dart-sdk-linux-*.zip -d /app/flutter/bin/cache
-      - chmod +x /app/flutter/bin/cache/dart-sdk/bin/*
-      - |
-        cat > /app/flutter/bin/cache/dart-sdk.version << EOF
-        {"date":"2024-11-12","version":"3.5.4","revision":"1e9a811bf8e70466596bcf0ea3a8b5adb5f17f7f"}
-        EOF
-      - echo "1e9a811bf8e70466596bcf0ea3a8b5adb5f17f7f" > /app/flutter/bin/cache/dart-sdk.stamp
-      # Replace the update_dart_sdk function to prevent downloads
-      - |
-        cat > /app/flutter/bin/internal/update_dart_sdk.sh << 'EOFPATCH'
-        #!/usr/bin/env bash
-        # Patched script - Dart SDK is pre-provided in offline build
-        function update_dart_sdk() {
-          echo "Dart SDK already provided, skipping download"
-          return 0
-        }
-        update_dart_sdk
-        EOFPATCH
-      - chmod +x /app/flutter/bin/internal/update_dart_sdk.sh
-      # Set version and skip network-dependent setup
+      - ln -s /app/flutter/bin/flutter /app/bin/flutter
+      - ln -s /app/flutter/bin/dart /app/bin/dart
+      # Initialize Flutter (will download Dart SDK and build tools with network access)
       - /app/flutter/bin/flutter --version
-    cleanup:
-      - /app/flutter/.git
-      - /app/flutter/.github
+      - /app/flutter/bin/flutter precache --linux --no-android --no-ios --no-web
     sources:
       - type: git
         url: https://github.com/flutter/flutter.git
         tag: 3.35.1
         commit: 20f82749394e68bcfbbeee96bad384abaae09c13
-        disable-shallow-clone: true
-        x-checker-data:
-          type: git
-          tag-pattern: ^([\d.]+)$
-      - type: file
-        url: https://storage.googleapis.com/flutter_infra_release/flutter/1e9a811bf8e70466596bcf0ea3a8b5adb5f17f7f/dart-sdk-linux-x64.zip
-        sha256: 7eb8cc474d9e8fa77b7f9cbf48d61155d514f5c83ef9b08862028236fd8ba7f5
-        dest-filename: dart-sdk-linux-x64.zip
-        only-arches:
-          - x86_64
-      - type: file
-        url: https://storage.googleapis.com/flutter_infra_release/flutter/1e9a811bf8e70466596bcf0ea3a8b5adb5f17f7f/dart-sdk-linux-arm64.zip
-        sha256: d30f37bac240daaf5bb99ed3a2c2581a6fddd52c1cc51b8b523dc1bfb66cd7f3
-        dest-filename: dart-sdk-linux-arm64.zip
-        only-arches:
-          - aarch64
 
   - name: fladder
     buildsystem: simple
+    build-options:
+      # Flutter needs network access to download pub dependencies
+      build-args:
+        - --share=network
+      # Make LLVM/clang available for Flutter build
+      append-path: /usr/lib/sdk/llvm18/bin
+      env:
+        CC: clang
+        CXX: clang++
     build-commands:
-      # Get dependencies and build
-      - export PATH="/app/flutter/bin:$PATH" && export PUB_CACHE=/run/build/fladder/pub_cache && flutter pub get
-      - export PATH="/app/flutter/bin:$PATH" && export PUB_CACHE=/run/build/fladder/pub_cache && flutter build linux --release
+      # Build the app from source
+      - flutter pub get
+      - flutter build linux --release
       
-      # Install the app
+      # Install the app (works for both x64 and aarch64)
       - mkdir -p /app/bin
-      - cp -r build/linux/x64/release/bundle/* /app/bin/
-      - chmod +x /app/bin/fladder
-      
-      # Fix RPATH for libraries
       - |
-        for lib in /app/bin/lib/*.so; do
-          if [[ -f "$lib" && -n "$(patchelf --print-rpath "$lib" 2>/dev/null || true)" ]]; then
-            patchelf --set-rpath '$ORIGIN' "$lib" || true
-          fi
-        done
-      - patchelf --set-rpath '$ORIGIN/lib' /app/bin/fladder
+        set -e
+        BUNDLE_DIR=$(find build/linux -type d -name bundle | head -n1)
+        echo "Found bundle at: $BUNDLE_DIR"
+        cp -rv "$BUNDLE_DIR"/* /app/bin/
+        # Rename the executable to lowercase to match command in manifest
+        mv /app/bin/Fladder /app/bin/fladder
+        chmod +x /app/bin/fladder
       
       # Install desktop file and icon
       - mkdir -p /app/share/applications
@@ -197,7 +201,5 @@ modules:
       - type: git
         url: https://github.com/DonutWare/Fladder.git
         tag: v0.8.0
-        # Note: This will be updated automatically by the GitHub workflow
-        # x-checker-data:
-        #   type: git
-        #   tag-pattern: ^v([\d.]+)$
+        commit: a00b5255992ca4b6d5ba5eb5513e960ed780c198
+        # Note: Commit will be updated automatically by the GitHub workflow
