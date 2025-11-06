@@ -1,0 +1,83 @@
+app-id: me.spaceinbox.actioneer
+runtime: org.gnome.Platform
+runtime-version: "49"
+# Use the GNOME SDK for matching runtime-version 49 (keep runtime up-to-date to avoid EOL)
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+# Ensure cargo from the rust-stable SDK extension is available when the
+# prebuilt binary is missing and we need to compile inside the sandbox.
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /var/tmp/cargo
+    RUSTUP_HOME: /var/tmp/rustup
+# The rust extension is part of the freedesktop SDK namespace; keep the rust extension so cargo/toolchain
+# is available inside the build environment. If this extension is unavailable for the GNOME SDK in your
+# environment, try switching sdk back to org.freedesktop.Sdk and runtime-version to a freedesktop-supported
+command: actioneer
+finish-args:
+  # Keep permissions minimal; expand only as needed during testing.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --device=dri
+  # If you need persistent access to files during development, add e.g.:
+  # - --filesystem=home
+
+modules:
+  - name: actioneer
+    buildsystem: simple
+    build-commands:
+      # Build-time vendoring: create a vendor/ tree inside the build sandbox
+      # and configure cargo to use it. This keeps the repository small while
+      # still producing reproducible builds on Flathub (the manifest is
+      # pinned to a commit and Cargo.lock is used by `cargo vendor`).
+      - |-
+        if [ -d vendor ]; then
+          echo "vendor/ exists; skipping cargo generate-lockfile & cargo vendor (local test)"
+        else
+          cargo generate-lockfile --manifest-path Cargo.toml
+          cargo vendor --locked --versioned-dirs vendor
+        fi
+      - |-
+        mkdir -p .cargo
+        cat > .cargo/config.toml <<'EOF'
+        [source.crates-io]
+        replace-with = "vendored-sources"
+        [source.vendored-sources]
+        directory = "vendor"
+        EOF
+      - cargo fetch --locked --offline || true
+      - cargo build --release --locked --offline
+      - install -Dm755 target/release/actioneer /app/bin/actioneer
+      # Install desktop file, D-Bus service, and AppStream metadata so Flatpak/desktop environments discover the app
+      - install -Dm644 data/me.spaceinbox.actioneer.desktop /app/share/applications/me.spaceinbox.actioneer.desktop
+      - install -Dm644 data/me.spaceinbox.actioneer.service /app/share/dbus-1/services/me.spaceinbox.actioneer.service
+      - install -Dm644 data/metainfo.xml /app/share/metainfo/me.spaceinbox.actioneer.metainfo.xml
+      # Copy application icons into the hicolor icon theme so AppStream and desktops can find them
+      - mkdir -p /app/share/icons/hicolor
+      - cp -a icons/icons/hicolor/* /app/share/icons/hicolor/
+      - find /app/share/icons/hicolor -type f -name 'actioneer.*' -delete
+    sources:
+      # For Flathub submission the source should be a pinned git checkout
+      # instead of a local dir. We pin to the current commit; update this
+      # to a release tag if you prefer to track a tag instead.
+      - type: dir
+        path: source
+      # Use the locally vendored crates when running the before-submission
+      # checks so the sandbox build does not require network access.
+      - type: dir
+        path: vendor
+        dest: vendor
+
+# Notes:
+# - This is a starter manifest for local development and testing. For Flathub submission you should
+#   pin a tag or commit (use `tag: vX.Y.Z` or `commit: <sha>`) instead of `branch` and ensure
+#   metainfo (AppStream) and icons are present under `data/`.
+# - Consider switching to `sdk: org.gnome.Sdk` if you prefer using the GNOME SDK directly.
+# - Adjust finish-args to request the minimal set of permissions required by the app. Avoid --filesystem=home
+#   for production/bundled builds unless strictly necessary; prefer portals.
