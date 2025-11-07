@@ -16,7 +16,6 @@ or just search for the installed app on your system
 
 ## Known problems
 
-- The tray icon isn't using the correct icons and falls back to three dots
 - Autostart set from within insync does not work you can use the following config in ~/.config/autostart/insync.desktop instead:
 
 ```
