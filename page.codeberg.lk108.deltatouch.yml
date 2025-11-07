@@ -1,0 +1,153 @@
+id: page.codeberg.lk108.deltatouch
+runtime: org.kde.Platform
+runtime-version: 5.15-24.08
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+base: io.qt.qtwebengine.BaseApp
+base-version: '5.15-24.08'
+command: deltatouch
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=all         # Webcam access for QR code scans and DRI for OpenGL
+  - --socket=pulseaudio  # Record and play voice messages
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --env=QTWEBENGINE_DICTIONARIES_PATH=/app/qtwebengine_dictionaries
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  - name: prepare-qt-plugin-build
+    buildsystem: simple
+    build-commands:
+      # The install pathes are baked into qt
+      # We use a symlink to be able to install to /app/ instead of /app/usr
+      - mkdir -p /app/redirection && ln -s /app /app/redirection/usr
+  - name: qtpim
+    buildsystem: qmake
+    make-install-args:
+      - INSTALL_ROOT=${FLATPAK_DEST}/redirection
+    sources:
+      - type: git
+        url: https://invent.kde.org/qt/qt/qtpim.git/
+        commit: f9a8f0fc914c040d48bbd0ef52d7a68eea175a98
+  - name: qtsystems
+    buildsystem: qmake
+    make-install-args:
+      - INSTALL_ROOT=${FLATPAK_DEST}/redirection
+    sources:
+      - type: git
+        url: https://invent.kde.org/qt/qt/qtsystems.git/
+        commit: 66e45676f5f5c6251ccab36906c6324fd0065e08
+  - name: qtfeedback
+    buildsystem: qmake
+    make-install-args:
+      - INSTALL_ROOT=${FLATPAK_DEST}/redirection
+    sources:
+      - type: git
+        url: https://invent.kde.org/qt/qt/qtfeedback.git/
+        commit: 596bf453588a8d6117df854d6a4899074a5d4c4b
+  - name: lomiri-ui-toolkit
+    sources:
+      - type: git
+        url: https://gitlab.com/ubports/development/core/lomiri-ui-toolkit.git
+        commit: 083ae10f7a73c4aa1d3d754977443b0c491d7842
+      - type: shell
+        commands:
+          # Hardcode the pathes in the *.pri files so qmake finds the so files for linking
+          - sed -i "s|\$\$QT_MODULE_LIB_BASE|/app/lib/$(gcc --print-multiarch)|g" /app/lib/mkspecs/modules/*.pri
+
+          # In the qmake generated `wrapper.sh`, LD_LIBRARY_PATH is overriden like this:
+          # `LD_LIBRARY_PATH=/run/build/lomiri-ui-toolkit/lib`
+          # So we copy all libs in that directory
+          - mkdir -p lib
+          - cp /app/lib/$(gcc --print-multiarch)/*.so* lib
+          - mkdir -p qml
+          - cp -r /app/lib/qml/* qml
+    buildsystem: qmake
+    config-opts:
+      - CONFIG+=no_lttng no_docs
+    make-install-args:
+      - INSTALL_ROOT=${FLATPAK_DEST}/redirection
+    build-options:
+      env:
+        # This is needed so that qmake finds *.pri files in /app/lib/mkspecs
+        - QMAKEPATH=/app/lib
+    post-install:
+      - rm /app/redirection/usr && rm -d /app/redirection
+      - ln -sf /app/lib/*/*.so* /app/lib
+
+  - name: chatmail-core
+    sources:
+      - generated/sources-rust.json
+      - generated/deltatouch-git.json
+    buildsystem: cmake
+    subdir: libs/chatmail-core
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # It does not work to dereference the variable here :-/
+        # CARGO_HOME: $FLATPAK_BUILDER_BUILDDIR/cargo
+        CARGO_HOME: /run/build/chatmail-core/cargo
+    post-install:
+      - install -Dm0644 LICENSE -t ${FLATPAK_DEST}/share/licenses/$FLATPAK_ID/chatmail-core
+    cleanup:
+      - '*.a'
+
+  - name: quirc
+    sources:
+      - generated/deltatouch-git.json
+      - type: patch
+        paths:
+          - patches/quirc/0001-Build-without-demo-to-use-less-deps.patch
+          - patches/quirc/0002-Fix-install-to-prefix.patch
+          - patches/quirc/0003-Add-.so-symlink-without-version-suffix.patch
+    subdir: libs/quirc
+    buildsystem: simple
+    build-options:
+      # flatpak set C_FLAGS env variable but Makefile sets correct flags only when unset
+      cflags: "-O3 -Wall -fPIC"
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install DESTDIR=${FLATPAK_DEST} PREFIX=
+    post-install:
+      - install -Dm0644 LICENSE -t ${FLATPAK_DEST}/share/licenses/$FLATPAK_ID/quirc
+    cleanup:
+      - '*.a'
+
+  - name: intltool
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        dest-filename: intltool.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+    buildsystem: autotools
+    cleanup:
+      - '*'
+
+  - name: deltatouch
+    sources:
+      - generated/deltatouch-git.json
+      # TODO: Remove when updating to fixed upstream version
+      - type: shell
+        commands:
+         - sed -i 's/void addIdToMemberlist(uint32_t contactId);//' src/plugins/DeltaHandler/contactsmodel.h
+    buildsystem: cmake
+    post-install:
+      # TODO: update this once upstream fixes are available, then consider using rename-icon and rename-desktop-file
+      - mv /app/share/applications/deltatouch.desktop /app/share/applications/page.codeberg.lk108.deltatouch.desktop
+      - sed -i 's/Icon=.*/Icon=page.codeberg.lk108.deltatouch/' /app/share/applications/page.codeberg.lk108.deltatouch.desktop
+      - "! grep -q '^Categories' /app/share/applications/page.codeberg.lk108.deltatouch.desktop" # This fails if there is already a Category
+      - echo "Categories=Network;Chat;InstantMessaging;" >> /app/share/applications/page.codeberg.lk108.deltatouch.desktop
+      - mkdir -p /app/share/icons/hicolor/scalable/apps/ && cp /run/build/deltatouch/assets/deltatouch.svg /app/share/icons/hicolor/scalable/apps/page.codeberg.lk108.deltatouch.svg
+
+  - name: metainfo
+    buildsystem: simple
+    sources:
+      - type: file
+        path: page.codeberg.lk108.deltatouch.metainfo.xml
+    build-commands:
+     - install -Dm0644 page.codeberg.lk108.deltatouch.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
