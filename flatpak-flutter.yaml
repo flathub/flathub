@@ -6,6 +6,7 @@ sdk-extensions:
   - org.freedesktop.Sdk.Extension.llvm18
 
 command: fladder
+
 add-extensions:
   org.freedesktop.Platform.ffmpeg-full:
     directory: lib/ffmpeg
@@ -16,28 +17,20 @@ cleanup-commands:
   - mkdir -p /app/lib/ffmpeg
 
 finish-args:
-  # X11/Wayland access
   - --share=ipc
   - --socket=fallback-x11
   - --socket=wayland
-  # Audio playback
   - --socket=pulseaudio
-  # Network access for Jellyfin streaming
   - --share=network
-  # File access for downloads/media - using xdg-download instead of full home access
   - --filesystem=xdg-download
   - --filesystem=xdg-music:ro
   - --filesystem=xdg-videos:ro
   - --filesystem=xdg-pictures:ro
-  # Allow access to PipeWire socket for mpv
   - --filesystem=xdg-run/pipewire-0:ro
-  # Hardware acceleration
   - --device=dri
-  # Allow notification access
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.PowerManagement
   - --talk-name=org.freedesktop.ScreenSaver
-  # DBus system bus access for NetworkManager (connectivity checking)
   - --system-talk-name=org.freedesktop.NetworkManager
 
 modules:
@@ -144,15 +137,21 @@ modules:
   - name: fladder
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/llvm18/bin
+      append-path: /usr/lib/sdk/llvm18/bin:/run/build/fladder/flutter/bin
       env:
         CC: clang
         CXX: clang++
+        PUB_CACHE: /run/build/fladder/.pub-cache
     build-commands:
-      # Build the app from source
-      - flutter build linux --release --no-pub
+      - ls -la /run/build/fladder/
       
-      # Make the install script executable and run it
+      # Extract mdk-sdk first
+      - mkdir -p linux/flutter/ephemeral/.plugin_symlinks/fvp/linux/mdk-sdk
+      - tar -xf /run/build/fladder/mdk-sdk-linux-x64.tar.xz -C linux/flutter/ephemeral/.plugin_symlinks/fvp/linux/mdk-sdk/ --strip-components=1
+
+      - flutter build linux --release
+      
+      # Install the bundle
       - chmod +x install-bundle.sh
       - ./install-bundle.sh
       
@@ -163,14 +162,6 @@ modules:
       # Install metainfo
       - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
-      - type: git
-        url: https://github.com/DonutWare/Fladder.git
-        tag: v0.8.0
-        commit: a00b5255992ca4b6d5ba5eb5513e960ed780c198
-      - type: git
-        url: https://github.com/flutter/flutter.git
-        tag: 3.35.1
-        dest: flutter
       - type: script
         dest-filename: install-bundle.sh
         commands:
@@ -181,3 +172,15 @@ modules:
           - cp -rv "$BUNDLE_DIR"/* /app/bin/
           - mv /app/bin/Fladder /app/bin/fladder
           - chmod +x /app/bin/fladder
+      - type: git
+        url: https://github.com/DonutWare/Fladder.git
+        tag: v0.8.0
+        commit: a00b5255992ca4b6d5ba5eb5513e960ed780c198
+      - type: file
+        url: https://sourceforge.net/projects/mdk-sdk/files/nightly/mdk-sdk-linux-x64.tar.xz
+        sha256: fe0116a3b73bfc01dd87d81ba0cd854e33d68ef78699c57deb8d843fea953600
+        dest-filename: mdk-sdk-linux-x64.tar.xz
+      - type: git
+        url: https://github.com/flutter/flutter.git
+        tag: 3.35.1
+        dest: flutter
