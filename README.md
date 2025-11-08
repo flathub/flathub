@@ -1,4 +1,4 @@
-# UnifiedPush Example
+# UnifiedPush Troubleshooter
 
 This application allows you to test your [UnifiedPush](https://unifiedpush.org) setup, and may be used to develop a new distributor.
 
