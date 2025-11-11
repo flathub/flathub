@@ -1,0 +1,63 @@
+app-id: com.insynchq.Insync
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=network
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  # Tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.kde.StatusNotifierItem
+  # Needed for /dev/disk/by-id which insync accesses
+  - --device=all
+  - --filesystem=~/Insync
+  - --persist=.config
+build-options:
+  strip: true
+modules:
+  - name: insync
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra $FLATPAK_DEST/bin/apply_extra
+      - install -Dm755 run.sh ${FLATPAK_DEST}/bin/run.sh
+      - install -Dm644 com.insynchq.Insync.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 com.insynchq.Insync.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 com.insynchq.Insync.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - desktop-file-edit --set-key=Exec --set-value="run.sh start --no-daemon" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    sources:
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - exec /app/extra/insync/usr/lib/insync/insync "$@"
+      - type: file
+        path: com.insynchq.Insync.appdata.xml
+      - type: file
+        path: com.insynchq.Insync.desktop
+      - type: file
+        path: com.insynchq.Insync.svg
+      - type: extra-data
+        filename: insync.deb
+        only-arches:
+          - x86_64
+        url: https://cdn.insynchq.com/builds/linux/3.9.6.60027/insync_3.9.6.60027-plucky_amd64.deb
+        sha256: 85e2ffbe23f794a96a41c55368e334a6e0fac28106600bece492dda7ff0e08ce
+        size: 164421400
+      # An "apply_extra" script gets automatically executed after "extra-data" are downloaded
+      # during installation. CWD is at /app/extra/.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - bsdtar -xf insync.deb
+          - bsdtar -xf data.tar.*
+          - mkdir -p insync
+          - mv usr insync/
+          - cp -r insync/usr/share insync
+          # copy icons
+          - cp -r insync/usr/share/icons/hicolor ${FLATPAK_DEST}/share/icons/hicolor
+          # cleanup
+          - rm -f insync.deb data.tar.* control.tar.* debian-binary
