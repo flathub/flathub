@@ -1,0 +1,89 @@
+app-id: io.github.h8moss.progressive
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: progressive
+finish-args:
+  # Wayland + X11 support for GUI
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  
+  # Filesystem access 
+  - --filesystem=xdg-documents  # User's Documents folder
+  - --filesystem=xdg-download   # User's Downloads folder
+  - --filesystem=xdg-videos     # User's Videos folder (For video series functionality)
+  
+  # GPU acceleration
+  - --device=dri
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/progressive/cargo
+    XDG_CACHE_HOME: /run/build/progressive/flatpak-node/cache
+    npm_config_cache: /run/build/progressive/flatpak-node/npm-cache
+    npm_config_offline: "true"
+    LC_ALL: C.utf8
+
+modules:
+  - name: progressive
+    buildsystem: simple
+    build-options:
+      env:
+        # Tauri needs these
+        TAURI_SKIP_DEVSERVER_CHECK: 'true'
+        TAURI_DIST_DIR: /app
+    build-commands:
+      # Add this to your build-commands to see what's actually there:
+      - ls -la
+      - find . -name ffprobe -type f
+      - mkdir -p src-tauri/binaries
+      - cp ffmpeg-master-latest-*/bin/ffprobe src-tauri/binaries/ffprobe-x86_64-unknown-linux-gnu
+      - chmod +x src-tauri/binaries/ffprobe-*
+
+      # Install npm dependencies
+      - npm install
+      
+      # Build with Tauri
+      - npm run tauri build -- --no-bundle
+
+      # Install binary
+      - install -Dm755 src-tauri/target/release/progressive /app/bin/progressive
+      
+      # Install desktop file (you'll need to create this)
+      - install -Dm644 io.github.h8moss.progressive.desktop /app/share/applications/io.github.h8moss.progressive.desktop
+      
+      # Install icon (you'll need to create/provide this)
+      - install -Dm644 app-icon.png /app/share/icons/hicolor/256x256/apps/io.github.h8moss.progressive.png
+      
+      # Install metainfo (optional but recommended for app stores)
+      - install -Dm644 io.github.h8moss.progressive.metainfo.xml /app/share/metainfo/io.github.h8moss.progressive.metainfo.xml
+    
+    sources:
+      - type: git
+        url: https://github.com/h8moss/progressive.git
+        tag: app-v2.2.0
+        # branch: main
+        # commit: <specific-commit-hash>
+      - node-sources.json
+      - cargo-sources.json
+
+      - type: archive
+        url: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl-shared.tar.xz
+        dest: ffmpeg-master-latest-linux64-lgpl-shared
+        sha256: 5a888b62fcde52f3604808223e40efb5857cd767e12fcff542c642f0b7af7019
+        only-arches:
+          - x86_64
+
+      - type: archive
+        url: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-lgpl-shared.tar.xz
+        dest: ffmpeg-master-latest-linuxarm64-lgpl-shared
+        sha256: 86b8a9a7ba9b79280df128023a3047c379e9e4c4edddb9c76b0f95b36de9db41
+        only-arches:
+          - aarch64
+
