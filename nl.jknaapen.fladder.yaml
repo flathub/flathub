@@ -1,45 +1,35 @@
+# Generated from flatpak-flutter.yaml, do not edit
+# Visit the flatpak-flutter project at https://github.com/TheAppgineer/flatpak-flutter
 id: nl.jknaapen.fladder
 runtime: org.gnome.Platform
 runtime-version: '48'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.llvm18
-
 command: fladder
 add-extensions:
   org.freedesktop.Platform.ffmpeg-full:
     directory: lib/ffmpeg
     version: '24.08'
     add-ld-path: .
-
 cleanup-commands:
   - mkdir -p /app/lib/ffmpeg
-
 finish-args:
-  # X11/Wayland access
   - --share=ipc
   - --socket=fallback-x11
   - --socket=wayland
-  # Audio playback
   - --socket=pulseaudio
-  # Network access for Jellyfin streaming
   - --share=network
-  # File access for downloads/media - using xdg-download instead of full home access
   - --filesystem=xdg-download
   - --filesystem=xdg-music:ro
   - --filesystem=xdg-videos:ro
   - --filesystem=xdg-pictures:ro
-  # Allow access to PipeWire socket for mpv
   - --filesystem=xdg-run/pipewire-0:ro
-  # Hardware acceleration
   - --device=dri
-  # Allow notification access
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.PowerManagement
   - --talk-name=org.freedesktop.ScreenSaver
-  # DBus system bus access for NetworkManager (connectivity checking)
   - --system-talk-name=org.freedesktop.NetworkManager
-
 modules:
   - name: mpv
     buildsystem: meson
@@ -132,7 +122,6 @@ modules:
             x-checker-data:
               type: git
               tag-pattern: ^v([\d.]+)$
-
   - name: zenity
     buildsystem: meson
     sources:
@@ -140,52 +129,30 @@ modules:
         url: https://gitlab.gnome.org/GNOME/zenity.git
         tag: 4.0.3
         commit: 7f7ac1840cfd914dfac69d947f0849dc50b0f695
-
-  - name: flutter-git
-    buildsystem: simple
-    build-options:
-      build-args:
-        - --share=network
-    cleanup:
-      - '*'
-    build-commands:
-      - mkdir -p /app/flutter
-      - cp -r . /app/flutter/
-      - ln -s /app/flutter/bin/flutter /app/bin/flutter
-      - ln -s /app/flutter/bin/dart /app/bin/dart
-      - /app/flutter/bin/flutter --version
-      - /app/flutter/bin/flutter precache --linux --no-android --no-ios --no-web
-    sources:
-      - type: git
-        url: https://github.com/flutter/flutter.git
-        tag: 3.35.1
-        commit: 20f82749394e68bcfbbeee96bad384abaae09c13
-
   - name: fladder
     buildsystem: simple
     build-options:
-      build-args:
-        - --share=network
-      append-path: /usr/lib/sdk/llvm18/bin
+      append-path: /usr/lib/sdk/llvm18/bin:/var/lib/flutter/bin
       env:
         CC: clang
         CXX: clang++
+        PUB_CACHE: /run/build/fladder/.pub-cache
     build-commands:
-      # Build the app from source
-      - flutter pub get
-      - flutter build linux --release
-      
-      # Make the install script executable and run it
+      - ls -la /run/build/fladder/
+      - mkdir -p linux/flutter/ephemeral/.plugin_symlinks/fvp/linux
+      - tar -xf /run/build/fladder/mdk-sdk-linux-x64.tar.xz -C linux/flutter/ephemeral/.plugin_symlinks/fvp/linux
+      - sed -i 's|^fvp_setup_deps()|# fvp_setup_deps()|' linux/flutter/ephemeral/.plugin_symlinks/fvp/linux/CMakeLists.txt
+        || true
+      - ls -la linux/flutter/ephemeral/.plugin_symlinks/fvp/linux/
+      - setup-flutter.sh -C .
+      - flutter build linux --release --no-pub
       - chmod +x install-bundle.sh
       - ./install-bundle.sh
-      
-      # Install desktop file and icon
       - install -Dm644 flatpak/Fladder.desktop /app/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 icons/fladder_icon.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      
-      # Install metainfo
       - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
+      - pubspec-sources.json
       - type: script
         dest-filename: install-bundle.sh
         commands:
@@ -200,4 +167,24 @@ modules:
         url: https://github.com/DonutWare/Fladder.git
         tag: v0.8.0
         commit: a00b5255992ca4b6d5ba5eb5513e960ed780c198
-        # Note: Commit will be updated automatically by the GitHub workflow
+      - type: file
+        url: https://sourceforge.net/projects/mdk-sdk/files/nightly/mdk-sdk-linux-x64.tar.xz
+        sha256: fe0116a3b73bfc01dd87d81ba0cd854e33d68ef78699c57deb8d843fea953600
+        dest-filename: mdk-sdk-linux-x64.tar.xz
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
+        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+        dest: ./build/linux/x64/release/_deps/sqlite3-subbuild/sqlite3-populate-prefix/src
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
+        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+        dest: ./build/linux/arm64/release/_deps/sqlite3-subbuild/sqlite3-populate-prefix/src
+      - type: patch
+        path: sqlite3_flutter_libs/0.5.39-CMakeLists.txt.patch
+        dest: .pub-cache/hosted/pub.dev/sqlite3_flutter_libs-0.5.40
+    modules:
+      - flutter-sdk-3.35.1.json
