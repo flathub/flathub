@@ -1,0 +1,200 @@
+app-id: moe.launcher.an-anime-game-launcher
+command: moe.launcher.an-anime-game-launcher
+rename-desktop-file: anime-game-launcher.desktop
+
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --talk-name=org.freedesktop.Notifications
+  - --device=all # Controllers
+  - --allow=devel # Required to make Wine work
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - /share/vala
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-examples=false
+      - -Dwith-util=false
+      - -Dwith-sd-bus-provider=no-daemon
+    sources: &gamemode_sources
+      - type: archive
+        url: https://github.com/FeralInteractive/gamemode/releases/download/1.8.2/gamemode-1.8.2.tar.xz
+        sha256: 98cd1bcf6101c92fe87f974c7776af23c7e18f29ce6ecfe572b1c39dcde5c181
+        x-checker-data:
+          type: anitya
+          project-id: 17410
+          url-template: https://github.com/FeralInteractive/gamemode/releases/download/$version/gamemode-$version.tar.xz
+
+  - name: gamemoderun
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 data/gamemoderun -t /app/bin
+    sources: *gamemode_sources
+
+  - name: git
+    buildsystem: autotools
+    config-opts:
+      - --without-tcltk
+    post-install:
+      - rm -rf /app/share/gitweb
+      - |
+        cd /app/libexec/git-core
+        keep="git git-rev-parse git-remote git-remote-https git-fetch git-reset git-clone"
+        for f in *; do [[ " $keep " =~ " $f " ]] || rm -f "$f"; done
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.51.2.tar.xz
+        sha256: 233d7143a2d58e60755eee9b76f559ec73ea2b3c297f5b503162ace95966b4e3
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          url-template: https://mirrors.edge.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      - make 7z install DEST_HOME=/app
+    sources:
+      - type: git
+        url: https://github.com/p7zip-project/p7zip
+        tag: v17.05
+
+  # Needed for FFmpeg 7.1.1
+  - name: fdk-aac
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/mstorsjo/fdk-aac.git
+        tag: v2.0.3
+  
+  # Compiling FFmpeg from source for h264 support, see Kdenlive's manifest for an example.
+  - name: ffmpeg
+    buildsystem: autotools
+    config-opts:
+      - --disable-doc
+      - --disable-static
+      - --enable-shared
+      - --enable-gnutls
+      - --enable-gcrypt
+      - --enable-ladspa
+      - --enable-lcms2
+      - --enable-libaom
+      - --enable-libdav1d
+      - --enable-libmp3lame
+      - --enable-libfontconfig
+      - --enable-libfreetype
+      - --enable-libfribidi
+      - --enable-libopus
+      - --enable-libpulse
+      - --enable-libspeex
+      - --enable-libtheora
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-librsvg
+      - --enable-libwebp
+      - --enable-libxml2
+      - --enable-libopenjpeg
+      - --enable-openal
+      - --enable-opengl
+      - --enable-sdl2
+      - --enable-vulkan
+      - --enable-zlib
+      - --enable-libv4l2
+      - --enable-libxcb
+      - --enable-vdpau
+      - --enable-vaapi
+      - --enable-pthreads
+      - --enable-libfdk-aac
+      - --enable-decoder="h264"
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        tag: n7.1.1
+
+  # Needed for game installation in AAGL
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=None
+      - -DBUILD_SHARED_LIBS=ON
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: a79f2d2e9fadd75e94f3fe40a0399bf0a5d90551
+        tag: v33.0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - /bin
+
+  - name: aagl
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: ./cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - cp target/release/anime-game-launcher /app/bin/anime-game-launcher
+      - cp moe.launcher.an-anime-game-launcher.sh /app/bin/moe.launcher.an-anime-game-launcher
+      - chmod +x /app/bin/moe.launcher.an-anime-game-launcher
+    sources:
+      - type: git
+        url: https://github.com/an-anime-team/an-anime-game-launcher
+        tag: &aagl_tag 3.18.0
+      - type: file
+        path: moe.launcher.an-anime-game-launcher.sh
+      - cargo-sources.json
+  
+  # Avoid rebuilding launcher when only metadata is changed
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/icons/hicolor/512x512/apps/
+      - cp assets/images/icon.png /app/share/icons/hicolor/512x512/apps/moe.launcher.an-anime-game-launcher.png
+      - desktop-file-install --dir=/app/share/applications --set-key=Exec --set-value=moe.launcher.an-anime-game-launcher --set-key=Icon --set-value=moe.launcher.an-anime-game-launcher assets/anime-game-launcher.desktop
+      - mkdir -p /app/share/metainfo/
+      - cp moe.launcher.an-anime-game-launcher.metainfo.xml /app/share/metainfo/
+      - mkdir -p /app/utils/
+    sources:
+      - type: git
+        url: https://github.com/an-anime-team/an-anime-game-launcher
+        tag: *aagl_tag
+      - type: file
+        path: moe.launcher.an-anime-game-launcher.metainfo.xml
