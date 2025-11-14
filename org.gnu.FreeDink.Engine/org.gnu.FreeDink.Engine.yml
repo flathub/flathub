@@ -1,0 +1,176 @@
+app-id: org.gnu.FreeDink.Engine
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: freedink-wrapper
+branch: stable
+
+metadata:
+  maintainers:
+    - gnubodhi
+
+build-options:
+  cflags: >-
+    -O2 -fstack-protector-strong -fstack-clash-protection
+    -D_FORTIFY_SOURCE=2 -fPIC -fno-omit-frame-pointer
+  cxxflags: >-
+    -O2 -fstack-protector-strong -fstack-clash-protection
+    -D_FORTIFY_SOURCE=2 -fPIC -fno-omit-frame-pointer
+  ldflags: >-
+    -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --persist=.
+  - --filesystem=home
+
+modules:
+  # ==========================================================
+  # Audio stack: Ogg + Vorbis
+  # ==========================================================
+  - name: libogg
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz
+        sha256: 0eb4b4b9420a0f51db142ba3f9c64b333f826532dc0f48c6410ae51f4799b664
+
+  - name: libvorbis
+    buildsystem: autotools
+    config-opts:
+      - --disable-doc
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.gz
+        sha256: 0e982409a9c3fc82ee06e08205b1355e5c6aa4c36bca58146ef399621b0ce5ab
+
+  # ==========================================================
+  # SDL2 stack
+  # ==========================================================
+  - name: sdl2
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libsdl.org/release/SDL2-2.30.7.tar.gz
+        sha256: 2508c80438cd5ff3bbeb8fe36b8f3ce7805018ff30303010b61b03bb83ab9694
+
+  - name: sdl2_image
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libsdl.org/projects/SDL_image/release/SDL2_image-2.8.0.tar.gz
+        sha256: 76ba035fd032c12987e4a0d39aa1f2e79989a51cea72f79d18ab084a24adc9cc
+
+  - name: sdl2_mixer
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --enable-music-ogg
+      - --with-ogg-prefix=/app
+      - --with-vorbis-prefix=/app
+      - --enable-music-mod
+      - --enable-music-flac
+      - --enable-music-mp3-mpg123
+    sources:
+      - type: archive
+        url: https://www.libsdl.org/projects/SDL_mixer/release/SDL2_mixer-2.8.0.tar.gz
+        sha256: 1cfb34c87b26dbdbc7afd68c4f545c0116ab5f90bbfecc5aebe2a9cb4bb31549
+
+  - name: sdl2_ttf
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.22.0.tar.gz
+        sha256: d48cbd1ce475b9e178206bf3b72d56b66d84d44f64ac05803328396234d67723
+
+  - name: sdl2_gfx
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://deb.debian.org/debian/pool/main/libs/libsdl2-gfx/libsdl2-gfx_1.0.4+dfsg.orig.tar.gz
+        sha256: af55b6515d6850779a9d69a4775d3c8cc5859872d4e8f31935ea5bfe6b10b7b2
+
+  # Header-only math
+  - name: glm
+    buildsystem: simple
+    build-commands:
+      - install -d /app/include
+      - cp -r glm /app/include/
+    sources:
+      - type: archive
+        url: https://github.com/g-truc/glm/archive/refs/tags/0.9.9.8.tar.gz
+        sha256: 7d508ab72cb5d43227a3711420f06ff99b0a0cb63ee2f93631b162bfe1fe9592
+
+  # ==========================================================
+  # FreeDink game data (free)
+  # ==========================================================
+  - name: freedink-data
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/freedink/freedink-data-1.08.20190120.tar.gz
+        sha256: 715f44773b05b73a9ec9b62b0e152f3f281be1a1512fbaaa386176da94cffb9d
+
+  # ==========================================================
+  # FreeDink engine
+  # ==========================================================
+  - name: freedink
+    buildsystem: simple
+    build-commands:
+      - autoreconf -fi
+
+      # Fix SDL_ttf API changes (const correctness)
+      - sed -i "s/char \\*familyname/const char *familyname/" src/gfx_fonts.cpp
+      - sed -i "s/char \\*stylename/const char *stylename/" src/gfx_fonts.cpp
+      - sed -i "s/char \\*fullname/const char *fullname/" src/gfx_fonts.cpp
+
+      # Remove Android-only SDL hint not present in our SDL
+      - sed -i 's|SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "0");|// SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "0");|' src/input.cpp
+
+      - ./configure --prefix=/app --disable-static --enable-tests=no
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/freedink/freedink-109.6.tar.gz
+        sha256: 5e0b35ac8f46d7bb87e656efd5f9c7c2ac1a6c519a908fc5b581e52657981002
+
+  # ==========================================================
+  # Wrapper + desktop + metainfo
+  # ==========================================================
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -D org.gnu.FreeDink.Engine.desktop /app/share/applications/org.gnu.FreeDink.Engine.desktop
+      - install -D org.gnu.FreeDink.Engine.metainfo.xml /app/share/metainfo/org.gnu.FreeDink.Engine.metainfo.xml
+      - install -D org.gnu.FreeDink.Engine.png /app/share/icons/hicolor/128x128/apps/org.gnu.FreeDink.Engine.png
+    sources:
+      - type: file
+        path: org.gnu.FreeDink.Engine.desktop
+      - type: file
+        path: org.gnu.FreeDink.Engine.metainfo.xml
+      - type: file
+        path: org.gnu.FreeDink.Engine.png
+
+  - name: wrapper
+    buildsystem: simple
+    build-commands:
+      - install -D freedink-wrapper.sh /app/bin/freedink-wrapper
+    sources:
+      - type: file
+        path: freedink-wrapper.sh
