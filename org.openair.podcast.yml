@@ -4,7 +4,6 @@ runtime-version: "49"
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.llvm20
-
 command: OpenAir
 
 finish-args:
@@ -14,7 +13,10 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --share=network
-  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-data/openair:create
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --talk-name=org.freedesktop.Notifications
 
 modules:
   - name: openair
@@ -33,16 +35,78 @@ modules:
       prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
       env:
         PUB_CACHE: /run/build/openair/.pub-cache
+        CXXFLAGS: -Wno-error=deprecated-literal-operator
+
     build-commands:
+      - flutter pub get
       - flutter build linux --release
-      - install -D $BUNDLE_PATH/OpenAir /app/bin/OpenAir
-      - cp -r $BUNDLE_PATH/lib /app/lib
-      - cp -r $BUNDLE_PATH/data /app/data
+
+      - mkdir -p /app/openair
+      - cp -r $BUNDLE_PATH/* /app/openair/
+      - mkdir -p /app/bin
+
+      - |
+        cat > /app/bin/OpenAir << 'EOF'
+        #!/bin/bash
+        cd /app/openair
+        exec /app/openair/OpenAir "$@"
+        EOF
+
+      - chmod +x /app/bin/OpenAir
+
+      - |
+        cat > org.openair.podcast.desktop << 'EOF'
+        [Desktop Entry]
+        Name=OpenAir
+        Comment=A podcast player
+        Exec=OpenAir
+        Icon=org.openair.podcast
+        Type=Application
+        Categories=AudioVideo;Audio;Player;
+        Terminal=false
+        StartupWMClass=openair
+        EOF
+
+      - install -Dm644 org.openair.podcast.desktop /app/share/applications/org.openair.podcast.desktop
+
+      - |
+        APP_VERSION=$(echo v0.12.5+19 | sed 's/v//' | sed 's/+.*//')
+        # Get the current build date
+        BUILD_DATE=$(date +%Y-%m-%d)
+
+        cat > org.openair.podcast.metainfo.xml << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop-application">
+          <id>org.openair.podcast</id>
+          <metadata_license>MIT</metadata_license>
+          <project_license>MIT</project_license>
+          <name>OpenAir</name>
+          <summary>A podcast manager for exploring and enjoying podcasts.</summary>
+          <developer_name>OpenAir Team &amp; Contributors</developer_name>
+          <description>
+            <p>OpenAir is a free and open-source cross-platform podcast app that empowers you to
+              explore and enjoy the vast world of podcasts.</p>
+          </description>
+          <releases>
+            <release version="$APP_VERSION" date="$BUILD_DATE"/>
+          </releases>
+          <launchable type="desktop-id">org.openair.podcast.desktop</launchable>
+          <url type="homepage">https://github.com/OpenAir-Podcast/OpenAir</url>
+          <url type="bugtracker">https://github.com/OpenAir-Podcast/OpenAir/issues</url>
+          <content_rating type="oars-1.1"/>
+        </component>
+        EOF
+
+      - install -Dm644 org.openair.podcast.metainfo.xml /app/share/appdata/org.openair.podcast.appdata.xml
+      - install -Dm644 assets/icons/icon.png /app/share/icons/hicolor/512x512/apps/org.openair.podcast.png
+
     sources:
       - type: git
         url: https://github.com/OpenAir-Podcast/OpenAir.git
         commit: f9992456d86f0c15f7be25fa455a529155b0205e
         tag: v0.12.5+19
+      - type: file
+        path: /home/jennings/Documents/GitHub/openair/.env
       - type: git
         url: https://github.com/flutter/flutter.git
         tag: 3.35.7
