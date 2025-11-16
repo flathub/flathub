@@ -7,7 +7,6 @@ command: aurynk
 finish-args:
   # Set scrcpy server path
   - --env=SCRCPY_SERVER_PATH=/app/share/scrcpy/scrcpy-server
-  # Set GI typelib path for AyatanaAppIndicator
   # X11 + XShm access
   - --share=ipc
   - --socket=fallback-x11
@@ -16,7 +15,6 @@ finish-args:
   # Network access for ADB wireless
   - --share=network
   # D-Bus access for notifications and system tray
-  - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.ayatana.indicator.service
   # USB device access for ADB
@@ -36,6 +34,8 @@ cleanup:
 modules:
   - name: python3-meson-python-pycairo
     buildsystem: simple
+    cleanup:
+      - "*"
     build-commands:
       - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} meson-python pyproject-metadata
     sources:
@@ -48,6 +48,8 @@ modules:
 
   - name: python3-poetry-core
     buildsystem: simple
+    cleanup:
+      - "*"
     build-commands:
       - pip3 install --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} poetry-core
     sources:
@@ -57,18 +59,9 @@ modules:
 
   - python-dependencies.json
 
-  - name: libusb
-    buildsystem: autotools
-    config-opts:
-      - --prefix=/app
-      - --disable-static
-    sources:
-      - type: archive
-        url: https://github.com/libusb/libusb/releases/download/v1.0.26/libusb-1.0.26.tar.bz2
-        sha256: 12ce7a61fc9854d1d2a1ffe095f7b5fac19ddba095c259e6067a46500381b5a5
-
   - name: adb
     buildsystem: simple
+    only-arches: [x86_64]
     build-commands:
       - install -D adb /app/bin/adb
     sources:
@@ -79,14 +72,41 @@ modules:
   # Use upstream shared-modules for Ayatana AppIndicator
   - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
 
+  # scrcpy - use pre-built binary on x86_64, build from source on aarch64
+  - name: scrcpy
+    buildsystem: simple
+    build-commands:
+      - |
+        if [ "${FLATPAK_ARCH}" = "x86_64" ]; then
+          # Install pre-built binary for x86_64
+          cd scrcpy-linux-x86_64-v3.3.3
+          install -Dm755 scrcpy /app/bin/scrcpy
+          install -Dm644 scrcpy-server /app/share/scrcpy/scrcpy-server
+        else
+          # Build from source for other architectures
+          install -Dm644 scrcpy-server /app/share/scrcpy/scrcpy-server
+          meson setup builddir --prefix=/app -Dprebuilt_server=/app/share/scrcpy/scrcpy-server
+          ninja -C builddir
+          ninja -C builddir install
+        fi
+    sources:
+      - type: archive
+        url: https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-linux-x86_64-v3.3.3.tar.gz
+        sha256: 9b30e813e8191329ba8025dc80cb0f198fb0a318960a3b5c15395cf675c9c638
+        only-arches: [x86_64]
+      - type: archive
+        url: https://github.com/Genymobile/scrcpy/archive/refs/tags/v3.3.3.tar.gz
+        sha256: 87fcd360a6bb6ca070ffd217bd33b33fb808b0a1572b464da51dde3fd3f6f60e
+        except-arches: [x86_64]
+      - type: file
+        url: https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-server-v3.3.3
+        sha256: 7e70323ba7f259649dd4acce97ac4fefbae8102b2c6d91e2e7be613fd5354be0
+        dest-filename: scrcpy-server
+
   # Main application
   - name: aurynk
     buildsystem: meson
-    post-install:
-      # Install prebuilt scrcpy binaries from source directory
-      - install -Dm755 ../vendor/scrcpy/scrcpy ${FLATPAK_DEST}/bin/scrcpy
-      - install -Dm644 ../vendor/scrcpy/scrcpy-server ${FLATPAK_DEST}/share/scrcpy/scrcpy-server
     sources:
       - type: archive
-        url: https://github.com/IshuSinghSE/aurynk/releases/download/v1.0.2/aurynk-1.0.2.tar.gz
-        sha256: f18a656757d37fdf12431de46b3a731ee77fbf2abb18694ca79d692f9d13ec72
+        url: https://github.com/IshuSinghSE/aurynk/releases/download/v1.0.3/aurynk-1.0.3.tar.gz
+        sha256: 571ab63ece57768fa62ade8325ff5074b9b60ccb1c9d6008beba1adec95c0326
