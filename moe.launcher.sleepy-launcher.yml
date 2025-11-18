@@ -1,0 +1,124 @@
+app-id: moe.launcher.sleepy-launcher
+command: moe.launcher.sleepy-launcher
+rename-desktop-file: sleepy-launcher.desktop
+
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --device=all # Controllers
+  - --allow=devel # Required to make Wine work
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - /share/vala
+  - "*.la"
+  - "*.a"
+
+modules:
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-examples=false
+      - -Dwith-util=false
+      - -Dwith-sd-bus-provider=no-daemon
+    post-install:
+      - install -Dm775 ../data/gamemoderun -t /app/bin
+    sources:
+      - type: archive
+        url: https://github.com/FeralInteractive/gamemode/releases/download/1.8.2/gamemode-1.8.2.tar.xz
+        sha256: 98cd1bcf6101c92fe87f974c7776af23c7e18f29ce6ecfe572b1c39dcde5c181
+        x-checker-data:
+          type: anitya
+          project-id: 17410
+          url-template: https://github.com/FeralInteractive/gamemode/releases/download/$version/gamemode-$version.tar.xz
+
+  - name: git
+    buildsystem: autotools
+    config-opts:
+      - --without-tcltk
+    post-install:
+      - rm -rf /app/share/gitweb
+      - |
+        cd /app/libexec/git-core
+        keep="git git-rev-parse git-remote git-remote-https git-fetch git-reset git-clone"
+        for f in *; do [[ " $keep " =~ " $f " ]] || rm -f "$f"; done
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.51.2.tar.xz
+        sha256: 233d7143a2d58e60755eee9b76f559ec73ea2b3c297f5b503162ace95966b4e3
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          url-template: https://mirrors.edge.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      - make 7z install DEST_HOME=/app
+    sources:
+      - type: git
+        url: https://github.com/p7zip-project/p7zip
+        tag: v17.05
+
+  # Required for layered backgrounds support
+  - name: ImageMagick
+    config-opts:
+      - --disable-static
+      - --disable-docs
+      - --with-hdri
+      - --with-pic
+    sources:
+      - type: git
+        url: https://github.com/ImageMagick/ImageMagick
+        tag: 7.1.1-47
+        commit: 82572afc879b439cbf8c9c6f3a9ac7626adf98fb
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+-[\d]+)$
+
+  - name: sleepy
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: ./cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm775 target/release/sleepy-launcher /app/bin/sleepy-launcher
+      - install -Dm755 moe.launcher.sleepy-launcher.sh /app/bin/moe.launcher.sleepy-launcher
+      - install -Dm644 assets/images/icon.png /app/share/icons/hicolor/512x512/apps/moe.launcher.sleepy-launcher.png
+      - desktop-file-install --dir=/app/share/applications --set-key=Exec --set-value=moe.launcher.sleepy-launcher --set-key=Icon --set-value=moe.launcher.sleepy-launcher assets/sleepy-launcher.desktop
+      - install -Dm644 moe.launcher.sleepy-launcher.metainfo.xml /app/share/metainfo/moe.launcher.sleepy-launcher.metainfo.xml
+      - mkdir -p /app/utils/
+    sources:
+      - type: git
+        url: https://github.com/an-anime-team/sleepy-launcher
+        tag: 1.6.0
+      - type: file
+        path: moe.launcher.sleepy-launcher.sh
+      - type: file
+        dest-filename: moe.launcher.sleepy-launcher.metainfo.xml
+        url: https://raw.githubusercontent.com/an-anime-team/sleepy-launcher/13b60d27c6859b94c0fc5b2dddddb4b225c86fea/assets/moe.launcher.sleepy-launcher.metainfo.xml
+        sha256: af2e91a0cca3a69640b440e178c5b41bcd0904f283ac65521e4e966ad754b362
+      - cargo-sources.json
