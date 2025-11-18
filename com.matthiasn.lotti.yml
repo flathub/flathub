@@ -1,0 +1,240 @@
+app-id: com.matthiasn.lotti
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.llvm20
+- org.freedesktop.Sdk.Extension.rust-stable
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+command: lotti
+finish-args:
+- --share=network
+- --share=ipc
+- --socket=fallback-x11
+- --socket=wayland
+- --socket=pulseaudio
+- --device=dri
+- --filesystem=xdg-documents/Lotti:create
+- --filesystem=xdg-pictures:ro
+- --filesystem=xdg-download/Lotti:create
+modules:
+- name: python3-jinja2
+  buildsystem: simple
+  build-commands:
+  - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+    --prefix=${FLATPAK_DEST} "MarkupSafe" "jinja2" --no-build-isolation
+  sources:
+  - type: file
+    sha256: bc5dd2abb727a5319567b7a813e6a2e7318c39f4f487cfe6c89c6f9c7d25197d
+    path: jinja2-3.1.4-py3-none-any.whl
+  - type: file
+    sha256: d283d37a890ba4c1ae73ffadf8046435c76e7bc2247bbb63c00bd1a709c6544b
+    path: MarkupSafe-2.1.5.tar.gz
+- name: libplacebo
+  buildsystem: meson
+  config-opts:
+  - -Dglslang=disabled
+  - -Dshaderc=disabled
+  - -Dvulkan=disabled
+  - -Dd3d11=disabled
+  - -Ddemos=false
+  - -Dopengl=disabled
+  - -Dtests=false
+  sources:
+  - type: archive
+    sha256: 2f1e624e09d72a8c9db70f910f7560e764a1c126dae42acc5b3bcef836a7aec6
+    path: v6.338.2.tar.gz
+- name: libass
+  buildsystem: autotools
+  config-opts:
+  - --disable-static
+  sources:
+  - type: archive
+    sha256: f0da0bbfba476c16ae3e1cfd862256d30915911f7abaa1b16ce62ee653192784
+    path: libass-0.17.1.tar.xz
+  cleanup:
+  - /include
+  - /lib/pkgconfig
+- name: libmpv
+  buildsystem: meson
+  build-options:
+    env:
+      PKG_CONFIG_PATH: /app/lib64/pkgconfig:/app/lib/pkgconfig
+  config-opts:
+  - -Dlibmpv=true
+  - -Dlua=disabled
+  - -Ddebug=false
+  - -Dbuild-date=false
+  - -Dmanpage-build=disabled
+  - -Dsdl2=disabled
+  - -Dvulkan=disabled
+  sources:
+  - type: archive
+    sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+    path: v0.38.0.tar.gz
+- name: libsecret
+  buildsystem: meson
+  config-opts:
+  - -Dmanpage=false
+  - -Dvapi=false
+  - -Dgcrypt=false
+  - -Dgtk_doc=false
+  - -Dintrospection=false
+  sources:
+  - type: archive
+    sha256: b33b9542222ea8866f6ff2d31c0ad373877c2277db546ca00cc7fdda9cbab1c3
+    path: libsecret-0.20.5.tar.gz
+- name: libkeybinder
+  buildsystem: autotools
+  sources:
+  - type: archive
+    sha256: e6e3de4e1f3b201814a956ab8f16dfc8a262db1937ff1eee4d855365398c6020
+    path: keybinder-3.0-0.3.2.tar.gz
+- name: noto-emoji-fonts
+  buildsystem: simple
+  build-commands:
+  - mkdir -p /app/share/fonts/truetype
+  - mkdir -p /app/etc/fonts/conf.d
+  - install -Dm644 NotoColorEmoji.ttf /app/share/fonts/truetype/NotoColorEmoji.ttf
+  - install -Dm644 75-noto-color-emoji.conf /app/etc/fonts/conf.d/75-noto-color-emoji.conf
+  - fc-cache -fv /app/share/fonts
+  sources:
+  - type: file
+    sha256: 72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b
+    path: NotoColorEmoji.ttf
+  - type: file
+    path: 75-noto-color-emoji.conf
+- rustup-1.83.0.json
+- name: lotti
+  buildsystem: simple
+  build-options:
+    append-path: /var/lib/rustup/bin:/var/lib/flutter/bin:/usr/lib/sdk/rust-stable/bin:/run/build/lotti/.cargo/bin:/usr/lib/sdk/llvm20/bin
+    prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+    env:
+      PUB_CACHE: /run/build/lotti/.pub-cache
+      FLUTTER_ROOT: /run/build/lotti/flutter_sdk
+      PATH: /var/lib/rustup/bin:/usr/lib/sdk/rust-stable/bin:/var/lib/flutter/bin:/run/build/lotti/flutter_sdk/bin:/run/build/lotti/.cargo/bin:/usr/lib/sdk/llvm20/bin:/usr/bin:/bin
+      CARGO_HOME: /run/build/lotti/.cargo
+      RUSTUP_HOME: /var/lib/rustup
+      PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig
+  build-commands:
+  - echo "Setting up Flutter SDK..."
+  - if [ -d /var/lib/flutter ]; then cp -r /var/lib/flutter /run/build/lotti/flutter_sdk;
+    fi
+  - chmod -R u+w /run/build/lotti/flutter_sdk
+  - echo "Installing Rust..."
+  - rustc --version
+  - cargo --version
+  - echo "Building Lotti from source..."
+  - mkdir -p .cargo
+  - ln -sfn ../cargo .cargo/cargo
+  - cp cargo/config .cargo/config.toml 2>/dev/null || true
+  - /run/build/lotti/flutter_sdk/bin/flutter pub get --offline
+  - echo "Checking for libsecret installation..."
+  - pkg-config --modversion libsecret-1 || echo "libsecret-1 not found via pkg-config"
+  - ls -la /app/lib/pkgconfig/ | grep secret || echo "No libsecret pkgconfig files
+    in /app/lib/pkgconfig/"
+  - export CMAKE_PREFIX_PATH=/app:$CMAKE_PREFIX_PATH
+  - /run/build/lotti/flutter_sdk/bin/flutter build linux --no-pub --release --verbose
+  - echo "Installing Flutter bundle..."
+  - "arch=\"x64\"\nif [ \"${FLATPAK_ARCH}\" = \"aarch64\" ]; then\n  arch=\"arm64\"\
+    \nfi\ncp -r build/linux/${arch}/release/bundle/* /app/\n"
+  - find /app -name "*1024*" -type f -delete
+  - chmod +x /app/lotti
+  - mkdir -p /app/bin
+  - mkdir -p /app/lib/ffmpeg
+  - "cat > /app/bin/lotti << 'EOF'\n#!/bin/bash\nexport LD_LIBRARY_PATH=/app/lib:/app/lib64:$LD_LIBRARY_PATH\n\
+    \n# Configure fontconfig to use our emoji font configuration\nexport FONTCONFIG_PATH=/app/etc/fonts\n\
+    export FONTCONFIG_FILE=/app/etc/fonts/fonts.conf\n\n# Set GDK_BACKEND conditionally\n\
+    if [ -z \"$WAYLAND_DISPLAY\" ] && [ \"$XDG_SESSION_TYPE\" != \"wayland\" ]; then\n\
+    \  export GDK_BACKEND=x11\nfi\n\ncd /app\nexec ./lotti \"$@\"\nEOF\n"
+  - chmod +x /app/bin/lotti
+  sources:
+  - type: file
+    path: lotti-2e3017b3af3727f570233be69f11dafff08cdb43.tar.xz
+    sha256: 0facd9c89ecd02745408e439890ed62479e5c1a44f4d194bb5f5b5a72f810fcc
+  - pubspec-sources.json
+  - type: git
+    url: https://github.com/matthiasn/lotti
+    commit: 2e3017b3af3727f570233be69f11dafff08cdb43
+  - type: file
+    only-arches:
+    - x86_64
+    sha256: 2b1bff6f717f9725c70bf8d79e4786da13de8a270059e4ba0bdd262ae7be46eb
+    dest: ./build/linux/x64/release
+    dest-filename: mimalloc-2.1.2.tar.gz
+    path: v2.1.2.tar.gz
+  - type: file
+    only-arches:
+    - aarch64
+    sha256: 2b1bff6f717f9725c70bf8d79e4786da13de8a270059e4ba0bdd262ae7be46eb
+    dest: ./build/linux/arm64/release
+    dest-filename: mimalloc-2.1.2.tar.gz
+    path: v2.1.2.tar.gz
+  - type: file
+    only-arches:
+    - x86_64
+    sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+    dest: ./build/linux/x64/release/_deps/sqlite3-subbuild/sqlite3-populate-prefix/src
+    path: sqlite-autoconf-3500400.tar.gz
+  - type: file
+    only-arches:
+    - aarch64
+    sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+    dest: ./build/linux/arm64/release/_deps/sqlite3-subbuild/sqlite3-populate-prefix/src
+    path: sqlite-autoconf-3500400.tar.gz
+  - cargo-sources.json
+  - type: file
+    path: flutter-sdk-3.38.1.json
+  - type: patch
+    path: sqlite3_flutter_libs/0.5.39-CMakeLists.txt.patch
+    dest: .pub-cache/hosted/pub.dev/sqlite3_flutter_libs-0.5.40
+  - type: patch
+    path: cargokit/run_build_tool.sh.patch
+    dest: .pub-cache/hosted/pub.dev/super_native_extensions-0.9.1/cargokit
+  - type: patch
+    path: cargokit/run_build_tool.sh.patch
+    dest: .pub-cache/hosted/pub.dev/flutter_vodozemac-0.4.1/cargokit
+  - type: patch
+    path: cargokit/run_build_tool.sh.patch
+    dest: .pub-cache/hosted/pub.dev/irondash_engine_context-0.5.5/cargokit
+  modules:
+  - flutter-sdk-3.38.1.json
+- name: flutter-common
+  buildsystem: simple
+  build-commands:
+  - install -D com.matthiasn.lotti.desktop /app/share/applications/com.matthiasn.lotti.desktop
+  - install -D com.matthiasn.lotti.metainfo.xml /app/share/metainfo/com.matthiasn.lotti.metainfo.xml
+  - install -D app_icon_512.png /app/share/icons/hicolor/512x512/apps/com.matthiasn.lotti.png
+  - install -D app_icon_256.png /app/share/icons/hicolor/256x256/apps/com.matthiasn.lotti.png
+  - install -D app_icon_128.png /app/share/icons/hicolor/128x128/apps/com.matthiasn.lotti.png
+  - install -D app_icon_64.png /app/share/icons/hicolor/64x64/apps/com.matthiasn.lotti.png
+  - install -D app_icon_48.png /app/share/icons/hicolor/48x48/apps/com.matthiasn.lotti.png
+  - install -D app_icon_32.png /app/share/icons/hicolor/32x32/apps/com.matthiasn.lotti.png
+  - install -D app_icon_16.png /app/share/icons/hicolor/16x16/apps/com.matthiasn.lotti.png
+  - install -D screenshot.png /app/share/app-info/screenshots/com.matthiasn.lotti/main.png
+  sources:
+  - type: file
+    path: com.matthiasn.lotti.desktop
+  - type: file
+    path: com.matthiasn.lotti.metainfo.xml
+  - type: file
+    path: app_icon_512.png
+  - type: file
+    path: app_icon_256.png
+  - type: file
+    path: app_icon_128.png
+  - type: file
+    path: app_icon_64.png
+  - type: file
+    path: app_icon_48.png
+  - type: file
+    path: app_icon_32.png
+  - type: file
+    path: app_icon_16.png
+  - type: file
+    path: screenshot.png
