@@ -1,0 +1,145 @@
+id: org.freedownloadmanager.fdm
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: fdm
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-download:rw
+  - --talk-name=org.freedesktop.portal.*
+  - --talk-name=org.freedesktop.secrets
+  - --env=TMPDIR=/var/tmp
+
+modules:
+  - name: fdm
+    buildsystem: simple
+
+    build-commands:
+      # генерим .desktop и .metainfo
+      - bash gen-files.sh
+
+      # ставим скрипты
+      - install -Dm755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm755 fdm-wrapper.sh /app/bin/fdm
+
+      # ставим метаданные
+      - install -Dm644 "${FLATPAK_ID}.desktop" \
+            "/app/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 "${FLATPAK_ID}.metainfo.xml" \
+            "/app/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+
+      # ставим иконку (из отдельного файла, не из deb!)
+      - install -Dm644 org.freedownloadmanager.fdm.png \
+            "/app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.png"
+
+    sources:
+      # --------- extra-data: deb качается ПРИ УСТАНОВКЕ, а не при сборке ---------
+      - type: extra-data
+        only-arches:
+          - x86_64
+        filename: freedownloadmanager.deb
+        url: https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb
+        sha256: 9a63081db9a623466f06f3b30ad8957666e49b3642eb95f6f1cb99319d30d319
+        size: 43814780
+
+      # --------- скрипт распаковки deb и вытаскивания бинарника ---------
+      - type: script
+        dest-filename: apply_extra.sh
+        commands:
+          - '#!/usr/bin/env bash'
+          - 'set -e'
+          - 'DEB="${FLATPAK_DEST}/extra/freedownloadmanager.deb"'
+          - 'DEST="${FLATPAK_DEST}/extra"'
+          - 'mkdir -p "$DEST"'
+          - 'TMP="$(mktemp -d)"'
+          - 'cd "$TMP"'
+          - 'ar x "$DEB"'
+          - 'if   [ -f data.tar.zst ]; then tar --zstd -xf data.tar.zst -C "$DEST";'
+          - 'elif [ -f data.tar.xz  ]; then tar -xJf  data.tar.xz  -C "$DEST";'
+          - 'elif [ -f data.tar.gz  ]; then tar -xzf  data.tar.gz  -C "$DEST";'
+          - 'else echo "Unknown data.tar.* in deb" >&2; exit 1; fi'
+          # фиксируем путь к бинарнику, как в deb (если другой — поменяешь здесь)
+          - 'BIN="$DEST/opt/freedownloadmanager/fdm"'
+          - 'mkdir -p "${FLATPAK_DEST}/bin"'
+          - 'ln -sf "$BIN" "${FLATPAK_DEST}/bin/fdm.real"'
+          - 'rm -rf "$TMP"'
+
+      # --------- wrapper: запускает /app/bin/fdm.real ---------
+      - type: script
+        dest-filename: fdm-wrapper.sh
+        commands:
+          - 'set -euo pipefail'
+          - 'export TMPDIR="${TMPDIR:-/var/tmp}"'
+          - 'export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.var/app/$FLATPAK_ID/config}"'
+          - 'export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.var/app/$FLATPAK_ID/cache}"'
+          - 'exec /app/bin/fdm.real "$@"'
+
+      # --------- генерим .desktop и .metainfo с ПОДСТАНОВКОЙ FLATPAK_ID ---------
+      - type: script
+        dest-filename: gen-files.sh
+        commands:
+          - 'set -euo pipefail'
+          - 'cat > "${FLATPAK_ID}.desktop" <<EOF'
+          - |
+            [Desktop Entry]
+            Name=Free Download Manager
+            Comment=FDM is a powerful modern download accelerator and organizer
+            Exec=fdm %u
+            Icon=${FLATPAK_ID}
+            Terminal=false
+            Type=Application
+            Categories=Network;FileTransfer;Utility;
+            MimeType=x-scheme-handler/http;x-scheme-handler/https;
+            StartupNotify=true
+          - 'EOF'
+          - 'cat > "${FLATPAK_ID}.metainfo.xml" <<EOF'
+          - |
+            <?xml version="1.0" encoding="UTF-8"?>
+            <component type="desktop-application">
+              <id>${FLATPAK_ID}</id>
+              <name>Free Download Manager</name>
+              <summary>Download accelerator and organizer</summary>
+
+              <metadata_license>CC0-1.0</metadata_license>
+              <project_license>LicenseRef-proprietary=https://www.freedownloadmanager.org/</project_license>
+
+              <developer id="org.freedownloadmanager">
+                <name>FreeDownloadManager.org</name>
+              </developer>
+
+              <launchable type="desktop-id">${FLATPAK_ID}.desktop</launchable>
+
+              <provides>
+                <binary>fdm</binary>
+              </provides>
+
+              <categories>
+                <category>Network</category>
+                <category>FileTransfer</category>
+              </categories>
+
+              <releases>
+                <!-- поставь реальную версию/дату -->
+                <release version="6.0.0" date="2025-01-01"/>
+              </releases>
+
+              <content_rating type="oars-1.1"/>
+
+              <description>
+                <p>Free Download Manager for Linux packaged as a Flatpak.</p>
+              </description>
+            </component>
+          - 'EOF'
+
+      # --------- иконка (CC0 SVG, тянем во время СБОРКИ, не установки) ---------
+      - type: file
+        dest-filename: org.freedownloadmanager.fdm.png
+        url:  https://raw.githubusercontent.com/fdm-00/fdm/refs/heads/main/assets/org.freedownloadmanager.fdm.png
+        sha256: a321996c56395b51e03d3b59f6a4938ea3e1fd65287f373322408fc6d2607a2e
