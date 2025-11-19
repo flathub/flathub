@@ -1,0 +1,71 @@
+app-id: org.zdoom.UZDoom
+runtime: org.freedesktop.Platform
+sdk: org.freedesktop.Sdk
+runtime-version: '25.08'
+command: uzdoom.sh
+
+finish-args:
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+
+  # Based on GZDoom
+  # We redirect the original ~/.config/uzdoom
+  - --env=DOOMWADDIR=/app/share/games/doom
+  - --persist=.config/uzdoom
+  
+  # Controller support on SteamDeck and such, future compatible
+  - --device=all
+  - --device=not-all,input
+
+  # Simpler way of preventing KDE related errors
+  - --env=KDE_FULL_SESSION=false
+
+cleanup:
+  - /app/include
+  - /app/lib/*.a
+  - /app/lib/*.la
+  - /app/lib/pkgconfig
+
+modules:
+  - shared-modules/linux-audio/libinstpatch.json
+  - shared-modules/linux-audio/fluidsynth2.json
+  - shared-modules/gzdoom/game-music-emu.json
+  - shared-modules/gzdoom/zmusic.json
+  
+  - name: libsndfile
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz
+        sha256: 3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e
+        x-checker-data:
+          type: anitya
+          project-id: 13277
+          stable-only: true
+          url-template: https://github.com/libsndfile/libsndfile/releases/download/$version/libsndfile-$version.tar.xz
+  
+  - name: uzdoom
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    post-install:
+      - install -Dm 755 ./uzdoom.sh -t /app/bin
+      - install -Dm 644 ./src/posix/freedesktop/org.zdoom.UZDoom.desktop -t /app/share/applications
+      - install -Dm 644 ./src/posix/freedesktop/org.zdoom.UZDoom.metainfo.xml -t /app/share/metainfo
+      - install -Dm 644 ./src/posix/freedesktop/org.zdoom.UZDoom.svg /app/share/icons/hicolor/scalable/apps/org.zdoom.GZDoom.svg
+    sources:
+      - type: git
+        url: https://github.com/UZDoom/UZDoom.git
+        tag: 4.14.3-rc2
+        commit: 3b32e6b63ba6cbf326b57b5912e4a01d31d48573
+      - type: script
+        dest-filename: uzdoom.sh
+        commands:
+          - exec uzdoom +fluid_patchset /app/share/games/doom/soundfonts/uzdoom.sf2 "$@"
+  
