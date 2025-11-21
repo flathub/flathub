@@ -2,64 +2,54 @@ id: com.tcs.taskflow
 runtime: org.gnome.Platform
 runtime-version: "48"
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
 command: taskflow
 
 finish-args:
-  # Window display permissions
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
   - --share=ipc
-
-  # Network access (if your app needs it)
   - --share=network
-
-  # File system access (adjust as needed)
   - --filesystem=home
 
-  # Optional: Tray icon support
-  - --talk-name=org.kde.StatusNotifierWatcher
-  - --filesystem=xdg-run/tray-icon:create
-
-  # Optional: Single instance support
-  - --own-name=com.tcs.taskflow.SingleInstance
-
-  # Optional: Audio support (if your app plays sounds)
-  # - --socket=pulseaudio
-
-  # Optional: Notifications
-  # - --talk-name=org.freedesktop.Notifications
-
 modules:
-  - name: binary
+  - name: taskflow
     buildsystem: simple
-    sources:
-      # Using the portable binary directly from the build output
-      - type: file
-        path: ../src-tauri/target/release/taskflow
-
-      # Desktop file - you'll need to create this
-      - type: file
-        path: com.tcs.taskflow.desktop
-
-      # Icon - adjust path to your actual icon location
-      - type: file
-        path: ../src-tauri/icons/icon.png
-
-      # AppStream metadata
-      - type: file
-        path: com.tcs.taskflow.metainfo.xml
-
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      build-args:
+        - "--share=network"
+      env:
+        - CARGO_NET_GIT_FETCH_WITH_CLI = true
+        - NODE_VERSION = 22
+        - npm_config_registry = https://registry.npmjs.org/
+        - npm_config_cache = /run/build/taskflow/.npm-cache
     build-commands:
-      # Install binary
+      - npm config set registry https://registry.npmjs.org/
+      - npm config set cache /run/build/taskflow/.npm-cache
+      - npm install --verbose --no-audit --no-fund --prefer-offline
+      - npm run build:prod
+      - |
+        cd src-tauri && npm run tauri build --release
+        # Find the actual binary name created by Tauri
+        if [ -f target/release/taskflow ]; then
+          cp target/release/taskflow ../taskflow
+        elif [ -f target/release/taskflow-app ]; then  # May have different name
+          cp target/release/taskflow-app ../taskflow
+        else
+          # If the binary doesn't match expected names, copy any executable from target/release
+          find target/release -maxdepth 1 -type f -executable -exec cp {} ../taskflow \; 2>/dev/null || true
+        fi
       - install -Dm755 taskflow /app/bin/taskflow
-
-      # Install desktop file
-      - install -Dm644 com.tcs.taskflow.desktop /app/share/applications/com.tcs.taskflow.desktop
-
-      # Install icon (to multiple sizes for better scaling)
-      - install -Dm644 icon.png /app/share/icons/hicolor/128x128/apps/com.tcs.taskflow.png
-      - install -Dm644 icon.png /app/share/icons/hicolor/256x256/apps/com.tcs.taskflow.png
-
-      # Install AppStream metadata
-      - install -Dm644 com.tcs.taskflow.metainfo.xml /app/share/metainfo/com.tcs.taskflow.metainfo.xml
+      - install -Dm644 flatpak/com.tcs.taskflow.desktop /app/share/applications/com.tcs.taskflow.desktop
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/128x128/apps/com.tcs.taskflow.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/256x256/apps/com.tcs.taskflow.png
+      - install -Dm644 flatpak/com.tcs.taskflow.metainfo.xml /app/share/metainfo/com.tcs.taskflow.metainfo.xml
+    sources:
+      - type: dir
+        path: "."
+    cleanup:
+      - /share/man
