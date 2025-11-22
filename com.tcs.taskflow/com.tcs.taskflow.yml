@@ -19,37 +19,47 @@ modules:
   - name: taskflow
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
       build-args:
-        - "--share=network"
+        - --share=network
+      append-path: /app/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
       env:
-        - CARGO_NET_GIT_FETCH_WITH_CLI = true
-        - NODE_VERSION = 22
-        - npm_config_registry = https://registry.npmjs.org/
-        - npm_config_cache = /run/build/taskflow/.npm-cache
+        PATH: /app/bin:/usr/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+        CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        BUN_INSTALL: $HOME/.bun
     build-commands:
-      - npm config set registry https://registry.npmjs.org/
-      - npm config set cache /run/build/taskflow/.npm-cache
-      - npm install --verbose --no-audit --no-fund --prefer-offline
-      - npm run build:prod
-      - |
-        cd src-tauri && npm run tauri build --release
-        # Find the actual binary name created by Tauri
-        if [ -f target/release/taskflow ]; then
-          cp target/release/taskflow ../taskflow
-        elif [ -f target/release/taskflow-app ]; then  # May have different name
-          cp target/release/taskflow-app ../taskflow
-        else
-          # If the binary doesn't match expected names, copy any executable from target/release
-          find target/release -maxdepth 1 -type f -executable -exec cp {} ../taskflow \; 2>/dev/null || true
-        fi
-      - install -Dm755 taskflow /app/bin/taskflow
+      # Install bun from official website using the environment variable
+      - curl -fsSL https://bun.sh/install | bash
+      - export PATH="$BUN_INSTALL/bin:$PATH" && echo $PATH
+      - export PATH="$BUN_INSTALL/bin:$PATH" && bun --version
+      - export PATH="$BUN_INSTALL/bin:$PATH" && bun install --frozen-lockfile
+      - export PATH="$BUN_INSTALL/bin:$PATH" && bun run tauri:build:fast
+      # Metadata
       - install -Dm644 flatpak/com.tcs.taskflow.desktop /app/share/applications/com.tcs.taskflow.desktop
-      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/128x128/apps/com.tcs.taskflow.png
-      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/256x256/apps/com.tcs.taskflow.png
       - install -Dm644 flatpak/com.tcs.taskflow.metainfo.xml /app/share/metainfo/com.tcs.taskflow.metainfo.xml
+      # Binary
+      - install -Dm755 src-tauri/target/release/taskflow /app/bin/taskflow
+      # Icons
+      - |
+        for size in 128x128 256x256; do
+          install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/$size/apps/com.tcs.taskflow.png
+        done
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/scalable/apps/com.tcs.taskflow.svg
+
     sources:
       - type: dir
-        path: "."
+        path: ".."
+        skip:
+          - .git
+          - node_modules
+          - .angular
+          - .flatpak-builder
+          - build-dir
+          - flatpak/.flatpak-builder
+          - flatpak/build-dir
+          - target
+          - src-tauri/target
+          - dist
+          - coverage
+
     cleanup:
       - /share/man
