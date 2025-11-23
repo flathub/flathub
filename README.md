@@ -6,6 +6,7 @@ Looking to use ungoogled-cef outside of flatpak? The build steps here are reprod
 ## Usage
 ```yaml
 base: com.adamcake.ungoogled_cef.BaseApp
+base-version: '25.08'
 ```
 
 When you add this baseapp to your manifest, a binary distribution of CEF will appear in `/app/cef/dist`, which will have the same file structure as the official "minimal" builds of CEF. ("minimal" means you can't build in Debug mode.)
