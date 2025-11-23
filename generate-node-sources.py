@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: 0BSD
 
 import json
 import yaml
