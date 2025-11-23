@@ -1,0 +1,107 @@
+app-id: moe.launcher.the-honkers-railway-launcher
+command: moe.launcher.the-honkers-railway-launcher
+rename-desktop-file: honkers-railway-launcher.desktop
+
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --device=all # Controllers
+  - --allow=devel # Required to make Wine work
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - /share/vala
+  - "*.la"
+  - "*.a"
+
+modules:
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-examples=false
+      - -Dwith-util=false
+      - -Dwith-sd-bus-provider=no-daemon
+    post-install:
+      - install -Dm775 ../data/gamemoderun -t /app/bin
+    sources:
+      - type: archive
+        url: https://github.com/FeralInteractive/gamemode/releases/download/1.8.2/gamemode-1.8.2.tar.xz
+        sha256: 98cd1bcf6101c92fe87f974c7776af23c7e18f29ce6ecfe572b1c39dcde5c181
+        x-checker-data:
+          type: anitya
+          project-id: 17410
+          url-template: https://github.com/FeralInteractive/gamemode/releases/download/$version/gamemode-$version.tar.xz
+
+  - name: git
+    buildsystem: autotools
+    config-opts:
+      - --without-tcltk
+    post-install:
+      - rm -rf /app/share/gitweb
+      - |
+        cd /app/libexec/git-core
+        keep="git git-rev-parse git-remote git-remote-https git-fetch git-reset git-clone"
+        for f in *; do [[ " $keep " =~ " $f " ]] || rm -f "$f"; done
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.51.2.tar.xz
+        sha256: 233d7143a2d58e60755eee9b76f559ec73ea2b3c297f5b503162ace95966b4e3
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          url-template: https://mirrors.edge.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      - make 7z install DEST_HOME=/app
+    sources:
+      - type: git
+        url: https://github.com/p7zip-project/p7zip
+        tag: v17.05
+
+  - name: railway
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: ./cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm775 target/release/honkers-railway-launcher /app/bin/honkers-railway-launcher
+      - install -Dm755 moe.launcher.the-honkers-railway-launcher.sh /app/bin/moe.launcher.the-honkers-railway-launcher
+      - install -Dm644 assets/images/icon.png /app/share/icons/hicolor/512x512/apps/moe.launcher.the-honkers-railway-launcher.png
+      - desktop-file-install --dir=/app/share/applications --set-key=Exec --set-value=moe.launcher.the-honkers-railway-launcher --set-key=Icon --set-value=moe.launcher.the-honkers-railway-launcher assets/honkers-railway-launcher.desktop
+      - install -Dm644 moe.launcher.the-honkers-railway-launcher.metainfo.xml /app/share/metainfo/moe.launcher.the-honkers-railway-launcher.metainfo.xml
+      - mkdir -p /app/utils/
+    sources:
+      - type: git
+        url: https://github.com/an-anime-team/the-honkers-railway-launcher
+        tag: 1.13.0
+      - type: file
+        path: moe.launcher.the-honkers-railway-launcher.sh
+      - type: file
+        destfile: moe.launcher.the-honkers-railway-launcher.metainfo.xml
+        url: https://raw.githubusercontent.com/an-anime-team/the-honkers-railway-launcher/c20a1fef4592ff23603b701bceed9432f9cb9627/assets/moe.launcher.the-honkers-railway-launcher.metainfo.xml
+        sha256: 47add5862dc2579682b6c45fcb76a2ca47a9dad38ab082e0104d2c269efc9fc2
+      - cargo-sources.json
