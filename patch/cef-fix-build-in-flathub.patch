@@ -1,0 +1,237 @@
+diff --git a/tools/make_distrib.py b/tools/make_distrib.py
+index aa921067f..c8d380067 100644
+--- a/tools/make_distrib.py
++++ b/tools/make_distrib.py
+@@ -1109,7 +1109,6 @@ elif platform == 'windows':
+       {'path': 'chrome_100_percent.pak'},
+       {'path': 'chrome_200_percent.pak'},
+       {'path': 'resources.pak'},
+-      {'path': 'icudtl.dat'},
+       {'path': 'locales', 'delete': '*.info'},
+   ]
+   # yapf: enable
+@@ -1386,7 +1385,6 @@ elif platform == 'linux':
+       {'path': 'chrome_100_percent.pak'},
+       {'path': 'chrome_200_percent.pak'},
+       {'path': 'resources.pak'},
+-      {'path': 'icudtl.dat'},
+       {'path': 'locales', 'delete': '*.info'},
+   ]
+   # yapf: enable
+diff --git a/BUILD.gn b/BUILD.gn
+index cc4af4032..830569ad6 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -255,9 +255,6 @@ if (is_linux) {
+ # Enable support for Print Preview.
+ assert(enable_print_preview)
+ 
+-# Enable support for Widevine CDM.
+-assert(enable_widevine)
+-
+ if (is_mac || is_win) {
+   # Enable Widevine CDM host verification and storage ID.
+   assert(enable_cdm_host_verification)
+diff --git a/tools/gclient_hook.py b/tools/gclient_hook.py
+index 234d3a719..d74ad5ab3 100644
+--- a/tools/gclient_hook.py
++++ b/tools/gclient_hook.py
+@@ -6,18 +6,21 @@
+ from __future__ import absolute_import
+ from __future__ import print_function
+ from file_util import make_dir, write_file_if_changed
+-from gclient_util import *
+ from gn_args import GetAllPlatformConfigs, GetConfigFileContents
+ import issue_1999
+ import os
+ from setup_vscode import GetPreferredOutputDirectory, UpdateCompileCommandsJSON
+ import sys
++import subprocess
+ 
+ # The CEF directory is the parent directory of _this_ script.
+ cef_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+ # The src directory is the parent directory of the CEF directory.
+ src_dir = os.path.abspath(os.path.join(cef_dir, os.pardir))
+ 
++def RunAction(dir, cmd):
++  subprocess.run(cmd, cwd=dir)
++
+ # Determine the platform.
+ if sys.platform == 'win32':
+   platform = 'windows'
+@@ -142,7 +145,8 @@ for dir, config in configs.items():
+   write_file_if_changed(args_gn_path, args_gn_contents)
+ 
+   # Generate the Ninja config.
+-  cmd = ['gn', 'gen', os.path.join('out', dir)]
++  gn_binary = os.path.join(src_dir, 'gn', 'out', 'gn')
++  cmd = [gn_binary, 'gen', os.path.join('out', dir)]
+   if 'GN_ARGUMENTS' in os.environ.keys():
+     cmd.extend(os.environ['GN_ARGUMENTS'].split(' '))
+   RunAction(src_dir, cmd)
+diff --git a/tools/gn_args.py b/tools/gn_args.py
+--- a/tools/gn_args.py
++++ b/tools/gn_args.py
+@@ -153,7 +153,7 @@ def FormatValue(val):
+   elif isinstance(val, int) or isinstance(val, float):
+     return val
+   elif isinstance(val, list):
+-    return '[' + ', '.join([FormatValue(v) for v in list]) + ']'
++    return '[' + ', '.join([FormatValue(v) for v in val]) + ']'
+   else:
+     return '"%s"' % val
+   return val
+@@ -278,8 +278,6 @@ def GetRequiredArgs():
+   """
+   result = {
+       'optimize_webui': True,
+-      # Enable support for Widevine CDM.
+-      'enable_widevine': True,
+ 
+       # Don't use the chrome style plugin.
+       'clang_use_chrome_plugins': False,
+@@ -544,67 +542,18 @@ def GetAllPlatformConfigs(build_args, quiet=False):
+   """
+   Return a map of directory name to GN args for the current platform.
+   """
+-  result = {}
+-
+-  if quiet:
+-    global _QUIET
+-    _QUIET = True
+-
+-  # Merged args without validation.
+-  args = GetMergedArgs(build_args)
+-
+-  create_debug = True
+-
+-  # Don't create debug directories for asan builds.
+-  if GetArgValue(args, 'is_asan'):
+-    create_debug = False
+-    msg('Not generating Debug configuration due to is_asan=true')
+-
+-  supported_cpus = []
+ 
+-  if platform == 'linux':
+-    use_sysroot = GetArgValue(args, 'use_sysroot')
+-    if use_sysroot:
+-      # Only generate configurations for sysroots that have been installed.
+-      for cpu in ('x64', 'arm', 'arm64'):
+-        if LinuxSysrootExists(cpu):
+-          supported_cpus.append(cpu)
+-        else:
+-          msg('Not generating %s configuration due to missing sysroot directory'
+-              % cpu)
+-    else:
+-      supported_cpus = ['x64']
+-  elif platform in ('windows', 'mac'):
+-    if machine == 'amd64' or os.environ.get('CEF_ENABLE_AMD64', '') == '1':
+-      supported_cpus.append('x64')
+-      if platform == 'windows':
+-        supported_cpus.append('x86')
+-    if machine == 'arm64' or os.environ.get('CEF_ENABLE_ARM64', '') == '1':
+-      supported_cpus.append('arm64')
++  machine = python_platform.machine()
++  if machine == 'x86_64':
++    cpu = 'x64'
++  elif machine == 'arm':
++    cpu = 'arm'
++  elif machine == 'aarch64':
++    cpu = 'arm64'
+   else:
+-    raise Exception('Unsupported platform')
+-
+-  if len(supported_cpus) == 0:
+-    raise Exception('No supported architectures')
+-
+-  for cpu in supported_cpus:
+-    if create_debug:
+-      result['Debug_GN_' + cpu] = GetConfigArgs(args, True, cpu)
+-    result['Release_GN_' + cpu] = GetConfigArgs(args, False, cpu)
+-
+-  out_configs = os.environ.get('GN_OUT_CONFIGS', None)
+-  if not out_configs is None:
+-    # Only generate the specified configurations.
+-    out_configs = [c.strip() for c in out_configs.split(',')]
+-    for key in list(result.keys()):
+-      if not key in out_configs:
+-        msg('Not generating %s configuration due to GN_OUT_CONFIGS' % key)
+-        del result[key]
+-    if not bool(result):
+-      raise Exception('No supported configurations in GN_OUT_CONFIGS ("%s")' %
+-                      ','.join(out_configs))
++     raise Exception('No supported architectures')
+ 
+-  return result
++  return {'Release_GN': GetConfigArgs(GetMergedArgs(build_args), False, cpu)}
+ 
+ 
+ def GetConfigFileContents(args):
+diff --git a/tools/make_distrib.py b/tools/make_distrib.py
+index aa921067f..495c9ae80 100644
+--- a/tools/make_distrib.py
++++ b/tools/make_distrib.py
+@@ -785,33 +785,16 @@ else:
+   binary_arch = 'x86'
+ 
+ # output directory
+-output_dir_base = 'cef_binary_' + cef_ver
+-
+-if options.distribsubdir == '':
+-  if platform == 'mac':
+-    # For backwards compatibility keep the old default directory name on mac.
+-    platform_name = 'macos' + ('x' if platform_arch == '64' else '')
+-  else:
+-    platform_name = platform
+-
+-  output_dir_name = output_dir_base + '_' + platform_name + platform_arch
+-  if options.distribsubdirsuffix != '':
+-    output_dir_name += '_' + options.distribsubdirsuffix
+-else:
+-  output_dir_name = options.distribsubdir
++output_dir_name = 'dist'
+ 
+ if options.minimal:
+   mode = 'minimal'
+-  output_dir_name = output_dir_name + '_minimal'
+ elif options.client:
+   mode = 'client'
+-  output_dir_name = output_dir_name + '_client'
+ elif options.sandbox:
+   mode = 'sandbox'
+-  output_dir_name = output_dir_name + '_sandbox'
+ elif options.tools:
+   mode = 'tools'
+-  output_dir_name = output_dir_name + '_tools'
+ elif any(symbols_only_options):
+   if options.debugsymbolsonly:
+     mode = 'debug-symbols'
+@@ -822,9 +805,6 @@ elif any(symbols_only_options):
+ else:
+   mode = 'standard'
+ 
+-if options.ozone:
+-  output_dir_name = output_dir_name + '_ozone'
+-
+ if not mode.endswith('symbols'):
+   output_dir = create_output_dir(output_dir_name, options.outputdir)
+ 
+@@ -844,14 +824,7 @@ cef_paths2 = cef_paths2['variables']
+ 
+ # Determine the build directory suffix. CEF uses a consistent directory naming
+ # scheme for GN via GetAllPlatformConfigs in gn_args.py.
+-if options.x64build:
+-  build_dir_suffix = '_GN_x64'
+-elif options.armbuild:
+-  build_dir_suffix = '_GN_arm'
+-elif options.arm64build:
+-  build_dir_suffix = '_GN_arm64'
+-else:
+-  build_dir_suffix = '_GN_x86'
++build_dir_suffix='_GN'
+ 
+ # Determine the build directory paths.
+ out_dir = os.path.join(src_dir, 'out')
+-- 
+2.51.0
+

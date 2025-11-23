@@ -1,0 +1,136 @@
+id: com.adamcake.ungoogled_cef.BaseApp
+branch: &runtime-version '25.08'
+runtime: org.freedesktop.Platform
+runtime-version: *runtime-version
+sdk: org.freedesktop.Sdk
+build_options:
+  # this is necessary for the build to succeed.
+  # flatpak-builder has a... bug? lovable quirk? anyway, build flags from previous builds are
+  # carried forward into subsequent builds unless you override with a non-empty set of new flags.
+  cflags: -O3
+  cflags-override: true
+  cppflags: -O3
+  cppflags-override: true
+  cxxflags: -O3
+  cxxflags-override: true
+  append-path: /usr/lib/sdk/llvm21/bin:/usr/lib/sdk/rust-stable/bin
+  append-ld-library-path: /usr/lib/sdk/rust-stable/lib
+
+add-build-extensions:
+  org.freedesktop.Sdk.Extension.node22:
+    version: *runtime-version
+    remove-after-build: true
+  org.freedesktop.Sdk.Extension.rust-stable:
+    version: *runtime-version
+    remove-after-build: true
+  org.freedesktop.Sdk.Extension.llvm21:
+    version: *runtime-version
+    remove-after-build: true
+
+modules:
+  - name: krb5
+    buildsystem: simple
+    build-commands:
+      - autoreconf
+      - ./configure --prefix=/app
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    subdir: src
+    sources:
+      - type: git
+        url: https://github.com/krb5/krb5.git
+        tag: krb5-1.22.1-final
+        commit: 4272fb71b130e50185a7711769a6296a4e562a5d
+  - name: chromium
+    buildsystem: simple
+    build-commands:
+      - ./scripts/build.sh
+    build-options:
+      env:
+        AR: /usr/lib/sdk/llvm21/bin/llvm-ar
+        CC: /usr/lib/sdk/llvm21/bin/clang
+        CXX: /usr/lib/sdk/llvm21/bin/clang++
+        NM: /usr/lib/sdk/llvm21/bin/llvm-nm
+        RANLIB: /usr/lib/sdk/llvm21/bin/llvm-ranlib
+        STRIP: /usr/lib/sdk/llvm21/bin/llvm-strip
+
+        # Point bindgen to LLVM's libclang
+        LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+
+        # Paths to Node.js
+        NODE_HOME: /usr/lib/sdk/node22
+
+        # Allow the use of nightly features with stable Rust compiler
+        # https://github.com/ungoogled-software/ungoogled-chromium/pull/2696#issuecomment-1918173198
+        RUSTC_BOOTSTRAP: '1'
+
+        # Configure CCACHE for faster builds
+        CCACHE_NOHASHDIR: 'true'
+        CCACHE_SLOPPINESS: time_macros,include_file_ctime,include_file_mtime
+    sources:
+      - type: file
+        path: build.sh
+        dest: scripts
+      - type: git
+        url: https://github.com/chromium/chromium.git
+        tag: 139.0.7258.139
+        commit: 54b87fe5881df381307c2ef806b8e5e87e8a6790
+        disable-submodules: true
+      - type: git
+        url: https://github.com/chromiumembedded/cef.git
+        commit: 10ed9b3a9dd9f401eb2550058c6e7ebe890eda61
+        dest: cef
+      - type: git
+        url: https://gn.googlesource.com/gn
+        commit: 81b24e01531ecf0eff12ec9359a555ec3944ec4e
+        dest: gn
+      - third-party-node-modules.yaml
+      - chromium-submodules.yaml
+      - type: git
+        url: https://github.com/ungoogled-software/ungoogled-chromium.git
+        tag: 139.0.7258.138-1
+        commit: 803eb8c3f510bc70534910636acfb812b6bb9e0d
+        dest: ungoogled-chromium
+      - type: archive
+        url: https://registry.npmjs.org/mocha/-/mocha-10.0.0.tgz
+        sha256: 91c4b9e3d052d73b7cdf297d296e698e8db1137724dd4391cdc5b93ad543283f
+        dest: third_party/node/node_modules/mocha
+      - type: patch
+        paths:
+          - patch/gn-fix-building-in-flathub.patch
+          - patch/chromium-138-rust-1.86-mismatched_lifetime_syntaxes.patch
+          - patch/fix-wayland-and-disable-e2etests.patch
+          - patch/remove-speech-service-dependency.patch
+          - patch/chromium-remove-test-fonts.patch
+          - patch/tsconfig-adjust-to-be-less-strict.patch
+          - patch/remove-unguarded-media-remoting-references.patch
+          - patch/crabbyavif-fix-sanitize-feature.patch
+          - patch/fix-building-with-rust-nightly.patch
+      - type: patch
+        paths:
+          - patch/cef-fix-missing-absl-namespace.patch
+          - patch/cef-fix-build-in-flathub.patch
+          - patch/cef-fix-arm64-requires-sysroots.patch
+          - patch/cef-fix-doesn-t-detect-aarch64.patch
+        options:
+          - --directory=cef
+      # Ungoogled chromium flatpak patches
+      - type: patch
+        paths:
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/Import-chromium-71.0.3578.98-widevine-r3.patch-arm64-suppo.patch
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/Only-check-the-Node-major-version-number.patch
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/Remove-the-ability-to-create-desktop-shortcuts.patch
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/Use-CHROME_WRAPPER-as-the-executable-on-restart.patch
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/flatpak-Add-initial-sandbox-support.patch
+          - io.github.ungoogled_software.ungoogled_chromium/patches/chromium/flatpak-Expose-Widevine-into-the-sandbox.patch
+      # These need to apply after cef patches. See build.sh
+      - type: file
+        path: io.github.ungoogled_software.ungoogled_chromium/patches/chromium/flatpak-Adjust-paths-for-the-sandbox.patch
+      - type: file
+        path: patch/angle-remove-undefined-const.patch
+      - type: file
+        path: patch/ungoogled-chromium-adjust-for-cef.patch
+      - type: file
+        path: patch/ungoogled-chromium-ignore-nonexistent-binaries.patch
+      - type: file
+        path: patch/ungoogled-chromium-remove-extra-locales.patch
