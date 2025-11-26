@@ -1,0 +1,148 @@
+# org.flatpak.Builder build-dir io.github.karmab.kcli.yaml --force-clean
+# org.flatpak.Builder --user --install --force-clean build-dir io.github.karmab.kcli.yaml
+app-id: io.github.karmab.kcli
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: kcli
+finish-args:
+  - --device=all
+  - --filesystem=home
+  - --filesystem=/run/libvirt
+  - --filesystem=xdg-run/libvirt
+  - --filesystem=~/.ssh
+  - --filesystem=host
+  - --share=ipc
+  - --share=network
+  - --socket=ssh-auth
+  - --talk-name=org.freedesktop.Flatpak
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/applications/mimeinfo.cache
+  - /share/bash-completion
+  - /share/icons/hicolor/icon-theme.cache
+  - /share/man
+  - /share/pkgconfig
+  - "*.la"
+modules:
+  - name: slirp
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.7.0.tar.gz
+        sha256: ccfd4e330b3d59be19e0cce25b0da000d61bcee2cfb608eb23418920d991a6da
+  - name: python3-distlib
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/96/8e/709914eb2b5749865801041647dc7f4e6d00b549cfe88b65ca192995f07c/distlib-0.4.0.tar.gz
+        sha256: feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
+  - name: qemu
+    config-opts:
+      - --enable-kvm
+      - --enable-slirp
+      - --disable-download
+      - --disable-debug-info
+      - --disable-docs
+      - --disable-user
+      - --disable-bsd-user
+      - --disable-debug-info
+      - --disable-glusterfs
+      - --disable-linux-user
+      - --disable-oss
+      - --disable-werror
+      - --disable-xen
+      - --python=/bin/python3
+      - --target-list=x86_64-softmmu,i386-softmmu
+    sources:
+      - type: archive
+        url: https://download.qemu.org/qemu-9.2.0.tar.xz
+        sha256: f859f0bc65e1f533d040bbe8c92bcfecee5af2c921a6687c652fb44d089bd894
+        x-checker-data:
+          type: anitya
+          project-id: 13607
+          url-template: https://download.qemu.org/qemu-9.2.0.tar.xz
+  - name: python3-docutils
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "docutils" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/8f/d7/9322c609343d929e75e7e5e6255e614fcc67572cfd083959cdef3b7aad79/docutils-0.21.2-py3-none-any.whl
+        sha256: dafca5b9e384f0e419294eb4d2ff9fa826435bf15f15b7bd45723e8ad76811b2
+  - name: json-c
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_THREADING=ON
+      - -DDISABLE_WERROR=ON
+    sources:
+      - type: archive
+        url: https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz
+        sha256: 876ab046479166b869afc6896d288183bbc0e5843f141200c677b3e8dfb11724
+  - name: libtirpc
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-gssapi
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/libtirpc/libtirpc/1.3.4/libtirpc-1.3.4.tar.bz2
+        sha256: 1e0b0c7231c5fa122e06c0609a76723664d068b0dba3b8219b63e6340b347860
+  - name: libvirt
+    builddir: true
+    buildsystem: meson
+    build-options:
+      cflags: "-I/app/include/tirpc -ltirpc"
+    config-opts:
+      - --libexec=/app/lib/libvirt
+      - --sbindir=/app/bin
+      - --localstatedir=/var
+      - -Ddriver_qemu=enabled
+      - -Drunstatedir=/run
+      - -Drpath=enabled
+      - -Dqemu_user=qemu
+      - -Dqemu_group=qemu
+      - -Ddocs=enabled
+      - -Dtests=disabled
+      - -Dstorage_mpath=disabled
+      - -Dfirewalld=disabled
+      - -Dfirewalld_zone=disabled
+      - -Dinit_script=none
+      - -Dsysctl_config=disabled
+    post-install:
+      - echo "seccomp_sandbox = 0" >> /app/etc/libvirt/qemu.conf
+    sources:
+      - type: archive
+        url: https://libvirt.org/sources/libvirt-11.5.0.tar.xz
+        sha256: 2b63b9d60538e1e2fa4e3f6d836409e6ff705249c79001914ac3400859d72423
+  - python3-requirements.json
+  - name: xorriso
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.gnu.org/software/xorriso/xorriso-1.5.6.pl02.tar.gz
+        sha256: 786f9f5df9865cc5b0c1fecee3d2c0f5e04cab8c9a859bd1c9c7ccd4964fdae1
+
+  - name: python3-setuptools
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --ignore-installed .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/18/5d/3bf57dcd21979b887f014ea83c24ae194cfcd12b9e0fda66b957c69d1fca/setuptools-80.9.0.tar.gz
+        sha256: f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c
+
+  - name: kcli
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation .
+      - install -Dm644 kcli.png /app/share/icons/hicolor/128x128/apps/io.github.karmab.kcli.png
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/ad/3d/8624cf3126ffd162c244a40470d89994d7cc2a8d31e283e9b6c4f176bc8e/kcli-99.0.202511211412.tar.gz
+        sha256: c4696b9a3b777a6975b7bed1f090cddaeeb9a6150b9ed7c67ac40505aa5b8b98
+      - type: file
+        path: kcli.png
