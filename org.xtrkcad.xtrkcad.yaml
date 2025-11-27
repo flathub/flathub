@@ -5,20 +5,6 @@ sdk: org.gnome.Sdk
 command: /app/bin/run-xtrkcad.sh
 
 modules:
-  - name: freeimage
-    buildsystem: cmake
-    config-opts:
-      - -DCMAKE_INSTALL_PREFIX=/app/freeimage
-      - -DBUILD_SHARED_LIBS=ON
-    sources:
-      - type: archive
-        url: https://github.com/danoli3/FreeImage/archive/refs/tags/3.19.10.tar.gz
-        sha256: 7dd22eeb95e967e541d864da8b3bc03e3050983f2de2cb1c09a60d28e679c6f2
-    post-install:
-      - mkdir -p /app/include
-      - mkdir -p /app/lib
-      - ln -s /app/freeimage/include/* /app/include
-      - ln -s /app/freeimage/lib/* /app/lib
   - name: libzip
     buildsystem: cmake
     config-opts:
@@ -87,14 +73,6 @@ modules:
             rsvg-convert $*
     build-commands:
       - install -Dm755 inkscape /app/bin/inkscape
-  - name: mercurial
-    buildsystem: simple
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/1d/7d/70c62fe69a43d47eb09c95451249b3b2b3733bfc2a4c1ca3ca82c82ec476/mercurial-7.1.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl
-        sha256: c311d37115ffd62b6cb04f6c90100cc237309e43657b9dc32d130b91ef6b5d62
-    build-commands:
-      - pip3 install --no-index --find-links="file://${PWD}" --prefix=/app mercurial
   - name: xtrkcad
     buildsystem: simple
     sources:
@@ -106,21 +84,18 @@ modules:
         dest-filename: common_source.sh
         contents: |
           echo
-          echo "XTrackCAD (flatpak) built Sun Nov 23 21:31:25 UTC 2025 changeset (6148)"
+          echo "XTrackCAD 5.3.1GA (flatpak)"
           echo
           export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.var/app/org.xtrkcad.xtrkcad/config}"
           export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.var/app/org.xtrkcad.xtrkcad/cache}"
           export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.var/app/org.xtrkcad.xtrkcad/data}"
-          # a copy was requested, a file chooser/picker is using the host for access
-          echo "  cp -pr /app/share/xtrkcad/* ${XDG_CACHE_HOME}"
-          echo
           mkdir -p ${XDG_CACHE_HOME}
           rm -rf ${XDG_CACHE_HOME}/*
           cp -pr /app/share/xtrkcad/* ${XDG_CACHE_HOME}
           export XTRKCADLIB=${XDG_CACHE_HOME}
-          export XTRKCADBETALIB=${XDG_CACHE_HOME}
-          export XTRKCAD_GTKLIB=${XDG_CACHE_HOME}
-          export XTRKCAD_GTKBETALIB=${XDG_CACHE_HOME}
+          #export XTRKCADBETALIB=${XDG_CACHE_HOME}
+          #export XTRKCAD_GTKLIB=${XDG_CACHE_HOME}
+          #export XTRKCAD_GTKBETALIB=${XDG_CACHE_HOME}
           # there is no access to host gtk3 modules
           unset GTK3_MODULES
           unset GTK_MODULES
@@ -128,14 +103,18 @@ modules:
           # gtk2 bookmarks
           FILE="$HOME/.gtk-bookmarks"
           touch $FILE
-          sed "/xtrkcad-lib$/d" $FILE > $FILE
-          echo "$BOOKMARK" >> "$FILE"
+          sed "/xtrkcad-lib$/d" $FILE > ${FILE}_
+          cp ${FILE}_ $FILE
+          rm ${FILE}_
+          echo "$BOOKMARK" >> $FILE
           # gtk3 bookmarks
           FILE="$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
           mkdir -p $(dirname $FILE)
           touch $FILE
-          sed "/xtrkcad-lib$/d" $FILE > $FILE
-          echo "$BOOKMARK" >> "$FILE"
+          sed "/xtrkcad-lib$/d" $FILE > ${FILE}_
+          cp ${FILE}_ $FILE
+          rm ${FILE}_
+          echo "$BOOKMARK" >> $FILE
           #export GTK_USE_PORTAL=1
           #export XDG_CURRENT_DESKTOP=GNOME
           env | sort | grep -E "DISPLAY|XTRK|XDG"
@@ -232,83 +211,61 @@ modules:
 #        - --share=network
     build-commands: 
       - |
-        set -x
         BUILD_DATE=$(date '+%Y-%m-%d')
-        BUILD_TIMESTAMP="$(date -u)"
+        install -Dm755 common_source.sh /app/bin/common_source.sh
         install -Dm755 run-xtrkcad-debug.sh /app/bin/run-xtrkcad-debug.sh
         install -Dm755 run-xtrkcad.sh /app/bin/run-xtrkcad.sh
         install -Dm644 org.xtrkcad.xtrkcad.desktop /app/share/applications/org.xtrkcad.xtrkcad.desktop
         mkdir src
         mkdir build
-        cd src
-        tar -xz --strip-components=1 -f ../xtrkcad-source.tar.gz
-        CHANGESET=$(hg log -r . '{rev}')
-        cd ..
-        if [ -n "$CHANGESET" ]; then
-          sed "2s/built.*/built $BUILD_TIMESTAMP changeset ($CHANGESET)/" common_source.sh > common_source.sh
-        else
-          sed "2s/built.*/built $BUILD_TIMESTAMP/" common_source.sh > common_source.sh
-        fi
-        install -Dm755 common_source.sh /app/bin/common_source.sh
-        sed "s/date=\".*\"/date=\"$BUILD_DATE\"/" org.xtrkcad.xtrkcad.metainfo.xml > org.xtrkcad.xtrkcad.metainfo.xml
+        sed "s/date=\".*\"/date=\"$BUILD_DATE\"/" org.xtrkcad.xtrkcad.metainfo.xml > .org.xtrkcad.xtrkcad.metainfo.xml
+        cp .org.xtrkcad.xtrkcad.metainfo.xml org.xtrkcad.xtrkcad.metainfo.xml
+        rm .org.xtrkcad.xtrkcad.metainfo.xml
         install -Dm644 org.xtrkcad.xtrkcad.metainfo.xml /app/share/metainfo/org.xtrkcad.xtrkcad.metainfo.xml
         XTRKCAD_CMAKE_DEBUG="-DCMAKE_TARGET_PROPERTIES=1 -DCMAKE_FIND_DEBUG_MODE=1"
         XTRKCAD_CMAKE_DEBUG=""
-        cd build
+        cd src
+        tar -xz --strip-components=1 -f ../xtrkcad-source.tar.gz
+        cd ../build
         cmake -G Ninja $XTRKCAD_CMAKE_DEBUG -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/app -DCMAKE_C_FLAGS="-I/app/include -Wpointer-sign" ../src || exit 1
         mkdir -p /app/share/icons/hicolor/64x64/apps/
-        if false; then
-          ninja -v
-          ninja -v install
-          echo "DEBUG: install complete"
-          echo "XTRKCADPREFIX=/app"
-          echo "XTRKCADSHARE=share/xtrkcad"
-          cp /app/share/xtrkcad/pixmaps/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
-          #cp /run/build/xtrkcad/src/app/lib/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
-          cd ..
-          # debug:
-          echo -e "\nSLEEPING for debug purposes"
-          echo -e "\nin another window, run\n  flatpak enter \$(flatpak ps | grep Sdk | cut -f1) bash\n"
-          echo "export PKG_CONFIG_PATH=\"/app/lib/pkgconfig:/app/libzip/lib/pkgconfig:/app/libzip/lib64/pkgconfig:/app/mxml/lib/pkgconfig:/app/inkscape/lib/pkgconfig:/usr/lib/pkgconfig\""
-          echo "export LD_LIBRARY_PATH=\"/app/lib:/app/inkscape/lib:/app/libzip/lib:/app/libzip/lib64:/app/mxml/lib:/usr/lib:/usr/lib/x86_64-linux-gnu\""
-          echo "export PATH=\"/app/bin:/app/inkscape/bin:/usr/bin:\$PATH\""
-          echo "cd /run/build/xtrkcad/build  # to check build environment or build with ninja"
-          echo "cd /run/build/xtrkcad/src    # the source"
-          sleep 3600
-        else
-          ninja -v
-          ninja -v install
-          cp /app/share/xtrkcad/pixmaps/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
-          #cp /run/build/xtrkcad/src/app/lib/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
-          cd ..
-          # what is not needed in final flatpak
-          rm -rf /app/inkscape
-          rm -rf /app/include
-          rm -rf /app/share/man
-          rm -rf /app/lib64/cmake
-          rm -rf /app/share/doc
-          rm -rf /app/share/gtk-2.0/demo
-          rm -f /app/lib/libmxml*
-          rm -f /app/lib/pkgconfig
-          rm -rf /app/mxml
-          rm -rf /app/libzip
-          rm -f /app/lib/libzip.a
-          rm -f /app/bin/gtk*
-          rm -rf /app/share/aclocal
-          rm -rf /app/lib/debug
-          rm -f /app/lib/cmake /app/lib/libFreeImage*
-          rm -rf /app/freeimage
-          rm -f /app/bin/oex /app/bin/ovi /app/bin/oview /app/bin/vi
-          rm -f /app/bin/fusermount* /app/bin/ostree /app/bin/rofiles*
-          rm -f /app/etc/fuse.conf
-          rm -rf /app/etc/grub.d /app/etc/ostree
-          rm -rf /app/lib/*ostree*
-          rm -rf /app/lib/girepos* /app/lib/tmpfile*
-          rm -rf /app/lib64 /app/sbin
-          rm -rf /app/share/bash-complet* /app/share/gir* /app/share/ostree
-          rm -rf /app/share/licenses/org.xtrkcad.xtrkcad/vim
-          rm -rf /app/libexec
-        fi
+        ninja -v || { echo "***   B U I L D   F A I L E D   ***"; exit; }
+        ninja -v install || { echo "***   I N S T A L L   F A I L E D   ***"; exit; }
+        cp /app/share/xtrkcad/pixmaps/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
+        #cp /run/build/xtrkcad/src/app/lib/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
+        cd ..
+        # what is not needed in final flatpak
+        rm -rf /app/inkscape
+        rm -rf /app/include
+        rm -rf /app/share/man
+        rm -rf /app/lib64/cmake
+        rm -rf /app/share/doc
+        rm -rf /app/share/gtk-2.0/demo
+        rm -f /app/lib/libmxml*
+        rm -f /app/lib/pkgconfig
+        rm -rf /app/mxml
+        rm -rf /app/libzip
+        rm -f /app/lib/libzip.a
+        rm -f /app/bin/gtk*
+        rm -rf /app/share/aclocal
+        rm -rf /app/lib/debug
+        rm -f /app/lib/cmake /app/lib/libFreeImage*
+        rm -rf /app/freeimage
+        rm -f /app/bin/oex /app/bin/ovi /app/bin/oview /app/bin/vi
+        rm -f /app/bin/fusermount* /app/bin/ostree /app/bin/rofiles*
+        rm -f /app/etc/fuse.conf
+        rm -rf /app/etc/grub.d /app/etc/ostree
+        rm -rf /app/lib/*ostree*
+        rm -rf /app/lib/girepos* /app/lib/tmpfile*
+        rm -rf /app/lib64 /app/sbin
+        rm -rf /app/share/bash-complet* /app/share/gir* /app/share/ostree
+        rm -rf /app/share/licenses/org.xtrkcad.xtrkcad/vim
+        rm -rf /app/libexec
+        rm -f /app/bin/inkscape /app/bin/hg
+        rm -rf /app/lib/python*
+        rm -rf /app/share/zsh
+        rm -rf /app/lib/debug
+
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
