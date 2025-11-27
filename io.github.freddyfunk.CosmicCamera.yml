@@ -1,0 +1,60 @@
+app-id: io.github.freddyfunk.CosmicCamera
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: cosmic-camera
+
+finish-args:
+  # X11 + XShm access (for X11 sessions)
+  - --share=ipc
+  - --socket=x11
+  # Wayland access
+  - --socket=wayland
+  # GPU access
+  - --device=dri
+  # Home directory access for saving photos/videos
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  # PipeWire access for camera and audio (not --device=all or --socket=pulseaudio)
+  # - Camera: pipewiresrc for video capture via Camera Portal
+  # - Audio: pipewiresrc for microphone input and audio sink (streaming)
+  # This is the sandboxed approach - PipeWire handles all media access
+  - --filesystem=xdg-run/pipewire-0
+  - --talk-name=org.freedesktop.portal.Camera
+  # DBus access
+  - --socket=session-bus
+  - --socket=system-bus
+
+build-options:
+  # Don't create separate debug extension
+  no-debuginfo: true
+
+modules:
+  - name: cosmic-camera
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/cosmic-camera/cargo
+        CARGO_TARGET_DIR: /run/build/cosmic-camera/target
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      # Install the binary
+      - install -Dm755 target/release/cosmic-camera -t /app/bin/
+      # Install desktop file
+      - install -Dm644 resources/io.github.freddyfunk.CosmicCamera.desktop -t /app/share/applications/
+      # Install icon
+      - install -Dm644 resources/icons/hicolor/scalable/apps/io.github.freddyfunk.CosmicCamera.svg -t /app/share/icons/hicolor/scalable/apps/
+      # Install metainfo
+      - install -Dm644 resources/io.github.freddyfunk.CosmicCamera.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/FreddyFunk/cosmic-camera.git
+        tag: v0.1.0
+        commit: e14821867d64b45ca986da664747855baab84be3
+      - cargo-sources.json
+  # Note: No additional GStreamer plugins needed - app uses pipewiresrc which is
+  # included in org.freedesktop.Platform via PipeWire's gst-plugin-pipewire
