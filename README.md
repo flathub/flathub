@@ -1,7 +1,7 @@
 # Zen App Manager
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/d0ksan8/zen-app-manager/main/src-tauri/icons/128x128.png" alt="Zen App Manager Logo" width="128" height="128" />
+  <img src="src-tauri/icons/128x128.png" alt="Zen App Manager Logo" width="128" height="128" />
 </p>
 
 <p align="center">
@@ -25,6 +25,8 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 
 *   **✨ Beginner Friendly:** Simple, intuitive interface. No coding or terminal knowledge required.
 *   **🚀 Boost Boot Time:** Easily disable unwanted apps that slow down your startup.
+*   **📂 Smart Detection:** Automatically detects apps from Startup Folder and **Windows Registry**.
+*   **📊 Detailed Info:** See file sizes, locations, and publisher information at a glance.
 *   **➕ Add Anything:** Add your favorite apps or custom commands to startup with just a few clicks.
 *   **🎨 Beautiful Design:** A sleek, modern dark-themed UI that looks great on any desktop.
 *   **⚡ Lightweight:** Built with Rust, so it uses almost no system resources.
@@ -32,7 +34,7 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 
 ## Screenshots
 
-![Main Interface](https://raw.githubusercontent.com/d0ksan8/zen-app-manager/main/screenshots/main.png)
+![Main Interface](screenshots/main.png)
 *(A clean and simple interface to manage your apps)*
 
 ## Installation
@@ -86,7 +88,6 @@ Contributions are welcome! Feel free to open an issue or submit a pull request.
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
 ## Acknowledgements
 
 Special thanks to [@serhatstal](https://github.com/serhatstal) for their valuable feedback and support! 🚀
