@@ -23,14 +23,14 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 
 ## Features
 
-*   **✨ Beginner Friendly:** Simple, intuitive interface. No coding or terminal knowledge required.
-*   **🚀 Boost Boot Time:** Easily disable unwanted apps that slow down your startup.
-*   **📂 Smart Detection:** Automatically detects apps from Startup Folder and **Windows Registry**.
-*   **📊 Detailed Info:** See file sizes, locations, and publisher information at a glance.
-*   **➕ Add Anything:** Add your favorite apps or custom commands to startup with just a few clicks.
-*   **🎨 Beautiful Design:** A sleek, modern dark-themed UI that looks great on any desktop.
-*   **⚡ Lightweight:** Built with Rust, so it uses almost no system resources.
-*   **🔒 Safe & Secure:** Available as a sandboxed Flatpak for maximum security.
+*   **Beginner Friendly:** Simple, intuitive interface. No coding or terminal knowledge required.
+*   **Boost Boot Time:** Easily disable unwanted apps that slow down your startup.
+*   **Smart Detection:** Automatically detects apps from Startup Folder and **Windows Registry**.
+*   **Detailed Info:** See file sizes, locations, and publisher information at a glance.
+*   **Add Anything:** Add your favorite apps or custom commands to startup with just a few clicks.
+*   **Beautiful Design:** A sleek, modern dark-themed UI that looks great on any desktop.
+*   **Lightweight:** Built with Rust, so it uses almost no system resources.
+*   **Safe & Secure:** Available as a sandboxed Flatpak for maximum security.
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 
 ## Installation
 
-### 🐧 Linux (Recommended)
+### Linux (Recommended)
 
 The easiest way to install on Linux is via **Flathub**. It works on almost any Linux distribution (Ubuntu, Fedora, Arch, Mint, etc.).
 
@@ -47,7 +47,7 @@ The easiest way to install on Linux is via **Flathub**. It works on almost any L
 flatpak install flathub com.zen.zen-app-manager
 ```
 
-### 🪟 Windows
+### Windows
 
 We support Windows too! You don't need to install anything complex.
 
@@ -57,7 +57,7 @@ We support Windows too! You don't need to install anything complex.
 
 ---
 
-### 🛠️ Building from Source (Advanced)
+### Building from Source (Advanced)
 
 If you are a developer or want to build it yourself:
 
@@ -88,6 +88,7 @@ Contributions are welcome! Feel free to open an issue or submit a pull request.
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
 ## Acknowledgements
 
-Special thanks to [@serhatstal](https://github.com/serhatstal) for their valuable feedback and support! 🚀
+Special thanks to [@serhatstal](https://github.com/serhatstal) for their valuable feedback and support!
