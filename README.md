@@ -26,6 +26,7 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 *   **Beginner Friendly:** Simple, intuitive interface. No coding or terminal knowledge required.
 *   **Boost Boot Time:** Easily disable unwanted apps that slow down your startup.
 *   **Smart Detection:** Automatically detects apps from Startup Folder and **Windows Registry**.
+*   **System Services:** Manage system-level services (systemd) with a simple toggle (Linux only).
 *   **Detailed Info:** See file sizes, locations, and publisher information at a glance.
 *   **Add Anything:** Add your favorite apps or custom commands to startup with just a few clicks.
 *   **Beautiful Design:** A sleek, modern dark-themed UI that looks great on any desktop.
@@ -35,7 +36,10 @@ Say goodbye to complex terminal commands or hidden configuration files. With Zen
 ## Screenshots
 
 ![Main Interface](screenshots/main.png)
-*(A clean and simple interface to manage your apps)*
+*(Startup Apps Management)*
+
+![System Services](screenshots/main2.png)
+*(System Services Management)*
 
 ## Installation
 
