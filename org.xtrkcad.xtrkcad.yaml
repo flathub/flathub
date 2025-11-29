@@ -1,7 +1,7 @@
 id: org.xtrkcad.xtrkcad
-runtime: org.gnome.Platform
-runtime-version: '48'
-sdk: org.gnome.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
 command: run-xtrkcad.sh
 
 finish-args:
@@ -11,11 +11,12 @@ finish-args:
   - --socket=pulseaudio
   - --share=ipc
   - --device=dri
-  - --filesystem=~/.xtrkcad:create
-  - --filesystem=~/.gtk-bookmarks
-  - --filesystem=~/Downloads
   - --filesystem=home
-  - --talk-name=org.gnome.portal.Flatpak
+
+cleanup-commands:
+  - |
+    rm -f /app/bin/inkscape
+    rm -rf /app/lib/debug
 
 modules:
   - name: libzip
@@ -26,7 +27,7 @@ modules:
       - -DBUILD_REGRESS=OFF
       - -DBUILD_TOOLS=OFF
       - -DBUILD_OSSFUZZ=OFF
-      - -DCMAKE_INSTALL_PREFIX=/app/libzip
+      - -DCMAKE_INSTALL_PREFIX=/app
       - -DBUILD_SHARED_LIBS=OFF
       - -DENABLE_COMMONCRYPTO=OFF
       - -DENABLE_GNUTLS=OFF
@@ -36,30 +37,16 @@ modules:
       - -DENABLE_BZIP2=OFF
       - -DENABLE_LZMA=OFF
       - -DENABLE_ZSTD=OFF
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     sources:
       - type: archive
         url: https://github.com/nih-at/libzip/releases/download/v1.8.0/libzip-1.8.0.tar.gz
         sha256: 30ee55868c0a698d3c600492f2bea4eb62c53849bcf696d21af5eb65f3f3839e
-    post-install:
-      - mkdir -p /app/include
-      - mkdir -p /app/lib
-      - ln -s /app/libzip/include/* /app/include
-      - ln -s /app/libzip/lib/libzip.a /app/lib
-  - name: gtk2
-    buildsystem: autotools
-    build-options:
-      cflags: "-Wno-incompatible-pointer-types -Wno-implicit-int"
-      cxxflags: "-Wno-incompatible-pointer-types -Wno-implicit-int"
-    sources:
-      - type: archive
-        url: "https://gitlab.gnome.org/GNOME/gtk/-/archive/2.24.33/gtk-2.24.33.tar.gz"
-        sha256: dedfaf04952434c5e3e1ce4de373ac7474d12da2d99b0afc947ef1983df64601
-    config-opts:
-      - "--prefix=/app"
-      - "--disable-introspection"
-      - "--enable-shared"
-      - "--disable-static"
-      - "--enable-gtk-doc-html=no"
+    cleanup:
+      - '*'
+
+  - shared-modules/gtk2/gtk2.json
+
   - name: fake-inkscape
     buildsystem: simple
     sources:
@@ -70,9 +57,14 @@ modules:
             rsvg-convert $*
     build-commands:
       - install -Dm755 inkscape /app/bin/inkscape
+
   - name: xtrkcad
     buildsystem: simple
     sources:
+      - type: file
+        url: "https://cytranet-dal.dl.sourceforge.net/project/xtrkcad-fork/Images/logos/xtrkcad_logo_128x128.png?viasf=1"
+        sha256: ccbc5a5dd014b3f9238e0920aec2b354e9549ccd62003130e28b34ff758908fd
+        dest-filename: logo-128x128.png
       - type: file
         url: https://sourceforge.net/projects/xtrkcad-fork/files/XTrackCad/Version%205.3.1/xtrkcad-source-5.3.1GA.tar.gz/download
         sha256: 5b02a0352c23f90b0011029c7e2c3f12a6f6779425c4c47c1f75d6b8a0db572c
@@ -181,19 +173,17 @@ modules:
       - type: file
         path: ./org.xtrkcad.xtrkcad.metainfo.xml
         dest-filename: org.xtrkcad.xtrkcad.metainfo.xml
-    build-options:
-      append-pkg-config-path: "/app/libzip/lib/pkgconfig"
-      append-ld-library-path: "/app/libzip/lib"
     build-commands: 
       - |
         install -Dm755 common_source.sh /app/bin/common_source.sh
         install -Dm755 run-xtrkcad-debug.sh /app/bin/run-xtrkcad-debug.sh
         install -Dm755 run-xtrkcad.sh /app/bin/run-xtrkcad.sh
         install -Dm644 org.xtrkcad.xtrkcad.desktop /app/share/applications/org.xtrkcad.xtrkcad.desktop
+        install -Dm644 org.xtrkcad.xtrkcad.metainfo.xml /app/share/metainfo/org.xtrkcad.xtrkcad.metainfo.xml
+        install -Dm644 logo-128x128.png /app/share/icons/hicolor/128x128/apps/org.xtrkcad.xtrkcad.png
         mkdir src
         mkdir build
-        install -Dm644 org.xtrkcad.xtrkcad.metainfo.xml /app/share/metainfo/org.xtrkcad.xtrkcad.metainfo.xml
-        XTRKCAD_CMAKE_DEBUG="-DCMAKE_TARGET_PROPERTIES=1 -DCMAKE_FIND_DEBUG_MODE=1"
+        #XTRKCAD_CMAKE_DEBUG="-DCMAKE_TARGET_PROPERTIES=1 -DCMAKE_FIND_DEBUG_MODE=1"
         XTRKCAD_CMAKE_DEBUG=""
         cd src
         tar -xz --strip-components=1 -f ../xtrkcad-source.tar.gz
@@ -203,33 +193,3 @@ modules:
         ninja -v || { echo "***   B U I L D   F A I L E D   ***"; exit; }
         ninja -v install || { echo "***   I N S T A L L   F A I L E D   ***"; exit; }
         cp /app/share/xtrkcad/pixmaps/xtrkcad.png /app/share/icons/hicolor/64x64/apps/org.xtrkcad.xtrkcad.png
-        cd ..
-        # what is not needed in final flatpak
-        rm -rf /app/inkscape
-        rm -rf /app/include
-        rm -rf /app/share/man
-        rm -rf /app/lib64/cmake
-        rm -rf /app/share/doc
-        rm -rf /app/share/gtk-2.0/demo
-        rm -f /app/lib/pkgconfig
-        rm -rf /app/libzip
-        rm -f /app/lib/libzip.a
-        rm -f /app/bin/gtk*
-        rm -rf /app/share/aclocal
-        rm -rf /app/lib/debug
-        rm -f /app/lib/cmake /app/lib/libFreeImage*
-        rm -rf /app/freeimage
-        rm -f /app/bin/oex /app/bin/ovi /app/bin/oview /app/bin/vi
-        rm -f /app/bin/fusermount* /app/bin/ostree /app/bin/rofiles*
-        rm -f /app/etc/fuse.conf
-        rm -rf /app/etc/grub.d /app/etc/ostree
-        rm -rf /app/lib/*ostree*
-        rm -rf /app/lib/girepos* /app/lib/tmpfile*
-        rm -rf /app/lib64 /app/sbin
-        rm -rf /app/share/bash-complet* /app/share/gir* /app/share/ostree
-        rm -rf /app/share/licenses/org.xtrkcad.xtrkcad/vim
-        rm -rf /app/libexec
-        rm -f /app/bin/inkscape /app/bin/hg
-        rm -rf /app/lib/python*
-        rm -rf /app/share/zsh
-        rm -rf /app/lib/debug
