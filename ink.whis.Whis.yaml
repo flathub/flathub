@@ -1,0 +1,113 @@
+# Flatpak manifest for Whis - Voice-to-text transcription
+# https://github.com/frankdierolf/whis
+
+id: ink.whis.Whis
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: whis-desktop
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Flatpak
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/whis-desktop/cargo
+    XDG_CACHE_HOME: /run/build/whis-desktop/flatpak-node/cache
+    npm_config_cache: /run/build/whis-desktop/flatpak-node/npm-cache
+
+modules:
+  # System tray indicator support
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.94
+    modules:
+      - name: ayatana-ido
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/ayatana-ido.git
+            tag: 0.10.4
+
+      - name: libayatana-indicator
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+            tag: 0.9.4
+
+      - name: intltool
+        cleanup:
+          - "*"
+        sources:
+          - type: archive
+            url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+            sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+      - name: libdbusmenu-gtk3
+        buildsystem: autotools
+        build-options:
+          cflags: -Wno-error
+          env:
+            HAVE_VALGRIND_FALSE: "#"
+            HAVE_VALGRIND_TRUE: ""
+        config-opts:
+          - --with-gtk=3
+          - --disable-dumper
+          - --disable-static
+          - --enable-introspection=no
+          - --disable-vala
+          - --disable-gtk-doc
+        sources:
+          - type: archive
+            url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+            sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  # Main application
+  - name: whis-desktop
+    buildsystem: simple
+    build-commands:
+      # Build frontend
+      - cd crates/whis-desktop/ui && npm install --legacy-peer-deps
+      - cd crates/whis-desktop/ui && npm run build
+      # Build Rust backend
+      - cargo build --release -p whis-desktop --offline
+      # Install binary
+      - install -Dm755 target/release/whis-desktop /app/bin/whis-desktop
+      # Install metadata (from packaging/linux/)
+      - install -Dm644 crates/whis-desktop/packaging/linux/ink.whis.Whis.metainfo.xml /app/share/metainfo/ink.whis.Whis.metainfo.xml
+      - install -Dm644 crates/whis-desktop/packaging/linux/ink.whis.Whis.desktop /app/share/applications/ink.whis.Whis.desktop
+      # Install icons
+      - install -Dm644 crates/whis-desktop/icons/22x22.png /app/share/icons/hicolor/22x22/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/48x48.png /app/share/icons/hicolor/48x48/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/64x64.png /app/share/icons/hicolor/64x64/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/96x96.png /app/share/icons/hicolor/96x96/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/128x128.png /app/share/icons/hicolor/128x128/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/256x256.png /app/share/icons/hicolor/256x256/apps/ink.whis.Whis.png
+      - install -Dm644 crates/whis-desktop/icons/512x512.png /app/share/icons/hicolor/512x512/apps/ink.whis.Whis.png
+      # Install scalable SVG for HiDPI
+      - install -Dm644 crates/whis-desktop/icons/icon.svg /app/share/icons/hicolor/scalable/apps/ink.whis.Whis.svg
+    sources:
+      - type: git
+        url: https://github.com/frankdierolf/whis.git
+        tag: v0.5.3
+      - cargo-sources.json
+      - node-sources.json
