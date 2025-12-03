@@ -1,0 +1,70 @@
+app-id: io.github.cosmicutils.camera
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+base: com.system76.Cosmic.BaseApp
+base-version: stable
+command: camera
+
+finish-args:
+  # Wayland access
+  - --socket=wayland
+  # X11 Fallback
+  - --share=ipc
+  - --socket=fallback-x11
+  # Webcam access (currently no better option than this)
+  # https://docs.flatpak.org/en/latest/sandbox-permissions.html#device-access
+  # Automatically includes GPU support since "dri" is part of "all"
+  - --device=all
+  # Home directory access for saving photos/videos
+  - --filesystem=xdg-pictures:rw
+  - --filesystem=xdg-videos:rw
+  # PipeWire access for camera and audio
+  - --filesystem=xdg-run/pipewire-0:ro
+  # D-Bus access for COSMIC config daemon (live theme/config updates)
+  - --talk-name=com.system76.CosmicSettingsDaemon
+  # D-Bus access for "Show in Files" functionality
+  - --talk-name=org.freedesktop.FileManager1
+  # D-Bus access for WiFi connection from QR codes (system bus, not session bus)
+  - --system-talk-name=org.freedesktop.NetworkManager
+
+modules:
+  - name: camera
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/camera/cargo
+        CARGO_TARGET_DIR: /run/build/camera/target
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      # Install the binary
+      - install -Dm755 target/release/camera -t /app/bin/
+      # Install desktop file
+      - install -Dm644 resources/io.github.cosmicutils.camera.desktop -t /app/share/applications/
+      # Install icons (PNG for each size, SVG for scalable)
+      - install -Dm644 resources/icons/hicolor/scalable/apps/io.github.cosmicutils.camera.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 resources/icons/hicolor/16x16/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/16x16/apps/
+      - install -Dm644 resources/icons/hicolor/24x24/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/24x24/apps/
+      - install -Dm644 resources/icons/hicolor/32x32/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/32x32/apps/
+      - install -Dm644 resources/icons/hicolor/48x48/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/48x48/apps/
+      - install -Dm644 resources/icons/hicolor/64x64/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/64x64/apps/
+      - install -Dm644 resources/icons/hicolor/128x128/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/128x128/apps/
+      - install -Dm644 resources/icons/hicolor/256x256/apps/io.github.cosmicutils.camera.png -t /app/share/icons/hicolor/256x256/apps/
+      # Install metainfo
+      - install -Dm644 resources/io.github.cosmicutils.camera.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/cosmic-utils/camera.git
+        tag: v0.1.16
+        commit: 5d1081fa7adf70d86798f9811abf1359994ffa95
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+          is-main-source: true
+
+  # Note: No additional GStreamer plugins needed - app uses pipewiresrc which is
+  # included in org.freedesktop.Platform via PipeWire's gst-plugin-pipewire
