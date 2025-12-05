@@ -1,0 +1,102 @@
+app-id: io.github.lenucksi.SieveEditor
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+
+command: sieveeditor
+
+finish-args:
+  # X11 access for Swing GUI
+  - --socket=x11
+  # IPC namespace (required for X11)
+  - --share=ipc
+  # Network access for ManageSieve connections
+  - --share=network
+  # Legacy: Allow access to old profile location for migration
+  - --filesystem=~/.sieveprofiles:ro
+  # Required to build
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  - name: sieveeditor
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /app/bin:/usr/bin:/usr/lib/sdk/openjdk21/bin
+        MAVEN_OPTS: -Dmaven.repo.local=.m2/repository # Enable offline Maven build, sources below
+        JAVA_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
+      # Uncomment this to run with network locally for debugging purposes, comment the - maven-dependencies.yaml last line then.
+      #build-args: 
+      #  - --share=network
+
+    build-commands:
+      # Build from Source in Offline Maven way.
+      - mvn clean package -B -DskipTests
+
+      # Create bin directory
+      # - install -d /app/bin
+
+      # Install JAR, fetch from build directory
+      - install -Dm644 -t /app/share/$FLATPAK_ID/ target/SieveEditor-jar-with-dependencies.jar
+
+      # Create launcher script
+      # Note: HiDPI scaling is handled automatically by FlatLaf - no manual scaling needed
+      - install -Dm755 -t /app/bin sieveeditor
+
+      # Install desktop file
+      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
+      - desktop-file-edit --set-icon=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key=Exec --set-value=sieveeditor /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key=StartupNotify --set-value=true /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key=StartupWMClass --set-value=de-febrildur-SieveEditor-Main
+        /app/share/applications/$FLATPAK_ID.desktop
+
+      # Install icon (if exists)
+      # - install -Dm644 $FLATPAK_ID.png /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 $FLATPAK_ID.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+
+      # Install appdata/metainfo
+      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
+
+    sources:
+      # Release sources to build from
+      - type: git #archive
+        url: https://github.com/lenucksi/SieveEditor.git
+        tag: v1.0.2
+        #x-checker-data: # Needs to be adapted to the respective GitHub 
+        #  type: json
+        #  url: https://api.bitbucket.org/2.0/repositories/eloy_garcia_pca/wallpaperdownloader/refs/tags?sort=-name
+        #  tag-query: .values | .[0].name
+        #  version-query: $tag | sub("^v"; "")
+        #  url-query: '"https://bitbucket.org/eloy_garcia_pca/wallpaperdownloader/get/\($tag).tar.gz"'
+
+      #Desktop file
+      - type: file
+        path: io.github.lenucksi.SieveEditor.desktop
+
+      # Icon
+      #- type: file
+      #  path: io.github.lenucksi.SieveEditor.png
+      - type: file
+        path: io.github.lenucksi.SieveEditor.svg
+
+      # AppStream metadata
+      - type: file
+        path: io.github.lenucksi.SieveEditor.metainfo.xml
+
+      - type: script
+        dest-filename: sieveeditor
+        commands:
+          - exec /app/jre/bin/java -Dawt.toolkit.name=WLToolkit -Dsun.java2d.vulkan=True -Dawt.useSystemAAFontSettings=lcd -Dswing.aatext=true -jar /app/share/io.github.lenucksi.SieveEditor/SieveEditor-jar-with-dependencies.jar "$@"
+      
+      # The computed list of required files to be able to run Maven offline.
+      - maven-dependencies.yaml
