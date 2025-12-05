@@ -18,13 +18,13 @@ Work Log Desktop helps you track and organize your work sessions by day, week, m
 Once approved on Flathub, install with:
 
 ```bash
-flatpak install flathub work.worklog.desktop
+flatpak install flathub work.worklog.worklog
 ```
 
 Run with:
 
 ```bash
-flatpak run work.worklog.desktop
+flatpak run work.worklog.worklog
 ```
 
 ## Build Configuration
@@ -51,8 +51,8 @@ See [FLATPAK.md](https://github.com/macsplit/Work.Log/blob/main/WorkLog.Desktop/
 
 The application stores all data locally within the Flatpak sandbox:
 
-- **Database**: `~/.var/app/work.worklog.desktop/data/WorkLog/worklog.db`
-- **Configuration**: `~/.var/app/work.worklog.desktop/config/WorkLog/`
+- **Database**: `~/.var/app/work.worklog.worklog/data/WorkLog/worklog.db`
+- **Configuration**: `~/.var/app/work.worklog.worklog/config/WorkLog/`
 
 Your data is completely private and stored only on your local machine.
 
@@ -71,10 +71,10 @@ To test the Flatpak build locally:
 flatpak install flathub org.kde.Platform//5.15-25.08 org.kde.Sdk//5.15-25.08
 
 # Build
-flatpak-builder --user --install --force-clean build-dir work.worklog.desktop.json
+flatpak-builder --user --install --force-clean build-dir work.worklog.worklog.json
 
 # Run
-flatpak run work.worklog.desktop
+flatpak run work.worklog.worklog
 ```
 
 ## Screenshots
@@ -91,7 +91,7 @@ flatpak run work.worklog.desktop
 
 ## Technical Details
 
-- **App ID**: work.worklog.desktop
+- **App ID**: work.worklog.worklog
 - **Build System**: CMake + Ninja
 - **Frameworks**: Qt 5.15, KDE Frameworks 5 (Kirigami, i18n, CoreAddons)
 - **Database**: SQLite 3
