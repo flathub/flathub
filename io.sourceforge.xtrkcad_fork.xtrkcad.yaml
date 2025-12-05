@@ -5,8 +5,7 @@ sdk: org.freedesktop.Sdk
 command: run-xtrkcad.sh
 
 finish-args:
-  - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --socket=cups
   - --socket=pulseaudio
   - --share=ipc
@@ -56,63 +55,29 @@ modules:
     cleanup:
       - '*'
 
-  - name: supporting-files
-    buildsystem: simple
-    sources:
-      - type: file
-        url: "https://cytranet-dal.dl.sourceforge.net/project/xtrkcad-fork/Images/logos/xtrkcad_logo_128x128.png?viasf=1"
-        sha256: ccbc5a5dd014b3f9238e0920aec2b354e9549ccd62003130e28b34ff758908fd
-        dest-filename: logo-128x128.png
-      - type: inline
-        dest-filename: common_source.sh
-        contents: |
-          if [ -n "$XDG_CACHE_HOME" ]; then
-            rm -rf ${XDG_CACHE_HOME}/*
-            cp -pr /app/share/xtrkcad/* ${XDG_CACHE_HOME}
-          fi
-          export XTRKCADLIB=${XDG_CACHE_HOME}
-          # there is no access to host gtk3 modules
-          unset GTK3_MODULES
-          unset GTK_MODULES
-          BOOKMARK="file://$XTRKCADLIB xtrkcad-lib"
-          # gtk2 bookmarks
-          FILE="$HOME/.gtk-bookmarks"
-          touch $FILE
-          sed "/xtrkcad-lib$/d" $FILE > ${FILE}_
-          cp ${FILE}_ $FILE
-          rm ${FILE}_
-          echo "$BOOKMARK" >> $FILE
-          env | sort | grep -E "DISPLAY|XTRK|XDG"
-          echo
-      - type: inline
-        dest-filename: run-xtrkcad.sh
-        contents: |
-          #!/bin/sh
-          source $(dirname $0)/common_source.sh
-          exec /app/bin/xtrkcad "$@"
-      - type: file
-        path: ./io.sourceforge.xtrkcad_fork.xtrkcad.desktop
-        dest-filename: io.sourceforge.xtrkcad_fork.xtrkcad.desktop
-      - type: file
-        path: ./io.sourceforge.xtrkcad_fork.xtrkcad.metainfo.xml
-        dest-filename: io.sourceforge.xtrkcad_fork.xtrkcad.metainfo.xml
-    build-commands:
-      - |
-        install -Dm755 common_source.sh /app/bin/common_source.sh
-        install -Dm755 run-xtrkcad-debug.sh /app/bin/run-xtrkcad-debug.sh
-        install -Dm755 run-xtrkcad.sh /app/bin/run-xtrkcad.sh
-        install -Dm644 io.sourceforge.xtrkcad_fork.xtrkcad.desktop /app/share/applications/io.sourceforge.xtrkcad_fork.xtrkcad.desktop
-        install -Dm644 io.sourceforge.xtrkcad_fork.xtrkcad.metainfo.xml /app/share/metainfo/io.sourceforge.xtrkcad_fork.xtrkcad.metainfo.xml
-        install -Dm644 logo-128x128.png /app/share/icons/hicolor/128x128/apps/io.sourceforge.xtrkcad_fork.xtrkcad.png
   - name: xtrkcad
     buildsystem: cmake-ninja
     sources:
       - type: archive
         url: https://download.sourceforge.net/project/xtrkcad-fork/XTrackCad/Version%205.3.1/xtrkcad-source-5.3.1GA.tar.gz
         sha256: 5b02a0352c23f90b0011029c7e2c3f12a6f6779425c4c47c1f75d6b8a0db572c
+      - type: patch
+        paths:
+          - patches/common_source.sh.patch
+          - patches/run-xtrkcad.sh.patch
+          - patches/xtrkcad.desktop.patch
+          - patches/xtrkcad.metainfo.xml.patch
+          - patches/xtrkcad_logo_128x128.svg.patch
     builddir: true
-  - name: xtrkcad-png
-    buildsystem: simple
-    build-commands:
+    post-install:
       - |
         install -Dm644 /app/share/xtrkcad/pixmaps/xtrkcad.png /app/share/icons/hicolor/64x64/apps/io.sourceforge.xtrkcad_fork.xtrkcad.png
+        # makes presumption that builddir (when true) is subdirectory of source dir
+        install -Dm755 ../distribution/flatpak/common_source.sh /app/bin/common_source.sh
+        install -Dm755 ../distribution/flatpak/run-xtrkcad.sh /app/bin/run-xtrkcad.sh
+        install -Dm644 ../distribution/flatpak/xtrkcad.desktop /app/share/applications/io.sourceforge.xtrkcad_fork.xtrkcad.desktop
+        install -Dm644 ../distribution/flatpak/xtrkcad.metainfo.xml /app/share/metainfo/io.sourceforge.xtrkcad_fork.xtrkcad.metainfo.xml
+        rsvg-convert -h 128 -o xtrkcad_logo_128x128.png ../distribution/flatpak/xtrkcad_logo_128x128.svg
+        install -Dm644 xtrkcad_logo_128x128.png /app/share/icons/hicolor/128x128/apps/io.sourceforge.xtrkcad_fork.xtrkcad.png
+    cleanup:
+      - xtrkcad_logo_128x128.png
