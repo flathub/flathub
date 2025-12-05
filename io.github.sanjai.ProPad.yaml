@@ -5,16 +5,60 @@ sdk: org.gnome.Sdk
 command: propad
 
 finish-args:
+  
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  - --device=all
+
+  
   - --share=network
-  - --filesystem=xdg-documents
-  - --filesystem=xdg-download
-  - --talk-name=org.freedesktop.portal.FileChooser
+
+  
+  - --filesystem=host
+  - --filesystem=xdg-run/gvfsd
+
+  
   - --socket=session-bus
+  - --socket=system-bus
+
+  
+  - --own-name=io.github.sanjai.ProPad.*
+  - --allow=per-app-dev-shm
+
+   
   - --talk-name=org.a11y.Bus
+
+  
+  - --env=NO_AT_BRIDGE=1
+  - --env=GTK_A11Y=none
+  - --env=G_MESSAGES_DEBUG=
+  - --env=LIBGL_ALWAYS_SOFTWARE=1
+  - --env=MESA_LOADER_DRIVER_OVERRIDE=swrast
+  - --env=LIBGL_DRI3_DISABLE=1
+  - --env=EGL_PLATFORM=wayland
+  - --env=GDK_BACKEND=wayland,x11
+  - --env=GTK_USE_PORTAL=0
+  - --env=WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+  - --env=WEBKIT_FORCE_SANDBOX=0
+
+  
+  - --env=FONTCONFIG_FILE=/etc/fonts/fonts.conf
+  - --unset-env=FONTCONFIG_PATH
+
+ 
+  - --filesystem=xdg-data/icons:ro
+
+  
+  - --socket=pulseaudio
+
+  
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --metadata=X-DConf=migrate-path=/io/github/sanjai/ProPad/
 
 cleanup:
   - /include
@@ -31,7 +75,7 @@ modules:
   - name: python-dependencies
     buildsystem: simple
     build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --ignore-installed attrs brotli certifi cffi charset-normalizer comrak cssselect2 fonttools h11 html2pdf4doc idna markdown outcome packaging pillow pycparser pydyf pypdf pyphen python-dotenv requests ruff selenium sniffio sortedcontainers tinycss2 tinyhtml5 trio trio-websocket typing-extensions urllib3 weasyprint webdriver-manager webencodings websocket-client wsproto zopfli PySocks chardet rfc3986 hstspreload --no-build-isolation
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --ignore-installed attrs brotli certifi cffi charset-normalizer comrak cssselect2 fonttools h11 html2pdf4doc idna markdown outcome packaging pillow pycparser pydyf pypdf pyphen python-dotenv requests ruff selenium sniffio sortedcontainers tinycss2 tinyhtml5 trio trio-websocket typing-extensions urllib3 weasyprint webdriver-manager webencodings websocket-client wsproto zopfli PySocks chardet rfc3986 hstspreload  --no-build-isolation
     sources:
       - type: file
         path: packages/PySocks-1.7.1-py3-none-any.whl
@@ -121,100 +165,121 @@ modules:
   - name: propad
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/share/propad/ui
-      - mkdir -p /app/share/propad/data
-      - mkdir -p /app/share/propad/propad
-      - mkdir -p /app/share/propad/scripts
-      - mkdir -p /app/share/propad/po
+     
+      - mkdir -p /app/share/propad/{ui,data,propad,scripts,po,lib,icons}
       - mkdir -p /app/share/locale
+      - mkdir -p /app/bin
 
-      - cp ui/*.ui /app/share/propad/ui/
+      
+      - cp -v ui/*.ui /app/share/propad/ui/
 
+      
       - cp -r propad /app/share/propad/
+
+      
       - cp main.py /app/share/propad/
 
-      - cp -r po /app/share/propad/ || true
-      - cp -r locale /app/share/locale/ || true
-      - cp -r scripts /app/share/propad/ || true
+      
+      - test -d po && cp -r po /app/share/propad/ || true
+      - test -d locale && cp -r locale /app/share/locale/ || true
+      - test -d scripts && cp -r scripts /app/share/propad/ || true
+      - test -d data && cp -r data/* /app/share/propad/data/ || true
+      - test -d lib && cp -r lib/* /app/share/propad/lib/ || true
+      - test -d icons && cp -r icons/* /app/share/propad/icons/ || true
 
-      - mkdir -p /app/share/propad/data
-      - mkdir -p /app/share/propad/lib
-      - mkdir -p /app/share/propad/icons
-      - |
-        if [ -d "data" ]; then
-          cp -r data/* /app/share/propad/data/ 2>/dev/null || true
-        fi
-      - |
-        if [ -d "lib" ]; then
-          cp -r lib/* /app/share/propad/lib/ 2>/dev/null || true
-        fi
-      - |
-        if [ -d "icons" ]; then
-          cp -r icons/* /app/share/propad/icons/ 2>/dev/null || true
-        fi
-      - |
-        find . -maxdepth 2 -name "*.css" -exec cp {} /app/share/propad/data/ \; 2>/dev/null || true
+      
+      - find . -maxdepth 2 -name "*.css" -exec cp {} /app/share/propad/data/ \; 2>/dev/null || true
 
+      
       - |
         cat > /app/bin/propad << 'EOF'
         #!/bin/bash
+        
+        # Accessibility
+        export NO_AT_BRIDGE=1
+        export GTK_A11Y=none
+        
+        # Python path
         export PYTHONPATH=/app/share/propad:$PYTHONPATH
+        
+        # Graphics
+        export LIBGL_ALWAYS_SOFTWARE=1
+        export MESA_LOADER_DRIVER_OVERRIDE=swrast
+        export LIBGL_DRI3_DISABLE=1
+        export EGL_PLATFORM=wayland
+        export GDK_BACKEND=wayland,x11
+        
+        # Portals
+        export GTK_USE_PORTAL=0
+        
+        # WebKit
+        export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+        export WEBKIT_FORCE_SANDBOX=0
+        
+        # Debugging
+        export G_MESSAGES_DEBUG=
+        
+        # Fontconfig - use flatpak fonts only
+        export FONTCONFIG_FILE=/etc/fonts/fonts.conf
+        unset FONTCONFIG_PATH
+        
+        # Filter out all known warnings and errors
+        exec 2> >(grep -v \
+          -e "Fontconfig error" \
+          -e "Fontconfig warning" \
+          -e "Cannot load config file" \
+          -e "font-dirs.xml" \
+          -e "MESA-INTEL: warning" \
+          -e "Can't connect to a11y bus" \
+          -e "kmsro: driver missing" \
+          -e "libEGL warning" \
+          -e "egl: failed to create dri2 screen" \
+          -e "DRI2: failed to create screen" \
+          -e "Portal call failed" \
+          -e "Invalid sandbox" \
+          -e "readPIDFromPeer" \
+          -e "auxiliary process crashed" \
+          >&2)
+        
         cd /app/share/propad
         exec python3 -u main.py "$@"
         EOF
       - chmod +x /app/bin/propad
-
+      
+      # Install desktop file
       - install -Dm644 io.github.sanjai.ProPad.desktop /app/share/applications/io.github.sanjai.ProPad.desktop
 
+      # Install metainfo (AppStream data)
+      - install -Dm644 io.github.sanjai.ProPad.metainfo.xml /app/share/metainfo/io.github.sanjai.ProPad.metainfo.xml
+
+      # Install icons
       - |
-        if [ -d "icons/hicolor" ]; then
-          for size in 16 22 24 32 48 64 128 256 512; do
-            if [ -f "icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png" ]; then
-              install -Dm644 "icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png" \
-                "/app/share/icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png"
-            fi
-          done
-
-          if [ -f "icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg" ]; then
-            install -Dm644 "icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg" \
-              "/app/share/icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg"
+        for size in 16 22 24 32 48 64 128 256 512; do
+          if [ -f "icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png" ]; then
+            install -Dm644 "icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png" \
+              "/app/share/icons/hicolor/${size}x${size}/apps/io.github.sanjai.ProPad.png"
           fi
-
-          if [ -f "icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg" ]; then
-            install -Dm644 "icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg" \
-              "/app/share/icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg"
-          fi
+        done
+      - |
+        if [ -f "icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg" ]; then
+          install -Dm644 "icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg" \
+            "/app/share/icons/hicolor/scalable/apps/io.github.sanjai.ProPad.svg"
+        fi
+      - |
+        if [ -f "icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg" ]; then
+          install -Dm644 "icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg" \
+            "/app/share/icons/hicolor/symbolic/apps/io.github.sanjai.ProPad-symbolic.svg"
         fi
 
+      # Update icon cache
       - gtk-update-icon-cache -q -t -f /app/share/icons/hicolor || true
 
-      - |
-        if [ -d "data/icons" ]; then
-          cp -r data/icons /app/share/propad/
-        fi
-      - |
-        if [ -d "icons" ]; then
-          cp -r icons /app/share/propad/
-        fi
-
+      # Validate files
       - desktop-file-validate /app/share/applications/io.github.sanjai.ProPad.desktop || true
+      - appstreamcli validate --no-net /app/share/metainfo/io.github.sanjai.ProPad.metainfo.xml || true
 
     sources:
-      - type: dir
-        path: .
-        skip:
-          - .git
-          - .github
-          - .vscode
-          - .idea
-          - build-dir
-          - .flatpak-builder
-          - __pycache__
-          - "*.pyc"
-          - "*.pyo"
-          - .venv
-          - .venv-translate
-          - venv
-          - .pytest_cache
-          - .ruff_cache
-          - "*.flatpak"
+          - type: git
+            url: https://github.com/Sanjai-Shaarugesh/ProPad.git
+            tag: v0.2.0
+            commit: 97e57f530adf14ac74a2fecc57d8d08be049b8f8
