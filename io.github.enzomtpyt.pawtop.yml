@@ -1,0 +1,182 @@
+app-id: io.github.enzomtpyt.pawtop
+
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version "25.08"
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.node20
+
+command: startpawtop
+separate-locales: false
+
+finish-args:
+    - --socket=pulseaudio
+    - --socket=fallback-x11
+    - --socket=wayland
+    - --share=ipc
+    - --share=network
+    - --talk-name=org.kde.StatusNotifierWatcher # Tray functionalities on KDE
+    - --own-name=io.github.enzomtpyt.pawtop.StatusNotifierItem # Needed for libvesktop native tray
+    - --talk-name=com.canonical.AppMenu.Registrar
+    - --device=all # Needed for GPU acceleration and the webcam
+    - --filesystem=xdg-videos:ro
+    - --filesystem=xdg-pictures:ro
+    - --filesystem=xdg-download # This and the above two are used for drag-n-drop, and download managing
+    - --filesystem=xdg-run/pipewire-0:ro # Pipewire interfacing
+    - --filesystem=xdg-run/speech-dispatcher:ro # For TTS and VcNarrator
+    - --filesystem=~/.steam # Needed for SteamOS integration, as the XDG OpenURL portal doesn't work properly in Game Mode. We only need ~/.steam/steam.pipe but Flatpak can't correctly mount just that: 'File "/home/deck/.steam/steam.pipe" has unsupported type 0o10000'
+    - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
+
+modules:
+    - name: Pawtop
+      buildsystem: simple
+      build-options:
+          strip: false
+          no-debuginfo: true
+          append-path: bun-build
+          env:
+              SKIP_BUN_DOWNLOAD: "true"
+      build-commands:
+          - bun-build/bun run build
+          - |
+              . /usr/lib/sdk/node20/enable.sh
+              node_modules/.bin/electron-builder --dir --linux dir --config.electronDist=electron-dist
+
+          - |
+              if [ -d "dist/linux-unpacked" ]; then
+                DIST_DIR="dist/linux-unpacked"
+              elif [ -d "dist/linux-arm64-unpacked" ]; then
+                DIST_DIR="dist/linux-arm64-unpacked"
+              else
+                echo "Error: Could not find unpacked directory"
+                exit 1
+              fi
+
+              if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+                  BUN_PLATFORM="linux-x64"
+              elif [ "$FLATPAK_ARCH" = "aarch64" ]; then
+                  BUN_PLATFORM="linux-arm64"
+              fi
+
+              mkdir -p "$DIST_DIR/resources/bun/$BUN_PLATFORM/bun-$BUN_PLATFORM"
+              cp bun-build/bun "$DIST_DIR/resources/bun/$BUN_PLATFORM/bun-$BUN_PLATFORM/bun"
+              chmod +x "$DIST_DIR/resources/bun/$BUN_PLATFORM/bun-$BUN_PLATFORM/bun"
+
+              mkdir -p "$DIST_DIR/resources/app.asar.unpacked/static/dist"
+              if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+                  cp arrpc-bun-linux-x64 "$DIST_DIR/resources/app.asar.unpacked/static/dist/arrpc"
+              elif [ "$FLATPAK_ARCH" = "aarch64" ]; then
+                  cp arrpc-bun-linux-arm64 "$DIST_DIR/resources/app.asar.unpacked/static/dist/arrpc"
+              fi
+              chmod +x "$DIST_DIR/resources/app.asar.unpacked/static/dist/arrpc"
+
+              install -Dm644 build/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.enzomtpyt.pawtop.svg
+
+              desktop-file-edit --set-key=Exec --set-value="startpawtop %U" build/io.github.enzomtpyt.pawtop.desktop
+              install -Dm644 build/io.github.enzomtpyt.pawtop.desktop /app/share/applications/io.github.enzomtpyt.pawtop.desktop
+              install -Dm755 startpawtop /app/bin/startpawtop
+              install -D build/io.github.enzomtpyt.pawtop.metainfo.xml -t /app/share/metainfo/
+
+              mv "$DIST_DIR" /app/bin/pawtop
+
+      sources:
+          - type: file
+            path: startpawtop
+
+          - type: archive
+            url: https://github.com/enzomtpYT/Pawtop/archive/refs/tags/v3.1.2.tar.gz
+            sha512: 7c5a9c4107297e5cd364fbba83e45fc84564ff7d07ec755f431216d7eb0e3b1ffe9c759926795769d98f87691e73dde6c05953c8ae146221cfdd59922d26580a
+            strip-components: 1
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/enzomtpYT/Pawtop/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query: .tarball_url
+                is-main-source: true
+
+          - type: patch
+            path: sandboxFix.patch
+
+          - type: patch
+            path: gitHash.patch
+
+          - type: patch
+            path: arrpcPath.patch
+
+          - type: archive
+            url: https://github.com/enzomtpYT/Pawtop/releases/download/v3.1.2/node_modules-x64.tar.gz
+            sha512: dd685c2c2764b0c84e058200d8130f39f357f852942249df8ab0d99fb04d6941291ef464fc02fd29c7cc99f18acfd41b155679a32c03b271c4b5f7145b763e79
+            dest: node_modules
+            strip-components: 1
+            only-arches: [x86_64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/enzomtpYT/Pawtop/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query:
+                    .assets[] | select(.name == "node_modules-x64.tar.gz")
+                    | .browser_download_url
+
+          - type: archive
+            url: https://github.com/enzomtpYT/Pawtop/releases/download/v3.1.2/node_modules-arm64.tar.gz
+            sha512: 3887740971f32bf48d51b9ee039b74796dae616d25573f82d1509c2ce1b7dd95c29c23b4cb8e34bb3e48a684312ea84d4ab764d7e6f80d7305ba5e3445fa1884
+            dest: node_modules
+            strip-components: 1
+            only-arches: [aarch64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/enzomtpYT/Pawtop/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query:
+                    .assets[] | select(.name == "node_modules-arm64.tar.gz")
+                    | .browser_download_url
+
+          # Electron binaries for building
+          - type: archive
+            url: https://github.com/electron/electron/releases/download/v38.4.0/electron-v38.4.0-linux-x64.zip
+            sha512: b20ed3f62b408b69b0d64413b13efd3da3cffa7f16d7c5d658ada05f7975961c9127711cf2dab2023a2de6d9c5085dd83b35f6de3e1c602e283b9703642ea3d7
+            dest: electron-dist
+            only-arches: [x86_64]
+
+          - type: archive
+            url: https://github.com/electron/electron/releases/download/v38.4.0/electron-v38.4.0-linux-arm64.zip
+            sha512: 729ed9f30e1bf0e4e108474c6356b0437379268c57791ebb4cadaaffc273dc1f585fd7a7e4e4ebbe23f801623feca0e5d4443dc8f5ce4080de17b034d221fee4
+            dest: electron-dist
+            only-arches: [aarch64]
+
+          - type: archive
+            url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-linux-x64.zip
+            sha512: 1fd367254ccff89163b32ee8bf76b7f013855043bf828d36300aaeef95b72139ed6afdab4446e11e85b56b4a57cfd45a2c4d02460a5f1172e35493ad603fc010
+            dest: bun-build
+            only-arches: [x86_64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/oven-sh/bun/releases/latest
+                version-query: .tag_name | sub("bun-v"; "")
+                url-query: .assets[] | select(.name == "bun-linux-x64.zip") | .browser_download_url
+
+          - type: archive
+            url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-linux-aarch64.zip
+            sha512: 28f96904bcf24f133fedeb0995970ad4f085d16bc700dea46a66c1736074c642034edd445c03153b966cada551df8dd4c86fd85f03a4f820963666da6ea020c5
+            dest: bun-build
+            only-arches: [aarch64]
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/oven-sh/bun/releases/latest
+                version-query: .tag_name | sub("bun-v"; "")
+                url-query: .assets[] | select(.name == "bun-linux-aarch64.zip") | .browser_download_url
+
+          - type: file
+            url: https://github.com/Creationsss/arrpc-bun/releases/download/v1.3.1/arrpc-bun-linux-x64
+            sha512: b7082e7b77937b38ddf3a2f99068ddbe3e6e7f1953a2ff881c0d729be009b3560d0ef71cb11089ae068ad8b52048c232b661730c955b31f85d96316ca35f7389
+            dest-filename: arrpc-bun-linux-x64
+            only-arches: [x86_64]
+
+          - type: file
+            url: https://github.com/Creationsss/arrpc-bun/releases/download/v1.3.1/arrpc-bun-linux-arm64
+            sha512: 51aaf370dd4fe3a60a588ec8caec9c37ef9c686e2414408c5c8558195fa27e97558c2bede4f8aa1f6a1d4549c1ce6a150a566b78ed58ae1d0d496bd9c38288d3
+            dest-filename: arrpc-bun-linux-arm64
+            only-arches: [aarch64]
