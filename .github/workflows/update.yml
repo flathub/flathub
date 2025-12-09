@@ -1,0 +1,65 @@
+name: Update app
+
+on:
+  workflow_dispatch:
+  schedule:
+    # weekly at 12:52 (random time to avoid spikes in GitHub Actions usage)
+    - cron: "52 12 * * 6"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Set up Flatpak
+        run: |
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install flathub org.flathub.flatpak-external-data-checker org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.llvm20//25.08 -y
+
+      # Update NoMoreBackground's tag
+      - name: Get PREVIOUS_APP_VERSION
+        run: |
+          PREVIOUS_APP_VERSION=$(grep 'tag: v' flatpak-flutter.yaml | head -n1 | sed 's/.*tag: v//')
+          echo "PREVIOUS_APP_VERSION=$PREVIOUS_APP_VERSION" >> $GITHUB_ENV
+      - name: Update app version
+        run: flatpak run org.flathub.flatpak-external-data-checker flatpak-flutter.yaml --edit
+      - name: Get APP_VERSION
+        run: |
+          APP_VERSION=$(grep 'tag: v' flatpak-flutter.yaml | head -n1 | sed 's/.*tag: v//')
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+      - name: Validate APP_VERSION
+        run: |
+          # Since we're using this in the pull request inputs, ensure it's not malicious or malformed
+          if ! [[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "APP_VERSION '$APP_VERSION' is not a valid version number"
+            exit 1
+          fi
+      - name: Compare versions
+        id: update_found
+        run: |
+          if [ "$PREVIOUS_APP_VERSION" = "$APP_VERSION" ]; then
+            echo "update_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "update_found=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update pub.dev dependencies
+        if: steps.update_found.outputs.update_found == 'true'
+        run: ./scripts/update-manifest.sh
+
+      - name: Create Pull Request
+        if: steps.update_found.outputs.update_found == 'true'
+        uses: peter-evans/create-pull-request@v7
+        env:
+          SUMMARY: "Update NoMoreBackground to v${{ env.APP_VERSION }}"
+        with:
+          title: ${{ env.SUMMARY }}
+          commit-message: ${{ env.SUMMARY }}
+          branch: "update/NoMoreBackground/v${{ env.APP_VERSION }}"
+          body: "This PR updates NoMoreBackground from v${{ env.PREVIOUS_APP_VERSION }} to v${{ env.APP_VERSION }}."
+          assignees: adil192
