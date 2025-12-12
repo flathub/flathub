@@ -1,0 +1,83 @@
+app-id: me.ariyadey.capturist
+command: capturist
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+finish-args:
+  - --share=ipc # Needed for performance reasons if the app fallbacks to X11
+  - --socket=wayland # Permission needed to show the window on wayland
+  - --socket=fallback-x11 # Permission needed to fallback using X11 if wayland is not available
+  - --device=dri # OpenGL
+  - --share=network # Network Access
+  - --talk-name=org.freedesktop.Notifications # Needed to publish messages on dbus to trigger desktop notifications
+  - --talk-name=org.freedesktop.portal.Notification # Portal access for notifications
+  - --talk-name=org.freedesktop.portal.Desktop # General portal access
+  - --talk-name=org.freedesktop.portal.Settings # Required for reading system color scheme (dark/light mode)
+  - --talk-name=org.gnome.Notifications # Fallback for GNOME
+  - --talk-name=org.kde.StatusNotifierWatcher # Needed to publish messages on dbus to display and change system tray icon
+  - --filesystem=xdg-run/tray-icon:create # Required for tray icon visibility in sandboxed environment
+  - --talk-name=org.freedesktop.secrets # OS Keyring
+  - --filesystem=~/.config/autostart:create # Direct autostart management
+  - --filesystem=xdg-config/autostart:create # Indirect autostart management using Portals
+  - --talk-name=org.me_ariyadey_capturist.SingleInstance
+  - --own-name=org.me_ariyadey_capturist.SingleInstance
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: libnotify
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/libnotify.git
+        tag: 0.8.6
+    config-opts:
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Dman=false
+      - -Dgtk_doc=false
+      - -Ddocbook_docs=disabled
+
+  - name: capturist
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: .
+    # language=BASH
+    build-commands:
+      - |
+        set -eu
+
+        if [ ! -f "capturist.deb" ]; then
+            echo "--- No pre-built deb found, building from source... ---"
+            echo "Node version: $(node --version)"
+            echo "npm version: $(npm --version)"
+            echo "Rust version: $(rustc --version)"
+
+            npm ci --no-audit --no-fund
+            npm run tauri build -- --config src-tauri/tauri.snap.conf.json
+            mv src-tauri/target/release/bundle/deb/*.deb capturist.deb
+        fi
+
+        ar x capturist.deb
+        tar -xvf data.tar.gz
+        cp -r usr/* /app/
+
+        APP_ID="me.ariyadey.capturist"
+        APP_NAME="capturist"
+        APP_APPLICATIONS_DIR="/app/share/applications"
+        APP_ICON_DIR="/app/share/icons/hicolor/128x128/apps"
+
+        # Rename files to match Flatpak app-id conventions
+        install -D -m 644 ${APP_ICON_DIR}/${APP_NAME}.png ${APP_ICON_DIR}/${APP_ID}.png
+        install -D -m 644 ${APP_APPLICATIONS_DIR}/Capturist.desktop "${APP_APPLICATIONS_DIR}/${APP_ID}.desktop"
+
+        # Fix desktop file to match the Flatpak app-id and icon conventions
+        sed -i "s|Icon=${APP_NAME}|Icon=${APP_ID}|" "${APP_APPLICATIONS_DIR}/${APP_ID}.desktop"
+
+        # Patch metainfo to match the renamed desktop file
+        sed -i 's|Capturist.desktop|me.ariyadey.capturist.desktop|' /app/share/metainfo/me.ariyadey.capturist.metainfo.xml
