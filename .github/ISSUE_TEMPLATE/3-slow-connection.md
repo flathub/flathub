@@ -4,7 +4,7 @@ about: "Report slow downloads from Flathub"
 title: "Slow downloads from Flathub (dl.flathub.org) — <Country/ISP>"
 ---
 
-<!-- For detailed instructions, see: https://flathub.org/docs/for-users/slow-connection -->
+<!-- For detailed instructions, see: https://docs.flathub.org/docs/for-users/slow-connection -->
 
 ### Problem Description
 
