@@ -1,0 +1,110 @@
+# Flatpak manifest for JuhRadial MX
+# https://github.com/JuhLabs/juhradial-mx
+
+app-id: org.juhlabs.JuhRadialMX
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: juhradial-mx
+
+finish-args:
+  # Display access
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+  # Device access for HID++ communication with Logitech devices
+  - --device=all
+
+  # D-Bus access for daemon communication
+  - --talk-name=org.kde.juhradialmx.*
+  - --talk-name=org.freedesktop.Notifications
+
+  # Session bus for KDE integration
+  - --socket=session-bus
+
+  # Config file access
+  - --filesystem=~/.config/juhradial:create
+
+  # GTK4 Layer Shell for overlay
+  - --env=GTK_USE_PORTAL=1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/juhradiald/cargo
+
+modules:
+  # GTK4 Layer Shell for Wayland overlay support
+  - name: gtk4-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Ddocs=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://github.com/wmww/gtk4-layer-shell
+        tag: v1.0.3
+        commit: be85ee0e898bc43b3c6d6e9ed5b4c0aae6d8c22b
+
+  # Rust daemon
+  - name: juhradiald
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/juhradiald/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/juhradiald /app/bin/juhradiald
+    sources:
+      - type: git
+        url: https://github.com/JuhLabs/juhradial-mx.git
+        branch: master
+        dest: .
+      - cargo-sources.json
+
+  # Main application with Python overlay
+  - name: juhradial-mx
+    buildsystem: simple
+    build-commands:
+      # Install Python overlay
+      - mkdir -p /app/share/juhradial
+      - install -Dm755 overlay/juhradial-overlay.py /app/share/juhradial/
+      - install -Dm755 overlay/settings_dashboard.py /app/share/juhradial/
+
+      # Install assets
+      - mkdir -p /app/share/juhradial/assets
+      - cp -r assets/* /app/share/juhradial/assets/
+      - install -Dm644 assets/juhradial-mx.svg /app/share/icons/hicolor/scalable/apps/org.juhlabs.JuhRadialMX.svg
+
+      # Create launcher script
+      - |
+        cat > /app/bin/juhradial-mx << 'LAUNCHER'
+        #!/bin/bash
+        # Start daemon if not running
+        if ! pgrep -x juhradiald > /dev/null; then
+            /app/bin/juhradiald &
+            sleep 1
+        fi
+        # Start settings dashboard
+        python3 /app/share/juhradial/settings_dashboard.py "$@"
+        LAUNCHER
+      - chmod +x /app/bin/juhradial-mx
+
+      # Install desktop file
+      - install -Dm644 juhradial-mx.desktop /app/share/applications/org.juhlabs.JuhRadialMX.desktop
+      - sed -i 's|Exec=.*|Exec=juhradial-mx|g' /app/share/applications/org.juhlabs.JuhRadialMX.desktop
+      - sed -i 's|Icon=.*|Icon=org.juhlabs.JuhRadialMX|g' /app/share/applications/org.juhlabs.JuhRadialMX.desktop
+
+      # Install AppStream metadata
+      - install -Dm644 org.juhlabs.JuhRadialMX.metainfo.xml /app/share/metainfo/org.juhlabs.JuhRadialMX.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/JuhLabs/juhradial-mx.git
+        branch: master
