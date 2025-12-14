@@ -1,0 +1,287 @@
+app-id: io.github.benjamimgois.goverlay
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: goverlay
+
+add-extensions:
+  org.freedesktop.Platform.VulkanLayer.MangoHud:
+    directory: lib/extensions/vulkan/MangoHud
+    version: stable
+    add-ld-path: lib
+    no-autodownload: false
+    autodelete: false
+
+  org.freedesktop.Platform.VulkanLayer.vkBasalt:
+    directory: lib/extensions/vulkan/vkBasalt
+    version: stable
+    add-ld-path: lib
+    no-autodownload: false
+    autodelete: false
+
+finish-args:
+  # GPU access for Vulkan/OpenGL overlays
+  - --device=dri
+
+  # Filesystem access for configuration files
+  - --filesystem=xdg-config/MangoHud:create
+  - --filesystem=xdg-config/vkBasalt:create
+  - --filesystem=xdg-config/goverlay:create
+  - --filesystem=xdg-data/goverlay:create
+  - --filesystem=home
+
+  # Read-only access to /sys for hardware detection
+  - --filesystem=/sys/class/drm:ro
+  - --filesystem=/sys/bus/pci:ro
+  - --filesystem=/sys/class/net:ro
+
+  # Network access for downloads (OptiScaler, ReShade shaders, updates)
+  - --share=network
+
+  # GUI requirements
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+  # Desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+
+  # Font access
+  - --filesystem=/usr/share/fonts:ro
+  - --filesystem=/run/current-system/sw/share/fonts:ro
+  - --filesystem=xdg-data/fonts:ro
+
+modules:
+  # Free Pascal Compiler (FPC) - Binary distribution
+  - name: fpc
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-commands:
+      - tar xf fpc-3.2.2.x86_64-linux.tar
+      - |
+        cd fpc-3.2.2.x86_64-linux
+        echo "/app" | ./install.sh
+      - |
+        # Create proper fpc.cfg in /app/etc
+        mkdir -p /app/etc
+        /app/lib/fpc/3.2.2/samplecfg /app/lib/fpc/3.2.2 /app/etc
+      - |
+        # Add library path to fpc.cfg
+        echo "-Fl/app/lib" >> /app/etc/fpc.cfg
+    sources:
+      - type: file
+        url: https://sourceforge.net/projects/freepascal/files/Linux/3.2.2/fpc-3.2.2.x86_64-linux.tar/download
+        sha256: 5adac308a5534b6a76446d8311fc340747cbb7edeaacfe6b651493ff3fe31e83
+        dest-filename: fpc-3.2.2.x86_64-linux.tar
+        x-checker-data:
+          type: html
+          url: https://sourceforge.net/projects/freepascal/files/Linux/
+          pattern: fpc-(\d+\.\d+\.\d+)\.x86_64-linux\.tar
+
+  # Lazarus IDE (provides lazbuild)
+  - name: lazarus
+    buildsystem: simple
+    build-commands:
+      - |
+        export FPCDIR=/app/lib/fpc/3.2.2
+        export PATH=/app/bin:$PATH
+        export Qt6Pas_LibDir=/app/lib
+        make FPC=/app/bin/fpc PP=/app/bin/fpc INSTALL_PREFIX=/app LCL_PLATFORM=qt6 \
+          OPT="-Fl/app/lib -Fu/app/lib/fpc/3.2.2/units/x86_64-linux -Fu/app/lib/fpc/3.2.2/units/x86_64-linux/* -Fu/app/lib/fpc/3.2.2/units/x86_64-linux/rtl" \
+          lazbuild
+      - |
+        # Install lazbuild and required files
+        install -d /app/bin
+        install -d /app/share/lazarus
+        install -m 755 lazbuild /app/bin/lazbuild
+        cp -r packager components lcl lazarus.app ide /app/share/lazarus/
+        cp -r images languages tools /app/share/lazarus/
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/lazarus/Lazarus%20Zip%20_%20GZip/Lazarus%204.4/lazarus-4.4-0.tar.gz
+        sha256: 190edc7b7a7b18430502c964a45dfdf5418ff16bbcad5c04423b33a09d22cc06
+        x-checker-data:
+          type: html
+          url: https://sourceforge.net/projects/lazarus/files/Lazarus%20Zip%20_%20GZip/
+          pattern: lazarus-(\d+\.\d+)-\d+\.tar\.gz
+
+  # Qt6 Pascal bindings (using pre-built packages)
+  - name: qt6pas
+    buildsystem: simple
+    build-commands:
+      - |
+        # Extract .deb package properly
+        mkdir -p extracted
+        cd extracted
+        # Extract the .deb file
+        ar x ../libqt6pas6_6.2.10-1_amd64.deb
+        # Extract data archive
+        tar xf data.tar.*
+        # Copy libraries to /app/lib
+        cp -v usr/lib/x86_64-linux-gnu/libQt6Pas.so* /app/lib/ || cp -v usr/lib/libQt6Pas.so* /app/lib/ || find . -name "libQt6Pas.so*" -exec cp -v {} /app/lib/ \;
+        # Create symlinks for linking
+        cd /app/lib
+        if [ -f libQt6Pas.so.6.2.10 ]; then
+          ln -sf libQt6Pas.so.6.2.10 libQt6Pas.so.6
+          ln -sf libQt6Pas.so.6 libQt6Pas.so
+        fi
+    sources:
+      - type: file
+        url: https://github.com/davidbannon/libqt6pas/releases/download/v6.2.10/libqt6pas6_6.2.10-1_amd64.deb
+        sha256: d56329b52898c2bfe4522d6a59ebf305e44ee8a2935bbe7bcd43d825e88293a3
+        dest-filename: libqt6pas6_6.2.10-1_amd64.deb
+
+  # libgit2 - Native git operations
+  - name: libgit2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTS=OFF
+      - -DUSE_SSH=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libgit2/libgit2/archive/refs/tags/v1.7.2.tar.gz
+        sha256: de384e29d7efc9330c6cdb126ebf88342b5025d920dcb7c645defad85195ea7f
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.a'
+
+  # Git (for ReShade shader cloning)
+  - name: git
+    buildsystem: autotools
+    make-args:
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.48.1.tar.xz
+        sha256: 1c5d545f5dc1eb51e95d2c50d98fdf88b1a36ba1fa30e9ae5d5385c6024f82ad
+    cleanup:
+      - /share/git-core/templates
+      - /share/git-gui
+      - /share/gitk
+      - /share/gitweb
+
+  # p7zip (provides 7z command)
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      - make all3 7z
+      - make install DEST_HOME=/app
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/refs/tags/v17.05.tar.gz
+        sha256: d2788f892571058c08d27095c22154579dfefb807ebe357d145ab2ddddefb1a6
+    cleanup:
+      - /share/doc
+
+  # Volk (Vulkan meta-loader, required by vulkan-tools)
+  - name: volk
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DVOLK_INSTALL=ON
+    sources:
+      - type: archive
+        url: https://github.com/zeux/volk/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
+        sha256: 8ffd0e81e29688f4abaa39e598937160b098228f37503903b10d481d4862ab85
+    cleanup:
+      - /include
+
+  # Vulkan tools (provides vkcube)
+  - name: vulkan-tools
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_CUBE=ON
+      - -DBUILD_VULKANINFO=OFF
+      - -DBUILD_ICD=OFF
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/v1.3.296.tar.gz
+        sha256: a44b5456f473dae0b6d15c23d3b1eb461bb8ef58867271abd641d99735a54b6c
+    cleanup:
+      - /share/vulkan
+
+  # MangoHud (provides mangohud command)
+  - name: mangohud
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+      - -Dappend_libdir_mangohud=false
+      - -Dwith_wayland=enabled
+      - -Dwith_x11=enabled
+      - -Dwith_xnvctrl=disabled
+    sources:
+      - type: archive
+        url: https://github.com/flightlessmango/MangoHud/releases/download/v0.8.2/MangoHud-v0.8.2-Source.tar.xz
+        sha256: 9fe98da24f790f4489efc1e0c8e3ad0291c80efd882a406797d54dab82f8765b
+
+  # SPIRV-Headers (required by vkBasalt)
+  - name: spirv-headers
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
+        sha256: 1423d58a1171611d5aba2bf6f8c69c72ef9c38a0aca12c3493e4fda64c9b2dc6
+    cleanup:
+      - '*'
+
+  # vkBasalt (Vulkan post-processing layer)
+  - name: vkbasalt
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+    sources:
+      - type: archive
+        url: https://github.com/DadSchoorse/vkBasalt/releases/download/v0.3.2.10/vkBasalt-0.3.2.10.tar.gz
+        sha256: eb196ff446fa36ec0ca99c4406d753c1fa210afddeec5e7a76e1c2e74ed605e3
+
+  # Goverlay application
+  - name: goverlay
+    buildsystem: simple
+    build-commands:
+      - |
+        # Use Flatpak-compatible launcher script
+        cp data/goverlay.sh.flatpak data/goverlay.sh.in
+      - |
+        # Debug: Check if Qt6Pas libraries exist
+        echo "=== Checking for Qt6Pas libraries in /app/lib ==="
+        ls -la /app/lib/libQt6Pas* || echo "No Qt6Pas libraries found!"
+        echo "=== End of library check ==="
+      - |
+        # Set up environment for lazbuild to find FPC
+        export PATH=/app/bin:$PATH
+        export FPCDIR=/app/lib/fpc/3.2.2
+        export PPC_CONFIG_PATH=/app/etc
+        # Build with lazbuild using configured fpc.cfg
+        make LAZBUILDOPTS="--lazarusdir=/app/share/lazarus --compiler=/app/bin/fpc"
+      - make install prefix=/app
+      - |
+        # Install fgmod script as a Flatpak command
+        install -Dm755 data/fgmod/fgmod /app/bin/fgmod
+        # Install fgmod data files to shared data directory
+        mkdir -p /app/share/goverlay/fgmod
+        cp -r data/fgmod/* /app/share/goverlay/fgmod/
+      - |
+        # Create directories for Vulkan layer extensions
+        mkdir -p /app/lib/extensions/vulkan/MangoHud
+        mkdir -p /app/lib/extensions/vulkan/vkBasalt
+    sources:
+      - type: git
+        url: https://github.com/benjamimgois/goverlay.git
+        tag: 1.6.3
+        commit: 58b812aef91862da5def44e2ed92ab8f0e1e5ba5
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
