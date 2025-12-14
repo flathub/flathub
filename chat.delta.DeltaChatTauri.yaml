@@ -1,0 +1,54 @@
+app-id: chat.delta.DeltaChatTauri
+
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+command: delta-tauri-wrap
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=all # Webcam access for QR code scans and DRI for OpenGL
+  - --socket=pulseaudio # Record and play voice messages
+  # we use this for the moment, because the portal api also had some problems
+  # (https://github.com/deltachat/deltachat-desktop/pull/4929)
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.Unity.LauncherEntry
+  # do we need this?
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --share=network
+
+# for performance reasons (non nvidia), decided to not include this in, the app instead prompts nvidia users to add this to their config
+#  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1 # without this it crashes on wayland with nvidia gpu - atleast on nixos
+
+rename-icon: deltachat-tauri
+rename-desktop-file: deltachat-tauri.desktop
+rename-appdata-file: deltachat-tauri.appdata.xml
+
+modules:
+  - "shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json"
+  - name: deltachat-tauri
+    buildsystem: simple
+    build-commands:
+      - bsdtar -xf *.deb 'data.tar.gz' | bsdtar -xf -
+      - tar xf *.tar.gz
+      - install -Dpm755 -t ${FLATPAK_DEST}/bin usr/bin/deltachat-tauri delta-tauri-wrap
+      - mkdir /app/lib; mv usr/lib/* /app/lib/
+      - sed -i '/Exec=deltachat-tauri/s/deltachat-tauri/delta-tauri-wrap/' usr/share/applications/deltachat-tauri.desktop
+      - sed -i 's,https://www.transifex.com/delta-chat/public/,https://explore.transifex.com/delta-chat/,' usr/share/metainfo/deltachat-tauri.appdata.xml
+      - mkdir /app/share/; mv usr/share/* /app/share/
+    sources:
+      - type: file
+        path: delta-tauri-wrap
+      - type: file
+        url: https://github.com/deltachat/deltachat-desktop/releases/download/v2.33.0/deltachat-tauri_2.33.0_amd64.deb
+        sha256: c001e2bc832a2c542dc084ffdaa58405c6381ce7407867a0b3effdcb1b49be2c
+        only-arches:
+          - x86_64
+  - name: zenity #to prompt Nvidia users to add env
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/zenity/3.44/zenity-3.44.5.tar.xz
+        sha256: 29ac447f4246b1da783a3c28ddc80b0ef7c80eccd5836ad9140abf89841d0eab
