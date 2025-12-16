@@ -48,21 +48,26 @@ finish-args:
   # Desktop notifications
   - --talk-name=org.freedesktop.Notifications
 
-  # Font access
-  - --filesystem=/usr/share/fonts:ro
-  - --filesystem=/run/current-system/sw/share/fonts:ro
-  - --filesystem=xdg-data/fonts:ro
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
 
 modules:
   # Free Pascal Compiler (FPC) - Binary distribution
   - name: fpc
     buildsystem: simple
-    only-arches:
-      - x86_64
     build-commands:
-      - tar xf fpc-3.2.2.x86_64-linux.tar
       - |
-        cd fpc-3.2.2.x86_64-linux
+        # Extract the appropriate FPC tarball based on architecture
+        if [ -f fpc-3.2.2.x86_64-linux.tar ]; then
+          tar xf fpc-3.2.2.x86_64-linux.tar
+          cd fpc-3.2.2.x86_64-linux
+        elif [ -f fpc-3.2.2.aarch64-linux.tar ]; then
+          tar xf fpc-3.2.2.aarch64-linux.tar
+          cd fpc-3.2.2.aarch64-linux
+        fi
         echo "/app" | ./install.sh
       - |
         # Create proper fpc.cfg in /app/etc
@@ -76,10 +81,18 @@ modules:
         url: https://sourceforge.net/projects/freepascal/files/Linux/3.2.2/fpc-3.2.2.x86_64-linux.tar/download
         sha256: 5adac308a5534b6a76446d8311fc340747cbb7edeaacfe6b651493ff3fe31e83
         dest-filename: fpc-3.2.2.x86_64-linux.tar
+        only-arches:
+          - x86_64
         x-checker-data:
           type: html
           url: https://sourceforge.net/projects/freepascal/files/Linux/
           pattern: fpc-(\d+\.\d+\.\d+)\.x86_64-linux\.tar
+      - type: file
+        url: https://sourceforge.net/projects/freepascal/files/Linux/3.2.2/fpc-3.2.2.aarch64-linux.tar/download
+        sha256: dbe159e6f5e694b88ff8e9e60e1c300b0caa353628e205728ce7f20703663887
+        dest-filename: fpc-3.2.2.aarch64-linux.tar
+        only-arches:
+          - aarch64
 
   # Lazarus IDE (provides lazbuild)
   - name: lazarus
@@ -89,8 +102,17 @@ modules:
         export FPCDIR=/app/lib/fpc/3.2.2
         export PATH=/app/bin:$PATH
         export Qt6Pas_LibDir=/app/lib
+        # Detect architecture for FPC units path
+        FPC_ARCH=$(uname -m)
+        if [ "$FPC_ARCH" = "x86_64" ]; then
+          FPC_UNITS_ARCH="x86_64-linux"
+        elif [ "$FPC_ARCH" = "aarch64" ]; then
+          FPC_UNITS_ARCH="aarch64-linux"
+        else
+          FPC_UNITS_ARCH="$(uname -m)-linux"
+        fi
         make FPC=/app/bin/fpc PP=/app/bin/fpc INSTALL_PREFIX=/app LCL_PLATFORM=qt6 \
-          OPT="-Fl/app/lib -Fu/app/lib/fpc/3.2.2/units/x86_64-linux -Fu/app/lib/fpc/3.2.2/units/x86_64-linux/* -Fu/app/lib/fpc/3.2.2/units/x86_64-linux/rtl" \
+          OPT="-Fl/app/lib -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH} -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH}/* -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH}/rtl" \
           lazbuild
       - |
         # Install lazbuild and required files
@@ -108,31 +130,13 @@ modules:
           url: https://sourceforge.net/projects/lazarus/files/Lazarus%20Zip%20_%20GZip/
           pattern: lazarus-(\d+\.\d+)-\d+\.tar\.gz
 
-  # Qt6 Pascal bindings (using pre-built packages)
+  # Qt6 Pascal bindings (compiled from source)
   - name: qt6pas
-    buildsystem: simple
-    build-commands:
-      - |
-        # Extract .deb package properly
-        mkdir -p extracted
-        cd extracted
-        # Extract the .deb file
-        ar x ../libqt6pas6_6.2.10-1_amd64.deb
-        # Extract data archive
-        tar xf data.tar.*
-        # Copy libraries to /app/lib
-        cp -v usr/lib/x86_64-linux-gnu/libQt6Pas.so* /app/lib/ || cp -v usr/lib/libQt6Pas.so* /app/lib/ || find . -name "libQt6Pas.so*" -exec cp -v {} /app/lib/ \;
-        # Create symlinks for linking
-        cd /app/lib
-        if [ -f libQt6Pas.so.6.2.10 ]; then
-          ln -sf libQt6Pas.so.6.2.10 libQt6Pas.so.6
-          ln -sf libQt6Pas.so.6 libQt6Pas.so
-        fi
+    buildsystem: qmake
     sources:
-      - type: file
-        url: https://github.com/davidbannon/libqt6pas/releases/download/v6.2.10/libqt6pas6_6.2.10-1_amd64.deb
-        sha256: d56329b52898c2bfe4522d6a59ebf305e44ee8a2935bbe7bcd43d825e88293a3
-        dest-filename: libqt6pas6_6.2.10-1_amd64.deb
+      - type: archive
+        url: https://github.com/davidbannon/libqt6pas/archive/refs/tags/v6.2.10.tar.gz
+        sha256: 24b8f3f732c0a8d978e7c091e29c1f30c70c67ffa0a006c08c41a63e6b55fb1c
 
   # libgit2 - Native git operations
   - name: libgit2
@@ -275,13 +279,5 @@ modules:
         mkdir -p /app/lib/extensions/vulkan/MangoHud
         mkdir -p /app/lib/extensions/vulkan/vkBasalt
     sources:
-      - type: git
-        url: https://github.com/benjamimgois/goverlay.git
-        tag: 1.6.3
-        commit: 58b812aef91862da5def44e2ed92ab8f0e1e5ba5
-
-cleanup:
-  - /include
-  - /lib/pkgconfig
-  - /share/man
-  - '*.la'
+      - type: dir
+        path: .
