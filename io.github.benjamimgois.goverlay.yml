@@ -1,27 +1,15 @@
 app-id: io.github.benjamimgois.goverlay
-runtime: org.kde.Platform
-runtime-version: '6.10'
-sdk: org.kde.Sdk
-base: io.qt.qtwebengine.BaseApp
-base-version: '6.10'
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.freepascal
 command: goverlay
-
-add-extensions:
-  org.freedesktop.Platform.VulkanLayer.MangoHud:
-    directory: lib/extensions/vulkan/MangoHud
-    version: stable
-    add-ld-path: lib
-    no-autodownload: false
-    autodelete: false
-
-  org.freedesktop.Platform.VulkanLayer.vkBasalt:
-    directory: lib/extensions/vulkan/vkBasalt
-    version: stable
-    add-ld-path: lib
-    no-autodownload: false
-    autodelete: false
-
 finish-args:
+  # Access to KDE/Qt themes
+  - --filesystem=xdg-config/kdeglobals:ro
+  - --filesystem=xdg-data/icons:ro
+
   # GPU access for Vulkan/OpenGL overlays
   - --device=dri
 
@@ -29,13 +17,7 @@ finish-args:
   - --filesystem=xdg-config/MangoHud:create
   - --filesystem=xdg-config/vkBasalt:create
   - --filesystem=xdg-config/goverlay:create
-  - --filesystem=xdg-data/goverlay:create
   - --filesystem=home
-
-  # Read-only access to /sys for hardware detection
-  - --filesystem=/sys/class/drm:ro
-  - --filesystem=/sys/bus/pci:ro
-  - --filesystem=/sys/class/net:ro
 
   # Network access for downloads (OptiScaler, ReShade shaders, updates)
   - --share=network
@@ -45,98 +27,87 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
 
-  # Desktop notifications
-  - --talk-name=org.freedesktop.Notifications
+  # Desktop notifications via portal
+  - --talk-name=org.freedesktop.portal.Notification
 
 cleanup:
   - /include
   - /lib/pkgconfig
   - /share/man
+  - /share/doc
   - '*.la'
+  - '*.a'
 
 modules:
-  # Free Pascal Compiler (FPC) - Binary distribution
-  - name: fpc
-    buildsystem: simple
-    build-commands:
-      - |
-        # Extract the appropriate FPC tarball based on architecture
-        if [ -f fpc-3.2.2.x86_64-linux.tar ]; then
-          tar xf fpc-3.2.2.x86_64-linux.tar
-          cd fpc-3.2.2.x86_64-linux
-        elif [ -f fpc-3.2.2.aarch64-linux.tar ]; then
-          tar xf fpc-3.2.2.aarch64-linux.tar
-          cd fpc-3.2.2.aarch64-linux
-        fi
-        echo "/app" | ./install.sh
-      - |
-        # Create proper fpc.cfg in /app/etc
-        mkdir -p /app/etc
-        /app/lib/fpc/3.2.2/samplecfg /app/lib/fpc/3.2.2 /app/etc
-      - |
-        # Add library path to fpc.cfg
-        echo "-Fl/app/lib" >> /app/etc/fpc.cfg
-    sources:
-      - type: file
-        url: https://sourceforge.net/projects/freepascal/files/Linux/3.2.2/fpc-3.2.2.x86_64-linux.tar/download
-        sha256: 5adac308a5534b6a76446d8311fc340747cbb7edeaacfe6b651493ff3fe31e83
-        dest-filename: fpc-3.2.2.x86_64-linux.tar
-        only-arches:
-          - x86_64
-        x-checker-data:
-          type: html
-          url: https://sourceforge.net/projects/freepascal/files/Linux/
-          pattern: fpc-(\d+\.\d+\.\d+)\.x86_64-linux\.tar
-      - type: file
-        url: https://sourceforge.net/projects/freepascal/files/Linux/3.2.2/fpc-3.2.2.aarch64-linux.tar/download
-        sha256: dbe159e6f5e694b88ff8e9e60e1c300b0caa353628e205728ce7f20703663887
-        dest-filename: fpc-3.2.2.aarch64-linux.tar
-        only-arches:
-          - aarch64
-
-  # Lazarus IDE (provides lazbuild)
-  - name: lazarus
-    buildsystem: simple
-    build-commands:
-      - |
-        export FPCDIR=/app/lib/fpc/3.2.2
-        export PATH=/app/bin:$PATH
-        export Qt6Pas_LibDir=/app/lib
-        # Detect architecture for FPC units path
-        FPC_ARCH=$(uname -m)
-        if [ "$FPC_ARCH" = "x86_64" ]; then
-          FPC_UNITS_ARCH="x86_64-linux"
-        elif [ "$FPC_ARCH" = "aarch64" ]; then
-          FPC_UNITS_ARCH="aarch64-linux"
-        else
-          FPC_UNITS_ARCH="$(uname -m)-linux"
-        fi
-        make FPC=/app/bin/fpc PP=/app/bin/fpc INSTALL_PREFIX=/app LCL_PLATFORM=qt6 \
-          OPT="-Fl/app/lib -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH} -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH}/* -Fu/app/lib/fpc/3.2.2/units/${FPC_UNITS_ARCH}/rtl" \
-          lazbuild
-      - |
-        # Install lazbuild and required files
-        install -d /app/bin
-        install -d /app/share/lazarus
-        install -m 755 lazbuild /app/bin/lazbuild
-        cp -r packager components lcl lazarus.app ide /app/share/lazarus/
-        cp -r images languages tools /app/share/lazarus/
+  # Qt6 Base (provides Qt6 libraries and qmake)
+  - name: qt6-base
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQT_BUILD_EXAMPLES=OFF
+      - -DQT_BUILD_TESTS=OFF
     sources:
       - type: archive
-        url: https://downloads.sourceforge.net/project/lazarus/Lazarus%20Zip%20_%20GZip/Lazarus%204.4/lazarus-4.4-0.tar.gz
-        sha256: 190edc7b7a7b18430502c964a45dfdf5418ff16bbcad5c04423b33a09d22cc06
-        x-checker-data:
-          type: html
-          url: https://sourceforge.net/projects/lazarus/files/Lazarus%20Zip%20_%20GZip/
-          pattern: lazarus-(\d+\.\d+)-\d+\.tar\.gz
+        url: https://download.qt.io/archive/qt/6.6/6.6.3/submodules/qtbase-everywhere-src-6.6.3.tar.xz
+        sha256: 0493fd0b380c4edf8872f011a7f26d245aa4cdd75b349904ef340a22dedf7462
 
-  # Qt6 Pascal bindings (compiled from source)
+  # Qt6 Wayland (provides Wayland platform plugin)
+  - name: qt6-wayland
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/6.6/6.6.3/submodules/qtwayland-everywhere-src-6.6.3.tar.xz
+        sha256: a96ecc0fecc05f9e18cfb7806fe5ebd7416be94e8f51ebeca75c80412f66553d
+
+  # Qt6 SVG (required by Breeze icons)
+  - name: qt6-svg
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/6.6/6.6.3/submodules/qtsvg-everywhere-src-6.6.3.tar.xz
+        sha256: 4acb1e576eca55e955cf2b0d15c914a200df290e737accd7c1901fa1e33a25c7
+
+  # Extra CMake Modules (required by Breeze icons)
+  - name: extra-cmake-modules
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://download.kde.org/stable/frameworks/6.8/extra-cmake-modules-6.8.0.tar.xz
+        sha256: ff8a0bf72285bec1768e3acd8f7c665a26d55a1527e96d73e35789dc9f0e3472
+
+  # Breeze Icons (only icons, no KDE frameworks)
+  - name: breeze-icons
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBINARY_ICONS_RESOURCE=OFF
+      - -DSKIP_INSTALL_ICONS=OFF
+    sources:
+      - type: archive
+        url: https://download.kde.org/stable/frameworks/6.8/breeze-icons-6.8.0.tar.xz
+        sha256: 75ee11fc441c27504e199e365693296edcd465f890db6aabcb0deca0ace22d3a
+
+  # Qt6 Pascal bindings (using FreePascal SDK extension)
   - name: qt6pas
+    config-opts:
+      - -after
+      - target.path=/app/lib
     buildsystem: qmake
     sources:
-      - type: archive
-        url: https://github.com/davidbannon/libqt6pas/archive/refs/tags/v6.2.10.tar.gz
-        sha256: 24b8f3f732c0a8d978e7c091e29c1f30c70c67ffa0a006c08c41a63e6b55fb1c
+      - type: shell
+        commands:
+          - cp -r /usr/lib/sdk/freepascal/share/lazarus/lcl/interfaces/qt6/cbindings/. .
 
   # libgit2 - Native git operations
   - name: libgit2
@@ -150,10 +121,6 @@ modules:
       - type: archive
         url: https://github.com/libgit2/libgit2/archive/refs/tags/v1.7.2.tar.gz
         sha256: de384e29d7efc9330c6cdb126ebf88342b5025d920dcb7c645defad85195ea7f
-    cleanup:
-      - /include
-      - /lib/pkgconfig
-      - '*.a'
 
   # Git (for ReShade shader cloning)
   - name: git
@@ -165,11 +132,6 @@ modules:
       - type: archive
         url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.48.1.tar.xz
         sha256: 1c5d545f5dc1eb51e95d2c50d98fdf88b1a36ba1fa30e9ae5d5385c6024f82ad
-    cleanup:
-      - /share/git-core/templates
-      - /share/git-gui
-      - /share/gitk
-      - /share/gitweb
 
   # p7zip (provides 7z command)
   - name: p7zip
@@ -181,8 +143,6 @@ modules:
       - type: archive
         url: https://github.com/p7zip-project/p7zip/archive/refs/tags/v17.05.tar.gz
         sha256: d2788f892571058c08d27095c22154579dfefb807ebe357d145ab2ddddefb1a6
-    cleanup:
-      - /share/doc
 
   # Volk (Vulkan meta-loader, required by vulkan-tools)
   - name: volk
@@ -194,8 +154,6 @@ modules:
       - type: archive
         url: https://github.com/zeux/volk/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
         sha256: 8ffd0e81e29688f4abaa39e598937160b098228f37503903b10d481d4862ab85
-    cleanup:
-      - /include
 
   # Vulkan tools (provides vkcube)
   - name: vulkan-tools
@@ -209,8 +167,6 @@ modules:
       - type: archive
         url: https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/v1.3.296.tar.gz
         sha256: a44b5456f473dae0b6d15c23d3b1eb461bb8ef58867271abd641d99735a54b6c
-    cleanup:
-      - /share/vulkan
 
   # MangoHud (provides mangohud command)
   - name: mangohud
@@ -235,8 +191,6 @@ modules:
       - type: archive
         url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
         sha256: 1423d58a1171611d5aba2bf6f8c69c72ef9c38a0aca12c3493e4fda64c9b2dc6
-    cleanup:
-      - '*'
 
   # vkBasalt (Vulkan post-processing layer)
   - name: vkbasalt
@@ -253,31 +207,24 @@ modules:
     buildsystem: simple
     build-commands:
       - |
-        # Use Flatpak-compatible launcher script
-        cp data/goverlay.sh.flatpak data/goverlay.sh.in
-      - |
-        # Debug: Check if Qt6Pas libraries exist
-        echo "=== Checking for Qt6Pas libraries in /app/lib ==="
-        ls -la /app/lib/libQt6Pas* || echo "No Qt6Pas libraries found!"
-        echo "=== End of library check ==="
-      - |
-        # Set up environment for lazbuild to find FPC
-        export PATH=/app/bin:$PATH
-        export FPCDIR=/app/lib/fpc/3.2.2
-        export PPC_CONFIG_PATH=/app/etc
-        # Build with lazbuild using configured fpc.cfg
-        make LAZBUILDOPTS="--lazarusdir=/app/share/lazarus --compiler=/app/bin/fpc"
-      - make install prefix=/app
-      - |
-        # Install fgmod script as a Flatpak command
-        install -Dm755 data/fgmod/fgmod /app/bin/fgmod
-        # Install fgmod data files to shared data directory
-        mkdir -p /app/share/goverlay/fgmod
-        cp -r data/fgmod/* /app/share/goverlay/fgmod/
-      - |
-        # Create directories for Vulkan layer extensions
-        mkdir -p /app/lib/extensions/vulkan/MangoHud
-        mkdir -p /app/lib/extensions/vulkan/vkBasalt
+        . /usr/lib/sdk/freepascal/enable.sh
+        lazbuild -B goverlay.lpi --bm=Release
+      # Generate launcher script manually
+      - sed 's%@libexecdir@%/app/libexec%g' data/goverlay.sh.flatpak > data/goverlay.sh
+      # Install binary and files
+      - install -Dm755 goverlay /app/libexec/goverlay
+      - install -Dm755 data/goverlay.sh /app/bin/goverlay
+      - install -Dm644 data/io.github.benjamimgois.goverlay.desktop /app/share/applications/io.github.benjamimgois.goverlay.desktop
+      - install -Dm644 data/io.github.benjamimgois.goverlay.metainfo.xml /app/share/metainfo/io.github.benjamimgois.goverlay.metainfo.xml
+      - install -Dm644 data/icons/128x128/goverlay.png /app/share/icons/hicolor/128x128/apps/io.github.benjamimgois.goverlay.png
+      - install -Dm644 data/icons/256x256/goverlay.png /app/share/icons/hicolor/256x256/apps/io.github.benjamimgois.goverlay.png
+      - install -Dm644 data/icons/512x512/goverlay.png /app/share/icons/hicolor/512x512/apps/io.github.benjamimgois.goverlay.png
+      # Install fgmod script as a Flatpak command
+      - install -Dm755 data/fgmod/fgmod /app/bin/fgmod
+      - mkdir -p /app/share/goverlay/fgmod
+      - cp -r data/fgmod/* /app/share/goverlay/fgmod/
     sources:
-      - type: dir
-        path: .
+      - type: git
+        url: https://github.com/benjamimgois/goverlay.git
+        tag: '1.6.4'
+        commit: 3374c45f924ede516200505e4f548fb4cfa3b5c7
