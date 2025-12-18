@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /app/zbridge-club/zbridge-club-desktop --no-sandbox --ozone-platform-hint=auto "$@"
+exec zypak-wrapper /app/zbridge-club/zbridge-club-desktop --ozone-platform-hint=auto "$@"
