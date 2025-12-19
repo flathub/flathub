@@ -1,0 +1,114 @@
+app-id: com.browseros.BrowserOS
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+command: browseros-wrapper.sh
+base-version: "24.08"
+build-options:
+  no-debuginfo: true
+modules:
+  - name: browseros-appimage
+    buildsystem: simple
+    build-options:
+      env:
+        LD_LIBRARY_PATH: /app/lib:/usr/lib/x86_64-linux-gnu
+    build-commands:
+      # Create necessary directories
+      - mkdir -p /app/bin /app/opt/browseros /app/share/applications /app/share/icons/hicolor/256x256/apps/ /app/share/metainfo /app/share/licenses/$FLATPAK_ID
+
+      # Extract AppImage contents to build directory
+      - chmod +x BrowserOS_v0.33.0.1_x64.AppImage
+      - ./BrowserOS_v0.33.0.1_x64.AppImage --appimage-extract
+
+      # Copy extracted files to flatpak destinations
+      - cp -r squashfs-root/opt/browseros/* /app/opt/browseros/
+
+      # Set proper permissions for binaries and libraries
+      - find /app/opt/browseros -name "*.so" -exec chmod 755 {} \;
+      - find /app/opt/browseros -type f -executable -exec chmod 755 {} \;
+      - chmod 755 /app/opt/browseros/browseros
+      - chmod 755 /app/opt/browseros/chrome_crashpad_handler
+      - chmod 755 /app/opt/browseros/chromedriver
+
+      # Install wrapper script
+      - install -Dm755 browseros-wrapper.sh /app/bin/browseros-wrapper.sh
+
+      # Install desktop entry
+      - install -Dm644 com.browseros.BrowserOS.desktop /app/share/applications/
+
+      # Install icon
+      - install -Dm644 com.browseros.BrowserOS.png /app/share/icons/hicolor/256x256/apps/com.browseros.BrowserOS.png
+
+      # Install metainfo file
+      - install -Dm644 com.browseros.BrowserOS.metainfo.xml /app/share/metainfo/com.browseros.BrowserOS.metainfo.xml
+
+      # Install license file (if available in extracted AppImage)
+      - if [ -f squashfs-root/opt/browseros/LICENSE ]; then install -Dm644 squashfs-root/opt/browseros/LICENSE /app/share/licenses/$FLATPAK_ID/LICENSE; fi
+
+      # Clean up extracted files
+      - rm -rf squashfs-root BrowserOS_v0.33.0.1_x64.AppImage
+
+    sources:
+      - type: file
+        path: browseros-wrapper.sh
+      - type: file
+        path: com.browseros.BrowserOS.desktop
+      - type: file
+        path: com.browseros.BrowserOS.png
+      - type: file
+        path: com.browseros.BrowserOS.metainfo.xml
+      - type: file
+        url: https://github.com/browseros-ai/BrowserOS/releases/download/v0.33.0/BrowserOS_v0.33.0.1_x64.AppImage
+        sha256: 934e71bf99aa59f74a204e20e0cd3a788b40f2741c69770403caac9e1ca1b68d
+
+finish-args:
+  - --require-version=1.8.2
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --allow=bluetooth # FIDO2 CTAP hybrid transport
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.Avahi
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.ScreenSaver
+  - --talk-name=org.gnome.Mutter.IdleMonitor.*
+  - --talk-name=org.cinnamon.ScreenSaver
+  - --talk-name=org.mate.ScreenSaver
+  - --talk-name=org.xfce.ScreenSaver
+  - --own-name=org.mpris.MediaPlayer2.browseros.*
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=xdg-run/pipewire-0
+  # To load policies on the host /etc/browseros/policies
+  - --filesystem=host-etc:ro
+  # To install a PWA application (user needs to grant permission)
+  # - --filesystem=home/.local/share/applications:create
+  # - --filesystem=home/.local/share/icons:create
+  # To allow installing shortcuts on the desktop
+  - --filesystem=xdg-desktop:create
+  # For default download directory to work as expected
+  - --filesystem=xdg-download
+  # For MPRIS media cover art
+  - --filesystem=xdg-documents
+  # For imported CA certificates
+  - --persist=.pki
+  # For GNOME proxy resolution (using portals instead of direct dconf)
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
+  # Set the release channel correctly
+  - --env=CHROME_VERSION_EXTRA=stable
+  # For KDE proxy resolution (KDE5 only)
+  - --filesystem=~/.config/kioslaverc:ro
+
