@@ -1,0 +1,91 @@
+app-id: com.mockoon.Mockoon
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: mockoon
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --device=dri
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: mockoon
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/mockoon/flatpak-node/cache
+        npm_config_cache: /run/build/mockoon/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+
+    sources:
+      - type: git
+        url: https://github.com/mockoon/mockoon.git
+        tag: v9.4.0
+
+      - type: script
+        dest-filename: run.sh
+        commands:
+          # Workaround for https://github.com/mockoon/mockoon/issues/1909
+          - zypak-wrapper.sh /app/main/mockoon --ozone-platform=x11 "$@"
+
+      - generated-sources.json
+
+      - type: file
+        path: com.mockoon.Mockoon.desktop
+
+      - type: file
+        path: com.mockoon.Mockoon.metainfo.xml
+
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+
+      # Build the library dependencies first (commons, commons-server, cloud)
+      - npm run build:libs
+
+      # Build the desktop app (renderer and main process)
+      - npm run build:prod:all --workspace=@mockoon/app
+
+      # Package the app for Linux
+      - |
+        case "$FLATPAK_ARCH" in
+          x86_64)
+            ELECTRON_BUILDER_ARCH_ARGS="--x64"
+            ;;
+          aarch64)
+            ELECTRON_BUILDER_ARCH_ARGS="--arm64"
+            ;;
+          *)
+            echo "Unsupported architecture: $FLATPAK_ARCH"
+            exit 1
+            ;;
+        esac
+        npm run package:linux --workspace=@mockoon/app -- $ELECTRON_BUILDER_ARCH_ARGS --dir
+
+      # Bundle app and dependencies
+      - cp -a packages/app/packages/linux*unpacked /app/main
+
+      # Install app icons
+      - install -Dm644 packages/app/build-res/icon_512x512x32.png /app/share/icons/hicolor/512x512/apps/com.mockoon.Mockoon.png
+      - install -Dm644 packages/app/build-res/icon_256x256x32.png /app/share/icons/hicolor/256x256/apps/com.mockoon.Mockoon.png
+      - install -Dm644 packages/app/build-res/icon_128x128x32.png /app/share/icons/hicolor/128x128/apps/com.mockoon.Mockoon.png
+      - install -Dm644 packages/app/build-res/icon_64x64x32.png /app/share/icons/hicolor/64x64/apps/com.mockoon.Mockoon.png
+
+      # Install desktop file
+      - install -Dm644 com.mockoon.Mockoon.desktop /app/share/applications/com.mockoon.Mockoon.desktop
+
+      # Install app wrapper
+      - install -Dm755 run.sh /app/bin/mockoon
+
+      # Install metainfo
+      - install -Dm644 com.mockoon.Mockoon.metainfo.xml /app/share/metainfo/com.mockoon.Mockoon.metainfo.xml
