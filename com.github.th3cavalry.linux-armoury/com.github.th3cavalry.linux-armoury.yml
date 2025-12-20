@@ -1,0 +1,117 @@
+id: com.github.th3cavalry.linux-armoury
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+add-extensions:
+  org.freedesktop.Sdk.Extension.rust-stable:
+    version: "24.08"
+    directory: "lib/sdk/rust-stable"
+    add-ld-path: "."
+    no-autodownload: false
+command: linux-armoury-gui
+
+finish-args:
+  # X11 + XShm access (for systems without Wayland)
+  - --share=ipc
+  - --socket=fallback-x11
+  # Wayland access
+  - --socket=wayland
+  # GPU acceleration for display management
+  - --device=dri
+  # Access system D-Bus for power management
+  - --socket=system-bus
+  # Talk to session D-Bus for notifications
+  - --socket=session-bus
+  # Access home directory for config files
+  - --filesystem=~/.config/linux-armoury:create
+  # Access to system files for hardware monitoring
+  - --filesystem=/sys/class/power_supply:ro
+  - --filesystem=/sys/devices/system/cpu:ro
+  - --filesystem=/sys/class/hwmon:ro
+  - --filesystem=/sys/class/leds
+  # Access /sys/devices for DMI information (avoiding symlink issue)
+  - --filesystem=/sys/devices/virtual/dmi:ro
+  - --filesystem=/sys/firmware/acpi/platform_profile
+  # Allow executing pkexec for privileged operations
+  - --talk-name=org.freedesktop.PolicyKit1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/linux-armoury/cargo
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.a"
+  - "*.la"
+
+modules:
+  - name: linux-armoury-daemon
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - mkdir -p .cargo
+      - echo '[source.crates-io]' > .cargo/config
+      - echo 'replace-with = "vendored-sources"' >> .cargo/config
+      - echo '[source.vendored-sources]' >> .cargo/config
+      - echo 'directory = "cargo/vendor"' >> .cargo/config
+      - cargo --offline fetch --manifest-path daemon/Cargo.toml --verbose
+      - cargo --offline build --release --manifest-path daemon/Cargo.toml --verbose
+      - install -Dm755 daemon/target/release/linux-armoury-daemon -t /app/bin/
+    sources:
+      - type: git
+        url: https://github.com/th3cavalry/Linux-Armoury
+        tag: v1.0.0
+        commit: ad2533c6c1e6a81425d641bc81c436b9d4e77424
+      - type: file
+        path: daemon-Cargo.lock
+        dest: daemon
+        dest-filename: Cargo.lock
+      - daemon-cargo-sources.json
+
+  - name: linux-armoury-gui
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - rm -f gui/Cargo.toml
+      - mkdir -p .cargo
+      - echo '[source.crates-io]' > .cargo/config
+      - echo 'replace-with = "vendored-sources"' >> .cargo/config
+      - echo '[source.vendored-sources]' >> .cargo/config
+      - echo 'directory = "cargo/vendor"' >> .cargo/config
+      - cargo --offline fetch --manifest-path gui/src-tauri/Cargo.toml --verbose
+      - cargo --offline build --release --manifest-path gui/src-tauri/Cargo.toml --verbose
+      - install -Dm755 gui/src-tauri/target/release/linux-armoury-gui -t /app/bin/
+    sources:
+      - type: git
+        url: https://github.com/th3cavalry/Linux-Armoury
+        tag: v1.0.0
+        commit: ad2533c6c1e6a81425d641bc81c436b9d4e77424
+      - type: file
+        path: gui-Cargo.lock
+        dest: gui/src-tauri
+        dest-filename: Cargo.lock
+      - gui-cargo-sources.json
+
+  - name: linux-armoury-data
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 data/dbus/com.github.th3cavalry.LinuxArmoury.conf -t /app/share/dbus-1/system.d/
+      - install -Dm644 data/polkit/com.github.th3cavalry.linux-armoury.policy -t /app/share/polkit-1/actions/
+      - install -Dm644 data/icons/com.github.th3cavalry.linux-armoury.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 com.github.th3cavalry.linux-armoury.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 com.github.th3cavalry.linux-armoury.desktop -t /app/share/applications/
+    sources:
+      - type: git
+        url: https://github.com/th3cavalry/Linux-Armoury
+        tag: v1.0.0
+        commit: ad2533c6c1e6a81425d641bc81c436b9d4e77424
