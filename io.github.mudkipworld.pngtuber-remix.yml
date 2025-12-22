@@ -1,0 +1,83 @@
+id: io.github.mudkipworld.pngtuber-remix
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+base: org.godotengine.godot.BaseApp
+base-version: '4.4'
+sdk: org.freedesktop.Sdk
+command: pngtuber-remix
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=all
+
+modules:
+  - name: scons
+    buildsystem: simple
+    sources:
+      # Source0
+      - type: archive
+        url: https://flylife.dl.sourceforge.net/project/scons/scons/4.10.1/SCons-4.10.1.tar.gz
+        sha256: 99c0e94a42a2c1182fa6859b0be697953db07ba936ecc9817ae0d218ced20b15
+    build-commands:
+      - python3 setup.py install --prefix="${FLATPAK_DEST}";
+    cleanup: ['*']
+
+  - name: pngtuber-remix
+    buildsystem: simple
+
+    sources:
+      - type: git
+        url: https://github.com/MudkipWorld/PNGTuber-Remix.git
+        tag: V1.4.1
+        disable-shallow-clone: true
+      - type: git
+        url: https://github.com/MudkipWorld/Godot-Global-Input.git
+        commit: ace1775114330f925579604e2459649464a38306
+        dest: ./.deps/GI
+      - type: patch
+        path: 0000_PTR_save_to_user.patch
+      - type: patch
+        path: 0001_PTR_GI.patch
+      - type: patch
+        path: 0002_GI_fix.patch
+        dest: ./.deps/GI
+      - type: archive
+        url: https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+        dest: ./godot
+        sha512: ef4e76880a514257175544952c61191106fdef3095b909bafed9fcbeb230c3e5533920a0f3012882dd4bbde83028a67549825794e2d2c3cf76eba7918b71370e
+
+    build-commands:
+      # Set source version on metainfo file
+      - git describe --tags --exclude nightly --always > "/app/bin/version.txt"
+      - >
+        sed -i 
+        "s/<release version=\"release\"\/>/<release version=\"$(git describe --tags --exclude nightly --always)\" date=\"$(date +%Y-%m-%d)\"\/>/"
+        ./packaging/linux/${FLATPAK_ID}.metainfo.xml
+      # Compile GlobalInput extension from source
+      - |
+        cd .deps/GI/godot-cpp
+        scons target=template_release
+      - |
+        cd .deps/GI/libuiohook
+        mkdir build
+        cd build
+        cmake -S .. -D BUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=../dist
+        cmake --build . --parallel 2 --target install
+      - |
+        cd ./.deps/GI/src
+        rm -rf ./bin
+        scons build=release
+      - |
+        rm ./GI/linux/*.so
+        cp ./.deps/GI/src/bin/linux/* ./GI/linux/
+      # Prepare export template
+      - mkdir -p /app/.local/share/godot/export_templates/4.4.1.stable/
+      - ln -s /app/bin/godot-runner /app/.local/share/godot/export_templates/4.4.1.stable/linux_release.x86_64
+      # Build
+      - HOME=/app ./godot/Godot_v4.4.1-stable_linux.x86_64 --headless --path . --export-release "Linux/X11" /app/bin/pngtuber-remix
+      # Desktop stuff
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 PicklesSurprised.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
