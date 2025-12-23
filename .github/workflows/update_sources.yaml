@@ -1,0 +1,44 @@
+name: Update sources
+
+on:
+  pull_request:
+    branches: [master, beta]
+    paths:
+      - 'cx.modal.Reflection.json'
+
+jobs:
+  cargo-sources:
+    name: cargo-sources.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          set -e
+          sudo apt install python3-tomlkit python3-aiohttp
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Update the cargo sources
+        run: |
+          ./update-cargo-sources.sh
+
+      - name: Commit changes
+        env:
+          # email sets "github-actions[bot]" as commit author, see https://github.community/t/github-actions-bot-email-address/17204/6
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_AUTHOR_NAME: github-actions[bot]
+        run: |
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git config user.name "$GIT_AUTHOR_NAME"
+
+          staged_files=`git diff --name-only --cached`
+          if [[ -n $staged_files ]]; then
+            git commit -m "Update sources"
+            git push
+          else
+            echo "No sources changed, commit skipped"
+          fi
