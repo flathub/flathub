@@ -1,0 +1,171 @@
+app-id: org.jellyfin.JellyfinDesktop
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: jellyfin-desktop
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --own-name=org.mpris.MediaPlayer2.JellyfinDesktop.*
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /bin/event_rpcgen.py
+  - /include
+  - /lib/cmake
+  - /lib/metatypes
+  - /lib/modules
+  - /lib/pkgconfig
+  - /lib/sbom
+  - /mkspecs
+  - /share/man
+modules:
+  - name: jellyfin-desktop
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DUSE_STATIC_MPVQT=OFF
+    post-install:
+      - install -Dm644 resources/meta/org.jellyfin.JellyfinDesktop.desktop /app/share/applications/org.jellyfin.JellyfinDesktop.desktop
+      - install -Dm644 resources/images/icon.png /app/share/icons/hicolor/256x256/apps/org.jellyfin.JellyfinDesktop.png
+      - install -Dm644 resources/images/icon.svg /app/share/icons/hicolor/scalable/apps/org.jellyfin.JellyfinDesktop.svg
+      - rm -f /app/share/metainfo/org.jellyfin.JellyfinDesktop.appdata.xml
+      - install -Dm644 org.jellyfin.JellyfinDesktop.metainfo.xml /app/share/metainfo/org.jellyfin.JellyfinDesktop.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/jellyfin/jellyfin-desktop.git
+        tag: v2.0.0
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: file
+        url: https://raw.githubusercontent.com/jellyfin/jellyfin-desktop/eba84d1/resources/meta/org.jellyfin.JellyfinDesktop.appdata.xml
+        sha256: 8d3705bb23be41d1aeca76bb2ec314a853d02b06b5487338e64ae725a1b79804
+        dest-filename: org.jellyfin.JellyfinDesktop.metainfo.xml
+    modules:
+      - name: mpvqt
+        buildsystem: cmake-ninja
+        sources:
+          - type: archive
+            url: https://download.kde.org/stable/mpvqt/mpvqt-1.1.1.tar.xz
+            sha256: bdd1ea69338cf3017f628a886218b8c185ca24e8257f03207a3cf1bbb51e3d32
+            x-checker-data:
+              type: anitya
+              project-id: 370634
+              url-template: https://download.kde.org/stable/mpvqt/mpvqt-$version.tar.xz
+        modules:
+          - name: libmpv
+            buildsystem: meson
+            config-opts:
+              - -Dalsa=disabled
+              - -Dbuild-date=false
+              - -Ddebug=false
+              - -Dlibmpv=true
+              - -Dlua=enabled
+              - -Dmanpage-build=disabled
+            cleanup:
+              - /share/applications
+              - /share/bash-completion
+              - /share/doc
+              - /share/fish
+              - /share/icons
+              - /share/zsh
+            sources:
+              - type: archive
+                url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+                sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+                x-checker-data:
+                  type: anitya
+                  project-id: 5348
+                  stable-only: true
+                  url-template: https://github.com/mpv-player/mpv/archive/refs/tags/v$version.tar.gz
+
+            modules:
+              - name: luajit
+                no-autogen: true
+                make-args:
+                  - BUILDMODE=dynamic
+                  - PREFIX=${FLATPAK_DEST}
+                make-install-args:
+                  - PREFIX=${FLATPAK_DEST}
+                cleanup:
+                  - /bin
+                sources:
+                  - type: git
+                    url: https://github.com/openresty/luajit2.git
+                    tag: v2.1-20251030
+                    commit: 71fae383f6c4637d64b03a6d0ec76ae8c19d6821
+                    x-checker-data:
+                      type: git
+                      tag-pattern: ^v([\d.-]+)$
+
+              - name: libplacebo
+                buildsystem: meson
+                config-opts:
+                  - -Ddemos=false
+                cleanup:
+                  - /include
+                  - /lib/pkgconfig
+                sources:
+                  - type: git
+                    url: https://github.com/haasn/libplacebo.git
+                    tag: v7.351.0
+                    commit: 3188549fba13bbdf3a5a98de2a38c2e71f04e21e
+                    x-checker-data:
+                      type: git
+                      tag-pattern: ^v([\d.]+)$
+                  - type: patch
+                    path: vulkan-python-xml.patch
+
+              - name: libXpresent
+                buildsystem: autotools
+                sources:
+                  - type: archive
+                    url: https://xorg.freedesktop.org/archive/individual/lib/libXpresent-1.0.2.tar.xz
+                    sha256: 4e5b21b4812206a4b223013606ae31170502c1043038777a1ef8f70c09d37602
+                    x-checker-data:
+                      type: anitya
+                      project-id: 17166
+                      stable-only: true
+                      url-template: https://xorg.freedesktop.org/archive/individual/lib/libXpresent-$version.tar.xz
+
+              - name: libass
+                config-opts:
+                  - --disable-static
+                  - --enable-asm
+                  - --enable-harfbuzz
+                  - --enable-fontconfig
+                sources:
+                  - type: archive
+                    url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz
+                    sha256: a886b3b80867f437bc55cff3280a652bfa0d37b43d2aff39ddf3c4f288b8c5a8
+                    x-checker-data:
+                      type: anitya
+                      project-id: 1560
+                      stable-only: true
+                      url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.gz
+
+              - name: uchardet
+                buildsystem: cmake-ninja
+                config-opts:
+                  - -DCMAKE_BUILD_TYPE=Release
+                  - -DBUILD_STATIC=0
+                  - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+                cleanup:
+                  - /bin
+                sources:
+                  - type: archive
+                    url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+                    sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+                    x-checker-data:
+                      type: anitya
+                      project-id: 9265
+                      stable-only: true
+                      url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
