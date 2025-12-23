@@ -1,0 +1,74 @@
+app-id: com.ryonwhyte.SimplyFrpGui
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: simply-frp-gui
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --filesystem=xdg-config/simply-frp-gui:create
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  - name: simply-frp-gui
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/simply-frp-gui/flatpak-node/cache
+        npm_config_cache: /run/build/simply-frp-gui/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    build-commands:
+      # Install dependencies offline
+      - npm ci --offline
+      # Build the application
+      - npm run icons
+      - npx tsc
+      - npx vite build
+      # Build electron unpacked
+      - npx electron-builder --linux dir --config.directories.output=flatpak-build
+      # Install application files
+      - cp -r flatpak-build/linux-unpacked/* /app/
+      # Install wrapper script
+      - install -Dm755 simply-frp-gui.sh /app/bin/simply-frp-gui
+      # Install desktop file
+      - install -Dm644 flatpak/com.ryonwhyte.SimplyFrpGui.desktop /app/share/applications/com.ryonwhyte.SimplyFrpGui.desktop
+      # Install metainfo
+      - install -Dm644 flatpak/com.ryonwhyte.SimplyFrpGui.metainfo.xml /app/share/metainfo/com.ryonwhyte.SimplyFrpGui.metainfo.xml
+      # Install license
+      - install -Dm644 LICENSE /app/share/licenses/com.ryonwhyte.SimplyFrpGui/LICENSE
+      # Install icons
+      - install -Dm644 resources/icons/256x256.png /app/share/icons/hicolor/256x256/apps/com.ryonwhyte.SimplyFrpGui.png
+      - install -Dm644 resources/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.ryonwhyte.SimplyFrpGui.png
+      - install -Dm644 resources/icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.ryonwhyte.SimplyFrpGui.png
+      - install -Dm644 resources/icons/48x48.png /app/share/icons/hicolor/48x48/apps/com.ryonwhyte.SimplyFrpGui.png
+      - install -Dm644 resources/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.ryonwhyte.SimplyFrpGui.png
+      - install -Dm644 resources/icons/16x16.png /app/share/icons/hicolor/16x16/apps/com.ryonwhyte.SimplyFrpGui.png
+    sources:
+      - type: git
+        url: https://github.com/ryonwhyte/Simply-FRP-GUI-Client.git
+        tag: v0.1.1
+      # Generated npm sources - run: flatpak-node-generator npm package-lock.json
+      - generated-sources.json
+      # Wrapper script for Electron with zypak
+      - type: script
+        dest-filename: simply-frp-gui.sh
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - exec zypak-wrapper /app/simply-frp-gui "$@"
