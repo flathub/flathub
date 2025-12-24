@@ -1,0 +1,88 @@
+id: com.sitepactja.MutagenSyncManager
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: mutagen-sync-manager
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --filesystem=~/.ssh:ro
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --env=ELECTRON_TRASH=gio
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  # Mutagen CLI - file synchronization tool
+  - name: mutagen
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 mutagen /app/bin/mutagen
+      - install -Dm644 mutagen-agents.tar.gz /app/bin/mutagen-agents.tar.gz
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_amd64_v0.18.1.tar.gz
+        sha256: 7735286c778cc438418209f24d03a64f3a0151c8065ef0fe079cfaf093af6f8f
+        strip-components: 0
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_arm64_v0.18.1.tar.gz
+        sha256: 8a0cd0f34b3ef606cf93f35d55dc38f4d580e7c4e0c1ab361fc55ec2a05f37f5
+        strip-components: 0
+
+  # Main application
+  - name: mutagen-sync-manager
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/mutagen-sync-manager/flatpak-node/cache
+        npm_config_cache: /run/build/mutagen-sync-manager/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    build-commands:
+      # Install dependencies offline
+      - cd frontend && npm ci --offline
+      # Build the application
+      - cd frontend && npm run build
+      # Build electron unpacked
+      - cd frontend && npx electron-builder --linux dir --config.directories.output=flatpak-build
+      # Install application files
+      - cp -r frontend/flatpak-build/linux-unpacked/* /app/
+      # Install wrapper script
+      - install -Dm755 mutagen-sync-manager.sh /app/bin/mutagen-sync-manager
+      # Install desktop file
+      - install -Dm644 flatpak/com.sitepactja.MutagenSyncManager.desktop /app/share/applications/com.sitepactja.MutagenSyncManager.desktop
+      # Install metainfo
+      - install -Dm644 flatpak/com.sitepactja.MutagenSyncManager.metainfo.xml /app/share/metainfo/com.sitepactja.MutagenSyncManager.metainfo.xml
+      # Install icons
+      - install -Dm644 frontend/public/icon.png /app/share/icons/hicolor/512x512/apps/com.sitepactja.MutagenSyncManager.png
+      # Install backend
+      - mkdir -p /app/backend
+      - cp -r backend/* /app/backend/
+    sources:
+      - type: git
+        url: https://github.com/ryonwhyte/sitepact-mutagen-gui.git
+        tag: v1.2.1
+      # Generated npm sources - run: flatpak-node-generator npm package-lock.json --recursive
+      - generated-sources.json
+      # Wrapper script for Electron with zypak
+      - type: script
+        dest-filename: mutagen-sync-manager.sh
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - exec zypak-wrapper /app/mutagen-sync-manager "$@"
