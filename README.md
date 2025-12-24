@@ -1,0 +1,2 @@
+# net.lockbook.app
+flatpak
