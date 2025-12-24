@@ -98,8 +98,36 @@ jobs:
 
             PR_LABELS="$(gh pr view "$PR_NUM" --json labels -q '.labels[].name')"
 
-            PR_THREAD_COUNT=$(gh api repos/$GH_REPO/pulls/$PR_NUM/comments \
-                --jq '[.[] | select(.position != null)] | length')
+            get_unresolved_review_threads() {
+              owner=$1
+              repo=$2
+              pr_number=$3
+
+              gh api graphql -f query='
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    reviewThreads(first: 100) {
+                      nodes {
+                        isResolved
+                        comments(first: 1) {
+                          nodes {
+                            body
+                            path
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' \
+              -F owner="$owner" \
+              -F repo="$repo" \
+              -F number="$pr_number" \
+              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'
+            }
+
+            PR_THREAD_COUNT=$(get_unresolved_review_threads flathub flathub $PR_NUM)
 
             PR_FILES=$(gh pr view "$PR_NUM" --json files --jq '.files[].path')
 
@@ -256,9 +284,18 @@ jobs:
                 gh pr comment "$PR_NUM" --body "$LOCKED_COMMENT" || true
                 gh pr lock "$PR_NUM" || true
             fi
-            if label_exists_any "awaiting-review" && [ "$PR_THREAD_COUNT" -gt 0 ]; then
+            if label_exists_any "awaiting-review"; then
+              if [ "$PR_THREAD_COUNT" -gt 0 ]; then
                 echo "Has awaiting-review label and review comments, marking as awaiting-changes"
-                gh pr edit "$PR_NUM" --add-label "awaiting-changes" --remove-label "awaiting-review" || true
+                gh pr edit "$PR_NUM" \
+                  --add-label "awaiting-changes" \
+                  --remove-label "awaiting-review" || true
+              else
+                echo "No review comments, ensuring awaiting-review label"
+                gh pr edit "$PR_NUM" \
+                  --add-label "awaiting-review" \
+                  --remove-label "awaiting-changes" || true
+              fi
             fi
           done
         env:
