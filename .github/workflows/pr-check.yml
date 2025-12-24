@@ -67,7 +67,7 @@ jobs:
 
           for PR_NUM in "${PR_NUMBERS[@]}"; do
             echo "Checking PR https://github.com/flathub/flathub/pull/$PR_NUM"
-            gh pr edit "$PR_NUM" --add-label "work-in-progress" || true
+            gh pr edit "$PR_NUM" --add-label "work-in-progress" >/dev/null 2>&1 || true
           done
 
       - name: Validate PRs
@@ -125,23 +125,23 @@ jobs:
               -F owner="$owner" \
               -F repo="$repo" \
               -F number="$pr_number" \
-              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'
+              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' 2>/dev/null
             }
 
             PR_THREAD_COUNT=$(get_unresolved_review_threads flathub flathub $PR_NUM)
 
             PR_FILES=$(gh pr view "$PR_NUM" --json files --jq '.files[].path')
 
-            COMMIT_COUNT="(gh api repos/$GH_REPO/pulls/$PR_NUM --jq '.commits')"
+            COMMIT_COUNT="(gh api repos/$GH_REPO/pulls/$PR_NUM --jq '.commits' 2>/dev/null)"
 
-            CONTAINS_MASTER=$(gh api repos/$GH_REPO/pulls/$PR_NUM/commits --jq '.[1] | (.commit.author.email == "mclasen@redhat.com" and .commit.message == "Add some instructions")')
+            CONTAINS_MASTER=$(gh api repos/$GH_REPO/pulls/$PR_NUM/commits --jq '.[1] | (.commit.author.email == "mclasen@redhat.com" and .commit.message == "Add some instructions")' 2>/dev/null)
 
             BLOCKED=0
             CHECKLIST_FAILED=0
             REVIEW_COMMENT_LINES=()
 
             gh pr view $PR_NUM --json isDraft --jq '.isDraft' | grep -q false && \
-              gh pr edit $PR_NUM --remove-label "work-in-progress" || true
+              gh pr edit $PR_NUM --remove-label "work-in-progress" >/dev/null 2>&1 || true
 
             comment_exists() {
               local comment="$1"
@@ -180,7 +180,7 @@ jobs:
               if ! label_exists_any "pr-check-blocked" "blocked"; then
                 if ! comment_exists_any "$BUILD_START_COMMENT_PARTIAL" "$BUILD_SUCCESS_COMMENT"; then
                   echo "PR is not marked as blocked and none of the build comments exist. Starting a build"
-                  gh pr comment "$PR_NUM" --body "$BUILD_START_COMMENT" || true
+                  gh pr comment "$PR_NUM" --body "$BUILD_START_COMMENT" >/dev/null 2>&1 || true
                 fi
               fi
             }
@@ -255,29 +255,29 @@ jobs:
                   DOMAIN_COMMENT="$DOMAIN_COMMENT_PARTIAL $DOMAIN. $VERIF_COMMENT. Please comment if this incorrect."
                   if ! comment_contains "$VERIF_URL"; then
                     echo "Did not find domain comment, commenting"
-                    gh pr comment "$PR_NUM" --body "$DOMAIN_COMMENT" || true
+                    gh pr comment "$PR_NUM" --body "$DOMAIN_COMMENT" >/dev/null 2>&1 || true
                   fi
                 fi
               fi
               if label_exists_any "pr-check-blocked"; then
                 echo "Removing pr-check-blocked label"
-                gh pr edit "$PR_NUM" --remove-label "pr-check-blocked" || true
+                gh pr edit "$PR_NUM" --remove-label "pr-check-blocked" >/dev/null 2>&1 || true
               fi
               if ! label_exists_any "awaiting-changes" "awaiting-upstream" "blocked" "reviewed-waiting"; then
                 echo "Marking as awaiting-review"
-                gh pr edit "$PR_NUM" --add-label "awaiting-review" --remove-label "pr-check-blocked" || true
+                gh pr edit "$PR_NUM" --add-label "awaiting-review" --remove-label "pr-check-blocked" >/dev/null 2>&1 || true
               fi
               start_build
             elif [ "$BLOCKED" -eq 1 ]; then
               echo "Marking as blocked"
-              gh pr edit "$PR_NUM" --add-label "pr-check-blocked" --remove-label "awaiting-review" || true
+              gh pr edit "$PR_NUM" --add-label "pr-check-blocked" --remove-label "awaiting-review" >/dev/null 2>&1 || true
               if ! comment_exists "$REVIEW_COMMENT_PARTIAL"; then
                 echo "Did not find comment, commenting"
                 REVIEW_COMMENT="$BASE_REVIEW_COMMENT"
                 for line in "${REVIEW_COMMENT_LINES[@]}"; do
                   REVIEW_COMMENT="$REVIEW_COMMENT"$'\n'"$line"
                 done
-                gh pr comment "$PR_NUM" --body "$REVIEW_COMMENT" || true
+                gh pr comment "$PR_NUM" --body "$REVIEW_COMMENT" >/dev/null 2>&1 || true
               else
                 echo "Found comment, skipping commenting"
               fi
@@ -290,20 +290,20 @@ jobs:
               && ! comment_exists_any "$BUILD_SUCCESS_COMMENT" \
               && [ "$(echo "$PR_COMMENTS" | grep -E -c 'Test build.*failed')" -gt 5 ]; then
                 echo "PR is blocked and too many failing builds. Locking"
-                gh pr comment "$PR_NUM" --body "$LOCKED_COMMENT" || true
-                gh pr lock "$PR_NUM" || true
+                gh pr comment "$PR_NUM" --body "$LOCKED_COMMENT" >/dev/null 2>&1 || true
+                gh pr lock "$PR_NUM" >/dev/null 2>&1 || true
             fi
 
             if label_exists_any "awaiting-review" && [ "$PR_THREAD_COUNT" -gt 0 ]; then
               echo "Has awaiting-review label and review comments, marking as awaiting-changes"
               gh pr edit "$PR_NUM" \
                 --add-label "awaiting-changes" \
-                --remove-label "awaiting-review" || true
+                --remove-label "awaiting-review" >/dev/null 2>&1 || true
             elif label_exists_any "awaiting-changes" && [ "$PR_THREAD_COUNT" -eq 0 ]; then
               echo "No review comments, ensuring awaiting-review label"
               gh pr edit "$PR_NUM" \
                 --add-label "awaiting-review" \
-                --remove-label "awaiting-changes" || true
+                --remove-label "awaiting-changes" >/dev/null 2>&1 || true
               fi
 
             echo "================================================ Finished checking PR ================================================"
