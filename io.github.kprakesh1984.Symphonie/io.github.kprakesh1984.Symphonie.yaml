@@ -1,0 +1,72 @@
+# The final, production-ready manifest for Symphonie v1.0.17
+# This version fixes the SUID sandbox error by passing --no-sandbox.
+
+app-id: io.github.kprakesh1984.Symphonie
+
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+
+command: Symphonie
+
+finish-args:
+  - --filesystem=xdg-music:ro
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --share=network
+
+modules:
+  - name: symphonie
+    buildsystem: simple
+
+    build-options:
+      build-args:
+        - --share=network
+
+    build-commands:
+      - |
+        # Set the PATH.
+        export PATH="./bin:$PATH"
+
+        # Install dependencies and build the application.
+        npm install -g yarn
+        yarn install --frozen-lockfile
+        yarn dist:linux
+
+        # Copy the built application into the /app directory.
+        cp -r dist_electron/linux-unpacked/* /app/
+
+        # --- WRAPPER SCRIPT SETUP ---
+
+        # 1. Create the bin directory.
+        mkdir -p /app/bin
+
+        # 2. Rename the real executable.
+        mv /app/Symphonie /app/Symphonie.bin
+
+        # 3. Create the wrapper script.
+        # We add --no-sandbox to stop Electron from trying to use SUID.
+        cat <<EOF > /app/bin/Symphonie
+        #!/bin/sh
+        export LD_LIBRARY_PATH=/app:\$LD_LIBRARY_PATH
+        exec /app/Symphonie.bin --no-sandbox "\$@"
+        EOF
+
+        # 4. Make the wrapper script executable.
+        chmod +x /app/bin/Symphonie
+    sources:
+      # Source 1: Your application's source code.
+      - type: archive
+        url: https://github.com/kprakesh1984/symphonie/archive/refs/tags/linux-release-v1.0.17.tar.gz
+        sha256: 8d67e94f9821446d0be921506f68fdb203d34e4288d7b86306810058aa019198
+
+      # Source 2: The Node.js binaries.
+      - type: archive
+        url: https://nodejs.org/dist/v20.10.0/node-v20.10.0-linux-x64.tar.xz
+        sha256: 3fe4ec5d70c8b4ffc1461dec83ab23fc70124e137c4cbbe1ccc9d6ae6ec04a7d
+
+
+      # Source 3: AppStream Metadata (Must exist in your local folder)
+      - type: file
+        path: io.github.kprakesh1984.Symphonie.metainfo.xml
