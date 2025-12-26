@@ -11,8 +11,12 @@ finish-args:
   - --share=ipc
   - --share=network
   - --socket=x11
-  # - --socket=wayland
-  # - --socket=fallback-x11
+  - --env=XDG_SESSION_TYPE=x11
+  
+  # 这个软件恐怕只在X11下测试过
+  # 虽然 $CCSDK_ZTE_DIR/bin/uSmartView_VDI_Client 这个Qt客户端可以在Wayland下运行
+  # 但仍然使用X11后端以避免潜在问题
+  - --env=QT_QPA_PLATFORM=xcb
 
   - --socket=pulseaudio
 
@@ -23,6 +27,7 @@ finish-args:
   - --talk-name=org.freedesktop.ScreenSaver
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --system-talk-name=org.freedesktop.login1
 
 modules:
   - name: fontconfig
@@ -54,6 +59,9 @@ modules:
     sources:
       - type: script
         commands:
+          - mkdir -p /var/cache/teml
+          - mkdir -p /var/cache/vdi_log
+          
           - CY_INS_DIR=/app/extra/chuanyun-vdi-client
           - CY_ADDON_PATH=resources/app.asar.unpacked/node_modules
 
@@ -63,27 +71,41 @@ modules:
           - export GST_PLUGIN_PATH="${CY_CCSDK_PATH}/lib"
           - export GST_PLUGIN_PATH_1_0="${CY_CCSDK_PATH}/lib"
           - export LD_LIBRARY_PATH="${CY_INS_DIR}/${CY_ADDON_PATH}/netdetectAddOn/ntsdk/lib:$LD_LIBRARY_PATH"
+          - echo ${CY_CCSDK_PATH}
+          - echo ${CY_BIN_PATH}
+          - echo ${LD_LIBRARY_PATH}
           - exec $CY_INS_DIR/cmcc-jtydn --no-sandbox "$@"
         dest-filename: cmcc-jtydn.sh
 
       - type: script
         commands:
           - set -e  # "panic" on error
-          - bsdtar --to-stdout -xf cloudpc.deb data.* | bsdtar -xf -
+          - cd /app/extra
+          - bsdtar --to-stdout -xf cloudpc.deb data.* | bsdtar -xf -          
           - mv opt/chuanyun-vdi-client .
 
-          - LIB_DIR="chuanyun-vdi-client/resources/app.asar.unpacked/node_modules/chuanyunAddOn/ccsdk/uos/lib"
+          - APP_ROOT="chuanyun-vdi-client"
+          - CCSDK_DIR="$APP_ROOT/resources/app.asar.unpacked/node_modules/chuanyunAddOn/ccsdk/uos"
+          - CCSDK_ZTE_DIR="$APP_ROOT/resources/app.asar.unpacked/node_modules/chuanyunAddOn-zte/ccsdk"
+          - LIB_DIR="$CCSDK_DIR/lib"
+          - LOG_DIR="$CCSDK_DIR/log"
+
           # Let app use the latest stable version provided by Flatpak instead of the outdated version that comes with it
-          - rm -f "$LIB_DIR/libm.so.6"
-          - rm -f "$LIB_DIR/libmount.so.1"
-          - rm -f "$LIB_DIR/libc.so.6"
-          - rm -f "$LIB_DIR/libpthread.so.0"
-          - rm -f "$LIB_DIR/libdl.so.2"
-          - rm -f "$LIB_DIR/librt.so.1"
-          - rm -f "$LIB_DIR/libstdc++.so.6"
-          - rm -f "$LIB_DIR/libz.so.1"
-          - rm -f "$LIB_DIR/libgcc_s.so.1"
-          - rm -rf cloudpc.deb usr opt data.*
+          - rm -f "$LIB_DIR/libm.so.6" "$LIB_DIR/libmount.so.1" "$LIB_DIR/libc.so.6" "$LIB_DIR/libpthread.so.0"
+          - rm -f "$LIB_DIR/libdl.so.2" "$LIB_DIR/librt.so.1" "$LIB_DIR/libstdc++.so.6" "$LIB_DIR/libz.so.1" "$LIB_DIR/libgcc_s.so.1"
+
+          # fix ./uSmartView_VDI_Client: error while loading shared libraries: libbz2.so.1.0: cannot open shared object file: No such file or directory
+          - cp /usr/lib/x86_64-linux-gnu/libbz2.so.1 "$CCSDK_ZTE_DIR/lib/libbz2.so.1.0"
+
+          # try fix log file access error
+          - rm -rf "$APP_ROOT/teml"
+          - ln -sf /var/cache/teml "$APP_ROOT/teml"
+          - rm -rf "$LOG_DIR"
+          - ln -sf /var/cache/vdi_log "$LOG_DIR"
+          - rm -rf "$CCSDK_ZTE_DIR/log"
+          - ln -sf /var/cache/vdi_log "$CCSDK_ZTE_DIR/log"
+
+          - rm -rf cloudpc.deb usr opt data.* control.tar.gz debian-binary
         dest-filename: apply_extra
 
       - type: file
@@ -96,14 +118,15 @@ modules:
       - type: extra-data
         filename: cloudpc.deb
         only-arches: [x86_64]
+        # url: http://localhost:8080/CMCC-JTYDN-UOSx86-2.18.18.deb
         url: https://dl.soho.komect.com/upgrade/download/app/54e93b1c142d7f98
         sha256: a48445526de529a0eaa9c909b0a2778d2d3891e22e3b191bc49f7b77abab9c1b
         size: 228716794
-        x-checker-data:
-          type: json
-          url: https://soho.komect.com/cube/h5/user/download/urls/v2/1
-          version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl | split(\"/\") | .[-1]'
-          url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl'
+        # x-checker-data:
+        #   type: json
+        #   url: https://soho.komect.com/cube/h5/user/download/urls/v2/1
+        #   version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl | split(\"/\") | .[-1]'
+        #   url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl'
 
       - type: extra-data
         filename: cloudpc.deb
@@ -111,7 +134,7 @@ modules:
         url: https://dl.soho.komect.com/upgrade/download/app/fd90d553f6cd3efb
         sha256: cac60b095c35cb037e506f95acfd4274a8d1e33f3d17ebcb1fdb3ae95ed54844
         size: 210237710
-        x-checker-data:
-          type: json
-          version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl | split(\"/\") | .[-1]'
-          url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl'
+        # x-checker-data:
+        #   type: json
+        #   version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl | split(\"/\") | .[-1]'
+        #   url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl'
