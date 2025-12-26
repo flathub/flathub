@@ -22,13 +22,6 @@ finish-args:
 
   - --filesystem=xdg-download
   - --filesystem=xdg-documents
-
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.ScreenSaver
-  - --talk-name=org.freedesktop.secrets
-  - --talk-name=org.kde.StatusNotifierWatcher
-  - --system-talk-name=org.freedesktop.login1
-
 modules:
   - name: fontconfig
     buildsystem: simple
@@ -43,6 +36,27 @@ modules:
         sha256: 2417ac0e6720fe8da55ee59f16e36cfe96737bc21432460a322bb0f395e3a521
       - type: file
         path: patch/local.conf
+  
+  - name: libpath-redirect
+    buildsystem: simple
+    build-commands:
+      - gcc -shared -fPIC -ldl path_redirect.c -o libpath_redirect.so
+      - install -Dm755 libpath_redirect.so /app/lib/libpath_redirect.so
+    sources:
+      - type: file
+        path: patch/path_redirect.c
+        
+  - name: lsb_release
+    buildsystem: simple
+    cleanup:
+      - /share/man
+    build-commands:
+      - make
+      - make install INSTALL_ROOT=${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: https://github.com/thkukuk/lsb-release_os-release.git
+        tag: v3.3
 
   - name: cloudpc
     buildsystem: simple
@@ -54,57 +68,14 @@ modules:
       - install -Dm644 com.komect.soho.cloudpc.png -t $FLATPAK_DEST/share/icons/hicolor/512x512/apps
       - install -Dm644 com.komect.soho.cloudpc.desktop -t $FLATPAK_DEST/share/applications
     sources:
-      - type: script
-        commands:
-          - mkdir -p /var/cache/teml
-          - mkdir -p /var/cache/vdi_log
-          
-          - CY_INS_DIR=/app/extra/chuanyun-vdi-client
-          - CY_ADDON_PATH=resources/app.asar.unpacked/node_modules
-
-          - CY_CCSDK_PATH=${CY_INS_DIR}/${CY_ADDON_PATH}/chuanyunAddOn/ccsdk/uos
-          - export CY_BIN_PATH="${CY_CCSDK_PATH}/bin"
-          - export LD_LIBRARY_PATH="${CY_CCSDK_PATH}/lib:$LD_LIBRARY_PATH"
-          - export GST_PLUGIN_PATH="${CY_CCSDK_PATH}/lib"
-          - export GST_PLUGIN_PATH_1_0="${CY_CCSDK_PATH}/lib"
-          - export LD_LIBRARY_PATH="${CY_INS_DIR}/${CY_ADDON_PATH}/netdetectAddOn/ntsdk/lib:$LD_LIBRARY_PATH"
-          - echo ${CY_CCSDK_PATH}
-          - echo ${CY_BIN_PATH}
-          - echo ${LD_LIBRARY_PATH}
-          - exec $CY_INS_DIR/cmcc-jtydn --no-sandbox "$@"
+      - type: file
+        path: patch/cmcc-jtydn.sh
         dest-filename: cmcc-jtydn.sh
 
-      - type: script
-        commands:
-          - set -e  # "panic" on error
-          - cd /app/extra
-          - bsdtar --to-stdout -xf cloudpc.deb data.* | bsdtar -xf -          
-          - mv opt/chuanyun-vdi-client .
-
-          - APP_ROOT="chuanyun-vdi-client"
-          - CCSDK_DIR="$APP_ROOT/resources/app.asar.unpacked/node_modules/chuanyunAddOn/ccsdk/uos"
-          - CCSDK_ZTE_DIR="$APP_ROOT/resources/app.asar.unpacked/node_modules/chuanyunAddOn-zte/ccsdk"
-          - LIB_DIR="$CCSDK_DIR/lib"
-          - LOG_DIR="$CCSDK_DIR/log"
-
-          # Let app use the latest stable version provided by Flatpak instead of the outdated version that comes with it
-          - rm -f "$LIB_DIR/libm.so.6" "$LIB_DIR/libmount.so.1" "$LIB_DIR/libc.so.6" "$LIB_DIR/libpthread.so.0"
-          - rm -f "$LIB_DIR/libdl.so.2" "$LIB_DIR/librt.so.1" "$LIB_DIR/libstdc++.so.6" "$LIB_DIR/libz.so.1" "$LIB_DIR/libgcc_s.so.1"
-
-          # fix ./uSmartView_VDI_Client: error while loading shared libraries: libbz2.so.1.0: cannot open shared object file: No such file or directory
-          - cp /usr/lib/x86_64-linux-gnu/libbz2.so.1 "$CCSDK_ZTE_DIR/lib/libbz2.so.1.0"
-
-          # try fix log file access error
-          - rm -rf "$APP_ROOT/teml"
-          - ln -sf /var/cache/teml "$APP_ROOT/teml"
-          - rm -rf "$LOG_DIR"
-          - ln -sf /var/cache/vdi_log "$LOG_DIR"
-          - rm -rf "$CCSDK_ZTE_DIR/log"
-          - ln -sf /var/cache/vdi_log "$CCSDK_ZTE_DIR/log"
-
-          - rm -rf cloudpc.deb usr opt data.* control.tar.gz debian-binary
+      - type: file
+        path: patch/apply_extra.sh
         dest-filename: apply_extra
-
+        
       - type: file
         path: com.komect.soho.cloudpc.metainfo.xml
       - type: file
@@ -115,8 +86,8 @@ modules:
       - type: extra-data
         filename: cloudpc.deb
         only-arches: [x86_64]
-        # url: http://localhost:8080/CMCC-JTYDN-UOSx86-2.18.18.deb
-        url: https://dl.soho.komect.com/upgrade/download/app/54e93b1c142d7f98
+        url: http://localhost:8080/CMCC-JTYDN-UOSx86-2.18.18.deb
+        # url: https://dl.soho.komect.com/upgrade/download/app/54e93b1c142d7f98
         sha256: a48445526de529a0eaa9c909b0a2778d2d3891e22e3b191bc49f7b77abab9c1b
         size: 228716794
         # x-checker-data:
