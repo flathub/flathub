@@ -1,0 +1,107 @@
+app-id: com.komect.soho.cloudpc
+runtime: org.kde.Platform
+runtime-version: '5.15-25.08'
+sdk: org.kde.Sdk
+command: cmcc-jtydn
+separate-locales: false
+
+finish-args:
+  - --device=dri
+
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --env=XDG_SESSION_TYPE=x11
+  
+  # This software is likely only tested on X11
+  # Although the Qt client $CCSDK_ZTE_DIR/bin/uSmartView_VDI_Client does not run properly on Wayland
+  # Still use X11 backend to avoid potential issues
+  - --env=QT_QPA_PLATFORM=xcb
+
+  - --socket=pulseaudio
+
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+modules:
+  - name: fontconfig
+    buildsystem: simple
+    build-commands:
+      - install -pDm644 "local.conf" -t "/app/etc/fonts/";
+      - install -pDm644 "70-noto-cjk.conf" -t "/app/etc/fonts/conf.d/";
+      # `||:` return a successful exit status
+      - fc-cache -fsv ||:
+    sources:
+      - type: file
+        url: https://gitlab.archlinux.org/archlinux/packaging/packages/noto-fonts-cjk/-/raw/5fd3534bf7a6e26c7506dc8f40dcd89f37d35627/70-noto-cjk.conf
+        sha256: 2417ac0e6720fe8da55ee59f16e36cfe96737bc21432460a322bb0f395e3a521
+      - type: file
+        path: patch/local.conf
+  
+  - name: libpath-redirect
+    buildsystem: simple
+    build-commands:
+      - gcc -shared -fPIC -ldl path_redirect.c -o libpath_redirect.so
+      - install -Dm755 libpath_redirect.so /app/lib/libpath_redirect.so
+    sources:
+      - type: file
+        path: patch/path_redirect.c
+        
+  - name: lsb_release
+    buildsystem: simple
+    cleanup:
+      - /share/man
+    build-commands:
+      - make
+      - make install INSTALL_ROOT=${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: https://github.com/thkukuk/lsb-release_os-release.git
+        tag: v3.3
+
+  - name: cloudpc
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra -t $FLATPAK_DEST/bin
+      - install -Dm755 cmcc-jtydn.sh -t $FLATPAK_DEST/bin
+      - install -Dm644 com.komect.soho.cloudpc.metainfo.xml -t $FLATPAK_DEST/share/metainfo
+      - install -Dm644 com.komect.soho.cloudpc.png -t $FLATPAK_DEST/share/icons/hicolor/512x512/apps
+      - install -Dm644 com.komect.soho.cloudpc.desktop -t $FLATPAK_DEST/share/applications
+    sources:
+      - type: file
+        path: patch/cmcc-jtydn.sh
+        dest-filename: cmcc-jtydn.sh
+
+      - type: file
+        path: patch/apply_extra.sh
+        dest-filename: apply_extra
+        
+      - type: file
+        path: com.komect.soho.cloudpc.metainfo.xml
+      - type: file
+        path: com.komect.soho.cloudpc.png
+      - type: file
+        path: com.komect.soho.cloudpc.desktop
+
+      - type: extra-data
+        filename: cloudpc.deb
+        only-arches: [x86_64]
+        # url: http://localhost:8080/CMCC-JTYDN-UOSx86-2.18.18.deb
+        url: https://dl.soho.komect.com/upgrade/download/app/54e93b1c142d7f98
+        sha256: a48445526de529a0eaa9c909b0a2778d2d3891e22e3b191bc49f7b77abab9c1b
+        size: 228716794
+        # x-checker-data:
+        #   type: json
+        #   url: https://soho.komect.com/cube/h5/user/download/urls/v2/1
+        #   version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl | split(\"/\") | .[-1]'
+        #   url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"AMD64(x86_64)\") | .subUrl'
+
+      - type: extra-data
+        filename: cloudpc.deb
+        only-arches: [aarch64]
+        url: https://dl.soho.komect.com/upgrade/download/app/fd90d553f6cd3efb
+        sha256: cac60b095c35cb037e506f95acfd4274a8d1e33f3d17ebcb1fdb3ae95ed54844
+        size: 210237710
+        # x-checker-data:
+        #   type: json
+        #   version-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl | split(\"/\") | .[-1]'
+        #   url-query: '.data[] | select(.clientType == \"pc\") | .downloadList[] | select(.clientLabel == \"linux\") | .downloadInfo[] | select(.name == \"UOS版（统信）\") | .subInfo[] | select(.subName == \"ARM64\") | .subUrl'
