@@ -22,12 +22,7 @@ fi
 
 # Définir le répertoire du journal par défaut
 if [ -z "$JOURNAL_DIRECTORY" ]; then
-    # Fallback si XDG_DOCUMENTS_DIR n'est pas défini (fréquent dans Flatpak)
-    if [ -z "$XDG_DOCUMENTS_DIR" ]; then
-        export JOURNAL_DIRECTORY="$HOME/Documents/BlueNotebookJournal"
-    else
-        export JOURNAL_DIRECTORY="$XDG_DOCUMENTS_DIR/BlueNotebookJournal"
-    fi
+    export JOURNAL_DIRECTORY="$HOME/Documents/BlueNotebookJournal"
 fi
 
 # Lancer l'application
