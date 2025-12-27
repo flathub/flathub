@@ -1,0 +1,153 @@
+app-id: io.github.benjamimgois.goverlay
+runtime: org.kde.Platform
+runtime-version: "6.10"
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.freepascal
+base: io.qt.qtwebengine.BaseApp
+base-version: "6.10"
+command: goverlay
+
+finish-args:
+  # GPU access for Vulkan/OpenGL overlays
+  - --device=dri
+
+  # File access
+  - --filesystem=xdg-config/MangoHud:rw
+  - --filesystem=xdg-config/vkBasalt:rw
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:rw
+  - --persist=fgmod
+
+  # Network access for downloads (OptiScaler, ReShade shaders, updates)
+  - --share=network
+
+  # GUI requirements
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.la"
+  - /share/doc
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  # Qt6 Pascal bindings
+  - name: qt6pas
+    buildsystem: qmake
+    subdir: cbindings
+    sources:
+      - type: archive
+        url: https://github.com/davidbannon/libqt6pas/archive/refs/tags/v6.2.10.tar.gz
+        sha256: dbcc13559f991958fb69de31d67c85575bbe278fdff0813b51787da50720d591
+      - type: patch
+        path: path_fix.patch
+
+  # Git (for ReShade shader cloning)
+  - name: git
+    buildsystem: autotools
+    make-args:
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.48.1.tar.xz
+        sha256: 1c5d545f5dc1eb51e95d2c50d98fdf88b1a36ba1fa30e9ae5d5385c6024f82ad
+    cleanup:
+    - /share/git-core/templates
+    - /share/git-gui
+    - /share/gitk
+    - /share/gitweb
+
+  # p7zip (provides 7z command)
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      - make all3 7z
+      - make install DEST_HOME=/app
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/refs/tags/v17.05.tar.gz
+        sha256: d2788f892571058c08d27095c22154579dfefb807ebe357d145ab2ddddefb1a6
+    cleanup:
+    - /share/doc
+
+  # Volk (Vulkan meta-loader, required by vulkan-tools)
+  - name: volk
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DVOLK_INSTALL=ON
+    sources:
+      - type: archive
+        url: https://github.com/zeux/volk/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
+        sha256: 8ffd0e81e29688f4abaa39e598937160b098228f37503903b10d481d4862ab85
+    cleanup:
+    - /include
+
+  # Vulkan tools (provides vkcube)
+  - name: vulkan-tools
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_CUBE=ON
+      - -DBUILD_VULKANINFO=OFF
+      - -DBUILD_ICD=OFF
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/v1.3.296.tar.gz
+        sha256: a44b5456f473dae0b6d15c23d3b1eb461bb8ef58867271abd641d99735a54b6c
+    cleanup:
+    - /share/vulkan
+
+  # SPIRV-Headers (required by vkBasalt)
+  - name: spirv-headers
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
+        sha256: 1423d58a1171611d5aba2bf6f8c69c72ef9c38a0aca12c3493e4fda64c9b2dc6
+    cleanup:
+    - "*"
+  # Goverlay application
+  - name: goverlay
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/benjamimgois/goverlay.git
+        tag: 1.6.8
+        commit: 73ce2ed7c89208aae245204e3eac7533eb7b52e9
+    build-commands:
+      - |
+        # Use Flatpak-compatible launcher script
+        cp data/goverlay.sh.flatpak data/goverlay.sh.in
+      - |
+        . /usr/lib/sdk/freepascal/enable.sh
+
+        export HOME=/run/build/goverlay
+        export LAZARUS_CONFIG_PATH=$HOME/.lazarus
+        export LAZARUSDIR="/usr/lib/sdk/freepascal/share/lazarus"
+        export FPC="/usr/lib/sdk/freepascal/bin/fpc"
+
+        # Build with lazbuild
+        make LAZBUILDOPTS="--lazarusdir=$LAZARUSDIR --compiler=$FPC"
+      - make install prefix=/app
+      - |
+        # Install fgmod script as a Flatpak command
+        install -Dm755 data/fgmod/fgmod /app/bin/fgmod
+        # Install fgmod data files to shared data directory
+        mkdir -p /app/share/goverlay/fgmod
+        cp -r data/fgmod/* /app/share/goverlay/fgmod/
+      - |
+        # Create directories for Vulkan layer extensions
+        mkdir -p /app/lib/extensions/vulkan/MangoHud
+        mkdir -p /app/lib/extensions/vulkan/vkBasalt
+        # Install metainfo
+        install -Dm644 data/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
