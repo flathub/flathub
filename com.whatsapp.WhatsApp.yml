@@ -1,0 +1,100 @@
+app-id: com.whatsapp.WhatsApp
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+base: io.gitlab.android_translation_layer.BaseApp
+base-version: stable
+command: whatsapp.sh
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --talk-name=com.google.android.gms
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '25.08'
+    directory: lib/ffmpeg
+    add-ld-path: .
+    no-autodownload: false
+    autodelete: false
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+modules:
+  - name: whatsapp
+    buildsystem: simple
+    build-commands:
+      - install -D whatsapp.sh /app/bin/whatsapp.sh
+      - install -D com.whatsapp.WhatsApp.desktop /app/share/applications/com.whatsapp.WhatsApp.desktop
+      - install -D com.whatsapp.WhatsApp.service /app/share/dbus-1/services/com.whatsapp.WhatsApp.service
+      - sed -E ':a; s/(viewBox="[^"]*)(([0-9]+)\.[0-9]+)/\1\3/; ta' WhatsApp.svg > WhatsApp_fixed.svg
+      - install -D WhatsApp_fixed.svg /app/share/icons/hicolor/scalable/apps/com.whatsapp.WhatsApp.svg
+      - install -D com.whatsapp.WhatsApp.metainfo.xml /app/share/metainfo/com.whatsapp.WhatsApp.metainfo.xml
+    sources:
+      - type: file
+        url: https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg
+        sha256: dd6a4db2c394ca11aa8ab087369f2f50a12e6f874e49db7b1d5609d0a8fb28ca
+      - type: file
+        path: whatsapp.sh
+      - type: file
+        path: com.whatsapp.WhatsApp.desktop
+      - type: file
+        path: com.whatsapp.WhatsApp.service
+      - type: file
+        path: com.whatsapp.WhatsApp.metainfo.xml
+      - type: extra-data
+        filename: WhatsApp.apk
+        # version 2.25.37.77
+        size: 136093624
+        url: https://www.apkmirror.com/wp-content/themes/APKMirror/download.php?id=11857912&key=cdaaf4ed0b0d7f254f8d65dbb142d9ae4c8d6391
+        sha256: 7938605958ed05ed816c7c6cd00f484f76629a01760a127a450c0f7499c4bb23
+
+  - name: run-dex2oat
+    buildsystem: simple
+    build-options:
+      arch:
+        x86_64:
+          env:
+            arch: x86_64
+        aarch64:
+          env:
+            arch: arm64
+    build-commands:
+      # stub library to work around /proc/self/maps not being available at install time
+      - gcc -fPIC -shared -o libstubpthread.so stubpthread.c -pthread
+      - install -Dm755 libstubpthread.so /app/lib/libstubpthread.so
+      # copy objcopy and its dependencies to make it available at install time
+      - ldd /usr/bin/objcopy | awk '/=>/ {print $3}' | while read lib; do
+            case "$(basename $lib)" in
+                libc.so*|libm.so*|libpthread.so*|libz.so*|libzstd.so*|ld-linux*.so*) 
+                    continue ;;
+                *) 
+                    install -D "$lib" "/app/lib/$(basename $lib)" ;;
+            esac
+        done
+      - install -D /usr/bin/objcopy /app/bin/objcopy
+      # hardcode $arch into the script, because $FLATPAK_ARCH is not available at install time
+      - sed -i "s/\$arch/$arch/g" apply_extra
+      - install -Dm755 apply_extra /app/bin/apply_extra
+    sources:
+      - type: file
+        path: stubpthread.c
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/app/lib/art
+          - export LD_PRELOAD=$LD_PRELOAD:/app/lib/libstubpthread.so
+          - mkdir -p oat/$arch
+          - dex2oat --dex-file=WhatsApp.apk --oat-file=oat/$arch/WhatsApp.odex --host
+          # compress debug info
+          - objcopy --compress-debug-sections=zstd oat/$arch/WhatsApp.odex WhatsApp.odex
+          - mv WhatsApp.odex oat/$arch/WhatsApp.odex
+          # strip java code and foreign arches from apk
+          - zip -d WhatsApp.apk "classes*.dex"
+          - for d in $(unzip -Z1 WhatsApp.apk | grep '^lib/' | cut -d/ -f2 | sort -u); do
+              if [ "$d" != "$arch" ]; then
+                zip -d WhatsApp.apk "lib/$d/*";
+              fi
+            done
