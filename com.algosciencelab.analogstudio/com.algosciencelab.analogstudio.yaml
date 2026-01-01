@@ -1,0 +1,66 @@
+app-id: com.algosciencelab.analogstudio
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+
+command: analogstudio
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --filesystem=/tmp
+
+modules:
+  - name: analogstudio
+    buildsystem: simple
+    build-commands:
+      - npm ci
+      - npm run build
+      - mkdir -p /app/bin /app/share/applications /app/share/icons/hicolor/256x256/apps
+      - cp -r dist /app/share/analogstudio/
+      - cp main.js preload.js package.json /app/share/analogstudio/
+      - cp -r src/utils /app/share/analogstudio/src/
+      - cp -r src/data /app/share/analogstudio/src/
+      - install -D com.algosciencelab.analogstudio.desktop /app/share/applications/
+      - install -D 256x256/com.algosciencelab.analogstudio.png /app/share/icons/hicolor/256x256/apps/
+      - install -D 128x128/com.algosciencelab.analogstudio.png /app/share/icons/hicolor/128x128/apps/
+      - install -D 64x64/com.algosciencelab.analogstudio.png /app/share/icons/hicolor/64x64/apps/
+      - install -D 32x32/com.algosciencelab.analogstudio.png /app/share/icons/hicolor/32x32/apps/
+      - install -D analogstudio.sh /app/bin/analogstudio
+    sources:
+      - type: git
+        url: https://github.com/algoscienceacademy/AnalogStudio.git
+        branch: main
+
+  - name: ngspice
+    config-opts:
+      - --enable-xspice
+      - --enable-cider
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/ngspice/files/ng-spice-rework/38/ngspice-38.tar.gz
+        sha256: 0ee546db5737bada0b1519425e4ecf1d1a5d521fe980891dbdf43504b9d424a
+
+modules-final:
+  - name: wrapper-script
+    buildsystem: simple
+    build-commands:
+      - install -D analogstudio.sh /app/bin/analogstudio
+    sources:
+      - type: inline
+        contents: |
+          #!/bin/bash
+          export PATH=/app/bin:$PATH
+          export LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+          cd /app/share/analogstudio
+          exec env ELECTRON_OZONE_PLATFORM_HINT=auto /app/bin/electron . "$@"
+        dest-filename: analogstudio.sh
