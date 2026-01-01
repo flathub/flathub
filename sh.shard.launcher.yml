@@ -1,0 +1,60 @@
+id: sh.shard.launcher
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: shard-launcher
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Network for downloads and auth
+  - --share=network
+  # Shard data directory
+  - --filesystem=~/.shard:create
+  # Java runtime access (for launching Minecraft)
+  - --filesystem=/usr/lib/jvm:ro
+  - --filesystem=~/.local/share/java:ro
+  # Minecraft directory (optional, for migration)
+  - --filesystem=~/.minecraft:ro
+  # Environment variable for Flatpak detection
+  - --env=FLATPAK=1
+  # System tray support (optional)
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: shard-launcher
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/th0rgal/shard/releases/download/v0.1.4/shard-launcher-linux-x64.deb
+        sha256: a5ec1d388c0f83f5fd81682c441b7217c20dcbee8c79f91af946e924227fc8e8
+        dest-filename: shard-launcher.deb
+        only-arches:
+          - x86_64
+      - type: file
+        path: sh.shard.launcher.metainfo.xml
+    build-commands:
+      # Extract deb package
+      - ar x shard-launcher.deb
+      - tar xf data.tar.*
+      # Install binary
+      - install -Dm755 usr/bin/shard-launcher /app/bin/shard-launcher
+      # Install desktop file
+      - install -Dm644 usr/share/applications/*.desktop /app/share/applications/sh.shard.launcher.desktop
+      # Install icons
+      - |
+        for size in 32 128 256 512; do
+          if [ -f "usr/share/icons/hicolor/${size}x${size}/apps/"*.png ]; then
+            install -Dm644 "usr/share/icons/hicolor/${size}x${size}/apps/"*.png \
+              "/app/share/icons/hicolor/${size}x${size}/apps/sh.shard.launcher.png"
+          fi
+        done
+      # Install metainfo
+      - install -Dm644 sh.shard.launcher.metainfo.xml /app/share/metainfo/sh.shard.launcher.metainfo.xml
+    post-install:
+      # Fix desktop file for Flatpak
+      - sed -i 's|Exec=.*|Exec=shard-launcher|' /app/share/applications/sh.shard.launcher.desktop
+      - sed -i 's|Icon=.*|Icon=sh.shard.launcher|' /app/share/applications/sh.shard.launcher.desktop
