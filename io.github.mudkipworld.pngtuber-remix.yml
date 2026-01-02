@@ -1,0 +1,135 @@
+id: io.github.mudkipworld.pngtuber-remix
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+base: org.godotengine.godot.BaseApp
+base-version: '4.4-25.08'
+sdk: org.freedesktop.Sdk
+command: godot-runner
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=all
+  # App requires network access for it's protocol to contro the puppet remotely
+  - --share=network
+
+modules:
+  - name: scons
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://flylife.dl.sourceforge.net/project/scons/scons/4.10.1/SCons-4.10.1.tar.gz
+        sha256: 99c0e94a42a2c1182fa6859b0be697953db07ba936ecc9817ae0d218ced20b15
+    build-commands:
+      - python3 setup.py install --prefix="${FLATPAK_DEST}";
+    cleanup:
+      - '*'
+
+  - name: bundled-libraries-globalinput
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/MudkipWorld/Godot-Global-Input.git
+        commit: ace1775114330f925579604e2459649464a38306
+        dest: ./.deps/GI
+      - type: patch
+        path: 0003_GI_fix.patch
+        dest: ./.deps/GI
+    build-commands:
+      - |
+        cd .deps/GI/godot-cpp
+        scons target=template_release
+      - |
+        cd .deps/GI/libuiohook
+        mkdir build
+        cd build
+        cmake -S .. -D BUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=../dist
+        cmake --build . --parallel 2 --target install
+      - |
+        cd ./.deps/GI/src
+        rm -rf ./bin
+        scons build=release
+      - |
+        cp ./.deps/GI/src/bin/linux/* ${FLATPAK_DEST}/bin/
+    cleanup:
+      - '*'
+  
+  - name: bundled-libraries-godotgif
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/BOTLANNER/godot-gif.git
+        tag: 1.1.1
+        dest: ./.deps/godot-gif
+    build-commands:
+      - |
+        cd .deps/godot-gif
+        scons target=template_release
+      - |
+        cp ./.deps/godot-gif/demo/addons/godotgif/bin/libgodotgif.linux.* ${FLATPAK_DEST}/bin/
+    cleanup:
+      - '*'
+  
+  - name: bundled-libraries-custom-mesh-deform
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/MudkipWorld/GDExtensionsPlayGround.git
+        commit: 5ea7f79120ed12f145b4bafe956ced2e10cbc8c3
+        dest: ./.deps/GDExtensionsPlayGround
+      - type: git
+        url: https://github.com/godotengine/godot-cpp.git
+        commit: 4bc6e67d51df4c12e150fe4769911e239c627a47
+        dest: ./.deps/GDExtensionsPlayGround/godot-cpp
+      - type: patch
+        path: 0004_CM_defaults.patch
+        dest: ./.deps/GDExtensionsPlayGround
+    build-commands:
+      - |
+        cd .deps/GDExtensionsPlayGround/godot-cpp
+        scons target=template_release
+      - |
+        cd .deps/GDExtensionsPlayGround/CustomMeshDeform
+        rm -rf ./bin
+        scons build=release
+      - |
+        cp ./.deps/GDExtensionsPlayGround/CustomMeshDeform/bin/linux/CustomMesh.linux.* ${FLATPAK_DEST}/bin/
+    cleanup:
+      - '*'
+  
+  - name: pngtuber-remix
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/MudkipWorld/PNGTuber-Remix.git
+        tag: V1.4.1
+        disable-shallow-clone: true
+      - type: patch
+        path: 0000_PTR_save_to_user.patch
+      - type: patch
+        path: 0001_PTR_plugins.patch
+      - type: patch
+        path: 0002_PTR_version.patch
+      - type: archive
+        url: https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+        dest: ./godot
+        sha512: ef4e76880a514257175544952c61191106fdef3095b909bafed9fcbeb230c3e5533920a0f3012882dd4bbde83028a67549825794e2d2c3cf76eba7918b71370e
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.arm64.zip
+        dest: ./godot
+        sha512: 8af79fe5fbc4cc42f5a7e4a52bd124973e084218f4d299cb5400595c6083ca800a59770c9c289b622dfc164fc3c6f369b362134ea2ac44223361657ea7941b09
+        only-arches:
+          - aarch64
+    build-commands:
+      # Build
+      - |
+        git describe --tags --exclude nightly --always > ${FLATPAK_DEST}/bin/version.txt
+        HOME=${FLATPAK_DEST} ./godot/Godot_v4.4.1-stable_linux.* --headless --path . --export-pack "Linux/X11" ${FLATPAK_DEST}/bin/godot-runner.pck
+      - ln -s godot-runner ${FLATPAK_DEST}/bin/pngtuber-remix
+      # Desktop stuff
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 PicklesSurprised.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
