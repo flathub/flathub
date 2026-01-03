@@ -1,0 +1,92 @@
+app-id: io.github.mlm_games.mages
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: mages
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # For storing Matrix credentials and data
+  - --filesystem=xdg-data/mages:create
+  - --filesystem=xdg-config/mages:create
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: mages
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/mlm-games/mages/releases/download/1.3.1/mages-1.3.1-x86_64.AppImage
+        sha256: 4dcec67c23f16e2a310887f1a8ce642aae2734018f8c90c715cd25eecf5300b5
+        dest-filename: mages.AppImage
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/mlm-games/mages/releases/latest
+          is-main-source: true
+          version-query: .tag_name
+          url-query: |
+            .assets[]
+            | select(.name | endswith("x86_64.AppImage"))
+            | .browser_download_url
+
+      - type: file
+        url: https://github.com/mlm-games/mages/releases/download/1.3.1/mages-1.3.1-aarch64.AppImage
+        sha256: fae64b0c5adefd0e476739bc69f3afe17e3a3941041c6e7e1592f35b66ff985a
+        dest-filename: mages.AppImage
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/mlm-games/mages/releases/latest
+          version-query: .tag_name
+          url-query: |
+            .assets[]
+            | select(.name | endswith("aarch64.AppImage"))
+            | .browser_download_url
+
+      - type: git
+        url: https://github.com/mlm-games/mages.git
+        tag: 1.3.1
+        commit: d3122b17b55820c356d3cf021e37dbd5477e9888
+        x-checker-data:
+          type: git
+          tag-pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+    build-commands:
+      - chmod +x mages.AppImage
+      - ./mages.AppImage --appimage-extract
+
+      - mkdir -p ${FLATPAK_DEST}/lib/mages
+      - cp -r squashfs-root/bin ${FLATPAK_DEST}/lib/mages/
+      - cp -r squashfs-root/lib ${FLATPAK_DEST}/lib/mages/
+
+      - |
+        cat > ${FLATPAK_DEST}/bin/mages << 'EOF'
+        #!/bin/sh
+        export PATH="/app/jre/bin:${PATH}"
+        export JAVA_HOME="/app/jre"
+        exec /app/lib/mages/bin/Mages "$@"
+        EOF
+      - chmod +x ${FLATPAK_DEST}/bin/mages
+
+      - install -Dm644 squashfs-root/lib/Mages.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
