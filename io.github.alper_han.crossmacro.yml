@@ -1,0 +1,78 @@
+app-id: io.github.alper_han.crossmacro
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: crossmacro
+
+finish-args:
+  # X11 Access (Required for XTest, XInput2)
+  - --share=ipc
+  - --socket=x11
+
+  # GPU Acceleration (Recommended for Avalonia UI)
+  - --device=dri
+
+  # Detect keyboard layout on KDE Plasma
+  - --talk-name=org.kde.keyboard
+
+  # User files (macro save/load)
+  - --filesystem=xdg-documents/crossmacro:create
+
+  # .NET runtime location
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+build-options:
+  prepend-path: /usr/lib/sdk/dotnet10/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+  prepend-pkg-config-path: /usr/lib/sdk/dotnet10/lib/pkgconfig
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+modules:
+  # .NET Runtime Installation (Framework-Dependent approach)
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/dotnet10/bin/install.sh
+
+  - name: crossmacro
+    buildsystem: simple
+    build-commands:
+      # Publish as framework-dependent (no runtime bundled)
+      - dotnet publish src/CrossMacro.UI/CrossMacro.UI.csproj -c Release --no-self-contained -p:PublishReadyToRun=false -p:PublishTrimmed=false --source nuget-sources -o /app/lib/crossmacro
+
+      # Install launcher script
+      - install -Dm755 crossmacro.sh /app/bin/crossmacro
+
+      # Desktop entry
+      - install -Dm644 flatpak/io.github.alper_han.crossmacro.desktop /app/share/applications/io.github.alper_han.crossmacro.desktop
+
+      # Icons
+      - install -Dm644 src/CrossMacro.UI/Assets/icons/512x512/apps/crossmacro.png /app/share/icons/hicolor/512x512/apps/io.github.alper_han.crossmacro.png
+      - install -Dm644 src/CrossMacro.UI/Assets/icons/256x256/apps/crossmacro.png /app/share/icons/hicolor/256x256/apps/io.github.alper_han.crossmacro.png
+      - install -Dm644 src/CrossMacro.UI/Assets/icons/128x128/apps/crossmacro.png /app/share/icons/hicolor/128x128/apps/io.github.alper_han.crossmacro.png
+
+      # Metainfo
+      - install -Dm644 flatpak/io.github.alper_han.crossmacro.metainfo.xml /app/share/metainfo/io.github.alper_han.crossmacro.metainfo.xml
+
+      # License
+      - install -Dm644 LICENSE /app/share/licenses/io.github.alper_han.crossmacro/LICENSE
+
+    sources:
+      # Main source from GitHub
+      - type: git
+        url: https://github.com/alper-han/CrossMacro.git
+        tag: v0.8.5
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+      # Launcher script
+      - type: file
+        path: crossmacro.sh
+
+      # NuGet packages (offline)
+      - nuget-sources.json
