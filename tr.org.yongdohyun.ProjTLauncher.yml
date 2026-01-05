@@ -1,0 +1,112 @@
+id: tr.org.yongdohyun.ProjTLauncher
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+
+command: projtlauncher
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all # Grant access to all device nodes, often required by certain game mods for accessing specialized hardware like controllers, joysticks, or other input peripherals that use non-standard device paths.
+  - --share=network
+  - --socket=pulseaudio
+    # for Discord RPC mods
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+    # Mod drag&drop
+  - --filesystem=xdg-download:ro
+    # FTBApp import
+  - --persist=.ftba
+    # Userspace visibility for manual hugepages configuration
+    # Required for -XX:+UseLargePages
+  - --filesystem=/sys/kernel/mm/hugepages:ro
+    # Userspace visibility for transparent hugepages configuration
+    # Required for -XX:+UseTransparentHugePages
+  - --filesystem=/sys/kernel/mm/transparent_hugepage:ro
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+
+modules:
+  - name: glfw
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_SHARED_LIBS:BOOL=ON
+      - -DGLFW_BUILD_WAYLAND:BOOL=ON
+      - -DGLFW_BUILD_DOCS:BOOL=OFF
+    sources:
+      - type: git
+        url: https://github.com/glfw/glfw.git
+        tag: '3.4'
+        commit: 7b6aead9fb88b3623e3b3725ebb42670cbe4c579 # 3.4
+      - type: patch
+        path: patches/0009-Defer-setting-cursor-position-until-the-cursor-is-lo.patch
+
+  - name: xrandr
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xorg.freedesktop.org/archive/individual/app/xrandr-1.5.3.tar.xz
+        sha256: f8dd7566adb74147fab9964680b6bbadee87cf406a7fcff51718a5e6949b841c
+        x-checker-data:
+          type: anitya
+          project-id: 14957
+          stable-only: true
+          url-template: https://xorg.freedesktop.org/archive/individual/app/xrandr-$version.tar.xz
+    cleanup:
+      - /share/man
+      - /bin/xkeystone
+
+  - name: gamemode
+    buildsystem: meson
+    config-opts:
+      - -Dwith-sd-bus-provider=no-daemon
+      - -Dwith-examples=false
+    post-install:
+      # gamemoderun is installed for users who want to use wrapper commands
+      # post-install is running inside the build dir, we need it from the source though
+      - install -Dm755 ../data/gamemoderun -t /app/bin
+    sources:
+      - type: archive
+        dest-filename: gamemode.tar.gz
+        url: https://api.github.com/repos/FeralInteractive/gamemode/tarball/1.8.2
+        sha256: 2886d4ce543c78bd2a364316d5e7fd59ef06b71de63f896b37c6d3dc97658f60
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/FeralInteractive/gamemode/releases/latest
+          version-query: .tag_name
+          url-query: .tarball_url
+          timestamp-query: .published_at
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.a'
+
+  - name: projtlauncher
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DLauncher_BUILD_PLATFORM=flatpak
+      # This allows us to manage and update Java independently of this Flatpak
+      - -DLauncher_ENABLE_JAVA_DOWNLOADER=ON
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    build-options:
+      env:
+        JAVA_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+        JAVA_COMPILER: /usr/lib/sdk/openjdk17/jvm/openjdk-17/bin/javac
+    run-tests: true
+    post-install:
+      - mv /app/bin/projtlauncher /app/bin/projtrun
+      - install -Dm755 ../projtlauncher -t /app/bin
+    sources:
+      - type: git
+        url: https://github.com/Project-Tick/ProjT-Launcher.git
+        tag: 0.0.3-4
+        commit: f0d189dc9dcd5938cc52f385b610165f65198da8 # 0.0.3-4
+      - type: file
+        path: projtlauncher
