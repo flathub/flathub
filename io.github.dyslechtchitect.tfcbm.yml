@@ -1,0 +1,232 @@
+id: io.github.dyslechtchitect.tfcbm
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: tfcbm
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=fallback-x11
+  # Wayland access
+  - --socket=wayland
+  # DBus access for clipboard and extension communication
+  - --socket=session-bus
+  # Filesystem access for clipboard files
+  # Read-only access to home directory for copying files from any location
+  - --filesystem=home:ro
+  # Read-write access to XDG directories for user data
+  - --filesystem=xdg-download:rw
+  - --filesystem=xdg-documents:rw
+  # Access to install GNOME Shell extension
+  - --filesystem=~/.local/share/gnome-shell/extensions:create
+  # Access to autostart directory for "Start on Login" feature
+  - --filesystem=xdg-config/autostart:create
+  # Access to host dconf database for extension settings
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  # For clipboard operations
+  - --talk-name=org.gnome.Shell
+  - --talk-name=org.freedesktop.portal.Desktop
+  # Allow talking to host for extension installation and flatpak-spawn
+  - --talk-name=org.freedesktop.Flatpak
+  # PolicyKit for password authentication
+  - --system-talk-name=org.freedesktop.PolicyKit1
+
+modules:
+  # Python dependencies
+  - name: python3-pyyaml
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=/app pyyaml-*.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/54/ed/79a089b6be93607fa5cdaedf301d7dfb23af5f25c398d5ead2525b063e17/pyyaml-6.0.2.tar.gz
+        sha256: d584d9ec91ad65861cc08d42e834324ef890a082e591037abe114850ff7bbc3e
+
+  - name: python3-typing-extensions
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --prefix=/app typing_extensions-*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl
+        sha256: 04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
+
+  - name: python3-annotated-types
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --prefix=/app annotated_types-*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl
+        sha256: 1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53
+
+  - name: python3-pydantic-core
+    buildsystem: simple
+    build-commands:
+      - |
+        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')
+        if [ "$PYTHON_VERSION" = "313" ]; then
+          pip3 install --no-deps --prefix=/app pydantic_core-*-cp313-*.whl
+        else
+          pip3 install --no-deps --prefix=/app pydantic_core-*-cp312-*.whl
+        fi
+    sources:
+      # cp312 wheel for GNOME 47/48 (Python 3.12)
+      - type: file
+        url: https://files.pythonhosted.org/packages/8d/f0/49129b27c43396581a635d8710dae54a791b17dfc50c70164866bbf865e3/pydantic_core-2.27.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 6fb4aadc0b9a0c063206846d603b92030eb6f03069151a625667f982887153e2
+      # cp313 wheel for GNOME 49 (Python 3.13)
+      - type: file
+        url: https://files.pythonhosted.org/packages/a6/74/d12b2cd841d8724dc8ffb13fc5cef86566a53ed358103150209ecd5d1999/pydantic_core-2.27.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: bd8086fa684c4775c27f03f062cbb9eaa6e17f064307e86b21b9e0abc9c0f02e
+
+  - name: python3-pydantic
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --prefix=/app pydantic-*.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/58/26/82663c79010b28eddf29dcdd0ea723439535fa917fce5905885c0e9ba562/pydantic-2.10.5-py3-none-any.whl
+        sha256: 4dd4e322dbe55472cb7ca7e73f4b63574eecccf2835ffa2af9021ce113c83c53
+
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=/app pillow-*.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/a5/26/0d95c04c868f6bdb0c447e3ee2de5564411845e36a858cfd63766bc7b563/pillow-11.0.0.tar.gz
+        sha256: 72bacbaf24ac003fea9bff9837d1eedb6088758d41e100c1552930151f677739
+
+  # Main application
+  - name: tfcbm
+    buildsystem: simple
+    build-commands:
+      # Install Python files
+      - install -d ${FLATPAK_DEST}/lib/tfcbm
+      - cp -r ui ${FLATPAK_DEST}/lib/tfcbm/
+      - cp -r server ${FLATPAK_DEST}/lib/tfcbm/
+      - cp main.py ${FLATPAK_DEST}/lib/tfcbm/
+      - cp settings.yml ${FLATPAK_DEST}/lib/tfcbm/
+
+      # Install resources
+      - install -d ${FLATPAK_DEST}/share/tfcbm
+      - cp -r resouces/* ${FLATPAK_DEST}/share/tfcbm/
+
+      # Install icons
+      - install -Dm644 icons/hicolor/scalable/apps/io.github.dyslechtchitect.tfcbm.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.dyslechtchitect.tfcbm.svg
+
+      # Install desktop file and metainfo
+      - install -Dm644 io.github.dyslechtchitect.tfcbm.desktop ${FLATPAK_DEST}/share/applications/io.github.dyslechtchitect.tfcbm.desktop
+      - install -Dm644 io.github.dyslechtchitect.tfcbm.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.dyslechtchitect.tfcbm.metainfo.xml
+
+      # Install D-Bus service file
+      - install -Dm644 io.github.dyslechtchitect.tfcbm.service ${FLATPAK_DEST}/share/dbus-1/services/io.github.dyslechtchitect.tfcbm.service
+
+      # Create GNOME Shell extension zip package for installation
+      - install -d ${FLATPAK_DEST}/share/tfcbm
+      - cd gnome-extension && zip -r ${FLATPAK_DEST}/share/tfcbm/tfcbm-clipboard-monitor@github.com.zip
+          extension.js metadata.json tfcbm.svg src/ schemas/
+          -x "*.md" "*.sh" "test/*" "package.json" && cd ..
+
+      # Create wrapper script
+      - install -d ${FLATPAK_DEST}/bin
+      - |
+        cat > ${FLATPAK_DEST}/bin/tfcbm << 'EOF'
+        #!/bin/bash
+        export PYTHONPATH="/app/lib/tfcbm:${PYTHONPATH}"
+        cd /app/lib/tfcbm
+
+        # Start the IPC server in background
+        python3 main.py > /tmp/tfcbm_server.log 2>&1 &
+        SERVER_PID=$!
+
+        # Give server a moment to start
+        sleep 0.5
+
+        # Launch the UI with server PID
+        exec python3 ui/main.py --server-pid $SERVER_PID "$@"
+        EOF
+      - chmod +x ${FLATPAK_DEST}/bin/tfcbm
+
+      # Create extension installer script
+      - |
+        cat > ${FLATPAK_DEST}/bin/tfcbm-install-extension << 'EOF'
+        #!/bin/bash
+        set -e
+
+        EXTENSION_UUID="tfcbm-clipboard-monitor@github.com"
+        EXTENSION_ZIP="/app/share/tfcbm/${EXTENSION_UUID}.zip"
+
+        # Detect if we're running inside flatpak
+        if [ -n "${FLATPAK_ID}" ]; then
+            # Running inside flatpak - use flatpak-spawn to run host commands
+            CMD_PREFIX="flatpak-spawn --host"
+        else
+            # Running on host
+            CMD_PREFIX=""
+        fi
+
+        # Check if gnome-extensions command is available on host
+        if ! ${CMD_PREFIX} gnome-extensions --version &> /dev/null; then
+            echo "Error: gnome-extensions command not found on the host. Are you running GNOME?"
+            exit 1
+        fi
+
+        # Check if extension is already installed
+        if ${CMD_PREFIX} gnome-extensions list 2>/dev/null | grep -q "^${EXTENSION_UUID}$"; then
+            echo "Extension ${EXTENSION_UUID} is already installed."
+            read -p "Do you want to reinstall? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Installation cancelled."
+                exit 0
+            fi
+
+            # Uninstall the existing extension
+            echo "Uninstalling existing extension..."
+            ${CMD_PREFIX} gnome-extensions uninstall "${EXTENSION_UUID}" || true
+        fi
+
+        echo "Installing GNOME Shell extension..."
+
+        # Use gnome-extensions install with --force to install/reinstall
+        if ${CMD_PREFIX} gnome-extensions install --force "${EXTENSION_ZIP}"; then
+            echo ""
+            echo "✓ Extension installed successfully!"
+            echo ""
+            echo "Next steps:"
+            if [ "$XDG_SESSION_TYPE" = "x11" ]; then
+                echo "  1. Restart GNOME Shell: Press Alt+F2, type 'r', and press Enter"
+                echo "  2. Enable the extension:"
+                echo "     gnome-extensions enable ${EXTENSION_UUID}"
+                echo "  3. Launch TFCBM"
+            else
+                echo "  1. Log out and log back in (required on Wayland)"
+                echo "  2. The extension will be automatically enabled"
+                echo "  3. Launch TFCBM"
+            fi
+            echo ""
+
+            # Try to enable it anyway (will work after session restart)
+            ${CMD_PREFIX} gnome-extensions enable "${EXTENSION_UUID}" 2>/dev/null || true
+        else
+            echo "Error: Failed to install extension."
+            exit 1
+        fi
+        EOF
+      - chmod +x ${FLATPAK_DEST}/bin/tfcbm-install-extension
+    sources:
+      - type: dir
+        path: .
