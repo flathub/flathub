@@ -1,0 +1,78 @@
+app-id: org.fcast.Sender
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm20
+
+command: fcast-sender
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-pictures:ro
+  - --env=PULSE_PROP_media.category=Manager
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /bin/protoc
+  - /lib/*.a
+modules:
+  - name: gst-plugins-good
+    buildsystem: meson
+    config-opts:
+      - -Ddoc=disabled
+      - -Dtests=disabled
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.26.9.tar.xz
+        sha256: f38566fb53ae56b7019a039475311756a28eb978a781154d67813dcb551ff5fe
+
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v33.1/protobuf-33.1.tar.gz
+        sha256: fda132cb0c86400381c0af1fe98bd0f775cb566cb247cdcc105e344e00acc30e
+        x-checker-data:
+          type: anitya
+          project-id: 3715
+          stable-only: true
+          url-template: https://github.com/protocolbuffers/protobuf/releases/download/v$version/protobuf-$version.tar.gz
+
+  - name: fcast-sender
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+      env:
+        CARGO_HOME: /run/build/fcast-sender/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo build --offline --release -p desktop-sender
+      - install -Dm0755 target/release/desktop-sender ${FLATPAK_DEST}/bin/fcast-sender
+
+      - install -Dm0644 .flatpak/org.fcast.Sender.desktop ${FLATPAK_DEST}/share/applications/org.fcast.Sender.desktop
+      - install -Dm0644 .flatpak/org.fcast.Sender.metainfo.xml  ${FLATPAK_DEST}/share/metainfo/org.fcast.Sender.metainfo.xml
+
+      - install -Dm0644 senders/extra/fcast_128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/org.fcast.Sender.png
+
+      - install -Dm0644 senders/extra/fcast_256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/org.fcast.Sender.png
+
+      - install -Dm0644 senders/extra/fcast_512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/org.fcast.Sender.png
+    post-install:
+      - install -Dm0644 senders/extra/LICENSE-GPL -t ${FLATPAK_DEST}/share/licenses/$FLATPAK_ID/fcast-sender
+    sources:
+      - type: git
+        url: https://gitlab.futo.org/videostreaming/fcast.git
+        commit: e5fe2a80430d477bce348fc217ec971e5857e7ab
+      - cargo-sources.json
