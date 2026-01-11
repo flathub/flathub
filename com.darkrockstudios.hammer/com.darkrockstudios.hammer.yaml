@@ -1,0 +1,77 @@
+app-id: com.darkrockstudios.hammer
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+
+command: hammer
+
+finish-args:
+  # Display access
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  # File access
+  - --filesystem=home
+  - --filesystem=xdg-documents
+  # Network for sync
+  - --share=network
+
+modules:
+  - name: hammer
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /usr/lib/sdk/openjdk21/bin:/usr/bin
+        JAVA_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
+      # Allow network access for Maven/Gradle dependencies
+      build-args:
+        - --share=network
+    build-commands:
+      # Setup Gradle and build
+      - unzip -q gradle.zip
+      - gradle-8.13/bin/gradle desktop:createReleaseDistributable --no-daemon --stacktrace
+
+      # Install the application
+      - mkdir -p /app/lib/hammer
+      - cp -r desktop/build/installers/main-release/app/hammer/* /app/lib/hammer/
+
+      # Create launcher script
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/hammer << 'EOF'
+        #!/bin/bash
+        export JAVA_HOME=/app/lib/hammer/lib/runtime
+        export PATH=$JAVA_HOME/bin:$PATH
+        exec /app/lib/hammer/bin/hammer "$@"
+        EOF
+      - chmod +x /app/bin/hammer
+
+      # Install desktop file
+      - install -Dm644 flatpak/com.darkrockstudios.hammer.desktop
+        /app/share/applications/com.darkrockstudios.hammer.desktop
+
+      # Install icon
+      - install -Dm644 desktop/icons/linux.png
+        /app/share/icons/hicolor/256x256/apps/com.darkrockstudios.hammer.png
+
+      # Install metainfo
+      - install -Dm644 flatpak/com.darkrockstudios.hammer.metainfo.xml
+        /app/share/metainfo/com.darkrockstudios.hammer.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/Wavesonics/hammer-editor.git
+        tag: v1.14.0
+        commit: ac9f06c234e228f6e8307055c3f4d2f9fead46d6
+        x-checker-data:
+          type: git
+          tag-pattern: ^flathub-v([\d.]+)$
+          version-scheme: semantic
+
+      - type: file
+        url: https://services.gradle.org/distributions/gradle-8.13-bin.zip
+        sha256: 20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78
+        dest-filename: gradle.zip
