@@ -1,0 +1,70 @@
+app-id: com.github.shmlkv.VoiceInput
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: voice-input-toggle
+
+finish-args:
+  # X11 access for xdotool
+  - --share=ipc
+  - --socket=x11
+  # Audio recording via PipeWire
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # Network for API calls
+  - --share=network
+  # D-Bus for notifications
+  - --talk-name=org.freedesktop.Notifications
+  # Config directory
+  - --persist=.config/voice-input
+  # Temp files
+  - --filesystem=/tmp/voice-input:create
+
+modules:
+  # xdotool for typing
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3f0bc0b3e3d0
+
+  # jq for JSON parsing
+  - name: jq
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-1.7.1.tar.gz
+        sha256: 478c9ca129fd2e3443fe27314b455e211e0d8c60bc8ff7df703f25e2e2e7b3c3
+
+  # Main application
+  - name: voice-input
+    buildsystem: simple
+    build-commands:
+      # Install main script
+      - install -Dm755 voice-input.sh /app/bin/voice-input
+      # Install toggle script
+      - |
+        cat > /app/bin/voice-input-toggle << 'EOF'
+        #!/bin/bash
+        export DISPLAY="${DISPLAY:-:0}"
+        if [[ -f /tmp/voice-input/recording_state ]]; then
+            voice-input stop
+        else
+            voice-input start
+        fi
+        EOF
+        chmod +x /app/bin/voice-input-toggle
+      # Install desktop file
+      - install -Dm644 data/com.github.shmlkv.VoiceInput.desktop /app/share/applications/com.github.shmlkv.VoiceInput.desktop
+      # Install metainfo
+      - install -Dm644 data/com.github.shmlkv.VoiceInput.metainfo.xml /app/share/metainfo/com.github.shmlkv.VoiceInput.metainfo.xml
+      # Install icon
+      - install -Dm644 data/icons/com.github.shmlkv.VoiceInput.svg /app/share/icons/hicolor/scalable/apps/com.github.shmlkv.VoiceInput.svg
+    sources:
+      - type: archive
+        url: https://github.com/shmlkv/voice-input-steamdeck/archive/v1.0.1.tar.gz
+        sha256: 0ba29100b293862af4a2ffd782db6d3668d42815efd7aa554133180d5e04cb43
