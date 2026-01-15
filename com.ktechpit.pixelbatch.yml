@@ -1,0 +1,108 @@
+app-id: com.ktechpit.pixelbatch
+runtime: org.kde.Platform
+runtime-version: '5.15-23.08'
+sdk: org.kde.Sdk
+command: pixelbatch
+
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Wayland access
+  - --socket=wayland
+  # OpenGL access
+  - --device=dri
+  # Allow access to user's home directory for image files
+  - --filesystem=home
+  # Allow access to removable media
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Network access (for checking updates, if needed)
+  - --share=network
+
+modules:
+  # jpegoptim for JPEG optimization
+  - name: jpegoptim
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/tjko/jpegoptim/archive/refs/tags/v1.5.5.tar.gz
+        sha256: 90a309d1c092de358bb411d702281ac3039b489d03adb0bc3c4ef04cf0067d58
+    cleanup:
+      - /share/man
+
+  # pngquant for PNG optimization
+  - name: pngquant
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://pngquant.org/pngquant-3.0.3-src.tar.gz
+        sha256: 7c5c94eb89a907f6252e7c1dd3c598c06e41e96bce59a88692aa15f677f77e12
+    cleanup:
+      - /share/man
+
+  # gifsicle for GIF optimization
+  - name: gifsicle
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/kohler/gifsicle/archive/refs/tags/v1.95.tar.gz
+        sha256: 5dd6db54f0dc83c2e95bf8c28cfe068ac9f17edf6e40e3b9ed3d60e8bc87e245
+    cleanup:
+      - /share/man
+
+  # Node.js for running SVGO
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v18.19.0/node-v18.19.0.tar.gz
+        sha256: dd4c1dc1cb94e1e29f65a3a592247edeb8ceb23483123b0e1847d75c5f0b0c17
+    cleanup:
+      - /include
+      - /share/doc
+      - /share/man
+      - /share/systemtap
+
+  # SVGO for SVG optimization
+  - name: svgo
+    buildsystem: simple
+    build-commands:
+      - npm install -g --prefix=/app svgo@4.0.0
+      - ln -sf /app/lib/node_modules/svgo/bin/svgo /app/bin/svgo
+    sources:
+      # Empty package.json required by npm
+      # Using data URL is the standard Flatpak approach for small generated files
+      - type: file
+        url: data:application/json;base64,e30=  # Empty JSON object: {}
+        dest-filename: package.json
+
+  # Main PixelBatch application
+  - name: pixelbatch
+    buildsystem: simple
+    build-commands:
+      - qmake PREFIX=/app src/PixelBatch.pro
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/keshavbhatt/pixelbatch.git
+        tag: v2.0.0
+        commit: c88df5a1db313d0fbd9724f35a7e0b3cda12471d
+        path: .
+        skip:
+          - .git
+          - .github
+          - .gitignore
+          - build
+          - snap
+          - .flatpak-builder
+          - repo
