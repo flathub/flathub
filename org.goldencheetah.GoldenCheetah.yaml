@@ -1,0 +1,255 @@
+app-id: org.goldencheetah.GoldenCheetah
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: GoldenCheetah
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Network for cloud services (Strava, Withings, etc.)
+  - --share=network
+
+  # USB devices for ANT+/Bluetooth trainers and power meters
+  - --device=all
+
+  # Audio for trainer sounds
+  - --socket=pulseaudio
+
+  # User data access for activity files and athlete profiles
+  # GoldenCheetah stores athlete data in ~/Documents or custom locations
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+
+  # App config and data directory
+  - --persist=.goldencheetah
+
+  # Qt WebEngine
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+
+  # DBus for desktop integration
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+build-options:
+  env:
+    QMAKEPATH: /app
+  arch:
+    aarch64:
+      prepend-pkg-config-path: /app/lib/aarch64-linux-gnu/pkgconfig
+    x86_64:
+      prepend-pkg-config-path: /app/lib/x86_64-linux-gnu/pkgconfig
+
+modules:
+  # GNU Scientific Library - mandatory dependency
+  - name: gsl
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz
+        sha256: 6a99eeed15632c6354895b1dd542ed5a855c0f15d9ad1326c6fe2b2c9e423190
+        x-checker-data:
+          type: anitya
+          project-id: 1267
+          stable-only: true
+          url-template: https://ftp.gnu.org/gnu/gsl/gsl-$version.tar.gz
+
+  # Python 3.7 - matches AppImage, compatible with SIP 4.x
+  - name: python3.7
+    buildsystem: autotools
+    build-options:
+      no-debuginfo: true
+    config-opts:
+      - --enable-shared
+      - --with-ensurepip=yes
+      - --with-system-expat
+      - --with-system-ffi
+      - --enable-loadable-sqlite-extensions
+    post-install:
+      - chmod 644 /app/lib/libpython3.7m.so.1.0
+    cleanup:
+      - /bin/2to3*
+      - /bin/idle*
+      - /bin/pydoc*
+      - /bin/python3-config
+      - /bin/python3.7-config
+      - /bin/python3.7m-config
+      - /lib/python3.7/test
+      - /lib/python3.7/*/test
+      - /lib/python3.7/*/tests
+      - /lib/python3.7/idlelib
+      - /lib/python3.7/tkinter
+      - /lib/python3.7/lib2to3
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.7.17/Python-3.7.17.tar.xz
+        sha256: 7911051ed0422fd54b8f59ffc030f7cf2ae30e0f61bda191800bb040dce4f9d2
+
+  # SIP 4.19.8 - Python bindings generator (matches AppImage)
+  - name: sip
+    buildsystem: simple
+    build-commands:
+      - /app/bin/python3.7 configure.py --sip-module=sip --incdir=/app/include/python3.7m
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/pyqt/files/sip/sip-4.19.8/sip-4.19.8.tar.gz
+        sha256: 7eaf7a2ea7d4d38a56dd6d2506574464bddf7cf284c960801679942377c297bc
+
+  # Python packages for GoldenCheetah scripting
+  # Packages verified from src/Python/requirements.txt with all dependencies
+  - name: python-packages
+    buildsystem: simple
+    build-commands:
+      # Install future from source first (required by uncertainties, no wheel available)
+      - /app/bin/pip3.7 install --no-build-isolation --no-index --prefix=/app future-0.18.3.tar.gz
+      # Install all wheels
+      - /app/bin/pip3.7 install --no-index --find-links="file://${PWD}" --prefix=/app
+        numpy pandas scipy lmfit plotly importlib_metadata
+    sources:
+      # future 0.18.3 (source - required by uncertainties)
+      - type: file
+        url: https://files.pythonhosted.org/packages/8f/2e/cf6accf7415237d6faeeebdc7832023c90e0282aa16fd3263db0eb4715ec/future-0.18.3.tar.gz
+        sha256: 34a17436ed1e96697a86f9de3d15a3b0be01d8bc8de9c1dffd59fb8234ed5307
+      # Main packages from requirements.txt
+      # numpy 1.21.6
+      - type: file
+        url: https://files.pythonhosted.org/packages/6d/ad/ff3b21ebfe79a4d25b4a4f8e5cf9fd44a204adb6b33c09010f566f51027a/numpy-1.21.6-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl
+        sha256: a6be4cb0ef3b8c9250c19cc122267263093eee7edd4e3fa75395dfda8c17a8e2
+      # pandas 1.2.3 (pinned version from requirements.txt)
+      - type: file
+        url: https://files.pythonhosted.org/packages/f3/d4/3fe3b5bf9886912b64ef040040aec356fa48825e5a829a84c2667afdf952/pandas-1.2.3-cp37-cp37m-manylinux1_x86_64.whl
+        sha256: 97b1954533b2a74c7e20d1342c4f01311d3203b48f2ebf651891e6a6eaf01104
+      # scipy 1.7.3
+      - type: file
+        url: https://files.pythonhosted.org/packages/58/4f/11f34cfc57ead25752a7992b069c36f5d18421958ebd6466ecd849aeaf86/scipy-1.7.3-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl
+        sha256: 8499d9dd1459dc0d0fe68db0832c3d5fc1361ae8e13d05e6849b358dc3f2c279
+      # lmfit 1.2.2
+      - type: file
+        url: https://files.pythonhosted.org/packages/16/87/d1b01fa4e4b69e0dea803592af88608c1c22eb4f92bfccf83ac66fa0792f/lmfit-1.2.2-py3-none-any.whl
+        sha256: 3101bb16236179cc2e332202d621109271269dcb8edaa8983eecbffdaf57eb0c
+      # plotly 5.18.0
+      - type: file
+        url: https://files.pythonhosted.org/packages/a8/07/72953cf70e3bd3a24cbc3e743e6f8539abe6e3e6d83c3c0c83426eaffd39/plotly-5.18.0-py3-none-any.whl
+        sha256: 23aa8ea2f4fb364a20d34ad38235524bd9d691bf5299e800bca608c31e8db8de
+      # importlib_metadata 4.8.3 (last version supporting Python 3.7)
+      - type: file
+        url: https://files.pythonhosted.org/packages/a0/a1/b153a0a4caf7a7e3f15c2cd56c7702e2cf3d89b1b359d1f1c5e59d68f4ce/importlib_metadata-4.8.3-py3-none-any.whl
+        sha256: 65a9576a5b2d58ca44d133c42a241905cc45e34d2c06fd5ba2bafa221e5d7b5e
+      # Dependencies (verified from PyPI)
+      # python-dateutil 2.8.2 (pandas dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/36/7a/87837f39d0296e723bb9b62bbb257d0355c7f6128853c78955f57342a56d/python_dateutil-2.8.2-py2.py3-none-any.whl
+        sha256: 961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
+      # pytz 2023.3 (pandas dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/7f/99/ad6bd37e748257dd70d6f85d916cafe79c0b0f5e2e95b11f7fbc82bf3110/pytz-2023.3-py2.py3-none-any.whl
+        sha256: a151b3abb88eda1d4e34a9814df37de2a80e301e68ba0fd856fb9b46bfbbbffb
+      # six 1.16.0 (python-dateutil dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+        sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
+      # zipp 3.15.0 (importlib-metadata dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/5b/fa/c9e82bbe1af6266adf08afb563905eb87cab83fde00a0a08963510621047/zipp-3.15.0-py3-none-any.whl
+        sha256: 48904fc76a60e542af151aded95726c1a5c34ed43ab4134b597665c86d7ad556
+      # typing-extensions 4.7.1 (importlib-metadata dep for Python < 3.8)
+      - type: file
+        url: https://files.pythonhosted.org/packages/ec/6b/63cc3df74987c36fe26157ee12e09e8f9db4de771e0f3404263117e75b95/typing_extensions-4.7.1-py3-none-any.whl
+        sha256: 440d5dd3af93b060174bf433bccd69b0babc3b15b1a8dca43789fd7f61514b36
+      # asteval 0.9.31 (lmfit dep, last version supporting Python 3.7)
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/34/bdb51767967cb29302ee7dfe95662b057af7f23c62dd1967fc4b373656aa/asteval-0.9.31-py3-none-any.whl
+        sha256: 2761750c184d97707c292b62df3b10e330a809a2201721acc435a2b89a114263
+      # uncertainties 3.1.7 (lmfit dep, last version supporting Python 3.7)
+      - type: file
+        url: https://files.pythonhosted.org/packages/13/f7/9d94eeea3f6475456fb5c6b72d3a3cc652c1ecd342c5491274cbfc9ebaab/uncertainties-3.1.7-py2.py3-none-any.whl
+        sha256: 4040ec64d298215531922a68fa1506dc6b1cb86cd7cca8eca848fcfe0f987151
+      # dill 0.3.7 (lmfit optional dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/f5/3a/74a29b11cf2cdfcd6ba89c0cecd70b37cd1ba7b77978ce611eb7a146a832/dill-0.3.7-py3-none-any.whl
+        sha256: 76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e
+      # tenacity 8.2.3 (plotly dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/f4/f1/990741d5bb2487d529d20a433210ffa136a367751e454214013b441c4575/tenacity-8.2.3-py3-none-any.whl
+        sha256: ce510e327a630c9e1beaf17d42e6ffacc88185044ad85cf74c0a8887c6a0f88c
+      # packaging 21.3 (plotly dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/8e/8de486cbd03baba4deef4142bd643a3e7bbe954a784dc1bb17142572d127/packaging-21.3-py3-none-any.whl
+        sha256: ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522
+      # pyparsing 3.0.9 (packaging dep)
+      - type: file
+        url: https://files.pythonhosted.org/packages/6c/10/a7d0fa5baea8fe7b50f448ab742f26f52b80bfca85ac2be9d35cdd9a3246/pyparsing-3.0.9-py3-none-any.whl
+        sha256: 5026bae9a10eeaefb61dab2f09052b9f4307d44aee4eda64b309723d8d206bbc
+
+  # GoldenCheetah
+  - name: goldencheetah
+    buildsystem: simple
+    build-options:
+      env:
+        QMAKEPATH: /app
+        QTWEBENGINE_DISABLE_SANDBOX: '1'
+    build-commands:
+      # Create gcconfig.pri for Flatpak build with Python support
+      - |
+        cat > src/gcconfig.pri << 'GCCONFIG'
+        CONFIG += release
+        GSL_INCLUDES = /app/include
+        GSL_LIBS = -L/app/lib -lgsl -lgslcblas -lm
+        LIBZ_LIBS = -lz
+        QMAKE_LEX = flex
+        QMAKE_YACC = bison
+        QMAKE_MOVE = cp
+        DEFINES += GC_WANT_PYTHON
+        PYTHONINCLUDES = -I/app/include/python3.7m
+        PYTHONLIBS = -L/app/lib -lpython3.7m
+        QMAKE_INCDIR += /app/include
+        QMAKE_INCDIR += /app/include/QtWebEngine
+        QMAKE_INCDIR += /app/include/QtWebEngineCore
+        QMAKE_INCDIR += /app/include/QtWebEngineWidgets
+        DEFINES += GC_VIDEO_NONE
+        GCCONFIG
+      # Use default qwt config
+      - cp qwt/qwtconfig.pri.in qwt/qwtconfig.pri
+      # Build qwt first
+      - cd qwt && qmake qwt.pro && make -j$FLATPAK_BUILDER_N_JOBS
+      # Build main application
+      - cd src && qmake src.pro && make -j$FLATPAK_BUILDER_N_JOBS
+      # Install
+      - install -Dm755 src/GoldenCheetah /app/bin/GoldenCheetah
+      - install -Dm644 org.goldencheetah.GoldenCheetah.desktop /app/share/applications/org.goldencheetah.GoldenCheetah.desktop
+      - install -Dm644 org.goldencheetah.GoldenCheetah.metainfo.xml /app/share/metainfo/org.goldencheetah.GoldenCheetah.metainfo.xml
+      - install -Dm644 src/Resources/images-src/gc.svg /app/share/icons/hicolor/scalable/apps/org.goldencheetah.GoldenCheetah.svg
+    sources:
+      - type: git
+        url: https://github.com/GoldenCheetah/GoldenCheetah.git
+        tag: v3.7-SP1
+        commit: 9fbeb4e37c31a16c4a444f10fd7073b7ae85b4db
+        x-checker-data:
+          type: git
+          tag-pattern: ^[vV]?([\d.]+(-SP\d+)?)$
+          is-main-source: true
+      - type: file
+        path: org.goldencheetah.GoldenCheetah.desktop
+      - type: file
+        path: org.goldencheetah.GoldenCheetah.metainfo.xml
