@@ -1,0 +1,15 @@
+CONFIG += release
+GSL_INCLUDES = /app/include
+GSL_LIBS = -L/app/lib -lgsl -lgslcblas -lm
+LIBZ_LIBS = -lz
+QMAKE_LEX = flex
+QMAKE_YACC = bison
+QMAKE_MOVE = cp
+DEFINES += GC_WANT_PYTHON
+PYTHONINCLUDES = -I/app/include/python3.7m
+PYTHONLIBS = -L/app/lib -lpython3.7m
+QMAKE_INCDIR += /app/include
+QMAKE_INCDIR += /app/include/QtWebEngine
+QMAKE_INCDIR += /app/include/QtWebEngineCore
+QMAKE_INCDIR += /app/include/QtWebEngineWidgets
+DEFINES += GC_VIDEO_NONE
