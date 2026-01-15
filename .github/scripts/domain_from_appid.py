@@ -58,6 +58,7 @@ def get_domain(appid: str) -> str:
             "org.kde.PlatformTheme.",
             "org.kde.Sdk.",
             "org.kde.WaylandDecoration.",
+            "org.freedesktop.LinuxAudio.",
         )
     ):
         return ret_none
