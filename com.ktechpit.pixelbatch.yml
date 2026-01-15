@@ -7,7 +7,7 @@ command: pixelbatch
 finish-args:
   # X11 + XShm access
   - --share=ipc
-  - --socket=x11
+  - --socket=fallback-x11
   # Wayland access
   - --socket=wayland
   # OpenGL access
@@ -55,7 +55,7 @@ modules:
     cleanup:
       - /share/man
 
-  # Node.js for running SVGO
+  # Node.js (needed for SVGO)
   - name: nodejs
     buildsystem: simple
     build-commands:
@@ -72,23 +72,15 @@ modules:
       - /share/man
       - /share/systemtap
 
-  # SVGO for SVG optimization
-  - name: svgo
-    buildsystem: simple
-    build-commands:
-      - npm install -g --prefix=/app svgo@4.0.0
-      - ln -sf /app/lib/node_modules/svgo/bin/svgo /app/bin/svgo
-    sources:
-      # Empty package.json required by npm
-      # Using data URL is the standard Flatpak approach for small generated files
-      - type: file
-        url: data:application/json;base64,e30=  # Empty JSON object: {}
-        dest-filename: package.json
-
-  # Main PixelBatch application
+  # Main PixelBatch application (SVGO installed here)
   - name: pixelbatch
     buildsystem: simple
     build-commands:
+      # Install SVGO (no fake package.json, no data URLs)
+      - npm install --prefix=/app svgo@4.0.0
+      - ln -sf /app/node_modules/.bin/svgo /app/bin/svgo
+
+      # Build PixelBatch
       - qmake PREFIX=/app src/PixelBatch.pro
       - make -j$FLATPAK_BUILDER_N_JOBS
       - make install
@@ -97,12 +89,6 @@ modules:
         url: https://github.com/keshavbhatt/pixelbatch.git
         tag: v2.0.0
         commit: c88df5a1db313d0fbd9724f35a7e0b3cda12471d
-        path: .
-        skip:
-          - .git
-          - .github
-          - .gitignore
-          - build
-          - snap
-          - .flatpak-builder
-          - repo
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
