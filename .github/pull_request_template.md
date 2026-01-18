@@ -12,6 +12,7 @@
 - [ ] Please attach a video showcasing the application on Linux using the Flatpak. < Please insert the video here >
 - [ ] The Flatpak ID follows all the rules listed in the [Application ID requirements][appid].
 - [ ] I have read and followed all the [Submission requirements][reqs] and the [Submission guide][reqs2] and I agree to them.
+- [ ] I know AI-generated submissions [are not allowed][reqs2], and I never use AI-generated code.
 - [ ] I am an _(please keep whichever is applicable and remove the rest)_ author/developer/upstream contributor to the project.
       If not, I contacted upstream developers about this submission. **Link:**
 
