@@ -1,0 +1,90 @@
+app-id: io.lamco.rdp-server
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm18
+
+command: lamco-rdp-server
+
+finish-args:
+  # Wayland/X11 access
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+
+  # Network access for RDP
+  - --share=network
+
+  # PipeWire access for screen capture
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+
+  # Portal access
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.ScreenCast
+  - --talk-name=org.freedesktop.portal.RemoteDesktop
+
+  # D-Bus access
+  - --socket=session-bus
+
+  # Config directory
+  - --filesystem=~/.config/lamco-rdp-server:create
+
+  # File clipboard: read access to home directory for file transfer
+  - --filesystem=home:ro
+  # Downloads directory: write access for saving pasted files from clipboard
+  - --filesystem=xdg-download:rw
+
+  # FUSE support for clipboard virtual filesystem
+  # Note: FUSE mounts are limited in Flatpak sandbox; falls back to staging mode
+  - --filesystem=xdg-run/wrd-clipboard-fuse:create
+  - --filesystem=/tmp:rw
+
+modules:
+  # FUSE3 library for clipboard file transfer (drive redirection)
+  - name: libfuse3
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Duseroot=false
+      - -Dtests=false
+      - -Dudevrulesdir=/app/lib/udev/rules.d
+    sources:
+      - type: archive
+        url: https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz
+        sha256: f797055d9296b275e981f5f62d4e32e089614fc253d1ef2985851025b8a0ce87
+
+  - name: lamco-rdp-server
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
+      env:
+        CARGO_HOME: /run/build/lamco-rdp-server/cargo
+        RUST_BACKTRACE: '1'
+        LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+    build-commands:
+      # Note: vaapi disabled (incomplete color space API), pam-auth disabled (not sandboxable)
+      # Features: h264 (video encoding), libei (Flatpak-compatible wlroots input via Portal+EIS)
+      # wayland feature excluded (wlr-direct requires direct Wayland socket, blocked by Flatpak sandbox)
+      - cargo --offline build --release --no-default-features --features "h264,libei"
+      - install -Dm755 target/release/lamco-rdp-server /app/bin/lamco-rdp-server
+
+      # Install MetaInfo
+      - install -Dm644 packaging/io.lamco.rdp-server.metainfo.xml /app/share/metainfo/io.lamco.rdp-server.metainfo.xml
+
+      # Install desktop file
+      - install -Dm644 packaging/io.lamco.rdp-server.desktop /app/share/applications/io.lamco.rdp-server.desktop
+
+      # Install icons
+      - install -Dm644 packaging/icons/io.lamco.rdp-server.svg /app/share/icons/hicolor/scalable/apps/io.lamco.rdp-server.svg
+      - install -Dm644 packaging/icons/io.lamco.rdp-server-256.png /app/share/icons/hicolor/256x256/apps/io.lamco.rdp-server.png
+      - install -Dm644 packaging/icons/io.lamco.rdp-server-128.png /app/share/icons/hicolor/128x128/apps/io.lamco.rdp-server.png
+      - install -Dm644 packaging/icons/io.lamco.rdp-server-64.png /app/share/icons/hicolor/64x64/apps/io.lamco.rdp-server.png
+      - install -Dm644 packaging/icons/io.lamco.rdp-server-48.png /app/share/icons/hicolor/48x48/apps/io.lamco.rdp-server.png
+      - install -Dm644 packaging/icons/io.lamco.rdp-server-32.png /app/share/icons/hicolor/32x32/apps/io.lamco.rdp-server.png
+    sources:
+      - type: archive
+        url: https://github.com/lamco-admin/lamco-rdp-server/releases/download/v0.9.0/lamco-rdp-server-0.9.0-final.tar.xz
+        sha256: ad4f532f7438361bff368ed836b0a67fc620baf73eb011b149a8aad53b0b8a66
