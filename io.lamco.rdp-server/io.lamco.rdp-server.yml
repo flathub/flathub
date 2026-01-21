@@ -6,7 +6,7 @@ sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.llvm18
 
-command: lamco-rdp-server
+command: lamco-rdp-server-gui
 
 finish-args:
   # Wayland/X11 access
@@ -14,36 +14,31 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
 
-  # Network access for RDP
+  # Network access for RDP server
   - --share=network
 
-  # PipeWire access for screen capture
+  # PipeWire access for screen capture and audio
   - --socket=pulseaudio
   - --filesystem=xdg-run/pipewire-0
 
-  # Portal access
+  # Portal access for screen capture and remote input
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.portal.ScreenCast
   - --talk-name=org.freedesktop.portal.RemoteDesktop
 
-  # D-Bus access
+  # D-Bus session bus
   - --socket=session-bus
 
   # Config directory
   - --filesystem=~/.config/lamco-rdp-server:create
 
-  # File clipboard: read access to home directory for file transfer
+  # Clipboard file transfer
   - --filesystem=home:ro
-  # Downloads directory: write access for saving pasted files from clipboard
   - --filesystem=xdg-download:rw
-
-  # FUSE support for clipboard virtual filesystem
-  # Note: FUSE mounts are limited in Flatpak sandbox; falls back to staging mode
-  - --filesystem=xdg-run/wrd-clipboard-fuse:create
   - --filesystem=/tmp:rw
 
 modules:
-  # FUSE3 library for clipboard file transfer (drive redirection)
+  # FUSE3 for clipboard virtual filesystem
   - name: libfuse3
     buildsystem: meson
     config-opts:
@@ -65,26 +60,63 @@ modules:
         RUST_BACKTRACE: '1'
         LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
     build-commands:
-      # Note: vaapi disabled (incomplete color space API), pam-auth disabled (not sandboxable)
-      # Features: h264 (video encoding), libei (Flatpak-compatible wlroots input via Portal+EIS)
-      # wayland feature excluded (wlr-direct requires direct Wayland socket, blocked by Flatpak sandbox)
-      - cargo --offline build --release --no-default-features --features "h264,libei"
+      # Build with H.264 encoding, libei input, and GUI
+      - cargo --offline build --release --no-default-features --features "h264,libei,gui"
       - install -Dm755 target/release/lamco-rdp-server /app/bin/lamco-rdp-server
+      - install -Dm755 target/release/lamco-rdp-server-gui /app/bin/lamco-rdp-server-gui
 
-      # Install MetaInfo
-      - install -Dm644 packaging/io.lamco.rdp-server.metainfo.xml /app/share/metainfo/io.lamco.rdp-server.metainfo.xml
+      # Install MetaInfo (from inline source)
+      - install -Dm644 io.lamco.rdp-server.metainfo.xml /app/share/metainfo/io.lamco.rdp-server.metainfo.xml
 
-      # Install desktop file
-      - install -Dm644 packaging/io.lamco.rdp-server.desktop /app/share/applications/io.lamco.rdp-server.desktop
+      # Install desktop file (from inline source)
+      - install -Dm644 io.lamco.rdp-server.desktop /app/share/applications/io.lamco.rdp-server.desktop
 
-      # Install icons
-      - install -Dm644 packaging/icons/io.lamco.rdp-server.svg /app/share/icons/hicolor/scalable/apps/io.lamco.rdp-server.svg
-      - install -Dm644 packaging/icons/io.lamco.rdp-server-256.png /app/share/icons/hicolor/256x256/apps/io.lamco.rdp-server.png
-      - install -Dm644 packaging/icons/io.lamco.rdp-server-128.png /app/share/icons/hicolor/128x128/apps/io.lamco.rdp-server.png
-      - install -Dm644 packaging/icons/io.lamco.rdp-server-64.png /app/share/icons/hicolor/64x64/apps/io.lamco.rdp-server.png
-      - install -Dm644 packaging/icons/io.lamco.rdp-server-48.png /app/share/icons/hicolor/48x48/apps/io.lamco.rdp-server.png
-      - install -Dm644 packaging/icons/io.lamco.rdp-server-32.png /app/share/icons/hicolor/32x32/apps/io.lamco.rdp-server.png
+      # Install icons (PNG only - no SVG due to rendering issues)
+      - install -Dm644 io.lamco.rdp-server-256.png /app/share/icons/hicolor/256x256/apps/io.lamco.rdp-server.png
+      - install -Dm644 io.lamco.rdp-server-128.png /app/share/icons/hicolor/128x128/apps/io.lamco.rdp-server.png
+      - install -Dm644 io.lamco.rdp-server-64.png /app/share/icons/hicolor/64x64/apps/io.lamco.rdp-server.png
+      - install -Dm644 io.lamco.rdp-server-48.png /app/share/icons/hicolor/48x48/apps/io.lamco.rdp-server.png
+      - install -Dm644 io.lamco.rdp-server-32.png /app/share/icons/hicolor/32x32/apps/io.lamco.rdp-server.png
+
     sources:
+      # Source tarball with vendored dependencies
       - type: archive
-        url: https://github.com/lamco-admin/lamco-rdp-server/releases/download/v0.9.0/lamco-rdp-server-0.9.0-final.tar.xz
-        sha256: ad4f532f7438361bff368ed836b0a67fc620baf73eb011b149a8aad53b0b8a66
+        url: https://github.com/lamco-admin/lamco-rdp-server/releases/download/v1.2.0/lamco-rdp-server-1.2.0.tar.xz
+        sha256: 0522d46f94a66854f53439af1668f609e37be0a936171b234611a531ef6c9e01
+
+      # Icons from lamco.ai (PNG only - no SVG due to rendering issues)
+      - type: file
+        url: https://lamco.ai/assets/icons/io.lamco.rdp-server-256.png
+        dest-filename: io.lamco.rdp-server-256.png
+      - type: file
+        url: https://lamco.ai/assets/icons/io.lamco.rdp-server-128.png
+        dest-filename: io.lamco.rdp-server-128.png
+      - type: file
+        url: https://lamco.ai/assets/icons/io.lamco.rdp-server-64.png
+        dest-filename: io.lamco.rdp-server-64.png
+      - type: file
+        url: https://lamco.ai/assets/icons/io.lamco.rdp-server-48.png
+        dest-filename: io.lamco.rdp-server-48.png
+      - type: file
+        url: https://lamco.ai/assets/icons/io.lamco.rdp-server-32.png
+        dest-filename: io.lamco.rdp-server-32.png
+
+      # MetaInfo file (inline)
+      - type: file
+        path: io.lamco.rdp-server.metainfo.xml
+
+      # Desktop file (inline)
+      - type: inline
+        dest-filename: io.lamco.rdp-server.desktop
+        contents: |
+          [Desktop Entry]
+          Name=Lamco RDP Server
+          GenericName=Remote Desktop Server
+          Comment=Remote desktop server for Wayland with graphical configuration
+          Exec=lamco-rdp-server-gui
+          Icon=io.lamco.rdp-server
+          Terminal=false
+          Type=Application
+          Categories=Network;RemoteAccess;
+          Keywords=rdp;remote;desktop;wayland;screen;sharing;
+          StartupNotify=true
