@@ -1,86 +1,48 @@
-app-id: org.anirudhsevugan.SimpliPlay
+app-id: org.anirudhsevugan.SimpliPlay # credit to Nuclear audio player repo for the basis of this YAML
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
-
 base: org.electronjs.Electron2.BaseApp
 base-version: '24.08'
-
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node22
-
 command: run.sh
 separate-locales: false
-
 arch:
   - x86_64
 
 finish-args:
-  - --share=ipc # important! don't forget this!
-  - --socket=x11
-  - --socket=pulseaudio
   - --share=network
-
-build-options:
-  append-path: /usr/lib/sdk/node22/bin
-  env:
-    NPM_CONFIG_LOGLEVEL: info
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --filesystem=xdg-download
+  - --filesystem=~/simpliplay-snapshots
 
 modules:
   - name: simpliplay
     buildsystem: simple
-    build-args:
-      - --share=network
-
-    build-options:
-      env:
-        XDG_CACHE_HOME: /run/build/simpliplay/flatpak-node/cache
-        npm_config_cache: /run/build/simpliplay/flatpak-node/npm-cache
-        # pm_config_offline: 'false'
-
     build-commands:
-      - echo "Working directory:"
-      - pwd
-      - echo "Directory contents:"
-      - ls -la
-
-      # nested directory? smush it down to size
-      - |
-        if [ -d simpliplay ]; then
-          echo "flattening simpliplay/ directory"
-          cp -a simpliplay/. .
-        fi
-
-      - echo "post-flatten contents:"
-      - ls -la
-      - jq '.build.linux.target="dir"' <<<$(<package.json) > package.json
-      # - mv ./flatpak-node/ ./node_modules/
-      # Install npm dependencies
-      - npm config rm proxy && npm config rm https-proxy
-      - npm install
-      # Build the app; in this example the `dist` script
-      # in package.json runs electron-builder
-      - |
-        . ../flatpak-node/electron-builder-arch-args.sh
-        npm run build -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
-      # Bundle app and dependencies
-      - cp -a dist/linux*unpacked /app/main
-      # Install app wrapper
-      - install -Dm755 -t /app/bin/ ../run.sh
-
+      - mkdir -p /app/main/
+      - cp -r * /app/main/
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/
+      - install -Dm644 SimpliPlay.desktop /app/share/applications/
+      - install -Dm644 SimpliPlay.metainfo.xml /app/share/metainfo/
+      - install -Dm755 run.sh /app/bin/
+    cleanup:
+      - rm -rf /app/main/icon.png /app/main/SimpliPlay.desktop /app/main/SimpliPlay.metainfo.xml
     sources:
-      # get that tar
       - type: archive
-        url: https://github.com/A-Star100/simpliplay-desktop/archive/refs/tags/release-2.2.0.0.tar.gz
-        sha256: 5091d4087954682a300d8d2d557b9777152ff414cffc236b6b8822e82fe27e90
-        dest: .
-
-      # generated-sources for dependencies cuz flatpak builds are offline-only
-      - flatpak/generated-sources.json
-
-      # script to launch the app
-      - type: script
+        url: https://github.com/A-Star100/simpliplay-desktop/releases/download/release-2.2.0.0/simpliplay-linux-x64-unpacked.tar.gz
+        sha256: 8fdb4f3c502527645d4c8631c0330130f89400287c626d6e527e9f6184227db8
+      - type: file
+        path: run.sh
         dest-filename: run.sh
         commands:
-          - '#!/bin/sh'
-          - 'exec /app/main/SimpliPlay "$@"'
+          - '#!/bin/bash'
+          - 'zypak-wrapper /app/main/SimpliPlay "$@"'
+      - type: file
+        path: SimpliPlay.desktop
+      - type: file
+        path: SimpliPlay.metainfo.xml
+      - type: file
+        path: icon.png
