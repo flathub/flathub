@@ -2,18 +2,22 @@ app-id: org.anirudhsevugan.SimpliPlay
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
+
 base: org.electronjs.Electron2.BaseApp
 base-version: '24.08'
+
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node22
+
 command: run.sh
 separate-locales: false
+
 arch:
   - x86_64
   - aarch64
 
 finish-args:
-  - --share=ipc
+  - --share=ipc # might need to change this later
   - --socket=x11
   - --socket=pulseaudio
   - --share=network
@@ -26,30 +30,53 @@ build-options:
 modules:
   - name: simpliplay
     buildsystem: simple
+
     build-options:
       env:
         XDG_CACHE_HOME: /run/build/simpliplay/flatpak-node/cache
         npm_config_cache: /run/build/simpliplay/flatpak-node/npm-cache
-        npm_config_offline: 'false' # to prevent ENOTCACHED issues that can occur sometimes
+        npm_config_offline: 'true'
+
     build-commands:
-      - echo "Current working directory: $(pwd)"
-      - echo "Listing files:"
-      - mv ./simpliplay/* ./ # move files in simpliplay subdir to root
-      - ls -l
-      - ls -l ..    # list parent folder too
-      # install dependencies
-      - npm install
-      # build unpacked dir
+      - echo "Working directory:"
+      - pwd
+      - echo "Directory contents:"
+      - ls -la
+
+      # nested directory? smush it down to size
+      - |
+        if [ -d simpliplay ]; then
+          echo "flattening simpliplay/ directory"
+          cp -a simpliplay/. .
+        fi
+
+      - echo "post-flatten contents:"
+      - ls -la
+
+      # install dependencies offline
+      - npm install --offline --no-audit --no-fund
+
+      # build unpacked
       - npx electron-builder --linux --dir
-      # copy build output into /app/main
-      - cp -a dist/linux-unpacked /app/main
-      # install wrapper script
-      - install -Dm755 -t /app/bin ./run.sh
+
+      # install app files
+      - install -d /app/main
+      - cp -a dist/linux-unpacked/. /app/main/
+
+      # install the launcher shellscript
+      - install -Dm755 run.sh /app/bin/run.sh
+
     sources:
+      # get that tarball
       - type: archive
         url: https://github.com/A-Star100/simpliplay-desktop/archive/refs/tags/release-2.2.0.0.tar.gz
         sha256: 5091d4087954682a300d8d2d557b9777152ff414cffc236b6b8822e82fe27e90
         dest: .
+
+      # generated-sources for dependencies cuz flatpak builds are offline-only
+      - flatpak/generated-sources.json
+
+      # script to launch the app
       - type: script
         dest-filename: run.sh
         commands:
