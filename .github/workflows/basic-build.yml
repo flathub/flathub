@@ -1,13 +1,61 @@
-name: Flatpak Build Test
-on: [push, pull_request]
+name: Build & Test Flatpak
+
+on:
+  push:
+    branches:
+      - new-pr
+  pull_request:
 
 jobs:
   flatpak:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - uses: actions/checkout@v3
+
+
+      - run: |
+          sudo apt update
+          sudo apt install -y flatpak curl unzip
+
+
+      - run: |
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+
+      - run: |
+          flatpak install --user -y flathub org.flatpak.Builder
+
+
+      - run: |
+          dbus-run-session -- bash -c '
+            flatpak run --command=flathub-build org.flatpak.Builder --install org.anirudhsevugan.SimpliPlay.yml
+          '
+          
+      - uses: actions/upload-artifact@v4
         with:
-          bundle: SimpliPlay.flatpak
-          manifest: me.anirudhsevugan.SimpliPlay.yaml
-          cache: true
+          name: simpliplay-flatpak-repo
+          path: repo
+          
+      - run: |
+          flatpak build-bundle repo \
+            simpliplay.flatpak \
+            org.anirudhsevugan.SimpliPlay \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpliplay-flatpak
+          path: simpliplay.flatpak
+
+      - name: test for 10s
+        run: |
+         dbus-run-session -- bash -c '
+            # Run the Flatpak in the background
+            flatpak run --user org.anirudhsevugan.SimpliPlay &
+            PID=$!
+            # Wait 10 seconds
+            sleep 10
+            # Kill the Flatpak
+            kill $PID || true
+         '
