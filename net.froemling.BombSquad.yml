@@ -1,0 +1,114 @@
+app-id: net.froemling.BombSquad
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+command: bombsquad.sh
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=~/.ballisticakit
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm20
+
+modules:
+  # We are currently using org.freedesktop.Sdk version 25.08
+  # which provides python3.13 required by bombsquad
+  # if this ever changes then enable this python module to build
+  # the required python locally
+
+  # - name: Python
+  #   sources:
+  #     - type: archive
+  #       url: https://www.python.org/ftp/python/3.13.3/Python-3.13.3.tar.xz
+  #       sha256: 40f868bcbdeb8149a3149580bb9bfd407b3321cd48f0be631af955ac92c0e041
+  #   config-opts:
+  #     - --prefix=${FLATPAK_DEST}
+  #     - --enable-shared
+  #     - --enable-optimizations
+  #     - --with-computed-gotos
+  #     - --with-lto
+  #     - --enable-ipv6
+  #     - --with-system-expat
+  #     - --with-system-ffi
+  #     - --with-system-libmpdec
+  #     - --enable-loadable-sqlite-extensions
+  #     - --without-ensurepip
+  #   cleanup:
+  #     - /bin
+  #     - /include
+  #     - /lib/pkgconfig
+  #     - /share
+
+  - name: SDL2
+    buildsystem: cmake
+    builddir: true
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /lib/cmake
+      - /share
+      - "*.a"
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL
+        tag: release-2.32.8
+
+  - name: rsync
+    buildsystem: autotools
+    config-opts:
+      - --prefix=${FLATPAK_DEST}
+      - --disable-debug
+      - --disable-locale
+    sources:
+      - type: archive
+        url: https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz
+        sha256: 2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52
+    cleanup:
+      - /share/man
+      - /share/doc
+      - /bin
+
+  - name: BombSquad
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/llvm20/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+      build-args:
+        - --share=network
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/bin/BombSquad
+      # Get rid of tools/pcommand and similar with wrong shebangs
+      - make env-clean
+      - make cmake-build
+      - mv build/cmake/debug/ballisticakit build/cmake/debug/staged/
+      - cp -r build/cmake/debug/staged/* ${FLATPAK_DEST}/bin/BombSquad/
+      - install -Dm755 bombsquad.sh ${FLATPAK_DEST}/bin/bombsquad.sh
+      - install -Dm644 -t ${FLATPAK_DEST}/share/applications/ ${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 net.froemling.BombSquad.appdata.xml /app/share/metainfo/net.froemling.BombSquad.metainfo.xml
+
+    sources:
+      - type: dir
+        path: ./../../
+
+      - type: file
+        dest-filename: net.froemling.BombSquad.png
+        url: https://files.ballistica.net/bombsquad/promo/BombSquadIcon512.png
+        sha256: c950d1b62da2714b1ed1afc42244f7e192be23172c89b6fa3e6eaaca8e45a89a
+
+      - type: file
+        path: net.froemling.BombSquad.desktop
+
+      - type: file
+        path: net.froemling.BombSquad.appdata.xml
+
+      - type: script
+        dest-filename: bombsquad.sh
+        commands:
+          - cd /app/bin/BombSquad
+          - exec ./ballisticakit
