@@ -1,7 +1,9 @@
 app-id: studio.darkrock.hammer
 runtime: org.freedesktop.Platform
-runtime-version: "25.08"
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
 
 command: hammer
 
@@ -12,39 +14,45 @@ finish-args:
   - --device=dri
   - --filesystem=xdg-documents
   - --share=network
+  - --env=PATH=/app/jre/bin:/usr/lib/sdk/openjdk21/jvm/openjdk-21/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/usr/lib/sdk/openjdk21/jvm/openjdk-21
 
 modules:
-  - name: hammer
+  - name: openjdk
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/lib
-      - cp -r hammer /app/lib/hammer
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  - name: hammer
+    buildsystem: simple
+    build-options:
+      env:
+        JAVA_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
+        PATH: /usr/lib/sdk/openjdk21/jvm/openjdk-21/bin:/usr/bin
+    build-commands:
+      # Build the desktop release distributable
+      - ./gradlew :desktop:createReleaseDistributable --no-daemon --stacktrace
+
+      # Install the application
+      - mkdir -p /app/lib/hammer
+      - cp -r desktop/build/installers/main-release/app/hammer/* /app/lib/hammer/
+
+      # Create symlink to launcher
+      - mkdir -p /app/bin
       - ln -s /app/lib/hammer/bin/hammer /app/bin/hammer
 
-      - install -Dm644 studio.darkrock.hammer.desktop
+      # Install metadata
+      - install -Dm644 flatpak/studio.darkrock.hammer.desktop
         /app/share/applications/studio.darkrock.hammer.desktop
-      - install -Dm644 icon.png
+      - install -Dm644 desktop/icons/linux.png
         /app/share/icons/hicolor/256x256/apps/studio.darkrock.hammer.png
-      - install -Dm644 studio.darkrock.hammer.metainfo.xml
+      - install -Dm644 flatpak/studio.darkrock.hammer.metainfo.xml
         /app/share/metainfo/studio.darkrock.hammer.metainfo.xml
 
     sources:
-      - type: archive
-        only-arches: [x86_64]
-        url: https://github.com/Wavesonics/hammer-editor/releases/download/v2.1.2/hammer-2.1.2-linux-x64.tar.gz
-        sha256: ef0c06e78f74e14c933564ad4a198dd4803da01f2ef617b0138e74ed748349a7
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/Wavesonics/hammer-editor/releases/latest
-          version-query: .tag_name | sub("^v"; "")
-          url-query: .assets[] | select(.name | test("linux-x64.tar.gz$")) | .browser_download_url
+      - type: git
+        url: https://github.com/Wavesonics/hammer-editor.git
+        tag: v2.1.2
+        commit: ab799d06117095df20866d4890145099cb030928
 
-      - type: archive
-        only-arches: [aarch64]
-        url: https://github.com/Wavesonics/hammer-editor/releases/download/v2.1.2/hammer-2.1.2-linux-aarch64.tar.gz
-        sha256: c5386523ae50a6d10e02d7ca0f8f7f8c69d863f657b856d8097c85bfe7522c02
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/Wavesonics/hammer-editor/releases/latest
-          version-query: .tag_name | sub("^v"; "")
-          url-query: .assets[] | select(.name | test("linux-aarch64.tar.gz$")) | .browser_download_url
+      - flatpak/flatpak-sources.json
