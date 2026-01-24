@@ -1,0 +1,262 @@
+app-id: io.github.dicroce.Revere
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: revere
+
+finish-args:
+  # Display access for GUI (X11 only - Wayland conflicts with GLFW)
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+
+  # Network access for RTSP cameras and ONVIF discovery
+  - --share=network
+
+  # Storage in ~/Documents/revere
+  - --filesystem=xdg-documents/revere:create
+
+  # System tray support (StatusNotifierItem protocol)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+  # Environment variables for GStreamer plugin discovery
+  - --env=GST_PLUGIN_PATH=/app/lib/gstreamer-1.0
+  # Library path for revere libs, OpenCV, gst-rtsp-server, and bundled ffmpeg
+  - --env=LD_LIBRARY_PATH=/app/revere:/app/lib64:/app/lib
+
+build-options:
+  env:
+    PKG_CONFIG_PATH: /app/lib64/pkgconfig:/app/lib/pkgconfig:/app/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/doc
+  - /share/man
+  - /share/gtk-doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # ============================================
+  # Module 1: NCNN (Neural Network Inference)
+  # Required for YOLOv8 AI object detection
+  # ============================================
+  - name: ncnn
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DNCNN_BUILD_EXAMPLES=OFF
+      - -DNCNN_BUILD_TOOLS=OFF
+      - -DNCNN_BUILD_BENCHMARK=OFF
+      - -DNCNN_BUILD_TESTS=OFF
+      - -DNCNN_SHARED_LIB=OFF
+      - -DNCNN_OPENMP=ON
+      - -DNCNN_VULKAN=OFF
+      - -DNCNN_PIXEL=ON
+      - -DNCNN_PIXEL_ROTATE=ON
+      - -DNCNN_PIXEL_AFFINE=ON
+      - -DNCNN_PIXEL_DRAWING=ON
+    sources:
+      - type: git
+        url: https://github.com/Tencent/ncnn.git
+        commit: 1e88fb8d5b03fedc813dd54bff34d42f65650281
+
+  # ============================================
+  # Module 2: OpenCV with Contrib Modules
+  # Must be built from source for contrib modules
+  # (bgsegm, tracking, optflow, etc.)
+  # ============================================
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DOPENCV_EXTRA_MODULES_PATH=/run/build/opencv/contrib/modules
+      - -DBUILD_LIST=core,imgproc,imgcodecs,video,videoio,calib3d,features2d,flann,dnn,bgsegm,tracking,optflow,ximgproc,xfeatures2d,plot
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_DOCS=OFF
+      - -DBUILD_opencv_apps=OFF
+      - -DBUILD_opencv_python2=OFF
+      - -DBUILD_opencv_python3=OFF
+      - -DWITH_FFMPEG=ON
+      - -DWITH_GSTREAMER=ON
+      - -DWITH_GTK=OFF
+      - -DWITH_QT=OFF
+      - -DWITH_OPENGL=ON
+      - -DWITH_TBB=OFF
+      - -DWITH_IPP=OFF
+      - -DWITH_LAPACK=OFF
+      - -DOPENCV_ENABLE_NONFREE=OFF
+      - -DENABLE_PRECOMPILED_HEADERS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/refs/tags/4.10.0.tar.gz
+        sha256: b2171af5be6b26f7a06b1229948bbb2bdaa74fcf5cd097e0af6378fce50a6eb9
+      - type: archive
+        url: https://github.com/opencv/opencv_contrib/archive/refs/tags/4.10.0.tar.gz
+        sha256: 65597f8fb8dc2b876c1b45b928bbcc5f772ddbaf97539bf1b737623d0604cba1
+        dest: contrib
+
+  # ============================================
+  # Module 3: GStreamer RTSP Server
+  # May not be included in freedesktop runtime
+  # ============================================
+  - name: gst-rtsp-server
+    buildsystem: meson
+    builddir: true
+    config-opts:
+      - -Ddoc=disabled
+      - -Dexamples=disabled
+      - -Dtests=disabled
+      - -Dintrospection=disabled
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-rtsp-server/gst-rtsp-server-1.24.10.tar.xz
+        sha256: db21dfdd7bf2e718564d557378ada5358b411efe2a3e89e9f0f87a74537e2adc
+    post-install:
+      - ls -la /app/lib/pkgconfig/ || true
+      - find /app -name "*.pc" 2>/dev/null || true
+
+  # ============================================
+  # Module 4: libdbusmenu (required by ayatana-appindicator)
+  # ============================================
+  # Shared modules for appindicator support (from flathub/shared-modules)
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  # ============================================
+  # Module 5: x264 (H.264 encoding)
+  # ============================================
+  - name: x264
+    config-opts:
+      - --enable-shared
+      - --disable-cli
+      - --disable-lavf
+      - --disable-swscale
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: 31e19f92f00c7003fa115047ce50978bc98c3a0d
+
+  # ============================================
+  # Module 6: x265 (H.265/HEVC decoding)
+  # ============================================
+  - name: x265
+    buildsystem: cmake-ninja
+    subdir: source
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_CLI=OFF
+    sources:
+      - type: git
+        url: https://bitbucket.org/multicoreware/x265_git.git
+        commit: 6318f223684118a2c71f67f3f4633a9e35046b00
+
+  # ============================================
+  # Module 7: libwebp (WebP encoding)
+  # ============================================
+  - name: libwebp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/webmproject/libwebp.git
+        tag: v1.4.0
+
+  # ============================================
+  # Module 8: FFmpeg with full codec support
+  # Decode: H.264, H.265, AAC, ulaw, alaw
+  # Encode: H.264, AAC, JPEG, WebP
+  # ============================================
+  - name: ffmpeg
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-doc
+      - --disable-programs
+      - --enable-gpl
+      - --enable-libx264
+      - --enable-libx265
+      - --enable-libwebp
+      # Built-in codecs (no external libs needed):
+      # - H.264/H.265 decoding (native)
+      # - AAC encode/decode (native)
+      # - ulaw/alaw (pcm_mulaw, pcm_alaw - always enabled)
+      # - JPEG (mjpeg - always enabled)
+    sources:
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        tag: n7.1
+
+  # ============================================
+  # Module 9: Revere Application
+  # ============================================
+  - name: revere
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      # Tell CMake where to find pre-fetched FetchContent dependencies
+      - -DFETCHCONTENT_SOURCE_DIR_NANOTS=/run/build/revere/deps/nanots
+      - -DFETCHCONTENT_SOURCE_DIR_PUGIXML=/run/build/revere/deps/pugixml
+      - -DFETCHCONTENT_SOURCE_DIR_TRAYPP=/run/build/revere/deps/traypp
+      - -DFETCHCONTENT_SOURCE_DIR_GLFW3=/run/build/revere/deps/glfw
+    build-options:
+      env:
+        NCNN_TOP_DIR: /app
+        OPENCV_TOP_DIR: /app
+        FLATPAK_ID: io.github.dicroce.Revere
+    sources:
+      - type: git
+        url: https://github.com/dicroce/revere.git
+        tag: v0.0.1
+      # Pre-fetch FetchContent dependencies (pinned to commits for reproducibility)
+      - type: git
+        url: https://github.com/dicroce/nanots.git
+        commit: 32185faebab39220925393a4f4ef403e026891e2
+        dest: deps/nanots
+      - type: git
+        url: https://github.com/zeux/pugixml.git
+        commit: ee86beb30e4973f5feffe3ce63bfa4fbadf72f38
+        dest: deps/pugixml
+      - type: git
+        url: https://github.com/dicroce/traypp.git
+        commit: 13da575044ff10be98d832a9198204d36d2bbec4
+        dest: deps/traypp
+      - type: shell
+        commands:
+          # Patch traypp to use libappindicator instead of ayatana-appindicator
+          - sed -i 's/ayatana-appindicator3-0.1/appindicator3-0.1/g' deps/traypp/CMakeLists.txt
+          - sed -i 's/libayatana-appindicator/libappindicator/g' deps/traypp/CMakeLists.txt
+          # Patch all source files to use libappindicator includes
+          - find deps/traypp -type f \( -name "*.hpp" -o -name "*.cpp" -o -name "*.h" \) -exec sed -i 's|libayatana-appindicator/app-indicator.h|libappindicator/app-indicator.h|g' {} \;
+      - type: git
+        url: https://github.com/glfw/glfw.git
+        commit: a74efa0d5628b74adc0426af4c5710e287fa7c2c
+        dest: deps/glfw
+    post-install:
+      # Create bin directory symlinks
+      - mkdir -p /app/bin
+      - ln -sf /app/revere/revere /app/bin/revere
+      - ln -sf /app/revere/vision /app/bin/vision
+
+      # Install desktop files
+      - install -Dm644 ../flatpak/io.github.dicroce.Revere.desktop /app/share/applications/io.github.dicroce.Revere.desktop
+      - install -Dm644 ../flatpak/io.github.dicroce.Vision.desktop /app/share/applications/io.github.dicroce.Vision.desktop
+
+      # Install icons at multiple sizes
+      - install -Dm644 ../apps/revere/R.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Revere.png
+      - install -Dm644 ../apps/vision/V.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Vision.png
+
+      # Install AppStream metadata
+      - install -Dm644 ../flatpak/io.github.dicroce.Revere.metainfo.xml /app/share/metainfo/io.github.dicroce.Revere.metainfo.xml
