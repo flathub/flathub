@@ -49,6 +49,7 @@ modules:
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
       - -DNCNN_BUILD_EXAMPLES=OFF
       - -DNCNN_BUILD_TOOLS=OFF
       - -DNCNN_BUILD_BENCHMARK=OFF
@@ -129,7 +130,17 @@ modules:
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
 
   # ============================================
-  # Module 5: Revere Application
+  # Module 5: patchelf (for fixing RPATH)
+  # ============================================
+  - name: patchelf
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0.tar.gz
+        sha256: 64de10e4c6b8b8379db7e87f58030f336ea747c0515f381132e810dbf84a86e7
+
+  # ============================================
+  # Module 6: Revere Application
   # ============================================
   - name: revere
     buildsystem: cmake-ninja
@@ -182,9 +193,10 @@ modules:
       - mkdir -p /app/lib
       - find /app/revere -maxdepth 1 -name '*.so*' -exec mv {} /app/lib/ \;
 
-      # Update RPATH so executables find libraries in /app/lib
-      - patchelf --set-rpath /app/lib /app/revere/revere
-      - patchelf --set-rpath /app/lib /app/revere/vision
+      # Update RPATH so executables and libraries find dependencies in /app/lib and /app/lib64
+      - /app/bin/patchelf --set-rpath /app/lib:/app/lib64 /app/revere/revere
+      - /app/bin/patchelf --set-rpath /app/lib:/app/lib64 /app/revere/vision
+      - for lib in /app/lib/lib*.so*; do /app/bin/patchelf --set-rpath /app/lib:/app/lib64 "$lib" 2>/dev/null || true; done
 
       # Install desktop files
       - install -Dm644 flatpak/io.github.dicroce.Revere.desktop /app/share/applications/io.github.dicroce.Revere.desktop
