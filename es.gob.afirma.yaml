@@ -1,0 +1,154 @@
+app-id: es.gob.afirma
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+command: autofirma
+
+finish-args:
+  - --filesystem=host
+  - --filesystem=~/.var/app/org.mozilla.firefox/.mozilla/firefox:rw
+  - --socket=x11
+  - --share=ipc
+  - --share=network
+  - --socket=pcsc  # smart card support
+
+  - --env=PATH=/usr/bin:/app/bin:/app/jre/bin
+  # Likely needed to access the system keystore
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk17/install.sh
+
+  - name: autofirma
+    buildsystem: simple
+    build-options:
+      # Allow network access during build to get maven dependencies
+      # build-args:
+      #   - --share=network
+      env:
+        PATH: ${PATH}:/app/bin:/usr/bin:/usr/lib/sdk/openjdk17/bin
+        MAVEN_OPTS: -Dmaven.test.skip=true -Dmaven.repo.local=.m2/repository
+        JAVA_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+        DEB_USR: afirma-simple-installer/linux/instalador_deb/src/usr
+    build-commands:
+      # Do not use ranged versions on bouncycastle deps. Fixes offline build
+      - sed -i -E 's|<version>\[([0-9]+\.[0-9]+).*?\)</version>|<version>\1</version>|g' .m2/repository/org/bouncycastle/bc*-jdk18on/*/bc*-jdk18on-*.pom
+      # Offline maven build (-o)
+      - mvn clean install -o -B -Denv=install
+
+      # Install main application files
+      - install -d /app/lib
+      - install -c -m 0755 afirma-simple/target/autofirma.jar /app/lib/
+
+      # Install the original launcher script as autofirma.real and patch paths
+      - install -d /app/bin
+      - install -c ${DEB_USR}/bin/autofirma /app/bin/autofirma.real
+
+      # Install our new wrapper as the main 'autofirma' command
+      - install -c -m 0755 autofirma.bash /app/bin/autofirma
+
+      # Install icons following the freedesktop standard
+      - install -d /app/share/icons/hicolor/128x128/apps
+      - install -c ${DEB_USR}/lib/AutoFirma/AutoFirma.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      # Install SVG icon (scalable)
+      - install -d /app/share/icons/hicolor/scalable/apps
+      - install -c afirma-simple-installer/linux/instalador_deb/src/usr/share/AutoFirma/AutoFirma.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+
+      # Install .desktop file following the freedesktop standard
+      - install -d /app/share/applications
+      - install -c ${DEB_USR}/share/applications/afirma.desktop /app/share/applications/${FLATPAK_ID}.desktop
+
+      # Install licenses and documentation
+      - install -d /app/share/doc/${FLATPAK_ID}
+      - cp -r ${DEB_USR}/share/doc/AutoFirma/* /app/share/doc/${FLATPAK_ID}/
+      - install -d /app/share/licenses/${FLATPAK_ID}
+      - cp -r ${DEB_USR}/share/common-licenses/* /app/share/licenses/${FLATPAK_ID}
+
+    sources:
+      # It's possible to use the git repo as a source instead of the .tar
+      # - type: git
+      #   url: https://github.com/ctt-gob-es/clienteafirma.git
+      #   tag: v1.9
+      #   commit: 1f29aa7a2aae8eda40a70fed79b0428153c78df8
+      - type: archive
+        url: https://github.com/ctt-gob-es/clienteafirma/archive/refs/tags/v1.9.tar.gz
+        sha256: 639c14bae0c41955e74714d2eba9727eb8e1828c6ca548686195a6ac9c898f09
+      - type: file
+        path: autofirma.bash
+      - type: patch
+        paths:
+          - patches/fix-dep-version.patch
+          - patches/fix-exec-paths.patch
+          - patches/fix-desktop-warnings.patch
+          - patches/fix-svg-icon-width.patch
+      - maven_dependencies.yaml
+
+  # 2. nspr (Netscape Portable Runtime, required by NSS)
+  - name: nspr
+    buildsystem: autotools
+    subdir: nspr
+    # no-autogen: true
+    config-opts:
+      # Standard Flatpak install prefix
+      - --prefix=/app
+      # Force a 64-bit build, required by NSPR on modern platforms
+      - --enable-64bit
+      # Disable debug builds, as required by Flathub policies
+      - --disable-debug
+      # Required for NSPR build system
+      - --with-mozilla
+      # Use standard POSIX threads
+      - --with-pthreads
+      # Ensure shared libraries (.so) are built
+      - --enable-shared
+      # Do not build static libraries (.a)
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://ftp.mozilla.org/pub/nspr/releases/v4.37/src/nspr-4.37.tar.gz
+        sha256: 5f9344ed0e31855bd38f88b33c9d9ab94f70ce547ef3213e488d1520f61840fa
+
+  - name: nss
+    buildsystem: simple
+    build-commands:
+      - |
+        cd nss
+        make -j$FLATPAK_BUILDER_N_JOBS USE_64=1 \
+        NSPR_INCLUDE_DIR=/app/include/nspr \
+        NSPR_LIB_DIR=/app/lib \
+
+      - |
+        mkdir -p /app/bin /app/lib/pkgconfig /app/include/nss
+        export NSS_DIST_DIR=$(find dist -maxdepth 1 -type d -name 'Linux*')
+        cp -L $NSS_DIST_DIR/bin/certutil /app/bin/
+        cp -L $NSS_DIST_DIR/bin/modutil /app/bin/
+        cp -L $NSS_DIST_DIR/bin/signtool /app/bin/
+        cp -L $NSS_DIST_DIR/lib/*.so /app/lib/
+        cp -Lr dist/public/nss/* /app/include/nss/
+
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+      # remove the extra tools
+      - "/bin/modutil"
+      - "/bin/signtool"
+
+    sources:
+      - type: archive
+        url: https://ftp.mozilla.org/pub/security/nss/releases/NSS_3_112_2_RTM/src/nss-3.112.2.tar.gz
+        sha256: 2019b8bd0bedeeae395fc360811af0eb51a19d047843059ec07ea435b90271d5
+
+  # Module for application store metadata (AppStream)
+  - name: metainfo
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/metainfo
+      - install -c ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/
+    sources:
+      - type: file
+        path: es.gob.afirma.metainfo.xml
