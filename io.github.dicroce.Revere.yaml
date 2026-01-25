@@ -1,6 +1,6 @@
 app-id: io.github.dicroce.Revere
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: revere
 
@@ -18,16 +18,16 @@ finish-args:
 
   # System tray support (StatusNotifierItem protocol)
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
 
   # Environment variables for GStreamer plugin discovery
   - --env=GST_PLUGIN_PATH=/app/lib/gstreamer-1.0
-  # Library path for revere libs, OpenCV, gst-rtsp-server, and bundled ffmpeg
-  - --env=LD_LIBRARY_PATH=/app/revere:/app/lib64:/app/lib
 
-build-options:
-  env:
-    PKG_CONFIG_PATH: /app/lib64/pkgconfig:/app/lib/pkgconfig:/app/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '25.08'
+    directory: lib/ffmpeg
+    add-ld-path: .
+    autodownload: true
 
 cleanup:
   - /include
@@ -120,9 +120,6 @@ modules:
       - type: archive
         url: https://gstreamer.freedesktop.org/src/gst-rtsp-server/gst-rtsp-server-1.24.10.tar.xz
         sha256: db21dfdd7bf2e718564d557378ada5358b411efe2a3e89e9f0f87a74537e2adc
-    post-install:
-      - ls -la /app/lib/pkgconfig/ || true
-      - find /app -name "*.pc" 2>/dev/null || true
 
   # ============================================
   # Module 4: libdbusmenu (required by ayatana-appindicator)
@@ -132,80 +129,13 @@ modules:
   - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
 
   # ============================================
-  # Module 5: x264 (H.264 encoding)
-  # ============================================
-  - name: x264
-    config-opts:
-      - --enable-shared
-      - --disable-cli
-      - --disable-lavf
-      - --disable-swscale
-    sources:
-      - type: git
-        url: https://code.videolan.org/videolan/x264.git
-        commit: 31e19f92f00c7003fa115047ce50978bc98c3a0d
-
-  # ============================================
-  # Module 6: x265 (H.265/HEVC decoding)
-  # ============================================
-  - name: x265
-    buildsystem: cmake-ninja
-    subdir: source
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DENABLE_CLI=OFF
-    sources:
-      - type: git
-        url: https://bitbucket.org/multicoreware/x265_git.git
-        commit: 6318f223684118a2c71f67f3f4633a9e35046b00
-
-  # ============================================
-  # Module 7: libwebp (WebP encoding)
-  # ============================================
-  - name: libwebp
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DBUILD_SHARED_LIBS=ON
-    sources:
-      - type: git
-        url: https://github.com/webmproject/libwebp.git
-        tag: v1.4.0
-
-  # ============================================
-  # Module 8: FFmpeg with full codec support
-  # Decode: H.264, H.265, AAC, ulaw, alaw
-  # Encode: H.264, AAC, JPEG, WebP
-  # ============================================
-  - name: ffmpeg
-    config-opts:
-      - --enable-shared
-      - --disable-static
-      - --disable-doc
-      - --disable-programs
-      - --enable-gpl
-      - --enable-libx264
-      - --enable-libx265
-      - --enable-libwebp
-      # Built-in codecs (no external libs needed):
-      # - H.264/H.265 decoding (native)
-      # - AAC encode/decode (native)
-      # - ulaw/alaw (pcm_mulaw, pcm_alaw - always enabled)
-      # - JPEG (mjpeg - always enabled)
-    sources:
-      - type: git
-        url: https://git.ffmpeg.org/ffmpeg.git
-        tag: n7.1
-
-  # ============================================
-  # Module 9: Revere Application
+  # Module 5: Revere Application
   # ============================================
   - name: revere
     buildsystem: cmake-ninja
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
-      - -DCMAKE_INSTALL_PREFIX=/app
       # Tell CMake where to find pre-fetched FetchContent dependencies
       - -DFETCHCONTENT_SOURCE_DIR_NANOTS=/run/build/revere/deps/nanots
       - -DFETCHCONTENT_SOURCE_DIR_PUGIXML=/run/build/revere/deps/pugixml
@@ -233,13 +163,11 @@ modules:
         url: https://github.com/dicroce/traypp.git
         commit: 13da575044ff10be98d832a9198204d36d2bbec4
         dest: deps/traypp
-      - type: shell
-        commands:
-          # Patch traypp to use libappindicator instead of ayatana-appindicator
-          - sed -i 's/ayatana-appindicator3-0.1/appindicator3-0.1/g' deps/traypp/CMakeLists.txt
-          - sed -i 's/libayatana-appindicator/libappindicator/g' deps/traypp/CMakeLists.txt
-          # Patch all source files to use libappindicator includes
-          - find deps/traypp -type f \( -name "*.hpp" -o -name "*.cpp" -o -name "*.h" \) -exec sed -i 's|libayatana-appindicator/app-indicator.h|libappindicator/app-indicator.h|g' {} \;
+      - type: patch
+        path: traypp-libappindicator.patch
+        options:
+          - -d
+          - deps/traypp
       - type: git
         url: https://github.com/glfw/glfw.git
         commit: a74efa0d5628b74adc0426af4c5710e287fa7c2c
@@ -250,13 +178,21 @@ modules:
       - ln -sf /app/revere/revere /app/bin/revere
       - ln -sf /app/revere/vision /app/bin/vision
 
+      # Move revere's shared libraries to /app/lib (flatpak standard location)
+      - mkdir -p /app/lib
+      - find /app/revere -maxdepth 1 -name '*.so*' -exec mv {} /app/lib/ \;
+
+      # Update RPATH so executables find libraries in /app/lib
+      - patchelf --set-rpath /app/lib /app/revere/revere
+      - patchelf --set-rpath /app/lib /app/revere/vision
+
       # Install desktop files
-      - install -Dm644 ../flatpak/io.github.dicroce.Revere.desktop /app/share/applications/io.github.dicroce.Revere.desktop
-      - install -Dm644 ../flatpak/io.github.dicroce.Vision.desktop /app/share/applications/io.github.dicroce.Vision.desktop
+      - install -Dm644 flatpak/io.github.dicroce.Revere.desktop /app/share/applications/io.github.dicroce.Revere.desktop
+      - install -Dm644 flatpak/io.github.dicroce.Revere.Vision.desktop /app/share/applications/io.github.dicroce.Revere.Vision.desktop
 
       # Install icons at multiple sizes
-      - install -Dm644 ../apps/revere/R.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Revere.png
-      - install -Dm644 ../apps/vision/V.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Vision.png
+      - install -Dm644 apps/revere/R.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Revere.png
+      - install -Dm644 apps/vision/V.png /app/share/icons/hicolor/256x256/apps/io.github.dicroce.Revere.Vision.png
 
       # Install AppStream metadata
-      - install -Dm644 ../flatpak/io.github.dicroce.Revere.metainfo.xml /app/share/metainfo/io.github.dicroce.Revere.metainfo.xml
+      - install -Dm644 flatpak/io.github.dicroce.Revere.metainfo.xml /app/share/metainfo/io.github.dicroce.Revere.metainfo.xml
