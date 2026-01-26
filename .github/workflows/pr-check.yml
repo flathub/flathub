@@ -141,6 +141,14 @@ jobs:
             gh pr view $PR_NUM --json isDraft --jq '.isDraft' | grep -q false && \
               gh pr edit $PR_NUM --remove-label "work-in-progress" >/dev/null 2>&1 || true
 
+
+            latest_build_succeeded() {
+              printf '%s\n' "$PR_COMMENTS" \
+                | grep 'Test build' \
+                | tail -n 1 \
+                | grep -Fq "$BUILD_SUCCESS_COMMENT"
+            }
+
             comment_exists() {
               local comment="$1"
               echo "$PR_COMMENTS" | grep -Fq "$comment"
@@ -175,11 +183,12 @@ jobs:
             }
 
             start_build() {
-              if ! label_exists_any "pr-check-blocked" "blocked"; then
-                if ! comment_exists_any "$BUILD_START_COMMENT_PARTIAL" "$BUILD_SUCCESS_COMMENT"; then
-                  echo "PR is not marked as blocked and none of the build comments exist. Starting a build"
-                  gh pr comment "$PR_NUM" --body "$BUILD_START_COMMENT" >/dev/null 2>&1 || true
-                fi
+              if ! label_exists_any "pr-check-blocked" "blocked" \
+                 && ! comment_exists_any "$BUILD_START_COMMENT_PARTIAL" \
+                 && ! latest_build_succeeded
+              then
+                echo "PR is not blocked and no active or successful build exists. Starting a build"
+                gh pr comment "$PR_NUM" --body "$BUILD_START_COMMENT" >/dev/null 2>&1 || true
               fi
             }
 
@@ -303,7 +312,7 @@ jobs:
                    "work-in-progress" \
                    "pr-check-blocked" \
                    "blocked" \
-              && if ! comment_exists_any "$BUILD_SUCCESS_COMMENT" \
+              && ! latest_build_succeeded \
               && [ "$PR_THREAD_COUNT" -eq 0 ]; then
               echo "No review comments, ensuring awaiting-review label"
               gh pr edit "$PR_NUM" \
