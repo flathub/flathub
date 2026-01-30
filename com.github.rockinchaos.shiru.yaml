@@ -1,0 +1,94 @@
+app-id: com.github.rockinchaos.shiru
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+
+command: shiru
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+  - --socket=session-bus
+  - --socket=pulseaudio
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --device=dri
+
+modules:
+  - name: shiru
+    buildsystem: simple
+    build-commands:
+      # Extract the data.tar.zst/gz/xz from the ar archive
+      - ar x shiru.deb
+      - tar -xf data.tar.*
+      
+      # Install files
+      - mkdir -p /app/bin /app/lib/shiru /app/share/applications /app/share/icons/hicolor/512x512/apps /app/share/metainfo
+      - cp -a opt/Shiru/. /app/lib/shiru/
+      - cp -a usr/share/icons/hicolor/512x512/apps/shiru.png /app/share/icons/hicolor/512x512/apps/com.github.rockinchaos.shiru.png
+      
+      # Install Metainfo (from local source in repo, or we assume it's in the deb? No, it's in our repo)
+      # Since we are submitting to Flathub, we usually bundle the metainfo file in the sources if it's not upstream.
+      - cp com.github.rockinchaos.shiru.metainfo.xml /app/share/metainfo/
+      
+      # Symlink binary
+      - ln -sf /app/lib/shiru/shiru /app/lib/shiru/shiru-bin
+      - chmod +x /app/lib/shiru/shiru-bin
+      - |
+        if [ -f /app/lib/shiru/chrome-sandbox ]; then
+          chmod 4755 /app/lib/shiru/chrome-sandbox || true
+        fi
+
+      # Launcher script
+      - |
+        cat > /app/bin/shiru << 'EOF'
+        #!/bin/bash
+        export LD_LIBRARY_PATH="/app/lib/shiru:${LD_LIBRARY_PATH}"
+        export FONTCONFIG_PATH="/etc/fonts"
+        
+        EXTRA_ARGS=()
+        if [ -n "$WAYLAND_DISPLAY" ]; then
+          EXTRA_ARGS+=(
+            "--enable-features=UseOzonePlatform,WaylandWindowDecorations"
+            "--ozone-platform=wayland"
+          )
+        else
+          export ELECTRON_OZONE_PLATFORM_HINT=auto
+        fi
+
+        exec /app/lib/shiru/shiru-bin --no-sandbox "${EXTRA_ARGS[@]}" "$@"
+        EOF
+      - chmod +x /app/bin/shiru
+
+      # Desktop file
+      - |
+        cat > /app/share/applications/com.github.rockinchaos.shiru.desktop << 'EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=Shiru
+        Comment=Personal media library and torrent streaming
+        Exec=shiru %U
+        Icon=com.github.rockinchaos.shiru
+        Categories=AudioVideo;Video;
+        Keywords=anime;media;library;torrent;streaming;
+        MimeType=x-scheme-handler/shiru;x-scheme-handler/magnet;application/x-torrent;
+        Terminal=false
+        EOF
+
+    sources:
+      # The main binary
+      - type: file
+        path: shiru.deb
+        url: https://github.com/RockinChaos/Shiru/releases/download/v6.4.8/linux-Shiru-v6.4.8.deb
+        sha256: c1de594d2ea9117fa82b6f15544831752a322ed970366623ceb02ff062f282f2
+        
+      # The metainfo file (local) - For Flathub we must include it as a 'file' source with content or url
+      # Since it is in OUR repo, for the PR we usually upload it or inline it?
+      # Best practice: use type: file with path, and when submitting, you include the file in the PR.
+      - type: file
+        path: com.github.rockinchaos.shiru.metainfo.xml
