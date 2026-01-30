@@ -1,0 +1,152 @@
+app-id: io.github.mithcus.multiclicker
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: multiclicker
+
+finish-args:
+  - --socket=x11
+  - --share=ipc
+
+modules:
+  # --- Tcl/Tk stack (needed for tkinter) ---
+  - name: tcl
+    buildsystem: autotools
+    subdir: unix
+    config-opts:
+      - --prefix=/app
+      - --enable-threads
+      - --enable-shared
+    post-install:
+      - chmod u+w /app/lib/libtcl8.6.so* || true
+    sources:
+      - type: archive
+        url: https://prdownloads.sourceforge.net/tcl/tcl8.6.15-src.tar.gz
+        sha256: 861e159753f2e2fbd6ec1484103715b0be56be3357522b858d3cbb5f893ffef1
+
+  - name: tk
+    buildsystem: autotools
+    subdir: unix
+    config-opts:
+      - --prefix=/app
+      - --enable-threads
+      - --enable-shared
+      - --with-tcl=/app/lib
+    post-install:
+      - chmod u+w /app/lib/libtk8.6.so* || true
+    sources:
+      - type: archive
+        url: https://prdownloads.sourceforge.net/tcl/tk8.6.15-src.tar.gz
+        sha256: 550969f35379f952b3020f3ab7b9dd5bfd11c1ef7c9b7c6a75f5c49aca793fec
+
+  # --- xdotool (X11 automation) ---
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3fdd345f9ada
+
+  # --- Python deps for pynput (pinned + vendored) ---
+  - name: python3-six
+    buildsystem: simple
+    build-commands:
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=/app .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/s/six/six-1.17.0.tar.gz
+        sha256: ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
+
+  - name: python3-python-xlib
+    buildsystem: simple
+    build-commands:
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=/app .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/p/python-xlib/python-xlib-0.33.tar.gz
+        sha256: 55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32
+
+  - name: python3-evdev
+    buildsystem: simple
+    build-commands:
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=/app .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/e/evdev/evdev-1.9.2.tar.gz
+        sha256: 5d3278892ce1f92a74d6bf888cc8525d9f68af85dbe336c95d1c87fb8f423069
+
+  - name: python3-pynput
+    buildsystem: simple
+    build-commands:
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=/app .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/p/pynput/pynput-1.8.1.tar.gz
+        sha256: 70d7c8373ee98911004a7c938742242840a5628c004573d84ba849d4601df81e
+
+  # --- Add tkinter itself + the _tkinter extension ---
+  - name: python3-tkinter
+    buildsystem: simple
+    build-commands:
+    
+      # Install pure-Python tkinter package into /app site-packages
+      - install -d /app/lib/python3.13/site-packages
+      - cp -a Lib/tkinter /app/lib/python3.13/site-packages/
+      # Build _tkinter extension against the runtime python (cp313) and /app Tcl/Tk
+      - |
+        cat > setup.py <<'PY'
+        from setuptools import setup, Extension
+
+        inc = [
+          "Include",
+          "Include/internal",
+          "/app/include",
+          "/app/include/tcl8.6",
+          "/app/include/tk8.6",
+        ]
+
+        ext = Extension(
+          "_tkinter",
+          sources=["Modules/_tkinter.c"],
+          include_dirs=inc,
+          library_dirs=["/app/lib"],
+          libraries=["tk8.6", "tcl8.6", "X11"],
+          define_macros=[("Py_BUILD_CORE_MODULE", "1")],
+        )
+
+        setup(name="tkinter_ext", version="0.0.0", ext_modules=[ext])
+        PY
+      - python3 -m pip install --no-deps --no-build-isolation --prefix=/app .
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.13.1/Python-3.13.1.tgz
+        sha256: 1513925a9f255ef0793dbf2f78bb4533c9f184bdd0ad19763fd7f47a400a7c55
+
+  # --- Your app ---
+  - name: multiclicker
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/multiclicker
+      - install -m644 multiclicker.py /app/lib/multiclicker/multiclicker.py
+      - install -d /app/bin
+      - |
+        cat > /app/bin/multiclicker <<'SH'
+        #!/bin/sh
+        # Ensure our bundled tkinter + Tcl/Tk are visible to the runtime python
+        export PYTHONPATH="/app/lib/python3.13/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+        export TCL_LIBRARY="/app/lib/tcl8.6"
+        export TK_LIBRARY="/app/lib/tk8.6"
+        exec python3 /app/lib/multiclicker/multiclicker.py "$@"
+        SH
+      - chmod 755 /app/bin/multiclicker
+      - install -Dm644 io.github.mithcus.multiclicker.desktop /app/share/applications/io.github.mithcus.multiclicker.desktop
+      - install -Dm644 io.github.mithcus.multiclicker.metainfo.xml /app/share/metainfo/io.github.mithcus.multiclicker.metainfo.xml
+      - install -Dm644 io.github.mithcus.multiclicker.svg /app/share/icons/hicolor/scalable/apps/io.github.mithcus.multiclicker.svg
+    sources:
+      - type: git
+        url: https://github.com/mithcus/multiclicker.git
+        tag: v1.0.1
+        commit: a2bba7976603586e3d880b1f8c242779c4d57936
