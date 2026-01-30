@@ -1,0 +1,57 @@
+app-id: com.user.AuroraApplet
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: aurora_cosmic_applet
+finish-args:
+  # Network access for fetching NOAA data
+  - --share=network
+  # Display access (Wayland/X11)
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio access (if mpv needs it, though likely not for just images)
+  - --socket=pulseaudio
+  # Notification access
+  - --talk-name=org.freedesktop.Notifications
+  # OpenGL for Iced
+  - --device=dri
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+modules:
+  # System Dependencies
+  - name: openssl
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://www.openssl.org/source/openssl-3.0.12.tar.gz
+        sha256: f93c9e8edde5e916620b5132b46463eb9729c78f88925f54314c4424367b6078
+    config-opts:
+      - --prefix=/app
+      - --openssldir=/app/etc/ssl
+
+  # Using mpv for image display via command line
+  # Note: In a real Flatpak, you might want to bundle mpv or use a different image viewer.
+  # Calling host binaries from Flatpak is restricted (requires --talk-name=org.freedesktop.Flatpak).
+  # For now, we assume the user might run this unsandboxed or we bundle a simple viewer.
+  # Ideally, we should perform image viewing IN-PROCESS using the 'image' crate and Iced, 
+  # rather than spawning mpv. Using mpv is a holdover from the bash script.
+  
+  # The Applet Itself
+  - name: aurora_cosmic_applet
+    buildsystem: simple
+    build-commands:
+      - cargo build --release
+      - install -D target/release/aurora_cosmic_applet /app/bin/aurora_cosmic_applet
+      - install -D com.user.AuroraApplet.desktop /app/share/applications/com.user.AuroraApplet.desktop
+      - install -D com.user.AuroraApplet.metainfo.xml /app/share/metainfo/com.user.AuroraApplet.metainfo.xml
+      - install -D icons/icon.svg /app/share/icons/hicolor/scalable/apps/com.user.AuroraApplet.svg
+    sources:
+      - type: git
+        url: https://github.com/subsubl/aurora_cosmic_applet.git
+        branch: master
+      - cargo-sources.json
