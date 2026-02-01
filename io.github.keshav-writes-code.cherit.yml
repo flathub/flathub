@@ -1,0 +1,65 @@
+id: io.github.keshav-writes-code.cherit
+
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+
+command: cherit
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --filesystem=home
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-config
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  - name: cherit
+    buildsystem: simple
+    env:
+      HOME: /run/build/cherit
+      CARGO_HOME: /run/build/cherit/cargo
+      XDG_CACHE_HOME: /run/build/cherit/flatpak-node/cache
+      yarn_config_offline: 'true'
+      yarn_config_cache: /run/build/cherit/flatpak-node/yarn-cache
+    sources:
+      - type: git
+        url: https://github.com/Keshav-writes-code/Cherit.git
+        branch: main
+      - type: file
+        path: cargo-sources.json
+      - type: file
+        path: node-sources.json
+    build-commands:
+      - echo -e 'yarn-offline-mirror "/run/build/cherit/flatpak-node/yarn-mirror"\nyarn-offline-mirror-pruning true' > .yarnrc
+      - mkdir -p apps/app/src-tauri/.cargo && echo -e '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/cherit/cargo/vendor"' > apps/app/src-tauri/.cargo/config.toml
+      - yarn install --offline --immutable --immutable-cache --inline-builds
+      - yarn workspace cherit run tauri build -- -b deb
+      - ar -x apps/app/src-tauri/target/release/bundle/deb/*.deb
+      - |
+        if [ -f data.tar.xz ]; then
+          tar -xf data.tar.xz
+        else
+          tar -xf data.tar.gz
+        fi
+      - install -Dm755 usr/bin/cherit /app/bin/cherit
+      - sed -i 's/^Icon=cherit/Icon=io.github.keshav-writes-code.cherit/' usr/share/applications/cherit.desktop
+      - install -Dm644 usr/share/applications/cherit.desktop /app/share/applications/io.github.keshav-writes-code.cherit.desktop
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/cherit.png /app/share/icons/hicolor/128x128/apps/io.github.keshav-writes-code.cherit.png
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/cherit.png /app/share/icons/hicolor/32x32/apps/io.github.keshav-writes-code.cherit.png
+      - |
+        if [ -f usr/share/icons/hicolor/256x256@2/apps/cherit.png ]; then
+          install -Dm644 usr/share/icons/hicolor/256x256@2/apps/cherit.png /app/share/icons/hicolor/512x512/apps/io.github.keshav-writes-code.cherit.png
+        fi
+      - |
+        if [ -f usr/share/icons/hicolor/scalable/apps/cherit.svg ]; then
+          install -Dm644 usr/share/icons/hicolor/scalable/apps/cherit.svg /app/share/icons/hicolor/scalable/apps/io.github.keshav-writes-code.cherit.svg
+        fi
+      - install -Dm644 usr/share/metainfo/io.github.keshav-writes-code.cherit.metainfo.xml /app/share/metainfo/io.github.keshav-writes-code.cherit.metainfo.xml
