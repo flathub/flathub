@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
 # Requires the repo to be cloned to "repo" folder.
 
 python3 flatpak-builder-tools/dotnet/flatpak-dotnet-generator.py \
