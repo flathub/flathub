@@ -2,6 +2,8 @@
 
 #### Prerequisites
 - Install `flatpak` and `flatpak-builder`
+- Install `org.freedesktop.Sdk` extenstion `flatpak install org.freedesktop.Platform/x86_64/23.08` select `user`
+- Install `org.freedesktop.Sdk.Extension.rust-stable` `flatpak install flathub org.freedesktop.Sdk.Extension.rust-stable/x86-64/25.08` select `user`
 
 #### Install steps
 * clone this project
