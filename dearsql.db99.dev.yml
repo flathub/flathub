@@ -1,0 +1,61 @@
+app-id: dearsql.db99.dev
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: dear-sql
+
+finish-args:
+  # X11 + Wayland
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU acceleration
+  - --device=dri
+  # Network access (for database connections)
+  - --share=network
+  # File access (for SQLite files)
+  - --filesystem=home
+  # DBus (for file dialogs)
+  - --talk-name=org.freedesktop.portal.FileChooser
+
+modules:
+  # PostgreSQL client library
+  - name: libpq
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --without-readline --without-zlib
+      - cd src/interfaces/libpq && make -j$FLATPAK_BUILDER_N_JOBS
+      - cd src/interfaces/libpq && make install
+      - cd src/include && make install
+    sources:
+      - type: archive
+        url: https://ftp.postgresql.org/pub/source/v16.2/postgresql-16.2.tar.bz2
+        sha256: 446e88294dbc2c9085ab4b7061a646fa604b4bec03521d5ea671c2e5ad9b2952
+
+  # MariaDB Connector/C (MySQL compatible)
+  - name: mariadb-connector-c
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DWITH_UNIT_TESTS=OFF
+      - -DWITH_CURL=OFF
+      - -DBUILD_SHARED_LIBS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/mariadb-corporation/mariadb-connector-c/archive/refs/tags/v3.3.8.tar.gz
+        sha256: 4a5786ceb0fdd8eafa8cc59dd38befdd5c81ecc34ebb4ee36f26f30bfe2cddaa
+
+  # Main application
+  - name: dearsql
+    buildsystem: simple
+    build-commands:
+      - cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DBUILD_VERSION=0.1.0
+      - cmake --build build --target dear-sql --parallel
+      - install -Dm755 build/dear-sql /app/bin/dear-sql
+      - install -Dm644 packaging/flatpak/dearsql.db99.dev.desktop /app/share/applications/dearsql.db99.dev.desktop
+      - install -Dm644 packaging/flatpak/dearsql.db99.dev.metainfo.xml /app/share/metainfo/dearsql.db99.dev.metainfo.xml
+      - install -Dm644 assets/appicon.png /app/share/icons/hicolor/256x256/apps/dearsql.db99.dev.png
+    sources:
+      - type: git
+        url: https://gitlab.com/dunkbing/dearsql.git
+        tag: v0.1.0
+        commit: b6ac3b8b35e292e70aba63d15227bff212b1e2ed
