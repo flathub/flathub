@@ -1,0 +1,260 @@
+app-id: io.github.aginies.virtui-manager
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: virtui-manager-tmux
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=ssh-auth
+  - --device=dri
+  - --filesystem=host
+  - --filesystem=/var/run/libvirt
+  - --env=LIBVIRT_DEFAULT_URI=qemu:///system
+  - --talk-name=org.freedesktop.secrets
+  - --device=all
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-public-share
+  - --filesystem=xdg-videos
+  - --filesystem=/run/libvirt
+  - --filesystem=xdg-run/libvirt
+  - --filesystem=~/.ssh
+  - --socket=ssh-auth
+  - --env=PATH=/app/bin:/usr/bin:/app/lib/extensions/bin
+  - --env=PYTHONPATH=/app/lib/python3.12/site-packages
+  - --own-name=io.github.aginies.virtui-manager
+  - --socket=pulseaudio
+
+build-options:
+  env:
+    PYTHONPATH: /app/lib/python3.12/site-packages
+
+modules:
+  - python3-requirements.yaml
+  - name: libevent
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz
+        sha256: 92e6de1be9ec176428fd2367677e61ceffc2ee1cb119035037a27d346b0403bb
+
+  - name: tmux
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/tmux/tmux/releases/download/3.5a/tmux-3.5a.tar.gz
+        sha256: 16216bd0877170dfcc64157085ba9013610b12b082548c7c9542cc0103198951
+
+  - name: libusb
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+
+  - name: pygobject
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/pygobject/3.55/pygobject-3.55.2.tar.gz
+        sha256: 6261a65b2e5e447fe280d7874f9d5c63e509248ec734b4c9ed5a5d762cac543c
+    modules:
+      - name: pycairo
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://github.com/pygobject/pycairo/releases/download/v1.29.0/pycairo-1.29.0.tar.gz
+            sha256: f3f7fde97325cae80224c09f12564ef58d0d0f655da0e3b040f5807bd5bd3142
+
+  - name: libvirt
+    buildsystem: meson
+    build-options:
+      cflags: -I/app/include/tirpc
+    config-opts:
+      - --libexec=/app/lib/libvirt
+      - --sbindir=/app/bin
+      - --localstatedir=/var
+      - -Ddriver_qemu=enabled
+      - -Drunstatedir=/run
+      - -Drpath=enabled
+      - -Dqemu_user=qemu
+      - -Dqemu_group=qemu
+      - -Dqemu_datadir=/app/lib/extensions/share/qemu
+      - -Ddocs=enabled
+      - -Dtests=disabled
+      - -Dstorage_mpath=disabled
+      - -Dfirewalld=disabled
+      - -Dfirewalld_zone=disabled
+      - -Dinit_script=none
+      - -Dsysctl_config=disabled
+      - -Dlibssh=enabled
+      - -Dlibssh2=enabled
+    sources:
+      - type: archive
+        url: https://libvirt.org/sources/libvirt-12.0.0.tar.xz
+        sha256: bf4e680019c04c45b557dd4a7ef59e952887f74e3c47044fe035a961fb624726
+      - type: patch
+        path: libvirt-use-monitor-in-xdg-runtime-dir.patch
+    cleanup:
+      - /etc/logrotate.d
+      - /share/doc
+    modules:
+      - name: json-c
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DENABLE_THREADING=ON
+          - -DDISABLE_WERROR=ON
+          - -DBUILD_TESTING=OFF
+        sources:
+          - type: archive
+            url: https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz
+            sha256: 876ab046479166b869afc6896d288183bbc0e5843f141200c677b3e8dfb11724
+          - type: patch
+            path: json-c-c56fbb30f56ebf8dd9b79746875598a61d8c62ee.patch
+      - name: libnl
+        config-opts:
+          - --enable-cli=no
+          - --disable-static
+        sources:
+          - type: archive
+            url: https://github.com/thom311/libnl/releases/download/libnl3_12_0/libnl-3.12.0.tar.gz
+            sha256: fc51ca7196f1a3f5fdf6ffd3864b50f4f9c02333be28be4eeca057e103c0dd18
+        cleanup:
+          - /etc
+          - /share/man
+      - name: libtirpc
+        config-opts:
+          - --disable-gssapi
+        sources:
+          - type: archive
+            url: https://downloads.sourceforge.net/sourceforge/libtirpc/libtirpc-1.3.7.tar.bz2
+            sha256: b47d3ac19d3549e54a05d0019a6c400674da716123858cfdb6d3bdd70a66c702
+      - name: python-docutils
+        buildsystem: simple
+        build-commands:
+          - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "docutils"
+        sources:
+          - type: file
+            url: https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl
+            sha256: d0013f540772d1420576855455d050a2180186c91c15779301ac2ccb3eeb68de
+      - name: rpcsvc-proto
+        sources:
+          - type: archive
+            url: https://github.com/thkukuk/rpcsvc-proto/archive/v1.4.4/rpcsvc-proto-1.4.4.tar.gz
+            sha256: 7988641deae8463303b6273d7af98ece09111c385d4c9134a142a5fad3cdfef8
+          - type: shell
+            commands:
+              - autoreconf -ifv
+      - name: libssh
+        cleanup:
+          - /include
+          - /share
+        buildsystem: cmake-ninja
+        builddir: true
+        sources:
+          - type: archive
+            url: https://www.libssh.org/files/0.11/libssh-0.11.3.tar.xz
+            sha256: 7d8a1361bb094ec3f511964e78a5a4dba689b5986e112afabe4f4d0d6c6125c3
+      - name: libssh2
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          - -DCMAKE_C_FLAGS=-fPIC
+        sources:
+          - type: archive
+            url: https://www.libssh2.org/download/libssh2-1.11.1.tar.gz
+            sha256: d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
+
+  - name: libvirt-python
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py build
+      - python3 setup.py install --skip-build --prefix=/app --root=/ --optimize=1
+    sources:
+      - type: archive
+        url: https://libvirt.org/sources/python/libvirt-python-11.7.0.tar.gz
+        sha256: f65f80fe7dabb47c2ea887bec5f62509b756282acac4fa958ab74706c0b76c11
+
+  - name: gtk-vnc
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk-vnc/1.5/gtk-vnc-1.5.0.tar.xz
+        sha256: c0beb4747528ad931da43acc567c6a0190f7fc624465571ed9ccece02c34dd23
+
+  - name: spice-gtk
+    buildsystem: meson
+    config-opts:
+      - -Dgtk_doc=disabled
+      - -Dvapi=disabled
+      - -Dusb-acl-helper-dir=/app/lib
+    sources:
+      - type: archive
+        url: https://www.spice-space.org/download/gtk/spice-gtk-0.42.tar.xz
+        sha256: 9380117f1811ad1faa1812cb6602479b6290d4a0d8cc442d44427f7f6c0e7a58
+    modules:
+      - name: libcacard
+        sources:
+          - type: archive
+            url: https://www.spice-space.org/download/libcacard/libcacard-2.8.1.tar.xz
+            sha256: fbbf4de8cb7db5bdff5ecb672ff0dbe6939fb9f344b900d51ba6295329a332e7
+      - name: phodav
+        buildsystem: meson
+        config-opts:
+          - -Dgtk_doc=disabled
+          - -Dsbindir=bin
+        sources:
+          - type: archive
+            url: https://download.gnome.org/sources/phodav/3.0/phodav-3.0.tar.xz
+            sha256: 392ec2d06d50300dcff1ef269a2a985304e29bce3520002fca29f2edc1d138d1
+      - name: usbutils
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://www.kernel.org/pub/linux/utils/usb/usbutils/usbutils-019.tar.xz
+            sha256: 659f40c440e31ba865c52c818a33d3ba6a97349e3353f8b1985179cb2aa71ec5
+        modules:
+          - name: hwids
+            buildsystem: simple
+            build-commands:
+              - for ids in pci.ids usb.ids; do install -Dm644 "$ids" /app/share/hwdata/${ids}; done
+            sources:
+              - type: archive
+                url: https://github.com/gentoo/hwids/archive/hwids-20210613.tar.gz
+                sha256: e28f1787290e9ea17426aa4090bbf6aca9bbc9e6cd14da232778bfaef4938bc1
+      - name: usbredir
+        buildsystem: meson
+        config-opts:
+          - --sbindir=/app/bin
+        sources:
+          - type: archive
+            url: https://spice-space.org/download/usbredir/usbredir-0.15.0.tar.xz
+            sha256: 6dc2a380277688a068191245dac2ab7063a552999d8ac3ad8e841c10ff050961
+      - name: spice-protocol
+        buildsystem: meson
+        sources:
+          - type: archive
+            url: https://gitlab.freedesktop.org/spice/spice-protocol/-/archive/v0.14.5/spice-protocol-v0.14.5.tar.gz
+            sha256: 1be179b3dfbb23946432275f4b7a4b59bb5e9acc25c3128bc930b8264a9f0a20
+
+  - name: virtui-manager
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation .
+      - |
+        cat > /app/bin/virtui-manager-tmux <<EOF
+        #!/bin/sh
+        exec tmux new-session -A -s vmanager virtui-manager
+        EOF
+      - chmod +x /app/bin/virtui-manager-tmux
+      - install -Dm644 flathub/io.github.aginies.virtui-manager.desktop /app/share/applications/io.github.aginies.virtui-manager.desktop
+      - install -Dm644 flathub/io.github.aginies.virtui-manager.metainfo.xml /app/share/metainfo/io.github.aginies.virtui-manager.metainfo.xml
+      - install -Dm644 documentation/manual/images/icon-400.png /app/share/icons/hicolor/512x512/apps/io.github.aginies.virtui-manager.png
+    sources:
+      - type: dir
+        path: ..
