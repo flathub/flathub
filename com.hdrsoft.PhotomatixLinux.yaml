@@ -1,0 +1,108 @@
+app-id: com.hdrsoft.PhotomatixLinux
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: photomatix
+finish-args:
+  - '--share=ipc'
+  - '--socket=wayland'
+  - '--socket=fallback-x11'
+  - '--share=network'
+  - '--device=dri'
+  - '--filesystem=host'
+  - '--env=LD_LIBRARY_PATH=/app/lib:/app/lib/x86_64-linux-gnu'
+build-options:
+  env:
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/app/lib64/pkgconfig
+modules:
+  - gtkmm.yaml
+  - name: exiftool
+    buildsystem: simple
+    sources:
+    - url: https://github.com/exiftool/exiftool.git
+      commit: 0f63a780906abcccba796761fc2e66a0737e2f16
+      x-checker-data:
+        type: git
+        tag-pattern: "^(\\d+\\.\\d+[02468])$"
+      type: git
+    cleanup:
+    - "*.pod"
+    modules:
+    - name: perl
+      buildsystem: simple
+      sources:
+      - url: https://github.com/Perl/perl5.git
+        commit: 4330efc0a86f838e95a8915066ef4c2fe9afb7c6
+        disable-fsckobjects: true
+        x-checker-data:
+          type: git
+          tag-pattern: "^v(\\d+\\.\\d+[02468].\\d+)$"
+        type: git
+      cleanup:
+      - "/bin/corelist"
+      - "/bin/cpan"
+      - "/bin/enc2xs"
+      - "/bin/encguess"
+      - "/bin/h2ph"
+      - "/bin/h2xs"
+      - "/bin/instmodsh"
+      - "/bin/json_pp"
+      - "/bin/libnetcfg"
+      - "/bin/perl5*"
+      - "/bin/perlbug"
+      - "/bin/perldoc"
+      - "/bin/perlivp"
+      - "/bin/perlthanks"
+      - "/bin/piconv"
+      - "/bin/pl2pm"
+      - "/bin/pod2html"
+      - "/bin/pod2man"
+      - "/bin/pod2text"
+      - "/bin/pod2usage"
+      - "/bin/podchecker"
+      - "/bin/prove"
+      - "/bin/ptar"
+      - "/bin/ptardiff"
+      - "/bin/ptargrep"
+      - "/bin/shasum"
+      - "/bin/splain"
+      - "/bin/streamzip"
+      - "/bin/xsubpp"
+      - "/bin/zipdetails"
+      - "*.pod"
+      post-install:
+      - chmod -R u+w $FLATPAK_DEST/lib/perl5
+      build-commands:
+      - "./Configure -des -Dprefix=$FLATPAK_DEST -Dman1dir=none -Dman3dir=none"
+      - make
+      - make install
+    build-commands:
+    - perl Makefile.PL
+    - make install
+  - name: photomatix
+    buildsystem: simple
+    build-commands:
+      - ar x PhotomatixLinux*.deb && tar xf data.tar.* && rm -f data.tar.* control.tar.* debian-binary
+      - cp -r usr/* /app/
+      - chmod +x /app/bin/photomatix
+      - mkdir -p /app/share/icons/hicolor/512x512/apps/
+      - cp /app/share/photomatix/icon.png /app/share/icons/hicolor/512x512/apps/com.hdrsoft.PhotomatixLinux.png
+      - mkdir -p /app/share/metainfo
+      - sed -e 's/<id>photomatix/<id>com.hdrsoft.PhotomatixLinux/' -e 's/photomatix.desktop/com.hdrsoft.PhotomatixLinux.desktop/' /app/share/metainfo/photomatix.metainfo.xml > /app/share/metainfo/com.hdrsoft.PhotomatixLinux.metainfo.xml
+      - rm /app/share/metainfo/photomatix.metainfo.xml
+      - mkdir -p /app/share/applications
+      - sed -e 's=/usr/share/photomatix/icon.png=com.hdrsoft.PhotomatixLinux=' -e 's=/usr/bin/photomatix=/app/bin/photomatix=' /app/share/applications/photomatix.desktop > /app/share/applications/com.hdrsoft.PhotomatixLinux.desktop
+      - rm /app/share/applications/photomatix.desktop
+      - mkdir -p /app/share/glib-2.0/schemas
+      - cp /app/share/photomatix/apps.photomatix.gschema.xml /app/share/glib-2.0/schemas
+      - glib-compile-schemas /app/share/glib-2.0/schemas/
+      - chmod a+r /app/share/glib-2.0/schemas/gschemas.compiled
+      - ar x libjpeg-turbo*.deb && tar -xf data.tar.* -C /app --wildcards --strip-components=2 ./usr/lib/x86_64-linux-gnu/libjpeg.so\* && rm -f data.tar.* control.tar.* debian-binary
+    sources: 
+      - type: file
+        url: https://www.hdrsoft.com/download/linux/ubuntu/PhotomatixLinux_3.0_Ubuntu23_24.deb
+        sha256: a2617a4585d0fbae8cb294b90d1dc5d338fc78d1641adb97ac6145d51dfce49e
+      # Needed for libjpeg-8.so because deb file for Photomatix is built on Ubuntu 24 and that uses a different libjpeg than the Gnome/48 platform.
+      - type: file
+        url: https://www.hdrsoft.com/download/linux/photomatix-flatpak/libjpeg-turbo8_2.1.5-2ubuntu2_amd64.deb
+        sha256: f68b5b23bc8a1688fb787d2aed7e2cdf895a73022f6a5025e183162dac4500b2
