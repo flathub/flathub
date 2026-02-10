@@ -1,0 +1,72 @@
+id: com.ledger.live
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: ledger-live-launcher
+finish-args:
+  # https://docs.flatpak.org/en/latest/electron.html#enable-native-wayland-support-by-default
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --socket=wayland
+  - --socket=fallback-x11
+  #- --socket=session-bus
+  - --talk-name=org.freedesktop.UDisks2
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --share=ipc
+  # ledger
+  - --share=network
+  - --device=all
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --talk-name=org.freedesktop.Notifications
+  #- --talk-name=org.freedesktop.portal.Desktop
+  - --system-talk-name=org.bluez
+modules:
+  - shared-modules/squashfs-tools/squashfs-tools.json
+  - name: ledger-live-desktop
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/bin/ ledger-live-launcher apply_extra
+      - install -Dm644 com.ledger.live.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.ledger.live.metainfo.xml
+      - install -Dm444 ledger.live.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - >
+        for size in {128,256,512}; do
+          install -Dm444 "hicolor/${size}x${size}/apps/ledger-live-desktop.png" "/app/share/icons/hicolor/${size}x${size}/apps/$FLATPAK_ID.png";
+        done
+
+    sources:
+      - type: extra-data
+        # flatpak-builder puts this file in /app/extra
+        filename: appimage
+        url: https://download.live.ledger.com/ledger-live-desktop-2.133.0-linux-x86_64.AppImage
+        #url: https://download.live.ledger.com/ledger-live-desktop-2.139.1-linux-x86_64.AppImage
+        sha256: da8c9fa9e35161f97f528805c10faa2a398d25b77240017afc0944ace2f0d218
+        size: 175423647
+        only-arches:
+          - x86_64
+
+      - type: script
+        # deps: org.electronjs.Electron2.BaseApp
+        dest-filename: ledger-live-launcher
+        commands:
+          - zypak-wrapper /app/extra/ledger-live-desktop --no-sandbox --disable-gpu "$@"
+
+      - type: script
+        # deps: squashfs-tools
+        # flatpak-builder runs this script in /app/extra at the end
+        dest-filename: apply_extra
+        commands:
+          - offset=$(grep -aob -- 'hsqs' appimage | tail -n1 | cut -d':' -f1)
+          - unsquashfs -o "$offset" -d squashfs-root appimage
+          - rm -f appimage
+          - rm -f squashfs-root/{.DirIcon,AppRun,ledger-live-desktop.png}
+          - rm -rf squashfs-root/usr/lib
+          - mv squashfs-root/* ./
+          - rm -rf squashfs-root
+
+      - type: dir
+        path: icons
+      - type: file
+        path: ledger.live.desktop
+      - type: file
+        path: com.ledger.live.metainfo.xml
