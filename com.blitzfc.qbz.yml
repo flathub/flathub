@@ -1,0 +1,206 @@
+app-id: com.blitzfc.qbz
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: qbz
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+
+  # Standard user directories
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-cache
+  - --filesystem=xdg-config
+
+  # External drives and network mounts (NAS support)
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+
+  # Migration: Read-only access to old App ID data for one-time migration
+  # This allows copying user data from com.blitzkriegfc.qbz to com.blitzfc.qbz
+  # Can be removed in a future release after users have migrated
+  - --filesystem=~/.var/app/com.blitzkriegfc.qbz:ro
+
+  # Required for tray icon to be visible (Tauri writes icon to temp location)
+  - --filesystem=xdg-run/tray-icon:create
+
+  # Portals and notifications
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.mpris.MediaPlayer2.*
+
+  # Own MPRIS name to register as media player
+  - --own-name=org.mpris.MediaPlayer2.qbz
+
+  # OAuth browser authentication
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  # alsa-utils for better ALSA device names (aplay -L)
+  - name: alsa-utils
+    buildsystem: autotools
+    config-opts:
+      - --disable-alsamixer
+      - --disable-xmlto
+      - --with-udev-rules-dir=/app/lib/udev/rules.d
+    cleanup:
+      - /share/man
+      - /share/sounds
+    sources:
+      - type: archive
+        url: https://www.alsa-project.org/files/pub/utils/alsa-utils-1.2.12.tar.bz2
+        sha256: 98bc6677d0c0074006679051822324a0ab0879aea558a8f68b511780d30cd924
+
+  # intltool required for libdbusmenu
+  - name: intltool
+    buildsystem: autotools
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  # Dependency for libayatana-appindicator
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_FALSE: '#'
+        HAVE_VALGRIND_TRUE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.la
+      - /share/doc
+      - /share/libdbusmenu
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=NO
+      - -DENABLE_IDO=YES
+      - -DENABLE_LOADER=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
+        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.93.tar.gz
+        sha256: cbefed7a918a227bf71286246e237fcd3a9c8499b3eaac4897811a869409edf0
+
+  # Workaround: Freedesktop 25.08 cmake may install to lib64 despite CMAKE_INSTALL_LIBDIR
+  # Copy any libraries from lib64 to lib so they can be found at runtime
+  - name: fix-lib64
+    buildsystem: simple
+    build-commands:
+      - |
+        if [ -d /app/lib64 ]; then
+          mkdir -p /app/lib
+          cp -a /app/lib64/* /app/lib/ 2>/dev/null || true
+          # Also copy pkgconfig if it exists
+          if [ -d /app/lib64/pkgconfig ]; then
+            mkdir -p /app/lib/pkgconfig
+            cp -a /app/lib64/pkgconfig/* /app/lib/pkgconfig/ 2>/dev/null || true
+          fi
+        fi
+        # List what we have for debugging
+        echo "=== Contents of /app/lib ==="
+        ls -la /app/lib/ || echo "lib is empty"
+        echo "=== Contents of /app/lib64 ==="
+        ls -la /app/lib64/ 2>/dev/null || echo "lib64 does not exist or is empty"
+
+  - name: qbz
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node20
+        XDG_CACHE_HOME: /run/build/qbz/flatpak-node/cache
+        npm_config_cache: /run/build/qbz/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        npm_config_audit: "false"
+        npm_config_fund: "false"
+        CARGO_HOME: /run/build/qbz/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - install -Dm0644 cargo/config .cargo/config.toml
+      - npm ci --offline --no-audit --no-fund
+      - export PATH="$PWD/node_modules/.bin:$PATH" && npm run build
+      - export PATH="$PWD/node_modules/.bin:$PATH" && npm run tauri build -- --no-bundle
+      - install -Dm755 src-tauri/target/release/qbz-nix /app/bin/qbz
+      - install -Dm644 com.blitzfc.qbz.desktop /app/share/applications/com.blitzfc.qbz.desktop
+      - install -Dm644 com.blitzfc.qbz.metainfo.xml /app/share/metainfo/com.blitzfc.qbz.metainfo.xml
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.blitzfc.qbz.png
+      # Install tray icon for StatusNotifierItem (symbolic icon for panel)
+      - install -Dm644 src-tauri/icons/tray.png /app/share/icons/hicolor/symbolic/apps/com.blitzfc.qbz-symbolic.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.blitzfc.qbz.png
+    sources:
+      - type: git
+        url: https://github.com/vicrodh/qbz.git
+        commit: 3c26880e56455f57d36e555b250ef8abd71ed1d6
+        x-checker-data:
+          type: git
+          tag-pattern: '^v(\d+\.\d+\.\d+)$'
+      - type: file
+        path: com.blitzfc.qbz.desktop
+      - type: file
+        path: com.blitzfc.qbz.metainfo.xml
+      - type: file
+        path: cargo/config
+        dest: cargo
+        dest-filename: config
+      - cargo-sources.json
+      - npm-sources.json
