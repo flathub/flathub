@@ -1,0 +1,209 @@
+app-id: tv.cybertelly.CyberTelly
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: org.videolan.VLC
+base-version: stable
+command: CyberTelly.py
+
+# Cleanups reduce bundle size from more than 210MB to 82.5MB
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - "*.a"
+  - "*.la"
+  # Cleanup: Qt translations
+  - "/lib/python3.13/site-packages/PySide6/Qt/translations"
+  # Cleanup: Unused resources
+  - "/lib/python3.13/site-packages/PySide6/Qt/resources"
+  # Cleanup: Unused metadata
+  - "/lib/python3.13/site-packages/PySide6/Qt/metatypes"
+  # Cleanup: Unused libraries
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6WebEngine*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Quick*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt63D*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Charts*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Multimedia*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Qml*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6VirtualKeyboard*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6SpatialAudio*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Pdf*"
+  - "/lib/python3.13/site-packages/PySide6/Qt/lib/libQt6Positioning*"
+  # Cleanup: Unused plugins
+  - "/lib/python3.13/site-packages/PySide6/Qt/plugins/assetimporters"
+  - "/lib/python3.13/site-packages/PySide6/Qt/plugins/sceneparsers"
+  - "/lib/python3.13/site-packages/PySide6/Qt/plugins/sqldrivers"
+  - "/lib/python3.13/site-packages/PySide6/Qt/plugins/renderers"
+
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.SessionManager
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=~/CyberTelly:create
+
+modules:
+  # xcb-util
+  - name: xcb-util
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xcb.freedesktop.org/dist/xcb-util-0.4.0.tar.gz
+        sha256: 0ed0934e2ef4ddff53fcc70fc64fb16fe766cd41ee00330312e20a985fd927a7
+
+  # libxcb-cursor
+  - name: libxcb-cursor
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://xcb.freedesktop.org/dist/xcb-util-cursor-0.1.4.tar.gz
+        sha256: cc8608ebb695742b6cf84712be29b2b66aa5f6768039528794fca0fa283022bf
+
+  # ffmpeg
+  - name: ffmpeg
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-programs
+      - --disable-doc
+      - --disable-encoders
+      - --disable-muxers
+      - --enable-vaapi      
+      - --enable-libvpx
+      - --enable-libopus
+      - --disable-nvenc
+      - --disable-cuda
+      - --disable-cuvid
+      - --disable-libnpp
+      - --disable-vulkan
+    cleanup:
+      - /bin         
+      - /share/ffmpeg
+      - /include     
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz
+        sha256: 8684f4b00f94b85461884c3719382f1261f0d9eb3d59640a1f4ac0873616f968
+
+  # Minimal Build for libvlc
+  - name: vlc
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error=incompatible-pointer-types
+      ldflags: -L/app/lib
+      env:
+        BUILDCC: gcc
+    config-opts:
+      # Basic functionality
+      - --enable-libvlc
+      - --disable-vlc
+      - --enable-avcodec
+      - --enable-avformat
+      # GUI & scripting
+      - --disable-qt
+      - --disable-skins2
+      - --disable-lua
+      - --disable-nls
+      # Unused Protocols and media
+      - --disable-a52
+      - --disable-dvdread
+      - --disable-vcd
+      - --disable-bluray
+      - --disable-chromecast
+      - --disable-v4l2
+      - --disable-dbus
+      - --disable-vnc
+      - --disable-rdp
+      # Audio-/Video-Output
+      - --enable-alsa
+      - --enable-pulse
+      - --enable-xcb
+      - --enable-swscale
+      - --disable-vulkan
+      - --disable-gstreamer
+      # Optimizations
+      - --disable-spatialaudio
+      - --disable-jack
+    cleanup:
+      - /include
+      - /bin
+      - /share/man
+      - /lib/vlc/plugins/gui
+    post-install:
+      - strip /app/lib/libvlc.so*
+      - strip /app/lib/libvlccore.so*
+      - find /app/lib/vlc/plugins -name "*.so" -exec strip {} +
+      - /app/lib/vlc/vlc-cache-gen /app/lib/vlc/plugins
+    sources:
+      - type: archive
+        url: https://get.videolan.org/vlc/3.0.23/vlc-3.0.23.tar.xz
+        sha256: e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0
+
+  # Python dependencies
+  - python3-modules.json
+
+  # Application: Cybertelly
+  - name: cybertelly-app
+    buildsystem: simple
+    build-commands:
+      # Create directories
+      - install -d /app/bin/resources
+      - install -d /app/bin/m3u
+      - install -d /app/share/icons/hicolor/scalable/apps
+      - install -d /app/share/applications
+      - install -d /app/share/metainfo
+      
+      # Installation of main program
+      - install -D source/CyberTelly.py /app/bin/CyberTelly.py
+      - chmod +x /app/bin/CyberTelly.py
+      
+      # Copy resources
+      - cp -ra source/resources/. /app/bin/resources/ || true
+      - cp -ra source/m3u/. /app/bin/m3u/ || true
+
+      # Desktop & metadata
+      - install -D tv.cybertelly.CyberTelly.desktop /app/share/applications/tv.cybertelly.CyberTelly.desktop
+      - install -D tv.cybertelly.CyberTelly.svg /app/share/icons/hicolor/scalable/apps/tv.cybertelly.CyberTelly.svg
+      - install -D tv.cybertelly.CyberTelly.metainfo.xml /app/share/metainfo/tv.cybertelly.CyberTelly.metainfo.xml
+
+      # Python optimizations
+      - python3 -m compileall -d /app/bin /app/bin/CyberTelly.py
+      - find /app/lib/python* -name "__pycache__" -exec rm -rf {} +
+
+      # Delete files that don't contain 'Core', 'Gui' or 'Widgets' in file name
+      - |
+        find /app/lib/python3.13/site-packages/PySide6/Qt/lib/ -type f -not \( \
+          -name "*Config*" -o \
+          -name "*Core*" -o \
+          -name "*Gui*" -o \
+          -name "*Widgets*" -o \
+          -name "*Support*" -o \
+          -name "*icu*" \
+        \) -delete
+      
+      # Sort out plugins
+      - |
+        find /app/lib/python3.13/site-packages/PySide6/Qt/plugins/ -maxdepth 1 -type d -not \( \
+          -name "plugins" -o \
+          -name "platforms" -o \
+          -name "xcbglintegrations" -o \
+          -name "imageformats" -o \
+          -name "wayland*" \
+        \) -exec rm -rf {} +
+
+    sources:
+      - type: git
+        url: https://github.com/rkm-r/CyberTelly.git
+        tag: v2.0.0-260212
+        commit: 81081b0e7f97cce0953621b37297466dbd92323f
+      - type: file
+        path: tv.cybertelly.CyberTelly.desktop
+      - type: file
+        path: tv.cybertelly.CyberTelly.svg
+      - type: file
+        path: tv.cybertelly.CyberTelly.metainfo.xml
