@@ -1,0 +1,151 @@
+# ============================================================================
+# Hablara - Flatpak Manifest
+# ============================================================================
+# Builds Hablara as a Flatpak for Flathub distribution.
+#
+# Strategy: From-source build with 2 modules:
+#   1. whisper.cpp v1.8.3 (cmake, CPU-only, static linking)
+#   2. Hablara (Tauri, yarn install --offline, --no-bundle)
+#
+# Runtime: GNOME 47 (provides WebKitGTK 4.1 for Tauri)
+# SDK Extensions: rust-stable + node22 (Tauri build toolchain)
+#
+# Node dependencies: yarn (not pnpm) — flatpak-node-generator only supports
+# npm/yarn. yarn.lock generated from package.json for this purpose.
+#
+# Ref: ADR-072, Pomodorolm (Tauri 2 on Flathub)
+# ============================================================================
+
+app-id: io.github.fidpa.Hablara
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: hablara
+
+finish-args:
+  - --socket=pulseaudio          # Audio (cpal Recording + Playback)
+  - --share=network              # Ollama localhost, Cloud LLM APIs
+  - --socket=fallback-x11        # X11 Display
+  - --socket=wayland             # Wayland Display
+  - --share=ipc                  # X11 shared memory
+  - --device=dri                 # GPU (WebKitGTK Rendering)
+  - --filesystem=xdg-documents/Hablara:create  # Recordings Export
+  - --talk-name=org.freedesktop.secrets        # Keyring / Secret Service
+  - --talk-name=org.freedesktop.Notifications  # Desktop Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher  # Tray Icon (KDE/XFCE)
+  - --env=FLATPAK=1              # Flatpak Detection (disables in-app updater)
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+
+modules:
+  # ============================================================================
+  # Module 1: whisper.cpp v1.8.3 (CPU-only, static linking, portable)
+  # Ref: ADR-059 (Portable Build Flags), linux-build.yml
+  # ============================================================================
+  - name: whisper-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DGGML_NATIVE=OFF
+      - -DGGML_CUDA=OFF
+      - -DGGML_OPENCL=OFF
+      - -DGGML_VULKAN=OFF
+      - -DGGML_HIPBLAS=OFF
+      - -DGGML_BLAS=OFF
+      - -DGGML_METAL=OFF
+      - -DGGML_SYCL=OFF
+      - -DWHISPER_BUILD_TESTS=OFF
+      - -DWHISPER_BUILD_EXAMPLES=ON
+    sources:
+      - type: archive
+        url: https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.8.3.tar.gz
+        sha256: 870ba21409cdf66697dc4db15ebdb13bc67037d76c7cc63756c81471d8f1731a
+    post-install:
+      # whisper-cli is the binary name in v1.8.3
+      - install -Dm755 bin/whisper-cli /app/bin/whisper-cpp-main
+      # Verify static linking (no shared whisper/ggml/cuda libs)
+      - "! ldd /app/bin/whisper-cpp-main 2>/dev/null | grep -qE 'libwhisper|libggml|libcuda'"
+
+  # ============================================================================
+  # Module 2: Hablara (Tauri Desktop App)
+  # Build approach follows Pomodorolm (Tauri 2 on Flathub):
+  #   yarn install --offline for Node deps, cargo --offline fetch for Rust deps
+  # ============================================================================
+  - name: hablara
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/fidpa/hablara.git
+        # tag and commit updated per release
+        tag: v1.2.5
+        commit: e20eceb
+
+      # flatpak-node-generator yarn yarn.lock -o node-sources.json
+      - node-sources.json
+
+      # flatpak-cargo-generator.py src-tauri/Cargo.lock -o cargo-sources.json
+      - cargo-sources.json
+
+    build-options:
+      env:
+        CARGO_HOME: /run/build/hablara/cargo
+        XDG_CACHE_HOME: /run/build/hablara/flatpak-node/cache
+        npm_config_cache: /run/build/hablara/flatpak-node/npm-cache
+        npm_config_offline: "true"
+
+    build-commands:
+      # --- Install Node dependencies (offline via node-sources.json) ---
+      - yarn install --offline --frozen-lockfile
+
+      # --- Fetch Rust dependencies (offline via cargo-sources.json) ---
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose
+
+      # --- Copy whisper binary to Tauri sidecar path (before build!) ---
+      - test -f /app/bin/whisper-cpp-main || (echo "ERROR: whisper binary not found from Module 1" && exit 1)
+      - mkdir -p src-tauri/binaries
+      - cp /app/bin/whisper-cpp-main src-tauri/binaries/whisper-x86_64-unknown-linux-gnu
+
+      # --- Build Tauri app (no-bundle — Flatpak handles packaging) ---
+      - yarn --offline run tauri build --no-bundle
+
+      # --- Install binary ---
+      - install -Dm755 src-tauri/target/release/hablara /app/bin/hablara
+
+      # --- Install resources ---
+      # Whisper sidecar binary
+      - mkdir -p /app/lib/hablara/binaries
+      - install -Dm755 src-tauri/binaries/whisper-x86_64-unknown-linux-gnu /app/lib/hablara/binaries/
+
+      # VAD model
+      - mkdir -p /app/lib/hablara/resources/models
+      - cp src-tauri/resources/models/silero_vad_v4.onnx /app/lib/hablara/resources/models/
+
+      # Knowledge base
+      - cp src-tauri/resources/knowledge.db /app/lib/hablara/resources/
+
+      # ONNX Embedding models
+      - cp -r public/models /app/lib/hablara/
+
+      # Ollama Modelfiles
+      - mkdir -p /app/lib/hablara/scripts/ollama
+      - cp scripts/ollama/qwen2.5-3b-custom.modelfile /app/lib/hablara/scripts/ollama/
+      - cp scripts/ollama/qwen2.5-7b-custom.modelfile /app/lib/hablara/scripts/ollama/
+      - cp scripts/ollama/qwen2.5-14b-custom.modelfile /app/lib/hablara/scripts/ollama/
+      - cp scripts/ollama/qwen2.5-32b-custom.modelfile /app/lib/hablara/scripts/ollama/
+
+      # --- Install desktop integration (from Hablara source repo root) ---
+      - install -Dm644 -t /app/share/applications/ io.github.fidpa.Hablara.desktop
+      - install -Dm644 -t /app/share/metainfo/ io.github.fidpa.Hablara.metainfo.xml
+
+      # Icons (multiple sizes for HiDPI)
+      - install -Dm644 icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.fidpa.Hablara.png
+      - install -Dm644 icons/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.fidpa.Hablara.png
+      - install -Dm644 icons/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.fidpa.Hablara.png
+
+      # --- License (Flathub requirement) ---
+      - install -Dm644 LICENSE /app/share/licenses/io.github.fidpa.Hablara/LICENSE
