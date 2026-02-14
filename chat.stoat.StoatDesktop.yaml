@@ -10,75 +10,96 @@ command: stoat-desktop
 separate-locales: false
 finish-args:
   - --share=ipc
-    # Required to provide Call functionality
+  # Required to provide Call functionality
   - --socket=pulseaudio
   - --device=all
-    # Network access
+  # Network access
   - --share=network
-  - --talk-name=org.freedesktop.ScreenSaver
-    # Local filesystem
+  # Local filesystem
   - --filesystem=xdg-videos:ro
   - --filesystem=xdg-pictures:ro
   - --filesystem=xdg-download
   - --filesystem=xdg-run/pipewire-0
   - --filesystem=xdg-run/speech-dispatcher
-    # Required for notifications in various desktop environments
+  - --talk-name=org.freedesktop.ScreenSaver
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=com.canonical.AppMenu.Registrar
   - --talk-name=com.canonical.indicator.application
   - --talk-name=com.canonical.Unity
+    # Required for notifications in various desktop environments
+  - --talk-name=org.kde.StatusNotifierWatcher
   - --system-talk-name=org.freedesktop.UPower
-    # Ensure that custom mouse cursors are used
+  # Ensure that custom mouse cursors is used
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
   - --env=ELECTRON_TRASH=gio
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+    XDG_CACHE_HOME: /run/build/stoat/flatpak-node/cache
+    npm_config_offline: 'true'
+    npm_config_cache: /run/build/stoat/flatpak-node/npm-cache
+    npm_config_loglevel: verbose
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    ELECTRON_FORCE_IS_VERSIONED_INSTALLATION: '1'
+    electron_config_cache: /run/build/stoat/flatpak-node/npm-cache
 
 modules:
   # Build and install stoat
   - name: stoat
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/node22/bin
       env:
-        npm_config_nodedir: /usr/lib/sdk/node22
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/stoat/flatpak-node/npm-cache
+        electron_zip_dir: /run/build/stoat/flatpak-node/npm-cache/electron
+        XDG_CACHE_HOME: /run/build/stoat/flatpak-node/cache
+        PLATFORM: ci
     build-commands:
-      - cp -a stoat-desktop /app/
-      - install -Dm775 stoat-desktop.sh /app/bin/stoat-desktop
+      - install -dm755 "${FLATPAK_DEST}/bin" "${FLATPAK_DEST}/stoat-desktop"
+
+      - npm install --legacy-peer-deps --lockfile-version 1 --force --offline > /dev/null
+
+      - install -Dm755 pnpm /app/bin/pnpm
+      - pnpm install --offline --ignore-workspace
+      - pnpm exec electron-packager . stoat-chat --electronZipDir='/run/build/stoat/flatpak-node/cache/electron'
+
+      # Copy the unpacked Linux build into /app/stoat-desktop
+      # (adjust path if your output dir name differs)
+      - cp -a out/*linux*unpacked/* /app/stoat-desktop/
+
+      # Install wrapper
+      - install -Dm755 stoat-desktop.sh /app/bin/stoat-desktop
+
+      # Desktop + metadata + icon
       - install -D chat.stoat.StoatDesktop.desktop -t /app/share/applications/
       - install -Dm644 chat.stoat.StoatDesktop.metainfo.xml -t /app/share/metainfo/
       - install -D icon.png /app/share/icons/hicolor/256x256/apps/chat.stoat.StoatDesktop.png
-
     sources:
+      - type: file
+        path: package-lock.json
       - type: archive
-        only-arches: [x86_64]
-        url: https://github.com/stoatchat/for-desktop/releases/download/v1.1.12/Stoat-linux-x64-1.1.12.zip
-        sha256: eabbdb9a84867669725d84bb1b7884ea752e2f82076c34ca5a249e6c0557ab6f
-        dest: stoat-desktop
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/stoatchat/for-desktop/releases/latest
-          tag-query: .tag_name
-          version-query: .tag_name | sub("^v"; "")
-          url-query: '"https://github.com/stoatchat/for-desktop/releases/download/" + $tag + "/Stoat-linux-x64-" + $version + ".zip"'
-      - type: archive
-        only-arches: [aarch64]
-        url: https://github.com/stoatchat/for-desktop/releases/download/v1.1.12/Stoat-linux-arm64-1.1.12.zip
-        sha256: d5fd93f977abd813e6855756d814ad29b10f6255cd813f34565bf31aa83343c4
-        dest: stoat-desktop
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/stoatchat/for-desktop/releases/latest
-          tag-query: .tag_name
-          version-query: .tag_name | sub("^v"; "")
-          url-query: '"https://github.com/stoatchat/for-desktop/releases/download/" + $tag + "/Stoat-linux-arm64-" + $version + ".zip"'
+        url: https://github.com/stoatchat/for-desktop/archive/refs/tags/v1.1.12.tar.gz
+        sha256: 352b2794fc2cf32b6e849bcb05474a2d432e13e44c9fa827df7558dc07a0bc99
+        dest: .
+      - type: git
+        url: https://github.com/stoatchat/assets
+        commit: f106946659af67ad4f008588ac51570029b2fd47
+        dest: 'assets/'
+      - generated-sources.json
+        # Inspiration taken from https://github.com/RushingAlien/vesktop-flatpak/blob/build-from-source/dev.vencord.Vesktop.yml
+      - type: file
+        url: https://github.com/pnpm/pnpm/releases/download/v8.10.5/pnpm-linux-x64
+        sha256: 92b2da9a8b2c669ae3741a52dde8f8b694330dbd4cf49bfb331f2454e98556fb
+        dest-filename: pnpm
+      - type: file
+        path: images/icon.png
+      - type: file
+        path: chat.stoat.StoatDesktop.desktop
+      - type: file
+        path: chat.stoat.StoatDesktop.metainfo.xml
       - type: script
         dest-filename: stoat-desktop.sh
         commands:
           # TMPDIR env variable fixes the tray icon issue (#6)
           - env TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-chat.stoat.StoatDesktop}" zypak-wrapper /app/stoat-desktop/stoat-desktop "$@"
-      - type: file
-        path: chat.stoat.StoatDesktop.desktop
-      - type: file
-        path: chat.stoat.StoatDesktop.metainfo.xml
-      - type: file
-        url: https://raw.githubusercontent.com/stoatchat/assets/master/desktop/icon.png
-        sha256: 582426c61a9e708f26b45ac51b5b0a1423c780a7f56267743e51ce546a856548
