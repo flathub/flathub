@@ -13,10 +13,14 @@ Unofficial Flatpak for AutoFirma, the digital signature application provided by 
 
 ✅ **Compatible with:**
 - Local document signing
-- Native Firefox and [Flathub][firefox-flathub] (Flatpak)
+- Firefox, Chromium, Google Chrome, etc. (may require [manual action][issue-ca-install])
 
 ❌ **Unverified:**
 - DNIe (Spanish Electronic ID) — likely non-functional
+
+### Actions required for specific features
+
+Visit the [troubleshooting section][troubleshooting] to find solutions for common issues you might encounter using this community distribution of AutoFirma.
 
 ## Installation
 
@@ -69,6 +73,8 @@ Help us improve!
 [firefox-flathub]: https://flathub.org/apps/org.mozilla.firefox
 [flatpak-docs]: https://docs.flatpak.org/
 [issues]: https://github.com/flathub/es.gob.afirma/issues
+[issue-ca-install]: docs/users/troubleshooting/en.md#failure-to-call-autofirma-from-the-browser
 [matrix-chat]: https://matrix.to/#/#autofirma-flatpak:matrix.org
 [official-repo]: https://github.com/ctt-gob-es/clienteafirma
-[official-website]: https://firmaelectronica.gob.es/
+[official-website]: https://firmaelectronica.gob.es/  
+[troubleshooting]: docs/users/troubleshooting/en.md

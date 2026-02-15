@@ -11,43 +11,6 @@ _autofirma_pfx="${_autofirma_dir}/autofirma.pfx"
 _script_sh="${_autofirma_dir}/script.sh"
 _uninstall_sh="${_autofirma_dir}/uninstall.sh"
 _cert_cn="SocketAutoFirma"
-_firefox_flatpak_profiles_ini="${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox/profiles.ini"
-
-
-function augment_scripts_with_flatpak_firefox {
-  echo "Adding Firefox Flatpak profile support to generated scripts..."
-
-  # Check if Firefox Flatpak profiles exist
-  if [ ! -r "${_firefox_flatpak_profiles_ini}" ]; then
-    echo "No Firefox Flatpak profiles found, skipping."
-    return
-  fi
-
-  # Extract profile paths from Firefox Flatpak
-  local profile_paths=($(grep Path "${_firefox_flatpak_profiles_ini}"))
-  local firefox_flatpak_base="${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox"
-
-  for profile_path in ${profile_paths[@]}; do
-    profile_path="${profile_path##*=}"
-    # Check if profile path is absolute or relative
-    [ ! -d "${profile_path}" ] && profile_path="${firefox_flatpak_base}/${profile_path}"
-
-    if [ -d "${profile_path}" ]; then
-      # Add install line to script.sh
-      if [ -f "${_script_sh}" ]; then
-        echo "certutil -A -d sql:${profile_path} -i ${_autofirma_ca} -n \"${_cert_cn}\" -t \"C,,\" " >> "${_script_sh}"
-      fi
-
-      # Add uninstall line to uninstall.sh
-      if [ -f "${_uninstall_sh}" ]; then
-        echo "certutil -D -d sql:${profile_path} -n \"${_cert_cn}\" " >> "${_uninstall_sh}"
-      fi
-    fi
-  done
-
-  echo "Firefox Flatpak support added."
-}
-
 
 function do_init {
   echo "Generating new AutoFirma certificates..."
@@ -64,7 +27,6 @@ function do_init {
   # Remove the jar copy (we don't need it anymore)
   rm -f "${_autofirma_dir}/autofirmaConfigurador.jar"
 
-
   # Verify that certificates and scripts were generated
   if [ ! -f "${_autofirma_ca}" ] || [ ! -f "${_autofirma_pfx}" ]; then
     echo "ERROR: Certificate generation failed!"
@@ -78,16 +40,13 @@ function do_init {
 
   echo "Certificate generation complete."
 
-  # Augment scripts with Firefox Flatpak support BEFORE running them
-  augment_scripts_with_flatpak_firefox
-
-  # Uninstall old certificates if uninstall script exists (now with Flatpak support)
+  # Uninstall old certificates if uninstall script exists
   if [ -f "${_uninstall_sh}" ]; then
     echo "Removing old certificates..."
     source "${_uninstall_sh}" 2>/dev/null || true
   fi
 
-  # Execute the installation script (now with Flatpak support)
+  # Execute the installation script
   echo "Installing certificates..."
   source "${_script_sh}"
 
@@ -100,7 +59,7 @@ if [ ! -r "${_autofirma_ca}" ] || [ ! -r "${_autofirma_pfx}" ]; then
   do_init
 fi
 
-unset _autofirma_dir _autofirma_ca _autofirma_pfx _script_sh _uninstall_sh _cert_cn _firefox_flatpak_profiles_ini
+unset _autofirma_dir _autofirma_ca _autofirma_pfx _script_sh _uninstall_sh _cert_cn
 
 # Execute the real Autofirma launcher
 exec /app/bin/autofirma.real "$@"

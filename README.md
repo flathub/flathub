@@ -13,10 +13,15 @@ Flatpak no oficial de Autofirma, la aplicación de firma electrónica del Gobier
 
 ✅ **Compatible con:**
 - Firma local de documentos
-- Firefox nativo y [Flathub][firefox-flathub] (Flatpak)
+- Firefox, Chromium, Google Chrome, etc. (puede requerir de una [acción manual][issue-ca-install])
 
 ❌ **No verificado:**
 - DNIe (probablemente no funcione)
+
+### Acciones necesarias para características determinadas
+
+Acude a [la sección de _troubleshooting_][troubleshooting] para conocer diferentes soluciones a algunos problemas que puedes encontrar al usar esta distribución comunitaria de Autofirma.
+
 
 ## Instalación
 
@@ -65,6 +70,8 @@ flatpak run es.gob.afirma
 [firefox-flathub]: https://flathub.org/apps/org.mozilla.firefox
 [flatpak-docs]: https://docs.flatpak.org/
 [issues]: https://github.com/flathub/es.gob.afirma/issues
+[issue-ca-install]: docs/users/troubleshooting/es.md#fallo-al-llamar-a-autofirma-desde-el-navegador
 [matrix-chat]: https://matrix.to/#/#autofirma-flatpak:matrix.org
 [official-repo]: https://github.com/ctt-gob-es/clienteafirma
 [official-website]: https://firmaelectronica.gob.es/
+[troubleshooting]: docs/users/troubleshooting/es.md
