@@ -1,0 +1,61 @@
+app-id: com.alijeyrad.GoTalkDictation
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+command: gotalk-dictation
+
+# X11 only — no Wayland support.
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  # Microphone access via ALSA
+  - --device=all
+  # Home directory for config (~/.config/gotalk-dictation/) and
+  # Google credentials (~/.config/gcloud/)
+  - --filesystem=home
+  # System tray (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # Network for Google Speech API
+  - --share=network
+
+build-options:
+  append-path: /usr/lib/sdk/golang/bin
+  env:
+    GOPATH: /run/build/gotalk-dictation/gopath
+    GOFLAGS: -mod=vendor
+    CGO_ENABLED: '1'
+
+modules:
+  - name: gotalk-dictation
+    buildsystem: simple
+    build-commands:
+      # Vendor dependencies must be pre-generated and included in the source.
+      # Run `go mod vendor` locally and include the vendor/ directory in the
+      # archive referenced below.
+      - |
+        export GOPATH=/run/build/gotalk-dictation/gopath
+        VERSION=$(cat VERSION 2>/dev/null || echo "flatpak")
+        COMMIT=$(cat COMMIT 2>/dev/null || echo "unknown")
+        go build \
+          -trimpath \
+          -ldflags "-s -w \
+            -X github.com/Alijeyrad/gotalk-dictation/internal/version.Version=${VERSION} \
+            -X github.com/Alijeyrad/gotalk-dictation/internal/version.Commit=${COMMIT}" \
+          -o gotalk-dictation .
+      - install -Dm755 gotalk-dictation /app/bin/gotalk-dictation
+      - install -Dm644 packaging/com.alijeyrad.GoTalkDictation.desktop
+            /app/share/applications/com.alijeyrad.GoTalkDictation.desktop
+      - install -Dm644 packaging/com.alijeyrad.GoTalkDictation.metainfo.xml
+            /app/share/metainfo/com.alijeyrad.GoTalkDictation.metainfo.xml
+      # Install icon at standard sizes (using the embedded PNG as source)
+      - install -Dm644 internal/ui/assets/icon.png
+            /app/share/icons/hicolor/128x128/apps/com.alijeyrad.GoTalkDictation.png
+    sources:
+      - type: git
+        url: https://github.com/Alijeyrad/gotalk-dictation.git
+        tag: v1.0.2
+        commit: fc0c2aaf6c7f129257766a38f8e0a2a24483fada
