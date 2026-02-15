@@ -24,6 +24,7 @@ fi
 cd "$UPSTREAM_DIR"
 
 npm install --package-lock-only --lockfile-version 1
+pnpm make
 
 cd "$SCRIPT_DIR"
 
@@ -34,3 +35,4 @@ flatpak-node-generator --electron-node-headers npm "$UPSTREAM_DIR/package-lock.j
 # "ln -sf \"@esbuild/linux-x64@0.21.5\" \"bin/esbuild-current\""
 
 cp "$UPSTREAM_DIR/package-lock.json" "$SCRIPT_DIR/package-lock.json"
+cp -r "$UPSTREAM_DIR/.vite/" "$SCRIPT_DIR/.vite/"

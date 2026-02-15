@@ -10,6 +10,8 @@ command: stoat-desktop
 separate-locales: false
 finish-args:
   - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
   # Required to provide Call functionality
   - --socket=pulseaudio
   - --device=all
@@ -61,12 +63,8 @@ modules:
       - npm install --legacy-peer-deps --lockfile-version 1 --force --offline > /dev/null
 
       - install -Dm755 pnpm /app/bin/pnpm
-      - pnpm install --offline --ignore-workspace
       - pnpm exec electron-packager . stoat-chat --electronZipDir='/run/build/stoat/flatpak-node/cache/electron'
-
-      # Copy the unpacked Linux build into /app/stoat-desktop
-      # (adjust path if your output dir name differs)
-      - cp -a out/*linux*unpacked/* /app/stoat-desktop/
+      - cp -r stoat-chat-linux-x64/. /app/stoat-desktop/
 
       # Install wrapper
       - install -Dm755 stoat-desktop.sh /app/bin/stoat-desktop
@@ -74,13 +72,13 @@ modules:
       # Desktop + metadata + icon
       - install -D chat.stoat.StoatDesktop.desktop -t /app/share/applications/
       - install -Dm644 chat.stoat.StoatDesktop.metainfo.xml -t /app/share/metainfo/
-      - install -D icon.png /app/share/icons/hicolor/256x256/apps/chat.stoat.StoatDesktop.png
+      - install -D assets/desktop/icon.png /app/share/icons/hicolor/256x256/apps/chat.stoat.StoatDesktop.png
     sources:
       - type: file
         path: package-lock.json
       - type: archive
-        url: https://github.com/stoatchat/for-desktop/archive/refs/tags/v1.1.12.tar.gz
-        sha256: 352b2794fc2cf32b6e849bcb05474a2d432e13e44c9fa827df7558dc07a0bc99
+        url: https://github.com/stoatchat/for-desktop/archive/refs/tags/v1.2.0.tar.gz
+        sha256: abfdb8f30c7b3ec0ddabc92f69ad21162bb53e457ec88c4188c64f0d293b63cb
         dest: .
       - type: git
         url: https://github.com/stoatchat/assets
@@ -93,7 +91,11 @@ modules:
         sha256: 92b2da9a8b2c669ae3741a52dde8f8b694330dbd4cf49bfb331f2454e98556fb
         dest-filename: pnpm
       - type: file
-        path: images/icon.png
+        path: .vite/build/main.js
+        dest: .vite/build/
+      - type: file
+        path: .vite/build/preload.js
+        dest: .vite/build/
       - type: file
         path: chat.stoat.StoatDesktop.desktop
       - type: file
@@ -102,4 +104,7 @@ modules:
         dest-filename: stoat-desktop.sh
         commands:
           # TMPDIR env variable fixes the tray icon issue (#6)
-          - env TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-chat.stoat.StoatDesktop}" zypak-wrapper /app/stoat-desktop/stoat-desktop "$@"
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-chat.stoat.StoatDesktop}"
+          - WAYLAND_FLAGS=""
+          - if [ -n "$WAYLAND_DISPLAY" ]; then WAYLAND_FLAGS="--enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland"; fi
+          - exec zypak-wrapper /app/stoat-desktop/stoat-chat $WAYLAND_FLAGS "$@"
