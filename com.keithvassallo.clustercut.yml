@@ -1,0 +1,146 @@
+app-id: com.keithvassallo.clustercut
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+command: clustercut
+finish-args:
+  # Network access for syncing (runtime only)
+  - --share=network
+  # IPC for X11 performance
+  - --share=ipc
+  # GUI access (Wayland + X11)
+  - --socket=wayland
+  - --socket=x11
+  # System Tray Icon (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Allow exporting tray icons to host
+  - --filesystem=xdg-run/tray-icon:create
+  # GPU acceleration
+  - --device=dri
+  # Audio access (for notifications)
+  - --socket=pulseaudio
+  # Notification Bus access
+  - --talk-name=org.freedesktop.Notifications
+  # Access GNOME Shell to check for extensions
+  - --talk-name=org.gnome.Shell
+  # Access to user's Downloads folder (if needed for file sharing, optional)
+  - --filesystem=xdg-download
+  # Autostart access
+  - --filesystem=xdg-config/autostart:create
+  # Theme detection (Read GSettings/DConf)
+  - --filesystem=xdg-config/dconf:ro
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  # Read GTK settings for theme
+  - --filesystem=xdg-config/gtk-3.0:ro
+  - --filesystem=xdg-config/gtk-4.0:ro
+  # GNOME Extension Communication (DBus Service)
+  - --own-name=com.keithvassallo.clustercut
+  # Allow spawning commands on host (for gsettings)
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - name: intltool
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+  - name: gnome-common
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gnome-common/3.18/gnome-common-3.18.0.tar.xz
+        sha256: 22569e370ae755e04527b76328befc4c73b62bfd4a572499fde116b8318af8cf
+  - name: dbus-glib
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-gtk-doc
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus-glib/dbus-glib-0.114.tar.gz
+        sha256: c09c5c085b2a0e391b8ee7d783a1d63fe444e96717cc1814d61b5e8fc2827a7c
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_FALSE: '#'
+        HAVE_VALGRIND_TRUE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+      - type: patch
+        path: 0001-Fix-HAVE_VALGRIND-AM_CONDITIONAL.patch
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: 0.10.4
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+      - type: patch
+        path: 0001-Make-introspection-configurable.patch
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: 0.9.4
+        commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.94
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+  - name: clustercut
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/clustercut/cargo
+        XDG_CACHE_HOME: /run/build/clustercut/flatpak-node/cache
+        npm_config_cache: /run/build/clustercut/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      # Install Node deps offline
+      - npm ci --offline
+      # Build the app (offline)
+      - npm run tauri build -- --no-bundle
+      # Install binary
+      - install -D src-tauri/target/release/clustercut /app/bin/clustercut
+      # Install desktop file and icon
+      - install -D src-tauri/flatpak/com.keithvassallo.clustercut.desktop /app/share/applications/com.keithvassallo.clustercut.desktop
+      - install -D src-tauri/flatpak/com.keithvassallo.clustercut.svg /app/share/icons/hicolor/scalable/apps/com.keithvassallo.clustercut.svg
+      - install -D metainfo.xml /app/share/metainfo/com.keithvassallo.clustercut.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/keithvassallomt/ClusterCut.git
+        tag: v0.1.1
+      # Generated sources
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: com.keithvassallo.clustercut.metainfo.xml
+        dest-filename: metainfo.xml
