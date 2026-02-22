@@ -1,0 +1,95 @@
+id: app.yaak.Yaak
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+command: yaak-app
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+rename-desktop-file: yaak.desktop
+rename-icon: yaak-app
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --socket=pulseaudio # Preview audio responses
+  - --socket=ssh-auth # Git SSH remotes
+  - --socket=gpg-agent # Git commit signing
+  - --talk-name=org.freedesktop.secrets # Keyring for encryption
+  - --filesystem=home # Git repos, ~/.gitconfig, ~/.ssh, etc
+
+modules:
+  - name: git
+    cleanup:
+      - /share
+    make-args:
+      - NO_PERL=1
+      - NO_TCLTK=1
+    make-install-args:
+      - INSTALL_SYMLINKS=1
+      - NO_PERL=1
+      - NO_TCLTK=1
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.48.1.tar.gz
+        sha256: 51b4d03b1e311ba673591210f94f24a4c5781453e1eb188822e3d9cdc04c2212
+
+  - name: yaak
+    buildsystem: simple
+    build-options:
+      append-path: /app/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/yaak/cargo
+        XDG_CACHE_HOME: /run/build/yaak/flatpak-node/cache
+        npm_config_cache: /run/build/yaak/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        npm_config_nodedir: /usr/lib/sdk/node24
+        NODE_OPTIONS: --max_old_space_size=4096
+        SKIP_WASM_BUILD: "1"
+
+    build-commands:
+      - mkdir -p crates-tauri/yaak-app/vendored/node
+      - install -Dm755 /usr/lib/sdk/node24/bin/node crates-tauri/yaak-app/vendored/node/yaaknode
+
+      - node patch-lockfile.cjs
+      - npm ci --offline
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - YAAK_VERSION=$(git describe --tags --abbrev=0) npm run replace-version
+      - ./node_modules/.bin/tauri build --no-bundle
+        --config ./crates-tauri/yaak-app/tauri.release.conf.json
+        --config '{"build":{"beforeBuildCommand":"npm run build && npm run vendor:vendor-plugins"},"bundle":{"resources":["static","vendored/plugins","vendored/plugin-runtime","vendored/node/yaaknode*"]}}'
+      - install -Dm755 target/release/yaak-app /app/bin/yaak-app
+      - mkdir -p /app/lib/yaak
+      - cp -r crates-tauri/yaak-app/vendored /app/lib/yaak/vendored
+      - cp -r crates-tauri/yaak-app/static /app/lib/yaak/static
+      - install -Dm644 crates-tauri/yaak-app/icons/release/32x32.png /app/share/icons/hicolor/32x32/apps/yaak-app.png
+      - install -Dm644 crates-tauri/yaak-app/icons/release/64x64.png /app/share/icons/hicolor/64x64/apps/yaak-app.png
+      - install -Dm644 crates-tauri/yaak-app/icons/release/128x128.png /app/share/icons/hicolor/128x128/apps/yaak-app.png
+      - install -Dm644 crates-tauri/yaak-app/icons/release/icon.png /app/share/icons/hicolor/512x512/apps/yaak-app.png
+      - node generate-desktop.cjs .
+      - install -Dm644 yaak.desktop /app/share/applications/yaak.desktop
+      - install -Dm644 flatpak/app.yaak.Yaak.metainfo.xml /app/share/metainfo/app.yaak.Yaak.metainfo.xml
+
+    sources:
+      # Application source
+      - type: git
+        url: https://github.com/mountain-loop/yaak.git
+        tag: v2026.2.0
+        commit: 26aba6034fe43eb0f2f5bfde6e41896a71bbae88
+
+      # Offline npm dependencies
+      - node-sources.json
+
+      # Offline Cargo dependencies
+      - cargo-sources.json
+
+      # Build scripts
+      - type: file
+        path: patch-lockfile.cjs
+      - type: file
+        path: generate-desktop.cjs
