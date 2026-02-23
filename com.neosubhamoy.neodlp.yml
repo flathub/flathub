@@ -1,0 +1,108 @@
+id: com.neosubhamoy.neodlp
+
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: neodlp
+finish-args:
+  - --socket=wayland # Show app window on wayland
+  - --socket=fallback-x11 # Fallback to X11 if wayland is not available
+  - --device=dri # Use OpenGL
+  - --share=ipc
+  - --share=network # Allow network access
+  - --filesystem=xdg-download # Allow access to downloads folder for storing downloaded files
+  - --filesystem=xdg-config # Allow access to config folder to store app config data, yt-dlp-plugins and browser native messaging host configs
+  - --filesystem=xdg-cache # Allow access to cache folder for app, yt-dlp and aria2c cache
+  - --filesystem=xdg-data # Allow access to data folder to store app data and logs
+  - --filesystem=~/.config/BraveSoftware/Brave-Browser:ro # Allow read-only access to Brave browser config for yt-dlp cookie extraction
+  - --filesystem=~/.config/google-chrome:ro # Allow read-only access to Chrome browser config for yt-dlp cookie extraction
+  - --filesystem=~/.config/chromium:ro # Allow read-only access to Chromium browser config for yt-dlp cookie extraction
+  - --filesystem=~/.config/microsoft-edge:ro # Allow read-only access to Edge browser config for yt-dlp cookie extraction
+  - --filesystem=~/.mozilla/firefox:ro # Allow read-only access to Firefox browser for yt-dlp cookie extraction
+  - --filesystem=~/.config/mozilla/firefox:ro # Allow read-only access to Firefox browser config for yt-dlp cookie extraction
+  - --filesystem=~/snap/firefox/common/.mozilla/firefox:ro # Allow read-only access to Firefox browser (snap) config for yt-dlp cookie extraction
+  - --filesystem=~/.config/opera:ro # Allow read-only access to Opera browser config for yt-dlp cookie extraction
+  - --filesystem=~/.config/vivaldi:ro # Allow read-only access to Vivaldi browser config for yt-dlp cookie extraction
+  - --filesystem=~/.config/naver-whale:ro # Allow read-only access to Whale browser config for yt-dlp cookie extraction
+  - --env=FLATPAK=1 # Used to determine flatpak environment on app side
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - name: neodlp
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/neosubhamoy/neodlp.git
+        tag: v0.4.2
+        commit: baf1ea316c85e3cfb81496edade1f5df9b6919c8
+
+      # flatpak-node-generator npm -o flatpak/node-sources.json package-lock.json
+      - node-sources.json
+
+      # flatpak-cargo-generator.py -d ./src-tauri/Cargo.lock -o flatpak/cargo-sources.json
+      - cargo-sources.json
+
+      # Tauri sidecar binary sources
+      - sidecar-sources.json
+
+    build-options:
+      env:
+        CARGO_HOME: /run/build/neodlp/cargo
+        XDG_CACHE_HOME: /run/build/neodlp/flatpak-node/cache
+        npm_config_cache: /run/build/neodlp/flatpak-node/npm-cache
+        npm_config_offline: "true"
+
+    build-commands:
+      # Node packages
+      - npm ci --offline
+      # Rust packages
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml --verbose
+      # Make sidecar binaries executable
+      - chmod +x src-tauri/binaries/*
+
+      # Run build with correct tauri config per architecture, without bundling
+      - |
+        if [[ "$(uname -m)" == "x86_64" ]]; then
+          npm run --offline tauri build -- --no-bundle --config src-tauri/tauri.linux-x86_64.conf.json
+        elif [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
+          npm run --offline tauri build -- --no-bundle --config src-tauri/tauri.linux-aarch64.conf.json
+        fi
+      
+      # Install app
+      - install -Dm644 -t /app/share/metainfo/ com.neosubhamoy.neodlp.metainfo.xml
+      - install -Dm644 -t /app/share/applications/ com.neosubhamoy.neodlp.desktop
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/neodlp
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/yt-dlp
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/ffmpeg
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/ffprobe
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/aria2c
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/deno
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/neodlp-pot
+
+      # Install icons
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.neosubhamoy.neodlp.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.neosubhamoy.neodlp.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.neosubhamoy.neodlp.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/256x256@2/apps/com.neosubhamoy.neodlp.png
+
+      # Copy resources
+      - mkdir -p /app/lib/neodlp
+      - cp -rf src-tauri/resources/plugins/yt-dlp-plugins /app/lib/neodlp
+      - |
+        if [[ "$(uname -m)" == "x86_64" ]]; then
+          cp src-tauri/target/x86_64-unknown-linux-gnu/release/neodlp-msghost /app/lib/neodlp
+        elif [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
+          cp src-tauri/target/aarch64-unknown-linux-gnu/release/neodlp-msghost /app/lib/neodlp
+        fi
+
+    post-install:
+      - install -Dm644 LICENSE /app/share/licenses/com.neosubhamoy.neodlp/LICENSE
