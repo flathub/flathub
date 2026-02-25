@@ -1,0 +1,137 @@
+app-id: com.nullide.app
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: null-ide
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --device=all
+  - --filesystem=host
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --filesystem=~/.ssh:ro
+  - --filesystem=~/.gnupg:ro
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-config/git:ro
+  - --filesystem=/run/udev:ro
+  - --filesystem=/sys/class/usb:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.portal.*
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --allow=devel
+  - --env=ELECTRON_ENABLE_LOGGING=1
+  - --env=ELECTRON_ENABLE_STACK_DUMPING=1
+  - --env=TMPDIR=/var/tmp
+  - --env=NODE_ENV=production
+
+modules:
+  - name: bash
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 /usr/bin/bash /app/bin/bash
+      - install -Dm755 /usr/bin/sh /app/bin/sh
+    build-options:
+      no-debuginfo: true
+
+  - name: zypak
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+      - mkdir -p /app/lib
+      - make PREFIX=/app
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2024.01.17
+        commit: 3d7ba0d1bc31a6f7c0e68d6d39b36e4617d3fd27
+
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - tar --no-same-owner -xzf node.tar.gz --strip-components=1 -C /app
+    sources:
+      - type: file
+        url: https://nodejs.org/dist/v20.11.0/node-v20.11.0-linux-x64.tar.gz
+        sha256: 9556262f6cd4c020af027782afba31ca6d1a37e45ac0b56cecd2d5a4daf720e0
+        dest-filename: node.tar.gz
+
+  - name: electron
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/electron
+      - cp -r * /app/lib/electron/
+      - ln -s /app/lib/electron/electron /app/bin/electron
+    sources:
+      - type: archive
+        url: https://github.com/electron/electron/releases/download/v35.7.5/electron-v35.7.5-linux-x64.zip
+        sha256: 368d155a2189e1056d111d334b712779e77066fce1f5ab935b22c4ef544eaa29
+        strip-components: 0
+
+  - name: electron-headers
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/electron-headers
+      - tar --no-same-owner -xzf headers.tar.gz -C /app/lib/electron-headers --strip-components=1
+      - echo '{"name":"electron","version":"35.7.5","main":"index.js"}' > /app/lib/electron-headers/package.json
+    sources:
+      - type: file
+        url: https://electronjs.org/headers/v35.7.5/node-v35.7.5-headers.tar.gz
+        sha256: 517f40c12493db37bb95b1b2c9f81e66dcaeeab97ae8d1f9fd25c33778dfb197
+        dest-filename: headers.tar.gz
+
+  - name: null-ide
+    buildsystem: simple
+    build-options:
+      env:
+        npm_config_cache: /run/build/null-ide/npm-cache
+        npm_config_nodedir: /app/lib/electron-headers
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        HOME: /run/build/null-ide
+      append-path: /app/bin:/usr/bin
+      build-args:
+        - --share=network
+    build-commands:
+      - rm -rf node_modules dist
+      - npm install -g node-gyp
+      - npm install --legacy-peer-deps
+      - npm run build
+      - cd node_modules/node-pty && node-gyp rebuild --nodedir=/app/lib/electron-headers
+      - install -Dm755 null-ide-flatpak.sh /app/bin/null-ide
+      - mkdir -p /app/lib/null-ide
+      - cp -r dist /app/lib/null-ide/
+      - cp -r node_modules /app/lib/null-ide/
+      - install -Dm644 package.json /app/lib/null-ide/package.json
+      - install -Dm644 null-ide.png /app/lib/null-ide/null-ide.png
+      - install -Dm644 com.nullide.app.desktop /app/share/applications/com.nullide.app.desktop
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/512x512/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/256x256/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/128x128/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/64x64/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/48x48/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/32x32/apps/com.nullide.app.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/16x16/apps/com.nullide.app.png
+      - install -Dm644 com.nullide.app.metainfo.xml /app/share/metainfo/com.nullide.app.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/4fqr/null-ide/archive/refs/tags/v3.8.3.tar.gz
+        sha256: a8773a01c912c3bbaf655799522b6909167674fe7c28917b2bbe8ae0589dd13a
+      - type: file
+        path: null-ide-flatpak.sh
+      - type: file
+        path: com.nullide.app.desktop
+      - type: file
+        path: com.nullide.app.metainfo.xml
