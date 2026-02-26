@@ -1,0 +1,274 @@
+app-id: io.github.sookyboo.nox-decomp
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: start.sh
+
+# Needed to build i386 binaries inside an x86_64 SDK. Nox-Decomp can only be compiled as 32bit at the moment.
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+
+finish-args:
+  # Safer than --device=all; for gamepads. Requires newer Flatpak.
+#  - --require-version=1.16.0
+#  - --device=input
+  - --device=all # for gamepads on steamdeck which only ships flatpak 1.15.91
+
+  # OpenGL acceleration
+  - --device=dri
+
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=fallback-x11
+
+  # Wayland access
+  - --socket=wayland
+
+  # Sound Access
+  - --socket=pulseaudio
+
+  # needed for LAN and internet multiplayer based on UDP port 18590
+  # also has a control server for starting/hosting network games but disabled by default
+  - --share=network
+
+  # needed because nox-decomp can only compile in 32bit at the moment
+  - --allow=multiarch
+
+  # Nox-Decomp needs purchased game assets
+  # gog installer can be automatically extracted if put in ~/nox-decomp/gamefiles/setup_nox_2.0.0.20.exe
+  # game saves in ~/nox-decomp/gamefiles/app/Save
+  # game config saves in ~/nox-decomp/gamefiles/nox.cfg
+  - --filesystem=~/nox-decomp:create
+
+  # For installing steam launcher shortcut - uses steam_shortcut.py
+  # shortcut and controller profile required for gamepad mode to work on steam deck
+  - --filesystem=xdg-data/Steam/userdata:rw
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/data/Steam/userdata:rw
+
+  # get gamepad with mouse profile
+  - --filesystem=xdg-data/Steam/controller_base:ro
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/data/Steam/controller_base:ro
+
+  # set gamepad with mouse profile
+  - --filesystem=xdg-data/Steam/steamapps/common/Steam\ Controller\ Configs:rw
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/common/Steam\ Controller\ Configs:rw
+
+# Runtime multiarch support: run i386 binary + 32-bit GL.
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: "24.08"
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: "24.08"
+    no-autodownload: true
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: "1.4"
+    versions: "24.08;1.4"
+    subdirectories: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+
+# Common i386 cross build environment (per Flatpak multiarch docs/examples).
+x-i386-build-options: &i386_build_options
+  prepend-path: /usr/lib/sdk/toolchain-i386/bin
+  env:
+    CC: i686-unknown-linux-gnu-gcc
+    CXX: i686-unknown-linux-gnu-g++
+    AR: i686-unknown-linux-gnu-ar
+    RANLIB: i686-unknown-linux-gnu-ranlib
+    STRIP: i686-unknown-linux-gnu-strip
+    PKG_CONFIG_LIBDIR: /app/lib32/pkgconfig:/usr/lib/i386-linux-gnu/pkgconfig
+  ldflags: -L/app/lib32
+
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /share/man
+  - /share/doc
+
+modules:
+  - name: multiarch-mountpoints
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/i386-linux-gnu
+      - install -d /app/lib/i386-linux-gnu/GL
+      - install -d /app/lib/debug/lib/i386-linux-gnu
+      - install -d /app/share/licenses/${FLATPAK_ID}
+  # --- Boost (needed by innoextract) ---
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=program_options,iostreams,filesystem,system,date_time
+      - ./b2 -j ${FLATPAK_BUILDER_N_JOBS} variant=release link=shared threading=multi runtime-link=shared install
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.gz
+        sha256: a5800f405508f5df8114558ca9855d2640a2de8f0445f051fa1c7c3383045724
+
+  # --- innoextract (x86_64) - needed to extract gog installer ---
+  - name: innoextract
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      env:
+        CMAKE_PREFIX_PATH: /app
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      # Debian "orig" tarball is fine and stable; pinned by sha256.
+      - type: archive
+        url: https://distro.ibiblio.org/ubuntu/pool/universe/i/innoextract/innoextract_1.9.orig.tar.gz
+        sha256: 6344a69fc1ed847d4ed3e272e0da5998948c6b828cb7af39c6321aba6cf88126
+
+  # --- FFmpeg (x86_64) CLI for conversion tools - needed to convert audio files ---
+  - name: ffmpeg-x86_64
+    buildsystem: simple
+    build-commands:
+      - |
+        ./configure \
+          --prefix=/app \
+          --disable-debug \
+          --disable-doc \
+          --disable-static \
+          --enable-shared \
+          --enable-ffmpeg \
+          --disable-ffplay \
+          --disable-ffprobe
+      - make -j ${FLATPAK_BUILDER_N_JOBS}
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+        sha256: 733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+
+  # --- FFmpeg i386 shared libs - needed to play videos in the game ---
+  - name: ffmpeg-i386-libs
+    buildsystem: simple
+    build-options: *i386_build_options
+    build-commands:
+      - mkdir -p /app/lib32 /app/lib32/pkgconfig
+      - |
+        ./configure \
+          --prefix=/app \
+          --libdir=/app/lib32 \
+          --arch=x86 \
+          --cpu=i686 \
+          --target-os=linux \
+          --cross-prefix=i686-unknown-linux-gnu- \
+          --enable-cross-compile \
+          --enable-shared \
+          --disable-static \
+          --disable-debug \
+          --disable-doc \
+          --disable-programs \
+          --enable-pic \
+          --disable-everything \
+          --enable-avcodec \
+          --enable-avformat \
+          --enable-swscale \
+          --enable-swresample \
+          --enable-protocol=file \
+          --enable-demuxer=wsvqa \
+          --enable-decoder=vqavideo \
+          --enable-demuxer=wav \
+          --enable-decoder=pcm_u8,pcm_s16le,adpcm_ima_ws
+      - make -j ${FLATPAK_BUILDER_N_JOBS}
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+        sha256: 733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+
+  # --- Build i386 nox-decomp executable from upstream repo ---
+  - name: nox-decomp-i386
+    buildsystem: simple
+    build-options: *i386_build_options
+    build-commands:
+      - mkdir -p build
+      - |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DFFMPEG_PREFIX=/app \
+          -DCMAKE_C_COMPILER=i686-unknown-linux-gnu-gcc \
+          -DCMAKE_CXX_COMPILER=i686-unknown-linux-gnu-g++ \
+          -DCMAKE_C_FLAGS="-U_FORTIFY_SOURCE -fno-strict-aliasing -fsigned-char -O0 -fno-tree-vectorize -fno-aggressive-loop-optimizations -fcommon -Wno-int-conversion -Wno-pointer-to-int-cast -Wno-error=int-conversion -Wno-error=pointer-to-int-cast -Wno-incompatible-pointer-types -Wno-error=incompatible-pointer-types -Wno-implicit-function-declaration" \
+          -DCMAKE_CXX_FLAGS="-fno-strict-aliasing -fsigned-char -O0 -fcommon -Wno-int-conversion -Wno-pointer-to-int-cast -Wno-error=int-conversion -Wno-error=pointer-to-int-cast"
+      - cmake --build build -j ${FLATPAK_BUILDER_N_JOBS}
+      - install -d /app/lib/${FLATPAK_ID}
+      - install -Dm755 build/src/out /app/lib/${FLATPAK_ID}/noxd.i386
+    sources:
+      - type: git
+        url: https://github.com/sookyboo/nox-decomp.git
+        commit: "c1ca18da9f9fb1fa7f7cd8121b1facd239ac8771"
+
+  # --- Install dist-scripts assets from the same upstream repo ---
+  - name: dist-assets
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin
+      - install -Dm755 dist-scripts/start.sh /app/bin/start.sh
+
+      - install -d /app/lib/${FLATPAK_ID}
+      # nox.cfg default config
+      - install -Dm644 dist-scripts/nox.cfg.hires /app/lib/${FLATPAK_ID}/nox.cfg || true
+      # gamepad keyboard mouse mapping config based on gptokeyb2 ini format
+      - install -Dm644 dist-scripts/nox.gptk2.ini /app/lib/${FLATPAK_ID}/nox.gptk2.ini || true
+      # like Steam Rom Manager but one file - creates steam shortcuts and sets controller profiles
+      - install -Dm755 dist-scripts/steam_shortcut.py /app/lib/${FLATPAK_ID}/steam_shortcut.py || true
+
+      # Steam Art
+      - install -Dm644 dist-scripts/steamv.png /app/lib/${FLATPAK_ID}/steamv.png
+      - install -Dm644 dist-scripts/steamh.png /app/lib/${FLATPAK_ID}/steamh.png
+
+      # Icon
+      - install -Dm644 dist-scripts/io.github.sookyboo.nox-decomp.png /app/lib/${FLATPAK_ID}/${FLATPAK_ID}.png
+
+      # AppStream screenshots shipped inside the Flatpak
+      - install -d /app/share/metainfo/${FLATPAK_ID}
+      - install -Dm644 screenshots/game1.png     /app/share/metainfo/${FLATPAK_ID}/game1.png
+      - install -Dm644 screenshots/handheld.jpeg /app/share/metainfo/${FLATPAK_ID}/handheld.jpeg
+      - install -Dm644 screenshots/movie1.png    /app/share/metainfo/${FLATPAK_ID}/movie1.png
+      - install -Dm644 screenshots/movie2.png    /app/share/metainfo/${FLATPAK_ID}/movie2.png
+
+      - install -d /app/share/icons/hicolor/256x256/apps
+      - install -Dm644 dist-scripts/io.github.sookyboo.nox-decomp.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+
+      # License files
+      - install -Dm644 dist-scripts/licenses/nox_decomp_LICENSE.txt  /app/share/licenses/${FLATPAK_ID}/nox-decomp/LICENSE.txt
+      - install -Dm644 dist-scripts/licenses/innoextract_LICENSE.txt /app/share/licenses/${FLATPAK_ID}/innoextract/LICENSE.txt
+      - install -Dm644 dist-scripts/licenses/ffmpeg_LICENSE.txt      /app/share/licenses/${FLATPAK_ID}/ffmpeg/LICENSE.txt
+      - install -Dm644 dist-scripts/licenses/boost_LICENSE.txt      /app/share/licenses/${FLATPAK_ID}/boost/LICENSE.txt
+
+      # Ensure i386 loader finds our i386 ffmpeg libs:
+      - install -d /app/etc
+      - |
+        cat > /app/etc/ld.so.conf <<'EOF'
+        /app/lib32
+        /app/lib/i386-linux-gnu
+        EOF
+
+    sources:
+      - type: git
+        url: https://github.com/sookyboo/nox-decomp.git
+#        tag: "TAG"
+        commit: "c1ca18da9f9fb1fa7f7cd8121b1facd239ac8771"
+
+  - name: app-metadata
+    buildsystem: simple
+    sources:
+      - type: file
+        path: io.github.sookyboo.nox-decomp.desktop
+      - type: file
+        path: io.github.sookyboo.nox-decomp.metainfo.xml
+    build-commands:
+      - install -Dm644 io.github.sookyboo.nox-decomp.desktop /app/share/applications/io.github.sookyboo.nox-decomp.desktop
+      - install -Dm644 io.github.sookyboo.nox-decomp.metainfo.xml /app/share/metainfo/io.github.sookyboo.nox-decomp.metainfo.xml
+
