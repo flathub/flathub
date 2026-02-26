@@ -1,30 +1,153 @@
 name: "Close stale blocked PRs"
 on:
   schedule:
-  - cron: "0 0 * * 6"
+    - cron: "0 0 * * 1"
   workflow_dispatch:
-
+    inputs:
+      dry_run:
+        description: "Dry run"
+        type: boolean
+        default: false
 jobs:
-  stale:
+  close-blocked:
     permissions:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      # 9.1.0
-    - uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        stale-pr-message: |-
-          This pull request has not received any updates and it will be
-          automatically closed in 7 days. Please comment or reopen if
-          necessary.
-        days-before-stale: -1
-        days-before-close: -1
-        days-before-pr-stale: 23
-        days-before-pr-close: 7
-        any-of-pr-labels: blocked,pr-check-blocked
-        remove-stale-when-updated: false
-        exempt-pr-labels: leave-open
-        operations-per-run: 200
-        ascending: true
-        ignore-updates: true
+      - name: Close stale blocked PRs
+        # 8.0.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          DAYS_THRESHOLD: "14"
+          LABEL_BLOCKED: "blocked"
+          LABEL_CHECKS: "pr-check-blocked"
+          COMMENT_BLOCKED: |-
+            This pull request has been marked as blocked for {days} days
+            and is not ready for inclusion. It is being automatically closed.
+          COMMENT_CHECKS: |-
+            This pull request is failing checks for {days} days
+            and is not ready for inclusion. It is being automatically closed.
+          COMMENT_BOTH: |-
+            This pull request has been marked as blocked and is failing
+            checks for {days} days. It is not ready for inclusion. It is being
+            automatically closed.
+          EXEMPT_LABEL: "leave-open"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const labelBlocked = process.env.LABEL_BLOCKED || "blocked";
+            const labelChecks  = process.env.LABEL_CHECKS  || "pr-check-blocked";
+            const daysThreshold = parseInt(process.env.DAYS_THRESHOLD || "14", 10);
+            const exemptLabel = process.env.EXEMPT_LABEL || "leave-open";
+            const dryRun = process.env.DRY_RUN === "true";
+
+            if (daysThreshold < 2) throw new Error(`DAYS_THRESHOLD must be >= 2, got ${daysThreshold}`);
+
+            const now = new Date();
+
+            const commentTemplates = {
+              blocked: process.env.COMMENT_BLOCKED,
+              checks:  process.env.COMMENT_CHECKS,
+              both:    process.env.COMMENT_BOTH,
+            };
+
+            for (const [key, val] of Object.entries(commentTemplates)) {
+              if (!val?.trim()) throw new Error(`Comment template "${key}" is empty or missing`);
+            }
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+
+            for (const pr of prs) {
+              const prLabels = pr.labels.map(l => l.name);
+              const hasBlocked = prLabels.includes(labelBlocked);
+              const hasChecks  = prLabels.includes(labelChecks);
+
+              if (!hasBlocked && !hasChecks) continue;
+              if (pr.draft) continue;
+              if (prLabels.includes(exemptLabel)) continue;
+
+              const effectiveThreshold = hasChecks
+                ? Math.floor(daysThreshold / 2)
+                : daysThreshold;
+
+              const commentTemplate = hasBlocked && hasChecks
+                ? commentTemplates.both
+                : hasChecks
+                  ? commentTemplates.checks
+                  : commentTemplates.blocked;
+
+              try {
+                const events = await github.paginate(
+                  github.rest.issues.listEventsForTimeline,
+                  {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number
+                  }
+                );
+
+
+                const relevantLabels = [];
+                if (hasBlocked) relevantLabels.push(labelBlocked);
+                if (hasChecks)  relevantLabels.push(labelChecks);
+
+                const labelEvents = events
+                  .filter(e =>
+                    e.event === "labeled" &&
+                    relevantLabels.includes(e.label?.name)
+                  )
+                  .map(e => new Date(e.created_at));
+
+                if (labelEvents.length === 0) continue;
+
+                const appliedDate = new Date(
+                  Math.min(...labelEvents.map(d => d.getTime()))
+                );
+
+                const diffDays = (now - appliedDate) / (1000 * 60 * 60 * 24);
+
+                if (diffDays >= effectiveThreshold) {
+                  const days = Math.floor(diffDays);
+
+                  let reason;
+                  if (hasBlocked && hasChecks) {
+                    reason = "marked as blocked and failing checks";
+                  } else if (hasChecks) {
+                    reason = "failing checks";
+                  } else {
+                    reason = "marked as blocked";
+                  }
+
+                  const msg = `Closing PR ${pr.html_url} because it has been ${reason} for ${days} days`;
+                  if (dryRun) {
+                    console.log(`[DRY RUN] ${msg}`);
+                  } else {
+                    console.log(msg);
+                    try {
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: commentTemplate.replace("{days}", Math.floor(diffDays))
+                      });
+                    } catch (err) {
+                      console.warn(`Failed to comment on PR ${pr.html_url}: ${err.message}`);
+                    }
+                    await github.rest.pulls.update({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: pr.number,
+                      state: "closed"
+                    });
+                  }
+                }
+              } catch (err) {
+                console.error(`Error processing PR ${pr.html_url}: ${err.message}`);
+              }
+            }
