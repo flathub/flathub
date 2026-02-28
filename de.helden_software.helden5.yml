@@ -1,0 +1,97 @@
+id: de.helden_software.helden5
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk25
+command: helden
+
+finish-args:
+  - "--share=ipc"
+  - "--socket=x11"
+  - "--share=network"
+  - "--env=PATH=/app/jre/bin:/app/bin:/usr/bin"
+  - "--env=JAVA_HOME=/app/jre"
+
+  # Java/OpenJDK/Swing have no "portal" support so far, we have to give some permissions to allow import/export.
+  # See these directories as a compromise between security and user convenience (for the import/export feature).
+  - "--filesystem=xdg-documents"
+  - "--filesystem=xdg-download"
+  - "--filesystem=xdg-desktop"
+  # same for the printing feature:
+  - "--socket=cups"
+
+modules:
+  # install a recent OpenJDK
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk25/install.sh
+
+  # Utility script to fix default hidpi scaling
+  - name: xgetres
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/tamirzb/xgetres
+        tag: "1.0"
+        commit: 7dd6aa2e3a469382ba09152710a5bb4abb3fbc9c
+
+  # install jar file + menu links
+  - name: helden
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 helden.sh /app/bin/helden
+      - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 ${FLATPAK_ID}-256.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}-512.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+    sources:
+      - type: script
+        dest-filename: helden.sh
+        commands:
+          # get some sensible DPI defaults on HiDPI screens
+          # from: https://github.com/flathub/com.diy_fever.DIYLayoutCreator/tree/master
+          - |
+            # Java2D and Swing APIs use Xlib and support HiDPI via GDK_SCALE var
+            # http://hg.openjdk.java.net/jdk9/jdk9/jdk/rev/bc2d1130105f#l27.8
+            GDK_SCALE=1
+            is_natural_number='^[0-9]+$'
+            DPI=`xgetres Xft.dpi`
+            # if $DPI is a natural number, taken from https://stackoverflow.com/a/806923
+            if [[ $DPI =~ $is_natural_number ]] ; then
+              # float division in bash, taken from https://stackoverflow.com/a/21032001
+              SCALE=`echo "$DPI 96" | awk '{printf "%.1f \n", $1/$2}'`
+              # Round in bash, taken from https://stackoverflow.com/a/26465573
+              export GDK_SCALE=$(LC_ALL=C printf "%.0f\n" $SCALE)
+            fi
+
+          # The app assumes that ~/helden is its data directory.
+          # We symlink that to XDG_DATA_HOME to follow the required directory structure.
+          # Because ~ is private in the container, the user's homedir is not altered.
+          # A future application update might give us a command line option to change the parameter and drop this symlink.
+          - mkdir -p "${XDG_DATA_HOME}/helden"
+          - ln -s "${XDG_DATA_HOME}/helden" ~/helden
+
+          # start the app
+          - java -Xmx512m -jar /app/extra/helden.jar "-ep${XDG_CONFIG_HOME}" -hsDebianMode
+
+      - type: extra-data
+        filename: helden.jar
+        url: https://www.helden-software.de/down/devel/91529a8/helden5.jar
+        size: 9381701
+        sha256: fbb4b8192d7956c20b4e4dac5b9d640b5d07bbdec03b8454e8c4b10240368548
+
+      - type: file
+        path: de.helden_software.helden5.metainfo.xml
+      - type: file
+        path: de.helden_software.helden5.desktop
+      - type: file
+        url: https://www.helden-software.de/down/flatpak/de.helden_software.helden5-256.png
+        sha256: ca0b9587a11b09f1055a2bd75d1498e30357387d11afb14c6c46e6a96738e942
+      - type: file
+        url: https://www.helden-software.de/down/flatpak/de.helden_software.helden5-512.png
+        sha256: 26517d2230e04203ed520ea2dae690a032d290ddf9f012c57f74a4802ec1c63d
