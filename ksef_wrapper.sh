@@ -1,7 +1,6 @@
 #!/bin/sh
-export LD_LIBRARY_PATH=/app/lib/ksef:$LD_LIBRARY_PATH
-
-# Launch the application
-exec /app/lib/ksef/KsefInvoice "$@"
-
-
+# Prostszy wrapper bez LD_LIBRARY_PATH
+DATA_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/KsefInvoice"
+mkdir -p "$DATA_DIR"
+cd "$DATA_DIR"
+exec /app/bin/KsefInvoice "$@"
