@@ -1,6 +1,6 @@
 #!/bin/sh
-# Prostszy wrapper bez LD_LIBRARY_PATH
-DATA_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/KsefInvoice"
-mkdir -p "$DATA_DIR"
-cd "$DATA_DIR"
+# Prostszy wrapper uruchamiający aplikację
+# Aplikacja w Pythonie sama dba o ścieżki XDG, więc nie musimy zmieniać katalogu.
+# (Pozostawiamy wrapper na wypadek potrzeby ustawienia zmiennych środowiskowych w przyszłości)
+
 exec /app/bin/KsefInvoice "$@"
