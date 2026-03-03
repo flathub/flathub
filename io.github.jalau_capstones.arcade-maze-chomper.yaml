@@ -17,25 +17,6 @@ finish-args:
   - --socket=pulseaudio
   - --share=network
 modules:
-  - name: flac
-    buildsystem: autotools
-    config-opts:
-      - --prefix=/app
-      - --disable-static
-      - --enable-shared
-      - --disable-ogg
-      - --disable-cpplibs
-      - --disable-xmms-plugin
-    cleanup:
-      - /bin
-      - /share/doc
-      - /share/info
-      - /share/man
-    sources:
-      - type: archive
-        url: https://downloads.xiph.org/releases/flac/flac-1.3.4.tar.xz
-        sha256: 8ff0607e75a322dd7cd6ec48f4f225471404ae2730d0ea945127b1355155e737
-
   - name: arcade-maze-chomper
     buildsystem: simple
     build-commands:
@@ -60,15 +41,67 @@ modules:
           /p:AspNetCoreRuntimeFrameworkVersion=9.0.13 \
           /p:TargetLatestRuntimePatch=true
 
-      # 2. Native library fixes adapted to ANY architecture
-      - cd /app/lib/arcade-maze-chomper && ln -sf libcsfml-audio.so csfml-audio
-      - cd /app/lib/arcade-maze-chomper && ln -sf libcsfml-system.so csfml-system
+      # 2. Provide a compatibility SONAME for CSFML (expects libFLAC.so.8).
+      # The Freedesktop runtime already ships libFLAC, but with a newer SONAME.
+      - |
+        flac_target="$(find /usr/lib -maxdepth 4 -type f -name 'libFLAC.so.*' 2>/dev/null | sort -V | tail -n 1)"
+        if [ -z "$flac_target" ]; then
+          echo "ERROR: Could not locate libFLAC in the runtime (/usr/lib)."
+          exit 1
+        fi
+        ln -sf "$flac_target" /app/lib/libFLAC.so.8
+
+      # 3. Place native libraries directly in /app/lib so the app can start without LD_LIBRARY_PATH.
+      # This mainly targets NuGet-provided native assets (CSFML/SFML) that otherwise land under runtimes/*/native.
+      - |
+        publish_dir="/app/lib/arcade-maze-chomper"
+
+        mkdir -p /app/lib
+
+        if [ -d "$publish_dir/runtimes" ]; then
+          # Copy NuGet native assets into /app/lib, but keep runtimes/* for any managed RID-specific assemblies.
+          find "$publish_dir/runtimes" -path '*/native/*' \( -type f -o -type l \) -name '*.so*' -exec cp -a '{}' /app/lib/ ';'
+          # Remove only native asset folders after extraction to avoid duplicate/unused paths.
+          find "$publish_dir/runtimes" -type d -name native -exec rm -rf '{}' ';' || true
+        fi
+
+        # Some builds may place CSFML/SFML libs at the publish root; move them into /app/lib as well.
+        for so in "$publish_dir"/libcsfml-*.so* "$publish_dir"/libsfml-*.so*; do
+          if [ -e "$so" ]; then
+            mv -f "$so" /app/lib/
+          fi
+        done
+
+        cd /app/lib
+        csfml_audio_target="$(ls -1 libcsfml-audio.so* 2>/dev/null | sort -V | head -n 1)"
+        csfml_system_target="$(ls -1 libcsfml-system.so* 2>/dev/null | sort -V | head -n 1)"
+        if [ -z "$csfml_audio_target" ] || [ -z "$csfml_system_target" ]; then
+          echo "ERROR: CSFML native libraries were not found in /app/lib after install."
+          exit 1
+        fi
+        csfml_audio_path="/app/lib/$csfml_audio_target"
+        csfml_system_path="/app/lib/$csfml_system_target"
+
+        # Loader-visible names in /app/lib (for non-.NET consumers, and consistency with previous behavior).
+        ln -sf "$csfml_audio_target" csfml-audio
+        ln -sf "$csfml_system_target" csfml-system
+
+        # .NET's DllImport probing checks the application base directory first. Create local symlinks there
+        # (without using LD_LIBRARY_PATH) while still keeping the actual binaries in /app/lib per Flathub guidance.
+        cd "$publish_dir"
+        ln -sf "$csfml_audio_path" csfml-audio
+        ln -sf "$csfml_system_path" csfml-system
+        ln -sf "$csfml_audio_path" csfml-audio.so
+        ln -sf "$csfml_system_path" csfml-system.so
+        ln -sf "$csfml_audio_path" libcsfml-audio.so
+        ln -sf "$csfml_system_path" libcsfml-system.so
+        ln -sf /app/lib/libFLAC.so.8 libFLAC.so.8
 
       - mkdir -p /app/share/arcade-maze-chomper
       - cp -r /app/lib/arcade-maze-chomper/Assets /app/share/arcade-maze-chomper/
       - install -Dm755 arcade-maze-chomper.sh /app/bin/arcade-maze-chomper
 
-      # 3. Install upstream-provided metadata + icons
+      # 4. Install upstream-provided metadata + icons
       - install -Dm644 packaging/flatpak/io.github.jalau_capstones.arcade-maze-chomper.desktop /app/share/applications/io.github.jalau_capstones.arcade-maze-chomper.desktop
       - install -Dm644 packaging/flatpak/io.github.jalau_capstones.arcade-maze-chomper.metainfo.xml /app/share/metainfo/io.github.jalau_capstones.arcade-maze-chomper.metainfo.xml
       - install -Dm644 packaging/flatpak/icons/hicolor/64x64/apps/io.github.jalau_capstones.arcade-maze-chomper.png /app/share/icons/hicolor/64x64/apps/io.github.jalau_capstones.arcade-maze-chomper.png
@@ -85,5 +118,4 @@ modules:
         dest-filename: arcade-maze-chomper.sh
         commands:
           - export ASSETS_PATH=/app/share/arcade-maze-chomper/Assets
-          - export LD_LIBRARY_PATH=/app/lib/arcade-maze-chomper:$LD_LIBRARY_PATH
           - exec /app/lib/arcade-maze-chomper/MazeChomperGame
