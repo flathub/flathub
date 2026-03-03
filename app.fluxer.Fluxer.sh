@@ -1,2 +1,2 @@
 #!/bin/sh
-exec zypak-wrapper /app/fluxer/fluxer "$@"
+exec zypak-wrapper /app/fluxer/fluxer_desktop "$@"

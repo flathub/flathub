@@ -1,45 +1,78 @@
 id: app.fluxer.Fluxer
 runtime: org.freedesktop.Platform
-runtime-version: '25.08'
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
-base-version: '25.08'
+base-version: "25.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
 command: app.fluxer.Fluxer
+separate-locales: false
 finish-args:
-  - '--share=ipc'
-  - '--socket=wayland'
-  - '--socket=fallback-x11'
-  - '--socket=pulseaudio'
-  - '--share=network'
-  - '--device=all'
-  - '--filesystem=xdg-run/pipewire-0:ro'
-  - '--filesystem=xdg-run/speech-dispatcher'
-  - '--env=ELECTRON_OZONE_PLATFORM_HINT=auto'
-  - '--env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons'
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=all
+  - --filesystem=xdg-download
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --filesystem=xdg-run/speech-dispatcher
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 
 modules:
   - name: fluxer
-    sources:
-      - type: archive
-        url: https://api.fluxer.app/dl/desktop/stable/linux/x64/fluxer-stable-0.0.8-x64.tar.gz
-        sha256: acf6398fa6810720fed85b06c011b324e7db4fec6bf2fc7ad93c2446c3600f2d
-        dest: fluxer
-        only-arches:
-          - x86_64
-      - type: file
-        path: app.fluxer.Fluxer.svg
-      - type: file
-        path: app.fluxer.Fluxer.desktop
-      - type: file
-        path: app.fluxer.Fluxer.metainfo.xml
-      - type: file
-        path: app.fluxer.Fluxer.sh
     buildsystem: simple
+    build-options:
+      append-path: /run/build/fluxer/fluxer_desktop/node_modules/.bin:/usr/lib/sdk/node22/bin
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+        XDG_CACHE_HOME: /run/build/fluxer/flatpak-node/cache
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "true"
+        npm_config_nodedir: /run/build/fluxer/node-headers
+        npm_config_devdir: /run/build/fluxer/node-headers
+        npm_config_cache: /run/build/fluxer/flatpak-node/npm-cache
+        npm_config_offline: "true"
+    subdir: fluxer_desktop
     build-commands:
-      - cp -r fluxer ${FLATPAK_DEST}/fluxer
+      # For disabling automatic detection for pnpm
+      - npm ci --offline --ignore-scripts --force
+      - perl -0777 -i -pe 's/import { createRequire } from '\''module'\''; const require = createRequire\(import\.meta\.url\);//gs' scripts/build.mjs
+      - perl -0777 -i -pe 's/(desktop:) ({.+?})/desktop:{entry:$2}/gs' electron-builder.config.cjs
+      - npm run build
+      - |
+        set -eux
+        . ../flatpak-node/electron-builder-arch-args.sh
+        electron-builder --config ./electron-builder.config.cjs --linux --dir $ELECTRON_BUILDER_ARCH_ARGS
+      - mv dist-electron/linux-unpacked $FLATPAK_DEST/fluxer
       # Inject the correct Flatpak App ID directly into the Electron archive:
       - patch-desktop-filename ${FLATPAK_DEST}/fluxer/resources/app.asar
       - install -Dm755 ${FLATPAK_ID}.sh ${FLATPAK_DEST}/bin/${FLATPAK_ID}
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - install -Dm644 ${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: git
+        url: https://github.com/fluxerapp/fluxer.git
+        commit: de0ecc28cb565ff8c9f83ff0bb9dc593041ff010
+      - type: file
+        path: app.fluxer.Fluxer.svg
+        dest: fluxer_desktop
+      - type: file
+        path: app.fluxer.Fluxer.desktop
+        dest: fluxer_desktop
+      - type: file
+        path: app.fluxer.Fluxer.metainfo.xml
+        dest: fluxer_desktop
+      - type: file
+        path: app.fluxer.Fluxer.sh
+        dest: fluxer_desktop
+      - type: file
+        path: package-lock.json
+        dest: fluxer_desktop
+      - type: archive
+        url: https://www.electronjs.org/headers/v40.0.0/node-v40.0.0-headers.tar.gz
+        sha256: aeea62089744bd2361fe387a21dbd096ab1e0b8d38e1c0a3ba0e46c04f358157
+        dest: node-headers
+      - generated-sources.json
