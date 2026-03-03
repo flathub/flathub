@@ -174,6 +174,25 @@ jobs:
               return 1
             }
 
+            assign_reviewer() {
+              local existing
+              existing=$(gh pr view "$PR_NUM" --json reviewRequests --jq '.reviewRequests | length' 2>/dev/null)
+              if [ "${existing:-0}" -gt 0 ]; then
+                echo "PR already has reviewers assigned, skipping"
+                return
+              fi
+              local pr_author
+              pr_author=$(gh pr view "$PR_NUM" --json author --jq '.author.login' 2>/dev/null)
+              local reviewer
+              reviewer=$(printf '%s\n' bbhtt barthalion hfiguiere \
+                | grep -v "^${pr_author}$" \
+                | shuf -n 1)
+              if [ -n "$reviewer" ]; then
+                echo "Assigning reviewer $reviewer to PR $PR_NUM"
+                gh pr edit "$PR_NUM" --add-reviewer "$reviewer" >/dev/null 2>&1 || true
+              fi
+            }
+
             start_build() {
               if ! label_exists_any "pr-check-blocked" "blocked"; then
                 if ! comment_exists_any "$BUILD_START_COMMENT_PARTIAL" "$BUILD_SUCCESS_COMMENT"; then
@@ -266,6 +285,7 @@ jobs:
                 gh pr edit "$PR_NUM" --add-label "awaiting-review" --remove-label "pr-check-blocked" >/dev/null 2>&1 || true
               fi
               start_build
+              assign_reviewer
             elif [ "$BLOCKED" -eq 1 ]; then
               echo "Marking as blocked"
               gh pr edit "$PR_NUM" --add-label "pr-check-blocked" --remove-label "awaiting-review" >/dev/null 2>&1 || true
