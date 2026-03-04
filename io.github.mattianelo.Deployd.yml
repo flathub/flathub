@@ -13,19 +13,29 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Mod managers need access to game installations anywhere on the system.
-  # Bethesda/Heroic/Steam libraries can be placed in arbitrary subdirectories
-  # under $HOME (e.g. ~/Games, ~/SteamLibrary, external drives mounted under ~).
-  # A narrower path would silently break deployment for any non-default library location.
-  - --filesystem=home
-  # Heroic Launcher stores game installations and config under its XDG data dir.
+  # Read Heroic Launcher's game catalogue and per-game Wine config (read-only;
+  # the actual game folders are accessed via the file-chooser portal below).
   - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config:ro
   - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/data:ro
-  # Steam (Flatpak) stores game files here; write access is needed to deploy
-  # mod hardlinks into game directories.
+  # Steam (Flatpak) game files — write access required for mod hardlinks/copies.
   - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam:rw
-  # Required to launch external modding tools (e.g. xEdit, SSEEdit) that may
-  # themselves be Flatpak apps or need to be spawned through the Flatpak portal.
+  # Native Steam at the default XDG data location.
+  - --filesystem=~/.local/share/Steam:rw
+  # Game folders outside the paths above (e.g. Heroic games in ~/Games, or
+  # libraries on non-default locations) are accessed through the XDG
+  # file-chooser portal: on first deploy the user is prompted to confirm the
+  # detected path, which grants sandbox access for that session and is
+  # persisted as a hint for future sessions.  This also covers external drives
+  # regardless of mount point.
+  #
+  # Tool Manager: xEdit/SSEEdit and other Windows modding tools run via Wine
+  # inside Heroic's Proton/Wine environment.  When Heroic is a Flatpak,
+  # we must invoke it through `flatpak run --command=<wine>
+  # com.heroicgameslauncher.hgl`; when Deployd itself is a Flatpak we use
+  # `flatpak-spawn --host` to reach the host Wine binary or the Heroic
+  # sandbox.  Both operations require talking to the Flatpak session bus.
+  # Without this permission the Tool Manager panel is non-functional but
+  # all mod install / deploy / purge operations continue to work normally.
   - --talk-name=org.freedesktop.Flatpak
 
 build-options:
@@ -48,6 +58,6 @@ modules:
       - type: git
         url: https://github.com/mattianelo/deployd.git
         tag: v0.9.0
-        commit: cf69e5942000f52dd489ecf0abd54cefcaa0d05d
+        commit: a64a4908a13854a38eb5c65c04d2bb382b4aae1d
       - cargo-sources.json
 
