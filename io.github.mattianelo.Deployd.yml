@@ -1,0 +1,53 @@
+id: io.github.mattianelo.Deployd
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: deployd
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Mod managers need access to game installations anywhere on the system.
+  # Bethesda/Heroic/Steam libraries can be placed in arbitrary subdirectories
+  # under $HOME (e.g. ~/Games, ~/SteamLibrary, external drives mounted under ~).
+  # A narrower path would silently break deployment for any non-default library location.
+  - --filesystem=home
+  # Heroic Launcher stores game installations and config under its XDG data dir.
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config:ro
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/data:ro
+  # Steam (Flatpak) stores game files here; write access is needed to deploy
+  # mod hardlinks into game directories.
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam:rw
+  # Required to launch external modding tools (e.g. xEdit, SSEEdit) that may
+  # themselves be Flatpak apps or need to be spawned through the Flatpak portal.
+  - --talk-name=org.freedesktop.Flatpak
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/deployd/cargo
+
+modules:
+  - name: deployd
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --features loot,libarchive-fallback --verbose
+      - install -Dm755 ./target/release/deployd /app/bin/deployd
+      - install -Dm644 data/io.github.mattianelo.Deployd.desktop /app/share/applications/io.github.mattianelo.Deployd.desktop
+      - install -Dm644 data/io.github.mattianelo.Deployd.metainfo.xml /app/share/metainfo/io.github.mattianelo.Deployd.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.mattianelo.Deployd.svg /app/share/icons/hicolor/scalable/apps/io.github.mattianelo.Deployd.svg
+      - install -Dm644 LICENSE /app/share/licenses/io.github.mattianelo.Deployd/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/mattianelo/deployd.git
+        tag: v0.9.0
+        commit: cf69e5942000f52dd489ecf0abd54cefcaa0d05d
+      - cargo-sources.json
+
