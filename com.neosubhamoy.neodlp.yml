@@ -56,37 +56,40 @@ modules:
         commit: ed6fc38eb6ea6755979b7cba9507888ea167c4a2
       # Rust package sources -> python3 flatpak-cargo-generator.py Cargo.lock -o flatpak/neodlp-pot-cargo-sources.json
       - neodlp-pot-cargo-sources.json
-      # Get rusty_v8 prebuilt static library (to avoid building it from source which is very resource intensive)
+      # rusty_v8 static library sources
       - type: file
         url: https://github.com/denoland/rusty_v8/releases/download/v130.0.7/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz
         sha256: a6476cb94e9b0247081c465424eb793d77732b8db80848132d78cbb50f34b75d
+        dest-filename: rusty_v8-x86_64.a.gz
         only-arches:
           - x86_64
-        dest-filename: rusty_v8-x86_64.a.gz
       - type: file
         url: https://github.com/denoland/rusty_v8/releases/download/v130.0.7/librusty_v8_release_aarch64-unknown-linux-gnu.a.gz
         sha256: beefe7b35abee77159f7cb55096666b07630c11047d5f3a74dd065863729915a
+        dest-filename: rusty_v8-aarch64.a.gz
         only-arches:
           - aarch64
-        dest-filename: rusty_v8-aarch64.a.gz
+      # Copy rusty_v8 static libraries to proper cargo registry location for offline build
+      - type: shell
+        commands:
+          - mkdir -p /run/build/neodlp-pot/cargo/.rusty_v8
+          - cp rusty_v8-x86_64.a.gz /run/build/neodlp-pot/cargo/.rusty_v8/https___github_com_denoland_rusty_v8_releases_download_v130_0_7_librusty_v8_release_x86_64_unknown_linux_gnu_a_gz
+        only-arches:
+          - x86_64
+      - type: shell
+        commands:
+          - mkdir -p /run/build/neodlp-pot/cargo/.rusty_v8
+          - cp rusty_v8-aarch64.a.gz /run/build/neodlp-pot/cargo/.rusty_v8/https___github_com_denoland_rusty_v8_releases_download_v130_0_7_librusty_v8_release_aarch64_unknown_linux_gnu_a_gz
+        only-arches:
+          - aarch64
 
     build-options:
       env:
         CARGO_HOME: /run/build/neodlp-pot/cargo
-        XDG_CACHE_HOME: /run/build/neodlp-pot/flatpak-node/cache
 
     build-commands:
       # Install Rust packages offline
       - cargo --offline fetch --manifest-path Cargo.toml --verbose
-      # Copy rusty_v8 static library to proper cargo registry location
-      - |
-        if [ "$(uname -m)" = "x86_64" ]; then
-          mkdir -p /run/build/neodlp-pot/cargo/.rusty_v8
-          mv rusty_v8-x86_64.a.gz /run/build/neodlp-pot/cargo/.rusty_v8/https___github_com_denoland_rusty_v8_releases_download_v130_0_7_librusty_v8_release_x86_64_unknown_linux_gnu_a_gz
-        elif [ "$(uname -m)" = "aarch64" ]; then
-          mkdir -p /run/build/neodlp-pot/cargo/.rusty_v8
-          mv rusty_v8-aarch64.a.gz /run/build/neodlp-pot/cargo/.rusty_v8/https___github_com_denoland_rusty_v8_releases_download_v130_0_7_librusty_v8_release_aarch64_unknown_linux_gnu_a_gz
-        fi
       # Run offline build
       - cargo --offline build --release
       # Copy built binary to /app/bin
