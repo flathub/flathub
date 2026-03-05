@@ -7,11 +7,9 @@ base-version: "25.08"
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node22
 build-options:
-  append-path: /usr/lib/sdk/node22/bin
+  append-path: /usr/lib/sdk/node22/bin:/run/build/flow-browser/bun-bin
   cflags: -O2 -g
   cxxflags: -O2 -g
-  env:
-    NPM_CONFIG_LOG_LEVEL: info
 
 command: run.sh
 
@@ -25,6 +23,7 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.mpris.MediaPlayer2.com.flow_browser.flow
 
@@ -33,10 +32,9 @@ modules:
     buildsystem: simple
     build-options:
       env:
-        XDG_CACHE_HOME: /run/build/flow-browser/flatpak-node/cache
-        npm_config_cache: /run/build/flow-browser/flatpak-node/npm-cache
-        npm_config_nodedir: /usr/lib/sdk/node22
-        npm_config_offline: 'true'
+        BUN_INSTALL_CACHE_DIR: /run/build/flow-browser/bun_cache
+        npm_config_nodedir: /run/build/flow-browser/electron-headers
+        electron_config_cache: /run/build/flow-browser/electron-cache
     subdir: main
     sources:
       - type: archive
@@ -49,14 +47,54 @@ modules:
           url: https://github.com/MultiboxLabs/flow-browser.git
           is-main-source: true
       - generated-sources.json
+      - type: archive
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-x64.zip
+        sha256: f57bc0187e39623de716ba3a389fda5486b2d7be7131a980ba54dc7b733d2e08
+        dest: bun-bin
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-aarch64.zip
+        sha256: fa5ecb25cafa8e8f5c87a0f833719d46dd0af0a86c7837d806531212d55636d3
+        dest: bun-bin
+        only-arches:
+          - aarch64
       - type: script
         dest-filename: run.sh
         commands:
-          - zypak-wrapper /app/main/flow-browser "$@"
+          - zypak-wrapper /app/main/flow-browser --disable-gpu-sandbox "$@"
+      - type: file
+        url: https://github.com/castlabs/electron-releases/releases/download/v40.1.0%2Bwvcus/electron-v40.1.0%2Bwvcus-linux-x64.zip
+        sha256: 1c58a06b301d2f2531709a9ecf3cffebfc5acdf46a09d4f37110f917fb264f77
+        dest: electron-cache/ba836dbb76e179a4c41de2ac3b52efdaff73f6355c1d7b224e1d9e4251ed220c
+        dest-filename: electron-v40.1.0+wvcus-linux-x64.zip
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://artifacts.electronjs.org/headers/dist/v40.1.0/node-v40.1.0-headers.tar.gz
+        sha256: 8958745dd0c9004b685f8cb5446b43556b5a4ab7863b55bd2ad3ed3adb6bce00
+        dest: electron-headers
+        strip-components: 1
     build-commands:
-      - npm install --offline
       - |
-        . ../flatpak-node/electron-builder-arch-args.sh
-        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+        for tgz in ../bun_cache/*.tgz; do
+          pkg=$(basename "$tgz" .tgz)
+          pkg=$(echo "$pkg" | sed 's/^@\([^@]*\)--/@\1\//')
+          mkdir -p "../bun_cache/${pkg}@@@1"
+          tar xzf "$tgz" --delay-directory-restore --strip-components=1 \
+            -C "../bun_cache/${pkg}@@@1"
+          chmod -R u+rwX "../bun_cache/${pkg}@@@1"
+          rm "$tgz"
+        done
+      - chmod 755 ../bun-bin/bun
+      - bun install --frozen-lockfile
+      - bun run postinstall
+      - bun run build
+      - |
+        case "$FLATPAK_ARCH" in
+          "x86_64")   ARCH_ARGS="--x64" ;;
+          "aarch64")  ARCH_ARGS="--arm64" ;;
+        esac
+        ./node_modules/.bin/electron-builder $ARCH_ARGS --linux --dir
       - cp -a dist/linux*unpacked /app/main
       - install -Dm755 -t /app/bin/ ../run.sh
