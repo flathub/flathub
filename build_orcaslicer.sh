@@ -200,7 +200,7 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # Extract version from manifest git tag
-VER=$(grep -A2 'type: git' "$MANIFEST" | grep 'tag:' | head -1 | sed 's/.*tag: *//')
+VER=$(grep -A2 'github.com/OrcaSlicer/OrcaSlicer' "$MANIFEST" | grep 'tag:' | head -1 | sed 's/.*tag: *//')
 echo -e "OrcaSlicer version: ${GREEN}${VER:-unknown}${NC}"
 
 # Cleanup build directory if requested
