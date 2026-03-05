@@ -8,7 +8,14 @@ import {
   npmPkgToFlatpakSources,
   gitPkgToFlatpakSource,
   collectDevDependencyNames,
+  detectElectronGitDep,
+  parseElectronVersion,
+  computeElectronCacheKey,
+  electronDownloadDirUrl,
+  electronBinaryUrl,
+  nodeHeadersUrl,
 } from "../src/main.ts";
+import type { GitBunPackage, ElectronInfo } from "../src/main.ts";
 
 describe("parseIdentifier", () => {
   test("parses regular package", () => {
@@ -529,5 +536,232 @@ describe("collectDevDependencyNames", () => {
     expect(devOnly.has("express/debug/ms")).toBe(false);
     expect(devOnly.has("typescript")).toBe(true);
     expect(devOnly.has("debug")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Electron source generation tests
+// ---------------------------------------------------------------------------
+
+describe("detectElectronGitDep", () => {
+  test("detects castlabs/electron-releases", () => {
+    const gitPackages: GitBunPackage[] = [
+      {
+        identifier: "node-gyp@github:electron/node-gyp#06b29aa",
+        owner: "electron",
+        repo: "node-gyp",
+        commit: "06b29aa",
+      },
+      {
+        identifier: "electron@github:castlabs/electron-releases#df5ab90",
+        owner: "castlabs",
+        repo: "electron-releases",
+        commit: "df5ab90",
+      },
+    ];
+    const result = detectElectronGitDep(gitPackages);
+    expect(result).not.toBeNull();
+    expect(result!.owner).toBe("castlabs");
+    expect(result!.repo).toBe("electron-releases");
+    expect(result!.commit).toBe("df5ab90");
+  });
+
+  test("returns null when no castlabs electron dep exists", () => {
+    const gitPackages: GitBunPackage[] = [
+      {
+        identifier: "node-gyp@github:electron/node-gyp#06b29aa",
+        owner: "electron",
+        repo: "node-gyp",
+        commit: "06b29aa",
+      },
+    ];
+    const result = detectElectronGitDep(gitPackages);
+    expect(result).toBeNull();
+  });
+
+  test("returns null for empty array", () => {
+    expect(detectElectronGitDep([])).toBeNull();
+  });
+
+  test("does not match other repos with similar names", () => {
+    const gitPackages: GitBunPackage[] = [
+      {
+        identifier: "electron@github:electron/electron#abc123",
+        owner: "electron",
+        repo: "electron",
+        commit: "abc123",
+      },
+      {
+        identifier: "electron@github:someone/electron-releases#def456",
+        owner: "someone",
+        repo: "electron-releases",
+        commit: "def456",
+      },
+    ];
+    expect(detectElectronGitDep(gitPackages)).toBeNull();
+  });
+});
+
+describe("parseElectronVersion", () => {
+  const castlabsPkg: GitBunPackage = {
+    identifier: "electron@github:castlabs/electron-releases#df5ab90",
+    owner: "castlabs",
+    repo: "electron-releases",
+    commit: "df5ab90",
+  };
+
+  test("parses castlabs version with +wvcus build metadata", () => {
+    const info = parseElectronVersion("40.1.0+wvcus", castlabsPkg);
+    expect(info.fullVersion).toBe("40.1.0+wvcus");
+    expect(info.baseVersion).toBe("40.1.0");
+    expect(info.buildMeta).toBe("wvcus");
+    expect(info.isCastlabs).toBe(true);
+    expect(info.commit).toBe("df5ab90");
+    expect(info.owner).toBe("castlabs");
+    expect(info.repo).toBe("electron-releases");
+  });
+
+  test("parses version without build metadata", () => {
+    const pkg: GitBunPackage = {
+      identifier: "electron@github:electron/electron#abc123",
+      owner: "electron",
+      repo: "electron",
+      commit: "abc123",
+    };
+    const info = parseElectronVersion("40.1.0", pkg);
+    expect(info.fullVersion).toBe("40.1.0");
+    expect(info.baseVersion).toBe("40.1.0");
+    expect(info.buildMeta).toBeNull();
+    expect(info.isCastlabs).toBe(false);
+  });
+
+  test("parses pre-release version with build metadata", () => {
+    const info = parseElectronVersion("41.0.0-beta.5+wvcus", castlabsPkg);
+    expect(info.fullVersion).toBe("41.0.0-beta.5+wvcus");
+    expect(info.baseVersion).toBe("41.0.0-beta.5");
+    expect(info.buildMeta).toBe("wvcus");
+  });
+});
+
+describe("electronDownloadDirUrl", () => {
+  test("builds castlabs download dir URL with literal +", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0+wvcus",
+      baseVersion: "40.1.0",
+      buildMeta: "wvcus",
+      isCastlabs: true,
+      commit: "df5ab90",
+      owner: "castlabs",
+      repo: "electron-releases",
+    };
+    expect(electronDownloadDirUrl(info)).toBe(
+      "https://github.com/castlabs/electron-releases/releases/download/v40.1.0+wvcus"
+    );
+  });
+
+  test("builds stock electron download dir URL without build meta", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0",
+      baseVersion: "40.1.0",
+      buildMeta: null,
+      isCastlabs: false,
+      commit: "abc123",
+      owner: "electron",
+      repo: "electron",
+    };
+    expect(electronDownloadDirUrl(info)).toBe(
+      "https://github.com/electron/electron/releases/download/v40.1.0"
+    );
+  });
+});
+
+describe("electronBinaryUrl", () => {
+  test("builds castlabs binary URL with %2B in tag and + in filename", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0+wvcus",
+      baseVersion: "40.1.0",
+      buildMeta: "wvcus",
+      isCastlabs: true,
+      commit: "df5ab90",
+      owner: "castlabs",
+      repo: "electron-releases",
+    };
+    expect(electronBinaryUrl(info, "x64")).toBe(
+      "https://github.com/castlabs/electron-releases/releases/download/v40.1.0%2Bwvcus/electron-v40.1.0+wvcus-linux-x64.zip"
+    );
+    expect(electronBinaryUrl(info, "arm64")).toBe(
+      "https://github.com/castlabs/electron-releases/releases/download/v40.1.0%2Bwvcus/electron-v40.1.0+wvcus-linux-arm64.zip"
+    );
+  });
+
+  test("builds stock electron binary URL without build meta", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0",
+      baseVersion: "40.1.0",
+      buildMeta: null,
+      isCastlabs: false,
+      commit: "abc123",
+      owner: "electron",
+      repo: "electron",
+    };
+    expect(electronBinaryUrl(info, "x64")).toBe(
+      "https://github.com/electron/electron/releases/download/v40.1.0/electron-v40.1.0-linux-x64.zip"
+    );
+  });
+});
+
+describe("computeElectronCacheKey", () => {
+  test("computes correct SHA-256 for castlabs v40.1.0+wvcus download dir", async () => {
+    // This is the known cache key from the backup manifest
+    const dirUrl = "https://github.com/castlabs/electron-releases/releases/download/v40.1.0+wvcus";
+    const cacheKey = await computeElectronCacheKey(dirUrl);
+    expect(cacheKey).toBe(
+      "ba836dbb76e179a4c41de2ac3b52efdaff73f6355c1d7b224e1d9e4251ed220c"
+    );
+  });
+
+  test("returns different hash for different URLs", async () => {
+    const key1 = await computeElectronCacheKey("https://example.com/a");
+    const key2 = await computeElectronCacheKey("https://example.com/b");
+    expect(key1).not.toBe(key2);
+  });
+
+  test("returns consistent results", async () => {
+    const url = "https://github.com/castlabs/electron-releases/releases/download/v40.1.0+wvcus";
+    const key1 = await computeElectronCacheKey(url);
+    const key2 = await computeElectronCacheKey(url);
+    expect(key1).toBe(key2);
+  });
+});
+
+describe("nodeHeadersUrl", () => {
+  test("uses base version without build metadata", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0+wvcus",
+      baseVersion: "40.1.0",
+      buildMeta: "wvcus",
+      isCastlabs: true,
+      commit: "df5ab90",
+      owner: "castlabs",
+      repo: "electron-releases",
+    };
+    expect(nodeHeadersUrl(info)).toBe(
+      "https://artifacts.electronjs.org/headers/dist/v40.1.0/node-v40.1.0-headers.tar.gz"
+    );
+  });
+
+  test("works for version without build metadata", () => {
+    const info: ElectronInfo = {
+      fullVersion: "40.1.0",
+      baseVersion: "40.1.0",
+      buildMeta: null,
+      isCastlabs: false,
+      commit: "abc123",
+      owner: "electron",
+      repo: "electron",
+    };
+    expect(nodeHeadersUrl(info)).toBe(
+      "https://artifacts.electronjs.org/headers/dist/v40.1.0/node-v40.1.0-headers.tar.gz"
+    );
   });
 });

@@ -29,6 +29,23 @@ export interface FlatpakSource {
   sha512?: string;
 }
 
+export interface ElectronInfo {
+  /** Full version string from package.json, e.g. "40.1.0+wvcus" */
+  fullVersion: string;
+  /** Base semver version without build metadata, e.g. "40.1.0" */
+  baseVersion: string;
+  /** Build metadata suffix, e.g. "wvcus" (or null for stock Electron) */
+  buildMeta: string | null;
+  /** Whether this is a castlabs fork (has +wvcus or similar suffix) */
+  isCastlabs: boolean;
+  /** The git commit from the lockfile */
+  commit: string;
+  /** GitHub owner */
+  owner: string;
+  /** GitHub repo */
+  repo: string;
+}
+
 export function parseBunLockfile(text: string): {
   lockfileVersion: number;
   packages: Record<string, any[]>;
@@ -318,6 +335,240 @@ export function collectDevDependencyNames(
   return devOnly;
 }
 
+// ---------------------------------------------------------------------------
+// Electron binary & node-headers source generation
+// ---------------------------------------------------------------------------
+
+const ELECTRON_ARCHES: { flatpak: string; electron: string }[] = [
+  { flatpak: "x86_64", electron: "x64" },
+  { flatpak: "aarch64", electron: "arm64" },
+];
+
+/**
+ * Detect whether any of the git dependencies is an Electron fork
+ * (currently: castlabs/electron-releases). Returns the matching package
+ * or null.
+ */
+export function detectElectronGitDep(
+  gitPackages: GitBunPackage[]
+): GitBunPackage | null {
+  return (
+    gitPackages.find(
+      (pkg) =>
+        pkg.repo === "electron-releases" && pkg.owner === "castlabs"
+    ) ?? null
+  );
+}
+
+/**
+ * Fetch the package.json from a GitHub commit and extract the version field.
+ * Returns the raw version string (e.g. "40.1.0+wvcus").
+ */
+export async function getElectronVersion(
+  owner: string,
+  repo: string,
+  commit: string
+): Promise<string> {
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${commit}/package.json`;
+  const response = await fetch(url, { redirect: "follow" });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${url}: ${response.status} ${response.statusText}`
+    );
+  }
+  const pkg = (await response.json()) as { version?: string };
+  if (!pkg.version) {
+    throw new Error(
+      `No "version" field found in ${owner}/${repo}@${commit}/package.json`
+    );
+  }
+  return pkg.version;
+}
+
+/**
+ * Parse the full electron version into its components.
+ * "40.1.0+wvcus" -> { fullVersion: "40.1.0+wvcus", baseVersion: "40.1.0", buildMeta: "wvcus", ... }
+ */
+export function parseElectronVersion(
+  fullVersion: string,
+  gitPkg: GitBunPackage
+): ElectronInfo {
+  const plusIdx = fullVersion.indexOf("+");
+  const baseVersion = plusIdx !== -1 ? fullVersion.slice(0, plusIdx) : fullVersion;
+  const buildMeta = plusIdx !== -1 ? fullVersion.slice(plusIdx + 1) : null;
+
+  return {
+    fullVersion,
+    baseVersion,
+    buildMeta,
+    isCastlabs: gitPkg.owner === "castlabs",
+    commit: gitPkg.commit,
+    owner: gitPkg.owner,
+    repo: gitPkg.repo,
+  };
+}
+
+/**
+ * Compute the @electron/get cache directory hash.
+ *
+ * @electron/get uses:
+ *   1. Parse the download URL with Node's legacy url.parse()
+ *   2. Strip the filename (path.dirname on pathname), strip search & hash
+ *   3. Re-format with url.format()
+ *   4. SHA-256 hex of the result
+ *
+ * For castlabs: the download URL directory is
+ *   https://github.com/castlabs/electron-releases/releases/download/v{version}
+ * where {version} contains a literal "+" (not %2B).
+ */
+export async function computeElectronCacheKey(
+  downloadDirUrl: string
+): Promise<string> {
+  const data = new TextEncoder().encode(downloadDirUrl);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Build the download directory URL that @electron/get would compute
+ * for a given electron version from castlabs.
+ */
+export function electronDownloadDirUrl(info: ElectronInfo): string {
+  const versionTag = info.buildMeta
+    ? `v${info.baseVersion}+${info.buildMeta}`
+    : `v${info.baseVersion}`;
+  return `https://github.com/${info.owner}/${info.repo}/releases/download/${versionTag}`;
+}
+
+/**
+ * Build the download URL for the electron binary zip from castlabs.
+ * The tag portion of the URL must use %2B for "+".
+ */
+export function electronBinaryUrl(
+  info: ElectronInfo,
+  electronArch: string
+): string {
+  const versionTag = info.buildMeta
+    ? `v${info.baseVersion}%2B${info.buildMeta}`
+    : `v${info.baseVersion}`;
+  const filename = info.buildMeta
+    ? `electron-v${info.baseVersion}+${info.buildMeta}-linux-${electronArch}.zip`
+    : `electron-v${info.baseVersion}-linux-${electronArch}.zip`;
+  return `https://github.com/${info.owner}/${info.repo}/releases/download/${versionTag}/${filename}`;
+}
+
+/**
+ * Generate FlatpakSource entries for the Electron binary zip.
+ * One per architecture (x64 -> x86_64, arm64 -> aarch64).
+ * Architectures where the binary is not available (404) are skipped.
+ */
+export async function electronBinarySources(
+  info: ElectronInfo
+): Promise<FlatpakSource[]> {
+  const dirUrl = electronDownloadDirUrl(info);
+  const cacheKey = await computeElectronCacheKey(dirUrl);
+
+  const sources: FlatpakSource[] = [];
+  for (const arch of ELECTRON_ARCHES) {
+    const url = electronBinaryUrl(info, arch.electron);
+    const filename = info.buildMeta
+      ? `electron-v${info.baseVersion}+${info.buildMeta}-linux-${arch.electron}.zip`
+      : `electron-v${info.baseVersion}-linux-${arch.electron}.zip`;
+
+    try {
+      const sha256 = await fetchSha256(url);
+      sources.push({
+        type: "file",
+        url,
+        sha256,
+        dest: `electron-cache/${cacheKey}`,
+        "dest-filename": filename,
+        "only-arches": [arch.flatpak],
+      });
+    } catch (_err) {
+      console.warn(
+        `    Skipping ${filename}: binary not available for ${arch.electron}`
+      );
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * Build the URL for node headers.
+ * Node headers come from artifacts.electronjs.org using the base version
+ * (without build metadata like +wvcus).
+ */
+export function nodeHeadersUrl(info: ElectronInfo): string {
+  return `https://artifacts.electronjs.org/headers/dist/v${info.baseVersion}/node-v${info.baseVersion}-headers.tar.gz`;
+}
+
+/**
+ * Generate the FlatpakSource for node headers.
+ */
+export async function nodeHeadersSource(
+  info: ElectronInfo
+): Promise<FlatpakSource> {
+  const url = nodeHeadersUrl(info);
+  const sha256 = await fetchSha256(url);
+
+  return {
+    type: "archive",
+    url,
+    sha256,
+    dest: "electron-headers",
+    "strip-components": 1,
+  };
+}
+
+/**
+ * Given the list of git packages from the lockfile, detect if there is a
+ * castlabs Electron dependency. If so, fetch its version, and generate
+ * the electron binary zip + node headers sources.
+ *
+ * Returns the generated sources (empty array if no Electron dep found).
+ */
+export async function generateElectronSources(
+  gitPackages: GitBunPackage[]
+): Promise<FlatpakSource[]> {
+  const electronDep = detectElectronGitDep(gitPackages);
+  if (!electronDep) return [];
+
+  console.log(
+    `Detected Electron git dependency: ${electronDep.owner}/${electronDep.repo}@${electronDep.commit}`
+  );
+
+  const fullVersion = await getElectronVersion(
+    electronDep.owner,
+    electronDep.repo,
+    electronDep.commit
+  );
+  const info = parseElectronVersion(fullVersion, electronDep);
+
+  console.log(
+    `  Electron version: ${info.fullVersion} (base: ${info.baseVersion})`
+  );
+
+  const sources: FlatpakSource[] = [];
+
+  console.log(`  Fetching electron binary zip hashes...`);
+  const binarySources = await electronBinarySources(info);
+  sources.push(...binarySources);
+  for (const src of binarySources) {
+    console.log(`    ${src["dest-filename"]} (${src["only-arches"]}) OK`);
+  }
+
+  console.log(`  Fetching node headers hash...`);
+  const headers = await nodeHeadersSource(info);
+  sources.push(headers);
+  console.log(`    node-v${info.baseVersion}-headers.tar.gz OK`);
+
+  return sources;
+}
+
 export async function main(
   lockPath: string,
   outputPath: string = "generated-sources.json",
@@ -370,9 +621,14 @@ export async function main(
     }
   }
 
+  // Detect castlabs Electron git dependency and generate binary + headers sources
+  const electronSources = await generateElectronSources(gitPackages);
+  flatpakSources.push(...electronSources);
+
   writeFileSync(outputPath, JSON.stringify(flatpakSources, null, 2) + "\n");
+  const electronCount = electronSources.length;
   console.log(
-    `Wrote ${flatpakSources.length} sources (${packages.length} npm + ${gitPackages.length} git) to ${outputPath}`
+    `Wrote ${flatpakSources.length} sources (${packages.length} npm + ${gitPackages.length} git + ${electronCount} electron) to ${outputPath}`
   );
 }
 

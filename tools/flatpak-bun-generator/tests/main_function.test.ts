@@ -357,4 +357,105 @@ describe("main function integration", () => {
     expect(typeof gitSources[0].sha256).toBe("string");
     expect(gitSources[0].sha256.length).toBeGreaterThan(0);
   });
+
+  test("generates electron binary and node headers sources for castlabs dep", async () => {
+    const testDir = join(TMP_DIR, "electron");
+    mkdirSync(testDir, { recursive: true });
+
+    const lockPath = join(testDir, "bun.lock");
+    const outputPath = join(testDir, "bun-sources.json");
+
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        lockfileVersion: 1,
+        configVersion: 1,
+        workspaces: {
+          "": {
+            name: "test",
+            dependencies: {
+              "is-number": "7.0.0",
+              "electron": "github:castlabs/electron-releases#df5ab90",
+            },
+          },
+        },
+        packages: {
+          "is-number": [
+            "is-number@7.0.0",
+            "",
+            {},
+            `sha512-${HASH_E}`,
+          ],
+          "electron": [
+            "electron@github:castlabs/electron-releases#df5ab90",
+            { "dependencies": { "@electron/get": "^2.0.0" }, "bin": { "electron": "cli.js" } },
+            "castlabs-electron-releases-df5ab90",
+          ],
+        },
+      })
+    );
+
+    await main(lockPath, outputPath);
+
+    expect(existsSync(outputPath)).toBe(true);
+
+    const sources = JSON.parse(readFileSync(outputPath, "utf-8"));
+
+    // npm source for is-number
+    const npmSources = sources.filter(
+      (s: any) => s.type === "file" && s.dest === "bun_cache"
+    );
+    expect(npmSources).toHaveLength(1);
+    expect(npmSources[0]["dest-filename"]).toBe("is-number@7.0.0.tgz");
+
+    // git archive source for castlabs/electron-releases
+    const gitSources = sources.filter(
+      (s: any) => s.type === "archive" && s.dest?.startsWith("bun_cache/")
+    );
+    expect(gitSources).toHaveLength(1);
+    expect(gitSources[0].url).toBe(
+      "https://github.com/castlabs/electron-releases/archive/df5ab90.tar.gz"
+    );
+
+    // electron binary zip sources (at least x64, arm64 may not exist for all releases)
+    const electronBinSources = sources.filter(
+      (s: any) => s.type === "file" && s.dest?.startsWith("electron-cache/")
+    );
+    expect(electronBinSources.length).toBeGreaterThanOrEqual(1);
+
+    const x64Bin = electronBinSources.find(
+      (s: any) => s["only-arches"]?.[0] === "x86_64"
+    );
+    expect(x64Bin).toBeDefined();
+    expect(x64Bin.url).toBe(
+      "https://github.com/castlabs/electron-releases/releases/download/v40.1.0%2Bwvcus/electron-v40.1.0+wvcus-linux-x64.zip"
+    );
+    expect(x64Bin["dest-filename"]).toBe("electron-v40.1.0+wvcus-linux-x64.zip");
+    expect(x64Bin.dest).toBe(
+      "electron-cache/ba836dbb76e179a4c41de2ac3b52efdaff73f6355c1d7b224e1d9e4251ed220c"
+    );
+    expect(x64Bin.sha256).toBeDefined();
+    expect(x64Bin.sha256.length).toBe(64);
+
+    // arm64 may or may not be available depending on the release
+    const arm64Bin = electronBinSources.find(
+      (s: any) => s["only-arches"]?.[0] === "aarch64"
+    );
+    if (arm64Bin) {
+      expect(arm64Bin.url).toContain("linux-arm64.zip");
+      expect(arm64Bin["dest-filename"]).toBe("electron-v40.1.0+wvcus-linux-arm64.zip");
+    }
+
+    // node headers source
+    const headersSources = sources.filter(
+      (s: any) => s.type === "archive" && s.dest === "electron-headers"
+    );
+    expect(headersSources).toHaveLength(1);
+    expect(headersSources[0].url).toBe(
+      "https://artifacts.electronjs.org/headers/dist/v40.1.0/node-v40.1.0-headers.tar.gz"
+    );
+    expect(headersSources[0]["strip-components"]).toBe(1);
+    expect(headersSources[0].sha256).toBeDefined();
+    expect(headersSources[0].sha256.length).toBe(64);
+  }, 300_000); // 5 minute timeout for downloading electron binaries
 });
