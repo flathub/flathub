@@ -19,7 +19,7 @@ CLEANUP=false
 INSTALL_RUNTIME=false
 JOBS=$(nproc)
 FORCE_CLEAN=false
-ENABLE_CCACHE=false
+ENABLE_CCACHE=true
 DISABLE_ROFILES_FUSE=false
 NO_DEBUGINFO=true
 CACHE_DIR=".flatpak-builder"
@@ -39,7 +39,7 @@ show_help() {
     echo "  -j, --jobs JOBS        Number of parallel build jobs [default: $JOBS]"
     echo "  -c, --cleanup          Clean build directory before building"
     echo "  -f, --force-clean      Force clean build (disables caching)"
-    echo "  --ccache               Enable ccache for faster rebuilds"
+    echo "  --no-ccache            Disable ccache"
     echo "  --disable-rofiles-fuse Disable rofiles-fuse (workaround for FUSE issues)"
     echo "  --with-debuginfo       Include debug info (slower builds, needed for Flathub)"
     echo "  --cache-dir DIR        Flatpak builder cache directory [default: $CACHE_DIR]"
@@ -49,8 +49,8 @@ show_help() {
     echo "Examples:"
     echo "  $0                     # Build for current architecture with caching enabled"
     echo "  $0 -f                  # Force clean build (no caching)"
-    echo "  $0 --ccache -j 8       # Use ccache and 8 parallel jobs"
-    echo "  $0 -i -j 16 --ccache  # Install runtime, build with 16 jobs and ccache"
+    echo "  $0 -j 8                # Build with 8 parallel jobs (ccache enabled by default)"
+    echo "  $0 -i -j 16           # Install runtime, build with 16 jobs"
 }
 
 # Parse command line arguments
@@ -76,8 +76,8 @@ while [[ $# -gt 0 ]]; do
             FORCE_CLEAN=true
             shift
             ;;
-        --ccache)
-            ENABLE_CCACHE=true
+        --no-ccache)
+            ENABLE_CCACHE=false
             shift
             ;;
         --disable-rofiles-fuse)
