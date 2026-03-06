@@ -1,0 +1,78 @@
+app-id: io.github.Okazakee.ProtonAuthenticator
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: proton-authenticator
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: proton-authenticator
+    buildsystem: simple
+    build-commands:
+      # apply_extra runs at install time inside the Flatpak sandbox; it receives
+      # the downloaded RPM in the current dir (/app/extra/) and unpacks the binary.
+      - install -Dm755 apply_extra /app/bin/apply_extra
+
+      # Thin wrapper that execs the binary installed by apply_extra.
+      - install -Dm755 proton-authenticator.sh /app/bin/proton-authenticator
+
+      # Static assets committed to the repo (no binary redistribution).
+      - install -Dm644 io.github.Okazakee.ProtonAuthenticator.desktop /app/share/applications/io.github.Okazakee.ProtonAuthenticator.desktop
+      - install -Dm644 io.github.Okazakee.ProtonAuthenticator.metainfo.xml /app/share/metainfo/io.github.Okazakee.ProtonAuthenticator.metainfo.xml
+      - install -Dm644 icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.Okazakee.ProtonAuthenticator.png
+      - install -Dm644 icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.Okazakee.ProtonAuthenticator.png
+      - install -Dm644 icons/256x256.png /app/share/icons/hicolor/256x256@2/apps/io.github.Okazakee.ProtonAuthenticator.png
+
+    sources:
+      # Script executed at install time to unpack the RPM payload.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - bsdtar -xf ProtonAuthenticator.rpm usr/bin/proton-authenticator
+          - install -Dm755 usr/bin/proton-authenticator bin/proton-authenticator
+          - rm -rf usr ProtonAuthenticator.rpm
+
+      # Wrapper script: execs the extra-data binary.
+      - type: script
+        dest-filename: proton-authenticator.sh
+        commands:
+          - exec /app/extra/bin/proton-authenticator "$@"
+
+      - type: file
+        path: io.github.Okazakee.ProtonAuthenticator.desktop
+
+      - type: file
+        path: io.github.Okazakee.ProtonAuthenticator.metainfo.xml
+
+      - type: file
+        path: icons/32x32.png
+        dest: icons
+
+      - type: file
+        path: icons/128x128.png
+        dest: icons
+
+      - type: file
+        path: icons/256x256.png
+        dest: icons
+
+      # The binary is NOT bundled — it is downloaded by the end-user's Flatpak
+      # client at install time and verified against the sha256 + size below.
+      - type: extra-data
+        filename: ProtonAuthenticator.rpm
+        url: https://proton.me/download/authenticator/linux/ProtonAuthenticator-1.1.4-1.x86_64.rpm
+        sha256: 1673f13312ee42b2a7f3822e7e15c8f778f0748f414554a12942fa348a474472
+        size: 18627078
+        x-checker-data:
+          type: json
+          url: https://proton.me/download/authenticator/linux/version.json
+          version-query: '[.Releases[] | select(.CategoryName == "Stable")][0].File[] | select(.Identifier | contains(".rpm")) | .Url | capture("ProtonAuthenticator-(?P<ver>[\\d.]+-\\d+)").ver'
+          url-query: '[.Releases[] | select(.CategoryName == "Stable")][0].File[] | select(.Identifier | contains(".rpm")) | .Url'
