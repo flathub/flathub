@@ -1,0 +1,92 @@
+app-id: io.github.kyuyrii.zordeer
+sdk: org.kde.Sdk
+runtime: org.kde.Platform
+runtime-version: &runtime-version '6.10'
+x-gl-version: &gl-version '1.4'
+x-gl-versions: &gl-versions 25.08;25.08extra;1.4
+x-gl-merge-dirs: &gl-merge-dirs vulkan/icd.d;glvnd/egl_vendor.d;egl/egl_external_platform.d;OpenCL/vendors;lib/dri;lib/d3d;lib/gbm;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+command: zordeer
+base: org.winehq.Wine
+base-version: stable-25.08
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio # notification sound
+  - --allow=devel # ubisoft connect and other launchers
+  - --allow=multiarch
+  - --allow=per-app-dev-shm  # pressure-vessel
+  - --device=all
+  - --talk-name=org.kde.StatusNotifierWatcher # system tray
+  - --env=PATH=/app/bin:/app/utils/bin:/usr/bin:/usr/lib/extensions/vulkan/MangoHud/bin # mangohud
+  - --env=PYTHONPATH=/lib/python3.13/site-packages
+  - --env=QT_PLUGIN_PATH=/lib/python3.13/site-packages/PyQt6/Qt6/plugins:/usr/share/runtime/lib/plugins:/usr/lib/plugins
+  - --env=ZORDEER_DIR_APP_ID=0 # 0 = $HOME/App/Zordeer. 1 = $HOME/.var/app/io.github.kyuyrii.zordeer/App/Zordeer
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/mnt
+  - --filesystem=/run/media
+
+inherit-extensions:
+  - org.freedesktop.Platform.GL32
+  - org.freedesktop.Platform.Compat.i386
+
+add-extensions:
+  org.freedesktop.Platform.VAAPI.Intel.i386:
+    directory: lib/i386-linux-gnu/dri/intel-vaapi-driver
+    version: *runtime-version
+    versions: *runtime-version
+    autodelete: false
+    no-autodownload: true
+    add-ld-path: lib
+    download-if: have-intel-gpu
+    autoprune-unless: have-intel-gpu
+
+modules:
+  - name: bundle-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu
+      - mkdir -p /app/lib/debug/lib/i386-linux-gnu
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+      - mkdir -p /app/lib/i386-linux-gnu/dri/intel-vaapi-driver
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+
+  - name: python3-dbus
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/dbus/dbus-python.git
+        tag: dbus-python-1.4.0
+
+  - name: python-dependencies
+    buildsystem: simple
+    build-commands:
+      - python3 -m pip install --prefix=/app --no-build-isolation toml requests urllib3 idna certifi psutil PyQt6==6.10.0
+    build-options:
+      build-args:
+        - --share=network
+
+  - name: zordeer
+    builddir: true
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/Kyuyrii/Zordeer.git
+        tag: 1.7.10.1
+#        branch: main
+    build-commands:
+      - cp -r translation /app/bin
+      - cp zordeer /app/bin
+      - cp io.github.kyuyrii.zordeer.svg /app/bin
+      - cp io.github.kyuyrii.zordeer.desktop /app/share/applications/
+      - cp io.github.kyuyrii.zordeer.svg /app/share/icons/hicolor/scalable/apps/
+      - sed -i 's|Name=Zordeer|Name=Zordeer [Flatpak]|' /app/share/applications/io.github.kyuyrii.zordeer.desktop
