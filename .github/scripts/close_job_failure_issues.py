@@ -15,7 +15,7 @@ auth = Auth.Token(GITHUB_TOKEN)
 g = Github(auth=auth)
 
 query = (
-    f'is:issue is:open author:flathubbot created:>=2026-02-17 '
+    "is:issue is:open author:flathubbot created:>=2026-02-17 "
     '("Stable commit job failed" OR '
     '"Beta commit job failed" OR '
     '"Stable publish job failed" OR '
