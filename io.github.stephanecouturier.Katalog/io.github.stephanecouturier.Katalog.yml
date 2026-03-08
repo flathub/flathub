@@ -1,0 +1,57 @@
+id: io.github.stephanecouturier.Katalog
+runtime: org.kde.Platform
+runtime-version: "6.10"
+sdk: org.kde.Sdk
+command: Katalog
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU acceleration
+  #- --device=dri
+  - --device=all
+  # File system: Katalog's core purpose is cataloging arbitrary storage locations
+  # (external drives, NAS, removable media) so host access is required
+  - --filesystem=host
+  # DBus: needed for KDE integration (theming, file dialogs)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+
+modules:
+  - name: Katalog
+    # Use 'simple' buildsystem so we control the exact sequence:
+    # cmake → touch .qm placeholders → ninja → install
+    # This is required because AUTORCC needs .qm files to exist before ninja runs
+    buildsystem: simple
+
+    build-commands:
+      # Step 1: Configure with CMake into _build/ subdirectory
+      - cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
+          -DCMAKE_INSTALL_PREFIX=/app -B_build .
+      # Step 2: Touch empty .qm placeholders so AUTORCC (qrc_translations.cpp) can proceed
+      - for f in src/translations/*.ts; do touch "${f%.ts}.qm"; done
+      # Step 3: Build (ninja will also properly compile the .qm files via lrelease)
+      - ninja -C _build
+      # Step 4: Install binary and any CMake install() targets
+      - ninja -C _build install
+
+    # Install packaging assets not handled by CMakeLists.txt
+    post-install:
+      # Desktop file — must match app ID exactly (Flathub requirement)
+      - install -Dm644 packaging/Katalog.desktop
+          /app/share/applications/io.github.stephanecouturier.Katalog.desktop
+      # AppStream metainfo
+      - install -Dm644 packaging/io.github.stephanecouturier.katalog.appdata.xml
+          /app/share/metainfo/io.github.stephanecouturier.Katalog.metainfo.xml
+      # Icon — convert ICO to PNG 128x128 (minimum for Flathub)
+      - install -Dm644 src/images/Katalog_logo_256.png
+          /app/share/icons/hicolor/256x256/apps/io.github.stephanecouturier.Katalog.png
+
+    sources:
+      - type: git
+        url: https://github.com/StephaneCouturier/Katalog.git
+        tag: v2.10
+        commit: d0736ae3ea1324a8e782ba213c77cea1588f52be
+        #branch: katalog_development
