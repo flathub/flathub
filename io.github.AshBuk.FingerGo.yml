@@ -1,0 +1,61 @@
+# Flatpak manifest for FingerGo
+#
+# Build locally:
+#   flatpak-builder --force-clean build-dir flatpak/io.github.AshBuk.FingerGo.yml
+#
+# Install:
+#   flatpak-builder --user --install --force-clean build-dir flatpak/io.github.AshBuk.FingerGo.yml
+#
+# Run:
+#   flatpak run io.github.AshBuk.FingerGo
+#
+# Regenerate Go module sources after dependency changes:
+#   go mod download -json | go run flatpak/gen-go-sources.go > flatpak/go-mod-sources.json
+
+app-id: io.github.AshBuk.FingerGo
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+command: fingergo
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+
+modules:
+  - name: fingergo
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOROOT: /usr/lib/sdk/golang
+        GOPATH: /run/build/fingergo/go
+        GOMODCACHE: /run/build/fingergo/go/pkg/mod
+        GOTOOLCHAIN: local
+        CGO_ENABLED: '1'
+    build-commands:
+      - . /usr/lib/sdk/golang/enable.sh
+      - |
+        go build \
+          -tags desktop,production,webkit2_41 \
+          -trimpath \
+          -ldflags="-s -w" \
+          -o build/bin/FingerGo \
+          .
+      - install -Dm755 build/bin/FingerGo ${FLATPAK_DEST}/bin/fingergo
+      - install -Dm644 flatpak/io.github.AshBuk.FingerGo.desktop ${FLATPAK_DEST}/share/applications/io.github.AshBuk.FingerGo.desktop
+      - install -Dm644 fingergo.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.AshBuk.FingerGo.png
+      - install -Dm644 flatpak/io.github.AshBuk.FingerGo.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.AshBuk.FingerGo.metainfo.xml
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/io.github.AshBuk.FingerGo/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/AshBuk/FingerGo.git
+        tag: v1.2.1
+        commit: 7125478bcfa55c26630f87dddb3a7c5f3e8cd025
+      - go-mod-sources.json
