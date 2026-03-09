@@ -1,0 +1,98 @@
+app-id: com.getgrist.grist
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: run.sh
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --env=ELECTRON_TRASH=gio
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --filesystem=home # TODO evaluate
+  - --filesystem=xdg-cache/tmp:create
+  - --env=TMPDIR=/tmp
+  - --env=GRIST_SANDBOX_FLAVOR=pyodide
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  # https://github.com/gristlabs/grist-desktop/blob/main/README.md#build-as-flatpak-linux---additional-steps
+  - --env=GRIST_SANDBOX_APPEND_ARGS=--type=unimportant
+  - --env=GRIST_SANDBOX=/app/bin/grist-desktop
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: grist
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/grist/flatpak-node/cache
+    build-commands:
+      # Install Javascript dependencies
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - yarn install --offline
+      # Prepare build environment
+      - mkdir -p core/python/bin && ln -s `which python3` core/python/bin/ # use system Python
+      - | # use supplied yarn.lock to install deno and pyodide offline
+        cd core/sandbox/pyodide/_build/worker
+        HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+        yarn install --offline
+      - PATH=$PATH:$PWD/core/sandbox/pyodide/_build/worker scripts/setup.sh
+      # Build the app
+      - yarn build
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        yarn run electron-builder build -- $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      # Install AppStream metadata
+      - install -Dm644 com.getgrist.grist.metainfo.xml /app/share/metainfo/com.getgrist.grist.metainfo.xml
+      # Install desktop file and icon
+      - install -Dm644 com.getgrist.grist.desktop /app/share/applications/com.getgrist.grist.desktop
+      - install -Dm644 core/static/icons/grist.svg /app/share/icons/hicolor/scalable/apps/com.getgrist.grist.svg
+    subdir: main
+    sources:
+      # grist
+      - type: archive
+        url: https://github.com/gristlabs/grist-desktop/archive/refs/tags/v0.3.10.tar.gz
+        sha256: 291f415c1c42b5d2fbc2d63aa42c9219ac0df473bb4aaccb92073147c6c26ca4
+        dest: main
+      - type: archive
+        url: https://github.com/gristlabs/grist-core/archive/refs/tags/v1.7.11.tar.gz
+        sha256: d7a657fe78ea5ebbb4d8bfbda18470d52dcd2151f3369f34d795452d0f814768
+        dest: main/core
+      - type: file
+        path: pyodide-worker-package.json
+        dest: main/core/sandbox/pyodide/_build/worker/
+        dest-filename: package.json
+      - type: file
+        path: pyodide-worker-yarn.lock
+        dest: main/core/sandbox/pyodide/_build/worker/
+        dest-filename: yarn.lock
+      - type: file
+        path: com.getgrist.grist.desktop
+        dest: main
+      - type: file
+        path: com.getgrist.grist.metainfo.xml
+        dest: main
+      - generated-sources-worker.json
+      - generated-sources-desktop.json
+      - generated-sources-core.json
+      - pyodide-packages.json
+      - type: patch
+        path: patches/pyodide-local-packages.patch
+      # wrapper to launch the app
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/grist-desktop "$@"
