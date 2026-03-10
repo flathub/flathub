@@ -5,7 +5,7 @@ Flatpak package for [Electron Cash](https://electroncash.org/), a lightweight SP
 ## Build
 
 ```bash
-git clone --recurse-submodules https://github.com/Eggroley/electron-cash-flatpak.git
+git clone https://github.com/Eggroley/electron-cash-flatpak.git
 cd electron-cash-flatpak
 flatpak-builder --user --install-deps-from=flathub --force-clean build org.electroncash.ElectronCash.yml
 ```
@@ -14,6 +14,11 @@ flatpak-builder --user --install-deps-from=flathub --force-clean build org.elect
 
 ```bash
 flatpak run org.electroncash.ElectronCash
+```
+## Bundle
+```bash
+flatpak-builder --user --force-clean --repo=repo build org.electroncash.ElectronCash.yml
+flatpak build-bundle repo Electron-Cash.flatpak org.electroncash.ElectronCash
 ```
 
 ## Features
@@ -30,7 +35,3 @@ flatpak run org.electroncash.ElectronCash
 2. Update version and SHA256 in `org.electroncash.ElectronCash.yml`
 3. Add release entry to `org.electroncash.ElectronCash.metainfo.xml`
 4. Build and test
-
-## License
-
-MIT
