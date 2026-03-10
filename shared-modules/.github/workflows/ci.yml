@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: master
+  pull_request:
+    branches: master
+  workflow_dispatch:
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    steps:
+        # 4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Set up dependencies
+        run: |
+          sudo add-apt-repository ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y flatpak dbus-daemon
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install flathub -y org.flatpak.Builder
+
+      - name: Validate manifests
+        run: |
+          set -e
+          for i in $(find . -type f -name "*.json"); do flatpak run org.flatpak.Builder --show-manifest "$i"; done
+          rm -rf .flatpak-builder
+
+          find . -maxdepth 1 -mindepth 1 -type d ! -path './.github' ! -path './.git' | while read dir; do
+            if [ "$(find "$dir" -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 0 ]; then
+              echo "Error: $dir has no JSON manifest"
+              exit 1
+            fi
+          done
+
+          files="$(find . -type f \( -name '*.yml' -o -name '*.yaml' \) ! -path './.github/*' ! -path './.git')"
+          if [ -n "$files" ]; then
+            echo "Error: YML/YAML file found: $files"
+            exit 1
+          fi
+
+      - name: Build changed manifests against stable Freedesktop SDK
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          FILES=$(gh pr view "${{ github.event.number }}" --json files --jq '.files[].path')
+
+          for f in $FILES; do
+            if [[ "$f" == *.json && -f "$f" ]]; then
+              echo "Building manifest for $f"
+
+              RUNTIME_VERSION=$(flatpak remote-ls --columns=ref flathub \
+                | grep "runtime/org.freedesktop.Platform/x86_64/" \
+                | sed 's|.*/||' \
+                | sort -V \
+                | tail -n1)
+
+              cat > org.example.stable.yml <<EOF
+          id: org.example.stable
+          runtime: org.freedesktop.Platform
+          runtime-version: '$RUNTIME_VERSION'
+          sdk: org.freedesktop.Sdk
+          modules:
+            - $f
+          EOF
+
+              cat org.example.stable.yml
+              dbus-run-session flatpak run org.flatpak.Builder --verbose --user --force-clean \
+                --install-deps-from=flathub builddir org.example.stable.yml
+            fi
+          done
+
+      - name: Build changed manifests against oldstable Freedesktop SDK
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          FILES=$(gh pr view "${{ github.event.number }}" --json files --jq '.files[].path')
+
+          for f in $FILES; do
+            if [[ "$f" == *.json && -f "$f" ]]; then
+              echo "Building manifest for $f"
+
+              RUNTIME_VERSION=$(flatpak remote-ls --columns=ref flathub \
+                | grep "runtime/org.freedesktop.Platform/x86_64/" \
+                | sed 's|.*/||' \
+                | sort -V \
+                | tail -n2|head -1)
+
+              cat > org.example.oldstable.yml <<EOF
+          id: org.example.oldstable
+          runtime: org.freedesktop.Platform
+          runtime-version: '$RUNTIME_VERSION'
+          sdk: org.freedesktop.Sdk
+          modules:
+            - $f
+          EOF
+
+              cat org.example.oldstable.yml
+              dbus-run-session flatpak run org.flatpak.Builder --verbose --user --force-clean \
+                --install-deps-from=flathub builddir org.example.oldstable.yml
+            fi
+          done
+
