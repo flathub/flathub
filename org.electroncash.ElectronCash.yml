@@ -1,24 +1,22 @@
 id: org.electroncash.ElectronCash
 runtime: org.kde.Platform
-runtime-version: '5.15-24.08'
+runtime-version: '5.15-25.08'
 sdk: org.kde.Sdk
 base: com.riverbankcomputing.PyQt.BaseApp
-base-version: '5.15-24.08'
+base-version: '5.15-25.08'
 command: electron-cash
 
 finish-args:
-  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
   - --share=ipc
   - --socket=pulseaudio
   - --share=network
-  - --persist=.electron-cash
   - --device=all
+  - --persist=.electron-cash
   - --talk-name=org.kde.StatusNotifierItem
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.StatusNotifierWatcher
-  - --talk-name=com.canonical.AppMenu.Registrar
-  - --talk-name=org.kde.kconfig.notify
-  - --talk-name=org.kde.KGlobalSettings
   - --talk-name=org.freedesktop.Notifications
 
 build-options:
@@ -26,12 +24,8 @@ build-options:
     BASEAPP_REMOVE_WEBENGINE: "1"
 
 cleanup:
-  - /include
-  - /share/man
-  - /share/pkgconfig
   - "*.a"
   - "*.la"
-  - /lib/pkgconfig
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
@@ -66,15 +60,12 @@ modules:
           project-id: 1367
           url-template: https://dist.torproject.org/tor-$version.tar.gz
     post-install:
-      # Copy libevent libraries to electroncash directory (Tor needs them)
-      - mkdir -p ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin
-      - cp ${FLATPAK_DEST}/lib/libevent-2.1.so.7 ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/
-      - cp ${FLATPAK_DEST}/lib/libevent_core-2.1.so.7 ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/
-      - cp ${FLATPAK_DEST}/lib/libevent_extra-2.1.so.7 ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/
-      - cp ${FLATPAK_DEST}/lib/libevent_pthreads-2.1.so.7 ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/
-      # Copy tor binary to Electron-Cash's expected location
-      - cp ${FLATPAK_DEST}/bin/tor ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/tor
-      - chmod +x ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/tor/bin/tor
+      - mkdir -p ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_core-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_extra-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_pthreads-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
+      - install -Dm755 ${FLATPAK_DEST}/bin/tor ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/tor
 
   # libsecp256k1 - cryptographic library (required for CashFusion)
   # Using Bitcoin ABC fork which has the old schnorr API
@@ -91,7 +82,6 @@ modules:
         url: https://github.com/Bitcoin-ABC/secp256k1.git
         commit: 869d3526658d7356e1ff354da1c941578684a943
 
-  # zbar - QR code scanning
   - name: zbar
     buildsystem: autotools
     config-opts:
@@ -119,35 +109,39 @@ modules:
   # Python binary dependencies (excluding PyQt which comes from BaseApp)
   - python3-requirements-binaries.json
 
-  # Main Electron Cash application
   - name: electron-cash
     buildsystem: simple
     build-commands:
-      # Install Python package
       - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} .
-      # Copy libsecp256k1 to electroncash package directory
-      - cp /app/lib/libsecp256k1.so.0.0.0 ${FLATPAK_DEST}/lib/python3.12/site-packages/electroncash/libsecp256k1.so.0
-      # Rename the original electron-cash script
-      - mv ${FLATPAK_DEST}/bin/electron-cash ${FLATPAK_DEST}/bin/electron-cash.real
-      # Create wrapper script to set LD_LIBRARY_PATH for Tor and KDE platform theme
+      - install -Dm644 org.electroncash.ElectronCash.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+      - install -Dm644 electron-cash.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/electron-cash.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/pixmaps/${FLATPAK_ID}.png
+      - install -Dm755 /app/lib/libsecp256k1.so.0.0.0 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/libsecp256k1.so.0
+      - install -Dm755 ${FLATPAK_DEST}/bin/electron-cash ${FLATPAK_DEST}/bin/electron-cash.real
+      # Create wrapper script using install
       - |
-        cat > ${FLATPAK_DEST}/bin/electron-cash << 'EOF'
+        install -Dm755 /dev/stdin ${FLATPAK_DEST}/bin/electron-cash << 'EOF'
         #!/bin/bash
-        export LD_LIBRARY_PATH=/app/lib/python3.12/site-packages/electroncash/tor/bin:${LD_LIBRARY_PATH}
+        export LD_LIBRARY_PATH=/app/lib/python3.13/site-packages/electroncash/tor/bin:${LD_LIBRARY_PATH}
         # Enable KDE platform theme for proper system tray integration
         export QT_QPA_PLATFORMTHEME=kde
         exec /app/bin/electron-cash.real "$@"
         EOF
-      - chmod +x ${FLATPAK_DEST}/bin/electron-cash
-      # Install metainfo, icons, and desktop file
-      - install -Dm644 org.electroncash.ElectronCash.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - install -Dm644 icons/electron-cash.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      - install -Dm644 icons/electron_dark_icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}-dark.svg
-      - install -Dm644 icons/electron_light_icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}-light.svg
-      - for s in 16 22 24 32 48 64 128 256; do install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png; done
-      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/pixmaps/${FLATPAK_ID}.png
-      - install -Dm644 org.electroncash.ElectronCash.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-key="Icon" --set-value=${FLATPAK_ID} --set-key="Exec" --set-value="electron-cash %u" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # Install metainfo from upstream and apply Flathub-specific fixes
+
+      - |
+          # Fix appdata.xml for proper appstream validation
+          appdata_file="${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
+          # Convert mimetypes to mediatype within provides section
+          sed -i 's|<mimetype>|<mediatype>|g; s|</mimetype>|</mediatype>|g' "$appdata_file" || true
+          # Remove python3 provides (non-standard)
+          sed -i '/<provides>/,/<\/provides>/ { /python3>/d }' "$appdata_file" || true
+          # Add launchable tag
+          sed -i '/<\/provides>/a\        <launchable type="desktop-id">org.electroncash.ElectronCash.desktop</launchable>' "$appdata_file" || true
+
+      - desktop-file-edit --set-key="Icon" --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 LICENCE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENCE
     sources:
       - type: archive
@@ -161,9 +155,6 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/69/8a/b9dc7678803429e4a3bc9ba462fa3dd9066824d3c607490235c6a796be5a/setuptools-75.8.0-py3-none-any.whl
         sha256: e3982f444617239225d675215d51f6ba05f845d4eec313da4418fdbb56fb27e3
-      - type: file
-        path: org.electroncash.ElectronCash.metainfo.xml
-      - type: file
-        path: org.electroncash.ElectronCash.desktop
       - type: patch
         path: tray-icon-fix.patch
+
