@@ -35,10 +35,14 @@ modules:
     build-options:
       env:
         XDG_CACHE_HOME: /run/build/grist/flatpak-node/cache
+        npm_config_sqlite: /usr
     build-commands:
       # Install Javascript dependencies
       - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
       - yarn install --offline
+      # Use prebuilt sqlite3 binding, as somehow the source-built binary crashes the app
+      - rm -Rf "node_modules/@gristlabs/sqlite3/lib/binding"
+      - cp -R node-sqlite3-precompiled "node_modules/@gristlabs/sqlite3/lib/binding"
       # Prepare build environment
       - mkdir -p core/python/bin && ln -s `which python3` core/python/bin/ # use system Python
       - | # use supplied yarn.lock to install deno and pyodide offline
@@ -71,6 +75,7 @@ modules:
         url: https://github.com/gristlabs/grist-core/archive/refs/tags/v1.7.11.tar.gz
         sha256: d7a657fe78ea5ebbb4d8bfbda18470d52dcd2151f3369f34d795452d0f814768
         dest: main/core
+      # use lockfile instead of 'yarn install' for one part in the setting up the build environment
       - type: file
         path: pyodide-worker-package.json
         dest: main/core/sandbox/pyodide/_build/worker/
@@ -79,15 +84,33 @@ modules:
         path: pyodide-worker-yarn.lock
         dest: main/core/sandbox/pyodide/_build/worker/
         dest-filename: yarn.lock
+      # metadata
       - type: file
         path: com.getgrist.grist.desktop
         dest: main
       - type: file
         path: com.getgrist.grist.metainfo.xml
         dest: main
+      # precompiled node-sqlite3 modules (because compiled version crashes the app, hopefully a temporary solution)
+      - type: archive
+        url: https://github.com/gristlabs/node-sqlite3/releases/download/v5.1.4-grist.8/napi-v6-linux-glibc-x64.tar.gz
+        sha256: 96c8f1d6bf25cc6712a00dbcda8a13f191eceb0f032a18394a5f70caabd32493
+        dest: main/node-sqlite3-precompiled
+        strip-components: 0
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/gristlabs/node-sqlite3/releases/download/v5.1.4-grist.8/napi-v6-linux-glibc-arm64.tar.gz
+        sha256: 4284b2e5181afa3b9f43daab62f160248c8c401013a16f3924f111348ee2cd49
+        dest: main/node-sqlite3-precompiled
+        strip-components: 0
+        only-arches:
+          - aarch64
+      # yarn packages
       - generated-sources-worker.json
       - generated-sources-desktop.json
       - generated-sources-core.json
+      # Python wheels (WASM) precompiled by pyodide/emscripten
       - pyodide-packages.json
       - type: patch
         path: patches/pyodide-local-packages.patch
