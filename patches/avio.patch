@@ -1,0 +1,754 @@
+From 74d9d856294130464a4acffd5cce262632da79c2 Mon Sep 17 00:00:00 2001
+From: dragonflylee <dragonflylee@outlook.com>
+Date: Wed, 3 Jul 2024 11:52:21 +0800
+Subject: [PATCH] addition protocols support
+
+---
+ configure               |   9 ++
+ libavformat/Makefile    |   2 +
+ libavformat/avio.h      |  16 +-
+ libavformat/libsmb2.c   | 253 +++++++++++++++++++++++++++++++
+ libavformat/libssh2.c   | 326 ++++++++++++++++++++++++++++++++++++++++
+ libavformat/protocols.c |   2 +
+ 6 files changed, 603 insertions(+), 5 deletions(-)
+ create mode 100644 libavformat/libsmb2.c
+ create mode 100644 libavformat/libssh2.c
+
+diff --git a/configure b/configure
+index d77a55b653c15..69dc1a45aed29 100755
+--- a/configure
++++ b/configure
+@@ -272,11 +272,13 @@ External library support:
+   --enable-libshaderc      enable GLSL->SPIRV compilation via libshaderc [no]
+   --enable-libshine        enable fixed-point MP3 encoding via libshine [no]
+   --enable-libsmbclient    enable Samba protocol via libsmbclient [no]
++  --enable-libsmb2         enable Samba protocol via libsmb2 [no]
+   --enable-libsnappy       enable Snappy compression, needed for hap encoding [no]
+   --enable-libsoxr         enable Include libsoxr resampling [no]
+   --enable-libspeex        enable Speex de/encoding via libspeex [no]
+   --enable-libsrt          enable Haivision SRT protocol via libsrt [no]
+   --enable-libssh          enable SFTP protocol via libssh [no]
++  --enable-libssh2         enable SFTP protocol via libssh2 [no]
+   --enable-libsvtav1       enable AV1 encoding via SVT [no]
+   --enable-libtensorflow   enable TensorFlow as a DNN module backend
+                            for DNN based filters like sr [no]
+@@ -1953,11 +1955,13 @@ EXTERNAL_LIBRARY_LIST="
+     libshaderc
+     libshine
+     libsmbclient
++    libsmb2
+     libsnappy
+     libsoxr
+     libspeex
+     libsrt
+     libssh
++    libssh2
+     libsvtav1
+     libtensorflow
+     libtesseract
+@@ -3816,9 +3820,11 @@ librtmps_protocol_deps="librtmp"
+ librtmpt_protocol_deps="librtmp"
+ librtmpte_protocol_deps="librtmp"
+ libsmbclient_protocol_deps="libsmbclient gplv3"
++libsmb2_protocol_deps="libsmb2"
+ libsrt_protocol_deps="libsrt"
+ libsrt_protocol_select="network"
+ libssh_protocol_deps="libssh"
++libssh2_protocol_deps="libssh2"
+ libtls_conflict="openssl gnutls mbedtls"
+ libzmq_protocol_deps="libzmq"
+ libzmq_protocol_select="network"
+@@ -6991,9 +6997,12 @@ enabled libshaderc        && require_pkg_config spirv_compiler "shaderc >= 2019.
+ enabled libshine          && require_pkg_config libshine shine shine/layer3.h shine_encode_buffer
+ enabled libsmbclient      && { check_pkg_config libsmbclient smbclient libsmbclient.h smbc_init ||
+                                require libsmbclient libsmbclient.h smbc_init -lsmbclient; }
++enabled libsmb2           && { check_pkg_config libsmb2 libsmb2 smb2/smb2-errors.h SMB2_STATUS_SUCCESS ||
++                               require libsmb2 smb2/smb2-errors.h SMB2_STATUS_SUCCESS -lsmb2; }
+ enabled libsnappy         && require libsnappy snappy-c.h snappy_compress -lsnappy -lstdc++
+ enabled libsoxr           && require libsoxr soxr.h soxr_create -lsoxr
+ enabled libssh            && require_pkg_config libssh "libssh >= 0.6.0" libssh/sftp.h sftp_init
++enabled libssh2           && require_pkg_config libssh2 libssh2 libssh2.h libssh2_init
+ enabled libspeex          && require_pkg_config libspeex speex speex/speex.h speex_decoder_init
+ enabled libsrt            && require_pkg_config libsrt "srt >= 1.3.0" srt/srt.h srt_socket
+ enabled libsvtav1         && require_pkg_config libsvtav1 "SvtAv1Enc >= 0.9.0" EbSvtAv1Enc.h svt_av1_enc_init_handle
+diff --git a/libavformat/Makefile b/libavformat/Makefile
+index 7ca68a703694a..88d8f83bceb21 100644
+--- a/libavformat/Makefile
++++ b/libavformat/Makefile
+@@ -721,8 +721,10 @@ OBJS-$(CONFIG_LIBRTMPS_PROTOCOL)         += librtmp.o
+ OBJS-$(CONFIG_LIBRTMPT_PROTOCOL)         += librtmp.o
+ OBJS-$(CONFIG_LIBRTMPTE_PROTOCOL)        += librtmp.o
+ OBJS-$(CONFIG_LIBSMBCLIENT_PROTOCOL)     += libsmbclient.o
++OBJS-$(CONFIG_LIBSMB2_PROTOCOL)          += libsmb2.o
+ OBJS-$(CONFIG_LIBSRT_PROTOCOL)           += libsrt.o urldecode.o
+ OBJS-$(CONFIG_LIBSSH_PROTOCOL)           += libssh.o
++OBJS-$(CONFIG_LIBSSH2_PROTOCOL)          += libssh2.o
+ OBJS-$(CONFIG_LIBZMQ_PROTOCOL)           += libzmq.o
+ 
+ # Objects duplicated from other libraries for shared builds
+diff --git a/libavformat/avio.h b/libavformat/avio.h
+index ebf611187dcf4..dd26778feabe4 100644
+--- a/libavformat/avio.h
++++ b/libavformat/avio.h
+@@ -35,6 +35,12 @@
+ 
+ #include "libavformat/version_major.h"
+ 
++#if defined(_WIN32) && defined(BUILDING_avformat)
++#    define av_export_avio __declspec(dllexport)
++#else
++#    define av_export_avio extern
++#endif
++
+ /**
+  * Seeking works like for a local file.
+  */
+@@ -313,7 +319,7 @@ typedef struct AVIOContext {
+  *
+  * @return Name of the protocol or NULL.
+  */
+-const char *avio_find_protocol_name(const char *url);
++av_export_avio const char *avio_find_protocol_name(const char *url);
+ 
+ /**
+  * Return AVIO_FLAG_* access flags corresponding to the access permissions
+@@ -339,7 +345,7 @@ int avio_check(const char *url, int flags);
+  *                containing options that were not found. May be NULL.
+  * @return >=0 on success or negative on error.
+  */
+-int avio_open_dir(AVIODirContext **s, const char *url, AVDictionary **options);
++av_export_avio int avio_open_dir(AVIODirContext **s, const char *url, AVDictionary **options);
+ 
+ /**
+  * Get next directory entry.
+@@ -352,7 +358,7 @@ int avio_open_dir(AVIODirContext **s, const char *url, AVDictionary **options);
+  * @return >=0 on success or negative on error. End of list is not considered an
+  *             error.
+  */
+-int avio_read_dir(AVIODirContext *s, AVIODirEntry **next);
++av_export_avio int avio_read_dir(AVIODirContext *s, AVIODirEntry **next);
+ 
+ /**
+  * Close directory.
+@@ -363,14 +369,14 @@ int avio_read_dir(AVIODirContext *s, AVIODirEntry **next);
+  * @param s         directory read context.
+  * @return >=0 on success or negative on error.
+  */
+-int avio_close_dir(AVIODirContext **s);
++av_export_avio int avio_close_dir(AVIODirContext **s);
+ 
+ /**
+  * Free entry allocated by avio_read_dir().
+  *
+  * @param entry entry to be freed.
+  */
+-void avio_free_directory_entry(AVIODirEntry **entry);
++av_export_avio void avio_free_directory_entry(AVIODirEntry **entry);
+ 
+ /**
+  * Allocate and initialize an AVIOContext for buffered I/O. It must be later
+diff --git a/libavformat/libsmb2.c b/libavformat/libsmb2.c
+new file mode 100644
+index 0000000000000..281c58a08898d
+--- /dev/null
++++ b/libavformat/libsmb2.c
+@@ -0,0 +1,253 @@
++/*
++ * libsmb2 support by proconsule
++ * based on libsmbclient.c by Lukasz Marek <lukasz.m.luki@gmail.com>
++ */
++
++#include <stdint.h>
++#include <stdio.h>
++#include <fcntl.h>
++#include <time.h>
++
++#include <smb2/smb2.h>
++#include <smb2/libsmb2.h>
++#include <smb2/libsmb2-raw.h>
++
++#include "libavutil/avstring.h"
++#include "libavutil/mem.h"
++#include "libavutil/opt.h"
++#include "avformat.h"
++#include "internal.h"
++#include "url.h"
++
++typedef struct {
++    const AVClass *class;
++    struct smb2_context *smb2;
++    struct smb2fh *fh;
++    struct smb2dir *dir;
++    struct smb2_url *url;
++    int64_t filesize;
++    int trunc;
++    int timeout;
++    char *workgroup;
++} LIBSMBContext;
++
++static av_cold int libsmbc_connect(URLContext *h, const char *url) {
++    LIBSMBContext *libsmbc = h->priv_data;
++
++    libsmbc->smb2 = smb2_init_context();
++    if (libsmbc->smb2 == NULL) {
++        int ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "Failed to init context\n");
++        return ret;
++    }
++
++    libsmbc->url = smb2_parse_url(libsmbc->smb2, url);
++    if (libsmbc->url == NULL) {
++        int ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "File parse url\n");
++        return ret;
++    }
++
++    smb2_set_security_mode(libsmbc->smb2, SMB2_NEGOTIATE_SIGNING_ENABLED);
++    if (smb2_connect_share(libsmbc->smb2, libsmbc->url->server, libsmbc->url->share, libsmbc->url->user) != 0) {
++        int ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "smb2_connect_share failed. %s\n", smb2_get_error(libsmbc->smb2));
++        return ret;
++    }
++
++    return 0;
++}
++
++static av_cold int libsmbc_close(URLContext *h) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    if (libsmbc->fh) {
++        smb2_close(libsmbc->smb2, libsmbc->fh);
++        libsmbc->fh = NULL;
++    }
++    if (libsmbc->url) {
++        smb2_destroy_url(libsmbc->url);
++        libsmbc->url = NULL;
++    }
++    smb2_disconnect_share(libsmbc->smb2);
++    smb2_destroy_context(libsmbc->smb2);
++    return 0;
++}
++
++static av_cold int libsmbc_open(URLContext *h, const char *url, int flags) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    int ret;
++    struct smb2_stat_64 st;
++    libsmbc->filesize = -1;
++
++    if ((ret = libsmbc_connect(h, url)) < 0) goto fail;
++
++    libsmbc->fh = smb2_open(libsmbc->smb2, libsmbc->url->path, O_RDONLY);
++    if (libsmbc->fh == NULL) {
++        ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "File open failed: %s\n", strerror(errno));
++        goto fail;
++    }
++
++    if (smb2_stat(libsmbc->smb2, libsmbc->url->path, &st) < 0) {
++        av_log(h, AV_LOG_WARNING, "Cannot stat file: %s\n", strerror(errno));
++    } else {
++        libsmbc->filesize = st.smb2_size;
++    }
++
++    return 0;
++fail:
++    libsmbc_close(h);
++    return ret;
++}
++
++static int64_t libsmbc_seek(URLContext *h, int64_t pos, int whence) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    int64_t newpos;
++
++    if (whence == AVSEEK_SIZE) {
++        if (libsmbc->filesize == -1) {
++            av_log(h, AV_LOG_ERROR, "Error during seeking: filesize is unknown.\n");
++            return AVERROR(EIO);
++        } else
++            return libsmbc->filesize;
++    }
++
++    if ((newpos = smb2_lseek(libsmbc->smb2, libsmbc->fh, pos, whence, NULL)) < 0) {
++        int err = errno;
++        av_log(h, AV_LOG_ERROR, "Error during seeking: %s\n", strerror(err));
++        return AVERROR(err);
++    }
++
++    return newpos;
++}
++
++static int libsmbc_read(URLContext *h, unsigned char *buf, int size) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    int bytes_read;
++
++    if ((bytes_read = smb2_read(libsmbc->smb2, libsmbc->fh, buf, size)) < 0) {
++        int ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "Read error: %s\n", strerror(errno));
++        return ret;
++    }
++
++    return bytes_read ? bytes_read : AVERROR_EOF;
++}
++
++static int libsmbc_write(URLContext *h, const unsigned char *buf, int size) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    int bytes_written;
++
++    if ((bytes_written = smb2_write(libsmbc->smb2, libsmbc->fh, buf, size)) < 0) {
++        int ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "Write error: %s\n", strerror(errno));
++        return ret;
++    }
++
++    return bytes_written;
++}
++
++static int libsmbc_open_dir(URLContext *h) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    int ret;
++
++    if ((ret = libsmbc_connect(h, h->filename)) < 0) goto fail;
++
++    libsmbc->dir = smb2_opendir(libsmbc->smb2, libsmbc->url->path);
++    if (libsmbc->dir == NULL) {
++        ret = AVERROR(errno);
++        av_log(h, AV_LOG_ERROR, "Dir open failed: %s\n", strerror(errno));
++        goto fail;
++    }
++
++    return 0;
++fail:
++    libsmbc_close(h);
++    return ret;
++}
++
++static int libsmbc_read_dir(URLContext *h, AVIODirEntry **next) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    AVIODirEntry *entry;
++    struct smb2dirent *dirent;
++    int skip_entry;
++
++    *next = entry = ff_alloc_dir_entry();
++    if (!entry) return AVERROR(ENOMEM);
++
++    do {
++        skip_entry = 0;
++        dirent = smb2_readdir(libsmbc->smb2, libsmbc->dir);
++        if (dirent == NULL) {
++            av_freep(next);
++            return AVERROR(errno);
++        }
++        switch (dirent->st.smb2_type) {
++        case SMB2_TYPE_FILE:
++            entry->type = AVIO_ENTRY_FILE;
++            break;
++        case SMB2_TYPE_DIRECTORY:
++            entry->type = AVIO_ENTRY_DIRECTORY;
++            break;
++        case SMB2_TYPE_LINK:
++            entry->type = AVIO_ENTRY_SYMBOLIC_LINK;
++            break;
++        default:
++            skip_entry = 1;
++        }
++    } while (skip_entry || !strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."));
++
++    entry->name = av_strdup(dirent->name);
++    entry->size = dirent->st.smb2_size;
++    entry->modification_timestamp = dirent->st.smb2_mtime;
++    entry->access_timestamp = dirent->st.smb2_atime;
++    entry->status_change_timestamp = dirent->st.smb2_ctime;
++
++    return 0;
++}
++
++static int libsmbc_close_dir(URLContext *h) {
++    LIBSMBContext *libsmbc = h->priv_data;
++    if (libsmbc->dir) {
++        smb2_closedir(libsmbc->smb2, libsmbc->dir);
++        libsmbc->dir = NULL;
++    }
++    libsmbc_close(h);
++    return 0;
++}
++
++static int libsmbc_delete(URLContext *h) { return AVERROR(EPERM); }
++
++static int libsmbc_move(URLContext *h_src, URLContext *h_dst) { return AVERROR(EPERM); }
++
++#define OFFSET(x) offsetof(LIBSMBContext, x)
++#define D AV_OPT_FLAG_DECODING_PARAM
++#define E AV_OPT_FLAG_ENCODING_PARAM
++static const AVOption options[] = {
++    {"timeout", "set timeout in ms of socket I/O operations", OFFSET(timeout), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, D | E},
++    {"truncate", "truncate existing files on write", OFFSET(trunc), AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, E},
++    {"workgroup", "set the workgroup used for making connections", OFFSET(workgroup), AV_OPT_TYPE_STRING, {0}, 0, 0, D | E}, {NULL}};
++
++static const AVClass libsmb2_context_class = {
++    .class_name = "libsmb2",
++    .item_name = av_default_item_name,
++    .option = options,
++    .version = LIBAVUTIL_VERSION_INT,
++};
++
++const URLProtocol ff_libsmb2_protocol = {
++    .name = "smb",
++    .url_open = libsmbc_open,
++    .url_read = libsmbc_read,
++    .url_write = libsmbc_write,
++    .url_seek = libsmbc_seek,
++    .url_close = libsmbc_close,
++    .url_delete = libsmbc_delete,
++    .url_move = libsmbc_move,
++    .url_open_dir = libsmbc_open_dir,
++    .url_read_dir = libsmbc_read_dir,
++    .url_close_dir = libsmbc_close_dir,
++    .priv_data_size = sizeof(LIBSMBContext),
++    .priv_data_class = &libsmb2_context_class,
++    .flags = URL_PROTOCOL_FLAG_NETWORK,
++};
+diff --git a/libavformat/libssh2.c b/libavformat/libssh2.c
+new file mode 100644
+index 0000000000000..5995dec06e413
+--- /dev/null
++++ b/libavformat/libssh2.c
+@@ -0,0 +1,326 @@
++/*
++ * libssh2 support by proconsule
++ * based on libssh.c by Lukasz Marek <lukasz.m.luki@gmail.com>
++ */
++
++#include <fcntl.h>
++
++#include <libssh2.h>
++#include <libssh2_sftp.h>
++
++#include "libavutil/avstring.h"
++#include "libavutil/attributes.h"
++#include "libavutil/opt.h"
++#include "libavutil/mem.h"
++#include "libavformat/avio.h"
++#include "network.h"
++#include "avformat.h"
++#include "internal.h"
++#include "url.h"
++
++typedef struct {
++    const AVClass *class;
++    URLContext *tcp;
++    LIBSSH2_SESSION *session;
++    LIBSSH2_SFTP *sftp;
++    LIBSSH2_SFTP_HANDLE *file;
++    int64_t filesize;
++    int rw_timeout;
++    int trunc;
++    char *priv_key;
++} LIBSSHContext;
++
++static int ssh2_error(int error) {
++    switch (error) {
++    case LIBSSH2_ERROR_NONE:
++        return 0;
++    case LIBSSH2_ERROR_ALLOC:
++        return ENOMEM;
++    case LIBSSH2_ERROR_SOCKET_TIMEOUT:
++        return ETIMEDOUT;
++    case LIBSSH2_ERROR_EAGAIN:
++        return EAGAIN;
++    case LIBSSH2_ERROR_SFTP_PROTOCOL:
++        return EINVAL;
++    default:
++        return EIO;
++    }
++}
++
++static av_cold int libssh2_close(URLContext *h)
++{
++    LIBSSHContext *libssh2 = h->priv_data;
++    if (libssh2->file) {
++        libssh2_sftp_close(libssh2->file);
++        libssh2->file = NULL;
++    }
++    if (libssh2->sftp) {
++        libssh2_sftp_shutdown(libssh2->sftp);
++        libssh2->sftp = NULL;
++    }
++    if (libssh2->session) {
++        libssh2_session_disconnect(libssh2->session, "Normal Shutdown");
++        libssh2_session_free(libssh2->session);
++        libssh2->session = NULL;
++    }
++    ffurl_closep(&libssh2->tcp);
++    libssh2_exit();
++    return 0;
++}
++
++static av_cold int libssh2_authentication(LIBSSHContext *libssh2, const char *user, const char *password) {
++    size_t username_len = user ? strlen(user) : 0;
++    size_t password_len = password ? strlen(password) : 0;
++    return libssh2_userauth_password_ex(libssh2->session, user, username_len, password, password_len, NULL);
++}
++
++static av_cold int libssh2_connect(URLContext *h, const char *url, char *path, size_t path_size)
++{
++    LIBSSHContext *libssh2 = h->priv_data;
++    AVDictionary *opts = NULL;
++    struct sockaddr_in sin;
++    char proto[10], hostname[255], credencials[1024], buf[512];
++    int port = 22, ret;
++    const char *user = NULL, *pass = NULL;
++    char *end = NULL;
++
++    av_url_split(proto, sizeof(proto),
++                 credencials, sizeof(credencials),
++                 hostname, sizeof(hostname),
++                 &port,
++                 path, path_size,
++                 url);
++
++    if (!(*path)) av_strlcpy(path, "/", path_size);
++
++    // a port of 0 will use a port from ~/.ssh/config or the default value 22
++    if (port < 0 || port > 65535) port = 0;
++
++    ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port, NULL);
++    ret = ffurl_open_whitelist(&libssh2->tcp, buf, AVIO_FLAG_READ_WRITE, 
++        &h->interrupt_callback, &opts, h->protocol_whitelist, h->protocol_blacklist, h);
++    if (ret < 0) return ret;
++
++    ret = libssh2_init(0);
++    if (ret) {
++        av_log(libssh2, AV_LOG_ERROR, "SSH2 session creation failed: %d\n", ret);
++        return AVERROR(ENOMEM);
++    }
++
++    libssh2->session = libssh2_session_init();
++    if (!libssh2->session) {
++        av_log(libssh2, AV_LOG_ERROR, "unable to create session\n");
++        return AVERROR(EIO);
++    }
++
++    int socket = ffurl_get_file_handle(libssh2->tcp);
++    ret = libssh2_session_handshake(libssh2->session, socket);
++    if (ret) {
++        av_log(libssh2, AV_LOG_ERROR, "Failure establishing SSH session: %d\n", ret);
++        return AVERROR(ssh2_error(ret));
++    }
++
++    user = av_strtok(credencials, ":", &end);
++    pass = av_strtok(end, ":", &end);
++
++    if (libssh2_authentication(libssh2, user, pass))
++        return AVERROR(EACCES);
++
++    libssh2->sftp = libssh2_sftp_init(libssh2->session);
++    if (!libssh2->sftp) {
++        av_log(libssh2, AV_LOG_ERROR, "Error initializing sftp session:\n");
++        return AVERROR(EIO);
++    }
++
++    libssh2_session_set_blocking(libssh2->session, 1);
++    return 0;
++}
++
++static av_cold int libssh2_open(URLContext *h, const char *url, int flags)
++{
++    int ret;
++    LIBSSHContext *libssh2 = h->priv_data;
++    LIBSSH2_SFTP_ATTRIBUTES attr;
++    char path[MAX_URL_SIZE];
++
++    if ((ret = libssh2_connect(h, url, path, sizeof(path))) < 0) goto fail;
++
++    libssh2->file = libssh2_sftp_open(libssh2->sftp, path, LIBSSH2_FXF_READ, 0);
++    if (libssh2->file == NULL) {
++        av_log(libssh2, AV_LOG_ERROR, "Error opening sftp file: \n");
++        goto fail;
++    }
++
++    libssh2_sftp_fstat_ex(libssh2->file, &attr, 0);
++    libssh2->filesize = (size_t)attr.filesize;
++    return 0;
++
++fail:
++    libssh2_close(h);
++    return AVERROR(ssh2_error(ret));
++}
++
++static int64_t libssh2_seek(URLContext *h, int64_t pos, int whence)
++{
++    LIBSSHContext *libssh2 = h->priv_data;
++    int64_t newpos;
++
++    if (libssh2->filesize == -1 && (whence == AVSEEK_SIZE || whence == SEEK_END)) {
++        av_log(h, AV_LOG_ERROR, "Error during seeking.\n");
++        return AVERROR(EIO);
++    }
++
++    switch (whence) {
++    case AVSEEK_SIZE:
++        return libssh2->filesize;
++    case SEEK_SET:
++        newpos = pos;
++        break;
++    case SEEK_CUR:
++        newpos = libssh2_sftp_tell64(libssh2->file) + pos;
++        break;
++    case SEEK_END:
++        newpos = libssh2->filesize + pos;
++        break;
++    default:
++        return AVERROR(EINVAL);
++    }
++
++    if (newpos < 0) {
++        av_log(h, AV_LOG_ERROR, "Seeking to nagative position.\n");
++        return AVERROR(EINVAL);
++    }
++
++    libssh2_sftp_seek64(libssh2->file, newpos);
++
++    return newpos;
++}
++
++static int libssh2_read(URLContext *h, unsigned char *buf, int size)
++{
++    LIBSSHContext *libssh2 = h->priv_data;
++    int bytes_read;
++
++    if ((bytes_read = libssh2_sftp_read(libssh2->file, buf, size)) < 0) {
++        av_log(libssh2, AV_LOG_ERROR, "Read error.\n");
++        return AVERROR(EIO);
++    }
++    return bytes_read ? bytes_read : AVERROR_EOF;
++}
++
++static int libssh2_write(URLContext *h, const unsigned char *buf, int size)
++{
++    LIBSSHContext *libssh2 = h->priv_data;
++    int bytes_written;
++
++    if ((bytes_written = libssh2_sftp_write(libssh2->file, buf, size)) < 0) {
++        av_log(libssh2, AV_LOG_ERROR, "Write error.\n");
++        return AVERROR(EIO);
++    }
++    return bytes_written;
++}
++
++static int libssh2_open_dir(URLContext *h)
++{
++    int ret;
++    LIBSSHContext *libssh2 = h->priv_data;
++    char path[MAX_URL_SIZE];
++
++    if ((ret = libssh2_connect(h, h->filename, path, sizeof(path))) < 0) {
++        libssh2_close(h);
++        return ret;
++    }
++
++    libssh2->file = libssh2_sftp_opendir(libssh2->sftp, path);
++    if (!libssh2->file) {
++        libssh2_close(h);
++        return AVERROR(EIO);
++    }
++    return 0;
++}
++
++static int libssh2_read_dir(URLContext *h, AVIODirEntry **next)
++{
++    int ret;
++    char name[512];
++    LIBSSH2_SFTP_ATTRIBUTES attrs;
++    AVIODirEntry *entry;
++    int skip_entry;
++    LIBSSHContext *libssh2 = h->priv_data;
++
++    *next = entry = ff_alloc_dir_entry();
++    if (!entry) return AVERROR(ENOMEM);
++
++    do {
++        skip_entry = 0;
++
++        memset(name, 0, sizeof(name));
++        ret = libssh2_sftp_readdir(libssh2->file, name, sizeof(name), &attrs);
++        if (ret <= 0) {
++            av_freep(next);
++            return 0;
++        }
++
++        if (LIBSSH2_SFTP_S_ISDIR(attrs.permissions))
++            entry->type = AVIO_ENTRY_DIRECTORY;
++        else if (LIBSSH2_SFTP_S_ISREG(attrs.permissions))
++            entry->type = AVIO_ENTRY_FILE;
++        else if (LIBSSH2_SFTP_S_ISLNK(attrs.permissions))
++            entry->type = AVIO_ENTRY_SYMBOLIC_LINK;
++        else
++            skip_entry = 1;
++
++    } while (skip_entry || !strcmp(name, ".") || !strcmp(name, ".."));
++
++    entry->name = av_strdup(name);
++    entry->filemode = attrs.permissions; 
++    if (attrs.flags & LIBSSH2_SFTP_ATTR_SIZE) {
++        entry->size = attrs.filesize;
++    }
++    if (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME) {
++        entry->modification_timestamp = attrs.mtime;
++        entry->access_timestamp = attrs.atime;
++    }
++    if (attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID) {
++        entry->group_id = attrs.gid;
++        entry->user_id = attrs.uid;
++    }
++    return 0;
++}
++
++static int libssh2_delete(URLContext *h) { return AVERROR(EPERM); }
++
++static int libssh2_move(URLContext *h_src, URLContext *h_dst) { return AVERROR(EPERM); }
++
++#define OFFSET(x) offsetof(LIBSSHContext, x)
++#define D AV_OPT_FLAG_DECODING_PARAM
++#define E AV_OPT_FLAG_ENCODING_PARAM
++static const AVOption options[] = {{"timeout", "set timeout of socket I/O operations", OFFSET(rw_timeout),
++                                       AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, D | E},
++    {"truncate", "Truncate existing files on write", OFFSET(trunc), AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, E},
++    {"private_key", "set path to private key", OFFSET(priv_key), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, D | E},
++    {NULL}};
++
++static const AVClass libssh2_context_class = {
++    .class_name = "libssh2",
++    .item_name = av_default_item_name,
++    .option = options,
++    .version = LIBAVUTIL_VERSION_INT,
++};
++
++const URLProtocol ff_libssh2_protocol = {
++    .name = "sftp",
++    .url_open = libssh2_open,
++    .url_read = libssh2_read,
++    .url_write = libssh2_write,
++    .url_seek = libssh2_seek,
++    .url_close = libssh2_close,
++    .url_delete = libssh2_delete,
++    .url_move = libssh2_move,
++    .url_open_dir = libssh2_open_dir,
++    .url_read_dir = libssh2_read_dir,
++    .url_close_dir = libssh2_close,
++    .priv_data_size = sizeof(LIBSSHContext),
++    .priv_data_class = &libssh2_context_class,
++    .flags = URL_PROTOCOL_FLAG_NETWORK,
++};
+diff --git a/libavformat/protocols.c b/libavformat/protocols.c
+index 93a6d67261e8f..aafefb94408da 100644
+--- a/libavformat/protocols.c
++++ b/libavformat/protocols.c
+@@ -74,7 +74,9 @@ extern const URLProtocol ff_librtmpt_protocol;
+ extern const URLProtocol ff_librtmpte_protocol;
+ extern const URLProtocol ff_libsrt_protocol;
+ extern const URLProtocol ff_libssh_protocol;
++extern const URLProtocol ff_libssh2_protocol;
+ extern const URLProtocol ff_libsmbclient_protocol;
++extern const URLProtocol ff_libsmb2_protocol;
+ extern const URLProtocol ff_libzmq_protocol;
+ extern const URLProtocol ff_ipfs_gateway_protocol;
+ extern const URLProtocol ff_ipns_gateway_protocol;
