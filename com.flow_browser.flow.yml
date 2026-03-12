@@ -59,20 +59,26 @@ modules:
       - type: script
         dest-filename: run.sh
         commands:
-          - zypak-wrapper /app/main/flow-browser --disable-gpu-sandbox "$@"
+          - |
+            EXTRA_ARGS=()
+            WL_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+            if [ -e "${XDG_RUNTIME_DIR}/${WL_DISPLAY}" ] || [ -e "/${WL_DISPLAY}" ]; then
+              if [ -c /dev/nvidia0 ]; then
+                EXTRA_ARGS+=(--disable-gpu-sandbox)
+              fi
+            fi
+            exec zypak-wrapper /app/main/flow-browser "${EXTRA_ARGS[@]}" "$@"
     build-commands:
+      - find ../bun_cache -name package.tgz -execdir tar --strip-components=1 --delay-directory-restore -xf {} \; -delete
+      - chmod -R u+rwX ../bun_cache
       - |
-        for tgz in ../bun_cache/*.tgz; do
-          pkg=$(basename "$tgz" .tgz)
-          pkg=$(echo "$pkg" | sed 's/^@\([^@]*\)--/@\1\//')
-          mkdir -p "../bun_cache/${pkg}@@@1"
-          tar xzf "$tgz" --delay-directory-restore --strip-components=1 \
-            -C "../bun_cache/${pkg}@@@1"
-          chmod -R u+rwX "../bun_cache/${pkg}@@@1"
-          rm "$tgz"
-        done
-      - chmod 755 ../bun-bin/bun
-      - bun install --frozen-lockfile
+        if [ "$FLATPAK_ARCH" = "aarch64" ]; then
+          ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install
+          bun run script:use-stock-electron
+          bun install
+        else
+          bun install
+        fi
       - bun run postinstall
       - bun run build
       - |
