@@ -14,8 +14,8 @@ finish-args:
   - --share=network
   - --device=all
   - --persist=.electron-cash
-  - --talk-name=org.kde.StatusNotifierItem
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.StatusNotifierItem
   - --talk-name=org.freedesktop.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
 
@@ -26,14 +26,16 @@ build-options:
 cleanup:
   - "*.a"
   - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+  - "*.h"
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh
 
 modules:
-  # Shared modules - libusb for hardware wallets
-  - shared-modules/libusb/libusb.json
-
   # libevent - required by Tor
   - name: libevent
     buildsystem: autotools
@@ -60,7 +62,7 @@ modules:
           project-id: 1367
           url-template: https://dist.torproject.org/tor-$version.tar.gz
     post-install:
-      - mkdir -p ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin
+      - install -d ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin
       - install -Dm644 ${FLATPAK_DEST}/lib/libevent-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
       - install -Dm644 ${FLATPAK_DEST}/lib/libevent_core-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
       - install -Dm644 ${FLATPAK_DEST}/lib/libevent_extra-2.1.so.7 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/tor/bin/
@@ -113,36 +115,7 @@ modules:
     buildsystem: simple
     build-commands:
       - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} .
-      - install -Dm644 org.electroncash.ElectronCash.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
-      - install -Dm644 electron-cash.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
-      - install -Dm644 icons/electron-cash.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/pixmaps/${FLATPAK_ID}.png
-      - install -Dm755 /app/lib/libsecp256k1.so.0.0.0 ${FLATPAK_DEST}/lib/python3.13/site-packages/electroncash/libsecp256k1.so.0
-      - install -Dm755 ${FLATPAK_DEST}/bin/electron-cash ${FLATPAK_DEST}/bin/electron-cash.real
-      # Create wrapper script using install
-      - |
-        install -Dm755 /dev/stdin ${FLATPAK_DEST}/bin/electron-cash << 'EOF'
-        #!/bin/bash
-        export LD_LIBRARY_PATH=/app/lib/python3.13/site-packages/electroncash/tor/bin:${LD_LIBRARY_PATH}
-        # Enable KDE platform theme for proper system tray integration
-        export QT_QPA_PLATFORMTHEME=kde
-        exec /app/bin/electron-cash.real "$@"
-        EOF
-      # Install metainfo from upstream and apply Flathub-specific fixes
-
-      - |
-          # Fix appdata.xml for proper appstream validation
-          appdata_file="${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
-          # Convert mimetypes to mediatype within provides section
-          sed -i 's|<mimetype>|<mediatype>|g; s|</mimetype>|</mediatype>|g' "$appdata_file" || true
-          # Remove python3 provides (non-standard)
-          sed -i '/<provides>/,/<\/provides>/ { /python3>/d }' "$appdata_file" || true
-          # Add launchable tag
-          sed -i '/<\/provides>/a\        <launchable type="desktop-id">org.electroncash.ElectronCash.desktop</launchable>' "$appdata_file" || true
-
-      - desktop-file-edit --set-key="Icon" --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 LICENCE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENCE
+      - ./install.sh
     sources:
       - type: archive
         url: https://github.com/Electron-Cash/Electron-Cash/archive/refs/tags/4.4.3.tar.gz
@@ -157,4 +130,10 @@ modules:
         sha256: e3982f444617239225d675215d51f6ba05f845d4eec313da4418fdbb56fb27e3
       - type: patch
         path: tray-icon-fix.patch
+      - type: patch
+        path: appdata-fixes.patch
+      - type: file
+        path: electron-cash.sh
+      - type: file
+        path: install.sh
 
