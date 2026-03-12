@@ -1,0 +1,114 @@
+app-id: com.talkye.scriber
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: talkye-scriber
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio (recording + playback)
+  - --socket=pulseaudio
+  # Input devices (evdev for push-to-talk key capture)
+  - --device=input
+  # Network (for update checks, optional Groq API)
+  - --share=network
+  # Filesystem access for config
+  - --filesystem=xdg-config/talkye:create
+  # xdotool / xdg for typing into other apps
+  - --talk-name=org.freedesktop.Flatpak
+  # System tray
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # GPU (whisper.cpp can use GPU acceleration)
+  - --device=dri
+
+modules:
+  # xdotool for typing text into other applications
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: git
+        url: https://github.com/jordansissel/xdotool.git
+        tag: v3.20211022.1
+
+  # xclip for clipboard operations
+  - name: xclip
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/astrand/xclip.git
+        tag: '0.13'
+
+  # Main application bundle (pre-built from GitHub release)
+  - name: talkye-scriber
+    buildsystem: simple
+    build-commands:
+      # Extract AppImage
+      - chmod +x TalkyeScriber-x86_64.AppImage
+      - ./TalkyeScriber-x86_64.AppImage --appimage-extract
+
+      # Install Flutter app binary + libs
+      - install -Dm755 squashfs-root/usr/bin/talkye_app /app/bin/talkye_app
+      - cp -r squashfs-root/usr/bin/lib /app/bin/lib
+      - cp -r squashfs-root/usr/bin/data /app/bin/data
+
+      # Install sidecar
+      - mkdir -p /app/sidecar
+      - cp -r squashfs-root/usr/sidecar/* /app/sidecar/
+
+      # Install bundled Python
+      - cp -r squashfs-root/usr/python /app/python
+
+      # Install whisper-cli
+      - install -Dm755 squashfs-root/usr/whisper/whisper-cli /app/whisper/whisper-cli
+
+      # Install sox
+      - mkdir -p /app/sox/lib
+      - install -Dm755 squashfs-root/usr/sox/sox /app/sox/sox
+      - cp -r squashfs-root/usr/sox/lib/* /app/sox/lib/ || true
+
+      # Install icon
+      - install -Dm644 squashfs-root/talkye-scriber.png /app/share/icons/hicolor/256x256/apps/com.talkye.scriber.png
+
+      # Install desktop file
+      - install -Dm644 com.talkye.scriber.desktop /app/share/applications/com.talkye.scriber.desktop
+
+      # Install metainfo
+      - install -Dm644 com.talkye.scriber.metainfo.xml /app/share/metainfo/com.talkye.scriber.metainfo.xml
+
+      # Install launcher script
+      - install -Dm755 talkye-scriber.sh /app/bin/talkye-scriber
+
+    sources:
+      - type: file
+        url: https://github.com/olivetty/Talkye-Scriber/releases/download/v0.6.4/TalkyeScriber-x86_64.AppImage
+        sha256: 2f122bf5a6eda61bb9ab4ff0458c37d512c17ad91b9b90b5763bd9ef4447ec4b
+        dest-filename: TalkyeScriber-x86_64.AppImage
+
+      - type: file
+        path: com.talkye.scriber.desktop
+
+      - type: file
+        path: com.talkye.scriber.metainfo.xml
+
+      - type: inline
+        dest-filename: talkye-scriber.sh
+        contents: |
+          #!/usr/bin/env bash
+          APP_DIR="$(dirname "$(readlink -f "$0")")/.."
+
+          export LD_LIBRARY_PATH="$APP_DIR/bin/lib:$APP_DIR/sox/lib:${LD_LIBRARY_PATH:-}"
+          export TALKYE_WHISPER_BIN="$APP_DIR/whisper/whisper-cli"
+          export TALKYE_SIDECAR_DIR="$APP_DIR/sidecar"
+          export TALKYE_PYTHON="$APP_DIR/python/bin/python3"
+          export TALKYE_SOX="$APP_DIR/sox/sox"
+          export TALKYE_INSTALL_TYPE="flatpak"
+
+          exec "$APP_DIR/bin/talkye_app" "$@"
