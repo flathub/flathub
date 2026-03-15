@@ -31,11 +31,14 @@ export function AppLayout() {
         </div>
       )}
 
-      <div className="flex flex-1 flex-col bg-[var(--color-surface)]">
+      <div
+        className={`flex flex-1 flex-col ${settingsOpen ? "bg-[#1a1a1c]" : "bg-[var(--color-surface)]"}`}
+      >
         <Toolbar
           onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
           onToggleSettings={toggleSettings}
           settingsOpen={settingsOpen}
+          sidebarVisible={sidebarVisible}
         />
 
         <div className="relative flex flex-1 flex-col overflow-hidden">

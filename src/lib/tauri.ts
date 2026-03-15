@@ -57,7 +57,7 @@ export function pause(): Promise<PlaybackStateSnapshot> {
 }
 
 export function seek(ms: number): Promise<PlaybackStateSnapshot> {
-  return invoke<PlaybackStateSnapshot>("seek", { ms });
+  return invoke<PlaybackStateSnapshot>("seek", { ms: Math.round(ms) });
 }
 
 export function setVolume(level: number): Promise<PlaybackStateSnapshot> {

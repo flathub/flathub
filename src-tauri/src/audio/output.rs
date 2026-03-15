@@ -137,14 +137,21 @@ pub fn render_output_buffer(
     } else {
         // Fallback: play original audio with master volume
         let original = &track.original_audio;
-        mix_stem_resampled(
+        let rendered = mix_stem_resampled(
             output,
             original,
             snapshot.position_ms,
             master,
             device_sample_rate,
             device_channels,
-        )
+        );
+
+        // Clamp to prevent clipping
+        for sample in output.iter_mut() {
+            *sample = sample.clamp(-1.0, 1.0);
+        }
+
+        rendered
     }
 }
 

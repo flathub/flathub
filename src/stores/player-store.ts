@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import { useLibraryStore } from "@/stores/library-store";
 import type { PlaybackStateSnapshot, StemName } from "@/types/ipc";
 
 interface PlayerState {
@@ -26,6 +27,17 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       const snapshot = await api.play(songId);
       set({ snapshot, positionMs: snapshot.position_ms });
+
+      // Auto-load stems if separation was previously completed
+      const sepStatus = useLibraryStore.getState().separationStatuses[songId];
+      if (sepStatus?.state === "completed" && !snapshot.has_stems) {
+        try {
+          const updated = await api.loadStems();
+          set({ snapshot: updated });
+        } catch {
+          // Stems loading failed silently — user can still play original audio
+        }
+      }
     } catch (e) {
       notifyError(e, () => usePlayerStore.getState().playSong(songId));
     }
@@ -82,6 +94,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   },
 
   updatePosition: (ms) => {
+    // Ignore position events when paused — the pause snapshot already set
+    // the correct position, and stale emitter events could reset it to 0.
+    const { snapshot } = usePlayerStore.getState();
+    if (snapshot && !snapshot.is_playing) return;
     set({ positionMs: ms });
   },
 

@@ -1,17 +1,18 @@
 import { PanelLeft, UploadCloud, Settings, Maximize2 } from "lucide-react";
-import { NowPlayingInfo } from "@/components/Player/NowPlayingInfo";
 import { ImportButton } from "@/components/Library/ImportButton";
 
 interface ToolbarProps {
   onToggleSidebar: () => void;
   onToggleSettings: () => void;
   settingsOpen: boolean;
+  sidebarVisible: boolean;
 }
 
 export function Toolbar({
   onToggleSidebar,
   onToggleSettings,
   settingsOpen,
+  sidebarVisible,
 }: ToolbarProps) {
   return (
     <div
@@ -19,6 +20,8 @@ export function Toolbar({
       data-tauri-drag-region
     >
       <div className="flex items-center gap-4">
+        {/* Reserve space for macOS traffic lights when sidebar is hidden */}
+        {!sidebarVisible && <div className="w-[54px] shrink-0" />}
         <button
           onClick={onToggleSidebar}
           className="text-[var(--color-text-dim)] transition-colors hover:text-white"
@@ -31,10 +34,6 @@ export function Toolbar({
             <UploadCloud size={14} /> Import
           </span>
         </ImportButton>
-      </div>
-
-      <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-center">
-        <NowPlayingInfo />
       </div>
 
       <div className="flex items-center gap-4">

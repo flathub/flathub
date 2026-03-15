@@ -1,14 +1,49 @@
+import { Volume2, VolumeX } from "lucide-react";
+import { NowPlayingInfo } from "./NowPlayingInfo";
 import { PlayControls } from "./PlayControls";
 import { SeekBar } from "./SeekBar";
 import { VolumeSliders } from "./VolumeSliders";
+import { usePlayerStore } from "@/stores/player-store";
 
 export function PlaybackBar() {
+  const snapshot = usePlayerStore((s) => s.snapshot);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const volume = snapshot?.volume ?? 1;
+
   return (
-    <div className="flex h-20 shrink-0 flex-col justify-center border-t border-[var(--color-border)] bg-[var(--color-toolbar)] px-6">
-      <div className="mx-auto flex w-full max-w-4xl items-center gap-8">
+    <div className="flex h-20 shrink-0 flex-col justify-center border-t border-[var(--color-border)] bg-[var(--color-toolbar)] px-4">
+      <div className="flex w-full items-center gap-4">
+        {/* Song info — fixed width left column */}
+        <div className="w-[200px] shrink-0">
+          <NowPlayingInfo />
+        </div>
+
+        {/* Play controls */}
         <PlayControls />
+
+        {/* Seek bar — takes remaining space */}
         <SeekBar />
+
+        {/* Stem volume sliders (visible when stems loaded) */}
         <VolumeSliders />
+
+        {/* Master volume */}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setVolume(volume > 0 ? 0 : 1)}
+            className="text-[var(--color-text-dim)] transition-colors hover:text-white"
+          >
+            {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(volume * 100)}
+            onChange={(e) => setVolume(Number(e.target.value) / 100)}
+            className="native-slider w-20"
+          />
+        </div>
       </div>
     </div>
   );
