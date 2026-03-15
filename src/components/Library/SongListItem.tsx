@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useLibraryStore } from "@/stores/library-store";
 import { usePlayerStore } from "@/stores/player-store";
@@ -18,6 +19,7 @@ interface SongListItemProps {
 }
 
 export function SongListItem({ song, orderedHashes }: SongListItemProps) {
+  const { t } = useTranslation();
   const selectedSongIds = useLibraryStore((s) => s.selectedSongIds);
   const selectSong = useLibraryStore((s) => s.selectSong);
   const separationStatus = useLibraryStore(
@@ -98,7 +100,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                   : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
               }`}
             >
-              Separate
+              {t("library.separate")}
             </button>
           )}
           {sepState === "running" && (
@@ -119,7 +121,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               onClick={handleSeparate}
               className="text-[10px] text-red-400"
             >
-              Retry
+              {t("common.retry")}
             </button>
           )}
           {sepState !== "idle" &&
@@ -137,7 +139,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
         <span
           className={`truncate text-[11px] ${isSelected ? "text-white/80" : "text-[var(--color-text-dim)]"}`}
         >
-          {song.artist || "Unknown Artist"}
+          {song.artist || t("common.unknownArtist")}
         </span>
       </div>
 
@@ -149,7 +151,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             selectedSongIds.size > 1 && isSelected
               ? [
                   {
-                    label: `Queue All Selected (${selectedSongIds.size})`,
+                    label: t("library.queueAllSelected", { count: selectedSongIds.size }),
                     onClick: () => {
                       const queue = useQueueStore.getState();
                       for (const id of selectedSongIds) {
@@ -158,7 +160,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     },
                   },
                   {
-                    label: `Separate All Selected (${selectedSongIds.size})`,
+                    label: t("library.separateAllSelected", { count: selectedSongIds.size }),
                     onClick: () => {
                       api
                         .batchSeparate([...selectedSongIds])
@@ -168,22 +170,22 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                 ]
               : [
                   {
-                    label: "Play Now",
+                    label: t("library.playNow"),
                     onClick: () =>
                       usePlayerStore.getState().playNow(song.hash),
                   },
                   {
-                    label: "Play Next",
+                    label: t("library.playNext"),
                     onClick: () =>
                       useQueueStore.getState().playNext(song.hash),
                   },
                   {
-                    label: "Add to Queue",
+                    label: t("library.addToQueue"),
                     onClick: () =>
                       useQueueStore.getState().addToQueue(song.hash),
                   },
                   {
-                    label: "Extract Embedded Lyrics",
+                    label: t("library.extractEmbeddedLyrics"),
                     onClick: () => {
                       api
                         .extractEmbeddedLyrics(song.hash)
@@ -191,11 +193,11 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     },
                   },
                   {
-                    label: "Edit Info",
+                    label: t("library.editInfo"),
                     onClick: () => setEditDialogOpen(true),
                   },
                   {
-                    label: "Properties",
+                    label: t("library.properties"),
                     onClick: () => setPropertiesDialogOpen(true),
                   },
                 ]

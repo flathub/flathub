@@ -1,9 +1,11 @@
 import { X, GripVertical } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useQueueStore } from "@/stores/queue-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useCallback, useRef, useState } from "react";
 
 export function QueuePanel() {
+  const { t } = useTranslation();
   const queue = useQueueStore((s) => s.queue);
   const removeFromQueue = useQueueStore((s) => s.removeFromQueue);
   const reorder = useQueueStore((s) => s.reorder);
@@ -49,7 +51,7 @@ export function QueuePanel() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2">
         <span className="text-[13px] font-medium text-[#EBEBF5]">
-          Up Next
+          {t("queue.upNext")}
           {queue.length > 0 && (
             <span className="ml-2 text-[var(--color-text-dimmer)]">
               ({queue.length})
@@ -61,7 +63,7 @@ export function QueuePanel() {
             onClick={clearQueue}
             className="text-[11px] text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
           >
-            Clear All
+            {t("queue.clearAll")}
           </button>
         )}
       </div>
@@ -71,7 +73,7 @@ export function QueuePanel() {
         {queue.length === 0 ? (
           <div className="flex items-center justify-center py-8">
             <span className="text-[13px] text-[var(--color-text-dimmer)]">
-              Queue is empty
+              {t("queue.empty")}
             </span>
           </div>
         ) : (
@@ -105,7 +107,7 @@ export function QueuePanel() {
                     {song?.title || songId.slice(0, 8)}
                   </span>
                   <span className="truncate text-[10px] text-[var(--color-text-dimmer)]">
-                    {song?.artist || "Unknown Artist"}
+                    {song?.artist || t("common.unknownArtist")}
                   </span>
                 </div>
                 <button

@@ -1,4 +1,5 @@
 import { PanelLeft, UploadCloud, Settings, Maximize2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ImportButton } from "@/components/Library/ImportButton";
 
 interface ToolbarProps {
@@ -14,6 +15,7 @@ export function Toolbar({
   settingsOpen,
   sidebarVisible,
 }: ToolbarProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-toolbar)] px-4"
@@ -31,7 +33,7 @@ export function Toolbar({
         <div className="h-4 w-px bg-[var(--color-border-light)]" />
         <ImportButton>
           <span className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-active)] hover:text-white">
-            <UploadCloud size={14} /> Import
+            <UploadCloud size={14} /> {t("toolbar.import")}
           </span>
         </ImportButton>
       </div>

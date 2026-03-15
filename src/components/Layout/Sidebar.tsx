@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Folder, CheckCircle2, UploadCloud, Layers, X } from "lucide-react";
 import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
@@ -9,6 +10,7 @@ import { notifyError } from "@/lib/errors";
 import type { StemMode } from "@/types/ipc";
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const songs = useLibraryStore((s) => s.songs);
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
@@ -53,7 +55,7 @@ export function Sidebar() {
       {/* Filter tabs */}
       <div className="shrink-0 space-y-0.5 px-2">
         <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
-          LIBRARY
+          {t("sidebar.library")}
         </div>
         <button
           onClick={() => setFilter("all")}
@@ -70,7 +72,7 @@ export function Sidebar() {
               fill="currentColor"
               fillOpacity={0.2}
             />
-            <span>All Tracks</span>
+            <span>{t("sidebar.allTracks")}</span>
           </span>
           <span className="text-[11px] text-[var(--color-text-dim)]">
             {songs.length}
@@ -86,7 +88,7 @@ export function Sidebar() {
         >
           <span className="flex items-center gap-2">
             <CheckCircle2 size={14} className="text-[var(--color-text-dim)]" />
-            <span>Separated</span>
+            <span>{t("sidebar.separated")}</span>
           </span>
           <span className="text-[11px] text-[var(--color-text-dim)]">
             {separatedCount}
@@ -97,7 +99,7 @@ export function Sidebar() {
       {/* Song list */}
       <div className="mt-4 flex flex-1 flex-col overflow-hidden px-2">
         <div className="flex items-center justify-between px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
-          <span>LOCAL MUSIC</span>
+          <span>{t("sidebar.localMusic")}</span>
           <ImportButton>
             <UploadCloud size={12} className="hover:text-white" />
           </ImportButton>
@@ -111,13 +113,13 @@ export function Sidebar() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-[var(--color-text-dim)]">
-                Separating {Math.min(batchSeparation.completed + 1, batchSeparation.total)}/{batchSeparation.total}
+                {t("sidebar.separating", { current: Math.min(batchSeparation.completed + 1, batchSeparation.total), total: batchSeparation.total })}
               </span>
               <button
                 onClick={handleCancelBatch}
                 className="text-[var(--color-text-dim)] transition-colors hover:text-white"
-                title="Cancel batch separation"
-                aria-label="Cancel batch separation"
+                title={t("sidebar.cancelBatch")}
+                aria-label={t("sidebar.cancelBatch")}
               >
                 <X size={12} />
               </button>
@@ -132,16 +134,16 @@ export function Sidebar() {
             </div>
             {batchSeparation.failed > 0 && (
               <span className="text-[10px] text-red-400">
-                {batchSeparation.failed} failed
+                {t("sidebar.failed", { count: batchSeparation.failed })}
               </span>
             )}
           </div>
         ) : batchSeparation != null ? (
           // Completed/cancelled state (shown briefly before clearing)
           <div className="text-center text-[11px] text-[var(--color-text-dim)]">
-            Separation complete: {batchSeparation.completed} done
-            {batchSeparation.skipped > 0 && `, ${batchSeparation.skipped} skipped`}
-            {batchSeparation.failed > 0 && `, ${batchSeparation.failed} failed`}
+            {t("sidebar.separationComplete", { done: batchSeparation.completed })}
+            {batchSeparation.skipped > 0 && `, ${t("sidebar.skipped", { count: batchSeparation.skipped })}`}
+            {batchSeparation.failed > 0 && `, ${t("sidebar.failed", { count: batchSeparation.failed })}`}
           </div>
         ) : (
           <button
@@ -150,9 +152,9 @@ export function Sidebar() {
             className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-40"
           >
             <Layers size={12} />
-            Separate All
+            {t("sidebar.separateAll")}
             <span className="text-[10px] text-[var(--color-text-dimmer)]">
-              ({stemMode === "four_stem" ? "4-stem" : "2-stem"})
+              ({stemMode === "four_stem" ? t("sidebar.fourStem") : t("sidebar.twoStem")})
             </span>
           </button>
         )}

@@ -1,8 +1,10 @@
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useBootstrapStore } from "@/stores/bootstrap-store";
 import { formatBytes } from "@/lib/format";
 
 export function ModelBootstrapBanner() {
+  const { t } = useTranslation();
   const status = useBootstrapStore((s) => s.status);
 
   if (!status || status.state === "ready") return null;
@@ -12,10 +14,10 @@ export function ModelBootstrapBanner() {
       {status.state === "pending" && (
         <div className="flex items-center justify-between">
           <span className="text-[12px] text-[var(--color-text)]">
-            AI separation model required for karaoke mode.
+            {t("bootstrap.modelRequired")}
           </span>
           <span className="text-[11px] text-[var(--color-text-dim)]">
-            Downloading in background...
+            {t("bootstrap.downloadingBackground")}
           </span>
         </div>
       )}
@@ -25,7 +27,7 @@ export function ModelBootstrapBanner() {
           <div className="flex items-center justify-between text-[12px]">
             <span className="flex items-center gap-2 text-[var(--color-text)]">
               <Loader2 size={12} className="animate-spin" />
-              Downloading AI model...
+              {t("bootstrap.downloadingModel")}
             </span>
             <span className="text-[11px] text-[var(--color-text-dim)]">
               {status.downloaded_bytes != null &&
@@ -50,10 +52,10 @@ export function ModelBootstrapBanner() {
       {status.state === "failed" && (
         <div className="flex items-center justify-between">
           <span className="text-[12px] text-red-400">
-            Model download failed: {status.error?.message || "Unknown error"}
+            {t("bootstrap.downloadFailed", { error: status.error?.message || t("bootstrap.unknownError") })}
           </span>
           <span className="text-[11px] text-[var(--color-text-dim)]">
-            Separation unavailable
+            {t("bootstrap.separationUnavailable")}
           </span>
         </div>
       )}

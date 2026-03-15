@@ -83,6 +83,7 @@ export type StemMode = "two_stem" | "four_stem";
 
 export interface AppSettings {
   stem_mode: StemMode;
+  language: string | null;
 }
 
 // ─── Playback ────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   useNotificationStore,
   type Notification,
@@ -26,6 +27,7 @@ const BORDER_MAP = {
 } as const;
 
 function Toast({ notification }: { notification: Notification }) {
+  const { t } = useTranslation();
   const dismiss = useNotificationStore((s) => s.dismissNotification);
   const Icon = ICON_MAP[notification.type];
 
@@ -52,7 +54,7 @@ function Toast({ notification }: { notification: Notification }) {
             }}
             className="mt-1.5 text-[11px] text-[var(--color-accent)] hover:underline"
           >
-            Try Again
+            {t("common.tryAgain")}
           </button>
         )}
       </div>

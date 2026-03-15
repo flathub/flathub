@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Plus } from "lucide-react";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
@@ -17,9 +19,11 @@ function formatBytes(bytes: number): string {
 }
 
 export function SettingsOverlay() {
+  const { t, i18n } = useTranslation();
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [stemMode, setStemMode] = useState<StemMode>("two_stem");
+  const [language, setLanguageState] = useState<string>("en");
 
   // Danger zone dialogs
   const [showDeleteStemsConfirm, setShowDeleteStemsConfirm] = useState(false);
@@ -32,14 +36,27 @@ export function SettingsOverlay() {
     api.getLibraryPath().then(setLibraryPath).catch((e) => notifyError(e));
     api
       .getSettings()
-      .then((settings) => setStemMode(settings.stem_mode))
+      .then((settings) => {
+        setStemMode(settings.stem_mode);
+        setLanguageState(settings.language ?? "en");
+      })
       .catch((e) => notifyError(e));
   }, []);
+
+  const handleLanguageChange = async (lang: string) => {
+    setLanguageState(lang);
+    i18n.changeLanguage(lang);
+    try {
+      await api.setLanguage(lang);
+    } catch (e) {
+      notifyError(e);
+    }
+  };
 
   const handleCreateLibrary = async () => {
     const selected = await open({
       directory: true,
-      title: "Choose a location for your Karaoke Library",
+      title: t("setup.dialogTitleCreate"),
     });
     if (!selected) return;
 
@@ -56,7 +73,7 @@ export function SettingsOverlay() {
   const handleOpenLibrary = async () => {
     const selected = await open({
       directory: true,
-      title: "Open an existing Karaoke Library",
+      title: t("setup.dialogTitleOpen"),
     });
     if (!selected) return;
 
@@ -118,12 +135,12 @@ export function SettingsOverlay() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-10">
       <div className="mx-auto w-full max-w-xl space-y-6">
-        <h2 className="text-lg font-semibold text-white">Preferences</h2>
+        <h2 className="text-lg font-semibold text-white">{t("settings.title")}</h2>
 
         {/* Library Section */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
-            Karaoke Library
+            {t("settings.library.label")}
           </label>
           {libraryPath ? (
             <div className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2">
@@ -136,7 +153,7 @@ export function SettingsOverlay() {
             </div>
           ) : (
             <p className="text-[13px] text-[var(--color-text-dim)]">
-              No library configured
+              {t("settings.library.noLibrary")}
             </p>
           )}
           <div className="flex gap-2">
@@ -144,13 +161,13 @@ export function SettingsOverlay() {
               onClick={handleCreateLibrary}
               className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white"
             >
-              <Plus size={12} /> New Library
+              <Plus size={12} /> {t("settings.library.newLibrary")}
             </button>
             <button
               onClick={handleOpenLibrary}
               className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white"
             >
-              <FolderOpen size={12} /> Open Library
+              <FolderOpen size={12} /> {t("settings.library.openLibrary")}
             </button>
           </div>
           {libraryError && (
@@ -161,11 +178,10 @@ export function SettingsOverlay() {
         {/* Stem Mode */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
-            Stem Separation Mode
+            {t("settings.stemMode.label")}
           </label>
           <p className="text-[12px] text-[var(--color-text-dim)]">
-            Controls how new songs are separated. Existing separations are not
-            affected.
+            {t("settings.stemMode.description")}
           </p>
           <div className="flex gap-2">
             <button
@@ -176,9 +192,9 @@ export function SettingsOverlay() {
                   : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
               }`}
             >
-              <div className="font-medium">2-Stem</div>
+              <div className="font-medium">{t("settings.stemMode.twoStem")}</div>
               <div className="mt-0.5 text-[11px] opacity-70">
-                Vocals + Accompaniment
+                {t("settings.stemMode.twoStemDescription")}
               </div>
             </button>
             <button
@@ -189,9 +205,9 @@ export function SettingsOverlay() {
                   : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
               }`}
             >
-              <div className="font-medium">4-Stem</div>
+              <div className="font-medium">{t("settings.stemMode.fourStem")}</div>
               <div className="mt-0.5 text-[11px] opacity-70">
-                Vocals + Drums + Bass + Other
+                {t("settings.stemMode.fourStemDescription")}
               </div>
             </button>
           </div>
@@ -200,27 +216,45 @@ export function SettingsOverlay() {
         {/* Output Device */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
-            Output Device
+            {t("settings.outputDevice.label")}
           </label>
           <select className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] text-white focus:border-[var(--color-accent)] focus:outline-none">
-            <option>System Default</option>
+            <option>{t("settings.outputDevice.systemDefault")}</option>
+          </select>
+        </div>
+
+        {/* Language */}
+        <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
+          <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
+            {t("settings.language.label")}
+          </label>
+          <select
+            value={language}
+            onChange={(e) => handleLanguageChange(e.target.value)}
+            className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] text-white focus:border-[var(--color-accent)] focus:outline-none"
+          >
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.name}
+              </option>
+            ))}
           </select>
         </div>
 
         {/* Danger Zone */}
         <div className="space-y-4 rounded-lg border border-red-500/30 bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-red-400">
-            Danger Zone
+            {t("settings.dangerZone.label")}
           </label>
 
           {/* Delete All Stems */}
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-[13px] text-white">
-                Delete All Separated Stems
+                {t("settings.dangerZone.deleteStems")}
               </p>
               <p className="text-[11px] text-[var(--color-text-dim)]">
-                Remove all cached stem files to free disk space
+                {t("settings.dangerZone.deleteStemsDescription")}
               </p>
             </div>
             <button
@@ -228,7 +262,7 @@ export function SettingsOverlay() {
               disabled={deletingStemsInProgress}
               className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
             >
-              {deletingStemsInProgress ? "Deleting..." : "Delete Stems"}
+              {deletingStemsInProgress ? t("common.deleting") : t("settings.dangerZone.deleteStemsButton")}
             </button>
           </div>
 
@@ -236,11 +270,10 @@ export function SettingsOverlay() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-[13px] text-white">
-                Delete All Cached Lyrics
+                {t("settings.dangerZone.deleteLyrics")}
               </p>
               <p className="text-[11px] text-[var(--color-text-dim)]">
-                Remove all fetched and cached lyrics. Lyrics will be re-fetched
-                when songs are played.
+                {t("settings.dangerZone.deleteLyricsDescription")}
               </p>
             </div>
             <button
@@ -248,7 +281,7 @@ export function SettingsOverlay() {
               disabled={deletingLyricsInProgress}
               className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
             >
-              {deletingLyricsInProgress ? "Deleting..." : "Delete Lyrics"}
+              {deletingLyricsInProgress ? t("common.deleting") : t("settings.dangerZone.deleteLyricsButton")}
             </button>
           </div>
         </div>
@@ -257,14 +290,14 @@ export function SettingsOverlay() {
       {/* Confirmation Dialogs */}
       {showDeleteStemsConfirm && (
         <ConfirmationDialog
-          title="Delete All Separated Stems"
-          message="This will permanently delete all cached stem files. Songs will need to be re-separated to use karaoke mode."
+          title={t("settings.confirmDeleteStems.title")}
+          message={t("settings.confirmDeleteStems.message")}
           detail={
             stemsSize != null && stemsSize > 0
-              ? `This will free approximately ${formatBytes(stemsSize)}.`
+              ? t("settings.confirmDeleteStems.detail", { size: formatBytes(stemsSize) })
               : undefined
           }
-          confirmLabel="Delete All Stems"
+          confirmLabel={t("settings.confirmDeleteStems.confirm")}
           onConfirm={handleDeleteStemsConfirm}
           onCancel={() => setShowDeleteStemsConfirm(false)}
         />
@@ -272,9 +305,9 @@ export function SettingsOverlay() {
 
       {showDeleteLyricsConfirm && (
         <ConfirmationDialog
-          title="Delete All Cached Lyrics"
-          message="This will permanently delete all cached lyrics. Lyrics will be automatically re-fetched when songs are played."
-          confirmLabel="Delete All Lyrics"
+          title={t("settings.confirmDeleteLyrics.title")}
+          message={t("settings.confirmDeleteLyrics.message")}
+          confirmLabel={t("settings.confirmDeleteLyrics.confirm")}
           onConfirm={handleDeleteLyricsConfirm}
           onCancel={() => setShowDeleteLyricsConfirm(false)}
         />

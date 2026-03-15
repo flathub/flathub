@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import * as api from "@/lib/tauri";
 import { formatDuration, formatBytes } from "@/lib/format";
 import { useLibraryStore } from "@/stores/library-store";
@@ -11,12 +12,6 @@ interface SongPropertiesDialogProps {
 
 function formatSampleRate(hz: number): string {
   return `${hz.toLocaleString()} Hz`;
-}
-
-function formatChannels(channels: number): string {
-  if (channels === 1) return "Mono (1)";
-  if (channels === 2) return "Stereo (2)";
-  return `${channels} channels`;
 }
 
 function formatBitRate(bps: number): string {
@@ -51,6 +46,7 @@ function PropertyRow({ label, value, title, mono }: PropertyRowProps) {
 }
 
 export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProps) {
+  const { t } = useTranslation();
   const [properties, setProperties] = useState<SongProperties | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +62,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
         setLoading(false);
       })
       .catch((err) => {
-        setError(err?.message ?? "Failed to load properties");
+        setError(err?.message ?? t("songProperties.failedToLoad"));
         setLoading(false);
       });
   }, [song.hash]);
@@ -92,11 +88,11 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
       <div className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-3">
-          <h3 className="text-[14px] font-semibold text-white">Song Properties</h3>
+          <h3 className="text-[14px] font-semibold text-white">{t("songProperties.title")}</h3>
           <button
             onClick={onClose}
             className="rounded p-0.5 text-[var(--color-text-dim)] transition-colors hover:text-white"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <svg
               width="14"
@@ -129,7 +125,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
         <div className="px-5 py-3">
           {loading && (
             <p className="py-4 text-center text-[12px] text-[var(--color-text-dim)]">
-              Loading…
+              {t("common.loading")}
             </p>
           )}
 
@@ -139,49 +135,49 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
 
           {properties && (
             <div className="divide-y divide-[var(--color-border)]/50">
-              <PropertyRow label="Format" value={properties.format} />
+              <PropertyRow label={t("songProperties.format")} value={properties.format} />
               <PropertyRow
-                label="Duration"
+                label={t("songProperties.duration")}
                 value={formatDuration(properties.duration_ms)}
               />
               {properties.sample_rate != null && (
                 <PropertyRow
-                  label="Sample Rate"
+                  label={t("songProperties.sampleRate")}
                   value={formatSampleRate(properties.sample_rate)}
                 />
               )}
               {properties.channels != null && (
                 <PropertyRow
-                  label="Channels"
-                  value={formatChannels(properties.channels)}
+                  label={t("songProperties.channels")}
+                  value={properties.channels === 1 ? t("songProperties.channelsMono") : properties.channels === 2 ? t("songProperties.channelsStereo") : t("songProperties.channelsOther", { count: properties.channels })}
                 />
               )}
               {properties.bit_rate != null && (
                 <PropertyRow
-                  label="Bit Rate"
+                  label={t("songProperties.bitRate")}
                   value={formatBitRate(properties.bit_rate)}
                 />
               )}
               <PropertyRow
-                label="File Size"
+                label={t("songProperties.fileSize")}
                 value={formatBytes(properties.file_size)}
               />
               <PropertyRow
-                label="SHA-256"
+                label={t("songProperties.sha256")}
                 value={truncateHash(properties.hash)}
                 title={properties.hash}
                 mono
               />
               <div className="flex items-baseline gap-3 py-1.5">
                 <span className="w-28 shrink-0 text-[12px] text-[var(--color-text-dim)]">
-                  Separation
+                  {t("songProperties.separation")}
                 </span>
                 <span className="flex items-center gap-2 text-[12px] text-white">
-                  {(!sepStatus || sepStatus.state === "idle") && "Not separated"}
-                  {sepStatus?.state === "running" && "Separating\u2026"}
-                  {sepStatus?.state === "failed" && "Failed"}
+                  {(!sepStatus || sepStatus.state === "idle") && t("songProperties.notSeparated")}
+                  {sepStatus?.state === "running" && t("songProperties.separating")}
+                  {sepStatus?.state === "failed" && t("songProperties.separationFailed")}
                   {sepStatus?.state === "completed" &&
-                    (sepStatus.drums_path ? "4-stem" : "2-stem")}
+                    (sepStatus.drums_path ? t("songProperties.fourStem") : t("songProperties.twoStem"))}
                   {sepStatus?.state === "completed" && !sepStatus.drums_path && (
                     <button
                       onClick={() => {
@@ -189,7 +185,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
                       }}
                       className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
                     >
-                      Upgrade to 4-stem
+                      {t("songProperties.upgradeToFourStem")}
                     </button>
                   )}
                   {sepStatus?.state === "completed" && sepStatus.drums_path && (
@@ -199,7 +195,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
                       }}
                       className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
                     >
-                      Re-separate as 2-stem
+                      {t("songProperties.reSeparateAsTwoStem")}
                     </button>
                   )}
                 </span>
@@ -214,7 +210,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
             onClick={onClose}
             className="rounded-md px-3 py-1.5 text-[12px] text-[var(--color-text-dim)] transition-colors hover:text-white"
           >
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>

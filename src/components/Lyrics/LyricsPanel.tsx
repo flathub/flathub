@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Edit2 } from "lucide-react";
 import { LyricLine } from "./LyricLine";
 import { LyricsOffsetControl } from "./LyricsOffsetControl";
@@ -8,6 +9,7 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 import { usePlayerStore } from "@/stores/player-store";
 
 export function LyricsPanel() {
+  const { t } = useTranslation();
   const lines = useLyricsStore((s) => s.lines);
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
   const offsetMs = useLyricsStore((s) => s.offsetMs);
@@ -35,7 +37,7 @@ export function LyricsPanel() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-[14px] text-[var(--color-text-dimmer)]">
-          Select a song to start
+          {t("lyrics.selectSong")}
         </p>
       </div>
     );
@@ -45,7 +47,7 @@ export function LyricsPanel() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-[14px] text-[var(--color-text-dim)]">
-          Loading lyrics...
+          {t("lyrics.loadingLyrics")}
         </p>
       </div>
     );
@@ -62,7 +64,7 @@ export function LyricsPanel() {
           <button
             onClick={() => setEditOpen(true)}
             className="absolute right-4 top-4 z-10 rounded-md p-1.5 text-[var(--color-text-dimmer)] transition-colors hover:bg-[#3A3A3C] hover:text-[#EBEBF5]"
-            title="Edit lyrics"
+            title={t("lyrics.editTooltip")}
           >
             <Edit2 size={14} />
           </button>

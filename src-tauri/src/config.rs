@@ -26,6 +26,8 @@ pub struct AppConfig {
     pub library_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stem_mode: Option<StemMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 impl AppConfig {
@@ -83,6 +85,7 @@ mod tests {
         let config = AppConfig {
             library_path: Some("/Users/test/Music/MyLibrary".to_owned()),
             stem_mode: Some(StemMode::FourStem),
+            language: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
@@ -102,6 +105,7 @@ mod tests {
         let config = AppConfig {
             library_path: None,
             stem_mode: None,
+            language: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("stem_mode"));

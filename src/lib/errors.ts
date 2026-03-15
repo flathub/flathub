@@ -1,20 +1,10 @@
 import { useNotificationStore } from "@/stores/notification-store";
+import i18next from "@/lib/i18n";
 import type { CommandError, ErrorCode } from "@/types/ipc";
 
-const ERROR_TITLES: Record<ErrorCode, string> = {
-  database_unavailable: "Database Error",
-  media_read_failed: "Import Failed",
-  song_not_found: "Song Not Found",
-  model_unavailable: "Model Unavailable",
-  audio_decode_failed: "Audio Decode Error",
-  audio_output_unavailable: "Audio Output Error",
-  karaoke_not_ready: "Karaoke Not Ready",
-  lyrics_not_ready: "Lyrics Unavailable",
-  network_unavailable: "Network Error",
-  invalid_playback_state: "Playback Error",
-  separation_failed: "Separation Failed",
-  internal: "Internal Error",
-};
+function getErrorTitle(code: ErrorCode): string {
+  return i18next.t(`errors.${code}`) || "Error";
+}
 
 function isCommandError(err: unknown): err is CommandError {
   if (typeof err !== "object" || err === null) return false;
@@ -35,7 +25,7 @@ export function notifyError(
   if (isCommandError(error)) {
     store.addNotification({
       type: "error",
-      title: ERROR_TITLES[error.code] ?? "Error",
+      title: getErrorTitle(error.code),
       message: error.message,
       retryable: error.retryable,
       retryAction: error.retryable ? retryAction : undefined,
@@ -49,7 +39,7 @@ export function notifyError(
 
   store.addNotification({
     type: "error",
-    title: "Something went wrong",
+    title: i18next.t("errors.somethingWentWrong"),
     message,
     retryable: false,
     dismissAfterMs: null,

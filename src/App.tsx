@@ -11,6 +11,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
+import i18next, { detectSystemLanguage } from "@/lib/i18n";
 import type {
   BatchSeparationProgress,
   PlaybackPositionEvent,
@@ -43,6 +44,10 @@ function App() {
       loadLibrary();
       loadBootstrapStatus();
       usePlayerStore.getState().loadState();
+      api.getSettings().then((settings) => {
+        const lang = settings.language ?? detectSystemLanguage();
+        i18next.changeLanguage(lang);
+      }).catch(() => {});
     }
   }, [libraryReady, loadLibrary, loadBootstrapStatus]);
 

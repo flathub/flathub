@@ -1,7 +1,9 @@
 import { ListMusic } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useQueueStore } from "@/stores/queue-store";
 
 export function QueueButton() {
+  const { t } = useTranslation();
   const queue = useQueueStore((s) => s.queue);
   const togglePanel = useQueueStore((s) => s.togglePanel);
   const isOpen = useQueueStore((s) => s.isOpen);
@@ -14,7 +16,7 @@ export function QueueButton() {
           ? "text-[var(--color-accent)]"
           : "text-[var(--color-text-dim)] hover:text-white"
       }`}
-      title="Queue"
+      title={t("queue.title")}
     >
       <ListMusic size={16} />
       {queue.length > 0 && (

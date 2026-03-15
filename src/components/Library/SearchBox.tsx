@@ -1,8 +1,10 @@
 import { useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
 import { useLibraryStore } from "@/stores/library-store";
 
 export function SearchBox() {
+  const { t } = useTranslation();
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -27,7 +29,7 @@ export function SearchBox() {
       />
       <input
         type="text"
-        placeholder="Search"
+        placeholder={t("common.search")}
         value={searchQuery}
         onChange={handleChange}
         className="w-full bg-transparent py-1 pl-7 pr-3 text-[13px] text-white outline-none placeholder:text-[var(--color-text-dim)]"

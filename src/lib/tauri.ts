@@ -138,6 +138,10 @@ export function setStemMode(mode: string): Promise<AppSettings> {
   return invoke<AppSettings>("set_stem_mode", { mode });
 }
 
+export function setLanguage(language: string): Promise<AppSettings> {
+  return invoke<AppSettings>("set_language", { language });
+}
+
 export function upgradeToFourStem(songId: string): Promise<SeparationStatusSnapshot> {
   return invoke<SeparationStatusSnapshot>("upgrade_to_four_stem", { songId });
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Mic2,
   Music,
@@ -12,6 +13,7 @@ import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
 
 export function VolumeSliders() {
+  const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const setStemVolume = usePlayerStore((s) => s.setStemVolume);
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
@@ -106,7 +108,7 @@ export function VolumeSliders() {
       {/* Vocals slider */}
       <StemSlider
         icon={<Mic2 size={14} />}
-        label="Vocals"
+        label={t("stems.vocals")}
         value={stemVolumes.vocals}
         onChange={(v) => handleStemChange("vocals", v)}
         onIconClick={stemsAvailable ? handleVocalsMuteToggle : undefined}
@@ -117,7 +119,7 @@ export function VolumeSliders() {
       <div className="flex items-center gap-2">
         <StemSlider
           icon={<Music size={14} />}
-          label="Accompaniment"
+          label={t("stems.accompaniment")}
           value={accompValue}
           onChange={handleAccompChange}
           onIconClick={stemsAvailable ? handleAccompMuteToggle : undefined}
@@ -127,7 +129,7 @@ export function VolumeSliders() {
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex h-4 w-4 items-center justify-center text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
-            title={isExpanded ? "Collapse stems" : "Expand stems"}
+            title={isExpanded ? t("stems.collapseStems") : t("stems.expandStems")}
           >
             <ChevronDown
               size={12}
@@ -142,19 +144,19 @@ export function VolumeSliders() {
         <>
           <StemSlider
             icon={<Drum size={13} />}
-            label="Drums"
+            label={t("stems.drums")}
             value={stemVolumes.drums}
             onChange={(v) => handleStemChange("drums", v)}
           />
           <StemSlider
             icon={<Guitar size={13} />}
-            label="Bass"
+            label={t("stems.bass")}
             value={stemVolumes.bass}
             onChange={(v) => handleStemChange("bass", v)}
           />
           <StemSlider
             icon={<Piano size={13} />}
-            label="Other"
+            label={t("stems.other")}
             value={stemVolumes.other}
             onChange={(v) => handleStemChange("other", v)}
           />
@@ -179,7 +181,8 @@ function StemSlider({
   onIconClick?: () => void;
   disabled?: boolean;
 }) {
-  const muteLabel = value === 0 ? `Unmute ${label.toLowerCase()}` : `Mute ${label.toLowerCase()}`;
+  const { t } = useTranslation();
+  const muteLabel = value === 0 ? t("stems.unmute", { stem: label }) : t("stems.mute", { stem: label });
 
   return (
     <div className="flex items-center gap-2">

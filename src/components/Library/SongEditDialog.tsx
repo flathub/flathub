@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/stores/library-store";
 import type { Song } from "@/types/ipc";
 
@@ -8,6 +9,7 @@ interface SongEditDialogProps {
 }
 
 export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState(song.title ?? "");
   const [artist, setArtist] = useState(song.artist ?? "");
   const [saving, setSaving] = useState(false);
@@ -52,33 +54,33 @@ export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
     >
       <div className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] shadow-2xl">
         <div className="border-b border-[var(--color-border)] px-5 py-3">
-          <h3 className="text-[14px] font-semibold text-white">Edit Song Info</h3>
+          <h3 className="text-[14px] font-semibold text-white">{t("songEdit.title")}</h3>
         </div>
         <div className="space-y-4 p-5">
           <div className="space-y-1.5">
             <label className="text-[12px] font-medium text-[var(--color-text-dim)]">
-              Title
+              {t("songEdit.titleLabel")}
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Song title"
+              placeholder={t("songEdit.titlePlaceholder")}
               autoFocus
               className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[13px] text-white placeholder:text-[var(--color-text-dimmer)] focus:border-[var(--color-accent)] focus:outline-none"
             />
           </div>
           <div className="space-y-1.5">
             <label className="text-[12px] font-medium text-[var(--color-text-dim)]">
-              Artist
+              {t("songEdit.artistLabel")}
             </label>
             <input
               type="text"
               value={artist}
               onChange={(e) => setArtist(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Artist name"
+              placeholder={t("songEdit.artistPlaceholder")}
               className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[13px] text-white placeholder:text-[var(--color-text-dimmer)] focus:border-[var(--color-accent)] focus:outline-none"
             />
           </div>
@@ -88,14 +90,14 @@ export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
             onClick={onClose}
             className="rounded-md px-3 py-1.5 text-[12px] text-[var(--color-text-dim)] transition-colors hover:text-white"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[var(--color-accent)]/80 disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </div>

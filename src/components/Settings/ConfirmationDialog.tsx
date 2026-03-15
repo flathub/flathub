@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ConfirmationDialogProps {
   title: string;
@@ -17,6 +18,7 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
+  const { t } = useTranslation();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export function ConfirmationDialog({
             onClick={onCancel}
             className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-4 py-1.5 text-[13px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={onConfirm}

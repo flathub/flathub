@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Plus, Music } from "lucide-react";
 import * as api from "@/lib/tauri";
@@ -8,13 +9,14 @@ interface LibrarySetupProps {
 }
 
 export function LibrarySetup({ onComplete }: LibrarySetupProps) {
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
     const selected = await open({
       directory: true,
-      title: "Choose a location for your Karaoke Library",
+      title: t("setup.dialogTitleCreate"),
     });
 
     if (!selected) return;
@@ -37,7 +39,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const handleOpen = async () => {
     const selected = await open({
       directory: true,
-      title: "Open an existing Karaoke Library",
+      title: t("setup.dialogTitleOpen"),
     });
 
     if (!selected) return;
@@ -63,11 +65,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15">
             <Music size={32} className="text-[var(--color-accent)]" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Welcome to OpenKara</h1>
+          <h1 className="text-2xl font-bold text-white">{t("setup.welcome")}</h1>
           <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
-            Set up a Karaoke Library to store your imported songs and separated
-            tracks. The library is portable — you can place it on a NAS or
-            external drive and open it from any device.
+            {t("setup.description")}
           </p>
         </div>
 
@@ -80,10 +80,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             <Plus size={20} className="shrink-0 text-[var(--color-accent)]" />
             <div>
               <div className="text-[14px] font-medium text-white">
-                Create New Library
+                {t("setup.createNew")}
               </div>
               <div className="text-[12px] text-[var(--color-text-dim)]">
-                Choose a folder to create a new karaoke library
+                {t("setup.createNewDescription")}
               </div>
             </div>
           </button>
@@ -99,10 +99,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             />
             <div>
               <div className="text-[14px] font-medium text-white">
-                Open Existing Library
+                {t("setup.openExisting")}
               </div>
               <div className="text-[12px] text-[var(--color-text-dim)]">
-                Select a folder containing an OpenKara library
+                {t("setup.openExistingDescription")}
               </div>
             </div>
           </button>
@@ -114,7 +114,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
         {loading && (
           <p className="text-[13px] text-[var(--color-text-dim)]">
-            Setting up library…
+            {t("setup.settingUp")}
           </p>
         )}
       </div>

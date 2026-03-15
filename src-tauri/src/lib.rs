@@ -178,7 +178,8 @@ pub fn run() {
             commands::separation::upgrade_to_four_stem,
             commands::separation::re_separate,
             commands::settings::get_settings,
-            commands::settings::set_stem_mode
+            commands::settings::set_stem_mode,
+            commands::settings::set_language
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

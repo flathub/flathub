@@ -1,8 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "@/stores/player-store";
 import { formatDuration } from "@/lib/format";
 
 export function SeekBar() {
+  const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const seek = usePlayerStore((s) => s.seek);
@@ -64,7 +66,7 @@ export function SeekBar() {
         className="group relative flex-1 h-1.5 cursor-pointer rounded-full bg-[var(--color-border)]"
         onMouseDown={handleMouseDown}
         role="slider"
-        aria-label="Seek"
+        aria-label={t("player.seek")}
         aria-valuemin={0}
         aria-valuemax={durationMs}
         aria-valuenow={Math.round(displayMs)}

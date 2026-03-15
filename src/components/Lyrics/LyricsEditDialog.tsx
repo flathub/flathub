@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
 interface LyricsEditDialogProps {
@@ -14,6 +15,7 @@ export function LyricsEditDialog({
   songId,
   existingLyrics,
 }: LyricsEditDialogProps) {
+  const { t } = useTranslation();
   const [text, setText] = useState(existingLyrics ?? "");
 
   useEffect(() => {
@@ -39,12 +41,12 @@ export function LyricsEditDialog({
       }}
     >
       <div className="flex w-full max-w-lg flex-col gap-4 rounded-xl border border-[#3A3A3C] bg-[#1C1C1E] p-6 shadow-2xl">
-        <h2 className="text-[15px] font-semibold text-white">Edit Lyrics</h2>
+        <h2 className="text-[15px] font-semibold text-white">{t("lyrics.editLyrics")}</h2>
 
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Paste or type lyrics here..."
+          placeholder={t("lyrics.pastePlaceholder")}
           className="h-64 w-full resize-y rounded-md border border-[#3A3A3C] bg-[#2C2C2E] px-3 py-2 text-[13px] text-white placeholder-[#636366] focus:border-[#48484A] focus:outline-none"
           spellCheck={false}
         />
@@ -52,9 +54,9 @@ export function LyricsEditDialog({
         <p className="text-[11px] text-[#8E8E93]">
           {text.trim().length > 0
             ? isLrc
-              ? "Detected: LRC format"
-              : "Detected: Plain text"
-            : "Supports LRC timed format or plain text"}
+              ? t("lyrics.detectedLrc")
+              : t("lyrics.detectedPlain")
+            : t("lyrics.supportsFormats")}
         </p>
 
         <div className="flex justify-end gap-2">
@@ -62,14 +64,14 @@ export function LyricsEditDialog({
             onClick={onClose}
             className="rounded-md px-4 py-1.5 text-[13px] text-[#EBEBF5] transition-colors hover:bg-[#3A3A3C]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={text.trim().length === 0}
             className="rounded-md bg-[#3A3A3C] px-4 py-1.5 text-[13px] text-[#EBEBF5] transition-colors hover:bg-[#48484A] disabled:opacity-40 disabled:hover:bg-[#3A3A3C]"
           >
-            Save
+            {t("common.save")}
           </button>
         </div>
       </div>

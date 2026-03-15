@@ -22,6 +22,7 @@ pub fn create_library(state: State<'_, AppState>, path: String) -> CommandResult
         &AppConfig {
             library_path: Some(path),
             stem_mode: None,
+            language: None,
         },
     )
     .map_err(library_error)?;
@@ -49,6 +50,7 @@ pub fn open_library(state: State<'_, AppState>, path: String) -> CommandResult<(
         &AppConfig {
             library_path: Some(path),
             stem_mode: None,
+            language: None,
         },
     )
     .map_err(library_error)?;
