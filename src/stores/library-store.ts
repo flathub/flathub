@@ -44,6 +44,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       const songs = await api.getLibrary();
       set({ songs });
+
+      // Hydrate separation statuses from the database so previously
+      // separated songs show as "completed" after app restart.
+      try {
+        const statuses = await api.getAllSeparationStatuses();
+        const statusMap: Record<string, SeparationStatusSnapshot> = {};
+        for (const s of statuses) {
+          statusMap[s.song_id] = s;
+        }
+        set({ separationStatuses: statusMap });
+      } catch {
+        // Non-fatal: separation statuses will remain empty
+      }
     } catch (e) {
       notifyError(e);
     }

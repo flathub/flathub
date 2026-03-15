@@ -72,6 +72,30 @@ where
     store_generated_stem_cache(connection, stems_base, song_hash, &separation, stem_mode)
 }
 
+pub fn list_all_stem_entries(connection: &Connection) -> rusqlite::Result<Vec<StemCacheEntry>> {
+    let mut statement = connection.prepare(
+        "SELECT song_hash, vocals_path, accomp_path, separated_at,
+                drums_path, bass_path, other_path
+        FROM stems",
+    )?;
+
+    let entries = statement
+        .query_map([], |row| {
+            Ok(StemCacheEntry {
+                song_hash: row.get(0)?,
+                vocals_path: row.get(1)?,
+                accomp_path: row.get(2)?,
+                separated_at: row.get(3)?,
+                drums_path: row.get(4)?,
+                bass_path: row.get(5)?,
+                other_path: row.get(6)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(entries)
+}
+
 pub fn get_cached_stem_entry(
     connection: &Connection,
     song_hash: &str,
@@ -240,6 +264,10 @@ fn upsert_stem_cache_entry(
     )?;
 
     Ok(())
+}
+
+pub fn cache_entry_files_valid(library_root: &LibraryRoot, entry: &StemCacheEntry) -> bool {
+    cache_entry_files_exist(library_root, entry)
 }
 
 fn cache_entry_files_exist(library_root: &LibraryRoot, entry: &StemCacheEntry) -> bool {

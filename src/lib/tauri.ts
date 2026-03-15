@@ -91,6 +91,12 @@ export function getSeparationStatus(
   return invoke<SeparationStatusSnapshot>("get_separation_status", { songId });
 }
 
+export function getAllSeparationStatuses(): Promise<
+  SeparationStatusSnapshot[]
+> {
+  return invoke<SeparationStatusSnapshot[]>("get_all_separation_statuses");
+}
+
 // ─── Lyrics ──────────────────────────────────────────────
 
 export function fetchLyrics(songId: string): Promise<LyricsPayload> {

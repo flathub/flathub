@@ -319,6 +319,48 @@ pub fn get_separation_status(
     get_separation_status_from_map(&state.separation_statuses, &song_id)
 }
 
+/// Returns separation statuses for all songs that have cached stems in the database.
+/// Called once at startup to hydrate the frontend store so that previously separated
+/// songs show as "completed" instead of "idle".
+#[tauri::command]
+pub fn get_all_separation_statuses(
+    state: State<'_, AppState>,
+) -> CommandResult<Vec<SeparationStatusSnapshot>> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| crate::commands::error::database_error(e.to_string()))?;
+
+    let entries = cache::stems::list_all_stem_entries(&connection)
+        .map_err(|e| crate::commands::error::database_error(e.to_string()))?;
+
+    // Also populate the in-memory separation_statuses map so that
+    // subsequent get_separation_status calls return the correct state.
+    let mut statuses_lock = state
+        .separation_statuses
+        .lock()
+        .map_err(|_| state_lock_error("separation status lock was poisoned"))?;
+
+    let mut result = Vec::with_capacity(entries.len());
+    for entry in entries {
+        // Only report entries whose files still exist on disk
+        if cache::stems::cache_entry_files_valid(&library_root, &entry) {
+            let status = completed_status(
+                &entry.song_hash,
+                &entry.vocals_path,
+                &entry.accomp_path,
+                true,
+                entry.drums_path.clone(),
+                entry.bass_path.clone(),
+                entry.other_path.clone(),
+            );
+            statuses_lock.insert(entry.song_hash.clone(), status.clone());
+            result.push(status);
+        }
+    }
+
+    Ok(result)
+}
+
 pub fn get_separation_status_from_map(
     statuses: &Arc<Mutex<HashMap<String, SeparationStatusSnapshot>>>,
     song_id: &str,

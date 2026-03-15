@@ -161,6 +161,7 @@ pub fn run() {
             commands::playback::get_playback_state,
             commands::separation::separate,
             commands::separation::get_separation_status,
+            commands::separation::get_all_separation_statuses,
             commands::separation::upgrade_to_four_stem,
             commands::settings::get_settings,
             commands::settings::set_stem_mode
