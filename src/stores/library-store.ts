@@ -2,6 +2,7 @@ import { create } from "zustand";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import type {
+  BatchSeparationProgress,
   ImportFailure,
   SeparationStatusSnapshot,
   Song,
@@ -16,6 +17,7 @@ interface LibraryState {
   lastClickedSongId: string | null;
   separationStatuses: Record<string, SeparationStatusSnapshot>;
   filter: "all" | "separated";
+  batchSeparation: BatchSeparationProgress | null;
 
   loadLibrary: () => Promise<void>;
   importFiles: (paths: string[]) => Promise<void>;
@@ -34,6 +36,9 @@ interface LibraryState {
     artist: string | null,
   ) => Promise<void>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
+  clearAllSeparationStatuses: () => void;
+  updateBatchProgress: (progress: BatchSeparationProgress) => void;
+  clearBatchSeparation: () => void;
   clearImportErrors: () => void;
 }
 
@@ -46,6 +51,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   lastClickedSongId: null,
   separationStatuses: {},
   filter: "all",
+  batchSeparation: null,
 
   loadLibrary: async () => {
     try {
@@ -188,6 +194,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       },
     }));
   },
+
+  clearAllSeparationStatuses: () => set({ separationStatuses: {} }),
+
+  updateBatchProgress: (progress) => set({ batchSeparation: progress }),
+
+  clearBatchSeparation: () => set({ batchSeparation: null }),
 
   clearImportErrors: () => set({ importErrors: [] }),
 }));

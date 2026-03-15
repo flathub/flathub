@@ -37,6 +37,8 @@ pub struct AppState {
     pub model_bootstrap_status: Arc<Mutex<commands::bootstrap::ModelBootstrapStatusSnapshot>>,
     pub separation_statuses:
         Arc<Mutex<HashMap<String, commands::separation::SeparationStatusSnapshot>>>,
+    pub batch_running: Arc<AtomicBool>,
+    pub batch_cancel: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -129,6 +131,8 @@ pub fn run() {
                 audio_output_start_lock,
                 model_bootstrap_status: Arc::clone(&model_bootstrap_status),
                 separation_statuses,
+                batch_running: Arc::new(AtomicBool::new(false)),
+                batch_cancel: Arc::new(AtomicBool::new(false)),
             });
             spawn_playback_position_emitter(app.handle().clone(), playback);
             if model_path == managed_model_path {
@@ -155,6 +159,10 @@ pub fn run() {
             commands::lyrics::set_lyrics_offset,
             commands::lyrics::save_manual_lyrics,
             commands::lyrics::import_lyrics_files,
+            commands::lyrics::extract_embedded_lyrics,
+            commands::maintenance::delete_all_stems,
+            commands::maintenance::estimate_stems_size,
+            commands::maintenance::delete_all_cached_lyrics,
             commands::playback::play,
             commands::playback::pause,
             commands::playback::seek,
@@ -162,6 +170,8 @@ pub fn run() {
             commands::playback::set_stem_volume,
             commands::playback::load_stems,
             commands::playback::get_playback_state,
+            commands::batch_separation::batch_separate,
+            commands::batch_separation::cancel_batch_separation,
             commands::separation::separate,
             commands::separation::get_separation_status,
             commands::separation::get_all_separation_statuses,

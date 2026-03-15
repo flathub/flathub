@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  DeleteStemsResult,
   ImportLyricsResult,
   ImportSongsResult,
   LyricsPayload,
@@ -143,4 +144,30 @@ export function upgradeToFourStem(songId: string): Promise<SeparationStatusSnaps
 
 export function reSeparate(songId: string, stemMode: string): Promise<SeparationStatusSnapshot> {
   return invoke<SeparationStatusSnapshot>("re_separate", { songId, stemMode });
+}
+
+// ─── Maintenance ────────────────────────────────────────
+
+export function deleteAllStems(): Promise<DeleteStemsResult> {
+  return invoke<DeleteStemsResult>("delete_all_stems");
+}
+
+export function estimateStemsSize(): Promise<number> {
+  return invoke<number>("estimate_stems_size");
+}
+
+export function deleteAllCachedLyrics(): Promise<number> {
+  return invoke<number>("delete_all_cached_lyrics");
+}
+
+export function extractEmbeddedLyrics(songId: string): Promise<LyricsPayload> {
+  return invoke<LyricsPayload>("extract_embedded_lyrics", { songId });
+}
+
+export function batchSeparate(songIds: string[]): Promise<void> {
+  return invoke<void>("batch_separate", { songIds });
+}
+
+export function cancelBatchSeparation(): Promise<void> {
+  return invoke<void>("cancel_batch_separation");
 }

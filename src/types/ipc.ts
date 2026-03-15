@@ -169,6 +169,22 @@ export interface LyricsPayload {
   raw_lrc: string;
 }
 
+// ─── Maintenance ────────────────────────────────────────
+
+export interface DeleteStemsResult {
+  deleted_count: number;
+  freed_bytes: number;
+}
+
+export interface BatchSeparationProgress {
+  total: number;
+  completed: number;
+  skipped: number;
+  failed: number;
+  current_song_id: string | null;
+  current_percent: number;
+}
+
 // ─── Model Bootstrap ────────────────────────────────────
 
 export type ModelBootstrapState =

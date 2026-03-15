@@ -1,8 +1,10 @@
+pub mod batch_separation;
 pub mod bootstrap;
 pub mod error;
 pub mod import;
 pub mod library_setup;
 pub mod lyrics;
+pub mod maintenance;
 pub mod playback;
 pub mod separation;
 pub mod settings;

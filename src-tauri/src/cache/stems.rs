@@ -314,6 +314,74 @@ pub fn delete_stem_cache_entry(
     Ok(())
 }
 
+/// Delete all stem cache entries from the database and remove all stem files from disk.
+/// Returns the number of deleted entries.
+pub fn delete_all_stem_cache_entries(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+) -> Result<usize> {
+    let count: usize = connection
+        .query_row("SELECT COUNT(*) FROM stems", [], |row| row.get(0))
+        .context("failed to count stem cache entries")?;
+
+    connection
+        .execute("DELETE FROM stems", [])
+        .context("failed to delete all stem cache entries from database")?;
+
+    // Remove the entire stems directory and recreate it empty.
+    let stems_dir = library_root.stems_dir();
+    if stems_dir.exists() {
+        fs::remove_dir_all(&stems_dir).with_context(|| {
+            format!(
+                "failed to remove stems directory at {}",
+                stems_dir.display()
+            )
+        })?;
+    }
+    fs::create_dir_all(&stems_dir).with_context(|| {
+        format!(
+            "failed to recreate stems directory at {}",
+            stems_dir.display()
+        )
+    })?;
+
+    Ok(count)
+}
+
+/// Estimate total disk usage of cached stem files in bytes.
+pub fn estimate_stems_disk_usage(library_root: &LibraryRoot) -> Result<u64> {
+    let stems_dir = library_root.stems_dir();
+    if !stems_dir.exists() {
+        return Ok(0);
+    }
+    dir_size(&stems_dir)
+}
+
+fn dir_size(path: &Path) -> Result<u64> {
+    let mut total: u64 = 0;
+    if path.is_dir() {
+        for entry in fs::read_dir(path)
+            .with_context(|| format!("failed to read directory {}", path.display()))?
+        {
+            let entry = entry.with_context(|| {
+                format!("failed to read directory entry in {}", path.display())
+            })?;
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                total += dir_size(&entry_path)?;
+            } else {
+                total += entry
+                    .metadata()
+                    .with_context(|| {
+                        format!("failed to read metadata for {}", entry_path.display())
+                    })?
+                    .len();
+            }
+        }
+    }
+    Ok(total)
+}
+
 fn ensure_song_exists(connection: &Connection, song_hash: &str) -> Result<()> {
     let exists: bool = connection
         .query_row(

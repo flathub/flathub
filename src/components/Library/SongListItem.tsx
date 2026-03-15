@@ -145,28 +145,61 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={[
-            {
-              label: "Play Now",
-              onClick: () => usePlayerStore.getState().playNow(song.hash),
-            },
-            {
-              label: "Play Next",
-              onClick: () => useQueueStore.getState().playNext(song.hash),
-            },
-            {
-              label: "Add to Queue",
-              onClick: () => useQueueStore.getState().addToQueue(song.hash),
-            },
-            {
-              label: "Edit Info",
-              onClick: () => setEditDialogOpen(true),
-            },
-            {
-              label: "Properties",
-              onClick: () => setPropertiesDialogOpen(true),
-            },
-          ]}
+          items={
+            selectedSongIds.size > 1 && isSelected
+              ? [
+                  {
+                    label: `Queue All Selected (${selectedSongIds.size})`,
+                    onClick: () => {
+                      const queue = useQueueStore.getState();
+                      for (const id of selectedSongIds) {
+                        queue.addToQueue(id);
+                      }
+                    },
+                  },
+                  {
+                    label: `Separate All Selected (${selectedSongIds.size})`,
+                    onClick: () => {
+                      api
+                        .batchSeparate([...selectedSongIds])
+                        .catch(notifyError);
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: "Play Now",
+                    onClick: () =>
+                      usePlayerStore.getState().playNow(song.hash),
+                  },
+                  {
+                    label: "Play Next",
+                    onClick: () =>
+                      useQueueStore.getState().playNext(song.hash),
+                  },
+                  {
+                    label: "Add to Queue",
+                    onClick: () =>
+                      useQueueStore.getState().addToQueue(song.hash),
+                  },
+                  {
+                    label: "Extract Embedded Lyrics",
+                    onClick: () => {
+                      api
+                        .extractEmbeddedLyrics(song.hash)
+                        .catch(notifyError);
+                    },
+                  },
+                  {
+                    label: "Edit Info",
+                    onClick: () => setEditDialogOpen(true),
+                  },
+                  {
+                    label: "Properties",
+                    onClick: () => setPropertiesDialogOpen(true),
+                  },
+                ]
+          }
           onClose={() => setContextMenu(null)}
         />
       )}

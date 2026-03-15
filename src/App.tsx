@@ -12,6 +12,7 @@ import { useFileDrop } from "@/hooks/use-file-drop";
 import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import type {
+  BatchSeparationProgress,
   PlaybackPositionEvent,
   PlaybackEndedEvent,
   SeparationProgressEvent,
@@ -95,6 +96,8 @@ function useEventListeners() {
   const updateSeparationStatus = useLibraryStore(
     (s) => s.updateSeparationStatus,
   );
+  const updateBatchProgress = useLibraryStore((s) => s.updateBatchProgress);
+  const clearBatchSeparation = useLibraryStore((s) => s.clearBatchSeparation);
   const updateBootstrapStatus = useBootstrapStore((s) => s.updateStatus);
   const loadStems = usePlayerStore((s) => s.loadStems);
 
@@ -217,10 +220,38 @@ function useEventListeners() {
         },
       );
 
+      const u9 = await listen<BatchSeparationProgress>(
+        "batch-separation-progress",
+        (e) => {
+          if (!cancelled) updateBatchProgress(e.payload);
+        },
+      );
+
+      const u10 = await listen<BatchSeparationProgress>(
+        "batch-separation-complete",
+        (e) => {
+          if (!cancelled) {
+            updateBatchProgress(e.payload);
+            // Clear batch state after a short delay so the user sees the final state.
+            setTimeout(() => clearBatchSeparation(), 3000);
+          }
+        },
+      );
+
+      const u11 = await listen<BatchSeparationProgress>(
+        "batch-separation-cancelled",
+        (e) => {
+          if (!cancelled) {
+            updateBatchProgress(e.payload);
+            setTimeout(() => clearBatchSeparation(), 3000);
+          }
+        },
+      );
+
       if (cancelled) {
-        [u1, u2, u3, u4, u5, u6, u7, u8].forEach((fn) => fn());
+        [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11].forEach((fn) => fn());
       } else {
-        unlisteners.push(u1, u2, u3, u4, u5, u6, u7, u8);
+        unlisteners.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
       }
     };
 
@@ -230,7 +261,7 @@ function useEventListeners() {
       cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [updatePosition, updateSeparationStatus, loadStems, updateBootstrapStatus]);
+  }, [updatePosition, updateSeparationStatus, updateBatchProgress, clearBatchSeparation, loadStems, updateBootstrapStatus]);
 }
 
 export default App;

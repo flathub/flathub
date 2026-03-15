@@ -282,6 +282,55 @@ pub fn import_lyrics_files(
     Ok(ImportLyricsResult { matched, unmatched })
 }
 
+#[tauri::command]
+pub fn extract_embedded_lyrics(
+    state: State<'_, AppState>,
+    song_id: String,
+) -> CommandResult<LyricsPayload> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
+
+    let song = cache::get_song_by_hash(&connection, &song_id)
+        .map_err(|e| lyrics_error(e.to_string()))?
+        .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
+
+    let resolved_path = library_root.resolve(&song.file_path);
+    let embedded = lyrics::fetch::read_embedded_lyrics(&resolved_path)
+        .map_err(|e| lyrics_error(e.to_string()))?
+        .ok_or_else(|| lyrics_error("No embedded lyrics found in this file".to_owned()))?;
+
+    // Parse and cache
+    let lines = match lyrics::parser::parse_lrc(&embedded) {
+        Ok(parsed) if !parsed.is_empty() => parsed,
+        _ => plain_text_to_lines(&embedded),
+    };
+
+    let raw_lrc = embedded.clone();
+
+    let fetched_at = current_unix_timestamp()
+        .map_err(|e| lyrics_error(e.to_string()))?;
+
+    cache::lyrics::upsert_lyrics_cache_entry(
+        &connection,
+        &LyricsCacheEntry {
+            song_hash: song_id.clone(),
+            lrc: embedded,
+            source: LyricsSource::Embedded,
+            offset_ms: 0,
+            fetched_at,
+        },
+    )
+    .map_err(|e| database_error(e.to_string()))?;
+
+    Ok(LyricsPayload {
+        song_id,
+        lines,
+        source: Some(LyricsSource::Embedded),
+        offset_ms: 0,
+        raw_lrc,
+    })
+}
+
 /// Convert plain text (no LRC timestamps) into `LyricLine` entries with
 /// `time_ms: 0` so the frontend can display them as unsynced lyrics.
 fn plain_text_to_lines(text: &str) -> Vec<LyricLine> {
