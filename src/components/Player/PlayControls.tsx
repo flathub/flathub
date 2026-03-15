@@ -5,6 +5,8 @@ export function PlayControls() {
   const snapshot = usePlayerStore((s) => s.snapshot);
   const playSong = usePlayerStore((s) => s.playSong);
   const pause = usePlayerStore((s) => s.pause);
+  const skipBack = usePlayerStore((s) => s.skipBack);
+  const skipForward = usePlayerStore((s) => s.skipForward);
   const isPlaying = snapshot?.is_playing ?? false;
 
   const handleToggle = () => {
@@ -17,7 +19,7 @@ export function PlayControls() {
 
   return (
     <div className="flex items-center gap-4 text-[#EBEBF5]">
-      <button className="opacity-80 transition-colors hover:text-white hover:opacity-100">
+      <button onClick={skipBack} className="opacity-80 transition-colors hover:text-white hover:opacity-100">
         <SkipBack size={20} fill="currentColor" />
       </button>
       <button
@@ -30,7 +32,7 @@ export function PlayControls() {
           <Play size={16} fill="currentColor" className="ml-0.5" />
         )}
       </button>
-      <button className="opacity-80 transition-colors hover:text-white hover:opacity-100">
+      <button onClick={skipForward} className="opacity-80 transition-colors hover:text-white hover:opacity-100">
         <SkipForward size={20} fill="currentColor" />
       </button>
     </div>

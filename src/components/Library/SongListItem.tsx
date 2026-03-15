@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useLibraryStore } from "@/stores/library-store";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useQueueStore } from "@/stores/queue-store";
 import { formatDuration } from "@/lib/format";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
@@ -35,7 +36,12 @@ export function SongListItem({ song }: SongListItemProps) {
   const sepState = separationStatus?.state ?? "idle";
 
   const handleDoubleClick = () => {
-    playSong(song.hash);
+    const current = usePlayerStore.getState().snapshot;
+    if (current?.is_playing && current?.song_id !== song.hash) {
+      useQueueStore.getState().addToQueue(song.hash);
+    } else {
+      playSong(song.hash);
+    }
     closeSettings();
   };
 
@@ -136,6 +142,14 @@ export function SongListItem({ song }: SongListItemProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           items={[
+            {
+              label: "Play Next",
+              onClick: () => useQueueStore.getState().playNext(song.hash),
+            },
+            {
+              label: "Add to Queue",
+              onClick: () => useQueueStore.getState().addToQueue(song.hash),
+            },
             {
               label: "Edit Info",
               onClick: () => setEditDialogOpen(true),

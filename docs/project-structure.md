@@ -24,10 +24,21 @@ OpenKara/
 │   ├── App.tsx
 │   ├── components/         # React components
 │   │   ├── Player/         # Karaoke player & controls
+│   │   │   ├── QueueButton.tsx      # Toggle queue panel
+│   │   │   └── QueuePanel.tsx       # Drag-to-reorder queue UI
 │   │   ├── Library/        # Song library & import
-│   │   └── Lyrics/         # Synced lyrics display
+│   │   │   ├── SongPropertiesDialog.tsx  # Audio file properties
+│   │   │   └── SongEditDialog.tsx        # Song metadata editing
+│   │   ├── Lyrics/         # Synced lyrics display
+│   │   │   └── LyricsEditDialog.tsx      # Manual lyrics input
+│   │   └── Settings/       # App settings UI
 │   ├── hooks/              # Custom React hooks
-│   ├── stores/             # State management
+│   ├── stores/             # State management (Zustand)
+│   │   └── queue-store.ts  # Playback queue state
+│   ├── lib/                # Shared utilities
+│   │   ├── tauri.ts        # Tauri IPC helpers
+│   │   ├── errors.ts       # Error handling utilities
+│   │   └── format.ts       # Formatting helpers
 │   ├── types/              # TypeScript type definitions
 │   └── styles/             # Global styles
 │

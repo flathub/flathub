@@ -75,7 +75,8 @@ User's local music files
 3. If not found, try Musixmatch API
 4. If not found, check for embedded lyrics in audio file tags
 5. If not found, check for .lrc file alongside audio file
-6. Cache result in SQLite
+6. User can also: import .lrc files (auto-matched) or type lyrics manually
+7. Cache result in SQLite (source: "lrclib" | "embedded" | "sidecar" | "file_import" | "manual")
 ```
 
 ### Playback
@@ -104,8 +105,9 @@ LRC is the standard synced lyrics format. Each line carries a timestamp:
 
 - Timestamp precision: centiseconds (0.01s), format `[MM:SS.CC]`
 - Parse regex: `/\[(\d+):(\d+)\.(\d+)\]\s*(.+)/`
-- Parsed into array of `{ time: number, text: string }` objects
+- Parsed into array of `{ time: number, text: string, words?: WordToken[] }` objects
 - Line-level sync (entire line highlights at once)
+- Enhanced LRC: word-level timing via `WordToken { time_ms, text }` for per-word highlighting
 
 ### LRCLIB API
 
@@ -125,8 +127,10 @@ GET https://lrclib.net/api/get?track_name={title}&artist_name={artist}&album_nam
 | -------- | ----------------------- | ---------------------------------------- |
 | 1        | LRCLIB API              | Best coverage for synced lyrics          |
 | 2        | Musixmatch API          | Wider catalog, free tier has rate limits |
-| 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag       |
+| 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag — extracted during import |
 | 4        | Sidecar .lrc file       | Same directory, same filename as audio   |
+| 5        | LRC file import         | User imports .lrc files, auto-matched by filename or artist/title |
+| 6        | Manual input            | User-typed plain text or LRC with auto-detection |
 
 ### Playback Sync Mechanism
 

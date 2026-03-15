@@ -6,12 +6,15 @@ import { PlaybackBar } from "@/components/Player/PlaybackBar";
 import { LyricsPanel } from "@/components/Lyrics/LyricsPanel";
 import { SettingsOverlay } from "@/components/Settings/SettingsOverlay";
 import { ModelBootstrapBanner } from "@/components/Bootstrap/ModelBootstrapBanner";
+import { QueuePanel } from "@/components/Player/QueuePanel";
 import { useAnimatedPresence } from "@/hooks/use-animated-presence";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useQueueStore } from "@/stores/queue-store";
 
 export function AppLayout() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const settingsOpen = useSettingsStore((s) => s.isOpen);
+  const queueOpen = useQueueStore((s) => s.isOpen);
   const toggleSettings = useSettingsStore((s) => s.toggle);
 
   const sidebar = useAnimatedPresence(
@@ -48,6 +51,7 @@ export function AppLayout() {
             <>
               <ModelBootstrapBanner />
               <LyricsPanel />
+              {queueOpen && <QueuePanel />}
             </>
           )}
         </div>

@@ -75,7 +75,8 @@ export function LyricsPanel() {
       )}
       <div
         ref={containerRef}
-        className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8"
+        key={songId}
+        className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8 animate-[song-fade-in_300ms_ease-out]"
       >
         {lines.map((line, idx) => (
           <LyricLine

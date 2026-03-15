@@ -111,6 +111,10 @@ export interface PlaybackPositionEvent {
   ms: number;
 }
 
+export interface PlaybackEndedEvent {
+  song_id: string;
+}
+
 // ─── Separation ──────────────────────────────────────────
 
 export type SeparationState = "idle" | "running" | "completed" | "failed";

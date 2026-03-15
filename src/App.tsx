@@ -13,6 +13,7 @@ import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import type {
   PlaybackPositionEvent,
+  PlaybackEndedEvent,
   SeparationProgressEvent,
   SeparationCompleteEvent,
   SeparationErrorEvent,
@@ -192,10 +193,19 @@ function useEventListeners() {
         },
       );
 
+      const u8 = await listen<PlaybackEndedEvent>(
+        "playback-ended",
+        (e) => {
+          if (!cancelled) {
+            usePlayerStore.getState().playNextFromQueue(e.payload.song_id);
+          }
+        },
+      );
+
       if (cancelled) {
-        [u1, u2, u3, u4, u5, u6, u7].forEach((fn) => fn());
+        [u1, u2, u3, u4, u5, u6, u7, u8].forEach((fn) => fn());
       } else {
-        unlisteners.push(u1, u2, u3, u4, u5, u6, u7);
+        unlisteners.push(u1, u2, u3, u4, u5, u6, u7, u8);
       }
     };
 

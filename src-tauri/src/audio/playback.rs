@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 pub const PLAYBACK_POSITION_EVENT: &str = "playback-position";
+pub const PLAYBACK_ENDED_EVENT: &str = "playback-ended";
 pub const PLAYBACK_POSITION_POLL_INTERVAL_MS: u64 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -292,6 +293,11 @@ pub fn monotonic_now_ms() -> u64 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct PlaybackPositionEvent {
     pub ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaybackEndedEvent {
+    pub song_id: String,
 }
 
 pub fn playback_position_event(snapshot: &PlaybackStateSnapshot) -> Result<PlaybackPositionEvent> {

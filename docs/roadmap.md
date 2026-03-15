@@ -51,6 +51,10 @@ Commands (src-tauri/src/commands/):
 │ get_settings              │ () → AppSettings                        │
 │ set_stem_mode             │ (mode: String) → AppSettings            │
 │ upgrade_to_four_stem      │ (song_id: String) → Status              │
+│ save_manual_lyrics        │ (song_id: String, lrc: String) → ()     │
+│ import_lyrics_files       │ (paths: Vec<String>) → ()               │
+│ get_song_properties       │ (song_id: String) → SongProperties      │
+│ get_all_separation_statuses│ () → Vec<SeparationStatus>             │
 └───────────────────────────┴──────────────────────────────────┘
 
 Events (Backend → Frontend):
@@ -58,6 +62,7 @@ Events (Backend → Frontend):
 │ Event                     │ Payload                          │
 ├───────────────────────────┼──────────────────────────────────┤
 │ playback-position         │ { ms: u64 }                      │
+│ playback-ended            │ { song_id: String }              │
 │ separation-progress       │ { song_id: String, percent: u8 } │
 │ separation-complete       │ { song_id: String }              │
 │ separation-error          │ { song_id: String, error: String}│
@@ -211,11 +216,15 @@ Song metadata (title, artist, album, duration)
 
     Result: LRC string or "no lyrics found"
     │
+    ├──→ [4] Manual input (user-typed plain text or LRC, auto-detected)
+    │
     ▼ parse
-    Vec<LyricLine { time_ms: u64, text: String }>
+    Vec<LyricLine { time_ms: u64, text: String, words: Option<Vec<WordToken>> }>
+    │   Enhanced LRC: per-word timing via WordToken for word-level highlighting
     │
     ▼ cache in SQLite
     lyrics table: (song_hash TEXT PK, lrc TEXT, source TEXT, fetched_at INTEGER)
+    source: "lrclib" | "embedded" | "sidecar" | "file_import" | "manual"
 ```
 
 ### Frontend Sync Architecture
@@ -270,16 +279,23 @@ App
 │   ├── SearchBar
 │   ├── SongGrid
 │   │   └── SongCard (cover art, title, artist, separation badge)
-│   └── ImportDropzone
+│   ├── ImportDropzone
+│   └── SongPropertiesDialog (format, sample rate, channels, bitrate, size)
 ├── NowPlaying (full-screen karaoke view)
 │   ├── Lyrics
-│   │   ├── LyricLine (highlighted / upcoming / past)
+│   │   ├── LyricLine (highlighted / upcoming / past, word-level highlight)
 │   │   └── OffsetControls (+/- 0.5s buttons)
+│   ├── LyricsEditDialog (manual lyrics input, LRC vs plain text auto-detection)
 │   └── Player
 │       ├── PlayPauseButton
+│       ├── SkipForwardButton / SkipBackButton
 │       ├── SeekBar
-│       ├── VolumeSlider
-│       └── ModeToggle (original / karaoke)
+│       ├── VolumeSlider (click icon to mute/unmute)
+│       ├── ModeToggle (original / karaoke)
+│       ├── QueueButton
+│       └── QueuePanel (drag-to-reorder, auto-advance)
+├── Settings
+│   └── StemModeToggle (2-stem / 4-stem)
 └── StatusBar
     └── SeparationProgress
 ```
@@ -295,7 +311,12 @@ App
 
 // lyricsStore: current lyrics
 { lines: LyricLine[], activeIndex, offset }
+
+// queueStore: playback queue
+{ queue: Song[], addToQueue, playNext, dequeue, reorder, autoAdvance }
 ```
+
+> **v0.2.0 planned**: Configurable crossfade duration with dual-track rendering in the audio output backend.
 
 ---
 

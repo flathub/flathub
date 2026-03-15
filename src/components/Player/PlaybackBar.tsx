@@ -4,6 +4,7 @@ import { NowPlayingInfo } from "./NowPlayingInfo";
 import { PlayControls } from "./PlayControls";
 import { SeekBar } from "./SeekBar";
 import { VolumeSliders } from "./VolumeSliders";
+import { QueueButton } from "./QueueButton";
 import { usePlayerStore } from "@/stores/player-store";
 
 export function PlaybackBar() {
@@ -34,6 +35,9 @@ export function PlaybackBar() {
 
         {/* Seek bar — takes remaining space */}
         <SeekBar />
+
+        {/* Queue button */}
+        <QueueButton />
 
         {/* Stem volume sliders (visible when stems loaded) */}
         <VolumeSliders />

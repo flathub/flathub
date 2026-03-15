@@ -144,11 +144,11 @@ Shell  ─→ Library ─→ Playback ─→ Separation ─→ Lyrics ─→ Pol
 | Task                           | Owner   | Status | Notes                                               |
 | ------------------------------ | ------- | ------ | --------------------------------------------------- |
 | E2E flow testing (5+ songs)    | Code    | ⏳     | 已有后端 smoke test；真实 5 首歌回归仍待完成        |
-| Error handling & user feedback | Code/UI | ⏳     | 后端结构化错误已完成，展示层待 UI 接入              |
+| Error handling & user feedback | Code/UI | ✅     | Structured errors, user-facing feedback             |
 | Performance profiling          | Code    | ✅     | Latency, jitter, memory                             |
-| UI polish & transitions        | UI      | ☐      | Smooth, responsive                                  |
+| UI polish & transitions        | UI      | ✅     | Fade-in animations, song transitions, smooth scroll |
 | Keyboard shortcuts             | UI/Code | ✅     | Space, arrows, etc.                                 |
-| App branding (icon, splash)    | UI      | ☐      |                                                     |
+| App branding (icon, splash)    | UI      | ✅     | Branded app icon assets added                       |
 | Documentation update           | Code    | ⏳     | README 与交接文档已扩展，用户级安装指南仍可继续细化 |
 | 4-stem mixer + dual modes + OGG compression | Code/UI | ✅ | Checkpoint resumability, stem mode settings, compressed output |
 
@@ -176,18 +176,42 @@ Shell  ─→ Library ─→ Playback ─→ Separation ─→ Lyrics ─→ Pol
 
 ---
 
+## M8 — Playlist & Queue
+
+| Item              | Detail                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| **Goal**          | Users can queue songs, reorder the queue, and playback advances automatically between songs      |
+| **Phases**        | Phase 5 (integrated alongside polish)                                                            |
+| **Demo**          | Right-click song → "Play Next" or "Add to Queue". Queue panel shows upcoming songs with drag reorder. Song ends → next song auto-plays with fade-in transition. |
+| **Exit Criteria** | Queue persists during session. Skip forward/back work. Auto-advance on song end. |
+
+### Task Breakdown
+
+| Task                                | Owner | Status | Notes                                           |
+| ----------------------------------- | ----- | ------ | ----------------------------------------------- |
+| Queue store (Zustand)               | Code  | ✅     | `queue-store.ts` — addToQueue, playNext, dequeue, reorder |
+| Queue panel UI                      | UI    | ✅     | `QueuePanel.tsx` — drag-to-reorder, remove items |
+| Queue button in player bar          | UI    | ✅     | `QueueButton.tsx` — toggle queue panel visibility |
+| Context menu: Play Next / Add to Queue | UI | ✅     | Right-click song card actions                    |
+| Double-click auto-queue             | UI    | ✅     | While playing, double-click queues instead of replacing |
+| Skip forward / back buttons         | UI    | ✅     | Wired to queue dequeue / history                 |
+| Auto-advance on song end            | Code  | ✅     | `playback-ended` event triggers next in queue    |
+| Song transition fade-in animations  | UI    | ✅     | Smooth visual transition between songs           |
+
+---
+
 ## Post-MVP Milestones (Future)
 
 These milestones are scoped but not scheduled. They become relevant after v0.1.0 is released and validated.
 
-| Milestone                      | Scope                                            |
-| ------------------------------ | ------------------------------------------------ |
-| M7 — Mic Input & Vocal Effects | Microphone capture, reverb, echo, volume mix     |
-| M8 — Playlist & Queue          | Multi-song queue, multi-user turn-based queue    |
-| M9 — Pitch & Key Shift         | Real-time pitch shifting of accompaniment track  |
-| M10 — Session Recording        | Record user's vocal performance, export as audio |
-| M11 — Multi-screen             | Second display for audience lyrics view          |
-| M12 — CJK Transliteration      | Romaji/Pinyin display alongside original lyrics  |
+| Milestone                      | Scope                                                             |
+| ------------------------------ | ----------------------------------------------------------------- |
+| M7 — Mic Input & Vocal Effects | Microphone capture, reverb, echo, volume mix                      |
+| M8b — Crossfade                | Configurable crossfade duration, dual-track rendering in audio output |
+| M9 — Pitch & Key Shift         | Real-time pitch shifting of accompaniment track                   |
+| M10 — Session Recording        | Record user's vocal performance, export as audio                  |
+| M11 — Multi-screen             | Second display for audience lyrics view                           |
+| M12 — CJK Transliteration      | Romaji/Pinyin display alongside original lyrics                   |
 
 ---
 

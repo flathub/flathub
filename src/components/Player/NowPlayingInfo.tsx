@@ -16,7 +16,7 @@ export function NowPlayingInfo() {
   const song = songs.find((s) => s.hash === snapshot.song_id);
 
   return (
-    <div className="flex flex-col overflow-hidden">
+    <div key={snapshot.song_id} className="flex flex-col overflow-hidden animate-[song-fade-in_300ms_ease-out]">
       <span className="truncate text-[12px] font-medium text-white">
         {song?.title || "Unknown Title"}
       </span>

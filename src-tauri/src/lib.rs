@@ -179,6 +179,8 @@ fn spawn_playback_position_emitter(
 ) {
     thread::spawn(move || {
         let mut last_emitted_position = None;
+        let mut was_playing = false;
+        let mut last_song_id: Option<String> = None;
 
         loop {
             thread::sleep(Duration::from_millis(PLAYBACK_POSITION_POLL_INTERVAL_MS));
@@ -187,6 +189,28 @@ fn spawn_playback_position_emitter(
                 Ok(mut controller) => controller.snapshot(monotonic_now_ms()),
                 Err(_) => break,
             };
+
+            // Detect natural song end: was playing, now stopped, position reached duration
+            if was_playing
+                && !snapshot.is_playing
+                && snapshot
+                    .duration_ms
+                    .map_or(false, |d| snapshot.position_ms >= d)
+                && last_song_id.is_some()
+                && last_song_id == snapshot.song_id
+            {
+                if let Some(ref song_id) = snapshot.song_id {
+                    let _ = app_handle.emit(
+                        audio::playback::PLAYBACK_ENDED_EVENT,
+                        audio::playback::PlaybackEndedEvent {
+                            song_id: song_id.clone(),
+                        },
+                    );
+                }
+            }
+
+            was_playing = snapshot.is_playing;
+            last_song_id = snapshot.song_id.clone();
 
             if snapshot.song_id.is_none() {
                 last_emitted_position = None;
