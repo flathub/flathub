@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { NowPlayingInfo } from "./NowPlayingInfo";
 import { PlayControls } from "./PlayControls";
@@ -9,6 +10,16 @@ export function PlaybackBar() {
   const snapshot = usePlayerStore((s) => s.snapshot);
   const setVolume = usePlayerStore((s) => s.setVolume);
   const volume = snapshot?.volume ?? 1;
+  const prevVolumeRef = useRef(1);
+
+  const handleMasterMuteToggle = () => {
+    if (volume > 0) {
+      prevVolumeRef.current = volume;
+      setVolume(0);
+    } else {
+      setVolume(prevVolumeRef.current);
+    }
+  };
 
   return (
     <div className="flex h-20 shrink-0 flex-col justify-center border-t border-[var(--color-border)] bg-[var(--color-toolbar)] px-4">
@@ -30,7 +41,7 @@ export function PlaybackBar() {
         {/* Master volume */}
         <div className="flex shrink-0 items-center gap-2">
           <button
-            onClick={() => setVolume(volume > 0 ? 0 : 1)}
+            onClick={handleMasterMuteToggle}
             className="text-[var(--color-text-dim)] transition-colors hover:text-white"
           >
             {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}

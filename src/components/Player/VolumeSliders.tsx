@@ -1,5 +1,13 @@
-import { useState, useCallback, useMemo } from "react";
-import { Mic2, Music, ChevronDown, Drum, Guitar, Piano } from "lucide-react";
+import { useState, useCallback, useMemo, useRef } from "react";
+import {
+  Mic2,
+  MicOff,
+  Music,
+  ChevronDown,
+  Drum,
+  Guitar,
+  Piano,
+} from "lucide-react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -30,6 +38,10 @@ export function VolumeSliders() {
   const isTwoStem = stemMode === "two_stem";
   const isFourStem = stemMode === "four_stem";
 
+  // Track previous non-zero values for mute/unmute toggle
+  const prevVocalsRef = useRef(1);
+  const prevAccompRef = useRef(1);
+
   const handleStemChange = useCallback(
     (stem: StemName, value: number) => {
       setStemVolume(stem, value);
@@ -48,7 +60,7 @@ export function VolumeSliders() {
     (newValue: number) => {
       if (isTwoStem) {
         // In 2-stem mode, set all three sub-stems to the same value;
-        // the backend uses drums gain as the accompaniment gain.
+        // the backend uses max gain as the accompaniment gain.
         setStemVolume("drums", newValue);
         setStemVolume("bass", newValue);
         setStemVolume("other", newValue);
@@ -59,31 +71,52 @@ export function VolumeSliders() {
         setStemVolume("other", newValue);
       } else {
         const ratio = newValue / accompValue;
-        setStemVolume(
-          "drums",
-          Math.min(1, stemVolumes.drums * ratio),
-        );
-        setStemVolume(
-          "bass",
-          Math.min(1, stemVolumes.bass * ratio),
-        );
-        setStemVolume(
-          "other",
-          Math.min(1, stemVolumes.other * ratio),
-        );
+        setStemVolume("drums", Math.min(1, stemVolumes.drums * ratio));
+        setStemVolume("bass", Math.min(1, stemVolumes.bass * ratio));
+        setStemVolume("other", Math.min(1, stemVolumes.other * ratio));
       }
     },
     [isTwoStem, accompValue, stemVolumes, setStemVolume],
   );
 
+  const handleVocalsMuteToggle = useCallback(() => {
+    if (stemVolumes.vocals > 0) {
+      prevVocalsRef.current = stemVolumes.vocals;
+      setStemVolume("vocals", 0);
+    } else {
+      setStemVolume("vocals", prevVocalsRef.current);
+    }
+  }, [stemVolumes.vocals, setStemVolume]);
+
+  const handleAccompMuteToggle = useCallback(() => {
+    if (accompValue > 0) {
+      prevAccompRef.current = accompValue;
+      setStemVolume("drums", 0);
+      setStemVolume("bass", 0);
+      setStemVolume("other", 0);
+    } else {
+      const prev = prevAccompRef.current;
+      setStemVolume("drums", prev);
+      setStemVolume("bass", prev);
+      setStemVolume("other", prev);
+    }
+  }, [accompValue, setStemVolume]);
+
   return (
     <div className="flex items-center gap-5">
       {/* Vocals slider */}
       <StemSlider
-        icon={<Mic2 size={14} />}
+        icon={
+          stemVolumes.vocals === 0 ? (
+            <MicOff size={14} />
+          ) : (
+            <Mic2 size={14} />
+          )
+        }
         label="Vocals"
         value={stemVolumes.vocals}
         onChange={(v) => handleStemChange("vocals", v)}
+        onIconClick={stemsAvailable ? handleVocalsMuteToggle : undefined}
         disabled={!stemsAvailable}
       />
 
@@ -94,12 +127,13 @@ export function VolumeSliders() {
           label="Accompaniment"
           value={accompValue}
           onChange={handleAccompChange}
+          onIconClick={stemsAvailable ? handleAccompMuteToggle : undefined}
           disabled={!stemsAvailable}
         />
         {stemsAvailable && isFourStem && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center justify-center w-4 h-4 text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] transition-colors"
+            className="flex h-4 w-4 items-center justify-center text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
             title={isExpanded ? "Collapse stems" : "Expand stems"}
           >
             <ChevronDown
@@ -142,25 +176,29 @@ function StemSlider({
   label,
   value,
   onChange,
+  onIconClick,
   disabled = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   onChange: (value: number) => void;
+  onIconClick?: () => void;
   disabled?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2" title={label}>
-      <span
-        className={
+      <button
+        onClick={onIconClick}
+        disabled={disabled || !onIconClick}
+        className={`transition-colors ${
           !disabled && value > 0
-            ? "text-[#EBEBF5]"
+            ? "text-[#EBEBF5] hover:text-white"
             : "text-[var(--color-text-dimmer)]"
-        }
+        } ${onIconClick && !disabled ? "cursor-pointer" : "cursor-default"}`}
       >
         {icon}
-      </span>
+      </button>
       <input
         type="range"
         min="0"

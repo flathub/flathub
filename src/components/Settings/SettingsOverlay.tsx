@@ -3,13 +3,19 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Plus } from "lucide-react";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import type { StemMode } from "@/types/ipc";
 
 export function SettingsOverlay() {
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [stemMode, setStemMode] = useState<StemMode>("two_stem");
 
   useEffect(() => {
     api.getLibraryPath().then(setLibraryPath).catch((e) => notifyError(e));
+    api
+      .getSettings()
+      .then((settings) => setStemMode(settings.stem_mode))
+      .catch((e) => notifyError(e));
   }, []);
 
   const handleCreateLibrary = async () => {
@@ -45,6 +51,15 @@ export function SettingsOverlay() {
     }
   };
 
+  const handleStemModeChange = async (mode: StemMode) => {
+    try {
+      const settings = await api.setStemMode(mode);
+      setStemMode(settings.stem_mode);
+    } catch (e) {
+      notifyError(e);
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-10">
       <div className="mx-auto w-full max-w-xl space-y-6">
@@ -57,7 +72,10 @@ export function SettingsOverlay() {
           </label>
           {libraryPath ? (
             <div className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2">
-              <p className="truncate text-[13px] text-white" title={libraryPath}>
+              <p
+                className="truncate text-[13px] text-white"
+                title={libraryPath}
+              >
                 {libraryPath}
               </p>
             </div>
@@ -85,15 +103,43 @@ export function SettingsOverlay() {
           )}
         </div>
 
-        {/* AI Separation Engine */}
+        {/* Stem Mode */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
-            AI Separation Engine
+            Stem Separation Mode
           </label>
-          <select className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] text-white focus:border-[var(--color-accent)] focus:outline-none">
-            <option>OpenKara Core ML (Apple Silicon)</option>
-            <option>OpenKara Fast (CPU)</option>
-          </select>
+          <p className="text-[12px] text-[var(--color-text-dim)]">
+            Controls how new songs are separated. Existing separations are not
+            affected.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleStemModeChange("two_stem")}
+              className={`flex-1 rounded-md border px-3 py-2 text-[13px] transition-colors ${
+                stemMode === "two_stem"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/20 text-white"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
+              }`}
+            >
+              <div className="font-medium">2-Stem</div>
+              <div className="mt-0.5 text-[11px] opacity-70">
+                Vocals + Accompaniment
+              </div>
+            </button>
+            <button
+              onClick={() => handleStemModeChange("four_stem")}
+              className={`flex-1 rounded-md border px-3 py-2 text-[13px] transition-colors ${
+                stemMode === "four_stem"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/20 text-white"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
+              }`}
+            >
+              <div className="font-medium">4-Stem</div>
+              <div className="mt-0.5 text-[11px] opacity-70">
+                Vocals + Drums + Bass + Other
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Output Device */}

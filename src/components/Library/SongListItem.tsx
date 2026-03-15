@@ -8,6 +8,7 @@ import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { ContextMenu } from "./ContextMenu";
 import { SongEditDialog } from "./SongEditDialog";
+import { SongPropertiesDialog } from "./SongPropertiesDialog";
 import type { Song } from "@/types/ipc";
 
 interface SongListItemProps {
@@ -26,6 +27,7 @@ export function SongListItem({ song }: SongListItemProps) {
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
 
   const isSelected = selectedSongId === song.hash;
   const isCurrentPlaying =
@@ -138,6 +140,10 @@ export function SongListItem({ song }: SongListItemProps) {
               label: "Edit Info",
               onClick: () => setEditDialogOpen(true),
             },
+            {
+              label: "Properties",
+              onClick: () => setPropertiesDialogOpen(true),
+            },
           ]}
           onClose={() => setContextMenu(null)}
         />
@@ -147,6 +153,13 @@ export function SongListItem({ song }: SongListItemProps) {
         <SongEditDialog
           song={song}
           onClose={() => setEditDialogOpen(false)}
+        />
+      )}
+
+      {propertiesDialogOpen && (
+        <SongPropertiesDialog
+          song={song}
+          onClose={() => setPropertiesDialogOpen(false)}
         />
       )}
     </div>

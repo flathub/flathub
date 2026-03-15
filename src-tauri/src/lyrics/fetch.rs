@@ -13,6 +13,7 @@ pub enum LyricsSource {
     LrcLib,
     Embedded,
     Sidecar,
+    Manual,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +67,7 @@ fn lookup_query_from_song(song: &Song) -> Option<LyricsLookupQuery> {
     })
 }
 
-fn read_embedded_lyrics(path: &Path) -> Result<Option<String>> {
+pub fn read_embedded_lyrics(path: &Path) -> Result<Option<String>> {
     let tagged_file = read_from_path(path).with_context(|| {
         format!(
             "failed to read embedded lyrics tags from {}",

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  ImportLyricsResult,
   ImportSongsResult,
   LyricsPayload,
   ModelBootstrapStatusSnapshot,
@@ -8,6 +9,7 @@ import type {
   SeparationStatusSnapshot,
   StemName,
   Song,
+  SongProperties,
 } from "@/types/ipc";
 
 // ─── Library Setup ───────────────────────────────────────
@@ -44,6 +46,10 @@ export function updateSongMetadata(
   artist: string | null,
 ): Promise<Song> {
   return invoke<Song>("update_song_metadata", { hash, title, artist });
+}
+
+export function getSongProperties(songId: string): Promise<SongProperties> {
+  return invoke<SongProperties>("get_song_properties", { songId });
 }
 
 // ─── Playback ────────────────────────────────────────────
@@ -99,12 +105,20 @@ export function getAllSeparationStatuses(): Promise<
 
 // ─── Lyrics ──────────────────────────────────────────────
 
+export function importLyricsFiles(paths: string[]): Promise<ImportLyricsResult> {
+  return invoke<ImportLyricsResult>("import_lyrics_files", { paths });
+}
+
 export function fetchLyrics(songId: string): Promise<LyricsPayload> {
   return invoke<LyricsPayload>("fetch_lyrics", { songId });
 }
 
 export function setLyricsOffset(songId: string, ms: number): Promise<void> {
   return invoke<void>("set_lyrics_offset", { songId, ms });
+}
+
+export function saveManualLyrics(songId: string, text: string): Promise<LyricsPayload> {
+  return invoke<LyricsPayload>("save_manual_lyrics", { songId, text });
 }
 
 // ─── Bootstrap ───────────────────────────────────────────

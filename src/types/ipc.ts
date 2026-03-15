@@ -47,6 +47,16 @@ export interface Song {
   imported_at: number;
 }
 
+export interface SongProperties {
+  format: string;
+  sample_rate: number | null;
+  channels: number | null;
+  bit_rate: number | null;
+  file_size: number;
+  duration_ms: number;
+  hash: string;
+}
+
 export interface ImportFailure {
   path: string;
   error: CommandError;
@@ -55,6 +65,16 @@ export interface ImportFailure {
 export interface ImportSongsResult {
   imported: Song[];
   failed: ImportFailure[];
+}
+
+export interface LyricsMatch {
+  song_hash: string;
+  lrc_path: string;
+}
+
+export interface ImportLyricsResult {
+  matched: LyricsMatch[];
+  unmatched: string[];
 }
 
 // ─── Settings ───────────────────────────────────────────
@@ -121,11 +141,17 @@ export interface SeparationErrorEvent {
 
 // ─── Lyrics ──────────────────────────────────────────────
 
-export type LyricsSource = "lrc_lib" | "embedded" | "sidecar";
+export type LyricsSource = "lrc_lib" | "embedded" | "sidecar" | "manual";
+
+export interface WordToken {
+  time_ms: number;
+  text: string;
+}
 
 export interface LyricLine {
   time_ms: number;
   text: string;
+  words: WordToken[] | null;
 }
 
 export interface LyricsPayload {

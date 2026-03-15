@@ -7,7 +7,7 @@ interface ImportButtonProps {
   children: ReactNode;
 }
 
-const AUDIO_EXTENSIONS = ["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma"];
+const AUDIO_EXTENSIONS = ["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "lrc"];
 
 export function ImportButton({ children }: ImportButtonProps) {
   const importFiles = useLibraryStore((s) => s.importFiles);
@@ -25,7 +25,7 @@ export function ImportButton({ children }: ImportButtonProps) {
       defaultPath,
       filters: [
         {
-          name: "Audio",
+          name: "Audio & Lyrics",
           extensions: AUDIO_EXTENSIONS,
         },
       ],

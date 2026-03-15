@@ -1,25 +1,34 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import { Edit2 } from "lucide-react";
 import { LyricLine } from "./LyricLine";
 import { LyricsOffsetControl } from "./LyricsOffsetControl";
 import { LyricsEmptyState } from "./LyricsEmptyState";
+import { LyricsEditDialog } from "./LyricsEditDialog";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { usePlayerStore } from "@/stores/player-store";
 
 export function LyricsPanel() {
   const lines = useLyricsStore((s) => s.lines);
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
+  const offsetMs = useLyricsStore((s) => s.offsetMs);
   const isLoading = useLyricsStore((s) => s.isLoading);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
+  const positionMs = usePlayerStore((s) => s.positionMs);
+  const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
-  // Auto-scroll to active line
+  const isPlainText = lines.length > 0 && lines.every((l) => l.time_ms === 0);
+
+  // Auto-scroll to active line (disabled for plain text)
   useEffect(() => {
+    if (isPlainText) return;
     if (activeLineIndex < 0 || !containerRef.current) return;
     const lineEl = containerRef.current.children[activeLineIndex] as
       | HTMLElement
       | undefined;
     lineEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeLineIndex]);
+  }, [activeLineIndex, isPlainText]);
 
   if (!songId) {
     return (
@@ -47,6 +56,23 @@ export function LyricsPanel() {
 
   return (
     <div className="relative flex flex-1 flex-col items-center overflow-hidden">
+      {songId && (
+        <>
+          <button
+            onClick={() => setEditOpen(true)}
+            className="absolute right-4 top-4 z-10 rounded-md p-1.5 text-[var(--color-text-dimmer)] transition-colors hover:bg-[#3A3A3C] hover:text-[#EBEBF5]"
+            title="Edit lyrics"
+          >
+            <Edit2 size={14} />
+          </button>
+          <LyricsEditDialog
+            open={editOpen}
+            onClose={() => setEditOpen(false)}
+            songId={songId}
+            existingLyrics={lines.map((l) => l.text).join("\n")}
+          />
+        </>
+      )}
       <div
         ref={containerRef}
         className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8"
@@ -56,12 +82,15 @@ export function LyricsPanel() {
             key={idx}
             line={line}
             state={
-              idx === activeLineIndex
-                ? "active"
-                : idx < activeLineIndex
-                  ? "past"
-                  : "future"
+              isPlainText
+                ? "future"
+                : idx === activeLineIndex
+                  ? "active"
+                  : idx < activeLineIndex
+                    ? "past"
+                    : "future"
             }
+            adjustedMs={isPlainText ? 0 : adjustedMs}
           />
         ))}
       </div>

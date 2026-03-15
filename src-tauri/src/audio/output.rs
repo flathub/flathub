@@ -71,7 +71,7 @@ pub fn render_output_buffer(
                 vocals,
                 accompaniment,
             } => {
-                let accomp_gain = sv.drums;
+                let accomp_gain = sv.drums.max(sv.bass).max(sv.other);
                 let (r1, f1) = mix_stem_resampled(
                     output,
                     vocals,

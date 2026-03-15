@@ -1,12 +1,14 @@
 use crate::{
     cache,
-    commands::error::{database_error, library_error, CommandResult},
+    commands::error::{database_error, internal_error, library_error, CommandResult},
     library::{ImportFailure, ImportSongsResult, Song},
     library_root::LibraryRoot,
+    lyrics::fetch::{read_embedded_lyrics, LyricsSource},
     metadata, AppState,
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -14,7 +16,24 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
+use symphonia::core::{
+    formats::FormatOptions,
+    io::MediaSourceStream,
+    meta::MetadataOptions,
+    probe::Hint,
+};
 use tauri::State;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SongProperties {
+    pub format: String,
+    pub sample_rate: Option<u32>,
+    pub channels: Option<u16>,
+    pub bit_rate: Option<u32>,
+    pub file_size: u64,
+    pub duration_ms: i64,
+    pub hash: String,
+}
 
 #[tauri::command]
 pub fn import_songs(
@@ -54,7 +73,12 @@ pub fn import_songs_from_paths(
     for path in paths {
         match build_and_store_song(Path::new(path), library) {
             Ok(song) => match cache::upsert_song(connection, &song) {
-                Ok(()) => imported.push(song),
+                Ok(()) => {
+                    // Try to extract embedded lyrics from the audio file and
+                    // store them so they're available without a network fetch.
+                    try_extract_embedded_lyrics(connection, &song, library);
+                    imported.push(song);
+                }
                 Err(error) => failed.push(ImportFailure {
                     path: path.clone(),
                     error: database_error(error.to_string()),
@@ -95,6 +119,105 @@ pub fn update_song_metadata(
     cache::get_song_by_hash(&connection, &hash)
         .map_err(|e| database_error(e.to_string()))?
         .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
+}
+
+#[tauri::command]
+pub fn get_song_properties(
+    state: State<'_, AppState>,
+    song_id: String,
+) -> CommandResult<SongProperties> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    let song = cache::get_song_by_hash(&connection, &song_id)
+        .map_err(|e| database_error(e.to_string()))?
+        .ok_or_else(|| database_error(format!("song with hash {song_id} not found")))?;
+
+    let file_path = library.resolve(&song.file_path);
+
+    let file_size = std::fs::metadata(&file_path)
+        .map_err(|e| {
+            library_error(format!(
+                "failed to open audio file at {}: {}",
+                file_path.display(),
+                e
+            ))
+        })?
+        .len();
+
+    let ext = song
+        .original_ext
+        .as_deref()
+        .or_else(|| {
+            file_path
+                .extension()
+                .and_then(|e| e.to_str())
+        })
+        .unwrap_or("bin");
+
+    let format = match ext.to_lowercase().as_str() {
+        "mp3" => "MP3",
+        "flac" => "FLAC",
+        "wav" | "wave" => "WAV",
+        "ogg" => "OGG",
+        "aac" | "m4a" => "AAC/M4A",
+        "opus" => "Opus",
+        "aiff" | "aif" => "AIFF",
+        other => other,
+    }
+    .to_owned();
+
+    let file = File::open(&file_path).map_err(|e| {
+        library_error(format!(
+            "failed to open audio file at {}: {}",
+            file_path.display(),
+            e
+        ))
+    })?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    hint.with_extension(ext);
+
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .map_err(|e| {
+            internal_error(format!(
+                "failed to probe audio format for {}: {}",
+                file_path.display(),
+                e
+            ))
+        })?;
+
+    let format_reader = probed.format;
+    let (sample_rate, channels) = match format_reader.default_track() {
+        Some(track) => {
+            let cp = &track.codec_params;
+            let sr = cp.sample_rate;
+            let ch = cp.channels.map(|c| c.count() as u16);
+            (sr, ch)
+        }
+        None => (None, None),
+    };
+
+    // Estimate bit rate from file size and duration when not available in
+    // codec params (symphonia 0.5 does not expose a bit_rate field).
+    let bit_rate = if song.duration_ms > 0 {
+        let duration_secs = song.duration_ms as f64 / 1000.0;
+        Some(((file_size as f64 * 8.0) / duration_secs / 1000.0).round() as u32)
+    } else {
+        None
+    };
+
+    Ok(SongProperties {
+        format,
+        sample_rate,
+        channels,
+        bit_rate,
+        file_size,
+        duration_ms: song.duration_ms,
+        hash: song.hash,
+    })
 }
 
 /// Hash the source file, copy it into the library's media directory, and build
@@ -175,4 +298,36 @@ fn current_unix_timestamp() -> Result<i64> {
         .context("system clock is set before Unix epoch")?;
 
     Ok(duration.as_secs() as i64)
+}
+
+/// Attempt to read embedded lyrics from the audio file and persist them into
+/// the lyrics cache. This is best-effort: failures are silently ignored so they
+/// never block a successful song import.
+fn try_extract_embedded_lyrics(
+    connection: &Connection,
+    song: &Song,
+    library: &LibraryRoot,
+) {
+    // Don't overwrite lyrics that are already cached (e.g. from a previous
+    // import or manual entry).
+    if let Ok(Some(_)) = cache::lyrics::get_lyrics_cache_entry(connection, &song.hash) {
+        return;
+    }
+
+    let resolved_path = library.resolve(&song.file_path);
+    let raw_lrc = match read_embedded_lyrics(&resolved_path) {
+        Ok(Some(lrc)) => lrc,
+        _ => return,
+    };
+
+    let fetched_at = current_unix_timestamp().unwrap_or(0);
+    let entry = cache::lyrics::LyricsCacheEntry {
+        song_hash: song.hash.clone(),
+        lrc: raw_lrc,
+        source: LyricsSource::Embedded,
+        offset_ms: 0,
+        fetched_at,
+    };
+
+    let _ = cache::lyrics::upsert_lyrics_cache_entry(connection, &entry);
 }

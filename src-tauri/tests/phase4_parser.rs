@@ -13,14 +13,17 @@ fn parses_lrc_lines_with_multiple_timestamps_and_ignores_metadata_tags() {
             LyricLine {
                 time_ms: 35_660,
                 text: "Look at the stars".to_owned(),
+                words: None,
             },
             LyricLine {
                 time_ms: 40_000,
                 text: "Look how they shine for you".to_owned(),
+                words: None,
             },
             LyricLine {
                 time_ms: 41_500,
                 text: "Look how they shine for you".to_owned(),
+                words: None,
             },
         ]
     );

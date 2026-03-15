@@ -65,13 +65,33 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   importFiles: async (paths) => {
     set({ isImporting: true, importErrors: [] });
     try {
-      const result = await api.importSongs(paths);
-      if (result.failed.length > 0) {
-        set({ importErrors: result.failed });
-        for (const failure of result.failed) {
-          notifyError(failure.error);
+      // Split paths into audio and lyrics files
+      const audioPaths = paths.filter((p) => !p.toLowerCase().endsWith(".lrc"));
+      const lrcPaths = paths.filter((p) => p.toLowerCase().endsWith(".lrc"));
+
+      // Import audio files
+      if (audioPaths.length > 0) {
+        const result = await api.importSongs(audioPaths);
+        if (result.failed.length > 0) {
+          set({ importErrors: result.failed });
+          for (const failure of result.failed) {
+            notifyError(failure.error);
+          }
         }
       }
+
+      // Import LRC files (must happen after audio so songs exist for matching)
+      if (lrcPaths.length > 0) {
+        const lrcResult = await api.importLyricsFiles(lrcPaths);
+        if (lrcResult.matched.length > 0) {
+          // Could show a toast here
+          console.log(`Matched ${lrcResult.matched.length} lyrics file(s)`);
+        }
+        if (lrcResult.unmatched.length > 0) {
+          console.warn(`${lrcResult.unmatched.length} lyrics file(s) could not be matched to any song`);
+        }
+      }
+
       // Reload full library to get consistent state
       const songs = await api.getLibrary();
       set({ songs });

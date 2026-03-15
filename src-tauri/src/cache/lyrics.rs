@@ -84,6 +84,7 @@ fn serialize_source(source: &LyricsSource) -> &'static str {
         LyricsSource::LrcLib => "lrclib",
         LyricsSource::Embedded => "embedded",
         LyricsSource::Sidecar => "sidecar",
+        LyricsSource::Manual => "manual",
     }
 }
 
@@ -92,6 +93,7 @@ fn deserialize_source(source: &str) -> Result<LyricsSource> {
         "lrclib" => Ok(LyricsSource::LrcLib),
         "embedded" => Ok(LyricsSource::Embedded),
         "sidecar" => Ok(LyricsSource::Sidecar),
+        "manual" => Ok(LyricsSource::Manual),
         other => Err(anyhow!("unknown lyrics source {other}"))
             .with_context(|| format!("failed to deserialize lyrics source {source}")),
     }

@@ -2,6 +2,7 @@ use crate::{
     cache,
     cache::lyrics::LyricsCacheEntry,
     commands::error::{database_error, lyrics_error, CommandResult},
+    library::Song,
     library_root::LibraryRoot,
     lyrics::{self, fetch::LyricsSource, lrclib::LrcLibClient, parser::LyricLine},
     AppState,
@@ -9,6 +10,7 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
@@ -129,6 +131,143 @@ fn payload_from_cached_entry(song_id: String, cached: LyricsCacheEntry) -> Resul
         source: Some(cached.source),
         offset_ms: cached.offset_ms,
     })
+}
+
+#[tauri::command]
+pub fn save_manual_lyrics(
+    state: State<'_, AppState>,
+    song_id: String,
+    text: String,
+) -> CommandResult<LyricsPayload> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    // Try parsing as LRC first
+    let lines = match lyrics::parser::parse_lrc(&text) {
+        Ok(parsed) if !parsed.is_empty() => parsed,
+        _ => Vec::new(), // plain text — store raw but return empty lines (frontend handles display)
+    };
+
+    let fetched_at = current_unix_timestamp()
+        .map_err(|e| lyrics_error(e.to_string()))?;
+
+    cache::lyrics::upsert_lyrics_cache_entry(
+        &connection,
+        &LyricsCacheEntry {
+            song_hash: song_id.clone(),
+            lrc: text,
+            source: LyricsSource::Manual,
+            offset_ms: 0,
+            fetched_at,
+        },
+    )
+    .map_err(|e| database_error(e.to_string()))?;
+
+    Ok(LyricsPayload {
+        song_id,
+        lines,
+        source: Some(LyricsSource::Manual),
+        offset_ms: 0,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LyricsMatch {
+    pub song_hash: String,
+    pub lrc_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportLyricsResult {
+    pub matched: Vec<LyricsMatch>,
+    pub unmatched: Vec<String>,
+}
+
+#[tauri::command]
+pub fn import_lyrics_files(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> CommandResult<ImportLyricsResult> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    let all_songs = cache::list_songs(&connection)
+        .map_err(|e| database_error(e.to_string()))?;
+
+    let mut matched = Vec::new();
+    let mut unmatched = Vec::new();
+
+    for path_str in &paths {
+        let path = Path::new(path_str);
+
+        // Read LRC file content
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => {
+                unmatched.push(path_str.clone());
+                continue;
+            }
+        };
+
+        // Try filename matching first
+        let lrc_stem = path.file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase());
+
+        let mut found_song: Option<&Song> = None;
+
+        if let Some(ref stem) = lrc_stem {
+            found_song = all_songs.iter().find(|song| {
+                let song_path = Path::new(&song.file_path);
+                let song_stem = song_path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_lowercase());
+                song_stem.as_deref() == Some(stem.as_str())
+            });
+        }
+
+        // If no filename match, try metadata matching
+        if found_song.is_none() {
+            let meta = lyrics::parser::parse_lrc_metadata(&content);
+            if let (Some(ref lrc_artist), Some(ref lrc_title)) = (meta.artist, meta.title) {
+                let artist_lower = lrc_artist.to_lowercase();
+                let title_lower = lrc_title.to_lowercase();
+                found_song = all_songs.iter().find(|song| {
+                    let song_artist = song.artist.as_deref().unwrap_or("").to_lowercase();
+                    let song_title = song.title.as_deref().unwrap_or("").to_lowercase();
+                    song_artist == artist_lower && song_title == title_lower
+                });
+            }
+        }
+
+        if let Some(song) = found_song {
+            let offset_ms = lyrics::parser::parse_lrc_metadata(&content)
+                .offset_ms
+                .unwrap_or(0);
+
+            let fetched_at = current_unix_timestamp()
+                .map_err(|e| lyrics_error(e.to_string()))?;
+
+            let entry = LyricsCacheEntry {
+                song_hash: song.hash.clone(),
+                lrc: content,
+                source: LyricsSource::Manual,
+                offset_ms,
+                fetched_at,
+            };
+
+            let _ = cache::lyrics::upsert_lyrics_cache_entry(&connection, &entry);
+
+            matched.push(LyricsMatch {
+                song_hash: song.hash.clone(),
+                lrc_path: path_str.clone(),
+            });
+        } else {
+            unmatched.push(path_str.clone());
+        }
+    }
+
+    Ok(ImportLyricsResult { matched, unmatched })
 }
 
 fn current_unix_timestamp() -> Result<i64> {

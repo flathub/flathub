@@ -14,6 +14,7 @@ interface LyricsState {
   fetchLyrics: (songId: string) => Promise<void>;
   setOffset: (songId: string, ms: number) => Promise<void>;
   adjustOffset: (songId: string, deltaMs: number) => Promise<void>;
+  saveManualLyrics: (songId: string, text: string) => Promise<void>;
   setActiveLineIndex: (index: number) => void;
   clear: () => void;
 }
@@ -53,6 +54,20 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     const newOffset = get().offsetMs + deltaMs;
     await api.setLyricsOffset(songId, newOffset);
     set({ offsetMs: newOffset });
+  },
+
+  saveManualLyrics: async (songId, text) => {
+    try {
+      const payload = await api.saveManualLyrics(songId, text);
+      set({
+        songId: payload.song_id,
+        lines: payload.lines,
+        source: payload.source,
+        offsetMs: payload.offset_ms,
+      });
+    } catch (e) {
+      notifyError(e);
+    }
   },
 
   setActiveLineIndex: (index) => {
