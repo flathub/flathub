@@ -134,23 +134,23 @@
 
 ### Tasks
 
-| #   | Task                                                              | Output                         | Verify                                         |
-| --- | ----------------------------------------------------------------- | ------------------------------ | ---------------------------------------------- |
-| 5.1 | End-to-end flow: import → separate → fetch lyrics → play karaoke  | Full flow works                | Manual walkthrough: 3 different songs succeed  |
-| 5.2 | Error handling: missing lyrics, separation failure, corrupt files | Error toasts + fallback states | Bad MP3 → graceful error, not crash            |
-| 5.3 | Performance profiling: playback latency, lyrics sync jitter       | Benchmark report               | Lyrics jitter < 50ms, seek latency < 200ms     |
-| 5.4 | UI polish: transitions, loading states, responsive layout         | Visual improvements            | App looks good at 1280x800 and 1920x1080       |
-| 5.5 | Keyboard shortcuts: space = play/pause, arrows = seek ±5s         | Keybindings                    | Shortcuts work without focus issues            |
-| 5.6 | App icon, splash screen, window title                             | Assets + Tauri config          | Bundled app has proper branding                |
-| 5.7 | Update READMEs with install + usage instructions                  | Updated docs                   | New user can install and run from README alone |
-| 5.8 | Enhanced LRC parser with word-level timing (WordToken)            | Per-word highlighting          | Words highlight individually during playback   |
-| 5.9 | LRC file import with auto-matching by filename/metadata           | `import_lyrics_files` command  | Import .lrc → auto-matches to songs            |
-| 5.10| Embedded lyrics extraction from audio files                       | Extraction during import       | Songs with embedded lyrics show them on play   |
-| 5.11| Manual lyrics input dialog (LRC/plain auto-detect)               | `LyricsEditDialog` component   | User types lyrics → saved and displayed        |
-| 5.12| Song properties dialog (format, sample rate, channels, etc.)     | `SongPropertiesDialog`         | Right-click → Properties shows file details    |
-| 5.13| Volume icon click-to-mute with previous volume memory            | Mute toggle in VolumeSlider    | Click speaker icon → mute, click again → restore |
-| 5.14| Playback queue system (queue store, panel, context menu)         | Queue subsystem                | Add to queue, reorder, auto-advance works      |
-| 5.15| Skip forward/back buttons + song transition animations           | Player transport controls      | Skip buttons navigate queue, fade-in on switch |
+| #    | Task                                                              | Output                         | Verify                                           |
+| ---- | ----------------------------------------------------------------- | ------------------------------ | ------------------------------------------------ |
+| 5.1  | End-to-end flow: import → separate → fetch lyrics → play karaoke  | Full flow works                | Manual walkthrough: 3 different songs succeed    |
+| 5.2  | Error handling: missing lyrics, separation failure, corrupt files | Error toasts + fallback states | Bad MP3 → graceful error, not crash              |
+| 5.3  | Performance profiling: playback latency, lyrics sync jitter       | Benchmark report               | Lyrics jitter < 50ms, seek latency < 200ms       |
+| 5.4  | UI polish: transitions, loading states, responsive layout         | Visual improvements            | App looks good at 1280x800 and 1920x1080         |
+| 5.5  | Keyboard shortcuts: space = play/pause, arrows = seek ±5s         | Keybindings                    | Shortcuts work without focus issues              |
+| 5.6  | App icon, splash screen, window title                             | Assets + Tauri config          | Bundled app has proper branding                  |
+| 5.7  | Update READMEs with install + usage instructions                  | Updated docs                   | New user can install and run from README alone   |
+| 5.8  | Enhanced LRC parser with word-level timing (WordToken)            | Per-word highlighting          | Words highlight individually during playback     |
+| 5.9  | LRC file import with auto-matching by filename/metadata           | `import_lyrics_files` command  | Import .lrc → auto-matches to songs              |
+| 5.10 | Embedded lyrics extraction from audio files                       | Extraction during import       | Songs with embedded lyrics show them on play     |
+| 5.11 | Manual lyrics input dialog (LRC/plain auto-detect)                | `LyricsEditDialog` component   | User types lyrics → saved and displayed          |
+| 5.12 | Song properties dialog (format, sample rate, channels, etc.)      | `SongPropertiesDialog`         | Right-click → Properties shows file details      |
+| 5.13 | Volume icon click-to-mute with previous volume memory             | Mute toggle in VolumeSlider    | Click speaker icon → mute, click again → restore |
+| 5.14 | Playback queue system (queue store, panel, context menu)          | Queue subsystem                | Add to queue, reorder, auto-advance works        |
+| 5.15 | Skip forward/back buttons + song transition animations            | Player transport controls      | Skip buttons navigate queue, fade-in on switch   |
 
 ---
 

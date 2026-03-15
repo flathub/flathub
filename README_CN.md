@@ -78,12 +78,12 @@ OpenKara 使用自定义 ONNX 格式的 [Demucs htdemucs](https://github.com/fac
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — 可复现的 ONNX 模型转换流水线
 
-| 属性 | 值 |
-|------|-----|
+| 属性   | 值                                      |
+| ------ | --------------------------------------- |
 | 源模型 | `htdemucs`（Hybrid Transformer Demucs） |
-| 输入 | 44.1 kHz 立体声音频（7.8 秒分段） |
-| 输出 | 4 条音轨：鼓、贝斯、其他、人声 |
-| 格式 | ONNX（opset 17） |
+| 输入   | 44.1 kHz 立体声音频（7.8 秒分段）       |
+| 输出   | 4 条音轨：鼓、贝斯、其他、人声          |
+| 格式   | ONNX（opset 17）                        |
 
 首次启动时，OpenKara 会自动下载模型（约 80 MB）。开发环境下可运行 `./scripts/setup.sh` 手动下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线及如何从源码构建模型。
 

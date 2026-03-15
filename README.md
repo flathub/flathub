@@ -78,12 +78,12 @@ OpenKara uses a custom ONNX build of the [Demucs htdemucs](https://github.com/fa
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — Reproducible ONNX model conversion pipeline
 
-| Property | Value |
-|----------|-------|
-| Source model | `htdemucs` (Hybrid Transformer Demucs) |
-| Input | Stereo audio at 44.1 kHz (7.8s segments) |
-| Output | 4 stems: drums, bass, other, vocals |
-| Format | ONNX (opset 17) |
+| Property     | Value                                    |
+| ------------ | ---------------------------------------- |
+| Source model | `htdemucs` (Hybrid Transformer Demucs)   |
+| Input        | Stereo audio at 44.1 kHz (7.8s segments) |
+| Output       | 4 stems: drums, bass, other, vocals      |
+| Format       | ONNX (opset 17)                          |
 
 On first launch, OpenKara automatically downloads the model (~80 MB). For development, run `./scripts/setup.sh` to download it locally. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline and how to build the model from source.
 

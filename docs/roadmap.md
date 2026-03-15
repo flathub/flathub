@@ -112,19 +112,19 @@ cpal::Stream (platform-specific backend)
 
 ### Rust Crates
 
-| Crate       | Version | Purpose                            |
-| ----------- | ------- | ---------------------------------- |
-| `tauri`     | 2.x     | Desktop framework                  |
-| `symphonia` | 0.5+    | Audio decode                       |
-| `cpal`      | 0.15+   | Audio output                       |
-| `ort`       | 2.x     | ONNX Runtime binding               |
-| `lofty`     | 0.21+   | Audio tag reading                  |
-| `rusqlite`  | 0.31+   | SQLite                             |
-| `reqwest`   | 0.12+   | HTTP client (lyrics API)           |
-| `tokio`     | 1.x     | Async runtime                      |
-| `sha2`      | 0.10+   | File hashing for cache keys        |
-| `serde`     | 1.x     | Serialization                      |
-| `rubato`    | 0.15+   | Sample rate conversion (if needed) |
+| Crate       | Version | Purpose                             |
+| ----------- | ------- | ----------------------------------- |
+| `tauri`     | 2.x     | Desktop framework                   |
+| `symphonia` | 0.5+    | Audio decode                        |
+| `cpal`      | 0.15+   | Audio output                        |
+| `ort`       | 2.x     | ONNX Runtime binding                |
+| `lofty`     | 0.21+   | Audio tag reading                   |
+| `rusqlite`  | 0.31+   | SQLite                              |
+| `reqwest`   | 0.12+   | HTTP client (lyrics API)            |
+| `tokio`     | 1.x     | Async runtime                       |
+| `sha2`      | 0.10+   | File hashing for cache keys         |
+| `serde`     | 1.x     | Serialization                       |
+| `rubato`    | 0.15+   | Sample rate conversion (if needed)  |
 | `vorbis_rs` | 0.5     | OGG/Vorbis encoding for stem output |
 
 ---

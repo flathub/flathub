@@ -123,14 +123,14 @@ GET https://lrclib.net/api/get?track_name={title}&artist_name={artist}&album_nam
 
 ### Lyrics Fetch Priority
 
-| Priority | Source                  | Notes                                    |
-| -------- | ----------------------- | ---------------------------------------- |
-| 1        | LRCLIB API              | Best coverage for synced lyrics          |
-| 2        | Musixmatch API          | Wider catalog, free tier has rate limits |
-| 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag — extracted during import |
-| 4        | Sidecar .lrc file       | Same directory, same filename as audio   |
+| Priority | Source                  | Notes                                                             |
+| -------- | ----------------------- | ----------------------------------------------------------------- |
+| 1        | LRCLIB API              | Best coverage for synced lyrics                                   |
+| 2        | Musixmatch API          | Wider catalog, free tier has rate limits                          |
+| 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag — extracted during import      |
+| 4        | Sidecar .lrc file       | Same directory, same filename as audio                            |
 | 5        | LRC file import         | User imports .lrc files, auto-matched by filename or artist/title |
-| 6        | Manual input            | User-typed plain text or LRC with auto-detection |
+| 6        | Manual input            | User-typed plain text or LRC with auto-detection                  |
 
 ### Playback Sync Mechanism
 
