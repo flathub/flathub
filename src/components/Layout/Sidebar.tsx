@@ -15,16 +15,12 @@ export function Sidebar() {
   ).length;
 
   return (
-    <div className="flex w-[260px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)]">
-      {/* macOS traffic light spacing */}
+    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)]">
+      {/* Spacer for native macOS traffic light buttons */}
       <div
-        className="flex h-12 shrink-0 items-center gap-2 px-4"
+        className="h-12 shrink-0"
         data-tauri-drag-region
-      >
-        <div className="h-3 w-3 rounded-full bg-[#FF5F56] border border-[#E0443E]/50" />
-        <div className="h-3 w-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]/50" />
-        <div className="h-3 w-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/50" />
-      </div>
+      />
 
       <div className="shrink-0 px-3 pb-3">
         <SearchBox />

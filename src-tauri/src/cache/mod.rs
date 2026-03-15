@@ -211,6 +211,19 @@ pub fn get_song_by_hash(connection: &Connection, hash: &str) -> rusqlite::Result
     }
 }
 
+pub fn update_song_title_artist(
+    connection: &Connection,
+    hash: &str,
+    title: Option<&str>,
+    artist: Option<&str>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "UPDATE songs SET title = ?, artist = ? WHERE hash = ?",
+        params![title, artist, hash],
+    )?;
+    Ok(())
+}
+
 fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
     Ok(Song {
         hash: row.get(0)?,

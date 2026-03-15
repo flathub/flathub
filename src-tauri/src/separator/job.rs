@@ -10,10 +10,10 @@ use rusqlite::Connection;
 use std::path::Path;
 
 const CACHE_HIT_PROGRESS: u8 = 100;
-const LOOKUP_PROGRESS: u8 = 10;
-const DECODE_PROGRESS: u8 = 25;
-const MODEL_LOAD_PROGRESS: u8 = 45;
-const CACHE_WRITE_PROGRESS: u8 = 90;
+const LOOKUP_PROGRESS: u8 = 2;
+const DECODE_PROGRESS: u8 = 5;
+const MODEL_LOAD_PROGRESS: u8 = 10;
+const CACHE_WRITE_PROGRESS: u8 = 95;
 const COMPLETE_PROGRESS: u8 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,13 +1,15 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { LibrarySetup } from "@/components/Settings/LibrarySetup";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useLyricsStore } from "@/stores/lyrics-store";
 import { useBootstrapStore } from "@/stores/bootstrap-store";
 import { useLyricsSync } from "@/hooks/use-lyrics-sync";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFileDrop } from "@/hooks/use-file-drop";
+import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import type {
   PlaybackPositionEvent,
@@ -27,7 +29,10 @@ function App() {
     api
       .getLibraryPath()
       .then((path) => setLibraryReady(path !== null))
-      .catch(() => setLibraryReady(false));
+      .catch((e) => {
+        notifyError(e);
+        setLibraryReady(false);
+      });
   }, []);
 
   // Load initial data once library is ready
@@ -41,6 +46,9 @@ function App() {
 
   // Set up all Tauri event listeners
   useEventListeners();
+
+  // Auto-fetch lyrics when song changes
+  useLyricsAutoFetch();
 
   // Activate lyrics sync rAF loop
   useLyricsSync();
@@ -68,6 +76,19 @@ function App() {
   return <AppLayout />;
 }
 
+function useLyricsAutoFetch() {
+  const songId = usePlayerStore((s) => s.snapshot?.song_id) ?? undefined;
+  const fetchLyrics = useLyricsStore((s) => s.fetchLyrics);
+  const prevSongIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (songId && songId !== prevSongIdRef.current) {
+      fetchLyrics(songId);
+    }
+    prevSongIdRef.current = songId;
+  }, [songId, fetchLyrics]);
+}
+
 function useEventListeners() {
   const updatePosition = usePlayerStore((s) => s.updatePosition);
   const updateSeparationStatus = useLibraryStore(
@@ -75,28 +96,13 @@ function useEventListeners() {
   );
   const updateBootstrapStatus = useBootstrapStore((s) => s.updateStatus);
   const loadStems = usePlayerStore((s) => s.loadStems);
-  const currentSongId = usePlayerStore((s) => s.snapshot?.song_id);
 
-  // Stable reference for separation completion handler
-  const handleSeparationComplete = useCallback(
-    (event: SeparationCompleteEvent) => {
-      updateSeparationStatus({
-        song_id: event.song_id,
-        state: "completed",
-        percent: 100,
-        cache_hit: false,
-        vocals_path: null,
-        accomp_path: null,
-        error: null,
-      });
-
-      // Auto-load stems into playback if the separated song is currently playing
-      if (event.song_id === currentSongId) {
-        loadStems().catch(console.error);
-      }
-    },
-    [updateSeparationStatus, loadStems, currentSongId],
-  );
+  // Use a ref for currentSongId to avoid re-creating listeners on every song change
+  const currentSongIdRef = useRef<string | undefined>(undefined);
+  const currentSongId = usePlayerStore((s) => s.snapshot?.song_id) ?? undefined;
+  useEffect(() => {
+    currentSongIdRef.current = currentSongId;
+  }, [currentSongId]);
 
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
@@ -129,22 +135,41 @@ function useEventListeners() {
       const u3 = await listen<SeparationCompleteEvent>(
         "separation-complete",
         (e) => {
-          if (!cancelled) handleSeparationComplete(e.payload);
-        },
-      );
-
-      const u4 = await listen<SeparationErrorEvent>("separation-error", (e) => {
-        if (!cancelled)
+          if (cancelled) return;
           updateSeparationStatus({
             song_id: e.payload.song_id,
-            state: "failed",
-            percent: 0,
+            state: "completed",
+            percent: 100,
             cache_hit: false,
             vocals_path: null,
             accomp_path: null,
-            error: e.payload.error,
+            error: null,
           });
-      });
+
+          // Auto-load stems if the separated song is currently playing
+          if (e.payload.song_id === currentSongIdRef.current) {
+            loadStems().catch((err) => notifyError(err));
+          }
+        },
+      );
+
+      const u4 = await listen<SeparationErrorEvent>(
+        "separation-error",
+        (e) => {
+          if (!cancelled) {
+            updateSeparationStatus({
+              song_id: e.payload.song_id,
+              state: "failed",
+              percent: 0,
+              cache_hit: false,
+              vocals_path: null,
+              accomp_path: null,
+              error: e.payload.error,
+            });
+            notifyError(e.payload.error);
+          }
+        },
+      );
 
       const u5 = await listen<ModelBootstrapStatusSnapshot>(
         "model-bootstrap-progress",
@@ -180,12 +205,7 @@ function useEventListeners() {
       cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [
-    updatePosition,
-    updateSeparationStatus,
-    handleSeparationComplete,
-    updateBootstrapStatus,
-  ]);
+  }, [updatePosition, updateSeparationStatus, loadStems, updateBootstrapStatus]);
 }
 
 export default App;

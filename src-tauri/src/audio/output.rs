@@ -47,6 +47,8 @@ pub fn render_output_buffer(
     playback: &mut PlaybackController,
     now_ms: u64,
     output: &mut [f32],
+    device_sample_rate: u32,
+    device_channels: usize,
 ) -> usize {
     output.fill(0.0);
 
@@ -64,25 +66,64 @@ pub fn render_output_buffer(
 
     if let Some(loaded_stems) = &track.stems {
         let rendered = match loaded_stems {
-            LoadedStems::TwoStem { vocals, accompaniment } => {
-                let sample_rate = vocals.sample_rate as u64;
-                let start_frame = (snapshot.position_ms * sample_rate / 1000) as usize;
-                // In 2-stem mode, use drums volume as the accompaniment volume
-                // (the frontend sets drums/bass/other to the same value when collapsed)
+            LoadedStems::TwoStem {
+                vocals,
+                accompaniment,
+            } => {
                 let accomp_gain = sv.drums;
                 let mut rendered = 0;
-                rendered = rendered.max(mix_stem_into(output, vocals, start_frame, master * sv.vocals));
-                rendered = rendered.max(mix_stem_into(output, accompaniment, start_frame, master * accomp_gain));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    vocals,
+                    snapshot.position_ms,
+                    master * sv.vocals,
+                    device_sample_rate,
+                    device_channels,
+                ));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    accompaniment,
+                    snapshot.position_ms,
+                    master * accomp_gain,
+                    device_sample_rate,
+                    device_channels,
+                ));
                 rendered
             }
             LoadedStems::FourStem(stems) => {
-                let sample_rate = stems.vocals.sample_rate as u64;
-                let start_frame = (snapshot.position_ms * sample_rate / 1000) as usize;
                 let mut rendered = 0;
-                rendered = rendered.max(mix_stem_into(output, &stems.vocals, start_frame, master * sv.vocals));
-                rendered = rendered.max(mix_stem_into(output, &stems.drums, start_frame, master * sv.drums));
-                rendered = rendered.max(mix_stem_into(output, &stems.bass, start_frame, master * sv.bass));
-                rendered = rendered.max(mix_stem_into(output, &stems.other, start_frame, master * sv.other));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    &stems.vocals,
+                    snapshot.position_ms,
+                    master * sv.vocals,
+                    device_sample_rate,
+                    device_channels,
+                ));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    &stems.drums,
+                    snapshot.position_ms,
+                    master * sv.drums,
+                    device_sample_rate,
+                    device_channels,
+                ));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    &stems.bass,
+                    snapshot.position_ms,
+                    master * sv.bass,
+                    device_sample_rate,
+                    device_channels,
+                ));
+                rendered = rendered.max(mix_stem_resampled(
+                    output,
+                    &stems.other,
+                    snapshot.position_ms,
+                    master * sv.other,
+                    device_sample_rate,
+                    device_channels,
+                ));
                 rendered
             }
         };
@@ -96,38 +137,78 @@ pub fn render_output_buffer(
     } else {
         // Fallback: play original audio with master volume
         let original = &track.original_audio;
-        let start_frame =
-            (snapshot.position_ms * original.sample_rate as u64 / 1000) as usize;
-        let start_sample = start_frame * original.channels;
-        let available = original.samples.len().saturating_sub(start_sample);
-        let count = available.min(output.len());
-
-        for i in 0..count {
-            output[i] = original.samples[start_sample + i] * master;
-        }
-
-        count
+        mix_stem_resampled(
+            output,
+            original,
+            snapshot.position_ms,
+            master,
+            device_sample_rate,
+            device_channels,
+        )
     }
 }
 
-fn mix_stem_into(
+/// Mix a single audio source into the output buffer with sample-rate conversion
+/// and channel mapping. Uses linear interpolation for resampling.
+fn mix_stem_resampled(
     output: &mut [f32],
     audio: &DecodedAudio,
-    start_frame: usize,
+    position_ms: u64,
     gain: f32,
+    device_sample_rate: u32,
+    device_channels: usize,
 ) -> usize {
     if gain == 0.0 {
         return 0;
     }
-    let start_sample = start_frame * audio.channels;
-    let available = audio.samples.len().saturating_sub(start_sample);
-    let count = available.min(output.len());
 
-    for i in 0..count {
-        output[i] += audio.samples[start_sample + i] * gain;
+    let src_rate = audio.sample_rate as f64;
+    let dst_rate = device_sample_rate as f64;
+    let src_channels = audio.channels;
+    let total_src_frames = audio.samples.len() / src_channels;
+
+    // Calculate the source frame corresponding to the current playback position
+    let src_start_frame = (position_ms as f64 * src_rate / 1000.0) as usize;
+    if src_start_frame >= total_src_frames {
+        return 0;
     }
 
-    count
+    let output_frames = output.len() / device_channels;
+    let rate_ratio = src_rate / dst_rate;
+    let mut written = 0;
+
+    for out_frame in 0..output_frames {
+        // Map output frame to source frame with fractional position
+        let src_pos = src_start_frame as f64 + out_frame as f64 * rate_ratio;
+        let src_frame_lo = src_pos as usize;
+
+        if src_frame_lo >= total_src_frames {
+            break;
+        }
+
+        let can_interpolate = src_frame_lo + 1 < total_src_frames;
+        let frac = (src_pos - src_frame_lo as f64) as f32;
+
+        for out_ch in 0..device_channels {
+            let src_ch = if out_ch < src_channels {
+                out_ch
+            } else {
+                out_ch % src_channels
+            };
+            let idx_lo = src_frame_lo * src_channels + src_ch;
+            let sample = if can_interpolate && frac > 0.0 {
+                let idx_hi = (src_frame_lo + 1) * src_channels + src_ch;
+                audio.samples[idx_lo] * (1.0 - frac) + audio.samples[idx_hi] * frac
+            } else {
+                audio.samples[idx_lo]
+            };
+            output[out_frame * device_channels + out_ch] += sample * gain;
+        }
+
+        written = (out_frame + 1) * device_channels;
+    }
+
+    written
 }
 
 fn build_output_stream<T>(
@@ -139,6 +220,7 @@ where
     T: SizedSample + Sample + cpal::FromSample<f32>,
 {
     let channels = config.channels as usize;
+    let sample_rate = config.sample_rate.0;
 
     let stream = device.build_output_stream(
         config,
@@ -146,8 +228,13 @@ where
             let mut scratch = vec![0.0_f32; data.len()];
 
             if let Ok(mut controller) = playback.lock() {
-                let rendered_samples =
-                    render_output_buffer(&mut controller, monotonic_now_ms(), &mut scratch);
+                let rendered_samples = render_output_buffer(
+                    &mut controller,
+                    monotonic_now_ms(),
+                    &mut scratch,
+                    sample_rate,
+                    channels,
+                );
 
                 if rendered_samples < scratch.len() {
                     scratch[rendered_samples..].fill(0.0);
@@ -158,7 +245,8 @@ where
 
             for frame in scratch.chunks(channels).zip(data.chunks_mut(channels)) {
                 let (input_frame, output_frame) = frame;
-                for (input_sample, output_sample) in input_frame.iter().zip(output_frame.iter_mut())
+                for (input_sample, output_sample) in
+                    input_frame.iter().zip(output_frame.iter_mut())
                 {
                     *output_sample = T::from_sample(*input_sample);
                 }

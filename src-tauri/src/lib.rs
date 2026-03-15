@@ -146,6 +146,7 @@ pub fn run() {
             commands::import::import_songs,
             commands::import::get_library,
             commands::import::search_library,
+            commands::import::update_song_metadata,
             commands::library_setup::create_library,
             commands::library_setup::open_library,
             commands::library_setup::get_library_path,

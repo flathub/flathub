@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useLibraryStore } from "@/stores/library-store";
 import { usePlayerStore } from "@/stores/player-store";
-import { useLyricsStore } from "@/stores/lyrics-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { formatDuration } from "@/lib/format";
 import * as api from "@/lib/tauri";
+import { notifyError } from "@/lib/errors";
+import { ContextMenu } from "./ContextMenu";
+import { SongEditDialog } from "./SongEditDialog";
 import type { Song } from "@/types/ipc";
 
 interface SongListItemProps {
@@ -18,7 +22,10 @@ export function SongListItem({ song }: SongListItemProps) {
   );
   const snapshot = usePlayerStore((s) => s.snapshot);
   const playSong = usePlayerStore((s) => s.playSong);
-  const fetchLyrics = useLyricsStore((s) => s.fetchLyrics);
+  const closeSettings = useSettingsStore((s) => s.close);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const isSelected = selectedSongId === song.hash;
   const isCurrentPlaying =
@@ -27,19 +34,26 @@ export function SongListItem({ song }: SongListItemProps) {
 
   const handleDoubleClick = () => {
     playSong(song.hash);
-    fetchLyrics(song.hash);
+    closeSettings();
   };
 
   const handleSeparate = (e: React.MouseEvent) => {
     e.stopPropagation();
-    api.separate(song.hash);
+    api.separate(song.hash).catch((err) => notifyError(err));
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setSelectedSongId(song.hash);
+    setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   return (
     <div
       onClick={() => setSelectedSongId(song.hash)}
       onDoubleClick={handleDoubleClick}
-      className={`group relative flex cursor-default select-none flex-col justify-center rounded-md px-3 py-1.5 ${
+      onContextMenu={handleContextMenu}
+      className={`group relative flex cursor-default select-none flex-col justify-center rounded-md px-3 py-1.5 transition-colors duration-150 ${
         isSelected
           ? "bg-[var(--color-accent)] text-white"
           : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
@@ -114,6 +128,27 @@ export function SongListItem({ song }: SongListItemProps) {
           {song.artist || "Unknown Artist"}
         </span>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            {
+              label: "Edit Info",
+              onClick: () => setEditDialogOpen(true),
+            },
+          ]}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {editDialogOpen && (
+        <SongEditDialog
+          song={song}
+          onClose={() => setEditDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

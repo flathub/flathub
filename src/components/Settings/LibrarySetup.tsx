@@ -19,10 +19,11 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
     if (!selected) return;
 
+    const libraryDir = `${selected}/OpenKara`;
     setLoading(true);
     setError(null);
     try {
-      await api.createLibrary(selected);
+      await api.createLibrary(libraryDir);
       onComplete();
     } catch (err: unknown) {
       const message =

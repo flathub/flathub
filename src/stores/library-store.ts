@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
+import { notifyError } from "@/lib/errors";
 import type {
   ImportFailure,
   SeparationStatusSnapshot,
@@ -21,6 +22,11 @@ interface LibraryState {
   searchSongs: (query: string) => Promise<void>;
   setSelectedSongId: (id: string | null) => void;
   setFilter: (filter: "all" | "separated") => void;
+  updateSongMetadata: (
+    hash: string,
+    title: string | null,
+    artist: string | null,
+  ) => Promise<void>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearImportErrors: () => void;
 }
@@ -35,8 +41,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   filter: "all",
 
   loadLibrary: async () => {
-    const songs = await api.getLibrary();
-    set({ songs });
+    try {
+      const songs = await api.getLibrary();
+      set({ songs });
+    } catch (e) {
+      notifyError(e);
+    }
   },
 
   importFiles: async (paths) => {
@@ -45,10 +55,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const result = await api.importSongs(paths);
       if (result.failed.length > 0) {
         set({ importErrors: result.failed });
+        for (const failure of result.failed) {
+          notifyError(failure.error);
+        }
       }
       // Reload full library to get consistent state
       const songs = await api.getLibrary();
       set({ songs });
+    } catch (e) {
+      notifyError(e);
     } finally {
       set({ isImporting: false });
     }
@@ -64,13 +79,30 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   searchSongs: async (query) => {
-    const songs = await api.searchLibrary(query);
-    set({ songs });
+    try {
+      const songs = await api.searchLibrary(query);
+      set({ songs });
+    } catch (e) {
+      notifyError(e);
+    }
   },
 
   setSelectedSongId: (id) => set({ selectedSongId: id }),
 
   setFilter: (filter) => set({ filter }),
+
+  updateSongMetadata: async (hash, title, artist) => {
+    try {
+      const updated = await api.updateSongMetadata(hash, title, artist);
+      set((state) => ({
+        songs: state.songs.map((s) =>
+          s.hash === hash ? { ...s, title: updated.title, artist: updated.artist } : s,
+        ),
+      }));
+    } catch (e) {
+      notifyError(e);
+    }
+  },
 
   updateSeparationStatus: (status) => {
     set((state) => ({

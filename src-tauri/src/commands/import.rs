@@ -74,6 +74,29 @@ pub fn get_library_from_connection(connection: &Connection) -> rusqlite::Result<
     cache::list_songs(connection)
 }
 
+#[tauri::command]
+pub fn update_song_metadata(
+    state: State<'_, AppState>,
+    hash: String,
+    title: Option<String>,
+    artist: Option<String>,
+) -> CommandResult<Song> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    cache::update_song_title_artist(
+        &connection,
+        &hash,
+        title.as_deref(),
+        artist.as_deref(),
+    )
+    .map_err(|e| database_error(e.to_string()))?;
+
+    cache::get_song_by_hash(&connection, &hash)
+        .map_err(|e| database_error(e.to_string()))?
+        .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
+}
+
 /// Hash the source file, copy it into the library's media directory, and build
 /// a `Song` whose `file_path` is the *relative* path `media/{hash}.{ext}`.
 fn build_and_store_song(source: &Path, library: &LibraryRoot) -> Result<Song> {

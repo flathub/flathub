@@ -1,9 +1,17 @@
 import { useEffect } from "react";
 import { usePlayerStore } from "@/stores/player-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // CMD+, (macOS) / Ctrl+, (other) → toggle settings
+      if (e.key === "," && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        useSettingsStore.getState().toggle();
+        return;
+      }
+
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||

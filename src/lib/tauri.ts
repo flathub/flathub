@@ -38,6 +38,14 @@ export function searchLibrary(query: string): Promise<Song[]> {
   return invoke<Song[]>("search_library", { query });
 }
 
+export function updateSongMetadata(
+  hash: string,
+  title: string | null,
+  artist: string | null,
+): Promise<Song> {
+  return invoke<Song>("update_song_metadata", { hash, title, artist });
+}
+
 // ─── Playback ────────────────────────────────────────────
 
 export function play(songId: string): Promise<PlaybackStateSnapshot> {

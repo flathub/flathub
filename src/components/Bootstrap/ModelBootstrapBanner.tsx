@@ -8,7 +8,7 @@ export function ModelBootstrapBanner() {
   if (!status || status.state === "ready") return null;
 
   return (
-    <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-sidebar)] px-4 py-3">
+    <div className="animate-expand shrink-0 border-b border-[var(--color-border)] bg-[var(--color-sidebar)] px-4 py-3">
       {status.state === "pending" && (
         <div className="flex items-center justify-between">
           <span className="text-[12px] text-[var(--color-text)]">

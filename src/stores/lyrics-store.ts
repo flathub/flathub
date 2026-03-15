@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
+import { notifyError } from "@/lib/errors";
 import type { LyricLine, LyricsSource } from "@/types/ipc";
 
 interface LyricsState {
@@ -35,7 +36,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         source: payload.source,
         offsetMs: payload.offset_ms,
       });
-    } catch {
+    } catch (e) {
+      notifyError(e);
       set({ lines: [], source: null });
     } finally {
       set({ isLoading: false });

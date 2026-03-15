@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Mic2, Music, ChevronDown, Drum, Guitar, Piano } from "lucide-react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
@@ -11,12 +11,16 @@ export function VolumeSliders() {
 
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const stemVolumes = snapshot?.stem_volumes ?? {
-    vocals: 1,
-    drums: 1,
-    bass: 1,
-    other: 1,
-  };
+  const stemVolumes = useMemo(
+    () =>
+      snapshot?.stem_volumes ?? {
+        vocals: 1,
+        drums: 1,
+        bass: 1,
+        other: 1,
+      },
+    [snapshot?.stem_volumes],
+  );
   const hasStems = snapshot?.has_stems ?? false;
   const stemMode = snapshot?.stem_mode ?? null;
   const songId = snapshot?.song_id;

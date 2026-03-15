@@ -1,7 +1,6 @@
 # Homebrew Cask Packaging
 
-This directory holds the backend-owned scaffolding for shipping OpenKara through
-Homebrew.
+This directory holds the scaffolding for shipping OpenKara through Homebrew.
 
 Why cask instead of formula:
 
@@ -9,18 +8,22 @@ Why cask instead of formula:
 - Homebrew Formula is a poor fit for GUI app installation.
 - Homebrew Cask is the supported path for distributing signed `.dmg` assets.
 
-Files:
+## Files
 
 - `openkara.rb.template`: template for the tap repository cask file
+- `auto-update-openkara.yml`: GitHub Actions workflow for the tap repo — auto-detects new OpenKara releases and updates the cask
 
-Typical release flow:
+## Automated Release Flow
 
-1. Build and publish the macOS release assets on GitHub Releases.
-2. Compute the SHA-256 for the Apple Silicon and Intel `.dmg` files.
-3. Run `scripts/render-homebrew-cask.sh` with the release version, URLs, and
-   checksums.
-4. Copy the rendered `openkara.rb` into the Homebrew tap repository.
-5. Run `brew audit --cask --strict ./openkara.rb` inside the tap repo.
+The release is fully automated and decoupled:
 
-The tap repository is still external to this workspace. This directory exists so
-future maintainers do not have to reconstruct the cask format from memory.
+1. **OpenKara repo**: Manually trigger the Release workflow → builds all platforms → publishes GitHub Release
+2. **Tap repo** (`thedavidweng/homebrew-tap`): Runs `auto-update-openkara.yml` every 6 hours (or on manual trigger) → detects new release → downloads DMGs → computes SHA-256 → updates `Casks/openkara.rb` → commits and pushes
+
+## Tap Repo Setup
+
+To set up the tap repo for auto-updates:
+
+1. Copy `auto-update-openkara.yml` to `thedavidweng/homebrew-tap/.github/workflows/`
+2. Ensure GitHub Actions is enabled on the tap repo
+3. The workflow uses the default `GITHUB_TOKEN` — no additional secrets needed
