@@ -128,6 +128,9 @@ function useEventListeners() {
               cache_hit: false,
               vocals_path: null,
               accomp_path: null,
+              drums_path: null,
+              bass_path: null,
+              other_path: null,
               error: null,
             });
         },
@@ -137,15 +140,24 @@ function useEventListeners() {
         "separation-complete",
         (e) => {
           if (cancelled) return;
-          updateSeparationStatus({
-            song_id: e.payload.song_id,
-            state: "completed",
-            percent: 100,
-            cache_hit: false,
-            vocals_path: null,
-            accomp_path: null,
-            error: null,
-          });
+          // Fetch the real status to get stem paths for display.
+          api
+            .getSeparationStatus(e.payload.song_id)
+            .then((status) => updateSeparationStatus(status))
+            .catch(() =>
+              updateSeparationStatus({
+                song_id: e.payload.song_id,
+                state: "completed",
+                percent: 100,
+                cache_hit: false,
+                vocals_path: null,
+                accomp_path: null,
+                drums_path: null,
+                bass_path: null,
+                other_path: null,
+                error: null,
+              }),
+            );
 
           // Auto-load stems if the separated song is currently playing
           if (e.payload.song_id === currentSongIdRef.current) {
@@ -165,6 +177,9 @@ function useEventListeners() {
               cache_hit: false,
               vocals_path: null,
               accomp_path: null,
+              drums_path: null,
+              bass_path: null,
+              other_path: null,
               error: e.payload.error,
             });
             notifyError(e.payload.error);

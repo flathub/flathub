@@ -10,6 +10,7 @@ interface PlayerState {
   positionMs: number;
 
   playSong: (songId: string) => Promise<void>;
+  playNow: (songId: string) => Promise<void>;
   pause: () => Promise<void>;
   seek: (ms: number) => Promise<void>;
   setVolume: (level: number) => Promise<void>;
@@ -51,6 +52,26 @@ export const usePlayerStore = create<PlayerState>((set, _get) => ({
       }
     } catch (e) {
       notifyError(e, () => usePlayerStore.getState().playSong(songId));
+    }
+  },
+
+  playNow: async (songId) => {
+    try {
+      const newSnapshot = await api.play(songId);
+      set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
+
+      // Auto-load stems if separation was previously completed
+      const sepStatus = useLibraryStore.getState().separationStatuses[songId];
+      if (sepStatus?.state === "completed" && !newSnapshot.has_stems) {
+        try {
+          const updated = await api.loadStems();
+          set({ snapshot: updated });
+        } catch {
+          // Stems loading failed silently
+        }
+      }
+    } catch (e) {
+      notifyError(e, () => usePlayerStore.getState().playNow(songId));
     }
   },
 

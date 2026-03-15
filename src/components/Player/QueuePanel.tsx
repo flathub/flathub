@@ -45,7 +45,7 @@ export function QueuePanel() {
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-toolbar)]">
+    <div className="flex w-[280px] shrink-0 h-full flex-col border-l border-[var(--color-border)] bg-[var(--color-toolbar)]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2">
         <span className="text-[13px] font-medium text-[#EBEBF5]">
@@ -67,7 +67,7 @@ export function QueuePanel() {
       </div>
 
       {/* Queue list */}
-      <div className="custom-scrollbar max-h-[240px] overflow-y-auto">
+      <div className="custom-scrollbar flex-1 overflow-y-auto">
         {queue.length === 0 ? (
           <div className="flex items-center justify-center py-8">
             <span className="text-[13px] text-[var(--color-text-dimmer)]">

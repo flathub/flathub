@@ -12,6 +12,7 @@ export function LyricsPanel() {
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
   const offsetMs = useLyricsStore((s) => s.offsetMs);
   const isLoading = useLyricsStore((s) => s.isLoading);
+  const rawLrc = useLyricsStore((s) => s.rawLrc);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const adjustedMs = positionMs - offsetMs;
@@ -69,7 +70,7 @@ export function LyricsPanel() {
             open={editOpen}
             onClose={() => setEditOpen(false)}
             songId={songId}
-            existingLyrics={lines.map((l) => l.text).join("\n")}
+            existingLyrics={rawLrc || undefined}
           />
         </>
       )}

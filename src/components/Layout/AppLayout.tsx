@@ -23,6 +23,12 @@ export function AppLayout() {
     "animate-slide-out-left",
   );
 
+  const queueSidebar = useAnimatedPresence(
+    queueOpen,
+    "animate-slide-in-right",
+    "animate-slide-out-right",
+  );
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
       {sidebar.shouldRender && (
@@ -44,14 +50,23 @@ export function AppLayout() {
           sidebarVisible={sidebarVisible}
         />
 
-        <div className="relative flex flex-1 flex-col overflow-hidden">
+        <div className="relative flex flex-1 overflow-hidden">
           {settingsOpen ? (
             <SettingsOverlay />
           ) : (
             <>
-              <ModelBootstrapBanner />
-              <LyricsPanel />
-              {queueOpen && <QueuePanel />}
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <ModelBootstrapBanner />
+                <LyricsPanel />
+              </div>
+              {queueSidebar.shouldRender && (
+                <div
+                  className={`h-full ${queueSidebar.className}`}
+                  onAnimationEnd={queueSidebar.onAnimationEnd}
+                >
+                  <QueuePanel />
+                </div>
+              )}
             </>
           )}
         </div>

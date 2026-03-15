@@ -8,6 +8,7 @@ interface LyricsState {
   lines: LyricLine[];
   source: LyricsSource | null;
   offsetMs: number;
+  rawLrc: string;
   activeLineIndex: number;
   isLoading: boolean;
 
@@ -24,11 +25,12 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   lines: [],
   source: null,
   offsetMs: 0,
+  rawLrc: "",
   activeLineIndex: -1,
   isLoading: false,
 
   fetchLyrics: async (songId) => {
-    set({ isLoading: true, lines: [], source: null, activeLineIndex: -1 });
+    set({ isLoading: true, lines: [], source: null, rawLrc: "", activeLineIndex: -1 });
     try {
       const payload = await api.fetchLyrics(songId);
       set({
@@ -36,10 +38,11 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         lines: payload.lines,
         source: payload.source,
         offsetMs: payload.offset_ms,
+        rawLrc: payload.raw_lrc,
       });
     } catch (e) {
       notifyError(e);
-      set({ lines: [], source: null });
+      set({ lines: [], source: null, rawLrc: "" });
     } finally {
       set({ isLoading: false });
     }
@@ -64,6 +67,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         lines: payload.lines,
         source: payload.source,
         offsetMs: payload.offset_ms,
+        rawLrc: payload.raw_lrc,
       });
     } catch (e) {
       notifyError(e);
@@ -82,6 +86,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       lines: [],
       source: null,
       offsetMs: 0,
+      rawLrc: "",
       activeLineIndex: -1,
     }),
 }));

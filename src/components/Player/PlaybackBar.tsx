@@ -47,6 +47,8 @@ export function PlaybackBar() {
           <button
             onClick={handleMasterMuteToggle}
             className="text-[var(--color-text-dim)] transition-colors hover:text-white"
+            title={volume === 0 ? "Unmute" : "Mute"}
+            aria-label={volume === 0 ? "Unmute" : "Mute"}
           >
             {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
@@ -57,6 +59,8 @@ export function PlaybackBar() {
             value={Math.round(volume * 100)}
             onChange={(e) => setVolume(Number(e.target.value) / 100)}
             className="native-slider w-20"
+            title="Volume"
+            aria-label="Volume"
           />
         </div>
       </div>

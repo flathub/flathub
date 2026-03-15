@@ -1,7 +1,7 @@
 use crate::{
     cache,
     commands::error::{separation_error, state_lock_error, CommandError, CommandResult},
-    config::StemMode,
+    config::{self, StemMode},
     separator, AppState,
 };
 use serde::Serialize;
@@ -85,6 +85,11 @@ pub fn separate(
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let worker_song_id = song_id.clone();
     let worker_app_handle = app_handle.clone();
+    let stem_mode = config::load_config(&state.app_data_dir)
+        .ok()
+        .flatten()
+        .map(|c| c.effective_stem_mode())
+        .unwrap_or_default();
 
     tauri::async_runtime::spawn(async move {
         let worker_library_root = library_root.clone();
@@ -100,7 +105,7 @@ pub fn separate(
                 &worker_library_root,
                 &worker_model_path,
                 &worker_song_id,
-                StemMode::default(),
+                stem_mode,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     if let Ok(mut statuses) = worker_statuses.lock() {
@@ -239,6 +244,136 @@ pub fn upgrade_to_four_stem(
                 &worker_model_path,
                 &worker_song_id,
                 StemMode::FourStem,
+                |percent| {
+                    let snapshot = running_status(&progress_song_id, percent);
+                    if let Ok(mut statuses) = worker_statuses.lock() {
+                        statuses.insert(progress_song_id.clone(), snapshot);
+                    }
+                    let _ = progress_app_handle.emit(
+                        SEPARATION_PROGRESS_EVENT,
+                        SeparationProgressEvent {
+                            song_id: progress_song_id.clone(),
+                            percent,
+                        },
+                    );
+                },
+            )
+        })
+        .await;
+
+        match result {
+            Ok(Ok(artifacts)) => {
+                let completed = completed_status(
+                    &song_id,
+                    artifacts.vocals_path,
+                    artifacts.accomp_path,
+                    artifacts.cache_hit,
+                    artifacts.drums_path,
+                    artifacts.bass_path,
+                    artifacts.other_path,
+                );
+                if let Ok(mut statuses) = separation_statuses.lock() {
+                    statuses.insert(song_id.clone(), completed);
+                }
+                let _ = app_handle.emit(
+                    SEPARATION_COMPLETE_EVENT,
+                    SeparationCompleteEvent {
+                        song_id: song_id.clone(),
+                    },
+                );
+            }
+            Ok(Err(error)) => {
+                let command_error = separation_error(error.to_string());
+                let failed = failed_status(&song_id, command_error.clone());
+                if let Ok(mut statuses) = separation_statuses.lock() {
+                    statuses.insert(song_id.clone(), failed);
+                }
+                let _ = app_handle.emit(
+                    SEPARATION_ERROR_EVENT,
+                    SeparationErrorEvent {
+                        song_id: song_id.clone(),
+                        error: command_error,
+                    },
+                );
+            }
+            Err(error) => {
+                let command_error = separation_error(error.to_string());
+                let failed = failed_status(&song_id, command_error.clone());
+                if let Ok(mut statuses) = separation_statuses.lock() {
+                    statuses.insert(song_id.clone(), failed);
+                }
+                let _ = app_handle.emit(
+                    SEPARATION_ERROR_EVENT,
+                    SeparationErrorEvent {
+                        song_id: song_id.clone(),
+                        error: command_error,
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(initial_status)
+}
+
+#[tauri::command]
+pub fn re_separate(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    song_id: String,
+    stem_mode: StemMode,
+) -> CommandResult<SeparationStatusSnapshot> {
+    crate::commands::bootstrap::ensure_model_ready(&state.model_bootstrap_status)?;
+
+    // Clear existing cache entry and stem files.
+    {
+        let library_root = state.library_root()?;
+        let connection = cache::open_database(&library_root.database_path())
+            .map_err(|e| separation_error(e.to_string()))?;
+        let _ = cache::stems::delete_stem_cache_entry(&connection, &library_root, &song_id);
+    }
+
+    // Remove in-memory status so the song appears idle before re-separation starts.
+    {
+        let mut statuses = state
+            .separation_statuses
+            .lock()
+            .map_err(|_| state_lock_error("separation status lock was poisoned"))?;
+        statuses.remove(&song_id);
+    }
+
+    let initial_status = {
+        let mut statuses = state
+            .separation_statuses
+            .lock()
+            .map_err(|_| state_lock_error("separation status lock was poisoned"))?;
+
+        let status = running_status(&song_id, 0);
+        statuses.insert(song_id.clone(), status.clone());
+        status
+    };
+
+    let library_root = state.library_root()?;
+    let model_path = state.model_path.clone();
+    let separation_statuses = Arc::clone(&state.separation_statuses);
+    let worker_song_id = song_id.clone();
+    let worker_app_handle = app_handle.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let worker_library_root = library_root.clone();
+        let worker_model_path = model_path.clone();
+        let worker_statuses = Arc::clone(&separation_statuses);
+        let progress_song_id = worker_song_id.clone();
+        let progress_app_handle = worker_app_handle.clone();
+
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let connection = cache::open_database(&worker_library_root.database_path())?;
+            separator::job::separate_song_into_cache(
+                &connection,
+                &worker_library_root,
+                &worker_model_path,
+                &worker_song_id,
+                stem_mode,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     if let Ok(mut statuses) = worker_statuses.lock() {

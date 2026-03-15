@@ -14,11 +14,12 @@ import type { Song } from "@/types/ipc";
 
 interface SongListItemProps {
   song: Song;
+  orderedHashes: string[];
 }
 
-export function SongListItem({ song }: SongListItemProps) {
-  const selectedSongId = useLibraryStore((s) => s.selectedSongId);
-  const setSelectedSongId = useLibraryStore((s) => s.setSelectedSongId);
+export function SongListItem({ song, orderedHashes }: SongListItemProps) {
+  const selectedSongIds = useLibraryStore((s) => s.selectedSongIds);
+  const selectSong = useLibraryStore((s) => s.selectSong);
   const separationStatus = useLibraryStore(
     (s) => s.separationStatuses[song.hash],
   );
@@ -30,7 +31,7 @@ export function SongListItem({ song }: SongListItemProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
 
-  const isSelected = selectedSongId === song.hash;
+  const isSelected = selectedSongIds.has(song.hash);
   const isCurrentPlaying =
     snapshot?.song_id === song.hash && snapshot?.is_playing;
   const sepState = separationStatus?.state ?? "idle";
@@ -52,13 +53,16 @@ export function SongListItem({ song }: SongListItemProps) {
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setSelectedSongId(song.hash);
+    // If right-clicking on a non-selected song, select only that song
+    if (!selectedSongIds.has(song.hash)) {
+      selectSong(song.hash, { shiftKey: false, metaKey: false, ctrlKey: false }, orderedHashes);
+    }
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   return (
     <div
-      onClick={() => setSelectedSongId(song.hash)}
+      onClick={(e) => selectSong(song.hash, { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey }, orderedHashes)}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       className={`group relative flex cursor-default select-none flex-col justify-center rounded-md px-3 py-1.5 transition-colors duration-150 ${
@@ -105,8 +109,8 @@ export function SongListItem({ song }: SongListItemProps) {
               <span>{separationStatus?.percent ?? 0}%</span>
             </div>
           )}
-          {sepState === "completed" && !isSelected && (
-            <span className="text-[11px] text-[var(--color-text-dim)]">
+          {sepState === "completed" && (
+            <span className={`text-[11px] ${isSelected ? "text-white/70" : "text-[var(--color-text-dim)]"}`}>
               {formatDuration(song.duration_ms)}
             </span>
           )}
@@ -142,6 +146,10 @@ export function SongListItem({ song }: SongListItemProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           items={[
+            {
+              label: "Play Now",
+              onClick: () => usePlayerStore.getState().playNow(song.hash),
+            },
             {
               label: "Play Next",
               onClick: () => useQueueStore.getState().playNext(song.hash),

@@ -140,3 +140,7 @@ export function setStemMode(mode: string): Promise<AppSettings> {
 export function upgradeToFourStem(songId: string): Promise<SeparationStatusSnapshot> {
   return invoke<SeparationStatusSnapshot>("upgrade_to_four_stem", { songId });
 }
+
+export function reSeparate(songId: string, stemMode: string): Promise<SeparationStatusSnapshot> {
+  return invoke<SeparationStatusSnapshot>("re_separate", { songId, stemMode });
+}

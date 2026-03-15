@@ -61,13 +61,28 @@ export function SeekBar() {
       <span>{formatDuration(displayMs)}</span>
       <div
         ref={barRef}
-        className="flex-1 h-1.5 cursor-pointer rounded-full bg-[var(--color-border)]"
+        className="group relative flex-1 h-1.5 cursor-pointer rounded-full bg-[var(--color-border)]"
         onMouseDown={handleMouseDown}
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={durationMs}
+        aria-valuenow={Math.round(displayMs)}
+        aria-valuetext={formatDuration(displayMs)}
       >
         <div
-          className="h-full rounded-full bg-[var(--color-text-dim)] transition-colors hover:bg-white"
+          className={`relative h-full rounded-full transition-colors ${
+            isDragging ? "bg-white" : "bg-[var(--color-text-dim)] group-hover:bg-white"
+          }`}
           style={{ width: `${displayPercent}%` }}
-        />
+        >
+          {/* Playhead dot — visible on hover and during drag */}
+          <div
+            className={`absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-sm transition-opacity ${
+              isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+          />
+        </div>
       </div>
       <span>{formatDuration(durationMs)}</span>
     </div>

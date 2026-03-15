@@ -20,6 +20,7 @@ pub struct LyricsPayload {
     pub lines: Vec<LyricLine>,
     pub source: Option<LyricsSource>,
     pub offset_ms: i64,
+    pub raw_lrc: String,
 }
 
 #[tauri::command]
@@ -73,12 +74,14 @@ pub fn fetch_lyrics_from_connection(
             lines: Vec::new(),
             source: None,
             offset_ms: 0,
+            raw_lrc: String::new(),
         });
     };
 
     let lines = lyrics::parser::parse_lrc(&fetched.raw_lrc)
         .with_context(|| format!("failed to parse synced lyrics for song {song_id}"))?;
     let source = fetched.source;
+    let raw_lrc = fetched.raw_lrc.clone();
     cache::lyrics::upsert_lyrics_cache_entry(
         connection,
         &LyricsCacheEntry {
@@ -96,6 +99,7 @@ pub fn fetch_lyrics_from_connection(
         lines,
         source: Some(source),
         offset_ms: 0,
+        raw_lrc,
     })
 }
 
@@ -122,14 +126,19 @@ pub fn set_lyrics_offset_in_connection(
 }
 
 fn payload_from_cached_entry(song_id: String, cached: LyricsCacheEntry) -> Result<LyricsPayload> {
-    let lines = lyrics::parser::parse_lrc(&cached.lrc)
+    let mut lines = lyrics::parser::parse_lrc(&cached.lrc)
         .with_context(|| format!("failed to parse cached synced lyrics for song {song_id}"))?;
+
+    if lines.is_empty() {
+        lines = plain_text_to_lines(&cached.lrc);
+    }
 
     Ok(LyricsPayload {
         song_id,
         lines,
         source: Some(cached.source),
         offset_ms: cached.offset_ms,
+        raw_lrc: cached.lrc,
     })
 }
 
@@ -145,8 +154,10 @@ pub fn save_manual_lyrics(
     // Try parsing as LRC first
     let lines = match lyrics::parser::parse_lrc(&text) {
         Ok(parsed) if !parsed.is_empty() => parsed,
-        _ => Vec::new(), // plain text — store raw but return empty lines (frontend handles display)
+        _ => plain_text_to_lines(&text),
     };
+
+    let raw_lrc = text.clone();
 
     let fetched_at = current_unix_timestamp()
         .map_err(|e| lyrics_error(e.to_string()))?;
@@ -168,6 +179,7 @@ pub fn save_manual_lyrics(
         lines,
         source: Some(LyricsSource::Manual),
         offset_ms: 0,
+        raw_lrc,
     })
 }
 
@@ -268,6 +280,19 @@ pub fn import_lyrics_files(
     }
 
     Ok(ImportLyricsResult { matched, unmatched })
+}
+
+/// Convert plain text (no LRC timestamps) into `LyricLine` entries with
+/// `time_ms: 0` so the frontend can display them as unsynced lyrics.
+fn plain_text_to_lines(text: &str) -> Vec<LyricLine> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| LyricLine {
+            time_ms: 0,
+            text: l.to_string(),
+            words: None,
+        })
+        .collect()
 }
 
 fn current_unix_timestamp() -> Result<i64> {

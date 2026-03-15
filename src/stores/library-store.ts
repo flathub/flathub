@@ -12,7 +12,8 @@ interface LibraryState {
   searchQuery: string;
   isImporting: boolean;
   importErrors: ImportFailure[];
-  selectedSongId: string | null;
+  selectedSongIds: Set<string>;
+  lastClickedSongId: string | null;
   separationStatuses: Record<string, SeparationStatusSnapshot>;
   filter: "all" | "separated";
 
@@ -20,7 +21,12 @@ interface LibraryState {
   importFiles: (paths: string[]) => Promise<void>;
   setSearchQuery: (query: string) => void;
   searchSongs: (query: string) => Promise<void>;
-  setSelectedSongId: (id: string | null) => void;
+  selectSong: (
+    songId: string,
+    event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+    orderedHashes?: string[],
+  ) => void;
+  clearSelection: () => void;
   setFilter: (filter: "all" | "separated") => void;
   updateSongMetadata: (
     hash: string,
@@ -36,7 +42,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   searchQuery: "",
   isImporting: false,
   importErrors: [],
-  selectedSongId: null,
+  selectedSongIds: new Set<string>(),
+  lastClickedSongId: null,
   separationStatuses: {},
   filter: "all",
 
@@ -120,7 +127,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  setSelectedSongId: (id) => set({ selectedSongId: id }),
+  selectSong: (songId, event, orderedHashes) => {
+    const { selectedSongIds, lastClickedSongId } = get();
+
+    if (event.shiftKey && lastClickedSongId && orderedHashes) {
+      // Range selection
+      const startIdx = orderedHashes.indexOf(lastClickedSongId);
+      const endIdx = orderedHashes.indexOf(songId);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const from = Math.min(startIdx, endIdx);
+        const to = Math.max(startIdx, endIdx);
+        const rangeIds = orderedHashes.slice(from, to + 1);
+        const newSet = new Set(selectedSongIds);
+        for (const id of rangeIds) {
+          newSet.add(id);
+        }
+        set({ selectedSongIds: newSet });
+      }
+    } else if (event.metaKey || event.ctrlKey) {
+      // Toggle selection
+      const newSet = new Set(selectedSongIds);
+      if (newSet.has(songId)) {
+        newSet.delete(songId);
+      } else {
+        newSet.add(songId);
+      }
+      set({ selectedSongIds: newSet, lastClickedSongId: songId });
+    } else {
+      // Normal click: select only this one
+      set({
+        selectedSongIds: new Set([songId]),
+        lastClickedSongId: songId,
+      });
+    }
+  },
+
+  clearSelection: () =>
+    set({ selectedSongIds: new Set(), lastClickedSongId: null }),
 
   setFilter: (filter) => set({ filter }),
 

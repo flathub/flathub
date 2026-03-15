@@ -126,6 +126,9 @@ export interface SeparationStatusSnapshot {
   cache_hit: boolean;
   vocals_path: string | null;
   accomp_path: string | null;
+  drums_path: string | null;
+  bass_path: string | null;
+  other_path: string | null;
   error: CommandError | null;
 }
 
@@ -163,6 +166,7 @@ export interface LyricsPayload {
   lines: LyricLine[];
   source: LyricsSource | null;
   offset_ms: number;
+  raw_lrc: string;
 }
 
 // ─── Model Bootstrap ────────────────────────────────────

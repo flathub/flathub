@@ -290,6 +290,30 @@ fn cache_entry_files_exist(library_root: &LibraryRoot, entry: &StemCacheEntry) -
     true
 }
 
+pub fn delete_stem_cache_entry(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+    song_hash: &str,
+) -> Result<()> {
+    // Delete the row from the database.
+    connection
+        .execute("DELETE FROM stems WHERE song_hash = ?1", params![song_hash])
+        .context("failed to delete stem cache entry from database")?;
+
+    // Remove the stem files from disk.
+    let dir = stem_directory(&library_root.stems_dir(), song_hash);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).with_context(|| {
+            format!(
+                "failed to remove stem cache directory at {}",
+                dir.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
 fn ensure_song_exists(connection: &Connection, song_hash: &str) -> Result<()> {
     let exists: bool = connection
         .query_row(

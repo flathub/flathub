@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import {
   Mic2,
-  MicOff,
   Music,
   ChevronDown,
   Drum,
@@ -106,13 +105,7 @@ export function VolumeSliders() {
     <div className="flex items-center gap-5">
       {/* Vocals slider */}
       <StemSlider
-        icon={
-          stemVolumes.vocals === 0 ? (
-            <MicOff size={14} />
-          ) : (
-            <Mic2 size={14} />
-          )
-        }
+        icon={<Mic2 size={14} />}
         label="Vocals"
         value={stemVolumes.vocals}
         onChange={(v) => handleStemChange("vocals", v)}
@@ -186,8 +179,10 @@ function StemSlider({
   onIconClick?: () => void;
   disabled?: boolean;
 }) {
+  const muteLabel = value === 0 ? `Unmute ${label.toLowerCase()}` : `Mute ${label.toLowerCase()}`;
+
   return (
-    <div className="flex items-center gap-2" title={label}>
+    <div className="flex items-center gap-2">
       <button
         onClick={onIconClick}
         disabled={disabled || !onIconClick}
@@ -196,6 +191,8 @@ function StemSlider({
             ? "text-[#EBEBF5] hover:text-white"
             : "text-[var(--color-text-dimmer)]"
         } ${onIconClick && !disabled ? "cursor-pointer" : "cursor-default"}`}
+        title={onIconClick ? muteLabel : label}
+        aria-label={onIconClick ? muteLabel : label}
       >
         {icon}
       </button>
@@ -207,6 +204,8 @@ function StemSlider({
         onChange={(e) => onChange(Number(e.target.value) / 100)}
         className="native-slider w-16"
         disabled={disabled}
+        title={label}
+        aria-label={label}
       />
     </div>
   );

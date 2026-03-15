@@ -12,6 +12,8 @@ export function SongList() {
       ? songs.filter((s) => separationStatuses[s.hash]?.state === "completed")
       : songs;
 
+  const orderedHashes = filteredSongs.map((s) => s.hash);
+
   if (filteredSongs.length === 0) {
     return <EmptyLibrary />;
   }
@@ -19,7 +21,7 @@ export function SongList() {
   return (
     <div className="custom-scrollbar flex-1 space-y-0.5 overflow-y-auto">
       {filteredSongs.map((song) => (
-        <SongListItem key={song.hash} song={song} />
+        <SongListItem key={song.hash} song={song} orderedHashes={orderedHashes} />
       ))}
     </div>
   );

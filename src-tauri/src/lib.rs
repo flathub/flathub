@@ -166,6 +166,7 @@ pub fn run() {
             commands::separation::get_separation_status,
             commands::separation::get_all_separation_statuses,
             commands::separation::upgrade_to_four_stem,
+            commands::separation::re_separate,
             commands::settings::get_settings,
             commands::settings::set_stem_mode
         ])

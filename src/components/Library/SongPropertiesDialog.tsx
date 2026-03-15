@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as api from "@/lib/tauri";
 import { formatDuration, formatBytes } from "@/lib/format";
+import { useLibraryStore } from "@/stores/library-store";
 import type { Song, SongProperties } from "@/types/ipc";
 
 interface SongPropertiesDialogProps {
@@ -54,6 +55,8 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const separationStatuses = useLibraryStore((s) => s.separationStatuses);
+  const sepStatus = separationStatuses[song.hash];
 
   useEffect(() => {
     api
@@ -169,6 +172,38 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
                 title={properties.hash}
                 mono
               />
+              <div className="flex items-baseline gap-3 py-1.5">
+                <span className="w-28 shrink-0 text-[12px] text-[var(--color-text-dim)]">
+                  Separation
+                </span>
+                <span className="flex items-center gap-2 text-[12px] text-white">
+                  {(!sepStatus || sepStatus.state === "idle") && "Not separated"}
+                  {sepStatus?.state === "running" && "Separating\u2026"}
+                  {sepStatus?.state === "failed" && "Failed"}
+                  {sepStatus?.state === "completed" &&
+                    (sepStatus.drums_path ? "4-stem" : "2-stem")}
+                  {sepStatus?.state === "completed" && !sepStatus.drums_path && (
+                    <button
+                      onClick={() => {
+                        api.upgradeToFourStem(song.hash).catch(() => {});
+                      }}
+                      className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+                    >
+                      Upgrade to 4-stem
+                    </button>
+                  )}
+                  {sepStatus?.state === "completed" && sepStatus.drums_path && (
+                    <button
+                      onClick={() => {
+                        api.reSeparate(song.hash, "two_stem").catch(() => {});
+                      }}
+                      className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+                    >
+                      Re-separate as 2-stem
+                    </button>
+                  )}
+                </span>
+              </div>
             </div>
           )}
         </div>
