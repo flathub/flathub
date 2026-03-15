@@ -72,6 +72,21 @@ pnpm tauri dev
 - 重新生成全平台图标：`pnpm icons:generate`
 - 生成产物会写入 `src-tauri/icons/`，用于 Tauri 桌面端以及未来可能的移动端目标
 
+## AI 模型
+
+OpenKara 使用自定义 ONNX 格式的 [Demucs htdemucs](https://github.com/facebookresearch/demucs) 模型进行音轨分离。该模型由独立仓库维护：
+
+**[openkara-models](https://github.com/thedavidweng/openkara-models)** — 可复现的 ONNX 模型转换流水线
+
+| 属性 | 值 |
+|------|-----|
+| 源模型 | `htdemucs`（Hybrid Transformer Demucs） |
+| 输入 | 44.1 kHz 立体声音频（7.8 秒分段） |
+| 输出 | 4 条音轨：鼓、贝斯、其他、人声 |
+| 格式 | ONNX（opset 17） |
+
+首次启动时，OpenKara 会自动下载模型（约 80 MB）。开发环境下可运行 `./scripts/setup.sh` 手动下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线及如何从源码构建模型。
+
 ## 技术栈
 
 | 层级     | 技术                                                                             | 用途                         |
@@ -253,6 +268,8 @@ pnpm tauri build             # 生产构建，生成平台特定安装包
 ## 致谢
 
 - [Demucs](https://github.com/adefossez/demucs) — Meta Research 的 AI 音轨分离模型
+- [openkara-models](https://github.com/thedavidweng/openkara-models) — OpenKara 的 ONNX 模型转换流水线
+- [demucs.onnx](https://github.com/sevagh/demucs.onnx) — STFT/ISTFT 实值 ONNX 转换参考
 - [LRCLIB](https://lrclib.net) — 开放的同步歌词 API
 - [monochrome](https://github.com/monochrome-music/monochrome) — 歌词同步与 LRCLIB 集成方案参考
 
