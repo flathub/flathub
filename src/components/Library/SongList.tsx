@@ -21,7 +21,11 @@ export function SongList() {
   return (
     <div className="custom-scrollbar flex-1 space-y-0.5 overflow-y-auto">
       {filteredSongs.map((song) => (
-        <SongListItem key={song.hash} song={song} orderedHashes={orderedHashes} />
+        <SongListItem
+          key={song.hash}
+          song={song}
+          orderedHashes={orderedHashes}
+        />
       ))}
     </div>
   );

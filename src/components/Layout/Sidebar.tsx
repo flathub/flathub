@@ -38,15 +38,14 @@ export function Sidebar() {
     api.cancelBatchSeparation().catch(notifyError);
   };
 
-  const isBatchRunning = batchSeparation != null && batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
+  const isBatchRunning =
+    batchSeparation != null &&
+    batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
   return (
     <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)]">
       {/* Spacer for native macOS traffic light buttons */}
-      <div
-        className="h-12 shrink-0"
-        data-tauri-drag-region
-      />
+      <div className="h-12 shrink-0" data-tauri-drag-region />
 
       <div className="shrink-0 px-3 pb-3">
         <SearchBox />
@@ -113,7 +112,13 @@ export function Sidebar() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-[var(--color-text-dim)]">
-                {t("sidebar.separating", { current: Math.min(batchSeparation.completed + 1, batchSeparation.total), total: batchSeparation.total })}
+                {t("sidebar.separating", {
+                  current: Math.min(
+                    batchSeparation.completed + 1,
+                    batchSeparation.total,
+                  ),
+                  total: batchSeparation.total,
+                })}
               </span>
               <button
                 onClick={handleCancelBatch}
@@ -141,9 +146,13 @@ export function Sidebar() {
         ) : batchSeparation != null ? (
           // Completed/cancelled state (shown briefly before clearing)
           <div className="text-center text-[11px] text-[var(--color-text-dim)]">
-            {t("sidebar.separationComplete", { done: batchSeparation.completed })}
-            {batchSeparation.skipped > 0 && `, ${t("sidebar.skipped", { count: batchSeparation.skipped })}`}
-            {batchSeparation.failed > 0 && `, ${t("sidebar.failed", { count: batchSeparation.failed })}`}
+            {t("sidebar.separationComplete", {
+              done: batchSeparation.completed,
+            })}
+            {batchSeparation.skipped > 0 &&
+              `, ${t("sidebar.skipped", { count: batchSeparation.skipped })}`}
+            {batchSeparation.failed > 0 &&
+              `, ${t("sidebar.failed", { count: batchSeparation.failed })}`}
           </div>
         ) : (
           <button
@@ -154,7 +163,11 @@ export function Sidebar() {
             <Layers size={12} />
             {t("sidebar.separateAll")}
             <span className="text-[10px] text-[var(--color-text-dimmer)]">
-              ({stemMode === "four_stem" ? t("sidebar.fourStem") : t("sidebar.twoStem")})
+              (
+              {stemMode === "four_stem"
+                ? t("sidebar.fourStem")
+                : t("sidebar.twoStem")}
+              )
             </span>
           </button>
         )}

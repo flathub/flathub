@@ -28,8 +28,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
       await api.createLibrary(libraryDir);
       onComplete();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
       setLoading(false);
@@ -50,8 +49,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
       await api.openLibrary(selected);
       onComplete();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
       setLoading(false);
@@ -65,7 +63,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15">
             <Music size={32} className="text-[var(--color-accent)]" />
           </div>
-          <h1 className="text-2xl font-bold text-white">{t("setup.welcome")}</h1>
+          <h1 className="text-2xl font-bold text-white">
+            {t("setup.welcome")}
+          </h1>
           <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
             {t("setup.description")}
           </p>
@@ -108,9 +108,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           </button>
         </div>
 
-        {error && (
-          <p className="text-[13px] text-red-400">{error}</p>
-        )}
+        {error && <p className="text-[13px] text-red-400">{error}</p>}
 
         {loading && (
           <p className="text-[13px] text-[var(--color-text-dim)]">

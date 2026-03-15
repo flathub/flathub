@@ -1,13 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Mic2,
-  Music,
-  ChevronDown,
-  Drum,
-  Guitar,
-  Piano,
-} from "lucide-react";
+import { Mic2, Music, ChevronDown, Drum, Guitar, Piano } from "lucide-react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -129,7 +122,9 @@ export function VolumeSliders() {
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex h-4 w-4 items-center justify-center text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
-            title={isExpanded ? t("stems.collapseStems") : t("stems.expandStems")}
+            title={
+              isExpanded ? t("stems.collapseStems") : t("stems.expandStems")
+            }
           >
             <ChevronDown
               size={12}
@@ -182,7 +177,10 @@ function StemSlider({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  const muteLabel = value === 0 ? t("stems.unmute", { stem: label }) : t("stems.mute", { stem: label });
+  const muteLabel =
+    value === 0
+      ? t("stems.unmute", { stem: label })
+      : t("stems.mute", { stem: label });
 
   return (
     <div className="flex items-center gap-2">

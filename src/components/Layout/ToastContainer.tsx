@@ -35,7 +35,10 @@ function Toast({ notification }: { notification: Notification }) {
     <div
       className={`animate-slide-up flex items-start gap-2.5 rounded-lg border bg-[var(--color-sidebar)] px-3 py-2.5 shadow-lg ${BORDER_MAP[notification.type]}`}
     >
-      <Icon size={14} className={`mt-0.5 shrink-0 ${COLOR_MAP[notification.type]}`} />
+      <Icon
+        size={14}
+        className={`mt-0.5 shrink-0 ${COLOR_MAP[notification.type]}`}
+      />
 
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-medium text-white">

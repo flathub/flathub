@@ -29,7 +29,10 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const playSong = usePlayerStore((s) => s.playSong);
   const closeSettings = useSettingsStore((s) => s.close);
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
 
@@ -57,14 +60,24 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
     e.preventDefault();
     // If right-clicking on a non-selected song, select only that song
     if (!selectedSongIds.has(song.hash)) {
-      selectSong(song.hash, { shiftKey: false, metaKey: false, ctrlKey: false }, orderedHashes);
+      selectSong(
+        song.hash,
+        { shiftKey: false, metaKey: false, ctrlKey: false },
+        orderedHashes,
+      );
     }
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   return (
     <div
-      onClick={(e) => selectSong(song.hash, { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey }, orderedHashes)}
+      onClick={(e) =>
+        selectSong(
+          song.hash,
+          { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey },
+          orderedHashes,
+        )
+      }
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       className={`group relative flex cursor-default select-none flex-col justify-center rounded-md px-3 py-1.5 transition-colors duration-150 ${
@@ -112,7 +125,9 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             </div>
           )}
           {sepState === "completed" && (
-            <span className={`text-[11px] ${isSelected ? "text-white/70" : "text-[var(--color-text-dim)]"}`}>
+            <span
+              className={`text-[11px] ${isSelected ? "text-white/70" : "text-[var(--color-text-dim)]"}`}
+            >
               {formatDuration(song.duration_ms)}
             </span>
           )}
@@ -151,7 +166,9 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             selectedSongIds.size > 1 && isSelected
               ? [
                   {
-                    label: t("library.queueAllSelected", { count: selectedSongIds.size }),
+                    label: t("library.queueAllSelected", {
+                      count: selectedSongIds.size,
+                    }),
                     onClick: () => {
                       const queue = useQueueStore.getState();
                       for (const id of selectedSongIds) {
@@ -160,7 +177,9 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     },
                   },
                   {
-                    label: t("library.separateAllSelected", { count: selectedSongIds.size }),
+                    label: t("library.separateAllSelected", {
+                      count: selectedSongIds.size,
+                    }),
                     onClick: () => {
                       api
                         .batchSeparate([...selectedSongIds])
@@ -171,13 +190,11 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               : [
                   {
                     label: t("library.playNow"),
-                    onClick: () =>
-                      usePlayerStore.getState().playNow(song.hash),
+                    onClick: () => usePlayerStore.getState().playNow(song.hash),
                   },
                   {
                     label: t("library.playNext"),
-                    onClick: () =>
-                      useQueueStore.getState().playNext(song.hash),
+                    onClick: () => useQueueStore.getState().playNext(song.hash),
                   },
                   {
                     label: t("library.addToQueue"),
@@ -187,9 +204,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                   {
                     label: t("library.extractEmbeddedLyrics"),
                     onClick: () => {
-                      api
-                        .extractEmbeddedLyrics(song.hash)
-                        .catch(notifyError);
+                      api.extractEmbeddedLyrics(song.hash).catch(notifyError);
                     },
                   },
                   {
@@ -207,10 +222,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
       )}
 
       {editDialogOpen && (
-        <SongEditDialog
-          song={song}
-          onClose={() => setEditDialogOpen(false)}
-        />
+        <SongEditDialog song={song} onClose={() => setEditDialogOpen(false)} />
       )}
 
       {propertiesDialogOpen && (

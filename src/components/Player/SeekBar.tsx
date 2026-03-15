@@ -74,7 +74,9 @@ export function SeekBar() {
       >
         <div
           className={`relative h-full rounded-full transition-colors ${
-            isDragging ? "bg-white" : "bg-[var(--color-text-dim)] group-hover:bg-white"
+            isDragging
+              ? "bg-white"
+              : "bg-[var(--color-text-dim)] group-hover:bg-white"
           }`}
           style={{ width: `${displayPercent}%` }}
         >

@@ -32,7 +32,11 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     try {
       const { snapshot } = usePlayerStore.getState();
       // If another song is currently playing, add to queue instead
-      if (snapshot?.is_playing && snapshot?.song_id && snapshot.song_id !== songId) {
+      if (
+        snapshot?.is_playing &&
+        snapshot?.song_id &&
+        snapshot.song_id !== songId
+      ) {
         useQueueStore.getState().addToQueue(songId);
         return;
       }

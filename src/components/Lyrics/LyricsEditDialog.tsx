@@ -43,7 +43,9 @@ export function LyricsEditDialog({
       }}
     >
       <div className="flex w-full max-w-lg flex-col gap-4 rounded-xl border border-[#3A3A3C] bg-[#1C1C1E] p-6 shadow-2xl">
-        <h2 className="text-[15px] font-semibold text-white">{t("lyrics.editLyrics")}</h2>
+        <h2 className="text-[15px] font-semibold text-white">
+          {t("lyrics.editLyrics")}
+        </h2>
 
         <textarea
           value={text}

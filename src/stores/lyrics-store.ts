@@ -30,7 +30,13 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   isLoading: false,
 
   fetchLyrics: async (songId) => {
-    set({ isLoading: true, lines: [], source: null, rawLrc: "", activeLineIndex: -1 });
+    set({
+      isLoading: true,
+      lines: [],
+      source: null,
+      rawLrc: "",
+      activeLineIndex: -1,
+    });
     try {
       const payload = await api.fetchLyrics(songId);
       set({

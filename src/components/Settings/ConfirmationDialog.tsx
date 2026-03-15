@@ -38,10 +38,7 @@ export function ConfirmationDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={onCancel}
-      />
+      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
 
       {/* Dialog */}
       <div className="relative w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-6 shadow-xl">

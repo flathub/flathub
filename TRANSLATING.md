@@ -17,11 +17,10 @@ OpenKara uses [react-i18next](https://react.i18next.com/) with static JSON trans
    Open your new file and translate every JSON value. Do **not** change any keys.
 
 3. **Register the language in `src/lib/i18n.ts`**
-
    - Import the new JSON file:
 
      ```ts
-     import ja from '@/locales/ja.json';
+     import ja from "@/locales/ja.json";
      ```
 
    - Add it to the `resources` object in the `i18next.init()` call:
@@ -38,9 +37,9 @@ OpenKara uses [react-i18next](https://react.i18next.com/) with static JSON trans
 
      ```ts
      export const SUPPORTED_LANGUAGES = [
-       { code: 'en', name: 'English' },
-       { code: 'zh-CN', name: '简体中文' },
-       { code: 'ja', name: '日本語' },   // <- add this
+       { code: "en", name: "English" },
+       { code: "zh-CN", name: "简体中文" },
+       { code: "ja", name: "日本語" }, // <- add this
      ] as const;
      ```
 
@@ -83,15 +82,15 @@ Translation files use a flat namespace of feature areas. Here's what each sectio
 
 Use [BCP 47](https://www.rfc-editor.org/info/bcp47) language tags. Examples:
 
-| Code    | Language               |
-| ------- | ---------------------- |
-| `en`    | English                |
-| `zh-CN` | Simplified Chinese     |
-| `ja`    | Japanese               |
-| `ko`    | Korean                 |
-| `fr`    | French                 |
-| `de`    | German                 |
-| `es`    | Spanish                |
-| `pt-BR` | Brazilian Portuguese   |
+| Code    | Language             |
+| ------- | -------------------- |
+| `en`    | English              |
+| `zh-CN` | Simplified Chinese   |
+| `ja`    | Japanese             |
+| `ko`    | Korean               |
+| `fr`    | French               |
+| `de`    | German               |
+| `es`    | Spanish              |
+| `pt-BR` | Brazilian Portuguese |
 
 Use the shortest code that uniquely identifies the language. Add a region subtag only when necessary to distinguish variants (e.g., `pt-BR` vs `pt-PT`).

@@ -45,7 +45,10 @@ function PropertyRow({ label, value, title, mono }: PropertyRowProps) {
   );
 }
 
-export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProps) {
+export function SongPropertiesDialog({
+  song,
+  onClose,
+}: SongPropertiesDialogProps) {
   const { t } = useTranslation();
   const [properties, setProperties] = useState<SongProperties | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,7 +68,7 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
         setError(err?.message ?? t("songProperties.failedToLoad"));
         setLoading(false);
       });
-  }, [song.hash]);
+  }, [song.hash, t]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -88,7 +91,9 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
       <div className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-3">
-          <h3 className="text-[14px] font-semibold text-white">{t("songProperties.title")}</h3>
+          <h3 className="text-[14px] font-semibold text-white">
+            {t("songProperties.title")}
+          </h3>
           <button
             onClick={onClose}
             className="rounded p-0.5 text-[var(--color-text-dim)] transition-colors hover:text-white"
@@ -135,7 +140,10 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
 
           {properties && (
             <div className="divide-y divide-[var(--color-border)]/50">
-              <PropertyRow label={t("songProperties.format")} value={properties.format} />
+              <PropertyRow
+                label={t("songProperties.format")}
+                value={properties.format}
+              />
               <PropertyRow
                 label={t("songProperties.duration")}
                 value={formatDuration(properties.duration_ms)}
@@ -149,7 +157,15 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
               {properties.channels != null && (
                 <PropertyRow
                   label={t("songProperties.channels")}
-                  value={properties.channels === 1 ? t("songProperties.channelsMono") : properties.channels === 2 ? t("songProperties.channelsStereo") : t("songProperties.channelsOther", { count: properties.channels })}
+                  value={
+                    properties.channels === 1
+                      ? t("songProperties.channelsMono")
+                      : properties.channels === 2
+                        ? t("songProperties.channelsStereo")
+                        : t("songProperties.channelsOther", {
+                            count: properties.channels,
+                          })
+                  }
                 />
               )}
               {properties.bit_rate != null && (
@@ -173,21 +189,27 @@ export function SongPropertiesDialog({ song, onClose }: SongPropertiesDialogProp
                   {t("songProperties.separation")}
                 </span>
                 <span className="flex items-center gap-2 text-[12px] text-white">
-                  {(!sepStatus || sepStatus.state === "idle") && t("songProperties.notSeparated")}
-                  {sepStatus?.state === "running" && t("songProperties.separating")}
-                  {sepStatus?.state === "failed" && t("songProperties.separationFailed")}
+                  {(!sepStatus || sepStatus.state === "idle") &&
+                    t("songProperties.notSeparated")}
+                  {sepStatus?.state === "running" &&
+                    t("songProperties.separating")}
+                  {sepStatus?.state === "failed" &&
+                    t("songProperties.separationFailed")}
                   {sepStatus?.state === "completed" &&
-                    (sepStatus.drums_path ? t("songProperties.fourStem") : t("songProperties.twoStem"))}
-                  {sepStatus?.state === "completed" && !sepStatus.drums_path && (
-                    <button
-                      onClick={() => {
-                        api.upgradeToFourStem(song.hash).catch(() => {});
-                      }}
-                      className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
-                    >
-                      {t("songProperties.upgradeToFourStem")}
-                    </button>
-                  )}
+                    (sepStatus.drums_path
+                      ? t("songProperties.fourStem")
+                      : t("songProperties.twoStem"))}
+                  {sepStatus?.state === "completed" &&
+                    !sepStatus.drums_path && (
+                      <button
+                        onClick={() => {
+                          api.upgradeToFourStem(song.hash).catch(() => {});
+                        }}
+                        className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+                      >
+                        {t("songProperties.upgradeToFourStem")}
+                      </button>
+                    )}
                   {sepStatus?.state === "completed" && sepStatus.drums_path && (
                     <button
                       onClick={() => {

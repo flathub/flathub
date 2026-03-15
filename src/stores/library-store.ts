@@ -101,7 +101,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           console.log(`Matched ${lrcResult.matched.length} lyrics file(s)`);
         }
         if (lrcResult.unmatched.length > 0) {
-          console.warn(`${lrcResult.unmatched.length} lyrics file(s) could not be matched to any song`);
+          console.warn(
+            `${lrcResult.unmatched.length} lyrics file(s) could not be matched to any song`,
+          );
         }
       }
 
@@ -178,7 +180,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const updated = await api.updateSongMetadata(hash, title, artist);
       set((state) => ({
         songs: state.songs.map((s) =>
-          s.hash === hash ? { ...s, title: updated.title, artist: updated.artist } : s,
+          s.hash === hash
+            ? { ...s, title: updated.title, artist: updated.artist }
+            : s,
         ),
       }));
     } catch (e) {

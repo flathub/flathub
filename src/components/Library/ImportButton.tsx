@@ -7,7 +7,16 @@ interface ImportButtonProps {
   children: ReactNode;
 }
 
-const AUDIO_EXTENSIONS = ["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "lrc"];
+const AUDIO_EXTENSIONS = [
+  "mp3",
+  "flac",
+  "wav",
+  "ogg",
+  "m4a",
+  "aac",
+  "wma",
+  "lrc",
+];
 
 export function ImportButton({ children }: ImportButtonProps) {
   const importFiles = useLibraryStore((s) => s.importFiles);

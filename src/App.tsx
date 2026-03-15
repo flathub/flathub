@@ -44,10 +44,13 @@ function App() {
       loadLibrary();
       loadBootstrapStatus();
       usePlayerStore.getState().loadState();
-      api.getSettings().then((settings) => {
-        const lang = settings.language ?? detectSystemLanguage();
-        i18next.changeLanguage(lang);
-      }).catch(() => {});
+      api
+        .getSettings()
+        .then((settings) => {
+          const lang = settings.language ?? detectSystemLanguage();
+          i18next.changeLanguage(lang);
+        })
+        .catch(() => {});
     }
   }, [libraryReady, loadLibrary, loadBootstrapStatus]);
 
@@ -174,26 +177,23 @@ function useEventListeners() {
         },
       );
 
-      const u4 = await listen<SeparationErrorEvent>(
-        "separation-error",
-        (e) => {
-          if (!cancelled) {
-            updateSeparationStatus({
-              song_id: e.payload.song_id,
-              state: "failed",
-              percent: 0,
-              cache_hit: false,
-              vocals_path: null,
-              accomp_path: null,
-              drums_path: null,
-              bass_path: null,
-              other_path: null,
-              error: e.payload.error,
-            });
-            notifyError(e.payload.error);
-          }
-        },
-      );
+      const u4 = await listen<SeparationErrorEvent>("separation-error", (e) => {
+        if (!cancelled) {
+          updateSeparationStatus({
+            song_id: e.payload.song_id,
+            state: "failed",
+            percent: 0,
+            cache_hit: false,
+            vocals_path: null,
+            accomp_path: null,
+            drums_path: null,
+            bass_path: null,
+            other_path: null,
+            error: e.payload.error,
+          });
+          notifyError(e.payload.error);
+        }
+      });
 
       const u5 = await listen<ModelBootstrapStatusSnapshot>(
         "model-bootstrap-progress",
@@ -216,14 +216,11 @@ function useEventListeners() {
         },
       );
 
-      const u8 = await listen<PlaybackEndedEvent>(
-        "playback-ended",
-        (e) => {
-          if (!cancelled) {
-            usePlayerStore.getState().playNextFromQueue(e.payload.song_id);
-          }
-        },
-      );
+      const u8 = await listen<PlaybackEndedEvent>("playback-ended", (e) => {
+        if (!cancelled) {
+          usePlayerStore.getState().playNextFromQueue(e.payload.song_id);
+        }
+      });
 
       const u9 = await listen<BatchSeparationProgress>(
         "batch-separation-progress",
@@ -266,7 +263,14 @@ function useEventListeners() {
       cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [updatePosition, updateSeparationStatus, updateBatchProgress, clearBatchSeparation, loadStems, updateBootstrapStatus]);
+  }, [
+    updatePosition,
+    updateSeparationStatus,
+    updateBatchProgress,
+    clearBatchSeparation,
+    loadStems,
+    updateBootstrapStatus,
+  ]);
 }
 
 export default App;

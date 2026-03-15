@@ -16,10 +16,7 @@ function isCommandError(err: unknown): err is CommandError {
   );
 }
 
-export function notifyError(
-  error: unknown,
-  retryAction?: () => void,
-) {
+export function notifyError(error: unknown, retryAction?: () => void) {
   const store = useNotificationStore.getState();
 
   if (isCommandError(error)) {
@@ -34,8 +31,7 @@ export function notifyError(
     return;
   }
 
-  const message =
-    error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
 
   store.addNotification({
     type: "error",

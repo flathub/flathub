@@ -106,7 +106,9 @@ export function getAllSeparationStatuses(): Promise<
 
 // ─── Lyrics ──────────────────────────────────────────────
 
-export function importLyricsFiles(paths: string[]): Promise<ImportLyricsResult> {
+export function importLyricsFiles(
+  paths: string[],
+): Promise<ImportLyricsResult> {
   return invoke<ImportLyricsResult>("import_lyrics_files", { paths });
 }
 
@@ -118,7 +120,10 @@ export function setLyricsOffset(songId: string, ms: number): Promise<void> {
   return invoke<void>("set_lyrics_offset", { songId, ms });
 }
 
-export function saveManualLyrics(songId: string, text: string): Promise<LyricsPayload> {
+export function saveManualLyrics(
+  songId: string,
+  text: string,
+): Promise<LyricsPayload> {
   return invoke<LyricsPayload>("save_manual_lyrics", { songId, text });
 }
 
@@ -142,11 +147,16 @@ export function setLanguage(language: string): Promise<AppSettings> {
   return invoke<AppSettings>("set_language", { language });
 }
 
-export function upgradeToFourStem(songId: string): Promise<SeparationStatusSnapshot> {
+export function upgradeToFourStem(
+  songId: string,
+): Promise<SeparationStatusSnapshot> {
   return invoke<SeparationStatusSnapshot>("upgrade_to_four_stem", { songId });
 }
 
-export function reSeparate(songId: string, stemMode: string): Promise<SeparationStatusSnapshot> {
+export function reSeparate(
+  songId: string,
+  stemMode: string,
+): Promise<SeparationStatusSnapshot> {
   return invoke<SeparationStatusSnapshot>("re_separate", { songId, stemMode });
 }
 

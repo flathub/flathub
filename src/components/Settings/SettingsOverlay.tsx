@@ -30,10 +30,14 @@ export function SettingsOverlay() {
   const [stemsSize, setStemsSize] = useState<number | null>(null);
   const [deletingStemsInProgress, setDeletingStemsInProgress] = useState(false);
   const [showDeleteLyricsConfirm, setShowDeleteLyricsConfirm] = useState(false);
-  const [deletingLyricsInProgress, setDeletingLyricsInProgress] = useState(false);
+  const [deletingLyricsInProgress, setDeletingLyricsInProgress] =
+    useState(false);
 
   useEffect(() => {
-    api.getLibraryPath().then(setLibraryPath).catch((e) => notifyError(e));
+    api
+      .getLibraryPath()
+      .then(setLibraryPath)
+      .catch((e) => notifyError(e));
     api
       .getSettings()
       .then((settings) => {
@@ -135,7 +139,9 @@ export function SettingsOverlay() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-10">
       <div className="mx-auto w-full max-w-xl space-y-6">
-        <h2 className="text-lg font-semibold text-white">{t("settings.title")}</h2>
+        <h2 className="text-lg font-semibold text-white">
+          {t("settings.title")}
+        </h2>
 
         {/* Library Section */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
@@ -192,7 +198,9 @@ export function SettingsOverlay() {
                   : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
               }`}
             >
-              <div className="font-medium">{t("settings.stemMode.twoStem")}</div>
+              <div className="font-medium">
+                {t("settings.stemMode.twoStem")}
+              </div>
               <div className="mt-0.5 text-[11px] opacity-70">
                 {t("settings.stemMode.twoStemDescription")}
               </div>
@@ -205,7 +213,9 @@ export function SettingsOverlay() {
                   : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
               }`}
             >
-              <div className="font-medium">{t("settings.stemMode.fourStem")}</div>
+              <div className="font-medium">
+                {t("settings.stemMode.fourStem")}
+              </div>
               <div className="mt-0.5 text-[11px] opacity-70">
                 {t("settings.stemMode.fourStemDescription")}
               </div>
@@ -262,7 +272,9 @@ export function SettingsOverlay() {
               disabled={deletingStemsInProgress}
               className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
             >
-              {deletingStemsInProgress ? t("common.deleting") : t("settings.dangerZone.deleteStemsButton")}
+              {deletingStemsInProgress
+                ? t("common.deleting")
+                : t("settings.dangerZone.deleteStemsButton")}
             </button>
           </div>
 
@@ -281,7 +293,9 @@ export function SettingsOverlay() {
               disabled={deletingLyricsInProgress}
               className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
             >
-              {deletingLyricsInProgress ? t("common.deleting") : t("settings.dangerZone.deleteLyricsButton")}
+              {deletingLyricsInProgress
+                ? t("common.deleting")
+                : t("settings.dangerZone.deleteLyricsButton")}
             </button>
           </div>
         </div>
@@ -294,7 +308,9 @@ export function SettingsOverlay() {
           message={t("settings.confirmDeleteStems.message")}
           detail={
             stemsSize != null && stemsSize > 0
-              ? t("settings.confirmDeleteStems.detail", { size: formatBytes(stemsSize) })
+              ? t("settings.confirmDeleteStems.detail", {
+                  size: formatBytes(stemsSize),
+                })
               : undefined
           }
           confirmLabel={t("settings.confirmDeleteStems.confirm")}

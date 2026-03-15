@@ -54,7 +54,9 @@ export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
     >
       <div className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] shadow-2xl">
         <div className="border-b border-[var(--color-border)] px-5 py-3">
-          <h3 className="text-[14px] font-semibold text-white">{t("songEdit.title")}</h3>
+          <h3 className="text-[14px] font-semibold text-white">
+            {t("songEdit.title")}
+          </h3>
         </div>
         <div className="space-y-4 p-5">
           <div className="space-y-1.5">

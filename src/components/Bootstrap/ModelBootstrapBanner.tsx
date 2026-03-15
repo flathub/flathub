@@ -52,7 +52,9 @@ export function ModelBootstrapBanner() {
       {status.state === "failed" && (
         <div className="flex items-center justify-between">
           <span className="text-[12px] text-red-400">
-            {t("bootstrap.downloadFailed", { error: status.error?.message || t("bootstrap.unknownError") })}
+            {t("bootstrap.downloadFailed", {
+              error: status.error?.message || t("bootstrap.unknownError"),
+            })}
           </span>
           <span className="text-[11px] text-[var(--color-text-dim)]">
             {t("bootstrap.separationUnavailable")}
