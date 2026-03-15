@@ -1,0 +1,144 @@
+id: org.electroncash.ElectronCash
+runtime: org.kde.Platform
+runtime-version: '5.15-25.08'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '5.15-25.08'
+command: electron-cash
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --persist=.electron-cash
+  # Tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: "1"
+
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  # libevent - required by Tor
+  - name: libevent
+    buildsystem: autotools
+    config-opts:
+      - --disable-openssl
+    sources:
+      - type: archive
+        url: https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz
+        sha256: 92e6de1be9ec176428fd2367677e61ceffc2ee1cb119035037a27d346b0403bb
+
+  # Tor - for anonymous networking (required for CashFusion)
+  - name: tor
+    buildsystem: autotools
+    config-opts:
+      - --disable-systemd
+      - --disable-zstd
+      - --with-libevent-dir=/app
+    sources:
+      - type: archive
+        url: https://dist.torproject.org/tor-0.4.8.10.tar.gz
+        sha256: e628b4fab70edb4727715b23cf2931375a9f7685ac08f2c59ea498a178463a86
+        x-checker-data:
+          type: anitya
+          project-id: 1367
+          url-template: https://dist.torproject.org/tor-$version.tar.gz
+    post-install:
+      - install -d ${FLATPAK_DEST}/lib/electroncash/tor/bin
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent-2.1.so.7 ${FLATPAK_DEST}/lib/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_core-2.1.so.7 ${FLATPAK_DEST}/lib/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_extra-2.1.so.7 ${FLATPAK_DEST}/lib/electroncash/tor/bin/
+      - install -Dm644 ${FLATPAK_DEST}/lib/libevent_pthreads-2.1.so.7 ${FLATPAK_DEST}/lib/electroncash/tor/bin/
+      - install -Dm755 ${FLATPAK_DEST}/bin/tor ${FLATPAK_DEST}/lib/electroncash/tor/bin/tor
+
+  # libsecp256k1 - cryptographic library (required for CashFusion)
+  # Using Bitcoin ABC fork which has the old schnorr API
+  - name: libsecp256k1
+    buildsystem: autotools
+    config-opts:
+      - --enable-module-recovery
+      - --enable-experimental
+      - --enable-module-ecdh
+      - --enable-module-schnorr
+      - --disable-jni
+    sources:
+      - type: git
+        url: https://github.com/Bitcoin-ABC/secp256k1.git
+        commit: 869d3526658d7356e1ff354da1c941578684a943
+
+  - name: zbar
+    buildsystem: autotools
+    config-opts:
+      - --disable-doc
+      - --disable-video
+      - --enable-codes=qrcode
+      - --with-python=python3
+      - --without-dbus
+      - --without-gtk
+      - --without-imagemagick
+      - --without-java
+      - --without-npapi
+      - --without-qt
+      - --without-qt5
+      - --without-xshm
+      - --without-xv
+    sources:
+      - type: archive
+        url: https://linuxtv.org/downloads/zbar/zbar-0.23.93.tar.gz
+        sha256: 78ae427a529f0399561bc198de5c2c7ca3f11d05fa9e903e65e501168433d218
+
+  # Python core dependencies
+  - python3-requirements.json
+
+  # Python binary dependencies (excluding PyQt which comes from BaseApp)
+  - python3-requirements-binaries.json
+
+  - name: electron-cash
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} .
+      - install -Dm644 electron-cash.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 icons/electron-cash.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/electron-cash.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm755 ${FLATPAK_DEST}/bin/electron-cash ${FLATPAK_DEST}/bin/electron-cash.real
+      - install -Dm755 electron-cash.sh ${FLATPAK_DEST}/bin/electron-cash
+      - desktop-file-edit --set-key="Icon" --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - |
+        PY_VER=$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')
+        install -d ${FLATPAK_DEST}/lib/${PY_VER}/site-packages/electroncash
+        ln -sf /app/lib/electroncash/tor ${FLATPAK_DEST}/lib/${PY_VER}/site-packages/electroncash/tor
+      - install -Dm644 org.electroncash.ElectronCash.appdata.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml
+
+    sources:
+      - type: git
+        url: https://github.com/Electron-Cash/Electron-Cash.git
+        tag: "4.4.3"
+        commit: 124a6d9be80190b987fbb4854d9931e9073b17f2
+        x-checker-data:
+          type: anitya
+          project-id: 10603
+          version-pattern: ^([\d.]+)$
+          tag-template: $version
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/8a/b9dc7678803429e4a3bc9ba462fa3dd9066824d3c607490235c6a796be5a/setuptools-75.8.0-py3-none-any.whl
+        sha256: e3982f444617239225d675215d51f6ba05f845d4eec313da4418fdbb56fb27e3
+      - type: patch
+        path: tray-icon-fix.patch
+      - type: patch
+        path: appdata-fixes.patch
+      - type: file
+        path: electron-cash.sh
+
