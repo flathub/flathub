@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
@@ -17,12 +17,14 @@ export function LyricsEditDialog({
 }: LyricsEditDialogProps) {
   const { t } = useTranslation();
   const [text, setText] = useState(existingLyrics ?? "");
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
-    if (open) {
-      setText(existingLyrics ?? "");
-    }
-  }, [open, existingLyrics]);
+  if (open && !prevOpen) {
+    setText(existingLyrics ?? "");
+  }
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+  }
 
   if (!open) return null;
 

@@ -24,7 +24,7 @@ interface PlayerState {
   skipBack: () => Promise<void>;
 }
 
-export const usePlayerStore = create<PlayerState>((set, _get) => ({
+export const usePlayerStore = create<PlayerState>((set) => ({
   snapshot: null,
   positionMs: 0,
 
@@ -163,7 +163,9 @@ export const usePlayerStore = create<PlayerState>((set, _get) => ({
         try {
           const updated = await api.loadStems();
           set({ snapshot: updated });
-        } catch {}
+        } catch {
+          // Stems loading failed silently
+        }
       }
     } catch (e) {
       notifyError(e);
@@ -183,7 +185,9 @@ export const usePlayerStore = create<PlayerState>((set, _get) => ({
         try {
           const updated = await api.loadStems();
           set({ snapshot: updated });
-        } catch {}
+        } catch {
+          // Stems loading failed silently
+        }
       }
     } catch (e) {
       notifyError(e);

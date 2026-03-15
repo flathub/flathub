@@ -99,7 +99,7 @@ export function SettingsOverlay() {
     try {
       const size = await api.estimateStemsSize();
       setStemsSize(size);
-    } catch (e) {
+    } catch {
       setStemsSize(null);
     }
     setShowDeleteStemsConfirm(true);
