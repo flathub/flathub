@@ -73,6 +73,9 @@ pub(crate) struct LoadedTrack {
     pub(crate) stems: Option<LoadedStems>,
     base_position_ms: u64,
     started_at_ms: Option<u64>,
+    /// Source-rate frame index where the audio output thread renders from next.
+    /// Updated exclusively by the render callback; reset by seek/start_track.
+    pub(crate) render_frame: u64,
 }
 
 #[derive(Debug)]
@@ -105,6 +108,7 @@ impl PlaybackController {
             stems: None,
             base_position_ms: 0,
             started_at_ms: Some(now_ms),
+            render_frame: 0,
         });
         self.snapshot(now_ms)
     }
@@ -138,10 +142,14 @@ impl PlaybackController {
             .current_track
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("no track is loaded"))?;
-        track.base_position_ms = target_ms.min(track.duration_ms());
+        let clamped_ms = target_ms.min(track.duration_ms());
+        track.base_position_ms = clamped_ms;
         if track.started_at_ms.is_some() {
             track.started_at_ms = Some(now_ms);
         }
+        // Reset render frame to match the new seek position
+        let sample_rate = track.original_audio.sample_rate as f64;
+        track.render_frame = (clamped_ms as f64 * sample_rate / 1000.0) as u64;
 
         Ok(self.snapshot(now_ms))
     }
@@ -239,6 +247,20 @@ impl PlaybackController {
         self.current_track
             .as_ref()
             .map(|track| track.song_id.as_str())
+    }
+
+    /// Returns the current render frame (source-rate frame index).
+    pub fn current_render_frame(&self) -> u64 {
+        self.current_track
+            .as_ref()
+            .map_or(0, |t| t.render_frame)
+    }
+
+    /// Advance the render frame counter after the output callback renders audio.
+    pub fn advance_render_frame(&mut self, frames: u64) {
+        if let Some(track) = &mut self.current_track {
+            track.render_frame += frames;
+        }
     }
 }
 

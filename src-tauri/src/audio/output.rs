@@ -63,68 +63,70 @@ pub fn render_output_buffer(
 
     let master = snapshot.volume;
     let sv = snapshot.stem_volumes;
+    let render_frame = track.render_frame;
 
-    if let Some(loaded_stems) = &track.stems {
-        let rendered = match loaded_stems {
+    let (rendered, src_frames_advanced) = if let Some(loaded_stems) = &track.stems {
+        let result = match loaded_stems {
             LoadedStems::TwoStem {
                 vocals,
                 accompaniment,
             } => {
                 let accomp_gain = sv.drums;
-                let mut rendered = 0;
-                rendered = rendered.max(mix_stem_resampled(
+                let (r1, f1) = mix_stem_resampled(
                     output,
                     vocals,
-                    snapshot.position_ms,
+                    render_frame,
                     master * sv.vocals,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered = rendered.max(mix_stem_resampled(
+                );
+                let (r2, f2) = mix_stem_resampled(
                     output,
                     accompaniment,
-                    snapshot.position_ms,
+                    render_frame,
                     master * accomp_gain,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered
+                );
+                (r1.max(r2), f1.max(f2))
             }
             LoadedStems::FourStem(stems) => {
-                let mut rendered = 0;
-                rendered = rendered.max(mix_stem_resampled(
+                let (r1, f1) = mix_stem_resampled(
                     output,
                     &stems.vocals,
-                    snapshot.position_ms,
+                    render_frame,
                     master * sv.vocals,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered = rendered.max(mix_stem_resampled(
+                );
+                let (r2, f2) = mix_stem_resampled(
                     output,
                     &stems.drums,
-                    snapshot.position_ms,
+                    render_frame,
                     master * sv.drums,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered = rendered.max(mix_stem_resampled(
+                );
+                let (r3, f3) = mix_stem_resampled(
                     output,
                     &stems.bass,
-                    snapshot.position_ms,
+                    render_frame,
                     master * sv.bass,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered = rendered.max(mix_stem_resampled(
+                );
+                let (r4, f4) = mix_stem_resampled(
                     output,
                     &stems.other,
-                    snapshot.position_ms,
+                    render_frame,
                     master * sv.other,
                     device_sample_rate,
                     device_channels,
-                ));
-                rendered
+                );
+                (
+                    r1.max(r2).max(r3).max(r4),
+                    f1.max(f2).max(f3).max(f4),
+                )
             }
         };
 
@@ -133,14 +135,14 @@ pub fn render_output_buffer(
             *sample = sample.clamp(-1.0, 1.0);
         }
 
-        rendered
+        result
     } else {
         // Fallback: play original audio with master volume
         let original = &track.original_audio;
-        let rendered = mix_stem_resampled(
+        let result = mix_stem_resampled(
             output,
             original,
-            snapshot.position_ms,
+            render_frame,
             master,
             device_sample_rate,
             device_channels,
@@ -151,22 +153,29 @@ pub fn render_output_buffer(
             *sample = sample.clamp(-1.0, 1.0);
         }
 
-        rendered
-    }
+        result
+    };
+
+    // Advance the render frame counter so the next callback continues seamlessly
+    playback.advance_render_frame(src_frames_advanced);
+
+    rendered
 }
 
 /// Mix a single audio source into the output buffer with sample-rate conversion
 /// and channel mapping. Uses linear interpolation for resampling.
+///
+/// Returns `(written_output_samples, source_frames_consumed)`.
 fn mix_stem_resampled(
     output: &mut [f32],
     audio: &DecodedAudio,
-    position_ms: u64,
+    start_frame: u64,
     gain: f32,
     device_sample_rate: u32,
     device_channels: usize,
-) -> usize {
+) -> (usize, u64) {
     if gain == 0.0 {
-        return 0;
+        return (0, 0);
     }
 
     let src_rate = audio.sample_rate as f64;
@@ -174,15 +183,15 @@ fn mix_stem_resampled(
     let src_channels = audio.channels;
     let total_src_frames = audio.samples.len() / src_channels;
 
-    // Calculate the source frame corresponding to the current playback position
-    let src_start_frame = (position_ms as f64 * src_rate / 1000.0) as usize;
+    let src_start_frame = start_frame as usize;
     if src_start_frame >= total_src_frames {
-        return 0;
+        return (0, 0);
     }
 
     let output_frames = output.len() / device_channels;
     let rate_ratio = src_rate / dst_rate;
     let mut written = 0;
+    let mut rendered_out_frames: usize = 0;
 
     for out_frame in 0..output_frames {
         // Map output frame to source frame with fractional position
@@ -212,10 +221,15 @@ fn mix_stem_resampled(
             output[out_frame * device_channels + out_ch] += sample * gain;
         }
 
-        written = (out_frame + 1) * device_channels;
+        rendered_out_frames = out_frame + 1;
+        written = rendered_out_frames * device_channels;
     }
 
-    written
+    // Calculate how many source frames the next call should skip over.
+    // This must match precisely so consecutive buffers join seamlessly.
+    let src_frames_consumed = (rendered_out_frames as f64 * rate_ratio).round() as u64;
+
+    (written, src_frames_consumed)
 }
 
 fn build_output_stream<T>(
