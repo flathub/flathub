@@ -32,6 +32,7 @@ jobs:
             os: macos-14
             args: --target x86_64-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            ort_dylib: true
           - name: Windows
             os: windows-latest
             args: ""
@@ -83,6 +84,22 @@ jobs:
             libxdo-dev \
             wget
 
+      - name: Download ONNX Runtime for Intel Mac cross-compile
+        if: matrix.ort_dylib
+        run: |
+          ORT_VERSION="1.21.1"
+          curl -L -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          mkdir -p ${{ github.workspace }}/ort-x64
+          tar -xzf ort.tgz --strip-components=1 -C ${{ github.workspace }}/ort-x64
+          echo "ORT_LIB_LOCATION=${{ github.workspace }}/ort-x64/lib" >> $GITHUB_ENV
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
+
+          # Inject macOS.frameworks into tauri.conf.json so the dylib is bundled inside .app
+          ORT_DYLIB=$(ls ${{ github.workspace }}/ort-x64/lib/libonnxruntime.*.dylib | head -1)
+          jq --arg dylib "$ORT_DYLIB" '.bundle.macOS.frameworks = [$dylib]' \
+            src-tauri/tauri.conf.json > src-tauri/tauri.conf.tmp \
+            && mv src-tauri/tauri.conf.tmp src-tauri/tauri.conf.json
+
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
@@ -100,3 +117,28 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
           tauriScript: pnpm tauri
+
+  checksums:
+    name: Generate checksums
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets and generate SHA256
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ github.event.inputs.version }}"
+
+          # Wait briefly for all assets to be finalized
+          sleep 10
+
+          # Download all release assets
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir assets
+
+          # Generate SHA256 checksums
+          cd assets
+          sha256sum * > ../SHA256SUMS.txt
+          cd ..
+
+          # Upload checksums file as release asset
+          gh release upload "$TAG" SHA256SUMS.txt --repo "${{ github.repository }}"

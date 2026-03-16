@@ -92,7 +92,7 @@ pnpm tauri dev
 
 ## AI Model
 
-OpenKara uses a custom ONNX build of the [Demucs htdemucs](https://github.com/facebookresearch/demucs) model for stem separation. The model is maintained in a separate repository:
+OpenKara uses a custom ONNX build of the [Demucs htdemucs](https://github.com/adefossez/demucs) model for stem separation. The model is maintained in a separate repository:
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — Reproducible ONNX model conversion pipeline
 

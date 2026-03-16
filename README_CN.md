@@ -92,7 +92,7 @@ pnpm tauri dev
 
 ## AI 模型
 
-OpenKara 使用自定义 ONNX 格式的 [Demucs htdemucs](https://github.com/facebookresearch/demucs) 模型进行音轨分离。该模型由独立仓库维护：
+OpenKara 使用自定义 ONNX 格式的 [Demucs htdemucs](https://github.com/adefossez/demucs) 模型进行音轨分离。该模型由独立仓库维护：
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — 可复现的 ONNX 模型转换流水线
 

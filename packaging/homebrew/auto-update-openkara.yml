@@ -56,7 +56,7 @@ jobs:
           echo "$RELEASE_JSON" >> "$GITHUB_OUTPUT"
           echo "RELEASE_EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Download and hash DMGs
+      - name: Extract asset URLs and checksums
         if: steps.check.outputs.skip != 'true'
         id: hash
         run: |
@@ -66,6 +66,8 @@ jobs:
           # Find DMG asset URLs
           ARM_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("aarch64.*\\.dmg$")) | .browser_download_url')
           INTEL_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("x64.*\\.dmg$")) | .browser_download_url')
+          ARM_NAME=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("aarch64.*\\.dmg$")) | .name')
+          INTEL_NAME=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("x64.*\\.dmg$")) | .name')
 
           if [ -z "$ARM_URL" ] || [ -z "$INTEL_URL" ]; then
             echo "Could not find both DMG assets"
@@ -74,13 +76,21 @@ jobs:
             exit 1
           fi
 
-          echo "Downloading ARM DMG..."
-          curl -fsSL -o arm.dmg "$ARM_URL"
-          ARM_SHA256=$(shasum -a 256 arm.dmg | awk '{print $1}')
+          # Download SHA256SUMS from release assets
+          SUMS_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name == "SHA256SUMS.txt") | .browser_download_url')
 
-          echo "Downloading Intel DMG..."
-          curl -fsSL -o intel.dmg "$INTEL_URL"
-          INTEL_SHA256=$(shasum -a 256 intel.dmg | awk '{print $1}')
+          if [ -n "$SUMS_URL" ]; then
+            echo "Using checksums from release asset..."
+            curl -fsSL -o SHA256SUMS.txt "$SUMS_URL"
+            ARM_SHA256=$(grep "$ARM_NAME" SHA256SUMS.txt | awk '{print $1}')
+            INTEL_SHA256=$(grep "$INTEL_NAME" SHA256SUMS.txt | awk '{print $1}')
+          else
+            echo "SHA256SUMS.txt not found, downloading DMGs to compute..."
+            curl -fsSL -o arm.dmg "$ARM_URL"
+            ARM_SHA256=$(shasum -a 256 arm.dmg | awk '{print $1}')
+            curl -fsSL -o intel.dmg "$INTEL_URL"
+            INTEL_SHA256=$(shasum -a 256 intel.dmg | awk '{print $1}')
+          fi
 
           echo "ARM SHA256: $ARM_SHA256"
           echo "Intel SHA256: $INTEL_SHA256"
