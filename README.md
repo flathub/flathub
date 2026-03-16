@@ -63,7 +63,13 @@ Download the latest build for your platform from [GitHub Releases](https://githu
 | macOS (Apple Silicon) | `.dmg`                  |
 | macOS (Intel)         | `.dmg`                  |
 | Windows               | `.exe` (NSIS installer) |
-| Linux                 | `.AppImage`             |
+| Linux                 | `.AppImage` / `.deb`    |
+
+**macOS (Homebrew):**
+
+```bash
+brew install thedavidweng/tap/openkara
+```
 
 On first launch, OpenKara will prompt you to create a Karaoke Library and download the AI model.
 

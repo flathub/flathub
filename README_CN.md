@@ -63,7 +63,13 @@
 | macOS (Apple Silicon) | `.dmg`               |
 | macOS (Intel)         | `.dmg`               |
 | Windows               | `.exe` (NSIS 安装包) |
-| Linux                 | `.AppImage`          |
+| Linux                 | `.AppImage` / `.deb` |
+
+**macOS (Homebrew)：**
+
+```bash
+brew install thedavidweng/tap/openkara
+```
 
 首次启动时，OpenKara 会引导你创建 Karaoke 曲库并下载 AI 模型。
 
