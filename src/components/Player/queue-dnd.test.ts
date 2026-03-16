@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   getDropAnnouncementPosition,
   getDropIndicatorPosition,
+  getVerticalTransform,
 } from "./queue-dnd";
 
 describe("getDropIndicatorPosition", () => {
@@ -18,10 +19,27 @@ describe("getDropIndicatorPosition", () => {
     expect(getDropAnnouncementPosition(1, 4)).toBe("after");
   });
 
+  test("removes horizontal motion from sortable transforms in a vertical list", () => {
+    expect(
+      getVerticalTransform({
+        x: 28,
+        y: -96,
+        scaleX: 1,
+        scaleY: 1,
+      }),
+    ).toEqual({
+      x: 0,
+      y: -96,
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+
   test("hides the indicator when there is no valid target change", () => {
     expect(getDropIndicatorPosition(null, 2)).toBeNull();
     expect(getDropIndicatorPosition(2, null)).toBeNull();
     expect(getDropIndicatorPosition(2, 2)).toBeNull();
     expect(getDropAnnouncementPosition(2, 2)).toBeNull();
+    expect(getVerticalTransform(null)).toBeNull();
   });
 });

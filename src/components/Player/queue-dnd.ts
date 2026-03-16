@@ -1,3 +1,5 @@
+import type { Transform } from "@dnd-kit/utilities";
+
 export type DropIndicatorPosition = "above" | "below";
 export type DropAnnouncementPosition = "before" | "after";
 
@@ -29,4 +31,17 @@ export function getDropAnnouncementPosition(
   }
 
   return indicator === "above" ? "before" : "after";
+}
+
+export function getVerticalTransform(
+  transform: Transform | null,
+): Transform | null {
+  if (!transform) {
+    return null;
+  }
+
+  return {
+    ...transform,
+    x: 0,
+  };
 }

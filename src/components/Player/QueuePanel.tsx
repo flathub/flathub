@@ -31,6 +31,7 @@ import { useQueueStore } from "@/stores/queue-store";
 import {
   getDropAnnouncementPosition,
   getDropIndicatorPosition,
+  getVerticalTransform,
   type DropIndicatorPosition,
 } from "./queue-dnd";
 
@@ -136,8 +137,10 @@ function SortableQueueItem({
     isDragging,
   } = useSortable({ id: songId });
 
+  const verticalTransform = getVerticalTransform(transform);
+
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(verticalTransform),
     transition,
   };
 
@@ -448,7 +451,7 @@ export function QueuePanel() {
               </div>
             </SortableContext>
 
-            <DragOverlay>
+            <DragOverlay dropAnimation={null}>
               {activeSongId ? (
                 <DragOverlayQueueItem
                   title={activeSong?.title || activeSongId.slice(0, 8)}
