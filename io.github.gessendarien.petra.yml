@@ -1,65 +1,54 @@
 app-id: io.github.gessendarien.petra
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.9'
 runtime: org.kde.Platform
 runtime-version: '6.9'
 sdk: org.kde.Sdk
 command: petra
 
+# Required to strip build tools (sip, pyqt-builder, etc.) from the final bundle.
+# Mandatory when using the KDE PyQt BaseApp — without this, Flathub linter will reject the build.
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+build-options:
+  env:
+    # Petra does not use QtWebEngine, so we exclude it to reduce bundle size significantly.
+    - BASEAPP_REMOVE_WEBENGINE=1
+
 finish-args:
   - --share=ipc
-  - --socket=fallback-x11
+  - --socket=fallback-x11    # Wayland-first with X11 as fallback. Replaces --socket=x11 as required by reviewers.
   - --socket=wayland
-  - --device=dri
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.kde.StatusNotifierWatcher
-  - --filesystem=xdg-config/petra:create
+  - --device=dri             # Required for Qt hardware-accelerated rendering.
+  - --talk-name=org.kde.StatusNotifierWatcher  # Required for the system tray icon.
+  # REMOVED: --talk-name=org.freedesktop.Notifications
+  #   Reason: the Flatpak notification portal handles this automatically via the runtime.
+  #   Explicitly requesting it is unnecessary and flagged by the sandbox policy.
+  # REMOVED: --filesystem=xdg-config/petra:create
+  #   Reason: the app must store config inside the sandbox ($XDG_CONFIG_HOME),
+  #   which maps to ~/.var/app/io.github.gessendarien.petra/config — no host access needed.
 
 modules:
-  - name: python3-pyqt6-sip
-    buildsystem: simple
-    build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} pyqt6_sip
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/95/cb/116f9b328636765f3bce97d9e10ec041c54bbe92beb0617edb86c2b615c1/pyqt6_sip-13.11.1-cp312-cp312-manylinux1_x86_64.manylinux_2_5_x86_64.whl
-        sha256: 0df15849946cea969d3ff2b24b76149262b6044aea2c5403e4f70c24c973a4c8
-        only-arches: [x86_64]
-      - type: file
-        url: https://files.pythonhosted.org/packages/1b/be/fe2321285e8f683e705d199dbb458131f1850dc5966155a19c40100c85bb/pyqt6_sip-13.11.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
-        sha256: c52b2b27fc77d9447a8dc1c6de1aaccc22d41e48697aafb2f2f20b8984bb02a5
-        only-arches: [aarch64]
-
-  - name: python3-pyqt6
-    buildsystem: simple
-    build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --no-deps pyqt6
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/ec/3e/9a015651ec71cea2e2f960c37edeb21623ba96a74956c0827def837f7c6b/pyqt6-6.10.2-cp39-abi3-manylinux_2_34_x86_64.whl
-        sha256: 78e1b3d5763e4cbc84485aef600e0aba5e1932fd263b716f92cd1a40dfa5e924
-        only-arches: [x86_64]
-      - type: file
-        url: https://files.pythonhosted.org/packages/51/74/a88fec2b99700270ca5d7dc7d650236a4990ed6fc88e055ca0fc8a339ee3/pyqt6-6.10.2-cp39-abi3-manylinux_2_39_aarch64.whl
-        sha256: bbc3af541bbecd27301bfe69fe445aa1611a9b490bd3de77306b12df632f7ec6
-        only-arches: [aarch64]
-
   - name: libxtst
     sources:
       - type: archive
-        url: https://www.x.org/archive/individual/lib/LibXtst-1.2.3.tar.bz2
-        sha256: 64a9411ce6a154fd7a604b27ce1bf9e3c616f8fb9af55c594aae6625a3f99844
+        url: https://www.x.org/archive/individual/lib/libXtst-1.2.4.tar.gz
+        sha256: 01366506aeb033f6dffca5326af85f670746b0cabbfd092aabefb046cf48c445
 
   - name: xdotool
-    make-args:
-      - PREFIX=/app
+    buildsystem: simple
     build-commands:
-      - make
-      - make install
+      - make PREFIX=/app
+      - make install PREFIX=/app
     sources:
       - type: archive
         url: https://github.com/jordansissel/xdotool/archive/refs/tags/v3.20211022.1.tar.gz
         sha256: 82b15a944a5e82fee15e0f6116bd9f642bc3d0bb6989fc0ca5ad9dfe35de0847
 
   - name: xbindkeys
+    config-opts:
+      - --disable-guile
     sources:
       - type: archive
         url: https://archive.ubuntu.com/ubuntu/pool/universe/x/xbindkeys/xbindkeys_1.8.7.orig.tar.gz
@@ -70,11 +59,11 @@ modules:
     build-commands:
       - install -Dm755 petra.sh ${FLATPAK_DEST}/bin/petra
       - mkdir -p ${FLATPAK_DEST}/share/petra
-      - cp -r *.py icons ${FLATPAK_DEST}/share/petra/
+      - cp -r src icons ${FLATPAK_DEST}/share/petra/
       - install -Dm644 io.github.gessendarien.petra.desktop ${FLATPAK_DEST}/share/applications/io.github.gessendarien.petra.desktop
       - install -Dm644 io.github.gessendarien.petra.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.gessendarien.petra.metainfo.xml
       - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENSE.txt
-      # Install PNG icons in standard hicolor sizes
+      # Install PNG icons in all standard hicolor sizes
       - install -Dm644 icons/petra-512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.gessendarien.petra.png
       - install -Dm644 icons/petra-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.gessendarien.petra.png
       - install -Dm644 icons/petra-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/io.github.gessendarien.petra.png
@@ -83,7 +72,5 @@ modules:
       - install -Dm644 icons/petra-32.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/io.github.gessendarien.petra.png
       - install -Dm644 icons/petra-16.png ${FLATPAK_DEST}/share/icons/hicolor/16x16/apps/io.github.gessendarien.petra.png
     sources:
-      - type: git
-        url: https://github.com/gessendarien/petra-clipboard.git
-        tag: "0.0.1"
-        commit: 9650ec69b038f1f8cbada0b9594a4a2083f1ef74
+      - type: dir
+        path: .
