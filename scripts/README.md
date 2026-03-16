@@ -46,27 +46,3 @@ Optional custom paths:
 ```bash
 ./scripts/run-local-smoke.sh ./test ./output
 ```
-
-## `render-homebrew-cask.sh`
-
-Renders a Homebrew Cask file from release metadata so the separate tap repo can
-be updated without rewriting the Ruby file by hand.
-
-- **Input:** release version, Apple Silicon DMG URL + SHA-256, Intel DMG URL +
-  SHA-256
-- **Prerequisites:** macOS release assets already published
-- **Output:** `packaging/homebrew/openkara.generated.rb` by default
-- **Success:** emits a versioned cask file ready to copy into the Homebrew tap
-- **Failure:** exits non-zero if the template is missing or the argument set is
-  incomplete
-
-Run it from the repository root:
-
-```bash
-./scripts/render-homebrew-cask.sh \
-  0.1.0 \
-  https://example.com/OpenKara-aarch64.dmg \
-  ARM_SHA256 \
-  https://example.com/OpenKara-x64.dmg \
-  INTEL_SHA256
-```
