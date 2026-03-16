@@ -36,18 +36,28 @@ export function ConfirmationDialog({
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
 
       {/* Dialog */}
-      <div className="relative w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-6 shadow-xl">
-        <h3 className="text-[15px] font-semibold text-white">{title}</h3>
-        <p className="mt-2 text-[13px] text-[var(--color-text-dim)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-dialog-title"
+        className="relative w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-6 shadow-xl"
+      >
+        <h3
+          id="confirmation-dialog-title"
+          className="break-words text-[15px] font-semibold text-white"
+        >
+          {title}
+        </h3>
+        <p className="mt-2 break-words text-[13px] text-[var(--color-text-dim)]">
           {message}
         </p>
         {detail && (
-          <p className="mt-1 text-[12px] text-[var(--color-text-dimmer)]">
+          <p className="mt-1 break-words text-[12px] text-[var(--color-text-dimmer)]">
             {detail}
           </p>
         )}
@@ -56,13 +66,13 @@ export function ConfirmationDialog({
           <button
             ref={cancelRef}
             onClick={onCancel}
-            className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-4 py-1.5 text-[13px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+            className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-4 py-2 text-[13px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
           >
             {t("common.cancel")}
           </button>
           <button
             onClick={onConfirm}
-            className="rounded-md bg-red-600 px-4 py-1.5 text-[13px] text-white transition-colors hover:bg-red-500 focus:outline-none focus:ring-1 focus:ring-red-400"
+            className="rounded-md bg-red-600 px-4 py-2 text-[13px] text-white transition-colors hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-400/40"
           >
             {confirmLabel}
           </button>

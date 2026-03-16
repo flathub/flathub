@@ -34,7 +34,7 @@ interface LibraryState {
     hash: string,
     title: string | null,
     artist: string | null,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearAllSeparationStatuses: () => void;
   updateBatchProgress: (progress: BatchSeparationProgress) => void;
@@ -96,15 +96,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // Import LRC files (must happen after audio so songs exist for matching)
       if (lrcPaths.length > 0) {
         const lrcResult = await api.importLyricsFiles(lrcPaths);
-        if (lrcResult.matched.length > 0) {
-          // Could show a toast here
-          console.log(`Matched ${lrcResult.matched.length} lyrics file(s)`);
-        }
-        if (lrcResult.unmatched.length > 0) {
-          console.warn(
-            `${lrcResult.unmatched.length} lyrics file(s) could not be matched to any song`,
-          );
-        }
+        void lrcResult;
       }
 
       // Reload full library to get consistent state
@@ -185,8 +177,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             : s,
         ),
       }));
+      return true;
     } catch (e) {
       notifyError(e);
+      return false;
     }
   },
 

@@ -41,11 +41,11 @@ function Toast({ notification }: { notification: Notification }) {
       />
 
       <div className="min-w-0 flex-1">
-        <p className="text-[12px] font-medium text-white">
+        <p className="break-words text-[12px] font-medium text-white">
           {notification.title}
         </p>
         {notification.message && (
-          <p className="mt-0.5 text-[11px] text-[var(--color-text-dim)]">
+          <p className="mt-0.5 break-words text-[11px] text-[var(--color-text-dim)]">
             {notification.message}
           </p>
         )}
@@ -55,7 +55,7 @@ function Toast({ notification }: { notification: Notification }) {
               notification.retryAction?.();
               dismiss(notification.id);
             }}
-            className="mt-1.5 text-[11px] text-[var(--color-accent)] hover:underline"
+            className="mt-1.5 rounded-sm text-[11px] text-[var(--color-accent)] hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
           >
             {t("common.tryAgain")}
           </button>
@@ -64,7 +64,8 @@ function Toast({ notification }: { notification: Notification }) {
 
       <button
         onClick={() => dismiss(notification.id)}
-        className="shrink-0 text-[var(--color-text-dimmer)] hover:text-[var(--color-text-dim)]"
+        aria-label={t("common.close")}
+        className="shrink-0 rounded-sm text-[var(--color-text-dimmer)] hover:text-[var(--color-text-dim)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
       >
         <X size={12} />
       </button>
@@ -78,7 +79,7 @@ export function ToastContainer() {
   if (notifications.length === 0) return null;
 
   return (
-    <div className="fixed right-4 bottom-16 z-[100] flex w-80 flex-col gap-2">
+    <div className="fixed right-4 bottom-16 z-[100] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
       {notifications.map((n) => (
         <Toast key={n.id} notification={n} />
       ))}
