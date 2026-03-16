@@ -1,11 +1,14 @@
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -16,9 +19,32 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useCallback, useMemo, type CSSProperties } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useLibraryStore } from "@/stores/library-store";
 import { useQueueStore } from "@/stores/queue-store";
+import {
+  getDropAnnouncementPosition,
+  getDropIndicatorPosition,
+  type DropIndicatorPosition,
+} from "./queue-dnd";
+
+interface QueueItemCardProps {
+  title: string;
+  artist: string;
+  handle: ReactNode;
+  controls?: ReactNode;
+  removeAction?: ReactNode;
+  dropIndicator?: DropIndicatorPosition | null;
+  isOverlay?: boolean;
+  isDraggingSource?: boolean;
+  className?: string;
+}
 
 interface SortableQueueItemProps {
   songId: string;
@@ -29,9 +55,60 @@ interface SortableQueueItemProps {
   moveUpLabel: string;
   moveDownLabel: string;
   dragLabel: string;
+  removeLabel: string;
+  dropIndicator: DropIndicatorPosition | null;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
+}
+
+function QueueItemCard({
+  title,
+  artist,
+  handle,
+  controls,
+  removeAction,
+  dropIndicator,
+  isOverlay = false,
+  isDraggingSource = false,
+  className = "",
+}: QueueItemCardProps) {
+  const stateClassName = isOverlay
+    ? "motion-safe:scale-[1.01] bg-[var(--color-hover)] shadow-[0_18px_38px_rgba(0,0,0,0.34)] ring-1 ring-[var(--color-accent)]"
+    : isDraggingSource
+      ? "bg-[var(--color-hover)] opacity-25"
+      : dropIndicator
+        ? "bg-[var(--color-hover)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+        : "hover:bg-[var(--color-hover)]";
+
+  return (
+    <div
+      className={`group relative flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 transition-[transform,box-shadow,opacity,background-color] duration-150 ease-out motion-reduce:transition-none ${stateClassName} ${className}`}
+    >
+      {dropIndicator && (
+        <span
+          className={`pointer-events-none absolute left-3 right-3 h-0.5 rounded-full bg-[var(--color-accent)] shadow-[0_0_12px_rgba(255,255,255,0.12)] ${
+            dropIndicator === "above" ? "top-0" : "bottom-0"
+          }`}
+        />
+      )}
+
+      {handle}
+
+      {controls}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[12px] font-medium text-[#EBEBF5]">
+          {title}
+        </span>
+        <span className="truncate text-[10px] text-[var(--color-text-dimmer)]">
+          {artist}
+        </span>
+      </div>
+
+      {removeAction}
+    </div>
+  );
 }
 
 function SortableQueueItem({
@@ -43,6 +120,8 @@ function SortableQueueItem({
   moveUpLabel,
   moveDownLabel,
   dragLabel,
+  removeLabel,
+  dropIndicator,
   onMoveUp,
   onMoveDown,
   onRemove,
@@ -63,64 +142,89 @@ function SortableQueueItem({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
-        isDragging
-          ? "z-10 rounded-md bg-[var(--color-hover)] opacity-70 ring-1 ring-[var(--color-accent)]"
-          : "hover:bg-[var(--color-hover)]"
-      }`}
-    >
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        className="shrink-0 cursor-grab touch-none text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] active:cursor-grabbing"
-        title={dragLabel}
-        aria-label={dragLabel}
-      >
-        <GripVertical size={12} />
-      </button>
-      <div className="-my-0.5 flex shrink-0 flex-col">
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
-          title={moveUpLabel}
-          aria-label={moveUpLabel}
-        >
-          <ChevronUp size={10} />
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={index === queueLength - 1}
-          className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
-          title={moveDownLabel}
-          aria-label={moveDownLabel}
-        >
-          <ChevronDown size={10} />
-        </button>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[12px] font-medium text-[#EBEBF5]">
-          {title}
-        </span>
-        <span className="truncate text-[10px] text-[var(--color-text-dimmer)]">
-          {artist}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="shrink-0 text-[var(--color-text-dimmer)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[#EBEBF5]"
-      >
-        <X size={12} />
-      </button>
+    <div ref={setNodeRef} style={style} className="will-change-transform">
+      <QueueItemCard
+        title={title}
+        artist={artist}
+        dropIndicator={dropIndicator}
+        isDraggingSource={isDragging}
+        handle={
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            className={`-m-1 shrink-0 rounded-md p-1 transition-[color,background-color,transform,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
+              isDragging
+                ? "cursor-grabbing bg-white/5 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+                : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-white/5 hover:text-[#EBEBF5] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+            }`}
+            title={dragLabel}
+            aria-label={dragLabel}
+          >
+            <GripVertical size={12} />
+          </button>
+        }
+        controls={
+          <div className="-my-0.5 flex shrink-0 flex-col">
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={index === 0}
+              className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+              title={moveUpLabel}
+              aria-label={moveUpLabel}
+            >
+              <ChevronUp size={10} />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={index === queueLength - 1}
+              className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+              title={moveDownLabel}
+              aria-label={moveDownLabel}
+            >
+              <ChevronDown size={10} />
+            </button>
+          </div>
+        }
+        removeAction={
+          <button
+            type="button"
+            onClick={onRemove}
+            className="shrink-0 translate-x-1 rounded-md text-[var(--color-text-dimmer)] opacity-0 transition-[color,opacity,transform] duration-150 ease-out motion-reduce:translate-x-0 motion-reduce:transition-none group-hover:translate-x-0 group-hover:opacity-100 hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+            title={removeLabel}
+            aria-label={removeLabel}
+          >
+            <X size={12} />
+          </button>
+        }
+      />
     </div>
+  );
+}
+
+function DragOverlayQueueItem({
+  title,
+  artist,
+  dragLabel,
+}: Pick<SortableQueueItemProps, "title" | "artist" | "dragLabel">) {
+  return (
+    <QueueItemCard
+      title={title}
+      artist={artist}
+      isOverlay
+      className="w-[272px]"
+      handle={
+        <div
+          className="-m-1 shrink-0 rounded-md bg-white/5 p-1 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+          aria-label={dragLabel}
+        >
+          <GripVertical size={12} />
+        </div>
+      }
+    />
   );
 }
 
@@ -132,11 +236,13 @@ export function QueuePanel() {
   const reorderBySongId = useQueueStore((s) => s.reorderBySongId);
   const clearQueue = useQueueStore((s) => s.clearQueue);
   const songs = useLibraryStore((s) => s.songs);
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const [overSongId, setOverSongId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 4,
+        distance: 6,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -152,6 +258,37 @@ export function QueuePanel() {
   const getSongLabel = useCallback(
     (songId: string) => getSong(songId)?.title || songId.slice(0, 8),
     [getSong],
+  );
+
+  const clearDragState = useCallback(() => {
+    setActiveSongId(null);
+    setOverSongId(null);
+  }, []);
+
+  const getAnnouncementMessage = useCallback(
+    (phase: "over" | "end", activeId: string, overId: string) => {
+      const position = getDropAnnouncementPosition(
+        queue.indexOf(activeId),
+        queue.indexOf(overId),
+      );
+
+      if (position === "after") {
+        return String(
+          t(phase === "over" ? "queue.dragOverAfter" : "queue.dragEndAfter", {
+            title: getSongLabel(activeId),
+            overTitle: getSongLabel(overId),
+          }),
+        );
+      }
+
+      return String(
+        t(phase === "over" ? "queue.dragOverBefore" : "queue.dragEndBefore", {
+          title: getSongLabel(activeId),
+          overTitle: getSongLabel(overId),
+        }),
+      );
+    },
+    [getSongLabel, queue, t],
   );
 
   const accessibility = useMemo(
@@ -178,11 +315,10 @@ export function QueuePanel() {
             return String(t("queue.dragCancel"));
           }
 
-          return String(
-            t("queue.dragOver", {
-              title: getSongLabel(String(active.id)),
-              overTitle: getSongLabel(String(over.id)),
-            }),
+          return getAnnouncementMessage(
+            "over",
+            String(active.id),
+            String(over.id),
           );
         },
         onDragEnd({
@@ -196,11 +332,10 @@ export function QueuePanel() {
             return String(t("queue.dragCancel"));
           }
 
-          return String(
-            t("queue.dragEnd", {
-              title: getSongLabel(String(active.id)),
-              overTitle: getSongLabel(String(over.id)),
-            }),
+          return getAnnouncementMessage(
+            "end",
+            String(active.id),
+            String(over.id),
           );
         },
         onDragCancel() {
@@ -208,21 +343,36 @@ export function QueuePanel() {
         },
       },
     }),
-    [getSongLabel, t],
+    [getAnnouncementMessage, getSongLabel, t],
   );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const songId = String(event.active.id);
+    setActiveSongId(songId);
+    setOverSongId(songId);
+  }, []);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    setOverSongId(event.over ? String(event.over.id) : null);
+  }, []);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const { active, over } = event;
+      const activeId = String(event.active.id);
+      const overId = event.over ? String(event.over.id) : null;
 
-      if (!over || active.id === over.id) {
-        return;
+      if (overId && activeId !== overId) {
+        reorderBySongId(activeId, overId);
       }
 
-      reorderBySongId(String(active.id), String(over.id));
+      clearDragState();
     },
-    [reorderBySongId],
+    [clearDragState, reorderBySongId],
   );
+
+  const activeIndex = activeSongId ? queue.indexOf(activeSongId) : null;
+  const overIndex = overSongId ? queue.indexOf(overSongId) : null;
+  const activeSong = activeSongId ? getSong(activeSongId) : undefined;
 
   return (
     <div className="flex h-full w-[280px] shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-toolbar)]">
@@ -246,7 +396,7 @@ export function QueuePanel() {
         )}
       </div>
 
-      <div className="custom-scrollbar flex-1 overflow-y-auto">
+      <div className="custom-scrollbar flex-1 overflow-y-auto px-1.5 py-1">
         {queue.length === 0 ? (
           <div className="flex items-center justify-center py-8">
             <span className="text-[13px] text-[var(--color-text-dimmer)]">
@@ -258,37 +408,59 @@ export function QueuePanel() {
             sensors={sensors}
             collisionDetection={closestCenter}
             accessibility={accessibility}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onDragCancel={clearDragState}
           >
             <SortableContext
               items={queue}
               strategy={verticalListSortingStrategy}
             >
-              {queue.map((songId, index) => {
-                const song = getSong(songId);
+              <div className="space-y-1">
+                {queue.map((songId, index) => {
+                  const song = getSong(songId);
+                  const title = song?.title || songId.slice(0, 8);
+                  const dropIndicator =
+                    songId === overSongId
+                      ? getDropIndicatorPosition(activeIndex, overIndex)
+                      : null;
 
-                return (
-                  <SortableQueueItem
-                    key={songId}
-                    songId={songId}
-                    index={index}
-                    queueLength={queue.length}
-                    title={song?.title || songId.slice(0, 8)}
-                    artist={song?.artist || t("common.unknownArtist")}
-                    moveUpLabel={t("queue.moveUp")}
-                    moveDownLabel={t("queue.moveDown")}
-                    dragLabel={String(
-                      t("queue.reorder", {
-                        title: song?.title || songId.slice(0, 8),
-                      }),
-                    )}
-                    onMoveUp={() => reorder(index, index - 1)}
-                    onMoveDown={() => reorder(index, index + 1)}
-                    onRemove={() => removeFromQueue(index)}
-                  />
-                );
-              })}
+                  return (
+                    <SortableQueueItem
+                      key={songId}
+                      songId={songId}
+                      index={index}
+                      queueLength={queue.length}
+                      title={title}
+                      artist={song?.artist || t("common.unknownArtist")}
+                      moveUpLabel={t("queue.moveUp")}
+                      moveDownLabel={t("queue.moveDown")}
+                      dragLabel={String(t("queue.reorder", { title }))}
+                      removeLabel={String(t("queue.remove", { title }))}
+                      dropIndicator={dropIndicator}
+                      onMoveUp={() => reorder(index, index - 1)}
+                      onMoveDown={() => reorder(index, index + 1)}
+                      onRemove={() => removeFromQueue(index)}
+                    />
+                  );
+                })}
+              </div>
             </SortableContext>
+
+            <DragOverlay>
+              {activeSongId ? (
+                <DragOverlayQueueItem
+                  title={activeSong?.title || activeSongId.slice(0, 8)}
+                  artist={activeSong?.artist || t("common.unknownArtist")}
+                  dragLabel={String(
+                    t("queue.reorder", {
+                      title: activeSong?.title || activeSongId.slice(0, 8),
+                    }),
+                  )}
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )}
       </div>
