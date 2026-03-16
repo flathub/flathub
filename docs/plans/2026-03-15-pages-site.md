@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Reorganize `docs/` for a clean public/private split and add a lightweight GitHub Pages microsite for OpenKara.
+**Goal:** Reorganize `docs/` for a clean public/private split and add a lightweight GitHub Pages microsite for OpenKara, with Markdown-driven public FAQ content.
 
-**Architecture:** Public pages live in `docs/site/` as plain static HTML and CSS, while contributor-facing docs move to `docs/internal/`. A standalone GitHub Pages workflow uploads `docs/site/` as the deploy artifact so the Tauri application build remains unchanged.
+**Architecture:** Public pages live in `docs/site/` as a small Jekyll site with custom layouts, while contributor-facing docs move to `docs/internal/`. A standalone GitHub Pages workflow builds `docs/site/` with Jekyll and uploads the generated `_site` artifact so the Tauri application build remains unchanged.
 
-**Tech Stack:** HTML, CSS, Markdown, GitHub Actions
+**Tech Stack:** Jekyll, HTML, CSS, Markdown, GitHub Actions
 
 ---
 
@@ -38,20 +38,23 @@
 
 **Files:**
 
-- Create: `docs/site/index.html`
-- Create: `docs/site/install.html`
-- Create: `docs/site/faq.html`
-- Create: `docs/site/assets/site.css`
+- Create: `docs/site/_config.yml`
+- Create: `docs/site/_layouts/default.html`
+- Create: `docs/site/_layouts/landing.html`
+- Create: `docs/site/_layouts/page.html`
+- Create: `docs/site/index.md`
+- Create: `docs/site/faq.md`
+- Create: `docs/site/assets/css/site.css`
 
-**Step 1:** Create a landing page that explains what OpenKara does and links to releases.
+**Step 1:** Create a strong landing page that explains what OpenKara does, reuses the app icon, and folds install guidance into the homepage.
 
-**Step 2:** Add an install page that summarizes release installs and source setup.
+**Step 2:** Add a Markdown FAQ page that Jekyll renders into the public site.
 
-**Step 3:** Add an FAQ page that answers common product and platform questions.
+**Step 3:** Implement shared layouts so homepage design and Markdown content pages can coexist cleanly.
 
-**Step 4:** Implement one shared stylesheet with a lightweight editorial visual system.
+**Step 4:** Implement one shared stylesheet with a lightweight but product-facing visual system.
 
-**Step 5:** Keep all page links relative so the site works under the GitHub project Pages base path.
+**Step 5:** Keep all links and assets compatible with the GitHub project Pages base path.
 
 ### Task 3: Wire deployment and repo references
 
@@ -64,7 +67,7 @@
 - Modify: `docs/plans/2026-03-13-handoff-master-plan.md`
 - Modify: `docs/plans/2026-03-13-ui-agent-plan.md`
 
-**Step 1:** Add a GitHub Pages workflow that uploads `docs/site/` as the deploy artifact.
+**Step 1:** Add a GitHub Pages workflow that builds the Jekyll site and uploads `docs/site/_site` as the deploy artifact.
 
 **Step 2:** Update the README documentation links to point at `docs/internal/`.
 
