@@ -160,9 +160,12 @@ pub fn run() {
             commands::lyrics::save_manual_lyrics,
             commands::lyrics::import_lyrics_files,
             commands::lyrics::extract_embedded_lyrics,
+            commands::lyrics::fetch_lyrics_online,
             commands::maintenance::delete_all_stems,
             commands::maintenance::estimate_stems_size,
             commands::maintenance::delete_all_cached_lyrics,
+            commands::maintenance::downgrade_all_to_two_stem,
+            commands::maintenance::estimate_downgrade_savings,
             commands::playback::play,
             commands::playback::pause,
             commands::playback::seek,
@@ -177,9 +180,11 @@ pub fn run() {
             commands::separation::get_all_separation_statuses,
             commands::separation::upgrade_to_four_stem,
             commands::separation::re_separate,
+            commands::separation::downgrade_single_to_two_stem,
             commands::settings::get_settings,
             commands::settings::set_stem_mode,
-            commands::settings::set_language
+            commands::settings::set_language,
+            commands::settings::set_hide_batch_separate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

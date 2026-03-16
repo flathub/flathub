@@ -58,7 +58,7 @@ pub fn fetch_lyrics_for_song(
     Ok(None)
 }
 
-fn lookup_query_from_song(song: &Song) -> Option<LyricsLookupQuery> {
+pub fn lookup_query_from_song(song: &Song) -> Option<LyricsLookupQuery> {
     Some(LyricsLookupQuery {
         track_name: song.title.clone()?,
         artist_name: song.artist.clone()?,

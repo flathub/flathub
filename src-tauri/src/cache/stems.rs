@@ -398,6 +398,144 @@ fn ensure_song_exists(connection: &Connection, song_hash: &str) -> Result<()> {
     Ok(())
 }
 
+/// Downgrade a single 4-stem entry to 2-stem by mixing drums+bass+other into an
+/// accompaniment file and deleting the individual stem files.
+/// Returns the updated `StemCacheEntry` and the number of bytes freed.
+pub fn downgrade_to_two_stem(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+    song_hash: &str,
+) -> Result<(StemCacheEntry, u64)> {
+    let entry = get_cached_stem_entry(connection, song_hash)?
+        .with_context(|| format!("no stem cache entry found for song {song_hash}"))?;
+
+    anyhow::ensure!(
+        entry.has_individual_stems(),
+        "song {song_hash} does not have individual stems to downgrade"
+    );
+
+    let drums_rel = entry.drums_path.as_ref().unwrap();
+    let bass_rel = entry.bass_path.as_ref().unwrap();
+    let other_rel = entry.other_path.as_ref().unwrap();
+
+    let drums_abs = library_root.resolve(drums_rel);
+    let bass_abs = library_root.resolve(bass_rel);
+    let other_abs = library_root.resolve(other_rel);
+
+    // Decode each stem file.
+    let drums_audio =
+        crate::audio::decode::decode_file(&drums_abs).context("failed to decode drums.ogg")?;
+    let bass_audio =
+        crate::audio::decode::decode_file(&bass_abs).context("failed to decode bass.ogg")?;
+    let other_audio =
+        crate::audio::decode::decode_file(&other_abs).context("failed to decode other.ogg")?;
+
+    // Mix by summing samples element-wise.
+    let len = drums_audio.samples.len();
+    let mut mixed_samples = Vec::with_capacity(len);
+    for i in 0..len {
+        let d = drums_audio.samples.get(i).copied().unwrap_or(0.0);
+        let b = bass_audio.samples.get(i).copied().unwrap_or(0.0);
+        let o = other_audio.samples.get(i).copied().unwrap_or(0.0);
+        mixed_samples.push(d + b + o);
+    }
+
+    let mixed_audio = crate::audio::decode::DecodedAudio {
+        sample_rate: drums_audio.sample_rate,
+        channels: drums_audio.channels,
+        duration_ms: drums_audio.duration_ms,
+        samples: mixed_samples,
+    };
+
+    // Write accompaniment file.
+    let accomp_rel = format!("{STEMS_CACHE_DIRECTORY}/{song_hash}/{ACCOMPANIMENT_FILENAME}");
+    let accomp_abs = library_root.resolve(&accomp_rel);
+    crate::audio::encode::write_ogg_file(&accomp_abs, &mixed_audio)
+        .context("failed to write accompaniment.ogg")?;
+
+    // Calculate freed bytes before deleting.
+    let freed_bytes = file_size_or_zero(&drums_abs)
+        + file_size_or_zero(&bass_abs)
+        + file_size_or_zero(&other_abs);
+
+    // Delete individual stem files.
+    fs::remove_file(&drums_abs).with_context(|| format!("failed to remove {}", drums_abs.display()))?;
+    fs::remove_file(&bass_abs).with_context(|| format!("failed to remove {}", bass_abs.display()))?;
+    fs::remove_file(&other_abs).with_context(|| format!("failed to remove {}", other_abs.display()))?;
+
+    // Update the database row.
+    connection
+        .execute(
+            "UPDATE stems SET accomp_path = ?2, drums_path = NULL, bass_path = NULL, other_path = NULL WHERE song_hash = ?1",
+            params![song_hash, accomp_rel],
+        )
+        .context("failed to update stem cache entry for downgrade")?;
+
+    let updated_entry = StemCacheEntry {
+        song_hash: entry.song_hash,
+        vocals_path: entry.vocals_path,
+        accomp_path: accomp_rel,
+        separated_at: entry.separated_at,
+        drums_path: None,
+        bass_path: None,
+        other_path: None,
+    };
+
+    Ok((updated_entry, freed_bytes))
+}
+
+/// Downgrade all 4-stem entries to 2-stem.
+/// Returns (downgraded_count, total_freed_bytes).
+pub fn batch_downgrade_to_two_stem(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+) -> Result<(usize, u64)> {
+    let entries = list_all_stem_entries(connection)
+        .context("failed to list stem entries for batch downgrade")?;
+
+    let four_stem_hashes: Vec<String> = entries
+        .into_iter()
+        .filter(|e| e.has_individual_stems())
+        .map(|e| e.song_hash)
+        .collect();
+
+    let mut count = 0usize;
+    let mut total_freed = 0u64;
+
+    for hash in &four_stem_hashes {
+        let (_, freed) = downgrade_to_two_stem(connection, library_root, hash)?;
+        count += 1;
+        total_freed += freed;
+    }
+
+    Ok((count, total_freed))
+}
+
+/// Estimate the disk space that would be freed by downgrading all 4-stem entries to 2-stem.
+pub fn estimate_downgrade_savings(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+) -> Result<u64> {
+    let entries = list_all_stem_entries(connection)
+        .context("failed to list stem entries for downgrade estimate")?;
+
+    let mut total = 0u64;
+    for entry in entries.iter().filter(|e| e.has_individual_stems()) {
+        for rel_path in [&entry.drums_path, &entry.bass_path, &entry.other_path]
+            .into_iter()
+            .flatten()
+        {
+            total += file_size_or_zero(&library_root.resolve(rel_path));
+        }
+    }
+
+    Ok(total)
+}
+
+fn file_size_or_zero(path: &Path) -> u64 {
+    fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
 fn unix_timestamp() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import * as api from "@/lib/tauri";
 import { formatDuration, formatBytes } from "@/lib/format";
+import { notifyError } from "@/lib/errors";
 import { useLibraryStore } from "@/stores/library-store";
 import type { Song, SongProperties } from "@/types/ipc";
 
@@ -213,11 +214,18 @@ export function SongPropertiesDialog({
                   {sepStatus?.state === "completed" && sepStatus.drums_path && (
                     <button
                       onClick={() => {
-                        api.reSeparate(song.hash, "two_stem").catch(() => {});
+                        api
+                          .downgradeToTwoStem(song.hash)
+                          .then((status) => {
+                            useLibraryStore
+                              .getState()
+                              .updateSeparationStatus(status);
+                          })
+                          .catch(notifyError);
                       }}
                       className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
                     >
-                      {t("songProperties.reSeparateAsTwoStem")}
+                      {t("songProperties.downgradeToTwoStem")}
                     </button>
                   )}
                 </span>

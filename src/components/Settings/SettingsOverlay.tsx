@@ -32,6 +32,11 @@ export function SettingsOverlay() {
   const [showDeleteLyricsConfirm, setShowDeleteLyricsConfirm] = useState(false);
   const [deletingLyricsInProgress, setDeletingLyricsInProgress] =
     useState(false);
+  const [hideBatchSeparate, setHideBatchSeparateState] = useState(false);
+  const [showDowngradeStemsConfirm, setShowDowngradeStemsConfirm] =
+    useState(false);
+  const [downgradeSavings, setDowngradeSavings] = useState<number | null>(null);
+  const [downgradingInProgress, setDowngradingInProgress] = useState(false);
 
   useEffect(() => {
     api
@@ -43,6 +48,7 @@ export function SettingsOverlay() {
       .then((settings) => {
         setStemMode(settings.stem_mode);
         setLanguageState(settings.language ?? "en");
+        setHideBatchSeparateState(settings.hide_batch_separate);
       })
       .catch((e) => notifyError(e));
   }, []);
@@ -99,6 +105,15 @@ export function SettingsOverlay() {
     }
   };
 
+  const handleHideBatchSeparateChange = async (value: boolean) => {
+    setHideBatchSeparateState(value);
+    try {
+      await api.setHideBatchSeparate(value);
+    } catch (e) {
+      notifyError(e);
+    }
+  };
+
   const handleDeleteStemsClick = async () => {
     try {
       const size = await api.estimateStemsSize();
@@ -120,6 +135,35 @@ export function SettingsOverlay() {
     } finally {
       setDeletingStemsInProgress(false);
       setShowDeleteStemsConfirm(false);
+    }
+  };
+
+  const handleDowngradeStemsClick = async () => {
+    try {
+      const savings = await api.estimateDowngradeSavings();
+      setDowngradeSavings(savings);
+    } catch {
+      setDowngradeSavings(null);
+    }
+    setShowDowngradeStemsConfirm(true);
+  };
+
+  const handleDowngradeStemsConfirm = async () => {
+    setDowngradingInProgress(true);
+    try {
+      await api.downgradeAllToTwoStem();
+      // Refresh separation statuses to reflect the downgrade
+      const statuses = await api.getAllSeparationStatuses();
+      const store = useLibraryStore.getState();
+      store.clearAllSeparationStatuses();
+      for (const status of statuses) {
+        store.updateSeparationStatus(status);
+      }
+    } catch (e) {
+      notifyError(e);
+    } finally {
+      setDowngradingInProgress(false);
+      setShowDowngradeStemsConfirm(false);
     }
   };
 
@@ -223,6 +267,27 @@ export function SettingsOverlay() {
           </div>
         </div>
 
+        {/* Hide Separate All Button */}
+        <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
+          <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
+            {t("settings.hideBatchSeparate.label")}
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={hideBatchSeparate}
+              onChange={(e) => handleHideBatchSeparateChange(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--color-border-light)] bg-[var(--color-surface)] accent-[var(--color-accent)]"
+            />
+            <span className="text-[13px] text-white">
+              {t("settings.hideBatchSeparate.hide")}
+            </span>
+          </label>
+          <p className="text-[11px] text-[var(--color-text-dim)]">
+            {t("settings.hideBatchSeparate.description")}
+          </p>
+        </div>
+
         {/* Output Device */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
@@ -278,6 +343,27 @@ export function SettingsOverlay() {
             </button>
           </div>
 
+          {/* Downgrade All to 2-Stem */}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[13px] text-white">
+                {t("settings.dangerZone.downgradeStems")}
+              </p>
+              <p className="text-[11px] text-[var(--color-text-dim)]">
+                {t("settings.dangerZone.downgradeStemsDescription")}
+              </p>
+            </div>
+            <button
+              onClick={handleDowngradeStemsClick}
+              disabled={downgradingInProgress}
+              className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
+            >
+              {downgradingInProgress
+                ? t("common.deleting")
+                : t("settings.dangerZone.downgradeStemsButton")}
+            </button>
+          </div>
+
           {/* Delete All Lyrics */}
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -316,6 +402,23 @@ export function SettingsOverlay() {
           confirmLabel={t("settings.confirmDeleteStems.confirm")}
           onConfirm={handleDeleteStemsConfirm}
           onCancel={() => setShowDeleteStemsConfirm(false)}
+        />
+      )}
+
+      {showDowngradeStemsConfirm && (
+        <ConfirmationDialog
+          title={t("settings.confirmDowngradeStems.title")}
+          message={t("settings.confirmDowngradeStems.message")}
+          detail={
+            downgradeSavings != null && downgradeSavings > 0
+              ? t("settings.confirmDowngradeStems.detail", {
+                  size: formatBytes(downgradeSavings),
+                })
+              : undefined
+          }
+          confirmLabel={t("settings.confirmDowngradeStems.confirm")}
+          onConfirm={handleDowngradeStemsConfirm}
+          onCancel={() => setShowDowngradeStemsConfirm(false)}
         />
       )}
 

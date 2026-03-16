@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Folder, CheckCircle2, UploadCloud, Layers, X } from "lucide-react";
+import { ConfirmationDialog } from "@/components/Settings/ConfirmationDialog";
 import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
 import { ImportButton } from "@/components/Library/ImportButton";
@@ -18,17 +19,45 @@ export function Sidebar() {
   const batchSeparation = useLibraryStore((s) => s.batchSeparation);
 
   const [stemMode, setStemMode] = useState<StemMode>("two_stem");
+  const [hideBatchSeparate, setHideBatchSeparate] = useState(false);
+  const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
 
   useEffect(() => {
     api
       .getSettings()
-      .then((settings) => setStemMode(settings.stem_mode))
+      .then((settings) => {
+        setStemMode(settings.stem_mode);
+        setHideBatchSeparate(settings.hide_batch_separate);
+      })
       .catch(() => {});
   }, []);
 
   const separatedCount = songs.filter(
     (s) => separationStatuses[s.hash]?.state === "completed",
   ).length;
+
+  // Check if all songs are separated in the current stem mode
+  const allSeparated =
+    songs.length > 0 &&
+    songs.every((s) => {
+      const status = separationStatuses[s.hash];
+      return status?.state === "completed";
+    });
+
+  const allMatchCurrentMode =
+    allSeparated &&
+    songs.every((s) => {
+      const status = separationStatuses[s.hash];
+      if (!status || status.state !== "completed") return false;
+      if (stemMode === "four_stem") return !!status.drums_path;
+      return true; // any completed is fine for two_stem
+    });
+
+  const needsUpgrade =
+    allSeparated && !allMatchCurrentMode && stemMode === "four_stem";
+
+  const shouldHideButton =
+    hideBatchSeparate || (allSeparated && allMatchCurrentMode);
 
   const handleSeparateAll = () => {
     api.batchSeparate([]).catch(notifyError);
@@ -107,71 +136,94 @@ export function Sidebar() {
       </div>
 
       {/* Batch separation controls */}
-      <div className="shrink-0 border-t border-[var(--color-border)] px-3 py-3">
-        {isBatchRunning ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[var(--color-text-dim)]">
-                {t("sidebar.separating", {
-                  current: Math.min(
-                    batchSeparation.completed + 1,
-                    batchSeparation.total,
-                  ),
-                  total: batchSeparation.total,
-                })}
-              </span>
-              <button
-                onClick={handleCancelBatch}
-                className="text-[var(--color-text-dim)] transition-colors hover:text-white"
-                title={t("sidebar.cancelBatch")}
-                aria-label={t("sidebar.cancelBatch")}
-              >
-                <X size={12} />
-              </button>
+      {!(shouldHideButton && !isBatchRunning && batchSeparation == null) && (
+        <div className="shrink-0 border-t border-[var(--color-border)] px-3 py-3">
+          {isBatchRunning ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-[var(--color-text-dim)]">
+                  {t("sidebar.separating", {
+                    current: Math.min(
+                      batchSeparation.completed + 1,
+                      batchSeparation.total,
+                    ),
+                    total: batchSeparation.total,
+                  })}
+                </span>
+                <button
+                  onClick={handleCancelBatch}
+                  className="text-[var(--color-text-dim)] transition-colors hover:text-white"
+                  title={t("sidebar.cancelBatch")}
+                  aria-label={t("sidebar.cancelBatch")}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
+                <div
+                  className="h-full rounded-full bg-[var(--color-accent)] transition-all"
+                  style={{
+                    width: `${((batchSeparation.completed + (batchSeparation.current_percent ?? 0) / 100) / batchSeparation.total) * 100}%`,
+                  }}
+                />
+              </div>
+              {batchSeparation.failed > 0 && (
+                <span className="text-[10px] text-red-400">
+                  {t("sidebar.failed", { count: batchSeparation.failed })}
+                </span>
+              )}
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
-              <div
-                className="h-full rounded-full bg-[var(--color-accent)] transition-all"
-                style={{
-                  width: `${((batchSeparation.completed + (batchSeparation.current_percent ?? 0) / 100) / batchSeparation.total) * 100}%`,
-                }}
-              />
+          ) : batchSeparation != null ? (
+            // Completed/cancelled state (shown briefly before clearing)
+            <div className="text-center text-[11px] text-[var(--color-text-dim)]">
+              {t("sidebar.separationComplete", {
+                done: batchSeparation.completed,
+              })}
+              {batchSeparation.skipped > 0 &&
+                `, ${t("sidebar.skipped", { count: batchSeparation.skipped })}`}
+              {batchSeparation.failed > 0 &&
+                `, ${t("sidebar.failed", { count: batchSeparation.failed })}`}
             </div>
-            {batchSeparation.failed > 0 && (
-              <span className="text-[10px] text-red-400">
-                {t("sidebar.failed", { count: batchSeparation.failed })}
+          ) : needsUpgrade ? (
+            <button
+              onClick={() => setShowUpgradeConfirm(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white"
+            >
+              <Layers size={12} />
+              {t("sidebar.upgradeAll")}
+            </button>
+          ) : (
+            <button
+              onClick={handleSeparateAll}
+              disabled={songs.length === 0}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-40"
+            >
+              <Layers size={12} />
+              {t("sidebar.separateAll")}
+              <span className="text-[10px] text-[var(--color-text-dimmer)]">
+                (
+                {stemMode === "four_stem"
+                  ? t("sidebar.fourStem")
+                  : t("sidebar.twoStem")}
+                )
               </span>
-            )}
-          </div>
-        ) : batchSeparation != null ? (
-          // Completed/cancelled state (shown briefly before clearing)
-          <div className="text-center text-[11px] text-[var(--color-text-dim)]">
-            {t("sidebar.separationComplete", {
-              done: batchSeparation.completed,
-            })}
-            {batchSeparation.skipped > 0 &&
-              `, ${t("sidebar.skipped", { count: batchSeparation.skipped })}`}
-            {batchSeparation.failed > 0 &&
-              `, ${t("sidebar.failed", { count: batchSeparation.failed })}`}
-          </div>
-        ) : (
-          <button
-            onClick={handleSeparateAll}
-            disabled={songs.length === 0}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-40"
-          >
-            <Layers size={12} />
-            {t("sidebar.separateAll")}
-            <span className="text-[10px] text-[var(--color-text-dimmer)]">
-              (
-              {stemMode === "four_stem"
-                ? t("sidebar.fourStem")
-                : t("sidebar.twoStem")}
-              )
-            </span>
-          </button>
-        )}
-      </div>
+            </button>
+          )}
+        </div>
+      )}
+
+      {showUpgradeConfirm && (
+        <ConfirmationDialog
+          title={t("sidebar.confirmUpgrade.title")}
+          message={t("sidebar.confirmUpgrade.message")}
+          confirmLabel={t("sidebar.confirmUpgrade.confirm")}
+          onConfirm={() => {
+            setShowUpgradeConfirm(false);
+            api.batchSeparate([]).catch(notifyError);
+          }}
+          onCancel={() => setShowUpgradeConfirm(false)}
+        />
+      )}
     </div>
   );
 }

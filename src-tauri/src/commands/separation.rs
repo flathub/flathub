@@ -447,6 +447,50 @@ pub fn re_separate(
 }
 
 #[tauri::command]
+pub fn downgrade_single_to_two_stem(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    song_id: String,
+) -> CommandResult<SeparationStatusSnapshot> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| separation_error(e.to_string()))?;
+
+    let (updated_entry, _freed_bytes) =
+        cache::stems::downgrade_to_two_stem(&connection, &library_root, &song_id)
+            .map_err(|e| separation_error(e.to_string()))?;
+
+    let completed = completed_status(
+        &song_id,
+        &updated_entry.vocals_path,
+        &updated_entry.accomp_path,
+        true,
+        updated_entry.drums_path,
+        updated_entry.bass_path,
+        updated_entry.other_path,
+    );
+
+    // Update in-memory separation statuses.
+    {
+        let mut statuses = state
+            .separation_statuses
+            .lock()
+            .map_err(|_| state_lock_error("separation status lock was poisoned"))?;
+        statuses.insert(song_id.clone(), completed.clone());
+    }
+
+    // Emit completion event so the frontend updates.
+    let _ = app_handle.emit(
+        SEPARATION_COMPLETE_EVENT,
+        SeparationCompleteEvent {
+            song_id: song_id.clone(),
+        },
+    );
+
+    Ok(completed)
+}
+
+#[tauri::command]
 pub fn get_separation_status(
     state: State<'_, AppState>,
     song_id: String,

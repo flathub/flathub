@@ -37,8 +37,16 @@ pub fn separate_song_into_cache(
     if let Some(cached) =
         cache::stems::get_valid_cached_stem_entry(connection, library_root, song_hash)?
     {
-        report_progress(CACHE_HIT_PROGRESS);
-        return Ok(artifacts_from_cache_entry(cached.entry, true));
+        // Verify the cached entry matches the requested stem mode.
+        // A 2-stem cache entry must NOT be treated as a hit when FourStem is requested.
+        let mode_matches = match stem_mode {
+            StemMode::TwoStem => true,
+            StemMode::FourStem => cached.entry.has_individual_stems(),
+        };
+        if mode_matches {
+            report_progress(CACHE_HIT_PROGRESS);
+            return Ok(artifacts_from_cache_entry(cached.entry, true));
+        }
     }
 
     report_progress(LOOKUP_PROGRESS);

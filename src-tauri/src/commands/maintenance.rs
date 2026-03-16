@@ -44,6 +44,54 @@ pub fn estimate_stems_size(state: State<'_, AppState>) -> CommandResult<u64> {
         .map_err(|e| internal_error(format!("failed to estimate stems disk usage: {e}")))
 }
 
+#[derive(Debug, Serialize)]
+pub struct DowngradeResult {
+    pub downgraded_count: usize,
+    pub freed_bytes: u64,
+}
+
+#[tauri::command]
+pub fn downgrade_all_to_two_stem(state: State<'_, AppState>) -> CommandResult<DowngradeResult> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| database_error(e.to_string()))?;
+
+    let (downgraded_count, freed_bytes) =
+        cache::stems::batch_downgrade_to_two_stem(&connection, &library_root)
+            .map_err(|e| internal_error(format!("failed to downgrade stems: {e}")))?;
+
+    // Update in-memory separation statuses: clear individual stem paths for downgraded songs.
+    if let Ok(mut statuses) = state.separation_statuses.lock() {
+        for status in statuses.values_mut() {
+            if status.drums_path.is_some() {
+                let accomp_path = format!(
+                    "stems/{}/accompaniment.ogg",
+                    status.song_id
+                );
+                status.accomp_path = Some(accomp_path);
+                status.drums_path = None;
+                status.bass_path = None;
+                status.other_path = None;
+            }
+        }
+    }
+
+    Ok(DowngradeResult {
+        downgraded_count,
+        freed_bytes,
+    })
+}
+
+#[tauri::command]
+pub fn estimate_downgrade_savings(state: State<'_, AppState>) -> CommandResult<u64> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| database_error(e.to_string()))?;
+
+    cache::stems::estimate_downgrade_savings(&connection, &library_root)
+        .map_err(|e| internal_error(format!("failed to estimate downgrade savings: {e}")))
+}
+
 #[tauri::command]
 pub fn delete_all_cached_lyrics(state: State<'_, AppState>) -> CommandResult<usize> {
     let library_root = state.library_root()?;

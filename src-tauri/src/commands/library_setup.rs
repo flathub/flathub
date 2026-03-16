@@ -23,6 +23,7 @@ pub fn create_library(state: State<'_, AppState>, path: String) -> CommandResult
             library_path: Some(path),
             stem_mode: None,
             language: None,
+            hide_batch_separate: None,
         },
     )
     .map_err(library_error)?;
@@ -51,6 +52,7 @@ pub fn open_library(state: State<'_, AppState>, path: String) -> CommandResult<(
             library_path: Some(path),
             stem_mode: None,
             language: None,
+            hide_batch_separate: None,
         },
     )
     .map_err(library_error)?;

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   DeleteStemsResult,
+  DowngradeResult,
   ImportLyricsResult,
   ImportSongsResult,
   LyricsPayload,
@@ -147,6 +148,10 @@ export function setLanguage(language: string): Promise<AppSettings> {
   return invoke<AppSettings>("set_language", { language });
 }
 
+export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
+  return invoke<AppSettings>("set_hide_batch_separate", { value });
+}
+
 export function upgradeToFourStem(
   songId: string,
 ): Promise<SeparationStatusSnapshot> {
@@ -178,10 +183,30 @@ export function extractEmbeddedLyrics(songId: string): Promise<LyricsPayload> {
   return invoke<LyricsPayload>("extract_embedded_lyrics", { songId });
 }
 
+export function fetchLyricsOnline(songId: string): Promise<LyricsPayload> {
+  return invoke<LyricsPayload>("fetch_lyrics_online", { songId });
+}
+
 export function batchSeparate(songIds: string[]): Promise<void> {
   return invoke<void>("batch_separate", { songIds });
 }
 
 export function cancelBatchSeparation(): Promise<void> {
   return invoke<void>("cancel_batch_separation");
+}
+
+export function downgradeToTwoStem(
+  songId: string,
+): Promise<SeparationStatusSnapshot> {
+  return invoke<SeparationStatusSnapshot>("downgrade_single_to_two_stem", {
+    songId,
+  });
+}
+
+export function downgradeAllToTwoStem(): Promise<DowngradeResult> {
+  return invoke<DowngradeResult>("downgrade_all_to_two_stem");
+}
+
+export function estimateDowngradeSavings(): Promise<number> {
+  return invoke<number>("estimate_downgrade_savings");
 }

@@ -28,6 +28,8 @@ pub struct AppConfig {
     pub stem_mode: Option<StemMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hide_batch_separate: Option<bool>,
 }
 
 impl AppConfig {
@@ -86,6 +88,7 @@ mod tests {
             library_path: Some("/Users/test/Music/MyLibrary".to_owned()),
             stem_mode: Some(StemMode::FourStem),
             language: None,
+            hide_batch_separate: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
@@ -106,6 +109,7 @@ mod tests {
             library_path: None,
             stem_mode: None,
             language: None,
+            hide_batch_separate: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("stem_mode"));

@@ -84,6 +84,7 @@ export type StemMode = "two_stem" | "four_stem";
 export interface AppSettings {
   stem_mode: StemMode;
   language: string | null;
+  hide_batch_separate: boolean;
 }
 
 // ─── Playback ────────────────────────────────────────────
@@ -174,6 +175,11 @@ export interface LyricsPayload {
 
 export interface DeleteStemsResult {
   deleted_count: number;
+  freed_bytes: number;
+}
+
+export interface DowngradeResult {
+  downgraded_count: number;
   freed_bytes: number;
 }
 

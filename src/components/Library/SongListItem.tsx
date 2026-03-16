@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useLibraryStore } from "@/stores/library-store";
 import { usePlayerStore } from "@/stores/player-store";
+import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useQueueStore } from "@/stores/queue-store";
 import { formatDuration } from "@/lib/format";
@@ -205,6 +206,27 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     label: t("library.extractEmbeddedLyrics"),
                     onClick: () => {
                       api.extractEmbeddedLyrics(song.hash).catch(notifyError);
+                    },
+                  },
+                  {
+                    label: t("library.fetchLyricsOnline"),
+                    onClick: () => {
+                      api
+                        .fetchLyricsOnline(song.hash)
+                        .then((payload) => {
+                          // If this song is currently playing, update the lyrics store
+                          const currentSongId =
+                            usePlayerStore.getState().snapshot?.song_id;
+                          if (
+                            currentSongId === song.hash &&
+                            payload.lines.length > 0
+                          ) {
+                            useLyricsStore.getState().clear();
+                            // Trigger a re-fetch to pick up the new cached lyrics
+                            useLyricsStore.getState().fetchLyrics(song.hash);
+                          }
+                        })
+                        .catch(notifyError);
                     },
                   },
                   {
