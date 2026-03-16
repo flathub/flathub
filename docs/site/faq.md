@@ -50,6 +50,10 @@ Yes. The default mode splits a song into vocals and accompaniment. If you want m
 
 No. Most people can import music, prepare a song, and start singing without touching advanced settings.
 
+## Why does OpenKara keep a copy of the original audio file?
+
+Because separation models improve over time. Keeping the original lets you upgrade to a better model or switch between 2-stem and 4-stem separation without re-importing your music.
+
 ## Where can I read more detail?
 
 - [Project README](https://github.com/thedavidweng/OpenKara/blob/main/README.md)

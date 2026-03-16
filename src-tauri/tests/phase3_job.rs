@@ -73,6 +73,7 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
         &model_path,
         "fixture-song",
         StemMode::default(),
+        "htdemucs",
         |percent| first_progress.push(percent),
     )
     .expect("first separation should succeed");
@@ -92,6 +93,7 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
         &model_path,
         "fixture-song",
         StemMode::default(),
+        "htdemucs",
         |percent| second_progress.push(percent),
     )
     .expect("second separation should hit cache");

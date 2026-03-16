@@ -102,20 +102,18 @@ pnpm tauri dev
 - Regenerate all platform icons with `pnpm icons:generate`
 - Generated assets are written to `src-tauri/icons/` for Tauri desktop and future mobile targets
 
-## AI Model
+## AI Models
 
-OpenKara uses a custom ONNX build of the [Demucs htdemucs](https://github.com/adefossez/demucs) model for stem separation. The model is maintained in a separate repository:
+OpenKara uses custom ONNX builds of [Demucs](https://github.com/adefossez/demucs) models for stem separation. Models are maintained in a separate repository:
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — Reproducible ONNX model conversion pipeline
 
-| Property     | Value                                    |
-| ------------ | ---------------------------------------- |
-| Source model | `htdemucs` (Hybrid Transformer Demucs)   |
-| Input        | Stereo audio at 44.1 kHz (7.8s segments) |
-| Output       | 4 stems: drums, bass, other, vocals      |
-| Format       | ONNX (opset 17)                          |
+| Model          | Description                                  | Input                             | Output                       | Format        |
+| -------------- | -------------------------------------------- | --------------------------------- | ---------------------------- | ------------- |
+| `htdemucs`     | Standard — Hybrid Transformer Demucs         | Stereo audio at 44.1 kHz (7.8s)  | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
+| `htdemucs_ft`  | High Quality — Fine-tuned 4-model ensemble   | Stereo audio at 44.1 kHz (7.8s)  | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
 
-On first launch, OpenKara automatically downloads the model (~80 MB). For development, run `./scripts/setup.sh` to download it locally. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline and how to build the model from source.
+On first launch, OpenKara automatically downloads the standard model. The high quality model is optional and can be downloaded from Settings. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline. For development, run `./scripts/setup.sh` to download the standard model locally.
 
 ## Tech Stack
 

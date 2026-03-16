@@ -53,6 +53,30 @@ impl AppState {
             .clone()
             .ok_or_else(|| commands::error::library_error("no library configured".to_owned()))
     }
+
+    /// Resolve the path to the active AI model based on the current config.
+    ///
+    /// Checks (in order): managed model dir for the active variant, then dev fallback.
+    pub fn resolve_model_path(&self) -> Result<PathBuf, commands::error::CommandError> {
+        let variant = config::load_config(&self.app_data_dir)
+            .ok()
+            .flatten()
+            .map(|c| c.effective_model_variant())
+            .unwrap_or_default();
+        let descriptor = separator::bootstrap::descriptor_for(variant);
+        let managed =
+            separator::bootstrap::managed_model_path_for(&self.app_data_dir, descriptor);
+        if managed.exists() {
+            return Ok(managed);
+        }
+        // Dev fallback: check old single-model path.
+        let dev_path = separator::model::default_model_path();
+        if dev_path.exists() {
+            return Ok(dev_path);
+        }
+        // Fall back to managed path (will error at load time if missing).
+        Ok(managed)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -186,8 +210,12 @@ pub fn run() {
             commands::separation::downgrade_single_to_two_stem,
             commands::settings::get_settings,
             commands::settings::set_stem_mode,
+            commands::settings::set_model_variant,
             commands::settings::set_language,
-            commands::settings::set_hide_batch_separate
+            commands::settings::set_hide_batch_separate,
+            commands::bootstrap::download_model,
+            commands::bootstrap::delete_model,
+            commands::bootstrap::get_model_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

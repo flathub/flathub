@@ -1,4 +1,4 @@
-use crate::separator::model::EMBEDDED_MODEL_FILENAME;
+use crate::config::ModelVariant;
 use anyhow::{bail, Context, Result};
 use reqwest::blocking::Client;
 use sha2::{Digest, Sha256};
@@ -9,9 +9,34 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub const MODEL_DOWNLOAD_URL: &str =
-    "https://github.com/thedavidweng/openkara-models/releases/download/model-v1.0.0/htdemucs.onnx";
-pub const MODEL_SHA256: &str = "66eebc928e4a9f7e5b837605794f4db2b91748f163b0bcbc8f29a526ffe5607e";
+pub struct ModelDescriptor {
+    pub filename: &'static str,
+    pub download_url: &'static str,
+    pub sha256: &'static str,
+}
+
+pub const HTDEMUCS: ModelDescriptor = ModelDescriptor {
+    filename: "htdemucs.onnx",
+    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-v1.0.0/htdemucs.onnx",
+    sha256: "66eebc928e4a9f7e5b837605794f4db2b91748f163b0bcbc8f29a526ffe5607e",
+};
+
+pub const HTDEMUCS_FT: ModelDescriptor = ModelDescriptor {
+    filename: "htdemucs_ft.onnx",
+    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-ft-v1.0.0/htdemucs_ft.onnx",
+    sha256: "edc2ce809e6502193d56da6cccc2d16036cbe8c4cae37016d1eb32b0edfa3ebf",
+};
+
+/// Backward-compatible aliases used by existing code and tests.
+pub const MODEL_DOWNLOAD_URL: &str = HTDEMUCS.download_url;
+pub const MODEL_SHA256: &str = HTDEMUCS.sha256;
+
+pub fn descriptor_for(variant: ModelVariant) -> &'static ModelDescriptor {
+    match variant {
+        ModelVariant::Htdemucs => &HTDEMUCS,
+        ModelVariant::HtdemucsFt => &HTDEMUCS_FT,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelSource {
@@ -26,7 +51,36 @@ pub struct ResolvedModelPath {
 }
 
 pub fn managed_model_path(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join("models").join(EMBEDDED_MODEL_FILENAME)
+    managed_model_path_for(app_data_dir, &HTDEMUCS)
+}
+
+pub fn managed_model_path_for(app_data_dir: &Path, descriptor: &ModelDescriptor) -> PathBuf {
+    app_data_dir.join("models").join(descriptor.filename)
+}
+
+/// Check if a specific model variant is present and valid on disk.
+pub fn is_model_available(app_data_dir: &Path, variant: ModelVariant) -> bool {
+    let descriptor = descriptor_for(variant);
+    let path = managed_model_path_for(app_data_dir, descriptor);
+    path.exists() && verify_file_checksum(&path, descriptor.sha256).unwrap_or(false)
+}
+
+/// Get the file size of a model variant if it exists on disk.
+pub fn model_file_size(app_data_dir: &Path, variant: ModelVariant) -> Option<u64> {
+    let descriptor = descriptor_for(variant);
+    let path = managed_model_path_for(app_data_dir, descriptor);
+    fs::metadata(&path).ok().map(|m| m.len())
+}
+
+/// Delete a model variant from disk.
+pub fn delete_model_file(app_data_dir: &Path, variant: ModelVariant) -> Result<()> {
+    let descriptor = descriptor_for(variant);
+    let path = managed_model_path_for(app_data_dir, descriptor);
+    if path.exists() {
+        fs::remove_file(&path)
+            .with_context(|| format!("failed to delete model file {}", path.display()))?;
+    }
+    Ok(())
 }
 
 pub fn resolve_existing_model_path(

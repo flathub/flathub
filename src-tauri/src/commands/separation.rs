@@ -35,6 +35,7 @@ pub struct SeparationStatusSnapshot {
     pub drums_path: Option<String>,
     pub bass_path: Option<String>,
     pub other_path: Option<String>,
+    pub model_variant: Option<String>,
     pub error: Option<CommandError>,
 }
 
@@ -81,15 +82,22 @@ pub fn separate(
     };
 
     let library_root = state.library_root()?;
-    let model_path = state.model_path.clone();
+    let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let worker_song_id = song_id.clone();
     let worker_app_handle = app_handle.clone();
-    let stem_mode = config::load_config(&state.app_data_dir)
+    let app_config = config::load_config(&state.app_data_dir)
         .ok()
-        .flatten()
+        .flatten();
+    let stem_mode = app_config
+        .as_ref()
         .map(|c| c.effective_stem_mode())
         .unwrap_or_default();
+    let model_variant = app_config
+        .as_ref()
+        .map(|c| c.effective_model_variant())
+        .unwrap_or_default();
+    let model_variant_str = model_variant.as_str().to_owned();
 
     tauri::async_runtime::spawn(async move {
         let worker_library_root = library_root.clone();
@@ -106,6 +114,7 @@ pub fn separate(
                 &worker_model_path,
                 &worker_song_id,
                 stem_mode,
+                &model_variant_str,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     if let Ok(mut statuses) = worker_statuses.lock() {
@@ -224,10 +233,16 @@ pub fn upgrade_to_four_stem(
     };
 
     let library_root = state.library_root()?;
-    let model_path = state.model_path.clone();
+    let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let worker_song_id = song_id.clone();
     let worker_app_handle = app_handle.clone();
+    let model_variant = config::load_config(&state.app_data_dir)
+        .ok()
+        .flatten()
+        .map(|c| c.effective_model_variant())
+        .unwrap_or_default();
+    let model_variant_str = model_variant.as_str().to_owned();
 
     tauri::async_runtime::spawn(async move {
         let worker_library_root = library_root.clone();
@@ -244,6 +259,7 @@ pub fn upgrade_to_four_stem(
                 &worker_model_path,
                 &worker_song_id,
                 StemMode::FourStem,
+                &model_variant_str,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     if let Ok(mut statuses) = worker_statuses.lock() {
@@ -354,10 +370,16 @@ pub fn re_separate(
     };
 
     let library_root = state.library_root()?;
-    let model_path = state.model_path.clone();
+    let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let worker_song_id = song_id.clone();
     let worker_app_handle = app_handle.clone();
+    let model_variant = config::load_config(&state.app_data_dir)
+        .ok()
+        .flatten()
+        .map(|c| c.effective_model_variant())
+        .unwrap_or_default();
+    let model_variant_str = model_variant.as_str().to_owned();
 
     tauri::async_runtime::spawn(async move {
         let worker_library_root = library_root.clone();
@@ -374,6 +396,7 @@ pub fn re_separate(
                 &worker_model_path,
                 &worker_song_id,
                 stem_mode,
+                &model_variant_str,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     if let Ok(mut statuses) = worker_statuses.lock() {
@@ -523,7 +546,7 @@ pub fn get_all_separation_statuses(
     for entry in entries {
         // Only report entries whose files still exist on disk
         if cache::stems::cache_entry_files_valid(&library_root, &entry) {
-            let status = completed_status(
+            let status = completed_status_with_model(
                 &entry.song_hash,
                 &entry.vocals_path,
                 &entry.accomp_path,
@@ -531,6 +554,7 @@ pub fn get_all_separation_statuses(
                 entry.drums_path.clone(),
                 entry.bass_path.clone(),
                 entry.other_path.clone(),
+                entry.model_variant.clone(),
             );
             statuses_lock.insert(entry.song_hash.clone(), status.clone());
             result.push(status);
@@ -565,6 +589,7 @@ pub fn idle_status(song_id: impl Into<String>) -> SeparationStatusSnapshot {
         drums_path: None,
         bass_path: None,
         other_path: None,
+        model_variant: None,
         error: None,
     }
 }
@@ -580,6 +605,7 @@ pub fn running_status(song_id: impl Into<String>, percent: u8) -> SeparationStat
         drums_path: None,
         bass_path: None,
         other_path: None,
+        model_variant: None,
         error: None,
     }
 }
@@ -603,6 +629,32 @@ pub fn completed_status(
         drums_path,
         bass_path,
         other_path,
+        model_variant: None,
+        error: None,
+    }
+}
+
+pub fn completed_status_with_model(
+    song_id: impl Into<String>,
+    vocals_path: impl Into<String>,
+    accomp_path: impl Into<String>,
+    cache_hit: bool,
+    drums_path: Option<String>,
+    bass_path: Option<String>,
+    other_path: Option<String>,
+    model_variant: String,
+) -> SeparationStatusSnapshot {
+    SeparationStatusSnapshot {
+        song_id: song_id.into(),
+        state: SeparationState::Completed,
+        percent: 100,
+        cache_hit,
+        vocals_path: Some(vocals_path.into()),
+        accomp_path: Some(accomp_path.into()),
+        drums_path,
+        bass_path,
+        other_path,
+        model_variant: Some(model_variant),
         error: None,
     }
 }
@@ -618,6 +670,7 @@ pub fn failed_status(song_id: impl Into<String>, error: CommandError) -> Separat
         drums_path: None,
         bass_path: None,
         other_path: None,
+        model_variant: None,
         error: Some(error),
     }
 }

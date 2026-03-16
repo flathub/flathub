@@ -32,18 +32,19 @@ pub fn separate_song_into_cache(
     model_path: &Path,
     song_hash: &str,
     stem_mode: StemMode,
+    model_variant: &str,
     mut report_progress: impl FnMut(u8),
 ) -> Result<SeparationArtifacts> {
     if let Some(cached) =
         cache::stems::get_valid_cached_stem_entry(connection, library_root, song_hash)?
     {
-        // Verify the cached entry matches the requested stem mode.
-        // A 2-stem cache entry must NOT be treated as a hit when FourStem is requested.
+        // Verify the cached entry matches the requested stem mode AND model variant.
+        let variant_matches = cached.entry.model_variant == model_variant;
         let mode_matches = match stem_mode {
             StemMode::TwoStem => true,
             StemMode::FourStem => cached.entry.has_individual_stems(),
         };
-        if mode_matches {
+        if mode_matches && variant_matches {
             report_progress(CACHE_HIT_PROGRESS);
             return Ok(artifacts_from_cache_entry(cached.entry, true));
         }
@@ -88,6 +89,7 @@ pub fn separate_song_into_cache(
         song_hash,
         &separation,
         stem_mode,
+        model_variant,
     )
     .with_context(|| format!("failed to cache generated stems for song {song_hash}"))?;
 

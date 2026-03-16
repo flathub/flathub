@@ -15,6 +15,31 @@ pub enum StemMode {
     FourStem,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelVariant {
+    #[default]
+    Htdemucs,
+    HtdemucsFt,
+}
+
+impl ModelVariant {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ModelVariant::Htdemucs => "htdemucs",
+            ModelVariant::HtdemucsFt => "htdemucs_ft",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<ModelVariant> {
+        match s {
+            "htdemucs" => Some(ModelVariant::Htdemucs),
+            "htdemucs_ft" => Some(ModelVariant::HtdemucsFt),
+            _ => None,
+        }
+    }
+}
+
 /// Per-machine configuration stored in `{app_data_dir}/config.json`.
 ///
 /// This is the only file that stays outside the portable library directory.
@@ -30,11 +55,17 @@ pub struct AppConfig {
     pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_batch_separate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_variant: Option<ModelVariant>,
 }
 
 impl AppConfig {
     pub fn effective_stem_mode(&self) -> StemMode {
         self.stem_mode.unwrap_or_default()
+    }
+
+    pub fn effective_model_variant(&self) -> ModelVariant {
+        self.model_variant.unwrap_or_default()
     }
 }
 
@@ -89,6 +120,7 @@ mod tests {
             stem_mode: Some(StemMode::FourStem),
             language: None,
             hide_batch_separate: None,
+            model_variant: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
@@ -110,6 +142,7 @@ mod tests {
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
+            model_variant: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("stem_mode"));

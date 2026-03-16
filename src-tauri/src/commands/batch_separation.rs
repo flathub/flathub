@@ -47,16 +47,24 @@ pub fn batch_separate(
     }
 
     let library_root = state.library_root()?;
-    let model_path = state.model_path.clone();
+    let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let batch_running = Arc::clone(&state.batch_running);
     let batch_cancel = Arc::clone(&state.batch_cancel);
 
-    let stem_mode = config::load_config(&state.app_data_dir)
+    let app_config = config::load_config(&state.app_data_dir)
         .ok()
-        .flatten()
+        .flatten();
+    let stem_mode = app_config
+        .as_ref()
         .map(|c| c.effective_stem_mode())
         .unwrap_or_default();
+    let model_variant_str = app_config
+        .as_ref()
+        .map(|c| c.effective_model_variant())
+        .unwrap_or_default()
+        .as_str()
+        .to_owned();
 
     // Resolve the list of song hashes to process.
     let hashes: Vec<String> = if song_ids.is_empty() {
@@ -164,6 +172,7 @@ pub fn batch_separate(
             let batch_skipped = skipped;
             let batch_failed = failed_count;
 
+            let worker_model_variant = model_variant_str.clone();
             let result = tauri::async_runtime::spawn_blocking(move || {
                 let connection =
                     cache::open_database(&worker_library_root.database_path())?;
@@ -173,6 +182,7 @@ pub fn batch_separate(
                     &worker_model_path,
                     &worker_song_id,
                     stem_mode,
+                    &worker_model_variant,
                     |percent| {
                         let snapshot = running_status(&progress_song_id, percent);
                         if let Ok(mut statuses) = worker_statuses.lock() {

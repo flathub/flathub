@@ -80,11 +80,19 @@ export interface ImportLyricsResult {
 // ─── Settings ───────────────────────────────────────────
 
 export type StemMode = "two_stem" | "four_stem";
+export type ModelVariant = "htdemucs" | "htdemucs_ft";
 
 export interface AppSettings {
   stem_mode: StemMode;
+  model_variant: ModelVariant;
   language: string | null;
   hide_batch_separate: boolean;
+}
+
+export interface ModelStatusSnapshot {
+  variant: string;
+  downloaded: boolean;
+  file_size: number | null;
 }
 
 // ─── Playback ────────────────────────────────────────────
@@ -131,6 +139,7 @@ export interface SeparationStatusSnapshot {
   drums_path: string | null;
   bass_path: string | null;
   other_path: string | null;
+  model_variant: string | null;
   error: CommandError | null;
 }
 

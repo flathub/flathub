@@ -82,6 +82,7 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
         &model::default_model_path(),
         &song_id,
         StemMode::default(),
+        "htdemucs",
         |_| {},
     )
     .expect("separation should succeed for the imported fixture");

@@ -7,6 +7,7 @@ import type {
   ImportSongsResult,
   LyricsPayload,
   ModelBootstrapStatusSnapshot,
+  ModelStatusSnapshot,
   PlaybackStateSnapshot,
   SeparationStatusSnapshot,
   StemName,
@@ -146,6 +147,24 @@ export function getSettings(): Promise<AppSettings> {
 
 export function setStemMode(mode: string): Promise<AppSettings> {
   return invoke<AppSettings>("set_stem_mode", { mode });
+}
+
+export function setModelVariant(variant: string): Promise<AppSettings> {
+  return invoke<AppSettings>("set_model_variant", { variant });
+}
+
+export function downloadModel(
+  variant: string,
+): Promise<ModelBootstrapStatusSnapshot> {
+  return invoke<ModelBootstrapStatusSnapshot>("download_model", { variant });
+}
+
+export function deleteModel(variant: string): Promise<void> {
+  return invoke<void>("delete_model", { variant });
+}
+
+export function getModelStatus(variant: string): Promise<ModelStatusSnapshot> {
+  return invoke<ModelStatusSnapshot>("get_model_status", { variant });
 }
 
 export function setLanguage(language: string): Promise<AppSettings> {

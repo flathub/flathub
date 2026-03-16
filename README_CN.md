@@ -104,18 +104,16 @@ pnpm tauri dev
 
 ## AI 模型
 
-OpenKara 使用自定义 ONNX 格式的 [Demucs htdemucs](https://github.com/adefossez/demucs) 模型进行音轨分离。该模型由独立仓库维护：
+OpenKara 使用自定义 ONNX 格式的 [Demucs](https://github.com/adefossez/demucs) 模型进行音轨分离。模型由独立仓库维护：
 
 **[openkara-models](https://github.com/thedavidweng/openkara-models)** — 可复现的 ONNX 模型转换流水线
 
-| 属性   | 值                                      |
-| ------ | --------------------------------------- |
-| 源模型 | `htdemucs`（Hybrid Transformer Demucs） |
-| 输入   | 44.1 kHz 立体声音频（7.8 秒分段）       |
-| 输出   | 4 条音轨：鼓、贝斯、其他、人声          |
-| 格式   | ONNX（opset 17）                        |
+| 模型           | 说明                                   | 输入                            | 输出                              | 格式             |
+| -------------- | -------------------------------------- | ------------------------------- | --------------------------------- | ---------------- |
+| `htdemucs`     | 标准 — Hybrid Transformer Demucs       | 44.1 kHz 立体声音频（7.8 秒）   | 4 条音轨：鼓、贝斯、其他、人声    | ONNX（opset 17） |
+| `htdemucs_ft`  | 高质量 — 微调 4 模型集成               | 44.1 kHz 立体声音频（7.8 秒）   | 4 条音轨：鼓、贝斯、其他、人声    | ONNX（opset 17） |
 
-首次启动时，OpenKara 会自动下载模型（约 80 MB）。开发环境下可运行 `./scripts/setup.sh` 手动下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线及如何从源码构建模型。
+首次启动时，OpenKara 会自动下载标准模型。高质量模型为可选项，可在设置中下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线。开发环境下可运行 `./scripts/setup.sh` 手动下载标准模型。
 
 ## 技术栈
 

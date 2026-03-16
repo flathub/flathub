@@ -142,6 +142,7 @@ function useEventListeners() {
               drums_path: null,
               bass_path: null,
               other_path: null,
+              model_variant: null,
               error: null,
             });
         },
@@ -166,6 +167,7 @@ function useEventListeners() {
                 drums_path: null,
                 bass_path: null,
                 other_path: null,
+                model_variant: null,
                 error: null,
               }),
             );
@@ -189,6 +191,7 @@ function useEventListeners() {
             drums_path: null,
             bass_path: null,
             other_path: null,
+            model_variant: null,
             error: e.payload.error,
           });
           notifyError(e.payload.error);

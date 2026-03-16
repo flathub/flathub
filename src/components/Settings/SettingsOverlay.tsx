@@ -8,7 +8,7 @@ import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
-import type { StemMode } from "@/types/ipc";
+import type { ModelVariant, StemMode } from "@/types/ipc";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -23,6 +23,12 @@ export function SettingsOverlay() {
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [stemMode, setStemMode] = useState<StemMode>("two_stem");
+  const [modelVariant, setModelVariantState] =
+    useState<ModelVariant>("htdemucs");
+  const [modelStatuses, setModelStatuses] = useState<
+    Record<string, { downloaded: boolean; file_size: number | null }>
+  >({});
+  const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const [language, setLanguageState] = useState<string>("en");
 
   // Danger zone dialogs
@@ -47,11 +53,31 @@ export function SettingsOverlay() {
       .getSettings()
       .then((settings) => {
         setStemMode(settings.stem_mode);
+        setModelVariantState(settings.model_variant);
         setLanguageState(settings.language ?? "en");
         setHideBatchSeparateState(settings.hide_batch_separate);
       })
       .catch((e) => notifyError(e));
+    refreshModelStatuses();
   }, []);
+
+  const refreshModelStatuses = async () => {
+    try {
+      const [standard, hq] = await Promise.all([
+        api.getModelStatus("htdemucs"),
+        api.getModelStatus("htdemucs_ft"),
+      ]);
+      setModelStatuses({
+        htdemucs: {
+          downloaded: standard.downloaded,
+          file_size: standard.file_size,
+        },
+        htdemucs_ft: { downloaded: hq.downloaded, file_size: hq.file_size },
+      });
+    } catch {
+      // ignore — model status is optional UI info
+    }
+  };
 
   const handleLanguageChange = async (lang: string) => {
     setLanguageState(lang);
@@ -100,6 +126,35 @@ export function SettingsOverlay() {
     try {
       const settings = await api.setStemMode(mode);
       setStemMode(settings.stem_mode);
+    } catch (e) {
+      notifyError(e);
+    }
+  };
+
+  const handleModelVariantChange = async (variant: ModelVariant) => {
+    try {
+      // If model is not downloaded, trigger download first
+      const status = modelStatuses[variant];
+      if (!status?.downloaded) {
+        setDownloadingModel(variant);
+        await api.downloadModel(variant);
+        // Poll until ready (the bootstrap events will update, but we can refresh)
+        await refreshModelStatuses();
+        setDownloadingModel(null);
+      }
+      const settings = await api.setModelVariant(variant);
+      setModelVariantState(settings.model_variant);
+    } catch (e) {
+      setDownloadingModel(null);
+      notifyError(e);
+    }
+  };
+
+  const handleDeleteModel = async (variant: string) => {
+    if (variant === modelVariant) return; // can't delete active model
+    try {
+      await api.deleteModel(variant);
+      await refreshModelStatuses();
     } catch (e) {
       notifyError(e);
     }
@@ -267,6 +322,64 @@ export function SettingsOverlay() {
           </div>
         </div>
 
+        {/* Model Variant */}
+        <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
+          <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
+            {t("settings.modelVariant.label")}
+          </label>
+          <p className="text-[12px] text-[var(--color-text-dim)]">
+            {t("settings.modelVariant.description")}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleModelVariantChange("htdemucs")}
+              disabled={downloadingModel !== null}
+              className={`flex-1 rounded-md border px-3 py-2 text-[13px] transition-colors ${
+                modelVariant === "htdemucs"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/20 text-white"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
+              } disabled:opacity-50`}
+            >
+              <div className="font-medium">
+                {t("settings.modelVariant.htdemucs")}
+              </div>
+              <div className="mt-0.5 text-[11px] opacity-70">
+                {t("settings.modelVariant.htdemucsDescription")}
+              </div>
+              <div className="mt-1 text-[10px] opacity-50">
+                {modelStatuses.htdemucs?.downloaded
+                  ? `${t("settings.modelVariant.downloaded")}${modelStatuses.htdemucs.file_size ? ` (${formatBytes(modelStatuses.htdemucs.file_size)})` : ""}`
+                  : downloadingModel === "htdemucs"
+                    ? t("settings.modelVariant.downloading")
+                    : t("settings.modelVariant.notDownloaded")}
+              </div>
+            </button>
+            <button
+              onClick={() => handleModelVariantChange("htdemucs_ft")}
+              disabled={downloadingModel !== null}
+              className={`flex-1 rounded-md border px-3 py-2 text-[13px] transition-colors ${
+                modelVariant === "htdemucs_ft"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/20 text-white"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-hover)] hover:text-white"
+              } disabled:opacity-50`}
+            >
+              <div className="font-medium">
+                {t("settings.modelVariant.htdemucsFt")}
+              </div>
+              <div className="mt-0.5 text-[11px] opacity-70">
+                {t("settings.modelVariant.htdemucsFtDescription")}
+              </div>
+              <div className="mt-1 text-[10px] opacity-50">
+                {modelStatuses.htdemucs_ft?.downloaded
+                  ? `${t("settings.modelVariant.downloaded")}${modelStatuses.htdemucs_ft.file_size ? ` (${formatBytes(modelStatuses.htdemucs_ft.file_size)})` : ""}`
+                  : downloadingModel === "htdemucs_ft"
+                    ? t("settings.modelVariant.downloading")
+                    : t("settings.modelVariant.notDownloaded")}
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* Hide Separate All Button */}
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-5">
           <label className="text-[12px] font-medium uppercase text-[var(--color-text-dim)]">
@@ -363,6 +476,64 @@ export function SettingsOverlay() {
                 : t("settings.dangerZone.downgradeStemsButton")}
             </button>
           </div>
+
+          {/* Delete Standard Model */}
+          {modelStatuses.htdemucs?.downloaded && (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[13px] text-white">
+                  {t("settings.dangerZone.deleteModelStandard")}
+                </p>
+                <p className="text-[11px] text-[var(--color-text-dim)]">
+                  {t("settings.dangerZone.deleteModelDescription")}
+                  {modelStatuses.htdemucs.file_size
+                    ? ` (${formatBytes(modelStatuses.htdemucs.file_size)})`
+                    : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => handleDeleteModel("htdemucs")}
+                disabled={modelVariant === "htdemucs"}
+                className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
+                title={
+                  modelVariant === "htdemucs"
+                    ? "Cannot delete the active model"
+                    : undefined
+                }
+              >
+                {t("settings.dangerZone.deleteModelButton")}
+              </button>
+            </div>
+          )}
+
+          {/* Delete High Quality Model */}
+          {modelStatuses.htdemucs_ft?.downloaded && (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[13px] text-white">
+                  {t("settings.dangerZone.deleteModelHQ")}
+                </p>
+                <p className="text-[11px] text-[var(--color-text-dim)]">
+                  {t("settings.dangerZone.deleteModelDescription")}
+                  {modelStatuses.htdemucs_ft.file_size
+                    ? ` (${formatBytes(modelStatuses.htdemucs_ft.file_size)})`
+                    : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => handleDeleteModel("htdemucs_ft")}
+                disabled={modelVariant === "htdemucs_ft"}
+                className="shrink-0 rounded-md border border-red-500/40 bg-red-600/10 px-3 py-1.5 text-[12px] text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
+                title={
+                  modelVariant === "htdemucs_ft"
+                    ? "Cannot delete the active model"
+                    : undefined
+                }
+              >
+                {t("settings.dangerZone.deleteModelButton")}
+              </button>
+            </div>
+          )}
 
           {/* Delete All Lyrics */}
           <div className="flex items-center justify-between gap-4">

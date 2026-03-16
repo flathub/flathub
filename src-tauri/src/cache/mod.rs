@@ -75,6 +75,12 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
         connection.execute_batch("ALTER TABLE stems ADD COLUMN other_path TEXT;")?;
     }
 
+    // 006_stem_model_variant – track which model produced each song's stems.
+    if !column_exists(connection, "stems", "model_variant")? {
+        connection
+            .execute_batch("ALTER TABLE stems ADD COLUMN model_variant TEXT DEFAULT 'htdemucs';")?;
+    }
+
     Ok(())
 }
 

@@ -80,6 +80,7 @@ fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
         &library,
         "song-hash",
         StemMode::TwoStem,
+        "htdemucs",
         || {
             generation_count.set(generation_count.get() + 1);
             Ok(sample_separation())
@@ -106,6 +107,7 @@ fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
         &library,
         "song-hash",
         StemMode::TwoStem,
+        "htdemucs",
         || {
             generation_count.set(generation_count.get() + 1);
             Ok(sample_separation())

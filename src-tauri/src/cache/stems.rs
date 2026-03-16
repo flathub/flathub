@@ -28,6 +28,7 @@ pub struct StemCacheEntry {
     pub drums_path: Option<String>,
     pub bass_path: Option<String>,
     pub other_path: Option<String>,
+    pub model_variant: String,
 }
 
 impl StemCacheEntry {
@@ -57,6 +58,7 @@ pub fn get_or_create_stem_cache<F>(
     library_root: &LibraryRoot,
     song_hash: &str,
     stem_mode: StemMode,
+    model_variant: &str,
     generate: F,
 ) -> Result<StemCacheResult>
 where
@@ -69,28 +71,25 @@ where
     }
 
     let separation = generate().context("failed to generate stems for cache population")?;
-    store_generated_stem_cache(connection, stems_base, song_hash, &separation, stem_mode)
+    store_generated_stem_cache(
+        connection,
+        stems_base,
+        song_hash,
+        &separation,
+        stem_mode,
+        model_variant,
+    )
 }
 
 pub fn list_all_stem_entries(connection: &Connection) -> rusqlite::Result<Vec<StemCacheEntry>> {
     let mut statement = connection.prepare(
         "SELECT song_hash, vocals_path, accomp_path, separated_at,
-                drums_path, bass_path, other_path
+                drums_path, bass_path, other_path, model_variant
         FROM stems",
     )?;
 
     let entries = statement
-        .query_map([], |row| {
-            Ok(StemCacheEntry {
-                song_hash: row.get(0)?,
-                vocals_path: row.get(1)?,
-                accomp_path: row.get(2)?,
-                separated_at: row.get(3)?,
-                drums_path: row.get(4)?,
-                bass_path: row.get(5)?,
-                other_path: row.get(6)?,
-            })
-        })?
+        .query_map([], map_stem_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(entries)
@@ -102,7 +101,7 @@ pub fn get_cached_stem_entry(
 ) -> rusqlite::Result<Option<StemCacheEntry>> {
     let mut statement = connection.prepare(
         "SELECT song_hash, vocals_path, accomp_path, separated_at,
-                drums_path, bass_path, other_path
+                drums_path, bass_path, other_path, model_variant
         FROM stems
         WHERE song_hash = ?1
         LIMIT 1",
@@ -110,15 +109,7 @@ pub fn get_cached_stem_entry(
 
     let mut rows = statement.query([song_hash])?;
     match rows.next()? {
-        Some(row) => Ok(Some(StemCacheEntry {
-            song_hash: row.get(0)?,
-            vocals_path: row.get(1)?,
-            accomp_path: row.get(2)?,
-            separated_at: row.get(3)?,
-            drums_path: row.get(4)?,
-            bass_path: row.get(5)?,
-            other_path: row.get(6)?,
-        })),
+        Some(row) => Ok(Some(map_stem_row(row)?)),
         None => Ok(None),
     }
 }
@@ -149,6 +140,7 @@ pub fn store_generated_stem_cache(
     song_hash: &str,
     separation: &SeparationResult,
     stem_mode: StemMode,
+    model_variant: &str,
 ) -> Result<StemCacheResult> {
     ensure_song_exists(connection, song_hash)?;
     let stem_directory = stem_directory(stems_base, song_hash);
@@ -196,6 +188,7 @@ pub fn store_generated_stem_cache(
                 drums_path: None,
                 bass_path: None,
                 other_path: None,
+                model_variant: model_variant.to_owned(),
             }
         }
         StemMode::FourStem => {
@@ -218,6 +211,7 @@ pub fn store_generated_stem_cache(
                 other_path: Some(format!(
                     "{STEMS_CACHE_DIRECTORY}/{song_hash}/{OTHER_FILENAME}"
                 )),
+                model_variant: model_variant.to_owned(),
             }
         }
     };
@@ -243,15 +237,17 @@ fn upsert_stem_cache_entry(
             separated_at,
             drums_path,
             bass_path,
-            other_path
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            other_path,
+            model_variant
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ON CONFLICT(song_hash) DO UPDATE SET
             vocals_path = excluded.vocals_path,
             accomp_path = excluded.accomp_path,
             separated_at = excluded.separated_at,
             drums_path = excluded.drums_path,
             bass_path = excluded.bass_path,
-            other_path = excluded.other_path",
+            other_path = excluded.other_path,
+            model_variant = excluded.model_variant",
         params![
             entry.song_hash,
             entry.vocals_path,
@@ -260,6 +256,7 @@ fn upsert_stem_cache_entry(
             entry.drums_path,
             entry.bass_path,
             entry.other_path,
+            entry.model_variant,
         ],
     )?;
 
@@ -479,6 +476,7 @@ pub fn downgrade_to_two_stem(
         drums_path: None,
         bass_path: None,
         other_path: None,
+        model_variant: entry.model_variant,
     };
 
     Ok((updated_entry, freed_bytes))
@@ -534,6 +532,21 @@ pub fn estimate_downgrade_savings(
 
 fn file_size_or_zero(path: &Path) -> u64 {
     fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+fn map_stem_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StemCacheEntry> {
+    Ok(StemCacheEntry {
+        song_hash: row.get(0)?,
+        vocals_path: row.get(1)?,
+        accomp_path: row.get(2)?,
+        separated_at: row.get(3)?,
+        drums_path: row.get(4)?,
+        bass_path: row.get(5)?,
+        other_path: row.get(6)?,
+        model_variant: row
+            .get::<_, Option<String>>(7)?
+            .unwrap_or_else(|| "htdemucs".to_owned()),
+    })
 }
 
 fn unix_timestamp() -> i64 {

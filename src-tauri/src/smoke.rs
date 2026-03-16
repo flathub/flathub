@@ -193,6 +193,7 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                             Path::new(model_path),
                             &song.hash,
                             StemMode::default(),
+                            "htdemucs",
                             |_| {},
                         ) {
                             Ok(artifacts) => (
