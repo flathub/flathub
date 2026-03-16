@@ -71,6 +71,12 @@ Download the latest build for your platform from [GitHub Releases](https://githu
 brew install thedavidweng/tap/openkara
 ```
 
+**macOS Gatekeeper note:** If macOS says the app is damaged or can't be opened, run:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/OpenKara.app
+```
+
 On first launch, OpenKara will prompt you to create a Karaoke Library and download the AI model.
 
 ### Build from Source

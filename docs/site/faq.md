@@ -20,6 +20,16 @@ No. OpenKara processes audio on your computer. It may go online to look up lyric
 
 macOS, Windows, and Linux.
 
+## macOS says the app is damaged or can't be opened. What do I do?
+
+This happens because OpenKara isn't notarized with Apple. Open Terminal and run:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/OpenKara.app
+```
+
+Then open the app again. This only needs to be done once.
+
 ## Where do lyrics come from?
 
 OpenKara first looks for timed lyrics online. It can also use lyrics embedded in your audio files or `.lrc` files stored next to the song.

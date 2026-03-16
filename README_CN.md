@@ -71,6 +71,12 @@
 brew install thedavidweng/tap/openkara
 ```
 
+**macOS Gatekeeper 提示：** 如果 macOS 提示应用已损坏或无法打开，请在终端运行：
+
+```bash
+xattr -rd com.apple.quarantine /Applications/OpenKara.app
+```
+
 首次启动时，OpenKara 会引导你创建 Karaoke 曲库并下载 AI 模型。
 
 ### 从源码构建
