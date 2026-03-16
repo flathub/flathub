@@ -81,6 +81,9 @@ modules:
         path: pyodide-worker-yarn.lock
         dest: main/core/sandbox/pyodide/_build/worker/
         dest-filename: yarn.lock
+      # skip pyodide packages, as they are installed in another build setp
+      - type: patch
+        path: patches/skip-fetch-pyodide-packages.patch
       # metadata
       - type: file
         path: com.getgrist.grist.desktop
@@ -107,12 +110,68 @@ modules:
       - generated-sources-worker.json
       - generated-sources-desktop.json
       - generated-sources-core.json
-      # Python wheels (WASM) precompiled by pyodide/emscripten
-      - pyodide-packages.json
-      - type: patch
-        path: patches/pyodide-local-packages.patch
       # wrapper to launch the app
       - type: script
         dest-filename: run.sh
         commands:
           - zypak-wrapper.sh /app/main/grist-desktop "$@"
+  - name: pyodide-packages
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/pyodide-packages/flatpak-node/cache
+        PYODIDE_XBUILDENV_PATH: /run/build/pyodide-packages/pyodide-xbuildenv
+        EMSDK_QUIET: "1"
+    build-commands:
+      # get pyodide ready
+      - pyodide xbuildenv use 0.29.3
+      - echo "node-22.16.0-64bit" >$FLATPAK_BUILDER_BUILDDIR/emsdk/node/22.16.0_64bit/.emsdk_version
+      - echo "releases-cb2a69bce627bd2247624c71fc12907cb8785d2f-64bit" >$FLATPAK_BUILDER_BUILDDIR/emsdk/upstream/.emsdk_version
+      - echo "3.13" >$FLATPAK_BUILDER_BUILDDIR/pyodide-xbuildenv/xbuildenv/.build-python-version
+      # get emsdk version from https://pyodide.github.io/pyodide/api/pyodide-cross-build-environments.json
+      - $FLATPAK_BUILDER_BUILDDIR/emsdk/emsdk activate 4.0.9 # replace with install to find URLs
+      # this follows build_packages.sh (but that uses network access and a container to run pyodide)
+      - |
+        . $FLATPAK_BUILDER_BUILDDIR/emsdk/emsdk_env.sh
+        mkdir -p _build/pyodide/grist-packages
+        for package in $FLATPAK_BUILDER_BUILDDIR/pydists/*; do
+          pyodide build "${package}" --outdir _build/pyodide/grist-packages --no-isolation #--no-skip-built-in-packages
+        done
+        pyodide py-compile _build/pyodide/grist-packages
+      - rm -rf _build/packages/
+      - mkdir node_modules; touch node_modules/node-fetch.js # we don't need this dependency for local copy
+      - node ./preparePackages.js _build/pyodide/grist-packages/ _build/packages/
+      # install in final location
+      - mkdir /app/main/resources/app.asar.unpacked/core/sandbox/pyodide/_build/packages
+      - cp _build/packages/* /app/main/resources/app.asar.unpacked/core/sandbox/pyodide/_build/packages/
+    subdir: core/sandbox/pyodide
+    modules:
+      - generated-sources-pyodide-packages-build-deps.json
+      # req2flatpak --requirements-file pip-compiled-pyodide-requirements.txt --target-platforms 313-x86_64 313-aarch64 -o generated-sources-pyodide-build.json
+      - generated-sources-pyodide-build.json
+    sources:
+      - type: archive
+        url: https://github.com/gristlabs/grist-core/archive/refs/tags/v1.7.11.tar.gz
+        sha256: "d7a657fe78ea5ebbb4d8bfbda18470d52dcd2151f3369f34d795452d0f814768"
+        dest: core
+      # consult https://pyodide.github.io/pyodide/api/pyodide-cross-build-environments.json for versions
+      - type: archive
+        url: https://github.com/pyodide/pyodide/releases/download/0.29.3/xbuildenv-0.29.3.tar.bz2
+        sha256: "1c676e37c04b0f438ee2ad2a1a51bf85313287ee53220345d0103c7797bf9b9a"
+        dest: pyodide-xbuildenv/0.29.3/xbuildenv
+      - type: archive
+        url: https://github.com/emscripten-core/emsdk/archive/refs/tags/5.0.2.tar.gz
+        sha256: "7207d2f939416b19dc2e1a1ef9d012579c6e0d628da485dbcd5075c5f2c90292"
+        dest: emsdk
+      - type: archive
+        url: https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/node-v22.16.0-linux-x64.tar.xz
+        sha256: "f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e"
+        dest: emsdk/node/22.16.0_64bit
+      - type: archive
+        url: https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/cb2a69bce627bd2247624c71fc12907cb8785d2f/wasm-binaries.tar.xz
+        sha256: "c6fd245138e6bbdd8349963cb4045c557d657e4be0ea44155375633c689c8be9"
+        dest: emsdk/upstream
+      # sources of packages to build
+      - generated-sources-pyodide-packages.json
+      - type: patch
+        path: patches/relax-astroid-build-deps.patch

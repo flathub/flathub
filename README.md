@@ -26,3 +26,8 @@ Flatpak for [Grist Desktop](https://www.getgrist.com/), spreadsheet software to 
    the relevant binary modules from [@gristlabs/sqlite3 releases](https://github.com/gristlabs/node-sqlite3/releases),
    and updating them in the manifest. Also update the version in the update script.
    (Note that this step can be removed when the source build works again.)
+
+Note that pyodide is not updated by the update script, if you want to update this, you need to dive into
+finding the specific emsdk and dependencies, and updating the build commands to let emsdk work offline.
+Remember to also update its version in the update script.
+

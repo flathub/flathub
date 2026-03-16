@@ -3,6 +3,8 @@
 # Update to a new Grist version
 #
 
+# pyodide versions we are using (different from upstream, for packaging reasons)
+PYODIDE_VERSION=0.29.3
 # sqlite3 version we last saw, to check it hasn't changed yet
 PREV_SQLITE3_VERSION="5.1.4-grist.8"
 
@@ -29,7 +31,15 @@ if ! jq --version >/dev/null; then
   exit 1
 fi
 if ! yq --version >/dev/null; then
-  echo "Please install yq, see "https://kislyuk.github.io/yq/ 2>&1
+  echo "Please install yq, see https://kislyuk.github.io/yq/" 2>&1
+  exit 1
+fi
+if ! yarn --version >/dev/null; then
+  echo "Please install yarn" 2>&1
+  exit 1
+fi
+if ! flatpak_pip_generator -h >/dev/null; then
+  echo "Please install flatpak_pip_generator, see https://pypi.org/project/flatpak-pip-generator/" 2>&1
   exit 1
 fi
 
@@ -49,30 +59,16 @@ echo "** Updating core yarn sources" 2>&1
 tar -x -z -f _grist-core.tar.gz --wildcards 'grist-core-*/yarn.lock' -O >_grist-core-yarn.lock
 flatpak-node-generator yarn -o generated-sources-core.json _grist-core-yarn.lock
 
-echo "** Updating worker yarn sources (deno missing is ok)" 2>&1
+echo "** Updating worker yarn sources" 2>&1
 mkdir _worker
 tar -x -z -f _grist-core.tar.gz --strip-components 3 -C _worker --wildcards 'grist-core-*/sandbox/pyodide'
-jq '.dependencies = []' <pyodide-worker-package.json >_worker/package.json
+jq '.dependencies = {}' <pyodide-worker-package.json >_worker/package.json
 (cd _worker && ./setup.sh)
+(cd _worker/_build/worker && cat package.json | jq ".dependencies.pyodide |= \"${PYODIDE_VERSION}\"" > package.json.new && mv package.json.new package.json)
+yarn install --cwd _worker/_build/worker
 cp _worker/_build/worker/package.json pyodide-worker-package.json
 cp _worker/_build/worker/yarn.lock pyodide-worker-yarn.lock
 flatpak-node-generator yarn -o generated-sources-worker.json pyodide-worker-yarn.lock
-
-echo "** Downloading pyodide compiled WASM wheels" 2>&1
-echo "" >_pyodide-packages.jsonl
-for f in `cat _worker/package_filenames.json | jq -r '.[]'`; do
-  echo "- ${f}" 2>&1
-  # manifest
-  m=`echo "$f" | sed 's/-cp[0-9].*$/.json/; s/_/-/g'`
-  url1="https://s3.amazonaws.com/grist-pynbox/pyodide/packages/v3/${m}"
-  hash1=`curl -s "$url1" | openssl sha256 | sed 's/^.*= //'`
-  echo '{ "type": "file", "url": "'"$url1"'", "sha256": "'"$hash1"'", "dest": "pyodide-packages" }' >>_pyodide-packages.jsonl
-  # wheel
-  url2="https://s3.amazonaws.com/grist-pynbox/pyodide/packages/v3/${f}"
-  hash2=`curl -s "$url2" | openssl sha256 | sed 's/^.*= //'`
-  echo '{ "type": "file", "url": "'"$url2"'", "sha256": "'"$hash2"'", "dest": "pyodide-packages" }' >>_pyodide-packages.jsonl
-done
-cat _pyodide-packages.jsonl | jq -s >pyodide-packages.json
 
 # node-sqlite3 compiled modules (can drop this after source build works again the manifest is adapted)
 echo "** Checking node-sqlite3"
@@ -93,7 +89,19 @@ CORE_ARCHIVE_HASH=`openssl sha256 _grist-core.tar.gz | sed 's/^.*=\\s*//'`
 yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core")) | .[].url) |= "'"${CORE_ARCHIVE_URL}"'"' com.getgrist.grist.yml
 yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core")) | .[].sha256) |= "'"${CORE_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
 
+# pyodide packages build step
+# note dependencies are pip-compiled, so have their version specified with ==
+echo "** Resolving pyodide package dependencies" 2>&1
+tar -x -z -f _grist-core.tar.gz --wildcards 'grist-core-*/sandbox/requirements.txt' -O >_requirements.txt
+for spec in `cat _requirements.txt | sed 's/\\s*#.*$//'`; do
+  package=`echo "$spec" | sed 's/\\s*==.*$//'`
+  version=`echo "$spec" | sed 's/^.*==\\s*//'`
+  curl -s "https://pypi.org/pypi/${package}/json" | \
+    jq ".releases[\"${version}\"] | map(select(.packagetype == \"sdist\"))[0] | { type: \"archive\", url: .url, sha256: .digests.sha256, dest: \"pydists/${package}\" }"
+done | jq -s >generated-sources-pyodide-packages.json
+flatpak_pip_generator packaging setuptools_scm flit_core -o generated-sources-pyodide-packages-build-deps
+
 # cleanup intermediate files
 echo "** Cleaning up" 2>&1
 rm -Rf _worker
-rm -f _grist-desktop.tar.gz _grist-core.tar.gz _grist-desktop-yarn.lock _grist-core-yarn.lock _pyodide-packages.jsonl
+rm -f _grist-desktop.tar.gz _grist-core.tar.gz _grist-desktop-yarn.lock _grist-core-yarn.lock _pyodide-packages.jsonl _requirements.txt
