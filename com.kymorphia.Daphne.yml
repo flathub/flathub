@@ -1,0 +1,112 @@
+id: com.kymorphia.Daphne
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: daphne-music
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --socket=pulseaudio
+  - --filesystem=xdg-music:ro
+cleanup:
+  - /bin/ldc2.conf
+  - /bin/dub
+  - /bin/ldc2
+  - /bin/taglib-config
+  - /import
+  - /include
+  - /lib/libdruntime-ldc*.so*
+  - /lib/libphobos2-ldc*.so*
+  - /lib/LLVMgold-ldc.so
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/doc
+  - /share/man
+  - '*.a'
+modules:
+  - name: taglib
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: git
+        url: https://github.com/taglib/taglib.git
+        tag: v2.1.1
+        commit: 7d86716194777e0294453bfdc9dd170bd033e1f4
+  - name: ldc
+    buildsystem: simple
+    build-options:
+      append-path: /app/bin
+    build-commands:
+      - mkdir -p /app/bin
+      - mkdir -p /app/lib
+      - cp bin/ldc2 /app/bin/
+      - cp bin/dub /app/bin/
+      - chmod +x /app/bin/ldc*
+      - cp etc/ldc2.conf /app/bin/
+      - cp -r import/ /app/
+      - cp -r lib/* /app/lib/
+    sources:
+      - type: archive
+        url: https://github.com/ldc-developers/ldc/releases/download/v1.41.0/ldc2-1.41.0-linux-x86_64.tar.xz
+        sha256: 4a439457f0fe59e69d02fd6b57549fc3c87ad0f55ad9fb9e42507b6f8e327c8f
+        strip-components: 1
+  - name: daphne-music
+    buildsystem: simple
+    no-autogen: true
+    build-commands:
+      - export PATH=/app/bin:$PATH
+      - jq 'del(.dependencies)' dub.json > dub.json.new && mv dub.json.new dub.json
+      - jq 'del(.configurations[] | select(.name != "SQLite"))' deps/ddbc/dub.json > tmp.json && mv tmp.json deps/ddbc/dub.json
+      - make update-config PREFIX=/app
+      - DUB_CACHE_PATH=${FLATPAK_BUILDER_BUILDDIR}/dub-cache
+        DUB_HOME=${FLATPAK_BUILDER_BUILDDIR}/dub-home
+        dub build -c local-deps --compiler ldc2 --verbose --cache=local --build=release
+      - install -Dm755 daphne-music /app/bin/daphne-music
+      - install -Dm644 com.kymorphia.Daphne.desktop /app/share/applications/com.kymorphia.Daphne.desktop
+      - install -Dm644 com.kymorphia.Daphne.svg /app/share/icons/hicolor/scalable/apps/com.kymorphia.Daphne.svg
+      - install -dm755 /app/share/daphne-music/help
+      - install -Dm644 help/* /app/share/daphne-music/help/
+    sources:
+      - type: git
+        tag: v1.0.0
+        url: https://codeberg.org/Kymorphia/daphne.git
+        commit: 0621fdfbd787eeafd3008bd701774a9bf84ea21d
+      - type: git
+        url: https://github.com/Kymorphia/gid.git
+        tag: v0.9.9
+        commit: ddf1011ef8de8c323541d9060c8a985c68a8937b
+        dest: deps/gid
+      - type: git
+        url: https://github.com/Kymorphia/taglib-d.git
+        tag: v2.0.1
+        commit: 663b16c0c35bb3bcd796de5143418a702896e338
+        dest: deps/taglib-d
+      - type: git
+        url: https://github.com/Kymorphia/markdown-browser.git
+        tag: v0.9.1
+        commit: ece2e035f6d3805bbfdb8a2c60490a28ce876f86
+        dest: deps/markdown-browser
+      - type: git
+        url: https://github.com/buggins/ddbc.git
+        tag: v0.7.0
+        commit: 7574333f6d95b6beddfd27777eb38feb6fd30d4d
+        dest: deps/ddbc
+      - type: git
+        url: https://github.com/FreeSlave/mofile.git
+        tag: v0.2.1
+        commit: 6dc54fdd4c1faf7dd9976a488ac84afc96a6ee28
+        dest: deps/mofile
+      - type: git
+        url: https://github.com/veelo/gettext.git
+        tag: v1.0.10
+        commit: eb5c377034dfc44b05b0db964633681233c722bf
+        dest: deps/gettext
