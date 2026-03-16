@@ -35,8 +35,8 @@
 ### 开始前先读
 
 1. [交接总计划](./2026-03-13-handoff-master-plan.md)
-2. [Technical Roadmap](../roadmap.md)
-3. [Development Phases](../development-phases.md)
+2. [Technical Roadmap](../internal/roadmap.md)
+3. [Development Phases](../internal/development-phases.md)
 
 ## 2. UI Agent 不负责什么
 

@@ -59,8 +59,8 @@
 1. 本文档
 2. [UI Agent 执行计划](./2026-03-13-ui-agent-plan.md)
 3. [代码 Agent 执行计划](./2026-03-13-code-agent-plan.md)
-4. [Development Phases](../development-phases.md)
-5. [Technical Roadmap](../roadmap.md)
+4. [Development Phases](../internal/development-phases.md)
+5. [Technical Roadmap](../internal/roadmap.md)
 
 ## 2. 阶段总览与依赖
 
