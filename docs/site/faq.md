@@ -2,7 +2,7 @@
 layout: page
 title: FAQ
 eyebrow: FAQ
-intro: A quick overview of the questions people usually ask before they try OpenKara.
+intro: Common questions from people trying OpenKara for the first time.
 description: Answers to common questions about OpenKara.
 body_class: faq-markdown
 permalink: faq.html
@@ -10,11 +10,11 @@ permalink: faq.html
 
 ## What is OpenKara?
 
-OpenKara is a free, open-source desktop app that turns your own music into karaoke. It removes vocals from your songs, adds synced lyrics, and lets you sing along — all running on your computer.
+OpenKara is a free desktop app that turns songs you already own into karaoke tracks. It removes vocals, shows lyrics in time with the music, and keeps the work on your computer.
 
 ## Does it upload my music?
 
-No. All audio processing happens on your computer. OpenKara goes online only to look up lyrics, but your music files never leave your machine.
+No. OpenKara processes audio on your computer. It may go online to look up lyrics, but your music files stay on your machine.
 
 ## Which platforms are supported?
 
@@ -22,23 +22,23 @@ macOS, Windows, and Linux.
 
 ## Where do lyrics come from?
 
-OpenKara searches for timed lyrics online automatically. It also reads lyrics already embedded in your audio files, or `.lrc` files saved next to the track.
+OpenKara first looks for timed lyrics online. It can also use lyrics embedded in your audio files or `.lrc` files stored next to the song.
 
 ## Can I move my library between machines?
 
-Yes. Your entire karaoke library lives in one folder. Copy it to a USB drive, NAS, or another computer and open it from there.
+Yes. Your karaoke library lives in one folder, so you can move it to a USB drive, NAS, or another computer.
 
 ## How large is the AI model?
 
-About 80 MB. It downloads automatically the first time you process a song — the initial install stays small.
+About 80 MB. OpenKara downloads it the first time you process a song, so the initial app download stays smaller.
 
 ## Can I choose how much to separate?
 
-Yes. The default mode separates vocals from accompaniment (2 stems). You can also choose 4-stem mode for individual control over drums, bass, and other instruments. Songs can be upgraded from 2 to 4 stems later.
+Yes. The default mode splits a song into vocals and accompaniment. If you want more control, the more detailed mode separates drums, bass, and other instruments too. You can upgrade a song later.
 
 ## Do I need technical knowledge to use this?
 
-No. Import your music, click separate, and sing. The app handles the rest.
+No. Most people can import music, prepare a song, and start singing without touching advanced settings.
 
 ## Where can I read more detail?
 
