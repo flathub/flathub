@@ -48,6 +48,31 @@ pub fn play(
 }
 
 #[tauri::command]
+pub fn resume(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> CommandResult<PlaybackStateSnapshot> {
+    let mut playback = state
+        .playback
+        .lock()
+        .map_err(|_| state_lock_error("playback controller lock was poisoned"))?;
+    let snapshot = playback.play(monotonic_now_ms()).map_err(playback_error)?;
+    drop(playback);
+
+    output::ensure_output_thread(
+        &state.audio_output_started,
+        &state.audio_output_start_lock,
+        state.playback.clone(),
+    )
+    .map_err(playback_error)?;
+
+    emit_playback_position(&app_handle, &snapshot)
+        .map_err(|error| internal_error(error.to_string()))?;
+
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn pause(
     state: State<'_, AppState>,
     app_handle: AppHandle,

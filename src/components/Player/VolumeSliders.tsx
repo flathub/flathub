@@ -1,6 +1,13 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Mic2, Music, ChevronDown, Drum, Guitar, Piano } from "lucide-react";
+import {
+  Mic2,
+  Music,
+  ChevronDown,
+  Drum,
+  Guitar,
+  AudioWaveform,
+} from "lucide-react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -35,6 +42,29 @@ export function VolumeSliders() {
   // Track previous non-zero values for mute/unmute toggle
   const prevVocalsRef = useRef(1);
   const prevAccompRef = useRef(1);
+  const prevDrumsRef = useRef(1);
+  const prevBassRef = useRef(1);
+  const prevOtherRef = useRef(1);
+
+  // Click-outside to close popup
+  const popupRef = useRef<HTMLDivElement>(null);
+  const chevronRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(e.target as Node) &&
+        chevronRef.current &&
+        !chevronRef.current.contains(e.target as Node)
+      ) {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isExpanded]);
 
   const handleStemChange = useCallback(
     (stem: StemName, value: number) => {
@@ -96,6 +126,33 @@ export function VolumeSliders() {
     }
   }, [accompValue, setStemVolume]);
 
+  const handleDrumsMuteToggle = useCallback(() => {
+    if (stemVolumes.drums > 0) {
+      prevDrumsRef.current = stemVolumes.drums;
+      setStemVolume("drums", 0);
+    } else {
+      setStemVolume("drums", prevDrumsRef.current);
+    }
+  }, [stemVolumes.drums, setStemVolume]);
+
+  const handleBassMuteToggle = useCallback(() => {
+    if (stemVolumes.bass > 0) {
+      prevBassRef.current = stemVolumes.bass;
+      setStemVolume("bass", 0);
+    } else {
+      setStemVolume("bass", prevBassRef.current);
+    }
+  }, [stemVolumes.bass, setStemVolume]);
+
+  const handleOtherMuteToggle = useCallback(() => {
+    if (stemVolumes.other > 0) {
+      prevOtherRef.current = stemVolumes.other;
+      setStemVolume("other", 0);
+    } else {
+      setStemVolume("other", prevOtherRef.current);
+    }
+  }, [stemVolumes.other, setStemVolume]);
+
   return (
     <div className="flex items-center gap-5">
       {/* Vocals slider */}
@@ -108,8 +165,8 @@ export function VolumeSliders() {
         disabled={!stemsAvailable}
       />
 
-      {/* Accompaniment group */}
-      <div className="flex items-center gap-2">
+      {/* Accompaniment group — relative for popup anchor */}
+      <div className="relative flex items-center gap-2">
         <StemSlider
           icon={<Music size={14} />}
           label={t("stems.accompaniment")}
@@ -120,6 +177,7 @@ export function VolumeSliders() {
         />
         {stemsAvailable && isFourStem && (
           <button
+            ref={chevronRef}
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex h-4 w-4 items-center justify-center text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
             title={
@@ -132,31 +190,39 @@ export function VolumeSliders() {
             />
           </button>
         )}
-      </div>
 
-      {/* Expanded individual stem sliders (4-stem mode only) */}
-      {isExpanded && stemsAvailable && isFourStem && (
-        <>
-          <StemSlider
-            icon={<Drum size={13} />}
-            label={t("stems.drums")}
-            value={stemVolumes.drums}
-            onChange={(v) => handleStemChange("drums", v)}
-          />
-          <StemSlider
-            icon={<Guitar size={13} />}
-            label={t("stems.bass")}
-            value={stemVolumes.bass}
-            onChange={(v) => handleStemChange("bass", v)}
-          />
-          <StemSlider
-            icon={<Piano size={13} />}
-            label={t("stems.other")}
-            value={stemVolumes.other}
-            onChange={(v) => handleStemChange("other", v)}
-          />
-        </>
-      )}
+        {/* Popup for individual stem controls — aligned with accompaniment */}
+        {isExpanded && stemsAvailable && isFourStem && (
+          <div
+            ref={popupRef}
+            className="absolute bottom-full left-0 z-50 mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-3 shadow-xl"
+          >
+            <div className="flex flex-col gap-2">
+              <StemSlider
+                icon={<Drum size={13} />}
+                label={t("stems.drums")}
+                value={stemVolumes.drums}
+                onChange={(v) => handleStemChange("drums", v)}
+                onIconClick={handleDrumsMuteToggle}
+              />
+              <StemSlider
+                icon={<Guitar size={13} />}
+                label={t("stems.bass")}
+                value={stemVolumes.bass}
+                onChange={(v) => handleStemChange("bass", v)}
+                onIconClick={handleBassMuteToggle}
+              />
+              <StemSlider
+                icon={<AudioWaveform size={13} />}
+                label={t("stems.other")}
+                value={stemVolumes.other}
+                onChange={(v) => handleStemChange("other", v)}
+                onIconClick={handleOtherMuteToggle}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

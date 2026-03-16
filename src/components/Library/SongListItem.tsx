@@ -127,8 +127,21 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
           )}
           {sepState === "completed" && (
             <span
-              className={`text-[11px] ${isSelected ? "text-white/70" : "text-[var(--color-text-dim)]"}`}
+              className={`flex items-center gap-1.5 text-[11px] ${isSelected ? "text-white/70" : "text-[var(--color-text-dim)]"}`}
             >
+              <span
+                className={`inline-flex h-[14px] min-w-[14px] items-center justify-center rounded text-[9px] font-semibold leading-none ${
+                  separationStatus?.drums_path
+                    ? isSelected
+                      ? "bg-white/20 text-white/80"
+                      : "bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
+                    : isSelected
+                      ? "bg-white/20 text-white/80"
+                      : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                }`}
+              >
+                {separationStatus?.drums_path ? "4" : "2"}
+              </span>
               {formatDuration(song.duration_ms)}
             </span>
           )}

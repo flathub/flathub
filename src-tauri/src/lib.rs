@@ -167,6 +167,7 @@ pub fn run() {
             commands::maintenance::downgrade_all_to_two_stem,
             commands::maintenance::estimate_downgrade_savings,
             commands::playback::play,
+            commands::playback::resume,
             commands::playback::pause,
             commands::playback::seek,
             commands::playback::set_volume,

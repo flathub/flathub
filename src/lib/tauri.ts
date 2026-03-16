@@ -60,6 +60,10 @@ export function play(songId: string): Promise<PlaybackStateSnapshot> {
   return invoke<PlaybackStateSnapshot>("play", { songId });
 }
 
+export function resume(): Promise<PlaybackStateSnapshot> {
+  return invoke<PlaybackStateSnapshot>("resume");
+}
+
 export function pause(): Promise<PlaybackStateSnapshot> {
   return invoke<PlaybackStateSnapshot>("pause");
 }

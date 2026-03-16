@@ -15,8 +15,8 @@ function formatSampleRate(hz: number): string {
   return `${hz.toLocaleString()} Hz`;
 }
 
-function formatBitRate(bps: number): string {
-  return `${Math.round(bps / 1000)} kbps`;
+function formatBitRate(kbps: number): string {
+  return `${kbps} kbps`;
 }
 
 function truncateHash(hash: string): string {

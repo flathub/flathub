@@ -1,4 +1,4 @@
-import { X, GripVertical } from "lucide-react";
+import { X, GripVertical, ChevronUp, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useQueueStore } from "@/stores/queue-store";
 import { useLibraryStore } from "@/stores/library-store";
@@ -21,17 +21,25 @@ export function QueuePanel() {
     [songs],
   );
 
-  const handleDragStart = (index: number) => {
+  const handleDragStart = (e: React.DragEvent, index: number) => {
     dragRef.current = index;
     setDragIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
     setDragOverIndex(index);
   };
 
-  const handleDrop = (index: number) => {
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
     if (dragRef.current !== null && dragRef.current !== index) {
       reorder(dragRef.current, index);
     }
@@ -81,27 +89,48 @@ export function QueuePanel() {
             const song = getSong(songId);
             const isDragging = dragIndex === index;
             const isDragOver = dragOverIndex === index && dragIndex !== index;
+            const dropAbove =
+              isDragOver && dragIndex !== null && dragIndex > index;
+            const dropBelow =
+              isDragOver && dragIndex !== null && dragIndex < index;
 
             return (
               <div
                 key={songId}
                 draggable
-                onDragStart={() => handleDragStart(index)}
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragEnter={handleDragEnter}
                 onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={() => handleDrop(index)}
+                onDrop={(e) => handleDrop(e, index)}
                 onDragEnd={handleDragEnd}
-                className={`group flex items-center gap-2 px-4 py-1.5 transition-colors ${
-                  isDragging
-                    ? "opacity-50"
-                    : isDragOver
-                      ? "bg-[var(--color-hover)]"
-                      : "hover:bg-[var(--color-hover)]"
-                }`}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
+                  isDragging ? "opacity-50" : "hover:bg-[var(--color-hover)]"
+                } ${dropAbove ? "border-t border-t-[var(--color-accent)]" : ""} ${dropBelow ? "border-b border-b-[var(--color-accent)]" : ""}`}
               >
                 <GripVertical
                   size={12}
                   className="shrink-0 cursor-grab text-[var(--color-text-dimmer)] active:cursor-grabbing"
                 />
+                <div className="flex shrink-0 flex-col -my-0.5">
+                  <button
+                    onClick={() => reorder(index, index - 1)}
+                    disabled={index === 0}
+                    className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+                    title={t("queue.moveUp")}
+                    aria-label={t("queue.moveUp")}
+                  >
+                    <ChevronUp size={10} />
+                  </button>
+                  <button
+                    onClick={() => reorder(index, index + 1)}
+                    disabled={index === queue.length - 1}
+                    className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+                    title={t("queue.moveDown")}
+                    aria-label={t("queue.moveDown")}
+                  >
+                    <ChevronDown size={10} />
+                  </button>
+                </div>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[12px] font-medium text-[#EBEBF5]">
                     {song?.title || songId.slice(0, 8)}

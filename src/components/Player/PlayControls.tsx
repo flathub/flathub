@@ -5,7 +5,7 @@ import { usePlayerStore } from "@/stores/player-store";
 export function PlayControls() {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
-  const playSong = usePlayerStore((s) => s.playSong);
+  const resume = usePlayerStore((s) => s.resume);
   const pause = usePlayerStore((s) => s.pause);
   const skipBack = usePlayerStore((s) => s.skipBack);
   const skipForward = usePlayerStore((s) => s.skipForward);
@@ -15,7 +15,7 @@ export function PlayControls() {
     if (isPlaying) {
       pause();
     } else if (snapshot?.song_id) {
-      playSong(snapshot.song_id);
+      resume();
     }
   };
 

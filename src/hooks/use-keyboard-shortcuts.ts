@@ -22,7 +22,7 @@ export function useKeyboardShortcuts(): void {
         return;
       }
 
-      const { snapshot, playSong, pause, seek, setVolume, positionMs } =
+      const { snapshot, resume, pause, seek, setVolume, positionMs } =
         usePlayerStore.getState();
 
       switch (e.code) {
@@ -31,7 +31,7 @@ export function useKeyboardShortcuts(): void {
           if (snapshot?.is_playing) {
             pause();
           } else if (snapshot?.song_id) {
-            playSong(snapshot.song_id);
+            resume();
           }
           break;
         }

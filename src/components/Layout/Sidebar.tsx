@@ -36,19 +36,22 @@ export function Sidebar() {
     (s) => separationStatuses[s.hash]?.state === "completed",
   ).length;
 
-  // Check if all songs are separated in the current stem mode
+  // Check if all songs are separated in the current stem mode.
+  // Treat "running" as separated — a song being re-separated was previously completed.
   const allSeparated =
     songs.length > 0 &&
     songs.every((s) => {
       const status = separationStatuses[s.hash];
-      return status?.state === "completed";
+      return status?.state === "completed" || status?.state === "running";
     });
 
   const allMatchCurrentMode =
     allSeparated &&
     songs.every((s) => {
       const status = separationStatuses[s.hash];
-      if (!status || status.state !== "completed") return false;
+      if (!status) return false;
+      if (status.state === "running") return true; // being processed, count as matching
+      if (status.state !== "completed") return false;
       if (stemMode === "four_stem") return !!status.drums_path;
       return true; // any completed is fine for two_stem
     });

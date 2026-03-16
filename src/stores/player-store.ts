@@ -11,6 +11,7 @@ interface PlayerState {
 
   playSong: (songId: string) => Promise<void>;
   playNow: (songId: string) => Promise<void>;
+  resume: () => Promise<void>;
   pause: () => Promise<void>;
   seek: (ms: number) => Promise<void>;
   setVolume: (level: number) => Promise<void>;
@@ -76,6 +77,15 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       }
     } catch (e) {
       notifyError(e, () => usePlayerStore.getState().playNow(songId));
+    }
+  },
+
+  resume: async () => {
+    try {
+      const snapshot = await api.resume();
+      set({ snapshot, positionMs: snapshot.position_ms });
+    } catch (e) {
+      notifyError(e);
     }
   },
 
