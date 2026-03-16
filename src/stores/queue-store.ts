@@ -8,9 +8,32 @@ interface QueueState {
   playNext: (songId: string) => void;
   removeFromQueue: (index: number) => void;
   reorder: (fromIndex: number, toIndex: number) => void;
+  reorderBySongId: (activeId: string, overId: string) => void;
   clearQueue: () => void;
   dequeue: () => string | undefined;
   togglePanel: () => void;
+}
+
+function reorderQueue(queue: string[], fromIndex: number, toIndex: number) {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= queue.length ||
+    toIndex >= queue.length
+  ) {
+    return queue;
+  }
+
+  const nextQueue = [...queue];
+  const [moved] = nextQueue.splice(fromIndex, 1);
+
+  if (!moved) {
+    return queue;
+  }
+
+  nextQueue.splice(toIndex, 0, moved);
+  return nextQueue;
 }
 
 export const useQueueStore = create<QueueState>((set, get) => ({
@@ -39,10 +62,27 @@ export const useQueueStore = create<QueueState>((set, get) => ({
 
   reorder: (fromIndex, toIndex) => {
     set((state) => {
-      const newQueue = [...state.queue];
-      const [moved] = newQueue.splice(fromIndex, 1);
-      newQueue.splice(toIndex, 0, moved);
-      return { queue: newQueue };
+      const queue = reorderQueue(state.queue, fromIndex, toIndex);
+
+      if (queue === state.queue) {
+        return state;
+      }
+
+      return { queue };
+    });
+  },
+
+  reorderBySongId: (activeId, overId) => {
+    set((state) => {
+      const fromIndex = state.queue.indexOf(activeId);
+      const toIndex = state.queue.indexOf(overId);
+      const queue = reorderQueue(state.queue, fromIndex, toIndex);
+
+      if (queue === state.queue) {
+        return state;
+      }
+
+      return { queue };
     });
   },
 
