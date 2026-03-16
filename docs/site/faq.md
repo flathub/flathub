@@ -10,35 +10,35 @@ permalink: faq.html
 
 ## What is OpenKara?
 
-OpenKara is an open-source desktop karaoke app that turns your own music library into a local-first karaoke setup with on-device stem separation and synced lyrics.
+OpenKara is a free, open-source desktop app that turns your own music into karaoke. It removes vocals from your songs, adds synced lyrics, and lets you sing along — all running on your computer.
 
 ## Does it upload my music?
 
-No. The main workflow is designed around local files and on-device processing. Lyrics lookup can use online sources, but your audio library does not need to be uploaded.
+No. All audio processing happens on your computer. OpenKara goes online only to look up lyrics, but your music files never leave your machine.
 
 ## Which platforms are supported?
 
-OpenKara targets macOS, Windows, and Linux desktop environments.
+macOS, Windows, and Linux.
 
 ## Where do lyrics come from?
 
-OpenKara can fetch synced lyrics from LRCLIB, read embedded tags, or use sidecar `.lrc` files stored next to the track.
+OpenKara searches for timed lyrics online automatically. It also reads lyrics already embedded in your audio files, or `.lrc` files saved next to the track.
 
 ## Can I move my library between machines?
 
-Yes. The karaoke library is designed to be self-contained, so it can live on an external drive, NAS, or another location you carry between machines.
+Yes. Your entire karaoke library lives in one folder. Copy it to a USB drive, NAS, or another computer and open it from there.
 
 ## How large is the AI model?
 
-The first launch downloads an ONNX build of the Demucs model, roughly 80 MB, when it is needed for separation.
+About 80 MB. It downloads automatically the first time you process a song — the initial install stays small.
 
-## Can I choose between simpler and more detailed separation?
+## Can I choose how much to separate?
 
-Yes. OpenKara supports both 2-stem and 4-stem separation modes, and individual songs can be upgraded to 4 stems later when you want more control.
+Yes. The default mode separates vocals from accompaniment (2 stems). You can also choose 4-stem mode for individual control over drums, bass, and other instruments. Songs can be upgraded from 2 to 4 stems later.
 
-## Is the app meant for technical users?
+## Do I need technical knowledge to use this?
 
-No. The goal is to keep setup, import, and playback approachable for casual singers, even though the app is backed by a fairly advanced local audio pipeline.
+No. Import your music, click separate, and sing. The app handles the rest.
 
 ## Where can I read more detail?
 

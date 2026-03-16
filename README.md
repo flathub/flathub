@@ -18,6 +18,24 @@ An open-source desktop karaoke app powered by on-device AI stem separation and s
 
 ---
 
+## Why I Built This
+
+I love singing karaoke at home, but every existing solution has its own set of problems.
+
+The most mature option is probably [Karafun](https://www.karafun.com/) — a paid service that sidesteps copyright by re-recording famous songs. That's neat, but it comes with issues:
+
+1. Their re-recorded instrumentals inevitably sound a little different from the originals
+2. Their catalog doesn't always include the niche songs I want to sing
+3. I hate subscriptions
+
+Then there's [Apple Music Sing](https://www.apple.com/ca/newsroom/2022/12/apple-introduces-apple-music-sing/), which offers on-device vocal removal for karaoke. Also neat — but Apple Music is yet another subscription, and I hate subscriptions.
+
+To dodge the subscription trap, you could go the more traditional route — something like [OpenKJ](https://github.com/OpenKJ/OpenKJ) for playing CD+G/media+g files. But CD+G files are niche, hard to find, and have to be purchased separately.
+
+That pretty much leaves scouring YouTube for karaoke videos of dubious origin and questionable copyright status. Not exactly a unified experience, and the song I want is missing half the time.
+
+So my no-compromise solution was born: OpenKara uses open-source AI to separate the digital music you already own in unencrypted form — whether it's from CD rips, [Bandcamp](https://bandcamp.com/), [Qobuz](https://www.qobuz.com/), iTunes, or your local library's music service. I know there are plenty of people who, like me, prefer to buy once and own forever. OpenKara turns my existing music library into a karaoke library, so I don't have to pay for KTV, and my catalog is shaped by my own taste — not the mainstream.
+
 ## Features
 
 - **Local Audio Import** — Use music you already own. No subscriptions, no repurchases.

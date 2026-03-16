@@ -4,12 +4,12 @@
 
 | Document                                | Description                                              |
 | --------------------------------------- | -------------------------------------------------------- |
-| [site/index.md](./site/index.md)        | Jekyll landing page source for the public homepage       |
+| [site/index.html](./site/index.html)    | Handcrafted homepage source for the public landing page  |
 | [site/faq.md](./site/faq.md)            | Markdown source for the public FAQ page                  |
 | [site/\_layouts/](./site/_layouts)      | Custom Jekyll layouts for the homepage and content pages |
 | [site/\_config.yml](./site/_config.yml) | Jekyll configuration for the GitHub Pages site           |
 
-Install guidance now lives inside `docs/site/index.md` instead of a standalone install page.
+Install guidance now lives inside `docs/site/index.html` instead of a standalone install page.
 
 ## Internal Docs
 
