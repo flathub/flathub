@@ -1,9 +1,10 @@
 use crate::{
     commands::error::{internal_error, model_bootstrap_error, state_lock_error, CommandError, CommandResult},
-    config::ModelVariant,
+    config::{self, ModelVariant},
     separator, AppState,
 };
 use serde::Serialize;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -65,6 +66,43 @@ pub fn ensure_model_ready(status: &Arc<Mutex<ModelBootstrapStatusSnapshot>>) -> 
             ))
         })),
     }
+}
+
+pub fn sync_active_model_bootstrap_status(
+    app_data_dir: &Path,
+    status: &Arc<Mutex<ModelBootstrapStatusSnapshot>>,
+) -> CommandResult<ModelBootstrapStatusSnapshot> {
+    // Recompute bootstrap state from the active variant whenever settings change
+    // so the UI reflects the model that separation will actually use next.
+    let active_variant = config::load_config(app_data_dir)
+        .map_err(|error| internal_error(format!("failed to load config: {error}")))?
+        .unwrap_or_default()
+        .effective_model_variant();
+    let descriptor = separator::bootstrap::descriptor_for(active_variant);
+    let development_model_path = separator::model::default_model_path_for_filename(descriptor.filename);
+    let startup = crate::derive_startup_model_bootstrap(
+        app_data_dir,
+        &development_model_path,
+        active_variant,
+        descriptor.sha256,
+    )
+    .map_err(|error| internal_error(format!("failed to derive bootstrap status: {error}")))?;
+
+    let snapshot = startup.status;
+    let mut guard = status
+        .lock()
+        .map_err(|_| state_lock_error("model bootstrap status lock was poisoned"))?;
+    *guard = snapshot.clone();
+    Ok(snapshot)
+}
+
+fn is_active_variant(app_data_dir: &Path, variant: ModelVariant) -> bool {
+    config::load_config(app_data_dir)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+        .effective_model_variant()
+        == variant
 }
 
 pub fn pending_status(model_path: impl Into<String>) -> ModelBootstrapStatusSnapshot {
@@ -149,26 +187,46 @@ pub fn download_model(
     let descriptor = separator::bootstrap::descriptor_for(model_variant);
     let model_path =
         separator::bootstrap::managed_model_path_for(&state.app_data_dir, descriptor);
+    let should_publish_status = is_active_variant(&state.app_data_dir, model_variant);
 
-    if model_path.exists() {
+    if separator::bootstrap::resolve_existing_model_path(
+        &model_path,
+        &state.app_data_dir.join("__no_dev_fallback_model__"),
+        descriptor.sha256,
+    )
+    .map_err(|error| internal_error(format!("failed to inspect model status: {error}")))?
+    .is_some()
+    {
+        // An explicit download button is about installing the managed copy for
+        // this variant. A verified dev fallback is enough to run locally, but it
+        // should not make the managed install appear already downloaded.
         return Ok(ready_status(model_path.display().to_string()));
     }
 
     let status = Arc::clone(&state.model_bootstrap_status);
     let initial = downloading_status(model_path.display().to_string(), 0, None);
-    if let Ok(mut current) = status.lock() {
-        *current = initial.clone();
+    if should_publish_status {
+        // Bootstrap status is single-slot state for the currently active model.
+        // Downloads for inactive variants must not overwrite what the active
+        // playback path reports as ready/pending/downloading.
+        if let Ok(mut current) = status.lock() {
+            *current = initial.clone();
+        }
     }
 
     let download_url = descriptor.download_url.to_owned();
     let sha256 = descriptor.sha256.to_owned();
     let progress_path = model_path.display().to_string();
+    let should_publish_status_for_task = should_publish_status;
+    let task_variant = model_variant;
+    let task_app_data_dir = state.app_data_dir.clone();
 
     tauri::async_runtime::spawn(async move {
         let blocking_status = Arc::clone(&status);
         let blocking_app_handle = app_handle.clone();
         let blocking_model_path = model_path.clone();
         let progress_path = progress_path.clone();
+        let blocking_app_data_dir = task_app_data_dir.clone();
 
         let result = tauri::async_runtime::spawn_blocking(move || {
             separator::bootstrap::download_and_install_model(
@@ -176,22 +234,31 @@ pub fn download_model(
                 &download_url,
                 &sha256,
                 |downloaded_bytes, total_bytes| {
-                    let snapshot = downloading_status(
-                        progress_path.clone(),
-                        downloaded_bytes,
-                        total_bytes,
-                    );
-                    if let Ok(mut current) = blocking_status.lock() {
-                        *current = snapshot.clone();
+                    if should_publish_status_for_task
+                        && is_active_variant(&blocking_app_data_dir, task_variant)
+                    {
+                        let snapshot = downloading_status(
+                            progress_path.clone(),
+                            downloaded_bytes,
+                            total_bytes,
+                        );
+                        if let Ok(mut current) = blocking_status.lock() {
+                            *current = snapshot.clone();
+                        }
+                        let _ = blocking_app_handle.emit(
+                            MODEL_BOOTSTRAP_PROGRESS_EVENT,
+                            snapshot,
+                        );
                     }
-                    let _ = blocking_app_handle.emit(
-                        MODEL_BOOTSTRAP_PROGRESS_EVENT,
-                        snapshot,
-                    );
                 },
             )
         })
         .await;
+
+        if !should_publish_status_for_task || !is_active_variant(&task_app_data_dir, task_variant)
+        {
+            return;
+        }
 
         match result {
             Ok(Ok(())) => {

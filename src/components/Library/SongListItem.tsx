@@ -105,18 +105,19 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {sepState === "idle" && (
-            <button
-              onClick={handleSeparate}
-              className={`rounded px-1.5 py-0.5 text-[10px] border ${
-                isSelected
-                  ? "border-white/30 hover:bg-white/20"
-                  : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
-              }`}
-            >
-              {t("library.separate")}
-            </button>
-          )}
+          {sepState === "idle" &&
+            song.original_ext?.toLowerCase() !== "cdg" && (
+              <button
+                onClick={handleSeparate}
+                className={`rounded px-1.5 py-0.5 text-[10px] border ${
+                  isSelected
+                    ? "border-white/30 hover:bg-white/20"
+                    : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
+                }`}
+              >
+                {t("library.separate")}
+              </button>
+            )}
           {sepState === "running" && (
             <div
               className={`flex items-center gap-1 text-[11px] ${isSelected ? "text-white" : "text-[var(--color-text-dim)]"}`}

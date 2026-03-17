@@ -45,6 +45,7 @@ export interface Song {
   duration_ms: number;
   cover_art: number[] | null;
   imported_at: number;
+  original_ext: string | null;
 }
 
 export interface SongProperties {

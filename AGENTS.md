@@ -25,6 +25,14 @@ These files are easy to forget because they often change during docs, config, or
 - Rust/backend changes under `src-tauri/`: run `pnpm format`, then `cargo test` from `src-tauri`
 - Workflow/config/docs-only changes: run `pnpm format` at minimum, even if no code changed
 
+## Rationale Comments For Non-Obvious Decisions
+
+- Preserve comments that explain why a piece of code exists, not just what it does.
+- When touching product tradeoffs, portability rules, or performance/storage constraints, add or update a short rationale comment near the relevant code.
+- This is required for decisions that a future agent could otherwise "simplify" in the wrong direction.
+- Examples in this repo include: storing cached stems as OGG instead of WAV to keep library size manageable, storing library paths as relative forward-slash paths for portability, and keeping model bootstrap logic variant-aware instead of treating any existing file as ready.
+- Do not add narration comments to ordinary code paths; focus on the decisions most likely to be misunderstood and accidentally reverted.
+
 ## GitHub Actions And Linux Build Notes
 
 - Keep `actions/checkout` and `actions/setup-node` on current supported majors; this repository has already hit GitHub Actions runtime deprecation warnings.

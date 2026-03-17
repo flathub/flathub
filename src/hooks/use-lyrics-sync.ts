@@ -29,8 +29,21 @@ export function useLyricsSync(): void {
 
     rafRef.current = requestAnimationFrame(tick);
 
+    // Force-sync lyrics when window regains focus (macOS throttles rAF
+    // for background windows, so activeLineIndex can fall behind).
+    const syncNow = () => {
+      const { positionMs } = usePlayerStore.getState();
+      const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
+      if (lines.length === 0) return;
+      const index = binarySearchLine(lines, positionMs - offsetMs);
+      prevIndexRef.current = index;
+      setActiveLineIndex(index);
+    };
+    window.addEventListener("focus", syncNow);
+
     return () => {
       cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("focus", syncNow);
     };
   }, []);
 }

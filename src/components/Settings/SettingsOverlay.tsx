@@ -131,7 +131,17 @@ export function SettingsOverlay() {
     }
   };
 
+  const [showFtWarning, setShowFtWarning] = useState(false);
+
   const handleModelVariantChange = async (variant: ModelVariant) => {
+    if (variant === "htdemucs_ft" && modelVariant !== "htdemucs_ft") {
+      setShowFtWarning(true);
+      return;
+    }
+    await applyModelVariant(variant);
+  };
+
+  const applyModelVariant = async (variant: ModelVariant) => {
     try {
       // If model is not downloaded, trigger download first
       const status = modelStatuses[variant];
@@ -162,6 +172,7 @@ export function SettingsOverlay() {
 
   const handleHideBatchSeparateChange = async (value: boolean) => {
     setHideBatchSeparateState(value);
+    useLibraryStore.getState().setHideBatchSeparate(value);
     try {
       await api.setHideBatchSeparate(value);
     } catch (e) {
@@ -600,6 +611,19 @@ export function SettingsOverlay() {
           confirmLabel={t("settings.confirmDeleteLyrics.confirm")}
           onConfirm={handleDeleteLyricsConfirm}
           onCancel={() => setShowDeleteLyricsConfirm(false)}
+        />
+      )}
+
+      {showFtWarning && (
+        <ConfirmationDialog
+          title={t("settings.modelVariant.ftWarningTitle")}
+          message={t("settings.modelVariant.ftWarningMessage")}
+          confirmLabel={t("settings.modelVariant.ftWarningConfirm")}
+          onConfirm={() => {
+            setShowFtWarning(false);
+            applyModelVariant("htdemucs_ft");
+          }}
+          onCancel={() => setShowFtWarning(false)}
         />
       )}
     </div>

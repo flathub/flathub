@@ -22,7 +22,9 @@ struct LibraryMarker {
 ///
 /// All paths stored in the database are relative to the library root and use
 /// forward slashes regardless of the host OS. The `resolve` method converts
-/// them back to absolute platform paths at runtime.
+/// them back to absolute platform paths at runtime. This is a portability rule,
+/// not just formatting preference: it keeps a library movable across machines,
+/// drives, and operating systems without rewriting database rows.
 #[derive(Debug, Clone)]
 pub struct LibraryRoot {
     root: PathBuf,
@@ -33,10 +35,7 @@ impl LibraryRoot {
     /// the `media/` and `stems/` subdirectories.
     pub fn create(path: &Path) -> Result<Self> {
         if path.join(MARKER_FILENAME).exists() {
-            bail!(
-                "a library already exists at {}",
-                path.display()
-            );
+            bail!("a library already exists at {}", path.display());
         }
 
         fs::create_dir_all(path)
@@ -47,8 +46,8 @@ impl LibraryRoot {
             created_at: unix_timestamp(),
             identifier: "com.openkara.library".to_owned(),
         };
-        let marker_json = serde_json::to_string_pretty(&marker)
-            .context("failed to serialize library marker")?;
+        let marker_json =
+            serde_json::to_string_pretty(&marker).context("failed to serialize library marker")?;
         fs::write(path.join(MARKER_FILENAME), marker_json)
             .with_context(|| format!("failed to write library marker at {}", path.display()))?;
 
@@ -129,17 +128,16 @@ impl LibraryRoot {
     /// Convert an absolute path that lives inside this library to a
     /// database-relative path with forward slashes.
     pub fn to_relative(&self, absolute: &Path) -> Result<String> {
-        let relative = absolute
-            .strip_prefix(&self.root)
-            .with_context(|| {
-                format!(
-                    "{} is not inside library root {}",
-                    absolute.display(),
-                    self.root.display()
-                )
-            })?;
+        let relative = absolute.strip_prefix(&self.root).with_context(|| {
+            format!(
+                "{} is not inside library root {}",
+                absolute.display(),
+                self.root.display()
+            )
+        })?;
 
-        // Normalise to forward slashes for cross-platform portability.
+        // Keep DB paths OS-agnostic so a library created on one machine can be
+        // copied to another without path migrations.
         let normalised = relative
             .components()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())

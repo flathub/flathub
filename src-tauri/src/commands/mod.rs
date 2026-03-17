@@ -1,5 +1,6 @@
 pub mod batch_separation;
 pub mod bootstrap;
+pub mod cdg;
 pub mod error;
 pub mod import;
 pub mod library_setup;
@@ -10,6 +11,7 @@ pub mod separation;
 pub mod settings;
 
 pub use bootstrap::get_model_bootstrap_status;
+pub use cdg::get_cdg_frame;
 pub use error::{CommandError, CommandResult, ErrorCode, FallbackAction};
 pub use import::{get_library, import_songs, search_library};
 pub use lyrics::{fetch_lyrics, set_lyrics_offset};

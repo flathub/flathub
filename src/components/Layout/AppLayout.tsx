@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 import { ToastContainer } from "./ToastContainer";
 import { PlaybackBar } from "@/components/Player/PlaybackBar";
+import { GlobalProgressBar } from "@/components/Layout/GlobalProgressBar";
 import { LyricsPanel } from "@/components/Lyrics/LyricsPanel";
 import { SettingsOverlay } from "@/components/Settings/SettingsOverlay";
 import { ModelBootstrapBanner } from "@/components/Bootstrap/ModelBootstrapBanner";
@@ -71,6 +72,7 @@ export function AppLayout() {
           )}
         </div>
 
+        <GlobalProgressBar />
         <PlaybackBar />
       </div>
 

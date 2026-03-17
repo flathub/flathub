@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod cache;
+pub mod cdg;
 pub mod commands;
 pub mod config;
 pub mod library;
@@ -16,7 +17,7 @@ use crate::library_root::LibraryRoot;
 use std::{
     collections::HashMap,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64},
     sync::{Arc, Mutex},
     thread,
@@ -32,6 +33,7 @@ pub struct AppState {
     pub app_data_dir: PathBuf,
     pub model_path: PathBuf,
     pub playback: Arc<Mutex<PlaybackController>>,
+    pub cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>>,
     pub playback_request_id: AtomicU64,
     pub audio_output_started: Arc<AtomicBool>,
     pub audio_output_start_lock: Arc<Mutex<()>>,
@@ -40,6 +42,14 @@ pub struct AppState {
         Arc<Mutex<HashMap<String, commands::separation::SeparationStatusSnapshot>>>,
     pub batch_running: Arc<AtomicBool>,
     pub batch_cancel: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupModelBootstrapPlan {
+    pub model_path: PathBuf,
+    pub managed_model_path: PathBuf,
+    pub status: commands::bootstrap::ModelBootstrapStatusSnapshot,
+    pub should_spawn_bootstrap_worker: bool,
 }
 
 impl AppState {
@@ -57,6 +67,9 @@ impl AppState {
     /// Resolve the path to the active AI model based on the current config.
     ///
     /// Checks (in order): managed model dir for the active variant, then dev fallback.
+    ///
+    /// This must stay variant-aware. Falling back to a single hard-coded model
+    /// filename can silently run the wrong separator after users switch quality modes.
     pub fn resolve_model_path(&self) -> Result<PathBuf, commands::error::CommandError> {
         let variant = config::load_config(&self.app_data_dir)
             .ok()
@@ -66,17 +79,53 @@ impl AppState {
         let descriptor = separator::bootstrap::descriptor_for(variant);
         let managed =
             separator::bootstrap::managed_model_path_for(&self.app_data_dir, descriptor);
-        if managed.exists() {
-            return Ok(managed);
-        }
-        // Dev fallback: check old single-model path.
-        let dev_path = separator::model::default_model_path();
-        if dev_path.exists() {
-            return Ok(dev_path);
-        }
-        // Fall back to managed path (will error at load time if missing).
-        Ok(managed)
+        let dev_path = separator::model::default_model_path_for_filename(descriptor.filename);
+        let resolved = separator::bootstrap::resolve_existing_model_path(
+            &managed,
+            &dev_path,
+            descriptor.sha256,
+        )
+        .map_err(|error| commands::error::internal_error(error.to_string()))?;
+
+        Ok(resolved
+            .map(|resolved| resolved.path)
+            .unwrap_or(managed))
     }
+}
+
+pub fn derive_startup_model_bootstrap(
+    app_data_dir: &Path,
+    development_model_path: &Path,
+    active_variant: config::ModelVariant,
+    expected_sha256: &str,
+) -> anyhow::Result<StartupModelBootstrapPlan> {
+    // Startup readiness must mean "the active variant has a verified model",
+    // not merely "some file exists at the managed path". That distinction is
+    // what prevents re-downloading already-installed models on every launch.
+    let descriptor = separator::bootstrap::descriptor_for(active_variant);
+    let managed_model_path =
+        separator::bootstrap::managed_model_path_for(app_data_dir, descriptor);
+    let resolved_model = separator::bootstrap::resolve_existing_model_path(
+        &managed_model_path,
+        development_model_path,
+        expected_sha256,
+    )?;
+    let model_path = resolved_model
+        .as_ref()
+        .map(|resolved| resolved.path.clone())
+        .unwrap_or_else(|| managed_model_path.clone());
+    let status = match resolved_model.as_ref() {
+        Some(resolved) => commands::bootstrap::ready_status(resolved.path.display().to_string()),
+        None => commands::bootstrap::pending_status(managed_model_path.display().to_string()),
+    };
+    let should_spawn_bootstrap_worker = resolved_model.is_none();
+
+    Ok(StartupModelBootstrapPlan {
+        model_path,
+        managed_model_path,
+        status,
+        should_spawn_bootstrap_worker,
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -95,7 +144,7 @@ pub fn run() {
             let app_config = config::load_config(&app_data_dir)
                 .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
 
-            let library = match app_config.and_then(|c| c.library_path) {
+            let library = match app_config.as_ref().and_then(|config| config.library_path.clone()) {
                 Some(path) => {
                     let lib_path = PathBuf::from(&path);
                     match LibraryRoot::open(&lib_path) {
@@ -123,28 +172,23 @@ pub fn run() {
             };
 
             let playback = Arc::new(Mutex::new(PlaybackController::default()));
+            let cdg_state = Arc::new(Mutex::new(None));
             let audio_output_started = Arc::new(AtomicBool::new(false));
             let audio_output_start_lock = Arc::new(Mutex::new(()));
-            let managed_model_path = separator::bootstrap::managed_model_path(&app_data_dir);
-            let development_model_path = separator::model::default_model_path();
-            let resolved_model = separator::bootstrap::resolve_existing_model_path(
-                &managed_model_path,
-                &development_model_path,
-                separator::bootstrap::MODEL_SHA256,
+            let active_variant = app_config
+                .as_ref()
+                .map(|config| config.effective_model_variant())
+                .unwrap_or_default();
+            let descriptor = separator::bootstrap::descriptor_for(active_variant);
+            let startup_bootstrap = derive_startup_model_bootstrap(
+                &app_data_dir,
+                &separator::model::default_model_path_for_filename(descriptor.filename),
+                active_variant,
+                descriptor.sha256,
             )
             .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
-            let model_path = resolved_model
-                .as_ref()
-                .map(|resolved| resolved.path.clone())
-                .unwrap_or_else(|| managed_model_path.clone());
-            let model_bootstrap_status = Arc::new(Mutex::new(match resolved_model {
-                Some(resolved) => {
-                    commands::bootstrap::ready_status(resolved.path.display().to_string())
-                }
-                None => {
-                    commands::bootstrap::pending_status(managed_model_path.display().to_string())
-                }
-            }));
+            let model_path = startup_bootstrap.model_path.clone();
+            let model_bootstrap_status = Arc::new(Mutex::new(startup_bootstrap.status.clone()));
             let separation_statuses = Arc::new(Mutex::new(HashMap::new()));
 
             app.manage(AppState {
@@ -152,6 +196,7 @@ pub fn run() {
                 app_data_dir,
                 model_path: model_path.clone(),
                 playback: Arc::clone(&playback),
+                cdg_state,
                 playback_request_id: AtomicU64::new(0),
                 audio_output_started,
                 audio_output_start_lock,
@@ -161,10 +206,14 @@ pub fn run() {
                 batch_cancel: Arc::new(AtomicBool::new(false)),
             });
             spawn_playback_position_emitter(app.handle().clone(), playback);
-            if model_path == managed_model_path {
+            // Only auto-download when startup could not verify a ready model for
+            // the active variant. Re-triggering whenever the managed path is the
+            // selected path caused redundant downloads on every app launch.
+            if startup_bootstrap.should_spawn_bootstrap_worker {
                 spawn_model_bootstrap_worker(
                     app.handle().clone(),
-                    managed_model_path,
+                    startup_bootstrap.managed_model_path,
+                    descriptor,
                     model_bootstrap_status,
                 );
             }
@@ -200,6 +249,7 @@ pub fn run() {
             commands::playback::set_stem_volume,
             commands::playback::load_stems,
             commands::playback::get_playback_state,
+            commands::cdg::get_cdg_frame,
             commands::batch_separation::batch_separate,
             commands::batch_separation::cancel_batch_separation,
             commands::separation::separate,
@@ -282,6 +332,7 @@ fn spawn_playback_position_emitter(
 fn spawn_model_bootstrap_worker(
     app_handle: tauri::AppHandle,
     model_path: PathBuf,
+    descriptor: &'static separator::bootstrap::ModelDescriptor,
     status: Arc<Mutex<commands::bootstrap::ModelBootstrapStatusSnapshot>>,
 ) {
     let progress_path = model_path.display().to_string();
@@ -294,8 +345,8 @@ fn spawn_model_bootstrap_worker(
         let result = tauri::async_runtime::spawn_blocking(move || {
             separator::bootstrap::download_and_install_model(
                 &blocking_model_path,
-                separator::bootstrap::MODEL_DOWNLOAD_URL,
-                separator::bootstrap::MODEL_SHA256,
+                descriptor.download_url,
+                descriptor.sha256,
                 |downloaded_bytes, total_bytes| {
                     let snapshot = commands::bootstrap::downloading_status(
                         progress_path.clone(),

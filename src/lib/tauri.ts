@@ -233,3 +233,27 @@ export function downgradeAllToTwoStem(): Promise<DowngradeResult> {
 export function estimateDowngradeSavings(): Promise<number> {
   return invoke<number>("estimate_downgrade_savings");
 }
+
+// ─── CDG ────────────────────────────────────────────────
+
+export function getCdgFrame(ms: number): Promise<string | null> {
+  return invoke<string | null>("get_cdg_frame", {
+    positionMs: Math.round(ms),
+  });
+}
+
+// ─── Cover Art ──────────────────────────────────────────
+
+export function reExtractCoverArt(songId: string): Promise<Song> {
+  return invoke<Song>("re_extract_cover_art", { songId });
+}
+
+// ─── History ────────────────────────────────────────────
+
+export function recordPlay(songId: string): Promise<void> {
+  return invoke<void>("record_play", { songId });
+}
+
+export function getPlayHistory(): Promise<string[]> {
+  return invoke<string[]>("get_play_history");
+}

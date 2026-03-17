@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Folder, CheckCircle2, UploadCloud, Layers, X } from "lucide-react";
+import { Folder, CheckCircle2, UploadCloud, Layers } from "lucide-react";
 import { ConfirmationDialog } from "@/components/Settings/ConfirmationDialog";
 import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
@@ -18,8 +18,8 @@ export function Sidebar() {
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
   const batchSeparation = useLibraryStore((s) => s.batchSeparation);
 
+  const hideBatchSeparate = useLibraryStore((s) => s.hideBatchSeparate);
   const [stemMode, setStemMode] = useState<StemMode>("two_stem");
-  const [hideBatchSeparate, setHideBatchSeparate] = useState(false);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
 
   useEffect(() => {
@@ -27,7 +27,9 @@ export function Sidebar() {
       .getSettings()
       .then((settings) => {
         setStemMode(settings.stem_mode);
-        setHideBatchSeparate(settings.hide_batch_separate);
+        useLibraryStore
+          .getState()
+          .setHideBatchSeparate(settings.hide_batch_separate);
       })
       .catch(() => {});
   }, []);
@@ -64,10 +66,6 @@ export function Sidebar() {
 
   const handleSeparateAll = () => {
     api.batchSeparate([]).catch(notifyError);
-  };
-
-  const handleCancelBatch = () => {
-    api.cancelBatchSeparation().catch(notifyError);
   };
 
   const isBatchRunning =
@@ -142,39 +140,14 @@ export function Sidebar() {
       {!(shouldHideButton && !isBatchRunning && batchSeparation == null) && (
         <div className="shrink-0 border-t border-[var(--color-border)] px-3 py-3">
           {isBatchRunning ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[var(--color-text-dim)]">
-                  {t("sidebar.separating", {
-                    current: Math.min(
-                      batchSeparation.completed + 1,
-                      batchSeparation.total,
-                    ),
-                    total: batchSeparation.total,
-                  })}
-                </span>
-                <button
-                  onClick={handleCancelBatch}
-                  className="text-[var(--color-text-dim)] transition-colors hover:text-white"
-                  title={t("sidebar.cancelBatch")}
-                  aria-label={t("sidebar.cancelBatch")}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
-                <div
-                  className="h-full rounded-full bg-[var(--color-accent)] transition-all"
-                  style={{
-                    width: `${((batchSeparation.completed + (batchSeparation.current_percent ?? 0) / 100) / batchSeparation.total) * 100}%`,
-                  }}
-                />
-              </div>
-              {batchSeparation.failed > 0 && (
-                <span className="text-[10px] text-red-400">
-                  {t("sidebar.failed", { count: batchSeparation.failed })}
-                </span>
-              )}
+            <div className="text-center text-[11px] text-[var(--color-text-dim)]">
+              {t("sidebar.separating", {
+                current: Math.min(
+                  batchSeparation.completed + 1,
+                  batchSeparation.total,
+                ),
+                total: batchSeparation.total,
+              })}
             </div>
           ) : batchSeparation != null ? (
             // Completed/cancelled state (shown briefly before clearing)

@@ -1,7 +1,9 @@
 use crate::commands::error::{internal_error, CommandResult};
 use crate::config::{self, AppConfig, ModelVariant, StemMode};
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::AppState;
 
 #[derive(Debug, Serialize)]
 pub struct AppSettings {
@@ -58,7 +60,11 @@ pub fn set_stem_mode(app_handle: AppHandle, mode: String) -> CommandResult<AppSe
 }
 
 #[tauri::command]
-pub fn set_model_variant(app_handle: AppHandle, variant: String) -> CommandResult<AppSettings> {
+pub fn set_model_variant(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    variant: String,
+) -> CommandResult<AppSettings> {
     let model_variant = ModelVariant::from_str(&variant)
         .ok_or_else(|| internal_error(format!("invalid model variant: {variant}")))?;
     let app_data_dir = app_handle
@@ -71,6 +77,34 @@ pub fn set_model_variant(app_handle: AppHandle, variant: String) -> CommandResul
     config.model_variant = Some(model_variant);
     config::save_config(&app_data_dir, &config)
         .map_err(|e| internal_error(format!("failed to save config: {e}")))?;
+
+    let snapshot = crate::commands::bootstrap::sync_active_model_bootstrap_status(
+        &app_data_dir,
+        &state.model_bootstrap_status,
+    )?;
+
+    match snapshot.state {
+        crate::commands::bootstrap::ModelBootstrapState::Ready => {
+            let _ = app_handle.emit(
+                crate::commands::bootstrap::MODEL_BOOTSTRAP_READY_EVENT,
+                snapshot,
+            );
+        }
+        crate::commands::bootstrap::ModelBootstrapState::Failed => {
+            let _ = app_handle.emit(
+                crate::commands::bootstrap::MODEL_BOOTSTRAP_ERROR_EVENT,
+                snapshot,
+            );
+        }
+        crate::commands::bootstrap::ModelBootstrapState::Pending
+        | crate::commands::bootstrap::ModelBootstrapState::Downloading => {
+            let _ = app_handle.emit(
+                crate::commands::bootstrap::MODEL_BOOTSTRAP_PROGRESS_EVENT,
+                snapshot,
+            );
+        }
+    }
+
     Ok(settings_from_config(&config))
 }
 
@@ -90,10 +124,7 @@ pub fn set_language(app_handle: AppHandle, language: String) -> CommandResult<Ap
 }
 
 #[tauri::command]
-pub fn set_hide_batch_separate(
-    app_handle: AppHandle,
-    value: bool,
-) -> CommandResult<AppSettings> {
+pub fn set_hide_batch_separate(app_handle: AppHandle, value: bool) -> CommandResult<AppSettings> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()

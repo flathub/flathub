@@ -8,6 +8,8 @@ mod support;
 
 use openkara_lib::{
     commands::{self, error::ErrorCode},
+    config::ModelVariant,
+    derive_startup_model_bootstrap,
     separator::bootstrap::{self, ModelSource},
 };
 use sha2::{Digest, Sha256};
@@ -145,4 +147,70 @@ fn ensure_model_ready_rejects_download_in_progress() {
         .expect_err("download in progress should block separation");
 
     assert_eq!(error.code, ErrorCode::ModelUnavailable);
+}
+
+#[test]
+fn startup_bootstrap_keeps_verified_managed_model_ready_without_spawning_worker() {
+    let temp_dir = unique_temp_dir();
+    let managed_path = bootstrap::managed_model_path(&temp_dir);
+    let development_path = temp_dir.join("dev").join("htdemucs.onnx");
+    let managed_bytes = b"managed-model";
+
+    write_file(&managed_path, managed_bytes);
+
+    let startup = derive_startup_model_bootstrap(
+        &temp_dir,
+        &development_path,
+        ModelVariant::Htdemucs,
+        &sha256_hex(managed_bytes),
+    )
+    .expect("startup bootstrap should resolve verified managed model");
+
+    assert_eq!(startup.model_path, managed_path);
+    assert_eq!(
+        startup.status.state,
+        commands::bootstrap::ModelBootstrapState::Ready
+    );
+    assert_eq!(
+        startup.status.model_path,
+        managed_path.display().to_string()
+    );
+    assert!(
+        !startup.should_spawn_bootstrap_worker,
+        "verified managed installs should not re-trigger bootstrap on startup"
+    );
+
+    remove_dir_if_exists(&temp_dir);
+}
+
+#[test]
+fn startup_bootstrap_uses_active_variant_descriptor_for_managed_model_resolution() {
+    let temp_dir = unique_temp_dir();
+    let descriptor = bootstrap::descriptor_for(ModelVariant::HtdemucsFt);
+    let managed_path = bootstrap::managed_model_path_for(&temp_dir, descriptor);
+    let development_path = temp_dir.join("dev").join("htdemucs_ft.onnx");
+    let managed_bytes = b"managed-model-ft";
+
+    write_file(&managed_path, managed_bytes);
+
+    let startup = derive_startup_model_bootstrap(
+        &temp_dir,
+        &development_path,
+        ModelVariant::HtdemucsFt,
+        &sha256_hex(managed_bytes),
+    )
+    .expect("startup bootstrap should resolve managed model for active variant");
+
+    assert_eq!(startup.managed_model_path, managed_path);
+    assert_eq!(startup.model_path, managed_path);
+    assert_eq!(
+        startup.status.state,
+        commands::bootstrap::ModelBootstrapState::Ready
+    );
+    assert_eq!(
+        startup.status.model_path,
+        managed_path.display().to_string()
+    );
+
+    remove_dir_if_exists(&temp_dir);
 }

@@ -7,6 +7,8 @@ use crate::{
         },
     },
     cache,
+    cdg::parse_cdg_file,
+    commands::cdg::CdgPlaybackState,
     commands::error::{
         database_error, internal_error, playback_error, state_lock_error, CommandResult,
     },
@@ -15,6 +17,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use std::path::Path;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -34,18 +37,30 @@ pub fn play(
         .map_err(database_error)?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))
         .map_err(playback_error)?;
+    let active_song_id = song.hash.clone();
     let absolute_path = library_root.resolve(&song.file_path);
     let snapshot = decode_then_start_track_if_latest(
         &state.playback,
         &state.playback_request_id,
         request_id,
-        song.hash,
+        active_song_id.clone(),
         || {
             decode::decode_file(&absolute_path)
                 .with_context(|| format!("failed to decode audio for {}", song.file_path))
         },
     )
     .map_err(playback_error)?;
+
+    if snapshot.song_id.as_deref() == Some(active_song_id.as_str()) {
+        // Only attach CDG state if this play request still won. Slow decode or
+        // sidecar work from an older request must not clobber the current song.
+        let next_cdg_state = load_cdg_sidecar_state(&absolute_path);
+        let mut cdg_state = state
+            .cdg_state
+            .lock()
+            .map_err(|_| state_lock_error("CDG state lock was poisoned"))?;
+        *cdg_state = next_cdg_state;
+    }
 
     output::ensure_output_thread(
         &state.audio_output_started,
@@ -112,9 +127,18 @@ pub fn seek(
         .playback
         .lock()
         .map_err(|_| state_lock_error("playback controller lock was poisoned"))?;
+    let previous_position_ms = playback.snapshot(monotonic_now_ms()).position_ms;
     let snapshot = playback
         .seek(ms, monotonic_now_ms())
         .map_err(playback_error)?;
+    drop(playback);
+
+    let mut cdg_state = state
+        .cdg_state
+        .lock()
+        .map_err(|_| state_lock_error("CDG state lock was poisoned"))?;
+    mark_cdg_reset_for_seek(&mut cdg_state, previous_position_ms, snapshot.position_ms);
+    drop(cdg_state);
 
     emit_playback_position(&app_handle, &snapshot)
         .map_err(|error| internal_error(error.to_string()))?;
@@ -209,6 +233,8 @@ fn decode_then_start_track_if_latest<F>(
 where
     F: FnOnce() -> Result<decode::DecodedAudio>,
 {
+    // Decode before taking the playback lock so expensive file IO does not stall
+    // output/control paths, then apply a latest-request-wins guard before swap-in.
     let decoded_audio = decode_audio()?;
     let mut playback = playback
         .lock()
@@ -240,6 +266,42 @@ where
     playback.attach_stems(song_id, loaded_stems)?;
 
     Ok(playback.snapshot(monotonic_now_ms()))
+}
+
+fn load_cdg_sidecar_state(audio_path: &Path) -> Option<CdgPlaybackState> {
+    let sidecar_path = audio_path.with_extension("cdg");
+    if !sidecar_path.is_file() {
+        return None;
+    }
+
+    match parse_cdg_file(&sidecar_path) {
+        Ok(packets) => Some(CdgPlaybackState::new(packets)),
+        Err(error) => {
+            // CDG graphics are optional sidecars. A broken `.cdg` file should
+            // not prevent the audio track itself from starting playback.
+            eprintln!(
+                "warning: failed to parse CDG sidecar at {}: {}",
+                sidecar_path.display(),
+                error
+            );
+            None
+        }
+    }
+}
+
+fn mark_cdg_reset_for_seek(
+    cdg_state: &mut Option<CdgPlaybackState>,
+    previous_ms: u64,
+    next_ms: u64,
+) {
+    if next_ms < previous_ms {
+        if let Some(cdg_state) = cdg_state.as_mut() {
+            // CDG rendering is stateful, so backward seeks must rebuild from the
+            // start instead of trying to "rewind" incremental packet application.
+            cdg_state.needs_reset = true;
+            cdg_state.cached_frame = None;
+        }
+    }
 }
 
 #[tauri::command]
@@ -477,5 +539,79 @@ mod tests {
 
         assert_eq!(snapshot.song_id.as_deref(), Some("song-b"));
         assert!(!snapshot.has_stems);
+    }
+
+    #[test]
+    fn loads_same_basename_cdg_sidecar_when_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio_path = dir.path().join("track.mp3");
+        std::fs::write(&audio_path, b"audio").unwrap();
+
+        let mut packet = [0u8; 24];
+        packet[0] = 0x09;
+        packet[1] = 0x01;
+        packet[4] = 0x07;
+        std::fs::write(audio_path.with_extension("cdg"), packet).unwrap();
+
+        let state = load_cdg_sidecar_state(&audio_path);
+
+        let state = state.expect("expected CDG state");
+        assert_eq!(state.packets.len(), 1);
+        assert_eq!(state.last_packet_index, 0);
+        assert!(state.needs_reset);
+    }
+
+    #[test]
+    fn returns_none_when_track_has_no_cdg_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio_path = dir.path().join("track.mp3");
+        std::fs::write(&audio_path, b"audio").unwrap();
+
+        assert!(load_cdg_sidecar_state(&audio_path).is_none());
+    }
+
+    #[test]
+    fn malformed_cdg_sidecar_is_ignored() {
+        #[cfg(not(unix))]
+        {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let audio_path = dir.path().join("track.mp3");
+        std::fs::write(&audio_path, b"audio").unwrap();
+
+        let sidecar_path = audio_path.with_extension("cdg");
+        std::fs::write(&sidecar_path, [0u8; 24]).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = std::fs::metadata(&sidecar_path).unwrap().permissions();
+            permissions.set_mode(0o000);
+            std::fs::set_permissions(&sidecar_path, permissions).unwrap();
+        }
+
+        assert!(load_cdg_sidecar_state(&audio_path).is_none());
+    }
+
+    #[test]
+    fn backward_seek_marks_active_cdg_state_for_reset() {
+        let mut cdg_state = Some(CdgPlaybackState::new(Vec::new()));
+
+        mark_cdg_reset_for_seek(&mut cdg_state, 2_000, 1_000);
+
+        assert!(cdg_state.unwrap().needs_reset);
+    }
+
+    #[test]
+    fn forward_seek_leaves_cdg_reset_flag_unchanged() {
+        let mut cdg_state = Some(CdgPlaybackState::new(Vec::new()));
+        cdg_state.as_mut().unwrap().needs_reset = false;
+
+        mark_cdg_reset_for_seek(&mut cdg_state, 1_000, 2_000);
+
+        assert!(!cdg_state.unwrap().needs_reset);
     }
 }

@@ -1,0 +1,34 @@
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { availableMonitors } from "@tauri-apps/api/window";
+
+export async function getMonitors() {
+  return availableMonitors();
+}
+
+export async function openFullscreenPlayer(monitorIndex?: number) {
+  // Close existing fullscreen player window if it exists
+  const existing = await WebviewWindow.getByLabel("fullscreen-player");
+  if (existing) {
+    await existing.close();
+  }
+
+  const monitors = await availableMonitors();
+  // Default to secondary monitor if available, else primary
+  const target = monitors[monitorIndex ?? (monitors.length > 1 ? 1 : 0)];
+
+  new WebviewWindow("fullscreen-player", {
+    url: "index.html?mode=fullscreen-player",
+    title: "OpenKara Player",
+    fullscreen: true,
+    x: target.position.x,
+    y: target.position.y,
+    width: target.size.width,
+    height: target.size.height,
+    decorations: false,
+  });
+}
+
+export async function closeFullscreenPlayer() {
+  const win = await WebviewWindow.getByLabel("fullscreen-player");
+  await win?.close();
+}

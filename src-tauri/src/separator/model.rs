@@ -25,10 +25,16 @@ impl std::fmt::Debug for LoadedModel {
     }
 }
 
-pub fn default_model_path() -> PathBuf {
+pub fn default_model_path_for_filename(filename: &str) -> PathBuf {
+    // Dev builds may keep multiple local model variants under `src-tauri/models/`.
+    // Callers must resolve by filename instead of assuming the standard model.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("models")
-        .join(EMBEDDED_MODEL_FILENAME)
+        .join(filename)
+}
+
+pub fn default_model_path() -> PathBuf {
+    default_model_path_for_filename(EMBEDDED_MODEL_FILENAME)
 }
 
 pub fn load_from_path(path: &Path) -> Result<LoadedModel> {

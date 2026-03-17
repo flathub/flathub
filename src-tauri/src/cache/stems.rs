@@ -162,7 +162,9 @@ pub fn store_generated_stem_cache(
 
     let entry = match stem_mode {
         StemMode::TwoStem => {
-            // Write only vocals.ogg and accompaniment.ogg
+            // Cached stems intentionally stay in OGG/Vorbis so large libraries do
+            // not balloon in size after separation jobs. The original imported
+            // song remains in `media/`, so this cache favors compact playback.
             let vocals_stem = separation
                 .stems
                 .iter()
@@ -192,14 +194,17 @@ pub fn store_generated_stem_cache(
             }
         }
         StemMode::FourStem => {
-            // Write all 4 individual stems (vocals, drums, bass, other)
+            // Keep the four-stem cache in the same compact format for the same
+            // reason: these files are reusable playback artifacts, not master exports.
             inference::write_stems_to_directory(separation, &stem_directory)
                 .context("failed to write stem ogg files into cache")?;
 
             StemCacheEntry {
                 song_hash: song_hash.to_owned(),
                 vocals_path: format!("{STEMS_CACHE_DIRECTORY}/{song_hash}/{VOCALS_FILENAME}"),
-                // accomp_path is NOT NULL in the DB schema; store empty string for FourStem mode
+                // `accomp_path` stays non-null because older cache/schema callers
+                // assume the column is always present even when FourStem mode uses
+                // the individual drums/bass/other files instead.
                 accomp_path: String::new(),
                 separated_at: unix_timestamp(),
                 drums_path: Some(format!(
@@ -278,7 +283,10 @@ fn cache_entry_files_exist(library_root: &LibraryRoot, entry: &StemCacheEntry) -
     }
 
     // When individual stem paths are recorded, verify those files exist too.
-    for path in [&entry.drums_path, &entry.bass_path, &entry.other_path].into_iter().flatten() {
+    for path in [&entry.drums_path, &entry.bass_path, &entry.other_path]
+        .into_iter()
+        .flatten()
+    {
         if !library_root.resolve(path).exists() {
             return false;
         }
@@ -301,10 +309,7 @@ pub fn delete_stem_cache_entry(
     let dir = stem_directory(&library_root.stems_dir(), song_hash);
     if dir.exists() {
         fs::remove_dir_all(&dir).with_context(|| {
-            format!(
-                "failed to remove stem cache directory at {}",
-                dir.display()
-            )
+            format!("failed to remove stem cache directory at {}", dir.display())
         })?;
     }
 
@@ -360,9 +365,8 @@ fn dir_size(path: &Path) -> Result<u64> {
         for entry in fs::read_dir(path)
             .with_context(|| format!("failed to read directory {}", path.display()))?
         {
-            let entry = entry.with_context(|| {
-                format!("failed to read directory entry in {}", path.display())
-            })?;
+            let entry = entry
+                .with_context(|| format!("failed to read directory entry in {}", path.display()))?;
             let entry_path = entry.path();
             if entry_path.is_dir() {
                 total += dir_size(&entry_path)?;
@@ -456,9 +460,12 @@ pub fn downgrade_to_two_stem(
         + file_size_or_zero(&other_abs);
 
     // Delete individual stem files.
-    fs::remove_file(&drums_abs).with_context(|| format!("failed to remove {}", drums_abs.display()))?;
-    fs::remove_file(&bass_abs).with_context(|| format!("failed to remove {}", bass_abs.display()))?;
-    fs::remove_file(&other_abs).with_context(|| format!("failed to remove {}", other_abs.display()))?;
+    fs::remove_file(&drums_abs)
+        .with_context(|| format!("failed to remove {}", drums_abs.display()))?;
+    fs::remove_file(&bass_abs)
+        .with_context(|| format!("failed to remove {}", bass_abs.display()))?;
+    fs::remove_file(&other_abs)
+        .with_context(|| format!("failed to remove {}", other_abs.display()))?;
 
     // Update the database row.
     connection

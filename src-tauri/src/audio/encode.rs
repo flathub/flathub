@@ -4,14 +4,18 @@ use std::num::{NonZeroU32, NonZeroU8};
 use std::path::Path;
 use vorbis_rs::{VorbisBitrateManagementStrategy, VorbisEncoderBuilder};
 
-/// Default Vorbis quality setting (~160 kbps for stereo at 44100 Hz).
-const DEFAULT_VORBIS_QUALITY: f32 = 0.5;
+/// Default Vorbis quality setting (~320 kbps for stereo at 44100 Hz).
+const DEFAULT_VORBIS_QUALITY: f32 = 0.9;
 
 /// Recommended chunk size (in frames) when feeding audio to the Vorbis encoder.
 /// 1024 is the value recommended by the libvorbis documentation.
 const ENCODE_CHUNK_FRAMES: usize = 1024;
 
 /// Write audio data as an OGG/Vorbis file.
+///
+/// OpenKara stores generated stems as OGG on purpose: the library keeps the
+/// original source media separately, so the cache format is optimized for
+/// space efficiency instead of lossless archival quality.
 pub fn write_ogg_file(path: &Path, audio: &DecodedAudio) -> Result<()> {
     write_ogg_file_with_quality(path, audio, DEFAULT_VORBIS_QUALITY)
 }
@@ -20,11 +24,7 @@ pub fn write_ogg_file(path: &Path, audio: &DecodedAudio) -> Result<()> {
 ///
 /// Quality ranges from -0.1 (lowest, ~45 kbps) to 1.0 (highest, ~500 kbps).
 /// Recommended values: 0.4 (~128 kbps), 0.5 (~160 kbps), 0.6 (~192 kbps).
-pub fn write_ogg_file_with_quality(
-    path: &Path,
-    audio: &DecodedAudio,
-    quality: f32,
-) -> Result<()> {
+pub fn write_ogg_file_with_quality(path: &Path, audio: &DecodedAudio, quality: f32) -> Result<()> {
     // Ensure the parent directory exists.
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -32,12 +32,10 @@ pub fn write_ogg_file_with_quality(
     }
 
     let channels = audio.channels;
-    let sample_rate = NonZeroU32::new(audio.sample_rate)
-        .context("sample rate must be non-zero")?;
-    let channel_count = NonZeroU8::try_from(
-        u8::try_from(channels).context("channel count exceeds u8 range")?,
-    )
-    .context("channel count must be non-zero")?;
+    let sample_rate = NonZeroU32::new(audio.sample_rate).context("sample rate must be non-zero")?;
+    let channel_count =
+        NonZeroU8::try_from(u8::try_from(channels).context("channel count exceeds u8 range")?)
+            .context("channel count must be non-zero")?;
 
     let out_file = std::fs::File::create(path)
         .with_context(|| format!("failed to create OGG file at {}", path.display()))?;
@@ -74,7 +72,9 @@ pub fn write_ogg_file_with_quality(
         offset += chunk_frames;
     }
 
-    encoder.finish().context("failed to finish Vorbis encoding")?;
+    encoder
+        .finish()
+        .context("failed to finish Vorbis encoding")?;
 
     Ok(())
 }

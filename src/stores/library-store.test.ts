@@ -29,6 +29,7 @@ describe("library-store updateSongMetadata", () => {
           duration_ms: 123000,
           cover_art: null,
           imported_at: 0,
+          original_ext: null,
         },
       ],
       searchQuery: "",
