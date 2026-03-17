@@ -34,17 +34,21 @@ Then open the app again. This only needs to be done once.
 
 OpenKara first looks for timed lyrics online. It can also use lyrics embedded in your audio files or `.lrc` files stored next to the song.
 
+## Does OpenKara support CD+G?
+
+Yes. If a song has a same-name `.cdg` file next to the audio file, OpenKara renders those graphics during fullscreen playback.
+
 ## Can I move my library between machines?
 
 Yes. Your karaoke library lives in one folder, so you can move it to a USB drive, NAS, or another computer.
 
-## How large is the AI model?
-
-About 80 MB. OpenKara downloads it the first time you process a song, so the initial app download stays smaller.
-
 ## Can I choose how much to separate?
 
 Yes. The default mode splits a song into vocals and accompaniment. If you want more control, the more detailed mode separates drums, bass, and other instruments too. You can upgrade a song later.
+
+## When does OpenKara download the AI model?
+
+OpenKara starts downloading the default model in the background after first launch and library setup. An optional higher-quality model can be downloaded later from Settings.
 
 ## Do I need technical knowledge to use this?
 
@@ -58,5 +62,5 @@ Because separation models improve over time. Keeping the original lets you upgra
 
 - [Project README](https://github.com/thedavidweng/OpenKara/blob/main/README.md)
 - [README 中文](https://github.com/thedavidweng/OpenKara/blob/main/README_CN.md)
-- [Architecture](https://github.com/thedavidweng/OpenKara/blob/main/docs/design-docs/architecture.md)
-- [Release workflow](https://github.com/thedavidweng/OpenKara/blob/main/docs/design-docs/releasing.md)
+- [Architecture](https://github.com/thedavidweng/OpenKara/blob/main/docs/internal/architecture.md)
+- [Release workflow](https://github.com/thedavidweng/OpenKara/blob/main/docs/internal/releasing.md)

@@ -41,6 +41,7 @@
 - **本地音频导入** — 直接使用你已有的音乐，无需订阅，无需重复购买。
 - **AI 人声分离** — 在本地完成歌曲的人声与伴奏分离。
 - **同步歌词** — 可从在线来源、内嵌标签或 `.lrc` 伴随文件加载时间同步歌词。
+- **CD+G 伴随图形** — 如果歌曲旁边有同名 `.cdg` 文件，OpenKara 会在全屏播放时渲染对应图形。
 - **可移植曲库** — 自包含的曲库目录，可放置在 NAS、USB 硬盘上，跨设备共享。
 - **跨平台** — 支持 macOS、Windows 和 Linux。
 - **四轨混音器** — 人声、鼓、贝斯、其他乐器独立音量控制。可折叠的伴奏滑块，展开查看各轨详情。
@@ -77,7 +78,7 @@ brew install thedavidweng/tap/openkara
 xattr -rd com.apple.quarantine /Applications/OpenKara.app
 ```
 
-首次启动时，OpenKara 会引导你创建 Karaoke 曲库并下载 AI 模型。
+首次启动时，OpenKara 会引导你创建 Karaoke 曲库，并在后台开始下载默认 AI 模型。
 
 ### 从源码构建
 

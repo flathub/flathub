@@ -41,6 +41,7 @@ So my no-compromise solution was born: OpenKara uses open-source AI to separate 
 - **Local Audio Import** — Use music you already own. No subscriptions, no repurchases.
 - **AI Stem Separation** — Separate vocals and accompaniment on-device.
 - **Synced Lyrics** — Load timed lyrics from online sources, embedded tags, or sidecar `.lrc` files.
+- **CD+G Sidecars** — Render same-name `.cdg` graphics during fullscreen playback when a track includes them.
 - **Portable Library** — Self-contained library directory that works on NAS, USB drives, and across machines.
 - **Cross-Platform** — Available on macOS, Windows, and Linux.
 - **4-Stem Mixer** — Individual volume control for vocals, drums, bass, and other instruments. Collapsible accompaniment slider with per-stem breakdown.
@@ -77,7 +78,7 @@ brew install thedavidweng/tap/openkara
 xattr -rd com.apple.quarantine /Applications/OpenKara.app
 ```
 
-On first launch, OpenKara will prompt you to create a Karaoke Library and download the AI model.
+On first launch, OpenKara will prompt you to create a Karaoke Library and start downloading the default AI model in the background.
 
 ### Build from Source
 
