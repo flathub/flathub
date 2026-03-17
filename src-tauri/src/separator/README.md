@@ -13,10 +13,10 @@ Current coverage:
 - preprocess decoded stereo PCM into the model's fixed input window
 - run ORT inference, including zero-filled auxiliary tensors required by the
   model
-- extract the final stem output and write named WAV files for `drums`, `bass`,
+- extract the final stem output and write named OGG files for `drums`, `bass`,
   `other`, and `vocals`
-- mix `drums + bass + other` into a normalized accompaniment WAV
+- mix `drums + bass + other` into a normalized accompaniment OGG
 - cache completed stems and expose separation progress through Tauri events
 
 The runtime bootstrap contract is documented in
-`docs/contracts/phase-6-model-bootstrap-contract.md`.
+`docs/references/contracts/phase-6-model-bootstrap-contract.md`.

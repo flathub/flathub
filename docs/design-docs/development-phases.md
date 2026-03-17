@@ -90,8 +90,8 @@
 | --- | -------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
 | 3.1 | Rust: `separator` module — load Demucs ONNX model                          | `src-tauri/src/separator/model.rs`         | Unit test: model loads, session creates without error      |
 | 3.2 | Rust: `separator` — preprocess PCM → model input tensor                    | `src-tauri/src/separator/preprocess.rs`    | Correct tensor shape for Demucs input                      |
-| 3.3 | Rust: `separator` — run inference, postprocess → stems                     | `src-tauri/src/separator/inference.rs`     | Integration test: 10s audio → 4 stem WAVs written          |
-| 3.4 | Rust: mix drums + bass + other → single accompaniment WAV                  | `src-tauri/src/separator/mix.rs`           | Output file plays, sounds like instrumental                |
+| 3.3 | Rust: `separator` — run inference, postprocess → stems                     | `src-tauri/src/separator/inference.rs`     | Integration test: 10s audio → 4 stem OGGs written          |
+| 3.4 | Rust: mix drums + bass + other → single accompaniment OGG                  | `src-tauri/src/separator/mix.rs`           | Output file plays, sounds like instrumental                |
 | 3.5 | Rust: cache stems — hash-based directory `~/.openkara/cache/stems/{hash}/` | `src-tauri/src/cache/stems.rs`             | Second run → cache hit, no re-inference                    |
 | 3.6 | Rust: separation progress events (% complete)                              | `emit("separation-progress", { percent })` | Frontend shows progress                                    |
 | 3.7 | Frontend: separation status indicator + play toggle (original / karaoke)   | Player UI update                           | User sees progress bar, then can toggle vocal/instrumental |

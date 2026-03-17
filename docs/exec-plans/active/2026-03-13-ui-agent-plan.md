@@ -19,12 +19,12 @@
   - `src/styles/globals.css`
   - `src/types/app-shell.ts`
 - 当前可直接消费的契约文档：
-  - [phase-1-library-contract.md](../contracts/phase-1-library-contract.md)
-  - [phase-2-playback-contract.md](../contracts/phase-2-playback-contract.md)
-  - [phase-3-separation-contract.md](../contracts/phase-3-separation-contract.md)
-  - [phase-4-lyrics-contract.md](../contracts/phase-4-lyrics-contract.md)
-  - [phase-5-error-contract.md](../contracts/phase-5-error-contract.md)
-  - [phase-6-model-bootstrap-contract.md](../contracts/phase-6-model-bootstrap-contract.md)
+  - [phase-1-library-contract.md](../../references/contracts/phase-1-library-contract.md)
+  - [phase-2-playback-contract.md](../../references/contracts/phase-2-playback-contract.md)
+  - [phase-3-separation-contract.md](../../references/contracts/phase-3-separation-contract.md)
+  - [phase-4-lyrics-contract.md](../../references/contracts/phase-4-lyrics-contract.md)
+  - [phase-5-error-contract.md](../../references/contracts/phase-5-error-contract.md)
+  - [phase-6-model-bootstrap-contract.md](../../references/contracts/phase-6-model-bootstrap-contract.md)
 - 后续 UI 主要落点目录：
   - `src/components/Library/`
   - `src/components/Player/`
@@ -35,8 +35,8 @@
 ### 开始前先读
 
 1. [交接总计划](./2026-03-13-handoff-master-plan.md)
-2. [Technical Roadmap](../internal/roadmap.md)
-3. [Development Phases](../internal/development-phases.md)
+2. [Technical Roadmap](../../design-docs/roadmap.md)
+3. [Development Phases](../../design-docs/development-phases.md)
 
 ## 2. UI Agent 不负责什么
 

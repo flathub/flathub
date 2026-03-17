@@ -280,11 +280,12 @@ pnpm tauri build             # production build with platform-specific bundle
 
 ## Documentation
 
-- [Architecture](./docs/internal/architecture.md) — System design, tech stack, data flow, and AI model details
-- [Project Structure](./docs/internal/project-structure.md) — Directory layout and module responsibilities
-- [Development Phases](./docs/internal/development-phases.md) — Phase checklist with verification steps
-- [Technical Roadmap](./docs/internal/roadmap.md) — Technology choices, API contracts, and risk mitigations
-- [Milestones](./docs/internal/milestones.md) — Milestone task table with exit criteria
+- [Docs Hub](./docs/README.md) — Canonical index for design docs, plans, specs, references, and site content
+- [Architecture](./docs/design-docs/architecture.md) — System design, tech stack, data flow, and runtime details
+- [Project Structure](./docs/design-docs/project-structure.md) — Current directory layout and module responsibilities
+- [Development Phases](./docs/design-docs/development-phases.md) — Phase checklist with verification steps
+- [Technical Roadmap](./docs/design-docs/roadmap.md) — Technology choices, API contracts, and risk mitigations
+- [Milestones](./docs/design-docs/milestones.md) — Milestone task table with exit criteria
 
 ## Contributing
 

@@ -138,7 +138,7 @@
 1. `symphonia` 负责解码输入音频
 2. `ort` 负责 Demucs ONNX 推理
 3. `rubato` 负责把非 `44.1 kHz` 输入重采样到 Demucs 目标采样率
-4. `hound` 负责 stem / accompaniment WAV 写盘
+4. `vorbis_rs` 负责 stem / accompaniment OGG 写盘
 5. `tauri::async_runtime::spawn_blocking` 负责后台执行推理任务
 
 ## Verification commands
@@ -164,7 +164,7 @@ pnpm tauri build --debug --no-bundle --ci
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../plans/2026-03-13-code-agent-plan.md](../plans/2026-03-13-code-agent-plan.md)
+1. 接手前先读本文件，再读 [../../exec-plans/active/2026-03-13-code-agent-plan.md](../../exec-plans/active/2026-03-13-code-agent-plan.md)
 2. 先跑验证命令，确认分离链路没有被后续改动打破
 3. 如果要改命令名、事件名、状态字段或缓存目录：
    - 先更新本契约

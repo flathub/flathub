@@ -59,8 +59,8 @@
 1. 本文档
 2. [UI Agent 执行计划](./2026-03-13-ui-agent-plan.md)
 3. [代码 Agent 执行计划](./2026-03-13-code-agent-plan.md)
-4. [Development Phases](../internal/development-phases.md)
-5. [Technical Roadmap](../internal/roadmap.md)
+4. [Development Phases](../../design-docs/development-phases.md)
+5. [Technical Roadmap](../../design-docs/roadmap.md)
 
 ## 2. 阶段总览与依赖
 
@@ -214,10 +214,10 @@ cd ..
 
 1. 直接从 `Phase 1` `Library` 页面开始
 2. 优先消费已冻结契约：
-   - [phase-1-library-contract.md](../contracts/phase-1-library-contract.md)
-   - [phase-2-playback-contract.md](../contracts/phase-2-playback-contract.md)
-   - [phase-3-separation-contract.md](../contracts/phase-3-separation-contract.md)
-   - [phase-4-lyrics-contract.md](../contracts/phase-4-lyrics-contract.md)
+   - [phase-1-library-contract.md](../../references/contracts/phase-1-library-contract.md)
+   - [phase-2-playback-contract.md](../../references/contracts/phase-2-playback-contract.md)
+   - [phase-3-separation-contract.md](../../references/contracts/phase-3-separation-contract.md)
+   - [phase-4-lyrics-contract.md](../../references/contracts/phase-4-lyrics-contract.md)
 3. 先做真实数据接线，再补视觉 polish
 4. `Phase 5` 里只负责表面体验，不改后端命令和事件
 

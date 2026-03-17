@@ -41,8 +41,8 @@
 ### 开始前先读
 
 1. [交接总计划](./2026-03-13-handoff-master-plan.md)
-2. [Technical Roadmap](../internal/roadmap.md)
-3. [Development Phases](../internal/development-phases.md)
+2. [Technical Roadmap](../../design-docs/roadmap.md)
+3. [Development Phases](../../design-docs/development-phases.md)
 
 ## 2. 代码 Agent 主导范围
 
