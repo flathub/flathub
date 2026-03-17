@@ -9,39 +9,48 @@
 | [site/\_layouts/](./site/_layouts)      | Custom Jekyll layouts for the homepage and content pages |
 | [site/\_config.yml](./site/_config.yml) | Jekyll configuration for the GitHub Pages site           |
 
-Install guidance now lives inside `docs/site/index.html` instead of a standalone install page.
+Install guidance lives inside `docs/site/index.html` instead of a standalone install page.
 
-## Internal Docs
+## Design Docs
 
-| Document                                                                               | Description                                                           |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [internal/README.md](./internal/README.md)                                             | Index for architecture, roadmap, release, and delivery docs           |
-| [internal/architecture.md](./internal/architecture.md)                                 | System architecture, tech stack, data flow, and AI model details      |
-| [internal/project-structure.md](./internal/project-structure.md)                       | Directory layout and module responsibilities                          |
-| [internal/development-phases.md](./internal/development-phases.md)                     | Executable development phase checklist with verify steps              |
-| [internal/roadmap.md](./internal/roadmap.md)                                           | Technical implementation roadmap — tech choices, API contracts, risks |
-| [internal/milestones.md](./internal/milestones.md)                                     | Milestone task table with exit criteria and ownership tracking        |
-| [internal/releasing.md](./internal/releasing.md)                                       | Release workflow, Homebrew distribution, and future channels          |
-| [internal/performance/phase-5-baseline.md](./internal/performance/phase-5-baseline.md) | Backend benchmark baseline for Phase 5 profiling                      |
+| Document                                                                                     | Description                                                       |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [design-docs/index.md](./design-docs/index.md)                                               | Entry point for architecture, roadmap, release, and delivery docs |
+| [design-docs/architecture.md](./design-docs/architecture.md)                                 | System architecture, tech stack, data flow, and runtime design    |
+| [design-docs/core-beliefs.md](./design-docs/core-beliefs.md)                                 | Core product and engineering principles                           |
+| [design-docs/project-structure.md](./design-docs/project-structure.md)                       | Directory layout and module responsibilities                      |
+| [design-docs/development-phases.md](./design-docs/development-phases.md)                     | Executable development phase checklist with verify steps          |
+| [design-docs/roadmap.md](./design-docs/roadmap.md)                                           | Technical roadmap, API contracts, and risk notes                  |
+| [design-docs/milestones.md](./design-docs/milestones.md)                                     | Milestone task table with exit criteria and ownership tracking    |
+| [design-docs/releasing.md](./design-docs/releasing.md)                                       | Release workflow, Homebrew distribution, and future channels      |
+| [design-docs/performance/phase-5-baseline.md](./design-docs/performance/phase-5-baseline.md) | Backend benchmark baseline for profiling work                     |
 
-## Contracts
+## Execution Plans
 
-| Document                                                                                         | Description                                                    |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| [contracts/README.md](./contracts/README.md)                                                     | Contract index and purpose                                     |
-| [contracts/phase-1-library-contract.md](./contracts/phase-1-library-contract.md)                 | Frozen backend contract for Phase 1 library/import work        |
-| [contracts/phase-2-playback-contract.md](./contracts/phase-2-playback-contract.md)               | Frozen backend contract for Phase 2 playback work              |
-| [contracts/phase-3-separation-contract.md](./contracts/phase-3-separation-contract.md)           | Frozen backend contract for Phase 3 separation work            |
-| [contracts/phase-4-lyrics-contract.md](./contracts/phase-4-lyrics-contract.md)                   | Frozen backend contract for Phase 4 lyrics work                |
-| [contracts/phase-5-error-contract.md](./contracts/phase-5-error-contract.md)                     | Structured backend error contract for Phase 5 integration work |
-| [contracts/phase-6-model-bootstrap-contract.md](./contracts/phase-6-model-bootstrap-contract.md) | Runtime model bootstrap contract for Phase 6 distribution work |
+| Document                                                                                                                 | Description                                                |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| [exec-plans/active/index.md](./exec-plans/active/index.md)                                                               | In-progress or still-actionable implementation plans       |
+| [exec-plans/completed/index.md](./exec-plans/completed/index.md)                                                         | Archived design and implementation plans                   |
+| [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md)                                                     | Cross-cutting debt items that do not belong to one feature |
+| [exec-plans/active/2026-03-16-docs-reorg-implementation.md](./exec-plans/active/2026-03-16-docs-reorg-implementation.md) | Current documentation cleanup plan                         |
 
-## Plans
+## Generated Docs
 
-| Document                                                                             | Description                                                    |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| [plans/2026-03-13-handoff-master-plan.md](./plans/2026-03-13-handoff-master-plan.md) | Master handoff plan for continuing `Phase 1-6` work            |
-| [plans/2026-03-13-ui-agent-plan.md](./plans/2026-03-13-ui-agent-plan.md)             | UI-only execution plan for the specialist UI agent             |
-| [plans/2026-03-13-code-agent-plan.md](./plans/2026-03-13-code-agent-plan.md)         | Code-only execution plan for backend and integration ownership |
-| [plans/2026-03-15-pages-site-design.md](./plans/2026-03-15-pages-site-design.md)     | Design notes for the GitHub Pages microsite and doc reorg      |
-| [plans/2026-03-15-pages-site.md](./plans/2026-03-15-pages-site.md)                   | Implementation plan for the Pages migration                    |
+| Document                                           | Description                                           |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| [generated/db-schema.md](./generated/db-schema.md) | Current SQLite schema summary derived from migrations |
+
+## Product Specs
+
+| Document                                                                       | Description                                     |
+| ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| [product-specs/index.md](./product-specs/index.md)                             | Product-spec index and ownership guidance       |
+| [product-specs/new-user-onboarding.md](./product-specs/new-user-onboarding.md) | First-run and first-import experience reference |
+
+## References
+
+| Document                                                                                                               | Description                                                    |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [references/index.md](./references/index.md)                                                                           | Reference-doc index                                            |
+| [references/contracts/README.md](./references/contracts/README.md)                                                     | Frozen backend contract index                                  |
+| [references/contracts/phase-6-model-bootstrap-contract.md](./references/contracts/phase-6-model-bootstrap-contract.md) | Runtime model bootstrap contract for current distribution work |

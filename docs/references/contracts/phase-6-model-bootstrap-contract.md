@@ -147,7 +147,7 @@ pnpm tauri build --debug --no-bundle --ci
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../plans/2026-03-13-code-agent-plan.md](../plans/2026-03-13-code-agent-plan.md)
+1. 接手前先读本文件，再读 [../../exec-plans/active/2026-03-13-code-agent-plan.md](../../exec-plans/active/2026-03-13-code-agent-plan.md)
 2. 若需要更换模型 URL、校验值或安装目录：
    - 先更新本契约
    - 再改 Rust 实现和测试

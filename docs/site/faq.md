@@ -58,5 +58,5 @@ Because separation models improve over time. Keeping the original lets you upgra
 
 - [Project README](https://github.com/thedavidweng/OpenKara/blob/main/README.md)
 - [README 中文](https://github.com/thedavidweng/OpenKara/blob/main/README_CN.md)
-- [Architecture](https://github.com/thedavidweng/OpenKara/blob/main/docs/internal/architecture.md)
-- [Release workflow](https://github.com/thedavidweng/OpenKara/blob/main/docs/internal/releasing.md)
+- [Architecture](https://github.com/thedavidweng/OpenKara/blob/main/docs/design-docs/architecture.md)
+- [Release workflow](https://github.com/thedavidweng/OpenKara/blob/main/docs/design-docs/releasing.md)

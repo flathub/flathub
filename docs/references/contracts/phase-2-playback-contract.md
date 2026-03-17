@@ -178,7 +178,7 @@ pnpm tauri build --debug --no-bundle --ci
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../plans/2026-03-13-code-agent-plan.md](../plans/2026-03-13-code-agent-plan.md)
+1. 接手前先读本文件，再读 [../../exec-plans/active/2026-03-13-code-agent-plan.md](../../exec-plans/active/2026-03-13-code-agent-plan.md)
 2. 先跑验证命令，确认播放层没有被后续修改打破
 3. 如果后续调整命令名、字段名、事件名或节流语义：
    - 先更新本契约
