@@ -7,6 +7,7 @@ interface QueueState {
   addToQueue: (songId: string) => void;
   playNext: (songId: string) => void;
   removeFromQueue: (index: number) => void;
+  removeSongIds: (songIds: string[]) => void;
   reorder: (fromIndex: number, toIndex: number) => void;
   reorderBySongId: (activeId: string, overId: string) => void;
   clearQueue: () => void;
@@ -57,6 +58,13 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   removeFromQueue: (index) => {
     set((state) => ({
       queue: state.queue.filter((_, i) => i !== index),
+    }));
+  },
+
+  removeSongIds: (songIds) => {
+    const ids = new Set(songIds);
+    set((state) => ({
+      queue: state.queue.filter((songId) => !ids.has(songId)),
     }));
   },
 

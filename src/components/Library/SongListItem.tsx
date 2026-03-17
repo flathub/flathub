@@ -10,6 +10,7 @@ import { formatDuration } from "@/lib/format";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { ContextMenu } from "./ContextMenu";
+import { ConfirmationDialog } from "../Settings/ConfirmationDialog";
 import { SongEditDialog } from "./SongEditDialog";
 import { SongPropertiesDialog } from "./SongPropertiesDialog";
 import type { Song } from "@/types/ipc";
@@ -26,6 +27,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const separationStatus = useLibraryStore(
     (s) => s.separationStatuses[song.hash],
   );
+  const songs = useLibraryStore((s) => s.songs);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const playSong = usePlayerStore((s) => s.playSong);
   const closeSettings = useSettingsStore((s) => s.close);
@@ -36,11 +38,22 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
+  const [deleteSongIds, setDeleteSongIds] = useState<string[] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isSelected = selectedSongIds.has(song.hash);
   const isCurrentPlaying =
     snapshot?.song_id === song.hash && snapshot?.is_playing;
   const sepState = separationStatus?.state ?? "idle";
+  const isMediaG = song.media_g_container != null;
+  const selectedSongs = songs.filter((candidate) =>
+    selectedSongIds.has(candidate.hash),
+  );
+  const selectedHasSeparableSongs = selectedSongs.some(
+    (candidate) => candidate.media_g_container == null,
+  );
+  const isMultiSelected = selectedSongIds.size > 1 && isSelected;
+  const supportsEmbeddedLyrics = song.media_g_container !== "zip";
 
   const handleDoubleClick = () => {
     const current = usePlayerStore.getState().snapshot;
@@ -55,6 +68,51 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const handleSeparate = (e: React.MouseEvent) => {
     e.stopPropagation();
     api.separate(song.hash).catch((err) => notifyError(err));
+  };
+
+  const handleDeleteSongs = async (songIds: string[]) => {
+    setIsDeleting(true);
+    try {
+      const result = await api.deleteSongs(songIds);
+      for (const failure of result.failed) {
+        notifyError(failure.error);
+      }
+
+      if (result.deleted_song_ids.length > 0) {
+        useQueueStore.getState().removeSongIds(result.deleted_song_ids);
+        useLibraryStore.setState((state) => ({
+          selectedSongIds: new Set(
+            [...state.selectedSongIds].filter(
+              (id) => !result.deleted_song_ids.includes(id),
+            ),
+          ),
+          lastClickedSongId: result.deleted_song_ids.includes(
+            state.lastClickedSongId ?? "",
+          )
+            ? null
+            : state.lastClickedSongId,
+          separationStatuses: Object.fromEntries(
+            Object.entries(state.separationStatuses).filter(
+              ([id]) => !result.deleted_song_ids.includes(id),
+            ),
+          ),
+        }));
+        await useLibraryStore.getState().loadLibrary();
+        await usePlayerStore.getState().loadState();
+        const lyricsStore = useLyricsStore.getState();
+        if (
+          lyricsStore.songId &&
+          result.deleted_song_ids.includes(lyricsStore.songId)
+        ) {
+          lyricsStore.clear();
+        }
+      }
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setIsDeleting(false);
+      setDeleteSongIds(null);
+    }
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -102,22 +160,43 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
           <span className="truncate font-medium">
             {song.title || song.file_path.split("/").pop()}
           </span>
+          {song.media_g_container === "paired" && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] ${
+                isSelected
+                  ? "bg-white/15 text-white/80"
+                  : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+              }`}
+            >
+              CDG
+            </span>
+          )}
+          {song.media_g_container === "zip" && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] ${
+                isSelected
+                  ? "bg-white/15 text-white/80"
+                  : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+              }`}
+            >
+              ZIP+G
+            </span>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {sepState === "idle" &&
-            song.original_ext?.toLowerCase() !== "cdg" && (
-              <button
-                onClick={handleSeparate}
-                className={`rounded px-1.5 py-0.5 text-[10px] border ${
-                  isSelected
-                    ? "border-white/30 hover:bg-white/20"
-                    : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
-                }`}
-              >
-                {t("library.separate")}
-              </button>
-            )}
+          {sepState === "idle" && !isMediaG && (
+            <button
+              onClick={handleSeparate}
+              className={`rounded px-1.5 py-0.5 text-[10px] border ${
+                isSelected
+                  ? "border-white/30 hover:bg-white/20"
+                  : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
+              }`}
+            >
+              {t("library.separate")}
+            </button>
+          )}
           {sepState === "running" && (
             <div
               className={`flex items-center gap-1 text-[11px] ${isSelected ? "text-white" : "text-[var(--color-text-dim)]"}`}
@@ -178,7 +257,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           items={
-            selectedSongIds.size > 1 && isSelected
+            isMultiSelected
               ? [
                   {
                     label: t("library.queueAllSelected", {
@@ -191,15 +270,25 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                       }
                     },
                   },
+                  ...(selectedHasSeparableSongs
+                    ? [
+                        {
+                          label: t("library.separateAllSelected", {
+                            count: selectedSongIds.size,
+                          }),
+                          onClick: () => {
+                            api
+                              .batchSeparate([...selectedSongIds])
+                              .catch(notifyError);
+                          },
+                        },
+                      ]
+                    : []),
                   {
-                    label: t("library.separateAllSelected", {
+                    label: t("library.deleteSelected", {
                       count: selectedSongIds.size,
                     }),
-                    onClick: () => {
-                      api
-                        .batchSeparate([...selectedSongIds])
-                        .catch(notifyError);
-                    },
+                    onClick: () => setDeleteSongIds([...selectedSongIds]),
                   },
                 ]
               : [
@@ -216,12 +305,18 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     onClick: () =>
                       useQueueStore.getState().addToQueue(song.hash),
                   },
-                  {
-                    label: t("library.extractEmbeddedLyrics"),
-                    onClick: () => {
-                      api.extractEmbeddedLyrics(song.hash).catch(notifyError);
-                    },
-                  },
+                  ...(supportsEmbeddedLyrics
+                    ? [
+                        {
+                          label: t("library.extractEmbeddedLyrics"),
+                          onClick: () => {
+                            api
+                              .extractEmbeddedLyrics(song.hash)
+                              .catch(notifyError);
+                          },
+                        },
+                      ]
+                    : []),
                   {
                     label: t("library.fetchLyricsOnline"),
                     onClick: () => {
@@ -251,6 +346,10 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                     label: t("library.properties"),
                     onClick: () => setPropertiesDialogOpen(true),
                   },
+                  {
+                    label: t("library.delete"),
+                    onClick: () => setDeleteSongIds([song.hash]),
+                  },
                 ]
           }
           onClose={() => setContextMenu(null)}
@@ -265,6 +364,30 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
         <SongPropertiesDialog
           song={song}
           onClose={() => setPropertiesDialogOpen(false)}
+        />
+      )}
+
+      {deleteSongIds && (
+        <ConfirmationDialog
+          title={t("library.confirmDeleteTitle", {
+            count: deleteSongIds.length,
+          })}
+          message={t("library.confirmDeleteMessage", {
+            count: deleteSongIds.length,
+          })}
+          confirmLabel={
+            isDeleting ? t("common.deleting") : t("library.deleteConfirm")
+          }
+          onCancel={() => {
+            if (!isDeleting) {
+              setDeleteSongIds(null);
+            }
+          }}
+          onConfirm={() => {
+            if (!isDeleting) {
+              void handleDeleteSongs(deleteSongIds);
+            }
+          }}
         />
       )}
     </div>

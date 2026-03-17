@@ -26,6 +26,8 @@ describe("library-store updateSongMetadata", () => {
           artist: "Original Artist",
           album: null,
           file_path: "/music/original.mp3",
+          cdg_path: null,
+          media_g_container: null,
           duration_ms: 123000,
           cover_art: null,
           imported_at: 0,

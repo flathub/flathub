@@ -34,6 +34,10 @@ pub fn parse_cdg_file(path: &Path) -> Result<Vec<CdgPacket>> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("failed to read CDG file at {}", path.display()))?;
 
+    Ok(parse_cdg_bytes(&bytes))
+}
+
+pub fn parse_cdg_bytes(bytes: &[u8]) -> Vec<CdgPacket> {
     let packet_count = bytes.len() / PACKET_SIZE;
     let mut packets = Vec::with_capacity(packet_count);
 
@@ -49,7 +53,7 @@ pub fn parse_cdg_file(path: &Path) -> Result<Vec<CdgPacket>> {
         });
     }
 
-    Ok(packets)
+    packets
 }
 
 #[cfg(test)]

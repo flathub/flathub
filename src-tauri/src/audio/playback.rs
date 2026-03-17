@@ -250,6 +250,10 @@ impl PlaybackController {
             .map(|track| track.song_id.as_str())
     }
 
+    pub fn clear_track(&mut self) {
+        self.current_track = None;
+    }
+
     /// Returns the current render frame (source-rate frame index).
     pub fn current_render_frame(&self) -> u64 {
         self.current_track

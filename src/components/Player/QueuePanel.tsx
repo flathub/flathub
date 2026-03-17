@@ -75,16 +75,16 @@ function QueueItemCard({
   className = "",
 }: QueueItemCardProps) {
   const stateClassName = isOverlay
-    ? "motion-safe:scale-[1.01] bg-[var(--color-hover)] shadow-[0_18px_38px_rgba(0,0,0,0.34)] ring-1 ring-[var(--color-accent)]"
+    ? "motion-safe:scale-[1.01] bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] shadow-[0_20px_42px_rgba(0,0,0,0.34)] ring-1 ring-[color-mix(in_srgb,var(--color-accent)_65%,white)]"
     : isDraggingSource
-      ? "bg-[var(--color-hover)] opacity-25"
+      ? "bg-[color-mix(in_srgb,var(--color-hover)_80%,transparent)] opacity-25"
       : dropIndicator
-        ? "bg-[var(--color-hover)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
-        : "hover:bg-[var(--color-hover)]";
+        ? "bg-[color-mix(in_srgb,var(--color-hover)_80%,transparent)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+        : "hover:bg-[color-mix(in_srgb,var(--color-hover)_76%,transparent)]";
 
   return (
     <div
-      className={`group relative flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 transition-[transform,box-shadow,opacity,background-color] duration-150 ease-out motion-reduce:transition-none ${stateClassName} ${className}`}
+      className={`group motion-surface relative flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 ${stateClassName} ${className}`}
     >
       {dropIndicator && (
         <span
@@ -157,7 +157,7 @@ function SortableQueueItem({
             ref={setActivatorNodeRef}
             {...attributes}
             {...listeners}
-            className={`-m-1 shrink-0 rounded-md p-1 transition-[color,background-color,transform,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
+            className={`motion-icon-button -m-1 shrink-0 rounded-md p-1 ${
               isDragging
                 ? "cursor-grabbing bg-white/5 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
                 : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-white/5 hover:text-[#EBEBF5] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
@@ -174,7 +174,7 @@ function SortableQueueItem({
               type="button"
               onClick={onMoveUp}
               disabled={index === 0}
-              className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+              className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
               title={moveUpLabel}
               aria-label={moveUpLabel}
             >
@@ -184,7 +184,7 @@ function SortableQueueItem({
               type="button"
               onClick={onMoveDown}
               disabled={index === queueLength - 1}
-              className="text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5] disabled:opacity-20"
+              className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
               title={moveDownLabel}
               aria-label={moveDownLabel}
             >
@@ -196,7 +196,7 @@ function SortableQueueItem({
           <button
             type="button"
             onClick={onRemove}
-            className="shrink-0 translate-x-1 rounded-md text-[var(--color-text-dimmer)] opacity-0 transition-[color,opacity,transform] duration-150 ease-out motion-reduce:translate-x-0 motion-reduce:transition-none group-hover:translate-x-0 group-hover:opacity-100 hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+            className="contextual-reveal-horizontal motion-icon-button shrink-0 rounded-md text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
             title={removeLabel}
             aria-label={removeLabel}
           >
@@ -378,8 +378,8 @@ export function QueuePanel() {
   const activeSong = activeSongId ? getSong(activeSongId) : undefined;
 
   return (
-    <div className="flex h-full w-[280px] shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-toolbar)]">
-      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2">
+    <div className="flex h-full w-[280px] shrink-0 flex-col border-l border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_94%,transparent)] shadow-[-1px_0_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] px-4 py-2">
         <span className="text-[13px] font-medium text-[#EBEBF5]">
           {t("queue.upNext")}
           {queue.length > 0 && (
@@ -392,7 +392,7 @@ export function QueuePanel() {
           <button
             type="button"
             onClick={clearQueue}
-            className="text-[11px] text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
+            className="motion-icon-button rounded px-1.5 py-1 text-[11px] text-[var(--color-text-dimmer)] hover:bg-white/4 hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
           >
             {t("queue.clearAll")}
           </button>

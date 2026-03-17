@@ -35,6 +35,8 @@ fn fixture_song(file_path: &Path) -> Song {
     Song {
         hash: "fixture-song".to_owned(),
         file_path: file_path.display().to_string(),
+        cdg_path: None,
+        media_g_container: None,
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

@@ -39,6 +39,8 @@ export interface CommandError {
 export interface Song {
   hash: string;
   file_path: string;
+  cdg_path: string | null;
+  media_g_container: "paired" | "zip" | null;
   title: string | null;
   artist: string | null;
   album: string | null;
@@ -66,6 +68,16 @@ export interface ImportFailure {
 export interface ImportSongsResult {
   imported: Song[];
   failed: ImportFailure[];
+}
+
+export interface DeleteSongsFailure {
+  song_id: string;
+  error: CommandError;
+}
+
+export interface DeleteSongsResult {
+  deleted_song_ids: string[];
+  failed: DeleteSongsFailure[];
 }
 
 export interface LyricsMatch {

@@ -5,6 +5,8 @@ use serde::Serialize;
 pub struct Song {
     pub hash: String,
     pub file_path: String,
+    pub cdg_path: Option<String>,
+    pub media_g_container: Option<String>,
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
@@ -12,6 +14,16 @@ pub struct Song {
     pub cover_art: Option<Vec<u8>>,
     pub imported_at: i64,
     pub original_ext: Option<String>,
+}
+
+impl Song {
+    pub fn is_media_g(&self) -> bool {
+        self.media_g_container.is_some() || self.cdg_path.is_some()
+    }
+
+    pub fn is_media_g_zip(&self) -> bool {
+        self.media_g_container.as_deref() == Some("zip")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

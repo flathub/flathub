@@ -41,6 +41,10 @@ pub fn fetch_lyrics_for_song(
         }
     }
 
+    if song.is_media_g_zip() {
+        return Ok(None);
+    }
+
     if let Some(embedded_lyrics) = read_embedded_lyrics(resolved_audio_path)? {
         return Ok(Some(LyricsFetchResult {
             source: LyricsSource::Embedded,

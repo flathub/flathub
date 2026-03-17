@@ -63,6 +63,12 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
     if !column_exists(connection, "songs", "original_ext")? {
         connection.execute_batch("ALTER TABLE songs ADD COLUMN original_ext TEXT;")?;
     }
+    if !column_exists(connection, "songs", "cdg_path")? {
+        connection.execute_batch("ALTER TABLE songs ADD COLUMN cdg_path TEXT;")?;
+    }
+    if !column_exists(connection, "songs", "media_g_container")? {
+        connection.execute_batch("ALTER TABLE songs ADD COLUMN media_g_container TEXT;")?;
+    }
 
     // 005_individual_stem_paths – add per-instrument columns to stems table.
     if !column_exists(connection, "stems", "drums_path")? {
@@ -109,6 +115,8 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
         "INSERT INTO songs (
             hash,
             file_path,
+            cdg_path,
+            media_g_container,
             title,
             artist,
             album,
@@ -116,9 +124,11 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cover_art,
             imported_at,
             original_ext
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hash) DO UPDATE SET
             file_path = excluded.file_path,
+            cdg_path = excluded.cdg_path,
+            media_g_container = excluded.media_g_container,
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
@@ -129,6 +139,8 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
         params![
             song.hash,
             song.file_path,
+            song.cdg_path,
+            song.media_g_container,
             song.title,
             song.artist,
             song.album,
@@ -147,6 +159,8 @@ pub fn list_songs(connection: &Connection) -> rusqlite::Result<Vec<Song>> {
         "SELECT
             hash,
             file_path,
+            cdg_path,
+            media_g_container,
             title,
             artist,
             album,
@@ -171,6 +185,8 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
         "SELECT
             hash,
             file_path,
+            cdg_path,
+            media_g_container,
             title,
             artist,
             album,
@@ -198,6 +214,8 @@ pub fn get_song_by_hash(connection: &Connection, hash: &str) -> rusqlite::Result
         "SELECT
             hash,
             file_path,
+            cdg_path,
+            media_g_container,
             title,
             artist,
             album,
@@ -234,13 +252,15 @@ fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
     Ok(Song {
         hash: row.get(0)?,
         file_path: row.get(1)?,
-        title: row.get(2)?,
-        artist: row.get(3)?,
-        album: row.get(4)?,
-        duration_ms: row.get(5)?,
-        cover_art: row.get(6)?,
-        imported_at: row.get(7)?,
-        original_ext: row.get(8)?,
+        cdg_path: row.get(2)?,
+        media_g_container: row.get(3)?,
+        title: row.get(4)?,
+        artist: row.get(5)?,
+        album: row.get(6)?,
+        duration_ms: row.get(7)?,
+        cover_art: row.get(8)?,
+        imported_at: row.get(9)?,
+        original_ext: row.get(10)?,
     })
 }
 

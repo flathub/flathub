@@ -15,6 +15,8 @@ const AUDIO_EXTENSIONS = [
   "m4a",
   "aac",
   "wma",
+  "cdg",
+  "zip",
   "lrc",
 ];
 

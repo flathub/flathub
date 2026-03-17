@@ -73,7 +73,7 @@ export function Sidebar() {
     batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)]">
+    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
       {/* Spacer for native macOS traffic light buttons */}
       <div className="h-12 shrink-0" data-tauri-drag-region />
 
@@ -88,10 +88,10 @@ export function Sidebar() {
         </div>
         <button
           onClick={() => setFilter("all")}
-          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
+          className={`motion-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
             filter === "all"
-              ? "bg-[var(--color-hover)] text-white"
-              : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+              ? "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
+              : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
           }`}
         >
           <span className="flex items-center gap-2">
@@ -109,10 +109,10 @@ export function Sidebar() {
         </button>
         <button
           onClick={() => setFilter("separated")}
-          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
+          className={`motion-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
             filter === "separated"
-              ? "bg-[var(--color-hover)] text-white"
-              : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+              ? "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
+              : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
           }`}
         >
           <span className="flex items-center gap-2">
@@ -130,7 +130,10 @@ export function Sidebar() {
         <div className="flex items-center justify-between px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
           <span>{t("sidebar.localMusic")}</span>
           <ImportButton>
-            <UploadCloud size={12} className="hover:text-white" />
+            <UploadCloud
+              size={12}
+              className="motion-icon-button rounded p-1 hover:bg-white/4 hover:text-white"
+            />
           </ImportButton>
         </div>
         <SongList />
@@ -163,7 +166,7 @@ export function Sidebar() {
           ) : needsUpgrade ? (
             <button
               onClick={() => setShowUpgradeConfirm(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white"
+              className="motion-surface flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white"
             >
               <Layers size={12} />
               {t("sidebar.upgradeAll")}
@@ -172,7 +175,7 @@ export function Sidebar() {
             <button
               onClick={handleSeparateAll}
               disabled={songs.length === 0}
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-40"
+              className="motion-surface flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white disabled:opacity-40"
             >
               <Layers size={12} />
               {t("sidebar.separateAll")}

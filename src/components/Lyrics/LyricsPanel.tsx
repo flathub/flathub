@@ -20,6 +20,7 @@ export function LyricsPanel() {
   const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const utilityControlsPinned = offsetMs !== 0;
 
   const isPlainText = lines.length > 0 && lines.every((l) => l.time_ms === 0);
 
@@ -58,16 +59,21 @@ export function LyricsPanel() {
   }
 
   return (
-    <div className="relative flex flex-1 flex-col items-center overflow-hidden">
+    <div className="group relative flex flex-1 flex-col items-center overflow-hidden">
       {songId && (
         <>
-          <button
-            onClick={() => setEditOpen(true)}
-            className="absolute right-4 top-4 z-10 rounded-md p-1.5 text-[var(--color-text-dimmer)] transition-colors hover:bg-[#3A3A3C] hover:text-[#EBEBF5]"
-            title={t("lyrics.editTooltip")}
+          <div
+            className="contextual-reveal absolute right-4 top-4 z-10"
+            data-visible={utilityControlsPinned}
           >
-            <Edit2 size={14} />
-          </button>
+            <button
+              onClick={() => setEditOpen(true)}
+              className="motion-icon-button rounded-full border border-[color-mix(in_srgb,var(--color-border-light)_78%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_76%,transparent)] p-2 text-[var(--color-text-dim)] shadow-[0_16px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl hover:border-[color-mix(in_srgb,var(--color-accent)_28%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_78%,transparent)] hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35"
+              title={t("lyrics.editTooltip")}
+            >
+              <Edit2 size={14} />
+            </button>
+          </div>
           <LyricsEditDialog
             open={editOpen}
             onClose={() => setEditOpen(false)}
@@ -79,7 +85,7 @@ export function LyricsPanel() {
       <div
         ref={containerRef}
         key={songId}
-        className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8 animate-[song-fade-in_300ms_ease-out]"
+        className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8 animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)]"
       >
         {lines.map((line, idx) => (
           <LyricLine
@@ -98,7 +104,15 @@ export function LyricsPanel() {
           />
         ))}
       </div>
-      <LyricsOffsetControl />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-6 pb-5"
+        data-visible={utilityControlsPinned}
+      >
+        <LyricsOffsetControl
+          className="contextual-reveal pointer-events-auto"
+          data-visible={utilityControlsPinned}
+        />
+      </div>
     </div>
   );
 }

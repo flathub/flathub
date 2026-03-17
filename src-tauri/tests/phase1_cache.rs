@@ -5,6 +5,8 @@ fn sample_song(hash: &str, title: &str, artist: &str, imported_at: i64) -> Song 
     Song {
         hash: hash.to_owned(),
         file_path: format!("/music/{hash}.mp3"),
+        cdg_path: None,
+        media_g_container: None,
         title: Some(title.to_owned()),
         artist: Some(artist.to_owned()),
         album: Some("Fixture Album".to_owned()),

@@ -6,6 +6,7 @@ pub mod config;
 pub mod library;
 pub mod library_root;
 pub mod lyrics;
+pub mod media_g;
 pub mod metadata;
 pub mod perf;
 pub mod separator;
@@ -225,6 +226,7 @@ pub fn run() {
             commands::import::import_songs,
             commands::import::get_library,
             commands::import::search_library,
+            commands::import::delete_songs,
             commands::import::update_song_metadata,
             commands::import::get_song_properties,
             commands::library_setup::create_library,

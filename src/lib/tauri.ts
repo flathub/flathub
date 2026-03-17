@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  DeleteSongsResult,
   DeleteStemsResult,
   DowngradeResult,
   ImportLyricsResult,
@@ -49,6 +50,10 @@ export function updateSongMetadata(
   artist: string | null,
 ): Promise<Song> {
   return invoke<Song>("update_song_metadata", { hash, title, artist });
+}
+
+export function deleteSongs(songIds: string[]): Promise<DeleteSongsResult> {
+  return invoke<DeleteSongsResult>("delete_songs", { songIds });
 }
 
 export function getSongProperties(songId: string): Promise<SongProperties> {

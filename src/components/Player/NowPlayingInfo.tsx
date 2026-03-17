@@ -20,7 +20,7 @@ export function NowPlayingInfo() {
   return (
     <div
       key={snapshot.song_id}
-      className="flex flex-col overflow-hidden animate-[song-fade-in_300ms_ease-out]"
+      className="flex flex-col overflow-hidden animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)]"
     >
       <span className="truncate text-[12px] font-medium text-white">
         {song?.title || t("common.unknownTitle")}

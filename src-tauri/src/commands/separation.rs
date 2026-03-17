@@ -63,6 +63,7 @@ pub fn separate(
     song_id: String,
 ) -> CommandResult<SeparationStatusSnapshot> {
     crate::commands::bootstrap::ensure_model_ready(&state.model_bootstrap_status)?;
+    ensure_song_can_be_separated(&state, &song_id)?;
 
     let initial_status = {
         let mut statuses = state
@@ -194,6 +195,7 @@ pub fn upgrade_to_four_stem(
     song_id: String,
 ) -> CommandResult<SeparationStatusSnapshot> {
     crate::commands::bootstrap::ensure_model_ready(&state.model_bootstrap_status)?;
+    ensure_song_can_be_separated(&state, &song_id)?;
 
     // Check if song already has 4-stem separation cached.
     {
@@ -340,6 +342,7 @@ pub fn re_separate(
     stem_mode: StemMode,
 ) -> CommandResult<SeparationStatusSnapshot> {
     crate::commands::bootstrap::ensure_model_ready(&state.model_bootstrap_status)?;
+    ensure_song_can_be_separated(&state, &song_id)?;
 
     // Clear existing cache entry and stem files.
     {
@@ -576,6 +579,28 @@ pub fn get_separation_status_from_map(
         .get(song_id)
         .cloned()
         .unwrap_or_else(|| idle_status(song_id)))
+}
+
+fn ensure_song_can_be_separated(
+    state: &State<'_, AppState>,
+    song_id: &str,
+) -> CommandResult<()> {
+    let library_root = state.library_root()?;
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| separation_error(e.to_string()))?;
+    let song = cache::get_song_by_hash(&connection, song_id)
+        .map_err(|e| separation_error(e.to_string()))?
+        .ok_or_else(|| separation_error(format!("song with hash {song_id} was not found in the library")))?;
+
+    if song.is_media_g() {
+        // Media+G songs already carry karaoke graphics and intentionally skip
+        // the stem pipeline, which is designed for plain audio assets only.
+        return Err(separation_error(format!(
+            "song {song_id} is a Media+G track and cannot be separated"
+        )));
+    }
+
+    Ok(())
 }
 
 pub fn idle_status(song_id: impl Into<String>) -> SeparationStatusSnapshot {

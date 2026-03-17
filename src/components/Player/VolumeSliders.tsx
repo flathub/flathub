@@ -179,7 +179,7 @@ export function VolumeSliders() {
           <button
             ref={chevronRef}
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex h-4 w-4 items-center justify-center text-[var(--color-text-dimmer)] transition-colors hover:text-[#EBEBF5]"
+            className="motion-icon-button flex h-4 w-4 items-center justify-center rounded-full text-[var(--color-text-dimmer)] hover:bg-white/4 hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
             title={
               isExpanded ? t("stems.collapseStems") : t("stems.expandStems")
             }
@@ -195,7 +195,7 @@ export function VolumeSliders() {
         {isExpanded && stemsAvailable && isFourStem && (
           <div
             ref={popupRef}
-            className="absolute bottom-full left-0 z-50 mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-sidebar)] p-3 shadow-xl"
+            className="absolute bottom-full left-0 z-50 mb-3 rounded-lg border border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_90%,transparent)] p-3 shadow-[0_20px_40px_rgba(0,0,0,0.32)] backdrop-blur-xl animate-[song-fade-in_var(--motion-duration-standard)_var(--motion-ease-emphasized-out)]"
           >
             <div className="flex flex-col gap-2">
               <StemSlider
@@ -253,9 +253,9 @@ function StemSlider({
       <button
         onClick={onIconClick}
         disabled={disabled || !onIconClick}
-        className={`transition-colors ${
+        className={`motion-icon-button rounded-full p-1 ${
           !disabled && value > 0
-            ? "text-[#EBEBF5] hover:text-white"
+            ? "text-[#EBEBF5] hover:bg-white/4 hover:text-white"
             : "text-[var(--color-text-dimmer)]"
         } ${onIconClick && !disabled ? "cursor-pointer" : "cursor-default"}`}
         title={onIconClick ? muteLabel : label}

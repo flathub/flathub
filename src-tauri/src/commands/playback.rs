@@ -7,12 +7,13 @@ use crate::{
         },
     },
     cache,
-    cdg::parse_cdg_file,
+    cdg::{parse_cdg_bytes, parse_cdg_file},
     commands::cdg::CdgPlaybackState,
     commands::error::{
         database_error, internal_error, playback_error, state_lock_error, CommandResult,
     },
     library_root::LibraryRoot,
+    media_g::{self, MEDIA_G_ZIP},
     AppState,
 };
 use anyhow::{Context, Result};
@@ -38,23 +39,19 @@ pub fn play(
         .with_context(|| format!("song with hash {song_id} was not found in the library"))
         .map_err(playback_error)?;
     let active_song_id = song.hash.clone();
-    let absolute_path = library_root.resolve(&song.file_path);
     let snapshot = decode_then_start_track_if_latest(
         &state.playback,
         &state.playback_request_id,
         request_id,
         active_song_id.clone(),
-        || {
-            decode::decode_file(&absolute_path)
-                .with_context(|| format!("failed to decode audio for {}", song.file_path))
-        },
+        || load_song_audio(&library_root, &song),
     )
     .map_err(playback_error)?;
 
     if snapshot.song_id.as_deref() == Some(active_song_id.as_str()) {
         // Only attach CDG state if this play request still won. Slow decode or
         // sidecar work from an older request must not clobber the current song.
-        let next_cdg_state = load_cdg_sidecar_state(&absolute_path);
+        let next_cdg_state = load_cdg_state_for_song(&library_root, &song);
         let mut cdg_state = state
             .cdg_state
             .lock()
@@ -289,6 +286,54 @@ fn load_cdg_sidecar_state(audio_path: &Path) -> Option<CdgPlaybackState> {
     }
 }
 
+fn load_cdg_state_for_song(
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Option<CdgPlaybackState> {
+    let absolute_path = library_root.resolve(&song.file_path);
+    match song.media_g_container.as_deref() {
+        Some(MEDIA_G_ZIP) => load_cdg_state_from_zip(&absolute_path),
+        _ => {
+            if let Some(cdg_path) = song.cdg_path.as_deref() {
+                return load_cdg_state_from_explicit_path(&library_root.resolve(cdg_path));
+            }
+            load_cdg_sidecar_state(&absolute_path)
+        }
+    }
+}
+
+fn load_cdg_state_from_explicit_path(cdg_path: &Path) -> Option<CdgPlaybackState> {
+    if !cdg_path.is_file() {
+        return None;
+    }
+
+    match parse_cdg_file(cdg_path) {
+        Ok(packets) => Some(CdgPlaybackState::new(packets)),
+        Err(error) => {
+            eprintln!(
+                "warning: failed to parse CDG sidecar at {}: {}",
+                cdg_path.display(),
+                error
+            );
+            None
+        }
+    }
+}
+
+fn load_cdg_state_from_zip(zip_path: &Path) -> Option<CdgPlaybackState> {
+    match media_g::inspect_zip_for_media_g(zip_path) {
+        Ok(asset) => Some(CdgPlaybackState::new(parse_cdg_bytes(&asset.cdg_bytes))),
+        Err(error) => {
+            eprintln!(
+                "warning: failed to read CDG packets from Media+G ZIP at {}: {}",
+                zip_path.display(),
+                error
+            );
+            None
+        }
+    }
+}
+
 fn mark_cdg_reset_for_seek(
     cdg_state: &mut Option<CdgPlaybackState>,
     previous_ms: u64,
@@ -324,11 +369,24 @@ pub fn play_song_from_library(
     let song = cache::get_song_by_hash(connection, song_id)
         .context("failed to load song from library")?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
-    let absolute_path = library_root.resolve(&song.file_path);
-    let decoded_audio = decode::decode_file(&absolute_path)
-        .with_context(|| format!("failed to decode audio for {}", song.file_path))?;
+    let decoded_audio = load_song_audio(library_root, &song)?;
 
     Ok(controller.start_track(song.hash, decoded_audio, now_ms))
+}
+
+fn load_song_audio(
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Result<decode::DecodedAudio> {
+    let absolute_path = library_root.resolve(&song.file_path);
+    if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
+        let asset = media_g::inspect_zip_for_media_g(&absolute_path)?;
+        return decode::decode_bytes(asset.audio_bytes, &asset.audio_extension)
+            .with_context(|| format!("failed to decode audio for {}", song.file_path));
+    }
+
+    decode::decode_file(&absolute_path)
+        .with_context(|| format!("failed to decode audio for {}", song.file_path))
 }
 
 pub fn load_stems_for_current_track(

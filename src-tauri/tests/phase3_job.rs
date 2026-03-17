@@ -44,6 +44,8 @@ fn fixture_song(hash: &str, library: &LibraryRoot) -> Song {
     Song {
         hash: hash.to_owned(),
         file_path: relative,
+        cdg_path: None,
+        media_g_container: None,
         title: Some("Fixture Song".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),

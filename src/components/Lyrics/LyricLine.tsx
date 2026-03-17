@@ -33,7 +33,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
   return (
     <div
       onClick={handleClick}
-      className={`flex cursor-pointer flex-col items-center gap-1.5 text-center transition-all duration-300 ${
+      className={`motion-surface flex cursor-pointer flex-col items-center gap-1.5 text-center ${
         state === "active" ? "scale-105 drop-shadow-md" : ""
       }`}
     >
@@ -51,7 +51,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
             return (
               <span
                 key={idx}
-                className={`transition-colors duration-100 ${
+                className={`motion-surface ${
                   wordState === "active"
                     ? "text-white"
                     : wordState === "past"
@@ -75,7 +75,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
         </span>
       ) : (
         <span
-          className={`text-2xl font-bold tracking-tight transition-colors md:text-3xl ${
+          className={`motion-surface text-2xl font-bold tracking-tight md:text-3xl ${
             state === "active"
               ? "text-white"
               : state === "past"

@@ -72,9 +72,24 @@ pub fn batch_separate(
             .map_err(|e| database_error(e.to_string()))?;
         let songs = cache::list_songs(&connection)
             .map_err(|e| database_error(e.to_string()))?;
-        songs.into_iter().map(|s| s.hash).collect()
+        songs
+            .into_iter()
+            .filter(|song| !song.is_media_g())
+            .map(|s| s.hash)
+            .collect()
     } else {
+        let connection = cache::open_database(&library_root.database_path())
+            .map_err(|e| database_error(e.to_string()))?;
         song_ids
+            .into_iter()
+            .filter(|song_id| {
+                cache::get_song_by_hash(&connection, song_id)
+                    .ok()
+                    .flatten()
+                    .map(|song| !song.is_media_g())
+                    .unwrap_or(true)
+            })
+            .collect()
     };
 
     // Filter out already-separated songs.

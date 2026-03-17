@@ -1,11 +1,15 @@
 use anyhow::{anyhow, bail, Context, Result};
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    io::{Cursor, Read, Seek},
+    path::Path,
+};
 use symphonia::core::{
     audio::{AudioBufferRef, SampleBuffer},
     codecs::DecoderOptions,
     errors::Error as SymphoniaError,
     formats::FormatOptions,
-    io::MediaSourceStream,
+    io::{MediaSource, MediaSourceStream},
     meta::MetadataOptions,
     probe::Hint,
 };
@@ -21,10 +25,35 @@ pub struct DecodedAudio {
 pub fn decode_file(path: &Path) -> Result<DecodedAudio> {
     let file = File::open(path)
         .with_context(|| format!("failed to open audio file at {}", path.display()))?;
-    let media_source_stream = MediaSourceStream::new(Box::new(file), Default::default());
+    decode_source(
+        file,
+        path.extension().and_then(|value| value.to_str()),
+        &path.display().to_string(),
+    )
+}
+
+pub fn decode_bytes(bytes: Vec<u8>, extension: &str) -> Result<DecodedAudio> {
+    decode_source(Cursor::new(bytes), Some(extension), "in-memory Media+G audio")
+}
+
+fn extend_interleaved_samples(samples: &mut Vec<f32>, decoded: AudioBufferRef<'_>) {
+    let mut sample_buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+    sample_buffer.copy_interleaved_ref(decoded);
+    samples.extend_from_slice(sample_buffer.samples());
+}
+
+fn decode_source<R>(
+    source: R,
+    extension: Option<&str>,
+    source_label: &str,
+) -> Result<DecodedAudio>
+where
+    R: Read + Seek + MediaSource + Send + Sync + 'static,
+{
+    let media_source_stream = MediaSourceStream::new(Box::new(source), Default::default());
 
     let mut hint = Hint::new();
-    if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
+    if let Some(extension) = extension {
         hint.with_extension(extension);
     }
 
@@ -35,7 +64,7 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio> {
             &FormatOptions::default(),
             &MetadataOptions::default(),
         )
-        .with_context(|| format!("failed to probe audio format for {}", path.display()))?;
+        .with_context(|| format!("failed to probe audio format for {source_label}"))?;
     let mut format = probed.format;
 
     let track = format
@@ -71,7 +100,7 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio> {
 
         let decoded = decoder
             .decode(&packet)
-            .with_context(|| format!("failed to decode audio packet from {}", path.display()))?;
+            .with_context(|| format!("failed to decode audio packet from {source_label}"))?;
 
         let spec = *decoded.spec();
         sample_rate.get_or_insert(spec.rate);
@@ -94,10 +123,4 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio> {
         duration_ms,
         samples,
     })
-}
-
-fn extend_interleaved_samples(samples: &mut Vec<f32>, decoded: AudioBufferRef<'_>) {
-    let mut sample_buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
-    sample_buffer.copy_interleaved_ref(decoded);
-    samples.extend_from_slice(sample_buffer.samples());
 }

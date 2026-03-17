@@ -61,6 +61,12 @@ export function SongPropertiesDialog({
   const [reSeparateStemMode, setReSeparateStemMode] = useState<
     "two_stem" | "four_stem"
   >("two_stem");
+  const mediaGLabel =
+    song.media_g_container === "zip"
+      ? t("songProperties.mediaGZip")
+      : song.media_g_container === "paired"
+        ? t("songProperties.mediaGPaired")
+        : null;
 
   useEffect(() => {
     api
@@ -189,22 +195,30 @@ export function SongPropertiesDialog({
                 title={properties.hash}
                 mono
               />
+              {mediaGLabel && (
+                <PropertyRow
+                  label={t("songProperties.graphics")}
+                  value={mediaGLabel}
+                />
+              )}
               <div className="flex items-baseline gap-3 py-1.5">
                 <span className="w-28 shrink-0 text-[12px] text-[var(--color-text-dim)]">
                   {t("songProperties.separation")}
                 </span>
                 <span className="flex items-center gap-2 text-[12px] text-white">
-                  {(!sepStatus || sepStatus.state === "idle") &&
-                    t("songProperties.notSeparated")}
-                  {sepStatus?.state === "running" &&
-                    t("songProperties.separating")}
-                  {sepStatus?.state === "failed" &&
-                    t("songProperties.separationFailed")}
+                  {mediaGLabel
+                    ? t("songProperties.notApplicable")
+                    : !sepStatus || sepStatus.state === "idle"
+                      ? t("songProperties.notSeparated")
+                      : sepStatus.state === "running"
+                        ? t("songProperties.separating")
+                        : sepStatus.state === "failed"
+                          ? t("songProperties.separationFailed")
+                          : sepStatus.drums_path
+                            ? t("songProperties.fourStem")
+                            : t("songProperties.twoStem")}
                   {sepStatus?.state === "completed" &&
-                    (sepStatus.drums_path
-                      ? t("songProperties.fourStem")
-                      : t("songProperties.twoStem"))}
-                  {sepStatus?.state === "completed" &&
+                    !mediaGLabel &&
                     !sepStatus.drums_path && (
                       <button
                         onClick={() => {
@@ -215,26 +229,28 @@ export function SongPropertiesDialog({
                         {t("songProperties.upgradeToFourStem")}
                       </button>
                     )}
-                  {sepStatus?.state === "completed" && sepStatus.drums_path && (
-                    <button
-                      onClick={() => {
-                        api
-                          .downgradeToTwoStem(song.hash)
-                          .then((status) => {
-                            useLibraryStore
-                              .getState()
-                              .updateSeparationStatus(status);
-                          })
-                          .catch(notifyError);
-                      }}
-                      className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
-                    >
-                      {t("songProperties.downgradeToTwoStem")}
-                    </button>
-                  )}
+                  {sepStatus?.state === "completed" &&
+                    sepStatus.drums_path &&
+                    !mediaGLabel && (
+                      <button
+                        onClick={() => {
+                          api
+                            .downgradeToTwoStem(song.hash)
+                            .then((status) => {
+                              useLibraryStore
+                                .getState()
+                                .updateSeparationStatus(status);
+                            })
+                            .catch(notifyError);
+                        }}
+                        className="ml-1 rounded bg-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+                      >
+                        {t("songProperties.downgradeToTwoStem")}
+                      </button>
+                    )}
                 </span>
               </div>
-              {sepStatus?.state === "completed" && (
+              {sepStatus?.state === "completed" && !mediaGLabel && (
                 <div className="py-1.5 pl-[calc(7rem+0.75rem)]">
                   {!showReSeparate ? (
                     <button

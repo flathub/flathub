@@ -9,6 +9,8 @@ fn sample_song(hash: &str) -> Song {
     Song {
         hash: hash.to_owned(),
         file_path: format!("/music/{hash}.mp3"),
+        cdg_path: None,
+        media_g_container: None,
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

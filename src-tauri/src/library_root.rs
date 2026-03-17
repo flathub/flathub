@@ -9,6 +9,7 @@ use std::{
 const MARKER_FILENAME: &str = ".openkara-library";
 const DATABASE_FILENAME: &str = "openkara.db";
 const MEDIA_DIRECTORY: &str = "media";
+const MEDIA_G_DIRECTORY: &str = "media-g";
 const STEMS_DIRECTORY: &str = "stems";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +33,7 @@ pub struct LibraryRoot {
 
 impl LibraryRoot {
     /// Create a new library at `path`, writing the marker file and creating
-    /// the `media/` and `stems/` subdirectories.
+    /// the `media/`, `media-g/`, and `stems/` subdirectories.
     pub fn create(path: &Path) -> Result<Self> {
         if path.join(MARKER_FILENAME).exists() {
             bail!("a library already exists at {}", path.display());
@@ -53,6 +54,8 @@ impl LibraryRoot {
 
         fs::create_dir_all(path.join(MEDIA_DIRECTORY))
             .context("failed to create media directory")?;
+        fs::create_dir_all(path.join(MEDIA_G_DIRECTORY))
+            .context("failed to create media-g directory")?;
         fs::create_dir_all(path.join(STEMS_DIRECTORY))
             .context("failed to create stems directory")?;
 
@@ -74,6 +77,7 @@ impl LibraryRoot {
 
         // Ensure subdirectories exist (may have been created by an older version).
         fs::create_dir_all(path.join(MEDIA_DIRECTORY)).ok();
+        fs::create_dir_all(path.join(MEDIA_G_DIRECTORY)).ok();
         fs::create_dir_all(path.join(STEMS_DIRECTORY)).ok();
 
         Ok(Self {
@@ -101,6 +105,11 @@ impl LibraryRoot {
         self.root.join(STEMS_DIRECTORY)
     }
 
+    /// Path to the `media-g/` directory that holds Media+G assets.
+    pub fn media_g_dir(&self) -> PathBuf {
+        self.root.join(MEDIA_G_DIRECTORY)
+    }
+
     /// Build the absolute path for a media file given its hash and extension.
     ///
     /// Example: `media_path("a1b2c3", "mp3")` → `<root>/media/a1b2c3.mp3`
@@ -108,6 +117,27 @@ impl LibraryRoot {
         self.root
             .join(MEDIA_DIRECTORY)
             .join(format!("{}.{}", hash, ext))
+    }
+
+    /// Build the absolute path for a loose Media+G audio file.
+    pub fn media_g_audio_path(&self, hash: &str, ext: &str) -> PathBuf {
+        self.root
+            .join(MEDIA_G_DIRECTORY)
+            .join(format!("{}.{}", hash, ext))
+    }
+
+    /// Build the absolute path for a loose Media+G CDG sidecar.
+    pub fn media_g_cdg_path(&self, hash: &str) -> PathBuf {
+        self.root
+            .join(MEDIA_G_DIRECTORY)
+            .join(format!("{}.cdg", hash))
+    }
+
+    /// Build the absolute path for a Media+G ZIP archive.
+    pub fn media_g_zip_path(&self, hash: &str) -> PathBuf {
+        self.root
+            .join(MEDIA_G_DIRECTORY)
+            .join(format!("{}.zip", hash))
     }
 
     /// Resolve a database-relative path (forward slashes) to an absolute
@@ -167,6 +197,7 @@ mod tests {
         let lib = LibraryRoot::create(&lib_path).unwrap();
         assert!(lib_path.join(MARKER_FILENAME).exists());
         assert!(lib_path.join(MEDIA_DIRECTORY).is_dir());
+        assert!(lib_path.join(MEDIA_G_DIRECTORY).is_dir());
         assert!(lib_path.join(STEMS_DIRECTORY).is_dir());
         assert_eq!(lib.database_path(), lib_path.join(DATABASE_FILENAME));
 

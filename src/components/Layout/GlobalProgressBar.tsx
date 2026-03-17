@@ -92,7 +92,7 @@ export function GlobalProgressBar() {
   if (tasks.length === 0) return null;
 
   return (
-    <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-sidebar)] px-3 py-2 space-y-2">
+    <div className="shrink-0 space-y-2 border-t border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] px-3 py-2 backdrop-blur-xl">
       {tasks.map((task) => (
         <div key={task.key} className="space-y-1">
           <div className="flex items-center justify-between">
@@ -107,7 +107,7 @@ export function GlobalProgressBar() {
             {task.onCancel && (
               <button
                 onClick={task.onCancel}
-                className="shrink-0 text-[var(--color-text-dim)] transition-colors hover:text-white"
+                className="motion-icon-button shrink-0 rounded p-0.5 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
               >
                 <X size={12} />
               </button>
@@ -115,7 +115,7 @@ export function GlobalProgressBar() {
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
             <div
-              className="h-full rounded-full bg-[var(--color-accent)] transition-all"
+              className="motion-surface h-full rounded-full bg-[var(--color-accent)]"
               style={{ width: `${task.percent}%` }}
             />
           </div>
