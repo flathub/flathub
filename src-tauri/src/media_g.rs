@@ -47,16 +47,16 @@ pub fn is_cdg_extension(ext: &str) -> bool {
 pub fn inspect_zip_for_media_g(path: &Path) -> Result<ZipMediaGAsset> {
     let file = File::open(path)
         .with_context(|| format!("failed to open Media+G ZIP at {}", path.display()))?;
-    let mut archive =
-        ZipArchive::new(file).with_context(|| format!("failed to read ZIP at {}", path.display()))?;
+    let mut archive = ZipArchive::new(file)
+        .with_context(|| format!("failed to read ZIP at {}", path.display()))?;
 
     let mut audio_entries = Vec::new();
     let mut cdg_entries = Vec::new();
 
     for index in 0..archive.len() {
-        let entry = archive
-            .by_index(index)
-            .with_context(|| format!("failed to inspect ZIP entry #{index} in {}", path.display()))?;
+        let entry = archive.by_index(index).with_context(|| {
+            format!("failed to inspect ZIP entry #{index} in {}", path.display())
+        })?;
         if entry.is_dir() {
             continue;
         }
@@ -97,7 +97,10 @@ pub fn inspect_zip_for_media_g(path: &Path) -> Result<ZipMediaGAsset> {
 
     let mut matched_pairs = Vec::new();
     for audio in &audio_entries {
-        if let Some(cdg) = cdg_entries.iter().find(|entry| entry.stem_lower == audio.stem_lower) {
+        if let Some(cdg) = cdg_entries
+            .iter()
+            .find(|entry| entry.stem_lower == audio.stem_lower)
+        {
             matched_pairs.push((audio.clone(), cdg.clone()));
         }
     }
@@ -144,7 +147,8 @@ where
         .by_index(index)
         .with_context(|| format!("failed to reopen ZIP entry #{index}"))?;
     let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes)
+    entry
+        .read_to_end(&mut bytes)
         .with_context(|| format!("failed to read ZIP entry {}", entry.name()))?;
     Ok(bytes)
 }

@@ -183,7 +183,9 @@ pub fn extract_embedded_cover_art(
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
     Ok(extract_embedded_cover_art_from_connection(
-        &connection, &library, &song_ids,
+        &connection,
+        &library,
+        &song_ids,
     ))
 }
 

@@ -287,10 +287,7 @@ pub fn emit_playback_position<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        sync::mpsc,
-        time::Duration,
-    };
+    use std::{sync::mpsc, time::Duration};
 
     fn dummy_audio() -> decode::DecodedAudio {
         decode::DecodedAudio {
@@ -416,7 +413,9 @@ mod tests {
         let worker_playback = Arc::clone(&playback);
         let handle = std::thread::spawn(move || {
             decode_then_attach_stems_if_current_song(&worker_playback, "song-a", || {
-                entered_tx.send(()).expect("stem decode hook should notify test");
+                entered_tx
+                    .send(())
+                    .expect("stem decode hook should notify test");
                 resume_rx.recv().expect("test should resume stem decode");
                 Ok(dummy_stems())
             })

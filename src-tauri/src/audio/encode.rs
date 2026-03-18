@@ -52,21 +52,25 @@ pub fn write_ogg_file_with_quality(path: &Path, audio: &DecodedAudio, quality: f
     // Convert interleaved samples to planar format and feed in chunks.
     let total_frames = audio.samples.len() / channels;
     let mut offset = 0;
+    let mut planar = (0..channels)
+        .map(|_| Vec::with_capacity(ENCODE_CHUNK_FRAMES))
+        .collect::<Vec<_>>();
 
     while offset < total_frames {
         let chunk_frames = ENCODE_CHUNK_FRAMES.min(total_frames - offset);
 
-        // Build planar buffers: one Vec<f32> per channel.
-        let planar: Vec<Vec<f32>> = (0..channels)
-            .map(|ch| {
-                (0..chunk_frames)
-                    .map(|frame| audio.samples[(offset + frame) * channels + ch])
-                    .collect()
-            })
-            .collect();
+        for channel_samples in &mut planar {
+            channel_samples.clear();
+        }
+        for frame in 0..chunk_frames {
+            let frame_offset = (offset + frame) * channels;
+            for channel_index in 0..channels {
+                planar[channel_index].push(audio.samples[frame_offset + channel_index]);
+            }
+        }
 
         encoder
-            .encode_audio_block(planar)
+            .encode_audio_block(&planar)
             .context("failed to encode audio block")?;
 
         offset += chunk_frames;

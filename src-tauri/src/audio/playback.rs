@@ -256,9 +256,7 @@ impl PlaybackController {
 
     /// Returns the current render frame (source-rate frame index).
     pub fn current_render_frame(&self) -> u64 {
-        self.current_track
-            .as_ref()
-            .map_or(0, |t| t.render_frame)
+        self.current_track.as_ref().map_or(0, |t| t.render_frame)
     }
 
     /// Advance the render frame counter after the output callback renders audio.

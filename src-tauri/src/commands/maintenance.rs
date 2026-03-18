@@ -64,10 +64,7 @@ pub fn downgrade_all_to_two_stem(state: State<'_, AppState>) -> CommandResult<Do
     if let Ok(mut statuses) = state.separation_statuses.lock() {
         for status in statuses.values_mut() {
             if status.drums_path.is_some() {
-                let accomp_path = format!(
-                    "stems/{}/accompaniment.ogg",
-                    status.song_id
-                );
+                let accomp_path = format!("stems/{}/accompaniment.ogg", status.song_id);
                 status.accomp_path = Some(accomp_path);
                 status.drums_path = None;
                 status.bass_path = None;

@@ -4,7 +4,10 @@ use crate::{
     commands::error::{database_error, lyrics_error, CommandResult},
     library::Song,
     library_root::LibraryRoot,
-    lyrics::{self, fetch::LyricsSource, fetch::lookup_query_from_song, lrclib::LrcLibClient, parser::LyricLine},
+    lyrics::{
+        self, fetch::lookup_query_from_song, fetch::LyricsSource, lrclib::LrcLibClient,
+        parser::LyricLine,
+    },
     AppState,
 };
 use anyhow::{bail, Context, Result};
@@ -28,14 +31,18 @@ pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResul
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
 
-    fetch_lyrics_from_connection(&connection, &library_root, &LrcLibClient::new_default(), &song_id).map_err(
-        |error| {
-            // Lower-level lyrics modules still return anyhow errors. Classify them
-            // here so UI-facing commands expose stable error codes and fallback hints
-            // before the internal modules are fully migrated to typed domain errors.
-            lyrics_error(error.to_string())
-        },
+    fetch_lyrics_from_connection(
+        &connection,
+        &library_root,
+        &LrcLibClient::new_default(),
+        &song_id,
     )
+    .map_err(|error| {
+        // Lower-level lyrics modules still return anyhow errors. Classify them
+        // here so UI-facing commands expose stable error codes and fallback hints
+        // before the internal modules are fully migrated to typed domain errors.
+        lyrics_error(error.to_string())
+    })
 }
 
 #[tauri::command]
@@ -159,8 +166,7 @@ pub fn save_manual_lyrics(
 
     let raw_lrc = text.clone();
 
-    let fetched_at = current_unix_timestamp()
-        .map_err(|e| lyrics_error(e.to_string()))?;
+    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
     cache::lyrics::upsert_lyrics_cache_entry(
         &connection,
@@ -203,8 +209,7 @@ pub fn import_lyrics_files(
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    let all_songs = cache::list_songs(&connection)
-        .map_err(|e| database_error(e.to_string()))?;
+    let all_songs = cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
 
     let mut matched = Vec::new();
     let mut unmatched = Vec::new();
@@ -222,7 +227,8 @@ pub fn import_lyrics_files(
         };
 
         // Try filename matching first
-        let lrc_stem = path.file_stem()
+        let lrc_stem = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_lowercase());
 
@@ -231,7 +237,8 @@ pub fn import_lyrics_files(
         if let Some(ref stem) = lrc_stem {
             found_song = all_songs.iter().find(|song| {
                 let song_path = Path::new(&song.file_path);
-                let song_stem = song_path.file_stem()
+                let song_stem = song_path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .map(|s| s.to_lowercase());
                 song_stem.as_deref() == Some(stem.as_str())
@@ -257,8 +264,7 @@ pub fn import_lyrics_files(
                 .offset_ms
                 .unwrap_or(0);
 
-            let fetched_at = current_unix_timestamp()
-                .map_err(|e| lyrics_error(e.to_string()))?;
+            let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
             let entry = LyricsCacheEntry {
                 song_hash: song.hash.clone(),
@@ -307,8 +313,7 @@ pub fn extract_embedded_lyrics(
 
     let raw_lrc = embedded.clone();
 
-    let fetched_at = current_unix_timestamp()
-        .map_err(|e| lyrics_error(e.to_string()))?;
+    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
     cache::lyrics::upsert_lyrics_cache_entry(
         &connection,
@@ -361,16 +366,14 @@ pub fn fetch_lyrics_online(
         .fetch_by_track(&query)
         .map_err(|e| lyrics_error(e.to_string()))?;
 
-    let synced_lrc = result
-        .and_then(|l| l.synced_lyrics.filter(|s| !s.trim().is_empty()));
+    let synced_lrc = result.and_then(|l| l.synced_lyrics.filter(|s| !s.trim().is_empty()));
 
     match synced_lrc {
         Some(raw_lrc) => {
-            let lines = lyrics::parser::parse_lrc(&raw_lrc)
-                .map_err(|e| lyrics_error(e.to_string()))?;
+            let lines =
+                lyrics::parser::parse_lrc(&raw_lrc).map_err(|e| lyrics_error(e.to_string()))?;
 
-            let fetched_at = current_unix_timestamp()
-                .map_err(|e| lyrics_error(e.to_string()))?;
+            let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
             cache::lyrics::upsert_lyrics_cache_entry(
                 &connection,

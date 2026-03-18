@@ -1,8 +1,4 @@
-use std::{
-    cell::Cell,
-    fs,
-    path::Path,
-};
+use std::{cell::Cell, fs, path::Path};
 
 mod support;
 

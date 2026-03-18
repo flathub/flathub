@@ -39,8 +39,9 @@ pub fn normalize_audio_for_model(decoded_audio: &DecodedAudio) -> Result<Decoded
     }
 
     let frame_count = decoded_audio.samples.len() / decoded_audio.channels;
-    let input_adapter = InterleavedSlice::new(&decoded_audio.samples, decoded_audio.channels, frame_count)
-        .context("failed to wrap interleaved audio for resampling")?;
+    let input_adapter =
+        InterleavedSlice::new(&decoded_audio.samples, decoded_audio.channels, frame_count)
+            .context("failed to wrap interleaved audio for resampling")?;
     let mut resampler = Fft::<f32>::new(
         decoded_audio.sample_rate as usize,
         DEMUCS_SAMPLE_RATE as usize,
@@ -71,8 +72,7 @@ pub fn normalize_audio_for_model(decoded_audio: &DecodedAudio) -> Result<Decoded
     Ok(DecodedAudio {
         sample_rate: DEMUCS_SAMPLE_RATE,
         channels: decoded_audio.channels,
-        duration_ms: ((output_frames as f64 / DEMUCS_SAMPLE_RATE as f64) * 1000.0).round()
-            as u64,
+        duration_ms: ((output_frames as f64 / DEMUCS_SAMPLE_RATE as f64) * 1000.0).round() as u64,
         samples: output_samples,
     })
 }
@@ -82,6 +82,31 @@ pub fn prepare_model_input(
     decoded_audio: &DecodedAudio,
 ) -> Result<PreparedModelInput> {
     let decoded_audio = normalize_audio_for_model(decoded_audio)?;
+    prepare_model_input_from_normalized(model, &decoded_audio)
+}
+
+pub fn prepare_model_input_from_normalized(
+    model: &LoadedModel,
+    decoded_audio: &DecodedAudio,
+) -> Result<PreparedModelInput> {
+    // Chunked separation reuses one normalized buffer across many windows.
+    // Keeping a direct entrypoint avoids cloning the full PCM buffer every
+    // time a window is prepared for inference.
+    if decoded_audio.sample_rate != DEMUCS_SAMPLE_RATE {
+        bail!(
+            "Demucs preprocessing expects {} Hz normalized audio, got {} Hz",
+            DEMUCS_SAMPLE_RATE,
+            decoded_audio.sample_rate
+        );
+    }
+
+    if decoded_audio.channels != DEMUCS_CHANNELS {
+        bail!(
+            "Demucs preprocessing expects {} channels after normalization, got {}",
+            DEMUCS_CHANNELS,
+            decoded_audio.channels
+        );
+    }
 
     let frame_count = decoded_audio.samples.len() / decoded_audio.channels;
     let target_frame_count = target_frame_count(model, frame_count)?;

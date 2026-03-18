@@ -93,7 +93,10 @@ pub fn list_completed_chunks(dir: &Path) -> Result<Vec<usize>> {
         let entry = entry.context("failed to read directory entry")?;
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy();
-        if let Some(index_str) = name.strip_prefix("chunk_").and_then(|s| s.strip_suffix(".bin")) {
+        if let Some(index_str) = name
+            .strip_prefix("chunk_")
+            .and_then(|s| s.strip_suffix(".bin"))
+        {
             if let Ok(index) = index_str.parse::<usize>() {
                 indices.push(index);
             }
@@ -137,10 +140,7 @@ pub fn read_chunk(dir: &Path, chunk_index: usize) -> Result<Vec<f32>> {
 pub fn cleanup(dir: &Path) -> Result<()> {
     if dir.exists() {
         fs::remove_dir_all(dir).with_context(|| {
-            format!(
-                "failed to remove checkpoint directory at {}",
-                dir.display()
-            )
+            format!("failed to remove checkpoint directory at {}", dir.display())
         })?;
     }
     Ok(())
@@ -152,9 +152,7 @@ mod tests {
     use std::env;
 
     fn temp_dir(name: &str) -> PathBuf {
-        env::temp_dir()
-            .join("openkara-checkpoint-tests")
-            .join(name)
+        env::temp_dir().join("openkara-checkpoint-tests").join(name)
     }
 
     fn cleanup_temp(dir: &Path) {

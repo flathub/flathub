@@ -40,9 +40,7 @@ pub fn read_from_bytes(bytes: &[u8], extension: &str) -> Result<SongMetadata> {
     song_metadata_from_tagged_file(tagged_file)
 }
 
-fn song_metadata_from_tagged_file(
-    tagged_file: lofty::file::TaggedFile,
-) -> Result<SongMetadata> {
+fn song_metadata_from_tagged_file(tagged_file: lofty::file::TaggedFile) -> Result<SongMetadata> {
     let properties = tagged_file.properties();
     let duration_ms = properties.duration().as_millis() as i64;
     let primary_tag = tagged_file

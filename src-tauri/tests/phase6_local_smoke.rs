@@ -65,10 +65,11 @@ fn local_audio_smoke_scans_audio_files_and_writes_reports() {
     assert!(report.report_json_path.exists());
     assert!(report.report_markdown_path.exists());
 
-    let json = fs::read_to_string(&report.report_json_path).expect("json report should be readable");
+    let json =
+        fs::read_to_string(&report.report_json_path).expect("json report should be readable");
     assert!(json.contains("\"discovered_files\": 1"));
-    let markdown =
-        fs::read_to_string(&report.report_markdown_path).expect("markdown report should be readable");
+    let markdown = fs::read_to_string(&report.report_markdown_path)
+        .expect("markdown report should be readable");
     assert!(markdown.contains("Local Audio Smoke Report"));
     assert!(markdown.contains("fixture.mp3"));
 

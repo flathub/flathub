@@ -23,4 +23,26 @@ describe("LyricLine", () => {
 
     expect(markup).not.toContain("cursor-pointer");
   });
+
+  test("renders word-level states for the active line without changing lyric timing behavior", () => {
+    const markup = renderToStaticMarkup(
+      <LyricLine
+        line={{
+          time_ms: 1000,
+          text: "alpha beta gamma",
+          words: [
+            { text: "alpha", time_ms: 1000 },
+            { text: "beta", time_ms: 1500 },
+            { text: "gamma", time_ms: 2000 },
+          ],
+        }}
+        state="active"
+        adjustedMs={1600}
+      />,
+    );
+
+    expect(markup).toContain("text-[var(--color-text-dimmer)]");
+    expect(markup).toContain("text-white");
+    expect(markup).toContain("text-[var(--color-active)]");
+  });
 });

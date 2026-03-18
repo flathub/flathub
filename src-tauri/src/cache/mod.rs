@@ -90,11 +90,7 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn column_exists(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-) -> rusqlite::Result<bool> {
+fn column_exists(connection: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
     let sql = format!("PRAGMA table_info({})", table);
     let mut stmt = connection.prepare(&sql)?;
     let names: Vec<String> = stmt

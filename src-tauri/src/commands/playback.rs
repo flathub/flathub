@@ -1,8 +1,7 @@
 use crate::{
     audio::playback::{PlaybackStateSnapshot, StemName},
     commands::error::{playback_error, CommandResult},
-    services,
-    AppState,
+    services, AppState,
 };
 use tauri::{AppHandle, State};
 

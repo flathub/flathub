@@ -63,10 +63,7 @@ impl CdgPlaybackState {
 /// this to return a JSON-serialized type (e.g. `Option<String>` with base64)
 /// without benchmarking — the previous base64 path was the main CDG bottleneck.
 #[tauri::command]
-pub fn get_cdg_frame(
-    state: State<'_, AppState>,
-    position_ms: u64,
-) -> CommandResult<Response> {
+pub fn get_cdg_frame(state: State<'_, AppState>, position_ms: u64) -> CommandResult<Response> {
     let mut cdg_guard = state
         .cdg_state
         .lock()

@@ -1,5 +1,7 @@
 use crate::{
-    commands::error::{internal_error, model_bootstrap_error, state_lock_error, CommandError, CommandResult},
+    commands::error::{
+        internal_error, model_bootstrap_error, state_lock_error, CommandError, CommandResult,
+    },
     config::{self, ModelVariant},
     separator, AppState,
 };
@@ -79,7 +81,8 @@ pub fn sync_active_model_bootstrap_status(
         .unwrap_or_default()
         .effective_model_variant();
     let descriptor = separator::bootstrap::descriptor_for(active_variant);
-    let development_model_path = separator::model::default_model_path_for_filename(descriptor.filename);
+    let development_model_path =
+        separator::model::default_model_path_for_filename(descriptor.filename);
     let startup = crate::derive_startup_model_bootstrap(
         app_data_dir,
         &development_model_path,
@@ -160,7 +163,10 @@ pub struct ModelStatusSnapshot {
 }
 
 #[tauri::command]
-pub fn get_model_status(app_handle: AppHandle, variant: String) -> CommandResult<ModelStatusSnapshot> {
+pub fn get_model_status(
+    app_handle: AppHandle,
+    variant: String,
+) -> CommandResult<ModelStatusSnapshot> {
     let model_variant = ModelVariant::from_str(&variant)
         .ok_or_else(|| internal_error(format!("invalid model variant: {variant}")))?;
     let app_data_dir = app_handle
@@ -185,8 +191,7 @@ pub fn download_model(
     let model_variant = ModelVariant::from_str(&variant)
         .ok_or_else(|| internal_error(format!("invalid model variant: {variant}")))?;
     let descriptor = separator::bootstrap::descriptor_for(model_variant);
-    let model_path =
-        separator::bootstrap::managed_model_path_for(&state.app_data_dir, descriptor);
+    let model_path = separator::bootstrap::managed_model_path_for(&state.app_data_dir, descriptor);
     let should_publish_status = is_active_variant(&state.app_data_dir, model_variant);
 
     if separator::bootstrap::resolve_existing_model_path(
@@ -245,18 +250,14 @@ pub fn download_model(
                         if let Ok(mut current) = blocking_status.lock() {
                             *current = snapshot.clone();
                         }
-                        let _ = blocking_app_handle.emit(
-                            MODEL_BOOTSTRAP_PROGRESS_EVENT,
-                            snapshot,
-                        );
+                        let _ = blocking_app_handle.emit(MODEL_BOOTSTRAP_PROGRESS_EVENT, snapshot);
                     }
                 },
             )
         })
         .await;
 
-        if !should_publish_status_for_task || !is_active_variant(&task_app_data_dir, task_variant)
-        {
+        if !should_publish_status_for_task || !is_active_variant(&task_app_data_dir, task_variant) {
             return;
         }
 
@@ -270,8 +271,7 @@ pub fn download_model(
             }
             Ok(Err(error)) => {
                 let command_error = model_bootstrap_error(error.to_string());
-                let snapshot =
-                    failed_status(model_path.display().to_string(), command_error);
+                let snapshot = failed_status(model_path.display().to_string(), command_error);
                 if let Ok(mut current) = status.lock() {
                     *current = snapshot.clone();
                 }
@@ -279,8 +279,7 @@ pub fn download_model(
             }
             Err(error) => {
                 let command_error = model_bootstrap_error(error.to_string());
-                let snapshot =
-                    failed_status(model_path.display().to_string(), command_error);
+                let snapshot = failed_status(model_path.display().to_string(), command_error);
                 if let Ok(mut current) = status.lock() {
                     *current = snapshot.clone();
                 }

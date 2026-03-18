@@ -1,5 +1,5 @@
-mod app_runtime;
 mod app_menu;
+mod app_runtime;
 pub mod audio;
 pub mod cache;
 pub mod cdg;
@@ -11,17 +11,18 @@ pub mod lyrics;
 pub mod media_g;
 pub mod metadata;
 pub mod perf;
-pub mod services;
 pub mod separator;
+pub mod services;
 pub mod smoke;
+use crate::audio::playback::PlaybackController;
 use crate::library_root::LibraryRoot;
+use crate::separator::{model::LoadedModel, model_cache::ModelCache};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64},
     sync::{Arc, Mutex},
 };
-use crate::audio::playback::PlaybackController;
 
 pub struct AppState {
     /// The active karaoke library. `None` if no library has been configured yet
@@ -38,6 +39,7 @@ pub struct AppState {
     pub model_bootstrap_status: Arc<Mutex<commands::bootstrap::ModelBootstrapStatusSnapshot>>,
     pub separation_statuses:
         Arc<Mutex<HashMap<String, commands::separation::SeparationStatusSnapshot>>>,
+    pub separator_model_cache: Arc<Mutex<ModelCache<LoadedModel>>>,
     pub batch_running: Arc<AtomicBool>,
     pub batch_cancel: Arc<AtomicBool>,
 }
@@ -75,8 +77,7 @@ impl AppState {
             .map(|c| c.effective_model_variant())
             .unwrap_or_default();
         let descriptor = separator::bootstrap::descriptor_for(variant);
-        let managed =
-            separator::bootstrap::managed_model_path_for(&self.app_data_dir, descriptor);
+        let managed = separator::bootstrap::managed_model_path_for(&self.app_data_dir, descriptor);
         let dev_path = separator::model::default_model_path_for_filename(descriptor.filename);
         let resolved = separator::bootstrap::resolve_existing_model_path(
             &managed,
@@ -85,9 +86,7 @@ impl AppState {
         )
         .map_err(|error| commands::error::internal_error(error.to_string()))?;
 
-        Ok(resolved
-            .map(|resolved| resolved.path)
-            .unwrap_or(managed))
+        Ok(resolved.map(|resolved| resolved.path).unwrap_or(managed))
     }
 }
 
@@ -101,8 +100,7 @@ pub fn derive_startup_model_bootstrap(
     // not merely "some file exists at the managed path". That distinction is
     // what prevents re-downloading already-installed models on every launch.
     let descriptor = separator::bootstrap::descriptor_for(active_variant);
-    let managed_model_path =
-        separator::bootstrap::managed_model_path_for(app_data_dir, descriptor);
+    let managed_model_path = separator::bootstrap::managed_model_path_for(app_data_dir, descriptor);
     let resolved_model = separator::bootstrap::resolve_existing_model_path(
         &managed_model_path,
         development_model_path,

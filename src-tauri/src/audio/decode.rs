@@ -33,7 +33,11 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio> {
 }
 
 pub fn decode_bytes(bytes: Vec<u8>, extension: &str) -> Result<DecodedAudio> {
-    decode_source(Cursor::new(bytes), Some(extension), "in-memory Media+G audio")
+    decode_source(
+        Cursor::new(bytes),
+        Some(extension),
+        "in-memory Media+G audio",
+    )
 }
 
 fn extend_interleaved_samples(samples: &mut Vec<f32>, decoded: AudioBufferRef<'_>) {
@@ -42,11 +46,7 @@ fn extend_interleaved_samples(samples: &mut Vec<f32>, decoded: AudioBufferRef<'_
     samples.extend_from_slice(sample_buffer.samples());
 }
 
-fn decode_source<R>(
-    source: R,
-    extension: Option<&str>,
-    source_label: &str,
-) -> Result<DecodedAudio>
+fn decode_source<R>(source: R, extension: Option<&str>, source_label: &str) -> Result<DecodedAudio>
 where
     R: Read + Seek + MediaSource + Send + Sync + 'static,
 {

@@ -174,9 +174,13 @@ fn fetch_lyrics_fetches_remote_lrc_and_persists_it_in_cache() {
         )
         .create();
 
-    let payload =
-        fetch_lyrics_from_connection(&connection, &library, &LrcLibClient::new(server.url()), &song.hash)
-            .expect("remote lyrics fetch should succeed");
+    let payload = fetch_lyrics_from_connection(
+        &connection,
+        &library,
+        &LrcLibClient::new(server.url()),
+        &song.hash,
+    )
+    .expect("remote lyrics fetch should succeed");
 
     assert_eq!(payload.song_id, "song-b");
     assert_eq!(payload.offset_ms, 0);
@@ -221,9 +225,13 @@ fn fetch_lyrics_returns_empty_payload_when_no_synced_source_exists() {
         .with_status(404)
         .create();
 
-    let payload =
-        fetch_lyrics_from_connection(&connection, &library, &LrcLibClient::new(server.url()), &song.hash)
-            .expect("lyrics miss should still succeed");
+    let payload = fetch_lyrics_from_connection(
+        &connection,
+        &library,
+        &LrcLibClient::new(server.url()),
+        &song.hash,
+    )
+    .expect("lyrics miss should still succeed");
 
     assert_eq!(payload.song_id, "song-c");
     assert!(payload.lines.is_empty());

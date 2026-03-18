@@ -123,10 +123,7 @@ pub fn render_output_buffer(
                     device_sample_rate,
                     device_channels,
                 );
-                (
-                    r1.max(r2).max(r3).max(r4),
-                    f1.max(f2).max(f3).max(f4),
-                )
+                (r1.max(r2).max(r3).max(r4), f1.max(f2).max(f3).max(f4))
             }
         };
 
@@ -167,6 +164,68 @@ pub fn render_output_buffer(
 ///
 /// Returns `(written_output_samples, source_frames_consumed)`.
 fn mix_stem_resampled(
+    output: &mut [f32],
+    audio: &DecodedAudio,
+    start_frame: u64,
+    gain: f32,
+    device_sample_rate: u32,
+    device_channels: usize,
+) -> (usize, u64) {
+    if gain == 0.0 {
+        return (0, 0);
+    }
+
+    // Most desktop devices run the same 44.1 kHz rate as the source media.
+    // Skipping interpolation in that common case removes hot-path math without
+    // changing channel mapping or render-frame progression semantics.
+    if audio.sample_rate == device_sample_rate {
+        return mix_stem_same_rate(output, audio, start_frame, gain, device_channels);
+    }
+
+    mix_stem_linearly_resampled(
+        output,
+        audio,
+        start_frame,
+        gain,
+        device_sample_rate,
+        device_channels,
+    )
+}
+
+fn mix_stem_same_rate(
+    output: &mut [f32],
+    audio: &DecodedAudio,
+    start_frame: u64,
+    gain: f32,
+    device_channels: usize,
+) -> (usize, u64) {
+    let src_channels = audio.channels;
+    let total_src_frames = audio.samples.len() / src_channels;
+    let src_start_frame = start_frame as usize;
+    if src_start_frame >= total_src_frames {
+        return (0, 0);
+    }
+
+    let output_frames = output.len() / device_channels;
+    let available_frames = (total_src_frames - src_start_frame).min(output_frames);
+
+    for out_frame in 0..available_frames {
+        let src_frame = src_start_frame + out_frame;
+        for out_ch in 0..device_channels {
+            let src_ch = if out_ch < src_channels {
+                out_ch
+            } else {
+                out_ch % src_channels
+            };
+            let sample = audio.samples[src_frame * src_channels + src_ch];
+            output[out_frame * device_channels + out_ch] += sample * gain;
+        }
+    }
+
+    (available_frames * device_channels, available_frames as u64)
+}
+
+fn mix_stem_linearly_resampled(
     output: &mut [f32],
     audio: &DecodedAudio,
     start_frame: u64,
@@ -242,32 +301,32 @@ where
 {
     let channels = config.channels as usize;
     let sample_rate = config.sample_rate.0;
+    let mut scratch = Vec::<f32>::new();
 
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _info| {
-            let mut scratch = vec![0.0_f32; data.len()];
+            // The audio callback is a realtime path. Reallocating a fresh scratch
+            // buffer every device tick can introduce allocator stalls and audible
+            // glitches, so the closure keeps one buffer and resizes only when the
+            // device changes its callback frame count.
+            scratch.resize(data.len(), 0.0);
 
             if let Ok(mut controller) = playback.lock() {
-                let rendered_samples = render_output_buffer(
+                let _rendered_samples = render_output_buffer(
                     &mut controller,
                     monotonic_now_ms(),
                     &mut scratch,
                     sample_rate,
                     channels,
                 );
-
-                if rendered_samples < scratch.len() {
-                    scratch[rendered_samples..].fill(0.0);
-                }
             } else {
                 scratch.fill(0.0);
             }
 
             for frame in scratch.chunks(channels).zip(data.chunks_mut(channels)) {
                 let (input_frame, output_frame) = frame;
-                for (input_sample, output_sample) in
-                    input_frame.iter().zip(output_frame.iter_mut())
+                for (input_sample, output_sample) in input_frame.iter().zip(output_frame.iter_mut())
                 {
                     *output_sample = T::from_sample(*input_sample);
                 }

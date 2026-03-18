@@ -2,7 +2,8 @@ use crate::{
     cache,
     commands::error::{separation_error, state_lock_error, CommandError, CommandResult},
     config::{self, StemMode},
-    separator, AppState,
+    separator::{self, model::LoadedModel, model_cache::ModelCache},
+    AppState,
 };
 use serde::Serialize;
 use std::{
@@ -62,6 +63,7 @@ struct SeparationExecutionContext {
     model_path: PathBuf,
     model_variant: String,
     statuses: Arc<Mutex<HashMap<String, SeparationStatusSnapshot>>>,
+    model_cache: Arc<Mutex<ModelCache<LoadedModel>>>,
 }
 
 #[tauri::command]
@@ -81,12 +83,7 @@ pub fn separate(
         .unwrap_or_default();
     let execution_context = build_execution_context(&state)?;
 
-    spawn_separation_job(
-        app_handle,
-        execution_context,
-        song_id.clone(),
-        stem_mode,
-    );
+    spawn_separation_job(app_handle, execution_context, song_id.clone(), stem_mode);
 
     Ok(initial_status)
 }
@@ -181,6 +178,7 @@ fn spawn_separation_job(
         model_path,
         model_variant,
         statuses,
+        model_cache,
     } = execution_context;
     let progress_song_id = song_id.clone();
     let progress_app_handle = app_handle.clone();
@@ -196,6 +194,7 @@ fn spawn_separation_job(
             separator::job::separate_song_into_cache(
                 &connection,
                 &worker_library_root,
+                &model_cache,
                 &worker_model_path,
                 &worker_song_id,
                 stem_mode,
@@ -241,7 +240,10 @@ fn emit_terminal_status(
 
     match state {
         SeparationState::Completed => {
-            let _ = app_handle.emit(SEPARATION_COMPLETE_EVENT, SeparationCompleteEvent { song_id });
+            let _ = app_handle.emit(
+                SEPARATION_COMPLETE_EVENT,
+                SeparationCompleteEvent { song_id },
+            );
         }
         SeparationState::Failed => {
             if let Some(error) = error {
@@ -271,6 +273,7 @@ fn build_execution_context(
         model_path: state.resolve_model_path()?,
         model_variant,
         statuses: Arc::clone(&state.separation_statuses),
+        model_cache: Arc::clone(&state.separator_model_cache),
     })
 }
 
@@ -431,16 +434,17 @@ pub fn get_separation_status_from_map(
         .unwrap_or_else(|| idle_status(song_id)))
 }
 
-fn ensure_song_can_be_separated(
-    state: &State<'_, AppState>,
-    song_id: &str,
-) -> CommandResult<()> {
+fn ensure_song_can_be_separated(state: &State<'_, AppState>, song_id: &str) -> CommandResult<()> {
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| separation_error(e.to_string()))?;
     let song = cache::get_song_by_hash(&connection, song_id)
         .map_err(|e| separation_error(e.to_string()))?
-        .ok_or_else(|| separation_error(format!("song with hash {song_id} was not found in the library")))?;
+        .ok_or_else(|| {
+            separation_error(format!(
+                "song with hash {song_id} was not found in the library"
+            ))
+        })?;
 
     if song.is_media_g() {
         // Media+G songs already carry karaoke graphics and intentionally skip

@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 mod support;
 
@@ -36,11 +33,14 @@ fn backend_performance_report_stays_within_phase5_thresholds() {
     let connection = Connection::open_in_memory().expect("in-memory database should open");
     cache::apply_migrations(&connection).expect("migrations should succeed");
     let tmp = tempfile::tempdir().expect("temp dir should create");
-    let library = LibraryRoot::create(tmp.path().join("lib").as_path())
-        .expect("library should create");
+    let library =
+        LibraryRoot::create(tmp.path().join("lib").as_path()).expect("library should create");
 
-    let import_result =
-        import_songs_from_paths(&connection, &library, &[fixture_path("metadata", "fixture.mp3")]);
+    let import_result = import_songs_from_paths(
+        &connection,
+        &library,
+        &[fixture_path("metadata", "fixture.mp3")],
+    );
     assert_eq!(import_result.imported.len(), 1);
     let song_id = import_result.imported[0].hash.clone();
 

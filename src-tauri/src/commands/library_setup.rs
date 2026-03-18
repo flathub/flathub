@@ -75,7 +75,5 @@ pub fn get_library_path(state: State<'_, AppState>) -> CommandResult<Option<Stri
         .lock()
         .map_err(|_| state_lock_error("library lock was poisoned"))?;
 
-    Ok(guard
-        .as_ref()
-        .map(|lib| lib.root().display().to_string()))
+    Ok(guard.as_ref().map(|lib| lib.root().display().to_string()))
 }

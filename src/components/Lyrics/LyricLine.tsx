@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import type { LyricLine as LyricLineType, WordToken } from "@/types/ipc";
 
@@ -8,21 +9,39 @@ interface LyricLineProps {
   presentation?: "standard" | "audience";
 }
 
-function getWordState(
-  words: WordToken[],
-  index: number,
-  adjustedMs: number,
-): "past" | "active" | "future" {
-  const word = words[index];
-  if (word.time_ms > adjustedMs) return "future";
-  // This word's time has passed — check if there's a later word that has also started
-  const hasLaterWordStarted = words
-    .slice(index + 1)
-    .some((w) => w.time_ms <= adjustedMs);
-  return hasLaterWordStarted ? "past" : "active";
+function getActiveWordIndex(words: WordToken[], adjustedMs: number): number {
+  let activeIndex = -1;
+
+  for (let index = 0; index < words.length; index += 1) {
+    if (words[index].time_ms > adjustedMs) {
+      break;
+    }
+    activeIndex = index;
+  }
+
+  return activeIndex;
 }
 
-export function LyricLine({
+function areLyricLinePropsEqual(
+  previous: LyricLineProps,
+  next: LyricLineProps,
+): boolean {
+  if (
+    previous.line !== next.line ||
+    previous.state !== next.state ||
+    previous.presentation !== next.presentation
+  ) {
+    return false;
+  }
+
+  if (previous.state !== "active" && next.state !== "active") {
+    return true;
+  }
+
+  return previous.adjustedMs === next.adjustedMs;
+}
+
+export const LyricLine = memo(function LyricLine({
   line,
   state,
   adjustedMs,
@@ -41,6 +60,10 @@ export function LyricLine({
   };
 
   const hasWords = line.words !== null && line.words.length > 0;
+  const activeWordIndex =
+    hasWords && state === "active"
+      ? getActiveWordIndex(line.words!, adjustedMs)
+      : -1;
 
   return (
     <div
@@ -57,7 +80,11 @@ export function LyricLine({
               state === "plain"
                 ? "active"
                 : state === "active"
-                  ? getWordState(line.words!, idx, adjustedMs)
+                  ? idx < activeWordIndex
+                    ? "past"
+                    : idx === activeWordIndex
+                      ? "active"
+                      : "future"
                   : state === "past"
                     ? "past"
                     : "future";
@@ -102,4 +129,4 @@ export function LyricLine({
       )}
     </div>
   );
-}
+}, areLyricLinePropsEqual);

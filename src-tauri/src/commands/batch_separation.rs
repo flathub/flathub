@@ -1,18 +1,17 @@
 use crate::{
     cache,
-    commands::error::{
-        database_error, separation_error, CommandResult,
-    },
+    commands::error::{database_error, separation_error, CommandResult},
     commands::separation::{
         completed_status, failed_status, running_status, SeparationCompleteEvent,
         SeparationErrorEvent, SeparationProgressEvent, SEPARATION_COMPLETE_EVENT,
         SEPARATION_ERROR_EVENT, SEPARATION_PROGRESS_EVENT,
     },
     config::{self, StemMode},
-    separator, AppState,
+    separator::{self, model::LoadedModel, model_cache::ModelCache},
+    AppState,
 };
 use serde::Serialize;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
 pub const BATCH_SEPARATION_PROGRESS_EVENT: &str = "batch-separation-progress";
@@ -49,12 +48,11 @@ pub fn batch_separate(
     let library_root = state.library_root()?;
     let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
+    let model_cache: Arc<Mutex<ModelCache<LoadedModel>>> = Arc::clone(&state.separator_model_cache);
     let batch_running = Arc::clone(&state.batch_running);
     let batch_cancel = Arc::clone(&state.batch_cancel);
 
-    let app_config = config::load_config(&state.app_data_dir)
-        .ok()
-        .flatten();
+    let app_config = config::load_config(&state.app_data_dir).ok().flatten();
     let stem_mode = app_config
         .as_ref()
         .map(|c| c.effective_stem_mode())
@@ -70,8 +68,7 @@ pub fn batch_separate(
     let hashes: Vec<String> = if song_ids.is_empty() {
         let connection = cache::open_database(&library_root.database_path())
             .map_err(|e| database_error(e.to_string()))?;
-        let songs = cache::list_songs(&connection)
-            .map_err(|e| database_error(e.to_string()))?;
+        let songs = cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
         songs
             .into_iter()
             .filter(|song| !song.is_media_g())
@@ -103,9 +100,7 @@ pub fn batch_separate(
                 StemMode::TwoStem => true, // any cached entry is sufficient
                 StemMode::FourStem => entry.has_individual_stems(),
             };
-            if already_done
-                && cache::stems::cache_entry_files_valid(&library_root, &entry)
-            {
+            if already_done && cache::stems::cache_entry_files_valid(&library_root, &entry) {
                 skipped += 1;
                 continue;
             }
@@ -179,6 +174,7 @@ pub fn batch_separate(
             let worker_model_path = model_path.clone();
             let worker_song_id = song_id.clone();
             let worker_statuses = Arc::clone(&separation_statuses);
+            let worker_model_cache = Arc::clone(&model_cache);
             let progress_song_id = song_id.clone();
             let progress_app_handle = app_handle.clone();
             let batch_progress_app_handle = app_handle.clone();
@@ -189,11 +185,11 @@ pub fn batch_separate(
 
             let worker_model_variant = model_variant_str.clone();
             let result = tauri::async_runtime::spawn_blocking(move || {
-                let connection =
-                    cache::open_database(&worker_library_root.database_path())?;
+                let connection = cache::open_database(&worker_library_root.database_path())?;
                 separator::job::separate_song_into_cache(
                     &connection,
                     &worker_library_root,
+                    &worker_model_cache,
                     &worker_model_path,
                     &worker_song_id,
                     stem_mode,
@@ -301,9 +297,7 @@ pub fn batch_separate(
 }
 
 #[tauri::command]
-pub fn cancel_batch_separation(
-    state: State<'_, AppState>,
-) -> CommandResult<()> {
+pub fn cancel_batch_separation(state: State<'_, AppState>) -> CommandResult<()> {
     if !state.batch_running.load(Ordering::Relaxed) {
         return Err(separation_error(
             "No batch separation is currently running".to_owned(),

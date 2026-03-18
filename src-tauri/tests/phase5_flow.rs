@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 mod support;
@@ -15,7 +16,7 @@ use openkara_lib::{
     },
     config::StemMode,
     library_root::LibraryRoot,
-    separator::{job, model},
+    separator::{job, model, model_cache::ModelCache},
 };
 use rusqlite::Connection;
 
@@ -57,7 +58,8 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
     let lib_dir = unique_temp_dir("phase5-library");
     cleanup_dir(&lib_dir);
     let library = LibraryRoot::create(&lib_dir).expect("library should create");
-    let import_result = import_songs_from_paths(&connection, &library, &[audio_path.display().to_string()]);
+    let import_result =
+        import_songs_from_paths(&connection, &library, &[audio_path.display().to_string()]);
     assert_eq!(import_result.imported.len(), 1);
     assert!(import_result.failed.is_empty());
     let song_id = import_result.imported[0].hash.clone();
@@ -76,9 +78,11 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
     assert_eq!(started.song_id.as_deref(), Some(song_id.as_str()));
     assert!(!started.has_stems);
 
+    let model_cache = Arc::new(Mutex::new(ModelCache::default()));
     let separation = job::separate_song_into_cache(
         &connection,
         &library,
+        &model_cache,
         &model::default_model_path(),
         &song_id,
         StemMode::default(),

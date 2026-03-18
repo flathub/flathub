@@ -1,11 +1,9 @@
+use crate::library_root::LibraryRoot;
 use crate::{
     audio,
-    audio::playback::{
-        monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS,
-    },
+    audio::playback::{monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
     cache, commands, config, derive_startup_model_bootstrap, separator, AppState,
 };
-use crate::library_root::LibraryRoot;
 use std::{
     collections::HashMap,
     fs,
@@ -19,9 +17,7 @@ use std::{
 };
 use tauri::{Emitter, Manager, Runtime};
 
-pub fn setup_app<R: Runtime>(
-    app: &mut tauri::App<R>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let app_data_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_data_dir)?;
 
@@ -41,6 +37,7 @@ pub fn setup_app<R: Runtime>(
         audio_output_start_lock: Arc::new(Mutex::new(())),
         model_bootstrap_status: Arc::clone(&model_bootstrap_status),
         separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+        separator_model_cache: Arc::new(Mutex::new(separator::model_cache::ModelCache::default())),
         batch_running: Arc::new(AtomicBool::new(false)),
         batch_cancel: Arc::new(AtomicBool::new(false)),
     });

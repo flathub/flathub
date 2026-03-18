@@ -15,7 +15,15 @@ fn separation_status_helpers_cover_idle_running_completed_and_failed_states() {
     assert_eq!(running.state, SeparationState::Running);
     assert_eq!(running.percent, 45);
 
-    let completed = completed_status("song-a", "/tmp/vocals.ogg", "/tmp/accompaniment.ogg", true, None, None, None);
+    let completed = completed_status(
+        "song-a",
+        "/tmp/vocals.ogg",
+        "/tmp/accompaniment.ogg",
+        true,
+        None,
+        None,
+        None,
+    );
     assert_eq!(completed.state, SeparationState::Completed);
     assert_eq!(completed.percent, 100);
     assert!(completed.cache_hit);

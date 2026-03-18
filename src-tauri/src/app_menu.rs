@@ -29,8 +29,13 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
     let pkg_info = app_handle.package_info();
     let about_metadata = build_about_metadata(app_handle);
 
-    let import_item =
-        MenuItem::with_id(app_handle, MENU_ITEM_IMPORT_FILES, "Import...", true, None::<&str>)?;
+    let import_item = MenuItem::with_id(
+        app_handle,
+        MENU_ITEM_IMPORT_FILES,
+        "Import...",
+        true,
+        None::<&str>,
+    )?;
 
     let window_menu = Submenu::with_items(
         app_handle,

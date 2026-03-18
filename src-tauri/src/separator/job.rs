@@ -3,11 +3,14 @@ use crate::{
     cache,
     config::StemMode,
     library_root::LibraryRoot,
-    separator::{checkpoint, inference, model},
+    separator::{checkpoint, inference, model, model_cache::ModelCache},
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 const CACHE_HIT_PROGRESS: u8 = 100;
 const LOOKUP_PROGRESS: u8 = 2;
@@ -29,6 +32,7 @@ pub struct SeparationArtifacts {
 pub fn separate_song_into_cache(
     connection: &Connection,
     library_root: &LibraryRoot,
+    model_cache: &Arc<Mutex<ModelCache<model::LoadedModel>>>,
     model_path: &Path,
     song_hash: &str,
     stem_mode: StemMode,
@@ -61,8 +65,13 @@ pub fn separate_song_into_cache(
         .with_context(|| format!("failed to decode audio for {}", song.file_path))?;
 
     report_progress(MODEL_LOAD_PROGRESS);
-    let mut loaded_model = model::load_from_path(model_path)
-        .with_context(|| format!("failed to load Demucs model from {}", model_path.display()))?;
+    let mut model_cache = model_cache
+        .lock()
+        .map_err(|_| anyhow::anyhow!("separator model cache lock was poisoned"))?;
+    let loaded_model = model_cache.get_or_load_with(model_path, |path| {
+        model::load_from_path(path)
+            .with_context(|| format!("failed to load Demucs model from {}", path.display()))
+    })?;
 
     let checkpoint_dir = checkpoint::checkpoint_dir(&library_root.stems_dir(), song_hash);
     let inference_progress = |completed: usize, total: usize| {
@@ -74,7 +83,7 @@ pub fn separate_song_into_cache(
         }
     };
     let separation = inference::separate_audio(
-        &mut loaded_model,
+        loaded_model,
         &decoded_audio,
         inference_progress,
         Some(checkpoint_dir.as_path()),

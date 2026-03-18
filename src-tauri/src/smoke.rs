@@ -2,7 +2,7 @@ use crate::{
     commands::import::import_songs_from_paths,
     config::StemMode,
     perf::build_backend_performance_report,
-    separator::{bootstrap, job, model},
+    separator::{bootstrap, job, model, model_cache::ModelCache},
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -11,6 +11,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -117,19 +118,19 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
             database_path.display()
         )
     })?;
-    crate::cache::apply_migrations(&connection).context("failed to apply smoke database migrations")?;
+    crate::cache::apply_migrations(&connection)
+        .context("failed to apply smoke database migrations")?;
 
     let import_paths: Vec<String> = audio_files
         .iter()
         .map(|path| path.display().to_string())
         .collect();
-    let library = crate::library_root::LibraryRoot::create(
-        &config.output_dir.join("smoke-library"),
-    )
-    .or_else(|_| {
-        crate::library_root::LibraryRoot::open(&config.output_dir.join("smoke-library"))
-    })
-    .context("failed to set up smoke library root")?;
+    let library =
+        crate::library_root::LibraryRoot::create(&config.output_dir.join("smoke-library"))
+            .or_else(|_| {
+                crate::library_root::LibraryRoot::open(&config.output_dir.join("smoke-library"))
+            })
+            .context("failed to set up smoke library root")?;
     let import_result = import_songs_from_paths(&connection, &library, &import_paths);
     // `song.file_path` is now a library-relative path (`media/{hash}.{ext}`),
     // so we reconstruct a source-path-to-Song map.  `import_songs_from_paths`
@@ -153,6 +154,7 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
         .collect::<HashMap<_, _>>();
 
     let model = resolve_model_status(&config)?;
+    let separator_model_cache = Arc::new(Mutex::new(ModelCache::<model::LoadedModel>::default()));
     let mut songs = Vec::with_capacity(audio_files.len());
 
     for path in &audio_files {
@@ -166,16 +168,8 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                 config.seek_iterations.max(1),
             );
             let (playback_status, playback_message, performance) = match playback {
-                Ok(report) => (
-                    SmokeStepStatus::Passed,
-                    None,
-                    Some(report.playback),
-                ),
-                Err(error) => (
-                    SmokeStepStatus::Failed,
-                    Some(error.to_string()),
-                    None,
-                ),
+                Ok(report) => (SmokeStepStatus::Passed, None, Some(report.playback)),
+                Err(error) => (SmokeStepStatus::Failed, Some(error.to_string()), None),
             };
 
             let (separation_status, separation_message, accompaniment_path, vocals_path) =
@@ -186,10 +180,18 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                         None,
                         None,
                     ),
-                    (SeparationSmokeMode::Auto, SmokeModelStatus { status: SmokeStepStatus::Passed, path: Some(model_path), .. }) => {
+                    (
+                        SeparationSmokeMode::Auto,
+                        SmokeModelStatus {
+                            status: SmokeStepStatus::Passed,
+                            path: Some(model_path),
+                            ..
+                        },
+                    ) => {
                         match job::separate_song_into_cache(
                             &connection,
                             &library,
+                            &separator_model_cache,
                             Path::new(model_path),
                             &song.hash,
                             StemMode::default(),
@@ -206,20 +208,14 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                                 Some(artifacts.accomp_path),
                                 Some(artifacts.vocals_path),
                             ),
-                            Err(error) => (
-                                SmokeStepStatus::Failed,
-                                Some(error.to_string()),
-                                None,
-                                None,
-                            ),
+                            Err(error) => {
+                                (SmokeStepStatus::Failed, Some(error.to_string()), None, None)
+                            }
                         }
                     }
-                    (SeparationSmokeMode::Auto, _) => (
-                        SmokeStepStatus::Skipped,
-                        model.message.clone(),
-                        None,
-                        None,
-                    ),
+                    (SeparationSmokeMode::Auto, _) => {
+                        (SmokeStepStatus::Skipped, model.message.clone(), None, None)
+                    }
                 };
 
             songs.push(LocalAudioSmokeSongReport {
@@ -273,12 +269,8 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
 
 pub fn discover_audio_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    collect_audio_files(root, &mut files).with_context(|| {
-        format!(
-            "failed to scan audio fixtures under {}",
-            root.display()
-        )
-    })?;
+    collect_audio_files(root, &mut files)
+        .with_context(|| format!("failed to scan audio fixtures under {}", root.display()))?;
     files.sort();
     Ok(files)
 }
@@ -329,7 +321,8 @@ fn resolve_model_status(config: &LocalAudioSmokeConfig) -> Result<SmokeModelStat
         }),
         SeparationSmokeMode::Auto => {
             let dev_model_path = model::default_model_path();
-            let placeholder_managed_path = config.output_dir.join(".smoke-managed-model-placeholder");
+            let placeholder_managed_path =
+                config.output_dir.join(".smoke-managed-model-placeholder");
             let resolved = bootstrap::resolve_existing_model_path(
                 &placeholder_managed_path,
                 &dev_model_path,
@@ -368,7 +361,11 @@ fn summarize(songs: &[LocalAudioSmokeSongReport]) -> LocalAudioSmokeSummary {
     };
 
     for song in songs {
-        tally_status(&song.import_status, &mut summary.imported, &mut summary.import_failed);
+        tally_status(
+            &song.import_status,
+            &mut summary.imported,
+            &mut summary.import_failed,
+        );
         tally_status(
             &song.playback_status,
             &mut summary.playback_passed,
@@ -449,12 +446,20 @@ fn write_report_markdown(report: &LocalAudioSmokeReport, path: &Path) -> Result<
             status_label(&song.import_status),
             status_label(&song.playback_status),
             status_label(&song.separation_status),
-            if notes.is_empty() { "-" } else { notes.as_str() }
+            if notes.is_empty() {
+                "-"
+            } else {
+                notes.as_str()
+            }
         ));
     }
 
-    fs::write(path, markdown)
-        .with_context(|| format!("failed to write smoke markdown report to {}", path.display()))?;
+    fs::write(path, markdown).with_context(|| {
+        format!(
+            "failed to write smoke markdown report to {}",
+            path.display()
+        )
+    })?;
     Ok(())
 }
 

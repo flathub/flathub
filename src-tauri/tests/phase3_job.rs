@@ -10,9 +10,10 @@ use openkara_lib::{
     config::StemMode,
     library::Song,
     library_root::LibraryRoot,
-    separator::{job, model},
+    separator::{job, model, model_cache::ModelCache},
 };
 use rusqlite::Connection;
+use std::sync::{Arc, Mutex};
 
 fn fixture_path(directory: &str, filename: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -67,11 +68,13 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
         .expect("fixture song should insert");
 
     let model_path = model::default_model_path();
+    let model_cache = Arc::new(Mutex::new(ModelCache::default()));
 
     let mut first_progress = Vec::new();
     let first = job::separate_song_into_cache(
         &connection,
         &library,
+        &model_cache,
         &model_path,
         "fixture-song",
         StemMode::default(),
@@ -92,6 +95,7 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
     let second = job::separate_song_into_cache(
         &connection,
         &library,
+        &model_cache,
         &model_path,
         "fixture-song",
         StemMode::default(),

@@ -53,7 +53,7 @@ fn separate_window_audio(
     decoded_audio: &DecodedAudio,
     trim_frame_count: usize,
 ) -> Result<SeparationResult> {
-    let prepared_input = preprocess::prepare_model_input(model, decoded_audio)?;
+    let prepared_input = preprocess::prepare_model_input_from_normalized(model, decoded_audio)?;
     let session_inputs = build_session_inputs(model, decoded_audio, prepared_input)
         .context("failed to prepare Demucs inputs")?;
     let outputs = model
@@ -122,8 +122,7 @@ fn separate_chunked_audio(
     checkpoint_dir: Option<&Path>,
 ) -> Result<SeparationResult> {
     let input_frame_count = decoded_audio.samples.len() / decoded_audio.channels;
-    let total_chunks =
-        (input_frame_count + target_frame_count - 1) / target_frame_count;
+    let total_chunks = (input_frame_count + target_frame_count - 1) / target_frame_count;
 
     // Write checkpoint manifest and discover already-completed chunks.
     let completed_set: HashSet<usize> = if let Some(dir) = checkpoint_dir {
@@ -164,8 +163,7 @@ fn separate_chunked_audio(
             if chunk_start_frame >= input_frame_count {
                 continue;
             }
-            let chunk_frame_count =
-                (input_frame_count - chunk_start_frame).min(target_frame_count);
+            let chunk_frame_count = (input_frame_count - chunk_start_frame).min(target_frame_count);
             let chunk_data = checkpoint::read_chunk(dir, completed_idx)?;
             let samples_per_stem = chunk_frame_count * decoded_audio.channels;
             for (stem_idx, stem) in merged_stems.iter_mut().enumerate() {
