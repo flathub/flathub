@@ -26,6 +26,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { Tooltip } from "@/components/Overlay/Tooltip";
 import { useLibraryStore } from "@/stores/library-store";
 import { useQueueStore } from "@/stores/queue-store";
 import {
@@ -152,56 +153,60 @@ function SortableQueueItem({
         dropIndicator={dropIndicator}
         isDraggingSource={isDragging}
         handle={
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            className={`motion-icon-button -m-1 shrink-0 rounded-md p-1 ${
-              isDragging
-                ? "cursor-grabbing bg-white/5 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
-                : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-white/5 hover:text-[#EBEBF5] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
-            }`}
-            title={dragLabel}
-            aria-label={dragLabel}
-          >
-            <GripVertical size={12} />
-          </button>
+          <Tooltip label={dragLabel}>
+            <button
+              type="button"
+              ref={setActivatorNodeRef}
+              {...attributes}
+              {...listeners}
+              className={`motion-icon-button -m-1 shrink-0 rounded-md p-1 ${
+                isDragging
+                  ? "cursor-grabbing bg-white/5 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+                  : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-white/5 hover:text-[#EBEBF5] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+              }`}
+              aria-label={dragLabel}
+            >
+              <GripVertical size={12} />
+            </button>
+          </Tooltip>
         }
         controls={
           <div className="-my-0.5 flex shrink-0 flex-col">
-            <button
-              type="button"
-              onClick={onMoveUp}
-              disabled={index === 0}
-              className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
-              title={moveUpLabel}
-              aria-label={moveUpLabel}
-            >
-              <ChevronUp size={10} />
-            </button>
-            <button
-              type="button"
-              onClick={onMoveDown}
-              disabled={index === queueLength - 1}
-              className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
-              title={moveDownLabel}
-              aria-label={moveDownLabel}
-            >
-              <ChevronDown size={10} />
-            </button>
+            <Tooltip label={moveUpLabel}>
+              <button
+                type="button"
+                onClick={onMoveUp}
+                disabled={index === 0}
+                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
+                aria-label={moveUpLabel}
+              >
+                <ChevronUp size={10} />
+              </button>
+            </Tooltip>
+            <Tooltip label={moveDownLabel}>
+              <button
+                type="button"
+                onClick={onMoveDown}
+                disabled={index === queueLength - 1}
+                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
+                aria-label={moveDownLabel}
+              >
+                <ChevronDown size={10} />
+              </button>
+            </Tooltip>
           </div>
         }
         removeAction={
-          <button
-            type="button"
-            onClick={onRemove}
-            className="contextual-reveal-horizontal motion-icon-button shrink-0 rounded-md text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
-            title={removeLabel}
-            aria-label={removeLabel}
-          >
-            <X size={12} />
-          </button>
+          <Tooltip label={removeLabel}>
+            <button
+              type="button"
+              onClick={onRemove}
+              className="contextual-reveal-horizontal motion-icon-button shrink-0 rounded-md text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+              aria-label={removeLabel}
+            >
+              <X size={12} />
+            </button>
+          </Tooltip>
         }
       />
     </div>

@@ -140,6 +140,7 @@ pub fn run() {
             commands::import::get_library,
             commands::import::search_library,
             commands::import::delete_songs,
+            commands::import::extract_embedded_cover_art,
             commands::import::update_song_metadata,
             commands::import::get_song_properties,
             commands::library_setup::create_library,

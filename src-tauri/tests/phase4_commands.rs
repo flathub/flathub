@@ -1,13 +1,24 @@
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
+use lofty::{
+    config::WriteOptions,
+    file::{AudioFile, TaggedFileExt},
+    picture::{MimeType, Picture, PictureType},
+    probe::Probe,
+    tag::{Tag, TagType},
+};
 mod support;
 
 use openkara_lib::{
     cache::{self, lyrics},
-    commands::lyrics::{fetch_lyrics_from_connection, set_lyrics_offset_in_connection},
+    commands::{
+        import::extract_embedded_cover_art_from_connection,
+        lyrics::{fetch_lyrics_from_connection, set_lyrics_offset_in_connection},
+    },
     library::Song,
     library_root::LibraryRoot,
     lyrics::{fetch::LyricsSource, lrclib::LrcLibClient},
@@ -54,6 +65,38 @@ fn unique_library() -> LibraryRoot {
         fs::remove_dir_all(&path).ok();
     }
     LibraryRoot::create(&path).expect("library should create")
+}
+
+fn write_wav_without_cover(path: &Path) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44_100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(path, spec).expect("wav should create");
+    writer.write_sample::<i16>(0).expect("sample should write");
+    writer.finalize().expect("wav should finalize");
+}
+
+fn copy_mp3_with_embedded_cover(destination: &Path) {
+    fs::copy(metadata_fixture_path("fixture.mp3"), destination).expect("fixture audio should copy");
+
+    let mut tagged_file = Probe::open(destination)
+        .expect("fixture should open")
+        .read()
+        .expect("fixture tags should read");
+    let mut tag = Tag::new(TagType::Id3v2);
+    tag.push_picture(Picture::new_unchecked(
+        PictureType::CoverFront,
+        Some(MimeType::Png),
+        None,
+        vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    ));
+    tagged_file.insert_tag(tag);
+    tagged_file
+        .save_to_path(destination, WriteOptions::default())
+        .expect("fixture cover art should save");
 }
 
 #[test]
@@ -233,4 +276,137 @@ fn set_lyrics_offset_rejects_missing_cached_lyrics() {
         .expect_err("offset update should fail without cached lyrics");
 
     assert!(error.to_string().contains("does not have cached lyrics"));
+}
+
+#[test]
+fn extract_embedded_cover_art_updates_a_regular_song_and_persists_it() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library();
+
+    let dest = library.media_path("song-cover", "mp3");
+    copy_mp3_with_embedded_cover(&dest);
+
+    let song = Song {
+        hash: "song-cover".to_owned(),
+        file_path: "media/song-cover.mp3".to_owned(),
+        cdg_path: None,
+        media_g_container: None,
+        title: Some("Fixture Song MP3".to_owned()),
+        artist: Some("Fixture Artist".to_owned()),
+        album: Some("Fixture Album".to_owned()),
+        duration_ms: 1_000,
+        cover_art: None,
+        imported_at: 1,
+        original_ext: Some("mp3".to_owned()),
+    };
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    let result =
+        extract_embedded_cover_art_from_connection(&connection, &library, &[song.hash.clone()]);
+
+    assert_eq!(result.failed.len(), 0);
+    assert_eq!(result.updated_songs.len(), 1);
+    assert!(result.updated_songs[0]
+        .cover_art
+        .as_ref()
+        .is_some_and(|bytes| !bytes.is_empty()));
+
+    let persisted = cache::get_song_by_hash(&connection, &song.hash)
+        .expect("song lookup should succeed")
+        .expect("song should exist");
+    assert_eq!(persisted.cover_art, result.updated_songs[0].cover_art);
+}
+
+#[test]
+fn extract_embedded_cover_art_reads_cover_art_from_media_g_zip_audio_bytes() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library();
+
+    let dest = library.media_g_zip_path("song-zip");
+    let zip_dir = unique_fixture_dir();
+    cleanup_dir(&zip_dir);
+    fs::create_dir_all(&zip_dir).expect("zip fixture directory should create");
+    let covered_mp3 = zip_dir.join("fixture.mp3");
+    copy_mp3_with_embedded_cover(&covered_mp3);
+
+    let file = fs::File::create(&dest).expect("zip should create");
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+    zip.start_file("fixture.mp3", options)
+        .expect("audio entry should start");
+    zip.write_all(&fs::read(&covered_mp3).expect("covered audio should read"))
+        .expect("audio entry should write");
+    zip.start_file("fixture.cdg", options)
+        .expect("cdg entry should start");
+    zip.write_all(&[0x09_u8; 24])
+        .expect("cdg entry should write");
+    zip.finish().expect("zip should finish");
+
+    let song = Song {
+        hash: "song-zip".to_owned(),
+        file_path: "media-g/song-zip.zip".to_owned(),
+        cdg_path: None,
+        media_g_container: Some("zip".to_owned()),
+        title: Some("Fixture Song MP3".to_owned()),
+        artist: Some("Fixture Artist".to_owned()),
+        album: Some("Fixture Album".to_owned()),
+        duration_ms: 1_000,
+        cover_art: None,
+        imported_at: 1,
+        original_ext: Some("mp3".to_owned()),
+    };
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    let result =
+        extract_embedded_cover_art_from_connection(&connection, &library, &[song.hash.clone()]);
+
+    assert!(result.failed.is_empty());
+    assert_eq!(result.updated_songs.len(), 1);
+    assert!(result.updated_songs[0]
+        .cover_art
+        .as_ref()
+        .is_some_and(|bytes| !bytes.is_empty()));
+    cleanup_dir(&zip_dir);
+}
+
+#[test]
+fn extract_embedded_cover_art_keeps_existing_cover_when_a_song_has_no_embedded_art() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library();
+
+    let dest = library.media_path("song-no-cover", "wav");
+    write_wav_without_cover(&dest);
+
+    let song = Song {
+        hash: "song-no-cover".to_owned(),
+        file_path: "media/song-no-cover.wav".to_owned(),
+        cdg_path: None,
+        media_g_container: None,
+        title: Some("No Cover".to_owned()),
+        artist: Some("Fixture Artist".to_owned()),
+        album: None,
+        duration_ms: 1_000,
+        cover_art: Some(vec![1, 2, 3, 4]),
+        imported_at: 1,
+        original_ext: Some("wav".to_owned()),
+    };
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    let result =
+        extract_embedded_cover_art_from_connection(&connection, &library, &[song.hash.clone()]);
+
+    assert!(result.updated_songs.is_empty());
+    assert_eq!(result.failed.len(), 1);
+    assert!(result.failed[0]
+        .error
+        .message
+        .contains("does not contain embedded cover art"));
+
+    let persisted = cache::get_song_by_hash(&connection, &song.hash)
+        .expect("song lookup should succeed")
+        .expect("song should exist");
+    assert_eq!(persisted.cover_art, Some(vec![1, 2, 3, 4]));
 }

@@ -16,8 +16,9 @@
 1. `import_songs(paths: Vec<String>, options?: ImportSongsOptions) -> ImportSongsResult`
 2. `get_library() -> Vec<Song>`
 3. `search_library(query: String) -> Vec<Song>`
-4. 本地元数据解析支持 MP3、FLAC、M4A
-5. `songs` 表通过 `hash` 去重并执行 upsert
+4. `extract_embedded_cover_art(song_ids: Vec<String>) -> ExtractEmbeddedCoverArtResult`
+5. 本地元数据解析支持 MP3、FLAC、M4A
+6. `songs` 表通过 `hash` 去重并执行 upsert
 
 ### 后续 Phase 依赖
 
@@ -115,6 +116,54 @@
 3. 排序规则与 `get_library` 相同
 4. 顶层命令失败时返回 `CommandError`
 
+### Command: `extract_embedded_cover_art`
+
+**Input**
+
+```json
+{
+  "song_ids": ["sha256 song hash"]
+}
+```
+
+**Output**
+
+```json
+{
+  "updated_songs": [
+    {
+      "hash": "sha256 hex string",
+      "file_path": "media/song.mp3",
+      "title": "optional string",
+      "artist": "optional string",
+      "album": "optional string",
+      "duration_ms": 123456,
+      "cover_art": [137, 80, 78, 71],
+      "imported_at": 1760000000
+    }
+  ],
+  "failed": [
+    {
+      "song_id": "sha256 song hash",
+      "error": {
+        "code": "media_read_failed",
+        "message": "song hash does not contain embedded cover art",
+        "retryable": false,
+        "fallback": "keep_current_state"
+      }
+    }
+  ]
+}
+```
+
+**Semantics**
+
+1. 批量按顺序处理，单首失败不会中断其他歌曲
+2. 成功项会覆盖 `songs.cover_art`，并返回更新后的完整 `Song`
+3. 普通音频与 `paired` CDG 从磁盘音频文件读取封面；`ZIP+G` 从 ZIP 内音频字节读取封面
+4. 若文件没有内嵌封面，当前数据库里的 `cover_art` 保持不变，并在 `failed` 中返回结构化错误
+5. 顶层命令只在数据库不可用等整体失败时返回 `CommandError`
+
 ### Shared type: `Song`
 
 | Field         | Type              | Notes                                          |
@@ -141,6 +190,20 @@
 | ---------------------------- | ----------------------- | ---------------------------------------------- |
 | `explicit_cdg_by_audio_path` | `Record<String,String>` | 指定某首音频应使用哪一个显式选择的 `.cdg` 文件 |
 | `skip_cdg_for_audio_paths`   | `Vec<String>`           | 阻止这些音频在本次导入中被 `.cdg` 自动配对     |
+
+### Shared type: `ExtractEmbeddedCoverArtResult`
+
+| Field           | Type                                  | Notes                      |
+| --------------- | ------------------------------------- | -------------------------- |
+| `updated_songs` | `Vec<Song>`                           | 成功提取并写回封面的歌曲   |
+| `failed`        | `Vec<ExtractEmbeddedCoverArtFailure>` | 逐首失败结果，允许部分成功 |
+
+### Shared type: `ExtractEmbeddedCoverArtFailure`
+
+| Field     | Type           | Notes                |
+| --------- | -------------- | -------------------- |
+| `song_id` | `String`       | 请求中的歌曲 hash    |
+| `error`   | `CommandError` | 单首失败的结构化错误 |
 
 ### Required dependencies
 

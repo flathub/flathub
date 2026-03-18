@@ -93,6 +93,16 @@ export interface DeleteSongsResult {
   failed: DeleteSongsFailure[];
 }
 
+export interface ExtractEmbeddedCoverArtFailure {
+  song_id: string;
+  error: CommandError;
+}
+
+export interface ExtractEmbeddedCoverArtResult {
+  updated_songs: Song[];
+  failed: ExtractEmbeddedCoverArtFailure[];
+}
+
 export interface LyricsMatch {
   song_hash: string;
   lrc_path: string;

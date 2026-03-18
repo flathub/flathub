@@ -3,7 +3,7 @@ use crate::{
     cache,
     commands::error::{
         database_error, internal_error, library_error, state_lock_error, CommandError,
-        CommandResult,
+        CommandResult, ErrorCode, FallbackAction,
     },
     library::{ImportFailure, ImportSongsResult, Song},
     library_root::LibraryRoot,
@@ -46,6 +46,18 @@ pub struct DeleteSongsFailure {
 pub struct DeleteSongsResult {
     pub deleted_song_ids: Vec<String>,
     pub failed: Vec<DeleteSongsFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtractEmbeddedCoverArtFailure {
+    pub song_id: String,
+    pub error: CommandError,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtractEmbeddedCoverArtResult {
+    pub updated_songs: Vec<Song>,
+    pub failed: Vec<ExtractEmbeddedCoverArtFailure>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,6 +172,43 @@ pub fn delete_songs(
         deleted_song_ids,
         failed,
     })
+}
+
+#[tauri::command]
+pub fn extract_embedded_cover_art(
+    state: State<'_, AppState>,
+    song_ids: Vec<String>,
+) -> CommandResult<ExtractEmbeddedCoverArtResult> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    Ok(extract_embedded_cover_art_from_connection(
+        &connection, &library, &song_ids,
+    ))
+}
+
+pub fn extract_embedded_cover_art_from_connection(
+    connection: &Connection,
+    library: &LibraryRoot,
+    song_ids: &[String],
+) -> ExtractEmbeddedCoverArtResult {
+    let mut updated_songs = Vec::new();
+    let mut failed = Vec::new();
+
+    for song_id in song_ids {
+        match extract_embedded_cover_art_for_song(connection, library, song_id) {
+            Ok(song) => updated_songs.push(song),
+            Err(error) => failed.push(ExtractEmbeddedCoverArtFailure {
+                song_id: song_id.clone(),
+                error,
+            }),
+        }
+    }
+
+    ExtractEmbeddedCoverArtResult {
+        updated_songs,
+        failed,
+    }
 }
 
 pub fn import_songs_from_paths(
@@ -343,6 +392,67 @@ pub fn get_song_properties(
         duration_ms: song.duration_ms,
         hash: song.hash,
     })
+}
+
+fn extract_embedded_cover_art_for_song(
+    connection: &Connection,
+    library: &LibraryRoot,
+    song_id: &str,
+) -> Result<Song, CommandError> {
+    let song = cache::get_song_by_hash(connection, song_id)
+        .map_err(|e| database_error(e.to_string()))?
+        .ok_or_else(|| {
+            CommandError::new(
+                ErrorCode::SongNotFound,
+                format!("song {song_id} not found"),
+                false,
+                FallbackAction::RefreshLibrary,
+            )
+        })?;
+
+    let cover_art = read_embedded_cover_art(library, &song).map_err(|error| {
+        let message = error.to_string();
+        if message.contains("does not contain embedded cover art") {
+            return CommandError::new(
+                ErrorCode::MediaReadFailed,
+                message,
+                false,
+                FallbackAction::KeepCurrentState,
+            );
+        }
+
+        library_error(message)
+    })?;
+
+    cache::update_song_cover_art(connection, &song.hash, Some(&cover_art))
+        .map_err(|e| database_error(e.to_string()))?;
+
+    cache::get_song_by_hash(connection, &song.hash)
+        .map_err(|e| database_error(e.to_string()))?
+        .ok_or_else(|| {
+            CommandError::new(
+                ErrorCode::SongNotFound,
+                format!("song {} not found after updating cover art", song.hash),
+                false,
+                FallbackAction::RefreshLibrary,
+            )
+        })
+}
+
+fn read_embedded_cover_art(library: &LibraryRoot, song: &Song) -> Result<Vec<u8>> {
+    let resolved_path = library.resolve(&song.file_path);
+
+    let metadata = match song.media_g_container.as_deref() {
+        Some(MEDIA_G_ZIP) => {
+            let asset = media_g::inspect_zip_for_media_g(&resolved_path)?;
+            metadata::read_from_bytes(&asset.audio_bytes, &asset.audio_extension)?
+        }
+        _ => metadata::read_from_path(&resolved_path)?,
+    };
+
+    metadata
+        .cover_art
+        .with_context(|| format!("song {} does not contain embedded cover art", song.hash))
 }
 
 fn build_and_store_song(

@@ -4,6 +4,7 @@ import type {
   DeleteSongsResult,
   DeleteStemsResult,
   DowngradeResult,
+  ExtractEmbeddedCoverArtResult,
   ImportCandidateDetails,
   ImportLyricsResult,
   ImportSongsOptions,
@@ -222,6 +223,14 @@ export function deleteAllCachedLyrics(): Promise<number> {
 
 export function extractEmbeddedLyrics(songId: string): Promise<LyricsPayload> {
   return invoke<LyricsPayload>("extract_embedded_lyrics", { songId });
+}
+
+export function extractEmbeddedCoverArt(
+  songIds: string[],
+): Promise<ExtractEmbeddedCoverArtResult> {
+  return invoke<ExtractEmbeddedCoverArtResult>("extract_embedded_cover_art", {
+    songIds,
+  });
 }
 
 export function fetchLyricsOnline(songId: string): Promise<LyricsPayload> {

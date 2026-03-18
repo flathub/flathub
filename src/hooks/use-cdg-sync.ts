@@ -22,6 +22,12 @@ export { setCdgCanvas } from "@/lib/cdg-canvas-painter";
  * Target cadence for CDG frame fetches. We no longer rely on JS timers here,
  * because macOS can throttle them in occluded windows; instead we map backend
  * playback-position events into 33ms buckets and fetch once per bucket.
+ *
+ * RATIONALE: This is part of the second-window CDG fix, not redundant code.
+ * When the audience window covers most of the main window, macOS can throttle
+ * the main window's JS timers toward slideshow cadence. The main window must
+ * therefore advance CDG from Rust playback-position events, then publish those
+ * frames to the second window over BroadcastChannel.
  */
 const MIN_INTERVAL_MS = 33;
 
@@ -172,9 +178,11 @@ export function useCdgSync(enabled = true): void {
     };
   }, [clear, currentSongHasCdg, enabled, setSong, songId]);
 
-  // Drive CDG from backend playback-position events instead of JS timers.
-  // This keeps the main window advancing frames even when it is mostly
-  // occluded by the audience window, where macOS may throttle setInterval.
+  // RATIONALE: Do not replace this with setInterval/requestAnimationFrame.
+  // The real regression was macOS throttling front-end scheduling in windows
+  // that are heavily occluded by the audience display. Keeping the fetch loop
+  // tied to Rust playback-position events is what preserves smooth CDG in both
+  // windows.
   useEffect(() => {
     if (!enabled) return;
 

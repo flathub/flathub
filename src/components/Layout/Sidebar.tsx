@@ -65,10 +65,7 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
-      {/* Spacer for native macOS traffic light buttons */}
-      <div className="h-12 shrink-0" data-tauri-drag-region />
-
-      <div className="shrink-0 px-3 pb-3">
+      <div className="shrink-0 px-3 pb-3 pt-3">
         <SearchBox />
       </div>
 

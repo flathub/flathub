@@ -87,3 +87,26 @@ fn upsert_replaces_existing_song_record_by_hash() {
     assert_eq!(songs[0].title.as_deref(), Some("Updated Title"));
     assert_eq!(songs[0].imported_at, 30);
 }
+
+#[test]
+fn update_song_cover_art_replaces_only_the_cover_bytes() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+
+    cache::upsert_song(
+        &connection,
+        &sample_song("hash-a", "Original Title", "Artist A", 10),
+    )
+    .expect("insert should succeed");
+
+    cache::update_song_cover_art(&connection, "hash-a", Some(&[9, 8, 7, 6]))
+        .expect("cover art update should succeed");
+
+    let song = cache::get_song_by_hash(&connection, "hash-a")
+        .expect("song lookup should succeed")
+        .expect("song should exist");
+
+    assert_eq!(song.title.as_deref(), Some("Original Title"));
+    assert_eq!(song.artist.as_deref(), Some("Artist A"));
+    assert_eq!(song.cover_art.as_deref(), Some(&[9, 8, 7, 6][..]));
+}

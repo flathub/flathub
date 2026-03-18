@@ -8,6 +8,7 @@ import {
   Guitar,
   AudioWaveform,
 } from "lucide-react";
+import { Tooltip } from "@/components/Overlay/Tooltip";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -176,19 +177,25 @@ export function VolumeSliders() {
           disabled={!stemsAvailable}
         />
         {stemsAvailable && isFourStem && (
-          <button
-            ref={chevronRef}
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="motion-icon-button flex h-4 w-4 items-center justify-center rounded-full text-[var(--color-text-dimmer)] hover:bg-white/4 hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
-            title={
+          <Tooltip
+            label={
               isExpanded ? t("stems.collapseStems") : t("stems.expandStems")
             }
           >
-            <ChevronDown
-              size={12}
-              className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
+            <button
+              ref={chevronRef}
+              onClick={() => setIsExpanded(!isExpanded)}
+              aria-label={
+                isExpanded ? t("stems.collapseStems") : t("stems.expandStems")
+              }
+              className="motion-icon-button flex h-4 w-4 items-center justify-center rounded-full text-[var(--color-text-dimmer)] hover:bg-white/4 hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+            >
+              <ChevronDown
+                size={12}
+                className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </Tooltip>
         )}
 
         {/* Popup for individual stem controls — aligned with accompaniment */}
@@ -250,19 +257,20 @@ function StemSlider({
 
   return (
     <div className="flex items-center gap-2">
-      <button
-        onClick={onIconClick}
-        disabled={disabled || !onIconClick}
-        className={`motion-icon-button rounded-full p-1 ${
-          !disabled && value > 0
-            ? "text-[#EBEBF5] hover:bg-white/4 hover:text-white"
-            : "text-[var(--color-text-dimmer)]"
-        } ${onIconClick && !disabled ? "cursor-pointer" : "cursor-default"}`}
-        title={onIconClick ? muteLabel : label}
-        aria-label={onIconClick ? muteLabel : label}
-      >
-        {icon}
-      </button>
+      <Tooltip label={onIconClick ? muteLabel : label}>
+        <button
+          onClick={onIconClick}
+          disabled={disabled || !onIconClick}
+          className={`motion-icon-button rounded-full p-1 ${
+            !disabled && value > 0
+              ? "text-[#EBEBF5] hover:bg-white/4 hover:text-white"
+              : "text-[var(--color-text-dimmer)]"
+          } ${onIconClick && !disabled ? "cursor-pointer" : "cursor-default"}`}
+          aria-label={onIconClick ? muteLabel : label}
+        >
+          {icon}
+        </button>
+      </Tooltip>
       <input
         type="range"
         min="0"

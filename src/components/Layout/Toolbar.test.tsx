@@ -28,4 +28,17 @@ describe("Toolbar drag region", () => {
     );
     expect(markup).toContain("data-tauri-drag-region");
   });
+
+  test("does not insert a sidebar-hidden spacer before the toggle button", () => {
+    const markup = renderToStaticMarkup(
+      <Toolbar
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        settingsOpen={false}
+        sidebarVisible={false}
+      />,
+    );
+
+    expect(markup).not.toContain("w-[54px]");
+  });
 });

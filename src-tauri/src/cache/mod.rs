@@ -248,6 +248,18 @@ pub fn update_song_title_artist(
     Ok(())
 }
 
+pub fn update_song_cover_art(
+    connection: &Connection,
+    hash: &str,
+    cover_art: Option<&[u8]>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "UPDATE songs SET cover_art = ? WHERE hash = ?",
+        params![cover_art, hash],
+    )?;
+    Ok(())
+}
+
 fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
     Ok(Song {
         hash: row.get(0)?,

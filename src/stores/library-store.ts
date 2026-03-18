@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
+import { invalidateCoverArtUrl } from "@/lib/cover-art";
 import { notifyError } from "@/lib/errors";
 import {
   buildAmbiguousCdgChoiceRequests,
@@ -46,6 +47,7 @@ interface LibraryState {
     title: string | null,
     artist: string | null,
   ) => Promise<boolean>;
+  extractEmbeddedCoverArt: (songIds: string[]) => Promise<boolean>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearAllSeparationStatuses: () => void;
   updateBatchProgress: (progress: BatchSeparationProgress) => void;
@@ -231,6 +233,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         ),
       }));
       return true;
+    } catch (e) {
+      notifyError(e);
+      return false;
+    }
+  },
+
+  extractEmbeddedCoverArt: async (songIds) => {
+    try {
+      const result = await api.extractEmbeddedCoverArt(songIds);
+
+      for (const song of result.updated_songs) {
+        invalidateCoverArtUrl(song.hash);
+      }
+
+      if (result.updated_songs.length > 0) {
+        const updatedByHash = new Map(
+          result.updated_songs.map((song) => [song.hash, song]),
+        );
+        set((state) => ({
+          songs: state.songs.map(
+            (song) => updatedByHash.get(song.hash) ?? song,
+          ),
+        }));
+      }
+
+      for (const failure of result.failed) {
+        notifyError(failure.error);
+      }
+
+      return result.updated_songs.length > 0;
     } catch (e) {
       notifyError(e);
       return false;
