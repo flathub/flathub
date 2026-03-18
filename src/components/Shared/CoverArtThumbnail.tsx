@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useCoverArtUrl } from "@/lib/cover-art";
 import type { CoverArtBytes } from "@/types/ipc";
 
@@ -15,18 +16,21 @@ export function CoverArtThumbnail({
   className = "",
 }: CoverArtThumbnailProps) {
   const url = useCoverArtUrl(songHash, coverArt);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
   return (
     <div
       className={`overflow-hidden rounded-[10px] border border-[color-mix(in_srgb,var(--color-border)_82%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] ${className}`}
     >
-      {url ? (
+      {/* These covers already live in the local database. In desktop WebViews,
+          lazy/async image decoding can leave blob-backed thumbnails unpainted,
+          so we render them eagerly and fall back immediately on load failure. */}
+      {url && failedUrl !== url ? (
         <img
           src={url}
           alt={alt}
-          loading="lazy"
-          decoding="async"
-          className="h-full w-full object-cover"
+          onError={() => setFailedUrl(url)}
+          className="block h-full w-full object-cover"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(255,255,255,0.04)_58%,rgba(0,0,0,0.12))]">

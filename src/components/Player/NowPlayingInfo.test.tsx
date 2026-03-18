@@ -57,6 +57,8 @@ describe("NowPlayingInfo", () => {
     expect(markup).toContain('src="blob:cover"');
     expect(markup).toContain(">22<");
     expect(markup).toContain(">Taylor Swift<");
+    expect(markup).not.toContain('loading="lazy"');
+    expect(markup).not.toContain('decoding="async"');
 
     vi.unstubAllGlobals();
   });
@@ -75,6 +77,8 @@ describe("NowPlayingInfo", () => {
 
     expect(markup).toContain("<img");
     expect(markup).toContain('src="blob:cover"');
+    expect(markup).not.toContain('loading="lazy"');
+    expect(markup).not.toContain('decoding="async"');
 
     vi.unstubAllGlobals();
   });

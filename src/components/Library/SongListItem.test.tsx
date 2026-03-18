@@ -167,6 +167,8 @@ describe("SongListItem", () => {
     expect(markup).toContain("<img");
     expect(markup).toContain('src="blob:cover"');
     expect(markup).toContain("LOOSE CHANGE");
+    expect(markup).not.toContain('loading="lazy"');
+    expect(markup).not.toContain('decoding="async"');
 
     vi.unstubAllGlobals();
   });
@@ -198,6 +200,8 @@ describe("SongListItem", () => {
 
     expect(markup).toContain("<img");
     expect(markup).toContain('src="blob:cover"');
+    expect(markup).not.toContain('loading="lazy"');
+    expect(markup).not.toContain('decoding="async"');
 
     vi.unstubAllGlobals();
   });
