@@ -1,23 +1,34 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
-import { startCdgPollingLoop } from "./use-cdg-sync";
+import { describe, expect, test, vi } from "vitest";
+import { startCdgPositionSync } from "./use-cdg-sync";
 
-describe("startCdgPollingLoop", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  test("polls with a fixed interval so fullscreen updates do not depend on rAF", () => {
+describe("startCdgPositionSync", () => {
+  test("ticks only when playback crosses a new CDG sync bucket", () => {
     const tick = vi.fn();
+    let listener:
+      | ((positionMs: number, previousPositionMs: number) => void)
+      | null = null;
 
-    const stop = startCdgPollingLoop(tick, {
-      setInterval,
-      clearInterval,
+    const emitPosition = (positionMs: number, previousPositionMs: number) => {
+      expect(listener).not.toBeNull();
+      listener!(positionMs, previousPositionMs);
+    };
+
+    const stop = startCdgPositionSync(tick, (nextListener) => {
+      listener = nextListener;
+      return () => {
+        listener = null;
+      };
     });
 
-    vi.advanceTimersByTime(100);
+    emitPosition(10, 0);
+    emitPosition(20, 10);
+    emitPosition(34, 20);
+    emitPosition(40, 34);
+    emitPosition(67, 40);
 
-    expect(tick).toHaveBeenCalled();
+    expect(tick).toHaveBeenCalledTimes(2);
 
     stop();
+    expect(listener).toBeNull();
   });
 });

@@ -7,10 +7,12 @@ import { songHasCdgMedia } from "@/lib/song-media";
 
 interface PlaybackStageProps {
   presentation?: "standard" | "audience";
+  bottomInsetPx?: number;
 }
 
 export function PlaybackStage({
   presentation = "standard",
+  bottomInsetPx = 0,
 }: PlaybackStageProps) {
   const hasCdg = useCdgStore((s) => s.hasCdg);
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
@@ -20,7 +22,14 @@ export function PlaybackStage({
   );
 
   return (
-    <div className="flex h-full w-full flex-1 overflow-hidden">
+    <div
+      className="flex h-full w-full flex-1 overflow-hidden"
+      style={
+        presentation === "audience" && bottomInsetPx > 0
+          ? { paddingBottom: bottomInsetPx }
+          : undefined
+      }
+    >
       {hasCdg || currentSongHasCdg ? (
         <CdgCanvas />
       ) : (

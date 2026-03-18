@@ -59,4 +59,12 @@ describe("PlaybackStage", () => {
     expect(markup).toContain("cdg-canvas");
     expect(markup).not.toContain("lyrics-panel");
   });
+
+  test("applies a bottom inset for audience-safe overlays", () => {
+    const markup = renderToStaticMarkup(
+      <PlaybackStage presentation="audience" bottomInsetPx={144} />,
+    );
+
+    expect(markup).toContain('style="padding-bottom:144px"');
+  });
 });

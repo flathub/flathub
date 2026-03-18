@@ -3,6 +3,14 @@ import { usePlayerStore } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { drawFrame, clearFrame } from "@/lib/cdg-canvas-painter";
+import {
+  getCdgSyncChannel,
+  postCdgClear,
+  postCdgFrame,
+  postCdgStatus,
+  startCdgSyncRequestListener,
+  type CdgSyncStatusPayload,
+} from "@/lib/cdg-sync-channel";
 import { songHasCdgMedia } from "@/lib/song-media";
 import * as api from "@/lib/tauri";
 
@@ -11,12 +19,17 @@ import * as api from "@/lib/tauri";
 export { setCdgCanvas } from "@/lib/cdg-canvas-painter";
 
 /**
- * PERF: Minimum interval between IPC calls. At 33ms (~30fps) each call
- * transfers ~221KB raw binary via ArrayBuffer. The backend's `changed` flag
- * ensures that frames with no visual updates return an empty body (0 bytes),
- * so increasing the poll rate doesn't proportionally increase IPC load.
+ * Target cadence for CDG frame fetches. We no longer rely on JS timers here,
+ * because macOS can throttle them in occluded windows; instead we map backend
+ * playback-position events into 33ms buckets and fetch once per bucket.
  */
 const MIN_INTERVAL_MS = 33;
+
+let lastFrame: ArrayBuffer | null = null;
+let lastStatus: CdgSyncStatusPayload = {
+  songId: null,
+  hasCdg: false,
+};
 
 /**
  * Normalize the IPC response to an ArrayBuffer.
@@ -39,6 +52,38 @@ function ensureArrayBuffer(result: unknown): ArrayBuffer {
   return new ArrayBuffer(0);
 }
 
+function emitCdgFrame(buffer: ArrayBuffer): void {
+  lastFrame = buffer;
+  postCdgFrame(getCdgSyncChannel(), buffer);
+}
+
+function emitCdgClear(): void {
+  lastFrame = null;
+  postCdgClear(getCdgSyncChannel());
+}
+
+function emitCdgStatus(songId: string | null, hasCdg: boolean): void {
+  lastStatus = { songId, hasCdg };
+  postCdgStatus(getCdgSyncChannel(), lastStatus);
+}
+
+function getCdgSyncBucket(positionMs: number): number {
+  return Math.floor(Math.max(0, positionMs) / MIN_INTERVAL_MS);
+}
+
+export function startCdgPositionSync(
+  tick: () => void,
+  subscribe: (
+    listener: (positionMs: number, previousPositionMs: number) => void,
+  ) => () => void,
+): () => void {
+  return subscribe((positionMs, previousPositionMs) => {
+    if (getCdgSyncBucket(positionMs) !== getCdgSyncBucket(previousPositionMs)) {
+      tick();
+    }
+  });
+}
+
 export function useCdgSync(enabled = true): void {
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
   const songs = useLibraryStore((s) => s.songs);
@@ -49,6 +94,23 @@ export function useCdgSync(enabled = true): void {
     songs.find((song) => song.hash === songId) ?? null,
   );
 
+  useEffect(() => {
+    if (!enabled) return;
+
+    const channel = getCdgSyncChannel();
+    if (!channel) {
+      return;
+    }
+
+    return startCdgSyncRequestListener({
+      channel,
+      getSnapshot: () => ({
+        status: lastStatus,
+        frame: lastFrame,
+      }),
+    });
+  }, [enabled]);
+
   // Song detection: probe whether the new track has CDG graphics.
   useEffect(() => {
     if (!enabled) return;
@@ -56,12 +118,16 @@ export function useCdgSync(enabled = true): void {
     if (!songId) {
       clear();
       clearFrame();
+      emitCdgClear();
+      emitCdgStatus(null, false);
       return;
     }
 
     if (!currentSongHasCdg) {
       clear();
       clearFrame();
+      emitCdgClear();
+      emitCdgStatus(songId, false);
       return;
     }
 
@@ -70,8 +136,12 @@ export function useCdgSync(enabled = true): void {
     const currentCdgSongId = useCdgStore.getState().songId;
 
     if (currentCdgSongId !== songId) {
+      // Clear immediately on song change so the audience window cannot keep
+      // showing the previous song while the new track's first frame arrives.
       setSong(songId, true);
       clearFrame();
+      emitCdgClear();
+      emitCdgStatus(songId, true);
     }
 
     api
@@ -83,13 +153,18 @@ export function useCdgSync(enabled = true): void {
         if (buffer.byteLength > 0) {
           setSong(songId, true);
           drawFrame(buffer);
+          emitCdgFrame(buffer);
+          emitCdgStatus(songId, true);
           return;
         }
+
+        emitCdgStatus(songId, true);
       })
       .catch(() => {
         if (cancelled) return;
         setSong(songId, false);
         clearFrame();
+        emitCdgStatus(songId, false);
       });
 
     return () => {
@@ -97,48 +172,49 @@ export function useCdgSync(enabled = true): void {
     };
   }, [clear, currentSongHasCdg, enabled, setSong, songId]);
 
-  // Continuous polling: fetches CDG frames during playback.
+  // Drive CDG from backend playback-position events instead of JS timers.
+  // This keeps the main window advancing frames even when it is mostly
+  // occluded by the audience window, where macOS may throttle setInterval.
   useEffect(() => {
     if (!enabled) return;
 
-    const stopPolling = startCdgPollingLoop(() => {
-      const { snapshot, positionMs } = usePlayerStore.getState();
-      const { hasCdg } = useCdgStore.getState();
+    const stopSync = startCdgPositionSync(
+      () => {
+        const { snapshot, positionMs } = usePlayerStore.getState();
+        const { hasCdg } = useCdgStore.getState();
 
-      if (!hasCdg || !snapshot?.is_playing || pendingRef.current) {
-        return;
-      }
-      pendingRef.current = true;
+        if (!hasCdg || !snapshot?.is_playing || pendingRef.current) {
+          return;
+        }
+        pendingRef.current = true;
 
-      // PERF: The hot frame path stays out of React state. The IPC returns a
-      // raw ArrayBuffer (no base64), and drawFrame() paints it to a pre-
-      // allocated ImageData — no string decoding, no per-frame allocation.
-      api
-        .getCdgFrame(positionMs)
-        .then((result) => {
-          const buffer = ensureArrayBuffer(result);
-          if (buffer.byteLength > 0) {
-            drawFrame(buffer);
-          }
-        })
-        .catch(() => {
-          // Silently ignore CDG frame errors — non-critical for playback.
-        })
-        .finally(() => {
-          pendingRef.current = false;
-        });
-    });
+        // PERF: The hot frame path stays out of React state. The IPC returns a
+        // raw ArrayBuffer (no base64), and drawFrame() paints it to a pre-
+        // allocated ImageData — no string decoding, no per-frame allocation.
+        api
+          .getCdgFrame(positionMs)
+          .then((result) => {
+            const buffer = ensureArrayBuffer(result);
+            if (buffer.byteLength > 0) {
+              drawFrame(buffer);
+              emitCdgFrame(buffer);
+            }
+          })
+          .catch(() => {
+            // Silently ignore CDG frame errors — non-critical for playback.
+          })
+          .finally(() => {
+            pendingRef.current = false;
+          });
+      },
+      (listener) =>
+        usePlayerStore.subscribe((state, previousState) => {
+          listener(state.positionMs, previousState.positionMs);
+        }),
+    );
 
     return () => {
-      stopPolling();
+      stopSync();
     };
   }, [enabled]);
-}
-
-export function startCdgPollingLoop(
-  tick: () => void,
-  timers: Pick<typeof globalThis, "setInterval" | "clearInterval"> = globalThis,
-): () => void {
-  const timer = timers.setInterval(tick, MIN_INTERVAL_MS);
-  return () => timers.clearInterval(timer);
 }

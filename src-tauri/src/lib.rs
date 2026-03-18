@@ -165,7 +165,6 @@ pub fn run() {
             commands::playback::load_stems,
             commands::playback::get_playback_state,
             commands::cdg::get_cdg_frame,
-            commands::cdg::get_cdg_display_frame,
             commands::batch_separation::batch_separate,
             commands::batch_separation::cancel_batch_separation,
             commands::separation::separate,
