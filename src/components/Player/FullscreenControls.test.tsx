@@ -6,12 +6,6 @@ const { mockUseMouseIdle } = vi.hoisted(() => ({
   mockUseMouseIdle: vi.fn(() => true),
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
 vi.mock("./PlayControls", () => ({
   PlayControls: () => <div>Play controls</div>,
 }));
@@ -29,14 +23,21 @@ vi.mock("@/lib/fullscreen-player", () => ({
 }));
 
 describe("FullscreenControls", () => {
-  test("keeps the close affordance interactive even while the cursor is idle", () => {
+  test("hides playback bar when cursor is idle", () => {
     mockUseMouseIdle.mockReturnValue(true);
 
     const markup = renderToStaticMarkup(<FullscreenControls />);
 
-    expect(markup).not.toContain(
-      "top-4 z-50 transition-opacity duration-300 pointer-events-none",
-    );
-    expect(markup).toContain("opacity-35");
+    expect(markup).toContain("pointer-events-none");
+    expect(markup).toContain("opacity-0");
+  });
+
+  test("shows playback bar when cursor is active", () => {
+    mockUseMouseIdle.mockReturnValue(false);
+
+    const markup = renderToStaticMarkup(<FullscreenControls />);
+
+    expect(markup).not.toContain("pointer-events-none");
+    expect(markup).toContain("opacity-100");
   });
 });

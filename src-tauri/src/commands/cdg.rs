@@ -22,6 +22,11 @@ pub struct CdgPlaybackState {
     pub cached_frame: Option<Vec<u8>>,
     /// Whether the renderer needs a full reset (e.g. after backward seek).
     pub needs_reset: bool,
+    /// Monotonically increasing version counter. Incremented each time
+    /// `cached_frame` changes. The fullscreen window sends its last-known
+    /// version so `get_cdg_display_frame` can skip the 221KB clone when
+    /// the frame hasn't changed.
+    pub frame_version: u64,
 }
 
 impl CdgPlaybackState {
@@ -35,6 +40,7 @@ impl CdgPlaybackState {
             // Otherwise the frontend cannot distinguish "active CDG, initial frame"
             // from "no new frame, keep whatever was on screen before".
             needs_reset: true,
+            frame_version: 0,
         }
     }
 
@@ -87,6 +93,7 @@ pub fn get_cdg_frame(
         cdg.needs_reset = false;
         let rgba = cdg.renderer.to_rgba();
         cdg.cached_frame = Some(rgba.clone());
+        cdg.frame_version += 1;
         return Ok(Response::new(rgba));
     }
 
@@ -100,12 +107,57 @@ pub fn get_cdg_frame(
         if changed || cdg.cached_frame.is_none() {
             let rgba = cdg.renderer.to_rgba();
             cdg.cached_frame = Some(rgba.clone());
+            cdg.frame_version += 1;
             return Ok(Response::new(rgba));
         }
     }
 
     // No change — empty body signals "keep current frame"
     Ok(Response::new(Vec::<u8>::new()))
+}
+
+/// Returns the last rendered CDG frame without advancing the renderer.
+///
+/// Used by the fullscreen window to mirror the main window's CDG display.
+/// The main window drives the renderer via `get_cdg_frame`; this command
+/// simply returns its `cached_frame`.
+///
+/// The response is a binary blob: **8-byte little-endian `u64` version**
+/// followed by the RGBA frame bytes (221,184 bytes). When the caller's
+/// `last_version` matches the current version, only the 8-byte version
+/// header is returned (no frame data) — signaling "no change". An empty
+/// body (0 bytes) means no CDG is active.
+#[tauri::command]
+pub fn get_cdg_display_frame(
+    state: State<'_, AppState>,
+    last_version: u64,
+) -> CommandResult<Response> {
+    let cdg_guard = state
+        .cdg_state
+        .lock()
+        .map_err(|_| internal_error("CDG state lock was poisoned".to_owned()))?;
+
+    let cdg = match cdg_guard.as_ref() {
+        Some(cdg) => cdg,
+        None => return Ok(Response::new(Vec::<u8>::new())),
+    };
+
+    let version = cdg.frame_version;
+
+    // No change since last poll — return version header only (8 bytes).
+    if version == last_version {
+        return Ok(Response::new(version.to_le_bytes().to_vec()));
+    }
+
+    match cdg.cached_frame.as_ref() {
+        Some(frame) => {
+            let mut buf = Vec::with_capacity(8 + frame.len());
+            buf.extend_from_slice(&version.to_le_bytes());
+            buf.extend_from_slice(frame);
+            Ok(Response::new(buf))
+        }
+        None => Ok(Response::new(Vec::<u8>::new())),
+    }
 }
 
 #[cfg(test)]

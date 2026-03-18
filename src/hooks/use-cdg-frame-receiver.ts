@@ -1,185 +1,118 @@
-import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitTo } from "@tauri-apps/api/event";
-import {
-  clearFrame,
-  drawFrame,
-  drawFrameFromBase64,
-} from "@/lib/cdg-canvas-painter";
-import {
-  getCdgSyncChannel,
-  startCdgSyncReceiver,
-} from "@/lib/cdg-sync-channel";
+import { useEffect, useRef } from "react";
+import { usePlayerStore } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
+import { drawFrame, clearFrame } from "@/lib/cdg-canvas-painter";
+import { getCdgDisplayFrame } from "@/lib/tauri";
 
-interface StartCdgFrameReceiverOptions {
-  listen: typeof listen;
-  emitSyncRequest: () => Promise<void>;
-  onFrame: (payload: string) => void;
-  onClear: () => void;
-  onStatus: (payload: { songId: string | null; hasCdg: boolean }) => void;
-}
+/** Must match the polling interval in use-cdg-sync.ts. */
+const POLL_INTERVAL_MS = 33;
 
-export async function startCdgFrameReceiver({
-  listen,
-  emitSyncRequest,
-  onFrame,
-  onClear,
-  onStatus,
-}: StartCdgFrameReceiverOptions): Promise<UnlistenFn[]> {
-  const unlisteners = await Promise.all([
-    listen<string>("cdg-frame", (event) => {
-      onFrame(event.payload);
-    }),
-    listen("cdg-clear", () => {
-      onClear();
-    }),
-    listen<{ songId: string | null; hasCdg: boolean }>(
-      "cdg-status",
-      (event) => {
-        onStatus(event.payload);
-      },
-    ),
-  ]);
+/** Size of the version header prepended to display-frame responses (u64 LE). */
+const VERSION_HEADER_BYTES = 8;
 
-  await emitSyncRequest();
-  return unlisteners;
+/**
+ * Normalize the IPC response to an ArrayBuffer.
+ *
+ * PERF: The backend returns raw bytes via `tauri::ipc::Response`, which
+ * **should** arrive as an `ArrayBuffer` on desktop platforms. However, Tauri's
+ * IPC bridge may occasionally deliver it as a `number[]` (JSON-serialized
+ * Vec<u8>) depending on the protocol path. This function handles both cases.
+ */
+function ensureArrayBuffer(result: unknown): ArrayBuffer {
+  if (result instanceof ArrayBuffer) return result;
+  if (ArrayBuffer.isView(result)) {
+    return result.buffer.slice(
+      result.byteOffset,
+      result.byteOffset + result.byteLength,
+    );
+  }
+  if (Array.isArray(result)) return new Uint8Array(result).buffer;
+  return new ArrayBuffer(0);
 }
 
 /**
- * Fullscreen-window counterpart to `useCdgSync`. Instead of polling
- * `getCdgFrame()` from the backend (which would conflict with the main
- * window's mutex-based state tracking), this hook receives CDG frames
- * forwarded by the main window.
- *
- * On mount it requests a sync so the main window re-sends its cached frame and
- * status — this handles the case where the fullscreen window opens mid-song.
- *
- * PERF: The preferred path uses `BroadcastChannel`, so the fullscreen window
- * receives raw `ArrayBuffer` frames and can paint them with the same binary
- * path as the main window. A base64 Tauri-event fallback remains for runtimes
- * without `BroadcastChannel` support.
+ * Parse the version header (u64 little-endian) from the first 8 bytes of the
+ * display-frame response. Returns `0` for empty/invalid buffers.
  */
-/**
- * Create a coalescing frame painter that buffers the latest frame and paints it
- * on the next macrotask via `setTimeout(0)`.
- *
- * IMPORTANT: We deliberately avoid `requestAnimationFrame` here because macOS
- * throttles (or completely suspends) rAF callbacks for non-focused windows.
- * The fullscreen player window is typically unfocused (the user interacts with
- * the main window), so rAF would cause the CDG canvas to freeze.
- *
- * `setTimeout(0)` coalesces multiple BroadcastChannel messages that arrive in
- * the same event-loop tick into a single paint, dropping intermediate frames.
- * It fires reliably regardless of window focus state.
- */
-function createCoalescingPainter<T>(paint: (frame: T) => void): {
-  enqueue: (frame: T) => void;
-  cancel: () => void;
-} {
-  let latestFrame: T | null = null;
-  let timerId: ReturnType<typeof setTimeout> | null = null;
-
-  const flush = () => {
-    timerId = null;
-    if (latestFrame !== null) {
-      paint(latestFrame);
-      latestFrame = null;
-    }
-  };
-
-  return {
-    enqueue: (frame: T) => {
-      latestFrame = frame;
-      if (timerId === null) {
-        timerId = setTimeout(flush, 0);
-      }
-    },
-    cancel: () => {
-      if (timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
-      }
-      latestFrame = null;
-    },
-  };
+function readVersion(buffer: ArrayBuffer): number {
+  if (buffer.byteLength < VERSION_HEADER_BYTES) return 0;
+  const view = new DataView(buffer);
+  // u64 LE — we only use the lower 32 bits (safe for billions of frames).
+  return view.getUint32(0, true);
 }
 
+/**
+ * Fullscreen-window counterpart to `useCdgSync`.
+ *
+ * Instead of advancing the CDG renderer (which the main window owns), this
+ * hook polls `get_cdg_display_frame` — a read-only command that returns the
+ * latest cached frame from the renderer without mutating state.
+ *
+ * The response carries a version header so that unchanged frames are skipped
+ * (only the 8-byte header is returned). This drops per-poll IPC cost from
+ * 221 KB to 8 bytes when the visual frame hasn't changed.
+ */
 export function useCdgFrameReceiver(): void {
   const setSong = useCdgStore((s) => s.setSong);
   const clear = useCdgStore((s) => s.clear);
+  const pendingRef = useRef(false);
+  const lastVersionRef = useRef(0);
 
   useEffect(() => {
-    const channel = getCdgSyncChannel();
-    if (channel) {
-      const painter = createCoalescingPainter<ArrayBuffer>(drawFrame);
-      const stopReceiver = startCdgSyncReceiver({
-        channel,
-        onFrame: (payload) => {
-          painter.enqueue(payload);
-        },
-        onClear: () => {
-          painter.cancel();
-          clear();
-          clearFrame();
-        },
-        onStatus: ({ songId, hasCdg }) => {
-          if (songId !== null) {
-            setSong(songId, hasCdg);
-          } else {
-            clear();
+    const timer = setInterval(() => {
+      const { snapshot } = usePlayerStore.getState();
+      const songId = snapshot?.song_id ?? null;
+
+      if (!songId || !snapshot?.is_playing || pendingRef.current) {
+        return;
+      }
+
+      pendingRef.current = true;
+
+      getCdgDisplayFrame(lastVersionRef.current)
+        .then((result) => {
+          const buffer = ensureArrayBuffer(result);
+
+          // Empty buffer → no CDG active.
+          if (buffer.byteLength === 0) return;
+
+          const version = readVersion(buffer);
+          lastVersionRef.current = version;
+
+          // Version-only header (8 bytes) → frame unchanged, skip paint.
+          if (buffer.byteLength <= VERSION_HEADER_BYTES) return;
+
+          // New frame: strip version header, paint RGBA data.
+          const frameData = buffer.slice(VERSION_HEADER_BYTES);
+          drawFrame(frameData);
+
+          // Ensure CDG store reflects that we have active CDG content.
+          const { hasCdg } = useCdgStore.getState();
+          if (!hasCdg) {
+            setSong(songId, true);
           }
-        },
-      });
-
-      return () => {
-        painter.cancel();
-        stopReceiver();
-      };
-    }
-
-    let cancelled = false;
-    let unlisteners: UnlistenFn[] = [];
-    const painter = createCoalescingPainter<string>(drawFrameFromBase64);
-
-    void startCdgFrameReceiver({
-      listen,
-      emitSyncRequest: () => emitTo("main", "cdg-request-sync", null),
-      onFrame: (payload) => {
-        if (!cancelled) {
-          painter.enqueue(payload);
-        }
-      },
-      onClear: () => {
-        if (!cancelled) {
-          painter.cancel();
-          clear();
-          clearFrame();
-        }
-      },
-      onStatus: ({ songId, hasCdg }) => {
-        if (!cancelled) {
-          if (songId !== null) {
-            setSong(songId, hasCdg);
-          } else {
-            clear();
-          }
-        }
-      },
-    })
-      .then((listeners) => {
-        if (cancelled) {
-          for (const fn of listeners) fn();
-        } else {
-          unlisteners = listeners;
-        }
-      })
-      .catch(() => {});
+        })
+        .catch(() => {
+          // Silently ignore — non-critical for playback.
+        })
+        .finally(() => {
+          pendingRef.current = false;
+        });
+    }, POLL_INTERVAL_MS);
 
     return () => {
-      cancelled = true;
-      painter.cancel();
-      for (const fn of unlisteners) fn();
+      clearInterval(timer);
     };
-  }, [clear, setSong]);
+  }, [setSong]);
+
+  // Clear CDG state when the song changes or stops.
+  const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
+
+  useEffect(() => {
+    if (!songId) {
+      clear();
+      clearFrame();
+      lastVersionRef.current = 0;
+    }
+  }, [clear, songId]);
 }

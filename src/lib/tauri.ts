@@ -270,3 +270,18 @@ export function getCdgFrame(ms: number): Promise<ArrayBuffer> {
     positionMs: Math.round(ms),
   });
 }
+
+/**
+ * Returns the last rendered CDG frame without advancing the renderer.
+ *
+ * Used by the fullscreen window to mirror the main window's CDG display.
+ * The main window drives the renderer via `getCdgFrame`; this just reads
+ * the cached result.
+ *
+ * The response is a binary blob: 8-byte LE u64 version + RGBA frame data.
+ * When `lastVersion` matches the current version, only the 8-byte header
+ * is returned (no frame data). An empty ArrayBuffer means no CDG is active.
+ */
+export function getCdgDisplayFrame(lastVersion: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("get_cdg_display_frame", { lastVersion });
+}

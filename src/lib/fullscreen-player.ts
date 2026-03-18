@@ -22,12 +22,10 @@ export async function openFullscreenPlayer(monitorIndex?: number) {
   new WebviewWindow("fullscreen-player", {
     url: "index.html?mode=fullscreen-player",
     title: "OpenKara Player",
-    fullscreen: true,
     x: target.position.x,
     y: target.position.y,
     width: target.size.width,
     height: target.size.height,
-    decorations: false,
   });
 }
 
