@@ -1,7 +1,15 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitTo } from "@tauri-apps/api/event";
-import { drawFrameFromBase64, clearFrame } from "@/lib/cdg-canvas-painter";
+import {
+  clearFrame,
+  drawFrame,
+  drawFrameFromBase64,
+} from "@/lib/cdg-canvas-painter";
+import {
+  getCdgSyncChannel,
+  startCdgSyncReceiver,
+} from "@/lib/cdg-sync-channel";
 import { useCdgStore } from "@/stores/cdg-store";
 
 interface StartCdgFrameReceiverOptions {
@@ -42,23 +50,42 @@ export async function startCdgFrameReceiver({
  * Fullscreen-window counterpart to `useCdgSync`. Instead of polling
  * `getCdgFrame()` from the backend (which would conflict with the main
  * window's mutex-based state tracking), this hook receives CDG frames
- * forwarded by the main window via Tauri events.
+ * forwarded by the main window.
  *
- * On mount it emits `cdg-request-sync` so the main window re-sends its
- * cached frame and status — this handles the case where the fullscreen
- * window opens mid-song.
+ * On mount it requests a sync so the main window re-sends its cached frame and
+ * status — this handles the case where the fullscreen window opens mid-song.
  *
- * PERF: Frames arrive as base64 strings because Tauri's event API uses JSON
- * serialization, which cannot carry raw `ArrayBuffer` payloads. This is
- * acceptable for the fullscreen window (secondary display). The main window
- * uses the raw binary `drawFrame(ArrayBuffer)` path for better performance.
- * See `cdg-canvas-painter.ts` for details on the two rendering paths.
+ * PERF: The preferred path uses `BroadcastChannel`, so the fullscreen window
+ * receives raw `ArrayBuffer` frames and can paint them with the same binary
+ * path as the main window. A base64 Tauri-event fallback remains for runtimes
+ * without `BroadcastChannel` support.
  */
 export function useCdgFrameReceiver(): void {
   const setSong = useCdgStore((s) => s.setSong);
   const clear = useCdgStore((s) => s.clear);
 
   useEffect(() => {
+    const channel = getCdgSyncChannel();
+    if (channel) {
+      return startCdgSyncReceiver({
+        channel,
+        onFrame: (payload) => {
+          drawFrame(payload);
+        },
+        onClear: () => {
+          clear();
+          clearFrame();
+        },
+        onStatus: ({ songId, hasCdg }) => {
+          if (songId !== null) {
+            setSong(songId, hasCdg);
+          } else {
+            clear();
+          }
+        },
+      });
+    }
+
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
 

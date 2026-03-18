@@ -10,13 +10,13 @@ export function CdgCanvas() {
   }, []);
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-black">
+    <div className="flex h-full w-full flex-1 items-center justify-center overflow-hidden bg-black">
       <canvas
         ref={canvasCallback}
         width={CDG_WIDTH}
         height={CDG_HEIGHT}
-        className="max-h-full max-w-full"
-        style={{ imageRendering: "pixelated" }}
+        className="h-full w-full"
+        style={{ imageRendering: "pixelated", objectFit: "contain" }}
       />
     </div>
   );

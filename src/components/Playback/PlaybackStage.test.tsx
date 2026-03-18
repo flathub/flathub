@@ -55,6 +55,7 @@ describe("PlaybackStage", () => {
   test("renders the CDG canvas when the current song metadata has CDG media", () => {
     const markup = renderToStaticMarkup(<PlaybackStage />);
 
+    expect(markup).toContain("flex h-full w-full flex-1 overflow-hidden");
     expect(markup).toContain("cdg-canvas");
     expect(markup).not.toContain("lyrics-panel");
   });

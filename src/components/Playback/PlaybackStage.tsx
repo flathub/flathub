@@ -5,7 +5,13 @@ import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { songHasCdgMedia } from "@/lib/song-media";
 
-export function PlaybackStage() {
+interface PlaybackStageProps {
+  presentation?: "standard" | "audience";
+}
+
+export function PlaybackStage({
+  presentation = "standard",
+}: PlaybackStageProps) {
   const hasCdg = useCdgStore((s) => s.hasCdg);
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
   const songs = useLibraryStore((s) => s.songs);
@@ -13,5 +19,13 @@ export function PlaybackStage() {
     songs.find((song) => song.hash === songId) ?? null,
   );
 
-  return hasCdg || currentSongHasCdg ? <CdgCanvas /> : <LyricsPanel />;
+  return (
+    <div className="flex h-full w-full flex-1 overflow-hidden">
+      {hasCdg || currentSongHasCdg ? (
+        <CdgCanvas />
+      ) : (
+        <LyricsPanel presentation={presentation} />
+      )}
+    </div>
+  );
 }

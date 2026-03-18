@@ -20,16 +20,31 @@ export function FullscreenControls({
     onCursorVisibilityChange?.(!idle);
   }, [idle, onCursorVisibilityChange]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        void closeFullscreenPlayer();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   return (
     <>
       {/* Exit fullscreen button — top right */}
       <div
         className={`absolute right-4 top-4 z-50 transition-opacity duration-300 ${
-          idle ? "pointer-events-none opacity-0" : "opacity-100"
+          idle ? "opacity-35" : "opacity-100"
         }`}
       >
         <button
-          onClick={() => closeFullscreenPlayer()}
+          onClick={() => {
+            void closeFullscreenPlayer();
+          }}
           className="rounded-full bg-black/60 p-2 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white"
           title={t("player.exitFullscreen")}
           aria-label={t("player.exitFullscreen")}

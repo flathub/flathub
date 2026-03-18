@@ -22,11 +22,11 @@ export function FullscreenPlayerView() {
 
   return (
     <div
-      className="relative h-screen w-screen bg-black"
+      className="relative flex h-screen w-screen flex-col bg-black"
       style={{ cursor: cursorVisible ? "default" : "none" }}
     >
-      <div className="h-full w-full">
-        <PlaybackStage />
+      <div className="flex flex-1 overflow-hidden">
+        <PlaybackStage presentation="audience" />
       </div>
       <FullscreenControls onCursorVisibilityChange={handleCursorVisibility} />
     </div>

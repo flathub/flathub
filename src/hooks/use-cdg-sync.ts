@@ -5,6 +5,13 @@ import { usePlayerStore } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { drawFrame, clearFrame } from "@/lib/cdg-canvas-painter";
+import {
+  getCdgSyncChannel,
+  postCdgClear,
+  postCdgFrame,
+  postCdgStatus,
+  startCdgSyncRequestListener,
+} from "@/lib/cdg-sync-channel";
 import { songHasCdgMedia } from "@/lib/song-media";
 import * as api from "@/lib/tauri";
 
@@ -25,8 +32,8 @@ export { setCdgCanvas } from "@/lib/cdg-canvas-painter";
 const MIN_INTERVAL_MS = 33;
 
 /**
- * Cached state for responding to `cdg-request-sync` from the fullscreen window
- * when it opens mid-song.
+ * Cached state for responding to sync requests from the fullscreen window when
+ * it opens mid-song.
  */
 let lastFrame: ArrayBuffer | null = null;
 let lastStatus: { songId: string | null; hasCdg: boolean } = {
@@ -66,14 +73,12 @@ const forwardFullscreenFrame = createLatestOnlyFrameForwarder((payload) =>
 );
 
 /**
- * Convert an ArrayBuffer to a base64 string for Tauri event forwarding.
+ * Convert an ArrayBuffer to a base64 string for the Tauri-event fallback path.
  *
- * PERF: This conversion is intentionally limited to the event forwarding path
- * (main window → fullscreen window). Tauri's event API uses JSON serialization,
- * which cannot carry raw `ArrayBuffer` payloads, so base64 is unavoidable here.
- * The main window's own rendering path uses raw `ArrayBuffer` directly via
- * `drawFrame()` and never touches base64. Do not "optimize" by caching base64
- * on the main rendering path — it would reintroduce the bottleneck we removed.
+ * PERF: The preferred fullscreen transport is `BroadcastChannel`, which can
+ * structured-clone raw `ArrayBuffer` payloads between windows without base64.
+ * This conversion stays only for older runtimes where `BroadcastChannel` is
+ * unavailable and we must fall back to Tauri's JSON-serialized event API.
  */
 /**
  * Normalize the IPC response to an ArrayBuffer.
@@ -107,6 +112,12 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 function emitCdgFrame(buffer: ArrayBuffer): void {
   lastFrame = buffer;
+  const channel = getCdgSyncChannel();
+  if (channel) {
+    postCdgFrame(channel, buffer);
+    return;
+  }
+
   // Convert to base64 for Tauri event JSON serialization
   const base64 = arrayBufferToBase64(buffer);
   forwardFullscreenFrame(base64);
@@ -114,11 +125,23 @@ function emitCdgFrame(buffer: ArrayBuffer): void {
 
 function emitCdgClear(): void {
   lastFrame = null;
+  const channel = getCdgSyncChannel();
+  if (channel) {
+    postCdgClear(channel);
+    return;
+  }
+
   emitTo("fullscreen-player", "cdg-clear", null).catch(() => {});
 }
 
 function emitCdgStatus(songId: string | null, hasCdg: boolean): void {
   lastStatus = { songId, hasCdg };
+  const channel = getCdgSyncChannel();
+  if (channel) {
+    postCdgStatus(channel, { songId, hasCdg });
+    return;
+  }
+
   emitTo("fullscreen-player", "cdg-status", { songId, hasCdg }).catch(() => {});
 }
 
@@ -132,9 +155,20 @@ export function useCdgSync(enabled = true): void {
     songs.find((song) => song.hash === songId) ?? null,
   );
 
-  // Listen for fullscreen window requesting current CDG state on mount.
+  // Listen for the fullscreen window requesting the latest cached CDG state.
   useEffect(() => {
     if (!enabled) return;
+
+    const channel = getCdgSyncChannel();
+    if (channel) {
+      return startCdgSyncRequestListener({
+        channel,
+        getSnapshot: () => ({
+          status: lastStatus,
+          frame: lastFrame,
+        }),
+      });
+    }
 
     let unlisten: UnlistenFn | undefined;
     let cancelled = false;
