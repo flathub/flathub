@@ -32,12 +32,16 @@ export async function openFullscreenPlayer(monitorIndex?: number) {
 }
 
 export async function closeFullscreenPlayer() {
-  const currentWindow = getCurrentWebviewWindow();
-  if (currentWindow.label === "fullscreen-player") {
-    await currentWindow.close();
-    return;
-  }
+  try {
+    const currentWindow = getCurrentWebviewWindow();
+    if (currentWindow.label === "fullscreen-player") {
+      await currentWindow.close();
+      return;
+    }
 
-  const win = await WebviewWindow.getByLabel("fullscreen-player");
-  await win?.close();
+    const win = await WebviewWindow.getByLabel("fullscreen-player");
+    await win?.close();
+  } catch (err) {
+    console.error("Failed to close fullscreen player:", err);
+  }
 }

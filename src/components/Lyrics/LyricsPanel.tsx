@@ -8,7 +8,11 @@ import { LyricsEditDialog } from "./LyricsEditDialog";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { usePlayerStore } from "@/stores/player-store";
 
-export function LyricsPanel() {
+interface LyricsPanelProps {
+  presentation?: "standard" | "audience";
+}
+
+export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const { t } = useTranslation();
   const lines = useLyricsStore((s) => s.lines);
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
@@ -21,6 +25,7 @@ export function LyricsPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [editOpen, setEditOpen] = useState(false);
   const utilityControlsPinned = offsetMs !== 0;
+  const isAudience = presentation === "audience";
 
   const isPlainText = lines.length > 0 && lines.every((l) => l.time_ms === 0);
 
@@ -60,7 +65,7 @@ export function LyricsPanel() {
 
   return (
     <div className="group relative flex flex-1 flex-col items-center overflow-hidden">
-      {songId && (
+      {songId && !isAudience && (
         <>
           <div
             className="contextual-reveal absolute right-4 top-4 z-10"
@@ -85,34 +90,47 @@ export function LyricsPanel() {
       <div
         ref={containerRef}
         key={songId}
-        className="custom-scrollbar flex w-full max-w-2xl flex-1 flex-col items-center gap-7 overflow-y-auto px-12 py-8 animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)]"
+        className={`custom-scrollbar flex w-full flex-1 overflow-y-auto animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)] ${
+          isAudience ? "px-12 py-10 md:px-16 md:py-14" : "px-12 py-8"
+        }`}
       >
-        {lines.map((line, idx) => (
-          <LyricLine
-            key={idx}
-            line={line}
-            state={
-              isPlainText
-                ? "plain"
-                : idx === activeLineIndex
-                  ? "active"
-                  : idx < activeLineIndex
-                    ? "past"
-                    : "future"
-            }
-            adjustedMs={isPlainText ? 0 : adjustedMs}
-          />
-        ))}
+        <div
+          className={`mx-auto flex w-full flex-col items-center ${
+            isAudience
+              ? "min-h-full max-w-[min(92vw,1600px)] justify-center gap-10"
+              : "max-w-2xl gap-7"
+          }`}
+        >
+          {lines.map((line, idx) => (
+            <LyricLine
+              key={idx}
+              line={line}
+              state={
+                isPlainText
+                  ? "plain"
+                  : idx === activeLineIndex
+                    ? "active"
+                    : idx < activeLineIndex
+                      ? "past"
+                      : "future"
+              }
+              adjustedMs={isPlainText ? 0 : adjustedMs}
+              presentation={presentation}
+            />
+          ))}
+        </div>
       </div>
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-6 pb-5"
-        data-visible={utilityControlsPinned}
-      >
-        <LyricsOffsetControl
-          className="contextual-reveal pointer-events-auto"
+      {!isAudience && (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-6 pb-5"
           data-visible={utilityControlsPinned}
-        />
-      </div>
+        >
+          <LyricsOffsetControl
+            className="contextual-reveal pointer-events-auto"
+            data-visible={utilityControlsPinned}
+          />
+        </div>
+      )}
     </div>
   );
 }

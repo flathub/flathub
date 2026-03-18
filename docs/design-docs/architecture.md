@@ -38,19 +38,19 @@ User's local music files
 
 ## Tech Stack
 
-| Layer             | Technology                                           |
-| ----------------- | ---------------------------------------------------- |
-| Desktop framework | Tauri 2 (Rust + WebView)                             |
-| Frontend          | React + TypeScript + Vite                            |
-| Audio decode      | symphonia (Rust)                                     |
-| Audio playback    | cpal (Rust)                                          |
-| AI inference      | ONNX Runtime (ort crate)                             |
-| AI model          | Demucs v4 (HTDemucs), ONNX export                    |
-| Lyrics sources    | LRCLIB, embedded tags, sidecar `.lrc`, manual import |
-| Metadata          | lofty (Rust, ID3/Vorbis/FLAC tags)                   |
-| Cache / DB        | SQLite via rusqlite                                  |
-| Build / Bundle    | Tauri CLI + Vite                                     |
-| Distribution      | GitHub Releases, Homebrew                            |
+| Layer             | Technology                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop framework | [Tauri 2](https://github.com/tauri-apps/tauri) (Rust + WebView)                                                                             |
+| Frontend          | [React](https://github.com/facebook/react) + [TypeScript](https://github.com/microsoft/TypeScript) + [Vite](https://github.com/vitejs/vite) |
+| Audio decode      | [symphonia](https://github.com/pdeljanov/Symphonia) (Rust)                                                                                  |
+| Audio playback    | [cpal](https://github.com/RustAudio/cpal) (Rust)                                                                                            |
+| AI inference      | [ONNX Runtime](https://github.com/microsoft/onnxruntime) (ort crate)                                                                        |
+| AI model          | Demucs v4 (HTDemucs), ONNX export                                                                                                           |
+| Lyrics API        | LRCLIB (primary), Musixmatch (fallback)                                                                                                     |
+| Metadata          | [lofty](https://github.com/Serial-ATA/lofty-rs) (Rust, ID3/Vorbis/FLAC tags)                                                                |
+| Cache / DB        | [SQLite](https://github.com/sqlite/sqlite) via rusqlite                                                                                     |
+| Build / Bundle    | Tauri CLI + [Vite](https://github.com/vitejs/vite)                                                                                          |
+| Distribution      | GitHub Releases, Homebrew                                                                                                                   |
 
 ## Data Flow
 
@@ -71,11 +71,12 @@ User's local music files
 
 ```
 1. Use song title + artist from metadata
-2. Query LRCLIB for synced LRC lyrics
-3. If not found, check for embedded lyrics in audio file tags
-4. If not found, check for a same-basename `.lrc` sidecar file
-5. If still not found, return no online result and let the user import or enter lyrics manually
-6. Cache resolved lyrics in SQLite (source: "lrclib" | "embedded" | "sidecar" | "manual")
+2. Query LRCLIB API for synced LRC lyrics
+3. If not found, try Musixmatch API
+4. If not found, check for embedded lyrics in audio file tags
+5. If not found, check for .lrc file alongside audio file
+6. User can also: import .lrc files (auto-matched) or type lyrics manually
+7. Cache result in SQLite (source: "lrclib" | "embedded" | "sidecar" | "file_import" | "manual")
 ```
 
 ### Playback
@@ -122,13 +123,14 @@ GET https://lrclib.net/api/get?track_name={title}&artist_name={artist}&album_nam
 
 ### Lyrics Fetch Priority
 
-| Priority | Source                  | Notes                                                               |
-| -------- | ----------------------- | ------------------------------------------------------------------- |
-| 1        | LRCLIB API              | Best coverage for synced lyrics                                     |
-| 2        | Embedded lyrics in tags | ID3v2 SYLT/USLT or Vorbis lyrics tags extracted from the audio file |
-| 3        | Sidecar `.lrc` file     | Same directory, same basename as the audio file                     |
-| 4        | LRC file import         | User imports `.lrc` files and the app matches them to songs         |
-| 5        | Manual input            | User-pasted or manually edited plain text or LRC                    |
+| Priority | Source                  | Notes                                                             |
+| -------- | ----------------------- | ----------------------------------------------------------------- |
+| 1        | LRCLIB API              | Best coverage for synced lyrics                                   |
+| 2        | Musixmatch API          | Wider catalog, free tier has rate limits                          |
+| 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag — extracted during import      |
+| 4        | Sidecar .lrc file       | Same directory, same filename as audio                            |
+| 5        | LRC file import         | User imports .lrc files, auto-matched by filename or artist/title |
+| 6        | Manual input            | User-typed plain text or LRC with auto-detection                  |
 
 ### Playback Sync Mechanism
 
@@ -216,7 +218,7 @@ This is a nice-to-have, not MVP scope.
 
 All expensive computations are cached to avoid redundant processing:
 
-- **Separated stems**: Stored as OGG/Vorbis files in `~/.openkara/cache/stems/{hash}/`
+- **Separated stems**: Stored as WAV files in `~/.openkara/cache/stems/{hash}/`
 - **Lyrics**: Stored in SQLite with song hash as key
 - **Metadata**: Stored in SQLite for library browsing
 - **Timing offsets**: Stored in SQLite per song hash

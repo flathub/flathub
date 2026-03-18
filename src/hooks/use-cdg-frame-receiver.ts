@@ -60,6 +60,47 @@ export async function startCdgFrameReceiver({
  * path as the main window. A base64 Tauri-event fallback remains for runtimes
  * without `BroadcastChannel` support.
  */
+/**
+ * Create rAF-gated frame painting callbacks.
+ *
+ * Instead of painting every incoming frame immediately, we buffer the latest
+ * frame and paint it on the next `requestAnimationFrame`. This:
+ * - Naturally drops intermediate frames (only the latest is painted per vsync)
+ * - Syncs painting to the display refresh rate
+ * - Eliminates queue buildup from BroadcastChannel message delivery jitter
+ */
+function createRafGatedPainter<T>(paint: (frame: T) => void): {
+  enqueue: (frame: T) => void;
+  cancel: () => void;
+} {
+  let latestFrame: T | null = null;
+  let rafId = 0;
+
+  const flush = () => {
+    rafId = 0;
+    if (latestFrame !== null) {
+      paint(latestFrame);
+      latestFrame = null;
+    }
+  };
+
+  return {
+    enqueue: (frame: T) => {
+      latestFrame = frame;
+      if (!rafId) {
+        rafId = requestAnimationFrame(flush);
+      }
+    },
+    cancel: () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      latestFrame = null;
+    },
+  };
+}
+
 export function useCdgFrameReceiver(): void {
   const setSong = useCdgStore((s) => s.setSong);
   const clear = useCdgStore((s) => s.clear);
@@ -67,12 +108,14 @@ export function useCdgFrameReceiver(): void {
   useEffect(() => {
     const channel = getCdgSyncChannel();
     if (channel) {
-      return startCdgSyncReceiver({
+      const painter = createRafGatedPainter<ArrayBuffer>(drawFrame);
+      const stopReceiver = startCdgSyncReceiver({
         channel,
         onFrame: (payload) => {
-          drawFrame(payload);
+          painter.enqueue(payload);
         },
         onClear: () => {
+          painter.cancel();
           clear();
           clearFrame();
         },
@@ -84,21 +127,28 @@ export function useCdgFrameReceiver(): void {
           }
         },
       });
+
+      return () => {
+        painter.cancel();
+        stopReceiver();
+      };
     }
 
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
+    const painter = createRafGatedPainter<string>(drawFrameFromBase64);
 
     void startCdgFrameReceiver({
       listen,
       emitSyncRequest: () => emitTo("main", "cdg-request-sync", null),
       onFrame: (payload) => {
         if (!cancelled) {
-          drawFrameFromBase64(payload);
+          painter.enqueue(payload);
         }
       },
       onClear: () => {
         if (!cancelled) {
+          painter.cancel();
           clear();
           clearFrame();
         }
@@ -124,6 +174,7 @@ export function useCdgFrameReceiver(): void {
 
     return () => {
       cancelled = true;
+      painter.cancel();
       for (const fn of unlisteners) fn();
     };
   }, [clear, setSong]);

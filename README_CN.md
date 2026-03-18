@@ -114,20 +114,20 @@ OpenKara 使用自定义 ONNX 格式的 [Demucs](https://github.com/adefossez/de
 
 ## 技术栈
 
-| 层级     | 技术                                                                             | 用途                         |
-| -------- | -------------------------------------------------------------------------------- | ---------------------------- |
-| 桌面框架 | [Tauri 2](https://v2.tauri.app/)                                                 | Rust 后端 + 系统 WebView     |
-| 前端     | React 19 + TypeScript 5                                                          | UI 组件                      |
-| 构建工具 | Vite 7                                                                           | 开发服务器与生产构建         |
-| 样式     | Tailwind CSS 4                                                                   | 原子化 CSS                   |
-| 状态管理 | Zustand                                                                          | 轻量全局状态                 |
-| 音频解码 | [symphonia](https://github.com/pdeljanov/Symphonia)                              | 纯 Rust 解码器               |
-| 音频输出 | [cpal](https://github.com/RustAudio/cpal)                                        | 跨平台音频播放               |
-| AI 推理  | [ONNX Runtime](https://onnxruntime.ai/) via [ort](https://github.com/pykeio/ort) | Demucs v4 音轨分离           |
-| 歌词     | [LRCLIB](https://lrclib.net/)                                                    | 开放同步歌词 API             |
-| 元数据   | [lofty](https://github.com/Serial-ATA/lofty-rs)                                  | ID3v2、Vorbis、FLAC 标签读取 |
-| 音频编码 | [vorbis_rs](https://crates.io/crates/vorbis_rs)                                  | OGG/Vorbis 音轨压缩          |
-| 数据库   | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite)                      | 歌曲、歌词与 stems 缓存      |
+| 层级     | 技术                                                                                                    | 用途                         |
+| -------- | ------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 桌面框架 | [Tauri 2](https://github.com/tauri-apps/tauri)                                                          | Rust 后端 + 系统 WebView     |
+| 前端     | [React](https://github.com/facebook/react) 19 + [TypeScript](https://github.com/microsoft/TypeScript) 5 | UI 组件                      |
+| 构建工具 | [Vite](https://github.com/vitejs/vite) 7                                                                | 开发服务器与生产构建         |
+| 样式     | [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) 4                                           | 原子化 CSS                   |
+| 状态管理 | [Zustand](https://github.com/pmndrs/zustand)                                                            | 轻量全局状态                 |
+| 音频解码 | [symphonia](https://github.com/pdeljanov/Symphonia)                                                     | 纯 Rust 解码器               |
+| 音频输出 | [cpal](https://github.com/RustAudio/cpal)                                                               | 跨平台音频播放               |
+| AI 推理  | [ONNX Runtime](https://github.com/microsoft/onnxruntime) via [ort](https://github.com/pykeio/ort)       | Demucs v4 音轨分离           |
+| 歌词     | [LRCLIB](https://lrclib.net/)                                                                           | 开放同步歌词 API             |
+| 元数据   | [lofty](https://github.com/Serial-ATA/lofty-rs)                                                         | ID3v2、Vorbis、FLAC 标签读取 |
+| 音频编码 | [vorbis_rs](https://github.com/ComunidadAylas/vorbis-rs)                                                | OGG/Vorbis 音轨压缩          |
+| 数据库   | [SQLite](https://github.com/sqlite/sqlite) via [rusqlite](https://github.com/rusqlite/rusqlite)         | 歌曲、歌词与 stems 缓存      |
 
 ## 系统架构
 

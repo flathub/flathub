@@ -399,13 +399,13 @@ The ONNX model (~289 MB) is not in the repo. Options:
 
 ## Technology Decision Log
 
-| Decision          | Chosen             | Alternatives Considered        | Reason                                            |
-| ----------------- | ------------------ | ------------------------------ | ------------------------------------------------- |
-| Desktop framework | Tauri 2            | Electron, Flutter              | Bundle size, Rust native perf for audio/AI        |
-| Audio decode      | symphonia          | FFmpeg binding                 | Pure Rust, no C dependency hell                   |
-| Audio output      | cpal               | rodio                          | Lower-level control needed for seek/buffer        |
-| AI runtime        | ONNX Runtime (ort) | PyTorch C++, TFLite            | Broadest hardware support, Demucs has ONNX export |
-| Lyrics API        | LRCLIB             | Musixmatch, Genius             | Free, no API key, good synced lyrics coverage     |
-| State management  | Zustand            | Redux, Jotai                   | Minimal boilerplate for small app                 |
-| Styling           | Tailwind CSS       | styled-components, CSS Modules | No runtime, great DX                              |
-| Database          | SQLite (rusqlite)  | sled, redb                     | Mature, SQL queries, Tauri plugin ecosystem       |
+| Decision          | Chosen                                                         | Alternatives Considered        | Reason                                            |
+| ----------------- | -------------------------------------------------------------- | ------------------------------ | ------------------------------------------------- |
+| Desktop framework | [Tauri 2](https://github.com/tauri-apps/tauri)                 | Electron, Flutter              | Bundle size, Rust native perf for audio/AI        |
+| Audio decode      | [symphonia](https://github.com/pdeljanov/Symphonia)            | FFmpeg binding                 | Pure Rust, no C dependency hell                   |
+| Audio output      | [cpal](https://github.com/RustAudio/cpal)                      | rodio                          | Lower-level control needed for seek/buffer        |
+| AI runtime        | [ONNX Runtime](https://github.com/microsoft/onnxruntime) (ort) | PyTorch C++, TFLite            | Broadest hardware support, Demucs has ONNX export |
+| Lyrics API        | LRCLIB                                                         | Musixmatch, Genius             | Free, no API key, good synced lyrics coverage     |
+| State management  | [Zustand](https://github.com/pmndrs/zustand)                   | Redux, Jotai                   | Minimal boilerplate for small app                 |
+| Styling           | [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss)    | styled-components, CSS Modules | No runtime, great DX                              |
+| Database          | [SQLite](https://github.com/sqlite/sqlite) (rusqlite)          | sled, redb                     | Mature, SQL queries, Tauri plugin ecosystem       |

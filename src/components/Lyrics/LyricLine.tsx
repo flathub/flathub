@@ -5,6 +5,7 @@ interface LyricLineProps {
   line: LyricLineType;
   state: "active" | "past" | "future" | "plain";
   adjustedMs: number;
+  presentation?: "standard" | "audience";
 }
 
 function getWordState(
@@ -21,9 +22,18 @@ function getWordState(
   return hasLaterWordStarted ? "past" : "active";
 }
 
-export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
+export function LyricLine({
+  line,
+  state,
+  adjustedMs,
+  presentation = "standard",
+}: LyricLineProps) {
   const seek = usePlayerStore((s) => s.seek);
   const isSeekable = state !== "plain";
+  const textSizeClass =
+    presentation === "audience"
+      ? "text-4xl font-bold tracking-tight md:text-6xl xl:text-7xl"
+      : "text-2xl font-bold tracking-tight md:text-3xl";
 
   const handleClick = () => {
     if (!isSeekable) return;
@@ -40,7 +50,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
       } ${state === "active" ? "scale-105 drop-shadow-md" : ""}`}
     >
       {hasWords ? (
-        <span className="text-2xl font-bold tracking-tight md:text-3xl">
+        <span className={textSizeClass}>
           {line.words!.map((word, idx) => {
             // When the whole line is past or future, all words use the line-level color
             const wordState =
@@ -79,7 +89,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
         </span>
       ) : (
         <span
-          className={`motion-surface text-2xl font-bold tracking-tight md:text-3xl ${
+          className={`motion-surface ${textSizeClass} ${
             state === "plain" || state === "active"
               ? "text-white"
               : state === "past"

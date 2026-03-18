@@ -114,20 +114,20 @@ On first launch, OpenKara automatically downloads the standard model into the ap
 
 ## Tech Stack
 
-| Layer             | Technology                                                                       | Purpose                         |
-| ----------------- | -------------------------------------------------------------------------------- | ------------------------------- |
-| Desktop framework | [Tauri 2](https://v2.tauri.app/)                                                 | Rust backend + system WebView   |
-| Frontend          | React 19 + TypeScript 5                                                          | UI components                   |
-| Bundler           | Vite 7                                                                           | Dev server and build            |
-| Styling           | Tailwind CSS 4                                                                   | Utility-first CSS               |
-| State             | Zustand                                                                          | Lightweight global state        |
-| Audio decode      | [symphonia](https://github.com/pdeljanov/Symphonia)                              | Pure-Rust codec support         |
-| Audio output      | [cpal](https://github.com/RustAudio/cpal)                                        | Cross-platform audio playback   |
-| AI inference      | [ONNX Runtime](https://onnxruntime.ai/) via [ort](https://github.com/pykeio/ort) | Demucs v4 stem separation       |
-| Lyrics            | [LRCLIB](https://lrclib.net/)                                                    | Open synced lyrics API          |
-| Metadata          | [lofty](https://github.com/Serial-ATA/lofty-rs)                                  | ID3v2, Vorbis, FLAC tag reading |
-| Audio encode      | [vorbis_rs](https://crates.io/crates/vorbis_rs)                                  | OGG/Vorbis stem compression     |
-| Database          | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite)                      | Song, lyrics, and stems cache   |
+| Layer             | Technology                                                                                              | Purpose                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Desktop framework | [Tauri 2](https://github.com/tauri-apps/tauri)                                                          | Rust backend + system WebView   |
+| Frontend          | [React](https://github.com/facebook/react) 19 + [TypeScript](https://github.com/microsoft/TypeScript) 5 | UI components                   |
+| Bundler           | [Vite](https://github.com/vitejs/vite) 7                                                                | Dev server and build            |
+| Styling           | [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) 4                                           | Utility-first CSS               |
+| State             | [Zustand](https://github.com/pmndrs/zustand)                                                            | Lightweight global state        |
+| Audio decode      | [symphonia](https://github.com/pdeljanov/Symphonia)                                                     | Pure-Rust codec support         |
+| Audio output      | [cpal](https://github.com/RustAudio/cpal)                                                               | Cross-platform audio playback   |
+| AI inference      | [ONNX Runtime](https://github.com/microsoft/onnxruntime) via [ort](https://github.com/pykeio/ort)       | Demucs v4 stem separation       |
+| Lyrics            | [LRCLIB](https://lrclib.net/)                                                                           | Open synced lyrics API          |
+| Metadata          | [lofty](https://github.com/Serial-ATA/lofty-rs)                                                         | ID3v2, Vorbis, FLAC tag reading |
+| Audio encode      | [vorbis_rs](https://github.com/ComunidadAylas/vorbis-rs)                                                | OGG/Vorbis stem compression     |
+| Database          | [SQLite](https://github.com/sqlite/sqlite) via [rusqlite](https://github.com/rusqlite/rusqlite)         | Song, lyrics, and stems cache   |
 
 ## Architecture
 
@@ -214,6 +214,7 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 - [x] First-launch AI model bootstrap with background download
 - [x] Portable library system with relative paths
 - [x] Full frontend UI (sidebar, player, lyrics panel, settings)
+- [x] Queue panel with play next, drag reorder, and auto-advance
 - [x] Keyboard shortcuts (space, arrows)
 - [x] Drag-and-drop file import
 - [x] CI/CD pipeline (macOS, Windows, Linux)
@@ -221,6 +222,10 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 
 ### ✅ v0.2.0 — Current Release
 
+- [x] CD+G sidecar playback for same-name audio + `.cdg` pairs
+- [x] MP3+G ZIP import and playback support
+- [x] Managed CD+G library storage and pairing disambiguation
+- [x] Second-display fullscreen audience window
 - [x] 4-stem volume mixer with collapsible UI
 - [x] Dual separation modes (2-stem / 4-stem) with settings persistence
 - [x] Efficient compressed stem storage
@@ -234,10 +239,9 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 ### 📋 Future
 
 - **Mic Input & Vocal Effects** — Microphone capture, reverb, echo, volume mix
-- **Playlist & Queue** — Multi-song queue, multi-user turn-based singing
+- **Saved Playlists & Singer Rotation** — Named playlists, singer assignment, and stronger turn-based queue workflows
 - **Pitch & Key Shift** — Real-time pitch shifting of the accompaniment track
 - **Session Recording** — Record vocal performances, export as audio
-- **Multi-screen Support** — Second display for audience lyrics view
 - **CJK Transliteration** — Romaji / Pinyin display alongside original lyrics
 
 ## Development

@@ -2,8 +2,34 @@ import { useEffect, useRef } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
+const LYRICS_SYNC_INTERVAL_MS = 33;
+
+function syncLyricsToPlayback(prevIndexRef: { current: number }) {
+  const { snapshot, positionMs } = usePlayerStore.getState();
+  const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
+
+  if (!snapshot?.is_playing || lines.length === 0) {
+    return;
+  }
+
+  const adjustedMs = positionMs - offsetMs;
+  const index = binarySearchLine(lines, adjustedMs);
+
+  if (index !== prevIndexRef.current) {
+    prevIndexRef.current = index;
+    setActiveLineIndex(index);
+  }
+}
+
+export function startLyricsSyncLoop(
+  tick: () => void,
+  timers: Pick<typeof globalThis, "setInterval" | "clearInterval"> = globalThis,
+): () => void {
+  const timer = timers.setInterval(tick, LYRICS_SYNC_INTERVAL_MS);
+  return () => timers.clearInterval(timer);
+}
+
 export function useLyricsSync(enabled = true): void {
-  const rafRef = useRef<number>(0);
   const prevIndexRef = useRef(-1);
 
   useEffect(() => {
@@ -11,42 +37,19 @@ export function useLyricsSync(enabled = true): void {
       return;
     }
 
-    const tick = () => {
-      const { snapshot, positionMs } = usePlayerStore.getState();
-      const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
+    const stopLoop = startLyricsSyncLoop(() =>
+      syncLyricsToPlayback(prevIndexRef),
+    );
 
-      if (!snapshot?.is_playing || lines.length === 0) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      const adjustedMs = positionMs - offsetMs;
-      const index = binarySearchLine(lines, adjustedMs);
-
-      if (index !== prevIndexRef.current) {
-        prevIndexRef.current = index;
-        setActiveLineIndex(index);
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-
-    // Force-sync lyrics when window regains focus (macOS throttles rAF
-    // for background windows, so activeLineIndex can fall behind).
+    // Force-sync lyrics when window regains focus so the current line snaps
+    // into place immediately after backgrounding or monitor changes.
     const syncNow = () => {
-      const { positionMs } = usePlayerStore.getState();
-      const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
-      if (lines.length === 0) return;
-      const index = binarySearchLine(lines, positionMs - offsetMs);
-      prevIndexRef.current = index;
-      setActiveLineIndex(index);
+      syncLyricsToPlayback(prevIndexRef);
     };
     window.addEventListener("focus", syncNow);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      stopLoop();
       window.removeEventListener("focus", syncNow);
     };
   }, [enabled]);

@@ -102,4 +102,15 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).toContain('text-white">line two</span>');
     expect(markup).not.toContain('text-[var(--color-active)]">line one</span>');
   });
+
+  test("uses fullscreen audience layout without edit chrome when requested", () => {
+    const markup = renderToStaticMarkup(
+      <LyricsPanel presentation="audience" />,
+    );
+
+    expect(markup).toContain("max-w-[min(92vw,1600px)]");
+    expect(markup).toContain("min-h-full");
+    expect(markup).not.toContain("contextual-reveal absolute right-4 top-4");
+    expect(markup).not.toContain("absolute inset-x-0 bottom-0");
+  });
 });
