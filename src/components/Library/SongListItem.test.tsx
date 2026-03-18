@@ -171,6 +171,37 @@ describe("SongListItem", () => {
     vi.unstubAllGlobals();
   });
 
+  test("renders a compact cover art thumbnail when cover art arrives as Uint8Array", () => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:cover"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        song={{
+          hash: "song-typed-array",
+          file_path: "Madvillain/Bistro.m4a",
+          cdg_path: null,
+          media_g_container: null,
+          title: "Bistro",
+          artist: "Madvillain",
+          album: null,
+          duration_ms: 67000,
+          cover_art: new Uint8Array([0xff, 0xd8, 0x00]),
+          imported_at: 0,
+          original_ext: "m4a",
+        }}
+        orderedHashes={["song-typed-array"]}
+      />,
+    );
+
+    expect(markup).toContain("<img");
+    expect(markup).toContain('src="blob:cover"');
+
+    vi.unstubAllGlobals();
+  });
+
   test("shows extract embedded cover art in the single-song context menu", () => {
     const labels = buildSongListContextMenuItems({
       t: (key: string) => key,

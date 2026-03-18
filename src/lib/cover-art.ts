@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import type { CoverArtBytes } from "@/types/ipc";
 
 interface CoverArtCacheEntry {
   refs: number;
@@ -7,20 +8,58 @@ interface CoverArtCacheEntry {
 
 const coverArtUrlCache = new Map<string, CoverArtCacheEntry>();
 
-export function detectCoverArtMime(bytes: number[]): string {
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return "image/jpeg";
+function ensureCoverArtBytes(input: CoverArtBytes): Uint8Array | null {
+  if (!input) {
+    return null;
+  }
+
+  // Tauri IPC usually preserves `Vec<u8>` as a JSON array, but binary values
+  // can also arrive as ArrayBuffer / typed-array views depending on the bridge
+  // path. Cover art rendering must normalize those runtime shapes first.
+  if (input instanceof ArrayBuffer) {
+    return new Uint8Array(input);
+  }
+
+  if (ArrayBuffer.isView(input)) {
+    return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  }
+
+  if (Array.isArray(input)) {
+    return new Uint8Array(input);
+  }
+
+  return null;
+}
+
+export function detectCoverArtMime(bytes: CoverArtBytes): string {
+  const normalizedBytes = ensureCoverArtBytes(bytes);
+  if (!normalizedBytes || normalizedBytes.byteLength === 0) {
+    return "image/jpeg";
+  }
+
+  if (normalizedBytes[0] === 0xff && normalizedBytes[1] === 0xd8) {
+    return "image/jpeg";
+  }
   if (
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
+    normalizedBytes[0] === 0x89 &&
+    normalizedBytes[1] === 0x50 &&
+    normalizedBytes[2] === 0x4e &&
+    normalizedBytes[3] === 0x47
   ) {
     return "image/png";
   }
-  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+  if (
+    normalizedBytes[0] === 0x47 &&
+    normalizedBytes[1] === 0x49 &&
+    normalizedBytes[2] === 0x46
+  ) {
     return "image/gif";
   }
-  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+  if (
+    normalizedBytes[0] === 0x52 &&
+    normalizedBytes[1] === 0x49 &&
+    normalizedBytes[2] === 0x46
+  ) {
     return "image/webp";
   }
   return "image/jpeg";
@@ -28,11 +67,13 @@ export function detectCoverArtMime(bytes: number[]): string {
 
 export function retainCoverArtUrl(
   songHash: string,
-  bytes: number[] | null,
+  bytes: CoverArtBytes,
 ): string | null {
+  const normalizedBytes = ensureCoverArtBytes(bytes);
+
   if (
-    !bytes ||
-    bytes.length === 0 ||
+    !normalizedBytes ||
+    normalizedBytes.byteLength === 0 ||
     typeof URL === "undefined" ||
     typeof URL.createObjectURL !== "function"
   ) {
@@ -46,7 +87,7 @@ export function retainCoverArtUrl(
   }
 
   const url = URL.createObjectURL(
-    new Blob([new Uint8Array(bytes)], { type: detectCoverArtMime(bytes) }),
+    new Blob([normalizedBytes], { type: detectCoverArtMime(normalizedBytes) }),
   );
 
   coverArtUrlCache.set(songHash, {
@@ -101,7 +142,7 @@ export function resetCoverArtCacheForTests(): void {
 
 export function useCoverArtUrl(
   songHash: string,
-  bytes: number[] | null,
+  bytes: CoverArtBytes,
 ): string | null {
   const url = useMemo(
     () => retainCoverArtUrl(songHash, bytes),

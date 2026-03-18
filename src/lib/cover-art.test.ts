@@ -59,4 +59,22 @@ describe("cover-art", () => {
     expect(second).toBe("blob:image/png");
     expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
   });
+
+  test("accepts Uint8Array cover bytes from the Tauri IPC bridge", () => {
+    const url = retainCoverArtUrl(
+      "song-typed-array",
+      new Uint8Array([0xff, 0xd8, 0x00]),
+    );
+
+    expect(url).toBe("blob:image/jpeg");
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  test("accepts ArrayBuffer cover bytes from the Tauri IPC bridge", () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
+    const url = retainCoverArtUrl("song-array-buffer", bytes);
+
+    expect(url).toBe("blob:image/png");
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+  });
 });

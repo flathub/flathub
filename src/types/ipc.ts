@@ -36,6 +36,8 @@ export interface CommandError {
 
 // ─── Library ─────────────────────────────────────────────
 
+export type CoverArtBytes = number[] | Uint8Array | ArrayBuffer | null;
+
 export interface Song {
   hash: string;
   file_path: string;
@@ -45,7 +47,7 @@ export interface Song {
   artist: string | null;
   album: string | null;
   duration_ms: number;
-  cover_art: number[] | null;
+  cover_art: CoverArtBytes;
   imported_at: number;
   original_ext: string | null;
 }

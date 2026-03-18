@@ -1,8 +1,9 @@
 import { useCoverArtUrl } from "@/lib/cover-art";
+import type { CoverArtBytes } from "@/types/ipc";
 
 interface CoverArtThumbnailProps {
   songHash: string;
-  coverArt: number[] | null;
+  coverArt: CoverArtBytes;
   alt: string;
   className?: string;
 }
