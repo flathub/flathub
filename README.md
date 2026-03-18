@@ -159,15 +159,16 @@ On first launch, OpenKara automatically downloads the standard model into the ap
 
 ## Supported Formats
 
-| Format       | Import | Stem Separation |
-| ------------ | ------ | --------------- |
-| MP3          | ✅     | ✅              |
-| FLAC         | ✅     | ✅              |
-| WAV          | ✅     | ✅              |
-| OGG / Vorbis | ✅     | ✅              |
-| AAC / M4A    | ✅     | ✅              |
+| Format       | Import | CD+G Graphics                  | Stem Separation |
+| ------------ | ------ | ------------------------------ | --------------- |
+| MP3          | ✅     | Same-name `.cdg` sidecar       | ✅              |
+| FLAC         | ✅     | Same-name `.cdg` sidecar       | ✅              |
+| WAV          | ✅     | Same-name `.cdg` sidecar       | ✅              |
+| OGG / Vorbis | ✅     | Same-name `.cdg` sidecar       | ✅              |
+| AAC / M4A    | ✅     | Same-name `.cdg` sidecar       | ✅              |
+| MP3+G ZIP    | ✅     | Embedded audio + `.cdg` bundle | N/A             |
 
-All audio is resampled to 44.1 kHz stereo for the Demucs model.
+OpenKara imports same-name audio + `.cdg` pairs as managed CD+G tracks, and it can also import MP3+G ZIP archives directly. Standard audio tracks are resampled to 44.1 kHz stereo for the Demucs model. Managed CD+G tracks already contain accompaniment-only audio, so they skip stem separation.
 
 ## Portable Library
 
@@ -177,9 +178,13 @@ OpenKara stores all data in a self-contained library directory:
 MyKaraokeLibrary/
 ├── .openkara-library       # marker file
 ├── openkara.db             # SQLite database
-├── media/                  # imported audio copies
+├── media/                  # imported standard audio copies
 │   └── {hash}.mp3
-└── stems/                  # separated tracks
+├── media-g/                # managed CD+G assets
+│   ├── {hash}.mp3          # paired audio for CD+G playback
+│   ├── {hash}.cdg          # paired CD+G graphics sidecar
+│   └── {hash}.zip          # MP3+G ZIP archive when imported as a bundle
+└── stems/                  # separated tracks for standard audio imports
     └── {hash}/
         ├── vocals.ogg
         ├── accompaniment.ogg   # 2-stem mode
@@ -188,7 +193,7 @@ MyKaraokeLibrary/
         └── other.ogg           # 4-stem mode
 ```
 
-All paths in the database are relative — the library can be moved to a NAS, USB drive, or network share and opened by any OpenKara instance on any OS. Per-machine configuration (library location) is stored separately in the app data directory.
+All paths in the database are relative — including CD+G sidecars and MP3+G ZIP assets — so the whole library can be moved to a NAS, USB drive, or network share and opened by any OpenKara instance on any OS. Per-machine configuration (library location) is stored separately in the app data directory.
 
 ## Roadmap
 
