@@ -21,6 +21,7 @@ export function Sidebar() {
   const hideBatchSeparate = useSettingsStore((s) => s.hideBatchSeparate);
   const stemMode = useSettingsStore((s) => s.stemMode);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
+  const separableSongs = songs.filter((song) => song.media_g_container == null);
 
   const separatedCount = songs.filter(
     (s) => separationStatuses[s.hash]?.state === "completed",
@@ -29,15 +30,15 @@ export function Sidebar() {
   // Check if all songs are separated in the current stem mode.
   // Treat "running" as separated — a song being re-separated was previously completed.
   const allSeparated =
-    songs.length > 0 &&
-    songs.every((s) => {
+    separableSongs.length > 0 &&
+    separableSongs.every((s) => {
       const status = separationStatuses[s.hash];
       return status?.state === "completed" || status?.state === "running";
     });
 
   const allMatchCurrentMode =
     allSeparated &&
-    songs.every((s) => {
+    separableSongs.every((s) => {
       const status = separationStatuses[s.hash];
       if (!status) return false;
       if (status.state === "running") return true; // being processed, count as matching
@@ -50,7 +51,9 @@ export function Sidebar() {
     allSeparated && !allMatchCurrentMode && stemMode === "four_stem";
 
   const shouldHideButton =
-    hideBatchSeparate || (allSeparated && allMatchCurrentMode);
+    hideBatchSeparate ||
+    separableSongs.length === 0 ||
+    (allSeparated && allMatchCurrentMode);
 
   const handleSeparateAll = () => {
     api.batchSeparate([]).catch(notifyError);
@@ -162,7 +165,7 @@ export function Sidebar() {
           ) : (
             <button
               onClick={handleSeparateAll}
-              disabled={songs.length === 0}
+              disabled={separableSongs.length === 0}
               className="motion-surface flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white disabled:opacity-40"
             >
               <Layers size={12} />

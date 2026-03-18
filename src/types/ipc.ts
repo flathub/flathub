@@ -72,7 +72,15 @@ export interface ImportSongsResult {
 
 export interface ImportSongsOptions {
   explicit_cdg_by_audio_path: Record<string, string>;
-  skip_cdg_for_audio_paths: string[];
+  skip_cdg_for_audio_paths?: string[];
+}
+
+export interface ImportCandidateDetails {
+  path: string;
+  format: string;
+  bit_rate: number | null;
+  file_size: number;
+  duration_ms: number | null;
 }
 
 export interface DeleteSongsFailure {

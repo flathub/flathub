@@ -109,12 +109,11 @@ describe("library-store updateSongMetadata", () => {
       stem: "track",
     });
     expect(mockImportSongs).toHaveBeenCalledWith(
-      ["/tmp/track.mp3", "/tmp/track.flac", "/tmp/track.cdg"],
+      ["/tmp/track.flac", "/tmp/track.cdg"],
       {
         explicit_cdg_by_audio_path: {
           "/tmp/track.flac": "/tmp/track.cdg",
         },
-        skip_cdg_for_audio_paths: ["/tmp/track.mp3"],
       },
     );
   });

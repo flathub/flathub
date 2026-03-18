@@ -97,16 +97,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const audioPaths = paths.filter((p) => !p.toLowerCase().endsWith(".lrc"));
       const lrcPaths = paths.filter((p) => p.toLowerCase().endsWith(".lrc"));
       const explicitSelections: ExplicitCdgSelection[] = [];
-      const skippedCdgAudioPaths = new Set<string>();
+      const excludedAmbiguousAudioPaths = new Set<string>();
 
       for (const request of buildAmbiguousCdgChoiceRequests(audioPaths)) {
         const selectedAudioPath = await get().promptForCdgChoice(request);
-        for (const candidate of request.audioCandidates) {
-          if (candidate !== selectedAudioPath) {
-            skippedCdgAudioPaths.add(candidate);
-          }
-        }
         if (selectedAudioPath) {
+          for (const candidate of request.audioCandidates) {
+            if (candidate !== selectedAudioPath) {
+              excludedAmbiguousAudioPaths.add(candidate);
+            }
+          }
           explicitSelections.push({
             audioPath: selectedAudioPath,
             cdgPath: request.cdgPath,
@@ -114,14 +114,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         }
       }
 
+      const audioPathsToImport = audioPaths.filter(
+        (path) => !excludedAmbiguousAudioPaths.has(path),
+      );
+
       // Import audio files
-      if (audioPaths.length > 0) {
+      if (audioPathsToImport.length > 0) {
         const result = await api.importSongs(
-          audioPaths,
-          buildImportSongsOptions(
-            explicitSelections,
-            [...skippedCdgAudioPaths].sort(),
-          ),
+          audioPathsToImport,
+          buildImportSongsOptions(explicitSelections),
         );
         if (result.failed.length > 0) {
           set({ importErrors: result.failed });

@@ -96,8 +96,6 @@ export function useCdgSync(enabled = true): void {
   const songs = useLibraryStore((s) => s.songs);
   const setSong = useCdgStore((s) => s.setSong);
   const clear = useCdgStore((s) => s.clear);
-  const rafRef = useRef<number>(0);
-  const lastCallRef = useRef(0);
   const pendingRef = useRef(false);
   const currentSongHasCdg = songHasCdgMedia(
     songs.find((song) => song.hash === songId) ?? null,
@@ -175,7 +173,6 @@ export function useCdgSync(enabled = true): void {
           drawFrame(buffer);
           emitCdgFrame(buffer);
           emitCdgStatus(songId, true);
-          lastCallRef.current = 0;
           return;
         }
 
@@ -197,22 +194,13 @@ export function useCdgSync(enabled = true): void {
   useEffect(() => {
     if (!enabled) return;
 
-    const tick = () => {
+    const stopPolling = startCdgPollingLoop(() => {
       const { snapshot, positionMs } = usePlayerStore.getState();
       const { hasCdg } = useCdgStore.getState();
 
-      if (!hasCdg || !snapshot?.is_playing) {
-        rafRef.current = requestAnimationFrame(tick);
+      if (!hasCdg || !snapshot?.is_playing || pendingRef.current) {
         return;
       }
-
-      const now = performance.now();
-      if (now - lastCallRef.current < MIN_INTERVAL_MS || pendingRef.current) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      lastCallRef.current = now;
       pendingRef.current = true;
 
       // PERF: The hot frame path stays out of React state. The IPC returns a
@@ -233,14 +221,18 @@ export function useCdgSync(enabled = true): void {
         .finally(() => {
           pendingRef.current = false;
         });
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
+    });
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      stopPolling();
     };
   }, [enabled]);
+}
+
+export function startCdgPollingLoop(
+  tick: () => void,
+  timers: Pick<typeof globalThis, "setInterval" | "clearInterval"> = globalThis,
+): () => void {
+  const timer = timers.setInterval(tick, MIN_INTERVAL_MS);
+  return () => timers.clearInterval(timer);
 }

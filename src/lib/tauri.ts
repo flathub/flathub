@@ -4,6 +4,7 @@ import type {
   DeleteSongsResult,
   DeleteStemsResult,
   DowngradeResult,
+  ImportCandidateDetails,
   ImportLyricsResult,
   ImportSongsOptions,
   ImportSongsResult,
@@ -38,6 +39,14 @@ export function importSongs(
   options?: ImportSongsOptions,
 ): Promise<ImportSongsResult> {
   return invoke<ImportSongsResult>("import_songs", { paths, options });
+}
+
+export function getImportCandidateDetails(
+  paths: string[],
+): Promise<ImportCandidateDetails[]> {
+  return invoke<ImportCandidateDetails[]>("get_import_candidate_details", {
+    paths,
+  });
 }
 
 export function getLibrary(): Promise<Song[]> {

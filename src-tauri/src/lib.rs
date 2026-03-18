@@ -136,6 +136,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap::get_model_bootstrap_status,
             commands::import::import_songs,
+            commands::import::get_import_candidate_details,
             commands::import::get_library,
             commands::import::search_library,
             commands::import::delete_songs,

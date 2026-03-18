@@ -130,10 +130,15 @@ export function buildImportSongsOptions(
     return undefined;
   }
 
-  return {
+  const options: ImportSongsOptions = {
     explicit_cdg_by_audio_path: Object.fromEntries(
       selections.map(({ audioPath, cdgPath }) => [audioPath, cdgPath]),
     ),
-    skip_cdg_for_audio_paths: skippedAudioPaths,
   };
+
+  if (skippedAudioPaths.length > 0) {
+    options.skip_cdg_for_audio_paths = skippedAudioPaths;
+  }
+
+  return options;
 }
