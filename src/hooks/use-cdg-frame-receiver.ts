@@ -61,23 +61,27 @@ export async function startCdgFrameReceiver({
  * without `BroadcastChannel` support.
  */
 /**
- * Create rAF-gated frame painting callbacks.
+ * Create a coalescing frame painter that buffers the latest frame and paints it
+ * on the next macrotask via `setTimeout(0)`.
  *
- * Instead of painting every incoming frame immediately, we buffer the latest
- * frame and paint it on the next `requestAnimationFrame`. This:
- * - Naturally drops intermediate frames (only the latest is painted per vsync)
- * - Syncs painting to the display refresh rate
- * - Eliminates queue buildup from BroadcastChannel message delivery jitter
+ * IMPORTANT: We deliberately avoid `requestAnimationFrame` here because macOS
+ * throttles (or completely suspends) rAF callbacks for non-focused windows.
+ * The fullscreen player window is typically unfocused (the user interacts with
+ * the main window), so rAF would cause the CDG canvas to freeze.
+ *
+ * `setTimeout(0)` coalesces multiple BroadcastChannel messages that arrive in
+ * the same event-loop tick into a single paint, dropping intermediate frames.
+ * It fires reliably regardless of window focus state.
  */
-function createRafGatedPainter<T>(paint: (frame: T) => void): {
+function createCoalescingPainter<T>(paint: (frame: T) => void): {
   enqueue: (frame: T) => void;
   cancel: () => void;
 } {
   let latestFrame: T | null = null;
-  let rafId = 0;
+  let timerId: ReturnType<typeof setTimeout> | null = null;
 
   const flush = () => {
-    rafId = 0;
+    timerId = null;
     if (latestFrame !== null) {
       paint(latestFrame);
       latestFrame = null;
@@ -87,14 +91,14 @@ function createRafGatedPainter<T>(paint: (frame: T) => void): {
   return {
     enqueue: (frame: T) => {
       latestFrame = frame;
-      if (!rafId) {
-        rafId = requestAnimationFrame(flush);
+      if (timerId === null) {
+        timerId = setTimeout(flush, 0);
       }
     },
     cancel: () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = 0;
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
       }
       latestFrame = null;
     },
@@ -108,7 +112,7 @@ export function useCdgFrameReceiver(): void {
   useEffect(() => {
     const channel = getCdgSyncChannel();
     if (channel) {
-      const painter = createRafGatedPainter<ArrayBuffer>(drawFrame);
+      const painter = createCoalescingPainter<ArrayBuffer>(drawFrame);
       const stopReceiver = startCdgSyncReceiver({
         channel,
         onFrame: (payload) => {
@@ -136,7 +140,7 @@ export function useCdgFrameReceiver(): void {
 
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
-    const painter = createRafGatedPainter<string>(drawFrameFromBase64);
+    const painter = createCoalescingPainter<string>(drawFrameFromBase64);
 
     void startCdgFrameReceiver({
       listen,
