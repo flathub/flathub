@@ -1,6 +1,8 @@
+import { useRef, useState } from "react";
 import { PanelLeft, UploadCloud, Settings, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ImportButton } from "@/components/Library/ImportButton";
+import { MonitorPicker } from "@/components/Player/MonitorPicker";
 
 interface ToolbarProps {
   onToggleSidebar: () => void;
@@ -16,6 +18,9 @@ export function Toolbar({
   sidebarVisible,
 }: ToolbarProps) {
   const { t } = useTranslation();
+  const [monitorPickerOpen, setMonitorPickerOpen] = useState(false);
+  const fullscreenBtnRef = useRef<HTMLButtonElement>(null);
+
   return (
     <div
       className="flex h-12 shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] px-4 shadow-[0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl"
@@ -49,9 +54,21 @@ export function Toolbar({
         >
           <Settings size={16} />
         </button>
-        <button className="motion-icon-button rounded-md p-1.5 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30">
-          <Maximize2 size={16} />
-        </button>
+        <div className="relative">
+          <button
+            ref={fullscreenBtnRef}
+            onClick={() => setMonitorPickerOpen(!monitorPickerOpen)}
+            className="motion-icon-button rounded-md p-1.5 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+          >
+            <Maximize2 size={16} />
+          </button>
+          {monitorPickerOpen && (
+            <MonitorPicker
+              onClose={() => setMonitorPickerOpen(false)}
+              anchorRef={fullscreenBtnRef}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

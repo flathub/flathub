@@ -4,7 +4,7 @@ import { Toolbar } from "./Toolbar";
 import { ToastContainer } from "./ToastContainer";
 import { PlaybackBar } from "@/components/Player/PlaybackBar";
 import { GlobalProgressBar } from "@/components/Layout/GlobalProgressBar";
-import { LyricsPanel } from "@/components/Lyrics/LyricsPanel";
+import { PlaybackStage } from "@/components/Playback/PlaybackStage";
 import { SettingsOverlay } from "@/components/Settings/SettingsOverlay";
 import { ModelBootstrapBanner } from "@/components/Bootstrap/ModelBootstrapBanner";
 import { QueuePanel } from "@/components/Player/QueuePanel";
@@ -58,7 +58,7 @@ export function AppLayout() {
             <>
               <div className="flex flex-1 flex-col overflow-hidden">
                 <ModelBootstrapBanner />
-                <LyricsPanel />
+                <PlaybackStage />
               </div>
               {queueSidebar.shouldRender && (
                 <div

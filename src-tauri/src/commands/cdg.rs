@@ -3,8 +3,7 @@ use crate::{
     commands::error::{internal_error, CommandResult},
     AppState,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use tauri::State;
+use tauri::{ipc::Response, State};
 
 /// Holds the CDG rendering state for the currently playing CD+G song.
 pub struct CdgPlaybackState {
@@ -12,8 +11,15 @@ pub struct CdgPlaybackState {
     pub renderer: CdgRenderer,
     /// Last packet index that was processed.
     pub last_packet_index: usize,
-    /// Cached RGBA frame as base64 string.
-    pub cached_frame: Option<String>,
+    /// Cached raw RGBA frame bytes (288×192×4 = 221,184 bytes).
+    ///
+    /// PERF: Stored as raw `Vec<u8>` instead of base64 `String` to avoid the
+    /// ~33% inflation and CPU cost of base64 encoding on every frame. The IPC
+    /// layer returns these bytes directly as an `ArrayBuffer` via
+    /// `tauri::ipc::Response`, so the frontend can wrap them in a
+    /// `Uint8ClampedArray` at O(1) cost instead of running an O(n) decode loop.
+    /// Do not revert to base64 — it adds measurable overhead at 30fps.
+    pub cached_frame: Option<Vec<u8>>,
     /// Whether the renderer needs a full reset (e.g. after backward seek).
     pub needs_reset: bool,
 }
@@ -42,13 +48,25 @@ impl CdgPlaybackState {
     }
 }
 
-/// Returns a base64-encoded RGBA frame (288x192) for the given playback
-/// position, or `null` if no CDG is active or the frame hasn't changed.
+/// Returns a raw RGBA frame (288×192, 221,184 bytes) as binary `ArrayBuffer`
+/// for the given playback position.
+///
+/// Returns an **empty body** (0 bytes) when no CDG is active or when the
+/// visual frame hasn't changed since the last call. The frontend distinguishes
+/// "new frame" from "no change" by checking `ArrayBuffer.byteLength > 0`.
+///
+/// PERF: Uses `tauri::ipc::Response` to return raw bytes directly, bypassing
+/// JSON serialization and base64 encoding. This eliminates ~33% IPC payload
+/// inflation and the expensive `atob` + charCodeAt decode loop on the JS side.
+/// Combined with a pre-allocated `ImageData` on the frontend, CDG rendering
+/// adds near-zero overhead to the main thread's frame budget. Do not change
+/// this to return a JSON-serialized type (e.g. `Option<String>` with base64)
+/// without benchmarking — the previous base64 path was the main CDG bottleneck.
 #[tauri::command]
 pub fn get_cdg_frame(
     state: State<'_, AppState>,
     position_ms: u64,
-) -> CommandResult<Option<String>> {
+) -> CommandResult<Response> {
     let mut cdg_guard = state
         .cdg_state
         .lock()
@@ -56,7 +74,7 @@ pub fn get_cdg_frame(
 
     let cdg = match cdg_guard.as_mut() {
         Some(cdg) => cdg,
-        None => return Ok(None),
+        None => return Ok(Response::new(Vec::<u8>::new())),
     };
 
     // 300 packets per second → packet_index = position_ms * 300 / 1000
@@ -68,9 +86,8 @@ pub fn get_cdg_frame(
         cdg.seek_to(target_index);
         cdg.needs_reset = false;
         let rgba = cdg.renderer.to_rgba();
-        let encoded = BASE64.encode(&rgba);
-        cdg.cached_frame = Some(encoded.clone());
-        return Ok(Some(encoded));
+        cdg.cached_frame = Some(rgba.clone());
+        return Ok(Response::new(rgba));
     }
 
     // Forward: process from last position to target
@@ -82,14 +99,13 @@ pub fn get_cdg_frame(
 
         if changed || cdg.cached_frame.is_none() {
             let rgba = cdg.renderer.to_rgba();
-            let encoded = BASE64.encode(&rgba);
-            cdg.cached_frame = Some(encoded.clone());
-            return Ok(Some(encoded));
+            cdg.cached_frame = Some(rgba.clone());
+            return Ok(Response::new(rgba));
         }
     }
 
-    // No change
-    Ok(None)
+    // No change — empty body signals "keep current frame"
+    Ok(Response::new(Vec::<u8>::new()))
 }
 
 #[cfg(test)]

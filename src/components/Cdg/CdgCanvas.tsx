@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { setCdgCanvas } from "@/hooks/use-cdg-sync";
+import { setCdgCanvas } from "@/lib/cdg-canvas-painter";
 
 const CDG_WIDTH = 288;
 const CDG_HEIGHT = 192;

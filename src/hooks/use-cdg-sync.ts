@@ -1,46 +1,89 @@
 import { useEffect, useRef } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitTo } from "@tauri-apps/api/event";
 import { usePlayerStore } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
+import { drawFrame, clearFrame } from "@/lib/cdg-canvas-painter";
 import * as api from "@/lib/tauri";
 
-/** CDG visible frame dimensions. */
-const CDG_WIDTH = 288;
-const CDG_HEIGHT = 192;
-
-/** Minimum interval between IPC calls (~15 fps). */
-const MIN_INTERVAL_MS = 66;
+// Re-export so CdgCanvas can import from the painter module directly, but
+// keep backward compat for any existing callers.
+export { setCdgCanvas } from "@/lib/cdg-canvas-painter";
 
 /**
- * Module-level canvas element reference. The CdgCanvas component registers its
- * canvas here so that the rAF loop can paint directly without going through
- * React/Zustand state updates. CDG can update many times per second, so pushing
- * every frame through React would add avoidable render churn to fullscreen playback.
+ * PERF: Minimum interval between IPC calls. At 33ms (~30fps) each call
+ * transfers ~221KB raw binary via ArrayBuffer. The backend's `changed` flag
+ * ensures that frames with no visual updates return an empty body (0 bytes),
+ * so increasing the poll rate doesn't proportionally increase IPC load.
+ *
+ * Previously 66ms (15fps) when using base64, which added O(n) decode overhead
+ * per frame. The switch to raw binary removed that bottleneck, allowing 30fps
+ * without additional main-thread cost.
  */
-let cdgCanvasEl: HTMLCanvasElement | null = null;
-let cdgCanvasCtx: CanvasRenderingContext2D | null = null;
+const MIN_INTERVAL_MS = 33;
 
-export function setCdgCanvas(canvas: HTMLCanvasElement | null): void {
-  cdgCanvasEl = canvas;
-  cdgCanvasCtx = canvas?.getContext("2d") ?? null;
+/**
+ * Cached state for responding to `cdg-request-sync` from the fullscreen window
+ * when it opens mid-song.
+ */
+let lastFrame: ArrayBuffer | null = null;
+let lastStatus: { songId: string | null; hasCdg: boolean } = {
+  songId: null,
+  hasCdg: false,
+};
+
+/**
+ * Convert an ArrayBuffer to a base64 string for Tauri event forwarding.
+ *
+ * PERF: This conversion is intentionally limited to the event forwarding path
+ * (main window → fullscreen window). Tauri's event API uses JSON serialization,
+ * which cannot carry raw `ArrayBuffer` payloads, so base64 is unavoidable here.
+ * The main window's own rendering path uses raw `ArrayBuffer` directly via
+ * `drawFrame()` and never touches base64. Do not "optimize" by caching base64
+ * on the main rendering path — it would reintroduce the bottleneck we removed.
+ */
+/**
+ * Normalize the IPC response to an ArrayBuffer.
+ *
+ * PERF: The backend returns raw bytes via `tauri::ipc::Response`, which
+ * **should** arrive as an `ArrayBuffer` on desktop platforms. However, Tauri's
+ * IPC bridge may occasionally deliver it as a `number[]` (JSON-serialized
+ * Vec<u8>) depending on the protocol path. This function handles both cases
+ * so CDG rendering is robust regardless of IPC serialization behavior.
+ */
+function ensureArrayBuffer(result: unknown): ArrayBuffer {
+  if (result instanceof ArrayBuffer) return result;
+  if (Array.isArray(result)) return new Uint8Array(result).buffer;
+  return new ArrayBuffer(0);
 }
 
-function drawFrame(base64Frame: string): void {
-  if (!cdgCanvasCtx || !cdgCanvasEl) return;
-
-  const binary = atob(base64Frame);
-  const bytes = new Uint8ClampedArray(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-
-  cdgCanvasCtx.putImageData(new ImageData(bytes, CDG_WIDTH, CDG_HEIGHT), 0, 0);
+  return btoa(binary);
 }
 
-function clearFrame(): void {
-  cdgCanvasCtx?.clearRect(0, 0, CDG_WIDTH, CDG_HEIGHT);
+function emitCdgFrame(buffer: ArrayBuffer): void {
+  lastFrame = buffer;
+  // Convert to base64 for Tauri event JSON serialization
+  const base64 = arrayBufferToBase64(buffer);
+  emitTo("fullscreen-player", "cdg-frame", base64).catch(() => {});
 }
 
-export function useCdgSync(): void {
+function emitCdgClear(): void {
+  lastFrame = null;
+  emitTo("fullscreen-player", "cdg-clear", null).catch(() => {});
+}
+
+function emitCdgStatus(songId: string | null, hasCdg: boolean): void {
+  lastStatus = { songId, hasCdg };
+  emitTo("fullscreen-player", "cdg-status", { songId, hasCdg }).catch(() => {});
+}
+
+export function useCdgSync(enabled = true): void {
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
   const currentCdgSongId = useCdgStore((s) => s.songId);
   const setSong = useCdgStore((s) => s.setSong);
@@ -49,10 +92,43 @@ export function useCdgSync(): void {
   const lastCallRef = useRef(0);
   const pendingRef = useRef(false);
 
+  // Listen for fullscreen window requesting current CDG state on mount.
   useEffect(() => {
+    if (!enabled) return;
+
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+
+    listen("cdg-request-sync", () => {
+      if (cancelled) return;
+      emitTo("fullscreen-player", "cdg-status", lastStatus).catch(() => {});
+      if (lastFrame && lastFrame.byteLength > 0) {
+        const base64 = arrayBufferToBase64(lastFrame);
+        emitTo("fullscreen-player", "cdg-frame", base64).catch(() => {});
+      }
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [enabled]);
+
+  // Song detection: probe whether the new track has CDG graphics.
+  useEffect(() => {
+    if (!enabled) return;
+
     if (!songId) {
       clear();
       clearFrame();
+      emitCdgClear();
+      emitCdgStatus(null, false);
       return;
     }
 
@@ -60,39 +136,48 @@ export function useCdgSync(): void {
     const probePositionMs = usePlayerStore.getState().positionMs;
 
     if (currentCdgSongId !== songId) {
-      // Clear immediately on song change so a previous song's CDG frame does not
-      // linger while we asynchronously probe whether the new track has graphics.
+      // Clear immediately on song change so a previous song's CDG frame does
+      // not linger while we asynchronously probe the new track.
       setSong(songId, false);
       clearFrame();
+      emitCdgClear();
     }
 
     api
       .getCdgFrame(probePositionMs)
-      .then((base64Frame) => {
+      .then((result) => {
         if (cancelled) return;
+        const buffer = ensureArrayBuffer(result);
 
-        if (base64Frame) {
+        if (buffer.byteLength > 0) {
           setSong(songId, true);
-          drawFrame(base64Frame);
+          drawFrame(buffer);
+          emitCdgFrame(buffer);
+          emitCdgStatus(songId, true);
           lastCallRef.current = 0;
           return;
         }
 
         setSong(songId, false);
         clearFrame();
+        emitCdgStatus(songId, false);
       })
       .catch(() => {
         if (cancelled) return;
         setSong(songId, false);
         clearFrame();
+        emitCdgStatus(songId, false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [clear, currentCdgSongId, setSong, songId]);
+  }, [clear, currentCdgSongId, enabled, setSong, songId]);
 
+  // Continuous polling: rAF loop that fetches CDG frames during playback.
   useEffect(() => {
+    if (!enabled) return;
+
     const tick = () => {
       const { snapshot, positionMs } = usePlayerStore.getState();
       const { hasCdg } = useCdgStore.getState();
@@ -111,12 +196,17 @@ export function useCdgSync(): void {
       lastCallRef.current = now;
       pendingRef.current = true;
 
-      // Keep the hot frame path out of React state: the store only tracks whether
-      // a song has CDG, while pixel updates go straight to the canvas.
+      // PERF: The hot frame path stays out of React state. The IPC returns a
+      // raw ArrayBuffer (no base64), and drawFrame() paints it to a pre-
+      // allocated ImageData — no string decoding, no per-frame allocation.
       api
         .getCdgFrame(positionMs)
-        .then((base64Frame) => {
-          if (base64Frame) drawFrame(base64Frame);
+        .then((result) => {
+          const buffer = ensureArrayBuffer(result);
+          if (buffer.byteLength > 0) {
+            drawFrame(buffer);
+            emitCdgFrame(buffer);
+          }
         })
         .catch(() => {
           // Silently ignore CDG frame errors — non-critical for playback.
@@ -133,5 +223,5 @@ export function useCdgSync(): void {
     return () => {
       cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [enabled]);
 }
