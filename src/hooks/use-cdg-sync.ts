@@ -53,6 +53,12 @@ let lastStatus: { songId: string | null; hasCdg: boolean } = {
  */
 function ensureArrayBuffer(result: unknown): ArrayBuffer {
   if (result instanceof ArrayBuffer) return result;
+  if (ArrayBuffer.isView(result)) {
+    return result.buffer.slice(
+      result.byteOffset,
+      result.byteOffset + result.byteLength,
+    );
+  }
   if (Array.isArray(result)) return new Uint8Array(result).buffer;
   return new ArrayBuffer(0);
 }

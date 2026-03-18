@@ -13,6 +13,7 @@ export const CDG_HEIGHT = 192;
  */
 let cdgCanvasEl: HTMLCanvasElement | null = null;
 let cdgCanvasCtx: CanvasRenderingContext2D | null = null;
+let lastFrameBytes: Uint8ClampedArray | null = null;
 
 /**
  * PERF: Pre-allocated ImageData reused across frames. Creating a new
@@ -22,11 +23,31 @@ let cdgCanvasCtx: CanvasRenderingContext2D | null = null;
  */
 let reusableImageData: ImageData | null = null;
 
+function ensureImageData(): ImageData {
+  if (!reusableImageData) {
+    reusableImageData = new ImageData(CDG_WIDTH, CDG_HEIGHT);
+  }
+
+  return reusableImageData;
+}
+
+function paintBytes(bytes: Uint8ClampedArray | Uint8Array): void {
+  if (!cdgCanvasCtx || !cdgCanvasEl) return;
+
+  const imageData = ensureImageData();
+  imageData.data.set(bytes);
+  cdgCanvasCtx.putImageData(imageData, 0, 0);
+}
+
 export function setCdgCanvas(canvas: HTMLCanvasElement | null): void {
   cdgCanvasEl = canvas;
   cdgCanvasCtx = canvas?.getContext("2d") ?? null;
   // Reset pre-allocated ImageData when canvas changes (new context).
   reusableImageData = null;
+
+  if (lastFrameBytes) {
+    paintBytes(lastFrameBytes);
+  }
 }
 
 export function hasCdgCanvas(): boolean {
@@ -49,14 +70,8 @@ export function hasCdgCanvas(): boolean {
  * both were the primary CDG performance bottlenecks before this optimization.
  */
 export function drawFrame(buffer: ArrayBuffer): void {
-  if (!cdgCanvasCtx || !cdgCanvasEl) return;
-
-  if (!reusableImageData) {
-    reusableImageData = new ImageData(CDG_WIDTH, CDG_HEIGHT);
-  }
-
-  reusableImageData.data.set(new Uint8Array(buffer));
-  cdgCanvasCtx.putImageData(reusableImageData, 0, 0);
+  lastFrameBytes = new Uint8ClampedArray(buffer);
+  paintBytes(lastFrameBytes);
 }
 
 /**
@@ -72,21 +87,17 @@ export function drawFrame(buffer: ArrayBuffer): void {
  * secondary display; the main window's rendering path must remain binary.
  */
 export function drawFrameFromBase64(base64Frame: string): void {
-  if (!cdgCanvasCtx || !cdgCanvasEl) return;
-
-  if (!reusableImageData) {
-    reusableImageData = new ImageData(CDG_WIDTH, CDG_HEIGHT);
-  }
-
   const binary = atob(base64Frame);
-  const bytes = reusableImageData.data;
+  const bytes = new Uint8ClampedArray(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
 
-  cdgCanvasCtx.putImageData(reusableImageData, 0, 0);
+  lastFrameBytes = bytes;
+  paintBytes(bytes);
 }
 
 export function clearFrame(): void {
+  lastFrameBytes = null;
   cdgCanvasCtx?.clearRect(0, 0, CDG_WIDTH, CDG_HEIGHT);
 }

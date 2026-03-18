@@ -81,4 +81,25 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).toContain('data-visible="true"');
     expect(markup).toContain("+0.5s");
   });
+
+  test("renders plain-text lyrics at full brightness when no timestamps exist", () => {
+    mockLyricsState.lines = [
+      {
+        time_ms: 0,
+        text: "line one",
+        words: null,
+      },
+      {
+        time_ms: 0,
+        text: "line two",
+        words: null,
+      },
+    ];
+
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).toContain('text-white">line one</span>');
+    expect(markup).toContain('text-white">line two</span>');
+    expect(markup).not.toContain('text-[var(--color-active)]">line one</span>');
+  });
 });

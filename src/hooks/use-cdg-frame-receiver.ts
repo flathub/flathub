@@ -4,6 +4,40 @@ import { emitTo } from "@tauri-apps/api/event";
 import { drawFrameFromBase64, clearFrame } from "@/lib/cdg-canvas-painter";
 import { useCdgStore } from "@/stores/cdg-store";
 
+interface StartCdgFrameReceiverOptions {
+  listen: typeof listen;
+  emitSyncRequest: () => Promise<void>;
+  onFrame: (payload: string) => void;
+  onClear: () => void;
+  onStatus: (payload: { songId: string | null; hasCdg: boolean }) => void;
+}
+
+export async function startCdgFrameReceiver({
+  listen,
+  emitSyncRequest,
+  onFrame,
+  onClear,
+  onStatus,
+}: StartCdgFrameReceiverOptions): Promise<UnlistenFn[]> {
+  const unlisteners = await Promise.all([
+    listen<string>("cdg-frame", (event) => {
+      onFrame(event.payload);
+    }),
+    listen("cdg-clear", () => {
+      onClear();
+    }),
+    listen<{ songId: string | null; hasCdg: boolean }>(
+      "cdg-status",
+      (event) => {
+        onStatus(event.payload);
+      },
+    ),
+  ]);
+
+  await emitSyncRequest();
+  return unlisteners;
+}
+
 /**
  * Fullscreen-window counterpart to `useCdgSync`. Instead of polling
  * `getCdgFrame()` from the backend (which would conflict with the main
@@ -26,33 +60,24 @@ export function useCdgFrameReceiver(): void {
 
   useEffect(() => {
     let cancelled = false;
-    const unlisteners: UnlistenFn[] = [];
+    let unlisteners: UnlistenFn[] = [];
 
-    // Request current CDG state from the main window.
-    emitTo("main", "cdg-request-sync", null).catch(() => {});
-
-    listen<string>("cdg-frame", (event) => {
-      if (!cancelled) drawFrameFromBase64(event.payload);
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisteners.push(fn);
-    });
-
-    listen("cdg-clear", () => {
-      if (!cancelled) {
-        clear();
-        clearFrame();
-      }
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisteners.push(fn);
-    });
-
-    listen<{ songId: string | null; hasCdg: boolean }>(
-      "cdg-status",
-      (event) => {
+    void startCdgFrameReceiver({
+      listen,
+      emitSyncRequest: () => emitTo("main", "cdg-request-sync", null),
+      onFrame: (payload) => {
         if (!cancelled) {
-          const { songId, hasCdg } = event.payload;
+          drawFrameFromBase64(payload);
+        }
+      },
+      onClear: () => {
+        if (!cancelled) {
+          clear();
+          clearFrame();
+        }
+      },
+      onStatus: ({ songId, hasCdg }) => {
+        if (!cancelled) {
           if (songId !== null) {
             setSong(songId, hasCdg);
           } else {
@@ -60,10 +85,15 @@ export function useCdgFrameReceiver(): void {
           }
         }
       },
-    ).then((fn) => {
-      if (cancelled) fn();
-      else unlisteners.push(fn);
-    });
+    })
+      .then((listeners) => {
+        if (cancelled) {
+          for (const fn of listeners) fn();
+        } else {
+          unlisteners = listeners;
+        }
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;

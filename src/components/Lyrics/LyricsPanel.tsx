@@ -93,7 +93,7 @@ export function LyricsPanel() {
             line={line}
             state={
               isPlainText
-                ? "future"
+                ? "plain"
                 : idx === activeLineIndex
                   ? "active"
                   : idx < activeLineIndex

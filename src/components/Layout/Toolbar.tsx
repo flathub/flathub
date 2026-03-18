@@ -22,10 +22,7 @@ export function Toolbar({
   const fullscreenBtnRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div
-      className="flex h-12 shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] px-4 shadow-[0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl"
-      data-tauri-drag-region
-    >
+    <div className="flex h-12 shrink-0 items-center border-b border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] px-4 shadow-[0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
       <div className="flex items-center gap-4">
         {/* Reserve space for macOS traffic lights when sidebar is hidden */}
         {!sidebarVisible && <div className="w-[54px] shrink-0" />}
@@ -43,6 +40,11 @@ export function Toolbar({
         </ImportButton>
       </div>
 
+      <div
+        className="min-w-0 flex-1 self-stretch px-4"
+        data-tauri-drag-region
+      />
+
       <div className="flex items-center gap-4">
         <button
           onClick={onToggleSettings}
@@ -54,7 +56,7 @@ export function Toolbar({
         >
           <Settings size={16} />
         </button>
-        <div className="relative">
+        <div>
           <button
             ref={fullscreenBtnRef}
             onClick={() => setMonitorPickerOpen(!monitorPickerOpen)}

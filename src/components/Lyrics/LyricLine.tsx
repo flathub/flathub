@@ -3,7 +3,7 @@ import type { LyricLine as LyricLineType, WordToken } from "@/types/ipc";
 
 interface LyricLineProps {
   line: LyricLineType;
-  state: "active" | "past" | "future";
+  state: "active" | "past" | "future" | "plain";
   adjustedMs: number;
 }
 
@@ -42,11 +42,13 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
           {line.words!.map((word, idx) => {
             // When the whole line is past or future, all words use the line-level color
             const wordState =
-              state === "active"
-                ? getWordState(line.words!, idx, adjustedMs)
-                : state === "past"
-                  ? "past"
-                  : "future";
+              state === "plain"
+                ? "active"
+                : state === "active"
+                  ? getWordState(line.words!, idx, adjustedMs)
+                  : state === "past"
+                    ? "past"
+                    : "future";
 
             return (
               <span
@@ -76,7 +78,7 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
       ) : (
         <span
           className={`motion-surface text-2xl font-bold tracking-tight md:text-3xl ${
-            state === "active"
+            state === "plain" || state === "active"
               ? "text-white"
               : state === "past"
                 ? "text-[var(--color-text-dimmer)]"
