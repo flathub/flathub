@@ -34,6 +34,37 @@ let lastStatus: { songId: string | null; hasCdg: boolean } = {
   hasCdg: false,
 };
 
+export function createLatestOnlyFrameForwarder(
+  send: (payload: string) => Promise<void>,
+): (payload: string) => void {
+  let latestPayload: string | null = null;
+  let sending = false;
+
+  const flush = () => {
+    if (sending || latestPayload === null) {
+      return;
+    }
+
+    const payload = latestPayload;
+    latestPayload = null;
+    sending = true;
+
+    void send(payload).finally(() => {
+      sending = false;
+      flush();
+    });
+  };
+
+  return (payload: string) => {
+    latestPayload = payload;
+    flush();
+  };
+}
+
+const forwardFullscreenFrame = createLatestOnlyFrameForwarder((payload) =>
+  emitTo("fullscreen-player", "cdg-frame", payload),
+);
+
 /**
  * Convert an ArrayBuffer to a base64 string for Tauri event forwarding.
  *
@@ -78,7 +109,7 @@ function emitCdgFrame(buffer: ArrayBuffer): void {
   lastFrame = buffer;
   // Convert to base64 for Tauri event JSON serialization
   const base64 = arrayBufferToBase64(buffer);
-  emitTo("fullscreen-player", "cdg-frame", base64).catch(() => {});
+  forwardFullscreenFrame(base64);
 }
 
 function emitCdgClear(): void {

@@ -1,4 +1,7 @@
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  getCurrentWebviewWindow,
+  WebviewWindow,
+} from "@tauri-apps/api/webviewWindow";
 import { availableMonitors } from "@tauri-apps/api/window";
 
 export async function getMonitors() {
@@ -29,6 +32,12 @@ export async function openFullscreenPlayer(monitorIndex?: number) {
 }
 
 export async function closeFullscreenPlayer() {
+  const currentWindow = getCurrentWebviewWindow();
+  if (currentWindow.label === "fullscreen-player") {
+    await currentWindow.close();
+    return;
+  }
+
   const win = await WebviewWindow.getByLabel("fullscreen-player");
   await win?.close();
 }
