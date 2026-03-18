@@ -70,6 +70,11 @@ export interface ImportSongsResult {
   failed: ImportFailure[];
 }
 
+export interface ImportSongsOptions {
+  explicit_cdg_by_audio_path: Record<string, string>;
+  skip_cdg_for_audio_paths: string[];
+}
+
 export interface DeleteSongsFailure {
   song_id: string;
   error: CommandError;

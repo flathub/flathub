@@ -5,6 +5,7 @@ import type {
   DeleteStemsResult,
   DowngradeResult,
   ImportLyricsResult,
+  ImportSongsOptions,
   ImportSongsResult,
   LyricsPayload,
   ModelBootstrapStatusSnapshot,
@@ -32,8 +33,11 @@ export function openLibrary(path: string): Promise<void> {
 
 // ─── Library ─────────────────────────────────────────────
 
-export function importSongs(paths: string[]): Promise<ImportSongsResult> {
-  return invoke<ImportSongsResult>("import_songs", { paths });
+export function importSongs(
+  paths: string[],
+  options?: ImportSongsOptions,
+): Promise<ImportSongsResult> {
+  return invoke<ImportSongsResult>("import_songs", { paths, options });
 }
 
 export function getLibrary(): Promise<Song[]> {

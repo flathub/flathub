@@ -36,7 +36,7 @@ OpenKara first looks for timed lyrics online. It can also use lyrics embedded in
 
 ## Does OpenKara support CD+G?
 
-Yes. If a song has a same-name `.cdg` file next to the audio file, OpenKara renders those graphics during fullscreen playback.
+Yes. OpenKara supports same-name audio + `.cdg` pairs as well as MP3+G ZIP files. If one `.cdg` matches multiple selected audio files during import, OpenKara asks which track should use it.
 
 ## Can I move my library between machines?
 

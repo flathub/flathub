@@ -8,6 +8,7 @@ import { PlaybackStage } from "@/components/Playback/PlaybackStage";
 import { SettingsOverlay } from "@/components/Settings/SettingsOverlay";
 import { ModelBootstrapBanner } from "@/components/Bootstrap/ModelBootstrapBanner";
 import { QueuePanel } from "@/components/Player/QueuePanel";
+import { ImportCdgChoiceDialog } from "@/components/Library/ImportCdgChoiceDialog";
 import { useAnimatedPresence } from "@/hooks/use-animated-presence";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useQueueStore } from "@/stores/queue-store";
@@ -77,6 +78,7 @@ export function AppLayout() {
       </div>
 
       <ToastContainer />
+      <ImportCdgChoiceDialog />
     </div>
   );
 }

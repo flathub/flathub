@@ -13,7 +13,7 @@
 
 ### 已冻结能力
 
-1. `import_songs(paths: Vec<String>) -> ImportSongsResult`
+1. `import_songs(paths: Vec<String>, options?: ImportSongsOptions) -> ImportSongsResult`
 2. `get_library() -> Vec<Song>`
 3. `search_library(query: String) -> Vec<Song>`
 4. 本地元数据解析支持 MP3、FLAC、M4A
@@ -33,7 +33,13 @@
 
 ```json
 {
-  "paths": ["/absolute/or/relative/audio/path.mp3"]
+  "paths": ["/absolute/or/relative/audio/path.mp3"],
+  "options": {
+    "explicit_cdg_by_audio_path": {
+      "/imports/song.flac": "/imports/song.cdg"
+    },
+    "skip_cdg_for_audio_paths": ["/imports/song.mp3"]
+  }
 }
 ```
 
@@ -75,6 +81,9 @@
 4. `file_path` 在返回前会被 canonicalize 为绝对路径
 5. 若标签中没有标题，后端会回退到文件名 stem
 6. 单个失败项的 `error` 已是结构化 `CommandError`，字段定义见 [phase-5-error-contract.md](./phase-5-error-contract.md)
+7. 若用户只选择音频文件，而磁盘上存在同名 `.cdg` sidecar，后端会自动按 CD+G 成对导入
+8. 若用户显式选择 `.cdg` 文件且前端已完成歧义消解，`options.explicit_cdg_by_audio_path` 会指定哪首音频应与该 `.cdg` 配对
+9. `options.skip_cdg_for_audio_paths` 用于阻止同一 stem 的其他音频因同名 `.cdg` 被隐式配对
 
 ### Command: `get_library`
 
@@ -125,6 +134,13 @@
 | ------- | -------------- | ------------------------------------------------------------------------------- |
 | `path`  | `String`       | 原始输入路径                                                                    |
 | `error` | `CommandError` | 结构化错误，字段定义见 [phase-5-error-contract.md](./phase-5-error-contract.md) |
+
+### Shared type: `ImportSongsOptions`
+
+| Field                        | Type                    | Notes                                          |
+| ---------------------------- | ----------------------- | ---------------------------------------------- |
+| `explicit_cdg_by_audio_path` | `Record<String,String>` | 指定某首音频应使用哪一个显式选择的 `.cdg` 文件 |
+| `skip_cdg_for_audio_paths`   | `Vec<String>`           | 阻止这些音频在本次导入中被 `.cdg` 自动配对     |
 
 ### Required dependencies
 

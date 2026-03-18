@@ -7,14 +7,14 @@ use crate::{
     },
     library::{ImportFailure, ImportSongsResult, Song},
     library_root::LibraryRoot,
-    media_g::{self, MEDIA_G_PAIRED, MEDIA_G_ZIP},
     lyrics::fetch::{read_embedded_lyrics, LyricsSource},
+    media_g::{self, MEDIA_G_PAIRED, MEDIA_G_ZIP},
     metadata, AppState,
 };
 use anyhow::{Context, Result};
 use lofty::{file::TaggedFileExt, tag::ItemKey};
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -48,15 +48,29 @@ pub struct DeleteSongsResult {
     pub failed: Vec<DeleteSongsFailure>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ImportSongsOptions {
+    #[serde(default)]
+    pub explicit_cdg_by_audio_path: HashMap<String, String>,
+    #[serde(default)]
+    pub skip_cdg_for_audio_paths: Vec<String>,
+}
+
 #[tauri::command]
 pub fn import_songs(
     state: State<'_, AppState>,
     paths: Vec<String>,
+    options: Option<ImportSongsOptions>,
 ) -> CommandResult<ImportSongsResult> {
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    Ok(import_songs_from_paths(&connection, &library, &paths))
+    Ok(import_songs_from_paths_with_options(
+        &connection,
+        &library,
+        &paths,
+        &options.unwrap_or_default(),
+    ))
 }
 
 #[tauri::command]
@@ -132,6 +146,15 @@ pub fn import_songs_from_paths(
     library: &LibraryRoot,
     paths: &[String],
 ) -> ImportSongsResult {
+    import_songs_from_paths_with_options(connection, library, paths, &ImportSongsOptions::default())
+}
+
+pub fn import_songs_from_paths_with_options(
+    connection: &Connection,
+    library: &LibraryRoot,
+    paths: &[String],
+    options: &ImportSongsOptions,
+) -> ImportSongsResult {
     let mut imported = Vec::new();
     let mut failed = Vec::new();
     let classified = classify_import_paths(paths);
@@ -143,6 +166,8 @@ pub fn import_songs_from_paths(
             audio_path,
             library,
             &selected_cdg_by_stem,
+            &options.explicit_cdg_by_audio_path,
+            &options.skip_cdg_for_audio_paths,
             &mut consumed_cdg_paths,
         ) {
             Ok(song) => match cache::upsert_song(connection, &song) {
@@ -209,13 +234,8 @@ pub fn update_song_metadata(
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    cache::update_song_title_artist(
-        &connection,
-        &hash,
-        title.as_deref(),
-        artist.as_deref(),
-    )
-    .map_err(|e| database_error(e.to_string()))?;
+    cache::update_song_title_artist(&connection, &hash, title.as_deref(), artist.as_deref())
+        .map_err(|e| database_error(e.to_string()))?;
 
     cache::get_song_by_hash(&connection, &hash)
         .map_err(|e| database_error(e.to_string()))?
@@ -244,8 +264,9 @@ pub fn get_song_properties(
     let (decoded, file_size, format) = if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
         let asset = media_g::inspect_zip_for_media_g(&file_path)
             .map_err(|error| library_error(error.to_string()))?;
-        let decoded = decode::decode_bytes(asset.audio_bytes, ext)
-            .map_err(|e| internal_error(format!("failed to decode audio for {}: {}", song_id, e)))?;
+        let decoded = decode::decode_bytes(asset.audio_bytes, ext).map_err(|e| {
+            internal_error(format!("failed to decode audio for {}: {}", song_id, e))
+        })?;
         let file_size = std::fs::metadata(&file_path)
             .map_err(|e| {
                 library_error(format!(
@@ -255,7 +276,11 @@ pub fn get_song_properties(
                 ))
             })?
             .len();
-        (decoded, file_size, format!("{}+G ZIP", display_audio_format(ext)))
+        (
+            decoded,
+            file_size,
+            format!("{}+G ZIP", display_audio_format(ext)),
+        )
     } else {
         let decoded = decode::decode_file(&file_path).map_err(|e| {
             internal_error(format!(
@@ -303,9 +328,16 @@ fn build_and_store_song(
     source: &Path,
     library: &LibraryRoot,
     selected_cdg_by_stem: &HashMap<String, Vec<PathBuf>>,
+    explicit_cdg_by_audio_path: &HashMap<String, String>,
+    skip_cdg_for_audio_paths: &[String],
     consumed_cdg_paths: &mut HashSet<PathBuf>,
 ) -> Result<Song> {
-    if let Some(cdg_source) = match_cdg_source(source, selected_cdg_by_stem) {
+    if let Some(cdg_source) = match_cdg_source(
+        source,
+        selected_cdg_by_stem,
+        explicit_cdg_by_audio_path,
+        skip_cdg_for_audio_paths,
+    ) {
         consumed_cdg_paths.insert(cdg_source.clone());
         return build_and_store_media_g_pair(source, &cdg_source, library);
     }
@@ -314,23 +346,17 @@ fn build_and_store_song(
     let hash = sha256_for_file(source)?;
     let imported_at = current_unix_timestamp()?;
 
-    let ext = source
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
+    let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("bin");
 
     let dest = library.media_path(&hash, ext);
     if !dest.exists() {
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create media directory {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create media directory {}", parent.display())
+            })?;
         }
         fs::copy(source, &dest).with_context(|| {
-            format!(
-                "failed to copy {} to {}",
-                source.display(),
-                dest.display()
-            )
+            format!("failed to copy {} to {}", source.display(), dest.display())
         })?;
     }
 
@@ -356,7 +382,11 @@ fn build_and_store_song(
     })
 }
 
-fn build_and_store_media_g_pair(source: &Path, cdg_source: &Path, library: &LibraryRoot) -> Result<Song> {
+fn build_and_store_media_g_pair(
+    source: &Path,
+    cdg_source: &Path,
+    library: &LibraryRoot,
+) -> Result<Song> {
     let metadata = metadata::read_from_path(source)?;
     let audio_bytes = fs::read(source)
         .with_context(|| format!("failed to read audio file at {}", source.display()))?;
@@ -366,10 +396,7 @@ fn build_and_store_media_g_pair(source: &Path, cdg_source: &Path, library: &Libr
     // files and MP3+G ZIPs behave the same way as they do in OpenKJ/Siglos libraries.
     let hash = media_g::media_g_hash(&audio_bytes, &cdg_bytes);
     let imported_at = current_unix_timestamp()?;
-    let ext = source
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
+    let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("bin");
 
     let audio_dest = library.media_g_audio_path(&hash, ext);
     copy_if_missing(source, &audio_dest)?;
@@ -483,11 +510,7 @@ fn current_unix_timestamp() -> Result<i64> {
     Ok(duration.as_secs() as i64)
 }
 
-fn try_extract_embedded_lyrics(
-    connection: &Connection,
-    song: &Song,
-    library: &LibraryRoot,
-) {
+fn try_extract_embedded_lyrics(connection: &Connection, song: &Song, library: &LibraryRoot) {
     if let Ok(Some(_)) = cache::lyrics::get_lyrics_cache_entry(connection, &song.hash) {
         return;
     }
@@ -495,9 +518,9 @@ fn try_extract_embedded_lyrics(
     let raw_lrc = match song.media_g_container.as_deref() {
         Some(MEDIA_G_ZIP) => {
             let archive_path = library.resolve(&song.file_path);
-            match media_g::inspect_zip_for_media_g(&archive_path)
-                .and_then(|asset| read_embedded_lyrics_from_bytes(&asset.audio_bytes, &asset.audio_extension))
-            {
+            match media_g::inspect_zip_for_media_g(&archive_path).and_then(|asset| {
+                read_embedded_lyrics_from_bytes(&asset.audio_bytes, &asset.audio_extension)
+            }) {
                 Ok(Some(lrc)) => lrc,
                 _ => return,
             }
@@ -545,7 +568,11 @@ fn read_embedded_lyrics_from_bytes(bytes: &[u8], extension: &str) -> Result<Opti
     Ok(None)
 }
 
-fn delete_song_from_library(connection: &Connection, library: &LibraryRoot, song_id: &str) -> Result<()> {
+fn delete_song_from_library(
+    connection: &Connection,
+    library: &LibraryRoot,
+    song_id: &str,
+) -> Result<()> {
     let song = cache::get_song_by_hash(connection, song_id)
         .context("failed to load song from library")?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
@@ -571,7 +598,10 @@ fn delete_song_from_library(connection: &Connection, library: &LibraryRoot, song
         .context("failed to delete cached lyrics for song")?;
     if table_exists(connection, "play_history")? {
         connection
-            .execute("DELETE FROM play_history WHERE song_hash = ?1", params![song_id])
+            .execute(
+                "DELETE FROM play_history WHERE song_hash = ?1",
+                params![song_id],
+            )
             .context("failed to delete play history for song")?;
     }
     connection
@@ -642,19 +672,41 @@ fn build_selected_cdg_lookup(paths: &[PathBuf]) -> HashMap<String, Vec<PathBuf>>
     by_stem
 }
 
-fn match_cdg_source(audio_path: &Path, selected_cdg_by_stem: &HashMap<String, Vec<PathBuf>>) -> Option<PathBuf> {
-    let sibling_cdg = audio_path.with_extension("cdg");
-    if sibling_cdg.is_file() {
-        return Some(sibling_cdg);
+fn match_cdg_source(
+    audio_path: &Path,
+    selected_cdg_by_stem: &HashMap<String, Vec<PathBuf>>,
+    explicit_cdg_by_audio_path: &HashMap<String, String>,
+    skip_cdg_for_audio_paths: &[String],
+) -> Option<PathBuf> {
+    let audio_key = audio_path.display().to_string();
+    if skip_cdg_for_audio_paths
+        .iter()
+        .any(|path| path == &audio_key)
+    {
+        return None;
+    }
+
+    if let Some(cdg_path) = explicit_cdg_by_audio_path.get(&audio_key) {
+        return Some(PathBuf::from(cdg_path));
     }
 
     let stem = audio_path
         .file_stem()
         .and_then(|value| value.to_str())
         .map(|value| value.to_ascii_lowercase())?;
-    let candidates = selected_cdg_by_stem.get(&stem)?;
-    if candidates.len() == 1 {
-        return Some(candidates[0].clone());
+
+    if let Some(candidates) = selected_cdg_by_stem.get(&stem) {
+        if candidates.len() == 1 {
+            return Some(candidates[0].clone());
+        }
+
+        return None;
     }
+
+    let sibling_cdg = audio_path.with_extension("cdg");
+    if sibling_cdg.is_file() {
+        return Some(sibling_cdg);
+    }
+
     None
 }

@@ -3,7 +3,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitTo } from "@tauri-apps/api/event";
 import { usePlayerStore } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { drawFrame, clearFrame } from "@/lib/cdg-canvas-painter";
+import { songHasCdgMedia } from "@/lib/song-media";
 import * as api from "@/lib/tauri";
 
 // Re-export so CdgCanvas can import from the painter module directly, but
@@ -91,12 +93,15 @@ function emitCdgStatus(songId: string | null, hasCdg: boolean): void {
 
 export function useCdgSync(enabled = true): void {
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
-  const currentCdgSongId = useCdgStore((s) => s.songId);
+  const songs = useLibraryStore((s) => s.songs);
   const setSong = useCdgStore((s) => s.setSong);
   const clear = useCdgStore((s) => s.clear);
   const rafRef = useRef<number>(0);
   const lastCallRef = useRef(0);
   const pendingRef = useRef(false);
+  const currentSongHasCdg = songHasCdgMedia(
+    songs.find((song) => song.hash === songId) ?? null,
+  );
 
   // Listen for fullscreen window requesting current CDG state on mount.
   useEffect(() => {
@@ -138,15 +143,25 @@ export function useCdgSync(enabled = true): void {
       return;
     }
 
+    if (!currentSongHasCdg) {
+      clear();
+      clearFrame();
+      emitCdgClear();
+      emitCdgStatus(songId, false);
+      return;
+    }
+
     let cancelled = false;
     const probePositionMs = usePlayerStore.getState().positionMs;
+    const currentCdgSongId = useCdgStore.getState().songId;
 
     if (currentCdgSongId !== songId) {
       // Clear immediately on song change so a previous song's CDG frame does
       // not linger while we asynchronously probe the new track.
-      setSong(songId, false);
+      setSong(songId, true);
       clearFrame();
       emitCdgClear();
+      emitCdgStatus(songId, true);
     }
 
     api
@@ -164,9 +179,7 @@ export function useCdgSync(enabled = true): void {
           return;
         }
 
-        setSong(songId, false);
-        clearFrame();
-        emitCdgStatus(songId, false);
+        emitCdgStatus(songId, true);
       })
       .catch(() => {
         if (cancelled) return;
@@ -178,7 +191,7 @@ export function useCdgSync(enabled = true): void {
     return () => {
       cancelled = true;
     };
-  }, [clear, currentCdgSongId, enabled, setSong, songId]);
+  }, [clear, currentSongHasCdg, enabled, setSong, songId]);
 
   // Continuous polling: rAF loop that fetches CDG frames during playback.
   useEffect(() => {

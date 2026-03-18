@@ -23,8 +23,10 @@ function getWordState(
 
 export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
   const seek = usePlayerStore((s) => s.seek);
+  const isSeekable = state !== "plain";
 
   const handleClick = () => {
+    if (!isSeekable) return;
     seek(line.time_ms);
   };
 
@@ -32,10 +34,10 @@ export function LyricLine({ line, state, adjustedMs }: LyricLineProps) {
 
   return (
     <div
-      onClick={handleClick}
-      className={`motion-surface flex cursor-pointer flex-col items-center gap-1.5 text-center ${
-        state === "active" ? "scale-105 drop-shadow-md" : ""
-      }`}
+      onClick={isSeekable ? handleClick : undefined}
+      className={`motion-surface flex flex-col items-center gap-1.5 text-center ${
+        isSeekable ? "cursor-pointer" : "cursor-default"
+      } ${state === "active" ? "scale-105 drop-shadow-md" : ""}`}
     >
       {hasWords ? (
         <span className="text-2xl font-bold tracking-tight md:text-3xl">

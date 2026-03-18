@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { useLibraryStore } from "./library-store";
 
-const { mockUpdateSongMetadata, mockNotifyError } = vi.hoisted(() => ({
+const {
+  mockUpdateSongMetadata,
+  mockImportSongs,
+  mockGetLibrary,
+  mockNotifyError,
+} = vi.hoisted(() => ({
   mockUpdateSongMetadata: vi.fn(),
+  mockImportSongs: vi.fn(),
+  mockGetLibrary: vi.fn(),
   mockNotifyError: vi.fn(),
 }));
 
 vi.mock("@/lib/tauri", () => ({
+  importSongs: mockImportSongs,
+  getLibrary: mockGetLibrary,
   updateSongMetadata: mockUpdateSongMetadata,
 }));
 
@@ -17,6 +26,8 @@ vi.mock("@/lib/errors", () => ({
 describe("library-store updateSongMetadata", () => {
   beforeEach(() => {
     mockUpdateSongMetadata.mockReset();
+    mockImportSongs.mockReset();
+    mockGetLibrary.mockReset();
     mockNotifyError.mockReset();
     useLibraryStore.setState({
       songs: [
@@ -42,6 +53,7 @@ describe("library-store updateSongMetadata", () => {
       separationStatuses: {},
       filter: "all",
       batchSeparation: null,
+      pendingImportCdgChoice: null,
     });
   });
 
@@ -77,5 +89,33 @@ describe("library-store updateSongMetadata", () => {
       artist: "Original Artist",
     });
     expect(mockNotifyError).toHaveBeenCalledWith(error);
+  });
+
+  test("prompts for ambiguous CDG selections before importing songs", async () => {
+    const promptForCdgChoice = vi.fn().mockResolvedValue("/tmp/track.flac");
+
+    mockImportSongs.mockResolvedValue({ imported: [], failed: [] });
+    mockGetLibrary.mockResolvedValue([]);
+
+    useLibraryStore.setState({ promptForCdgChoice });
+
+    await useLibraryStore
+      .getState()
+      .importFiles(["/tmp/track.mp3", "/tmp/track.flac", "/tmp/track.cdg"]);
+
+    expect(promptForCdgChoice).toHaveBeenCalledWith({
+      cdgPath: "/tmp/track.cdg",
+      audioCandidates: ["/tmp/track.flac", "/tmp/track.mp3"],
+      stem: "track",
+    });
+    expect(mockImportSongs).toHaveBeenCalledWith(
+      ["/tmp/track.mp3", "/tmp/track.flac", "/tmp/track.cdg"],
+      {
+        explicit_cdg_by_audio_path: {
+          "/tmp/track.flac": "/tmp/track.cdg",
+        },
+        skip_cdg_for_audio_paths: ["/tmp/track.mp3"],
+      },
+    );
   });
 });

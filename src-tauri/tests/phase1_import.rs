@@ -8,7 +8,10 @@ use openkara_lib::{
     cache,
     commands::{
         error::{ErrorCode, FallbackAction},
-        import::{get_library_from_connection, import_songs_from_paths},
+        import::{
+            get_library_from_connection, import_songs_from_paths,
+            import_songs_from_paths_with_options, ImportSongsOptions,
+        },
     },
     library_root::LibraryRoot,
 };
@@ -26,8 +29,7 @@ fn fixture_path(filename: &str) -> String {
 
 fn temp_library() -> (tempfile::TempDir, LibraryRoot) {
     let tmp = tempfile::tempdir().expect("temp dir should create");
-    let lib = LibraryRoot::create(tmp.path().join("lib").as_path())
-        .expect("library should create");
+    let lib = LibraryRoot::create(tmp.path().join("lib").as_path()).expect("library should create");
     (tmp, lib)
 }
 
@@ -89,7 +91,8 @@ fn reports_failures_without_aborting_other_imports() {
     );
     assert!(!result.failed[0].error.retryable);
 
-    let library_songs = get_library_from_connection(&connection).expect("library listing should succeed");
+    let library_songs =
+        get_library_from_connection(&connection).expect("library listing should succeed");
     assert_eq!(library_songs.len(), 1);
     assert_eq!(library_songs[0].title.as_deref(), Some("Fixture Song M4A"));
 }
@@ -105,11 +108,8 @@ fn imports_audio_and_matching_cdg_into_media_g_directory() {
     fs::copy(fixture_path("fixture.mp3"), &audio_path).expect("fixture audio should copy");
     write_sample_cdg(&cdg_path);
 
-    let result = import_songs_from_paths(
-        &connection,
-        &library,
-        &[audio_path.display().to_string()],
-    );
+    let result =
+        import_songs_from_paths(&connection, &library, &[audio_path.display().to_string()]);
 
     assert_eq!(result.imported.len(), 1);
     let song = &result.imported[0];
@@ -140,11 +140,7 @@ fn imports_mp3g_zip_without_unpacking_it() {
         .expect("cdg entry should write");
     zip.finish().expect("zip should finish");
 
-    let result = import_songs_from_paths(
-        &connection,
-        &library,
-        &[zip_path.display().to_string()],
-    );
+    let result = import_songs_from_paths(&connection, &library, &[zip_path.display().to_string()]);
 
     assert_eq!(result.imported.len(), 1);
     let song = &result.imported[0];
@@ -163,11 +159,7 @@ fn rejects_standalone_cdg_files_without_matching_audio() {
     let cdg_path = import_dir.path().join("orphan.cdg");
     write_sample_cdg(&cdg_path);
 
-    let result = import_songs_from_paths(
-        &connection,
-        &library,
-        &[cdg_path.display().to_string()],
-    );
+    let result = import_songs_from_paths(&connection, &library, &[cdg_path.display().to_string()]);
 
     assert!(result.imported.is_empty());
     assert_eq!(result.failed.len(), 1);
@@ -175,4 +167,53 @@ fn rejects_standalone_cdg_files_without_matching_audio() {
         .error
         .message
         .contains("does not have a matching audio track"));
+}
+
+#[test]
+fn explicit_cdg_selection_pairs_only_the_chosen_audio_when_multiple_candidates_exist() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let (_tmp, library) = temp_library();
+    let import_dir = tempfile::tempdir().expect("temp dir should create");
+    let mp3_path = import_dir.path().join("paired.mp3");
+    let m4a_path = import_dir.path().join("paired.m4a");
+    let cdg_path = import_dir.path().join("paired.cdg");
+
+    fs::copy(fixture_path("fixture.mp3"), &mp3_path).expect("fixture mp3 should copy");
+    fs::copy(fixture_path("fixture.m4a"), &m4a_path).expect("fixture m4a should copy");
+    write_sample_cdg(&cdg_path);
+
+    let result = import_songs_from_paths_with_options(
+        &connection,
+        &library,
+        &[
+            mp3_path.display().to_string(),
+            m4a_path.display().to_string(),
+            cdg_path.display().to_string(),
+        ],
+        &ImportSongsOptions {
+            explicit_cdg_by_audio_path: std::collections::HashMap::from([(
+                m4a_path.display().to_string(),
+                cdg_path.display().to_string(),
+            )]),
+            skip_cdg_for_audio_paths: vec![mp3_path.display().to_string()],
+        },
+    );
+
+    assert_eq!(result.imported.len(), 2);
+
+    let paired_song = result
+        .imported
+        .iter()
+        .find(|song| song.file_path.ends_with(".m4a"))
+        .expect("m4a song should import");
+    assert_eq!(paired_song.media_g_container.as_deref(), Some("paired"));
+
+    let plain_song = result
+        .imported
+        .iter()
+        .find(|song| song.file_path.ends_with(".mp3"))
+        .expect("mp3 song should import");
+    assert_eq!(plain_song.media_g_container, None);
+    assert_eq!(plain_song.cdg_path, None);
 }

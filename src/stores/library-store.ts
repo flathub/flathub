@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import {
+  buildAmbiguousCdgChoiceRequests,
+  buildImportSongsOptions,
+  type AmbiguousCdgChoiceRequest,
+  type ExplicitCdgSelection,
+} from "@/lib/import-cdg-selection";
 import type {
   BatchSeparationProgress,
   ImportFailure,
@@ -18,9 +24,14 @@ interface LibraryState {
   separationStatuses: Record<string, SeparationStatusSnapshot>;
   filter: "all" | "separated";
   batchSeparation: BatchSeparationProgress | null;
+  pendingImportCdgChoice: AmbiguousCdgChoiceRequest | null;
 
   loadLibrary: () => Promise<void>;
   importFiles: (paths: string[]) => Promise<void>;
+  promptForCdgChoice: (
+    request: AmbiguousCdgChoiceRequest,
+  ) => Promise<string | null>;
+  resolveCdgChoicePrompt: (audioPath: string | null) => void;
   setSearchQuery: (query: string) => void;
   searchSongs: (query: string) => Promise<void>;
   selectSong: (
@@ -42,6 +53,9 @@ interface LibraryState {
   clearImportErrors: () => void;
 }
 
+let pendingCdgChoiceResolver: ((audioPath: string | null) => void) | null =
+  null;
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   songs: [],
   searchQuery: "",
@@ -52,6 +66,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   separationStatuses: {},
   filter: "all",
   batchSeparation: null,
+  pendingImportCdgChoice: null,
 
   loadLibrary: async () => {
     try {
@@ -81,10 +96,33 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // Split paths into audio and lyrics files
       const audioPaths = paths.filter((p) => !p.toLowerCase().endsWith(".lrc"));
       const lrcPaths = paths.filter((p) => p.toLowerCase().endsWith(".lrc"));
+      const explicitSelections: ExplicitCdgSelection[] = [];
+      const skippedCdgAudioPaths = new Set<string>();
+
+      for (const request of buildAmbiguousCdgChoiceRequests(audioPaths)) {
+        const selectedAudioPath = await get().promptForCdgChoice(request);
+        for (const candidate of request.audioCandidates) {
+          if (candidate !== selectedAudioPath) {
+            skippedCdgAudioPaths.add(candidate);
+          }
+        }
+        if (selectedAudioPath) {
+          explicitSelections.push({
+            audioPath: selectedAudioPath,
+            cdgPath: request.cdgPath,
+          });
+        }
+      }
 
       // Import audio files
       if (audioPaths.length > 0) {
-        const result = await api.importSongs(audioPaths);
+        const result = await api.importSongs(
+          audioPaths,
+          buildImportSongsOptions(
+            explicitSelections,
+            [...skippedCdgAudioPaths].sort(),
+          ),
+        );
         if (result.failed.length > 0) {
           set({ importErrors: result.failed });
           for (const failure of result.failed) {
@@ -107,6 +145,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     } finally {
       set({ isImporting: false });
     }
+  },
+
+  promptForCdgChoice: async (request) => {
+    set({ pendingImportCdgChoice: request });
+
+    return new Promise((resolve) => {
+      pendingCdgChoiceResolver = resolve;
+    });
+  },
+
+  resolveCdgChoicePrompt: (audioPath) => {
+    set({ pendingImportCdgChoice: null });
+    pendingCdgChoiceResolver?.(audioPath);
+    pendingCdgChoiceResolver = null;
   },
 
   setSearchQuery: (query) => {
