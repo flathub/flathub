@@ -34,6 +34,8 @@ Install guidance lives inside `docs/site/index.html` instead of a standalone ins
 | [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md)                                                     | Cross-cutting debt items that do not belong to one feature |
 | [exec-plans/active/2026-03-16-docs-reorg-implementation.md](./exec-plans/active/2026-03-16-docs-reorg-implementation.md) | Current documentation cleanup plan                         |
 
+Historical one-off implementation plans have been removed from the main docs tree so this index only points to documents that still describe the current repository state.
+
 ## Generated Docs
 
 | Document                                           | Description                                           |

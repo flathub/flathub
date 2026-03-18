@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Folder, CheckCircle2, UploadCloud, Layers } from "lucide-react";
 import { ConfirmationDialog } from "@/components/Settings/ConfirmationDialog";
@@ -6,9 +6,9 @@ import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
 import { ImportButton } from "@/components/Library/ImportButton";
 import { useLibraryStore } from "@/stores/library-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
-import type { StemMode } from "@/types/ipc";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -18,21 +18,9 @@ export function Sidebar() {
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
   const batchSeparation = useLibraryStore((s) => s.batchSeparation);
 
-  const hideBatchSeparate = useLibraryStore((s) => s.hideBatchSeparate);
-  const [stemMode, setStemMode] = useState<StemMode>("two_stem");
+  const hideBatchSeparate = useSettingsStore((s) => s.hideBatchSeparate);
+  const stemMode = useSettingsStore((s) => s.stemMode);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
-
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((settings) => {
-        setStemMode(settings.stem_mode);
-        useLibraryStore
-          .getState()
-          .setHideBatchSeparate(settings.hide_batch_separate);
-      })
-      .catch(() => {});
-  }, []);
 
   const separatedCount = songs.filter(
     (s) => separationStatuses[s.hash]?.state === "completed",

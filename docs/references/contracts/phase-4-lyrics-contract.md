@@ -150,7 +150,7 @@ pnpm tauri build --debug --no-bundle --ci
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../../exec-plans/active/2026-03-13-code-agent-plan.md](../../exec-plans/active/2026-03-13-code-agent-plan.md)
+1. 接手前先读本文件，再读 [../internal/roadmap.md](../internal/roadmap.md)
 2. 先跑验证命令，确认歌词后端没有被后续改动打破
 3. 如果要改命令名、字段名、抓取顺序、miss 语义或 `source` 枚举值：
    - 先更新本契约

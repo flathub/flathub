@@ -4,6 +4,10 @@ import { notifyError } from "@/lib/errors";
 import { useLibraryStore } from "@/stores/library-store";
 import { useQueueStore } from "@/stores/queue-store";
 import type { PlaybackStateSnapshot, StemName } from "@/types/ipc";
+import {
+  playTrackWithOptionalStems,
+  shouldEnqueueInsteadOfReplacingCurrentSong,
+} from "./player-workflows";
 
 interface PlayerState {
   snapshot: PlaybackStateSnapshot | null;
@@ -30,31 +34,24 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   positionMs: 0,
 
   playSong: async (songId) => {
+    const { snapshot } = usePlayerStore.getState();
+    if (shouldEnqueueInsteadOfReplacingCurrentSong(snapshot, songId)) {
+      useQueueStore.getState().addToQueue(songId);
+      return;
+    }
+
     try {
-      const { snapshot } = usePlayerStore.getState();
-      // If another song is currently playing, add to queue instead
-      if (
-        snapshot?.is_playing &&
-        snapshot?.song_id &&
-        snapshot.song_id !== songId
-      ) {
-        useQueueStore.getState().addToQueue(songId);
-        return;
-      }
-
-      const newSnapshot = await api.play(songId);
-      set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
-
-      // Auto-load stems if separation was previously completed
-      const sepStatus = useLibraryStore.getState().separationStatuses[songId];
-      if (sepStatus?.state === "completed" && !newSnapshot.has_stems) {
-        try {
-          const updated = await api.loadStems();
-          set({ snapshot: updated });
-        } catch {
-          // Stems loading failed silently
-        }
-      }
+      await playTrackWithOptionalStems(songId, {
+        play: api.play,
+        loadStems: api.loadStems,
+        getSeparationStatus: (nextSongId) =>
+          useLibraryStore.getState().separationStatuses[nextSongId],
+        applySnapshot: (nextSnapshot) =>
+          set({
+            snapshot: nextSnapshot,
+            positionMs: nextSnapshot.position_ms,
+          }),
+      });
     } catch (e) {
       notifyError(e, () => usePlayerStore.getState().playSong(songId));
     }
@@ -62,19 +59,17 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 
   playNow: async (songId) => {
     try {
-      const newSnapshot = await api.play(songId);
-      set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
-
-      // Auto-load stems if separation was previously completed
-      const sepStatus = useLibraryStore.getState().separationStatuses[songId];
-      if (sepStatus?.state === "completed" && !newSnapshot.has_stems) {
-        try {
-          const updated = await api.loadStems();
-          set({ snapshot: updated });
-        } catch {
-          // Stems loading failed silently
-        }
-      }
+      await playTrackWithOptionalStems(songId, {
+        play: api.play,
+        loadStems: api.loadStems,
+        getSeparationStatus: (nextSongId) =>
+          useLibraryStore.getState().separationStatuses[nextSongId],
+        applySnapshot: (nextSnapshot) =>
+          set({
+            snapshot: nextSnapshot,
+            positionMs: nextSnapshot.position_ms,
+          }),
+      });
     } catch (e) {
       notifyError(e, () => usePlayerStore.getState().playNow(songId));
     }
@@ -169,18 +164,17 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     if (!nextId) return;
 
     try {
-      const newSnapshot = await api.play(nextId);
-      set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
-
-      const sepStatus = useLibraryStore.getState().separationStatuses[nextId];
-      if (sepStatus?.state === "completed" && !newSnapshot.has_stems) {
-        try {
-          const updated = await api.loadStems();
-          set({ snapshot: updated });
-        } catch {
-          // Stems loading failed silently
-        }
-      }
+      await playTrackWithOptionalStems(nextId, {
+        play: api.play,
+        loadStems: api.loadStems,
+        getSeparationStatus: (nextSongId) =>
+          useLibraryStore.getState().separationStatuses[nextSongId],
+        applySnapshot: (nextSnapshot) =>
+          set({
+            snapshot: nextSnapshot,
+            positionMs: nextSnapshot.position_ms,
+          }),
+      });
     } catch (e) {
       notifyError(e);
     }
@@ -191,18 +185,17 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     if (!nextId) return;
 
     try {
-      const newSnapshot = await api.play(nextId);
-      set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
-
-      const sepStatus = useLibraryStore.getState().separationStatuses[nextId];
-      if (sepStatus?.state === "completed" && !newSnapshot.has_stems) {
-        try {
-          const updated = await api.loadStems();
-          set({ snapshot: updated });
-        } catch {
-          // Stems loading failed silently
-        }
-      }
+      await playTrackWithOptionalStems(nextId, {
+        play: api.play,
+        loadStems: api.loadStems,
+        getSeparationStatus: (nextSongId) =>
+          useLibraryStore.getState().separationStatuses[nextSongId],
+        applySnapshot: (nextSnapshot) =>
+          set({
+            snapshot: nextSnapshot,
+            positionMs: nextSnapshot.position_ms,
+          }),
+      });
     } catch (e) {
       notifyError(e);
     }

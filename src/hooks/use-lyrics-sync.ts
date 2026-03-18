@@ -2,11 +2,15 @@ import { useEffect, useRef } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
-export function useLyricsSync(): void {
+export function useLyricsSync(enabled = true): void {
   const rafRef = useRef<number>(0);
   const prevIndexRef = useRef(-1);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const tick = () => {
       const { snapshot, positionMs } = usePlayerStore.getState();
       const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
@@ -45,7 +49,7 @@ export function useLyricsSync(): void {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener("focus", syncNow);
     };
-  }, []);
+  }, [enabled]);
 }
 
 function binarySearchLine(

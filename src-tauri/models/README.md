@@ -1,7 +1,7 @@
 # models
 
 This directory is a local cache for large model binaries used during
-development.
+development and deterministic tests.
 
 Rules:
 
@@ -9,7 +9,7 @@ Rules:
 - Do **not** commit downloaded `.onnx` files.
 - `scripts/setup.sh` may populate this directory for local development and
   tests.
-- Runtime installs should prefer the app data directory instead of this repo
-  path.
+- Runtime installs use the app data directory instead of this repo path.
+- End-user bundles should not rely on this directory being present.
 
 The current default model filename is `htdemucs.onnx`.

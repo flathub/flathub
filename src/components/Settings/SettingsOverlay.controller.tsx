@@ -5,6 +5,7 @@ import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
   SettingsOverlayContext,
   type SettingsOverlayContextValue,
@@ -61,12 +62,17 @@ export function SettingsOverlayProvider({
       libraryStore: {
         clearAllSeparationStatuses:
           useLibraryStore.getState().clearAllSeparationStatuses,
-        setHideBatchSeparate: useLibraryStore.getState().setHideBatchSeparate,
         updateSeparationStatus:
           useLibraryStore.getState().updateSeparationStatus,
       },
       lyricsStore: {
         clear: useLyricsStore.getState().clear,
+      },
+      settingsStore: {
+        getAppSettingsSnapshot:
+          useSettingsStore.getState().getAppSettingsSnapshot,
+        hydrateAppSettings: useSettingsStore.getState().hydrateAppSettings,
+        patchAppSettings: useSettingsStore.getState().patchAppSettings,
       },
     }),
     [i18n],

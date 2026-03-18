@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
+import { useSettingsStore } from "@/stores/settings-store";
 
 type Step = "language" | "library" | "stemMode";
 
@@ -42,29 +43,50 @@ function StepIndicator({ current }: { current: Step }) {
 
 export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const { t } = useTranslation();
+  const settingsHydrated = useSettingsStore((s) => s.hydrated);
+  const settingsLanguage = useSettingsStore((s) => s.language);
+  const settingsStemMode = useSettingsStore((s) => s.stemMode);
+  const patchAppSettings = useSettingsStore((s) => s.patchAppSettings);
+  const hydrateAppSettings = useSettingsStore((s) => s.hydrateAppSettings);
   const [step, setStep] = useState<Step>("language");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(
-    detectSystemLanguage(),
+    () =>
+      settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
   );
   const [selectedStemMode, setSelectedStemMode] = useState<
     "two_stem" | "four_stem"
-  >("two_stem");
+  >(settingsStemMode);
 
-  // Apply detected language immediately on mount so labels show correctly
   useEffect(() => {
-    const detected = detectSystemLanguage();
-    i18next.changeLanguage(detected);
-    setSelectedLanguage(detected);
-  }, []);
+    if (!settingsHydrated) {
+      return;
+    }
+
+    setSelectedLanguage(
+      settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
+    );
+  }, [settingsHydrated, settingsLanguage]);
+
+  useEffect(() => {
+    if (!settingsHydrated) {
+      return;
+    }
+
+    setSelectedStemMode(settingsStemMode);
+  }, [settingsHydrated, settingsStemMode]);
 
   const handleLanguageSelect = (code: string) => {
     setSelectedLanguage(code);
+    patchAppSettings({ language: code });
     i18next.changeLanguage(code);
-    api.setLanguage(code).catch(() => {
-      // non-fatal: language saved on next step anyway
-    });
+    api
+      .setLanguage(code)
+      .then(hydrateAppSettings)
+      .catch(() => {
+        // non-fatal: language saved on next step anyway
+      });
     setStep("library");
   };
 
@@ -113,7 +135,8 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
   const handleFinish = async () => {
     try {
-      await api.setStemMode(selectedStemMode);
+      const settings = await api.setStemMode(selectedStemMode);
+      hydrateAppSettings(settings);
     } catch {
       // non-fatal
     }

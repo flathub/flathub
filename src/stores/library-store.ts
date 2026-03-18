@@ -18,7 +18,6 @@ interface LibraryState {
   separationStatuses: Record<string, SeparationStatusSnapshot>;
   filter: "all" | "separated";
   batchSeparation: BatchSeparationProgress | null;
-  hideBatchSeparate: boolean;
 
   loadLibrary: () => Promise<void>;
   importFiles: (paths: string[]) => Promise<void>;
@@ -41,7 +40,6 @@ interface LibraryState {
   updateBatchProgress: (progress: BatchSeparationProgress) => void;
   clearBatchSeparation: () => void;
   clearImportErrors: () => void;
-  setHideBatchSeparate: (value: boolean) => void;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -54,7 +52,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   separationStatuses: {},
   filter: "all",
   batchSeparation: null,
-  hideBatchSeparate: false,
 
   loadLibrary: async () => {
     try {
@@ -203,6 +200,4 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   clearBatchSeparation: () => set({ batchSeparation: null }),
 
   clearImportErrors: () => set({ importErrors: [] }),
-
-  setHideBatchSeparate: (value) => set({ hideBatchSeparate: value }),
 }));

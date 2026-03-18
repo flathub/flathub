@@ -316,7 +316,7 @@ App
 { queue: Song[], addToQueue, playNext, dequeue, reorder, autoAdvance }
 ```
 
-> **v0.2.0 planned**: Configurable crossfade duration with dual-track rendering in the audio output backend.
+> **Future candidate**: Configurable crossfade duration with dual-track rendering in the audio output backend.
 
 ---
 

@@ -49,10 +49,6 @@
 - **高效音轨存储** — 分离后的音轨会以紧凑方式缓存，保持曲库占用可控。
 - **断点续传分离** — 逐块检查点机制，中途关闭应用后重启会自动从上次进度继续。
 
-## 截图
-
-> 即将发布 — UI 已可使用，仍在打磨中。
-
 ## 快速开始
 
 ### 从 Release 安装
@@ -114,7 +110,7 @@ OpenKara 使用自定义 ONNX 格式的 [Demucs](https://github.com/adefossez/de
 | `htdemucs`    | 标准 — Hybrid Transformer Demucs | 44.1 kHz 立体声音频（7.8 秒） | 4 条音轨：鼓、贝斯、其他、人声 | ONNX（opset 17） |
 | `htdemucs_ft` | 高质量 — 微调 4 模型集成         | 44.1 kHz 立体声音频（7.8 秒） | 4 条音轨：鼓、贝斯、其他、人声 | ONNX（opset 17） |
 
-首次启动时，OpenKara 会自动下载标准模型。高质量模型为可选项，可在设置中下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线。开发环境下可运行 `./scripts/setup.sh` 手动下载标准模型。
+首次启动时，OpenKara 会将标准模型下载到应用数据目录。高质量模型为可选项，可在设置中下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线。开发环境和需要稳定输入的测试可运行 `./scripts/setup.sh` 填充 `src-tauri/models/`。
 
 ## 技术栈
 
@@ -216,7 +212,7 @@ MyKaraokeLibrary/
 - [x] CI/CD 流水线（macOS、Windows、Linux）
 - [x] 发布自动化（tag → GitHub Release）
 
-### 🚧 v0.2 — 打磨与分发
+### ✅ v0.2.0 — 当前版本
 
 - [x] 四轨音量混音器（可折叠 UI）
 - [x] 双分离模式（双轨 / 四轨）及设置持久化
@@ -224,11 +220,9 @@ MyKaraokeLibrary/
 - [x] 断点续传分离（逐块检查点）
 - [x] 多线程 ONNX 推理优化
 - [x] 设置系统（音轨模式配置）
-- [ ] UI 打磨与过渡动画
-- [ ] 错误提示与用户级错误信息
-- [ ] 应用图标与品牌设计
-- [ ] Homebrew Cask 分发
-- [ ] 全平台端到端测试
+- [x] UI 打磨与过渡动画
+- [x] 错误提示与用户级错误信息
+- [x] 应用图标与品牌设计
 
 ### 📋 未来计划
 
@@ -256,7 +250,7 @@ pnpm install
 pnpm tauri dev               # 启动开发服务器（支持热更新）
 ```
 
-`scripts/setup.sh` 将模型放置在 `src-tauri/models/` 目录，确保测试环境确定性。桌面应用在首次启动时如果没有本地模型副本，也会自动下载。
+`scripts/setup.sh` 只会把模型放置到 `src-tauri/models/` 目录，供本地开发和确定性测试使用。终端用户安装后的运行时模型默认下载到应用数据目录。
 
 ### 运行测试
 
@@ -275,7 +269,7 @@ pnpm tauri build             # 生产构建，生成平台特定安装包
 ### CI/CD
 
 - 推送到 `main` 会触发 CI 流程（[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)）— 在 macOS、Windows、Linux 上运行 lint、构建和测试。
-- 推送版本标签（如 `v0.1.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
+- 推送版本标签（如 `v0.2.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
 
 ## 文档
 

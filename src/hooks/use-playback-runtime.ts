@@ -4,9 +4,11 @@ import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { useBootstrapStore } from "@/stores/bootstrap-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { notifyError } from "@/lib/errors";
 import i18next, { detectSystemLanguage } from "@/lib/i18n";
 import * as api from "@/lib/tauri";
+import { loadStartupSettings } from "@/runtime/settings-runtime";
 import type {
   BatchSeparationProgress,
   ModelBootstrapStatusSnapshot,
@@ -17,51 +19,84 @@ import type {
   SeparationProgressEvent,
 } from "@/types/ipc";
 
-export function useLyricsAutoFetch() {
+export function useLyricsAutoFetch(enabled = true) {
   const songId = usePlayerStore((s) => s.snapshot?.song_id) ?? undefined;
   const fetchLyrics = useLyricsStore((s) => s.fetchLyrics);
   const prevSongIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    if (!enabled) {
+      prevSongIdRef.current = undefined;
+      return;
+    }
+
     if (songId && songId !== prevSongIdRef.current) {
       fetchLyrics(songId);
     }
     prevSongIdRef.current = songId;
-  }, [songId, fetchLyrics]);
+  }, [enabled, songId, fetchLyrics]);
 }
 
-export function useEventListeners() {
+function usePlaybackPositionEvents(enabled: boolean) {
   const updatePosition = usePlayerStore((s) => s.updatePosition);
-  const updateSeparationStatus = useLibraryStore(
-    (s) => s.updateSeparationStatus,
-  );
-  const updateBatchProgress = useLibraryStore((s) => s.updateBatchProgress);
-  const clearBatchSeparation = useLibraryStore((s) => s.clearBatchSeparation);
-  const updateBootstrapStatus = useBootstrapStore((s) => s.updateStatus);
-  const loadStems = usePlayerStore((s) => s.loadStems);
-
-  const currentSongIdRef = useRef<string | undefined>(undefined);
-  const currentSongId = usePlayerStore((s) => s.snapshot?.song_id) ?? undefined;
-  useEffect(() => {
-    currentSongIdRef.current = currentSongId;
-  }, [currentSongId]);
 
   useEffect(() => {
-    const unlisteners: (() => void)[] = [];
+    if (!enabled) {
+      return;
+    }
+
     let cancelled = false;
+    let unlisten: (() => void) | null = null;
 
     const setup = async () => {
-      const u1 = await listen<PlaybackPositionEvent>(
+      unlisten = await listen<PlaybackPositionEvent>(
         "playback-position",
         (e) => {
           if (!cancelled) updatePosition(e.payload.ms);
         },
       );
+    };
 
-      const u2 = await listen<SeparationProgressEvent>(
+    void setup();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [enabled, updatePosition]);
+}
+
+function useSeparationEvents(enabled: boolean) {
+  const updateSeparationStatus = useLibraryStore(
+    (s) => s.updateSeparationStatus,
+  );
+  const loadStems = usePlayerStore((s) => s.loadStems);
+
+  const currentSongIdRef = useRef<string | undefined>(undefined);
+  const currentSongId = usePlayerStore((s) => s.snapshot?.song_id) ?? undefined;
+
+  useEffect(() => {
+    if (!enabled) {
+      currentSongIdRef.current = undefined;
+      return;
+    }
+
+    currentSongIdRef.current = currentSongId;
+  }, [enabled, currentSongId]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const unlisteners: (() => void)[] = [];
+    let cancelled = false;
+
+    const setup = async () => {
+      const progressUnlisten = await listen<SeparationProgressEvent>(
         "separation-progress",
         (e) => {
-          if (!cancelled)
+          if (!cancelled) {
             updateSeparationStatus({
               song_id: e.payload.song_id,
               state: "running",
@@ -75,10 +110,11 @@ export function useEventListeners() {
               model_variant: null,
               error: null,
             });
+          }
         },
       );
 
-      const u3 = await listen<SeparationCompleteEvent>(
+      const completeUnlisten = await listen<SeparationCompleteEvent>(
         "separation-complete",
         (e) => {
           if (cancelled) return;
@@ -107,120 +143,214 @@ export function useEventListeners() {
         },
       );
 
-      const u4 = await listen<SeparationErrorEvent>("separation-error", (e) => {
-        if (!cancelled) {
-          updateSeparationStatus({
-            song_id: e.payload.song_id,
-            state: "failed",
-            percent: 0,
-            cache_hit: false,
-            vocals_path: null,
-            accomp_path: null,
-            drums_path: null,
-            bass_path: null,
-            other_path: null,
-            model_variant: null,
-            error: e.payload.error,
-          });
-          notifyError(e.payload.error);
-        }
-      });
+      const errorUnlisten = await listen<SeparationErrorEvent>(
+        "separation-error",
+        (e) => {
+          if (!cancelled) {
+            updateSeparationStatus({
+              song_id: e.payload.song_id,
+              state: "failed",
+              percent: 0,
+              cache_hit: false,
+              vocals_path: null,
+              accomp_path: null,
+              drums_path: null,
+              bass_path: null,
+              other_path: null,
+              model_variant: null,
+              error: e.payload.error,
+            });
+            notifyError(e.payload.error);
+          }
+        },
+      );
 
-      const u5 = await listen<ModelBootstrapStatusSnapshot>(
+      if (cancelled) {
+        progressUnlisten();
+        completeUnlisten();
+        errorUnlisten();
+      } else {
+        unlisteners.push(progressUnlisten, completeUnlisten, errorUnlisten);
+      }
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, [enabled, loadStems, updateSeparationStatus]);
+}
+
+function useBootstrapEvents(enabled: boolean) {
+  const updateBootstrapStatus = useBootstrapStore((s) => s.updateStatus);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const unlisteners: (() => void)[] = [];
+    let cancelled = false;
+
+    const setup = async () => {
+      const progressUnlisten = await listen<ModelBootstrapStatusSnapshot>(
         "model-bootstrap-progress",
         (e) => {
           if (!cancelled) updateBootstrapStatus(e.payload);
         },
       );
-
-      const u6 = await listen<ModelBootstrapStatusSnapshot>(
+      const readyUnlisten = await listen<ModelBootstrapStatusSnapshot>(
         "model-bootstrap-ready",
         (e) => {
           if (!cancelled) updateBootstrapStatus(e.payload);
         },
       );
-
-      const u7 = await listen<ModelBootstrapStatusSnapshot>(
+      const errorUnlisten = await listen<ModelBootstrapStatusSnapshot>(
         "model-bootstrap-error",
         (e) => {
           if (!cancelled) updateBootstrapStatus(e.payload);
         },
       );
 
-      const u8 = await listen<PlaybackEndedEvent>("playback-ended", (e) => {
-        if (!cancelled) {
-          usePlayerStore.getState().playNextFromQueue(e.payload.song_id);
-        }
-      });
-
-      const u9 = await listen<BatchSeparationProgress>(
-        "batch-separation-progress",
-        (e) => {
-          if (!cancelled) updateBatchProgress(e.payload);
-        },
-      );
-
-      const u10 = await listen<BatchSeparationProgress>(
-        "batch-separation-complete",
-        (e) => {
-          if (!cancelled) {
-            updateBatchProgress(e.payload);
-            setTimeout(() => clearBatchSeparation(), 3000);
-          }
-        },
-      );
-
-      const u11 = await listen<BatchSeparationProgress>(
-        "batch-separation-cancelled",
-        (e) => {
-          if (!cancelled) {
-            updateBatchProgress(e.payload);
-            setTimeout(() => clearBatchSeparation(), 3000);
-          }
-        },
-      );
-
       if (cancelled) {
-        [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11].forEach((fn) => fn());
+        progressUnlisten();
+        readyUnlisten();
+        errorUnlisten();
       } else {
-        unlisteners.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
+        unlisteners.push(progressUnlisten, readyUnlisten, errorUnlisten);
       }
     };
 
-    setup();
+    void setup();
 
     return () => {
       cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [
-    updatePosition,
-    updateSeparationStatus,
-    updateBatchProgress,
-    clearBatchSeparation,
-    loadStems,
-    updateBootstrapStatus,
-  ]);
+  }, [enabled, updateBootstrapStatus]);
+}
+
+function usePlaybackEndedQueueAdvance(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    const setup = async () => {
+      unlisten = await listen<PlaybackEndedEvent>("playback-ended", (e) => {
+        if (!cancelled) {
+          usePlayerStore.getState().playNextFromQueue(e.payload.song_id);
+        }
+      });
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [enabled]);
+}
+
+function useBatchSeparationEvents(enabled: boolean) {
+  const updateBatchProgress = useLibraryStore((s) => s.updateBatchProgress);
+  const clearBatchSeparation = useLibraryStore((s) => s.clearBatchSeparation);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const unlisteners: (() => void)[] = [];
+    let cancelled = false;
+    let clearTimer: number | null = null;
+
+    const scheduleClear = () => {
+      if (clearTimer !== null) {
+        window.clearTimeout(clearTimer);
+      }
+      clearTimer = window.setTimeout(() => clearBatchSeparation(), 3000);
+    };
+
+    const setup = async () => {
+      const progressUnlisten = await listen<BatchSeparationProgress>(
+        "batch-separation-progress",
+        (e) => {
+          if (!cancelled) updateBatchProgress(e.payload);
+        },
+      );
+      const completeUnlisten = await listen<BatchSeparationProgress>(
+        "batch-separation-complete",
+        (e) => {
+          if (!cancelled) {
+            updateBatchProgress(e.payload);
+            scheduleClear();
+          }
+        },
+      );
+      const cancelledUnlisten = await listen<BatchSeparationProgress>(
+        "batch-separation-cancelled",
+        (e) => {
+          if (!cancelled) {
+            updateBatchProgress(e.payload);
+            scheduleClear();
+          }
+        },
+      );
+
+      if (cancelled) {
+        progressUnlisten();
+        completeUnlisten();
+        cancelledUnlisten();
+      } else {
+        unlisteners.push(progressUnlisten, completeUnlisten, cancelledUnlisten);
+      }
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      if (clearTimer !== null) {
+        window.clearTimeout(clearTimer);
+      }
+      unlisteners.forEach((fn) => fn());
+    };
+  }, [enabled, clearBatchSeparation, updateBatchProgress]);
+}
+
+export function useEventListeners(enabled = true) {
+  usePlaybackPositionEvents(enabled);
+  useSeparationEvents(enabled);
+  useBootstrapEvents(enabled);
+  usePlaybackEndedQueueAdvance(enabled);
+  useBatchSeparationEvents(enabled);
 }
 
 export function useFullscreenPlaybackRuntime() {
   const updatePosition = usePlayerStore((s) => s.updatePosition);
   const updateSnapshot = usePlayerStore((s) => s.updateSnapshot);
+  const hydrateAppSettings = useSettingsStore((s) => s.hydrateAppSettings);
 
   useEffect(() => {
-    api
+    void api
       .getPlaybackState()
       .then((snapshot) => updateSnapshot(snapshot))
       .catch(() => {});
 
-    api
-      .getSettings()
-      .then((settings) => {
-        const lang = settings.language ?? detectSystemLanguage();
-        i18next.changeLanguage(lang);
-      })
-      .catch(() => {});
-  }, [updateSnapshot]);
+    void loadStartupSettings({
+      getSettings: api.getSettings,
+      hydrateAppSettings,
+      changeLanguage: i18next.changeLanguage,
+      detectFallbackLanguage: detectSystemLanguage,
+    }).catch(() => {});
+  }, [hydrateAppSettings, updateSnapshot]);
 
   useEffect(() => {
     let cancelled = false;

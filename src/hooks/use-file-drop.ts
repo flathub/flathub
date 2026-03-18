@@ -2,8 +2,12 @@ import { useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useLibraryStore } from "@/stores/library-store";
 
-export function useFileDrop(): void {
+export function useFileDrop(enabled = true): void {
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     let cancelled = false;
 
     const setupListener = async () => {
@@ -32,5 +36,5 @@ export function useFileDrop(): void {
       cancelled = true;
       cleanupRef?.();
     };
-  }, []);
+  }, [enabled]);
 }

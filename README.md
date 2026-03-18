@@ -49,10 +49,6 @@ So my no-compromise solution was born: OpenKara uses open-source AI to separate 
 - **Efficient Stem Storage** — Separated stems are cached compactly to keep library storage practical.
 - **Resumable Separation** — Per-chunk checkpointing means separation resumes from where it left off if the app is closed mid-process.
 
-## Screenshots
-
-> Coming soon — the UI is functional but still being polished.
-
 ## Quick Start
 
 ### Install from Release
@@ -114,7 +110,7 @@ OpenKara uses custom ONNX builds of [Demucs](https://github.com/adefossez/demucs
 | `htdemucs`    | Standard — Hybrid Transformer Demucs       | Stereo audio at 44.1 kHz (7.8s) | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
 | `htdemucs_ft` | High Quality — Fine-tuned 4-model ensemble | Stereo audio at 44.1 kHz (7.8s) | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
 
-On first launch, OpenKara automatically downloads the standard model. The high quality model is optional and can be downloaded from Settings. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline. For development, run `./scripts/setup.sh` to download the standard model locally.
+On first launch, OpenKara automatically downloads the standard model into the app data directory. The high quality model is optional and can be downloaded from Settings. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline. For local development and deterministic tests, run `./scripts/setup.sh` to populate `src-tauri/models/`.
 
 ## Tech Stack
 
@@ -218,7 +214,7 @@ All paths in the database are relative — the library can be moved to a NAS, US
 - [x] CI/CD pipeline (macOS, Windows, Linux)
 - [x] Release automation (tag → GitHub Release with binaries)
 
-### 🚧 v0.2 — Polish & Distribution
+### ✅ v0.2.0 — Current Release
 
 - [x] 4-stem volume mixer with collapsible UI
 - [x] Dual separation modes (2-stem / 4-stem) with settings persistence
@@ -226,11 +222,9 @@ All paths in the database are relative — the library can be moved to a NAS, US
 - [x] Resumable separation with per-chunk checkpointing
 - [x] Multi-threaded ONNX inference optimization
 - [x] Settings system (stem mode configuration)
-- [ ] UI polish and transitions
-- [ ] Error toasts and user-facing error messages
-- [ ] App icon and branding
-- [ ] Homebrew Cask distribution
-- [ ] End-to-end testing on all platforms
+- [x] UI polish and transitions
+- [x] Error toasts and user-facing error messages
+- [x] App icon and branding
 
 ### 📋 Future
 
@@ -258,7 +252,7 @@ pnpm install
 pnpm tauri dev               # start dev server with hot reload
 ```
 
-`scripts/setup.sh` places the model in `src-tauri/models/` for deterministic testing. The desktop app also auto-downloads the model on first launch when no local copy exists.
+`scripts/setup.sh` places the model in `src-tauri/models/` for local development and deterministic testing only. End-user installs use the app data directory for runtime model downloads.
 
 ### Running Tests
 
@@ -277,7 +271,7 @@ pnpm tauri build             # production build with platform-specific bundle
 ### CI/CD
 
 - Pushes to `main` trigger the CI workflow ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — lint, build, and test on macOS, Windows, and Linux.
-- Pushing a version tag (e.g. `v0.1.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
+- Pushing a version tag (e.g. `v0.2.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
 
 ## Documentation
 

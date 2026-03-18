@@ -2,8 +2,12 @@ import { useEffect } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
-export function useKeyboardShortcuts(): void {
+export function useKeyboardShortcuts(enabled = true): void {
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // CMD+, (macOS) / Ctrl+, (other) → toggle settings
       if (e.key === "," && (e.metaKey || e.ctrlKey)) {
@@ -62,5 +66,5 @@ export function useKeyboardShortcuts(): void {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [enabled]);
 }

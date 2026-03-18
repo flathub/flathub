@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "@/lib/tauri";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { ModelVariant, StemMode } from "@/types/ipc";
 
 export type DangerDialog =
@@ -76,7 +77,6 @@ export interface SettingsOverlayControllerDependencies {
     | "getAllSeparationStatuses"
     | "getLibraryPath"
     | "getModelStatus"
-    | "getSettings"
     | "openLibrary"
     | "setHideBatchSeparate"
     | "setLanguage"
@@ -88,11 +88,13 @@ export interface SettingsOverlayControllerDependencies {
   changeLanguage: (language: string) => void | Promise<unknown>;
   libraryStore: Pick<
     ReturnType<typeof useLibraryStore.getState>,
-    | "clearAllSeparationStatuses"
-    | "setHideBatchSeparate"
-    | "updateSeparationStatus"
+    "clearAllSeparationStatuses" | "updateSeparationStatus"
   >;
   lyricsStore: Pick<ReturnType<typeof useLyricsStore.getState>, "clear">;
+  settingsStore: Pick<
+    ReturnType<typeof useSettingsStore.getState>,
+    "getAppSettingsSnapshot" | "hydrateAppSettings" | "patchAppSettings"
+  >;
 }
 
 interface SettingsOverlayStateControls {
@@ -102,17 +104,33 @@ interface SettingsOverlayStateControls {
   ) => void;
 }
 
-export function createInitialSettingsOverlaySnapshot(): SettingsOverlaySnapshot {
+type PatchState = (patch: Partial<SettingsOverlayState>) => void;
+type PatchMeta = (patch: Partial<SettingsOverlayMeta>) => void;
+
+interface SettingsActionContext {
+  dependencies: SettingsOverlayControllerDependencies;
+  controls: SettingsOverlayStateControls;
+  patchState: PatchState;
+  patchMeta: PatchMeta;
+  refreshModelStatuses: () => Promise<void>;
+  applyModelVariant: (variant: ModelVariant) => Promise<void>;
+  selectSingleDirectory: (dialogTitle: string) => Promise<string | null>;
+  closeDialog: () => void;
+}
+
+export function createInitialSettingsOverlaySnapshot(
+  initialSettings = useSettingsStore.getState().getAppSettingsSnapshot(),
+): SettingsOverlaySnapshot {
   return {
     state: {
       libraryPath: null,
       libraryError: null,
-      stemMode: "two_stem",
-      modelVariant: "htdemucs",
+      stemMode: initialSettings.stemMode,
+      modelVariant: initialSettings.modelVariant,
       modelStatuses: {},
       downloadingModel: null,
-      language: "en",
-      hideBatchSeparate: false,
+      language: initialSettings.language ?? "en",
+      hideBatchSeparate: initialSettings.hideBatchSeparate,
     },
     meta: {
       isInitializing: true,
@@ -187,6 +205,7 @@ export function createSettingsOverlayActions(
       }
 
       const settings = await dependencies.api.setModelVariant(variant);
+      dependencies.settingsStore.hydrateAppSettings(settings);
       patchState({ modelVariant: settings.model_variant });
     } catch (error) {
       patchState({ downloadingModel: null });
@@ -211,13 +230,23 @@ export function createSettingsOverlayActions(
     patchMeta({ dangerDialog: null });
   };
 
+  const actionContext: SettingsActionContext = {
+    dependencies,
+    controls,
+    patchState,
+    patchMeta,
+    refreshModelStatuses,
+    applyModelVariant,
+    selectSingleDirectory,
+    closeDialog,
+  };
+
   return {
     initialize: async () => {
       patchMeta({ isInitializing: true });
 
-      const [libraryPathResult, settingsResult] = await Promise.allSettled([
+      const [libraryPathResult] = await Promise.allSettled([
         dependencies.api.getLibraryPath(),
-        dependencies.api.getSettings(),
       ]);
 
       if (libraryPathResult.status === "fulfilled") {
@@ -226,16 +255,13 @@ export function createSettingsOverlayActions(
         dependencies.notifyError(libraryPathResult.reason);
       }
 
-      if (settingsResult.status === "fulfilled") {
-        patchState({
-          stemMode: settingsResult.value.stem_mode,
-          modelVariant: settingsResult.value.model_variant,
-          language: settingsResult.value.language ?? "en",
-          hideBatchSeparate: settingsResult.value.hide_batch_separate,
-        });
-      } else {
-        dependencies.notifyError(settingsResult.reason);
-      }
+      const settings = dependencies.settingsStore.getAppSettingsSnapshot();
+      patchState({
+        stemMode: settings.stemMode,
+        modelVariant: settings.modelVariant,
+        language: settings.language ?? "en",
+        hideBatchSeparate: settings.hideBatchSeparate,
+      });
 
       await refreshModelStatuses();
 
@@ -243,8 +269,27 @@ export function createSettingsOverlayActions(
     },
 
     refreshModelStatuses,
+    ...createLibrarySettingsActions(actionContext),
+    ...createModelSettingsActions(actionContext),
+    ...createMaintenanceSettingsActions(actionContext),
+    closeDialog,
+  };
+}
 
-    createLibrary: async (dialogTitle: string) => {
+function createLibrarySettingsActions(
+  context: SettingsActionContext,
+): Pick<
+  SettingsOverlayActions,
+  | "createLibrary"
+  | "openLibrary"
+  | "setLanguage"
+  | "setStemMode"
+  | "toggleHideBatchSeparate"
+> {
+  const { dependencies, patchState, selectSingleDirectory } = context;
+
+  return {
+    createLibrary: async (dialogTitle) => {
       const selectedDirectory = await selectSingleDirectory(dialogTitle);
       if (!selectedDirectory) return;
 
@@ -261,7 +306,7 @@ export function createSettingsOverlayActions(
       }
     },
 
-    openLibrary: async (dialogTitle: string) => {
+    openLibrary: async (dialogTitle) => {
       const selectedDirectory = await selectSingleDirectory(dialogTitle);
       if (!selectedDirectory) return;
 
@@ -277,27 +322,60 @@ export function createSettingsOverlayActions(
       }
     },
 
-    setLanguage: async (language: string) => {
+    setLanguage: async (language) => {
       patchState({ language });
+      dependencies.settingsStore.patchAppSettings({ language });
       await Promise.resolve(dependencies.changeLanguage(language));
 
       try {
-        await dependencies.api.setLanguage(language);
+        const settings = await dependencies.api.setLanguage(language);
+        dependencies.settingsStore.hydrateAppSettings(settings);
       } catch (error) {
         dependencies.notifyError(error);
       }
     },
 
-    setStemMode: async (mode: StemMode) => {
+    setStemMode: async (mode) => {
       try {
         const settings = await dependencies.api.setStemMode(mode);
+        dependencies.settingsStore.hydrateAppSettings(settings);
         patchState({ stemMode: settings.stem_mode });
       } catch (error) {
         dependencies.notifyError(error);
       }
     },
 
-    selectModelVariant: async (variant: ModelVariant) => {
+    toggleHideBatchSeparate: async (value) => {
+      patchState({ hideBatchSeparate: value });
+      dependencies.settingsStore.patchAppSettings({ hideBatchSeparate: value });
+
+      try {
+        const settings = await dependencies.api.setHideBatchSeparate(value);
+        dependencies.settingsStore.hydrateAppSettings(settings);
+      } catch (error) {
+        dependencies.notifyError(error);
+      }
+    },
+  };
+}
+
+function createModelSettingsActions(
+  context: SettingsActionContext,
+): Pick<
+  SettingsOverlayActions,
+  "selectModelVariant" | "confirmFtModel" | "deleteModel"
+> {
+  const {
+    dependencies,
+    controls,
+    patchMeta,
+    refreshModelStatuses,
+    applyModelVariant,
+    closeDialog,
+  } = context;
+
+  return {
+    selectModelVariant: async (variant) => {
       const currentVariant = controls.getSnapshot().state.modelVariant;
 
       if (variant === "htdemucs_ft" && currentVariant !== "htdemucs_ft") {
@@ -313,7 +391,7 @@ export function createSettingsOverlayActions(
       await applyModelVariant("htdemucs_ft");
     },
 
-    deleteModel: async (variant: ModelVariant) => {
+    deleteModel: async (variant) => {
       if (variant === controls.getSnapshot().state.modelVariant) {
         return;
       }
@@ -325,18 +403,23 @@ export function createSettingsOverlayActions(
         dependencies.notifyError(error);
       }
     },
+  };
+}
 
-    toggleHideBatchSeparate: async (value: boolean) => {
-      patchState({ hideBatchSeparate: value });
-      dependencies.libraryStore.setHideBatchSeparate(value);
+function createMaintenanceSettingsActions(
+  context: SettingsActionContext,
+): Pick<
+  SettingsOverlayActions,
+  | "openDeleteStemsDialog"
+  | "confirmDeleteStems"
+  | "openDowngradeDialog"
+  | "confirmDowngrade"
+  | "openDeleteLyricsDialog"
+  | "confirmDeleteLyrics"
+> {
+  const { dependencies, patchMeta } = context;
 
-      try {
-        await dependencies.api.setHideBatchSeparate(value);
-      } catch (error) {
-        dependencies.notifyError(error);
-      }
-    },
-
+  return {
     openDeleteStemsDialog: async () => {
       try {
         const stemsSize = await dependencies.api.estimateStemsSize();
@@ -412,7 +495,5 @@ export function createSettingsOverlayActions(
         });
       }
     },
-
-    closeDialog,
   };
 }

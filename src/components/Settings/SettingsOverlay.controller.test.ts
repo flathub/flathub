@@ -5,6 +5,7 @@ import {
   type SettingsOverlayControllerDependencies,
   type SettingsOverlaySnapshot,
 } from "./SettingsOverlay.state";
+import type { AppSettingsSnapshot } from "@/stores/settings-store";
 import type { SeparationStatusSnapshot } from "@/types/ipc";
 
 function createControllerHarness() {
@@ -24,7 +25,6 @@ function createControllerHarness() {
       getAllSeparationStatuses: vi.fn(),
       getLibraryPath: vi.fn(),
       getModelStatus: vi.fn(),
-      getSettings: vi.fn(),
       openLibrary: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
@@ -36,11 +36,23 @@ function createControllerHarness() {
     changeLanguage: vi.fn(),
     libraryStore: {
       clearAllSeparationStatuses: vi.fn(),
-      setHideBatchSeparate: vi.fn(),
       updateSeparationStatus: vi.fn(),
     },
     lyricsStore: {
       clear: vi.fn(),
+    },
+    settingsStore: {
+      getAppSettingsSnapshot: vi.fn(
+        (): AppSettingsSnapshot => ({
+          hydrated: true,
+          stemMode: "four_stem",
+          modelVariant: "htdemucs_ft",
+          language: "zh-CN",
+          hideBatchSeparate: true,
+        }),
+      ),
+      hydrateAppSettings: vi.fn(),
+      patchAppSettings: vi.fn(),
     },
   };
 
@@ -72,12 +84,6 @@ describe("SettingsOverlay controller", () => {
     vi.mocked(harness.dependencies.api.getLibraryPath).mockResolvedValue(
       "/karaoke",
     );
-    vi.mocked(harness.dependencies.api.getSettings).mockResolvedValue({
-      stem_mode: "four_stem",
-      model_variant: "htdemucs_ft",
-      language: "zh-CN",
-      hide_batch_separate: true,
-    });
     vi.mocked(harness.dependencies.api.getModelStatus)
       .mockResolvedValueOnce({
         variant: "htdemucs",
@@ -92,6 +98,12 @@ describe("SettingsOverlay controller", () => {
 
     await harness.actions.initialize();
 
+    expect(
+      harness.dependencies.settingsStore.getAppSettingsSnapshot,
+    ).toHaveBeenCalled();
+    expect(
+      harness.dependencies.settingsStore.hydrateAppSettings,
+    ).not.toHaveBeenCalled();
     expect(harness.getSnapshot()).toMatchObject({
       state: {
         libraryPath: "/karaoke",
@@ -180,15 +192,24 @@ describe("SettingsOverlay controller", () => {
     expect(harness.dependencies.api.deleteModel).not.toHaveBeenCalled();
   });
 
-  test("hide batch separate updates local state and the library store", async () => {
+  test("hide batch separate updates local state and the settings store", async () => {
     const harness = createControllerHarness();
+    vi.mocked(harness.dependencies.api.setHideBatchSeparate).mockResolvedValue({
+      stem_mode: "four_stem",
+      model_variant: "htdemucs_ft",
+      language: "zh-CN",
+      hide_batch_separate: true,
+    });
 
     await harness.actions.toggleHideBatchSeparate(true);
 
     expect(harness.getSnapshot().state.hideBatchSeparate).toBe(true);
     expect(
-      harness.dependencies.libraryStore.setHideBatchSeparate,
-    ).toHaveBeenCalledWith(true);
+      harness.dependencies.settingsStore.patchAppSettings,
+    ).toHaveBeenCalledWith({ hideBatchSeparate: true });
+    expect(
+      harness.dependencies.settingsStore.hydrateAppSettings,
+    ).toHaveBeenCalled();
     expect(harness.dependencies.api.setHideBatchSeparate).toHaveBeenCalledWith(
       true,
     );
