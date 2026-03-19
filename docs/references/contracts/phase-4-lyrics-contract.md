@@ -13,10 +13,12 @@
 
 1. `fetch_lyrics(song_id: String) -> LyricsPayload`
 2. `set_lyrics_offset(song_id: String, ms: i64) -> ()`
-3. 抓取优先顺序固定为 `LRCLIB -> embedded -> sidecar .lrc`
-4. SQLite `lyrics` 表按 `song_hash` 缓存原始 LRC 和 `offset_ms`
-5. 对同一首歌重复调用 `fetch_lyrics` 时，优先命中 SQLite cache，不重复发起 HTTP 请求
-6. `Phase 5` 起，歌词命令失败值统一为 `CommandError`，详见 [phase-5-error-contract.md](./phase-5-error-contract.md)
+3. `set_lyrics_font_step(step: i8) -> AppSettings`
+4. 抓取优先顺序固定为 `LRCLIB -> embedded -> sidecar .lrc`
+5. SQLite `lyrics` 表按 `song_hash` 缓存原始 LRC 和 `offset_ms`
+6. 对同一首歌重复调用 `fetch_lyrics` 时，优先命中 SQLite cache，不重复发起 HTTP 请求
+7. 歌词字号是全局显示偏好，不写入 `lyrics` 表；它走 `AppSettings.lyrics_font_step`
+8. `Phase 5` 起，歌词命令失败值统一为 `CommandError`，详见 [phase-5-error-contract.md](./phase-5-error-contract.md)
 
 ## Inputs / outputs / required dependencies
 
@@ -87,6 +89,35 @@
 3. 如果歌曲存在但还没有缓存歌词，命令返回 `CommandError`
 4. 该命令只更新 SQLite 中的 `offset_ms`，不会重抓歌词
 
+### Command: `set_lyrics_font_step`
+
+**Input**
+
+```json
+{
+  "step": 1
+}
+```
+
+**Output**
+
+```json
+{
+  "stem_mode": "two_stem",
+  "model_variant": "htdemucs",
+  "language": "en",
+  "hide_batch_separate": false,
+  "lyrics_font_step": 1
+}
+```
+
+**Semantics**
+
+1. `step` 是全局歌词字号档位，允许值固定为 `-2..2`
+2. 该命令将字号档位持久化到应用 `config.json`
+3. 该命令不会修改 SQLite `lyrics` 表，也不会影响歌词抓取或 timing offset
+4. 超出范围时命令返回 `CommandError`
+
 ### Shared type: `LyricsPayload`
 
 | Field       | Type                                       | Notes                        |
@@ -127,6 +158,7 @@
 2. `lofty` 负责读取内嵌歌词标签
 3. `rusqlite` 负责缓存和 offset 持久化
 4. `playback-position` 事件继续由 Phase 2 播放契约提供，歌词契约本身不新增事件
+5. 全局显示偏好由 settings 命令提供；歌词模块当前额外依赖 `AppSettings.lyrics_font_step`
 
 ## Verification commands
 

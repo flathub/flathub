@@ -125,6 +125,7 @@ export interface AppSettings {
   model_variant: ModelVariant;
   language: string | null;
   hide_batch_separate: boolean;
+  lyrics_font_step: number;
 }
 
 export interface ModelStatusSnapshot {

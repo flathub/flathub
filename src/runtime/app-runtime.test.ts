@@ -8,6 +8,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      lyrics_font_step: 1,
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);
@@ -25,6 +26,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      lyrics_font_step: 1,
     });
     expect(changeLanguage).toHaveBeenCalledWith("zh-CN");
     expect(detectFallbackLanguage).not.toHaveBeenCalled();
@@ -36,6 +38,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs",
       language: null,
       hide_batch_separate: false,
+      lyrics_font_step: 0,
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);

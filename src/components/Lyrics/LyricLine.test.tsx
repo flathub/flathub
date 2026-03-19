@@ -18,6 +18,7 @@ describe("LyricLine", () => {
         line={{ time_ms: 0, text: "plain line", words: null }}
         state="plain"
         adjustedMs={0}
+        lyricsFontStep={0}
       />,
     );
 
@@ -38,11 +39,27 @@ describe("LyricLine", () => {
         }}
         state="active"
         adjustedMs={1600}
+        lyricsFontStep={0}
       />,
     );
 
     expect(markup).toContain("text-[var(--color-text-dimmer)]");
     expect(markup).toContain("text-white");
     expect(markup).toContain("text-[var(--color-active)]");
+  });
+
+  test("uses the configured font scale without changing the lyric state logic", () => {
+    const markup = renderToStaticMarkup(
+      <LyricLine
+        line={{ time_ms: 1000, text: "scaled line", words: null }}
+        state="active"
+        adjustedMs={1000}
+        presentation="audience"
+        lyricsFontStep={2}
+      />,
+    );
+
+    expect(markup).toContain("xl:text-8xl");
+    expect(markup).toContain("text-white");
   });
 });

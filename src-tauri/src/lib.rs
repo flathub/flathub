@@ -177,6 +177,7 @@ pub fn run() {
             commands::settings::set_model_variant,
             commands::settings::set_language,
             commands::settings::set_hide_batch_separate,
+            commands::settings::set_lyrics_font_step,
             commands::bootstrap::download_model,
             commands::bootstrap::delete_model,
             commands::bootstrap::get_model_status

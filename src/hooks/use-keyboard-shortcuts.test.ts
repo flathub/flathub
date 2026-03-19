@@ -37,6 +37,8 @@ describe("handleAppKeyDown", () => {
     const handled = handleAppKeyDown(event, {
       toggleSettings: vi.fn(),
       toggleSidebar,
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -64,6 +66,8 @@ describe("handleAppKeyDown", () => {
     const handled = handleAppKeyDown(event, {
       toggleSettings: vi.fn(),
       toggleSidebar,
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -76,5 +80,117 @@ describe("handleAppKeyDown", () => {
 
     expect(handled).toBe(false);
     expect(toggleSidebar).not.toHaveBeenCalled();
+  });
+
+  test("increases lyric font size with the shared primary shortcut", () => {
+    const adjustLyricsFont = vi.fn();
+    const event = createKeyboardEvent({
+      code: "Equal",
+      key: "+",
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    const handled = handleAppKeyDown(event, {
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont,
+      resetLyricsFont: vi.fn(),
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(adjustLyricsFont).toHaveBeenCalledWith(1);
+  });
+
+  test("decreases lyric font size with the shared primary shortcut", () => {
+    const adjustLyricsFont = vi.fn();
+    const event = createKeyboardEvent({
+      code: "Minus",
+      key: "-",
+      ctrlKey: true,
+    });
+
+    const handled = handleAppKeyDown(event, {
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont,
+      resetLyricsFont: vi.fn(),
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(true);
+    expect(adjustLyricsFont).toHaveBeenCalledWith(-1);
+  });
+
+  test("resets lyric font size with the shared primary shortcut", () => {
+    const resetLyricsFont = vi.fn();
+    const event = createKeyboardEvent({
+      code: "Digit0",
+      key: "0",
+      metaKey: true,
+    });
+
+    const handled = handleAppKeyDown(event, {
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont,
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(true);
+    expect(resetLyricsFont).toHaveBeenCalledOnce();
+  });
+
+  test("ignores lyric font shortcuts while typing in an input", () => {
+    const adjustLyricsFont = vi.fn();
+    const event = createKeyboardEvent({
+      code: "Equal",
+      key: "+",
+      ctrlKey: true,
+      shiftKey: true,
+      target: createKeyboardTarget("TEXTAREA"),
+    });
+
+    const handled = handleAppKeyDown(event, {
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont,
+      resetLyricsFont: vi.fn(),
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(false);
+    expect(adjustLyricsFont).not.toHaveBeenCalled();
   });
 });

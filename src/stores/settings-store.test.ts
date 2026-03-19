@@ -10,6 +10,7 @@ describe("settings-store app settings ownership", () => {
       modelVariant: "htdemucs",
       language: null,
       hideBatchSeparate: false,
+      lyricsFontStep: 0,
     });
   });
 
@@ -19,6 +20,7 @@ describe("settings-store app settings ownership", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      lyrics_font_step: 1,
     });
 
     expect(useSettingsStore.getState()).toMatchObject({
@@ -27,6 +29,7 @@ describe("settings-store app settings ownership", () => {
       modelVariant: "htdemucs_ft",
       language: "zh-CN",
       hideBatchSeparate: true,
+      lyricsFontStep: 1,
     });
   });
 
@@ -36,11 +39,13 @@ describe("settings-store app settings ownership", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: false,
+      lyrics_font_step: -1,
     });
 
     useSettingsStore.getState().patchAppSettings({
       language: "en",
       hideBatchSeparate: true,
+      lyricsFontStep: 2,
     });
 
     expect(useSettingsStore.getState().getAppSettingsSnapshot()).toEqual({
@@ -49,6 +54,7 @@ describe("settings-store app settings ownership", () => {
       modelVariant: "htdemucs_ft",
       language: "en",
       hideBatchSeparate: true,
+      lyricsFontStep: 2,
     });
   });
 });

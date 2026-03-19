@@ -2,10 +2,13 @@ import { useRef, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Edit2 } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
+import { useSettingsStore } from "@/stores/settings-store";
 import { LyricLine } from "./LyricLine";
+import { LyricsFontSizeControl } from "./LyricsFontSizeControl";
 import { LyricsOffsetControl } from "./LyricsOffsetControl";
 import { LyricsEmptyState } from "./LyricsEmptyState";
 import { LyricsEditDialog } from "./LyricsEditDialog";
+import { getCenteredScrollTop } from "./lyrics-scroll";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { usePlayerStore } from "@/stores/player-store";
 
@@ -22,10 +25,11 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const rawLrc = useLyricsStore((s) => s.rawLrc);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
   const positionMs = usePlayerStore((s) => s.positionMs);
+  const lyricsFontStep = useSettingsStore((s) => s.lyricsFontStep);
   const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const utilityControlsPinned = offsetMs !== 0;
+  const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
   const isAudience = presentation === "audience";
 
   const isPlainText = lines.length > 0 && lines.every((l) => l.time_ms === 0);
@@ -34,11 +38,26 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   useEffect(() => {
     if (isPlainText) return;
     if (activeLineIndex < 0 || !containerRef.current) return;
-    const lineEl = containerRef.current.children[activeLineIndex] as
-      | HTMLElement
-      | undefined;
-    lineEl?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeLineIndex, isPlainText]);
+    // The scroll viewport's direct child is the centered stack wrapper, not the
+    // lyric rows themselves. Target rows must be found through explicit markers
+    // or auto-scroll will silently stop tracking the active line.
+    const lineEl = containerRef.current.querySelector<HTMLElement>(
+      `[data-lyrics-line-index="${activeLineIndex}"]`,
+    );
+    if (!lineEl) return;
+
+    const top = getCenteredScrollTop({
+      viewportHeight: containerRef.current.clientHeight,
+      scrollHeight: containerRef.current.scrollHeight,
+      lineOffsetTop: lineEl.offsetTop,
+      lineHeight: lineEl.clientHeight,
+    });
+
+    containerRef.current.scrollTo({
+      top,
+      behavior: "smooth",
+    });
+  }, [activeLineIndex, isPlainText, lyricsFontStep, presentation, songId]);
 
   if (!songId) {
     return (
@@ -105,21 +124,23 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
           }`}
         >
           {lines.map((line, idx) => (
-            <LyricLine
-              key={idx}
-              line={line}
-              state={
-                isPlainText
-                  ? "plain"
-                  : idx === activeLineIndex
-                    ? "active"
-                    : idx < activeLineIndex
-                      ? "past"
-                      : "future"
-              }
-              adjustedMs={isPlainText ? 0 : adjustedMs}
-              presentation={presentation}
-            />
+            <div key={idx} data-lyrics-line-index={idx} className="w-full">
+              <LyricLine
+                line={line}
+                state={
+                  isPlainText
+                    ? "plain"
+                    : idx === activeLineIndex
+                      ? "active"
+                      : idx < activeLineIndex
+                        ? "past"
+                        : "future"
+                }
+                adjustedMs={isPlainText ? 0 : adjustedMs}
+                presentation={presentation}
+                lyricsFontStep={lyricsFontStep}
+              />
+            </div>
           ))}
         </div>
       </div>
@@ -128,10 +149,16 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
           className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-6 pb-5"
           data-visible={utilityControlsPinned}
         >
-          <LyricsOffsetControl
-            className="contextual-reveal pointer-events-auto"
-            data-visible={utilityControlsPinned}
-          />
+          <div className="flex items-center gap-3">
+            <LyricsOffsetControl
+              className="contextual-reveal pointer-events-auto"
+              data-visible={utilityControlsPinned}
+            />
+            <LyricsFontSizeControl
+              className="contextual-reveal pointer-events-auto"
+              data-visible={utilityControlsPinned}
+            />
+          </div>
         </div>
       )}
     </div>

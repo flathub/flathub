@@ -11,9 +11,12 @@ export interface ShortcutEventLike {
 
 export interface ShortcutDefinition {
   id: string;
-  code: string;
-  key: string;
+  code?: string;
+  key?: string;
   displayKey: string;
+  acceptedCodes?: string[];
+  acceptedKeys?: string[];
+  allowShift?: boolean;
 }
 
 export const APP_SHORTCUTS = {
@@ -28,6 +31,25 @@ export const APP_SHORTCUTS = {
     code: "Comma",
     key: ",",
     displayKey: ",",
+  },
+  increaseLyricsFont: {
+    id: "lyrics.font.increase",
+    displayKey: "+",
+    acceptedCodes: ["Equal", "NumpadAdd"],
+    acceptedKeys: ["+", "="],
+    allowShift: true,
+  },
+  decreaseLyricsFont: {
+    id: "lyrics.font.decrease",
+    code: "Minus",
+    key: "-",
+    displayKey: "-",
+  },
+  resetLyricsFont: {
+    id: "lyrics.font.reset",
+    code: "Digit0",
+    key: "0",
+    displayKey: "0",
   },
 } satisfies Record<string, ShortcutDefinition>;
 
@@ -61,12 +83,17 @@ export function matchesShortcut(
   shortcut: ShortcutDefinition,
   event: ShortcutEventLike,
 ): boolean {
+  const acceptedCodes =
+    shortcut.acceptedCodes ?? (shortcut.code ? [shortcut.code] : []);
+  const acceptedKeys =
+    shortcut.acceptedKeys ?? (shortcut.key ? [shortcut.key] : []);
+
   return (
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
-    !event.shiftKey &&
-    event.code === shortcut.code &&
-    event.key.toLowerCase() === shortcut.key.toLowerCase()
+    (shortcut.allowShift || !event.shiftKey) &&
+    acceptedCodes.includes(event.code) &&
+    acceptedKeys.some((key) => event.key.toLowerCase() === key.toLowerCase())
   );
 }
 

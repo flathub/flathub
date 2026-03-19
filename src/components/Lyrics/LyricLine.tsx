@@ -7,6 +7,39 @@ interface LyricLineProps {
   state: "active" | "past" | "future" | "plain";
   adjustedMs: number;
   presentation?: "standard" | "audience";
+  lyricsFontStep: number;
+}
+
+const STANDARD_TEXT_SIZE_CLASSES = {
+  [-2]: "text-lg font-bold tracking-tight md:text-xl",
+  [-1]: "text-xl font-bold tracking-tight md:text-2xl",
+  [0]: "text-2xl font-bold tracking-tight md:text-3xl",
+  [1]: "text-3xl font-bold tracking-tight md:text-4xl xl:text-5xl",
+  [2]: "text-4xl font-bold tracking-tight md:text-5xl xl:text-6xl",
+} as const;
+
+const AUDIENCE_TEXT_SIZE_CLASSES = {
+  [-2]: "text-2xl font-bold tracking-tight md:text-4xl xl:text-5xl",
+  [-1]: "text-3xl font-bold tracking-tight md:text-5xl xl:text-6xl",
+  [0]: "text-4xl font-bold tracking-tight md:text-6xl xl:text-7xl",
+  [1]: "text-5xl font-bold tracking-tight md:text-7xl xl:text-8xl",
+  [2]: "text-6xl font-bold tracking-tight md:text-8xl xl:text-8xl",
+} as const;
+
+function getLyricsTextSizeClass(
+  presentation: "standard" | "audience",
+  lyricsFontStep: number,
+): string {
+  const clampedStep = Math.max(-2, Math.min(2, lyricsFontStep)) as
+    | -2
+    | -1
+    | 0
+    | 1
+    | 2;
+
+  return presentation === "audience"
+    ? AUDIENCE_TEXT_SIZE_CLASSES[clampedStep]
+    : STANDARD_TEXT_SIZE_CLASSES[clampedStep];
 }
 
 function getActiveWordIndex(words: WordToken[], adjustedMs: number): number {
@@ -29,7 +62,8 @@ function areLyricLinePropsEqual(
   if (
     previous.line !== next.line ||
     previous.state !== next.state ||
-    previous.presentation !== next.presentation
+    previous.presentation !== next.presentation ||
+    previous.lyricsFontStep !== next.lyricsFontStep
   ) {
     return false;
   }
@@ -46,13 +80,11 @@ export const LyricLine = memo(function LyricLine({
   state,
   adjustedMs,
   presentation = "standard",
+  lyricsFontStep,
 }: LyricLineProps) {
   const seek = usePlayerStore((s) => s.seek);
   const isSeekable = state !== "plain";
-  const textSizeClass =
-    presentation === "audience"
-      ? "text-4xl font-bold tracking-tight md:text-6xl xl:text-7xl"
-      : "text-2xl font-bold tracking-tight md:text-3xl";
+  const textSizeClass = getLyricsTextSizeClass(presentation, lyricsFontStep);
 
   const handleClick = () => {
     if (!isSeekable) return;

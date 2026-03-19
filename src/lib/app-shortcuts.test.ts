@@ -9,6 +9,13 @@ describe("app-shortcuts", () => {
   test("formats primary shortcuts for macOS", () => {
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSidebar, "mac")).toBe("⌘B");
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSettings, "mac")).toBe("⌘,");
+    expect(getShortcutDisplay(APP_SHORTCUTS.increaseLyricsFont, "mac")).toBe(
+      "⌘+",
+    );
+    expect(getShortcutDisplay(APP_SHORTCUTS.decreaseLyricsFont, "mac")).toBe(
+      "⌘-",
+    );
+    expect(getShortcutDisplay(APP_SHORTCUTS.resetLyricsFont, "mac")).toBe("⌘0");
   });
 
   test("formats primary shortcuts for non-mac platforms", () => {
@@ -18,6 +25,9 @@ describe("app-shortcuts", () => {
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSettings, "linux")).toBe(
       "Ctrl+,",
     );
+    expect(
+      getShortcutDisplay(APP_SHORTCUTS.increaseLyricsFont, "windows"),
+    ).toBe("Ctrl++");
   });
 
   test("matches shortcuts through the primary modifier", () => {
@@ -53,5 +63,51 @@ describe("app-shortcuts", () => {
         shiftKey: false,
       }),
     ).toBe(false);
+  });
+
+  test("matches lyric font shortcuts with their accepted key shapes", () => {
+    expect(
+      matchesShortcut(APP_SHORTCUTS.increaseLyricsFont, {
+        code: "Equal",
+        key: "+",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.increaseLyricsFont, {
+        code: "NumpadAdd",
+        key: "+",
+        metaKey: false,
+        ctrlKey: true,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.decreaseLyricsFont, {
+        code: "Minus",
+        key: "-",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.resetLyricsFont, {
+        code: "Digit0",
+        key: "0",
+        metaKey: false,
+        ctrlKey: true,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
   });
 });

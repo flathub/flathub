@@ -20,12 +20,20 @@ interface KeyboardShortcutPlayerState {
 interface KeyboardShortcutDeps {
   toggleSettings: () => void;
   toggleSidebar: () => void;
+  adjustLyricsFont: (delta: number) => void;
+  resetLyricsFont: () => void;
   player: KeyboardShortcutPlayerState;
 }
 
 export function handleAppKeyDown(
   e: KeyboardEvent,
-  { toggleSettings, toggleSidebar, player }: KeyboardShortcutDeps,
+  {
+    toggleSettings,
+    toggleSidebar,
+    adjustLyricsFont,
+    resetLyricsFont,
+    player,
+  }: KeyboardShortcutDeps,
 ): boolean {
   if (matchesShortcut(APP_SHORTCUTS.toggleSettings, e)) {
     e.preventDefault();
@@ -40,6 +48,24 @@ export function handleAppKeyDown(
   if (matchesShortcut(APP_SHORTCUTS.toggleSidebar, e)) {
     e.preventDefault();
     toggleSidebar();
+    return true;
+  }
+
+  if (matchesShortcut(APP_SHORTCUTS.increaseLyricsFont, e)) {
+    e.preventDefault();
+    adjustLyricsFont(1);
+    return true;
+  }
+
+  if (matchesShortcut(APP_SHORTCUTS.decreaseLyricsFont, e)) {
+    e.preventDefault();
+    adjustLyricsFont(-1);
+    return true;
+  }
+
+  if (matchesShortcut(APP_SHORTCUTS.resetLyricsFont, e)) {
+    e.preventDefault();
+    resetLyricsFont();
     return true;
   }
 
@@ -92,6 +118,10 @@ export function useKeyboardShortcuts(enabled = true): void {
       handleAppKeyDown(e, {
         toggleSettings: () => useSettingsStore.getState().toggle(),
         toggleSidebar: () => useLayoutStore.getState().toggleSidebar(),
+        adjustLyricsFont: (delta) =>
+          void useSettingsStore.getState().adjustLyricsFontStep(delta),
+        resetLyricsFont: () =>
+          void useSettingsStore.getState().resetLyricsFontStep(),
         player: {
           ...usePlayerStore.getState(),
         },

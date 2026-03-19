@@ -49,6 +49,7 @@ function createControllerHarness() {
           modelVariant: "htdemucs_ft",
           language: "zh-CN",
           hideBatchSeparate: true,
+          lyricsFontStep: 0,
         }),
       ),
       hydrateAppSettings: vi.fn(),
@@ -160,6 +161,7 @@ describe("SettingsOverlay controller", () => {
       model_variant: "htdemucs",
       language: "en",
       hide_batch_separate: false,
+      lyrics_font_step: 0,
     });
 
     await harness.actions.selectModelVariant("htdemucs");
@@ -199,6 +201,7 @@ describe("SettingsOverlay controller", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      lyrics_font_step: 0,
     });
 
     await harness.actions.toggleHideBatchSeparate(true);

@@ -194,6 +194,10 @@ export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
   return invoke<AppSettings>("set_hide_batch_separate", { value });
 }
 
+export function setLyricsFontStep(step: number): Promise<AppSettings> {
+  return invoke<AppSettings>("set_lyrics_font_step", { step });
+}
+
 export function upgradeToFourStem(
   songId: string,
 ): Promise<SeparationStatusSnapshot> {
