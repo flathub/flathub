@@ -50,11 +50,16 @@ export function Toolbar({
           </button>
         </Tooltip>
         <div className="h-4 w-px bg-[var(--color-border-light)]" />
-        <ImportButton>
-          <span className="motion-surface flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[var(--color-active)] hover:text-white">
-            <UploadCloud size={14} /> {t("toolbar.import")}
-          </span>
-        </ImportButton>
+        <Tooltip
+          label={t("toolbar.import")}
+          shortcut={getShortcutDisplay(APP_SHORTCUTS.importFiles)}
+        >
+          <ImportButton ariaLabel={t("toolbar.import")}>
+            <span className="motion-surface flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[var(--color-active)] hover:text-white">
+              <UploadCloud size={14} /> {t("toolbar.import")}
+            </span>
+          </ImportButton>
+        </Tooltip>
       </div>
 
       <div

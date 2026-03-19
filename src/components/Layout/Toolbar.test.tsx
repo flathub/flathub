@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
+import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import { Toolbar } from "./Toolbar";
 
 vi.mock("react-i18next", () => ({
@@ -10,6 +11,22 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/components/Library/ImportButton", () => ({
   ImportButton: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock("@/components/Overlay/Tooltip", () => ({
+  Tooltip: ({
+    children,
+    label,
+    shortcut,
+  }: {
+    children: React.ReactNode;
+    label: string;
+    shortcut?: string;
+  }) => (
+    <span data-tooltip-label={label} data-tooltip-shortcut={shortcut}>
+      {children}
+    </span>
+  ),
 }));
 
 describe("Toolbar drag region", () => {
@@ -40,5 +57,21 @@ describe("Toolbar drag region", () => {
     );
 
     expect(markup).not.toContain("w-[54px]");
+  });
+
+  test("shows import tooltip metadata with the shared shortcut", () => {
+    const markup = renderToStaticMarkup(
+      <Toolbar
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        settingsOpen={false}
+        sidebarVisible={true}
+      />,
+    );
+
+    expect(markup).toContain('data-tooltip-label="toolbar.import"');
+    expect(markup).toContain(
+      `data-tooltip-shortcut="${getShortcutDisplay(APP_SHORTCUTS.importFiles)}"`,
+    );
   });
 });

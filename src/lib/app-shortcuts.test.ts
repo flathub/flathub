@@ -8,6 +8,7 @@ import {
 describe("app-shortcuts", () => {
   test("formats primary shortcuts for macOS", () => {
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSidebar, "mac")).toBe("⌘B");
+    expect(getShortcutDisplay(APP_SHORTCUTS.importFiles, "mac")).toBe("⌘O");
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSettings, "mac")).toBe("⌘,");
     expect(getShortcutDisplay(APP_SHORTCUTS.increaseLyricsFont, "mac")).toBe(
       "⌘+",
@@ -21,6 +22,9 @@ describe("app-shortcuts", () => {
   test("formats primary shortcuts for non-mac platforms", () => {
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSidebar, "windows")).toBe(
       "Ctrl+B",
+    );
+    expect(getShortcutDisplay(APP_SHORTCUTS.importFiles, "windows")).toBe(
+      "Ctrl+O",
     );
     expect(getShortcutDisplay(APP_SHORTCUTS.toggleSettings, "linux")).toBe(
       "Ctrl+,",
@@ -48,6 +52,17 @@ describe("app-shortcuts", () => {
         key: "b",
         metaKey: false,
         ctrlKey: true,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.importFiles, {
+        code: "KeyO",
+        key: "o",
+        metaKey: true,
+        ctrlKey: false,
         altKey: false,
         shiftKey: false,
       }),

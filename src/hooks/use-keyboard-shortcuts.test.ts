@@ -35,6 +35,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar,
       adjustLyricsFont: vi.fn(),
@@ -64,6 +65,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar,
       adjustLyricsFont: vi.fn(),
@@ -92,6 +94,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
@@ -120,6 +123,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
@@ -147,6 +151,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar: vi.fn(),
       adjustLyricsFont: vi.fn(),
@@ -176,6 +181,7 @@ describe("handleAppKeyDown", () => {
     });
 
     const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
       toggleSettings: vi.fn(),
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
@@ -192,5 +198,63 @@ describe("handleAppKeyDown", () => {
 
     expect(handled).toBe(false);
     expect(adjustLyricsFont).not.toHaveBeenCalled();
+  });
+
+  test("opens the import dialog with the shared primary shortcut", () => {
+    const openImportDialog = vi.fn();
+    const event = createKeyboardEvent({
+      code: "KeyO",
+      key: "o",
+      metaKey: true,
+    });
+
+    const handled = handleAppKeyDown(event, {
+      openImportDialog,
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(openImportDialog).toHaveBeenCalledOnce();
+  });
+
+  test("ignores the import shortcut while typing in an input", () => {
+    const openImportDialog = vi.fn();
+    const event = createKeyboardEvent({
+      code: "KeyO",
+      key: "o",
+      ctrlKey: true,
+      target: createKeyboardTarget("INPUT"),
+    });
+
+    const handled = handleAppKeyDown(event, {
+      openImportDialog,
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(false);
+    expect(openImportDialog).not.toHaveBeenCalled();
   });
 });

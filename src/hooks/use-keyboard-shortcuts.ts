@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLayoutStore } from "@/stores/layout-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { promptImportFiles } from "@/runtime/menu-runtime";
 import {
   APP_SHORTCUTS,
   isEditableShortcutTarget,
@@ -18,6 +20,7 @@ interface KeyboardShortcutPlayerState {
 }
 
 interface KeyboardShortcutDeps {
+  openImportDialog: () => void;
   toggleSettings: () => void;
   toggleSidebar: () => void;
   adjustLyricsFont: (delta: number) => void;
@@ -28,6 +31,7 @@ interface KeyboardShortcutDeps {
 export function handleAppKeyDown(
   e: KeyboardEvent,
   {
+    openImportDialog,
     toggleSettings,
     toggleSidebar,
     adjustLyricsFont,
@@ -48,6 +52,12 @@ export function handleAppKeyDown(
   if (matchesShortcut(APP_SHORTCUTS.toggleSidebar, e)) {
     e.preventDefault();
     toggleSidebar();
+    return true;
+  }
+
+  if (matchesShortcut(APP_SHORTCUTS.importFiles, e)) {
+    e.preventDefault();
+    openImportDialog();
     return true;
   }
 
@@ -116,6 +126,10 @@ export function useKeyboardShortcuts(enabled = true): void {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       handleAppKeyDown(e, {
+        openImportDialog: () =>
+          void promptImportFiles({
+            importFiles: useLibraryStore.getState().importFiles,
+          }),
         toggleSettings: () => useSettingsStore.getState().toggle(),
         toggleSidebar: () => useLayoutStore.getState().toggleSidebar(),
         adjustLyricsFont: (delta) =>

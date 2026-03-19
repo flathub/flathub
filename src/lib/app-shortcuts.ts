@@ -26,6 +26,12 @@ export const APP_SHORTCUTS = {
     key: "b",
     displayKey: "B",
   },
+  importFiles: {
+    id: "library.import",
+    code: "KeyO",
+    key: "o",
+    displayKey: "O",
+  },
   toggleSettings: {
     id: "settings.toggle",
     code: "Comma",

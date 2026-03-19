@@ -34,7 +34,7 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
         MENU_ITEM_IMPORT_FILES,
         "Import...",
         true,
-        None::<&str>,
+        Some("CmdOrCtrl+O"),
     )?;
 
     let window_menu = Submenu::with_items(

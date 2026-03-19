@@ -184,8 +184,8 @@ mod tests {
     fn persist_lyrics_font_step_updates_config_and_returns_snapshot() {
         let temp_dir = tempfile::tempdir().expect("temp dir should create");
 
-        let settings = persist_lyrics_font_step(temp_dir.path(), 2)
-            .expect("lyrics font step should persist");
+        let settings =
+            persist_lyrics_font_step(temp_dir.path(), 2).expect("lyrics font step should persist");
 
         assert_eq!(settings.lyrics_font_step, 2);
 
