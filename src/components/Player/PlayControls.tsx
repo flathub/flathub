@@ -2,8 +2,13 @@ import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "@/components/Overlay/Tooltip";
 import { usePlayerStore } from "@/stores/player-store";
+import type { PlaybackBarDensity } from "./playback-bar-layout";
 
-export function PlayControls() {
+interface PlayControlsProps {
+  density?: PlaybackBarDensity;
+}
+
+export function PlayControls({ density = "relaxed" }: PlayControlsProps = {}) {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const resume = usePlayerStore((s) => s.resume);
@@ -21,7 +26,15 @@ export function PlayControls() {
   };
 
   return (
-    <div className="flex items-center gap-4 text-[var(--color-control-primary)]">
+    <div
+      className={`flex items-center text-[var(--color-control-primary)] ${
+        density === "relaxed"
+          ? "gap-4"
+          : density === "compact"
+            ? "gap-2.5"
+            : "gap-2"
+      }`}
+    >
       <Tooltip label={t("player.previous")}>
         <button
           onClick={skipBack}

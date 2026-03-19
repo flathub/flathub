@@ -75,4 +75,11 @@ describe("VolumeSliders", () => {
     expect(markup).toContain("audio-level-slider");
     expect(markup).not.toContain("title=");
   });
+
+  test("collapses inline stem sliders into a mixer trigger in the tight density", () => {
+    const markup = renderToStaticMarkup(<VolumeSliders density="tight" />);
+
+    expect(markup).toContain('aria-label="Expand stems"');
+    expect(markup).not.toContain("audio-level-slider");
+  });
 });

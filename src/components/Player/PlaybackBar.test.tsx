@@ -40,19 +40,27 @@ vi.mock("@/components/Overlay/Tooltip", () => ({
 }));
 
 vi.mock("./NowPlayingInfo", () => ({
-  NowPlayingInfo: () => <div>Now playing</div>,
+  NowPlayingInfo: ({ density }: { density?: string }) => (
+    <div data-now-playing-density={density}>Now playing</div>
+  ),
 }));
 
 vi.mock("./PlayControls", () => ({
-  PlayControls: () => <div>Play controls</div>,
+  PlayControls: ({ density }: { density?: string }) => (
+    <div data-play-controls-density={density}>Play controls</div>
+  ),
 }));
 
 vi.mock("./SeekBar", () => ({
-  SeekBar: () => <div>Seek bar</div>,
+  SeekBar: ({ density }: { density?: string }) => (
+    <div data-seek-bar-density={density}>Seek bar</div>
+  ),
 }));
 
 vi.mock("./VolumeSliders", () => ({
-  VolumeSliders: () => <div>Stem sliders</div>,
+  VolumeSliders: ({ density }: { density?: string }) => (
+    <div data-volume-sliders-density={density}>Stem sliders</div>
+  ),
 }));
 
 vi.mock("./QueueButton", () => ({
@@ -66,5 +74,18 @@ describe("PlaybackBar", () => {
     expect(markup).toContain('data-tooltip-label="Volume 72%"');
     expect(markup).toContain("audio-level-slider");
     expect(markup).not.toContain("title=");
+  });
+
+  test("forwards the tight density to the responsive children", () => {
+    const markup = renderToStaticMarkup(
+      <PlaybackBar densityOverride="tight" />,
+    );
+
+    expect(markup).toContain('data-playback-bar-density="tight"');
+    expect(markup).toContain('data-now-playing-density="tight"');
+    expect(markup).toContain('data-play-controls-density="tight"');
+    expect(markup).toContain('data-seek-bar-density="tight"');
+    expect(markup).toContain('data-volume-sliders-density="tight"');
+    expect(markup).toContain("audio-level-slider w-12");
   });
 });

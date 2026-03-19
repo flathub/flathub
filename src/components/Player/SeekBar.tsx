@@ -2,8 +2,13 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "@/stores/player-store";
 import { formatDuration } from "@/lib/format";
+import type { PlaybackBarDensity } from "./playback-bar-layout";
 
-export function SeekBar() {
+interface SeekBarProps {
+  density?: PlaybackBarDensity;
+}
+
+export function SeekBar({ density = "relaxed" }: SeekBarProps = {}) {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const positionMs = usePlayerStore((s) => s.positionMs);
@@ -59,11 +64,17 @@ export function SeekBar() {
   const displayMs = isDragging ? (dragPercent / 100) * durationMs : positionMs;
 
   return (
-    <div className="flex flex-1 items-center gap-3 font-[tabular-nums] text-[11px] text-[var(--color-text-dim)]">
-      <span>{formatDuration(displayMs)}</span>
+    <div
+      className={`flex min-w-[320px] flex-1 items-center font-[tabular-nums] text-[11px] text-[var(--color-text-dim)] ${
+        density === "relaxed" ? "gap-3" : "gap-2"
+      }`}
+    >
+      <span className="w-[3.75rem] shrink-0 text-center">
+        {formatDuration(displayMs)}
+      </span>
       <div
         ref={barRef}
-        className="group relative flex-1 h-1.5 cursor-pointer rounded-full bg-[var(--color-border)]"
+        className="group relative h-1.5 min-w-[240px] flex-1 cursor-pointer rounded-full bg-[var(--color-border)]"
         onMouseDown={handleMouseDown}
         role="slider"
         aria-label={t("player.seek")}
@@ -88,7 +99,9 @@ export function SeekBar() {
           />
         </div>
       </div>
-      <span>{formatDuration(durationMs)}</span>
+      <span className="w-[3.75rem] shrink-0 text-center">
+        {formatDuration(durationMs)}
+      </span>
     </div>
   );
 }

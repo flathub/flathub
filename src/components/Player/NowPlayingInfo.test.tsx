@@ -83,4 +83,18 @@ describe("NowPlayingInfo", () => {
 
     vi.unstubAllGlobals();
   });
+
+  test("hides the artist metadata in the tight density", () => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:cover"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const markup = renderToStaticMarkup(<NowPlayingInfo density="tight" />);
+
+    expect(markup).toContain(">22<");
+    expect(markup).not.toContain(">Taylor Swift<");
+
+    vi.unstubAllGlobals();
+  });
 });

@@ -7,14 +7,22 @@ import {
   Drum,
   Guitar,
   AudioWaveform,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
 import { AudioLevelSlider } from "./AudioLevelSlider";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
+import type { PlaybackBarDensity } from "./playback-bar-layout";
 
-export function VolumeSliders() {
+interface VolumeSlidersProps {
+  density?: PlaybackBarDensity;
+}
+
+export function VolumeSliders({
+  density = "relaxed",
+}: VolumeSlidersProps = {}) {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const setStemVolume = usePlayerStore((s) => s.setStemVolume);
@@ -50,7 +58,7 @@ export function VolumeSliders() {
 
   // Click-outside to close popup
   const popupRef = useRef<HTMLDivElement>(null);
-  const chevronRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -58,8 +66,8 @@ export function VolumeSliders() {
       if (
         popupRef.current &&
         !popupRef.current.contains(e.target as Node) &&
-        chevronRef.current &&
-        !chevronRef.current.contains(e.target as Node)
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node)
       ) {
         setIsExpanded(false);
       }
@@ -155,8 +163,115 @@ export function VolumeSliders() {
     }
   }, [stemVolumes.other, setStemVolume]);
 
+  const inlineSliderWidthClass = density === "compact" ? "w-14" : "w-16";
+  const collapsedMode = density === "tight";
+  const triggerLabel = isExpanded
+    ? t("stems.collapseStems")
+    : t("stems.expandStems");
+  const sharedPanelClassName =
+    "app-panel-surface absolute bottom-full z-50 mb-3 rounded-lg border border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_90%,transparent)] p-3 shadow-[0_20px_40px_rgba(0,0,0,0.32)] animate-[song-fade-in_var(--motion-duration-standard)_var(--motion-ease-emphasized-out)]";
+
+  const panelContent = (
+    <div className="flex flex-col gap-2.5">
+      <StemSlider
+        icon={<Mic2 size={14} />}
+        label={t("stems.vocals")}
+        value={stemVolumes.vocals}
+        onChange={(v) => handleStemChange("vocals", v)}
+        onIconClick={stemsAvailable ? handleVocalsMuteToggle : undefined}
+        disabled={!stemsAvailable}
+        sliderWidthClass="w-16"
+      />
+      <StemSlider
+        icon={<Music size={14} />}
+        label={t("stems.accompaniment")}
+        value={accompValue}
+        onChange={handleAccompChange}
+        onIconClick={stemsAvailable ? handleAccompMuteToggle : undefined}
+        disabled={!stemsAvailable}
+        sliderWidthClass="w-16"
+      />
+      {isFourStem && (
+        <>
+          <div className="h-px bg-[color-mix(in_srgb,var(--color-border)_85%,transparent)]" />
+          <StemSlider
+            icon={<Drum size={13} />}
+            label={t("stems.drums")}
+            value={stemVolumes.drums}
+            onChange={(v) => handleStemChange("drums", v)}
+            onIconClick={handleDrumsMuteToggle}
+            disabled={!stemsAvailable}
+            sliderWidthClass="w-16"
+          />
+          <StemSlider
+            icon={<Guitar size={13} />}
+            label={t("stems.bass")}
+            value={stemVolumes.bass}
+            onChange={(v) => handleStemChange("bass", v)}
+            onIconClick={handleBassMuteToggle}
+            disabled={!stemsAvailable}
+            sliderWidthClass="w-16"
+          />
+          <StemSlider
+            icon={<AudioWaveform size={13} />}
+            label={t("stems.other")}
+            value={stemVolumes.other}
+            onChange={(v) => handleStemChange("other", v)}
+            onIconClick={handleOtherMuteToggle}
+            disabled={!stemsAvailable}
+            sliderWidthClass="w-16"
+          />
+        </>
+      )}
+    </div>
+  );
+
+  if (collapsedMode) {
+    return (
+      <div className="relative shrink-0">
+        <Tooltip label={triggerLabel}>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => {
+              if (stemsAvailable) {
+                setIsExpanded((open) => !open);
+              }
+            }}
+            disabled={!stemsAvailable}
+            aria-label={triggerLabel}
+            className={`motion-icon-button flex rounded-xl p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
+              stemsAvailable
+                ? "text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white"
+                : "cursor-default text-[var(--color-text-dimmer)]"
+            } ${
+              isExpanded
+                ? "bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
+                : ""
+            }`}
+          >
+            <SlidersHorizontal size={16} />
+          </button>
+        </Tooltip>
+
+        {isExpanded && stemsAvailable && (
+          <div
+            ref={popupRef}
+            className={`${sharedPanelClassName} right-0 w-max`}
+          >
+            {panelContent}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-5">
+    <div
+      className={`flex items-center ${
+        density === "relaxed" ? "gap-5" : "gap-3"
+      }`}
+    >
       {/* Vocals slider */}
       <StemSlider
         icon={<Mic2 size={14} />}
@@ -165,6 +280,7 @@ export function VolumeSliders() {
         onChange={(v) => handleStemChange("vocals", v)}
         onIconClick={stemsAvailable ? handleVocalsMuteToggle : undefined}
         disabled={!stemsAvailable}
+        sliderWidthClass={inlineSliderWidthClass}
       />
 
       {/* Accompaniment group — relative for popup anchor */}
@@ -176,6 +292,7 @@ export function VolumeSliders() {
           onChange={handleAccompChange}
           onIconClick={stemsAvailable ? handleAccompMuteToggle : undefined}
           disabled={!stemsAvailable}
+          sliderWidthClass={inlineSliderWidthClass}
         />
         {stemsAvailable && isFourStem && (
           <Tooltip
@@ -184,7 +301,7 @@ export function VolumeSliders() {
             }
           >
             <button
-              ref={chevronRef}
+              ref={triggerRef}
               onClick={() => setIsExpanded(!isExpanded)}
               aria-label={
                 isExpanded ? t("stems.collapseStems") : t("stems.expandStems")
@@ -201,10 +318,7 @@ export function VolumeSliders() {
 
         {/* Popup for individual stem controls — aligned with accompaniment */}
         {isExpanded && stemsAvailable && isFourStem && (
-          <div
-            ref={popupRef}
-            className="app-panel-surface absolute bottom-full left-0 z-50 mb-3 rounded-lg border border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_90%,transparent)] p-3 shadow-[0_20px_40px_rgba(0,0,0,0.32)] animate-[song-fade-in_var(--motion-duration-standard)_var(--motion-ease-emphasized-out)]"
-          >
+          <div ref={popupRef} className={`${sharedPanelClassName} left-0`}>
             <div className="flex flex-col gap-2">
               <StemSlider
                 icon={<Drum size={13} />}
@@ -242,6 +356,7 @@ function StemSlider({
   onChange,
   onIconClick,
   disabled = false,
+  sliderWidthClass = "w-16",
 }: {
   icon: React.ReactNode;
   label: string;
@@ -249,6 +364,7 @@ function StemSlider({
   onChange: (value: number) => void;
   onIconClick?: () => void;
   disabled?: boolean;
+  sliderWidthClass?: string;
 }) {
   const { t } = useTranslation();
   const muteLabel =
@@ -277,6 +393,7 @@ function StemSlider({
         value={value}
         onChange={onChange}
         disabled={disabled}
+        widthClass={sliderWidthClass}
         ariaLabel={label}
       />
     </div>
