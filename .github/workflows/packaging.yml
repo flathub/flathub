@@ -1,0 +1,76 @@
+name: Packaging
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/packaging.yml"
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "scripts/render-*.mjs"
+      - "scripts/release-metadata.mjs"
+      - "src-tauri/tauri.conf.json"
+  push:
+    branches: ["main", "codex/**"]
+    paths:
+      - ".github/workflows/packaging.yml"
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "scripts/render-*.mjs"
+      - "scripts/release-metadata.mjs"
+      - "src-tauri/tauri.conf.json"
+
+jobs:
+  validate-winget:
+    name: Validate WinGet manifests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Render WinGet manifests from current public release
+        run: |
+          node scripts/render-winget-manifests.mjs --version 0.1.0 --output ${{ github.workspace }}/dist/winget
+
+      - name: Validate WinGet manifests
+        shell: pwsh
+        run: |
+          winget validate --manifest "$env:GITHUB_WORKSPACE/dist/winget/t/thedavidweng/OpenKara/0.1.0"
+
+  validate-flatpak:
+    name: Validate Flatpak metadata
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install metadata validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appstream flatpak-builder
+
+      - name: Render Flatpak manifests from current public release
+        run: |
+          node scripts/render-flatpak-manifest.mjs \
+            --version 0.1.0 \
+            --output "${{ github.workspace }}/dist/flatpak" \
+            --screenshot-base-url "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/packaging/flatpak/screenshots"
+
+      - name: Validate AppStream metadata
+        run: |
+          appstreamcli validate "${{ github.workspace }}/dist/flatpak/io.github.thedavidweng.OpenKara/io.github.thedavidweng.OpenKara.metainfo.xml"
+
+      - name: Validate Flatpak manifest syntax
+        run: |
+          flatpak-builder --show-manifest "${{ github.workspace }}/dist/flatpak/io.github.thedavidweng.OpenKara/io.github.thedavidweng.OpenKara.yml" > /dev/null

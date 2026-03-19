@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   publish:
@@ -117,3 +118,159 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
           tauriScript: pnpm tauri
+
+  prepare-distribution-manifests:
+    name: Prepare distribution manifests
+    runs-on: ubuntu-latest
+    needs: publish
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Render WinGet manifests
+        run: |
+          node scripts/render-winget-manifests.mjs \
+            --version "${{ github.event.inputs.version }}" \
+            --output "${{ github.workspace }}/dist/winget"
+
+      - name: Render Flatpak manifests
+        run: |
+          node scripts/render-flatpak-manifest.mjs \
+            --version "${{ github.event.inputs.version }}" \
+            --output "${{ github.workspace }}/dist/flatpak" \
+            --screenshot-base-url "https://raw.githubusercontent.com/thedavidweng/OpenKara/v${{ github.event.inputs.version }}/packaging/flatpak/screenshots"
+
+      - name: Upload WinGet manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: dist/winget
+
+      - name: Upload Flatpak manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-manifests
+          path: dist/flatpak
+
+  submit-winget-pr:
+    name: Submit WinGet PR
+    runs-on: ubuntu-latest
+    needs: prepare-distribution-manifests
+    if: ${{ vars.WINGET_FORK_REPO != '' && secrets.WINGET_PR_TOKEN != '' }}
+
+    steps:
+      - name: Download WinGet manifest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: winget-manifests
+          path: dist/winget
+
+      - name: Create or update WinGet PR
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+          WINGET_FORK_REPO: ${{ vars.WINGET_FORK_REPO }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+
+          branch="openkara/${VERSION}"
+          fork_owner="${WINGET_FORK_REPO%%/*}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${WINGET_FORK_REPO}.git" winget-fork
+          cd winget-fork
+          git remote add upstream https://github.com/microsoft/winget-pkgs.git
+          git fetch upstream master
+          git checkout -B "${branch}" upstream/master
+
+          mkdir -p manifests/t/thedavidweng/OpenKara
+          cp -R ../dist/winget/t/thedavidweng/OpenKara/"${VERSION}" manifests/t/thedavidweng/OpenKara/
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifests/t/thedavidweng/OpenKara/"${VERSION}"
+
+          if git diff --cached --quiet; then
+            echo "No WinGet manifest changes to submit"
+            exit 0
+          fi
+
+          git commit -m "Add OpenKara ${VERSION}"
+          git push origin "${branch}" --force
+
+          pr_url="$(gh pr list --repo microsoft/winget-pkgs --head "${fork_owner}:${branch}" --json url --jq '.[0].url')"
+          if [ -n "${pr_url}" ]; then
+            echo "Existing WinGet PR: ${pr_url}"
+            exit 0
+          fi
+
+          gh pr create \
+            --repo microsoft/winget-pkgs \
+            --base master \
+            --head "${fork_owner}:${branch}" \
+            --title "Add OpenKara ${VERSION}" \
+            --body "Automated WinGet manifest update for OpenKara ${VERSION}."
+
+  submit-flathub-pr:
+    name: Submit Flathub PR
+    runs-on: ubuntu-latest
+    needs: prepare-distribution-manifests
+    if: ${{ vars.FLATHUB_FORK_REPO != '' && secrets.FLATHUB_PR_TOKEN != '' }}
+
+    steps:
+      - name: Download Flatpak manifest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flatpak-manifests
+          path: dist/flatpak
+
+      - name: Create or update Flathub PR
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_PR_TOKEN }}
+          FLATHUB_FORK_REPO: ${{ vars.FLATHUB_FORK_REPO }}
+          FLATHUB_TARGET_REPO: ${{ vars.FLATHUB_TARGET_REPO || 'flathub/io.github.thedavidweng.OpenKara' }}
+          FLATHUB_BASE_BRANCH: ${{ vars.FLATHUB_BASE_BRANCH || 'master' }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+
+          branch="openkara/${VERSION}"
+          fork_owner="${FLATHUB_FORK_REPO%%/*}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${FLATHUB_FORK_REPO}.git" flathub-fork
+          cd flathub-fork
+          git remote add upstream "https://github.com/${FLATHUB_TARGET_REPO}.git"
+          git fetch upstream "${FLATHUB_BASE_BRANCH}"
+          git checkout -B "${branch}" "upstream/${FLATHUB_BASE_BRANCH}"
+
+          cp -R ../dist/flatpak/io.github.thedavidweng.OpenKara/. .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "No Flathub manifest changes to submit"
+            exit 0
+          fi
+
+          git commit -m "Update OpenKara ${VERSION}"
+          git push origin "${branch}" --force
+
+          pr_url="$(gh pr list --repo "${FLATHUB_TARGET_REPO}" --head "${fork_owner}:${branch}" --json url --jq '.[0].url')"
+          if [ -n "${pr_url}" ]; then
+            echo "Existing Flathub PR: ${pr_url}"
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "${FLATHUB_TARGET_REPO}" \
+            --base "${FLATHUB_BASE_BRANCH}" \
+            --head "${fork_owner}:${branch}" \
+            --title "Update OpenKara ${VERSION}" \
+            --body "Automated Flatpak manifest update for OpenKara ${VERSION}."
