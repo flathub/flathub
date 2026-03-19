@@ -23,7 +23,7 @@ export function LyricsFontSizeControl({
 
   return (
     <div
-      className={`flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border-light)] bg-[color-mix(in_srgb,var(--color-sidebar)_80%,transparent)] px-2.5 py-2 text-[11px] text-[var(--color-text-dim)] shadow-[0_16px_34px_rgba(0,0,0,0.24)] backdrop-blur-xl ${className}`}
+      className={`app-panel-surface flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border-light)] bg-[color-mix(in_srgb,var(--color-sidebar)_80%,transparent)] px-2.5 py-2 text-[11px] text-[var(--color-text-dim)] shadow-[0_16px_34px_rgba(0,0,0,0.24)] ${className}`}
       {...props}
     >
       <button

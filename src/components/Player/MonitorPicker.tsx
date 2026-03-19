@@ -123,7 +123,7 @@ export function MonitorPicker({ onClose, anchorRef }: MonitorPickerProps) {
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[70] rounded-lg border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] p-1 shadow-[0_20px_40px_rgba(0,0,0,0.32)] backdrop-blur-xl"
+      className="app-panel-surface fixed z-[70] rounded-lg border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] p-1 shadow-[0_20px_40px_rgba(0,0,0,0.32)]"
       style={{
         left: position.left,
         top: position.top,

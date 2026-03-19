@@ -92,7 +92,7 @@ export function GlobalProgressBar() {
   if (tasks.length === 0) return null;
 
   return (
-    <div className="shrink-0 space-y-2 border-t border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] px-3 py-2 backdrop-blur-xl">
+    <div className="app-panel-surface shrink-0 space-y-2 border-t border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] px-3 py-2">
       {tasks.map((task) => (
         <div key={task.key} className="space-y-1">
           <div className="flex items-center justify-between">
@@ -107,7 +107,7 @@ export function GlobalProgressBar() {
             {task.onCancel && (
               <button
                 onClick={task.onCancel}
-                className="motion-icon-button shrink-0 rounded p-0.5 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+                className="motion-icon-button shrink-0 rounded p-0.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
               >
                 <X size={12} />
               </button>

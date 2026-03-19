@@ -27,7 +27,7 @@ export function PlaybackBar() {
   };
 
   return (
-    <div className="flex h-20 shrink-0 flex-col justify-center border-t border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] px-4 shadow-[0_-1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
+    <div className="app-panel-surface flex h-20 shrink-0 flex-col justify-center border-t border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] px-4 shadow-[0_-1px_0_rgba(255,255,255,0.02)]">
       <div className="flex w-full items-center gap-4">
         {/* Song info — fixed width left column */}
         <div className="w-[240px] shrink-0">
@@ -51,7 +51,7 @@ export function PlaybackBar() {
           <Tooltip label={volume === 0 ? t("player.unmute") : t("player.mute")}>
             <button
               onClick={handleMasterMuteToggle}
-              className="motion-icon-button rounded-full p-1.5 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+              className="motion-icon-button rounded-full p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
               aria-label={volume === 0 ? t("player.unmute") : t("player.mute")}
             >
               {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}

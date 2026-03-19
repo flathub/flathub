@@ -19,7 +19,7 @@ export function LyricsEmptyState() {
         <>
           <button
             onClick={() => setEditOpen(true)}
-            className="rounded-md bg-[#3A3A3C] px-4 py-2 text-[13px] text-[#EBEBF5] transition-colors hover:bg-[#48484A]"
+            className="motion-surface rounded-md bg-[var(--color-hover)] px-4 py-2 text-[13px] text-[var(--color-control-primary)] hover:bg-[var(--color-active)]"
           >
             {t("lyrics.addLyrics")}
           </button>

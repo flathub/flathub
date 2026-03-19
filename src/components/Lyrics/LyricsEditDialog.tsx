@@ -73,7 +73,7 @@ function LyricsEditDialogContent({
         aria-modal="true"
         aria-labelledby={headingId}
         aria-busy={saving}
-        className="flex w-full max-w-lg flex-col gap-4 overflow-hidden rounded-xl border border-[#3A3A3C] bg-[#1C1C1E] p-6 shadow-2xl"
+        className="flex w-full max-w-lg flex-col gap-4 overflow-hidden rounded-xl border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-6 shadow-2xl"
       >
         <h2 id={headingId} className="text-[15px] font-semibold text-white">
           {t("lyrics.editLyrics")}
@@ -87,11 +87,11 @@ function LyricsEditDialogContent({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={t("lyrics.pastePlaceholder")}
-          className="h-64 w-full resize-y rounded-md border border-[#3A3A3C] bg-[#2C2C2E] px-3 py-2 text-[13px] text-white placeholder-[#636366] transition-colors focus:border-[#48484A] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
+          className="h-64 w-full resize-y rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-3 py-2 text-[13px] text-white placeholder:text-[var(--color-text-dim)] transition-colors focus:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
           spellCheck={false}
         />
 
-        <p className="text-[11px] text-[#8E8E93]">
+        <p className="text-[11px] text-[var(--color-text-dim)]">
           {text.trim().length > 0
             ? isLrc
               ? t("lyrics.detectedLrc")
@@ -113,7 +113,7 @@ function LyricsEditDialogContent({
           <button
             onClick={onClose}
             disabled={saving}
-            className="rounded-md px-4 py-2 text-[13px] text-[#EBEBF5] transition-colors hover:bg-[#3A3A3C] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30 disabled:cursor-not-allowed disabled:opacity-50"
+            className="motion-surface rounded-md px-4 py-2 text-[13px] text-[var(--color-control-primary)] hover:bg-[var(--color-ghost-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("common.cancel")}
           </button>
@@ -121,7 +121,7 @@ function LyricsEditDialogContent({
             onClick={handleSave}
             disabled={saving || text.trim().length === 0}
             aria-describedby={saveError ? errorId : undefined}
-            className="rounded-md bg-[#3A3A3C] px-4 py-2 text-[13px] text-[#EBEBF5] transition-colors hover:bg-[#48484A] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#3A3A3C]"
+            className="motion-surface rounded-md bg-[var(--color-hover)] px-4 py-2 text-[13px] text-[var(--color-control-primary)] hover:bg-[var(--color-active)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-hover)]"
           >
             {saving ? t("common.saving") : t("common.save")}
           </button>

@@ -17,7 +17,7 @@ export function QueueButton() {
         className={`motion-icon-button relative flex shrink-0 items-center rounded-xl p-2 transition-colors ${
           isOpen
             ? "bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] text-[var(--color-accent)] shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
-            : "text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white"
+            : "text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white"
         }`}
       >
         <ListMusic size={16} />

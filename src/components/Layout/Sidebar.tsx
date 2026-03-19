@@ -65,7 +65,7 @@ export function Sidebar() {
     batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
+    <div className="app-panel-surface flex h-full w-[260px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)]">
       <div className="shrink-0 px-3 pb-3 pt-3">
         <SearchBox />
       </div>
@@ -121,7 +121,7 @@ export function Sidebar() {
           <ImportButton>
             <UploadCloud
               size={12}
-              className="motion-icon-button rounded p-1 hover:bg-white/4 hover:text-white"
+              className="motion-icon-button rounded p-1 hover:bg-[var(--color-ghost-hover)] hover:text-white"
             />
           </ImportButton>
         </div>

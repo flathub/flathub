@@ -126,9 +126,7 @@ pub fn derive_startup_model_bootstrap(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .menu(|app| app_menu::build_app_menu(app))
-        .on_menu_event(app_menu::handle_menu_event)
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| app_runtime::setup_app(app))
         .invoke_handler(tauri::generate_handler![
@@ -182,7 +180,14 @@ pub fn run() {
             commands::bootstrap::download_model,
             commands::bootstrap::delete_model,
             commands::bootstrap::get_model_status
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(|app| app_menu::build_app_menu(app))
+        .on_menu_event(app_menu::handle_menu_event);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

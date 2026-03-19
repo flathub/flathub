@@ -22,7 +22,7 @@ export function SearchBox() {
   );
 
   return (
-    <div className="relative flex items-center overflow-hidden rounded-[6px] border border-transparent bg-[var(--color-hover)] transition-colors focus-within:border-[#5c5c5e] focus-within:bg-[#1e1e1e]">
+    <div className="motion-surface relative flex items-center overflow-hidden rounded-[8px] border border-transparent bg-[var(--color-hover)] focus-within:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] focus-within:bg-[var(--color-active)]">
       <Search
         className="absolute left-2 text-[var(--color-text-dim)]"
         size={14}
@@ -32,7 +32,7 @@ export function SearchBox() {
         placeholder={t("common.search")}
         value={searchQuery}
         onChange={handleChange}
-        className="w-full bg-transparent py-1 pl-7 pr-3 text-[13px] text-white outline-none placeholder:text-[var(--color-text-dim)]"
+        className="w-full bg-transparent py-1.5 pl-7 pr-3 text-[13px] text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)]"
       />
     </div>
   );

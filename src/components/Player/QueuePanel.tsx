@@ -100,7 +100,7 @@ function QueueItemCard({
       {controls}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[12px] font-medium text-[#EBEBF5]">
+        <span className="truncate text-[12px] font-medium text-[var(--color-control-primary)]">
           {title}
         </span>
         <span className="truncate text-[10px] text-[var(--color-text-dimmer)]">
@@ -161,8 +161,8 @@ function SortableQueueItem({
               {...listeners}
               className={`motion-icon-button -m-1 shrink-0 rounded-md p-1 ${
                 isDragging
-                  ? "cursor-grabbing bg-white/5 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
-                  : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-white/5 hover:text-[#EBEBF5] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                  ? "cursor-grabbing bg-[var(--color-ghost-hover)] text-[var(--color-control-primary)] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+                  : "cursor-grab text-[var(--color-text-dimmer)] hover:bg-[var(--color-ghost-hover)] hover:text-[var(--color-control-primary)] motion-safe:active:scale-95 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
               }`}
               aria-label={dragLabel}
             >
@@ -177,7 +177,7 @@ function SortableQueueItem({
                 type="button"
                 onClick={onMoveUp}
                 disabled={index === 0}
-                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
+                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[var(--color-control-primary)] disabled:opacity-20"
                 aria-label={moveUpLabel}
               >
                 <ChevronUp size={10} />
@@ -188,7 +188,7 @@ function SortableQueueItem({
                 type="button"
                 onClick={onMoveDown}
                 disabled={index === queueLength - 1}
-                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] disabled:opacity-20"
+                className="motion-icon-button rounded text-[var(--color-text-dimmer)] hover:text-[var(--color-control-primary)] disabled:opacity-20"
                 aria-label={moveDownLabel}
               >
                 <ChevronDown size={10} />
@@ -201,7 +201,7 @@ function SortableQueueItem({
             <button
               type="button"
               onClick={onRemove}
-              className="contextual-reveal-horizontal motion-icon-button shrink-0 rounded-md text-[var(--color-text-dimmer)] hover:text-[#EBEBF5] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+              className="contextual-reveal-horizontal motion-icon-button shrink-0 rounded-md text-[var(--color-text-dimmer)] hover:text-[var(--color-control-primary)] focus-visible:translate-x-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
               aria-label={removeLabel}
             >
               <X size={12} />
@@ -226,7 +226,7 @@ function DragOverlayQueueItem({
       className="w-[272px]"
       handle={
         <div
-          className="-m-1 shrink-0 rounded-md bg-white/5 p-1 text-[#EBEBF5] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+          className="-m-1 shrink-0 rounded-md bg-[var(--color-ghost-hover)] p-1 text-[var(--color-control-primary)] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
           aria-label={dragLabel}
         >
           <GripVertical size={12} />
@@ -383,9 +383,9 @@ export function QueuePanel() {
   const activeSong = activeSongId ? getSong(activeSongId) : undefined;
 
   return (
-    <div className="flex h-full w-[280px] shrink-0 flex-col border-l border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_94%,transparent)] shadow-[-1px_0_0_rgba(255,255,255,0.02)] backdrop-blur-xl">
+    <div className="app-panel-surface flex h-full w-[280px] shrink-0 flex-col border-l border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_94%,transparent)] shadow-[-1px_0_0_rgba(255,255,255,0.02)]">
       <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] px-4 py-2">
-        <span className="text-[13px] font-medium text-[#EBEBF5]">
+        <span className="text-[13px] font-medium text-[var(--color-control-primary)]">
           {t("queue.upNext")}
           {queue.length > 0 && (
             <span className="ml-2 text-[var(--color-text-dimmer)]">
@@ -397,7 +397,7 @@ export function QueuePanel() {
           <button
             type="button"
             onClick={clearQueue}
-            className="motion-icon-button rounded px-1.5 py-1 text-[11px] text-[var(--color-text-dimmer)] hover:bg-white/4 hover:text-[#EBEBF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+            className="motion-icon-button rounded px-1.5 py-1 text-[11px] text-[var(--color-text-dimmer)] hover:bg-[var(--color-ghost-hover)] hover:text-[var(--color-control-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
           >
             {t("queue.clearAll")}
           </button>

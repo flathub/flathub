@@ -81,7 +81,7 @@ export function ImportCdgChoiceDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-cdg-choice-title"
-        className="relative w-full max-w-lg rounded-xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-sidebar)_96%,transparent)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.36)] backdrop-blur-xl"
+        className="app-panel-surface relative w-full max-w-lg rounded-xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-sidebar)_96%,transparent)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.36)]"
       >
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)] text-[var(--color-accent)]">
