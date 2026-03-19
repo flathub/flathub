@@ -17,6 +17,7 @@ const {
     loadLibrary: vi.fn(),
     lastClickedSongId: null,
     extractEmbeddedCoverArt: vi.fn(),
+    setSongsInstrumental: vi.fn(),
   },
   mockPlayerState: {
     snapshot: null,
@@ -34,7 +35,7 @@ const {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, vars?: Record<string, string>) =>
+    t: (key: string, vars?: Record<string, string | number>) =>
       vars?.title ? `${key}:${vars.title}` : key,
   }),
 }));
@@ -122,6 +123,7 @@ describe("SongListItem", () => {
           file_path: "Taylor Swift/22.mp3",
           cdg_path: "Taylor Swift/22.cdg",
           media_g_container: "paired",
+          instrumental: false,
           title: "22 [Z Karaoke]",
           artist: "Taylor Swift",
           album: null,
@@ -152,6 +154,7 @@ describe("SongListItem", () => {
           file_path: "Brent Faiyaz/Loose Change.mp3",
           cdg_path: null,
           media_g_container: null,
+          instrumental: false,
           title: "LOOSE CHANGE",
           artist: "Brent Faiyaz",
           album: null,
@@ -186,6 +189,7 @@ describe("SongListItem", () => {
           file_path: "Madvillain/Bistro.m4a",
           cdg_path: null,
           media_g_container: null,
+          instrumental: false,
           title: "Bistro",
           artist: "Madvillain",
           album: null,
@@ -213,9 +217,12 @@ describe("SongListItem", () => {
       selectedCount: 1,
       selectedSongIds: ["song-1"],
       selectedHasSeparableSongs: true,
+      selectedCanToggleInstrumentalSongs: true,
+      selectedInstrumentalState: "unchecked",
       supportsEmbeddedLyrics: true,
       queueAllSelected: vi.fn(),
       separateAllSelected: vi.fn(),
+      toggleSelectedInstrumental: vi.fn(),
       extractSelectedEmbeddedCoverArt: vi.fn(),
       deleteSelected: vi.fn(),
       playNow: vi.fn(),
@@ -234,16 +241,19 @@ describe("SongListItem", () => {
   });
 
   test("shows multi-select embedded cover art extraction in the selected context menu", () => {
-    const labels = buildSongListContextMenuItems({
+    const items = buildSongListContextMenuItems({
       t: (key: string, vars?: { count?: number }) =>
         vars?.count ? `${key}:${vars.count}` : key,
       isMultiSelected: true,
       selectedCount: 2,
       selectedSongIds: ["song-1", "song-2"],
       selectedHasSeparableSongs: true,
+      selectedCanToggleInstrumentalSongs: true,
+      selectedInstrumentalState: "mixed",
       supportsEmbeddedLyrics: false,
       queueAllSelected: vi.fn(),
       separateAllSelected: vi.fn(),
+      toggleSelectedInstrumental: vi.fn(),
       extractSelectedEmbeddedCoverArt: vi.fn(),
       deleteSelected: vi.fn(),
       playNow: vi.fn(),
@@ -255,9 +265,73 @@ describe("SongListItem", () => {
       editInfo: vi.fn(),
       openProperties: vi.fn(),
       deleteSong: vi.fn(),
-    }).map((item) => item.label);
+    });
 
+    const labels = items.map((item) => item.label);
+
+    expect(labels).toContain("library.markInstrumentalSelected:2");
     expect(labels).toContain("library.extractEmbeddedCoverArtSelected:2");
     expect(labels).not.toContain("library.extractEmbeddedLyrics");
+    expect(
+      items.find((item) => item.label === "library.markInstrumentalSelected:2")
+        ?.indicator,
+    ).toBe("mixed");
+  });
+
+  test("shows a checked instrumental toggle when every selected song is instrumental", () => {
+    const items = buildSongListContextMenuItems({
+      t: (key: string, vars?: { count?: number }) =>
+        vars?.count ? `${key}:${vars.count}` : key,
+      isMultiSelected: true,
+      selectedCount: 2,
+      selectedSongIds: ["song-1", "song-2"],
+      selectedHasSeparableSongs: false,
+      selectedCanToggleInstrumentalSongs: true,
+      selectedInstrumentalState: "checked",
+      supportsEmbeddedLyrics: false,
+      queueAllSelected: vi.fn(),
+      separateAllSelected: vi.fn(),
+      toggleSelectedInstrumental: vi.fn(),
+      extractSelectedEmbeddedCoverArt: vi.fn(),
+      deleteSelected: vi.fn(),
+      playNow: vi.fn(),
+      playNext: vi.fn(),
+      addToQueue: vi.fn(),
+      extractEmbeddedCoverArt: vi.fn(),
+      extractEmbeddedLyrics: vi.fn(),
+      fetchLyricsOnline: vi.fn(),
+      editInfo: vi.fn(),
+      openProperties: vi.fn(),
+      deleteSong: vi.fn(),
+    });
+
+    expect(
+      items.find((item) => item.label === "library.markInstrumentalSelected:2")
+        ?.indicator,
+    ).toBe("checked");
+  });
+
+  test("does not render a separate button for instrumental songs", () => {
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        song={{
+          hash: "song-instrumental",
+          file_path: "Artist/Official Instrumental.mp3",
+          cdg_path: null,
+          media_g_container: null,
+          instrumental: true,
+          title: "Official Instrumental",
+          artist: "Artist",
+          album: null,
+          duration_ms: 180000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-instrumental"]}
+      />,
+    );
+
+    expect(markup).not.toContain("library.separate");
   });
 });

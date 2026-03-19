@@ -1,7 +1,11 @@
-use crate::config::StemMode;
-use crate::library_root::LibraryRoot;
+use crate::{
+    config::StemMode,
+    library::Song,
+    library_root::LibraryRoot,
+    metadata,
+};
 use crate::separator::{
-    inference::{self, SeparationResult},
+    inference::SeparationResult,
     mix,
 };
 use anyhow::{Context, Result};
@@ -56,6 +60,8 @@ pub fn get_or_create_stem_cache<F>(
     connection: &Connection,
     stems_base: &Path,
     library_root: &LibraryRoot,
+    source_song: &Song,
+    source_audio_path: &Path,
     song_hash: &str,
     stem_mode: StemMode,
     model_variant: &str,
@@ -74,6 +80,8 @@ where
     store_generated_stem_cache(
         connection,
         stems_base,
+        source_song,
+        source_audio_path,
         song_hash,
         &separation,
         stem_mode,
@@ -137,6 +145,8 @@ pub fn get_valid_cached_stem_entry(
 pub fn store_generated_stem_cache(
     connection: &Connection,
     stems_base: &Path,
+    source_song: &Song,
+    source_audio_path: &Path,
     song_hash: &str,
     separation: &SeparationResult,
     stem_mode: StemMode,
@@ -171,14 +181,24 @@ pub fn store_generated_stem_cache(
                 .find(|s| s.name == "vocals")
                 .context("separation result missing vocals stem")?;
             let vocals_path = stem_directory.join(VOCALS_FILENAME);
-            crate::audio::encode::write_ogg_file(&vocals_path, &vocals_stem.audio)
-                .context("failed to write vocals ogg into cache")?;
+            write_stem_with_metadata(
+                source_audio_path,
+                &vocals_path,
+                &stem_title(source_song, source_audio_path, "Acapella")?,
+                &vocals_stem.audio,
+            )
+            .context("failed to write vocals ogg into cache")?;
 
             let accompaniment = mix::mix_accompaniment(separation)
                 .context("failed to mix accompaniment for stem cache")?;
             let accompaniment_path = stem_directory.join(ACCOMPANIMENT_FILENAME);
-            mix::write_accompaniment_ogg(&accompaniment, &accompaniment_path)
-                .context("failed to write accompaniment ogg into cache")?;
+            write_stem_with_metadata(
+                source_audio_path,
+                &accompaniment_path,
+                &stem_title(source_song, source_audio_path, "Instrumental")?,
+                &accompaniment,
+            )
+            .context("failed to write accompaniment ogg into cache")?;
 
             StemCacheEntry {
                 song_hash: song_hash.to_owned(),
@@ -196,8 +216,32 @@ pub fn store_generated_stem_cache(
         StemMode::FourStem => {
             // Keep the four-stem cache in the same compact format for the same
             // reason: these files are reusable playback artifacts, not master exports.
-            inference::write_stems_to_directory(separation, &stem_directory)
-                .context("failed to write stem ogg files into cache")?;
+            for stem in &separation.stems {
+                let output_path = stem_directory.join(format!("{}.ogg", stem.name));
+                let stem_title = match stem.name.as_str() {
+                    "vocals" => stem_title(source_song, source_audio_path, "Acapella")?,
+                    "drums" => stem_title(source_song, source_audio_path, "Drums")?,
+                    "bass" => stem_title(source_song, source_audio_path, "Bass")?,
+                    "other" => stem_title(source_song, source_audio_path, "Other")?,
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "unexpected stem name {other} in separation result"
+                        ));
+                    }
+                };
+                write_stem_with_metadata(
+                    source_audio_path,
+                    &output_path,
+                    &stem_title,
+                    &stem.audio,
+                )
+                .with_context(|| {
+                    format!(
+                        "failed to write {} ogg into cache",
+                        stem.name.as_str()
+                    )
+                })?;
+            }
 
             StemCacheEntry {
                 song_hash: song_hash.to_owned(),
@@ -407,6 +451,8 @@ pub fn downgrade_to_two_stem(
     library_root: &LibraryRoot,
     song_hash: &str,
 ) -> Result<(StemCacheEntry, u64)> {
+    let song = crate::cache::get_song_by_hash(connection, song_hash)?
+        .with_context(|| format!("no song row found for song {song_hash}"))?;
     let entry = get_cached_stem_entry(connection, song_hash)?
         .with_context(|| format!("no stem cache entry found for song {song_hash}"))?;
 
@@ -451,8 +497,14 @@ pub fn downgrade_to_two_stem(
     // Write accompaniment file.
     let accomp_rel = format!("{STEMS_CACHE_DIRECTORY}/{song_hash}/{ACCOMPANIMENT_FILENAME}");
     let accomp_abs = library_root.resolve(&accomp_rel);
-    crate::audio::encode::write_ogg_file(&accomp_abs, &mixed_audio)
-        .context("failed to write accompaniment.ogg")?;
+    let source_abs = library_root.resolve(&song.file_path);
+    write_stem_with_metadata(
+        &source_abs,
+        &accomp_abs,
+        &stem_title(&song, &source_abs, "Instrumental")?,
+        &mixed_audio,
+    )
+    .context("failed to write accompaniment.ogg")?;
 
     // Calculate freed bytes before deleting.
     let freed_bytes = file_size_or_zero(&drums_abs)
@@ -554,6 +606,37 @@ fn map_stem_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StemCacheEntry> {
             .get::<_, Option<String>>(7)?
             .unwrap_or_else(|| "htdemucs".to_owned()),
     })
+}
+
+fn write_stem_with_metadata(
+    source_path: &Path,
+    output_path: &Path,
+    title: &str,
+    audio: &crate::audio::decode::DecodedAudio,
+) -> Result<()> {
+    crate::audio::encode::write_ogg_file(output_path, audio)
+        .context("failed to encode ogg stem")?;
+    metadata::write_ogg_with_preserved_metadata(source_path, output_path, title)
+        .context("failed to write ogg metadata")?;
+    Ok(())
+}
+
+fn stem_title(song: &Song, source_path: &Path, suffix: &str) -> Result<String> {
+    let base_title = song.title.as_deref().map(str::to_owned).or_else(|| {
+        source_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_owned)
+    });
+
+    let base_title = base_title.with_context(|| {
+        format!(
+            "failed to derive stem title from {}",
+            source_path.display()
+        )
+    })?;
+
+    Ok(format!("{base_title} ({suffix})"))
 }
 
 fn unix_timestamp() -> i64 {

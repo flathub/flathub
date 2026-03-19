@@ -7,6 +7,7 @@ pub struct Song {
     pub file_path: String,
     pub cdg_path: Option<String>,
     pub media_g_container: Option<String>,
+    pub instrumental: bool,
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
@@ -19,6 +20,14 @@ pub struct Song {
 impl Song {
     pub fn is_media_g(&self) -> bool {
         self.media_g_container.is_some() || self.cdg_path.is_some()
+    }
+
+    pub fn is_instrumental(&self) -> bool {
+        self.instrumental
+    }
+
+    pub fn is_separable(&self) -> bool {
+        !self.is_media_g() && !self.is_instrumental()
     }
 
     pub fn is_media_g_zip(&self) -> bool {
@@ -36,4 +45,40 @@ pub struct ImportFailure {
 pub struct ImportSongsResult {
     pub imported: Vec<Song>,
     pub failed: Vec<ImportFailure>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Song;
+
+    fn sample_song() -> Song {
+        Song {
+            hash: "song-1".to_owned(),
+            file_path: "media/song-1.mp3".to_owned(),
+            cdg_path: None,
+            media_g_container: None,
+            instrumental: false,
+            title: Some("Song".to_owned()),
+            artist: None,
+            album: None,
+            duration_ms: 1_000,
+            cover_art: None,
+            imported_at: 1,
+            original_ext: Some("mp3".to_owned()),
+        }
+    }
+
+    #[test]
+    fn separable_songs_must_be_plain_audio_and_not_instrumental() {
+        let plain_audio = sample_song();
+        assert!(plain_audio.is_separable());
+
+        let mut instrumental = sample_song();
+        instrumental.instrumental = true;
+        assert!(!instrumental.is_separable());
+
+        let mut media_g = sample_song();
+        media_g.cdg_path = Some("media-g/song-1.cdg".to_owned());
+        assert!(!media_g.is_separable());
+    }
 }

@@ -7,6 +7,7 @@ fn sample_song(hash: &str, title: &str, artist: &str, imported_at: i64) -> Song 
         file_path: format!("/music/{hash}.mp3"),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some(title.to_owned()),
         artist: Some(artist.to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -109,4 +110,25 @@ fn update_song_cover_art_replaces_only_the_cover_bytes() {
     assert_eq!(song.title.as_deref(), Some("Original Title"));
     assert_eq!(song.artist.as_deref(), Some("Artist A"));
     assert_eq!(song.cover_art.as_deref(), Some(&[9, 8, 7, 6][..]));
+}
+
+#[test]
+fn update_song_instrumental_persists_the_flag() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+
+    cache::upsert_song(
+        &connection,
+        &sample_song("hash-a", "Original Title", "Artist A", 10),
+    )
+    .expect("insert should succeed");
+
+    cache::update_song_instrumental(&connection, "hash-a", true)
+        .expect("instrumental update should succeed");
+
+    let song = cache::get_song_by_hash(&connection, "hash-a")
+        .expect("song lookup should succeed")
+        .expect("song should exist");
+
+    assert!(song.instrumental);
 }

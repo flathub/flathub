@@ -37,6 +37,7 @@ fn fixture_song(file_path: &Path) -> Song {
         file_path: file_path.display().to_string(),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

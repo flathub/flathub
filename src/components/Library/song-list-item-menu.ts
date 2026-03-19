@@ -11,9 +11,12 @@ interface BuildSongListContextMenuItemsArgs {
   selectedCount: number;
   selectedSongIds: string[];
   selectedHasSeparableSongs: boolean;
+  selectedCanToggleInstrumentalSongs: boolean;
+  selectedInstrumentalState: "checked" | "mixed" | "unchecked";
   supportsEmbeddedLyrics: boolean;
   queueAllSelected: () => void;
   separateAllSelected: () => void;
+  toggleSelectedInstrumental: () => void;
   extractSelectedEmbeddedCoverArt: () => void;
   deleteSelected: () => void;
   playNow: () => void;
@@ -33,9 +36,12 @@ export function buildSongListContextMenuItems({
   selectedCount,
   selectedSongIds,
   selectedHasSeparableSongs,
+  selectedCanToggleInstrumentalSongs,
+  selectedInstrumentalState,
   supportsEmbeddedLyrics,
   queueAllSelected,
   separateAllSelected,
+  toggleSelectedInstrumental,
   extractSelectedEmbeddedCoverArt,
   deleteSelected,
   playNow,
@@ -49,6 +55,13 @@ export function buildSongListContextMenuItems({
   deleteSong,
 }: BuildSongListContextMenuItemsArgs): ContextMenuItem[] {
   if (isMultiSelected) {
+    const instrumentalIndicator: ContextMenuItem["indicator"] =
+      selectedInstrumentalState === "checked"
+        ? "checked"
+        : selectedInstrumentalState === "mixed"
+          ? "mixed"
+          : null;
+
     return [
       {
         label: t("library.queueAllSelected", {
@@ -56,6 +69,17 @@ export function buildSongListContextMenuItems({
         }),
         onClick: queueAllSelected,
       },
+      ...(selectedCanToggleInstrumentalSongs
+        ? [
+            {
+              label: t("library.markInstrumentalSelected", {
+                count: selectedCount || selectedSongIds.length,
+              }),
+              onClick: toggleSelectedInstrumental,
+              indicator: instrumentalIndicator,
+            },
+          ]
+        : []),
       ...(selectedHasSeparableSongs
         ? [
             {

@@ -8,6 +8,10 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useQueueStore } from "@/stores/queue-store";
 import { formatDuration } from "@/lib/format";
+import {
+  songCanBeSeparated,
+  songSupportsInstrumentalFlag,
+} from "@/lib/song-media";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { ContextMenu } from "./ContextMenu";
@@ -33,6 +37,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const extractEmbeddedCoverArt = useLibraryStore(
     (s) => s.extractEmbeddedCoverArt,
   );
+  const setSongsInstrumental = useLibraryStore((s) => s.setSongsInstrumental);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const playSong = usePlayerStore((s) => s.playSong);
   const closeSettings = useSettingsStore((s) => s.close);
@@ -54,8 +59,23 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const selectedSongs = songs.filter((candidate) =>
     selectedSongIds.has(candidate.hash),
   );
-  const selectedHasSeparableSongs = selectedSongs.some(
-    (candidate) => candidate.media_g_container == null,
+  const selectedHasSeparableSongs = selectedSongs.some(songCanBeSeparated);
+  const selectedInstrumentalSongs = selectedSongs.filter(
+    songSupportsInstrumentalFlag,
+  );
+  const selectedCanToggleInstrumentalSongs =
+    selectedInstrumentalSongs.length > 0;
+  const selectedInstrumentalState =
+    selectedInstrumentalSongs.length === 0
+      ? "unchecked"
+      : selectedInstrumentalSongs.every((candidate) => candidate.instrumental)
+        ? "checked"
+        : selectedInstrumentalSongs.some((candidate) => candidate.instrumental)
+          ? "mixed"
+          : "unchecked";
+  const canSeparateSong = songCanBeSeparated(song);
+  const selectedInstrumentalSongIds = selectedInstrumentalSongs.map(
+    (candidate) => candidate.hash,
   );
   const isMultiSelected = selectedSongIds.size > 1 && isSelected;
   const supportsEmbeddedLyrics = song.media_g_container !== "zip";
@@ -193,7 +213,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                 {mediaGBadgeLabel}
               </span>
             )}
-            {sepState === "idle" && !isMediaG && (
+            {sepState === "idle" && canSeparateSong && (
               <button
                 onClick={handleSeparate}
                 className={`rounded px-1.5 py-0.5 text-[10px] border ${
@@ -233,7 +253,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
                 {formatDuration(song.duration_ms)}
               </span>
             )}
-            {sepState === "failed" && (
+            {sepState === "failed" && canSeparateSong && (
               <button
                 onClick={handleSeparate}
                 className="text-[10px] text-red-400"
@@ -242,6 +262,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               </button>
             )}
             {(isMediaG ||
+              !canSeparateSong ||
               (sepState !== "idle" &&
                 sepState !== "running" &&
                 sepState !== "completed" &&
@@ -275,6 +296,8 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             selectedCount: selectedSongIds.size,
             selectedSongIds: [...selectedSongIds],
             selectedHasSeparableSongs,
+            selectedCanToggleInstrumentalSongs,
+            selectedInstrumentalState,
             supportsEmbeddedLyrics,
             queueAllSelected: () => {
               const queue = useQueueStore.getState();
@@ -284,6 +307,13 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             },
             separateAllSelected: () => {
               api.batchSeparate([...selectedSongIds]).catch(notifyError);
+            },
+            toggleSelectedInstrumental: () => {
+              const nextInstrumental = selectedInstrumentalState !== "checked";
+              void setSongsInstrumental(
+                selectedInstrumentalSongIds,
+                nextInstrumental,
+              );
             },
             extractSelectedEmbeddedCoverArt: () => {
               void extractEmbeddedCoverArt([...selectedSongIds]);

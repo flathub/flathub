@@ -1,7 +1,19 @@
-use std::{cell::Cell, fs, path::Path};
+use std::{
+    cell::Cell,
+    fs,
+    path::{Path, PathBuf},
+};
 
 mod support;
 
+use lofty::{
+    config::WriteOptions,
+    file::{AudioFile, TaggedFileExt},
+    picture::{MimeType, Picture, PictureType},
+    prelude::Accessor,
+    probe::Probe,
+    tag::{Tag, TagType},
+};
 use openkara_lib::{
     audio::decode::DecodedAudio,
     cache::{self, stems},
@@ -11,6 +23,14 @@ use openkara_lib::{
     separator::inference::{SeparatedStem, SeparationResult},
 };
 use rusqlite::Connection;
+
+fn metadata_fixture_path(filename: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("metadata")
+        .join(filename)
+}
 
 fn unique_library_root() -> LibraryRoot {
     let path = support::unique_temp_path("phase3-cache");
@@ -46,36 +66,97 @@ fn sample_separation() -> SeparationResult {
     }
 }
 
-fn sample_song(hash: &str) -> Song {
+fn sample_song(hash: &str, extension: &str) -> Song {
     Song {
         hash: hash.to_owned(),
-        file_path: format!("/music/{hash}.wav"),
+        file_path: format!("media/{hash}.{extension}"),
         cdg_path: None,
         media_g_container: None,
-        title: Some("Fixture Song".to_owned()),
+        instrumental: false,
+        title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
         duration_ms: 1,
         cover_art: None,
         imported_at: 1,
-        original_ext: None,
+        original_ext: Some(extension.to_owned()),
     }
+}
+
+fn copy_mp3_with_embedded_cover(destination: &Path) {
+    fs::copy(metadata_fixture_path("fixture.mp3"), destination).expect("fixture audio should copy");
+
+    let mut tagged_file = Probe::open(destination)
+        .expect("fixture should open")
+        .read()
+        .expect("fixture tags should read");
+    let mut tag = Tag::new(TagType::Id3v2);
+    tag.set_title("Fixture Song MP3".to_owned());
+    tag.set_artist("Fixture Artist".to_owned());
+    tag.set_album("Fixture Album".to_owned());
+    tag.push_picture(Picture::new_unchecked(
+        PictureType::CoverFront,
+        Some(MimeType::Png),
+        None,
+        vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    ));
+    tagged_file.insert_tag(tag);
+    tagged_file
+        .save_to_path(destination, WriteOptions::default())
+        .expect("fixture cover art should save");
+}
+
+fn tagged_song_in_library(library: &LibraryRoot, hash: &str) -> Song {
+    let destination = library.media_path(hash, "mp3");
+    copy_mp3_with_embedded_cover(&destination);
+    sample_song(hash, "mp3")
+}
+
+fn read_tagged_title(path: &Path) -> String {
+    let tagged_file = Probe::open(path)
+        .expect("output should open")
+        .read()
+        .expect("output tags should read");
+
+    tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+        .and_then(|tag| tag.title().map(|value| value.into_owned()))
+        .expect("output title should exist")
+}
+
+fn assert_preserved_artist_album_and_cover(path: &Path) {
+    let tagged_file = Probe::open(path)
+        .expect("output should open")
+        .read()
+        .expect("output tags should read");
+    let tag = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+        .expect("output should contain a tag");
+
+    assert_eq!(tag.artist().as_deref(), Some("Fixture Artist"));
+    assert_eq!(tag.album().as_deref(), Some("Fixture Album"));
+    assert_eq!(tag.pictures().len(), 1);
 }
 
 #[test]
 fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
     let connection = Connection::open_in_memory().expect("in-memory database should open");
     cache::apply_migrations(&connection).expect("migrations should succeed");
-    cache::upsert_song(&connection, &sample_song("song-hash")).expect("song insert should succeed");
-
     let library = unique_library_root();
     let library_root_path = library.root().to_owned();
+    let song = tagged_song_in_library(&library, "song-hash");
+    let source_audio_path = library.resolve(&song.file_path);
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
     let generation_count = Cell::new(0_usize);
 
     let first = stems::get_or_create_stem_cache(
         &connection,
         &library.stems_dir(),
         &library,
+        &song,
+        &source_audio_path,
         "song-hash",
         StemMode::TwoStem,
         "htdemucs",
@@ -103,6 +184,8 @@ fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
         &connection,
         &library.stems_dir(),
         &library,
+        &song,
+        &source_audio_path,
         "song-hash",
         StemMode::TwoStem,
         "htdemucs",
@@ -121,6 +204,124 @@ fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
         .expect("cache entry should exist");
     assert!(library.resolve(&cached_entry.vocals_path).exists());
     assert!(library.resolve(&cached_entry.accomp_path).exists());
+
+    cleanup_dir(&library_root_path);
+}
+
+#[test]
+fn two_stem_cache_preserves_metadata_and_overrides_titles() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library_root();
+    let library_root_path = library.root().to_owned();
+    let song = tagged_song_in_library(&library, "song-two-stem");
+    let source_audio_path = library.resolve(&song.file_path);
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    let cached = stems::get_or_create_stem_cache(
+        &connection,
+        &library.stems_dir(),
+        &library,
+        &song,
+        &source_audio_path,
+        "song-two-stem",
+        StemMode::TwoStem,
+        "htdemucs",
+        || Ok(sample_separation()),
+    )
+    .expect("two-stem cache should populate");
+
+    let vocals_path = library.resolve(&cached.entry.vocals_path);
+    let accompaniment_path = library.resolve(&cached.entry.accomp_path);
+
+    assert_eq!(
+        read_tagged_title(&vocals_path),
+        "Fixture Song MP3 (Acapella)"
+    );
+    assert_eq!(
+        read_tagged_title(&accompaniment_path),
+        "Fixture Song MP3 (Instrumental)"
+    );
+    assert_preserved_artist_album_and_cover(&vocals_path);
+    assert_preserved_artist_album_and_cover(&accompaniment_path);
+
+    cleanup_dir(&library_root_path);
+}
+
+#[test]
+fn four_stem_cache_writes_per_stem_titles() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library_root();
+    let library_root_path = library.root().to_owned();
+    let song = tagged_song_in_library(&library, "song-four-stem");
+    let source_audio_path = library.resolve(&song.file_path);
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    let cached = stems::get_or_create_stem_cache(
+        &connection,
+        &library.stems_dir(),
+        &library,
+        &song,
+        &source_audio_path,
+        "song-four-stem",
+        StemMode::FourStem,
+        "htdemucs",
+        || Ok(sample_separation()),
+    )
+    .expect("four-stem cache should populate");
+
+    assert_eq!(
+        read_tagged_title(&library.resolve(&cached.entry.vocals_path)),
+        "Fixture Song MP3 (Acapella)"
+    );
+    assert_eq!(
+        read_tagged_title(&library.resolve(cached.entry.drums_path.as_ref().unwrap())),
+        "Fixture Song MP3 (Drums)"
+    );
+    assert_eq!(
+        read_tagged_title(&library.resolve(cached.entry.bass_path.as_ref().unwrap())),
+        "Fixture Song MP3 (Bass)"
+    );
+    assert_eq!(
+        read_tagged_title(&library.resolve(cached.entry.other_path.as_ref().unwrap())),
+        "Fixture Song MP3 (Other)"
+    );
+
+    cleanup_dir(&library_root_path);
+}
+
+#[test]
+fn downgrade_to_two_stem_rewrites_accompaniment_metadata() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let library = unique_library_root();
+    let library_root_path = library.root().to_owned();
+    let song = tagged_song_in_library(&library, "song-downgrade");
+    let source_audio_path = library.resolve(&song.file_path);
+    cache::upsert_song(&connection, &song).expect("song insert should succeed");
+
+    stems::get_or_create_stem_cache(
+        &connection,
+        &library.stems_dir(),
+        &library,
+        &song,
+        &source_audio_path,
+        "song-downgrade",
+        StemMode::FourStem,
+        "htdemucs",
+        || Ok(sample_separation()),
+    )
+    .expect("four-stem cache should populate");
+
+    let (updated_entry, _) = stems::downgrade_to_two_stem(&connection, &library, "song-downgrade")
+        .expect("downgrade should succeed");
+
+    assert_eq!(
+        read_tagged_title(&library.resolve(&updated_entry.accomp_path)),
+        "Fixture Song MP3 (Instrumental)"
+    );
+    assert_preserved_artist_album_and_cover(&library.resolve(&updated_entry.accomp_path));
 
     cleanup_dir(&library_root_path);
 }

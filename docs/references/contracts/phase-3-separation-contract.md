@@ -55,7 +55,8 @@
 2. 命令本身立即返回；实际推理在后台 `spawn_blocking` worker 中执行
 3. worker 会按阶段更新进度，并发出 progress / complete / error 事件
 4. 如果缓存命中，后台仍会发出一次 `separation-progress`，其 `percent` 为 `100`，然后再发 `separation-complete`
-5. 若运行时模型仍在下载或 bootstrap 失败，命令会直接返回 `CommandError`，不会创建任何分离任务；模型侧约束详见 [phase-6-model-bootstrap-contract.md](./phase-6-model-bootstrap-contract.md)
+5. 标记为 `instrumental = true` 的歌曲视为官方伴奏，不允许进入 AI 分离
+6. 若运行时模型仍在下载或 bootstrap 失败，命令会直接返回 `CommandError`，不会创建任何分离任务；模型侧约束详见 [phase-6-model-bootstrap-contract.md](./phase-6-model-bootstrap-contract.md)
 
 ### Command: `upgrade_to_four_stem`
 
@@ -63,7 +64,8 @@
 
 1. 命令会强制使用 `four_stem` 目标执行分离
 2. 如果当前歌曲已经有完整四轨缓存，命令直接返回 `completed` 状态，不重复启动 worker
-3. 其余后台执行、事件和错误语义与 `separate` 保持一致
+3. `instrumental` 歌曲同样不会进入该命令的分离链路
+4. 其余后台执行、事件和错误语义与 `separate` 保持一致
 
 ### Command: `re_separate`
 
@@ -71,7 +73,8 @@
 
 1. 命令会先删除已有 stem cache 记录和文件，再重新启动后台分离
 2. 启动前会移除内存中的旧状态，使歌曲先回到“重新运行”的干净状态
-3. 目标 stem 模式由参数显式给出，不依赖当前缓存状态
+3. `instrumental` 歌曲不会进入该命令的重新分离链路
+4. 目标 stem 模式由参数显式给出，不依赖当前缓存状态
 
 ### Command: `get_separation_status`
 
@@ -150,7 +153,8 @@
    - `accomp_path`
    - `separated_at`
 4. 如果数据库记录存在但文件丢失，后端会重新生成并覆盖目录
-5. 命令层现在通过共享分离 helper 统一管理 running 状态复用、进度事件和最终状态写回，避免三个入口出现行为漂移
+5. 生成的 OGG stem 会复制原曲 metadata，并把 `title` 改写为对应 stem 后缀
+6. 命令层现在通过共享分离 helper 统一管理 running 状态复用、进度事件和最终状态写回，避免三个入口出现行为漂移
 
 ## Required dependencies
 

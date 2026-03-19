@@ -16,7 +16,7 @@ mod support;
 use openkara_lib::{
     cache::{self, lyrics},
     commands::{
-        import::extract_embedded_cover_art_from_connection,
+        import::{extract_embedded_cover_art_from_connection, set_songs_instrumental_in_connection},
         lyrics::{fetch_lyrics_from_connection, set_lyrics_offset_in_connection},
     },
     library::Song,
@@ -49,6 +49,7 @@ fn fixture_song(hash: &str, file_path: &Path) -> Song {
         file_path: file_path.display().to_string(),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),
@@ -274,6 +275,27 @@ fn set_lyrics_offset_updates_existing_cached_lyrics() {
 }
 
 #[test]
+fn set_songs_instrumental_updates_every_requested_song() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+
+    let song_a = fixture_song("song-a", &metadata_fixture_path("fixture.mp3"));
+    let song_b = fixture_song("song-b", &metadata_fixture_path("fixture.mp3"));
+    cache::upsert_song(&connection, &song_a).expect("first song insert should succeed");
+    cache::upsert_song(&connection, &song_b).expect("second song insert should succeed");
+
+    let updated = set_songs_instrumental_in_connection(
+        &mut connection,
+        &[song_a.hash.clone(), song_b.hash.clone()],
+        true,
+    )
+    .expect("instrumental flag should update");
+
+    assert_eq!(updated.len(), 2);
+    assert!(updated.iter().all(|song| song.instrumental));
+}
+
+#[test]
 fn set_lyrics_offset_rejects_missing_cached_lyrics() {
     let connection = Connection::open_in_memory().expect("in-memory database should open");
     cache::apply_migrations(&connection).expect("migrations should succeed");
@@ -300,6 +322,7 @@ fn extract_embedded_cover_art_updates_a_regular_song_and_persists_it() {
         file_path: "media/song-cover.mp3".to_owned(),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -357,6 +380,7 @@ fn extract_embedded_cover_art_reads_cover_art_from_media_g_zip_audio_bytes() {
         file_path: "media-g/song-zip.zip".to_owned(),
         cdg_path: None,
         media_g_container: Some("zip".to_owned()),
+        instrumental: false,
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -393,6 +417,7 @@ fn extract_embedded_cover_art_keeps_existing_cover_when_a_song_has_no_embedded_a
         file_path: "media/song-no-cover.wav".to_owned(),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some("No Cover".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: None,

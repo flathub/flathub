@@ -6,13 +6,13 @@
 2. **Input**: Enter the version number (e.g. `0.1.0`) — do not include the `v` prefix
 3. **Build**: CI builds for all 4 platforms (macOS ARM64, macOS x64, Windows, Linux)
 4. **Publish**: GitHub Release is created automatically with DMG, NSIS installer, and AppImage
-5. **Homebrew**: The tap repo (`thedavidweng/homebrew-tap`) auto-detects the new release within 6 hours and updates the cask
+5. **Homebrew**: The tap repo (`thedavidweng/homebrew-tap`) polls for new releases once per day and updates the cask when it detects a new version. Expect up to about 24 hours before the scheduled sync picks it up.
 
 ## Manual Homebrew Update
 
 If you don't want to wait for the scheduled check:
 
-1. Go to `thedavidweng/homebrew-tap` → Actions → **Auto-update OpenKara cask**
+1. Go to `thedavidweng/homebrew-tap` → Actions → **Sync Releases**
 2. Click **Run workflow**
 
 ## Verification
@@ -27,7 +27,7 @@ brew install --cask thedavidweng/tap/openkara
 OpenKara's release workflow is **decoupled from distribution**:
 
 - **OpenKara repo** — only builds and publishes GitHub Releases
-- **Homebrew tap repo** — independently polls for new releases and updates the cask
+- **Homebrew tap repo** — independently polls daily for new releases and updates the cask
 - No cross-repo secrets needed; each repo manages its own automation
 
 ## Automated Distribution Manifests

@@ -43,6 +43,7 @@ export interface Song {
   file_path: string;
   cdg_path: string | null;
   media_g_container: "paired" | "zip" | null;
+  instrumental: boolean;
   title: string | null;
   artist: string | null;
   album: string | null;

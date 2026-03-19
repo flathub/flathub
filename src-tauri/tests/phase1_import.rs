@@ -27,6 +27,14 @@ fn fixture_path(filename: &str) -> String {
         .to_string()
 }
 
+fn audio_fixture_path(filename: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("audio")
+        .join(filename)
+}
+
 fn temp_library() -> (tempfile::TempDir, LibraryRoot) {
     let tmp = tempfile::tempdir().expect("temp dir should create");
     let lib = LibraryRoot::create(tmp.path().join("lib").as_path()).expect("library should create");
@@ -216,4 +224,52 @@ fn explicit_cdg_selection_pairs_only_the_chosen_audio_when_multiple_candidates_e
         .expect("mp3 song should import");
     assert_eq!(plain_song.media_g_container, None);
     assert_eq!(plain_song.cdg_path, None);
+}
+
+#[test]
+fn imports_mp4_audio_even_when_extension_is_aac() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let (_tmp, library) = temp_library();
+    let import_dir = tempfile::tempdir().expect("temp dir should create");
+    let aac_path = import_dir.path().join("fixture.aac");
+
+    fs::copy(fixture_path("fixture.m4a"), &aac_path).expect("fixture m4a should copy");
+
+    let result = import_songs_from_paths(&connection, &library, &[aac_path.display().to_string()]);
+
+    assert!(result.failed.is_empty(), "unexpected failures: {:?}", result.failed);
+    assert_eq!(result.imported.len(), 1);
+    assert_eq!(result.imported[0].title.as_deref(), Some("Fixture Song M4A"));
+    assert_eq!(result.imported[0].artist.as_deref(), Some("Fixture Artist"));
+    assert_eq!(result.imported[0].original_ext.as_deref(), Some("aac"));
+    assert!(library.resolve(&result.imported[0].file_path).exists());
+}
+
+#[test]
+fn imports_metadata_less_audio_using_filename_fallbacks() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    let (_tmp, library) = temp_library();
+    let import_dir = tempfile::tempdir().expect("temp dir should create");
+    let wav_path = import_dir.path().join("No Metadata.wav");
+
+    fs::copy(audio_fixture_path("fixture.wav"), &wav_path).expect("fixture wav should copy");
+
+    let result = import_songs_from_paths(
+        &connection,
+        &library,
+        &[wav_path.display().to_string()],
+    );
+
+    let failure_messages = result
+        .failed
+        .iter()
+        .map(|failure| failure.error.message.clone())
+        .collect::<Vec<_>>();
+    assert!(result.failed.is_empty(), "{failure_messages:?}");
+    assert_eq!(result.imported.len(), 1);
+    assert_eq!(result.imported[0].title.as_deref(), Some("No Metadata"));
+    assert_eq!(result.imported[0].artist, None);
+    assert!(result.imported[0].duration_ms > 0);
 }

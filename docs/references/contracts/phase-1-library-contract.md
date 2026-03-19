@@ -16,9 +16,10 @@
 1. `import_songs(paths: Vec<String>, options?: ImportSongsOptions) -> ImportSongsResult`
 2. `get_library() -> Vec<Song>`
 3. `search_library(query: String) -> Vec<Song>`
-4. `extract_embedded_cover_art(song_ids: Vec<String>) -> ExtractEmbeddedCoverArtResult`
-5. 本地元数据解析支持 MP3、FLAC、M4A
-6. `songs` 表通过 `hash` 去重并执行 upsert
+4. `set_songs_instrumental(song_ids: Vec<String>, instrumental: bool) -> Vec<Song>`
+5. `extract_embedded_cover_art(song_ids: Vec<String>) -> ExtractEmbeddedCoverArtResult`
+6. 本地元数据解析支持 MP3、FLAC、M4A
+7. `songs` 表通过 `hash` 去重并执行 upsert
 
 ### 后续 Phase 依赖
 
@@ -52,6 +53,7 @@
     {
       "hash": "sha256 hex string",
       "file_path": "/absolute/path/to/file.mp3",
+      "instrumental": false,
       "title": "optional string",
       "artist": "optional string",
       "album": "optional string",
@@ -164,18 +166,40 @@
 4. 若文件没有内嵌封面，当前数据库里的 `cover_art` 保持不变，并在 `failed` 中返回结构化错误
 5. 顶层命令只在数据库不可用等整体失败时返回 `CommandError`
 
+### Command: `set_songs_instrumental`
+
+**Input**
+
+```json
+{
+  "song_ids": ["sha256 song hash"],
+  "instrumental": true
+}
+```
+
+**Output:** `Vec<Song>`
+
+**Semantics**
+
+1. 批量按请求顺序更新 `songs.instrumental`
+2. 返回值包含每首更新后的完整 `Song`
+3. `instrumental = true` 表示该歌曲被视为官方伴奏，不参与 AI 分离
+4. `Media+G` 歌曲当前不会由前端发起该命令，但后端字段本身不额外限制素材类型
+5. 若任一 `song_id` 不存在，命令返回顶层 `CommandError`
+
 ### Shared type: `Song`
 
-| Field         | Type              | Notes                                          |
-| ------------- | ----------------- | ---------------------------------------------- |
-| `hash`        | `String`          | 全局稳定主键                                   |
-| `file_path`   | `String`          | canonicalized 绝对路径                         |
-| `title`       | `Option<String>`  | 可能为空                                       |
-| `artist`      | `Option<String>`  | 可能为空                                       |
-| `album`       | `Option<String>`  | 可能为空                                       |
-| `duration_ms` | `i64`             | 当前来自音频元数据                             |
-| `cover_art`   | `Option<Vec<u8>>` | 原始图片字节，前端需自行转 data URL/object URL |
-| `imported_at` | `i64`             | Unix timestamp seconds                         |
+| Field          | Type              | Notes                                          |
+| -------------- | ----------------- | ---------------------------------------------- |
+| `hash`         | `String`          | 全局稳定主键                                   |
+| `file_path`    | `String`          | canonicalized 绝对路径                         |
+| `instrumental` | `bool`            | 是否标记为官方伴奏；`true` 时不参与 AI 分离    |
+| `title`        | `Option<String>`  | 可能为空                                       |
+| `artist`       | `Option<String>`  | 可能为空                                       |
+| `album`        | `Option<String>`  | 可能为空                                       |
+| `duration_ms`  | `i64`             | 当前来自音频元数据                             |
+| `cover_art`    | `Option<Vec<u8>>` | 原始图片字节，前端需自行转 data URL/object URL |
+| `imported_at`  | `i64`             | Unix timestamp seconds                         |
 
 ### Shared type: `ImportFailure`
 

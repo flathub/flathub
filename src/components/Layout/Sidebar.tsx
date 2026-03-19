@@ -5,6 +5,7 @@ import { ConfirmationDialog } from "@/components/Settings/ConfirmationDialog";
 import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
 import { ImportButton } from "@/components/Library/ImportButton";
+import { songCanBeSeparated } from "@/lib/song-media";
 import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import * as api from "@/lib/tauri";
@@ -21,7 +22,7 @@ export function Sidebar() {
   const hideBatchSeparate = useSettingsStore((s) => s.hideBatchSeparate);
   const stemMode = useSettingsStore((s) => s.stemMode);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
-  const separableSongs = songs.filter((song) => song.media_g_container == null);
+  const separableSongs = songs.filter(songCanBeSeparated);
 
   const separatedCount = songs.filter(
     (s) => separationStatuses[s.hash]?.state === "completed",

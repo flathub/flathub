@@ -16,6 +16,7 @@ const { mockCdgState, mockPlayerState, mockLibraryState } = vi.hoisted(() => ({
         file_path: "media-g/song-1.mp3",
         cdg_path: "media-g/song-1.cdg",
         media_g_container: "paired" as const,
+        instrumental: false,
         title: "Song",
         artist: null,
         album: null,

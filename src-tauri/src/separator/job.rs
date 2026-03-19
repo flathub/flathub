@@ -95,6 +95,8 @@ pub fn separate_song_into_cache(
     let cached = cache::stems::store_generated_stem_cache(
         connection,
         &stems_base,
+        &song,
+        &absolute_path,
         song_hash,
         &separation,
         stem_mode,

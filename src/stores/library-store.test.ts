@@ -6,6 +6,7 @@ const {
   mockExtractEmbeddedCoverArt,
   mockImportSongs,
   mockGetLibrary,
+  mockSetSongsInstrumental,
   mockInvalidateCoverArtUrl,
   mockNotifyError,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   mockExtractEmbeddedCoverArt: vi.fn(),
   mockImportSongs: vi.fn(),
   mockGetLibrary: vi.fn(),
+  mockSetSongsInstrumental: vi.fn(),
   mockInvalidateCoverArtUrl: vi.fn(),
   mockNotifyError: vi.fn(),
 }));
@@ -21,6 +23,7 @@ vi.mock("@/lib/tauri", () => ({
   importSongs: mockImportSongs,
   getLibrary: mockGetLibrary,
   updateSongMetadata: mockUpdateSongMetadata,
+  setSongsInstrumental: mockSetSongsInstrumental,
   extractEmbeddedCoverArt: mockExtractEmbeddedCoverArt,
 }));
 
@@ -38,6 +41,7 @@ describe("library-store updateSongMetadata", () => {
     mockExtractEmbeddedCoverArt.mockReset();
     mockImportSongs.mockReset();
     mockGetLibrary.mockReset();
+    mockSetSongsInstrumental.mockReset();
     mockInvalidateCoverArtUrl.mockReset();
     mockNotifyError.mockReset();
     useLibraryStore.setState({
@@ -50,6 +54,7 @@ describe("library-store updateSongMetadata", () => {
           file_path: "/music/original.mp3",
           cdg_path: null,
           media_g_container: null,
+          instrumental: false,
           duration_ms: 123000,
           cover_art: null,
           imported_at: 0,
@@ -63,6 +68,7 @@ describe("library-store updateSongMetadata", () => {
           file_path: "/music/second.mp3",
           cdg_path: null,
           media_g_container: null,
+          instrumental: false,
           duration_ms: 456000,
           cover_art: null,
           imported_at: 0,
@@ -115,6 +121,34 @@ describe("library-store updateSongMetadata", () => {
     expect(mockNotifyError).toHaveBeenCalledWith(error);
   });
 
+  test("returns true and updates selected songs when instrumental state changes", async () => {
+    mockSetSongsInstrumental.mockResolvedValue([
+      {
+        hash: "song-1",
+        title: "Original Title",
+        artist: "Original Artist",
+        album: null,
+        file_path: "/music/original.mp3",
+        cdg_path: null,
+        media_g_container: null,
+        instrumental: true,
+        duration_ms: 123000,
+        cover_art: null,
+        imported_at: 0,
+        original_ext: null,
+      },
+    ]);
+
+    const result = await useLibraryStore
+      .getState()
+      .setSongsInstrumental(["song-1"], true);
+
+    expect(result).toBe(true);
+    expect(mockSetSongsInstrumental).toHaveBeenCalledWith(["song-1"], true);
+    expect(useLibraryStore.getState().songs[0].instrumental).toBe(true);
+    expect(mockNotifyError).not.toHaveBeenCalled();
+  });
+
   test("prompts for ambiguous CDG selections before importing songs", async () => {
     const promptForCdgChoice = vi.fn().mockResolvedValue("/tmp/track.flac");
 
@@ -154,6 +188,7 @@ describe("library-store updateSongMetadata", () => {
           file_path: "/music/original.mp3",
           cdg_path: null,
           media_g_container: null,
+          instrumental: false,
           duration_ms: 123000,
           cover_art: [0xff, 0xd8, 0x00],
           imported_at: 0,

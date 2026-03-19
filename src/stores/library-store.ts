@@ -47,6 +47,10 @@ interface LibraryState {
     title: string | null,
     artist: string | null,
   ) => Promise<boolean>;
+  setSongsInstrumental: (
+    songIds: string[],
+    instrumental: boolean,
+  ) => Promise<boolean>;
   extractEmbeddedCoverArt: (songIds: string[]) => Promise<boolean>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearAllSeparationStatuses: () => void;
@@ -232,6 +236,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             : s,
         ),
       }));
+      return true;
+    } catch (e) {
+      notifyError(e);
+      return false;
+    }
+  },
+
+  setSongsInstrumental: async (songIds, instrumental) => {
+    try {
+      const updatedSongs = await api.setSongsInstrumental(
+        songIds,
+        instrumental,
+      );
+      const updatedByHash = new Map(
+        updatedSongs.map((song) => [song.hash, song]),
+      );
+
+      set((state) => ({
+        songs: state.songs.map((song) => updatedByHash.get(song.hash) ?? song),
+      }));
+
       return true;
     } catch (e) {
       notifyError(e);

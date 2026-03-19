@@ -66,6 +66,13 @@ export function updateSongMetadata(
   return invoke<Song>("update_song_metadata", { hash, title, artist });
 }
 
+export function setSongsInstrumental(
+  songIds: string[],
+  instrumental: boolean,
+): Promise<Song[]> {
+  return invoke<Song[]>("set_songs_instrumental", { songIds, instrumental });
+}
+
 export function deleteSongs(songIds: string[]): Promise<DeleteSongsResult> {
   return invoke<DeleteSongsResult>("delete_songs", { songIds });
 }

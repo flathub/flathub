@@ -11,6 +11,7 @@ fn sample_song(hash: &str) -> Song {
         file_path: format!("/music/{hash}.mp3"),
         cdg_path: None,
         media_g_container: None,
+        instrumental: false,
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

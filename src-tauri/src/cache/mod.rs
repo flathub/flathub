@@ -69,6 +69,10 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
     if !column_exists(connection, "songs", "media_g_container")? {
         connection.execute_batch("ALTER TABLE songs ADD COLUMN media_g_container TEXT;")?;
     }
+    if !column_exists(connection, "songs", "instrumental")? {
+        connection
+            .execute_batch("ALTER TABLE songs ADD COLUMN instrumental INTEGER NOT NULL DEFAULT 0;")?;
+    }
 
     // 005_individual_stem_paths – add per-instrument columns to stems table.
     if !column_exists(connection, "stems", "drums_path")? {
@@ -113,6 +117,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             file_path,
             cdg_path,
             media_g_container,
+            instrumental,
             title,
             artist,
             album,
@@ -120,11 +125,12 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cover_art,
             imported_at,
             original_ext
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hash) DO UPDATE SET
             file_path = excluded.file_path,
             cdg_path = excluded.cdg_path,
             media_g_container = excluded.media_g_container,
+            instrumental = excluded.instrumental,
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
@@ -137,6 +143,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             song.file_path,
             song.cdg_path,
             song.media_g_container,
+            song.instrumental,
             song.title,
             song.artist,
             song.album,
@@ -157,6 +164,7 @@ pub fn list_songs(connection: &Connection) -> rusqlite::Result<Vec<Song>> {
             file_path,
             cdg_path,
             media_g_container,
+            instrumental,
             title,
             artist,
             album,
@@ -183,6 +191,7 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
             file_path,
             cdg_path,
             media_g_container,
+            instrumental,
             title,
             artist,
             album,
@@ -212,6 +221,7 @@ pub fn get_song_by_hash(connection: &Connection, hash: &str) -> rusqlite::Result
             file_path,
             cdg_path,
             media_g_container,
+            instrumental,
             title,
             artist,
             album,
@@ -256,19 +266,31 @@ pub fn update_song_cover_art(
     Ok(())
 }
 
+pub fn update_song_instrumental(
+    connection: &Connection,
+    hash: &str,
+    instrumental: bool,
+) -> rusqlite::Result<usize> {
+    connection.execute(
+        "UPDATE songs SET instrumental = ?1 WHERE hash = ?2",
+        params![instrumental, hash],
+    )
+}
+
 fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
     Ok(Song {
         hash: row.get(0)?,
         file_path: row.get(1)?,
         cdg_path: row.get(2)?,
         media_g_container: row.get(3)?,
-        title: row.get(4)?,
-        artist: row.get(5)?,
-        album: row.get(6)?,
-        duration_ms: row.get(7)?,
-        cover_art: row.get(8)?,
-        imported_at: row.get(9)?,
-        original_ext: row.get(10)?,
+        instrumental: row.get(4)?,
+        title: row.get(5)?,
+        artist: row.get(6)?,
+        album: row.get(7)?,
+        duration_ms: row.get(8)?,
+        cover_art: row.get(9)?,
+        imported_at: row.get(10)?,
+        original_ext: row.get(11)?,
     })
 }
 
@@ -301,6 +323,16 @@ mod tests {
             .expect("stems table lookup should succeed");
 
         assert_eq!(stems_table_count, 1);
+
+        let instrumental_column_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name = 'instrumental'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("instrumental column lookup should succeed");
+
+        assert_eq!(instrumental_column_count, 1);
 
         let lyrics_table_count: i64 = connection
             .query_row(

@@ -71,7 +71,7 @@ pub fn batch_separate(
         let songs = cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
         songs
             .into_iter()
-            .filter(|song| !song.is_media_g())
+            .filter(|song| song.is_separable())
             .map(|s| s.hash)
             .collect()
     } else {
@@ -83,8 +83,8 @@ pub fn batch_separate(
                 cache::get_song_by_hash(&connection, song_id)
                     .ok()
                     .flatten()
-                    .map(|song| !song.is_media_g())
-                    .unwrap_or(true)
+                    .map(|song| song.is_separable())
+                    .unwrap_or(false)
             })
             .collect()
     };

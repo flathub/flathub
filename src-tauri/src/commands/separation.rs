@@ -446,11 +446,21 @@ fn ensure_song_can_be_separated(state: &State<'_, AppState>, song_id: &str) -> C
             ))
         })?;
 
+    validate_song_can_be_separated(&song, song_id)
+}
+
+fn validate_song_can_be_separated(song: &crate::library::Song, song_id: &str) -> CommandResult<()> {
     if song.is_media_g() {
         // Media+G songs already carry karaoke graphics and intentionally skip
         // the stem pipeline, which is designed for plain audio assets only.
         return Err(separation_error(format!(
             "song {song_id} is a Media+G track and cannot be separated"
+        )));
+    }
+
+    if song.is_instrumental() {
+        return Err(separation_error(format!(
+            "song {song_id} is marked instrumental and cannot be separated"
         )));
     }
 
@@ -625,5 +635,28 @@ mod tests {
         let status = status_from_job_result("song-1", Err(error.clone()));
 
         assert_eq!(status, failed_status("song-1", error));
+    }
+
+    #[test]
+    fn validate_song_can_be_separated_rejects_instrumental_songs() {
+        let song = crate::library::Song {
+            hash: "song-1".to_owned(),
+            file_path: "media/song-1.mp3".to_owned(),
+            cdg_path: None,
+            media_g_container: None,
+            instrumental: true,
+            title: Some("Song".to_owned()),
+            artist: None,
+            album: None,
+            duration_ms: 1_000,
+            cover_art: None,
+            imported_at: 1,
+            original_ext: Some("mp3".to_owned()),
+        };
+
+        let error = validate_song_can_be_separated(&song, "song-1")
+            .expect_err("instrumental songs should be rejected");
+
+        assert!(error.message.contains("marked instrumental"));
     }
 }
