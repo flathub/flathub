@@ -9,6 +9,7 @@ import {
   AudioWaveform,
 } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
+import { AudioLevelSlider } from "./AudioLevelSlider";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -271,16 +272,12 @@ function StemSlider({
           {icon}
         </button>
       </Tooltip>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        value={Math.round(value * 100)}
-        onChange={(e) => onChange(Number(e.target.value) / 100)}
-        className="native-slider w-16"
+      <AudioLevelSlider
+        label={label}
+        value={value}
+        onChange={onChange}
         disabled={disabled}
-        title={label}
-        aria-label={label}
+        ariaLabel={label}
       />
     </div>
   );

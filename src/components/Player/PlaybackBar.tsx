@@ -7,6 +7,7 @@ import { PlayControls } from "./PlayControls";
 import { SeekBar } from "./SeekBar";
 import { VolumeSliders } from "./VolumeSliders";
 import { QueueButton } from "./QueueButton";
+import { AudioLevelSlider } from "./AudioLevelSlider";
 import { usePlayerStore } from "@/stores/player-store";
 
 export function PlaybackBar() {
@@ -56,15 +57,12 @@ export function PlaybackBar() {
               {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
           </Tooltip>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(volume * 100)}
-            onChange={(e) => setVolume(Number(e.target.value) / 100)}
-            className="native-slider w-20"
-            title={t("player.volume")}
-            aria-label={t("player.volume")}
+          <AudioLevelSlider
+            label={t("player.volume")}
+            value={volume}
+            onChange={setVolume}
+            widthClass="w-20"
+            ariaLabel={t("player.volume")}
           />
         </div>
       </div>
