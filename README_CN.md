@@ -216,7 +216,10 @@ MyKaraokeLibrary/
 - [x] CI/CD 流水线（macOS、Windows、Linux）
 - [x] 发布自动化（tag → GitHub Release）
 
-### ✅ v0.2.0 — 当前版本
+### 🚧 v0.3.0 — 当前研发版本
+
+仓库现在切换到 `0.3.0` 开发线。对外发布流程、包元数据以及应用内展示的
+版本信息都应使用 `0.3.0`，后续研发范围再在这个版本上继续推进。
 
 - [x] 四轨音量混音器（可折叠 UI）
 - [x] 双分离模式（双轨 / 四轨）及设置持久化
@@ -273,7 +276,7 @@ pnpm tauri build             # 生产构建，生成平台特定安装包
 ### CI/CD
 
 - 推送到 `main` 会触发 CI 流程（[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)）— 在 macOS、Windows、Linux 上运行 lint、构建和测试。
-- 推送版本标签（如 `v0.2.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
+- 推送版本标签（如 `v0.3.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
 
 ## 文档
 

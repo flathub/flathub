@@ -6,7 +6,7 @@ submission metadata and automation.
 Why templates instead of checked-in release manifests:
 
 - WinGet installer URLs and SHA256 values must point to a real GitHub Release.
-- OpenKara's next public release is `0.2.0`, so the final manifests can only be
+- OpenKara's next public release is `0.3.0`, so the final manifests can only be
   materialized once the release assets exist.
 - `scripts/render-winget-manifests.mjs` fetches the release metadata from GitHub
   and emits the versioned `manifests/<first-letter>/<publisher>/<package>/<version>/`

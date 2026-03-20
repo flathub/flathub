@@ -223,7 +223,11 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 - [x] CI/CD pipeline (macOS, Windows, Linux)
 - [x] Release automation (tag → GitHub Release with binaries)
 
-### ✅ v0.2.0 — Current Release
+### 🚧 v0.3.0 — Current Development Version
+
+The repository now tracks `0.3.0` development builds. Public release
+automation, package metadata, and app-facing version information should use
+`0.3.0` while the release scope is being defined.
 
 - [x] CD+G sidecar playback for same-name audio + `.cdg` pairs
 - [x] MP3+G ZIP import and playback support
@@ -283,7 +287,7 @@ pnpm tauri build             # production build with platform-specific bundle
 ### CI/CD
 
 - Pushes to `main` trigger the CI workflow ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — lint, build, and test on macOS, Windows, and Linux.
-- Pushing a version tag (e.g. `v0.2.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
+- Pushing a version tag (e.g. `v0.3.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
 
 ## Documentation
 
