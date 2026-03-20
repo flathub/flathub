@@ -2,7 +2,12 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "@/stores/player-store";
 import { formatDuration } from "@/lib/format";
-import type { PlaybackBarDensity } from "./playback-bar-layout";
+import {
+  PLAYBACK_BAR_SEEK_MIN_WIDTH_CLASS,
+  PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH_CLASS,
+  PLAYBACK_BAR_TIME_LABEL_WIDTH_CLASS,
+  type PlaybackBarDensity,
+} from "./playback-bar-layout";
 
 interface SeekBarProps {
   density?: PlaybackBarDensity;
@@ -65,16 +70,18 @@ export function SeekBar({ density = "relaxed" }: SeekBarProps = {}) {
 
   return (
     <div
-      className={`flex min-w-[320px] flex-1 items-center font-[tabular-nums] text-[11px] text-[var(--color-text-dim)] ${
+      className={`flex ${PLAYBACK_BAR_SEEK_MIN_WIDTH_CLASS} flex-1 items-center font-[tabular-nums] text-[11px] text-[var(--color-text-dim)] ${
         density === "relaxed" ? "gap-3" : "gap-2"
       }`}
     >
-      <span className="w-[3.75rem] shrink-0 text-center">
+      <span
+        className={`${PLAYBACK_BAR_TIME_LABEL_WIDTH_CLASS} shrink-0 whitespace-nowrap text-center`}
+      >
         {formatDuration(displayMs)}
       </span>
       <div
         ref={barRef}
-        className="group relative h-1.5 min-w-[240px] flex-1 cursor-pointer rounded-full bg-[var(--color-border)]"
+        className={`group relative h-1.5 ${PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH_CLASS} flex-1 cursor-pointer rounded-full bg-[var(--color-border)]`}
         onMouseDown={handleMouseDown}
         role="slider"
         aria-label={t("player.seek")}
@@ -99,7 +106,9 @@ export function SeekBar({ density = "relaxed" }: SeekBarProps = {}) {
           />
         </div>
       </div>
-      <span className="w-[3.75rem] shrink-0 text-center">
+      <span
+        className={`${PLAYBACK_BAR_TIME_LABEL_WIDTH_CLASS} shrink-0 whitespace-nowrap text-center`}
+      >
         {formatDuration(durationMs)}
       </span>
     </div>
