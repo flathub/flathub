@@ -26,6 +26,13 @@ static const NSInteger OKAirPlayAudioFramesPerTick =
     OKAirPlayAudioSampleRate / OKAirPlayFramesPerSecond;
 static const NSInteger OKAirPlayPlaylistWindow = 3;
 
+static NSString *OKStringValue(id value);
+static NSDictionary *OKDictionaryValue(id value);
+static NSArray *OKArrayValue(id value);
+static long long OKLongLongValue(id value);
+static NSInteger OKIntegerValue(id value);
+static BOOL OKBoolValue(id value);
+
 @interface OKAirPlaySegmentEntry : NSObject
 
 @property(nonatomic, assign) NSInteger sequence;
@@ -61,9 +68,9 @@ static BOOL OKSceneIsPlainText(NSArray *lines) {
         return NO;
     }
 
-    for (NSDictionary *line in lines) {
-        NSNumber *timeMs = line[@"timeMs"];
-        if (timeMs == nil || timeMs.longLongValue != 0) {
+    for (id lineValue in lines) {
+        NSDictionary *line = OKDictionaryValue(lineValue);
+        if (line == nil || OKLongLongValue(line[@"timeMs"]) != 0) {
             return NO;
         }
     }
@@ -74,9 +81,11 @@ static BOOL OKSceneIsPlainText(NSArray *lines) {
 static NSInteger OKActiveWordIndex(NSArray *words, long long adjustedMs) {
     NSInteger activeIndex = -1;
     for (NSUInteger index = 0; index < words.count; index += 1) {
-        NSDictionary *word = words[index];
-        NSNumber *timeMs = word[@"timeMs"];
-        if (timeMs != nil && timeMs.longLongValue > adjustedMs) {
+        NSDictionary *word = OKDictionaryValue(words[index]);
+        if (word == nil) {
+            continue;
+        }
+        if (OKLongLongValue(word[@"timeMs"]) > adjustedMs) {
             break;
         }
         activeIndex = (NSInteger)index;
@@ -100,6 +109,30 @@ static CGRect OKAspectFitRect(CGSize sourceSize, CGRect bounds) {
         fitted.width,
         fitted.height
     );
+}
+
+static NSString *OKStringValue(id value) {
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+static NSDictionary *OKDictionaryValue(id value) {
+    return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+}
+
+static NSArray *OKArrayValue(id value) {
+    return [value isKindOfClass:[NSArray class]] ? value : nil;
+}
+
+static long long OKLongLongValue(id value) {
+    return [value respondsToSelector:@selector(longLongValue)] ? [value longLongValue] : 0;
+}
+
+static NSInteger OKIntegerValue(id value) {
+    return [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
+}
+
+static BOOL OKBoolValue(id value) {
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : NO;
 }
 
 static id OKBridgedColor(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
@@ -205,7 +238,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 @property(nonatomic, strong) NSMutableData *pendingAudioData;
 @property(nonatomic, assign) NSUInteger pendingAudioOffset;
-@property(nonatomic, assign) uint64_t audioEpoch;
+@property(nonatomic, assign) uint64_t currentAudioEpoch;
 
 @property(nonatomic, assign) OKAirPlayMode currentMode;
 @property(nonatomic, strong) NSDictionary *latestScene;
@@ -253,7 +286,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     _segments = [NSMutableArray array];
     _pendingAudioData = [NSMutableData data];
     _currentMode = OKAirPlayModeIdle;
-    _audioEpoch = 1;
+    _currentAudioEpoch = 1;
     return self;
 }
 
@@ -655,8 +688,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)drawNoLyricsSceneInContext:(CGContextRef)context messages:(NSDictionary *)messages {
-    NSString *noLyrics = messages[@"noLyrics"] ?: @"No lyrics available for this track";
-    NSString *addLyrics = messages[@"addLyrics"] ?: @"Add Lyrics";
+    NSString *noLyrics =
+        OKStringValue(messages[@"noLyrics"]) ?: @"No lyrics available for this track";
+    NSString *addLyrics = OKStringValue(messages[@"addLyrics"]) ?: @"Add Lyrics";
 
     [self drawCenteredText:noLyrics
                   fontSize:28.0
@@ -687,23 +721,26 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (NSArray<NSDictionary *> *)buildLyricLineLayoutsFromScene:(NSDictionary *)scene {
-    NSArray *lines = scene[@"lines"];
+    NSArray *lines = OKArrayValue(scene[@"lines"]);
     if (![lines isKindOfClass:[NSArray class]] || lines.count == 0) {
         return @[];
     }
 
-    long long positionMs = [scene[@"positionMs"] longLongValue];
-    long long offsetMs = [scene[@"offsetMs"] longLongValue];
+    long long positionMs = OKLongLongValue(scene[@"positionMs"]);
+    long long offsetMs = OKLongLongValue(scene[@"offsetMs"]);
     long long adjustedMs = positionMs - offsetMs;
-    NSInteger activeLineIndex = [scene[@"activeLineIndex"] integerValue];
-    NSInteger lyricsFontStep = [scene[@"lyricsFontStep"] integerValue];
+    NSInteger activeLineIndex = OKIntegerValue(scene[@"activeLineIndex"]);
+    NSInteger lyricsFontStep = OKIntegerValue(scene[@"lyricsFontStep"]);
     BOOL isPlainText = OKSceneIsPlainText(lines);
 
     CGFloat baseSize = OKFontSizeForStep(lyricsFontStep);
     NSMutableArray<NSDictionary *> *layouts = [NSMutableArray arrayWithCapacity:lines.count];
 
     for (NSUInteger index = 0; index < lines.count; index += 1) {
-        NSDictionary *line = lines[index];
+        NSDictionary *line = OKDictionaryValue(lines[index]);
+        if (line == nil) {
+            continue;
+        }
         NSString *state = @"future";
         if (isPlainText) {
             state = @"plain";
@@ -715,15 +752,18 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
         CGFloat fontSize = [state isEqualToString:@"active"] ? baseSize * 1.05 : baseSize;
         NSMutableAttributedString *text = [[NSMutableAttributedString alloc] init];
-        NSArray *words = line[@"words"];
+        NSArray *words = OKArrayValue(line[@"words"]);
         BOOL hasWords = [words isKindOfClass:[NSArray class]] && words.count > 0;
 
         if (hasWords) {
             NSInteger activeWordIndex =
                 [state isEqualToString:@"active"] ? OKActiveWordIndex(words, adjustedMs) : -1;
             for (NSUInteger wordIndex = 0; wordIndex < words.count; wordIndex += 1) {
-                NSDictionary *word = words[wordIndex];
-                NSString *wordText = word[@"text"] ?: @"";
+                NSDictionary *word = OKDictionaryValue(words[wordIndex]);
+                if (word == nil) {
+                    continue;
+                }
+                NSString *wordText = OKStringValue(word[@"text"]) ?: @"";
                 NSString *separator = wordIndex + 1 < words.count ? @" " : @"";
                 NSString *segmentText = [wordText stringByAppendingString:separator];
 
@@ -747,7 +787,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                                                                              attributes:attributes]];
             }
         } else {
-            NSString *lineText = line[@"text"] ?: @"";
+            NSString *lineText = OKStringValue(line[@"text"]) ?: @"";
             id color = OKBridgedColor(1.0, 1.0, 1.0, 1.0);
             if ([state isEqualToString:@"past"]) {
                 color = OKBridgedColor(0.28, 0.28, 0.29, 1.0);
@@ -783,20 +823,20 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)drawLyricsSceneInContext:(CGContextRef)context scene:(NSDictionary *)scene {
-    NSString *songId = scene[@"songId"];
-    NSDictionary *messages = scene[@"messages"];
-    NSArray *lines = scene[@"lines"];
-    BOOL isLoading = [scene[@"isLoading"] boolValue];
+    NSString *songId = OKStringValue(scene[@"songId"]);
+    NSDictionary *messages = OKDictionaryValue(scene[@"messages"]);
+    NSArray *lines = OKArrayValue(scene[@"lines"]);
+    BOOL isLoading = OKBoolValue(scene[@"isLoading"]);
 
     if (songId.length == 0) {
         [self drawStatusSceneInContext:context
-                               message:messages[@"selectSong"] ?: @"Select a song to start"];
+                               message:OKStringValue(messages[@"selectSong"]) ?: @"Select a song to start"];
         return;
     }
 
     if (isLoading) {
         [self drawStatusSceneInContext:context
-                               message:messages[@"loadingLyrics"] ?: @"Loading lyrics..."];
+                               message:OKStringValue(messages[@"loadingLyrics"]) ?: @"Loading lyrics..."];
         return;
     }
 
@@ -1050,7 +1090,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     NSData *resampled = OKResampleStereoPCM(stereo.bytes, inputFrameCount, sampleRate);
     __weak typeof(self) weakSelf = self;
     dispatch_async(self.mediaQueue, ^{
-        if (epoch < weakSelf.audioEpoch) {
+        if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
 
@@ -1067,7 +1107,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (void)applyAudioEpoch:(uint64_t)epoch {
     __weak typeof(self) weakSelf = self;
     dispatch_async(self.mediaQueue, ^{
-        weakSelf.audioEpoch = MAX(weakSelf.audioEpoch, epoch);
+        weakSelf.currentAudioEpoch = MAX(weakSelf.currentAudioEpoch, epoch);
         [weakSelf.pendingAudioData setLength:0];
         weakSelf.pendingAudioOffset = 0;
     });
