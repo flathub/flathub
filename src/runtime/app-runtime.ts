@@ -14,6 +14,10 @@ import { useFileDrop } from "@/hooks/use-file-drop";
 import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import i18next, { detectSystemLanguage } from "@/lib/i18n";
+import {
+  useAirPlayAudienceSync,
+  useAirPlayOutputState,
+} from "@/runtime/airplay-runtime";
 import { useAppMenuRuntime } from "./menu-runtime";
 import { loadStartupSettings } from "./settings-runtime";
 
@@ -67,6 +71,8 @@ export function useMainWindowRuntimeWhen(enabled: boolean) {
   useLyricsAutoFetch(enabled);
   useLyricsSync(enabled);
   useCdgSync(enabled);
+  useAirPlayAudienceSync(enabled);
+  useAirPlayOutputState(enabled);
   useKeyboardShortcuts(enabled);
   useFileDrop(enabled);
   useAppMenuRuntime(enabled);

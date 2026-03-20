@@ -29,6 +29,10 @@ vi.mock("@/components/Overlay/Tooltip", () => ({
   ),
 }));
 
+vi.mock("@/components/Player/AirPlayRouteButton", () => ({
+  AirPlayRouteButton: () => <div data-airplay-button="true" />,
+}));
+
 describe("Toolbar drag region", () => {
   test("keeps the toolbar root interactive and isolates drag affordances", () => {
     const markup = renderToStaticMarkup(
@@ -73,5 +77,19 @@ describe("Toolbar drag region", () => {
     expect(markup).toContain(
       `data-tooltip-shortcut="${getShortcutDisplay(APP_SHORTCUTS.importFiles)}"`,
     );
+  });
+
+  test("renders separate AirPlay and monitor controls on macOS", () => {
+    const markup = renderToStaticMarkup(
+      <Toolbar
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        settingsOpen={false}
+        sidebarVisible
+      />,
+    );
+
+    expect(markup).toContain('data-airplay-button="true"');
+    expect(markup).toContain('aria-label="player.selectMonitor"');
   });
 });

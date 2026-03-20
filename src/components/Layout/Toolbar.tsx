@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { PanelLeft, UploadCloud, Settings, Maximize2 } from "lucide-react";
+import { PanelLeft, UploadCloud, Settings, Monitor } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ImportButton } from "@/components/Library/ImportButton";
 import { Tooltip } from "@/components/Overlay/Tooltip";
+import { AirPlayRouteButton } from "@/components/Player/AirPlayRouteButton";
 import { MonitorPicker } from "@/components/Player/MonitorPicker";
 import {
   APP_SHORTCUTS,
@@ -25,7 +26,7 @@ export function Toolbar({
 }: ToolbarProps) {
   const { t } = useTranslation();
   const [monitorPickerOpen, setMonitorPickerOpen] = useState(false);
-  const fullscreenBtnRef = useRef<HTMLButtonElement>(null);
+  const monitorBtnRef = useRef<HTMLButtonElement>(null);
   const macWindowChrome = isMacShortcutPlatform();
 
   return (
@@ -84,10 +85,11 @@ export function Toolbar({
             <Settings size={16} />
           </button>
         </Tooltip>
+        <AirPlayRouteButton />
         <div>
           <Tooltip label={t("player.selectMonitor")}>
             <button
-              ref={fullscreenBtnRef}
+              ref={monitorBtnRef}
               onClick={() => setMonitorPickerOpen(!monitorPickerOpen)}
               aria-label={t("player.selectMonitor")}
               className={`motion-icon-button rounded-xl p-2 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
@@ -96,13 +98,13 @@ export function Toolbar({
                   : ""
               }`}
             >
-              <Maximize2 size={16} />
+              <Monitor size={16} />
             </button>
           </Tooltip>
           {monitorPickerOpen && (
             <MonitorPicker
               onClose={() => setMonitorPickerOpen(false)}
-              anchorRef={fullscreenBtnRef}
+              anchorRef={monitorBtnRef}
             />
           )}
         </div>

@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AirPlayAudienceStatePayload,
+  AirPlayRoutePickerBounds,
   AppSettings,
   DeleteSongsResult,
   DeleteStemsResult,
@@ -116,6 +118,18 @@ export function loadStems(): Promise<PlaybackStateSnapshot> {
 
 export function getPlaybackState(): Promise<PlaybackStateSnapshot> {
   return invoke<PlaybackStateSnapshot>("get_playback_state");
+}
+
+export function syncAirPlayRoutePicker(
+  bounds: AirPlayRoutePickerBounds | null,
+): Promise<void> {
+  return invoke<void>("sync_airplay_route_picker", { bounds });
+}
+
+export function syncAirPlayAudienceState(
+  payload: AirPlayAudienceStatePayload,
+): Promise<void> {
+  return invoke<void>("sync_airplay_audience_state", { payload });
 }
 
 // ─── Separation ──────────────────────────────────────────

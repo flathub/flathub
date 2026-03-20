@@ -32,6 +32,10 @@ vi.mock("@/components/Player/MonitorPicker", () => ({
   MonitorPicker: () => null,
 }));
 
+vi.mock("@/components/Player/AirPlayRouteButton", () => ({
+  AirPlayRouteButton: () => <div data-airplay-button="true" />,
+}));
+
 describe("DesktopTitlebar", () => {
   test("shows the restore affordance when the window is maximized", () => {
     const markup = renderToStaticMarkup(
@@ -47,5 +51,19 @@ describe("DesktopTitlebar", () => {
     expect(markup).toContain('data-maximized="true"');
     expect(markup).toContain('aria-label="windowChrome.restore"');
     expect(markup).not.toContain('aria-label="windowChrome.maximize"');
+  });
+
+  test("renders separate AirPlay and monitor controls in the titlebar", () => {
+    const markup = renderToStaticMarkup(
+      <DesktopTitlebar
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        settingsOpen={false}
+        sidebarVisible
+      />,
+    );
+
+    expect(markup).toContain('data-airplay-button="true"');
+    expect(markup).toContain('aria-label="player.selectMonitor"');
   });
 });

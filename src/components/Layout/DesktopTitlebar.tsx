@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
-  Maximize2,
   Minus,
+  Monitor,
   PanelLeft,
   Settings,
   Square,
@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ImportButton } from "@/components/Library/ImportButton";
 import { Tooltip } from "@/components/Overlay/Tooltip";
+import { AirPlayRouteButton } from "@/components/Player/AirPlayRouteButton";
 import { MonitorPicker } from "@/components/Player/MonitorPicker";
 import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import {
@@ -121,7 +122,7 @@ export function DesktopTitlebar({
   const [monitorPickerOpen, setMonitorPickerOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(initialIsMaximized);
   const [menus, setMenus] = useState<DesktopMenuResources | null>(null);
-  const fullscreenBtnRef = useRef<HTMLButtonElement>(null);
+  const monitorBtnRef = useRef<HTMLButtonElement>(null);
   const menuHandlersRef = useRef({
     onImportMenuAction,
     onOpenSettingsMenuAction,
@@ -302,13 +303,15 @@ export function DesktopTitlebar({
             </button>
           </Tooltip>
 
+          <AirPlayRouteButton className="h-[30px] w-[30px] rounded-md" />
+
           <div className="h-4 w-px bg-[var(--color-border-light)]" />
 
           <div>
             <Tooltip label={t("player.selectMonitor")}>
               <button
                 type="button"
-                ref={fullscreenBtnRef}
+                ref={monitorBtnRef}
                 onClick={() => setMonitorPickerOpen((open) => !open)}
                 aria-label={t("player.selectMonitor")}
                 className={`motion-icon-button rounded-md p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
@@ -317,13 +320,13 @@ export function DesktopTitlebar({
                     : ""
                 }`}
               >
-                <Maximize2 size={15} />
+                <Monitor size={15} />
               </button>
             </Tooltip>
             {monitorPickerOpen && (
               <MonitorPicker
                 onClose={() => setMonitorPickerOpen(false)}
-                anchorRef={fullscreenBtnRef}
+                anchorRef={monitorBtnRef}
               />
             )}
           </div>

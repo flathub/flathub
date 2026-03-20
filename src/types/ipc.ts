@@ -165,6 +165,32 @@ export interface PlaybackEndedEvent {
   song_id: string;
 }
 
+export interface AirPlayRoutePickerBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export type AirPlayAudienceMode = "idle" | "lyrics" | "cdg";
+
+export interface AirPlayAudienceStatePayload {
+  mode: AirPlayAudienceMode;
+  songId: string | null;
+  isPlaying: boolean;
+  positionMs: number;
+  lines: LyricLine[];
+  activeLineIndex: number;
+  offsetMs: number;
+  lyricsFontStep: number;
+}
+
+export interface AirPlayOutputStateEvent {
+  active: boolean;
+  routeName: string | null;
+  mode: AirPlayAudienceMode;
+}
+
 // ─── Separation ──────────────────────────────────────────
 
 export type SeparationState = "idle" | "running" | "completed" | "failed";
