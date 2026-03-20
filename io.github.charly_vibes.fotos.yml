@@ -1,0 +1,152 @@
+app-id: io.github.charly_vibes.fotos
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm19
+command: fotos
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --filesystem=xdg-pictures:create
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.Screenshot
+  - --talk-name=org.freedesktop.portal.GlobalShortcuts
+  - --talk-name=org.freedesktop.secrets
+  - --own-name=io.github.charly_vibes.Fotos
+
+modules:
+  - name: intltool
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: '67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd'
+
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -DGLIB_DISABLE_DEPRECATION_WARNINGS
+      env:
+        DBUSMENUTESTSVALGRIND_CFLAGS: ' '
+        DBUSMENUTESTSVALGRIND_LIBS: ' '
+    config-opts:
+      - --disable-static
+      - --disable-gtk-doc
+      - --disable-dumper
+      - --disable-vala
+      - --enable-introspection=no
+      - --with-gtk=3
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: 'b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a'
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/0.10.1.tar.gz
+        sha256: '26187915a6f3402195e2c78d9e8a54549112a3cd05bb2fbe2059d3e78fc0e071'
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_BINDINGS_PYTHON=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/0.9.4.tar.gz
+        sha256: 'a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95'
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_BINDINGS_PYTHON=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/0.5.93.tar.gz
+        sha256: 'cbefed7a918a227bf71286246e237fcd3a9c8499b3eaac4897811a869409edf0'
+
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DBUILD_SHARED_LIBS=ON
+    post-install:
+      - ln -sf lept_Release.pc /app/lib/pkgconfig/lept.pc
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/archive/1.85.0.tar.gz
+        sha256: 'c01376bce0379d4ea4bc2ec5d5cbddaa49e2f06f88242619ab8c059e21adf233'
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/5.5.1.tar.gz
+        sha256: 'a7a3f2a7420cb6a6a94d80c24163e183cf1d2f1bed2df3bbc397c81808a57237'
+
+  - name: tessdata-eng
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eng.traineddata /app/share/tessdata/eng.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+        sha256: '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
+
+  - name: fotos
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm19/bin
+      env:
+        CARGO_HOME: /run/build/fotos/cargo-home
+        LIBCLANG_PATH: /usr/lib/sdk/llvm19/lib
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+        TESSERACT_INCLUDE_PATH: /app/include
+        TESSERACT_LIB_PATH: /app/lib
+    sources:
+      - type: git
+        url: https://github.com/charly-vibes/fotos.git
+        tag: v0.3.0
+        commit: a546b00d63c2b6823332026475ba1ab4ca2a3cad
+      - cargo-sources.json
+    build-commands:
+      - mkdir -p .cargo
+      - |
+        cat > .cargo/config.toml <<'EOF'
+        [source.crates-io]
+        replace-with = "vendored-sources"
+        [source.vendored-sources]
+        directory = "cargo/vendor"
+        EOF
+      - touch src-tauri/fotos-mcp-x86_64-unknown-linux-gnu
+      - cargo build --release --offline
+      - install -Dm755 target/release/fotos /app/bin/fotos
+      - install -Dm755 target/release/fotos-mcp /app/bin/fotos-mcp
+      - install -Dm644 flatpak/io.github.charly_vibes.fotos.desktop /app/share/applications/io.github.charly_vibes.fotos.desktop
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.charly_vibes.fotos.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.charly_vibes.fotos.png
+      - install -Dm644 src-tauri/icons/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.charly_vibes.fotos.png
+      - install -Dm644 src-tauri/icons/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.charly_vibes.fotos.png
+      - install -Dm644 src-tauri/icons/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.charly_vibes.fotos.svg
+      - install -Dm644 flatpak/io.github.charly_vibes.fotos.metainfo.xml /app/share/metainfo/io.github.charly_vibes.fotos.metainfo.xml
