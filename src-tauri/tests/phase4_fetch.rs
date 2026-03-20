@@ -3,12 +3,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use lofty::{
+    config::WriteOptions,
+    tag::{ItemKey, Tag, TagExt, TagType},
+};
 mod support;
 
 use openkara_lib::{
     library::Song,
     lyrics::{
-        fetch::{fetch_lyrics_for_song, LyricsFetchResult, LyricsSource},
+        fetch::{fetch_lyrics_for_song, read_embedded_lyrics, LyricsFetchResult, LyricsSource},
         lrclib::LrcLibClient,
     },
 };
@@ -133,5 +137,31 @@ fn fetch_chain_falls_back_to_sidecar_when_lrclib_misses() {
     );
 
     mock.assert();
+    cleanup_dir(&fixture_dir);
+}
+
+#[test]
+fn reads_embedded_lyrics_from_mp4_audio_even_when_extension_is_aac() {
+    let fixture_dir = unique_fixture_dir();
+    cleanup_dir(&fixture_dir);
+    fs::create_dir_all(&fixture_dir).expect("fixture directory should create");
+
+    let tagged_m4a_path = fixture_dir.join("lyrics-source.m4a");
+    fs::copy(metadata_fixture_path("fixture.m4a"), &tagged_m4a_path)
+        .expect("fixture m4a should copy");
+
+    let mut tag = Tag::new(TagType::Mp4Ilst);
+    tag.insert_text(ItemKey::Lyrics, "[00:10.00] embedded line".to_owned());
+    tag.save_to_path(&tagged_m4a_path, WriteOptions::default())
+        .expect("lyrics tag should save");
+
+    let disguised_aac_path = fixture_dir.join("lyrics-source.aac");
+    fs::copy(&tagged_m4a_path, &disguised_aac_path).expect("tagged m4a should copy to .aac");
+
+    let embedded =
+        read_embedded_lyrics(&disguised_aac_path).expect("embedded lyrics read should succeed");
+
+    assert_eq!(embedded.as_deref(), Some("[00:10.00] embedded line"));
+
     cleanup_dir(&fixture_dir);
 }

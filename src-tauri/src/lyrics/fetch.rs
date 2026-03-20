@@ -1,9 +1,10 @@
 use crate::{
     library::Song,
     lyrics::lrclib::{LrcLibClient, LyricsLookupQuery},
+    metadata,
 };
 use anyhow::{Context, Result};
-use lofty::{file::TaggedFileExt, read_from_path, tag::ItemKey};
+use lofty::{file::TaggedFileExt, tag::ItemKey};
 use serde::Serialize;
 use std::{fs, path::Path};
 
@@ -72,7 +73,7 @@ pub fn lookup_query_from_song(song: &Song) -> Option<LyricsLookupQuery> {
 }
 
 pub fn read_embedded_lyrics(path: &Path) -> Result<Option<String>> {
-    let tagged_file = read_from_path(path).with_context(|| {
+    let tagged_file = metadata::read_tagged_file_from_path(path).with_context(|| {
         format!(
             "failed to read embedded lyrics tags from {}",
             path.display()

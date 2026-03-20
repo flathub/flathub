@@ -743,14 +743,8 @@ fn try_extract_embedded_lyrics(connection: &Connection, song: &Song, library: &L
 }
 
 fn read_embedded_lyrics_from_bytes(bytes: &[u8], extension: &str) -> Result<Option<String>> {
-    let file_type = lofty::file::FileType::from_ext(extension)
-        .with_context(|| format!("unsupported embedded audio extension {extension}"))?;
-    let reader = lofty::probe::Probe::with_file_type(
-        std::io::BufReader::new(std::io::Cursor::new(bytes)),
-        file_type,
-    )
-    .read()
-    .context("failed to inspect embedded lyrics in Media+G ZIP")?;
+    let reader = metadata::read_tagged_file_from_bytes(bytes, extension)
+        .context("failed to inspect embedded lyrics in Media+G ZIP")?;
 
     for tag in reader.tags() {
         if let Some(lyrics) = tag.get_string(&ItemKey::Lyrics) {

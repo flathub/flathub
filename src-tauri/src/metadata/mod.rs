@@ -62,7 +62,7 @@ pub fn write_ogg_with_preserved_metadata(
     Ok(())
 }
 
-fn read_tagged_file_from_path(path: &Path) -> Result<lofty::file::TaggedFile> {
+pub fn read_tagged_file_from_path(path: &Path) -> Result<lofty::file::TaggedFile> {
     Probe::open(path)
         .with_context(|| format!("failed to open audio file at {}", path.display()))?
         // Real-world libraries often contain MP4-family audio mislabeled as
@@ -74,7 +74,7 @@ fn read_tagged_file_from_path(path: &Path) -> Result<lofty::file::TaggedFile> {
         .with_context(|| format!("failed to read audio metadata from {}", path.display()))
 }
 
-fn read_tagged_file_from_bytes(
+pub fn read_tagged_file_from_bytes(
     bytes: &[u8],
     extension: &str,
 ) -> Result<lofty::file::TaggedFile> {
