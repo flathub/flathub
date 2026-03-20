@@ -152,7 +152,19 @@ export function MonitorPicker({ onClose, anchorRef }: MonitorPickerProps) {
       lines: [],
       activeLineIndex: -1,
       offsetMs: 0,
+      isLoading: false,
       lyricsFontStep: 0,
+      messages: {
+        selectSong: t("lyrics.selectSong"),
+        loadingLyrics: t("lyrics.loadingLyrics"),
+        noLyrics: t("lyrics.noLyrics"),
+        addLyrics: t("lyrics.addLyrics"),
+      },
+      viewport: {
+        widthPx: 1280,
+        heightPx: 720,
+        bottomInsetPx: 0,
+      },
     }).catch(() => {
       // Prefer keeping local output working even if AirPlay sync is stale.
     });

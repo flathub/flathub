@@ -1,3 +1,4 @@
+use crate::airplay_stream::AirPlayAudioTap;
 use crate::audio::decode::DecodedAudio;
 use crate::audio::playback::{monotonic_now_ms, LoadedStems, PlaybackController};
 use anyhow::{Context, Result};
@@ -16,6 +17,7 @@ pub fn ensure_output_thread(
     started: &Arc<AtomicBool>,
     start_lock: &Arc<Mutex<()>>,
     playback: Arc<Mutex<PlaybackController>>,
+    airplay_audio_tap: Arc<AirPlayAudioTap>,
 ) -> Result<()> {
     if started.load(Ordering::SeqCst) {
         return Ok(());
@@ -30,7 +32,7 @@ pub fn ensure_output_thread(
 
     let (startup_tx, startup_rx) = mpsc::sync_channel(1);
     thread::spawn(move || {
-        if let Err(error) = start_output_thread(playback, startup_tx) {
+        if let Err(error) = start_output_thread(playback, airplay_audio_tap, startup_tx) {
             eprintln!("audio output thread failed to start: {error:#}");
         }
     });
@@ -295,6 +297,7 @@ fn build_output_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     playback: Arc<Mutex<PlaybackController>>,
+    airplay_audio_tap: Arc<AirPlayAudioTap>,
 ) -> Result<Stream>
 where
     T: SizedSample + Sample + cpal::FromSample<f32>,
@@ -324,6 +327,9 @@ where
                 scratch.fill(0.0);
             }
 
+            let tap_samples = downmix_for_airplay(&scratch, channels);
+            airplay_audio_tap.push_interleaved(sample_rate, 2, &tap_samples);
+
             for frame in scratch.chunks(channels).zip(data.chunks_mut(channels)) {
                 let (input_frame, output_frame) = frame;
                 for (input_sample, output_sample) in input_frame.iter().zip(output_frame.iter_mut())
@@ -343,6 +349,7 @@ where
 
 fn start_output_thread(
     playback: Arc<Mutex<PlaybackController>>,
+    airplay_audio_tap: Arc<AirPlayAudioTap>,
     startup_tx: mpsc::SyncSender<Result<()>>,
 ) -> Result<()> {
     let host = cpal::default_host();
@@ -353,9 +360,15 @@ fn start_output_thread(
         .default_output_config()
         .context("failed to read default audio output config")?;
     let stream = match config.sample_format() {
-        SampleFormat::F32 => build_output_stream::<f32>(&device, &config.into(), playback)?,
-        SampleFormat::I16 => build_output_stream::<i16>(&device, &config.into(), playback)?,
-        SampleFormat::U16 => build_output_stream::<u16>(&device, &config.into(), playback)?,
+        SampleFormat::F32 => {
+            build_output_stream::<f32>(&device, &config.into(), playback, airplay_audio_tap)?
+        }
+        SampleFormat::I16 => {
+            build_output_stream::<i16>(&device, &config.into(), playback, airplay_audio_tap)?
+        }
+        SampleFormat::U16 => {
+            build_output_stream::<u16>(&device, &config.into(), playback, airplay_audio_tap)?
+        }
         sample_format => {
             anyhow::bail!("unsupported audio output sample format: {sample_format:?}");
         }
@@ -370,4 +383,20 @@ fn start_output_thread(
         thread::sleep(Duration::from_secs(60));
         let _keep_alive = &stream;
     }
+}
+
+fn downmix_for_airplay(samples: &[f32], channels: usize) -> Vec<f32> {
+    if channels == 0 || samples.is_empty() {
+        return Vec::new();
+    }
+
+    let mut stereo = Vec::with_capacity((samples.len() / channels).saturating_mul(2));
+    for frame in samples.chunks(channels) {
+        let left = frame[0];
+        let right = if channels == 1 { frame[0] } else { frame[1] };
+        stereo.push(left);
+        stereo.push(right);
+    }
+
+    stereo
 }

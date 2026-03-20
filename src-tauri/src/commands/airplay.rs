@@ -1,5 +1,8 @@
 use crate::{
+    airplay_stream::{default_stream_root, AirPlayHttpServer},
+    commands::cdg::render_cdg_frame_bytes,
     commands::error::{internal_error, CommandResult},
+    AppState,
     lyrics::parser::LyricLine,
 };
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ use std::{
     ptr::null,
     sync::{Mutex, OnceLock},
 };
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, State, WebviewWindow};
 
 pub const AIRPLAY_OUTPUT_STATE_EVENT: &str = "openkara://airplay-output-state";
 
@@ -32,6 +35,23 @@ pub struct AirPlayRoutePickerBounds {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AirPlayViewport {
+    pub width_px: u32,
+    pub height_px: u32,
+    pub bottom_inset_px: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirPlayAudienceMessages {
+    pub select_song: String,
+    pub loading_lyrics: String,
+    pub no_lyrics: String,
+    pub add_lyrics: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AirPlayAudienceStatePayload {
     pub mode: AirPlayAudienceMode,
     pub song_id: Option<String>,
@@ -40,7 +60,10 @@ pub struct AirPlayAudienceStatePayload {
     pub lines: Vec<LyricLine>,
     pub active_line_index: i64,
     pub offset_ms: i64,
+    pub is_loading: bool,
     pub lyrics_font_step: i8,
+    pub messages: AirPlayAudienceMessages,
+    pub viewport: AirPlayViewport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -106,40 +129,26 @@ fn emit_airplay_state(active: bool, route_name: Option<String>, mode: AirPlayAud
     }
 }
 
-fn ensure_placeholder_silence_asset(app_handle: &AppHandle) -> CommandResult<PathBuf> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|error| internal_error(format!("failed to get app data dir: {error}")))?;
-    let airplay_dir = app_data_dir.join("airplay");
-    std::fs::create_dir_all(&airplay_dir)
-        .map_err(|error| internal_error(format!("failed to create airplay dir: {error}")))?;
+fn ensure_stream_server(state: &AppState) -> CommandResult<(PathBuf, String)> {
+    let root_dir = default_stream_root(&state.app_data_dir);
+    let mut server = state
+        .airplay_http_server
+        .lock()
+        .map_err(|_| internal_error("airplay http server lock was poisoned".to_owned()))?;
 
-    let silence_path = airplay_dir.join("placeholder-silence.wav");
-    if silence_path.exists() {
-        return Ok(silence_path);
+    if server.is_none() {
+        *server = Some(
+            AirPlayHttpServer::bind(&root_dir)
+                .map_err(|error| internal_error(format!("failed to start airplay server: {error}")))?,
+        );
     }
 
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 44_100,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(&silence_path, spec)
-        .map_err(|error| internal_error(format!("failed to create silence asset: {error}")))?;
+    let base_url = server
+        .as_ref()
+        .map(|server| server.base_url().to_owned())
+        .ok_or_else(|| internal_error("airplay server handle was not initialized".to_owned()))?;
 
-    for _ in 0..44_100 {
-        writer
-            .write_sample::<i16>(0)
-            .map_err(|error| internal_error(format!("failed to write silence asset: {error}")))?;
-    }
-
-    writer
-        .finalize()
-        .map_err(|error| internal_error(format!("failed to finalize silence asset: {error}")))?;
-
-    Ok(silence_path)
+    Ok((root_dir, format!("{base_url}/playlist.m3u8")))
 }
 
 #[cfg(target_os = "macos")]
@@ -158,12 +167,14 @@ mod native {
             width: f64,
             height: f64,
             mounted: bool,
-            silence_asset_path: *const c_char,
+            stream_root_path: *const c_char,
+            playlist_url: *const c_char,
         );
-        fn ok_airplay_update_mode(
+        fn ok_airplay_sync_audience_state(
             mode: i32,
-            placeholder_enabled: bool,
-            silence_asset_path: *const c_char,
+            scene_json: *const c_char,
+            cdg_frame_ptr: *const u8,
+            cdg_frame_len: usize,
         );
     }
 
@@ -196,13 +207,16 @@ mod native {
 
     pub(super) fn sync_route_picker(
         window: &WebviewWindow,
-        silence_asset_path: &PathBuf,
+        stream_root: &PathBuf,
+        playlist_url: &str,
         bounds: Option<AirPlayRoutePickerBounds>,
     ) -> CommandResult<()> {
         ensure_callback_registered();
 
-        let silence_asset_path = CString::new(silence_asset_path.to_string_lossy().as_bytes())
-            .map_err(|error| internal_error(format!("invalid silence asset path: {error}")))?;
+        let stream_root = CString::new(stream_root.to_string_lossy().as_bytes())
+            .map_err(|error| internal_error(format!("invalid airplay stream root: {error}")))?;
+        let playlist_url = CString::new(playlist_url.as_bytes())
+            .map_err(|error| internal_error(format!("invalid airplay playlist url: {error}")))?;
 
         match bounds {
             Some(bounds) => {
@@ -219,7 +233,8 @@ mod native {
                         bounds.width,
                         bounds.height,
                         true,
-                        silence_asset_path.as_ptr(),
+                        stream_root.as_ptr(),
+                        playlist_url.as_ptr(),
                     );
                 }
             }
@@ -234,6 +249,7 @@ mod native {
                         0.0,
                         false,
                         null(),
+                        null(),
                     );
                 }
             }
@@ -242,22 +258,28 @@ mod native {
         Ok(())
     }
 
-    pub(super) fn update_mode(
-        mode: AirPlayAudienceMode,
-        placeholder_enabled: bool,
-        silence_asset_path: &PathBuf,
+    pub(super) fn sync_audience_state(
+        payload: &AirPlayAudienceStatePayload,
+        cdg_frame: Option<&[u8]>,
     ) -> CommandResult<()> {
         ensure_callback_registered();
 
-        let silence_asset_path = CString::new(silence_asset_path.to_string_lossy().as_bytes())
-            .map_err(|error| internal_error(format!("invalid silence asset path: {error}")))?;
+        let scene_json = serde_json::to_string(payload)
+            .map_err(|error| internal_error(format!("failed to serialize airplay scene: {error}")))?;
+        let scene_json = CString::new(scene_json.as_bytes())
+            .map_err(|error| internal_error(format!("invalid airplay scene json: {error}")))?;
+        let (cdg_frame_ptr, cdg_frame_len) = match cdg_frame {
+            Some(frame) => (frame.as_ptr(), frame.len()),
+            None => (null::<u8>(), 0),
+        };
 
-        // SAFETY: The bridge copies the C string before returning and dispatches to the main thread.
+        // SAFETY: The bridge copies any provided data before returning and dispatches work onto its own queues.
         unsafe {
-            ok_airplay_update_mode(
-                mode_tag(mode),
-                placeholder_enabled,
-                silence_asset_path.as_ptr(),
+            ok_airplay_sync_audience_state(
+                mode_tag(payload.mode),
+                scene_json.as_ptr(),
+                cdg_frame_ptr,
+                cdg_frame_len,
             );
         }
 
@@ -271,16 +293,16 @@ mod native {
 
     pub(super) fn sync_route_picker(
         _window: &WebviewWindow,
-        _silence_asset_path: &PathBuf,
+        _stream_root: &PathBuf,
+        _playlist_url: &str,
         _bounds: Option<AirPlayRoutePickerBounds>,
     ) -> CommandResult<()> {
         Ok(())
     }
 
-    pub(super) fn update_mode(
-        _mode: AirPlayAudienceMode,
-        _placeholder_enabled: bool,
-        _silence_asset_path: &PathBuf,
+    pub(super) fn sync_audience_state(
+        _payload: &AirPlayAudienceStatePayload,
+        _cdg_frame: Option<&[u8]>,
     ) -> CommandResult<()> {
         Ok(())
     }
@@ -288,17 +310,19 @@ mod native {
 
 #[tauri::command]
 pub fn sync_airplay_route_picker(
+    state: State<'_, AppState>,
     app_handle: AppHandle,
     window: WebviewWindow,
     bounds: Option<AirPlayRoutePickerBounds>,
 ) -> CommandResult<()> {
     remember_app_handle(&app_handle);
-    let silence_asset_path = ensure_placeholder_silence_asset(&app_handle)?;
-    native::sync_route_picker(&window, &silence_asset_path, bounds)
+    let (stream_root, playlist_url) = ensure_stream_server(&state)?;
+    native::sync_route_picker(&window, &stream_root, &playlist_url, bounds)
 }
 
 #[tauri::command]
 pub fn sync_airplay_audience_state(
+    state: State<'_, AppState>,
     app_handle: AppHandle,
     payload: AirPlayAudienceStatePayload,
 ) -> CommandResult<()> {
@@ -308,8 +332,15 @@ pub fn sync_airplay_audience_state(
         state.latest_payload = Some(payload.clone());
     }
 
-    let silence_asset_path = ensure_placeholder_silence_asset(&app_handle)?;
-    let placeholder_enabled =
-        payload.mode != AirPlayAudienceMode::Idle && payload.song_id.is_some();
-    native::update_mode(payload.mode, placeholder_enabled, &silence_asset_path)
+    let cdg_frame = if payload.mode == AirPlayAudienceMode::Cdg {
+        let mut cdg_state = state
+            .cdg_state
+            .lock()
+            .map_err(|_| internal_error("CDG state lock was poisoned".to_owned()))?;
+        render_cdg_frame_bytes(&mut cdg_state, payload.position_ms)
+    } else {
+        None
+    };
+
+    native::sync_audience_state(&payload, cdg_frame.as_deref())
 }

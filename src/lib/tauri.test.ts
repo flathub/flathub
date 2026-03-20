@@ -55,7 +55,19 @@ describe("tauri API wrappers", () => {
       lines: [{ time_ms: 3000, text: "Line", words: null }],
       activeLineIndex: 0,
       offsetMs: 100,
+      isLoading: false,
       lyricsFontStep: 1,
+      messages: {
+        selectSong: "Select a song to start",
+        loadingLyrics: "Loading lyrics...",
+        noLyrics: "No lyrics available for this track",
+        addLyrics: "Add Lyrics",
+      },
+      viewport: {
+        widthPx: 1280,
+        heightPx: 720,
+        bottomInsetPx: 0,
+      },
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("sync_airplay_audience_state", {
@@ -67,7 +79,19 @@ describe("tauri API wrappers", () => {
         lines: [{ time_ms: 3000, text: "Line", words: null }],
         activeLineIndex: 0,
         offsetMs: 100,
+        isLoading: false,
         lyricsFontStep: 1,
+        messages: {
+          selectSong: "Select a song to start",
+          loadingLyrics: "Loading lyrics...",
+          noLyrics: "No lyrics available for this track",
+          addLyrics: "Add Lyrics",
+        },
+        viewport: {
+          widthPx: 1280,
+          heightPx: 720,
+          bottomInsetPx: 0,
+        },
       },
     });
   });

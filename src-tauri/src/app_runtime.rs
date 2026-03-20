@@ -1,5 +1,6 @@
 use crate::library_root::LibraryRoot;
 use crate::{
+    airplay_stream,
     audio,
     audio::playback::{monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
     cache, commands, config, derive_startup_model_bootstrap, separator, AppState,
@@ -23,6 +24,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
 
     let app_config = config::load_config(&app_data_dir)?;
     let playback = Arc::new(Mutex::new(PlaybackController::default()));
+    let airplay_audio_tap = Arc::new(airplay_stream::AirPlayAudioTap::new(12));
     let model_bootstrap = build_startup_model_bootstrap(&app_data_dir, app_config.as_ref())?;
     let model_bootstrap_status = Arc::new(Mutex::new(model_bootstrap.status.clone()));
 
@@ -32,6 +34,8 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         model_path: model_bootstrap.model_path.clone(),
         playback: Arc::clone(&playback),
         cdg_state: Arc::new(Mutex::new(None)),
+        airplay_audio_tap: Arc::clone(&airplay_audio_tap),
+        airplay_http_server: Arc::new(Mutex::new(None)),
         playback_request_id: AtomicU64::new(0),
         audio_output_started: Arc::new(AtomicBool::new(false)),
         audio_output_start_lock: Arc::new(Mutex::new(())),
@@ -42,6 +46,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         batch_cancel: Arc::new(AtomicBool::new(false)),
     });
 
+    airplay_stream::spawn_audio_forwarder(airplay_audio_tap);
     spawn_playback_position_emitter(app.handle().clone(), playback);
 
     if model_bootstrap.should_spawn_bootstrap_worker {

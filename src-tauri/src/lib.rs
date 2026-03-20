@@ -1,5 +1,6 @@
 mod app_menu;
 mod app_runtime;
+pub mod airplay_stream;
 pub mod audio;
 pub mod cache;
 pub mod cdg;
@@ -33,6 +34,8 @@ pub struct AppState {
     pub model_path: PathBuf,
     pub playback: Arc<Mutex<PlaybackController>>,
     pub cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>>,
+    pub airplay_audio_tap: Arc<airplay_stream::AirPlayAudioTap>,
+    pub airplay_http_server: Arc<Mutex<Option<airplay_stream::AirPlayHttpServer>>>,
     pub playback_request_id: AtomicU64,
     pub audio_output_started: Arc<AtomicBool>,
     pub audio_output_start_lock: Arc<Mutex<()>>,

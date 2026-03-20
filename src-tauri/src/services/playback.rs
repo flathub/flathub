@@ -25,6 +25,8 @@ pub fn play<R: Runtime>(
     app_handle: &AppHandle<R>,
     song_id: &str,
 ) -> Result<PlaybackStateSnapshot> {
+    state.airplay_audio_tap.bump_epoch();
+    crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
     let library_root = state
         .library_root()
         .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
@@ -62,6 +64,8 @@ pub fn resume<R: Runtime>(
     state: &AppState,
     app_handle: &AppHandle<R>,
 ) -> Result<PlaybackStateSnapshot> {
+    state.airplay_audio_tap.bump_epoch();
+    crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
     let mut playback = state
         .playback
         .lock()
@@ -79,6 +83,8 @@ pub fn pause<R: Runtime>(
     state: &AppState,
     app_handle: &AppHandle<R>,
 ) -> Result<PlaybackStateSnapshot> {
+    state.airplay_audio_tap.bump_epoch();
+    crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
     let mut playback = state
         .playback
         .lock()
@@ -93,6 +99,8 @@ pub fn seek<R: Runtime>(
     app_handle: &AppHandle<R>,
     ms: u64,
 ) -> Result<PlaybackStateSnapshot> {
+    state.airplay_audio_tap.bump_epoch();
+    crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
     let mut playback = state
         .playback
         .lock()
@@ -206,6 +214,7 @@ fn ensure_output_thread(state: &AppState) -> Result<()> {
         &state.audio_output_started,
         &state.audio_output_start_lock,
         state.playback.clone(),
+        state.airplay_audio_tap.clone(),
     )?;
     Ok(())
 }

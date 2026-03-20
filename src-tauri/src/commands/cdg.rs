@@ -48,6 +48,39 @@ impl CdgPlaybackState {
     }
 }
 
+pub fn render_cdg_frame_bytes(
+    cdg_state: &mut Option<CdgPlaybackState>,
+    position_ms: u64,
+) -> Option<Vec<u8>> {
+    let cdg = cdg_state.as_mut()?;
+
+    let target_index = ((position_ms as u128 * 300) / 1000) as usize;
+    let target_index = target_index.min(cdg.packets.len());
+
+    if target_index < cdg.last_packet_index || cdg.needs_reset {
+        cdg.seek_to(target_index);
+        cdg.needs_reset = false;
+        let rgba = cdg.renderer.to_rgba();
+        cdg.cached_frame = Some(rgba.clone());
+        return Some(rgba);
+    }
+
+    if target_index > cdg.last_packet_index {
+        let changed = cdg
+            .renderer
+            .process_range(&cdg.packets, cdg.last_packet_index, target_index);
+        cdg.last_packet_index = target_index;
+
+        if changed || cdg.cached_frame.is_none() {
+            let rgba = cdg.renderer.to_rgba();
+            cdg.cached_frame = Some(rgba.clone());
+            return Some(rgba);
+        }
+    }
+
+    cdg.cached_frame.clone()
+}
+
 /// Returns a raw RGBA frame (288×192, 221,184 bytes) as binary `ArrayBuffer`
 /// for the given playback position.
 ///
@@ -69,40 +102,15 @@ pub fn get_cdg_frame(state: State<'_, AppState>, position_ms: u64) -> CommandRes
         .lock()
         .map_err(|_| internal_error("CDG state lock was poisoned".to_owned()))?;
 
-    let cdg = match cdg_guard.as_mut() {
+    match cdg_guard.as_mut() {
         Some(cdg) => cdg,
         None => return Ok(Response::new(Vec::<u8>::new())),
     };
 
-    // 300 packets per second → packet_index = position_ms * 300 / 1000
-    let target_index = ((position_ms as u128 * 300) / 1000) as usize;
-    let target_index = target_index.min(cdg.packets.len());
-
-    // Handle backward seek or reset
-    if target_index < cdg.last_packet_index || cdg.needs_reset {
-        cdg.seek_to(target_index);
-        cdg.needs_reset = false;
-        let rgba = cdg.renderer.to_rgba();
-        cdg.cached_frame = Some(rgba.clone());
-        return Ok(Response::new(rgba));
+    match render_cdg_frame_bytes(&mut cdg_guard, position_ms) {
+        Some(frame) => Ok(Response::new(frame)),
+        None => Ok(Response::new(Vec::<u8>::new())),
     }
-
-    // Forward: process from last position to target
-    if target_index > cdg.last_packet_index {
-        let changed = cdg
-            .renderer
-            .process_range(&cdg.packets, cdg.last_packet_index, target_index);
-        cdg.last_packet_index = target_index;
-
-        if changed || cdg.cached_frame.is_none() {
-            let rgba = cdg.renderer.to_rgba();
-            cdg.cached_frame = Some(rgba.clone());
-            return Ok(Response::new(rgba));
-        }
-    }
-
-    // No change — empty body signals "keep current frame"
-    Ok(Response::new(Vec::<u8>::new()))
 }
 
 #[cfg(test)]

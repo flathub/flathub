@@ -174,6 +174,19 @@ export interface AirPlayRoutePickerBounds {
 
 export type AirPlayAudienceMode = "idle" | "lyrics" | "cdg";
 
+export interface AirPlayViewport {
+  widthPx: number;
+  heightPx: number;
+  bottomInsetPx: number;
+}
+
+export interface AirPlayAudienceMessages {
+  selectSong: string;
+  loadingLyrics: string;
+  noLyrics: string;
+  addLyrics: string;
+}
+
 export interface AirPlayAudienceStatePayload {
   mode: AirPlayAudienceMode;
   songId: string | null;
@@ -182,7 +195,10 @@ export interface AirPlayAudienceStatePayload {
   lines: LyricLine[];
   activeLineIndex: number;
   offsetMs: number;
+  isLoading: boolean;
   lyricsFontStep: number;
+  messages: AirPlayAudienceMessages;
+  viewport: AirPlayViewport;
 }
 
 export interface AirPlayOutputStateEvent {
