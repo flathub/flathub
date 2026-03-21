@@ -12,6 +12,19 @@ To build this Flatpak package locally, run:
 flatpak-builder build com.rootapp.Root.yml --force-clean --ccache --user --install
 ```
 
+## File Access
+
+Due to Flatpak's sandbox, Root has access only to a limited set of files, which can affect drag‑and‑drop or copy‑paste operations.
+
+To address this, you have two straightforward options:
+
+1. Use the built‑in file picker, which always works within the sandbox.
+2. Grant Root access to your home directory (or any other directory you require) by running the following command, replacing `<your_directory>` with the desired path:
+
+```bash
+flatpak override --filesystem=<your_directory> com.rootapp.Root
+```
+
 ## Known Issues (Upstream)
 
 The following issues are known upstream bugs in the Linux/Avalonia version of the Root App and are **not** caused by this Flatpak wrapper:
