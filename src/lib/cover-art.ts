@@ -8,7 +8,7 @@ interface CoverArtCacheEntry {
 
 const coverArtUrlCache = new Map<string, CoverArtCacheEntry>();
 
-function ensureCoverArtBytes(input: CoverArtBytes): Uint8Array | null {
+function ensureCoverArtBytes(input: CoverArtBytes): Uint8Array<ArrayBuffer> | null {
   if (!input) {
     return null;
   }
@@ -21,11 +21,13 @@ function ensureCoverArtBytes(input: CoverArtBytes): Uint8Array | null {
   }
 
   if (ArrayBuffer.isView(input)) {
-    return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    return Uint8Array.from(
+      new Uint8Array(input.buffer, input.byteOffset, input.byteLength),
+    );
   }
 
   if (Array.isArray(input)) {
-    return new Uint8Array(input);
+    return Uint8Array.from(input);
   }
 
   return null;

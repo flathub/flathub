@@ -52,12 +52,11 @@ let lastStatus: CdgSyncStatusPayload = {
 function ensureArrayBuffer(result: unknown): ArrayBuffer {
   if (result instanceof ArrayBuffer) return result;
   if (ArrayBuffer.isView(result)) {
-    return result.buffer.slice(
-      result.byteOffset,
-      result.byteOffset + result.byteLength,
-    );
+    return Uint8Array.from(
+      new Uint8Array(result.buffer, result.byteOffset, result.byteLength),
+    ).buffer;
   }
-  if (Array.isArray(result)) return new Uint8Array(result).buffer;
+  if (Array.isArray(result)) return Uint8Array.from(result).buffer;
   return new ArrayBuffer(0);
 }
 
