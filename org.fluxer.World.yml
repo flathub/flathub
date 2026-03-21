@@ -1,0 +1,111 @@
+app-id: org.fluxer.World
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+# Electron ships its own Chromium; use the generic Electron BaseApp so we
+# get the required libraries (libnss, libdrm, Mesa, etc.) without pulling in
+# the full GNOME or KDE stack.
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+
+command: fluxer-world
+
+# ── Sandbox permissions ───────────────────────────────────────────────────────
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Network (the entire app is a web client)
+  - --share=network
+  # Sound
+  - --socket=pulseaudio
+  # Notifications via the host portal
+  - --talk-name=org.freedesktop.Notifications
+  # System tray via StatusNotifierItem (KDE/xfce/etc.)
+  # GNOME requires the AppIndicator shell extension; app still runs without it.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.freedesktop.portal.Notification
+  # Auto-start / login item
+  - --talk-name=org.freedesktop.portal.Background
+  # File system: only user data dir
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  # Electron needs this to locate its own GPU process inside the Flatpak.
+  - --device=dri
+  # --no-sandbox is required because Chrome's setuid sandbox conflicts with
+  # Bubblewrap.  The Flatpak container itself is the sandbox boundary.
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: fluxer-world
+    buildsystem: simple
+    build-commands:
+      # Unpack the upstream tar.gz (produced by electron-builder --linux tar.gz)
+      - install -dm 755 /app/fluxer-world
+      - tar -xzf fluxer-world.tar.gz -C /app/fluxer-world --strip-components=1
+
+      # Wrapper script that disables Chrome's setuid sandbox (Bubblewrap is
+      # the real sandbox here) and sets the app-id for proper Wayland XDG
+      # desktop integration.
+      - |
+        cat > /app/bin/fluxer-world <<'WRAPPER'
+        #!/bin/sh
+        export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+        # Zygote crashes inside Flatpak; GPU sandbox conflicts with Bubblewrap
+        exec /app/fluxer-world/fluxer-desktop \
+          --no-sandbox \
+          --no-zygote \
+          --disable-gpu-sandbox \
+          --enable-features=UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder \
+          --ozone-platform-hint=auto \
+          "$@"
+        WRAPPER
+      - chmod +x /app/bin/fluxer-world
+
+      # Desktop integration
+      - install -Dm 644 org.fluxer.World.desktop
+          /app/share/applications/org.fluxer.World.desktop
+      - install -Dm 644 org.fluxer.World.metainfo.xml
+          /app/share/metainfo/org.fluxer.World.metainfo.xml
+      # Icons
+      - install -Dm 644 icons/icon_16.png
+          /app/share/icons/hicolor/16x16/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_32.png
+          /app/share/icons/hicolor/32x32/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_48.png
+          /app/share/icons/hicolor/48x48/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_64.png
+          /app/share/icons/hicolor/64x64/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_128.png
+          /app/share/icons/hicolor/128x128/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_256.png
+          /app/share/icons/hicolor/256x256/apps/org.fluxer.World.png
+      - install -Dm 644 icons/icon_512.png
+          /app/share/icons/hicolor/512x512/apps/org.fluxer.World.png
+
+    sources:
+      - type: file
+        url: https://github.com/fluxerworld/fluxerworld/releases/download/v1.0.23/Fluxer.World-1.0.0-linux-x64.tar.gz
+        sha256: a0d64bb5442f510c5b518934a2d234ab2b545f66eafa22cc08110c6216cffbb6
+        dest-filename: fluxer-world.tar.gz
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/fluxerworld/fluxerworld/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name | test("linux-x64.tar.gz$")) | .browser_download_url
+
+      - type: file
+        path: org.fluxer.World.desktop
+
+      - type: file
+        path: org.fluxer.World.metainfo.xml
+
+      - type: dir
+        path: icons
+        dest: icons
