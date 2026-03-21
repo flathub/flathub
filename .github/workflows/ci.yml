@@ -104,13 +104,15 @@ jobs:
 
           Move-Item -Force $tmpPath $modelPath
 
-      # ort-sys's `copy-dylibs` feature places runtime DLLs (e.g. DirectML.dll)
-      # into target/debug via symlinks. On GHA runners without Developer Mode
-      # the fallback copy only covers the top-level dir (not deps/), and when
-      # symlinks DO work both target/debug and deps already point at the same
-      # file so a naïve copy fails. Instead, read the dfbin cache path from
-      # the ort-sys build-script output and copy DLLs from that original
-      # location directly into deps/.
+      # pyke's prebuilt onnxruntime.lib for Windows is compiled with DirectML
+      # baked in, creating a hard runtime dependency on DirectML.dll.  The
+      # dfbin cache contains only the static lib, and the system-provided
+      # DirectML.dll on Windows Server runners is too old (missing exports
+      # needed by ORT 1.24.2), causing STATUS_ENTRYPOINT_NOT_FOUND.
+      #
+      # Fix: download the exact DirectML redistributable that ORT 1.24.2 was
+      # built against (Microsoft.AI.DirectML 1.15.4, per cmake/external/
+      # dml.cmake) and stage the correct DLL next to the test binary.
       - name: Stage ORT runtime DLLs for Rust tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -121,44 +123,47 @@ jobs:
           $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
           New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
 
-          # Find the ort-sys build-script output file(s)
+          # ---- DirectML redistributable (v1.15.4, matches ORT 1.24.2) ----
+          $dmlPkg = Join-Path $env:RUNNER_TEMP "directml.zip"
+          $dmlDir = Join-Path $env:RUNNER_TEMP "directml"
+          Invoke-WebRequest `
+            -Uri "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.4" `
+            -OutFile $dmlPkg
+          Expand-Archive -Force -Path $dmlPkg -DestinationPath $dmlDir
+
+          $dmlDll = Join-Path $dmlDir "bin/x64-win/DirectML.dll"
+          if (Test-Path $dmlDll) {
+            $dest = Join-Path $depsDir "DirectML.dll"
+            if (Test-Path $dest) { Remove-Item $dest -Force }
+            Copy-Item $dmlDll $dest
+            Write-Host "Staged DirectML.dll (v1.15.4) -> deps/"
+          } else {
+            throw "DirectML.dll not found in NuGet package"
+          }
+
+          # ---- Copy any extra DLLs from the ort-sys dfbin cache ----
           $buildOutputFiles = Get-ChildItem `
             -Path (Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/build") `
             -Filter output `
             -File `
             -Recurse | Where-Object { $_.FullName -match "ort-sys-" }
 
-          if (-not $buildOutputFiles) {
-            Write-Host "No ort-sys build output found – skipping DLL staging"
-            exit 0
-          }
-
-          # Extract native link-search directories from build output
-          $nativeSearchDirs = @()
-          foreach ($f in $buildOutputFiles) {
+          foreach ($f in @($buildOutputFiles)) {
             foreach ($line in Get-Content $f.FullName) {
               if ($line -match "^cargo:rustc-link-search=native=(.+)$") {
-                $nativeSearchDirs += $Matches[1]
+                $dir = $Matches[1]
+                if (-not (Test-Path $dir)) { continue }
+                Get-ChildItem -Path $dir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
+                  ForEach-Object {
+                    $dest = Join-Path $depsDir $_.Name
+                    if (-not (Test-Path $dest)) {
+                      Copy-Item $_.FullName $dest
+                      Write-Host "Staged $($_.Name) from dfbin -> deps/"
+                    }
+                  }
               }
             }
           }
-          $nativeSearchDirs = $nativeSearchDirs | Select-Object -Unique
-
-          $staged = 0
-          foreach ($dir in $nativeSearchDirs) {
-            if (-not (Test-Path $dir)) { continue }
-            $dlls = Get-ChildItem -Path $dir -Filter "*.dll" -File -ErrorAction SilentlyContinue
-            foreach ($dll in $dlls) {
-              $dest = Join-Path $depsDir $dll.Name
-              # Remove any existing symlink/file to avoid copy-to-self errors
-              if (Test-Path $dest) { Remove-Item $dest -Force }
-              Copy-Item $dll.FullName $dest
-              Write-Host "Staged $($dll.Name) from dfbin -> deps/"
-              $staged++
-            }
-          }
-
-          Write-Host "Staged $staged DLL(s) total"
 
       - name: Lint frontend
         run: pnpm lint
