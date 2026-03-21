@@ -71,6 +71,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "ORT_CACHE_DIR=$env:GITHUB_WORKSPACE\src-tauri\target\ort-cache"
+
           $modelPath = Join-Path $env:GITHUB_WORKSPACE "src-tauri/models/htdemucs.onnx"
           $modelDir = Split-Path $modelPath
           New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
@@ -108,14 +110,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $sourceDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug"
-          $depsDir = Join-Path $sourceDir "deps"
+          $cacheDir = $env:ORT_CACHE_DIR
+          if (-not $cacheDir) {
+            throw "ORT_CACHE_DIR was not set before running Rust tests"
+          }
+
+          $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
           New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
 
-          $dlls = Get-ChildItem -Path $sourceDir -Filter "onnxruntime*.dll" -File -Recurse |
-            Where-Object { $_.DirectoryName -ne $depsDir }
+          $dlls = Get-ChildItem -Path $cacheDir -Filter "onnxruntime*.dll" -File -Recurse
           if (-not $dlls) {
-            throw "No ONNX Runtime DLLs were produced in $sourceDir"
+            throw "No ONNX Runtime DLLs were found under ORT_CACHE_DIR=$cacheDir"
           }
 
           Copy-Item -Force $dlls.FullName $depsDir
