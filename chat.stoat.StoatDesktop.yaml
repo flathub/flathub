@@ -1,0 +1,97 @@
+app-id: chat.stoat.StoatDesktop
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: stoat-desktop
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Required to provide Call functionality
+  - --socket=pulseaudio
+  - --device=all
+  # Network access
+  - --share=network
+  # Local filesystem
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-download
+  - --filesystem=xdg-run/pipewire-0
+  - --filesystem=xdg-run/speech-dispatcher
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=com.canonical.Unity
+    # Required for notifications in various desktop environments
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --system-talk-name=org.freedesktop.UPower
+  # Ensure that custom mouse cursors is used
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=ELECTRON_TRASH=gio
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    ELECTRON_FORCE_IS_VERSIONED_INSTALLATION: '1'
+
+modules:
+  # Build and install stoat
+  - name: stoat
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 pnpm /app/bin/pnpm
+      - install -dm755 "${FLATPAK_DEST}/bin" "${FLATPAK_DEST}/stoat-desktop"
+
+      - echo "manage-package-manager-versions=false" >> .npmrc
+
+      - "sed -i 's|packagerConfig: {|packagerConfig: { electronZipDir: \\\"/run/build/stoat/flatpak-node/cache/electron\\\",|' forge.config.ts"
+
+      - /app/bin/pnpm install --offline
+
+      - /app/bin/pnpm package
+      - cp -r out/Stoat-linux-*/. /app/stoat-desktop/
+
+      # Install wrapper
+      - install -Dm755 stoat-desktop.sh /app/bin/stoat-desktop
+
+      # Desktop + metadata + icon
+      - install -D chat.stoat.StoatDesktop.desktop -t /app/share/applications/
+      - install -Dm644 chat.stoat.StoatDesktop.metainfo.xml -t /app/share/metainfo/
+      - install -D assets/desktop/icon.png /app/share/icons/hicolor/256x256/apps/chat.stoat.StoatDesktop.png
+    sources:
+      - type: archive
+        url: https://github.com/stoatchat/for-desktop/archive/refs/tags/v1.3.0.tar.gz
+        sha256: f3e317698d96262b2b211293a78bc075d90082f39630f9ed3d476147f6a55187
+        dest: .
+      - type: git
+        url: https://github.com/stoatchat/assets
+        commit: bd432f2298901a8566a092636eef0c35a3a80fbc
+        dest: 'assets/'
+      - generated-sources.json
+        # Inspiration taken from https://github.com/RushingAlien/vesktop-flatpak/blob/build-from-source/dev.vencord.Vesktop.yml
+      - type: file
+        url: https://github.com/pnpm/pnpm/releases/download/v10.32.1/pnpm-linux-x64
+        sha256: c5607a86bfb948297e96b393a53c90107766fe56329e62967b1f239d861d4363
+        dest-filename: pnpm
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/pnpm/pnpm/releases/download/v10.32.1/pnpm-linux-arm64
+        sha256: c0db0b837971fde6f9781af8914e54eb163721193a36d35cbcf1794b3474a407
+        dest-filename: pnpm
+        only-arches:
+          - aarch64
+      - type: script
+        dest-filename: stoat-desktop.sh
+        commands:
+          # TMPDIR env variable fixes the tray icon issue (#6)
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-chat.stoat.StoatDesktop}"
+          - WAYLAND_FLAGS=""
+          - if [ -n "$WAYLAND_DISPLAY" ]; then WAYLAND_FLAGS="--enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland"; fi
+          - exec zypak-wrapper /app/stoat-desktop/stoat-desktop $WAYLAND_FLAGS "$@"
