@@ -1,0 +1,96 @@
+app-id: cc.snowify.Snowify
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: snowify
+
+finish-args:
+  # Wayland + X11 display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Audio playback
+  - --socket=pulseaudio
+  # Network access (streaming from YouTube Music, lyrics, cloud sync)
+  - --share=network
+  # GPU acceleration
+  - --device=dri
+  # Read user files (local audio import)
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download:ro
+  # Desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+  # System tray / status notifier
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # MPRIS media controls
+  - --own-name=org.mpris.MediaPlayer2.snowify
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+modules:
+  # ── yt-dlp binary ──
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux
+        sha256: c2b0189f581fe4a2ddd41954f1bcb7d327db04b07ed0dea97e4f1b3e09b5dd8e
+        dest-filename: yt-dlp
+
+  # ── Snowify ──
+  - name: snowify
+    buildsystem: simple
+    build-commands:
+      # Install npm dependencies (skip Electron binary download — bundled separately)
+      - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+      # Install the app source to /app/lib/snowify
+      - mkdir -p /app/lib/snowify
+      - cp -r src package.json node_modules assets /app/lib/snowify/
+      # Install Electron binary
+      - mkdir -p /app/lib/snowify/node_modules/electron/dist
+      - cp -r electron-dist/* /app/lib/snowify/node_modules/electron/dist/
+      # Write electron path file so the electron npm package knows where the binary is
+      - echo '/app/lib/snowify/node_modules/electron/dist/electron' > /app/lib/snowify/node_modules/electron/path.txt
+      # Install wrapper script
+      - install -Dm755 snowify.sh /app/bin/snowify
+      # Install desktop file
+      - install -Dm644 cc.snowify.Snowify.desktop /app/share/applications/cc.snowify.Snowify.desktop
+      # Install metainfo
+      - install -Dm644 cc.snowify.Snowify.metainfo.xml /app/share/metainfo/cc.snowify.Snowify.metainfo.xml
+      # Install icon
+      - install -Dm644 assets/logo.png /app/share/icons/hicolor/512x512/apps/cc.snowify.Snowify.png
+    sources:
+      - type: git
+        url: https://github.com/nyakuoff/Snowify.git
+        tag: v1.3.2
+        commit: 181d89d24dc96b884fae5dd85381a7aa9f52561f
+      # npm offline cache (content + index entries for all packages)
+      - generated-sources.json
+      # Electron binary (v33.4.11 linux-x64)
+      - type: archive
+        url: https://github.com/electron/electron/releases/download/v33.4.11/electron-v33.4.11-linux-x64.zip
+        sha256: 212d431c7c916292311c797cd91f84467c5abd6e6983cf24b162efff64cee8a9
+        strip-components: 0
+        dest: electron-dist
+      # Desktop file and metainfo
+      - type: file
+        path: cc.snowify.Snowify.desktop
+      - type: file
+        path: cc.snowify.Snowify.metainfo.xml
+      # Wrapper script
+      - type: script
+        dest-filename: snowify.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/lib/snowify/node_modules/electron/dist/electron /app/lib/snowify "$@"
