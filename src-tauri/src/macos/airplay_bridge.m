@@ -41,8 +41,13 @@ static const NSInteger OKAirPlayAudioSampleRate = 44100;
 static const NSInteger OKAirPlayAudioChannels = 2;
 static const NSInteger OKAirPlayAudioFramesPerTick =
     OKAirPlayAudioSampleRate / OKAirPlayFramesPerSecond;
-static const NSInteger OKAirPlayPlaylistWindow = 4;
-static const NSInteger OKAirPlayPreferredSegmentIntervalMs = 250;
+// RATIONALE: This bridge currently emits ordinary live HLS, not LL-HLS with
+// partial segments and blocking playlist reload. Apple explicitly recommends
+// whole-second segment intervals for HLS, and an ultra-short live window makes
+// receivers fall off the live edge after only a few seconds.
+static const NSInteger OKAirPlayPlaylistWindow = 8;
+static const NSInteger OKAirPlayPreferredSegmentIntervalSeconds = 1;
+static const NSTimeInterval OKAirPlayPreferredForwardBufferDuration = 2.0;
 static const NSInteger OKAirPlayMaxSyncPoints = 720;
 
 static NSString *OKStringValue(id value);
@@ -113,6 +118,10 @@ static CGRect OKAspectFitRect(CGSize sourceSize, CGRect bounds) {
         fitted.width,
         fitted.height
     );
+}
+
+static CGRect OKTopAlignedRect(CGFloat x, CGFloat topY, CGFloat width, CGFloat height) {
+    return CGRectMake(x, OKAirPlayVideoHeight - topY - height, width, height);
 }
 
 static NSString *OKStringValue(id value) {
@@ -335,6 +344,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, strong) NSDictionary *latestRuntimeState;
 @property(nonatomic, strong) NSData *latestCdgFrame;
 @property(nonatomic, assign) BOOL routeSelectionPending;
+@property(nonatomic, assign) BOOL routeActivationResetPending;
 @property(nonatomic, assign) NSUInteger routeSelectionGeneration;
 @property(nonatomic, copy) NSString *lastPlaybackErrorDetail;
 @property(nonatomic, assign) long long lastEmittedDisplayedPositionMs;
@@ -537,6 +547,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     });
 }
 
+- (void)restartStreamForRouteActivation {
+    [self resetMediaPipelineForGeneration:self.streamGeneration + 1];
+}
+
 - (void)recordSyncPointForSourcePosition:(long long)sourcePositionMs {
     long long streamPositionMs =
         llround((double)self.nextVideoFrameIndex * 1000.0 / (double)OKAirPlayFramesPerSecond);
@@ -729,7 +743,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         // persistent route is fine, but a persistent item is not; a new item
         // per stream generation is what lets TV jump to the new timeline
         // without waiting through old buffered segments.
-        item.preferredForwardBufferDuration = 0.25;
+        item.preferredForwardBufferDuration = OKAirPlayPreferredForwardBufferDuration;
         item.canUseNetworkResourcesForLiveStreamingWhilePaused = YES;
     }
     [self.player replaceCurrentItemWithPlayerItem:item];
@@ -760,7 +774,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    NSMutableString *playlist = [NSMutableString stringWithString:@"#EXTM3U\n#EXT-X-VERSION:7\n"];
+    NSMutableString *playlist =
+        [NSMutableString stringWithString:
+                               @"#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n"];
     NSTimeInterval maxDuration = 1.0;
     NSInteger mediaSequence = self.segments.firstObject.sequence;
     for (OKAirPlaySegmentEntry *entry in self.segments) {
@@ -839,14 +855,15 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         self.writer.delegate = self;
         self.writer.shouldOptimizeForNetworkUse = YES;
         self.writer.preferredOutputSegmentInterval =
-            CMTimeMake(OKAirPlayPreferredSegmentIntervalMs, 1000);
+            CMTimeMake(OKAirPlayPreferredSegmentIntervalSeconds, 1);
         self.writer.initialSegmentStartTime = kCMTimeZero;
         self.writer.outputFileTypeProfile = AVFileTypeProfileMPEG4AppleHLS;
 
         NSDictionary *videoCompressionProperties = @{
             AVVideoAverageBitRateKey: @(4 * 1024 * 1024),
             AVVideoExpectedSourceFrameRateKey: @(OKAirPlayFramesPerSecond),
-            AVVideoMaxKeyFrameIntervalKey: @(OKAirPlayFramesPerSecond),
+            AVVideoMaxKeyFrameIntervalKey:
+                @(OKAirPlayFramesPerSecond * OKAirPlayPreferredSegmentIntervalSeconds),
             AVVideoProfileLevelKey: AVVideoProfileLevelH264Main31,
         };
         NSDictionary *videoSettings = @{
@@ -1329,7 +1346,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         CGFloat width = [layout[@"width"] doubleValue];
         CGFloat height = [layout[@"height"] doubleValue];
         NSString *state = layout[@"state"];
-        CGRect frameRect = CGRectMake((OKAirPlayVideoWidth - width) * 0.5, y, width, height);
+        CGRect frameRect =
+            OKTopAlignedRect((OKAirPlayVideoWidth - width) * 0.5, y, width, height);
         CGMutablePathRef path = CGPathCreateMutable();
         CGPathAddRect(path, NULL, frameRect);
         CTFramesetterRef framesetter =
@@ -1566,7 +1584,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         weakSelf.latestCdgFrame = [cdgFrame copy];
         weakSelf.currentMode =
             runtimeState != nil ? OKModeValue(runtimeState[@"mode"]) : OKAirPlayModeIdle;
-        uint64_t streamGeneration =
+        uint64_t runtimeGeneration =
             (uint64_t)MAX(1, OKLongLongValue(runtimeState[@"streamGeneration"]));
 
         if (weakSelf.currentMode == OKAirPlayModeIdle) {
@@ -1577,6 +1595,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         }
 
         dispatch_async(weakSelf.encoderQueue, ^{
+            uint64_t streamGeneration = MAX(weakSelf.streamGeneration, runtimeGeneration);
             [weakSelf resetMediaPipelineForGeneration:streamGeneration];
             dispatch_async(dispatch_get_main_queue(), ^{
                 [weakSelf refreshPlaybackPhase];
@@ -1640,12 +1659,14 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 - (void)routePickerViewWillBeginPresentingRoutes:(AVRoutePickerView *)routePickerView {
     self.routeSelectionPending = NO;
+    self.routeActivationResetPending = NO;
     self.routeSelectionGeneration += 1;
     [self refreshPlaybackPhase];
 }
 
 - (void)routePickerViewDidEndPresentingRoutes:(AVRoutePickerView *)routePickerView {
     self.routeSelectionPending = YES;
+    self.routeActivationResetPending = YES;
     self.routeSelectionGeneration += 1;
     NSUInteger generation = self.routeSelectionGeneration;
     [self refreshPlaybackPhase];
@@ -1656,6 +1677,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         ^{
             if (self.routeSelectionGeneration == generation && !self.player.externalPlaybackActive) {
                 self.routeSelectionPending = NO;
+                self.routeActivationResetPending = NO;
                 [self refreshPlaybackPhase];
             }
         }
@@ -1719,6 +1741,18 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                         change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"externalPlaybackActive"] && object == self.player) {
+        if (self.player.externalPlaybackActive &&
+            self.routeActivationResetPending &&
+            self.currentMode != OKAirPlayModeIdle) {
+            self.routeActivationResetPending = NO;
+            dispatch_async(self.encoderQueue, ^{
+                [self restartStreamForRouteActivation];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self refreshPlaybackPhase];
+                });
+            });
+            return;
+        }
         [self refreshPlaybackPhase];
         return;
     }
