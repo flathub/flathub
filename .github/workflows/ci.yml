@@ -145,13 +145,18 @@ jobs:
             throw "No DLLs were found in ort-sys native link-search directories: $($nativeSearchDirs -join ', ')"
           }
 
-          $copySources = @()
+          $resolvedDepsDir = [System.IO.Path]::GetFullPath($depsDir)
+          $copyPairs = @()
           $plannedTargets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
           foreach ($dll in $dlls | Sort-Object FullName -Unique) {
-            $sourcePath = $dll.FullName
-            $targetPath = Join-Path $depsDir $dll.Name
+            $sourcePath = [System.IO.Path]::GetFullPath($dll.FullName)
+            $targetPath = [System.IO.Path]::GetFullPath((Join-Path $depsDir $dll.Name))
 
             if ($sourcePath -ieq $targetPath) {
+              continue
+            }
+
+            if ($sourcePath.StartsWith($resolvedDepsDir, [System.StringComparison]::OrdinalIgnoreCase)) {
               continue
             }
 
@@ -159,12 +164,17 @@ jobs:
               continue
             }
 
-            $copySources += $sourcePath
+            $copyPairs += @{
+              Source = $sourcePath
+              Target = $targetPath
+            }
           }
 
-          if ($copySources.Count -gt 0) {
+          if ($copyPairs.Count -gt 0) {
             # cargo:rustc-link-search gets tests linked, but Windows still needs the DLLs beside the test exe at runtime.
-            Copy-Item -Force $copySources $depsDir
+            foreach ($copyPair in $copyPairs) {
+              Copy-Item -Force $copyPair.Source $copyPair.Target
+            }
           }
 
       - name: Lint frontend
