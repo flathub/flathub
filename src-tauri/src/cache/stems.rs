@@ -350,7 +350,7 @@ pub fn delete_all_stem_cache_entries(
     connection: &Connection,
     library_root: &LibraryRoot,
 ) -> Result<usize> {
-    let count: usize = connection
+    let count: i64 = connection
         .query_row("SELECT COUNT(*) FROM stems", [], |row| row.get(0))
         .context("failed to count stem cache entries")?;
 
@@ -375,7 +375,7 @@ pub fn delete_all_stem_cache_entries(
         )
     })?;
 
-    Ok(count)
+    usize::try_from(count).context("stem cache row count should fit in usize")
 }
 
 /// Estimate total disk usage of cached stem files in bytes.

@@ -90,12 +90,12 @@ fn copy_mp3_with_embedded_cover(destination: &Path) {
         .read()
         .expect("fixture tags should read");
     let mut tag = Tag::new(TagType::Id3v2);
-    tag.push_picture(Picture::new_unchecked(
-        PictureType::CoverFront,
-        Some(MimeType::Png),
-        None,
-        vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-    ));
+    tag.push_picture(
+        Picture::unchecked(vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+            .pic_type(PictureType::CoverFront)
+            .mime_type(MimeType::Png)
+            .build(),
+    );
     tagged_file.insert_tag(tag);
     tagged_file
         .save_to_path(destination, WriteOptions::default())

@@ -820,7 +820,7 @@ fn read_embedded_lyrics_from_bytes(bytes: &[u8], extension: &str) -> Result<Opti
         .context("failed to inspect embedded lyrics in Media+G ZIP")?;
 
     for tag in reader.tags() {
-        if let Some(lyrics) = tag.get_string(&ItemKey::Lyrics) {
+        if let Some(lyrics) = tag.get_string(ItemKey::Lyrics) {
             let lyrics = lyrics.trim();
             if !lyrics.is_empty() {
                 return Ok(Some(lyrics.to_owned()));

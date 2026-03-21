@@ -8,7 +8,9 @@ interface CoverArtCacheEntry {
 
 const coverArtUrlCache = new Map<string, CoverArtCacheEntry>();
 
-function ensureCoverArtBytes(input: CoverArtBytes): Uint8Array<ArrayBuffer> | null {
+function ensureCoverArtBytes(
+  input: CoverArtBytes,
+): Uint8Array<ArrayBuffer> | null {
   if (!input) {
     return null;
   }

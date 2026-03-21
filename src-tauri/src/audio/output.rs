@@ -310,7 +310,7 @@ where
     T: SizedSample + Sample + cpal::FromSample<f32>,
 {
     let channels = config.channels as usize;
-    let sample_rate = config.sample_rate.0;
+    let sample_rate = config.sample_rate;
     let mut scratch = Vec::<f32>::new();
 
     let stream = device.build_output_stream(

@@ -81,7 +81,7 @@ pub fn read_embedded_lyrics(path: &Path) -> Result<Option<String>> {
     })?;
 
     for tag in tagged_file.tags() {
-        if let Some(lyrics) = tag.get_string(&ItemKey::Lyrics) {
+        if let Some(lyrics) = tag.get_string(ItemKey::Lyrics) {
             let lyrics = lyrics.trim();
             if !lyrics.is_empty() {
                 return Ok(Some(lyrics.to_owned()));
