@@ -99,6 +99,27 @@ jobs:
 
           Move-Item -Force $tmpPath $modelPath
 
+      - name: Build Rust test binaries (Windows)
+        if: runner.os == 'Windows'
+        working-directory: src-tauri
+        run: cargo test --no-run
+
+      - name: Copy ONNX Runtime DLLs for Rust tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sourceDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug"
+          $depsDir = Join-Path $sourceDir "deps"
+          New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
+
+          $dlls = Get-ChildItem -Path $sourceDir -Filter "onnxruntime*.dll" -File -Recurse |
+            Where-Object { $_.DirectoryName -ne $depsDir }
+          if (-not $dlls) {
+            throw "No ONNX Runtime DLLs were produced in $sourceDir"
+          }
+
+          Copy-Item -Force $dlls.FullName $depsDir
+
       - name: Lint frontend
         run: pnpm lint
 
@@ -107,7 +128,7 @@ jobs:
 
       - name: Run Rust tests
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test -q
 
       - name: Validate Tauri build
         run: pnpm tauri build --debug --no-bundle --ci
