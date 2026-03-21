@@ -18,13 +18,15 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
-    ffi::{c_char, CStr, CString},
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::State;
+
+#[cfg(target_os = "macos")]
+use std::ffi::{c_char, CStr, CString};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SongProperties {

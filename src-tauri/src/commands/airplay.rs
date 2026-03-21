@@ -9,9 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    ffi::{c_char, c_void, CStr, CString},
     path::PathBuf,
-    ptr::null,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
@@ -19,6 +17,12 @@ use std::{
     thread,
 };
 use tauri::{AppHandle, Emitter, State, WebviewWindow};
+
+#[cfg(target_os = "macos")]
+use std::{
+    ffi::{c_char, c_void, CStr, CString},
+    ptr::null,
+};
 
 pub const AIRPLAY_OUTPUT_STATE_EVENT: &str = "openkara://airplay-output-state";
 
@@ -194,6 +198,7 @@ pub fn normalize_host_y(host_height: f64, dom_top: f64, host_height_for_view: f6
     host_height - dom_top - host_height_for_view
 }
 
+#[cfg(target_os = "macos")]
 fn mode_from_tag(tag: i32) -> AirPlayAudienceMode {
     match tag {
         1 => AirPlayAudienceMode::Lyrics,
@@ -202,6 +207,7 @@ fn mode_from_tag(tag: i32) -> AirPlayAudienceMode {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn phase_from_tag(tag: i32) -> AirPlayOutputPhase {
     match tag {
         1 => AirPlayOutputPhase::RouteSelected,
@@ -510,6 +516,7 @@ fn remember_runtime_handles(app_handle: &AppHandle, local_audio_suppressed: &Arc
     }
 }
 
+#[cfg(target_os = "macos")]
 fn emit_airplay_state(
     active: bool,
     audio_active: bool,
@@ -798,10 +805,6 @@ mod native {
         _cdg_frame: Option<&[u8]>,
     ) -> CommandResult<()> {
         Ok(())
-    }
-
-    pub(super) fn step_plain_text_page(_direction: i32) -> bool {
-        false
     }
 }
 

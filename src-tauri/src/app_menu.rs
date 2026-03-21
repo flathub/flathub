@@ -3,14 +3,21 @@ use tauri::{
     AppHandle, Emitter, Runtime,
 };
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MENU_ACTION_EVENT: &str = "openkara://menu-action";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MENU_ACTION_IMPORT_FILES: &str = "import-files";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MENU_ACTION_OPEN_SETTINGS: &str = "open-settings";
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENU_ITEM_IMPORT_FILES: &str = "file.import";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENU_ITEM_OPEN_SETTINGS: &str = "app.settings";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const ABOUT_AUTHOR_CREDIT: &str = "David Weng";
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn build_about_metadata<R: Runtime>(app_handle: &AppHandle<R>) -> AboutMetadata<'static> {
     let pkg_info = app_handle.package_info();
     let config = app_handle.config();
@@ -25,8 +32,9 @@ fn build_about_metadata<R: Runtime>(app_handle: &AppHandle<R>) -> AboutMetadata<
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let pkg_info = app_handle.package_info();
+    let _pkg_info = app_handle.package_info();
     let about_metadata = build_about_metadata(app_handle);
 
     let import_item = MenuItem::with_id(
@@ -66,7 +74,7 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
             #[cfg(target_os = "macos")]
             &Submenu::with_items(
                 app_handle,
-                pkg_info.name.clone(),
+                _pkg_info.name.clone(),
                 true,
                 &[
                     &PredefinedMenuItem::about(app_handle, None, Some(about_metadata.clone()))?,
@@ -128,6 +136,7 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
     Ok(menu)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn handle_menu_event<R: Runtime>(app_handle: &AppHandle<R>, event: MenuEvent) {
     match event.id().as_ref() {
         MENU_ITEM_IMPORT_FILES => {

@@ -570,6 +570,7 @@ fn is_virtual_interface(name: &str) -> bool {
         .any(|prefix| name.starts_with(prefix))
 }
 
+#[cfg(unix)]
 fn is_eligible_publish_ip(name: &str, ip: Ipv4Addr) -> bool {
     if ip.is_loopback() || ip.is_unspecified() || is_virtual_interface(name) {
         return false;

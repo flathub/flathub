@@ -42,6 +42,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -135,20 +140,45 @@ jobs:
             throw "ort-sys did not emit any native link-search directories"
           }
 
-          $dlls = foreach ($nativeSearchDir in $nativeSearchDirs) {
-            if (Test-Path $nativeSearchDir) {
-              Get-ChildItem -Path $nativeSearchDir -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue
+          Write-Host "ort-sys native link-search directories:"
+          foreach ($nativeSearchDir in $nativeSearchDirs) {
+            Write-Host "  - $nativeSearchDir"
+          }
+
+          $ortRuntimeDirs = foreach ($nativeSearchDir in $nativeSearchDirs) {
+            $onnxRuntimeDll = Join-Path $nativeSearchDir "onnxruntime.dll"
+            if (Test-Path $onnxRuntimeDll) {
+              $nativeSearchDir
             }
           }
 
-          if (-not $dlls) {
-            throw "No DLLs were found in ort-sys native link-search directories: $($nativeSearchDirs -join ', ')"
+          $ortRuntimeDirs = $ortRuntimeDirs | Select-Object -Unique
+          if (-not $ortRuntimeDirs) {
+            throw "No ORT runtime directory was found among: $($nativeSearchDirs -join ', ')"
+          }
+
+          if ($ortRuntimeDirs.Count -ne 1) {
+            throw "Expected exactly one ORT runtime directory, found: $($ortRuntimeDirs -join ', ')"
+          }
+
+          $ortRuntimeDir = $ortRuntimeDirs[0]
+          Write-Host "Selected ORT runtime directory: $ortRuntimeDir"
+
+          $sourceDlls = Get-ChildItem -Path $ortRuntimeDir -Filter "*.dll" -File | Sort-Object Name
+          if (-not $sourceDlls) {
+            throw "No DLLs were found in selected ORT runtime directory: $ortRuntimeDir"
+          }
+
+          Write-Host "ORT runtime DLLs in source directory:"
+          foreach ($sourceDll in $sourceDlls) {
+            $sourceHash = (Get-FileHash -Algorithm SHA256 $sourceDll.FullName).Hash.ToLowerInvariant()
+            $sourceVersion = $sourceDll.VersionInfo.FileVersion
+            Write-Host "  - $($sourceDll.Name) | $sourceVersion | $sourceHash | $($sourceDll.FullName)"
           }
 
           $resolvedDepsDir = [System.IO.Path]::GetFullPath($depsDir)
-          $copyPairs = @()
-          $plannedTargets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-          foreach ($dll in $dlls | Sort-Object FullName -Unique) {
+          $stagedTargets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($dll in $sourceDlls) {
             $sourcePath = [System.IO.Path]::GetFullPath($dll.FullName)
             $targetPath = [System.IO.Path]::GetFullPath((Join-Path $depsDir $dll.Name))
 
@@ -160,28 +190,30 @@ jobs:
               continue
             }
 
-            if (-not $plannedTargets.Add($targetPath)) {
+            if (-not $stagedTargets.Add($targetPath)) {
               continue
             }
 
-            $copyPairs += @{
-              Source = $sourcePath
-              Target = $targetPath
+            if (Test-Path $targetPath) {
+              Remove-Item $targetPath -Force
             }
+
+            Copy-Item -Force $sourcePath $targetPath
           }
 
-          if ($copyPairs.Count -gt 0) {
-            # cargo:rustc-link-search gets tests linked, but Windows still needs the DLLs beside the test exe at runtime.
-            foreach ($copyPair in $copyPairs) {
-              try {
-                Copy-Item -Force $copyPair.Source $copyPair.Target
-              } catch {
-                # ORT may hardlink DLLs from its dfbin cache into the deps directory, so source
-                # and target can be different paths to the same underlying file.  Ignore that
-                # specific failure and rethrow everything else.
-                if ($_.Exception.Message -notlike '*with itself*') { throw }
-              }
-            }
+          $stagedDlls = Get-ChildItem -Path $depsDir -Filter "*.dll" -File |
+            Where-Object { $_.Name -in $sourceDlls.Name } |
+            Sort-Object Name
+
+          if (-not $stagedDlls) {
+            throw "ORT DLL staging produced no files in $depsDir"
+          }
+
+          Write-Host "ORT runtime DLLs staged in deps:"
+          foreach ($stagedDll in $stagedDlls) {
+            $stagedHash = (Get-FileHash -Algorithm SHA256 $stagedDll.FullName).Hash.ToLowerInvariant()
+            $stagedVersion = $stagedDll.VersionInfo.FileVersion
+            Write-Host "  - $($stagedDll.Name) | $stagedVersion | $stagedHash | $($stagedDll.FullName)"
           }
 
       - name: Lint frontend
