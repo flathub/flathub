@@ -105,11 +105,12 @@ jobs:
           Move-Item -Force $tmpPath $modelPath
 
       # ort-sys's `copy-dylibs` feature places runtime DLLs (e.g. DirectML.dll)
-      # into target/debug via file copy when symlinks are unavailable (no
-      # Developer Mode on GitHub-hosted runners). It deliberately skips the
-      # deps/ and examples/ directories in that fallback path, so test
-      # binaries that run from target/debug/deps cannot find the DLLs.
-      # Fix: pre-build the test binaries, then mirror the DLLs into deps/.
+      # into target/debug via symlinks. On GHA runners without Developer Mode
+      # the fallback copy only covers the top-level dir (not deps/), and when
+      # symlinks DO work both target/debug and deps already point at the same
+      # file so a naïve copy fails. Instead, read the dfbin cache path from
+      # the ort-sys build-script output and copy DLLs from that original
+      # location directly into deps/.
       - name: Stage ORT runtime DLLs for Rust tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -117,20 +118,47 @@ jobs:
           Set-Location (Join-Path $env:GITHUB_WORKSPACE "src-tauri")
           cargo test --no-run 2>&1
 
-          $debugDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug"
-          $depsDir  = Join-Path $debugDir "deps"
+          $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
           New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
 
-          $dlls = Get-ChildItem -Path $debugDir -Filter "*.dll" -File
-          if ($dlls) {
+          # Find the ort-sys build-script output file(s)
+          $buildOutputFiles = Get-ChildItem `
+            -Path (Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/build") `
+            -Filter output `
+            -File `
+            -Recurse | Where-Object { $_.FullName -match "ort-sys-" }
+
+          if (-not $buildOutputFiles) {
+            Write-Host "No ort-sys build output found – skipping DLL staging"
+            exit 0
+          }
+
+          # Extract native link-search directories from build output
+          $nativeSearchDirs = @()
+          foreach ($f in $buildOutputFiles) {
+            foreach ($line in Get-Content $f.FullName) {
+              if ($line -match "^cargo:rustc-link-search=native=(.+)$") {
+                $nativeSearchDirs += $Matches[1]
+              }
+            }
+          }
+          $nativeSearchDirs = $nativeSearchDirs | Select-Object -Unique
+
+          $staged = 0
+          foreach ($dir in $nativeSearchDirs) {
+            if (-not (Test-Path $dir)) { continue }
+            $dlls = Get-ChildItem -Path $dir -Filter "*.dll" -File -ErrorAction SilentlyContinue
             foreach ($dll in $dlls) {
               $dest = Join-Path $depsDir $dll.Name
-              Copy-Item -Force $dll.FullName $dest
-              Write-Host "Staged $($dll.Name) -> deps/"
+              # Remove any existing symlink/file to avoid copy-to-self errors
+              if (Test-Path $dest) { Remove-Item $dest -Force }
+              Copy-Item $dll.FullName $dest
+              Write-Host "Staged $($dll.Name) from dfbin -> deps/"
+              $staged++
             }
-          } else {
-            Write-Host "No DLLs found in target/debug – nothing to stage"
           }
+
+          Write-Host "Staged $staged DLL(s) total"
 
       - name: Lint frontend
         run: pnpm lint
