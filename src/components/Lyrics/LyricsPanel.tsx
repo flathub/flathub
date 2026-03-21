@@ -15,7 +15,7 @@ import {
 } from "@/lib/audience-presentation";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import {
-  selectAudiencePreviewPositionMs,
+  selectSyncDisplayPositionMs,
   usePlayerStore,
 } from "@/stores/player-store";
 
@@ -31,11 +31,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const isLoading = useLyricsStore((s) => s.isLoading);
   const rawLrc = useLyricsStore((s) => s.rawLrc);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
-  const positionMs = usePlayerStore((s) =>
-    presentation === "audience"
-      ? selectAudiencePreviewPositionMs(s)
-      : s.positionMs,
-  );
+  const positionMs = usePlayerStore(selectSyncDisplayPositionMs);
   const lyricsFontStep = useSettingsStore((s) => s.lyricsFontStep);
   const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);

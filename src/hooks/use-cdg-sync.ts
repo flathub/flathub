@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
-  selectAudiencePreviewPositionMs,
+  selectSyncDisplayPositionMs,
   usePlayerStore,
 } from "@/stores/player-store";
 import { useCdgStore } from "@/stores/cdg-store";
@@ -141,7 +141,7 @@ export function useCdgSync(enabled = true): void {
     }
 
     let cancelled = false;
-    const probePositionMs = selectAudiencePreviewPositionMs(
+    const probePositionMs = selectSyncDisplayPositionMs(
       usePlayerStore.getState(),
     );
     const currentCdgSongId = useCdgStore.getState().songId;
@@ -201,7 +201,7 @@ export function useCdgSync(enabled = true): void {
           return;
         }
         pendingRef.current = true;
-        const positionMs = selectAudiencePreviewPositionMs(state);
+        const positionMs = selectSyncDisplayPositionMs(state);
 
         // PERF: The hot frame path stays out of React state. The IPC returns a
         // raw ArrayBuffer (no base64), and drawFrame() paints it to a pre-
@@ -225,8 +225,8 @@ export function useCdgSync(enabled = true): void {
       (listener) =>
         usePlayerStore.subscribe((state, previousState) => {
           listener(
-            selectAudiencePreviewPositionMs(state),
-            selectAudiencePreviewPositionMs(previousState),
+            selectSyncDisplayPositionMs(state),
+            selectSyncDisplayPositionMs(previousState),
           );
         }),
     );

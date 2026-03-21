@@ -21,7 +21,9 @@ use std::sync::{
 use tauri::{AppHandle, Emitter, Runtime};
 
 fn bump_airplay_stream_generation(state: &AppState) {
-    state.airplay_stream_generation.fetch_add(1, Ordering::SeqCst);
+    state
+        .airplay_stream_generation
+        .fetch_add(1, Ordering::SeqCst);
 }
 
 pub fn play<R: Runtime>(
@@ -71,6 +73,7 @@ pub fn resume<R: Runtime>(
 ) -> Result<PlaybackStateSnapshot> {
     state.airplay_audio_tap.bump_epoch();
     crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
+    bump_airplay_stream_generation(state);
     let mut playback = state
         .playback
         .lock()
@@ -90,6 +93,7 @@ pub fn pause<R: Runtime>(
 ) -> Result<PlaybackStateSnapshot> {
     state.airplay_audio_tap.bump_epoch();
     crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
+    bump_airplay_stream_generation(state);
     let mut playback = state
         .playback
         .lock()
@@ -303,7 +307,19 @@ pub fn emit_playback_position<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{sync::mpsc, time::Duration};
+    use crate::{
+        airplay_stream::AirPlayAudioTap, commands::bootstrap, separator::model_cache::ModelCache,
+        AppState,
+    };
+    use std::{
+        collections::HashMap,
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, AtomicU64, Ordering},
+            mpsc, Arc, Mutex,
+        },
+        time::Duration,
+    };
 
     fn dummy_audio() -> decode::DecodedAudio {
         decode::DecodedAudio {
@@ -318,6 +334,43 @@ mod tests {
         LoadedStems::TwoStem {
             vocals: dummy_audio(),
             accompaniment: dummy_audio(),
+        }
+    }
+
+    fn fixture_path(directory: &str, filename: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join(directory)
+            .join(filename)
+    }
+
+    fn airplay_state() -> AppState {
+        let decoded = decode::decode_file(&fixture_path("audio", "fixture.wav"))
+            .expect("fixture audio should decode");
+        let mut playback = PlaybackController::default();
+        playback.start_track("song-a".to_owned(), decoded, 0);
+
+        AppState {
+            library: Arc::new(Mutex::new(None)),
+            app_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("tmp"),
+            model_path: PathBuf::from("model.bin"),
+            playback: Arc::new(Mutex::new(playback)),
+            cdg_state: Arc::new(Mutex::new(None)),
+            airplay_audio_tap: Arc::new(AirPlayAudioTap::new(4)),
+            airplay_stream_generation: Arc::new(AtomicU64::new(7)),
+            airplay_http_server: Arc::new(Mutex::new(None)),
+            airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
+            playback_request_id: AtomicU64::new(0),
+            audio_output_started: Arc::new(AtomicBool::new(true)),
+            audio_output_start_lock: Arc::new(Mutex::new(())),
+            model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),
+            separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+            separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
+            batch_running: Arc::new(AtomicBool::new(false)),
+            batch_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -465,5 +518,44 @@ mod tests {
 
         assert_eq!(snapshot.song_id.as_deref(), Some("song-b"));
         assert!(!snapshot.has_stems);
+    }
+
+    #[test]
+    fn pause_and_resume_refresh_airplay_stream_generation() {
+        let app = tauri::test::mock_app();
+        let app_handle = app.handle().clone();
+        let state = airplay_state();
+
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+
+        let paused = pause(&state, &app_handle).expect("pause should succeed");
+        assert!(!paused.is_playing);
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation + 1
+        );
+
+        let resumed = resume(&state, &app_handle).expect("resume should succeed");
+        assert!(resumed.is_playing);
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation + 2
+        );
+    }
+
+    #[test]
+    fn seek_refreshes_airplay_stream_generation() {
+        let app = tauri::test::mock_app();
+        let app_handle = app.handle().clone();
+        let state = airplay_state();
+
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let snapshot = seek(&state, &app_handle, 500).expect("seek should succeed");
+
+        assert_eq!(snapshot.position_ms, 500);
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation + 1
+        );
     }
 }

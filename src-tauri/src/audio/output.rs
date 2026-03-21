@@ -322,8 +322,9 @@ where
             // device changes its callback frame count.
             scratch.resize(data.len(), 0.0);
 
+            let mut rendered_samples = 0;
             if let Ok(mut controller) = playback.lock() {
-                let _rendered_samples = render_output_buffer(
+                rendered_samples = render_output_buffer(
                     &mut controller,
                     monotonic_now_ms(),
                     &mut scratch,
@@ -334,8 +335,13 @@ where
                 scratch.fill(0.0);
             }
 
-            let tap_samples = downmix_for_airplay(&scratch, channels);
-            airplay_audio_tap.push_interleaved(sample_rate, 2, &tap_samples);
+            forward_rendered_audio_to_airplay(
+                rendered_samples,
+                &scratch,
+                channels,
+                sample_rate,
+                &airplay_audio_tap,
+            );
             write_output_samples(
                 &scratch,
                 data,
@@ -365,33 +371,27 @@ fn start_output_thread(
         .default_output_config()
         .context("failed to read default audio output config")?;
     let stream = match config.sample_format() {
-        SampleFormat::F32 => {
-            build_output_stream::<f32>(
-                &device,
-                &config.into(),
-                playback,
-                airplay_audio_tap,
-                airplay_local_output_suppressed,
-            )?
-        }
-        SampleFormat::I16 => {
-            build_output_stream::<i16>(
-                &device,
-                &config.into(),
-                playback,
-                airplay_audio_tap,
-                airplay_local_output_suppressed,
-            )?
-        }
-        SampleFormat::U16 => {
-            build_output_stream::<u16>(
-                &device,
-                &config.into(),
-                playback,
-                airplay_audio_tap,
-                airplay_local_output_suppressed,
-            )?
-        }
+        SampleFormat::F32 => build_output_stream::<f32>(
+            &device,
+            &config.into(),
+            playback,
+            airplay_audio_tap,
+            airplay_local_output_suppressed,
+        )?,
+        SampleFormat::I16 => build_output_stream::<i16>(
+            &device,
+            &config.into(),
+            playback,
+            airplay_audio_tap,
+            airplay_local_output_suppressed,
+        )?,
+        SampleFormat::U16 => build_output_stream::<u16>(
+            &device,
+            &config.into(),
+            playback,
+            airplay_audio_tap,
+            airplay_local_output_suppressed,
+        )?,
         sample_format => {
             anyhow::bail!("unsupported audio output sample format: {sample_format:?}");
         }
@@ -405,6 +405,28 @@ fn start_output_thread(
     loop {
         thread::sleep(Duration::from_secs(60));
         let _keep_alive = &stream;
+    }
+}
+
+fn forward_rendered_audio_to_airplay(
+    rendered_samples: usize,
+    scratch: &[f32],
+    channels: usize,
+    sample_rate: u32,
+    airplay_audio_tap: &AirPlayAudioTap,
+) {
+    if rendered_samples == 0 {
+        return;
+    }
+
+    let rendered_samples = rendered_samples.min(scratch.len());
+    if rendered_samples == 0 {
+        return;
+    }
+
+    let tap_samples = downmix_for_airplay(&scratch[..rendered_samples], channels);
+    if !tap_samples.is_empty() {
+        airplay_audio_tap.push_interleaved(sample_rate, 2, &tap_samples);
     }
 }
 
@@ -442,7 +464,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::write_output_samples;
+    use super::{forward_rendered_audio_to_airplay, write_output_samples};
+    use crate::airplay_stream::AirPlayAudioTap;
 
     #[test]
     fn write_output_samples_preserves_rendered_audio_when_not_suppressed() {
@@ -456,5 +479,23 @@ mod tests {
         let mut output = [1.0_f32; 4];
         write_output_samples(&[0.1, -0.2, 0.3, -0.4], &mut output, true);
         assert_eq!(output, [0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn forward_rendered_audio_to_airplay_skips_unrendered_frames() {
+        let tap = AirPlayAudioTap::new(4);
+        forward_rendered_audio_to_airplay(0, &[0.8, 0.7, 0.6, 0.5], 2, 44_100, &tap);
+
+        assert!(tap.drain_pending().is_empty());
+    }
+
+    #[test]
+    fn forward_rendered_audio_to_airplay_limits_payload_to_rendered_samples() {
+        let tap = AirPlayAudioTap::new(4);
+        forward_rendered_audio_to_airplay(4, &[0.1, 0.2, 0.3, 0.4, 0.9, 0.8], 2, 44_100, &tap);
+
+        let drained = tap.drain_pending();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].samples, vec![0.1, 0.2, 0.3, 0.4]);
     }
 }

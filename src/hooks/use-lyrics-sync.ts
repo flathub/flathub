@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
-  selectAudiencePreviewPositionMs,
+  selectSyncDisplayPositionMs,
   usePlayerStore,
 } from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
@@ -16,7 +16,7 @@ function syncLyricsToPlayback(prevIndexRef: { current: number }) {
     return;
   }
 
-  const positionMs = selectAudiencePreviewPositionMs(state);
+  const positionMs = selectSyncDisplayPositionMs(state);
   const adjustedMs = positionMs - offsetMs;
   const index = binarySearchLine(lines, adjustedMs);
 

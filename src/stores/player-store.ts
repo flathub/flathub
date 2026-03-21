@@ -47,9 +47,10 @@ interface PlayerState {
 }
 
 // RATIONALE: Once AirPlay is active, the audience surface must follow the TV's
-// displayed clock rather than the local playback clock. That is the only way
-// the main-window preview can stay visually consistent with the remote output.
-export function selectAudiencePreviewPositionMs(
+// displayed clock rather than the local playback clock. That keeps the
+// standard UI synchronized with the remote audience surface without changing
+// which window is allowed to render audience styling.
+export function selectSyncDisplayPositionMs(
   state: Pick<PlayerState, "positionMs" | "airPlayOutput">,
 ): number {
   return state.airPlayOutput.active &&

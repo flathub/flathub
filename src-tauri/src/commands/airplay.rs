@@ -1,11 +1,11 @@
 use crate::{
     airplay_stream::stream_tick_interval,
-    audio::playback::{monotonic_now_ms, PlaybackController, PlaybackStateSnapshot},
     airplay_stream::{default_stream_root, AirPlayHttpServer},
+    audio::playback::{monotonic_now_ms, PlaybackController, PlaybackStateSnapshot},
     commands::cdg::{render_cdg_frame_bytes, CdgPlaybackState},
     commands::error::{internal_error, CommandResult},
-    AppState,
     lyrics::parser::LyricLine,
+    AppState,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -131,7 +131,17 @@ struct AirPlayBridgeLyricLine {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AirPlayRuntimeScenePayload {
+struct AirPlayAudienceSceneConfigPayload {
+    lyrics_song_id: Option<String>,
+    lines: Vec<AirPlayBridgeLyricLine>,
+    messages: AirPlayAudienceMessages,
+    viewport: AirPlayViewport,
+    presentation_spec: AudiencePresentationSpec,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AirPlayAudienceRuntimePayload {
     mode: AirPlayAudienceMode,
     song_id: Option<String>,
     is_playing: bool,
@@ -141,14 +151,9 @@ struct AirPlayRuntimeScenePayload {
     // data already caused drift and incorrect "plain text" detection.
     adjusted_ms: i64,
     is_plain_text: bool,
-    lines: Vec<AirPlayBridgeLyricLine>,
+    lyrics_match_current_song: bool,
     active_line_index: i64,
-    offset_ms: i64,
     is_loading: bool,
-    lyrics_font_step: i8,
-    messages: AirPlayAudienceMessages,
-    viewport: AirPlayViewport,
-    presentation_spec: AudiencePresentationSpec,
     stream_generation: u64,
 }
 
@@ -179,14 +184,6 @@ fn airplay_runtime_state() -> &'static Mutex<AirPlayRuntimeState> {
 
 pub fn normalize_host_y(host_height: f64, dom_top: f64, host_height_for_view: f64) -> f64 {
     host_height - dom_top - host_height_for_view
-}
-
-fn mode_tag(mode: AirPlayAudienceMode) -> i32 {
-    match mode {
-        AirPlayAudienceMode::Idle => 0,
-        AirPlayAudienceMode::Lyrics => 1,
-        AirPlayAudienceMode::Cdg => 2,
-    }
 }
 
 fn mode_from_tag(tag: i32) -> AirPlayAudienceMode {
@@ -281,22 +278,27 @@ impl Default for AudiencePresentationSpec {
     }
 }
 
-fn default_runtime_scene() -> AirPlayRuntimeScenePayload {
-    AirPlayRuntimeScenePayload {
+fn default_scene_config() -> AirPlayAudienceSceneConfigPayload {
+    AirPlayAudienceSceneConfigPayload {
+        lyrics_song_id: None,
+        lines: Vec::new(),
+        messages: AirPlayAudienceMessages::default(),
+        viewport: AirPlayViewport::default(),
+        presentation_spec: AudiencePresentationSpec::default(),
+    }
+}
+
+fn default_runtime_payload() -> AirPlayAudienceRuntimePayload {
+    AirPlayAudienceRuntimePayload {
         mode: AirPlayAudienceMode::Idle,
         song_id: None,
         is_playing: false,
         position_ms: 0,
         adjusted_ms: 0,
         is_plain_text: false,
-        lines: Vec::new(),
+        lyrics_match_current_song: false,
         active_line_index: -1,
-        offset_ms: 0,
         is_loading: false,
-        lyrics_font_step: 0,
-        messages: AirPlayAudienceMessages::default(),
-        viewport: AirPlayViewport::default(),
-        presentation_spec: AudiencePresentationSpec::default(),
         stream_generation: 1,
     }
 }
@@ -320,7 +322,8 @@ fn binary_search_line(lines: &[LyricLine], current_ms: i64) -> i64 {
 }
 
 fn bridge_lines(lines: &[LyricLine]) -> Vec<AirPlayBridgeLyricLine> {
-    lines.iter()
+    lines
+        .iter()
         .map(|line| AirPlayBridgeLyricLine {
             time_ms: line.time_ms,
             text: line.text.clone(),
@@ -337,100 +340,91 @@ fn bridge_lines(lines: &[LyricLine]) -> Vec<AirPlayBridgeLyricLine> {
         .collect()
 }
 
-fn build_runtime_scene(
+fn build_scene_config(
+    config: Option<&AirPlayAudienceStatePayload>,
+) -> AirPlayAudienceSceneConfigPayload {
+    let Some(config) = config else {
+        return default_scene_config();
+    };
+
+    match config.mode {
+        AirPlayAudienceMode::Idle | AirPlayAudienceMode::Cdg => AirPlayAudienceSceneConfigPayload {
+            messages: config.messages.clone(),
+            viewport: config.viewport.clone(),
+            presentation_spec: config.presentation_spec.clone(),
+            ..default_scene_config()
+        },
+        AirPlayAudienceMode::Lyrics => AirPlayAudienceSceneConfigPayload {
+            lyrics_song_id: config.song_id.clone(),
+            lines: bridge_lines(&config.lines),
+            messages: config.messages.clone(),
+            viewport: config.viewport.clone(),
+            presentation_spec: config.presentation_spec.clone(),
+        },
+    }
+}
+
+fn build_runtime_payload(
     config: Option<&AirPlayAudienceStatePayload>,
     snapshot: &PlaybackStateSnapshot,
     stream_generation: u64,
-) -> AirPlayRuntimeScenePayload {
-    let messages = config
-        .map(|payload| payload.messages.clone())
-        .unwrap_or_default();
-    let viewport = config
-        .map(|payload| payload.viewport.clone())
-        .unwrap_or_default();
-    let lyrics_font_step = config.map(|payload| payload.lyrics_font_step).unwrap_or(0);
-    let presentation_spec = config
-        .map(|payload| payload.presentation_spec.clone())
-        .unwrap_or_default();
-
+) -> AirPlayAudienceRuntimePayload {
     let Some(song_id) = snapshot.song_id.clone() else {
-        return AirPlayRuntimeScenePayload {
-            messages,
-            viewport,
-            lyrics_font_step,
-            presentation_spec,
+        return AirPlayAudienceRuntimePayload {
             stream_generation,
-            ..default_runtime_scene()
+            ..default_runtime_payload()
         };
     };
 
     let Some(config) = config else {
-        return AirPlayRuntimeScenePayload {
-            messages,
-            viewport,
-            lyrics_font_step,
-            presentation_spec,
+        return AirPlayAudienceRuntimePayload {
             stream_generation,
-            ..default_runtime_scene()
+            ..default_runtime_payload()
         };
     };
 
     match config.mode {
-        AirPlayAudienceMode::Idle => AirPlayRuntimeScenePayload {
-            messages,
-            viewport,
-            lyrics_font_step,
-            presentation_spec,
+        AirPlayAudienceMode::Idle => AirPlayAudienceRuntimePayload {
             stream_generation,
-            ..default_runtime_scene()
+            ..default_runtime_payload()
         },
-        AirPlayAudienceMode::Cdg => AirPlayRuntimeScenePayload {
+        AirPlayAudienceMode::Cdg => AirPlayAudienceRuntimePayload {
             mode: AirPlayAudienceMode::Cdg,
             song_id: Some(song_id),
             is_playing: snapshot.is_playing,
             position_ms: snapshot.position_ms,
             adjusted_ms: snapshot.position_ms as i64,
             is_plain_text: false,
-            lines: Vec::new(),
+            lyrics_match_current_song: false,
             active_line_index: -1,
-            offset_ms: 0,
             is_loading: false,
-            lyrics_font_step,
-            messages,
-            viewport,
-            presentation_spec,
             stream_generation,
         },
         AirPlayAudienceMode::Lyrics => {
             let lyrics_match_current_song = config.song_id.as_deref() == Some(song_id.as_str());
-            let lines = if lyrics_match_current_song {
-                config.lines.clone()
+            let lines: &[crate::lyrics::parser::LyricLine] = if lyrics_match_current_song {
+                &config.lines
             } else {
-                Vec::new()
+                &[]
             };
             let is_plain_text = !lines.is_empty() && lines.iter().all(|line| line.time_ms == 0);
             let adjusted_ms = snapshot.position_ms as i64 - config.offset_ms;
             let active_line_index = if lines.is_empty() || is_plain_text {
                 -1
             } else {
-                binary_search_line(&lines, adjusted_ms)
+                binary_search_line(lines, adjusted_ms)
             };
 
-            AirPlayRuntimeScenePayload {
+            AirPlayAudienceRuntimePayload {
                 mode: AirPlayAudienceMode::Lyrics,
                 song_id: Some(song_id),
                 is_playing: snapshot.is_playing,
                 position_ms: snapshot.position_ms,
                 adjusted_ms,
                 is_plain_text,
-                lines: bridge_lines(&lines),
+                lyrics_match_current_song,
                 active_line_index,
-                offset_ms: config.offset_ms,
                 is_loading: config.is_loading || !lyrics_match_current_song,
-                lyrics_font_step,
-                messages,
-                viewport,
-                presentation_spec,
                 stream_generation,
             }
         }
@@ -444,15 +438,15 @@ fn read_latest_airplay_payload() -> Option<AirPlayAudienceStatePayload> {
         .and_then(|state| state.latest_payload.clone())
 }
 
-fn build_current_runtime_scene(
+fn build_current_runtime_payload(
     playback: &Arc<Mutex<PlaybackController>>,
     stream_generation: &Arc<AtomicU64>,
-) -> Option<AirPlayRuntimeScenePayload> {
+) -> Option<AirPlayAudienceRuntimePayload> {
     let snapshot = playback
         .lock()
         .ok()
         .map(|mut controller| controller.snapshot(monotonic_now_ms()))?;
-    Some(build_runtime_scene(
+    Some(build_runtime_payload(
         read_latest_airplay_payload().as_ref(),
         &snapshot,
         stream_generation.load(Ordering::SeqCst),
@@ -461,14 +455,14 @@ fn build_current_runtime_scene(
 
 fn build_current_cdg_frame(
     cdg_state: &Arc<Mutex<Option<CdgPlaybackState>>>,
-    scene: &AirPlayRuntimeScenePayload,
+    runtime: &AirPlayAudienceRuntimePayload,
 ) -> Option<Vec<u8>> {
-    if scene.mode != AirPlayAudienceMode::Cdg || scene.song_id.is_none() {
+    if runtime.mode != AirPlayAudienceMode::Cdg || runtime.song_id.is_none() {
         return None;
     }
 
     let mut cdg_state = cdg_state.lock().ok()?;
-    render_cdg_frame_bytes(&mut cdg_state, scene.position_ms)
+    render_cdg_frame_bytes(&mut cdg_state, runtime.position_ms)
 }
 
 fn spawn_airplay_audience_coordinator(
@@ -482,11 +476,11 @@ fn spawn_airplay_audience_coordinator(
         // source window and regress TV lyrics/CDG back to slideshow cadence.
         thread::sleep(stream_tick_interval());
 
-        let Some(scene) = build_current_runtime_scene(&playback, &stream_generation) else {
+        let Some(runtime) = build_current_runtime_payload(&playback, &stream_generation) else {
             continue;
         };
-        let cdg_frame = build_current_cdg_frame(&cdg_state, &scene);
-        let _ = native::sync_audience_state(&scene, cdg_frame.as_deref());
+        let cdg_frame = build_current_cdg_frame(&cdg_state, &runtime);
+        let _ = native::sync_audience_runtime(&runtime, cdg_frame.as_deref());
     });
 }
 
@@ -501,10 +495,7 @@ pub fn ensure_airplay_audience_coordinator_started(
     });
 }
 
-fn remember_runtime_handles(
-    app_handle: &AppHandle,
-    local_audio_suppressed: &Arc<AtomicBool>,
-) {
+fn remember_runtime_handles(app_handle: &AppHandle, local_audio_suppressed: &Arc<AtomicBool>) {
     if let Ok(mut state) = airplay_runtime_state().lock() {
         state.app_handle = Some(app_handle.clone());
         state.local_audio_suppressed = Some(Arc::clone(local_audio_suppressed));
@@ -524,7 +515,12 @@ fn emit_airplay_state(
     let (handle, local_audio_suppressed) = airplay_runtime_state()
         .lock()
         .ok()
-        .map(|state| (state.app_handle.clone(), state.local_audio_suppressed.clone()))
+        .map(|state| {
+            (
+                state.app_handle.clone(),
+                state.local_audio_suppressed.clone(),
+            )
+        })
         .unwrap_or((None, None));
 
     if let Some(local_audio_suppressed) = local_audio_suppressed {
@@ -559,10 +555,10 @@ fn ensure_stream_server(state: &AppState) -> CommandResult<(PathBuf, String)> {
         .map_err(|_| internal_error("airplay http server lock was poisoned".to_owned()))?;
 
     if server.is_none() {
-        *server = Some(
-            AirPlayHttpServer::bind(&root_dir)
-                .map_err(|error| internal_error(format!("failed to start airplay server: {error}")))?,
-        );
+        *server =
+            Some(AirPlayHttpServer::bind(&root_dir).map_err(|error| {
+                internal_error(format!("failed to start airplay server: {error}"))
+            })?);
     }
 
     let base_url = server
@@ -580,16 +576,7 @@ mod native {
 
     unsafe extern "C" {
         fn ok_airplay_set_state_callback(
-            callback: extern "C" fn(
-                bool,
-                *const c_char,
-                i32,
-                i32,
-                *const c_char,
-                i64,
-                u64,
-                i64,
-            ),
+            callback: extern "C" fn(bool, *const c_char, i32, i32, *const c_char, i64, u64, i64),
         );
         fn ok_airplay_sync_route_picker(
             ns_view_ptr: *mut c_void,
@@ -601,8 +588,8 @@ mod native {
             stream_root_path: *const c_char,
             playlist_url: *const c_char,
         );
-        fn ok_airplay_sync_audience_state(
-            mode: i32,
+        fn ok_airplay_sync_audience_state(config_json: *const c_char);
+        fn ok_airplay_sync_audience_runtime(
             scene_json: *const c_char,
             cdg_frame_ptr: *const u8,
             cdg_frame_len: usize,
@@ -714,29 +701,43 @@ mod native {
         Ok(())
     }
 
-    pub(super) fn sync_audience_state(
-        payload: &AirPlayRuntimeScenePayload,
+    pub(super) fn sync_audience_config(
+        payload: &AirPlayAudienceSceneConfigPayload,
+    ) -> CommandResult<()> {
+        ensure_callback_registered();
+
+        let config_json = serde_json::to_string(payload).map_err(|error| {
+            internal_error(format!("failed to serialize airplay scene config: {error}"))
+        })?;
+        let config_json = CString::new(config_json.as_bytes()).map_err(|error| {
+            internal_error(format!("invalid airplay scene config json: {error}"))
+        })?;
+
+        unsafe {
+            ok_airplay_sync_audience_state(config_json.as_ptr());
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn sync_audience_runtime(
+        payload: &AirPlayAudienceRuntimePayload,
         cdg_frame: Option<&[u8]>,
     ) -> CommandResult<()> {
         ensure_callback_registered();
 
-        let scene_json = serde_json::to_string(payload)
-            .map_err(|error| internal_error(format!("failed to serialize airplay scene: {error}")))?;
+        let scene_json = serde_json::to_string(payload).map_err(|error| {
+            internal_error(format!("failed to serialize airplay runtime: {error}"))
+        })?;
         let scene_json = CString::new(scene_json.as_bytes())
-            .map_err(|error| internal_error(format!("invalid airplay scene json: {error}")))?;
+            .map_err(|error| internal_error(format!("invalid airplay runtime json: {error}")))?;
         let (cdg_frame_ptr, cdg_frame_len) = match cdg_frame {
             Some(frame) => (frame.as_ptr(), frame.len()),
             None => (null::<u8>(), 0),
         };
 
-        // SAFETY: The bridge copies any provided data before returning and dispatches work onto its own queues.
         unsafe {
-            ok_airplay_sync_audience_state(
-                mode_tag(payload.mode),
-                scene_json.as_ptr(),
-                cdg_frame_ptr,
-                cdg_frame_len,
-            );
+            ok_airplay_sync_audience_runtime(scene_json.as_ptr(), cdg_frame_ptr, cdg_frame_len);
         }
 
         Ok(())
@@ -756,8 +757,14 @@ mod native {
         Ok(())
     }
 
-    pub(super) fn sync_audience_state(
-        _payload: &AirPlayRuntimeScenePayload,
+    pub(super) fn sync_audience_config(
+        _payload: &AirPlayAudienceSceneConfigPayload,
+    ) -> CommandResult<()> {
+        Ok(())
+    }
+
+    pub(super) fn sync_audience_runtime(
+        _payload: &AirPlayAudienceRuntimePayload,
         _cdg_frame: Option<&[u8]>,
     ) -> CommandResult<()> {
         Ok(())
@@ -795,10 +802,15 @@ pub fn sync_airplay_audience_state(
     );
 
     if let Ok(mut runtime_state) = airplay_runtime_state().lock() {
-        let previous_mode = runtime_state.latest_payload.as_ref().map(|previous| previous.mode);
+        let previous_mode = runtime_state
+            .latest_payload
+            .as_ref()
+            .map(|previous| previous.mode);
         runtime_state.latest_payload = Some(payload.clone());
         if previous_mode != Some(payload.mode) {
-            state.airplay_stream_generation.fetch_add(1, Ordering::SeqCst);
+            state
+                .airplay_stream_generation
+                .fetch_add(1, Ordering::SeqCst);
         }
     }
 
@@ -807,14 +819,16 @@ pub fn sync_airplay_audience_state(
         .lock()
         .map_err(|_| internal_error("playback controller lock was poisoned".to_owned()))?
         .snapshot(monotonic_now_ms());
-    let scene = build_runtime_scene(
+    let scene_config = build_scene_config(Some(&payload));
+    let runtime = build_runtime_payload(
         Some(&payload),
         &snapshot,
         state.airplay_stream_generation.load(Ordering::SeqCst),
     );
-    let cdg_frame = build_current_cdg_frame(&state.cdg_state, &scene);
+    let cdg_frame = build_current_cdg_frame(&state.cdg_state, &runtime);
 
-    native::sync_audience_state(&scene, cdg_frame.as_deref())
+    native::sync_audience_config(&scene_config)?;
+    native::sync_audience_runtime(&runtime, cdg_frame.as_deref())
 }
 
 #[cfg(test)]
@@ -822,7 +836,11 @@ mod tests {
     use super::*;
     use crate::audio::playback::StemVolumes;
 
-    fn snapshot(song_id: Option<&str>, position_ms: u64, is_playing: bool) -> PlaybackStateSnapshot {
+    fn snapshot(
+        song_id: Option<&str>,
+        position_ms: u64,
+        is_playing: bool,
+    ) -> PlaybackStateSnapshot {
         PlaybackStateSnapshot {
             song_id: song_id.map(str::to_owned),
             is_playing,
@@ -841,8 +859,8 @@ mod tests {
     }
 
     #[test]
-    fn build_runtime_scene_derives_active_line_from_playback_position() {
-        let scene = build_runtime_scene(
+    fn build_runtime_payload_derives_active_line_from_playback_position() {
+        let runtime = build_runtime_payload(
             Some(&AirPlayAudienceStatePayload {
                 mode: AirPlayAudienceMode::Lyrics,
                 song_id: Some("song-1".to_owned()),
@@ -869,15 +887,47 @@ mod tests {
             3,
         );
 
-        assert_eq!(scene.mode, AirPlayAudienceMode::Lyrics);
-        assert_eq!(scene.active_line_index, 1);
-        assert_eq!(scene.position_ms, 2_150);
-        assert!(scene.is_playing);
+        assert_eq!(runtime.mode, AirPlayAudienceMode::Lyrics);
+        assert_eq!(runtime.active_line_index, 1);
+        assert_eq!(runtime.position_ms, 2_150);
+        assert!(runtime.is_playing);
     }
 
     #[test]
-    fn runtime_scene_serializes_bridge_line_times_as_camel_case() {
-        let scene = build_runtime_scene(
+    fn scene_config_serializes_bridge_line_times_as_camel_case() {
+        let config = build_scene_config(Some(&AirPlayAudienceStatePayload {
+            mode: AirPlayAudienceMode::Lyrics,
+            song_id: Some("song-1".to_owned()),
+            lines: vec![LyricLine {
+                time_ms: 1_000,
+                text: "line 1".to_owned(),
+                words: Some(vec![crate::lyrics::parser::WordToken {
+                    time_ms: 1_050,
+                    text: "line".to_owned(),
+                }]),
+            }],
+            offset_ms: 100,
+            is_loading: false,
+            lyrics_font_step: 0,
+            messages: AirPlayAudienceMessages::default(),
+            viewport: AirPlayViewport::default(),
+            presentation_spec: AudiencePresentationSpec::default(),
+        }));
+
+        let json = serde_json::to_value(config).expect("config should serialize");
+        assert_eq!(json["lyricsSongId"], "song-1");
+        assert_eq!(json["lines"][0]["timeMs"], 1_000);
+        assert_eq!(json["lines"][0]["time_ms"], serde_json::Value::Null);
+        assert_eq!(json["lines"][0]["words"][0]["timeMs"], 1_050);
+        assert_eq!(
+            json["lines"][0]["words"][0]["time_ms"],
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn runtime_payload_serializes_runtime_fields_without_lyrics_blob() {
+        let runtime = build_runtime_payload(
             Some(&AirPlayAudienceStatePayload {
                 mode: AirPlayAudienceMode::Lyrics,
                 song_id: Some("song-1".to_owned()),
@@ -900,19 +950,17 @@ mod tests {
             4,
         );
 
-        let json = serde_json::to_value(scene).expect("scene should serialize");
+        let json = serde_json::to_value(runtime).expect("runtime should serialize");
         assert_eq!(json["adjustedMs"], 1_050);
         assert_eq!(json["isPlainText"], false);
+        assert_eq!(json["lyricsMatchCurrentSong"], true);
         assert_eq!(json["streamGeneration"], 4);
-        assert_eq!(json["lines"][0]["timeMs"], 1_000);
-        assert_eq!(json["lines"][0]["time_ms"], serde_json::Value::Null);
-        assert_eq!(json["lines"][0]["words"][0]["timeMs"], 1_050);
-        assert_eq!(json["lines"][0]["words"][0]["time_ms"], serde_json::Value::Null);
+        assert_eq!(json["lines"], serde_json::Value::Null);
     }
 
     #[test]
-    fn build_runtime_scene_ignores_stale_lyrics_payloads() {
-        let scene = build_runtime_scene(
+    fn build_runtime_payload_ignores_stale_lyrics_payloads() {
+        let runtime = build_runtime_payload(
             Some(&AirPlayAudienceStatePayload {
                 mode: AirPlayAudienceMode::Lyrics,
                 song_id: Some("old-song".to_owned()),
@@ -932,15 +980,15 @@ mod tests {
             5,
         );
 
-        assert_eq!(scene.song_id.as_deref(), Some("new-song"));
-        assert!(scene.lines.is_empty());
-        assert!(scene.is_loading);
-        assert_eq!(scene.active_line_index, -1);
+        assert_eq!(runtime.song_id.as_deref(), Some("new-song"));
+        assert!(!runtime.lyrics_match_current_song);
+        assert!(runtime.is_loading);
+        assert_eq!(runtime.active_line_index, -1);
     }
 
     #[test]
-    fn build_runtime_scene_keeps_idle_output_blank() {
-        let scene = build_runtime_scene(
+    fn build_runtime_payload_keeps_idle_output_blank() {
+        let runtime = build_runtime_payload(
             Some(&AirPlayAudienceStatePayload {
                 mode: AirPlayAudienceMode::Idle,
                 song_id: Some("song-1".to_owned()),
@@ -956,8 +1004,8 @@ mod tests {
             6,
         );
 
-        assert_eq!(scene.mode, AirPlayAudienceMode::Idle);
-        assert!(scene.song_id.is_none());
-        assert!(!scene.is_playing);
+        assert_eq!(runtime.mode, AirPlayAudienceMode::Idle);
+        assert!(runtime.song_id.is_none());
+        assert!(!runtime.is_playing);
     }
 }

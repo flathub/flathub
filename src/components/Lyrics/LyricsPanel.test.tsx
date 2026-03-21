@@ -2,36 +2,54 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { LyricsPanel } from "./LyricsPanel";
 
-const { mockPlayerState, mockLyricsState, mockSettingsState } = vi.hoisted(
-  () => ({
-    mockPlayerState: {
-      snapshot: {
-        song_id: "song-1",
+const {
+  mockPlayerState,
+  mockLyricsState,
+  mockSettingsState,
+  mockSelectSyncDisplayPositionMs,
+} = vi.hoisted(() => ({
+  mockPlayerState: {
+    snapshot: {
+      song_id: "song-1",
+    },
+    positionMs: 4000,
+  },
+  mockLyricsState: {
+    lines: [
+      {
+        time_ms: 0,
+        text: "line one",
+        words: null,
       },
-      positionMs: 4000,
-    },
-    mockLyricsState: {
-      lines: [
-        {
-          time_ms: 0,
-          text: "line one",
-          words: null,
-        },
-      ],
-      activeLineIndex: 0,
-      offsetMs: 0,
-      isLoading: false,
-      rawLrc: "[00:00.00]line one",
-      songId: "song-1",
-      adjustOffset: vi.fn(),
-    },
-    mockSettingsState: {
-      lyricsFontStep: 0,
-      adjustLyricsFontStep: vi.fn(),
-      resetLyricsFontStep: vi.fn(),
-    },
-  }),
-);
+    ],
+    activeLineIndex: 0,
+    offsetMs: 0,
+    isLoading: false,
+    rawLrc: "[00:00.00]line one",
+    songId: "song-1",
+    adjustOffset: vi.fn(),
+  } as {
+    lines: Array<{
+      time_ms: number;
+      text: string;
+      words: Array<{ text: string; time_ms: number }> | null;
+    }>;
+    activeLineIndex: number;
+    offsetMs: number;
+    isLoading: boolean;
+    rawLrc: string;
+    songId: string;
+    adjustOffset: ReturnType<typeof vi.fn>;
+  },
+  mockSettingsState: {
+    lyricsFontStep: 0,
+    adjustLyricsFontStep: vi.fn(),
+    resetLyricsFontStep: vi.fn(),
+  },
+  mockSelectSyncDisplayPositionMs: vi.fn(
+    (state: { positionMs: number }) => state.positionMs,
+  ),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -43,8 +61,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/stores/player-store", () => ({
   usePlayerStore: (selector: (state: typeof mockPlayerState) => unknown) =>
     selector(mockPlayerState),
-  selectAudiencePreviewPositionMs: (state: typeof mockPlayerState) =>
-    state.positionMs,
+  selectSyncDisplayPositionMs: mockSelectSyncDisplayPositionMs,
 }));
 
 vi.mock("@/stores/lyrics-store", () => ({
@@ -63,6 +80,9 @@ describe("LyricsPanel contextual reveal", () => {
       song_id: "song-1",
     };
     mockPlayerState.positionMs = 4000;
+    mockSelectSyncDisplayPositionMs.mockImplementation(
+      (state) => state.positionMs,
+    );
 
     mockLyricsState.lines = [
       {
@@ -169,5 +189,28 @@ describe("LyricsPanel contextual reveal", () => {
 
     expect(markup).toContain('data-lyrics-line-index="0"');
     expect(markup).toContain('data-lyrics-line-index="1"');
+  });
+
+  test("uses the sync display clock for standard word highlighting", () => {
+    mockPlayerState.positionMs = 1000;
+    mockSelectSyncDisplayPositionMs.mockReturnValue(1600);
+    mockLyricsState.lines = [
+      {
+        time_ms: 1000,
+        text: "alpha beta gamma",
+        words: [
+          { text: "alpha", time_ms: 1000 },
+          { text: "beta", time_ms: 1500 },
+          { text: "gamma", time_ms: 2000 },
+        ],
+      },
+    ];
+    mockLyricsState.activeLineIndex = 0;
+
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).toContain("text-[var(--color-text-dimmer)]");
+    expect(markup).toContain("text-white");
+    expect(markup).toContain("text-[var(--color-active)]");
   });
 });

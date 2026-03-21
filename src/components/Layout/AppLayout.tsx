@@ -18,7 +18,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useLayoutStore } from "@/stores/layout-store";
 import { useQueueStore } from "@/stores/queue-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { usePlayerStore } from "@/stores/player-store";
 
 export function AppLayout() {
   const sidebarVisible = useLayoutStore((s) => s.sidebarVisible);
@@ -28,9 +27,6 @@ export function AppLayout() {
   const queueOpen = useQueueStore((s) => s.isOpen);
   const toggleSettings = useSettingsStore((s) => s.toggle);
   const importFiles = useLibraryStore((s) => s.importFiles);
-  const airPlayPreviewActive = usePlayerStore(
-    (s) => s.airPlayOutput.active && s.airPlayOutput.phase === "playing",
-  );
   const windowChromeVariant = getWindowChromeVariant(getShortcutPlatform());
 
   const handleImportMenuAction = useCallback(() => {
@@ -72,11 +68,7 @@ export function AppLayout() {
               <>
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                   <ModelBootstrapBanner />
-                  <PlaybackStage
-                    presentation={
-                      airPlayPreviewActive ? "audience" : "standard"
-                    }
-                  />
+                  <PlaybackStage />
                 </div>
                 {queueSidebar.shouldRender && (
                   <div

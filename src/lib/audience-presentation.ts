@@ -54,9 +54,10 @@ function clampLyricsFontStep(step: number): -2 | -1 | 0 | 1 | 2 {
   return Math.max(-2, Math.min(2, step)) as -2 | -1 | 0 | 1 | 2;
 }
 
-// RATIONALE: The local audience preview and the AirPlay renderer must consume
-// the same explicit spec or they will drift into two different products. Keep
-// all cross-surface lyric layout and color decisions centralized here.
+// RATIONALE: The local fullscreen audience window and the AirPlay renderer
+// must consume the same explicit spec or they will drift into two different
+// products. Keep all cross-surface lyric layout and color decisions
+// centralized here.
 export function buildAudiencePresentationSpec(
   lyricsFontStep: number,
 ): AudiencePresentationSpec {

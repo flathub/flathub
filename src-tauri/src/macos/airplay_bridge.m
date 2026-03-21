@@ -139,6 +139,28 @@ static BOOL OKBoolValue(id value) {
     return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : NO;
 }
 
+static OKAirPlayMode OKModeValue(id value) {
+    NSString *mode = OKStringValue(value);
+    if (mode != nil) {
+        if ([mode isEqualToString:@"lyrics"]) {
+            return OKAirPlayModeLyrics;
+        }
+        if ([mode isEqualToString:@"cdg"]) {
+            return OKAirPlayModeCdg;
+        }
+        return OKAirPlayModeIdle;
+    }
+
+    switch (OKIntegerValue(value)) {
+    case 1:
+        return OKAirPlayModeLyrics;
+    case 2:
+        return OKAirPlayModeCdg;
+    default:
+        return OKAirPlayModeIdle;
+    }
+}
+
 static id OKBridgedColor(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
     return CFBridgingRelease(CGColorCreateGenericRGB(r, g, b, a));
 }
@@ -276,7 +298,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, strong) AVPlayerItem *observedItem;
 @property(nonatomic, assign) BOOL observingCurrentItem;
 
-@property(nonatomic, strong) dispatch_queue_t mediaQueue;
+@property(nonatomic, strong) dispatch_queue_t stateQueue;
+@property(nonatomic, strong) dispatch_queue_t audioQueue;
+@property(nonatomic, strong) dispatch_queue_t encoderQueue;
 @property(nonatomic, strong) dispatch_source_t videoTimer;
 
 @property(nonatomic, copy) NSString *streamRootPath;
@@ -307,7 +331,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, copy) NSString *currentPhaseDetail;
 @property(nonatomic, assign) uint64_t streamGeneration;
 @property(nonatomic, assign) uint64_t attachedGeneration;
-@property(nonatomic, strong) NSDictionary *latestScene;
+@property(nonatomic, strong) NSDictionary *latestSceneConfig;
+@property(nonatomic, strong) NSDictionary *latestRuntimeState;
 @property(nonatomic, strong) NSData *latestCdgFrame;
 @property(nonatomic, assign) BOOL routeSelectionPending;
 @property(nonatomic, assign) NSUInteger routeSelectionGeneration;
@@ -326,12 +351,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                                top:(CGFloat)top
                              width:(CGFloat)width
                             height:(CGFloat)height
-                           mounted:(BOOL)mounted
+                       mounted:(BOOL)mounted
                     streamRootPath:(NSString *)streamRootPath
                        playlistURL:(NSString *)playlistURL;
-- (void)syncAudienceStateWithMode:(OKAirPlayMode)mode
-                        sceneJSON:(NSString *)sceneJSON
-                         cdgFrame:(NSData *)cdgFrame;
+- (void)syncAudienceConfigWithJSON:(NSString *)configJSON;
+- (void)syncAudienceRuntimeWithJSON:(NSString *)runtimeJSON
+                           cdgFrame:(NSData *)cdgFrame;
 - (void)pushAudioSamples:(const float *)samples
              sampleCount:(NSUInteger)sampleCount
               sampleRate:(uint32_t)sampleRate
@@ -359,7 +384,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return nil;
     }
 
-    _mediaQueue = dispatch_queue_create("openkara.airplay.media", DISPATCH_QUEUE_SERIAL);
+    _stateQueue = dispatch_queue_create("openkara.airplay.state", DISPATCH_QUEUE_SERIAL);
+    _audioQueue = dispatch_queue_create("openkara.airplay.audio", DISPATCH_QUEUE_SERIAL);
+    _encoderQueue = dispatch_queue_create("openkara.airplay.encoder", DISPATCH_QUEUE_SERIAL);
     _segments = [NSMutableArray array];
     _syncPoints = [NSMutableArray array];
     _pendingAudioData = [NSMutableData data];
@@ -503,6 +530,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         [self.player replaceCurrentItemWithPlayerItem:nil];
         [self syncCurrentItemObservation];
     }
+
+    dispatch_async(self.audioQueue, ^{
+        [self.pendingAudioData setLength:0];
+        self.pendingAudioOffset = 0;
+    });
 }
 
 - (void)recordSyncPointForSourcePosition:(long long)sourcePositionMs {
@@ -547,12 +579,24 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return @(MAX(0, anchorSourceMs + (streamPositionMs - anchorStreamMs)));
 }
 
+- (NSDictionary *)currentRenderScene {
+    NSDictionary *config = self.latestSceneConfig ?: @{};
+    NSDictionary *runtime = self.latestRuntimeState ?: @{};
+    if (config.count == 0 && runtime.count == 0) {
+        return @{};
+    }
+
+    NSMutableDictionary *scene = [NSMutableDictionary dictionaryWithDictionary:config];
+    [scene addEntriesFromDictionary:runtime];
+    return scene;
+}
+
 - (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs {
-    if (displayedPositionMs == nil || self.latestScene == nil) {
+    if (displayedPositionMs == nil || self.latestRuntimeState == nil) {
         return nil;
     }
 
-    long long sourcePositionMs = OKLongLongValue(self.latestScene[@"positionMs"]);
+    long long sourcePositionMs = OKLongLongValue(self.latestRuntimeState[@"positionMs"]);
     return @(MAX(0, sourcePositionMs - displayedPositionMs.longLongValue));
 }
 
@@ -765,7 +809,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     dispatch_source_t timer =
-        dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, self.mediaQueue);
+        dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, self.encoderQueue);
     dispatch_source_set_timer(
         timer,
         dispatch_walltime(NULL, 0),
@@ -946,7 +990,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    NSData *audioChunk = [self dequeueAudioFrames:OKAirPlayAudioFramesPerTick];
+    __block NSData *audioChunk = nil;
+    dispatch_sync(self.audioQueue, ^{
+        audioChunk = [self dequeueAudioFrames:OKAirPlayAudioFramesPerTick];
+    });
     if (audioChunk.length == 0) {
         return;
     }
@@ -1033,7 +1080,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)drawStatusSceneInContext:(CGContextRef)context message:(NSString *)message {
-    NSDictionary *presentationSpec = OKPresentationSpecValue(self.latestScene ?: @{});
+    NSDictionary *presentationSpec = OKPresentationSpecValue([self currentRenderScene]);
     NSDictionary *statusColor = OKColorDictionaryValue(
         presentationSpec,
         @"statusTextColor",
@@ -1352,7 +1399,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     CGImageRelease(image);
 }
 
-- (CVPixelBufferRef)copyRenderedPixelBuffer {
+- (CVPixelBufferRef)copyRenderedPixelBufferForScene:(NSDictionary *)scene {
     if (self.pixelBufferAdaptor.pixelBufferPool == NULL) {
         return NULL;
     }
@@ -1389,7 +1436,6 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     OKSetFillColor(context, 0.0, 0.0, 0.0, 1.0);
     CGContextFillRect(context, CGRectMake(0, 0, OKAirPlayVideoWidth, OKAirPlayVideoHeight));
 
-    NSDictionary *scene = self.latestScene ?: @{};
     if (self.currentMode == OKAirPlayModeCdg) {
         [self drawCDGFrameInContext:context];
     } else {
@@ -1406,7 +1452,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    CVPixelBufferRef pixelBuffer = [self copyRenderedPixelBuffer];
+    NSDictionary *scene = [self currentRenderScene];
+    CVPixelBufferRef pixelBuffer = [self copyRenderedPixelBufferForScene:scene];
     if (pixelBuffer == NULL) {
         return;
     }
@@ -1420,8 +1467,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    if (self.latestScene != nil) {
-        [self recordSyncPointForSourcePosition:OKLongLongValue(self.latestScene[@"positionMs"])];
+    if (scene.count > 0) {
+        [self recordSyncPointForSourcePosition:OKLongLongValue(scene[@"positionMs"])];
     }
     self.hasWrittenVideo = YES;
     self.nextVideoFrameIndex += 1;
@@ -1464,7 +1511,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     [self ensurePlayer];
-    dispatch_async(self.mediaQueue, ^{
+    dispatch_async(self.encoderQueue, ^{
         [self configureStreamIfNeeded];
     });
 
@@ -1488,35 +1535,52 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 }
 
-- (void)syncAudienceStateWithMode:(OKAirPlayMode)mode
-                        sceneJSON:(NSString *)sceneJSON
-                         cdgFrame:(NSData *)cdgFrame {
+- (void)syncAudienceConfigWithJSON:(NSString *)configJSON {
     __weak typeof(self) weakSelf = self;
-    dispatch_async(self.mediaQueue, ^{
-        weakSelf.currentMode = mode;
-        if (sceneJSON.length > 0) {
-            NSData *jsonData = [sceneJSON dataUsingEncoding:NSUTF8StringEncoding];
-            NSDictionary *scene = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
-            if ([scene isKindOfClass:[NSDictionary class]]) {
-                uint64_t streamGeneration =
-                    (uint64_t)MAX(1, OKLongLongValue(scene[@"streamGeneration"]));
-                [weakSelf resetMediaPipelineForGeneration:streamGeneration];
-                weakSelf.latestScene = scene;
-                if (mode == OKAirPlayModeIdle || !OKBoolValue(scene[@"isPlaying"])) {
-                    [weakSelf.pendingAudioData setLength:0];
-                    weakSelf.pendingAudioOffset = 0;
-                }
-            }
+    dispatch_async(self.stateQueue, ^{
+        NSDictionary *config = nil;
+        if (configJSON.length > 0) {
+            NSData *jsonData = [configJSON dataUsingEncoding:NSUTF8StringEncoding];
+            config = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
         }
-        if (mode == OKAirPlayModeIdle) {
-            [weakSelf.pendingAudioData setLength:0];
-            weakSelf.pendingAudioOffset = 0;
-        }
-        if (cdgFrame != nil) {
-            weakSelf.latestCdgFrame = [cdgFrame copy];
-        }
+        weakSelf.latestSceneConfig = [config isKindOfClass:[NSDictionary class]] ? config : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf refreshPlaybackPhase];
+        });
+    });
+}
+
+- (void)syncAudienceRuntimeWithJSON:(NSString *)runtimeJSON
+                           cdgFrame:(NSData *)cdgFrame {
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.stateQueue, ^{
+        NSDictionary *runtime = nil;
+        if (runtimeJSON.length > 0) {
+            NSData *jsonData = [runtimeJSON dataUsingEncoding:NSUTF8StringEncoding];
+            runtime = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+        }
+
+        NSDictionary *runtimeState =
+            [runtime isKindOfClass:[NSDictionary class]] ? runtime : nil;
+        weakSelf.latestRuntimeState = runtimeState;
+        weakSelf.latestCdgFrame = [cdgFrame copy];
+        weakSelf.currentMode =
+            runtimeState != nil ? OKModeValue(runtimeState[@"mode"]) : OKAirPlayModeIdle;
+        uint64_t streamGeneration =
+            (uint64_t)MAX(1, OKLongLongValue(runtimeState[@"streamGeneration"]));
+
+        if (weakSelf.currentMode == OKAirPlayModeIdle) {
+            dispatch_async(weakSelf.audioQueue, ^{
+                [weakSelf.pendingAudioData setLength:0];
+                weakSelf.pendingAudioOffset = 0;
+            });
+        }
+
+        dispatch_async(weakSelf.encoderQueue, ^{
+            [weakSelf resetMediaPipelineForGeneration:streamGeneration];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [weakSelf refreshPlaybackPhase];
+            });
         });
     });
 }
@@ -1541,11 +1605,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     NSData *resampled = OKResampleStereoPCM(stereo.bytes, inputFrameCount, sampleRate);
     __weak typeof(self) weakSelf = self;
-    dispatch_async(self.mediaQueue, ^{
+    dispatch_async(self.audioQueue, ^{
         if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
-        // RATIONALE: `latestScene.isPlaying` is a UI-facing runtime snapshot and
+        // RATIONALE: `latestRuntimeState.isPlaying` is a UI-facing runtime snapshot and
         // can lag behind PCM delivery around seek/resume boundaries. Gating
         // audio on that field caused TV playback to emit a brief burst and then
         // fall silent. The only hard gate here is whether AirPlay is actually
@@ -1567,7 +1631,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 - (void)applyAudioEpoch:(uint64_t)epoch {
     __weak typeof(self) weakSelf = self;
-    dispatch_async(self.mediaQueue, ^{
+    dispatch_async(self.audioQueue, ^{
         weakSelf.currentAudioEpoch = MAX(weakSelf.currentAudioEpoch, epoch);
         [weakSelf.pendingAudioData setLength:0];
         weakSelf.pendingAudioOffset = 0;
@@ -1726,19 +1790,23 @@ void ok_airplay_sync_route_picker(
     });
 }
 
-void ok_airplay_sync_audience_state(
-    int mode,
-    const char *scene_json,
+void ok_airplay_sync_audience_state(const char *config_json) {
+    NSString *configJSON = config_json == NULL ? nil : [NSString stringWithUTF8String:config_json];
+
+    [[OKAirPlayBridge sharedBridge] syncAudienceConfigWithJSON:configJSON];
+}
+
+void ok_airplay_sync_audience_runtime(
+    const char *runtime_json,
     const uint8_t *cdg_frame_ptr,
     size_t cdg_frame_len
 ) {
-    NSString *sceneJSON = scene_json == NULL ? nil : [NSString stringWithUTF8String:scene_json];
+    NSString *runtimeJSON = runtime_json == NULL ? nil : [NSString stringWithUTF8String:runtime_json];
     NSData *cdgFrame =
         (cdg_frame_ptr == NULL || cdg_frame_len == 0) ? nil : [NSData dataWithBytes:cdg_frame_ptr length:cdg_frame_len];
 
-    [[OKAirPlayBridge sharedBridge] syncAudienceStateWithMode:(OKAirPlayMode)mode
-                                                    sceneJSON:sceneJSON
-                                                     cdgFrame:cdgFrame];
+    [[OKAirPlayBridge sharedBridge] syncAudienceRuntimeWithJSON:runtimeJSON
+                                                       cdgFrame:cdgFrame];
 }
 
 void ok_airplay_push_audio_samples(

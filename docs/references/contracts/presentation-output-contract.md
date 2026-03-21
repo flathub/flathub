@@ -17,6 +17,7 @@
 3. 宿主位出现时，前端调用 `sync_airplay_route_picker(bounds)`；宿主位销毁时调用 `sync_airplay_route_picker(null)`
 4. 前端调用 `sync_airplay_audience_state(payload)` 同步当前歌曲/歌词配置；backend 自己负责运行时播放位置、歌词高亮和 CDG cadence
 5. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
+6. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
 
 ## Command: `sync_airplay_route_picker`
 
@@ -124,12 +125,13 @@ null
 2. 该命令是配置同步，不是运行时节拍同步；前端只提供 `songId / lines / offsetMs / isLoading / lyricsFontStep / messages / viewport / presentationSpec`
 3. backend 保存最新配置，并由自己的 coordinator 读取真实播放状态，计算当前歌词行/单词高亮和 CDG 帧，再同步到原生 AirPlay bridge
 4. `messages` 提供无歌、加载中、无歌词等 audience 空状态所需的本地化文案；AirPlay 电视端只显示弱化文本提示，不再渲染按钮式空状态卡片
-5. `presentationSpec` 固定了 audience 内容区宽度、字号、行距、颜色和 glow；本地 audience 预览与 AirPlay 必须共用这套显式 spec，不能各自维护一套样式
+5. `presentationSpec` 固定了 audience 内容区宽度、字号、行距、颜色和 glow；本地 `fullscreen-player` audience 输出与 AirPlay 必须共用这套显式 spec，不能各自维护一套样式
 6. `viewport` 当前固定为 `1280x720`，对应 backend HLS 视频编码参考尺寸
 7. backend 从本机混音输出 tap 获取音频 PCM，并与 scene/CDG 帧一起写入 `AVAssetWriter` 分段输出，再由 `AVPlayer` 播放可被接收端访问的 HLS
 8. backend 不再依赖主窗口 React 节拍驱动歌词或 CDG；AirPlay 运行时以 Rust 播放状态为唯一时间源
-9. 该命令不修改现有播放、歌词、CDG IPC 名称，只复用它们的状态
-10. backend 在写给 native bridge 的内部 JSON scene 时，使用独立 DTO 固定内层时间字段为 `timeMs`；不能直接复用共享 IPC 歌词结构，否则 nested `time_ms` 会让 native 误判 timed lyrics 为 plain text
+9. 主窗口标准 UI 仍然应跟随 `displayedPositionMs` 计算歌词和 CDG 的同步显示时钟，但不应因此切换自身布局模式
+10. 该命令不修改现有播放、歌词、CDG IPC 名称，只复用它们的状态
+11. backend 在写给 native bridge 的内部 JSON scene 时，使用独立 DTO 固定内层时间字段为 `timeMs`；不能直接复用共享 IPC 歌词结构，否则 nested `time_ms` 会让 native 误判 timed lyrics 为 plain text
 
 ## Event: `openkara://airplay-output-state`
 
@@ -155,7 +157,7 @@ null
 3. `routeName` 当前允许为 `null`
 4. `mode` 反映 backend 记录的最新 audience 输出模式
 5. `detail` 提供等待/失败的简短诊断字符串；当前约定值包括 `waiting_for_route`、`waiting_for_video`、`waiting_for_audio`、`writer_failed`
-6. `displayedPositionMs` 是 TV 端当前实际显示的歌曲位置；AirPlay 激活时，主窗口 audience 预览必须跟随这个时钟，而不是继续跟源播放时钟
+6. `displayedPositionMs` 是 TV 端当前实际显示的歌曲位置；AirPlay 激活时，主窗口标准 UI 的歌词和 CDG 必须跟随这个时钟，而不是继续跟源播放时钟
 7. `streamGeneration` 表示当前 HLS 输出代次；seek、切歌和 `lyrics <-> cdg` 切换时必须刷新 generation，以清掉旧缓冲
 8. `latencyMs` 表示 backend 当前源播放位置与 TV 显示位置的差值，用于诊断 AirPlay 实际传输延迟
 

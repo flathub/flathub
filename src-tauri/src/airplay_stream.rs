@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use std::{
-    collections::VecDeque,
     fs,
     io::Read,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
@@ -25,16 +24,22 @@ pub struct AirPlayAudioChunk {
 #[derive(Debug)]
 pub struct AirPlayAudioTap {
     epoch: AtomicU64,
-    capacity: usize,
-    chunks: Mutex<VecDeque<AirPlayAudioChunk>>,
+    buffer: Mutex<AirPlayAudioBuffer>,
+}
+
+#[derive(Debug)]
+struct AirPlayAudioBuffer {
+    slots: Vec<Option<AirPlayAudioChunk>>,
+    head: usize,
+    len: usize,
 }
 
 impl AirPlayAudioTap {
     pub fn new(capacity: usize) -> Self {
+        let capacity = capacity.max(1);
         Self {
             epoch: AtomicU64::new(1),
-            capacity: capacity.max(1),
-            chunks: Mutex::new(VecDeque::with_capacity(capacity.max(1))),
+            buffer: Mutex::new(AirPlayAudioBuffer::new(capacity)),
         }
     }
 
@@ -51,15 +56,11 @@ impl AirPlayAudioTap {
             return;
         }
 
-        let Ok(mut chunks) = self.chunks.try_lock() else {
+        let Ok(mut buffer) = self.buffer.lock() else {
             return;
         };
 
-        while chunks.len() >= self.capacity {
-            chunks.pop_front();
-        }
-
-        chunks.push_back(AirPlayAudioChunk {
+        buffer.push(AirPlayAudioChunk {
             epoch: self.current_epoch(),
             sample_rate,
             channels,
@@ -68,11 +69,52 @@ impl AirPlayAudioTap {
     }
 
     pub fn drain_pending(&self) -> Vec<AirPlayAudioChunk> {
-        let Ok(mut chunks) = self.chunks.lock() else {
+        let Ok(mut buffer) = self.buffer.lock() else {
             return Vec::new();
         };
 
-        chunks.drain(..).collect()
+        buffer.drain()
+    }
+}
+
+impl AirPlayAudioBuffer {
+    fn new(capacity: usize) -> Self {
+        Self {
+            slots: vec![None; capacity.max(1)],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    fn capacity(&self) -> usize {
+        self.slots.len()
+    }
+
+    fn push(&mut self, chunk: AirPlayAudioChunk) {
+        let capacity = self.capacity();
+        let insert_index = (self.head + self.len) % capacity;
+
+        if self.len == capacity {
+            self.slots[self.head] = Some(chunk);
+            self.head = (self.head + 1) % capacity;
+            return;
+        }
+
+        self.slots[insert_index] = Some(chunk);
+        self.len += 1;
+    }
+
+    fn drain(&mut self) -> Vec<AirPlayAudioChunk> {
+        let mut drained = Vec::with_capacity(self.len);
+        for offset in 0..self.len {
+            let index = (self.head + offset) % self.capacity();
+            if let Some(chunk) = self.slots[index].take() {
+                drained.push(chunk);
+            }
+        }
+        self.head = 0;
+        self.len = 0;
+        drained
     }
 }
 
@@ -132,38 +174,36 @@ impl AirPlayHttpServer {
         let root_dir = root_dir.to_path_buf();
         let server_root = root_dir.clone();
 
-        let thread = thread::spawn(move || {
-            loop {
-                let Ok(Some(request)) = server.recv_timeout(Duration::from_millis(100)) else {
-                    continue;
-                };
-                if request.method() != &Method::Get && request.method() != &Method::Head {
-                    let _ = request.respond(Response::empty(StatusCode(405)));
-                    continue;
+        let thread = thread::spawn(move || loop {
+            let Ok(Some(request)) = server.recv_timeout(Duration::from_millis(100)) else {
+                continue;
+            };
+            if request.method() != &Method::Get && request.method() != &Method::Head {
+                let _ = request.respond(Response::empty(StatusCode(405)));
+                continue;
+            }
+
+            let Some(path) = sanitize_request_path(request.url()) else {
+                let _ = request.respond(Response::empty(StatusCode(400)));
+                continue;
+            };
+            let file_path = server_root.join(path);
+            let range_header = request
+                .headers()
+                .iter()
+                .find(|header| header.field.equiv("Range"))
+                .and_then(|header| Some(header.value.as_str().to_owned()));
+
+            match build_file_response(
+                request.method() == &Method::Head,
+                range_header.as_deref(),
+                &file_path,
+            ) {
+                Ok(response) => {
+                    let _ = request.respond(response);
                 }
-
-                let Some(path) = sanitize_request_path(request.url()) else {
-                    let _ = request.respond(Response::empty(StatusCode(400)));
-                    continue;
-                };
-                let file_path = server_root.join(path);
-                let range_header = request
-                    .headers()
-                    .iter()
-                    .find(|header| header.field.equiv("Range"))
-                    .and_then(|header| Some(header.value.as_str().to_owned()));
-
-                match build_file_response(
-                    request.method() == &Method::Head,
-                    range_header.as_deref(),
-                    &file_path,
-                ) {
-                    Ok(response) => {
-                        let _ = request.respond(response);
-                    }
-                    Err(_) => {
-                        let _ = request.respond(Response::empty(StatusCode(404)));
-                    }
+                Err(_) => {
+                    let _ = request.respond(Response::empty(StatusCode(404)));
                 }
             }
         });
@@ -196,7 +236,10 @@ fn sanitize_request_path(url: &str) -> Option<PathBuf> {
     if trimmed.is_empty() {
         return Some(PathBuf::from("playlist.m3u8"));
     }
-    if trimmed.split('/').any(|segment| segment == ".." || segment.is_empty()) {
+    if trimmed
+        .split('/')
+        .any(|segment| segment == ".." || segment.is_empty())
+    {
         return None;
     }
     Some(PathBuf::from(trimmed))
@@ -213,7 +256,10 @@ fn build_file_response(
     file.read_to_end(&mut body)
         .with_context(|| format!("failed to read requested asset {}", file_path.display()))?;
 
-    let content_type = match file_path.extension().and_then(|extension| extension.to_str()) {
+    let content_type = match file_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
         Some("m3u8") => "application/vnd.apple.mpegurl",
         Some("mp4") => "video/mp4",
         Some("m4s") => "video/iso.segment",
@@ -227,17 +273,10 @@ fn build_file_response(
         (
             StatusCode(206),
             partial,
-            Some(format!(
-                "bytes {}-{}/{}",
-                range.start, range.end, total_len
-            )),
+            Some(format!("bytes {}-{}/{}", range.start, range.end, total_len)),
         )
     } else {
-        (
-            StatusCode(200),
-            body,
-            None,
-        )
+        (StatusCode(200), body, None)
     };
 
     let mut response = Response::from_data(response_body).with_status_code(status);
@@ -260,14 +299,51 @@ pub fn default_stream_root(root: &Path) -> PathBuf {
     root.join("airplay").join("live")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{sync::Arc, thread, time::Duration};
+
+    #[test]
+    fn push_interleaved_waits_for_contended_lock_instead_of_dropping_audio() {
+        let tap = Arc::new(AirPlayAudioTap::new(4));
+        let guard = tap.buffer.lock().expect("test should hold the queue lock");
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let worker_tap = Arc::clone(&tap);
+
+        let worker = thread::spawn(move || {
+            ready_tx.send(()).expect("worker should signal readiness");
+            worker_tap.push_interleaved(44_100, 2, &[0.25, 0.5]);
+        });
+
+        ready_rx.recv().expect("worker should start");
+        thread::sleep(Duration::from_millis(25));
+
+        assert!(
+            !worker.is_finished(),
+            "push_interleaved returned while the queue lock was still held"
+        );
+
+        drop(guard);
+        worker
+            .join()
+            .expect("worker should finish once the lock is released");
+
+        let drained = tap.drain_pending();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].samples, vec![0.25, 0.5]);
+    }
+}
+
 pub fn stream_tick_interval() -> Duration {
     Duration::from_millis(33)
 }
 
 fn detect_airplay_publish_ip() -> Result<Ipv4Addr> {
     let candidates = collect_publish_ip_candidates()?;
-    pick_publish_ip(&candidates)
-        .ok_or_else(|| anyhow::anyhow!("failed to determine a non-loopback ipv4 address for airplay"))
+    pick_publish_ip(&candidates).ok_or_else(|| {
+        anyhow::anyhow!("failed to determine a non-loopback ipv4 address for airplay")
+    })
 }
 
 pub fn spawn_audio_forwarder(tap: std::sync::Arc<AirPlayAudioTap>) {
@@ -372,7 +448,9 @@ fn collect_publish_ip_candidates() -> Result<Vec<PublishIpCandidate>> {
     // SAFETY: libc fills a linked list owned by the OS until freeifaddrs is called below.
     let result = unsafe { libc::getifaddrs(&mut addresses) };
     if result != 0 {
-        return Err(anyhow::anyhow!("failed to enumerate local network interfaces"));
+        return Err(anyhow::anyhow!(
+            "failed to enumerate local network interfaces"
+        ));
     }
 
     let mut candidates = Vec::new();
@@ -424,7 +502,9 @@ fn collect_publish_ip_candidates() -> Result<Vec<PublishIpCandidate>> {
 fn pick_publish_ip(candidates: &[PublishIpCandidate]) -> Option<Ipv4Addr> {
     let mut ranked: Vec<_> = candidates
         .iter()
-        .filter_map(|candidate| rank_publish_ip_candidate(candidate).map(|rank| (rank, candidate.ip)))
+        .filter_map(|candidate| {
+            rank_publish_ip_candidate(candidate).map(|rank| (rank, candidate.ip))
+        })
         .collect();
     ranked.sort_by_key(|(rank, _)| *rank);
     ranked.first().map(|(_, ip)| *ip)
@@ -465,11 +545,29 @@ fn interface_index(name: &str, prefix: &str) -> Option<u32> {
 
 fn is_virtual_interface(name: &str) -> bool {
     const VIRTUAL_PREFIXES: &[&str] = &[
-        "lo", "utun", "awdl", "llw", "bridge", "ap", "p2p", "gif", "stf", "anpi", "vnic",
-        "vmnet", "vboxnet", "docker", "tailscale", "tap", "tun", "wg",
+        "lo",
+        "utun",
+        "awdl",
+        "llw",
+        "bridge",
+        "ap",
+        "p2p",
+        "gif",
+        "stf",
+        "anpi",
+        "vnic",
+        "vmnet",
+        "vboxnet",
+        "docker",
+        "tailscale",
+        "tap",
+        "tun",
+        "wg",
     ];
 
-    VIRTUAL_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    VIRTUAL_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
 }
 
 fn is_eligible_publish_ip(name: &str, ip: Ipv4Addr) -> bool {
