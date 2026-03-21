@@ -18,6 +18,16 @@ An open-source desktop karaoke app powered by on-device AI stem separation and s
 
 ---
 
+## Demo
+
+<div align="center">
+
+[![OpenKara demo video](https://img.youtube.com/vi/OznVDmp9igk/maxresdefault.jpg)](https://www.youtube-nocookie.com/embed/OznVDmp9igk)
+
+</div>
+
+---
+
 ## Why I Built This
 
 I love singing karaoke at home, but every existing solution has its own set of problems.
