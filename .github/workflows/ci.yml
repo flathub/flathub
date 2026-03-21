@@ -145,7 +145,26 @@ jobs:
             throw "No DLLs were found in ort-sys native link-search directories: $($nativeSearchDirs -join ', ')"
           }
 
-          Copy-Item -Force ($dlls | Select-Object -ExpandProperty FullName -Unique) $depsDir
+          $copySources = @()
+          $plannedTargets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($dll in $dlls | Sort-Object FullName -Unique) {
+            $sourcePath = $dll.FullName
+            $targetPath = Join-Path $depsDir $dll.Name
+
+            if ($sourcePath -ieq $targetPath) {
+              continue
+            }
+
+            if (-not $plannedTargets.Add($targetPath)) {
+              continue
+            }
+
+            $copySources += $sourcePath
+          }
+
+          if ($copySources.Count -gt 0) {
+            Copy-Item -Force $copySources $depsDir
+          }
 
       - name: Lint frontend
         run: pnpm lint

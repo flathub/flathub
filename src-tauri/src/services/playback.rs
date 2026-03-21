@@ -36,12 +36,28 @@ pub(crate) fn spawn_airplay_control_refresh_worker(
     airplay_audio_tap: Arc<crate::airplay_stream::AirPlayAudioTap>,
     airplay_stream_generation: Arc<AtomicU64>,
 ) {
+    spawn_airplay_control_refresh_worker_with_timing(
+        airplay_audience_active,
+        airplay_control_refresh_token,
+        airplay_audio_tap,
+        airplay_stream_generation,
+        Duration::from_millis(180),
+        Duration::from_millis(25),
+    );
+}
+
+fn spawn_airplay_control_refresh_worker_with_timing(
+    airplay_audience_active: Arc<AtomicBool>,
+    airplay_control_refresh_token: Arc<AtomicU64>,
+    airplay_audio_tap: Arc<crate::airplay_stream::AirPlayAudioTap>,
+    airplay_stream_generation: Arc<AtomicU64>,
+    debounce_window: Duration,
+    poll_interval: Duration,
+) {
     thread::spawn(move || {
         let mut flushed_token = 0u64;
         let mut pending_token: Option<u64> = None;
         let mut pending_since: Option<Instant> = None;
-        let debounce_window = Duration::from_millis(180);
-        let poll_interval = Duration::from_millis(25);
 
         loop {
             let current_token = airplay_control_refresh_token.load(Ordering::SeqCst);
@@ -638,11 +654,13 @@ mod tests {
         let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
         let initial_epoch = state.airplay_audio_tap.current_epoch();
 
-        spawn_airplay_control_refresh_worker(
+        spawn_airplay_control_refresh_worker_with_timing(
             Arc::clone(&state.airplay_audience_active),
             Arc::clone(&state.airplay_control_refresh_token),
             Arc::clone(&state.airplay_audio_tap),
             Arc::clone(&state.airplay_stream_generation),
+            Duration::from_millis(300),
+            Duration::from_millis(5),
         );
 
         set_stem_volume(&state, StemName::Vocals, 0.9).expect("stem update should succeed");
@@ -653,7 +671,7 @@ mod tests {
             3
         );
 
-        std::thread::sleep(Duration::from_millis(120));
+        std::thread::sleep(Duration::from_millis(100));
         assert_eq!(
             state.airplay_stream_generation.load(Ordering::SeqCst),
             initial_generation
@@ -675,11 +693,13 @@ mod tests {
         let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
         let initial_epoch = state.airplay_audio_tap.current_epoch();
 
-        spawn_airplay_control_refresh_worker(
+        spawn_airplay_control_refresh_worker_with_timing(
             Arc::clone(&state.airplay_audience_active),
             Arc::clone(&state.airplay_control_refresh_token),
             Arc::clone(&state.airplay_audio_tap),
             Arc::clone(&state.airplay_stream_generation),
+            Duration::from_millis(300),
+            Duration::from_millis(5),
         );
 
         set_volume(&state, 0.9).expect("volume update should succeed");
@@ -689,7 +709,7 @@ mod tests {
             2
         );
 
-        std::thread::sleep(Duration::from_millis(120));
+        std::thread::sleep(Duration::from_millis(100));
         assert_eq!(
             state.airplay_stream_generation.load(Ordering::SeqCst),
             initial_generation
@@ -711,11 +731,13 @@ mod tests {
         let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
         let initial_epoch = state.airplay_audio_tap.current_epoch();
 
-        spawn_airplay_control_refresh_worker(
+        spawn_airplay_control_refresh_worker_with_timing(
             Arc::clone(&state.airplay_audience_active),
             Arc::clone(&state.airplay_control_refresh_token),
             Arc::clone(&state.airplay_audio_tap),
             Arc::clone(&state.airplay_stream_generation),
+            Duration::from_millis(300),
+            Duration::from_millis(5),
         );
 
         set_volume(&state, 0.6).expect("volume update should succeed");
