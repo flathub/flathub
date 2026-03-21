@@ -1,17 +1,22 @@
 import { useEffect, useRef } from "react";
-import { usePlayerStore } from "@/stores/player-store";
+import {
+  selectAudiencePreviewPositionMs,
+  usePlayerStore,
+} from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
 const LYRICS_SYNC_INTERVAL_MS = 33;
 
 function syncLyricsToPlayback(prevIndexRef: { current: number }) {
-  const { snapshot, positionMs } = usePlayerStore.getState();
+  const state = usePlayerStore.getState();
+  const { snapshot } = state;
   const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
 
   if (!snapshot?.is_playing || lines.length === 0) {
     return;
   }
 
+  const positionMs = selectAudiencePreviewPositionMs(state);
   const adjustedMs = positionMs - offsetMs;
   const index = binarySearchLine(lines, adjustedMs);
 

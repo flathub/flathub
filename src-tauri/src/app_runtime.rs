@@ -24,7 +24,11 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
 
     let app_config = config::load_config(&app_data_dir)?;
     let playback = Arc::new(Mutex::new(PlaybackController::default()));
+    let cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>> =
+        Arc::new(Mutex::new(None));
     let airplay_audio_tap = Arc::new(airplay_stream::AirPlayAudioTap::new(12));
+    let airplay_stream_generation = Arc::new(AtomicU64::new(1));
+    let airplay_local_output_suppressed = Arc::new(AtomicBool::new(false));
     let model_bootstrap = build_startup_model_bootstrap(&app_data_dir, app_config.as_ref())?;
     let model_bootstrap_status = Arc::new(Mutex::new(model_bootstrap.status.clone()));
 
@@ -33,9 +37,11 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         app_data_dir,
         model_path: model_bootstrap.model_path.clone(),
         playback: Arc::clone(&playback),
-        cdg_state: Arc::new(Mutex::new(None)),
+        cdg_state: Arc::clone(&cdg_state),
         airplay_audio_tap: Arc::clone(&airplay_audio_tap),
+        airplay_stream_generation: Arc::clone(&airplay_stream_generation),
         airplay_http_server: Arc::new(Mutex::new(None)),
+        airplay_local_output_suppressed: Arc::clone(&airplay_local_output_suppressed),
         playback_request_id: AtomicU64::new(0),
         audio_output_started: Arc::new(AtomicBool::new(false)),
         audio_output_start_lock: Arc::new(Mutex::new(())),

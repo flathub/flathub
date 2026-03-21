@@ -3,15 +3,31 @@ import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { useLibraryStore } from "@/stores/library-store";
 import { useQueueStore } from "@/stores/queue-store";
-import type { PlaybackStateSnapshot, StemName } from "@/types/ipc";
+import type {
+  AirPlayOutputStateEvent,
+  PlaybackStateSnapshot,
+  StemName,
+} from "@/types/ipc";
 import {
   playTrackWithOptionalStems,
   shouldEnqueueInsteadOfReplacingCurrentSong,
 } from "./player-workflows";
 
+export const DEFAULT_AIRPLAY_OUTPUT_STATE: AirPlayOutputStateEvent = {
+  active: false,
+  routeName: null,
+  mode: "idle",
+  phase: "idle",
+  detail: null,
+  displayedPositionMs: null,
+  streamGeneration: 0,
+  latencyMs: null,
+};
+
 interface PlayerState {
   snapshot: PlaybackStateSnapshot | null;
   positionMs: number;
+  airPlayOutput: AirPlayOutputStateEvent;
 
   playSong: (songId: string) => Promise<void>;
   playNow: (songId: string) => Promise<void>;
@@ -27,11 +43,25 @@ interface PlayerState {
   playNextFromQueue: (endedSongId: string) => Promise<void>;
   skipForward: () => Promise<void>;
   skipBack: () => Promise<void>;
+  updateAirPlayOutput: (airPlayOutput: AirPlayOutputStateEvent) => void;
+}
+
+// RATIONALE: Once AirPlay is active, the audience surface must follow the TV's
+// displayed clock rather than the local playback clock. That is the only way
+// the main-window preview can stay visually consistent with the remote output.
+export function selectAudiencePreviewPositionMs(
+  state: Pick<PlayerState, "positionMs" | "airPlayOutput">,
+): number {
+  return state.airPlayOutput.active &&
+    state.airPlayOutput.displayedPositionMs !== null
+    ? state.airPlayOutput.displayedPositionMs
+    : state.positionMs;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
   snapshot: null,
   positionMs: 0,
+  airPlayOutput: DEFAULT_AIRPLAY_OUTPUT_STATE,
 
   playSong: async (songId) => {
     const { snapshot } = usePlayerStore.getState();
@@ -214,5 +244,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
         notifyError(e);
       }
     }
+  },
+
+  updateAirPlayOutput: (airPlayOutput) => {
+    set({ airPlayOutput });
   },
 }));

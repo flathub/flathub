@@ -9,8 +9,15 @@ import { LyricsOffsetControl } from "./LyricsOffsetControl";
 import { LyricsEmptyState } from "./LyricsEmptyState";
 import { LyricsEditDialog } from "./LyricsEditDialog";
 import { getCenteredScrollTop } from "./lyrics-scroll";
+import {
+  buildAudiencePresentationSpec,
+  colorToCss,
+} from "@/lib/audience-presentation";
 import { useLyricsStore } from "@/stores/lyrics-store";
-import { usePlayerStore } from "@/stores/player-store";
+import {
+  selectAudiencePreviewPositionMs,
+  usePlayerStore,
+} from "@/stores/player-store";
 
 interface LyricsPanelProps {
   presentation?: "standard" | "audience";
@@ -24,13 +31,19 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const isLoading = useLyricsStore((s) => s.isLoading);
   const rawLrc = useLyricsStore((s) => s.rawLrc);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
-  const positionMs = usePlayerStore((s) => s.positionMs);
+  const positionMs = usePlayerStore((s) =>
+    presentation === "audience"
+      ? selectAudiencePreviewPositionMs(s)
+      : s.positionMs,
+  );
   const lyricsFontStep = useSettingsStore((s) => s.lyricsFontStep);
   const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);
   const [editOpen, setEditOpen] = useState(false);
   const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
   const isAudience = presentation === "audience";
+  const audiencePresentationSpec =
+    buildAudiencePresentationSpec(lyricsFontStep);
 
   const isPlainText = lines.length > 0 && lines.every((l) => l.time_ms === 0);
 
@@ -62,7 +75,17 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   if (!songId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-[14px] text-[var(--color-text-dimmer)]">
+        <p
+          className="text-[var(--color-text-dimmer)]"
+          style={
+            isAudience
+              ? {
+                  fontSize: audiencePresentationSpec.statusFontSizePx,
+                  color: colorToCss(audiencePresentationSpec.statusTextColor),
+                }
+              : { fontSize: 14 }
+          }
+        >
           {t("lyrics.selectSong")}
         </p>
       </div>
@@ -72,7 +95,17 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-[14px] text-[var(--color-text-dim)]">
+        <p
+          className="text-[var(--color-text-dim)]"
+          style={
+            isAudience
+              ? {
+                  fontSize: audiencePresentationSpec.statusFontSizePx,
+                  color: colorToCss(audiencePresentationSpec.statusTextColor),
+                }
+              : { fontSize: 14 }
+          }
+        >
           {t("lyrics.loadingLyrics")}
         </p>
       </div>
@@ -80,7 +113,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   }
 
   if (lines.length === 0) {
-    return <LyricsEmptyState />;
+    return <LyricsEmptyState presentation={presentation} />;
   }
 
   return (
@@ -113,15 +146,28 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
         ref={containerRef}
         key={songId}
         className={`custom-scrollbar flex w-full flex-1 overflow-y-auto animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)] ${
-          isAudience ? "px-12 py-10 md:px-16 md:py-14" : "px-12 py-8"
+          isAudience ? "" : "px-12 py-8"
         }`}
+        style={
+          isAudience
+            ? {
+                padding: `${audiencePresentationSpec.verticalPaddingPx}px ${audiencePresentationSpec.horizontalPaddingPx}px`,
+              }
+            : undefined
+        }
       >
         <div
           className={`mx-auto flex w-full flex-col items-center ${
-            isAudience
-              ? "min-h-full max-w-[min(92vw,1600px)] justify-center gap-10"
-              : "max-w-2xl gap-7"
+            isAudience ? "min-h-full justify-center" : "max-w-2xl gap-7"
           }`}
+          style={
+            isAudience
+              ? {
+                  maxWidth: `min(${audiencePresentationSpec.contentWidthRatio * 100}vw, ${audiencePresentationSpec.contentMaxWidthPx}px)`,
+                  gap: audiencePresentationSpec.lineGapPx,
+                }
+              : undefined
+          }
         >
           {lines.map((line, idx) => (
             <div key={idx} data-lyrics-line-index={idx} className="w-full">

@@ -173,11 +173,43 @@ export interface AirPlayRoutePickerBounds {
 }
 
 export type AirPlayAudienceMode = "idle" | "lyrics" | "cdg";
+export type AirPlayOutputPhase =
+  | "idle"
+  | "route_selected"
+  | "buffering"
+  | "playing"
+  | "failed";
 
 export interface AirPlayViewport {
   widthPx: number;
   heightPx: number;
   bottomInsetPx: number;
+}
+
+export interface AirPlayColor {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+}
+
+export interface AudiencePresentationSpec {
+  contentWidthRatio: number;
+  contentMaxWidthPx: number;
+  horizontalPaddingPx: number;
+  verticalPaddingPx: number;
+  lineGapPx: number;
+  fontSizePx: number;
+  lineHeightMultiple: number;
+  activeScale: number;
+  statusFontSizePx: number;
+  activeGlowBlurPx: number;
+  activeTextColor: AirPlayColor;
+  pastTextColor: AirPlayColor;
+  futureTextColor: AirPlayColor;
+  plainTextColor: AirPlayColor;
+  statusTextColor: AirPlayColor;
+  activeGlowColor: AirPlayColor;
 }
 
 export interface AirPlayAudienceMessages {
@@ -190,21 +222,24 @@ export interface AirPlayAudienceMessages {
 export interface AirPlayAudienceStatePayload {
   mode: AirPlayAudienceMode;
   songId: string | null;
-  isPlaying: boolean;
-  positionMs: number;
   lines: LyricLine[];
-  activeLineIndex: number;
   offsetMs: number;
   isLoading: boolean;
   lyricsFontStep: number;
   messages: AirPlayAudienceMessages;
   viewport: AirPlayViewport;
+  presentationSpec: AudiencePresentationSpec;
 }
 
 export interface AirPlayOutputStateEvent {
   active: boolean;
   routeName: string | null;
   mode: AirPlayAudienceMode;
+  phase: AirPlayOutputPhase;
+  detail: string | null;
+  displayedPositionMs: number | null;
+  streamGeneration: number;
+  latencyMs: number | null;
 }
 
 // ─── Separation ──────────────────────────────────────────

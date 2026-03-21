@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Monitor } from "lucide-react";
+import { buildAudiencePresentationSpec } from "@/lib/audience-presentation";
 import { getMonitors, openFullscreenPlayer } from "@/lib/fullscreen-player";
 import { syncAirPlayAudienceState } from "@/lib/tauri";
 
@@ -147,10 +148,7 @@ export function MonitorPicker({ onClose, anchorRef }: MonitorPickerProps) {
     await syncAirPlayAudienceState({
       mode: "idle",
       songId: null,
-      isPlaying: false,
-      positionMs: 0,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading: false,
       lyricsFontStep: 0,
@@ -165,6 +163,7 @@ export function MonitorPicker({ onClose, anchorRef }: MonitorPickerProps) {
         heightPx: 720,
         bottomInsetPx: 0,
       },
+      presentationSpec: buildAudiencePresentationSpec(0),
     }).catch(() => {
       // Prefer keeping local output working even if AirPlay sync is stale.
     });

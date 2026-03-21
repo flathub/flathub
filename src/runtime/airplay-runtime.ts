@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { getShortcutPlatform } from "@/lib/app-shortcuts";
+import { buildAudiencePresentationSpec } from "@/lib/audience-presentation";
 import { closeFullscreenPlayer } from "@/lib/fullscreen-player";
 import { songHasCdgMedia } from "@/lib/song-media";
 import * as api from "@/lib/tauri";
@@ -25,10 +26,8 @@ const AIRPLAY_VIEWPORT = {
 
 interface BuildAirPlayAudienceStateOptions {
   playbackSnapshot: PlaybackStateSnapshot | null;
-  positionMs: number;
   lyricsSongId: string | null;
   lines: AirPlayAudienceStatePayload["lines"];
-  activeLineIndex: number;
   offsetMs: number;
   isLoading: boolean;
   lyricsFontStep: number;
@@ -39,10 +38,8 @@ interface BuildAirPlayAudienceStateOptions {
 
 export function buildAirPlayAudienceState({
   playbackSnapshot,
-  positionMs,
   lyricsSongId,
   lines,
-  activeLineIndex,
   offsetMs,
   isLoading,
   lyricsFontStep,
@@ -56,15 +53,13 @@ export function buildAirPlayAudienceState({
     return {
       mode: "idle",
       songId: null,
-      isPlaying: false,
-      positionMs: 0,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading,
       lyricsFontStep,
       messages,
       viewport: AIRPLAY_VIEWPORT,
+      presentationSpec: buildAudiencePresentationSpec(lyricsFontStep),
     };
   }
 
@@ -72,40 +67,35 @@ export function buildAirPlayAudienceState({
     return {
       mode: "cdg",
       songId,
-      isPlaying: playbackSnapshot?.is_playing ?? false,
-      positionMs,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading,
       lyricsFontStep,
       messages,
       viewport: AIRPLAY_VIEWPORT,
+      presentationSpec: buildAudiencePresentationSpec(lyricsFontStep),
     };
   }
 
+  const lyricsBelongToCurrentSong = lyricsSongId === songId;
   return {
     mode: "lyrics",
-    songId: lyricsSongId ?? songId,
-    isPlaying: playbackSnapshot?.is_playing ?? false,
-    positionMs,
-    lines,
-    activeLineIndex,
+    songId,
+    lines: lyricsBelongToCurrentSong ? lines : [],
     offsetMs,
-    isLoading,
+    isLoading: isLoading || !lyricsBelongToCurrentSong,
     lyricsFontStep,
     messages,
     viewport: AIRPLAY_VIEWPORT,
+    presentationSpec: buildAudiencePresentationSpec(lyricsFontStep),
   };
 }
 
 export function useAirPlayAudienceSync(enabled = true): void {
   const { t } = useTranslation();
   const playbackSnapshot = usePlayerStore((s) => s.snapshot);
-  const positionMs = usePlayerStore((s) => s.positionMs);
   const lyricsSongId = useLyricsStore((s) => s.songId);
   const lines = useLyricsStore((s) => s.lines);
-  const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
   const offsetMs = useLyricsStore((s) => s.offsetMs);
   const isLoading = useLyricsStore((s) => s.isLoading);
   const hasCdg = useCdgStore((s) => s.hasCdg);
@@ -126,10 +116,8 @@ export function useAirPlayAudienceSync(enabled = true): void {
       .syncAirPlayAudienceState(
         buildAirPlayAudienceState({
           playbackSnapshot,
-          positionMs,
           lyricsSongId,
           lines,
-          activeLineIndex,
           offsetMs,
           isLoading,
           lyricsFontStep,
@@ -147,7 +135,6 @@ export function useAirPlayAudienceSync(enabled = true): void {
         // Auxiliary sync failures must not interrupt local playback.
       });
   }, [
-    activeLineIndex,
     currentSongHasCdg,
     enabled,
     hasCdg,
@@ -158,7 +145,6 @@ export function useAirPlayAudienceSync(enabled = true): void {
     lyricsSongId,
     offsetMs,
     playbackSnapshot,
-    positionMs,
     t,
   ]);
 }
@@ -178,7 +164,13 @@ export function useAirPlayOutputState(enabled = true): void {
       unlisten = await listen<AirPlayOutputStateEvent>(
         AIRPLAY_OUTPUT_STATE_EVENT,
         (event) => {
-          if (cancelled || !event.payload.active) {
+          if (cancelled) {
+            return;
+          }
+
+          usePlayerStore.getState().updateAirPlayOutput(event.payload);
+
+          if (!event.payload.active || event.payload.phase !== "playing") {
             return;
           }
 

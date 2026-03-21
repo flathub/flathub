@@ -18,6 +18,7 @@ pub fn ensure_output_thread(
     start_lock: &Arc<Mutex<()>>,
     playback: Arc<Mutex<PlaybackController>>,
     airplay_audio_tap: Arc<AirPlayAudioTap>,
+    airplay_local_output_suppressed: Arc<AtomicBool>,
 ) -> Result<()> {
     if started.load(Ordering::SeqCst) {
         return Ok(());
@@ -32,7 +33,12 @@ pub fn ensure_output_thread(
 
     let (startup_tx, startup_rx) = mpsc::sync_channel(1);
     thread::spawn(move || {
-        if let Err(error) = start_output_thread(playback, airplay_audio_tap, startup_tx) {
+        if let Err(error) = start_output_thread(
+            playback,
+            airplay_audio_tap,
+            airplay_local_output_suppressed,
+            startup_tx,
+        ) {
             eprintln!("audio output thread failed to start: {error:#}");
         }
     });
@@ -298,6 +304,7 @@ fn build_output_stream<T>(
     config: &cpal::StreamConfig,
     playback: Arc<Mutex<PlaybackController>>,
     airplay_audio_tap: Arc<AirPlayAudioTap>,
+    airplay_local_output_suppressed: Arc<AtomicBool>,
 ) -> Result<Stream>
 where
     T: SizedSample + Sample + cpal::FromSample<f32>,
@@ -329,14 +336,11 @@ where
 
             let tap_samples = downmix_for_airplay(&scratch, channels);
             airplay_audio_tap.push_interleaved(sample_rate, 2, &tap_samples);
-
-            for frame in scratch.chunks(channels).zip(data.chunks_mut(channels)) {
-                let (input_frame, output_frame) = frame;
-                for (input_sample, output_sample) in input_frame.iter().zip(output_frame.iter_mut())
-                {
-                    *output_sample = T::from_sample(*input_sample);
-                }
-            }
+            write_output_samples(
+                &scratch,
+                data,
+                airplay_local_output_suppressed.load(Ordering::SeqCst),
+            );
         },
         move |error| {
             eprintln!("audio output stream error: {error}");
@@ -350,6 +354,7 @@ where
 fn start_output_thread(
     playback: Arc<Mutex<PlaybackController>>,
     airplay_audio_tap: Arc<AirPlayAudioTap>,
+    airplay_local_output_suppressed: Arc<AtomicBool>,
     startup_tx: mpsc::SyncSender<Result<()>>,
 ) -> Result<()> {
     let host = cpal::default_host();
@@ -361,13 +366,31 @@ fn start_output_thread(
         .context("failed to read default audio output config")?;
     let stream = match config.sample_format() {
         SampleFormat::F32 => {
-            build_output_stream::<f32>(&device, &config.into(), playback, airplay_audio_tap)?
+            build_output_stream::<f32>(
+                &device,
+                &config.into(),
+                playback,
+                airplay_audio_tap,
+                airplay_local_output_suppressed,
+            )?
         }
         SampleFormat::I16 => {
-            build_output_stream::<i16>(&device, &config.into(), playback, airplay_audio_tap)?
+            build_output_stream::<i16>(
+                &device,
+                &config.into(),
+                playback,
+                airplay_audio_tap,
+                airplay_local_output_suppressed,
+            )?
         }
         SampleFormat::U16 => {
-            build_output_stream::<u16>(&device, &config.into(), playback, airplay_audio_tap)?
+            build_output_stream::<u16>(
+                &device,
+                &config.into(),
+                playback,
+                airplay_audio_tap,
+                airplay_local_output_suppressed,
+            )?
         }
         sample_format => {
             anyhow::bail!("unsupported audio output sample format: {sample_format:?}");
@@ -399,4 +422,39 @@ fn downmix_for_airplay(samples: &[f32], channels: usize) -> Vec<f32> {
     }
 
     stereo
+}
+
+fn write_output_samples<T>(scratch: &[f32], data: &mut [T], suppress_local_output: bool)
+where
+    T: SizedSample + Sample + cpal::FromSample<f32>,
+{
+    if suppress_local_output {
+        for output_sample in data.iter_mut() {
+            *output_sample = T::from_sample(0.0);
+        }
+        return;
+    }
+
+    for (input_sample, output_sample) in scratch.iter().zip(data.iter_mut()) {
+        *output_sample = T::from_sample(*input_sample);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_output_samples;
+
+    #[test]
+    fn write_output_samples_preserves_rendered_audio_when_not_suppressed() {
+        let mut output = [0.0_f32; 4];
+        write_output_samples(&[0.1, -0.2, 0.3, -0.4], &mut output, false);
+        assert_eq!(output, [0.1, -0.2, 0.3, -0.4]);
+    }
+
+    #[test]
+    fn write_output_samples_silences_local_device_when_suppressed() {
+        let mut output = [1.0_f32; 4];
+        write_output_samples(&[0.1, -0.2, 0.3, -0.4], &mut output, true);
+        assert_eq!(output, [0.0, 0.0, 0.0, 0.0]);
+    }
 }

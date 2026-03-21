@@ -9,12 +9,29 @@
 #import <Foundation/Foundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-typedef void (*OKAirPlayStateCallback)(bool active, const char *route_name, int mode_tag);
+typedef void (*OKAirPlayStateCallback)(
+    bool active,
+    const char *route_name,
+    int mode_tag,
+    int phase_tag,
+    const char *detail,
+    long long displayed_position_ms,
+    unsigned long long stream_generation,
+    long long latency_ms
+);
 
 typedef NS_ENUM(NSInteger, OKAirPlayMode) {
     OKAirPlayModeIdle = 0,
     OKAirPlayModeLyrics = 1,
     OKAirPlayModeCdg = 2,
+};
+
+typedef NS_ENUM(NSInteger, OKAirPlayPhase) {
+    OKAirPlayPhaseIdle = 0,
+    OKAirPlayPhaseRouteSelected = 1,
+    OKAirPlayPhaseBuffering = 2,
+    OKAirPlayPhasePlaying = 3,
+    OKAirPlayPhaseFailed = 4,
 };
 
 static const NSInteger OKAirPlayVideoWidth = 1280;
@@ -24,7 +41,9 @@ static const NSInteger OKAirPlayAudioSampleRate = 44100;
 static const NSInteger OKAirPlayAudioChannels = 2;
 static const NSInteger OKAirPlayAudioFramesPerTick =
     OKAirPlayAudioSampleRate / OKAirPlayFramesPerSecond;
-static const NSInteger OKAirPlayPlaylistWindow = 3;
+static const NSInteger OKAirPlayPlaylistWindow = 4;
+static const NSInteger OKAirPlayPreferredSegmentIntervalMs = 250;
+static const NSInteger OKAirPlayMaxSyncPoints = 720;
 
 static NSString *OKStringValue(id value);
 static NSDictionary *OKDictionaryValue(id value);
@@ -61,21 +80,6 @@ static CGFloat OKFontSizeForStep(NSInteger step) {
     default:
         return 68.0;
     }
-}
-
-static BOOL OKSceneIsPlainText(NSArray *lines) {
-    if (lines.count == 0) {
-        return NO;
-    }
-
-    for (id lineValue in lines) {
-        NSDictionary *line = OKDictionaryValue(lineValue);
-        if (line == nil || OKLongLongValue(line[@"timeMs"]) != 0) {
-            return NO;
-        }
-    }
-
-    return YES;
 }
 
 static NSInteger OKActiveWordIndex(NSArray *words, long long adjustedMs) {
@@ -143,6 +147,44 @@ static void OKSetFillColor(CGContextRef context, CGFloat r, CGFloat g, CGFloat b
     CGContextSetRGBFillColor(context, r, g, b, a);
 }
 
+static NSDictionary *OKPresentationSpecValue(NSDictionary *scene) {
+    return OKDictionaryValue(scene[@"presentationSpec"]) ?: @{};
+}
+
+static CGFloat OKSceneFloatValue(NSDictionary *dictionary, NSString *key, CGFloat fallback) {
+    id value = dictionary[key];
+    return [value respondsToSelector:@selector(doubleValue)] ? (CGFloat)[value doubleValue] : fallback;
+}
+
+static NSDictionary *OKColorDictionaryValue(
+    NSDictionary *dictionary,
+    NSString *key,
+    CGFloat fallbackR,
+    CGFloat fallbackG,
+    CGFloat fallbackB,
+    CGFloat fallbackA
+) {
+    NSDictionary *color = OKDictionaryValue(dictionary[key]);
+    if (color == nil) {
+        return @{
+            @"red": @(fallbackR),
+            @"green": @(fallbackG),
+            @"blue": @(fallbackB),
+            @"alpha": @(fallbackA),
+        };
+    }
+    return color;
+}
+
+static id OKColorObjectFromDictionary(NSDictionary *color) {
+    return OKBridgedColor(
+        OKSceneFloatValue(color, @"red", 1.0),
+        OKSceneFloatValue(color, @"green", 1.0),
+        OKSceneFloatValue(color, @"blue", 1.0),
+        OKSceneFloatValue(color, @"alpha", 1.0)
+    );
+}
+
 static CTFontRef OKCreateBoldSystemFont(CGFloat size) {
     CTFontRef base = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, NULL);
     if (base == NULL) {
@@ -164,11 +206,26 @@ static CTFontRef OKCreateBoldSystemFont(CGFloat size) {
     return base;
 }
 
-static NSDictionary *OKBaseTextAttributes(CGFloat fontSize, id color) {
+static NSDictionary *OKBaseTextAttributes(CGFloat fontSize, id color, CGFloat lineHeightMultiple) {
     CTFontRef font = OKCreateBoldSystemFont(fontSize);
     NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
     if (font != NULL) {
         attributes[(id)kCTFontAttributeName] = (__bridge id)font;
+        CGFloat lineHeight = fontSize * lineHeightMultiple;
+        CTTextAlignment alignment = kCTTextAlignmentCenter;
+        CGFloat minimumLineHeight = lineHeight;
+        CGFloat maximumLineHeight = lineHeight;
+        CTParagraphStyleSetting settings[] = {
+            { kCTParagraphStyleSpecifierAlignment, sizeof(alignment), &alignment },
+            { kCTParagraphStyleSpecifierMinimumLineHeight, sizeof(minimumLineHeight), &minimumLineHeight },
+            { kCTParagraphStyleSpecifierMaximumLineHeight, sizeof(maximumLineHeight), &maximumLineHeight },
+        };
+        CTParagraphStyleRef paragraphStyle =
+            CTParagraphStyleCreate(settings, sizeof(settings) / sizeof(settings[0]));
+        if (paragraphStyle != NULL) {
+            attributes[(id)kCTParagraphStyleAttributeName] = (__bridge id)paragraphStyle;
+            CFRelease(paragraphStyle);
+        }
         CFRelease(font);
     }
     attributes[(id)kCTForegroundColorAttributeName] = color;
@@ -210,12 +267,14 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return data;
 }
 
-@interface OKAirPlayBridge : NSObject <AVAssetWriterDelegate>
+@interface OKAirPlayBridge : NSObject <AVAssetWriterDelegate, AVRoutePickerViewDelegate>
 
 @property(nonatomic, strong) AVPlayer *player;
 @property(nonatomic, strong) AVRoutePickerView *routePickerView;
 @property(nonatomic, assign) OKAirPlayStateCallback stateCallback;
 @property(nonatomic, assign) BOOL observingPlayer;
+@property(nonatomic, strong) AVPlayerItem *observedItem;
+@property(nonatomic, assign) BOOL observingCurrentItem;
 
 @property(nonatomic, strong) dispatch_queue_t mediaQueue;
 @property(nonatomic, strong) dispatch_source_t videoTimer;
@@ -230,8 +289,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, assign) BOOL writerStarted;
 @property(nonatomic, assign) BOOL realItemAttached;
 @property(nonatomic, assign) BOOL hasInitializationSegment;
+@property(nonatomic, assign) BOOL hasWrittenVideo;
+@property(nonatomic, assign) BOOL hasWrittenAudio;
 
 @property(nonatomic, strong) NSMutableArray<OKAirPlaySegmentEntry *> *segments;
+@property(nonatomic, strong) NSMutableArray<NSDictionary *> *syncPoints;
 @property(nonatomic, assign) NSInteger nextSegmentSequence;
 @property(nonatomic, assign) int64_t nextVideoFrameIndex;
 @property(nonatomic, assign) int64_t nextAudioFrameIndex;
@@ -241,8 +303,22 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, assign) uint64_t currentAudioEpoch;
 
 @property(nonatomic, assign) OKAirPlayMode currentMode;
+@property(nonatomic, assign) OKAirPlayPhase currentPhase;
+@property(nonatomic, copy) NSString *currentPhaseDetail;
+@property(nonatomic, assign) uint64_t streamGeneration;
+@property(nonatomic, assign) uint64_t attachedGeneration;
 @property(nonatomic, strong) NSDictionary *latestScene;
 @property(nonatomic, strong) NSData *latestCdgFrame;
+@property(nonatomic, assign) BOOL routeSelectionPending;
+@property(nonatomic, assign) NSUInteger routeSelectionGeneration;
+@property(nonatomic, copy) NSString *lastPlaybackErrorDetail;
+@property(nonatomic, assign) long long lastEmittedDisplayedPositionMs;
+@property(nonatomic, assign) long long lastEmittedLatencyMs;
+@property(nonatomic, assign) uint64_t lastEmittedStreamGeneration;
+@property(nonatomic, assign) BOOL lastEmittedActive;
+@property(nonatomic, assign) OKAirPlayMode lastEmittedMode;
+@property(nonatomic, assign) OKAirPlayPhase lastEmittedPhase;
+@property(nonatomic, copy) NSString *lastEmittedDetail;
 
 + (instancetype)sharedBridge;
 - (void)syncRoutePickerForRootView:(NSView *)rootView
@@ -262,6 +338,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                 channels:(uint16_t)channels
                    epoch:(uint64_t)epoch;
 - (void)applyAudioEpoch:(uint64_t)epoch;
+- (void)refreshPlaybackPhase;
 
 @end
 
@@ -284,15 +361,33 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     _mediaQueue = dispatch_queue_create("openkara.airplay.media", DISPATCH_QUEUE_SERIAL);
     _segments = [NSMutableArray array];
+    _syncPoints = [NSMutableArray array];
     _pendingAudioData = [NSMutableData data];
     _currentMode = OKAirPlayModeIdle;
+    _currentPhase = OKAirPlayPhaseIdle;
     _currentAudioEpoch = 1;
+    _streamGeneration = 1;
+    _attachedGeneration = 0;
+    _lastEmittedDisplayedPositionMs = -1;
+    _lastEmittedLatencyMs = -1;
+    _lastEmittedStreamGeneration = 0;
+    _lastEmittedActive = NO;
+    _lastEmittedMode = OKAirPlayModeIdle;
+    _lastEmittedPhase = OKAirPlayPhaseIdle;
     return self;
 }
 
 - (void)dealloc {
     if (self.observingPlayer) {
         [self.player removeObserver:self forKeyPath:@"externalPlaybackActive"];
+        [self.player removeObserver:self forKeyPath:@"timeControlStatus"];
+        [self.player removeObserver:self forKeyPath:@"currentItem"];
+    }
+    if (self.observingCurrentItem && self.observedItem != nil) {
+        [self.observedItem removeObserver:self forKeyPath:@"status"];
+        [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                        name:AVPlayerItemNewErrorLogEntryNotification
+                                                      object:self.observedItem];
     }
 }
 
@@ -301,8 +396,244 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    BOOL active = self.realItemAttached && self.player != nil && self.player.externalPlaybackActive;
-    self.stateCallback(active, NULL, (int)self.currentMode);
+    AVPlayerItem *item = self.player.currentItem;
+    BOOL active = self.player != nil && item != nil &&
+        item.status == AVPlayerItemStatusReadyToPlay && self.player.externalPlaybackActive &&
+        self.currentMode != OKAirPlayModeIdle && self.currentPhase == OKAirPlayPhasePlaying;
+    const char *detail = self.currentPhaseDetail.length > 0 ? self.currentPhaseDetail.UTF8String : NULL;
+    NSNumber *displayedPositionMs = [self displayedPositionNumber];
+    NSNumber *latencyMs = [self latencyNumberForDisplayedPosition:displayedPositionMs];
+    BOOL changed = self.lastEmittedActive != active ||
+        self.lastEmittedMode != self.currentMode ||
+        self.lastEmittedPhase != self.currentPhase ||
+        self.lastEmittedStreamGeneration != self.streamGeneration ||
+        self.lastEmittedDisplayedPositionMs != (displayedPositionMs != nil ? displayedPositionMs.longLongValue : -1) ||
+        self.lastEmittedLatencyMs != (latencyMs != nil ? latencyMs.longLongValue : -1) ||
+        !((self.lastEmittedDetail == nil && self.currentPhaseDetail == nil) ||
+          [self.lastEmittedDetail isEqualToString:self.currentPhaseDetail]);
+
+    if (!changed) {
+        return;
+    }
+
+    self.lastEmittedActive = active;
+    self.lastEmittedMode = self.currentMode;
+    self.lastEmittedPhase = self.currentPhase;
+    self.lastEmittedStreamGeneration = self.streamGeneration;
+    self.lastEmittedDisplayedPositionMs =
+        displayedPositionMs != nil ? displayedPositionMs.longLongValue : -1;
+    self.lastEmittedLatencyMs = latencyMs != nil ? latencyMs.longLongValue : -1;
+    self.lastEmittedDetail = self.currentPhaseDetail;
+
+    self.stateCallback(
+        active,
+        NULL,
+        (int)self.currentMode,
+        (int)self.currentPhase,
+        detail,
+        displayedPositionMs != nil ? displayedPositionMs.longLongValue : -1,
+        self.streamGeneration,
+        latencyMs != nil ? latencyMs.longLongValue : -1
+    );
+}
+
+- (void)setPhase:(OKAirPlayPhase)phase detail:(NSString *)detail {
+    BOOL changed = self.currentPhase != phase ||
+        !((self.currentPhaseDetail == nil && detail == nil) ||
+          [self.currentPhaseDetail isEqualToString:detail]);
+    self.currentPhase = phase;
+    self.currentPhaseDetail = detail.length > 0 ? [detail copy] : nil;
+
+    if (changed) {
+        NSLog(
+            @"OpenKara AirPlay phase -> %ld (%@)",
+            (long)phase,
+            self.currentPhaseDetail ?: @"no-detail"
+        );
+    }
+}
+
+- (NSString *)playlistURLForCurrentGeneration {
+    if (self.playlistURLString.length == 0) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"%@?generation=%llu", self.playlistURLString, self.streamGeneration];
+}
+
+- (NSString *)initializationFilename {
+    return [NSString stringWithFormat:@"init-%llu.mp4", self.streamGeneration];
+}
+
+- (NSString *)segmentFilenameForSequence:(NSInteger)sequence {
+    return [NSString stringWithFormat:@"segment-%llu-%ld.m4s", self.streamGeneration, (long)sequence];
+}
+
+- (void)resetOutputClockTracking {
+    [self.syncPoints removeAllObjects];
+    self.lastEmittedDisplayedPositionMs = -1;
+    self.lastEmittedLatencyMs = -1;
+}
+
+- (void)resetMediaPipelineForGeneration:(uint64_t)generation {
+    if (self.streamGeneration == generation) {
+        return;
+    }
+
+    self.streamGeneration = generation;
+    self.attachedGeneration = 0;
+    self.writer = nil;
+    self.videoInput = nil;
+    self.audioInput = nil;
+    self.pixelBufferAdaptor = nil;
+    self.writerStarted = NO;
+    self.realItemAttached = NO;
+    self.hasInitializationSegment = NO;
+    self.hasWrittenVideo = NO;
+    self.hasWrittenAudio = NO;
+    self.nextSegmentSequence = 0;
+    self.nextVideoFrameIndex = 0;
+    self.nextAudioFrameIndex = 0;
+    self.lastPlaybackErrorDetail = nil;
+    [self.segments removeAllObjects];
+    [self.pendingAudioData setLength:0];
+    self.pendingAudioOffset = 0;
+    [self resetOutputClockTracking];
+
+    if (self.player != nil) {
+        [self.player replaceCurrentItemWithPlayerItem:nil];
+        [self syncCurrentItemObservation];
+    }
+}
+
+- (void)recordSyncPointForSourcePosition:(long long)sourcePositionMs {
+    long long streamPositionMs =
+        llround((double)self.nextVideoFrameIndex * 1000.0 / (double)OKAirPlayFramesPerSecond);
+    [self.syncPoints addObject:@{
+        @"streamMs": @(streamPositionMs),
+        @"sourceMs": @(sourcePositionMs),
+        @"generation": @(self.streamGeneration),
+    }];
+    while (self.syncPoints.count > OKAirPlayMaxSyncPoints) {
+        [self.syncPoints removeObjectAtIndex:0];
+    }
+}
+
+- (NSNumber *)displayedPositionNumber {
+    if (self.player == nil || !self.player.externalPlaybackActive || self.syncPoints.count == 0) {
+        return nil;
+    }
+
+    long long streamPositionMs =
+        llround(CMTimeGetSeconds(self.player.currentTime) * 1000.0);
+    NSDictionary *anchor = nil;
+    for (NSDictionary *point in [self.syncPoints reverseObjectEnumerator]) {
+        if (OKLongLongValue(point[@"generation"]) != (long long)self.streamGeneration) {
+            continue;
+        }
+        if (OKLongLongValue(point[@"streamMs"]) <= streamPositionMs) {
+            anchor = point;
+            break;
+        }
+    }
+    if (anchor == nil) {
+        anchor = self.syncPoints.lastObject;
+    }
+    if (anchor == nil) {
+        return nil;
+    }
+
+    long long anchorStreamMs = OKLongLongValue(anchor[@"streamMs"]);
+    long long anchorSourceMs = OKLongLongValue(anchor[@"sourceMs"]);
+    return @(MAX(0, anchorSourceMs + (streamPositionMs - anchorStreamMs)));
+}
+
+- (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs {
+    if (displayedPositionMs == nil || self.latestScene == nil) {
+        return nil;
+    }
+
+    long long sourcePositionMs = OKLongLongValue(self.latestScene[@"positionMs"]);
+    return @(MAX(0, sourcePositionMs - displayedPositionMs.longLongValue));
+}
+
+- (NSString *)waitingDetail {
+    if (!self.hasWrittenVideo) {
+        return @"waiting_for_video";
+    }
+    if (!self.hasWrittenAudio) {
+        return @"waiting_for_audio";
+    }
+    return @"waiting_for_route";
+}
+
+- (void)refreshPlaybackPhase {
+    AVPlayerItem *item = self.player.currentItem;
+    NSString *detail = nil;
+    OKAirPlayPhase phase = OKAirPlayPhaseIdle;
+
+    if (self.lastPlaybackErrorDetail.length > 0) {
+        phase = OKAirPlayPhaseFailed;
+        detail = self.lastPlaybackErrorDetail;
+    } else if (self.writer.status == AVAssetWriterStatusFailed) {
+        phase = OKAirPlayPhaseFailed;
+        detail = @"writer_failed";
+    } else if (item != nil && item.status == AVPlayerItemStatusFailed) {
+        phase = OKAirPlayPhaseFailed;
+        detail = @"player_item_failed";
+    } else if (self.currentMode == OKAirPlayModeIdle) {
+        if (self.routeSelectionPending && !self.player.externalPlaybackActive) {
+            phase = OKAirPlayPhaseRouteSelected;
+            detail = @"waiting_for_route";
+        }
+    } else if (item == nil || item.status == AVPlayerItemStatusUnknown) {
+        phase = self.routeSelectionPending ? OKAirPlayPhaseRouteSelected : OKAirPlayPhaseBuffering;
+        detail = self.routeSelectionPending ? @"waiting_for_route" : @"waiting_for_video";
+    } else if (!self.hasWrittenVideo || !self.hasWrittenAudio) {
+        phase = OKAirPlayPhaseBuffering;
+        detail = [self waitingDetail];
+    } else if (item.status == AVPlayerItemStatusReadyToPlay && self.player.externalPlaybackActive) {
+        phase = OKAirPlayPhasePlaying;
+        self.routeSelectionPending = NO;
+    } else if (self.routeSelectionPending) {
+        phase = OKAirPlayPhaseRouteSelected;
+        detail = @"waiting_for_route";
+    } else if (item.status == AVPlayerItemStatusReadyToPlay) {
+        phase = OKAirPlayPhaseBuffering;
+        detail = @"waiting_for_route";
+    }
+
+    [self setPhase:phase detail:detail];
+    [self emitState];
+}
+
+- (void)syncCurrentItemObservation {
+    AVPlayerItem *item = self.player.currentItem;
+    if (self.observedItem == item) {
+        return;
+    }
+
+    if (self.observingCurrentItem && self.observedItem != nil) {
+        [self.observedItem removeObserver:self forKeyPath:@"status"];
+        [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                        name:AVPlayerItemNewErrorLogEntryNotification
+                                                      object:self.observedItem];
+    }
+
+    self.observedItem = item;
+    self.observingCurrentItem = NO;
+    self.lastPlaybackErrorDetail = nil;
+
+    if (item != nil) {
+        [item addObserver:self
+               forKeyPath:@"status"
+                  options:NSKeyValueObservingOptionNew
+                  context:NULL];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handlePlayerItemErrorLogEntry:)
+                                                     name:AVPlayerItemNewErrorLogEntryNotification
+                                                   object:item];
+        self.observingCurrentItem = YES;
+    }
 }
 
 - (void)ensurePlayer {
@@ -312,42 +643,58 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     self.player = [[AVPlayer alloc] init];
     self.player.allowsExternalPlayback = YES;
-    self.player.muted = YES;
     self.player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
     if (@available(macOS 10.15, *)) {
-        self.player.automaticallyWaitsToMinimizeStalling = YES;
+        self.player.automaticallyWaitsToMinimizeStalling = NO;
     }
 
     [self.player addObserver:self
                   forKeyPath:@"externalPlaybackActive"
                      options:NSKeyValueObservingOptionNew
                      context:NULL];
+    [self.player addObserver:self
+                  forKeyPath:@"timeControlStatus"
+                     options:NSKeyValueObservingOptionNew
+                     context:NULL];
+    [self.player addObserver:self
+                  forKeyPath:@"currentItem"
+                     options:NSKeyValueObservingOptionNew
+                     context:NULL];
     self.observingPlayer = YES;
 }
 
 - (void)attachPlayerItemIfReady {
-    if (self.realItemAttached || !self.hasInitializationSegment || self.segments.count == 0 ||
-        self.playlistURLString.length == 0) {
+    if (!self.hasInitializationSegment || self.segments.count == 0 || self.playlistURLString.length == 0) {
         return;
     }
 
     [self ensurePlayer];
 
-    NSURL *playlistURL = [NSURL URLWithString:self.playlistURLString];
+    if (self.attachedGeneration == self.streamGeneration && self.realItemAttached) {
+        return;
+    }
+
+    NSURL *playlistURL = [NSURL URLWithString:[self playlistURLForCurrentGeneration]];
     if (playlistURL == nil) {
         return;
     }
 
     AVPlayerItem *item = [AVPlayerItem playerItemWithURL:playlistURL];
     if (@available(macOS 10.15, *)) {
-        item.preferredForwardBufferDuration = 1.0;
+        // RATIONALE: Seeking on AirPlay has to discard stale HLS buffer. A
+        // persistent route is fine, but a persistent item is not; a new item
+        // per stream generation is what lets TV jump to the new timeline
+        // without waiting through old buffered segments.
+        item.preferredForwardBufferDuration = 0.25;
         item.canUseNetworkResourcesForLiveStreamingWhilePaused = YES;
     }
     [self.player replaceCurrentItemWithPlayerItem:item];
-    self.player.muted = !self.player.externalPlaybackActive;
+    [self syncCurrentItemObservation];
     [self.player play];
     self.realItemAttached = YES;
-    [self emitState];
+    self.attachedGeneration = self.streamGeneration;
+    NSLog(@"OpenKara AirPlay attached player item for %@ (generation %llu)", playlistURL, self.streamGeneration);
+    [self refreshPlaybackPhase];
 }
 
 - (void)removeOldSegmentFilesIfNeeded {
@@ -378,7 +725,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     [playlist appendFormat:@"#EXT-X-TARGETDURATION:%ld\n", (long)ceil(maxDuration)];
     [playlist appendFormat:@"#EXT-X-MEDIA-SEQUENCE:%ld\n", (long)mediaSequence];
-    [playlist appendString:@"#EXT-X-MAP:URI=\"init.mp4\"\n"];
+    [playlist appendFormat:@"#EXT-X-MAP:URI=\"%@\"\n", [self initializationFilename]];
     for (OKAirPlaySegmentEntry *entry in self.segments) {
         [playlist appendFormat:@"#EXTINF:%.3f,\n%@\n", entry.duration, entry.filename];
     }
@@ -447,7 +794,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         self.writer = [[AVAssetWriter alloc] initWithContentType:contentType];
         self.writer.delegate = self;
         self.writer.shouldOptimizeForNetworkUse = YES;
-        self.writer.preferredOutputSegmentInterval = CMTimeMake(1, 1);
+        self.writer.preferredOutputSegmentInterval =
+            CMTimeMake(OKAirPlayPreferredSegmentIntervalMs, 1000);
         self.writer.initialSegmentStartTime = kCMTimeZero;
         self.writer.outputFileTypeProfile = AVFileTypeProfileMPEG4AppleHLS;
 
@@ -506,6 +854,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         [self.pendingAudioData setLength:0];
         self.realItemAttached = NO;
         self.hasInitializationSegment = NO;
+        self.hasWrittenVideo = NO;
+        self.hasWrittenAudio = NO;
+        self.lastPlaybackErrorDetail = nil;
+        [self resetOutputClockTracking];
 
         if (![self.writer startWriting]) {
             NSLog(@"OpenKara AirPlay failed to start writer: %@", error ?: self.writer.error);
@@ -651,6 +1003,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     if (![self.audioInput appendSampleBuffer:sampleBuffer]) {
         NSLog(@"OpenKara AirPlay failed to append audio sample buffer: %@", self.writer.error);
     } else {
+        self.hasWrittenAudio = YES;
         self.nextAudioFrameIndex += OKAirPlayAudioFramesPerTick;
     }
 
@@ -662,7 +1015,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                    color:(id)color
                inContext:(CGContextRef)context
                  atPoint:(CGPoint)point {
-    NSDictionary *attributes = OKBaseTextAttributes(fontSize, color);
+    NSDictionary *attributes = OKBaseTextAttributes(fontSize, color, 1.0);
     NSAttributedString *attributed =
         [[NSAttributedString alloc] initWithString:text ?: @"" attributes:attributes];
     CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)attributed);
@@ -680,9 +1033,21 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)drawStatusSceneInContext:(CGContextRef)context message:(NSString *)message {
+    NSDictionary *presentationSpec = OKPresentationSpecValue(self.latestScene ?: @{});
+    NSDictionary *statusColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"statusTextColor",
+        142.0 / 255.0,
+        142.0 / 255.0,
+        147.0 / 255.0,
+        1.0
+    );
+    // RATIONALE: AirPlay empty/loading states are passive TV hints, not
+    // interactive UI. Keep them visually small so they don't dominate the
+    // audience screen or regress back to a large "background info window".
     [self drawCenteredText:message
-                  fontSize:28.0
-                     color:OKBridgedColor(0.56, 0.56, 0.58, 1.0)
+                  fontSize:OKSceneFloatValue(presentationSpec, @"statusFontSizePx", 18.0)
+                     color:OKColorObjectFromDictionary(statusColor)
                  inContext:context
                    atPoint:CGPointMake(OKAirPlayVideoWidth * 0.5, OKAirPlayVideoHeight * 0.5)];
 }
@@ -690,34 +1055,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (void)drawNoLyricsSceneInContext:(CGContextRef)context messages:(NSDictionary *)messages {
     NSString *noLyrics =
         OKStringValue(messages[@"noLyrics"]) ?: @"No lyrics available for this track";
-    NSString *addLyrics = OKStringValue(messages[@"addLyrics"]) ?: @"Add Lyrics";
-
-    [self drawCenteredText:noLyrics
-                  fontSize:28.0
-                     color:OKBridgedColor(0.56, 0.56, 0.58, 1.0)
-                 inContext:context
-                   atPoint:CGPointMake(OKAirPlayVideoWidth * 0.5, OKAirPlayVideoHeight * 0.5 - 26.0)];
-
-    CGFloat buttonWidth = MAX(160.0, addLyrics.length * 20.0);
-    CGRect buttonRect = CGRectMake(
-        (OKAirPlayVideoWidth - buttonWidth) * 0.5,
-        OKAirPlayVideoHeight * 0.5 + 14.0,
-        buttonWidth,
-        48.0
-    );
-    CGPathRef path = CGPathCreateWithRoundedRect(buttonRect, 10.0, 10.0, NULL);
-    CGContextSaveGState(context);
-    CGContextAddPath(context, path);
-    OKSetFillColor(context, 0.17, 0.17, 0.18, 1.0);
-    CGContextFillPath(context);
-    CGContextRestoreGState(context);
-    CGPathRelease(path);
-
-    [self drawCenteredText:addLyrics
-                  fontSize:22.0
-                     color:OKBridgedColor(0.92, 0.92, 0.96, 1.0)
-                 inContext:context
-                   atPoint:CGPointMake(CGRectGetMidX(buttonRect), CGRectGetMidY(buttonRect) - 5.0)];
+    [self drawStatusSceneInContext:context message:noLyrics];
 }
 
 - (NSArray<NSDictionary *> *)buildLyricLineLayoutsFromScene:(NSDictionary *)scene {
@@ -726,14 +1064,58 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return @[];
     }
 
-    long long positionMs = OKLongLongValue(scene[@"positionMs"]);
-    long long offsetMs = OKLongLongValue(scene[@"offsetMs"]);
-    long long adjustedMs = positionMs - offsetMs;
+    long long adjustedMs = OKLongLongValue(scene[@"adjustedMs"]);
     NSInteger activeLineIndex = OKIntegerValue(scene[@"activeLineIndex"]);
     NSInteger lyricsFontStep = OKIntegerValue(scene[@"lyricsFontStep"]);
-    BOOL isPlainText = OKSceneIsPlainText(lines);
-
-    CGFloat baseSize = OKFontSizeForStep(lyricsFontStep);
+    BOOL isPlainText = OKBoolValue(scene[@"isPlainText"]);
+    NSDictionary *presentationSpec = OKPresentationSpecValue(scene);
+    CGFloat baseSize =
+        OKSceneFloatValue(presentationSpec, @"fontSizePx", OKFontSizeForStep(lyricsFontStep));
+    CGFloat lineHeightMultiple =
+        OKSceneFloatValue(presentationSpec, @"lineHeightMultiple", 1.08);
+    CGFloat activeScale = OKSceneFloatValue(presentationSpec, @"activeScale", 1.05);
+    CGFloat horizontalPadding =
+        OKSceneFloatValue(presentationSpec, @"horizontalPaddingPx", 64.0);
+    CGFloat contentWidthRatio =
+        OKSceneFloatValue(presentationSpec, @"contentWidthRatio", 0.92);
+    CGFloat contentMaxWidth =
+        OKSceneFloatValue(presentationSpec, @"contentMaxWidthPx", 1600.0);
+    CGFloat contentWidth = MIN(
+        MIN((CGFloat)OKAirPlayVideoWidth * contentWidthRatio, contentMaxWidth),
+        (CGFloat)OKAirPlayVideoWidth - horizontalPadding * 2.0
+    );
+    NSDictionary *activeTextColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"activeTextColor",
+        1.0,
+        1.0,
+        1.0,
+        1.0
+    );
+    NSDictionary *pastTextColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"pastTextColor",
+        72.0 / 255.0,
+        72.0 / 255.0,
+        74.0 / 255.0,
+        1.0
+    );
+    NSDictionary *futureTextColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"futureTextColor",
+        58.0 / 255.0,
+        58.0 / 255.0,
+        60.0 / 255.0,
+        1.0
+    );
+    NSDictionary *plainTextColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"plainTextColor",
+        1.0,
+        1.0,
+        1.0,
+        1.0
+    );
     NSMutableArray<NSDictionary *> *layouts = [NSMutableArray arrayWithCapacity:lines.count];
 
     for (NSUInteger index = 0; index < lines.count; index += 1) {
@@ -750,7 +1132,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             state = @"past";
         }
 
-        CGFloat fontSize = [state isEqualToString:@"active"] ? baseSize * 1.05 : baseSize;
+        CGFloat fontSize = [state isEqualToString:@"active"] ? baseSize * activeScale : baseSize;
         NSMutableAttributedString *text = [[NSMutableAttributedString alloc] init];
         NSArray *words = OKArrayValue(line[@"words"]);
         BOOL hasWords = [words isKindOfClass:[NSArray class]] && words.count > 0;
@@ -767,55 +1149,64 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                 NSString *separator = wordIndex + 1 < words.count ? @" " : @"";
                 NSString *segmentText = [wordText stringByAppendingString:separator];
 
-                id color = OKBridgedColor(1.0, 1.0, 1.0, 1.0);
+                NSDictionary *color = activeTextColor;
                 if ([state isEqualToString:@"past"]) {
-                    color = OKBridgedColor(0.28, 0.28, 0.29, 1.0);
+                    color = pastTextColor;
                 } else if ([state isEqualToString:@"future"]) {
-                    color = OKBridgedColor(0.23, 0.23, 0.24, 1.0);
+                    color = futureTextColor;
+                } else if ([state isEqualToString:@"plain"]) {
+                    color = plainTextColor;
                 } else if ([state isEqualToString:@"active"]) {
                     if ((NSInteger)wordIndex < activeWordIndex) {
-                        color = OKBridgedColor(0.28, 0.28, 0.29, 1.0);
+                        color = pastTextColor;
                     } else if ((NSInteger)wordIndex == activeWordIndex) {
-                        color = OKBridgedColor(1.0, 1.0, 1.0, 1.0);
+                        color = activeTextColor;
                     } else {
-                        color = OKBridgedColor(0.23, 0.23, 0.24, 1.0);
+                        color = futureTextColor;
                     }
                 }
 
-                NSDictionary *attributes = OKBaseTextAttributes(fontSize, color);
+                NSDictionary *attributes = OKBaseTextAttributes(
+                    fontSize,
+                    OKColorObjectFromDictionary(color),
+                    lineHeightMultiple
+                );
                 [text appendAttributedString:[[NSAttributedString alloc] initWithString:segmentText
                                                                              attributes:attributes]];
             }
         } else {
             NSString *lineText = OKStringValue(line[@"text"]) ?: @"";
-            id color = OKBridgedColor(1.0, 1.0, 1.0, 1.0);
-            if ([state isEqualToString:@"past"]) {
-                color = OKBridgedColor(0.28, 0.28, 0.29, 1.0);
-            } else if ([state isEqualToString:@"future"]) {
-                color = OKBridgedColor(0.23, 0.23, 0.24, 1.0);
-            }
+            NSDictionary *color =
+                [state isEqualToString:@"past"] ? pastTextColor :
+                [state isEqualToString:@"future"] ? futureTextColor :
+                [state isEqualToString:@"plain"] ? plainTextColor : activeTextColor;
 
-            NSDictionary *attributes = OKBaseTextAttributes(fontSize, color);
+            NSDictionary *attributes = OKBaseTextAttributes(
+                fontSize,
+                OKColorObjectFromDictionary(color),
+                lineHeightMultiple
+            );
             [text appendAttributedString:[[NSAttributedString alloc] initWithString:lineText
                                                                          attributes:attributes]];
         }
 
-        CTLineRef ctLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
-        if (ctLine == NULL) {
+        CTFramesetterRef framesetter =
+            CTFramesetterCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+        if (framesetter == NULL) {
             continue;
         }
-
-        CGFloat ascent = 0.0;
-        CGFloat descent = 0.0;
-        CGFloat leading = 0.0;
-        CGFloat width = (CGFloat)CTLineGetTypographicBounds(ctLine, &ascent, &descent, &leading);
+        CGSize frameSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRangeMake(0, 0),
+            NULL,
+            CGSizeMake(contentWidth, CGFLOAT_MAX),
+            NULL
+        );
+        CFRelease(framesetter);
         [layouts addObject:@{
-            @"line": CFBridgingRelease(ctLine),
-            @"width": @(width),
-            @"ascent": @(ascent),
-            @"descent": @(descent),
-            @"leading": @(leading),
-            @"height": @(ascent + descent + leading),
+            @"text": text,
+            @"width": @(contentWidth),
+            @"height": @(MAX(ceil(frameSize.height), ceil(fontSize * lineHeightMultiple))),
             @"state": state,
         }];
     }
@@ -850,33 +1241,75 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    CGFloat gap = 34.0;
+    NSDictionary *presentationSpec = OKPresentationSpecValue(scene);
+    CGFloat gap = OKSceneFloatValue(presentationSpec, @"lineGapPx", 40.0);
+    CGFloat verticalPadding =
+        OKSceneFloatValue(presentationSpec, @"verticalPaddingPx", 56.0);
+    NSDictionary *activeGlowColor = OKColorDictionaryValue(
+        presentationSpec,
+        @"activeGlowColor",
+        1.0,
+        1.0,
+        1.0,
+        0.8
+    );
+    CGFloat activeGlowBlur =
+        OKSceneFloatValue(presentationSpec, @"activeGlowBlurPx", 12.0);
     CGFloat totalHeight = 0.0;
     for (NSDictionary *layout in layouts) {
         totalHeight += [layout[@"height"] doubleValue];
     }
     totalHeight += gap * MAX((NSInteger)layouts.count - 1, 0);
 
-    CGFloat y = (OKAirPlayVideoHeight - totalHeight) * 0.5;
+    BOOL isPlainText = OKBoolValue(scene[@"isPlainText"]);
+    NSInteger activeLineIndex = OKIntegerValue(scene[@"activeLineIndex"]);
+    CGFloat availableHeight = OKAirPlayVideoHeight - (verticalPadding * 2.0);
+    CGFloat y = verticalPadding + MAX(0.0, (availableHeight - totalHeight) * 0.5);
+    if (!isPlainText && activeLineIndex >= 0 && activeLineIndex < (NSInteger)layouts.count) {
+        CGFloat activeCenterWithinContent = 0.0;
+        for (NSInteger index = 0; index < activeLineIndex; index += 1) {
+            activeCenterWithinContent += [layouts[index][@"height"] doubleValue] + gap;
+        }
+        activeCenterWithinContent += [layouts[activeLineIndex][@"height"] doubleValue] * 0.5;
+
+        CGFloat desiredY = verticalPadding + availableHeight * 0.5 - activeCenterWithinContent;
+        CGFloat minY = OKAirPlayVideoHeight - verticalPadding - totalHeight;
+        y = OKClamp(desiredY, minY, verticalPadding);
+    }
+
     for (NSDictionary *layout in layouts) {
-        CTLineRef line = (__bridge CTLineRef)layout[@"line"];
+        NSAttributedString *text = layout[@"text"];
         CGFloat width = [layout[@"width"] doubleValue];
-        CGFloat ascent = [layout[@"ascent"] doubleValue];
         CGFloat height = [layout[@"height"] doubleValue];
         NSString *state = layout[@"state"];
+        CGRect frameRect = CGRectMake((OKAirPlayVideoWidth - width) * 0.5, y, width, height);
+        CGMutablePathRef path = CGPathCreateMutable();
+        CGPathAddRect(path, NULL, frameRect);
+        CTFramesetterRef framesetter =
+            CTFramesetterCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+        CTFrameRef frame =
+            framesetter == NULL ? NULL : CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
 
         CGContextSaveGState(context);
-        if ([state isEqualToString:@"active"]) {
+        if ([state isEqualToString:@"active"] && frame != NULL) {
             CGContextSetShadowWithColor(
                 context,
                 CGSizeZero,
-                12.0,
-                (__bridge CGColorRef)OKBridgedColor(1.0, 1.0, 1.0, 0.45)
+                activeGlowBlur,
+                (__bridge CGColorRef)OKColorObjectFromDictionary(activeGlowColor)
             );
         }
-        CGContextSetTextPosition(context, (OKAirPlayVideoWidth - width) * 0.5, y + ascent);
-        CTLineDraw(line, context);
+        if (frame != NULL) {
+            CTFrameDraw(frame, context);
+        }
         CGContextRestoreGState(context);
+        if (frame != NULL) {
+            CFRelease(frame);
+        }
+        if (framesetter != NULL) {
+            CFRelease(framesetter);
+        }
+        CGPathRelease(path);
 
         y += height + gap;
     }
@@ -952,8 +1385,6 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return NULL;
     }
 
-    CGContextTranslateCTM(context, 0, OKAirPlayVideoHeight);
-    CGContextScaleCTM(context, 1.0, -1.0);
     CGContextSetTextMatrix(context, CGAffineTransformIdentity);
     OKSetFillColor(context, 0.0, 0.0, 0.0, 1.0);
     CGContextFillRect(context, CGRectMake(0, 0, OKAirPlayVideoWidth, OKAirPlayVideoHeight));
@@ -989,6 +1420,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
+    if (self.latestScene != nil) {
+        [self recordSyncPointForSourcePosition:OKLongLongValue(self.latestScene[@"positionMs"])];
+    }
+    self.hasWrittenVideo = YES;
     self.nextVideoFrameIndex += 1;
 }
 
@@ -1002,6 +1437,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         [self appendVideoTick];
         [self appendAudioTick];
         [self handleWriterFailureIfNeeded:@"media tick"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self refreshPlaybackPhase];
+        });
     }
 }
 
@@ -1037,9 +1475,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         self.routePickerView = [[AVRoutePickerView alloc] initWithFrame:frame];
         self.routePickerView.routePickerButtonBordered = NO;
         self.routePickerView.player = self.player;
+        self.routePickerView.delegate = self;
     } else {
         self.routePickerView.frame = frame;
         self.routePickerView.player = self.player;
+        self.routePickerView.delegate = self;
     }
 
     if (self.routePickerView.superview != rootView) {
@@ -1058,14 +1498,25 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             NSData *jsonData = [sceneJSON dataUsingEncoding:NSUTF8StringEncoding];
             NSDictionary *scene = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
             if ([scene isKindOfClass:[NSDictionary class]]) {
+                uint64_t streamGeneration =
+                    (uint64_t)MAX(1, OKLongLongValue(scene[@"streamGeneration"]));
+                [weakSelf resetMediaPipelineForGeneration:streamGeneration];
                 weakSelf.latestScene = scene;
+                if (mode == OKAirPlayModeIdle || !OKBoolValue(scene[@"isPlaying"])) {
+                    [weakSelf.pendingAudioData setLength:0];
+                    weakSelf.pendingAudioOffset = 0;
+                }
             }
+        }
+        if (mode == OKAirPlayModeIdle) {
+            [weakSelf.pendingAudioData setLength:0];
+            weakSelf.pendingAudioOffset = 0;
         }
         if (cdgFrame != nil) {
             weakSelf.latestCdgFrame = [cdgFrame copy];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            [weakSelf emitState];
+            [weakSelf refreshPlaybackPhase];
         });
     });
 }
@@ -1075,7 +1526,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
               sampleRate:(uint32_t)sampleRate
                 channels:(uint16_t)channels
                    epoch:(uint64_t)epoch {
-    if (samples == NULL || sampleCount == 0 || channels < OKAirPlayAudioChannels) {
+    if (samples == NULL || sampleCount == 0 || channels == 0) {
         return;
     }
 
@@ -1084,7 +1535,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     float *stereoSamples = stereo.mutableBytes;
     for (NSUInteger frame = 0; frame < inputFrameCount; frame += 1) {
         stereoSamples[frame * OKAirPlayAudioChannels] = samples[frame * channels];
-        stereoSamples[frame * OKAirPlayAudioChannels + 1] = samples[frame * channels + 1];
+        stereoSamples[frame * OKAirPlayAudioChannels + 1] =
+            channels > 1 ? samples[frame * channels + 1] : samples[frame * channels];
     }
 
     NSData *resampled = OKResampleStereoPCM(stereo.bytes, inputFrameCount, sampleRate);
@@ -1093,9 +1545,18 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
+        // RATIONALE: `latestScene.isPlaying` is a UI-facing runtime snapshot and
+        // can lag behind PCM delivery around seek/resume boundaries. Gating
+        // audio on that field caused TV playback to emit a brief burst and then
+        // fall silent. The only hard gate here is whether AirPlay is actually
+        // external and the audience mode is non-idle; pause/seek flushing is
+        // handled separately by the audio epoch and scene updates.
+        if (weakSelf.currentMode == OKAirPlayModeIdle || !weakSelf.player.externalPlaybackActive) {
+            return;
+        }
 
         [weakSelf.pendingAudioData appendData:resampled];
-        NSUInteger maxBytes = OKAirPlayAudioSampleRate * OKAirPlayAudioChannels * sizeof(float) * 4;
+        NSUInteger maxBytes = OKAirPlayAudioSampleRate * OKAirPlayAudioChannels * sizeof(float);
         if (weakSelf.pendingAudioData.length > maxBytes) {
             NSUInteger overflow = weakSelf.pendingAudioData.length - maxBytes;
             weakSelf.pendingAudioOffset = MIN(weakSelf.pendingAudioOffset + overflow, weakSelf.pendingAudioData.length);
@@ -1113,6 +1574,38 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     });
 }
 
+- (void)routePickerViewWillBeginPresentingRoutes:(AVRoutePickerView *)routePickerView {
+    self.routeSelectionPending = NO;
+    self.routeSelectionGeneration += 1;
+    [self refreshPlaybackPhase];
+}
+
+- (void)routePickerViewDidEndPresentingRoutes:(AVRoutePickerView *)routePickerView {
+    self.routeSelectionPending = YES;
+    self.routeSelectionGeneration += 1;
+    NSUInteger generation = self.routeSelectionGeneration;
+    [self refreshPlaybackPhase];
+
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(),
+        ^{
+            if (self.routeSelectionGeneration == generation && !self.player.externalPlaybackActive) {
+                self.routeSelectionPending = NO;
+                [self refreshPlaybackPhase];
+            }
+        }
+    );
+}
+
+- (void)handlePlayerItemErrorLogEntry:(NSNotification *)notification {
+    AVPlayerItem *item = notification.object;
+    AVPlayerItemErrorLogEvent *lastEvent = item.errorLog.events.lastObject;
+    self.lastPlaybackErrorDetail =
+        lastEvent.errorComment ?: lastEvent.serverAddress ?: @"player_item_error_log";
+    [self refreshPlaybackPhase];
+}
+
 - (void)assetWriter:(AVAssetWriter *)writer
  didOutputSegmentData:(NSData *)segmentData
          segmentType:(AVAssetSegmentType)segmentType
@@ -1122,7 +1615,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     if (segmentType == AVAssetSegmentTypeInitialization) {
-        NSString *initPath = [self.streamRootPath stringByAppendingPathComponent:@"init.mp4"];
+        NSString *initPath =
+            [self.streamRootPath stringByAppendingPathComponent:[self initializationFilename]];
         [segmentData writeToFile:initPath atomically:YES];
         self.hasInitializationSegment = YES;
         [self writePlaylistFile];
@@ -1142,7 +1636,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     OKAirPlaySegmentEntry *entry = [[OKAirPlaySegmentEntry alloc] init];
     entry.sequence = self.nextSegmentSequence;
     entry.duration = duration;
-    entry.filename = [NSString stringWithFormat:@"segment-%ld.m4s", (long)entry.sequence];
+    entry.filename = [self segmentFilenameForSequence:entry.sequence];
     self.nextSegmentSequence += 1;
 
     NSString *segmentPath = [self.streamRootPath stringByAppendingPathComponent:entry.filename];
@@ -1161,8 +1655,26 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                         change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"externalPlaybackActive"] && object == self.player) {
-        self.player.muted = !self.player.externalPlaybackActive;
-        [self emitState];
+        [self refreshPlaybackPhase];
+        return;
+    }
+
+    if ([keyPath isEqualToString:@"timeControlStatus"] && object == self.player) {
+        [self refreshPlaybackPhase];
+        return;
+    }
+
+    if ([keyPath isEqualToString:@"currentItem"] && object == self.player) {
+        [self syncCurrentItemObservation];
+        [self refreshPlaybackPhase];
+        return;
+    }
+
+    if ([keyPath isEqualToString:@"status"] && object == self.observedItem) {
+        if (self.observedItem.status != AVPlayerItemStatusFailed) {
+            self.lastPlaybackErrorDetail = nil;
+        }
+        [self refreshPlaybackPhase];
         return;
     }
 
@@ -1183,7 +1695,7 @@ static void ok_airplay_dispatch_main(void (^block)(void)) {
 void ok_airplay_set_state_callback(OKAirPlayStateCallback callback) {
     ok_airplay_dispatch_main(^{
         [OKAirPlayBridge sharedBridge].stateCallback = callback;
-        [[OKAirPlayBridge sharedBridge] emitState];
+        [[OKAirPlayBridge sharedBridge] refreshPlaybackPhase];
     });
 }
 

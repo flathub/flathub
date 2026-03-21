@@ -59,7 +59,7 @@ describe("LyricLine", () => {
       />,
     );
 
-    expect(markup).toContain("xl:text-8xl");
-    expect(markup).toContain("text-white");
+    expect(markup).toContain("font-size:96px");
+    expect(markup).toContain("color:rgba(255, 255, 255, 1)");
   });
 });

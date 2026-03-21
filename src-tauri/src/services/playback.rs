@@ -20,6 +20,10 @@ use std::sync::{
 };
 use tauri::{AppHandle, Emitter, Runtime};
 
+fn bump_airplay_stream_generation(state: &AppState) {
+    state.airplay_stream_generation.fetch_add(1, Ordering::SeqCst);
+}
+
 pub fn play<R: Runtime>(
     state: &AppState,
     app_handle: &AppHandle<R>,
@@ -27,6 +31,7 @@ pub fn play<R: Runtime>(
 ) -> Result<PlaybackStateSnapshot> {
     state.airplay_audio_tap.bump_epoch();
     crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
+    bump_airplay_stream_generation(state);
     let library_root = state
         .library_root()
         .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
@@ -101,6 +106,7 @@ pub fn seek<R: Runtime>(
 ) -> Result<PlaybackStateSnapshot> {
     state.airplay_audio_tap.bump_epoch();
     crate::airplay_stream::notify_audio_epoch(state.airplay_audio_tap.current_epoch());
+    bump_airplay_stream_generation(state);
     let mut playback = state
         .playback
         .lock()
@@ -215,6 +221,7 @@ fn ensure_output_thread(state: &AppState) -> Result<()> {
         &state.audio_output_start_lock,
         state.playback.clone(),
         state.airplay_audio_tap.clone(),
+        state.airplay_local_output_suppressed.clone(),
     )?;
     Ok(())
 }

@@ -43,6 +43,8 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/stores/player-store", () => ({
   usePlayerStore: (selector: (state: typeof mockPlayerState) => unknown) =>
     selector(mockPlayerState),
+  selectAudiencePreviewPositionMs: (state: typeof mockPlayerState) =>
+    state.positionMs,
 }));
 
 vi.mock("@/stores/lyrics-store", () => ({
@@ -130,10 +132,22 @@ describe("LyricsPanel contextual reveal", () => {
       <LyricsPanel presentation="audience" />,
     );
 
-    expect(markup).toContain("max-w-[min(92vw,1600px)]");
+    expect(markup).toContain("max-width:min(92vw, 1600px)");
     expect(markup).toContain("min-h-full");
     expect(markup).not.toContain("contextual-reveal absolute right-4 top-4");
     expect(markup).not.toContain("absolute inset-x-0 bottom-0");
+  });
+
+  test("uses a passive one-line empty state in audience presentation", () => {
+    mockLyricsState.lines = [];
+
+    const markup = renderToStaticMarkup(
+      <LyricsPanel presentation="audience" />,
+    );
+
+    expect(markup).toContain("lyrics.noLyrics");
+    expect(markup).not.toContain("lyrics.addLyrics");
+    expect(markup).not.toContain("<button");
   });
 
   test("renders stable line markers for timed lyrics auto-scroll targeting", () => {

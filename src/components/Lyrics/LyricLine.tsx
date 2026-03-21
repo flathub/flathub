@@ -1,4 +1,8 @@
 import { memo } from "react";
+import {
+  buildAudiencePresentationSpec,
+  colorToCss,
+} from "@/lib/audience-presentation";
 import { usePlayerStore } from "@/stores/player-store";
 import type { LyricLine as LyricLineType, WordToken } from "@/types/ipc";
 
@@ -85,6 +89,8 @@ export const LyricLine = memo(function LyricLine({
   const seek = usePlayerStore((s) => s.seek);
   const isSeekable = state !== "plain";
   const textSizeClass = getLyricsTextSizeClass(presentation, lyricsFontStep);
+  const audiencePresentationSpec =
+    buildAudiencePresentationSpec(lyricsFontStep);
 
   const handleClick = () => {
     if (!isSeekable) return;
@@ -103,9 +109,33 @@ export const LyricLine = memo(function LyricLine({
       className={`motion-surface flex flex-col items-center gap-1.5 text-center ${
         isSeekable ? "cursor-pointer" : "cursor-default"
       } ${state === "active" ? "scale-105 drop-shadow-md" : ""}`}
+      style={
+        presentation === "audience"
+          ? {
+              transform:
+                state === "active"
+                  ? `scale(${audiencePresentationSpec.activeScale})`
+                  : undefined,
+            }
+          : undefined
+      }
     >
       {hasWords ? (
-        <span className={textSizeClass}>
+        <span
+          className={
+            presentation === "audience"
+              ? "font-bold tracking-tight"
+              : textSizeClass
+          }
+          style={
+            presentation === "audience"
+              ? {
+                  fontSize: audiencePresentationSpec.fontSizePx,
+                  lineHeight: audiencePresentationSpec.lineHeightMultiple,
+                }
+              : undefined
+          }
+        >
           {line.words!.map((word, idx) => {
             // When the whole line is past or future, all words use the line-level color
             const wordState =
@@ -124,20 +154,40 @@ export const LyricLine = memo(function LyricLine({
             return (
               <span
                 key={idx}
-                className={`motion-surface ${
-                  wordState === "active"
-                    ? "text-white"
-                    : wordState === "past"
-                      ? "text-[var(--color-text-dimmer)]"
-                      : "text-[var(--color-active)]"
-                }`}
+                className={
+                  presentation === "audience"
+                    ? "motion-surface"
+                    : `motion-surface ${
+                        wordState === "active"
+                          ? "text-white"
+                          : wordState === "past"
+                            ? "text-[var(--color-text-dimmer)]"
+                            : "text-[var(--color-active)]"
+                      }`
+                }
                 style={
-                  wordState === "active"
+                  presentation === "audience"
                     ? {
+                        color: colorToCss(
+                          wordState === "active"
+                            ? audiencePresentationSpec.activeTextColor
+                            : wordState === "past"
+                              ? audiencePresentationSpec.pastTextColor
+                              : audiencePresentationSpec.futureTextColor,
+                        ),
                         textShadow:
-                          "0 0 12px rgba(255,255,255,0.8), 0 0 4px rgba(255,255,255,0.6)",
+                          wordState === "active"
+                            ? `0 0 ${audiencePresentationSpec.activeGlowBlurPx}px ${colorToCss(
+                                audiencePresentationSpec.activeGlowColor,
+                              )}`
+                            : undefined,
                       }
-                    : undefined
+                    : wordState === "active"
+                      ? {
+                          textShadow:
+                            "0 0 12px rgba(255,255,255,0.8), 0 0 4px rgba(255,255,255,0.6)",
+                        }
+                      : undefined
                 }
               >
                 {word.text}
@@ -148,13 +198,38 @@ export const LyricLine = memo(function LyricLine({
         </span>
       ) : (
         <span
-          className={`motion-surface ${textSizeClass} ${
-            state === "plain" || state === "active"
-              ? "text-white"
-              : state === "past"
-                ? "text-[var(--color-text-dimmer)]"
-                : "text-[var(--color-active)]"
-          }`}
+          className={
+            presentation === "audience"
+              ? "motion-surface font-bold tracking-tight"
+              : `motion-surface ${textSizeClass} ${
+                  state === "plain" || state === "active"
+                    ? "text-white"
+                    : state === "past"
+                      ? "text-[var(--color-text-dimmer)]"
+                      : "text-[var(--color-active)]"
+                }`
+          }
+          style={
+            presentation === "audience"
+              ? {
+                  fontSize: audiencePresentationSpec.fontSizePx,
+                  lineHeight: audiencePresentationSpec.lineHeightMultiple,
+                  color: colorToCss(
+                    state === "plain" || state === "active"
+                      ? audiencePresentationSpec.activeTextColor
+                      : state === "past"
+                        ? audiencePresentationSpec.pastTextColor
+                        : audiencePresentationSpec.futureTextColor,
+                  ),
+                  textShadow:
+                    state === "active"
+                      ? `0 0 ${audiencePresentationSpec.activeGlowBlurPx}px ${colorToCss(
+                          audiencePresentationSpec.activeGlowColor,
+                        )}`
+                      : undefined,
+                }
+              : undefined
+          }
         >
           {line.text}
         </span>

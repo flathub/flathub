@@ -6,10 +6,8 @@ describe("buildAirPlayAudienceState", () => {
     expect(
       buildAirPlayAudienceState({
         playbackSnapshot: null,
-        positionMs: 0,
         lyricsSongId: null,
         lines: [],
-        activeLineIndex: -1,
         offsetMs: 0,
         isLoading: false,
         lyricsFontStep: 0,
@@ -25,10 +23,7 @@ describe("buildAirPlayAudienceState", () => {
     ).toEqual({
       mode: "idle",
       songId: null,
-      isPlaying: false,
-      positionMs: 0,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading: false,
       lyricsFontStep: 0,
@@ -42,6 +37,39 @@ describe("buildAirPlayAudienceState", () => {
         widthPx: 1280,
         heightPx: 720,
         bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        contentWidthRatio: 0.92,
+        contentMaxWidthPx: 1600,
+        horizontalPaddingPx: 64,
+        verticalPaddingPx: 56,
+        lineGapPx: 40,
+        fontSizePx: 72,
+        lineHeightMultiple: 1.08,
+        activeScale: 1.05,
+        statusFontSizePx: 18,
+        activeGlowBlurPx: 12,
+        activeTextColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+        pastTextColor: {
+          red: 72 / 255,
+          green: 72 / 255,
+          blue: 74 / 255,
+          alpha: 1,
+        },
+        futureTextColor: {
+          red: 58 / 255,
+          green: 58 / 255,
+          blue: 60 / 255,
+          alpha: 1,
+        },
+        plainTextColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+        statusTextColor: {
+          red: 142 / 255,
+          green: 142 / 255,
+          blue: 147 / 255,
+          alpha: 1,
+        },
+        activeGlowColor: { red: 1, green: 1, blue: 1, alpha: 0.8 },
       },
     });
   });
@@ -64,10 +92,8 @@ describe("buildAirPlayAudienceState", () => {
           has_stems: false,
           stem_mode: null,
         },
-        positionMs: 1400,
         lyricsSongId: "song-1",
         lines: [{ time_ms: 1200, text: "Hello", words: null }],
-        activeLineIndex: 0,
         offsetMs: 100,
         isLoading: false,
         lyricsFontStep: 2,
@@ -80,13 +106,10 @@ describe("buildAirPlayAudienceState", () => {
           addLyrics: "Add Lyrics",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       mode: "lyrics",
       songId: "song-1",
-      isPlaying: true,
-      positionMs: 1400,
       lines: [{ time_ms: 1200, text: "Hello", words: null }],
-      activeLineIndex: 0,
       offsetMs: 100,
       isLoading: false,
       lyricsFontStep: 2,
@@ -100,6 +123,11 @@ describe("buildAirPlayAudienceState", () => {
         widthPx: 1280,
         heightPx: 720,
         bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        fontSizePx: 96,
+        contentWidthRatio: 0.92,
+        contentMaxWidthPx: 1600,
       },
     });
   });
@@ -122,10 +150,8 @@ describe("buildAirPlayAudienceState", () => {
           has_stems: true,
           stem_mode: "two_stem",
         },
-        positionMs: 900,
         lyricsSongId: "song-2",
         lines: [{ time_ms: 0, text: "Ignored", words: null }],
-        activeLineIndex: 0,
         offsetMs: 0,
         isLoading: false,
         lyricsFontStep: 1,
@@ -138,13 +164,10 @@ describe("buildAirPlayAudienceState", () => {
           addLyrics: "Add Lyrics",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       mode: "cdg",
       songId: "song-2",
-      isPlaying: false,
-      positionMs: 900,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading: false,
       lyricsFontStep: 1,
@@ -158,6 +181,9 @@ describe("buildAirPlayAudienceState", () => {
         widthPx: 1280,
         heightPx: 720,
         bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        fontSizePx: 96,
       },
     });
   });
@@ -180,10 +206,8 @@ describe("buildAirPlayAudienceState", () => {
           has_stems: false,
           stem_mode: null,
         },
-        positionMs: 0,
         lyricsSongId: "song-3",
         lines: [],
-        activeLineIndex: -1,
         offsetMs: 0,
         isLoading: true,
         lyricsFontStep: 0,
@@ -196,13 +220,10 @@ describe("buildAirPlayAudienceState", () => {
           addLyrics: "添加歌词",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       mode: "lyrics",
       songId: "song-3",
-      isPlaying: false,
-      positionMs: 0,
       lines: [],
-      activeLineIndex: -1,
       offsetMs: 0,
       isLoading: true,
       lyricsFontStep: 0,
@@ -216,6 +237,65 @@ describe("buildAirPlayAudienceState", () => {
         widthPx: 1280,
         heightPx: 720,
         bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        statusFontSizePx: 18,
+      },
+    });
+  });
+
+  test("drops stale lyrics lines until they belong to the current song", () => {
+    expect(
+      buildAirPlayAudienceState({
+        playbackSnapshot: {
+          song_id: "song-4",
+          is_playing: true,
+          position_ms: 2048,
+          duration_ms: 5000,
+          volume: 1,
+          stem_volumes: {
+            vocals: 1,
+            drums: 1,
+            bass: 1,
+            other: 1,
+          },
+          has_stems: false,
+          stem_mode: null,
+        },
+        lyricsSongId: "song-3",
+        lines: [{ time_ms: 1200, text: "stale", words: null }],
+        offsetMs: 0,
+        isLoading: false,
+        lyricsFontStep: 0,
+        hasCdg: false,
+        currentSongHasCdg: false,
+        messages: {
+          selectSong: "Select a song to start",
+          loadingLyrics: "Loading lyrics...",
+          noLyrics: "No lyrics available for this track",
+          addLyrics: "Add Lyrics",
+        },
+      }),
+    ).toMatchObject({
+      mode: "lyrics",
+      songId: "song-4",
+      lines: [],
+      offsetMs: 0,
+      isLoading: true,
+      lyricsFontStep: 0,
+      messages: {
+        selectSong: "Select a song to start",
+        loadingLyrics: "Loading lyrics...",
+        noLyrics: "No lyrics available for this track",
+        addLyrics: "Add Lyrics",
+      },
+      viewport: {
+        widthPx: 1280,
+        heightPx: 720,
+        bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        fontSizePx: 72,
       },
     });
   });

@@ -1,5 +1,6 @@
 use openkara_lib::commands::airplay::{
-    normalize_host_y, AirPlayAudienceMode, AIRPLAY_OUTPUT_STATE_EVENT,
+    normalize_host_y, AirPlayAudienceMode, AirPlayOutputPhase, AirPlayOutputStateEvent,
+    AIRPLAY_OUTPUT_STATE_EVENT,
 };
 
 #[test]
@@ -20,4 +21,49 @@ fn airplay_audience_mode_serializes_expected_variants() {
         "\"lyrics\""
     );
     assert_eq!(serde_json::to_string(&AirPlayAudienceMode::Cdg).unwrap(), "\"cdg\"");
+}
+
+#[test]
+fn airplay_output_phase_serializes_expected_variants() {
+    assert_eq!(serde_json::to_string(&AirPlayOutputPhase::Idle).unwrap(), "\"idle\"");
+    assert_eq!(
+        serde_json::to_string(&AirPlayOutputPhase::RouteSelected).unwrap(),
+        "\"route_selected\""
+    );
+    assert_eq!(
+        serde_json::to_string(&AirPlayOutputPhase::Buffering).unwrap(),
+        "\"buffering\""
+    );
+    assert_eq!(
+        serde_json::to_string(&AirPlayOutputPhase::Playing).unwrap(),
+        "\"playing\""
+    );
+    assert_eq!(
+        serde_json::to_string(&AirPlayOutputPhase::Failed).unwrap(),
+        "\"failed\""
+    );
+}
+
+#[test]
+fn airplay_output_event_serializes_phase_and_detail() {
+    let json = serde_json::to_value(AirPlayOutputStateEvent {
+        active: false,
+        route_name: Some("Bedroom TV".to_owned()),
+        mode: AirPlayAudienceMode::Lyrics,
+        phase: AirPlayOutputPhase::Buffering,
+        detail: Some("waiting_for_audio".to_owned()),
+        displayed_position_ms: Some(1_250),
+        stream_generation: 7,
+        latency_ms: Some(420),
+    })
+    .unwrap();
+
+    assert_eq!(json["active"], false);
+    assert_eq!(json["routeName"], "Bedroom TV");
+    assert_eq!(json["mode"], "lyrics");
+    assert_eq!(json["phase"], "buffering");
+    assert_eq!(json["detail"], "waiting_for_audio");
+    assert_eq!(json["displayedPositionMs"], 1_250);
+    assert_eq!(json["streamGeneration"], 7);
+    assert_eq!(json["latencyMs"], 420);
 }
