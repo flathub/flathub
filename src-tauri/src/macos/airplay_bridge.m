@@ -11,6 +11,7 @@
 
 typedef void (*OKAirPlayStateCallback)(
     bool active,
+    bool audio_active,
     const char *route_name,
     int mode_tag,
     int phase_tag,
@@ -49,6 +50,7 @@ static const NSInteger OKAirPlayPlaylistWindow = 8;
 static const NSInteger OKAirPlayPreferredSegmentIntervalSeconds = 1;
 static const NSTimeInterval OKAirPlayPreferredForwardBufferDuration = 2.0;
 static const NSInteger OKAirPlayMaxSyncPoints = 720;
+static const void *OKAirPlayStateQueueSpecificKey = &OKAirPlayStateQueueSpecificKey;
 
 static NSString *OKStringValue(id value);
 static NSDictionary *OKDictionaryValue(id value);
@@ -354,6 +356,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, assign) long long lastEmittedLatencyMs;
 @property(nonatomic, assign) uint64_t lastEmittedStreamGeneration;
 @property(nonatomic, assign) BOOL lastEmittedActive;
+@property(nonatomic, assign) BOOL lastEmittedAudioActive;
 @property(nonatomic, assign) OKAirPlayMode lastEmittedMode;
 @property(nonatomic, assign) OKAirPlayPhase lastEmittedPhase;
 @property(nonatomic, copy) NSString *lastEmittedDetail;
@@ -370,7 +373,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (void)syncAudienceConfigWithJSON:(NSString *)configJSON;
 - (void)syncAudienceRuntimeWithJSON:(NSString *)runtimeJSON
                            cdgFrame:(NSData *)cdgFrame;
-- (void)stepPlainTextPageWithDirection:(NSInteger)direction;
+- (BOOL)stepPlainTextPageWithDirection:(NSInteger)direction;
 - (void)pushAudioSamples:(const float *)samples
              sampleCount:(NSUInteger)sampleCount
               sampleRate:(uint32_t)sampleRate
@@ -378,6 +381,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                    epoch:(uint64_t)epoch;
 - (void)applyAudioEpoch:(uint64_t)epoch;
 - (void)refreshPlaybackPhase;
+- (BOOL)hasAudienceVideoRoute;
+- (BOOL)hasRemoteAudioRoute;
 
 @end
 
@@ -399,6 +404,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     _stateQueue = dispatch_queue_create("openkara.airplay.state", DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_set_specific(
+        _stateQueue,
+        OKAirPlayStateQueueSpecificKey,
+        (void *)OKAirPlayStateQueueSpecificKey,
+        NULL
+    );
     _audioQueue = dispatch_queue_create("openkara.airplay.audio", DISPATCH_QUEUE_SERIAL);
     _encoderQueue = dispatch_queue_create("openkara.airplay.encoder", DISPATCH_QUEUE_SERIAL);
     _segments = [NSMutableArray array];
@@ -415,6 +426,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     _lastEmittedLatencyMs = -1;
     _lastEmittedStreamGeneration = 0;
     _lastEmittedActive = NO;
+    _lastEmittedAudioActive = NO;
     _lastEmittedMode = OKAirPlayModeIdle;
     _lastEmittedPhase = OKAirPlayPhaseIdle;
     return self;
@@ -439,14 +451,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    AVPlayerItem *item = self.player.currentItem;
-    BOOL active = self.player != nil && item != nil &&
-        item.status == AVPlayerItemStatusReadyToPlay && self.player.externalPlaybackActive &&
-        self.currentMode != OKAirPlayModeIdle && self.currentPhase == OKAirPlayPhasePlaying;
+    BOOL active = [self hasAudienceVideoRoute] && self.currentPhase == OKAirPlayPhasePlaying;
+    BOOL audioActive = [self hasRemoteAudioRoute];
     const char *detail = self.currentPhaseDetail.length > 0 ? self.currentPhaseDetail.UTF8String : NULL;
     NSNumber *displayedPositionMs = [self displayedPositionNumber];
     NSNumber *latencyMs = [self latencyNumberForDisplayedPosition:displayedPositionMs];
     BOOL changed = self.lastEmittedActive != active ||
+        self.lastEmittedAudioActive != audioActive ||
         self.lastEmittedMode != self.currentMode ||
         self.lastEmittedPhase != self.currentPhase ||
         self.lastEmittedStreamGeneration != self.streamGeneration ||
@@ -460,6 +471,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     self.lastEmittedActive = active;
+    self.lastEmittedAudioActive = audioActive;
     self.lastEmittedMode = self.currentMode;
     self.lastEmittedPhase = self.currentPhase;
     self.lastEmittedStreamGeneration = self.streamGeneration;
@@ -470,6 +482,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     self.stateCallback(
         active,
+        audioActive,
         NULL,
         (int)self.currentMode,
         (int)self.currentPhase,
@@ -478,6 +491,21 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         self.streamGeneration,
         latencyMs != nil ? latencyMs.longLongValue : -1
     );
+}
+
+- (BOOL)isCurrentItemReadyForRouting {
+    AVPlayerItem *item = self.player.currentItem;
+    return self.player != nil && item != nil && item.status == AVPlayerItemStatusReadyToPlay &&
+        self.currentMode != OKAirPlayModeIdle;
+}
+
+- (BOOL)hasAudienceVideoRoute {
+    return [self isCurrentItemReadyForRouting] && self.player.externalPlaybackActive;
+}
+
+- (BOOL)hasRemoteAudioRoute {
+    return [self isCurrentItemReadyForRouting] &&
+        (self.player.externalPlaybackActive || self.player.audioOutputDeviceUniqueID.length > 0);
 }
 
 - (void)setPhase:(OKAirPlayPhase)phase detail:(NSString *)detail {
@@ -571,7 +599,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (NSNumber *)displayedPositionNumber {
-    if (self.player == nil || !self.player.externalPlaybackActive || self.syncPoints.count == 0) {
+    if (![self hasAudienceVideoRoute] || self.syncPoints.count == 0) {
         return nil;
     }
 
@@ -723,8 +751,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return NSMakeRange(startIndex, endIndex - startIndex);
 }
 
-- (void)stepPlainTextPageWithDirection:(NSInteger)direction {
-    dispatch_async(self.stateQueue, ^{
+- (BOOL)stepPlainTextPageWithDirection:(NSInteger)direction {
+    __block BOOL didChange = NO;
+    void (^stepBlock)(void) = ^{
         NSDictionary *scene = [self currentRenderScene];
         if (![scene isKindOfClass:[NSDictionary class]] || !OKBoolValue(scene[@"isPlainText"])) {
             return;
@@ -742,7 +771,16 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         }
 
         self.plainTextPageIndex = (NSUInteger)nextPageIndex;
-    });
+        didChange = YES;
+    };
+
+    if (dispatch_get_specific(OKAirPlayStateQueueSpecificKey) == OKAirPlayStateQueueSpecificKey) {
+        stepBlock();
+    } else {
+        dispatch_sync(self.stateQueue, stepBlock);
+    }
+
+    return didChange;
 }
 
 - (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs {
@@ -779,7 +817,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         phase = OKAirPlayPhaseFailed;
         detail = @"player_item_failed";
     } else if (self.currentMode == OKAirPlayModeIdle) {
-        if (self.routeSelectionPending && !self.player.externalPlaybackActive) {
+        if (self.routeSelectionPending && ![self hasRemoteAudioRoute]) {
             phase = OKAirPlayPhaseRouteSelected;
             detail = @"waiting_for_route";
         }
@@ -789,7 +827,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     } else if (!self.hasWrittenVideo || !self.hasWrittenAudio) {
         phase = OKAirPlayPhaseBuffering;
         detail = [self waitingDetail];
-    } else if (item.status == AVPlayerItemStatusReadyToPlay && self.player.externalPlaybackActive) {
+    } else if (item.status == AVPlayerItemStatusReadyToPlay && [self hasRemoteAudioRoute]) {
         phase = OKAirPlayPhasePlaying;
         self.routeSelectionPending = NO;
     } else if (self.routeSelectionPending) {
@@ -1777,13 +1815,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
-        // RATIONALE: `latestRuntimeState.isPlaying` is a UI-facing runtime snapshot and
-        // can lag behind PCM delivery around seek/resume boundaries. Gating
-        // audio on that field caused TV playback to emit a brief burst and then
-        // fall silent. The only hard gate here is whether AirPlay is actually
-        // external and the audience mode is non-idle; pause/seek flushing is
-        // handled separately by the audio epoch and scene updates.
-        if (weakSelf.currentMode == OKAirPlayModeIdle || !weakSelf.player.externalPlaybackActive) {
+        // RATIONALE: `externalPlaybackActive` is video-only on macOS, so using
+        // it as the sole remote-audio gate breaks HomePod and other audio-only
+        // AirPlay routes. Audio-only routes also need PCM to exist before the
+        // route can finish activating, so route selection itself must be
+        // enough to start feeding the HLS audio pipeline.
+        if (weakSelf.currentMode == OKAirPlayModeIdle ||
+            !([weakSelf hasRemoteAudioRoute] || weakSelf.routeSelectionPending)) {
             return;
         }
 
@@ -1824,7 +1862,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
         dispatch_get_main_queue(),
         ^{
-            if (self.routeSelectionGeneration == generation && !self.player.externalPlaybackActive) {
+            if (self.routeSelectionGeneration == generation && ![self hasRemoteAudioRoute]) {
                 self.routeSelectionPending = NO;
                 self.routeActivationResetPending = NO;
                 [self refreshPlaybackPhase];
@@ -1890,7 +1928,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                         change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"externalPlaybackActive"] && object == self.player) {
-        if (self.player.externalPlaybackActive &&
+        if ([self hasAudienceVideoRoute] &&
             self.routeActivationResetPending &&
             self.currentMode != OKAirPlayModeIdle) {
             self.routeActivationResetPending = NO;
@@ -1992,8 +2030,8 @@ void ok_airplay_sync_audience_runtime(
                                                        cdgFrame:cdgFrame];
 }
 
-void ok_airplay_step_plain_text_page(int direction) {
-    [[OKAirPlayBridge sharedBridge] stepPlainTextPageWithDirection:(NSInteger)direction];
+bool ok_airplay_step_plain_text_page(int direction) {
+    return [[OKAirPlayBridge sharedBridge] stepPlainTextPageWithDirection:(NSInteger)direction];
 }
 
 void ok_airplay_push_audio_samples(

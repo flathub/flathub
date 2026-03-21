@@ -23,6 +23,7 @@ const {
     positionMs: 4000,
     airPlayOutput: {
       active: false,
+      audioActive: false,
       routeName: null,
       mode: "idle",
       phase: "idle",
@@ -85,10 +86,10 @@ vi.mock("@/lib/plain-text-page-controls", () => ({
   LOCAL_AUDIENCE_PLAIN_TEXT_PAGE_EVENT:
     "openkara://local-audience-plain-text-page",
   resolvePlainTextRemoteTarget: (
-    airPlayOutput: { phase: string },
+    airPlayOutput: { active: boolean; phase: string },
     localAudienceOutputActive: boolean,
   ) =>
-    airPlayOutput.phase !== "idle"
+    airPlayOutput.active
       ? "airplay"
       : localAudienceOutputActive
         ? "local"

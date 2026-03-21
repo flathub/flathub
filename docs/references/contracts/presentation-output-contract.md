@@ -16,7 +16,7 @@
 2. macOS 下，顶部独立 AirPlay 按钮挂载原生 AirPlay 控件宿主位
 3. 宿主位出现时，前端调用 `sync_airplay_route_picker(bounds)`；宿主位销毁时调用 `sync_airplay_route_picker(null)`
 4. 前端调用 `sync_airplay_audience_state(payload)` 同步当前歌曲/歌词配置；backend 自己负责运行时播放位置、歌词高亮和 CDG cadence
-5. 纯文本歌词页通过 `step_airplay_plain_text_page({ direction })` 交给 native bridge 翻页，不再依赖主窗口滚动进度
+5. 纯文本歌词页通过 `step_airplay_plain_text_page({ direction })` 交给 native bridge 翻页，不再依赖主窗口滚动进度；翻页必须直接作用于当前原生渲染状态，不能通过刷新 stream generation 来换页，否则会造成可听断音
 6. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
 7. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
 
@@ -155,8 +155,9 @@ null
 
 1. `direction` 固定为 `prev | next`
 2. 该命令只对 `mode === "lyrics"` 且所有 `lines.time_ms === 0` 的 plain-text 场景生效
-3. backend 只把翻页请求转发给 native bridge，由 native bridge 维护页索引和页起始位置
-4. `mode === "idle"`、`mode === "cdg"`，或非 plain-text 歌词场景下必须直接 no-op
+3. backend 先把翻页请求转发给 native bridge，由 native bridge 维护页索引和页起始位置
+4. native bridge 成功切页后，backend 必须在同一次命令调用里立即同步当前 runtime，让接收端直接渲染新页；翻页不能刷新 `audio epoch` 或 `streamGeneration`
+5. `mode === "idle"`、`mode === "cdg"`，或非 plain-text 歌词场景下必须直接 no-op
 
 ## Event: `openkara://airplay-output-state`
 
@@ -165,6 +166,7 @@ null
 ```json
 {
   "active": true,
+  "audioActive": true,
   "routeName": null,
   "mode": "lyrics",
   "phase": "playing",
@@ -178,13 +180,14 @@ null
 **Semantics**
 
 1. `phase` 固定为 `idle | route_selected | buffering | playing | failed`
-2. `active` 只在 `phase === "playing"`、`mode !== "idle"`、`AVPlayer.currentItem` 已 ready 且 `externalPlaybackActive === true` 时为 `true`
-3. `routeName` 当前允许为 `null`
-4. `mode` 反映 backend 记录的最新 audience 输出模式
-5. `detail` 提供等待/失败的简短诊断字符串；当前约定值包括 `waiting_for_route`、`waiting_for_video`、`waiting_for_audio`、`writer_failed`
-6. `displayedPositionMs` 是 TV 端当前实际显示的歌曲位置；AirPlay 激活时，主窗口标准 UI 的歌词和 CDG 必须跟随这个时钟，而不是继续跟源播放时钟
-7. `streamGeneration` 表示当前 HLS 输出代次；seek、切歌和 `lyrics <-> cdg` 切换时必须刷新 generation，以清掉旧缓冲
-8. `latencyMs` 表示 backend 当前源播放位置与 TV 显示位置的差值，用于诊断 AirPlay 实际传输延迟
+2. `active` 只表示 audience/video 路由真正激活；只有 `phase === "playing"`、`mode !== "idle"`、`AVPlayer.currentItem` 已 ready 且 `externalPlaybackActive === true` 时为 `true`
+3. `audioActive` 表示远端 AirPlay 音频路由正在实际消费 OpenKara 生成流；第三方电视与 HomePod 都可能为 `true`
+4. `routeName` 当前允许为 `null`
+5. `mode` 反映 backend 记录的最新 audience 输出模式
+6. `detail` 提供等待/失败的简短诊断字符串；当前约定值包括 `waiting_for_route`、`waiting_for_video`、`waiting_for_audio`、`writer_failed`
+7. `displayedPositionMs` 只对 audience/video 路由产生值；HomePod 这种 audio-only 路由必须保持 `null`
+8. `streamGeneration` 表示当前 HLS 输出代次；seek、切歌、`lyrics <-> cdg` 切换和 plain-text 成功翻页时都必须刷新 generation，以清掉旧缓冲
+9. `latencyMs` 表示 backend 当前源播放位置与 TV 显示位置的差值，用于诊断 AirPlay 实际传输延迟；audio-only 路由必须保持 `null`
 
 ## Non-goals
 

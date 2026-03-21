@@ -12,6 +12,7 @@ const {
   mockPlayerState: {
     airPlayOutput: {
       active: true,
+      audioActive: true,
       phase: "playing",
     },
   },

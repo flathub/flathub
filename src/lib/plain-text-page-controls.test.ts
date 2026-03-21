@@ -34,22 +34,34 @@ describe("plain-text page controls", () => {
   });
 
   test("prefers AirPlay over the local audience window when both are available", () => {
-    expect(resolvePlainTextRemoteTarget({ phase: "playing" }, true)).toBe(
-      "airplay",
-    );
-    expect(resolvePlainTextRemoteTarget({ phase: "idle" }, true)).toBe("local");
-    expect(resolvePlainTextRemoteTarget({ phase: "idle" }, false)).toBeNull();
+    expect(
+      resolvePlainTextRemoteTarget({ active: true, phase: "playing" }, true),
+    ).toBe("airplay");
+    expect(
+      resolvePlainTextRemoteTarget({ active: false, phase: "playing" }, true),
+    ).toBe("local");
+    expect(
+      resolvePlainTextRemoteTarget({ active: false, phase: "idle" }, false),
+    ).toBeNull();
   });
 
   test("routes page steps to AirPlay when AirPlay is active", async () => {
-    await stepPlainTextRemotePage({ phase: "buffering" }, true, "next");
+    await stepPlainTextRemotePage(
+      { active: true, phase: "buffering" },
+      true,
+      "next",
+    );
 
     expect(mockStepAirPlayPlainTextPage).toHaveBeenCalledWith("next");
     expect(mockEmitTo).not.toHaveBeenCalled();
   });
 
   test("routes page steps to the fullscreen player when only the local audience is active", async () => {
-    await stepPlainTextRemotePage({ phase: "idle" }, true, "prev");
+    await stepPlainTextRemotePage(
+      { active: false, phase: "idle" },
+      true,
+      "prev",
+    );
 
     expect(mockEmitTo).toHaveBeenCalledWith(
       "fullscreen-player",

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { AirPlayOutputStateEvent } from "@/types/ipc";
 import { LyricsPanel } from "./LyricsPanel";
 
 const {
@@ -15,6 +16,7 @@ const {
     positionMs: 4000,
     airPlayOutput: {
       active: false,
+      audioActive: false,
       routeName: null,
       mode: "idle",
       phase: "idle",
@@ -22,7 +24,7 @@ const {
       displayedPositionMs: null,
       streamGeneration: 0,
       latencyMs: null,
-    },
+    } as AirPlayOutputStateEvent,
     localAudienceOutputActive: false,
   },
   mockLyricsState: {
@@ -93,6 +95,7 @@ describe("LyricsPanel contextual reveal", () => {
     mockPlayerState.positionMs = 4000;
     mockPlayerState.airPlayOutput = {
       active: false,
+      audioActive: false,
       routeName: null,
       mode: "idle",
       phase: "idle",
@@ -181,6 +184,25 @@ describe("LyricsPanel contextual reveal", () => {
   });
 
   test("keeps remote paging controls hidden when no remote audience target exists", () => {
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).not.toContain("plain-text-page-prev");
+    expect(markup).not.toContain("plain-text-page-next");
+  });
+
+  test("keeps remote paging controls hidden when AirPlay is not actually active", () => {
+    mockPlayerState.airPlayOutput = {
+      active: false,
+      audioActive: true,
+      routeName: "Living Room TV",
+      mode: "lyrics",
+      phase: "buffering",
+      detail: "waiting_for_route",
+      displayedPositionMs: null,
+      streamGeneration: 2,
+      latencyMs: null,
+    } satisfies AirPlayOutputStateEvent;
+
     const markup = renderToStaticMarkup(<LyricsPanel />);
 
     expect(markup).not.toContain("plain-text-page-prev");

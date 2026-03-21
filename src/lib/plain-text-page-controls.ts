@@ -11,10 +11,10 @@ export const LOCAL_AUDIENCE_PLAIN_TEXT_PAGE_EVENT =
   "openkara://local-audience-plain-text-page";
 
 export function resolvePlainTextRemoteTarget(
-  airPlayOutput: Pick<AirPlayOutputStateEvent, "phase">,
+  airPlayOutput: Pick<AirPlayOutputStateEvent, "active" | "phase">,
   localAudienceOutputActive: boolean,
 ): PlainTextRemoteTarget | null {
-  if (airPlayOutput.phase !== "idle") {
+  if (airPlayOutput.active) {
     return "airplay";
   }
 
@@ -28,7 +28,7 @@ export async function announceLocalAudienceOutputActive(
 }
 
 export async function stepPlainTextRemotePage(
-  airPlayOutput: Pick<AirPlayOutputStateEvent, "phase">,
+  airPlayOutput: Pick<AirPlayOutputStateEvent, "active" | "phase">,
   localAudienceOutputActive: boolean,
   direction: PlainTextPageDirection,
 ): Promise<boolean> {

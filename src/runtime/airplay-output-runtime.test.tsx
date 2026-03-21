@@ -59,6 +59,7 @@ describe("useAirPlayOutputState", () => {
       localAudienceOutputActive: false,
       airPlayOutput: {
         active: false,
+        audioActive: false,
         routeName: null,
         mode: "idle",
         phase: "idle",
@@ -91,6 +92,7 @@ describe("useAirPlayOutputState", () => {
       listener?.({
         payload: {
           active: false,
+          audioActive: false,
           routeName: "Living Room TV",
           mode: "lyrics",
           phase: "buffering",
@@ -113,6 +115,7 @@ describe("useAirPlayOutputState", () => {
       listener?.({
         payload: {
           active: true,
+          audioActive: true,
           routeName: "Living Room TV",
           mode: "lyrics",
           phase: "playing",
@@ -182,6 +185,26 @@ describe("useAirPlayOutputState", () => {
 
     await act(async () => {
       listener?.({ payload: { active: false } });
+    });
+
+    expect(usePlayerStore.getState().localAudienceOutputActive).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  test("resets local audience state to hidden before listening for window events", async () => {
+    usePlayerStore.setState({ localAudienceOutputActive: true });
+    mockListen.mockImplementation(async () => vi.fn());
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<LocalAudienceHookHarness />);
     });
 
     expect(usePlayerStore.getState().localAudienceOutputActive).toBe(false);

@@ -15,6 +15,7 @@ import {
 
 export const DEFAULT_AIRPLAY_OUTPUT_STATE: AirPlayOutputStateEvent = {
   active: false,
+  audioActive: false,
   routeName: null,
   mode: "idle",
   phase: "idle",

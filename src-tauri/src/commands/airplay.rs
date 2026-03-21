@@ -117,12 +117,6 @@ pub enum AirPlayPlainTextPageDirection {
     Next,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AirPlayPlainTextPageStepRequest {
-    pub direction: AirPlayPlainTextPageDirection,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AirPlayBridgeWordToken {
@@ -174,6 +168,7 @@ struct AirPlayAudienceRuntimePayload {
 #[serde(rename_all = "camelCase")]
 pub struct AirPlayOutputStateEvent {
     pub active: bool,
+    pub audio_active: bool,
     pub route_name: Option<String>,
     pub mode: AirPlayAudienceMode,
     pub phase: AirPlayOutputPhase,
@@ -517,6 +512,7 @@ fn remember_runtime_handles(app_handle: &AppHandle, local_audio_suppressed: &Arc
 
 fn emit_airplay_state(
     active: bool,
+    audio_active: bool,
     route_name: Option<String>,
     mode: AirPlayAudienceMode,
     phase: AirPlayOutputPhase,
@@ -537,10 +533,9 @@ fn emit_airplay_state(
         .unwrap_or((None, None));
 
     if let Some(local_audio_suppressed) = local_audio_suppressed {
-        // Local speaker suppression must follow the actual external playback
-        // state, not mere route selection, so the Mac keeps sounding normal
-        // until AirPlay is verifiably driving the audience output.
-        local_audio_suppressed.store(active, Ordering::SeqCst);
+        // Local speaker suppression must follow actual remote audio routing,
+        // not just whether the audience/video surface is active.
+        local_audio_suppressed.store(audio_active, Ordering::SeqCst);
     }
 
     if let Some(handle) = handle {
@@ -548,6 +543,7 @@ fn emit_airplay_state(
             AIRPLAY_OUTPUT_STATE_EVENT,
             AirPlayOutputStateEvent {
                 active,
+                audio_active,
                 route_name,
                 mode,
                 phase,
@@ -589,7 +585,17 @@ mod native {
 
     unsafe extern "C" {
         fn ok_airplay_set_state_callback(
-            callback: extern "C" fn(bool, *const c_char, i32, i32, *const c_char, i64, u64, i64),
+            callback: extern "C" fn(
+                bool,
+                bool,
+                *const c_char,
+                i32,
+                i32,
+                *const c_char,
+                i64,
+                u64,
+                i64,
+            ),
         );
         fn ok_airplay_sync_route_picker(
             ns_view_ptr: *mut c_void,
@@ -607,11 +613,12 @@ mod native {
             cdg_frame_ptr: *const u8,
             cdg_frame_len: usize,
         );
-        fn ok_airplay_step_plain_text_page(direction: i32);
+        fn ok_airplay_step_plain_text_page(direction: i32) -> bool;
     }
 
     extern "C" fn handle_airplay_state_callback(
         active: bool,
+        audio_active: bool,
         route_name: *const c_char,
         mode: i32,
         phase: i32,
@@ -644,6 +651,7 @@ mod native {
 
         emit_airplay_state(
             active,
+            audio_active,
             route_name,
             mode_from_tag(mode),
             phase_from_tag(phase),
@@ -757,10 +765,8 @@ mod native {
         Ok(())
     }
 
-    pub(super) fn step_plain_text_page(direction: i32) {
-        unsafe {
-            ok_airplay_step_plain_text_page(direction);
-        }
+    pub(super) fn step_plain_text_page(direction: i32) -> bool {
+        unsafe { ok_airplay_step_plain_text_page(direction) }
     }
 }
 
@@ -790,7 +796,9 @@ mod native {
         Ok(())
     }
 
-    pub(super) fn step_plain_text_page(_direction: i32) {}
+    pub(super) fn step_plain_text_page(_direction: i32) -> bool {
+        false
+    }
 }
 
 #[tauri::command]
@@ -860,6 +868,12 @@ pub fn sync_airplay_audience_state(
 mod tests {
     use super::*;
     use crate::audio::playback::StemVolumes;
+    use crate::commands::bootstrap;
+    use crate::separator::model_cache::ModelCache;
+    use crate::AppState;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::{atomic::AtomicBool, Mutex};
 
     fn snapshot(
         song_id: Option<&str>,
@@ -880,6 +894,32 @@ mod tests {
             },
             has_stems: false,
             stem_mode: None,
+        }
+    }
+
+    fn plain_text_airplay_state() -> AppState {
+        AppState {
+            library: Arc::new(Mutex::new(None)),
+            app_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("tmp"),
+            model_path: PathBuf::from("model.bin"),
+            playback: Arc::new(Mutex::new(PlaybackController::default())),
+            cdg_state: Arc::new(Mutex::new(None)),
+            airplay_audio_tap: Arc::new(crate::airplay_stream::AirPlayAudioTap::new(4)),
+            airplay_stream_generation: Arc::new(AtomicU64::new(7)),
+            airplay_audience_active: Arc::new(AtomicBool::new(true)),
+            airplay_control_refresh_token: Arc::new(AtomicU64::new(0)),
+            airplay_http_server: Arc::new(Mutex::new(None)),
+            airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
+            playback_request_id: AtomicU64::new(0),
+            audio_output_started: Arc::new(AtomicBool::new(true)),
+            audio_output_start_lock: Arc::new(Mutex::new(())),
+            model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),
+            separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+            separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
+            batch_running: Arc::new(AtomicBool::new(false)),
+            batch_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -1033,18 +1073,82 @@ mod tests {
         assert!(runtime.song_id.is_none());
         assert!(!runtime.is_playing);
     }
+
+    #[test]
+    fn plain_text_page_step_does_not_refresh_airplay_stream_when_audience_is_active() {
+        let state = plain_text_airplay_state();
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let initial_epoch = state.airplay_audio_tap.current_epoch();
+
+        let generation = refresh_airplay_stream_after_plain_text_page_step(&state);
+
+        assert_eq!(generation, None);
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation
+        );
+        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
+    }
+
+    #[test]
+    fn plain_text_page_step_does_not_refresh_airplay_stream_when_audience_is_idle() {
+        let state = plain_text_airplay_state();
+        state
+            .airplay_audience_active
+            .store(false, Ordering::SeqCst);
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let initial_epoch = state.airplay_audio_tap.current_epoch();
+
+        let generation = refresh_airplay_stream_after_plain_text_page_step(&state);
+
+        assert_eq!(generation, None);
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation
+        );
+        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
+    }
+
+    #[test]
+    fn airplay_output_state_event_serializes_audio_active() {
+        let value = serde_json::to_value(AirPlayOutputStateEvent {
+            active: false,
+            audio_active: true,
+            route_name: None,
+            mode: AirPlayAudienceMode::Lyrics,
+            phase: AirPlayOutputPhase::Playing,
+            detail: None,
+            displayed_position_ms: None,
+            stream_generation: 9,
+            latency_ms: None,
+        })
+        .expect("event should serialize");
+
+        assert_eq!(value["active"], false);
+        assert_eq!(value["audioActive"], true);
+        assert_eq!(value["streamGeneration"], 9);
+    }
 }
 
 #[cfg(target_os = "macos")]
-fn native_step_plain_text_page(direction: i32) {
-    native::step_plain_text_page(direction);
+fn native_step_plain_text_page(direction: i32) -> bool {
+    native::step_plain_text_page(direction)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn native_step_plain_text_page(_direction: i32) {}
+fn native_step_plain_text_page(_direction: i32) -> bool {
+    false
+}
+
+fn refresh_airplay_stream_after_plain_text_page_step(_state: &AppState) -> Option<u64> {
+    None
+}
 
 #[tauri::command]
-pub fn step_airplay_plain_text_page(request: AirPlayPlainTextPageStepRequest) -> CommandResult<()> {
+pub fn step_airplay_plain_text_page(
+    state: State<'_, AppState>,
+    direction: AirPlayPlainTextPageDirection,
+) -> CommandResult<()> {
     let scene = airplay_runtime_state()
         .lock()
         .ok()
@@ -1061,10 +1165,28 @@ pub fn step_airplay_plain_text_page(request: AirPlayPlainTextPageStepRequest) ->
         return Ok(());
     }
 
-    let direction = match request.direction {
+    let direction = match direction {
         AirPlayPlainTextPageDirection::Prev => -1,
         AirPlayPlainTextPageDirection::Next => 1,
     };
-    native_step_plain_text_page(direction);
+    if !native_step_plain_text_page(direction) {
+        return Ok(());
+    }
+
+    let _ = refresh_airplay_stream_after_plain_text_page_step(&state);
+
+    let snapshot = state
+        .playback
+        .lock()
+        .map_err(|_| internal_error("playback controller lock was poisoned".to_owned()))?
+        .snapshot(monotonic_now_ms());
+    let runtime = build_runtime_payload(
+        Some(&scene),
+        &snapshot,
+        state.airplay_stream_generation.load(Ordering::SeqCst),
+    );
+    let cdg_frame = build_current_cdg_frame(&state.cdg_state, &runtime);
+    native::sync_audience_runtime(&runtime, cdg_frame.as_deref())?;
+
     Ok(())
 }

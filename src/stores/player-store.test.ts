@@ -8,6 +8,7 @@ describe("selectSyncDisplayPositionMs", () => {
         positionMs: 1000,
         airPlayOutput: {
           active: true,
+          audioActive: true,
           routeName: "Living Room TV",
           mode: "lyrics",
           phase: "playing",
@@ -26,6 +27,7 @@ describe("selectSyncDisplayPositionMs", () => {
         positionMs: 1000,
         airPlayOutput: {
           active: false,
+          audioActive: false,
           routeName: null,
           mode: "idle",
           phase: "idle",

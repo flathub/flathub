@@ -238,6 +238,7 @@ export interface AirPlayAudienceStatePayload {
 
 export interface AirPlayOutputStateEvent {
   active: boolean;
+  audioActive: boolean;
   routeName: string | null;
   mode: AirPlayAudienceMode;
   phase: AirPlayOutputPhase;

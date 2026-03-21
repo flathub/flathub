@@ -1,6 +1,6 @@
 use openkara_lib::commands::airplay::{
     normalize_host_y, AirPlayAudienceMode, AirPlayOutputPhase, AirPlayOutputStateEvent,
-    AirPlayPlainTextPageDirection, AirPlayPlainTextPageStepRequest, AIRPLAY_OUTPUT_STATE_EVENT,
+    AirPlayPlainTextPageDirection, AIRPLAY_OUTPUT_STATE_EVENT,
 };
 
 #[test]
@@ -60,6 +60,7 @@ fn airplay_output_phase_serializes_expected_variants() {
 fn airplay_output_event_serializes_phase_and_detail() {
     let json = serde_json::to_value(AirPlayOutputStateEvent {
         active: false,
+        audio_active: true,
         route_name: Some("Bedroom TV".to_owned()),
         mode: AirPlayAudienceMode::Lyrics,
         phase: AirPlayOutputPhase::Buffering,
@@ -71,6 +72,7 @@ fn airplay_output_event_serializes_phase_and_detail() {
     .unwrap();
 
     assert_eq!(json["active"], false);
+    assert_eq!(json["audioActive"], true);
     assert_eq!(json["routeName"], "Bedroom TV");
     assert_eq!(json["mode"], "lyrics");
     assert_eq!(json["phase"], "buffering");
@@ -81,11 +83,10 @@ fn airplay_output_event_serializes_phase_and_detail() {
 }
 
 #[test]
-fn airplay_plain_text_page_step_request_deserializes_direction() {
-    let request = serde_json::from_value::<AirPlayPlainTextPageStepRequest>(serde_json::json!({
-        "direction": "next"
-    }))
-    .unwrap();
+fn airplay_plain_text_page_direction_deserializes_expected_variant() {
+    let direction =
+        serde_json::from_value::<AirPlayPlainTextPageDirection>(serde_json::json!("next"))
+            .unwrap();
 
-    assert_eq!(request.direction, AirPlayPlainTextPageDirection::Next);
+    assert_eq!(direction, AirPlayPlainTextPageDirection::Next);
 }

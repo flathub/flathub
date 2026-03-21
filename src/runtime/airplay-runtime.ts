@@ -156,6 +156,8 @@ export function useLocalAudienceOutputState(enabled = true): void {
       return;
     }
 
+    usePlayerStore.getState().updateLocalAudienceOutputActive(false);
+
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
