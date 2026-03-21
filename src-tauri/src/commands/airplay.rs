@@ -16,7 +16,9 @@ use std::{
     },
     thread,
 };
-use tauri::{AppHandle, Emitter, State, WebviewWindow};
+use tauri::{AppHandle, State, WebviewWindow};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 
 #[cfg(target_os = "macos")]
 use std::{

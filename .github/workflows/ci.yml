@@ -104,6 +104,34 @@ jobs:
 
           Move-Item -Force $tmpPath $modelPath
 
+      # ort-sys's `copy-dylibs` feature places runtime DLLs (e.g. DirectML.dll)
+      # into target/debug via file copy when symlinks are unavailable (no
+      # Developer Mode on GitHub-hosted runners). It deliberately skips the
+      # deps/ and examples/ directories in that fallback path, so test
+      # binaries that run from target/debug/deps cannot find the DLLs.
+      # Fix: pre-build the test binaries, then mirror the DLLs into deps/.
+      - name: Stage ORT runtime DLLs for Rust tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location (Join-Path $env:GITHUB_WORKSPACE "src-tauri")
+          cargo test --no-run 2>&1
+
+          $debugDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug"
+          $depsDir  = Join-Path $debugDir "deps"
+          New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
+
+          $dlls = Get-ChildItem -Path $debugDir -Filter "*.dll" -File
+          if ($dlls) {
+            foreach ($dll in $dlls) {
+              $dest = Join-Path $depsDir $dll.Name
+              Copy-Item -Force $dll.FullName $dest
+              Write-Host "Staged $($dll.Name) -> deps/"
+            }
+          } else {
+            Write-Host "No DLLs found in target/debug – nothing to stage"
+          }
+
       - name: Lint frontend
         run: pnpm lint
 
