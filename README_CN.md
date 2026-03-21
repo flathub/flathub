@@ -22,7 +22,7 @@
 
 <div align="center">
 
-[![OpenKara 演示视频](https://img.youtube.com/vi/OznVDmp9igk/maxresdefault.jpg)](https://www.youtube-nocookie.com/embed/OznVDmp9igk)
+[![OpenKara 演示视频](https://github.com/user-attachments/assets/33fb3c92-460c-44fb-abf7-19d8ab0977b1)](https://www.youtube-nocookie.com/embed/OznVDmp9igk)
 
 </div>
 
