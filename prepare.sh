@@ -10,7 +10,7 @@ if ! command -v flatpak-node-generator &>/dev/null; then
     # Make sure ~/.local/bin is on PATH for this session
     export PATH="${HOME}/.local/bin:${PATH}"
     #TODO - replace with url when pnpm implemented
-    pipx install git+https://github.com/tonur/flatpak-builder-tools.git#subdirectory=node --force
+    pipx install git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node --force
     if ! command -v flatpak-node-generator &>/dev/null; then
         echo "ERROR: flatpak-node-generator still not found after install."
         exit 1
