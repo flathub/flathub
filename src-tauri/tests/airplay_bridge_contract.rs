@@ -85,8 +85,7 @@ fn airplay_output_event_serializes_phase_and_detail() {
 #[test]
 fn airplay_plain_text_page_direction_deserializes_expected_variant() {
     let direction =
-        serde_json::from_value::<AirPlayPlainTextPageDirection>(serde_json::json!("next"))
-            .unwrap();
+        serde_json::from_value::<AirPlayPlainTextPageDirection>(serde_json::json!("next")).unwrap();
 
     assert_eq!(direction, AirPlayPlainTextPageDirection::Next);
 }

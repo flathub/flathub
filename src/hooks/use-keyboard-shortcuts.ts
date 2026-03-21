@@ -170,13 +170,16 @@ export function useKeyboardShortcuts(enabled = true): void {
           const isPlainTextLyrics =
             lyricsState.lines.length > 0 &&
             lyricsState.lines.every((line) => line.time_ms === 0);
+          const remoteTarget = resolvePlainTextRemoteTarget(
+            playerState.airPlayOutput,
+            playerState.localAudienceOutputActive,
+          );
+          const isAirPlayPending =
+            remoteTarget === "airplay" &&
+            playerState.airPlayPlainTextPagePending;
 
           return (
-            isPlainTextLyrics &&
-            resolvePlainTextRemoteTarget(
-              playerState.airPlayOutput,
-              playerState.localAudienceOutputActive,
-            ) !== null
+            isPlainTextLyrics && remoteTarget !== null && !isAirPlayPending
           );
         })(),
         stepPlainTextPage: (direction) => {

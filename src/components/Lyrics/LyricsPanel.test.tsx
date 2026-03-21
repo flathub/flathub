@@ -26,6 +26,8 @@ const {
       latencyMs: null,
     } as AirPlayOutputStateEvent,
     localAudienceOutputActive: false,
+    airPlayPlainTextPagePending: false,
+    airPlayPlainTextPagePendingDirection: null as "prev" | "next" | null,
   },
   mockLyricsState: {
     lines: [
@@ -105,6 +107,8 @@ describe("LyricsPanel contextual reveal", () => {
       latencyMs: null,
     };
     mockPlayerState.localAudienceOutputActive = false;
+    mockPlayerState.airPlayPlainTextPagePending = false;
+    mockPlayerState.airPlayPlainTextPagePendingDirection = null;
     mockSelectSyncDisplayPositionMs.mockImplementation(
       (state) => state.positionMs,
     );
@@ -181,6 +185,28 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).toContain("plain-text-page-next");
     expect(markup).toContain("lyrics.previousPage");
     expect(markup).toContain("lyrics.nextPage");
+  });
+
+  test("shows pending feedback on the active AirPlay paging button while waiting for remote display", () => {
+    mockPlayerState.airPlayOutput = {
+      active: true,
+      audioActive: true,
+      routeName: "Living Room TV",
+      mode: "lyrics",
+      phase: "playing",
+      detail: null,
+      displayedPositionMs: 1250,
+      streamGeneration: 3,
+      latencyMs: 900,
+    } satisfies AirPlayOutputStateEvent;
+    mockPlayerState.airPlayPlainTextPagePending = true;
+    mockPlayerState.airPlayPlainTextPagePendingDirection = "next";
+
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).toContain('data-airplay-page-pending="true"');
+    expect(markup).toContain("animate-spin");
+    expect(markup).toContain('disabled=""');
   });
 
   test("keeps remote paging controls hidden when no remote audience target exists", () => {

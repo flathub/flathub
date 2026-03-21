@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, Edit2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Edit2, LoaderCircle } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
 import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import {
@@ -52,10 +52,17 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const localAudienceOutputActive = usePlayerStore(
     (s) => s.localAudienceOutputActive,
   );
+  const airPlayPlainTextPagePending = usePlayerStore(
+    (s) => s.airPlayPlainTextPagePending,
+  );
+  const airPlayPlainTextPagePendingDirection = usePlayerStore(
+    (s) => s.airPlayPlainTextPagePendingDirection,
+  );
   const lyricsFontStep = useSettingsStore((s) => s.lyricsFontStep);
   const adjustedMs = positionMs - offsetMs;
   const containerRef = useRef<HTMLDivElement>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
+  const lastPendingSongIdRef = useRef<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [pageStartIndices, setPageStartIndices] = useState<number[]>([0]);
   const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
@@ -71,6 +78,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   );
   const shouldShowRemotePageControls =
     !isAudience && isPlainText && remotePlainTextTarget !== null;
+  const isAirPlayRemotePagingTarget = remotePlainTextTarget === "airplay";
+  const shouldLockRemotePageControls =
+    isAirPlayRemotePagingTarget && airPlayPlainTextPagePending;
   const shouldRenderAudiencePlainTextPages = isAudience && isPlainText;
   const pageIdentity = shouldRenderAudiencePlainTextPages
     ? `${songId ?? ""}:${rawLrc}:${lyricsFontStep}`
@@ -243,6 +253,34 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
     });
   };
 
+  useEffect(() => {
+    if (!airPlayPlainTextPagePending) {
+      lastPendingSongIdRef.current = songId ?? null;
+      return;
+    }
+
+    const songChanged =
+      lastPendingSongIdRef.current !== null &&
+      lastPendingSongIdRef.current !== (songId ?? null);
+    if (
+      isAudience ||
+      songChanged ||
+      !isPlainText ||
+      !isAirPlayRemotePagingTarget
+    ) {
+      usePlayerStore.getState().clearAirPlayPlainTextPagePending();
+      return;
+    }
+
+    lastPendingSongIdRef.current = songId ?? null;
+  }, [
+    airPlayPlainTextPagePending,
+    isAirPlayRemotePagingTarget,
+    isAudience,
+    isPlainText,
+    songId,
+  ]);
+
   if (!songId) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -322,11 +360,23 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
                   <button
                     type="button"
                     data-testid="plain-text-page-prev"
+                    data-airplay-page-pending={
+                      shouldLockRemotePageControls &&
+                      airPlayPlainTextPagePendingDirection === "prev"
+                        ? "true"
+                        : "false"
+                    }
                     onClick={() => handleRemotePageStep("prev")}
                     aria-label={t("lyrics.previousPage")}
+                    disabled={shouldLockRemotePageControls}
                     className="app-panel-surface motion-icon-button rounded-full border border-[color-mix(in_srgb,var(--color-border-light)_78%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_76%,transparent)] p-2 text-[var(--color-text-dim)] shadow-[0_16px_30px_rgba(0,0,0,0.22)] hover:border-[color-mix(in_srgb,var(--color-accent)_28%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_78%,transparent)] hover:text-[var(--color-control-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35"
                   >
-                    <ChevronUp size={16} />
+                    {shouldLockRemotePageControls &&
+                    airPlayPlainTextPagePendingDirection === "prev" ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <ChevronUp size={16} />
+                    )}
                   </button>
                 </Tooltip>
                 <Tooltip
@@ -336,11 +386,23 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
                   <button
                     type="button"
                     data-testid="plain-text-page-next"
+                    data-airplay-page-pending={
+                      shouldLockRemotePageControls &&
+                      airPlayPlainTextPagePendingDirection === "next"
+                        ? "true"
+                        : "false"
+                    }
                     onClick={() => handleRemotePageStep("next")}
                     aria-label={t("lyrics.nextPage")}
+                    disabled={shouldLockRemotePageControls}
                     className="app-panel-surface motion-icon-button rounded-full border border-[color-mix(in_srgb,var(--color-border-light)_78%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_76%,transparent)] p-2 text-[var(--color-text-dim)] shadow-[0_16px_30px_rgba(0,0,0,0.22)] hover:border-[color-mix(in_srgb,var(--color-accent)_28%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_78%,transparent)] hover:text-[var(--color-control-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35"
                   >
-                    <ChevronDown size={16} />
+                    {shouldLockRemotePageControls &&
+                    airPlayPlainTextPagePendingDirection === "next" ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
                   </button>
                 </Tooltip>
               </div>

@@ -57,6 +57,8 @@ describe("useAirPlayOutputState", () => {
       snapshot: null,
       positionMs: 0,
       localAudienceOutputActive: false,
+      airPlayPlainTextPagePending: false,
+      airPlayPlainTextPagePendingDirection: null,
       airPlayOutput: {
         active: false,
         audioActive: false,
@@ -135,6 +137,54 @@ describe("useAirPlayOutputState", () => {
       streamGeneration: 3,
       latencyMs: 420,
     });
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  test("clears pending AirPlay plain-text paging feedback when the route becomes inactive", async () => {
+    let listener:
+      | ((event: { payload: AirPlayOutputStateEvent }) => void)
+      | null = null;
+    mockListen.mockImplementation(async (_eventName, nextListener) => {
+      listener = nextListener;
+      return vi.fn();
+    });
+    usePlayerStore.setState({
+      airPlayPlainTextPagePending: true,
+      airPlayPlainTextPagePendingDirection: "next",
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<HookHarness />);
+    });
+
+    await act(async () => {
+      listener?.({
+        payload: {
+          active: false,
+          audioActive: false,
+          routeName: null,
+          mode: "idle",
+          phase: "idle",
+          detail: null,
+          displayedPositionMs: null,
+          streamGeneration: 0,
+          latencyMs: null,
+        },
+      });
+    });
+
+    expect(usePlayerStore.getState().airPlayPlainTextPagePending).toBe(false);
+    expect(usePlayerStore.getState().airPlayPlainTextPagePendingDirection).toBe(
+      null,
+    );
 
     await act(async () => {
       root.unmount();

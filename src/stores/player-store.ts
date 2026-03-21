@@ -13,6 +13,9 @@ import {
   shouldEnqueueInsteadOfReplacingCurrentSong,
 } from "./player-workflows";
 
+let airPlayPlainTextPagePendingTimer: ReturnType<typeof setTimeout> | null =
+  null;
+
 export const DEFAULT_AIRPLAY_OUTPUT_STATE: AirPlayOutputStateEvent = {
   active: false,
   audioActive: false,
@@ -30,6 +33,8 @@ interface PlayerState {
   positionMs: number;
   airPlayOutput: AirPlayOutputStateEvent;
   localAudienceOutputActive: boolean;
+  airPlayPlainTextPagePending: boolean;
+  airPlayPlainTextPagePendingDirection: "prev" | "next" | null;
 
   playSong: (songId: string) => Promise<void>;
   playNow: (songId: string) => Promise<void>;
@@ -47,6 +52,11 @@ interface PlayerState {
   skipBack: () => Promise<void>;
   updateAirPlayOutput: (airPlayOutput: AirPlayOutputStateEvent) => void;
   updateLocalAudienceOutputActive: (active: boolean) => void;
+  startAirPlayPlainTextPagePending: (
+    direction: "prev" | "next",
+    lockMs: number,
+  ) => void;
+  clearAirPlayPlainTextPagePending: () => void;
 }
 
 // RATIONALE: Once AirPlay is active, the audience surface must follow the TV's
@@ -67,6 +77,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   positionMs: 0,
   airPlayOutput: DEFAULT_AIRPLAY_OUTPUT_STATE,
   localAudienceOutputActive: false,
+  airPlayPlainTextPagePending: false,
+  airPlayPlainTextPagePendingDirection: null,
 
   playSong: async (songId) => {
     const { snapshot } = usePlayerStore.getState();
@@ -257,5 +269,33 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 
   updateLocalAudienceOutputActive: (active) => {
     set({ localAudienceOutputActive: active });
+  },
+
+  startAirPlayPlainTextPagePending: (direction, lockMs) => {
+    if (airPlayPlainTextPagePendingTimer !== null) {
+      clearTimeout(airPlayPlainTextPagePendingTimer);
+    }
+
+    set({
+      airPlayPlainTextPagePending: true,
+      airPlayPlainTextPagePendingDirection: direction,
+    });
+
+    airPlayPlainTextPagePendingTimer = setTimeout(() => {
+      airPlayPlainTextPagePendingTimer = null;
+      usePlayerStore.getState().clearAirPlayPlainTextPagePending();
+    }, lockMs);
+  },
+
+  clearAirPlayPlainTextPagePending: () => {
+    if (airPlayPlainTextPagePendingTimer !== null) {
+      clearTimeout(airPlayPlainTextPagePendingTimer);
+      airPlayPlainTextPagePendingTimer = null;
+    }
+
+    set({
+      airPlayPlainTextPagePending: false,
+      airPlayPlainTextPagePendingDirection: null,
+    });
   },
 }));

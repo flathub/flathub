@@ -17,8 +17,9 @@
 3. 宿主位出现时，前端调用 `sync_airplay_route_picker(bounds)`；宿主位销毁时调用 `sync_airplay_route_picker(null)`
 4. 前端调用 `sync_airplay_audience_state(payload)` 同步当前歌曲/歌词配置；backend 自己负责运行时播放位置、歌词高亮和 CDG cadence
 5. 纯文本歌词页通过 `step_airplay_plain_text_page({ direction })` 交给 native bridge 翻页，不再依赖主窗口滚动进度；翻页必须直接作用于当前原生渲染状态，不能通过刷新 stream generation 来换页，否则会造成可听断音
-6. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
-7. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
+6. 当 plain-text 翻页目标是 AirPlay 时，主窗口要在请求发出后进入一个极轻量的等待态：按钮内显示 spinner，并在 `clamp((latencyMs ?? 1200) + 250, 900, 2500)` 的窗口内锁定重复点击与 `PageUp / PageDown`
+7. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
+8. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
 
 ## Command: `sync_airplay_route_picker`
 
@@ -47,6 +48,7 @@ null
 2. `bounds !== null` 时，backend 把原生 `AVRoutePickerView` 挂载到当前 Tauri WebView 的 `ns_view`
 3. `bounds === null` 时，backend 卸载原生 `AVRoutePickerView`
 4. 该命令不打开系统设置，也不伪造系统 AirPlay 菜单
+5. backend 不能再把 `AVRoutePickerViewDelegate` 的 begin/end presenting 回调当成“路由已激活”的事实来源
 
 ## Command: `sync_airplay_audience_state`
 
@@ -128,12 +130,13 @@ null
 4. `messages` 提供无歌、加载中、无歌词等 audience 空状态所需的本地化文案；AirPlay 电视端只显示弱化文本提示，不再渲染按钮式空状态卡片
 5. `presentationSpec` 固定了 audience 内容区宽度、字号、行距、颜色和 glow；本地 `fullscreen-player` audience 输出与 AirPlay 必须共用这套显式 spec，不能各自维护一套样式
 6. `viewport` 当前固定为 `1280x720`，对应 backend HLS 视频编码参考尺寸
-7. backend 从本机混音输出 tap 获取音频 PCM，并与 scene/CDG 帧一起写入 `AVAssetWriter` 分段输出，再由 `AVPlayer` 播放可被接收端访问的 HLS
-8. backend 不再依赖主窗口 React 节拍驱动歌词或 CDG；AirPlay 运行时以 Rust 播放状态为唯一时间源
-9. 主窗口标准 UI 仍然应跟随 `displayedPositionMs` 计算歌词和 CDG 的同步显示时钟，但不应因此切换自身布局模式
-10. 该命令不修改现有播放、歌词、CDG IPC 名称，只复用它们的状态
-11. backend 在写给 native bridge 的内部 JSON scene 时，使用独立 DTO 固定内层时间字段为 `timeMs`；不能直接复用共享 IPC 歌词结构，否则 nested `time_ms` 会让 native 误判 timed lyrics 为 plain text
-12. backend 在 plain-text 场景下按页缓存 `pageStartIndices`，并在配置变化时重置到第一页；页内渲染由 native bridge 按当前 `pageIndex` 控制
+7. backend 从本机混音输出 tap 获取音频 PCM，并写入 `audience-video.m3u8` 音视频 HLS；当前 AirPlay audience 输出只支持电视/Apple TV 这类视频接收端
+8. HomePod 这类 audio-only AirPlay 路由当前不支持；不要把观众屏幕的音视频 HLS 或任何自造 route 预测逻辑继续扩展到这类设备，未来若支持需单独设计并验证
+9. backend 不再依赖主窗口 React 节拍驱动歌词或 CDG；AirPlay 运行时以 Rust 播放状态为唯一时间源
+10. 主窗口标准 UI 仍然应跟随 `displayedPositionMs` 计算歌词和 CDG 的同步显示时钟，但不应因此切换自身布局模式
+11. 该命令不修改现有播放、歌词、CDG IPC 名称，只复用它们的状态
+12. backend 在写给 native bridge 的内部 JSON scene 时，使用独立 DTO 固定内层时间字段为 `timeMs`；不能直接复用共享 IPC 歌词结构，否则 nested `time_ms` 会让 native 误判 timed lyrics 为 plain text
+13. backend 在 plain-text 场景下按页缓存 `pageStartIndices`，并在配置变化时重置到第一页；页内渲染由 native bridge 按当前 `pageIndex` 控制
 
 ## Command: `step_airplay_plain_text_page`
 
@@ -181,13 +184,13 @@ null
 
 1. `phase` 固定为 `idle | route_selected | buffering | playing | failed`
 2. `active` 只表示 audience/video 路由真正激活；只有 `phase === "playing"`、`mode !== "idle"`、`AVPlayer.currentItem` 已 ready 且 `externalPlaybackActive === true` 时为 `true`
-3. `audioActive` 表示远端 AirPlay 音频路由正在实际消费 OpenKara 生成流；第三方电视与 HomePod 都可能为 `true`
+3. `audioActive` 当前与 audience/video 路由保持一致；在现阶段它只表示电视/Apple TV 这类视频接收端已经接管远端音频
 4. `routeName` 当前允许为 `null`
 5. `mode` 反映 backend 记录的最新 audience 输出模式
 6. `detail` 提供等待/失败的简短诊断字符串；当前约定值包括 `waiting_for_route`、`waiting_for_video`、`waiting_for_audio`、`writer_failed`
-7. `displayedPositionMs` 只对 audience/video 路由产生值；HomePod 这种 audio-only 路由必须保持 `null`
-8. `streamGeneration` 表示当前 HLS 输出代次；seek、切歌、`lyrics <-> cdg` 切换和 plain-text 成功翻页时都必须刷新 generation，以清掉旧缓冲
-9. `latencyMs` 表示 backend 当前源播放位置与 TV 显示位置的差值，用于诊断 AirPlay 实际传输延迟；audio-only 路由必须保持 `null`
+7. `displayedPositionMs` 只对 audience/video 路由产生值
+8. `streamGeneration` 表示当前 HLS 输出代次；seek、切歌、`lyrics <-> cdg` 切换和 pause/resume 都必须刷新 generation，以清掉旧缓冲；plain-text 成功翻页不能刷新 generation
+9. `latencyMs` 表示 backend 当前源播放位置与 TV 显示位置的差值，用于诊断 AirPlay 实际传输延迟
 
 ## Non-goals
 

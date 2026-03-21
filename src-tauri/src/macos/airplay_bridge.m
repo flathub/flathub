@@ -70,6 +70,65 @@ static BOOL OKBoolValue(id value);
 @implementation OKAirPlaySegmentEntry
 @end
 
+@interface OKAirPlayVariantStream : NSObject
+
+@property(nonatomic, copy) NSString *playlistFilename;
+@property(nonatomic, copy) NSString *filenamePrefix;
+@property(nonatomic, assign) BOOL includesVideo;
+@property(nonatomic, strong) AVAssetWriter *writer;
+@property(nonatomic, strong) AVAssetWriterInput *videoInput;
+@property(nonatomic, strong) AVAssetWriterInput *audioInput;
+@property(nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *pixelBufferAdaptor;
+@property(nonatomic, assign) BOOL writerStarted;
+@property(nonatomic, assign) BOOL hasInitializationSegment;
+@property(nonatomic, assign) BOOL hasWrittenVideo;
+@property(nonatomic, assign) BOOL hasWrittenAudio;
+@property(nonatomic, strong) NSMutableArray<OKAirPlaySegmentEntry *> *segments;
+@property(nonatomic, assign) NSInteger nextSegmentSequence;
+@property(nonatomic, assign) int64_t nextVideoFrameIndex;
+@property(nonatomic, assign) int64_t nextAudioFrameIndex;
+
+- (instancetype)initWithPlaylistFilename:(NSString *)playlistFilename
+                          filenamePrefix:(NSString *)filenamePrefix
+                           includesVideo:(BOOL)includesVideo;
+- (void)reset;
+
+@end
+
+@implementation OKAirPlayVariantStream
+
+- (instancetype)initWithPlaylistFilename:(NSString *)playlistFilename
+                          filenamePrefix:(NSString *)filenamePrefix
+                           includesVideo:(BOOL)includesVideo {
+    self = [super init];
+    if (self == nil) {
+        return nil;
+    }
+
+    _playlistFilename = [playlistFilename copy];
+    _filenamePrefix = [filenamePrefix copy];
+    _includesVideo = includesVideo;
+    _segments = [NSMutableArray array];
+    return self;
+}
+
+- (void)reset {
+    self.writer = nil;
+    self.videoInput = nil;
+    self.audioInput = nil;
+    self.pixelBufferAdaptor = nil;
+    self.writerStarted = NO;
+    self.hasInitializationSegment = NO;
+    self.hasWrittenVideo = NO;
+    self.hasWrittenAudio = NO;
+    [self.segments removeAllObjects];
+    self.nextSegmentSequence = 0;
+    self.nextVideoFrameIndex = 0;
+    self.nextAudioFrameIndex = 0;
+}
+
+@end
+
 static CGFloat OKClamp(CGFloat value, CGFloat minValue, CGFloat maxValue) {
     return MAX(minValue, MIN(maxValue, value));
 }
@@ -300,7 +359,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return data;
 }
 
-@interface OKAirPlayBridge : NSObject <AVAssetWriterDelegate, AVRoutePickerViewDelegate>
+@interface OKAirPlayBridge : NSObject <AVAssetWriterDelegate>
 
 @property(nonatomic, strong) AVPlayer *player;
 @property(nonatomic, strong) AVRoutePickerView *routePickerView;
@@ -317,24 +376,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, copy) NSString *streamRootPath;
 @property(nonatomic, copy) NSString *playlistURLString;
 
-@property(nonatomic, strong) AVAssetWriter *writer;
-@property(nonatomic, strong) AVAssetWriterInput *videoInput;
-@property(nonatomic, strong) AVAssetWriterInput *audioInput;
-@property(nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *pixelBufferAdaptor;
-@property(nonatomic, assign) BOOL writerStarted;
+@property(nonatomic, strong) OKAirPlayVariantStream *audienceStream;
 @property(nonatomic, assign) BOOL realItemAttached;
-@property(nonatomic, assign) BOOL hasInitializationSegment;
-@property(nonatomic, assign) BOOL hasWrittenVideo;
-@property(nonatomic, assign) BOOL hasWrittenAudio;
-
-@property(nonatomic, strong) NSMutableArray<OKAirPlaySegmentEntry *> *segments;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *syncPoints;
-@property(nonatomic, assign) NSInteger nextSegmentSequence;
-@property(nonatomic, assign) int64_t nextVideoFrameIndex;
-@property(nonatomic, assign) int64_t nextAudioFrameIndex;
 
-@property(nonatomic, strong) NSMutableData *pendingAudioData;
-@property(nonatomic, assign) NSUInteger pendingAudioOffset;
+@property(nonatomic, strong) NSMutableData *pendingAudienceAudioData;
+@property(nonatomic, assign) NSUInteger pendingAudienceAudioOffset;
 @property(nonatomic, assign) uint64_t currentAudioEpoch;
 
 @property(nonatomic, assign) OKAirPlayMode currentMode;
@@ -348,9 +395,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, strong) NSArray<NSNumber *> *plainTextPageStartIndices;
 @property(nonatomic, assign) NSUInteger plainTextPageIndex;
 @property(nonatomic, copy) NSString *plainTextPaginationSignature;
-@property(nonatomic, assign) BOOL routeSelectionPending;
-@property(nonatomic, assign) BOOL routeActivationResetPending;
-@property(nonatomic, assign) NSUInteger routeSelectionGeneration;
+@property(nonatomic, assign) BOOL lastKnownExternalPlaybackActive;
 @property(nonatomic, copy) NSString *lastPlaybackErrorDetail;
 @property(nonatomic, assign) long long lastEmittedDisplayedPositionMs;
 @property(nonatomic, assign) long long lastEmittedLatencyMs;
@@ -383,6 +428,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (void)refreshPlaybackPhase;
 - (BOOL)hasAudienceVideoRoute;
 - (BOOL)hasRemoteAudioRoute;
+- (BOOL)isAudienceStreamReadyForAttachment;
 
 @end
 
@@ -412,9 +458,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     );
     _audioQueue = dispatch_queue_create("openkara.airplay.audio", DISPATCH_QUEUE_SERIAL);
     _encoderQueue = dispatch_queue_create("openkara.airplay.encoder", DISPATCH_QUEUE_SERIAL);
-    _segments = [NSMutableArray array];
+    _audienceStream =
+        [[OKAirPlayVariantStream alloc] initWithPlaylistFilename:@"audience-video.m3u8"
+                                                  filenamePrefix:@"audience"
+                                                   includesVideo:YES];
     _syncPoints = [NSMutableArray array];
-    _pendingAudioData = [NSMutableData data];
+    _pendingAudienceAudioData = [NSMutableData data];
     _currentMode = OKAirPlayModeIdle;
     _currentPhase = OKAirPlayPhaseIdle;
     _currentAudioEpoch = 1;
@@ -504,8 +553,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (BOOL)hasRemoteAudioRoute {
-    return [self isCurrentItemReadyForRouting] &&
-        (self.player.externalPlaybackActive || self.player.audioOutputDeviceUniqueID.length > 0);
+    // RATIONALE: HomePod-style audio-only AirPlay remains unsupported. Keep
+    // local mute and output-state reporting aligned to the same audience/video
+    // route fact source that already drives TV playback.
+    return [self hasAudienceVideoRoute];
 }
 
 - (void)setPhase:(OKAirPlayPhase)phase detail:(NSString *)detail {
@@ -531,12 +582,25 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return [NSString stringWithFormat:@"%@?generation=%llu", self.playlistURLString, self.streamGeneration];
 }
 
-- (NSString *)initializationFilename {
-    return [NSString stringWithFormat:@"init-%llu.mp4", self.streamGeneration];
+- (NSString *)initializationFilenameForStream:(OKAirPlayVariantStream *)stream {
+    return [NSString stringWithFormat:@"%@-init-%llu.mp4", stream.filenamePrefix, self.streamGeneration];
 }
 
-- (NSString *)segmentFilenameForSequence:(NSInteger)sequence {
-    return [NSString stringWithFormat:@"segment-%llu-%ld.m4s", self.streamGeneration, (long)sequence];
+- (NSString *)segmentFilenameForStream:(OKAirPlayVariantStream *)stream
+                              sequence:(NSInteger)sequence {
+    return [NSString stringWithFormat:@"%@-segment-%llu-%ld.m4s",
+                                      stream.filenamePrefix,
+                                      self.streamGeneration,
+                                      (long)sequence];
+}
+
+- (BOOL)isStreamReadyForAttachment:(OKAirPlayVariantStream *)stream {
+    return stream.hasInitializationSegment && stream.segments.count > 0 &&
+        stream.hasWrittenAudio && (!stream.includesVideo || stream.hasWrittenVideo);
+}
+
+- (BOOL)isAudienceStreamReadyForAttachment {
+    return [self isStreamReadyForAttachment:self.audienceStream];
 }
 
 - (void)resetOutputClockTracking {
@@ -552,22 +616,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     self.streamGeneration = generation;
     self.attachedGeneration = 0;
-    self.writer = nil;
-    self.videoInput = nil;
-    self.audioInput = nil;
-    self.pixelBufferAdaptor = nil;
-    self.writerStarted = NO;
+    [self.audienceStream reset];
     self.realItemAttached = NO;
-    self.hasInitializationSegment = NO;
-    self.hasWrittenVideo = NO;
-    self.hasWrittenAudio = NO;
-    self.nextSegmentSequence = 0;
-    self.nextVideoFrameIndex = 0;
-    self.nextAudioFrameIndex = 0;
     self.lastPlaybackErrorDetail = nil;
-    [self.segments removeAllObjects];
-    [self.pendingAudioData setLength:0];
-    self.pendingAudioOffset = 0;
+    [self.pendingAudienceAudioData setLength:0];
+    self.pendingAudienceAudioOffset = 0;
     [self resetOutputClockTracking];
 
     if (self.player != nil) {
@@ -576,8 +629,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     dispatch_async(self.audioQueue, ^{
-        [self.pendingAudioData setLength:0];
-        self.pendingAudioOffset = 0;
+        [self.pendingAudienceAudioData setLength:0];
+        self.pendingAudienceAudioOffset = 0;
     });
 }
 
@@ -587,7 +640,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 - (void)recordSyncPointForSourcePosition:(long long)sourcePositionMs {
     long long streamPositionMs =
-        llround((double)self.nextVideoFrameIndex * 1000.0 / (double)OKAirPlayFramesPerSecond);
+        llround((double)self.audienceStream.nextVideoFrameIndex * 1000.0 /
+                (double)OKAirPlayFramesPerSecond);
     [self.syncPoints addObject:@{
         @"streamMs": @(streamPositionMs),
         @"sourceMs": @(sourcePositionMs),
@@ -793,10 +847,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (NSString *)waitingDetail {
-    if (!self.hasWrittenVideo) {
+    if (!self.audienceStream.hasWrittenVideo) {
         return @"waiting_for_video";
     }
-    if (!self.hasWrittenAudio) {
+    if (!self.audienceStream.hasWrittenAudio) {
         return @"waiting_for_audio";
     }
     return @"waiting_for_route";
@@ -810,29 +864,22 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     if (self.lastPlaybackErrorDetail.length > 0) {
         phase = OKAirPlayPhaseFailed;
         detail = self.lastPlaybackErrorDetail;
-    } else if (self.writer.status == AVAssetWriterStatusFailed) {
+    } else if (self.audienceStream.writer.status == AVAssetWriterStatusFailed) {
         phase = OKAirPlayPhaseFailed;
-        detail = @"writer_failed";
+        detail = @"audience_writer_failed";
     } else if (item != nil && item.status == AVPlayerItemStatusFailed) {
         phase = OKAirPlayPhaseFailed;
         detail = @"player_item_failed";
     } else if (self.currentMode == OKAirPlayModeIdle) {
-        if (self.routeSelectionPending && ![self hasRemoteAudioRoute]) {
-            phase = OKAirPlayPhaseRouteSelected;
-            detail = @"waiting_for_route";
-        }
+        phase = OKAirPlayPhaseIdle;
     } else if (item == nil || item.status == AVPlayerItemStatusUnknown) {
-        phase = self.routeSelectionPending ? OKAirPlayPhaseRouteSelected : OKAirPlayPhaseBuffering;
-        detail = self.routeSelectionPending ? @"waiting_for_route" : @"waiting_for_video";
-    } else if (!self.hasWrittenVideo || !self.hasWrittenAudio) {
+        phase = OKAirPlayPhaseBuffering;
+        detail = [self waitingDetail];
+    } else if (![self isAudienceStreamReadyForAttachment]) {
         phase = OKAirPlayPhaseBuffering;
         detail = [self waitingDetail];
     } else if (item.status == AVPlayerItemStatusReadyToPlay && [self hasRemoteAudioRoute]) {
         phase = OKAirPlayPhasePlaying;
-        self.routeSelectionPending = NO;
-    } else if (self.routeSelectionPending) {
-        phase = OKAirPlayPhaseRouteSelected;
-        detail = @"waiting_for_route";
     } else if (item.status == AVPlayerItemStatusReadyToPlay) {
         phase = OKAirPlayPhaseBuffering;
         detail = @"waiting_for_route";
@@ -900,7 +947,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)attachPlayerItemIfReady {
-    if (!self.hasInitializationSegment || self.segments.count == 0 || self.playlistURLString.length == 0) {
+    if (![self isAudienceStreamReadyForAttachment] || self.playlistURLString.length == 0) {
         return;
     }
 
@@ -929,14 +976,15 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     [self.player play];
     self.realItemAttached = YES;
     self.attachedGeneration = self.streamGeneration;
+    self.lastKnownExternalPlaybackActive = self.player.externalPlaybackActive;
     NSLog(@"OpenKara AirPlay attached player item for %@ (generation %llu)", playlistURL, self.streamGeneration);
     [self refreshPlaybackPhase];
 }
 
-- (void)removeOldSegmentFilesIfNeeded {
-    while (self.segments.count > OKAirPlayPlaylistWindow) {
-        OKAirPlaySegmentEntry *entry = self.segments.firstObject;
-        [self.segments removeObjectAtIndex:0];
+- (void)removeOldSegmentFilesIfNeededForStream:(OKAirPlayVariantStream *)stream {
+    while (stream.segments.count > OKAirPlayPlaylistWindow) {
+        OKAirPlaySegmentEntry *entry = stream.segments.firstObject;
+        [stream.segments removeObjectAtIndex:0];
 
         if (self.streamRootPath.length == 0) {
             continue;
@@ -947,8 +995,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 }
 
-- (void)writePlaylistFile {
-    if (self.streamRootPath.length == 0 || !self.hasInitializationSegment) {
+- (void)writePlaylistFileForStream:(OKAirPlayVariantStream *)stream {
+    if (self.streamRootPath.length == 0 || !stream.hasInitializationSegment) {
         return;
     }
 
@@ -956,19 +1004,20 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         [NSMutableString stringWithString:
                                @"#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n"];
     NSTimeInterval maxDuration = 1.0;
-    NSInteger mediaSequence = self.segments.firstObject.sequence;
-    for (OKAirPlaySegmentEntry *entry in self.segments) {
+    NSInteger mediaSequence = stream.segments.firstObject.sequence;
+    for (OKAirPlaySegmentEntry *entry in stream.segments) {
         maxDuration = MAX(maxDuration, entry.duration);
     }
 
     [playlist appendFormat:@"#EXT-X-TARGETDURATION:%ld\n", (long)ceil(maxDuration)];
     [playlist appendFormat:@"#EXT-X-MEDIA-SEQUENCE:%ld\n", (long)mediaSequence];
-    [playlist appendFormat:@"#EXT-X-MAP:URI=\"%@\"\n", [self initializationFilename]];
-    for (OKAirPlaySegmentEntry *entry in self.segments) {
+    [playlist appendFormat:@"#EXT-X-MAP:URI=\"%@\"\n", [self initializationFilenameForStream:stream]];
+    for (OKAirPlaySegmentEntry *entry in stream.segments) {
         [playlist appendFormat:@"#EXTINF:%.3f,\n%@\n", entry.duration, entry.filename];
     }
 
-    NSString *playlistPath = [self.streamRootPath stringByAppendingPathComponent:@"playlist.m3u8"];
+    NSString *playlistPath =
+        [self.streamRootPath stringByAppendingPathComponent:stream.playlistFilename];
     [playlist writeToFile:playlistPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
@@ -992,8 +1041,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)handleWriterFailureIfNeeded:(NSString *)context {
-    if (self.writer.status == AVAssetWriterStatusFailed) {
-        NSLog(@"OpenKara AirPlay writer failed during %@: %@", context, self.writer.error);
+    if (self.audienceStream.writer.status == AVAssetWriterStatusFailed) {
+        NSLog(@"OpenKara AirPlay audience writer failed during %@: %@",
+              context,
+              self.audienceStream.writer.error);
     }
 }
 
@@ -1021,22 +1072,19 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 - (void)configureStreamIfNeeded {
     if (@available(macOS 11.0, *)) {
-        if (self.writer != nil || self.streamRootPath.length == 0) {
+        if (self.audienceStream.writer != nil || self.streamRootPath.length == 0) {
             return;
         }
 
         [self resetStreamRoot];
 
-        NSError *error = nil;
-        UTType *contentType = [UTType typeWithIdentifier:(NSString *)AVFileTypeMPEG4];
-        self.writer = [[AVAssetWriter alloc] initWithContentType:contentType];
-        self.writer.delegate = self;
-        self.writer.shouldOptimizeForNetworkUse = YES;
-        self.writer.preferredOutputSegmentInterval =
-            CMTimeMake(OKAirPlayPreferredSegmentIntervalSeconds, 1);
-        self.writer.initialSegmentStartTime = kCMTimeZero;
-        self.writer.outputFileTypeProfile = AVFileTypeProfileMPEG4AppleHLS;
-
+        NSArray<OKAirPlayVariantStream *> *streams = @[ self.audienceStream ];
+        NSDictionary *audioSettings = @{
+            AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: @(OKAirPlayAudioSampleRate),
+            AVEncoderBitRateKey: @(192000),
+            AVNumberOfChannelsKey: @(OKAirPlayAudioChannels),
+        };
         NSDictionary *videoCompressionProperties = @{
             AVVideoAverageBitRateKey: @(4 * 1024 * 1024),
             AVVideoExpectedSourceFrameRateKey: @(OKAirPlayFramesPerSecond),
@@ -1050,12 +1098,6 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             AVVideoHeightKey: @(OKAirPlayVideoHeight),
             AVVideoCompressionPropertiesKey: videoCompressionProperties,
         };
-
-        self.videoInput =
-            [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
-                                               outputSettings:videoSettings];
-        self.videoInput.expectsMediaDataInRealTime = YES;
-
         NSDictionary *pixelBufferAttributes = @{
             (NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
             (NSString *)kCVPixelBufferWidthKey: @(OKAirPlayVideoWidth),
@@ -1063,84 +1105,98 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             (NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
             (NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
         };
-        self.pixelBufferAdaptor =
-            [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:self.videoInput
-                                                                             sourcePixelBufferAttributes:pixelBufferAttributes];
+        UTType *contentType = [UTType typeWithIdentifier:(NSString *)AVFileTypeMPEG4];
 
-        NSDictionary *audioSettings = @{
-            AVFormatIDKey: @(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: @(OKAirPlayAudioSampleRate),
-            AVEncoderBitRateKey: @(192000),
-            AVNumberOfChannelsKey: @(OKAirPlayAudioChannels),
-        };
-        self.audioInput =
-            [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio
-                                               outputSettings:audioSettings];
-        self.audioInput.expectsMediaDataInRealTime = YES;
+        for (OKAirPlayVariantStream *stream in streams) {
+            NSError *error = nil;
+            stream.writer = [[AVAssetWriter alloc] initWithContentType:contentType];
+            stream.writer.delegate = self;
+            stream.writer.shouldOptimizeForNetworkUse = YES;
+            stream.writer.preferredOutputSegmentInterval =
+                CMTimeMake(OKAirPlayPreferredSegmentIntervalSeconds, 1);
+            stream.writer.initialSegmentStartTime = kCMTimeZero;
+            stream.writer.outputFileTypeProfile = AVFileTypeProfileMPEG4AppleHLS;
 
-        if ([self.writer canAddInput:self.videoInput]) {
-            [self.writer addInput:self.videoInput];
+            if (stream.includesVideo) {
+                stream.videoInput =
+                    [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
+                                                       outputSettings:videoSettings];
+                stream.videoInput.expectsMediaDataInRealTime = YES;
+                stream.pixelBufferAdaptor =
+                    [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:stream.videoInput
+                                                                                 sourcePixelBufferAttributes:pixelBufferAttributes];
+                if ([stream.writer canAddInput:stream.videoInput]) {
+                    [stream.writer addInput:stream.videoInput];
+                }
+            }
+
+            stream.audioInput =
+                [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio
+                                                   outputSettings:audioSettings];
+            stream.audioInput.expectsMediaDataInRealTime = YES;
+            if ([stream.writer canAddInput:stream.audioInput]) {
+                [stream.writer addInput:stream.audioInput];
+            }
+
+            if (![stream.writer startWriting]) {
+                NSLog(@"OpenKara AirPlay failed to start %@ writer: %@",
+                      stream.filenamePrefix,
+                      error ?: stream.writer.error);
+                return;
+            }
+
+            [stream.writer startSessionAtSourceTime:kCMTimeZero];
+            stream.writerStarted = YES;
         }
-        if ([self.writer canAddInput:self.audioInput]) {
-            [self.writer addInput:self.audioInput];
-        }
 
-        self.segments = [NSMutableArray array];
-        self.nextSegmentSequence = 0;
-        self.nextVideoFrameIndex = 0;
-        self.nextAudioFrameIndex = 0;
-        self.pendingAudioOffset = 0;
-        [self.pendingAudioData setLength:0];
+        self.pendingAudienceAudioOffset = 0;
+        [self.pendingAudienceAudioData setLength:0];
         self.realItemAttached = NO;
-        self.hasInitializationSegment = NO;
-        self.hasWrittenVideo = NO;
-        self.hasWrittenAudio = NO;
         self.lastPlaybackErrorDetail = nil;
         [self resetOutputClockTracking];
-
-        if (![self.writer startWriting]) {
-            NSLog(@"OpenKara AirPlay failed to start writer: %@", error ?: self.writer.error);
-            return;
-        }
-        [self.writer startSessionAtSourceTime:kCMTimeZero];
-        self.writerStarted = YES;
         [self startVideoTimerIfNeeded];
     }
 }
 
-- (void)compactPendingAudioIfNeeded {
-    if (self.pendingAudioOffset == 0) {
+- (void)compactPendingAudienceAudioIfNeeded {
+    NSMutableData *pendingAudioData = self.pendingAudienceAudioData;
+    NSUInteger pendingAudioOffset = self.pendingAudienceAudioOffset;
+
+    if (pendingAudioOffset == 0) {
         return;
     }
 
-    if (self.pendingAudioOffset < 64 * 1024 &&
-        self.pendingAudioOffset < (self.pendingAudioData.length / 2)) {
+    if (pendingAudioOffset < 64 * 1024 &&
+        pendingAudioOffset < (pendingAudioData.length / 2)) {
         return;
     }
 
     NSData *remaining =
-        [self.pendingAudioData subdataWithRange:NSMakeRange(
-                                    self.pendingAudioOffset,
-                                    self.pendingAudioData.length - self.pendingAudioOffset)];
-    [self.pendingAudioData setData:remaining];
-    self.pendingAudioOffset = 0;
+        [pendingAudioData subdataWithRange:NSMakeRange(
+                             pendingAudioOffset,
+                             pendingAudioData.length - pendingAudioOffset)];
+    [pendingAudioData setData:remaining];
+    self.pendingAudienceAudioOffset = 0;
 }
 
-- (NSData *)dequeueAudioFrames:(NSUInteger)frameCount {
+- (NSData *)dequeueAudienceAudioFrames:(NSUInteger)frameCount {
     NSUInteger bytesPerFrame = sizeof(float) * OKAirPlayAudioChannels;
     NSUInteger requestedBytes = frameCount * bytesPerFrame;
     NSMutableData *output = [NSMutableData dataWithLength:requestedBytes];
+    NSMutableData *pendingAudioData = self.pendingAudienceAudioData;
+    NSUInteger pendingAudioOffset = self.pendingAudienceAudioOffset;
 
-    NSUInteger availableBytes = self.pendingAudioData.length - self.pendingAudioOffset;
+    NSUInteger availableBytes = pendingAudioData.length - pendingAudioOffset;
     NSUInteger consumedBytes = MIN(availableBytes, requestedBytes);
     if (consumedBytes > 0) {
         memcpy(
             output.mutableBytes,
-            (uint8_t *)self.pendingAudioData.bytes + self.pendingAudioOffset,
+            (uint8_t *)pendingAudioData.bytes + pendingAudioOffset,
             consumedBytes
         );
-        self.pendingAudioOffset += consumedBytes;
-        [self compactPendingAudioIfNeeded];
+        pendingAudioOffset += consumedBytes;
+        self.pendingAudienceAudioOffset = pendingAudioOffset;
+        [self compactPendingAudienceAudioIfNeeded];
     }
 
     if (consumedBytes < requestedBytes) {
@@ -1180,14 +1236,14 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return formatDescription;
 }
 
-- (void)appendAudioTick {
-    if (!self.writerStarted || self.audioInput == nil || !self.audioInput.readyForMoreMediaData) {
+- (void)appendAudienceAudioTickForStream:(OKAirPlayVariantStream *)stream {
+    if (!stream.writerStarted || stream.audioInput == nil || !stream.audioInput.readyForMoreMediaData) {
         return;
     }
 
     __block NSData *audioChunk = nil;
     dispatch_sync(self.audioQueue, ^{
-        audioChunk = [self dequeueAudioFrames:OKAirPlayAudioFramesPerTick];
+        audioChunk = [self dequeueAudienceAudioFrames:OKAirPlayAudioFramesPerTick];
     });
     if (audioChunk.length == 0) {
         return;
@@ -1224,7 +1280,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     CMSampleBufferRef sampleBuffer = NULL;
-    CMTime presentationTime = CMTimeMake(self.nextAudioFrameIndex, OKAirPlayAudioSampleRate);
+    CMTime presentationTime =
+        CMTimeMake(stream.nextAudioFrameIndex, OKAirPlayAudioSampleRate);
     OSStatus sampleStatus = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
         kCFAllocatorDefault,
         blockBuffer,
@@ -1242,11 +1299,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    if (![self.audioInput appendSampleBuffer:sampleBuffer]) {
-        NSLog(@"OpenKara AirPlay failed to append audio sample buffer: %@", self.writer.error);
+    if (![stream.audioInput appendSampleBuffer:sampleBuffer]) {
+        NSLog(@"OpenKara AirPlay failed to append %@ audio sample buffer: %@",
+              stream.filenamePrefix,
+              stream.writer.error);
     } else {
-        self.hasWrittenAudio = YES;
-        self.nextAudioFrameIndex += OKAirPlayAudioFramesPerTick;
+        stream.hasWrittenAudio = YES;
+        stream.nextAudioFrameIndex += OKAirPlayAudioFramesPerTick;
     }
 
     CFRelease(sampleBuffer);
@@ -1603,13 +1662,17 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (CVPixelBufferRef)copyRenderedPixelBufferForScene:(NSDictionary *)scene {
-    if (self.pixelBufferAdaptor.pixelBufferPool == NULL) {
+    if (self.audienceStream.pixelBufferAdaptor.pixelBufferPool == NULL) {
         return NULL;
     }
 
     CVPixelBufferRef pixelBuffer = NULL;
     CVReturn result =
-        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, self.pixelBufferAdaptor.pixelBufferPool, &pixelBuffer);
+        CVPixelBufferPoolCreatePixelBuffer(
+            kCFAllocatorDefault,
+            self.audienceStream.pixelBufferAdaptor.pixelBufferPool,
+            &pixelBuffer
+        );
     if (result != kCVReturnSuccess || pixelBuffer == NULL) {
         return NULL;
     }
@@ -1651,7 +1714,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)appendVideoTick {
-    if (!self.writerStarted || self.videoInput == nil || !self.videoInput.readyForMoreMediaData) {
+    if (!self.audienceStream.writerStarted ||
+        self.audienceStream.videoInput == nil ||
+        !self.audienceStream.videoInput.readyForMoreMediaData) {
         return;
     }
 
@@ -1661,31 +1726,35 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    CMTime presentationTime = CMTimeMake(self.nextVideoFrameIndex, OKAirPlayFramesPerSecond);
-    BOOL appended = [self.pixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
+    CMTime presentationTime =
+        CMTimeMake(self.audienceStream.nextVideoFrameIndex, OKAirPlayFramesPerSecond);
+    BOOL appended =
+        [self.audienceStream.pixelBufferAdaptor appendPixelBuffer:pixelBuffer
+                                            withPresentationTime:presentationTime];
     CFRelease(pixelBuffer);
 
     if (!appended) {
-        NSLog(@"OpenKara AirPlay failed to append video frame: %@", self.writer.error);
+        NSLog(@"OpenKara AirPlay failed to append video frame: %@",
+              self.audienceStream.writer.error);
         return;
     }
 
     if (scene.count > 0) {
         [self recordSyncPointForSourcePosition:OKLongLongValue(scene[@"positionMs"])];
     }
-    self.hasWrittenVideo = YES;
-    self.nextVideoFrameIndex += 1;
+    self.audienceStream.hasWrittenVideo = YES;
+    self.audienceStream.nextVideoFrameIndex += 1;
 }
 
 - (void)appendMediaTick {
     @autoreleasepool {
         [self configureStreamIfNeeded];
-        if (!self.writerStarted) {
+        if (!self.audienceStream.writerStarted) {
             return;
         }
 
         [self appendVideoTick];
-        [self appendAudioTick];
+        [self appendAudienceAudioTickForStream:self.audienceStream];
         [self handleWriterFailureIfNeeded:@"media tick"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self refreshPlaybackPhase];
@@ -1725,11 +1794,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         self.routePickerView = [[AVRoutePickerView alloc] initWithFrame:frame];
         self.routePickerView.routePickerButtonBordered = NO;
         self.routePickerView.player = self.player;
-        self.routePickerView.delegate = self;
     } else {
         self.routePickerView.frame = frame;
         self.routePickerView.player = self.player;
-        self.routePickerView.delegate = self;
     }
 
     if (self.routePickerView.superview != rootView) {
@@ -1776,8 +1843,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
         if (weakSelf.currentMode == OKAirPlayModeIdle) {
             dispatch_async(weakSelf.audioQueue, ^{
-                [weakSelf.pendingAudioData setLength:0];
-                weakSelf.pendingAudioOffset = 0;
+                [weakSelf.pendingAudienceAudioData setLength:0];
+                weakSelf.pendingAudienceAudioOffset = 0;
             });
         }
 
@@ -1815,22 +1882,19 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
-        // RATIONALE: `externalPlaybackActive` is video-only on macOS, so using
-        // it as the sole remote-audio gate breaks HomePod and other audio-only
-        // AirPlay routes. Audio-only routes also need PCM to exist before the
-        // route can finish activating, so route selection itself must be
-        // enough to start feeding the HLS audio pipeline.
-        if (weakSelf.currentMode == OKAirPlayModeIdle ||
-            !([weakSelf hasRemoteAudioRoute] || weakSelf.routeSelectionPending)) {
+        if (weakSelf.currentMode == OKAirPlayModeIdle) {
             return;
         }
 
-        [weakSelf.pendingAudioData appendData:resampled];
+        [weakSelf.pendingAudienceAudioData appendData:resampled];
         NSUInteger maxBytes = OKAirPlayAudioSampleRate * OKAirPlayAudioChannels * sizeof(float);
-        if (weakSelf.pendingAudioData.length > maxBytes) {
-            NSUInteger overflow = weakSelf.pendingAudioData.length - maxBytes;
-            weakSelf.pendingAudioOffset = MIN(weakSelf.pendingAudioOffset + overflow, weakSelf.pendingAudioData.length);
-            [weakSelf compactPendingAudioIfNeeded];
+        if (weakSelf.pendingAudienceAudioData.length > maxBytes) {
+            NSUInteger overflow =
+                weakSelf.pendingAudienceAudioData.length - maxBytes;
+            weakSelf.pendingAudienceAudioOffset =
+                MIN(weakSelf.pendingAudienceAudioOffset + overflow,
+                    weakSelf.pendingAudienceAudioData.length);
+            [weakSelf compactPendingAudienceAudioIfNeeded];
         }
     });
 }
@@ -1839,36 +1903,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     __weak typeof(self) weakSelf = self;
     dispatch_async(self.audioQueue, ^{
         weakSelf.currentAudioEpoch = MAX(weakSelf.currentAudioEpoch, epoch);
-        [weakSelf.pendingAudioData setLength:0];
-        weakSelf.pendingAudioOffset = 0;
+        [weakSelf.pendingAudienceAudioData setLength:0];
+        weakSelf.pendingAudienceAudioOffset = 0;
     });
-}
-
-- (void)routePickerViewWillBeginPresentingRoutes:(AVRoutePickerView *)routePickerView {
-    self.routeSelectionPending = NO;
-    self.routeActivationResetPending = NO;
-    self.routeSelectionGeneration += 1;
-    [self refreshPlaybackPhase];
-}
-
-- (void)routePickerViewDidEndPresentingRoutes:(AVRoutePickerView *)routePickerView {
-    self.routeSelectionPending = YES;
-    self.routeActivationResetPending = YES;
-    self.routeSelectionGeneration += 1;
-    NSUInteger generation = self.routeSelectionGeneration;
-    [self refreshPlaybackPhase];
-
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(),
-        ^{
-            if (self.routeSelectionGeneration == generation && ![self hasRemoteAudioRoute]) {
-                self.routeSelectionPending = NO;
-                self.routeActivationResetPending = NO;
-                [self refreshPlaybackPhase];
-            }
-        }
-    );
 }
 
 - (void)handlePlayerItemErrorLogEntry:(NSNotification *)notification {
@@ -1883,16 +1920,22 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
  didOutputSegmentData:(NSData *)segmentData
          segmentType:(AVAssetSegmentType)segmentType
        segmentReport:(AVAssetSegmentReport *)segmentReport API_AVAILABLE(macos(11.0)) {
-    if (writer != self.writer || self.streamRootPath.length == 0) {
+    if (self.streamRootPath.length == 0) {
+        return;
+    }
+
+    OKAirPlayVariantStream *stream =
+        writer == self.audienceStream.writer ? self.audienceStream : nil;
+    if (stream == nil) {
         return;
     }
 
     if (segmentType == AVAssetSegmentTypeInitialization) {
         NSString *initPath =
-            [self.streamRootPath stringByAppendingPathComponent:[self initializationFilename]];
+            [self.streamRootPath stringByAppendingPathComponent:[self initializationFilenameForStream:stream]];
         [segmentData writeToFile:initPath atomically:YES];
-        self.hasInitializationSegment = YES;
-        [self writePlaylistFile];
+        stream.hasInitializationSegment = YES;
+        [self writePlaylistFileForStream:stream];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self attachPlayerItemIfReady];
         });
@@ -1907,16 +1950,16 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     OKAirPlaySegmentEntry *entry = [[OKAirPlaySegmentEntry alloc] init];
-    entry.sequence = self.nextSegmentSequence;
+    entry.sequence = stream.nextSegmentSequence;
     entry.duration = duration;
-    entry.filename = [self segmentFilenameForSequence:entry.sequence];
-    self.nextSegmentSequence += 1;
+    entry.filename = [self segmentFilenameForStream:stream sequence:entry.sequence];
+    stream.nextSegmentSequence += 1;
 
     NSString *segmentPath = [self.streamRootPath stringByAppendingPathComponent:entry.filename];
     [segmentData writeToFile:segmentPath atomically:YES];
-    [self.segments addObject:entry];
-    [self removeOldSegmentFilesIfNeeded];
-    [self writePlaylistFile];
+    [stream.segments addObject:entry];
+    [self removeOldSegmentFilesIfNeededForStream:stream];
+    [self writePlaylistFileForStream:stream];
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self attachPlayerItemIfReady];
@@ -1925,13 +1968,16 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
-                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
+                       change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"externalPlaybackActive"] && object == self.player) {
-        if ([self hasAudienceVideoRoute] &&
-            self.routeActivationResetPending &&
-            self.currentMode != OKAirPlayModeIdle) {
-            self.routeActivationResetPending = NO;
+        BOOL isAudienceVideoRouteActive = [self hasAudienceVideoRoute];
+        BOOL didActivateAudienceRoute =
+            isAudienceVideoRouteActive && !self.lastKnownExternalPlaybackActive &&
+            self.currentMode != OKAirPlayModeIdle;
+        self.lastKnownExternalPlaybackActive = isAudienceVideoRouteActive;
+
+        if (didActivateAudienceRoute) {
             dispatch_async(self.encoderQueue, ^{
                 [self restartStreamForRouteActivation];
                 dispatch_async(dispatch_get_main_queue(), ^{

@@ -203,6 +203,9 @@ export function useAirPlayOutputState(enabled = true): void {
           }
 
           usePlayerStore.getState().updateAirPlayOutput(event.payload);
+          if (!event.payload.active) {
+            usePlayerStore.getState().clearAirPlayPlainTextPagePending();
+          }
 
           if (!event.payload.active || event.payload.phase !== "playing") {
             return;

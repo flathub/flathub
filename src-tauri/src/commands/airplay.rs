@@ -556,6 +556,10 @@ fn emit_airplay_state(
     }
 }
 
+fn airplay_audience_playlist_url(base_url: &str) -> String {
+    format!("{base_url}/audience-video.m3u8")
+}
+
 fn ensure_stream_server(state: &AppState) -> CommandResult<(PathBuf, String)> {
     let root_dir = default_stream_root(&state.app_data_dir);
     let mut server = state
@@ -575,7 +579,7 @@ fn ensure_stream_server(state: &AppState) -> CommandResult<(PathBuf, String)> {
         .map(|server| server.base_url().to_owned())
         .ok_or_else(|| internal_error("airplay server handle was not initialized".to_owned()))?;
 
-    Ok((root_dir, format!("{base_url}/playlist.m3u8")))
+    Ok((root_dir, airplay_audience_playlist_url(&base_url)))
 }
 
 #[cfg(target_os = "macos")]
@@ -1093,9 +1097,7 @@ mod tests {
     #[test]
     fn plain_text_page_step_does_not_refresh_airplay_stream_when_audience_is_idle() {
         let state = plain_text_airplay_state();
-        state
-            .airplay_audience_active
-            .store(false, Ordering::SeqCst);
+        state.airplay_audience_active.store(false, Ordering::SeqCst);
         let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
         let initial_epoch = state.airplay_audio_tap.current_epoch();
 
@@ -1127,6 +1129,14 @@ mod tests {
         assert_eq!(value["active"], false);
         assert_eq!(value["audioActive"], true);
         assert_eq!(value["streamGeneration"], 9);
+    }
+
+    #[test]
+    fn airplay_route_picker_uses_audience_video_playlist() {
+        assert_eq!(
+            airplay_audience_playlist_url("http://192.168.1.8:8080"),
+            "http://192.168.1.8:8080/audience-video.m3u8"
+        );
     }
 }
 

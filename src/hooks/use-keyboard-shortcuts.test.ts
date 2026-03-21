@@ -304,6 +304,35 @@ describe("handleAppKeyDown", () => {
     expect(stepPlainTextPage).toHaveBeenCalledWith("prev");
   });
 
+  test("ignores plain-text remote paging shortcuts while AirPlay page feedback is pending", () => {
+    const stepPlainTextPage = vi.fn();
+    const event = createKeyboardEvent({
+      code: "PageDown",
+      key: "PageDown",
+    });
+
+    const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage,
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(false);
+    expect(stepPlainTextPage).not.toHaveBeenCalled();
+  });
+
   test("ignores PageDown when plain-text remote paging is unavailable", () => {
     const stepPlainTextPage = vi.fn();
     const event = createKeyboardEvent({

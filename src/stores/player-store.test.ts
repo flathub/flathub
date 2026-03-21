@@ -1,7 +1,19 @@
-import { describe, expect, test } from "vitest";
-import { selectSyncDisplayPositionMs } from "./player-store";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { selectSyncDisplayPositionMs, usePlayerStore } from "./player-store";
 
 describe("selectSyncDisplayPositionMs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    usePlayerStore.setState({
+      airPlayPlainTextPagePending: false,
+      airPlayPlainTextPagePendingDirection: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("prefers the AirPlay displayed position when active", () => {
     expect(
       selectSyncDisplayPositionMs({
@@ -38,5 +50,21 @@ describe("selectSyncDisplayPositionMs", () => {
         },
       }),
     ).toBe(1000);
+  });
+
+  test("clears AirPlay plain-text page feedback after the lock window elapses", () => {
+    usePlayerStore.getState().startAirPlayPlainTextPagePending("prev", 900);
+
+    expect(usePlayerStore.getState().airPlayPlainTextPagePending).toBe(true);
+    expect(usePlayerStore.getState().airPlayPlainTextPagePendingDirection).toBe(
+      "prev",
+    );
+
+    vi.advanceTimersByTime(900);
+
+    expect(usePlayerStore.getState().airPlayPlainTextPagePending).toBe(false);
+    expect(usePlayerStore.getState().airPlayPlainTextPagePendingDirection).toBe(
+      null,
+    );
   });
 });
