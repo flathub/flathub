@@ -20,7 +20,7 @@ jobs:
           - name: macOS
             os: macos-14
           - name: Windows
-            os: windows-latest
+            os: windows-2022
           - name: Linux
             os: ubuntu-24.04
 
@@ -165,6 +165,28 @@ jobs:
             }
           }
 
+      - name: Diagnose DLL dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
+          Write-Host "=== DLLs staged in deps/ ==="
+          Get-ChildItem -Path $depsDir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
+
+          $testExe = Get-ChildItem -Path $depsDir -Filter "openkara_lib-*.exe" -File | Select-Object -First 1
+          if ($testExe) {
+            Write-Host "`n=== dumpbin /dependents ==="
+            dumpbin /dependents $testExe.FullName 2>&1 | Select-String -Pattern "\.dll" | ForEach-Object { Write-Host "  $_" }
+          }
+
+          Write-Host "`n=== where.exe for key DLLs ==="
+          foreach ($dll in @("DirectML.dll","d3d12.dll","dxgi.dll","DXCore.dll","onnxruntime.dll")) {
+            $found = where.exe $dll 2>$null
+            if ($found) { Write-Host "  ${dll}: $found" }
+            else { Write-Host "  ${dll}: NOT FOUND on PATH" }
+          }
+
       - name: Lint frontend
         run: pnpm lint
 
@@ -173,7 +195,12 @@ jobs:
 
       - name: Run Rust tests
         working-directory: src-tauri
-        run: cargo test -q
+        shell: pwsh
+        run: |
+          # Ensure test binaries can find staged DLLs via PATH as a fallback
+          $depsDir = Resolve-Path "target/debug/deps"
+          $env:PATH = "$depsDir;$env:PATH"
+          cargo test -q
 
       - name: Validate Tauri build
         run: pnpm tauri build --debug --no-bundle --ci
