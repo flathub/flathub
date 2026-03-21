@@ -167,6 +167,7 @@ jobs:
 
       - name: Diagnose DLL dependencies (Windows)
         if: runner.os == 'Windows'
+        continue-on-error: true
         shell: pwsh
         run: |
           $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
@@ -176,15 +177,26 @@ jobs:
 
           $testExe = Get-ChildItem -Path $depsDir -Filter "openkara_lib-*.exe" -File | Select-Object -First 1
           if ($testExe) {
-            Write-Host "`n=== dumpbin /dependents ==="
-            dumpbin /dependents $testExe.FullName 2>&1 | Select-String -Pattern "\.dll" | ForEach-Object { Write-Host "  $_" }
+            Write-Host "`n=== DLL dependencies ==="
+            try {
+              # link.exe is on PATH in MSVC environments
+              link.exe /dump /dependents $testExe.FullName 2>&1 |
+                Select-String -Pattern "\.dll" |
+                ForEach-Object { Write-Host "  $_" }
+            } catch {
+              Write-Host "  (could not list dependents: $_)"
+            }
           }
 
           Write-Host "`n=== where.exe for key DLLs ==="
           foreach ($dll in @("DirectML.dll","d3d12.dll","dxgi.dll","DXCore.dll","onnxruntime.dll")) {
-            $found = where.exe $dll 2>$null
-            if ($found) { Write-Host "  ${dll}: $found" }
-            else { Write-Host "  ${dll}: NOT FOUND on PATH" }
+            try {
+              $found = & where.exe $dll 2>$null
+              if ($found) { Write-Host "  ${dll}: $found" }
+              else { Write-Host "  ${dll}: NOT FOUND on PATH" }
+            } catch {
+              Write-Host "  ${dll}: NOT FOUND on PATH"
+            }
           }
 
       - name: Lint frontend
