@@ -22,7 +22,7 @@ An open-source desktop karaoke app powered by on-device AI stem separation and s
 
 <div align="center">
 
-[![OpenKara demo video](https://github.com/user-attachments/assets/33fb3c92-460c-44fb-abf7-19d8ab0977b1)](https://www.youtube-nocookie.com/embed/OznVDmp9igk)
+[![OpenKara demo video](https://github.com/user-attachments/assets/33fb3c92-460c-44fb-abf7-19d8ab0977b1)](https://youtu.be/OznVDmp9igk)
 
 </div>
 
