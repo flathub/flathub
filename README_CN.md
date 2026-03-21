@@ -18,6 +18,16 @@
 
 ---
 
+## 演示
+
+<div align="center">
+
+[![OpenKara 演示视频](https://img.youtube.com/vi/OznVDmp9igk/maxresdefault.jpg)](https://www.youtube-nocookie.com/embed/OznVDmp9igk)
+
+</div>
+
+---
+
 ## 为什么做这个
 
 我很喜欢在家唱卡拉 OK，但是市面上现有的解决方案都各有各的问题。
