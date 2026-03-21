@@ -71,8 +71,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Add-Content -Path $env:GITHUB_ENV -Value "ORT_CACHE_DIR=$env:GITHUB_WORKSPACE\src-tauri\target\ort-cache"
-
           $modelPath = Join-Path $env:GITHUB_WORKSPACE "src-tauri/models/htdemucs.onnx"
           $modelDir = Split-Path $modelPath
           New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
@@ -110,20 +108,44 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $cacheDir = $env:ORT_CACHE_DIR
-          if (-not $cacheDir) {
-            throw "ORT_CACHE_DIR was not set before running Rust tests"
-          }
-
           $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
           New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
 
-          $dlls = Get-ChildItem -Path $cacheDir -Filter "onnxruntime*.dll" -File -Recurse
-          if (-not $dlls) {
-            throw "No ONNX Runtime DLLs were found under ORT_CACHE_DIR=$cacheDir"
+          $buildOutputFiles = Get-ChildItem `
+            -Path (Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/build") `
+            -Filter output `
+            -File `
+            -Recurse | Where-Object { $_.FullName -match "ort-sys-" }
+
+          if (-not $buildOutputFiles) {
+            throw "No ort-sys build-script output files were found under src-tauri/target/debug/build"
           }
 
-          Copy-Item -Force $dlls.FullName $depsDir
+          $nativeSearchDirs = @()
+          foreach ($buildOutputFile in $buildOutputFiles) {
+            foreach ($line in Get-Content $buildOutputFile.FullName) {
+              if ($line -match "^cargo:rustc-link-search=native=(.+)$") {
+                $nativeSearchDirs += $Matches[1]
+              }
+            }
+          }
+
+          $nativeSearchDirs = $nativeSearchDirs | Select-Object -Unique
+          if (-not $nativeSearchDirs) {
+            throw "ort-sys did not emit any native link-search directories"
+          }
+
+          $dlls = foreach ($nativeSearchDir in $nativeSearchDirs) {
+            if (Test-Path $nativeSearchDir) {
+              Get-ChildItem -Path $nativeSearchDir -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue
+            }
+          }
+
+          if (-not $dlls) {
+            throw "No DLLs were found in ort-sys native link-search directories: $($nativeSearchDirs -join ', ')"
+          }
+
+          Copy-Item -Force ($dlls | Select-Object -ExpandProperty FullName -Unique) $depsDir
 
       - name: Lint frontend
         run: pnpm lint
