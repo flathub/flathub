@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
+    ffi::{c_char, CStr, CString},
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
@@ -69,6 +70,12 @@ pub struct ImportCandidateDetails {
     pub duration_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ExpandedImportPaths {
+    pub paths: Vec<String>,
+    pub song_count: usize,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ImportSongsOptions {
     #[serde(default)]
@@ -104,6 +111,72 @@ pub fn get_import_candidate_details(
             inspect_import_candidate(&raw_path).map_err(|error| library_error(error.to_string()))
         })
         .collect()
+}
+
+#[tauri::command]
+pub fn expand_import_paths(paths: Vec<String>) -> CommandResult<ExpandedImportPaths> {
+    Ok(collect_expandable_import_paths(&paths))
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn openkara_pick_import_paths(
+        default_path: *const c_char,
+        count_out: *mut usize,
+    ) -> *mut *mut c_char;
+    fn openkara_free_import_paths(paths: *mut *mut c_char, count: usize);
+}
+
+#[tauri::command]
+pub fn pick_import_paths(default_path: Option<String>) -> CommandResult<Vec<String>> {
+    #[cfg(target_os = "macos")]
+    {
+        let default_path = default_path
+            .as_deref()
+            .map(CString::new)
+            .transpose()
+            .map_err(|error| library_error(error.to_string()))?;
+        let mut count = 0usize;
+        let raw_paths = unsafe {
+            openkara_pick_import_paths(
+                default_path
+                    .as_ref()
+                    .map_or(std::ptr::null(), |value| value.as_ptr()),
+                &mut count,
+            )
+        };
+
+        if raw_paths.is_null() || count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut collected_paths = Vec::with_capacity(count);
+        for index in 0..count {
+            let raw_path = unsafe { *raw_paths.add(index) };
+            if raw_path.is_null() {
+                continue;
+            }
+
+            let path = unsafe { CStr::from_ptr(raw_path) }
+                .to_string_lossy()
+                .into_owned();
+            collected_paths.push(path);
+        }
+
+        unsafe {
+            openkara_free_import_paths(raw_paths, count);
+        }
+
+        return Ok(collected_paths);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = default_path;
+        Err(library_error(
+            "mixed file and folder selection is only available on macOS".to_string(),
+        ))
+    }
 }
 
 #[tauri::command]
@@ -821,6 +894,15 @@ fn table_exists(connection: &Connection, table: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+const MAX_IMPORT_SCAN_DEPTH: usize = 3;
+
+// Three levels of recursive folder scanning cover the common "artist/album/song"
+// layout without letting a single import action walk an arbitrarily deep tree and
+// stall the UI on large libraries or network mounts.
+const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus", "aiff", "aif", "cdg", "zip", "lrc",
+];
+
 #[derive(Default)]
 struct ClassifiedImportPaths {
     audio_paths: Vec<PathBuf>,
@@ -846,6 +928,96 @@ fn classify_import_paths(paths: &[String]) -> ClassifiedImportPaths {
     }
 
     classified
+}
+
+fn collect_expandable_import_paths(raw_paths: &[String]) -> ExpandedImportPaths {
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+    let mut song_count = 0;
+
+    for raw_path in raw_paths {
+        let path = PathBuf::from(raw_path);
+        collect_expandable_import_paths_from_path(&path, 0, &mut seen, &mut paths, &mut song_count);
+    }
+
+    paths.sort();
+
+    ExpandedImportPaths {
+        paths: paths
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        song_count,
+    }
+}
+
+fn collect_expandable_import_paths_from_path(
+    path: &Path,
+    depth: usize,
+    seen: &mut HashSet<String>,
+    paths: &mut Vec<PathBuf>,
+    song_count: &mut usize,
+) {
+    let key = path.display().to_string();
+    if !seen.insert(key) {
+        return;
+    }
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+
+    if metadata.is_dir() {
+        if depth > MAX_IMPORT_SCAN_DEPTH {
+            return;
+        }
+
+        let Ok(entries) = fs::read_dir(path) else {
+            return;
+        };
+
+        for entry in entries.flatten() {
+            let child_path = entry.path();
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    if depth < MAX_IMPORT_SCAN_DEPTH {
+                        collect_expandable_import_paths_from_path(
+                            &child_path,
+                            depth + 1,
+                            seen,
+                            paths,
+                            song_count,
+                        );
+                    }
+                } else if file_type.is_file() {
+                    collect_expandable_file_path(&child_path, paths, song_count);
+                }
+            }
+        }
+
+        return;
+    }
+
+    if metadata.is_file() {
+        collect_expandable_file_path(path, paths, song_count);
+    }
+}
+
+fn collect_expandable_file_path(path: &Path, paths: &mut Vec<PathBuf>, song_count: &mut usize) {
+    let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
+        return;
+    };
+
+    let extension = extension.to_ascii_lowercase();
+    if !SUPPORTED_IMPORT_EXTENSIONS.contains(&extension.as_str()) {
+        return;
+    }
+
+    if extension != "cdg" && extension != "lrc" {
+        *song_count += 1;
+    }
+
+    paths.push(path.to_path_buf());
 }
 
 fn build_selected_cdg_lookup(paths: &[PathBuf]) -> HashMap<String, Vec<PathBuf>> {
@@ -899,4 +1071,82 @@ fn match_cdg_source(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_expandable_import_paths;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn write_file(path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("failed to create test directory");
+        }
+        fs::write(path, b"test").expect("failed to write test file");
+    }
+
+    #[test]
+    fn expands_importable_files_recursively() {
+        let tempdir = TempDir::new().expect("failed to create tempdir");
+        let root = tempdir.path();
+
+        write_file(&root.join("one.mp3"));
+        write_file(&root.join("two.lrc"));
+        write_file(&root.join("three.cdg"));
+        write_file(&root.join("nested/four.zip"));
+        write_file(&root.join("nested/deeper/five.flac"));
+        write_file(&root.join("nested/deeper/too/deep/hidden.mp3"));
+
+        let result = collect_expandable_import_paths(&[root.display().to_string()]);
+
+        assert_eq!(result.song_count, 3);
+        assert!(result.paths.iter().any(|path| path.ends_with("one.mp3")));
+        assert!(result.paths.iter().any(|path| path.ends_with("two.lrc")));
+        assert!(result.paths.iter().any(|path| path.ends_with("three.cdg")));
+        assert!(result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("nested/four.zip")));
+        assert!(result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("nested/deeper/five.flac")));
+        assert!(!result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("nested/deeper/too/deep/hidden.mp3")));
+    }
+
+    #[test]
+    fn caps_recursive_import_scanning_depth() {
+        let tempdir = TempDir::new().expect("failed to create tempdir");
+        let root = tempdir.path();
+
+        write_file(&root.join("level-0.mp3"));
+        write_file(&root.join("level-1/level-1.mp3"));
+        write_file(&root.join("level-1/level-2/level-2.mp3"));
+        write_file(&root.join("level-1/level-2/level-3/level-3.mp3"));
+        write_file(&root.join("level-1/level-2/level-3/level-4/level-5/level-5.mp3"));
+
+        let result = collect_expandable_import_paths(&[root.join("level-1").display().to_string()]);
+
+        assert_eq!(result.song_count, 3);
+        assert!(result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("level-1/level-1.mp3")));
+        assert!(result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("level-1/level-2/level-2.mp3")));
+        assert!(result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("level-1/level-2/level-3/level-3.mp3")));
+        assert!(!result
+            .paths
+            .iter()
+            .any(|path| path.ends_with("level-1/level-2/level-3/level-4/level-5/level-5.mp3")));
+    }
 }

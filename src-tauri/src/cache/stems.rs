@@ -1,13 +1,5 @@
-use crate::{
-    config::StemMode,
-    library::Song,
-    library_root::LibraryRoot,
-    metadata,
-};
-use crate::separator::{
-    inference::SeparationResult,
-    mix,
-};
+use crate::separator::{inference::SeparationResult, mix};
+use crate::{config::StemMode, library::Song, library_root::LibraryRoot, metadata};
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::{
@@ -229,18 +221,10 @@ pub fn store_generated_stem_cache(
                         ));
                     }
                 };
-                write_stem_with_metadata(
-                    source_audio_path,
-                    &output_path,
-                    &stem_title,
-                    &stem.audio,
-                )
-                .with_context(|| {
-                    format!(
-                        "failed to write {} ogg into cache",
-                        stem.name.as_str()
-                    )
-                })?;
+                write_stem_with_metadata(source_audio_path, &output_path, &stem_title, &stem.audio)
+                    .with_context(|| {
+                        format!("failed to write {} ogg into cache", stem.name.as_str())
+                    })?;
             }
 
             StemCacheEntry {
@@ -629,12 +613,8 @@ fn stem_title(song: &Song, source_path: &Path, suffix: &str) -> Result<String> {
             .map(str::to_owned)
     });
 
-    let base_title = base_title.with_context(|| {
-        format!(
-            "failed to derive stem title from {}",
-            source_path.display()
-        )
-    })?;
+    let base_title = base_title
+        .with_context(|| format!("failed to derive stem title from {}", source_path.display()))?;
 
     Ok(format!("{base_title} ({suffix})"))
 }

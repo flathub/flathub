@@ -238,9 +238,16 @@ fn imports_mp4_audio_even_when_extension_is_aac() {
 
     let result = import_songs_from_paths(&connection, &library, &[aac_path.display().to_string()]);
 
-    assert!(result.failed.is_empty(), "unexpected failures: {:?}", result.failed);
+    assert!(
+        result.failed.is_empty(),
+        "unexpected failures: {:?}",
+        result.failed
+    );
     assert_eq!(result.imported.len(), 1);
-    assert_eq!(result.imported[0].title.as_deref(), Some("Fixture Song M4A"));
+    assert_eq!(
+        result.imported[0].title.as_deref(),
+        Some("Fixture Song M4A")
+    );
     assert_eq!(result.imported[0].artist.as_deref(), Some("Fixture Artist"));
     assert_eq!(result.imported[0].original_ext.as_deref(), Some("aac"));
     assert!(library.resolve(&result.imported[0].file_path).exists());
@@ -256,11 +263,7 @@ fn imports_metadata_less_audio_using_filename_fallbacks() {
 
     fs::copy(audio_fixture_path("fixture.wav"), &wav_path).expect("fixture wav should copy");
 
-    let result = import_songs_from_paths(
-        &connection,
-        &library,
-        &[wav_path.display().to_string()],
-    );
+    let result = import_songs_from_paths(&connection, &library, &[wav_path.display().to_string()]);
 
     let failure_messages = result
         .failed

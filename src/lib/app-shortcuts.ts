@@ -17,6 +17,7 @@ export interface ShortcutDefinition {
   acceptedCodes?: string[];
   acceptedKeys?: string[];
   allowShift?: boolean;
+  requiresPrimaryModifier?: boolean;
 }
 
 export const APP_SHORTCUTS = {
@@ -57,6 +58,20 @@ export const APP_SHORTCUTS = {
     key: "0",
     displayKey: "0",
   },
+  lyricsPagePrev: {
+    id: "lyrics.page.prev",
+    code: "PageUp",
+    key: "PageUp",
+    displayKey: "PageUp",
+    requiresPrimaryModifier: false,
+  },
+  lyricsPageNext: {
+    id: "lyrics.page.next",
+    code: "PageDown",
+    key: "PageDown",
+    displayKey: "PageDown",
+    requiresPrimaryModifier: false,
+  },
 } satisfies Record<string, ShortcutDefinition>;
 
 export function getShortcutPlatform(): ShortcutPlatform {
@@ -81,6 +96,10 @@ export function getShortcutDisplay(
   shortcut: ShortcutDefinition,
   platform: ShortcutPlatform = getShortcutPlatform(),
 ): string {
+  if (shortcut.requiresPrimaryModifier === false) {
+    return shortcut.displayKey;
+  }
+
   const modifier = platform === "mac" ? "⌘" : "Ctrl+";
   return `${modifier}${shortcut.displayKey}`;
 }
@@ -93,9 +112,11 @@ export function matchesShortcut(
     shortcut.acceptedCodes ?? (shortcut.code ? [shortcut.code] : []);
   const acceptedKeys =
     shortcut.acceptedKeys ?? (shortcut.key ? [shortcut.key] : []);
+  const hasPrimaryModifier = event.metaKey || event.ctrlKey;
+  const requiresPrimaryModifier = shortcut.requiresPrimaryModifier !== false;
 
   return (
-    (event.metaKey || event.ctrlKey) &&
+    (requiresPrimaryModifier ? hasPrimaryModifier : !hasPrimaryModifier) &&
     !event.altKey &&
     (shortcut.allowShift || !event.shiftKey) &&
     acceptedCodes.includes(event.code) &&

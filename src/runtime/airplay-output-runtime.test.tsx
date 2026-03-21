@@ -6,7 +6,10 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ShortcutPlatform } from "@/lib/app-shortcuts";
 import { usePlayerStore } from "@/stores/player-store";
 import type { AirPlayOutputStateEvent } from "@/types/ipc";
-import { useAirPlayOutputState } from "./airplay-runtime";
+import {
+  useAirPlayOutputState,
+  useLocalAudienceOutputState,
+} from "./airplay-runtime";
 
 const { mockListen, mockCloseFullscreenPlayer, mockGetShortcutPlatform } =
   vi.hoisted(() => ({
@@ -39,6 +42,11 @@ function HookHarness() {
   return null;
 }
 
+function LocalAudienceHookHarness() {
+  useLocalAudienceOutputState(true);
+  return null;
+}
+
 describe("useAirPlayOutputState", () => {
   beforeEach(() => {
     mockListen.mockReset();
@@ -48,6 +56,7 @@ describe("useAirPlayOutputState", () => {
     usePlayerStore.setState({
       snapshot: null,
       positionMs: 0,
+      localAudienceOutputActive: false,
       airPlayOutput: {
         active: false,
         routeName: null,
@@ -142,6 +151,40 @@ describe("useAirPlayOutputState", () => {
 
     expect(mockListen).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().airPlayOutput.phase).toBe("idle");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  test("tracks whether the local audience window is open", async () => {
+    let listener: ((event: { payload: { active: boolean } }) => void) | null =
+      null;
+    mockListen.mockImplementation(async (_eventName, nextListener) => {
+      listener = nextListener;
+      return vi.fn();
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<LocalAudienceHookHarness />);
+    });
+
+    await act(async () => {
+      listener?.({ payload: { active: true } });
+    });
+
+    expect(usePlayerStore.getState().localAudienceOutputActive).toBe(true);
+
+    await act(async () => {
+      listener?.({ payload: { active: false } });
+    });
+
+    expect(usePlayerStore.getState().localAudienceOutputActive).toBe(false);
 
     await act(async () => {
       root.unmount();

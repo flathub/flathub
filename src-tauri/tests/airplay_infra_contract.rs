@@ -76,8 +76,9 @@ fn audio_forwarder_prefers_latest_epoch_and_drops_stale_chunks() {
 #[test]
 fn http_server_publishes_a_lan_reachable_host() {
     let dir = tempfile::tempdir().expect("temp dir should be created");
-    let server = AirPlayHttpServer::bind_with_publish_ip(dir.path(), Ipv4Addr::new(192, 168, 50, 10))
-        .expect("server should start");
+    let server =
+        AirPlayHttpServer::bind_with_publish_ip(dir.path(), Ipv4Addr::new(192, 168, 50, 10))
+            .expect("server should start");
 
     assert!(server.base_url().starts_with("http://192.168.50.10:"));
     assert_eq!(server.root_dir(), dir.path());
@@ -94,7 +95,10 @@ fn http_server_supports_head_and_byte_ranges_for_media_clients() {
     let client = Client::new();
     let url = format!("{}/segment-1.m4s", server.base_url());
 
-    let head = client.head(&url).send().expect("head request should succeed");
+    let head = client
+        .head(&url)
+        .send()
+        .expect("head request should succeed");
     assert_eq!(head.status(), StatusCode::OK);
     assert_eq!(head.headers()[CONTENT_LENGTH], "64");
     assert_eq!(head.headers()[ACCEPT_RANGES], "bytes");
@@ -108,5 +112,8 @@ fn http_server_supports_head_and_byte_ranges_for_media_clients() {
     assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
     assert_eq!(response.headers()[CONTENT_RANGE], "bytes 10-19/64");
     assert_eq!(response.headers()[CONTENT_LENGTH], "10");
-    assert_eq!(response.bytes().unwrap().as_ref(), &(10u8..=19).collect::<Vec<_>>());
+    assert_eq!(
+        response.bytes().unwrap().as_ref(),
+        &(10u8..=19).collect::<Vec<_>>()
+    );
 }

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use lofty::{
-    file::FileType,
     config::{ParseOptions, WriteOptions},
+    file::FileType,
     file::{AudioFile, TaggedFileExt},
     prelude::Accessor,
     probe::Probe,

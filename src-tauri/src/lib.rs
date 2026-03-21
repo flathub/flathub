@@ -1,6 +1,6 @@
+pub mod airplay_stream;
 mod app_menu;
 mod app_runtime;
-pub mod airplay_stream;
 pub mod audio;
 pub mod cache;
 pub mod cdg;
@@ -36,6 +36,8 @@ pub struct AppState {
     pub cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>>,
     pub airplay_audio_tap: Arc<airplay_stream::AirPlayAudioTap>,
     pub airplay_stream_generation: Arc<AtomicU64>,
+    pub airplay_audience_active: Arc<AtomicBool>,
+    pub airplay_control_refresh_token: Arc<AtomicU64>,
     pub airplay_http_server: Arc<Mutex<Option<airplay_stream::AirPlayHttpServer>>>,
     pub airplay_local_output_suppressed: Arc<AtomicBool>,
     pub playback_request_id: AtomicU64,
@@ -138,6 +140,8 @@ pub fn run() {
             commands::bootstrap::get_model_bootstrap_status,
             commands::import::import_songs,
             commands::import::get_import_candidate_details,
+            commands::import::expand_import_paths,
+            commands::import::pick_import_paths,
             commands::import::get_library,
             commands::import::search_library,
             commands::import::delete_songs,
@@ -170,6 +174,7 @@ pub fn run() {
             commands::cdg::get_cdg_frame,
             commands::airplay::sync_airplay_route_picker,
             commands::airplay::sync_airplay_audience_state,
+            commands::airplay::step_airplay_plain_text_page,
             commands::batch_separation::batch_separate,
             commands::batch_separation::cancel_batch_separation,
             commands::separation::separate,

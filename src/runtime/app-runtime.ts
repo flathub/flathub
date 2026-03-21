@@ -16,6 +16,7 @@ import * as api from "@/lib/tauri";
 import i18next, { detectSystemLanguage } from "@/lib/i18n";
 import {
   useAirPlayAudienceSync,
+  useLocalAudienceOutputState,
   useAirPlayOutputState,
 } from "@/runtime/airplay-runtime";
 import { useAppMenuRuntime } from "./menu-runtime";
@@ -72,6 +73,7 @@ export function useMainWindowRuntimeWhen(enabled: boolean) {
   useLyricsSync(enabled);
   useCdgSync(enabled);
   useAirPlayAudienceSync(enabled);
+  useLocalAudienceOutputState(enabled);
   useAirPlayOutputState(enabled);
   useKeyboardShortcuts(enabled);
   useFileDrop(enabled);

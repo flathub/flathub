@@ -40,6 +40,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar,
       adjustLyricsFont: vi.fn(),
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -70,6 +72,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar,
       adjustLyricsFont: vi.fn(),
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -99,6 +103,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -128,6 +134,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -156,6 +164,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont: vi.fn(),
       resetLyricsFont,
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -186,6 +196,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont,
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -214,6 +226,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont: vi.fn(),
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -244,6 +258,8 @@ describe("handleAppKeyDown", () => {
       toggleSidebar: vi.fn(),
       adjustLyricsFont: vi.fn(),
       resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage: vi.fn(),
       player: {
         snapshot: null,
         positionMs: 0,
@@ -256,5 +272,64 @@ describe("handleAppKeyDown", () => {
 
     expect(handled).toBe(false);
     expect(openImportDialog).not.toHaveBeenCalled();
+  });
+
+  test("steps the remote plain-text lyrics page backward with PageUp", () => {
+    const stepPlainTextPage = vi.fn();
+    const event = createKeyboardEvent({
+      code: "PageUp",
+      key: "PageUp",
+    });
+
+    const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: true,
+      stepPlainTextPage,
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(stepPlainTextPage).toHaveBeenCalledWith("prev");
+  });
+
+  test("ignores PageDown when plain-text remote paging is unavailable", () => {
+    const stepPlainTextPage = vi.fn();
+    const event = createKeyboardEvent({
+      code: "PageDown",
+      key: "PageDown",
+    });
+
+    const handled = handleAppKeyDown(event, {
+      openImportDialog: vi.fn(),
+      toggleSettings: vi.fn(),
+      toggleSidebar: vi.fn(),
+      adjustLyricsFont: vi.fn(),
+      resetLyricsFont: vi.fn(),
+      canStepPlainTextPage: false,
+      stepPlainTextPage,
+      player: {
+        snapshot: null,
+        positionMs: 0,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        seek: vi.fn(),
+        setVolume: vi.fn(),
+      },
+    });
+
+    expect(handled).toBe(false);
+    expect(stepPlainTextPage).not.toHaveBeenCalled();
   });
 });

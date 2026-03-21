@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PlaybackStage } from "@/components/Playback/PlaybackStage";
 import { useCdgFrameReceiver } from "@/hooks/use-cdg-frame-receiver";
 import { useLyricsSync } from "@/hooks/use-lyrics-sync";
@@ -6,6 +6,7 @@ import {
   useFullscreenPlaybackRuntime,
   useLyricsAutoFetch,
 } from "@/hooks/use-playback-runtime";
+import { announceLocalAudienceOutputActive } from "@/lib/plain-text-page-controls";
 import { FullscreenControls } from "./FullscreenControls";
 
 const FULLSCREEN_STAGE_BOTTOM_INSET_PX = 144;
@@ -21,6 +22,19 @@ export function FullscreenPlayerView() {
   useLyricsAutoFetch();
   useLyricsSync();
   useCdgFrameReceiver();
+
+  useEffect(() => {
+    void announceLocalAudienceOutputActive(true).catch(() => {
+      // The main window treats this as auxiliary state; a missed update must
+      // not block opening the audience window itself.
+    });
+
+    return () => {
+      void announceLocalAudienceOutputActive(false).catch(() => {
+        // Closing the window should stay best-effort even if the state sync is gone.
+      });
+    };
+  }, []);
 
   const handleControlsHeightChange = useCallback((height: number) => {
     const nextHeight = Math.max(

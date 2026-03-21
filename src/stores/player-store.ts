@@ -28,6 +28,7 @@ interface PlayerState {
   snapshot: PlaybackStateSnapshot | null;
   positionMs: number;
   airPlayOutput: AirPlayOutputStateEvent;
+  localAudienceOutputActive: boolean;
 
   playSong: (songId: string) => Promise<void>;
   playNow: (songId: string) => Promise<void>;
@@ -44,6 +45,7 @@ interface PlayerState {
   skipForward: () => Promise<void>;
   skipBack: () => Promise<void>;
   updateAirPlayOutput: (airPlayOutput: AirPlayOutputStateEvent) => void;
+  updateLocalAudienceOutputActive: (active: boolean) => void;
 }
 
 // RATIONALE: Once AirPlay is active, the audience surface must follow the TV's
@@ -63,6 +65,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   snapshot: null,
   positionMs: 0,
   airPlayOutput: DEFAULT_AIRPLAY_OUTPUT_STATE,
+  localAudienceOutputActive: false,
 
   playSong: async (songId) => {
     const { snapshot } = usePlayerStore.getState();
@@ -249,5 +252,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 
   updateAirPlayOutput: (airPlayOutput) => {
     set({ airPlayOutput });
+  },
+
+  updateLocalAudienceOutputActive: (active) => {
+    set({ localAudienceOutputActive: active });
   },
 }));

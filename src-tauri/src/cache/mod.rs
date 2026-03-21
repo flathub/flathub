@@ -70,8 +70,9 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
         connection.execute_batch("ALTER TABLE songs ADD COLUMN media_g_container TEXT;")?;
     }
     if !column_exists(connection, "songs", "instrumental")? {
-        connection
-            .execute_batch("ALTER TABLE songs ADD COLUMN instrumental INTEGER NOT NULL DEFAULT 0;")?;
+        connection.execute_batch(
+            "ALTER TABLE songs ADD COLUMN instrumental INTEGER NOT NULL DEFAULT 0;",
+        )?;
     }
 
     // 005_individual_stem_paths – add per-instrument columns to stems table.

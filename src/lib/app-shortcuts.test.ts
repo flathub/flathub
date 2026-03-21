@@ -17,6 +17,12 @@ describe("app-shortcuts", () => {
       "⌘-",
     );
     expect(getShortcutDisplay(APP_SHORTCUTS.resetLyricsFont, "mac")).toBe("⌘0");
+    expect(getShortcutDisplay(APP_SHORTCUTS.lyricsPagePrev, "mac")).toBe(
+      "PageUp",
+    );
+    expect(getShortcutDisplay(APP_SHORTCUTS.lyricsPageNext, "mac")).toBe(
+      "PageDown",
+    );
   });
 
   test("formats primary shortcuts for non-mac platforms", () => {
@@ -32,6 +38,9 @@ describe("app-shortcuts", () => {
     expect(
       getShortcutDisplay(APP_SHORTCUTS.increaseLyricsFont, "windows"),
     ).toBe("Ctrl++");
+    expect(getShortcutDisplay(APP_SHORTCUTS.lyricsPagePrev, "windows")).toBe(
+      "PageUp",
+    );
   });
 
   test("matches shortcuts through the primary modifier", () => {
@@ -124,5 +133,40 @@ describe("app-shortcuts", () => {
         shiftKey: false,
       }),
     ).toBe(true);
+  });
+
+  test("matches plain-text paging shortcuts without the primary modifier", () => {
+    expect(
+      matchesShortcut(APP_SHORTCUTS.lyricsPagePrev, {
+        code: "PageUp",
+        key: "PageUp",
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.lyricsPageNext, {
+        code: "PageDown",
+        key: "PageDown",
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesShortcut(APP_SHORTCUTS.lyricsPagePrev, {
+        code: "PageUp",
+        key: "PageUp",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(false);
   });
 });

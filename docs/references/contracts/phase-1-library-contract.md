@@ -14,12 +14,14 @@
 ### 已冻结能力
 
 1. `import_songs(paths: Vec<String>, options?: ImportSongsOptions) -> ImportSongsResult`
-2. `get_library() -> Vec<Song>`
-3. `search_library(query: String) -> Vec<Song>`
-4. `set_songs_instrumental(song_ids: Vec<String>, instrumental: bool) -> Vec<Song>`
-5. `extract_embedded_cover_art(song_ids: Vec<String>) -> ExtractEmbeddedCoverArtResult`
-6. 本地元数据解析支持 MP3、FLAC、M4A
-7. `songs` 表通过 `hash` 去重并执行 upsert
+2. `pick_import_paths(default_path?: String | null) -> Vec<String>`
+3. `expand_import_paths(paths: Vec<String>) -> ExpandedImportPaths`
+4. `get_library() -> Vec<Song>`
+5. `search_library(query: String) -> Vec<Song>`
+6. `set_songs_instrumental(song_ids: Vec<String>, instrumental: bool) -> Vec<Song>`
+7. `extract_embedded_cover_art(song_ids: Vec<String>) -> ExtractEmbeddedCoverArtResult`
+8. 本地元数据解析支持 MP3、FLAC、M4A
+9. `songs` 表通过 `hash` 去重并执行 upsert
 
 ### 后续 Phase 依赖
 
@@ -87,6 +89,57 @@
 7. 若用户只选择音频文件，而磁盘上存在同名 `.cdg` sidecar，后端会自动按 CD+G 成对导入
 8. 若用户显式选择 `.cdg` 文件且前端已完成歧义消解，`options.explicit_cdg_by_audio_path` 会指定哪首音频应与该 `.cdg` 配对
 9. `options.skip_cdg_for_audio_paths` 用于阻止同一 stem 的其他音频因同名 `.cdg` 被隐式配对
+
+### Command: `expand_import_paths`
+
+**Input**
+
+```json
+{
+  "paths": ["/absolute/or/relative/folder/or/file"]
+}
+```
+
+**Output**
+
+```json
+{
+  "paths": ["/music/library/track-a.mp3", "/music/library/nested/track-b.flac"],
+  "song_count": 2
+}
+```
+
+**Semantics**
+
+1. 该命令用于导入前预扫描，不写数据库，不复制媒体
+2. 输入既可以是文件也可以是文件夹；文件夹会递归展开
+3. 递归深度上限固定为 `3` 层，覆盖常见 `artist/album/song` 目录，同时避免大型目录或网络挂载把 UI 卡住
+4. 输出 `paths` 只包含支持导入的媒体/歌词相关文件，且会去重并排序
+5. `song_count` 表示确认弹窗中应展示的歌曲数量；当前按可导入文件数统计
+6. 该命令的输出可直接作为后续 `import_songs` 的输入
+
+### Command: `pick_import_paths`
+
+**Input**
+
+```json
+{
+  "default_path": "/Users/example/Music"
+}
+```
+
+**Output**
+
+```json
+["/Users/example/Music/library", "/Users/example/Downloads/song.mp3"]
+```
+
+**Semantics**
+
+1. 该命令负责打开导入选择器，本身不做扫描、不写数据库
+2. macOS 上允许同一个原生面板同时选择文件和文件夹，且支持多选
+3. 前端会把返回结果继续交给 `expand_import_paths` 做递归展开和数量确认
+4. 非 macOS 当前不依赖此命令；前端保留直接文件选择回退
 
 ### Command: `get_library`
 
@@ -214,6 +267,13 @@
 | ---------------------------- | ----------------------- | ---------------------------------------------- |
 | `explicit_cdg_by_audio_path` | `Record<String,String>` | 指定某首音频应使用哪一个显式选择的 `.cdg` 文件 |
 | `skip_cdg_for_audio_paths`   | `Vec<String>`           | 阻止这些音频在本次导入中被 `.cdg` 自动配对     |
+
+### Shared type: `ExpandedImportPaths`
+
+| Field        | Type          | Notes                            |
+| ------------ | ------------- | -------------------------------- |
+| `paths`      | `Vec<String>` | 递归展开、去重并排序后的导入路径 |
+| `song_count` | `usize`       | 导入前确认弹窗使用的歌曲数量     |
 
 ### Shared type: `ExtractEmbeddedCoverArtResult`
 

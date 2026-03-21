@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { getShortcutPlatform } from "@/lib/app-shortcuts";
 import { buildAudiencePresentationSpec } from "@/lib/audience-presentation";
 import { closeFullscreenPlayer } from "@/lib/fullscreen-player";
+import { LOCAL_AUDIENCE_OUTPUT_STATE_EVENT } from "@/lib/plain-text-page-controls";
 import { songHasCdgMedia } from "@/lib/song-media";
 import * as api from "@/lib/tauri";
 import { useCdgStore } from "@/stores/cdg-store";
@@ -48,6 +49,7 @@ export function buildAirPlayAudienceState({
   messages,
 }: BuildAirPlayAudienceStateOptions): AirPlayAudienceStatePayload {
   const songId = playbackSnapshot?.song_id ?? null;
+  const lyricsBelongToCurrentSong = lyricsSongId === songId;
 
   if (!songId) {
     return {
@@ -77,7 +79,6 @@ export function buildAirPlayAudienceState({
     };
   }
 
-  const lyricsBelongToCurrentSong = lyricsSongId === songId;
   return {
     mode: "lyrics",
     songId,
@@ -147,6 +148,37 @@ export function useAirPlayAudienceSync(enabled = true): void {
     playbackSnapshot,
     t,
   ]);
+}
+
+export function useLocalAudienceOutputState(enabled = true): void {
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    const setup = async () => {
+      unlisten = await listen<{ active: boolean }>(
+        LOCAL_AUDIENCE_OUTPUT_STATE_EVENT,
+        (event) => {
+          if (!cancelled) {
+            usePlayerStore
+              .getState()
+              .updateLocalAudienceOutputActive(event.payload.active);
+          }
+        },
+      );
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [enabled]);
 }
 
 export function useAirPlayOutputState(enabled = true): void {

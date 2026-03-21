@@ -1,7 +1,6 @@
 use crate::library_root::LibraryRoot;
 use crate::{
-    airplay_stream,
-    audio,
+    airplay_stream, audio,
     audio::playback::{monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
     cache, commands, config, derive_startup_model_bootstrap, separator, AppState,
 };
@@ -24,10 +23,11 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
 
     let app_config = config::load_config(&app_data_dir)?;
     let playback = Arc::new(Mutex::new(PlaybackController::default()));
-    let cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>> =
-        Arc::new(Mutex::new(None));
+    let cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>> = Arc::new(Mutex::new(None));
     let airplay_audio_tap = Arc::new(airplay_stream::AirPlayAudioTap::new(12));
     let airplay_stream_generation = Arc::new(AtomicU64::new(1));
+    let airplay_audience_active = Arc::new(AtomicBool::new(false));
+    let airplay_control_refresh_token = Arc::new(AtomicU64::new(0));
     let airplay_local_output_suppressed = Arc::new(AtomicBool::new(false));
     let model_bootstrap = build_startup_model_bootstrap(&app_data_dir, app_config.as_ref())?;
     let model_bootstrap_status = Arc::new(Mutex::new(model_bootstrap.status.clone()));
@@ -40,6 +40,8 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         cdg_state: Arc::clone(&cdg_state),
         airplay_audio_tap: Arc::clone(&airplay_audio_tap),
         airplay_stream_generation: Arc::clone(&airplay_stream_generation),
+        airplay_audience_active: Arc::clone(&airplay_audience_active),
+        airplay_control_refresh_token: Arc::clone(&airplay_control_refresh_token),
         airplay_http_server: Arc::new(Mutex::new(None)),
         airplay_local_output_suppressed: Arc::clone(&airplay_local_output_suppressed),
         playback_request_id: AtomicU64::new(0),
@@ -52,7 +54,13 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         batch_cancel: Arc::new(AtomicBool::new(false)),
     });
 
-    airplay_stream::spawn_audio_forwarder(airplay_audio_tap);
+    airplay_stream::spawn_audio_forwarder(Arc::clone(&airplay_audio_tap));
+    crate::services::playback::spawn_airplay_control_refresh_worker(
+        Arc::clone(&airplay_audience_active),
+        Arc::clone(&airplay_control_refresh_token),
+        Arc::clone(&airplay_audio_tap),
+        Arc::clone(&airplay_stream_generation),
+    );
     spawn_playback_position_emitter(app.handle().clone(), playback);
 
     if model_bootstrap.should_spawn_bootstrap_worker {

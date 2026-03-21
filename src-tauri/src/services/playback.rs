@@ -15,8 +15,12 @@ use crate::{
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
+};
+use std::{
+    thread,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Runtime};
 
@@ -24,6 +28,46 @@ fn bump_airplay_stream_generation(state: &AppState) {
     state
         .airplay_stream_generation
         .fetch_add(1, Ordering::SeqCst);
+}
+
+pub(crate) fn spawn_airplay_control_refresh_worker(
+    airplay_audience_active: Arc<AtomicBool>,
+    airplay_control_refresh_token: Arc<AtomicU64>,
+    airplay_audio_tap: Arc<crate::airplay_stream::AirPlayAudioTap>,
+    airplay_stream_generation: Arc<AtomicU64>,
+) {
+    thread::spawn(move || {
+        let mut flushed_token = 0u64;
+        let mut pending_token: Option<u64> = None;
+        let mut pending_since: Option<Instant> = None;
+        let debounce_window = Duration::from_millis(180);
+        let poll_interval = Duration::from_millis(25);
+
+        loop {
+            let current_token = airplay_control_refresh_token.load(Ordering::SeqCst);
+            if current_token != flushed_token && pending_token != Some(current_token) {
+                pending_token = Some(current_token);
+                pending_since = Some(Instant::now());
+            }
+
+            if let (Some(token), Some(since)) = (pending_token, pending_since) {
+                if since.elapsed() >= debounce_window {
+                    flushed_token = token;
+                    pending_token = None;
+                    pending_since = None;
+                    if airplay_audience_active.load(Ordering::SeqCst) {
+                        airplay_audio_tap.bump_epoch();
+                        crate::airplay_stream::notify_audio_epoch(
+                            airplay_audio_tap.current_epoch(),
+                        );
+                        airplay_stream_generation.fetch_add(1, Ordering::SeqCst);
+                    }
+                }
+            }
+
+            thread::sleep(poll_interval);
+        }
+    });
 }
 
 pub fn play<R: Runtime>(
@@ -135,7 +179,14 @@ pub fn set_volume(state: &AppState, level: f32) -> Result<PlaybackStateSnapshot>
         .playback
         .lock()
         .map_err(|_| anyhow::anyhow!("playback controller lock was poisoned"))?;
-    Ok(playback.set_volume(level)?)
+    let snapshot = playback.set_volume(level)?;
+    drop(playback);
+    if state.airplay_audience_active.load(Ordering::SeqCst) {
+        state
+            .airplay_control_refresh_token
+            .fetch_add(1, Ordering::SeqCst);
+    }
+    Ok(snapshot)
 }
 
 pub fn set_stem_volume(
@@ -147,7 +198,14 @@ pub fn set_stem_volume(
         .playback
         .lock()
         .map_err(|_| anyhow::anyhow!("playback controller lock was poisoned"))?;
-    Ok(playback.set_stem_volume(stem, level)?)
+    let snapshot = playback.set_stem_volume(stem, level)?;
+    drop(playback);
+    if state.airplay_audience_active.load(Ordering::SeqCst) {
+        state
+            .airplay_control_refresh_token
+            .fetch_add(1, Ordering::SeqCst);
+    }
+    Ok(snapshot)
 }
 
 pub fn load_stems(state: &AppState) -> Result<PlaybackStateSnapshot> {
@@ -361,6 +419,8 @@ mod tests {
             cdg_state: Arc::new(Mutex::new(None)),
             airplay_audio_tap: Arc::new(AirPlayAudioTap::new(4)),
             airplay_stream_generation: Arc::new(AtomicU64::new(7)),
+            airplay_audience_active: Arc::new(AtomicBool::new(false)),
+            airplay_control_refresh_token: Arc::new(AtomicU64::new(0)),
             airplay_http_server: Arc::new(Mutex::new(None)),
             airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
             playback_request_id: AtomicU64::new(0),
@@ -372,6 +432,17 @@ mod tests {
             batch_running: Arc::new(AtomicBool::new(false)),
             batch_cancel: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn wait_for_generation(generation: &AtomicU64, expected: u64, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if generation.load(Ordering::SeqCst) == expected {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        generation.load(Ordering::SeqCst) == expected
     }
 
     #[test]
@@ -557,5 +628,103 @@ mod tests {
             state.airplay_stream_generation.load(Ordering::SeqCst),
             initial_generation + 1
         );
+    }
+
+    #[test]
+    fn airplay_control_refresh_debounces_multiple_stem_updates() {
+        let state = airplay_state();
+        state.airplay_audience_active.store(true, Ordering::SeqCst);
+
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let initial_epoch = state.airplay_audio_tap.current_epoch();
+
+        spawn_airplay_control_refresh_worker(
+            Arc::clone(&state.airplay_audience_active),
+            Arc::clone(&state.airplay_control_refresh_token),
+            Arc::clone(&state.airplay_audio_tap),
+            Arc::clone(&state.airplay_stream_generation),
+        );
+
+        set_stem_volume(&state, StemName::Vocals, 0.9).expect("stem update should succeed");
+        set_stem_volume(&state, StemName::Drums, 0.8).expect("stem update should succeed");
+        set_stem_volume(&state, StemName::Bass, 0.7).expect("stem update should succeed");
+        assert_eq!(
+            state.airplay_control_refresh_token.load(Ordering::SeqCst),
+            3
+        );
+
+        std::thread::sleep(Duration::from_millis(120));
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation
+        );
+
+        assert!(wait_for_generation(
+            &state.airplay_stream_generation,
+            initial_generation + 1,
+            Duration::from_millis(1_500),
+        ));
+        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch + 1);
+    }
+
+    #[test]
+    fn airplay_control_refresh_debounces_volume_updates_until_user_stops_dragging() {
+        let state = airplay_state();
+        state.airplay_audience_active.store(true, Ordering::SeqCst);
+
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let initial_epoch = state.airplay_audio_tap.current_epoch();
+
+        spawn_airplay_control_refresh_worker(
+            Arc::clone(&state.airplay_audience_active),
+            Arc::clone(&state.airplay_control_refresh_token),
+            Arc::clone(&state.airplay_audio_tap),
+            Arc::clone(&state.airplay_stream_generation),
+        );
+
+        set_volume(&state, 0.9).expect("volume update should succeed");
+        set_volume(&state, 0.7).expect("volume update should succeed");
+        assert_eq!(
+            state.airplay_control_refresh_token.load(Ordering::SeqCst),
+            2
+        );
+
+        std::thread::sleep(Duration::from_millis(120));
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation
+        );
+
+        assert!(wait_for_generation(
+            &state.airplay_stream_generation,
+            initial_generation + 1,
+            Duration::from_millis(1_500),
+        ));
+        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch + 1);
+    }
+
+    #[test]
+    fn airplay_control_refresh_does_not_fire_while_idle() {
+        let state = airplay_state();
+        state.airplay_audience_active.store(false, Ordering::SeqCst);
+
+        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
+        let initial_epoch = state.airplay_audio_tap.current_epoch();
+
+        spawn_airplay_control_refresh_worker(
+            Arc::clone(&state.airplay_audience_active),
+            Arc::clone(&state.airplay_control_refresh_token),
+            Arc::clone(&state.airplay_audio_tap),
+            Arc::clone(&state.airplay_stream_generation),
+        );
+
+        set_volume(&state, 0.6).expect("volume update should succeed");
+
+        std::thread::sleep(Duration::from_millis(250));
+        assert_eq!(
+            state.airplay_stream_generation.load(Ordering::SeqCst),
+            initial_generation
+        );
+        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
     }
 }

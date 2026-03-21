@@ -1,11 +1,14 @@
 use openkara_lib::commands::airplay::{
     normalize_host_y, AirPlayAudienceMode, AirPlayOutputPhase, AirPlayOutputStateEvent,
-    AIRPLAY_OUTPUT_STATE_EVENT,
+    AirPlayPlainTextPageDirection, AirPlayPlainTextPageStepRequest, AIRPLAY_OUTPUT_STATE_EVENT,
 };
 
 #[test]
 fn airplay_output_event_name_is_stable() {
-    assert_eq!(AIRPLAY_OUTPUT_STATE_EVENT, "openkara://airplay-output-state");
+    assert_eq!(
+        AIRPLAY_OUTPUT_STATE_EVENT,
+        "openkara://airplay-output-state"
+    );
 }
 
 #[test]
@@ -15,17 +18,26 @@ fn host_y_normalization_flips_dom_coordinates_into_appkit_space() {
 
 #[test]
 fn airplay_audience_mode_serializes_expected_variants() {
-    assert_eq!(serde_json::to_string(&AirPlayAudienceMode::Idle).unwrap(), "\"idle\"");
+    assert_eq!(
+        serde_json::to_string(&AirPlayAudienceMode::Idle).unwrap(),
+        "\"idle\""
+    );
     assert_eq!(
         serde_json::to_string(&AirPlayAudienceMode::Lyrics).unwrap(),
         "\"lyrics\""
     );
-    assert_eq!(serde_json::to_string(&AirPlayAudienceMode::Cdg).unwrap(), "\"cdg\"");
+    assert_eq!(
+        serde_json::to_string(&AirPlayAudienceMode::Cdg).unwrap(),
+        "\"cdg\""
+    );
 }
 
 #[test]
 fn airplay_output_phase_serializes_expected_variants() {
-    assert_eq!(serde_json::to_string(&AirPlayOutputPhase::Idle).unwrap(), "\"idle\"");
+    assert_eq!(
+        serde_json::to_string(&AirPlayOutputPhase::Idle).unwrap(),
+        "\"idle\""
+    );
     assert_eq!(
         serde_json::to_string(&AirPlayOutputPhase::RouteSelected).unwrap(),
         "\"route_selected\""
@@ -66,4 +78,14 @@ fn airplay_output_event_serializes_phase_and_detail() {
     assert_eq!(json["displayedPositionMs"], 1_250);
     assert_eq!(json["streamGeneration"], 7);
     assert_eq!(json["latencyMs"], 420);
+}
+
+#[test]
+fn airplay_plain_text_page_step_request_deserializes_direction() {
+    let request = serde_json::from_value::<AirPlayPlainTextPageStepRequest>(serde_json::json!({
+        "direction": "next"
+    }))
+    .unwrap();
+
+    assert_eq!(request.direction, AirPlayPlainTextPageDirection::Next);
 }

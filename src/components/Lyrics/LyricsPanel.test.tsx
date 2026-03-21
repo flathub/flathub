@@ -13,6 +13,17 @@ const {
       song_id: "song-1",
     },
     positionMs: 4000,
+    airPlayOutput: {
+      active: false,
+      routeName: null,
+      mode: "idle",
+      phase: "idle",
+      detail: null,
+      displayedPositionMs: null,
+      streamGeneration: 0,
+      latencyMs: null,
+    },
+    localAudienceOutputActive: false,
   },
   mockLyricsState: {
     lines: [
@@ -80,6 +91,17 @@ describe("LyricsPanel contextual reveal", () => {
       song_id: "song-1",
     };
     mockPlayerState.positionMs = 4000;
+    mockPlayerState.airPlayOutput = {
+      active: false,
+      routeName: null,
+      mode: "idle",
+      phase: "idle",
+      detail: null,
+      displayedPositionMs: null,
+      streamGeneration: 0,
+      latencyMs: null,
+    };
+    mockPlayerState.localAudienceOutputActive = false;
     mockSelectSyncDisplayPositionMs.mockImplementation(
       (state) => state.positionMs,
     );
@@ -145,6 +167,24 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).toContain('text-white">line one</span>');
     expect(markup).toContain('text-white">line two</span>');
     expect(markup).not.toContain('text-[var(--color-active)]">line one</span>');
+  });
+
+  test("shows remote paging controls for plain-text lyrics when a remote audience target exists", () => {
+    mockPlayerState.localAudienceOutputActive = true;
+
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).toContain("plain-text-page-prev");
+    expect(markup).toContain("plain-text-page-next");
+    expect(markup).toContain("lyrics.previousPage");
+    expect(markup).toContain("lyrics.nextPage");
+  });
+
+  test("keeps remote paging controls hidden when no remote audience target exists", () => {
+    const markup = renderToStaticMarkup(<LyricsPanel />);
+
+    expect(markup).not.toContain("plain-text-page-prev");
+    expect(markup).not.toContain("plain-text-page-next");
   });
 
   test("uses fullscreen audience layout without edit chrome when requested", () => {

@@ -343,6 +343,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, strong) NSDictionary *latestSceneConfig;
 @property(nonatomic, strong) NSDictionary *latestRuntimeState;
 @property(nonatomic, strong) NSData *latestCdgFrame;
+@property(nonatomic, strong) NSArray<NSNumber *> *plainTextPageStartIndices;
+@property(nonatomic, assign) NSUInteger plainTextPageIndex;
+@property(nonatomic, copy) NSString *plainTextPaginationSignature;
 @property(nonatomic, assign) BOOL routeSelectionPending;
 @property(nonatomic, assign) BOOL routeActivationResetPending;
 @property(nonatomic, assign) NSUInteger routeSelectionGeneration;
@@ -367,6 +370,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (void)syncAudienceConfigWithJSON:(NSString *)configJSON;
 - (void)syncAudienceRuntimeWithJSON:(NSString *)runtimeJSON
                            cdgFrame:(NSData *)cdgFrame;
+- (void)stepPlainTextPageWithDirection:(NSInteger)direction;
 - (void)pushAudioSamples:(const float *)samples
              sampleCount:(NSUInteger)sampleCount
               sampleRate:(uint32_t)sampleRate
@@ -405,6 +409,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     _currentAudioEpoch = 1;
     _streamGeneration = 1;
     _attachedGeneration = 0;
+    _plainTextPageStartIndices = @[];
+    _plainTextPageIndex = 0;
     _lastEmittedDisplayedPositionMs = -1;
     _lastEmittedLatencyMs = -1;
     _lastEmittedStreamGeneration = 0;
@@ -603,6 +609,140 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     NSMutableDictionary *scene = [NSMutableDictionary dictionaryWithDictionary:config];
     [scene addEntriesFromDictionary:runtime];
     return scene;
+}
+
+- (NSString *)plainTextPaginationSignatureForScene:(NSDictionary *)scene {
+    if (![scene isKindOfClass:[NSDictionary class]] || !OKBoolValue(scene[@"isPlainText"])) {
+        return nil;
+    }
+
+    NSDictionary *signature = @{
+        @"mode": OKStringValue(scene[@"mode"]) ?: @"",
+        @"songId": OKStringValue(scene[@"songId"]) ?: @"",
+        @"lyricsFontStep": @(OKIntegerValue(scene[@"lyricsFontStep"])),
+        @"lines": OKArrayValue(scene[@"lines"]) ?: @[],
+        @"viewport": OKDictionaryValue(scene[@"viewport"]) ?: @{},
+        @"presentationSpec": OKDictionaryValue(scene[@"presentationSpec"]) ?: @{},
+    };
+    NSError *error = nil;
+    NSData *signatureData =
+        [NSJSONSerialization dataWithJSONObject:signature options:0 error:&error];
+    if (signatureData == nil) {
+        return nil;
+    }
+    return [[NSString alloc] initWithData:signatureData encoding:NSUTF8StringEncoding];
+}
+
+- (NSArray<NSNumber *> *)plainTextPageStartIndicesForLayouts:(NSArray<NSDictionary *> *)layouts
+                                             availableHeight:(CGFloat)availableHeight
+                                                         gap:(CGFloat)gap {
+    if (layouts.count == 0) {
+        return @[];
+    }
+
+    NSMutableArray<NSNumber *> *pageStartIndices = [NSMutableArray array];
+    NSUInteger startIndex = 0;
+    while (startIndex < layouts.count) {
+        [pageStartIndices addObject:@(startIndex)];
+
+        NSUInteger endIndex = startIndex;
+        CGFloat usedHeight = 0.0;
+        while (endIndex < layouts.count) {
+            NSDictionary *layout = layouts[endIndex];
+            CGFloat lineHeight = [layout[@"height"] doubleValue];
+            CGFloat candidateHeight = usedHeight + lineHeight;
+            if (endIndex > startIndex) {
+                candidateHeight += gap;
+            }
+
+            if (candidateHeight > availableHeight) {
+                if (endIndex == startIndex) {
+                    endIndex += 1;
+                }
+                break;
+            }
+
+            usedHeight = candidateHeight;
+            endIndex += 1;
+        }
+
+        if (endIndex == startIndex) {
+            endIndex = startIndex + 1;
+        }
+        startIndex = endIndex;
+    }
+
+    return pageStartIndices;
+}
+
+- (void)refreshPlainTextPaginationForScene:(NSDictionary *)scene {
+    NSString *signature = [self plainTextPaginationSignatureForScene:scene];
+    if (signature.length == 0) {
+        self.plainTextPageStartIndices = @[];
+        self.plainTextPageIndex = 0;
+        self.plainTextPaginationSignature = nil;
+        return;
+    }
+
+    if ([signature isEqualToString:self.plainTextPaginationSignature]) {
+        if (self.plainTextPageStartIndices.count == 0) {
+            self.plainTextPageIndex = 0;
+        } else if (self.plainTextPageIndex >= self.plainTextPageStartIndices.count) {
+            self.plainTextPageIndex = self.plainTextPageStartIndices.count - 1;
+        }
+        return;
+    }
+
+    NSArray<NSDictionary *> *layouts = [self buildLyricLineLayoutsFromScene:scene];
+    NSDictionary *presentationSpec = OKPresentationSpecValue(scene);
+    CGFloat gap = OKSceneFloatValue(presentationSpec, @"lineGapPx", 40.0);
+    CGFloat verticalPadding =
+        OKSceneFloatValue(presentationSpec, @"verticalPaddingPx", 56.0);
+    CGFloat availableHeight = OKAirPlayVideoHeight - (verticalPadding * 2.0);
+    self.plainTextPageStartIndices = [self plainTextPageStartIndicesForLayouts:layouts
+                                                               availableHeight:availableHeight
+                                                                           gap:gap];
+    self.plainTextPageIndex = 0;
+    self.plainTextPaginationSignature = signature;
+}
+
+- (NSRange)plainTextPageRangeForLayouts:(NSArray<NSDictionary *> *)layouts {
+    if (layouts.count == 0 || self.plainTextPageStartIndices.count == 0) {
+        return NSMakeRange(0, 0);
+    }
+
+    NSUInteger pageIndex = MIN(self.plainTextPageIndex, self.plainTextPageStartIndices.count - 1);
+    NSUInteger startIndex = [self.plainTextPageStartIndices[pageIndex] unsignedIntegerValue];
+    NSUInteger endIndex = layouts.count;
+    if (pageIndex + 1 < self.plainTextPageStartIndices.count) {
+        endIndex = [self.plainTextPageStartIndices[pageIndex + 1] unsignedIntegerValue];
+    }
+    if (startIndex >= layouts.count || endIndex <= startIndex) {
+        return NSMakeRange(0, 0);
+    }
+    return NSMakeRange(startIndex, endIndex - startIndex);
+}
+
+- (void)stepPlainTextPageWithDirection:(NSInteger)direction {
+    dispatch_async(self.stateQueue, ^{
+        NSDictionary *scene = [self currentRenderScene];
+        if (![scene isKindOfClass:[NSDictionary class]] || !OKBoolValue(scene[@"isPlainText"])) {
+            return;
+        }
+
+        [self refreshPlainTextPaginationForScene:scene];
+        if (self.plainTextPageStartIndices.count == 0) {
+            return;
+        }
+
+        NSInteger nextPageIndex = (NSInteger)self.plainTextPageIndex + direction;
+        if (nextPageIndex < 0 ||
+            nextPageIndex >= (NSInteger)self.plainTextPageStartIndices.count) {
+            return;
+        }
+
+        self.plainTextPageIndex = (NSUInteger)nextPageIndex;
+    });
 }
 
 - (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs {
@@ -1319,17 +1459,24 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     );
     CGFloat activeGlowBlur =
         OKSceneFloatValue(presentationSpec, @"activeGlowBlurPx", 12.0);
+    BOOL isPlainText = OKBoolValue(scene[@"isPlainText"]);
+    NSInteger activeLineIndex = OKIntegerValue(scene[@"activeLineIndex"]);
+    CGFloat availableHeight = OKAirPlayVideoHeight - (verticalPadding * 2.0);
     CGFloat totalHeight = 0.0;
     for (NSDictionary *layout in layouts) {
         totalHeight += [layout[@"height"] doubleValue];
     }
     totalHeight += gap * MAX((NSInteger)layouts.count - 1, 0);
-
-    BOOL isPlainText = OKBoolValue(scene[@"isPlainText"]);
-    NSInteger activeLineIndex = OKIntegerValue(scene[@"activeLineIndex"]);
-    CGFloat availableHeight = OKAirPlayVideoHeight - (verticalPadding * 2.0);
     CGFloat y = verticalPadding + MAX(0.0, (availableHeight - totalHeight) * 0.5);
-    if (!isPlainText && activeLineIndex >= 0 && activeLineIndex < (NSInteger)layouts.count) {
+    NSArray<NSDictionary *> *renderLayouts = layouts;
+    if (isPlainText) {
+        NSRange pageRange = [self plainTextPageRangeForLayouts:layouts];
+        if (pageRange.length == 0) {
+            return;
+        }
+        renderLayouts = [layouts subarrayWithRange:pageRange];
+        y = verticalPadding;
+    } else if (activeLineIndex >= 0 && activeLineIndex < (NSInteger)layouts.count) {
         CGFloat activeCenterWithinContent = 0.0;
         for (NSInteger index = 0; index < activeLineIndex; index += 1) {
             activeCenterWithinContent += [layouts[index][@"height"] doubleValue] + gap;
@@ -1341,7 +1488,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         y = OKClamp(desiredY, minY, verticalPadding);
     }
 
-    for (NSDictionary *layout in layouts) {
+    for (NSDictionary *layout in renderLayouts) {
         NSAttributedString *text = layout[@"text"];
         CGFloat width = [layout[@"width"] doubleValue];
         CGFloat height = [layout[@"height"] doubleValue];
@@ -1562,6 +1709,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             config = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
         }
         weakSelf.latestSceneConfig = [config isKindOfClass:[NSDictionary class]] ? config : nil;
+        [weakSelf refreshPlainTextPaginationForScene:[weakSelf currentRenderScene]];
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf refreshPlaybackPhase];
         });
@@ -1584,6 +1732,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         weakSelf.latestCdgFrame = [cdgFrame copy];
         weakSelf.currentMode =
             runtimeState != nil ? OKModeValue(runtimeState[@"mode"]) : OKAirPlayModeIdle;
+        [weakSelf refreshPlainTextPaginationForScene:[weakSelf currentRenderScene]];
         uint64_t runtimeGeneration =
             (uint64_t)MAX(1, OKLongLongValue(runtimeState[@"streamGeneration"]));
 
@@ -1841,6 +1990,10 @@ void ok_airplay_sync_audience_runtime(
 
     [[OKAirPlayBridge sharedBridge] syncAudienceRuntimeWithJSON:runtimeJSON
                                                        cdgFrame:cdgFrame];
+}
+
+void ok_airplay_step_plain_text_page(int direction) {
+    [[OKAirPlayBridge sharedBridge] stepPlainTextPageWithDirection:(NSInteger)direction];
 }
 
 void ok_airplay_push_audio_samples(

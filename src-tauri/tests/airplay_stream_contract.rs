@@ -1,6 +1,6 @@
 use openkara_lib::commands::airplay::{
-    AirPlayAudienceMessages, AirPlayAudienceMode, AirPlayAudienceStatePayload,
-    AudiencePresentationSpec, AirPlayViewport,
+    AirPlayAudienceMessages, AirPlayAudienceMode, AirPlayAudienceStatePayload, AirPlayViewport,
+    AudiencePresentationSpec,
 };
 
 #[test]

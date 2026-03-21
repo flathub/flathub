@@ -1,7 +1,13 @@
 import { useEffect } from "react";
+import {
+  stepPlainTextRemotePage,
+  resolvePlainTextRemoteTarget,
+  type PlainTextPageDirection,
+} from "@/lib/plain-text-page-controls";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLayoutStore } from "@/stores/layout-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { promptImportFiles } from "@/runtime/menu-runtime";
 import {
@@ -25,6 +31,8 @@ interface KeyboardShortcutDeps {
   toggleSidebar: () => void;
   adjustLyricsFont: (delta: number) => void;
   resetLyricsFont: () => void;
+  canStepPlainTextPage: boolean;
+  stepPlainTextPage: (direction: PlainTextPageDirection) => void;
   player: KeyboardShortcutPlayerState;
 }
 
@@ -36,6 +44,8 @@ export function handleAppKeyDown(
     toggleSidebar,
     adjustLyricsFont,
     resetLyricsFont,
+    canStepPlainTextPage,
+    stepPlainTextPage,
     player,
   }: KeyboardShortcutDeps,
 ): boolean {
@@ -76,6 +86,24 @@ export function handleAppKeyDown(
   if (matchesShortcut(APP_SHORTCUTS.resetLyricsFont, e)) {
     e.preventDefault();
     resetLyricsFont();
+    return true;
+  }
+
+  if (
+    canStepPlainTextPage &&
+    matchesShortcut(APP_SHORTCUTS.lyricsPagePrev, e)
+  ) {
+    e.preventDefault();
+    stepPlainTextPage("prev");
+    return true;
+  }
+
+  if (
+    canStepPlainTextPage &&
+    matchesShortcut(APP_SHORTCUTS.lyricsPageNext, e)
+  ) {
+    e.preventDefault();
+    stepPlainTextPage("next");
     return true;
   }
 
@@ -136,6 +164,33 @@ export function useKeyboardShortcuts(enabled = true): void {
           void useSettingsStore.getState().adjustLyricsFontStep(delta),
         resetLyricsFont: () =>
           void useSettingsStore.getState().resetLyricsFontStep(),
+        canStepPlainTextPage: (() => {
+          const playerState = usePlayerStore.getState();
+          const lyricsState = useLyricsStore.getState();
+          const isPlainTextLyrics =
+            lyricsState.lines.length > 0 &&
+            lyricsState.lines.every((line) => line.time_ms === 0);
+
+          return (
+            isPlainTextLyrics &&
+            resolvePlainTextRemoteTarget(
+              playerState.airPlayOutput,
+              playerState.localAudienceOutputActive,
+            ) !== null
+          );
+        })(),
+        stepPlainTextPage: (direction) => {
+          const playerState = usePlayerStore.getState();
+
+          void stepPlainTextRemotePage(
+            playerState.airPlayOutput,
+            playerState.localAudienceOutputActive,
+            direction,
+          ).catch(() => {
+            // Keep local shortcuts responsive even if the auxiliary audience
+            // surface disappears between keydown and dispatch.
+          });
+        },
         player: {
           ...usePlayerStore.getState(),
         },

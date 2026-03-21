@@ -110,6 +110,19 @@ pub struct AirPlayAudienceStatePayload {
     pub presentation_spec: AudiencePresentationSpec,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AirPlayPlainTextPageDirection {
+    Prev,
+    Next,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirPlayPlainTextPageStepRequest {
+    pub direction: AirPlayPlainTextPageDirection,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AirPlayBridgeWordToken {
@@ -594,6 +607,7 @@ mod native {
             cdg_frame_ptr: *const u8,
             cdg_frame_len: usize,
         );
+        fn ok_airplay_step_plain_text_page(direction: i32);
     }
 
     extern "C" fn handle_airplay_state_callback(
@@ -742,6 +756,12 @@ mod native {
 
         Ok(())
     }
+
+    pub(super) fn step_plain_text_page(direction: i32) {
+        unsafe {
+            ok_airplay_step_plain_text_page(direction);
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -769,6 +789,8 @@ mod native {
     ) -> CommandResult<()> {
         Ok(())
     }
+
+    pub(super) fn step_plain_text_page(_direction: i32) {}
 }
 
 #[tauri::command]
@@ -807,6 +829,9 @@ pub fn sync_airplay_audience_state(
             .as_ref()
             .map(|previous| previous.mode);
         runtime_state.latest_payload = Some(payload.clone());
+        state
+            .airplay_audience_active
+            .store(payload.mode != AirPlayAudienceMode::Idle, Ordering::SeqCst);
         if previous_mode != Some(payload.mode) {
             state
                 .airplay_stream_generation
@@ -1008,4 +1033,38 @@ mod tests {
         assert!(runtime.song_id.is_none());
         assert!(!runtime.is_playing);
     }
+}
+
+#[cfg(target_os = "macos")]
+fn native_step_plain_text_page(direction: i32) {
+    native::step_plain_text_page(direction);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_step_plain_text_page(_direction: i32) {}
+
+#[tauri::command]
+pub fn step_airplay_plain_text_page(request: AirPlayPlainTextPageStepRequest) -> CommandResult<()> {
+    let scene = airplay_runtime_state()
+        .lock()
+        .ok()
+        .and_then(|runtime| runtime.latest_payload.clone());
+
+    let Some(scene) = scene else {
+        return Ok(());
+    };
+
+    if scene.mode != AirPlayAudienceMode::Lyrics
+        || scene.lines.is_empty()
+        || !scene.lines.iter().all(|line| line.time_ms == 0)
+    {
+        return Ok(());
+    }
+
+    let direction = match request.direction {
+        AirPlayPlainTextPageDirection::Prev => -1,
+        AirPlayPlainTextPageDirection::Next => 1,
+    };
+    native_step_plain_text_page(direction);
+    Ok(())
 }

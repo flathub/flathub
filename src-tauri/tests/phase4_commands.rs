@@ -16,7 +16,9 @@ mod support;
 use openkara_lib::{
     cache::{self, lyrics},
     commands::{
-        import::{extract_embedded_cover_art_from_connection, set_songs_instrumental_in_connection},
+        import::{
+            extract_embedded_cover_art_from_connection, set_songs_instrumental_in_connection,
+        },
         lyrics::{fetch_lyrics_from_connection, set_lyrics_offset_in_connection},
     },
     library::Song,

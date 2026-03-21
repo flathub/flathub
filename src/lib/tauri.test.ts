@@ -44,6 +44,36 @@ describe("tauri API wrappers", () => {
     });
   });
 
+  test("expands import paths through the dedicated library command", async () => {
+    const { expandImportPaths } = await import("./tauri");
+
+    await expandImportPaths(["/music/library"]);
+
+    expect(mockInvoke).toHaveBeenCalledWith("expand_import_paths", {
+      paths: ["/music/library"],
+    });
+  });
+
+  test("opens the mixed import picker through the dedicated backend command", async () => {
+    const { pickImportPaths } = await import("./tauri");
+
+    await pickImportPaths("/music");
+
+    expect(mockInvoke).toHaveBeenCalledWith("pick_import_paths", {
+      defaultPath: "/music",
+    });
+  });
+
+  test("passes a null default path to the mixed import picker when none is available", async () => {
+    const { pickImportPaths } = await import("./tauri");
+
+    await pickImportPaths();
+
+    expect(mockInvoke).toHaveBeenCalledWith("pick_import_paths", {
+      defaultPath: null,
+    });
+  });
+
   test("syncs audience state to the AirPlay backend", async () => {
     const { syncAirPlayAudienceState } = await import("./tauri");
 
@@ -153,6 +183,16 @@ describe("tauri API wrappers", () => {
           activeGlowColor: { red: 1, green: 1, blue: 1, alpha: 0.8 },
         },
       },
+    });
+  });
+
+  test("steps AirPlay plain-text pages through the dedicated command", async () => {
+    const { stepAirPlayPlainTextPage } = await import("./tauri");
+
+    await stepAirPlayPlainTextPage("next");
+
+    expect(mockInvoke).toHaveBeenCalledWith("step_airplay_plain_text_page", {
+      direction: "next",
     });
   });
 });

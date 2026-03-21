@@ -299,4 +299,66 @@ describe("buildAirPlayAudienceState", () => {
       },
     });
   });
+
+  test("preserves plain-text lyrics payloads without scroll state", () => {
+    expect(
+      buildAirPlayAudienceState({
+        playbackSnapshot: {
+          song_id: "song-5",
+          is_playing: true,
+          position_ms: 4200,
+          duration_ms: 5000,
+          volume: 1,
+          stem_volumes: {
+            vocals: 1,
+            drums: 1,
+            bass: 1,
+            other: 1,
+          },
+          has_stems: false,
+          stem_mode: null,
+        },
+        lyricsSongId: "song-5",
+        lines: [
+          { time_ms: 0, text: "first line", words: null },
+          { time_ms: 0, text: "second line", words: null },
+        ],
+        offsetMs: 0,
+        isLoading: false,
+        lyricsFontStep: 0,
+        hasCdg: false,
+        currentSongHasCdg: false,
+        messages: {
+          selectSong: "Select a song to start",
+          loadingLyrics: "Loading lyrics...",
+          noLyrics: "No lyrics available for this track",
+          addLyrics: "Add Lyrics",
+        },
+      }),
+    ).toMatchObject({
+      mode: "lyrics",
+      songId: "song-5",
+      lines: [
+        { time_ms: 0, text: "first line", words: null },
+        { time_ms: 0, text: "second line", words: null },
+      ],
+      offsetMs: 0,
+      isLoading: false,
+      lyricsFontStep: 0,
+      messages: {
+        selectSong: "Select a song to start",
+        loadingLyrics: "Loading lyrics...",
+        noLyrics: "No lyrics available for this track",
+        addLyrics: "Add Lyrics",
+      },
+      viewport: {
+        widthPx: 1280,
+        heightPx: 720,
+        bottomInsetPx: 0,
+      },
+      presentationSpec: {
+        fontSizePx: 72,
+      },
+    });
+  });
 });

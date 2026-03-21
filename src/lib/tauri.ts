@@ -7,6 +7,7 @@ import type {
   DeleteStemsResult,
   DowngradeResult,
   ExtractEmbeddedCoverArtResult,
+  ExpandedImportPaths,
   ImportCandidateDetails,
   ImportLyricsResult,
   ImportSongsOptions,
@@ -49,6 +50,18 @@ export function getImportCandidateDetails(
 ): Promise<ImportCandidateDetails[]> {
   return invoke<ImportCandidateDetails[]>("get_import_candidate_details", {
     paths,
+  });
+}
+
+export function expandImportPaths(
+  paths: string[],
+): Promise<ExpandedImportPaths> {
+  return invoke<ExpandedImportPaths>("expand_import_paths", { paths });
+}
+
+export function pickImportPaths(defaultPath?: string): Promise<string[]> {
+  return invoke<string[]>("pick_import_paths", {
+    defaultPath: defaultPath ?? null,
   });
 }
 
@@ -130,6 +143,12 @@ export function syncAirPlayAudienceState(
   payload: AirPlayAudienceStatePayload,
 ): Promise<void> {
   return invoke<void>("sync_airplay_audience_state", { payload });
+}
+
+export function stepAirPlayPlainTextPage(
+  direction: "prev" | "next",
+): Promise<void> {
+  return invoke<void>("step_airplay_plain_text_page", { direction });
 }
 
 // ─── Separation ──────────────────────────────────────────

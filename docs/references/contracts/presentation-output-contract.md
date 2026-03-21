@@ -16,8 +16,9 @@
 2. macOS 下，顶部独立 AirPlay 按钮挂载原生 AirPlay 控件宿主位
 3. 宿主位出现时，前端调用 `sync_airplay_route_picker(bounds)`；宿主位销毁时调用 `sync_airplay_route_picker(null)`
 4. 前端调用 `sync_airplay_audience_state(payload)` 同步当前歌曲/歌词配置；backend 自己负责运行时播放位置、歌词高亮和 CDG cadence
-5. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
-6. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
+5. 纯文本歌词页通过 `step_airplay_plain_text_page({ direction })` 交给 native bridge 翻页，不再依赖主窗口滚动进度
+6. 当 backend 发出 `openkara://airplay-output-state` 且 `phase === "playing"`、`active === true` 时，前端关闭本地 `fullscreen-player`，避免本地第二窗口和 AirPlay 同时占用 audience 输出
+7. 主窗口始终保持标准播放器 UI，不因为 AirPlay 连接状态切换成 audience 布局；只有 `fullscreen-player` 和 native AirPlay renderer 才能渲染 audience 样式
 
 ## Command: `sync_airplay_route_picker`
 
@@ -132,6 +133,30 @@ null
 9. 主窗口标准 UI 仍然应跟随 `displayedPositionMs` 计算歌词和 CDG 的同步显示时钟，但不应因此切换自身布局模式
 10. 该命令不修改现有播放、歌词、CDG IPC 名称，只复用它们的状态
 11. backend 在写给 native bridge 的内部 JSON scene 时，使用独立 DTO 固定内层时间字段为 `timeMs`；不能直接复用共享 IPC 歌词结构，否则 nested `time_ms` 会让 native 误判 timed lyrics 为 plain text
+12. backend 在 plain-text 场景下按页缓存 `pageStartIndices`，并在配置变化时重置到第一页；页内渲染由 native bridge 按当前 `pageIndex` 控制
+
+## Command: `step_airplay_plain_text_page`
+
+**Input**
+
+```json
+{
+  "direction": "next"
+}
+```
+
+**Output**
+
+```json
+null
+```
+
+**Semantics**
+
+1. `direction` 固定为 `prev | next`
+2. 该命令只对 `mode === "lyrics"` 且所有 `lines.time_ms === 0` 的 plain-text 场景生效
+3. backend 只把翻页请求转发给 native bridge，由 native bridge 维护页索引和页起始位置
+4. `mode === "idle"`、`mode === "cdg"`，或非 plain-text 歌词场景下必须直接 no-op
 
 ## Event: `openkara://airplay-output-state`
 
