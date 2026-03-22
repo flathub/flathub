@@ -20,7 +20,7 @@ jobs:
           - name: macOS
             os: macos-14
           - name: Windows
-            os: windows-2022
+            os: windows-latest
           - name: Linux
             os: ubuntu-24.04
 
@@ -104,15 +104,13 @@ jobs:
 
           Move-Item -Force $tmpPath $modelPath
 
-      # pyke's prebuilt onnxruntime.lib for Windows is compiled with DirectML
-      # baked in, creating a hard runtime dependency on DirectML.dll.  The
-      # dfbin cache contains only the static lib, and the system-provided
-      # DirectML.dll on Windows Server runners is too old (missing exports
-      # needed by ORT 1.24.2), causing STATUS_ENTRYPOINT_NOT_FOUND.
-      #
-      # Fix: download the exact DirectML redistributable that ORT 1.24.2 was
-      # built against (Microsoft.AI.DirectML 1.15.4, per cmake/external/
-      # dml.cmake) and stage the correct DLL next to the test binary.
+      # pyke's prebuilt onnxruntime.lib statically bakes in DirectML,
+      # creating hard load-time dependencies on DirectML.dll, D3D12.dll,
+      # DXCore.dll, etc.  Windows Server runners ship outdated system
+      # versions of these DLLs (including a WinML onnxruntime.dll in
+      # System32 that can shadow the static link).  Fix: stage matching
+      # redistributable DLLs from official NuGet packages next to the
+      # test binary so they are found first by the Windows loader.
       - name: Stage ORT runtime DLLs for Rust tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -123,81 +121,48 @@ jobs:
           $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
           New-Item -ItemType Directory -Force -Path $depsDir | Out-Null
 
-          # ---- DirectML redistributable (v1.15.4, matches ORT 1.24.2) ----
-          $dmlPkg = Join-Path $env:RUNNER_TEMP "directml.zip"
-          $dmlDir = Join-Path $env:RUNNER_TEMP "directml"
+          # ---- 1. Official ORT 1.24.2 DirectML package ----
+          # Provides onnxruntime.dll (shadows the incompatible WinML
+          # system copy in System32) and DirectML.dll (matched version).
+          $ortPkg = Join-Path $env:RUNNER_TEMP "ort-dml.zip"
+          $ortDir = Join-Path $env:RUNNER_TEMP "ort-dml"
           Invoke-WebRequest `
-            -Uri "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.4" `
-            -OutFile $dmlPkg
-          Expand-Archive -Force -Path $dmlPkg -DestinationPath $dmlDir
+            -Uri "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.DirectML/1.24.2" `
+            -OutFile $ortPkg
+          Expand-Archive -Force -Path $ortPkg -DestinationPath $ortDir
 
-          $dmlDll = Join-Path $dmlDir "bin/x64-win/DirectML.dll"
-          if (Test-Path $dmlDll) {
-            $dest = Join-Path $depsDir "DirectML.dll"
+          foreach ($dll in Get-ChildItem "$ortDir/runtimes/win-x64/native" -Filter "*.dll" -ErrorAction SilentlyContinue) {
+            $dest = Join-Path $depsDir $dll.Name
             if (Test-Path $dest) { Remove-Item $dest -Force }
-            Copy-Item $dmlDll $dest
-            Write-Host "Staged DirectML.dll (v1.15.4) -> deps/"
-          } else {
-            throw "DirectML.dll not found in NuGet package"
+            Copy-Item $dll.FullName $dest
+            Write-Host "Staged $($dll.Name) (ORT DirectML) -> deps/"
           }
 
-          # ---- Copy any extra DLLs from the ort-sys dfbin cache ----
-          $buildOutputFiles = Get-ChildItem `
-            -Path (Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/build") `
-            -Filter output `
-            -File `
-            -Recurse | Where-Object { $_.FullName -match "ort-sys-" }
+          # ---- 2. DirectX 12 Agility SDK ----
+          # Provides D3D12Core.dll so the test binary can use a modern
+          # D3D12 runtime even on Windows Server 2022 where the inbox
+          # GPU stack may lack newer API entry points.
+          $d3dPkg = Join-Path $env:RUNNER_TEMP "d3d12.zip"
+          $d3dDir = Join-Path $env:RUNNER_TEMP "d3d12"
+          Invoke-WebRequest `
+            -Uri "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.1" `
+            -OutFile $d3dPkg
+          Expand-Archive -Force -Path $d3dPkg -DestinationPath $d3dDir
 
-          foreach ($f in @($buildOutputFiles)) {
-            foreach ($line in Get-Content $f.FullName) {
-              if ($line -match "^cargo:rustc-link-search=native=(.+)$") {
-                $dir = $Matches[1]
-                if (-not (Test-Path $dir)) { continue }
-                Get-ChildItem -Path $dir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
-                  ForEach-Object {
-                    $dest = Join-Path $depsDir $_.Name
-                    if (-not (Test-Path $dest)) {
-                      Copy-Item $_.FullName $dest
-                      Write-Host "Staged $($_.Name) from dfbin -> deps/"
-                    }
-                  }
-              }
-            }
+          # Agility SDK expects D3D12Core.dll in a D3D12/ subdir next
+          # to the executable, or directly alongside it.
+          $d3d12Sub = Join-Path $depsDir "D3D12"
+          New-Item -ItemType Directory -Force -Path $d3d12Sub | Out-Null
+          foreach ($dll in Get-ChildItem "$d3dDir/build/native/bin/x64" -Filter "*.dll" -ErrorAction SilentlyContinue) {
+            Copy-Item $dll.FullName (Join-Path $d3d12Sub $dll.Name) -Force
+            # Also place directly in deps/ as fallback
+            Copy-Item $dll.FullName (Join-Path $depsDir $dll.Name) -Force
+            Write-Host "Staged $($dll.Name) (D3D12 Agility SDK) -> deps/"
           }
 
-      - name: Diagnose DLL dependencies (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $depsDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/debug/deps"
-          Write-Host "=== DLLs staged in deps/ ==="
-          Get-ChildItem -Path $depsDir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
+          Write-Host "`nAll DLLs staged in deps/:"
+          Get-ChildItem $depsDir -Filter "*.dll" -File |
             ForEach-Object { Write-Host "  $($_.Name)  ($($_.Length) bytes)" }
-
-          $testExe = Get-ChildItem -Path $depsDir -Filter "openkara_lib-*.exe" -File | Select-Object -First 1
-          if ($testExe) {
-            Write-Host "`n=== DLL dependencies ==="
-            try {
-              # link.exe is on PATH in MSVC environments
-              link.exe /dump /dependents $testExe.FullName 2>&1 |
-                Select-String -Pattern "\.dll" |
-                ForEach-Object { Write-Host "  $_" }
-            } catch {
-              Write-Host "  (could not list dependents: $_)"
-            }
-          }
-
-          Write-Host "`n=== where.exe for key DLLs ==="
-          foreach ($dll in @("DirectML.dll","d3d12.dll","dxgi.dll","DXCore.dll","onnxruntime.dll")) {
-            try {
-              $found = & where.exe $dll 2>$null
-              if ($found) { Write-Host "  ${dll}: $found" }
-              else { Write-Host "  ${dll}: NOT FOUND on PATH" }
-            } catch {
-              Write-Host "  ${dll}: NOT FOUND on PATH"
-            }
-          }
 
       - name: Lint frontend
         run: pnpm lint
@@ -209,7 +174,6 @@ jobs:
         working-directory: src-tauri
         shell: pwsh
         run: |
-          # Ensure test binaries can find staged DLLs via PATH as a fallback
           $depsDir = Resolve-Path "target/debug/deps"
           $env:PATH = "$depsDir;$env:PATH"
           cargo test -q
