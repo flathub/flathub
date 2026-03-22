@@ -5,7 +5,10 @@ use crate::{
     library::Song,
     library_root::LibraryRoot,
     lyrics::{
-        self, fetch::lookup_query_from_song, fetch::LyricsSource, lrclib::LrcLibClient,
+        self,
+        fetch::{fetch_online_timed_lyrics, lookup_query_from_song, LyricsSource, TimedLyricsProvider},
+        lrcapi::LrcApiClient,
+        lrclib::LrcLibClient,
         parser::LyricLine,
     },
     AppState,
@@ -30,11 +33,14 @@ pub struct LyricsPayload {
 pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResult<LyricsPayload> {
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
+    let lrclib_client = LrcLibClient::new_default();
+    let lrcapi_client = LrcApiClient::new_default();
 
     fetch_lyrics_from_connection(
         &connection,
         &library_root,
-        &LrcLibClient::new_default(),
+        &lrclib_client,
+        &lrcapi_client,
         &song_id,
     )
     .map_err(|error| {
@@ -61,7 +67,8 @@ pub fn set_lyrics_offset(
 pub fn fetch_lyrics_from_connection(
     connection: &Connection,
     library_root: &LibraryRoot,
-    client: &LrcLibClient,
+    lrclib_client: &LrcLibClient,
+    lrcapi_client: &LrcApiClient,
     song_id: &str,
 ) -> Result<LyricsPayload> {
     let song = cache::get_song_by_hash(connection, song_id)
@@ -75,7 +82,14 @@ pub fn fetch_lyrics_from_connection(
     }
 
     let resolved_path = library_root.resolve(&song.file_path);
-    let Some(fetched) = lyrics::fetch::fetch_lyrics_for_song(client, &song, &resolved_path)? else {
+    let providers = [
+        TimedLyricsProvider::LrcLib(lrclib_client),
+        TimedLyricsProvider::LrcApi(lrcapi_client),
+    ];
+
+    // Online requests are opportunistic: if they fail, we still want embedded
+    // and sidecar sources to rescue the fetch instead of failing the whole song.
+    let Some(fetched) = lyrics::fetch::fetch_lyrics_for_song(&providers, &song, &resolved_path)? else {
         return Ok(LyricsPayload {
             song_id: song.hash,
             lines: Vec::new(),
@@ -348,7 +362,12 @@ pub fn fetch_lyrics_online(
         .map_err(|e| lyrics_error(e.to_string()))?
         .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
 
-    let client = LrcLibClient::new_default();
+    let lrclib_client = LrcLibClient::new_default();
+    let lrcapi_client = LrcApiClient::new_default();
+    let providers = [
+        TimedLyricsProvider::LrcLib(&lrclib_client),
+        TimedLyricsProvider::LrcApi(&lrcapi_client),
+    ];
     let query = match lookup_query_from_song(&song) {
         Some(q) => q,
         None => {
@@ -362,47 +381,42 @@ pub fn fetch_lyrics_online(
         }
     };
 
-    let result = client
-        .fetch_by_track(&query)
-        .map_err(|e| lyrics_error(e.to_string()))?;
-
-    let synced_lrc = result.and_then(|l| l.synced_lyrics.filter(|s| !s.trim().is_empty()));
-
-    match synced_lrc {
-        Some(raw_lrc) => {
-            let lines =
-                lyrics::parser::parse_lrc(&raw_lrc).map_err(|e| lyrics_error(e.to_string()))?;
-
-            let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
-
-            cache::lyrics::upsert_lyrics_cache_entry(
-                &connection,
-                &LyricsCacheEntry {
-                    song_hash: song_id.clone(),
-                    lrc: raw_lrc.clone(),
-                    source: LyricsSource::LrcLib,
-                    offset_ms: 0,
-                    fetched_at,
-                },
-            )
-            .map_err(|e| database_error(e.to_string()))?;
-
-            Ok(LyricsPayload {
-                song_id,
-                lines,
-                source: Some(LyricsSource::LrcLib),
-                offset_ms: 0,
-                raw_lrc,
-            })
-        }
-        None => Ok(LyricsPayload {
+    let Some(fetched) = fetch_online_timed_lyrics(&providers, &query)
+        .map_err(|e| lyrics_error(e.to_string()))?
+    else {
+        return Ok(LyricsPayload {
             song_id: song.hash,
             lines: Vec::new(),
             source: None,
             offset_ms: 0,
             raw_lrc: String::new(),
-        }),
-    }
+        });
+    };
+
+    let lines = lyrics::parser::parse_lrc(&fetched.raw_lrc)
+        .map_err(|e| lyrics_error(e.to_string()))?;
+
+    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
+
+    cache::lyrics::upsert_lyrics_cache_entry(
+        &connection,
+        &LyricsCacheEntry {
+            song_hash: song_id.clone(),
+            lrc: fetched.raw_lrc.clone(),
+            source: fetched.source.clone(),
+            offset_ms: 0,
+            fetched_at,
+        },
+    )
+    .map_err(|e| database_error(e.to_string()))?;
+
+    Ok(LyricsPayload {
+        song_id,
+        lines,
+        source: Some(fetched.source),
+        offset_ms: 0,
+        raw_lrc: fetched.raw_lrc,
+    })
 }
 
 /// Convert plain text (no LRC timestamps) into `LyricLine` entries with

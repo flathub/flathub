@@ -92,7 +92,7 @@
 1. 歌词缓存缺失或 LRC 不可用：
    - `code = lyrics_not_ready`
    - `fallback = show_empty_state`
-2. LRCLIB 请求失败：
+2. 在线 timed lyrics provider 请求失败：
    - `code = network_unavailable`
    - `fallback = retry`
 3. 歌曲不存在：

@@ -53,3 +53,27 @@ fn upserts_lyrics_cache_and_persists_offset_updates() {
         .expect("lyrics cache entry should exist");
     assert_eq!(updated.offset_ms, 500);
 }
+
+#[test]
+fn serializes_and_deserializes_lrcapi_source_values() {
+    let connection = Connection::open_in_memory().expect("in-memory database should open");
+    cache::apply_migrations(&connection).expect("migrations should succeed");
+    cache::upsert_song(&connection, &sample_song("song-b")).expect("song insert should succeed");
+
+    lyrics::upsert_lyrics_cache_entry(
+        &connection,
+        &lyrics::LyricsCacheEntry {
+            song_hash: "song-b".to_owned(),
+            lrc: "[00:10.00] Look at the stars".to_owned(),
+            source: LyricsSource::LrcApi,
+            offset_ms: 0,
+            fetched_at: 10,
+        },
+    )
+    .expect("lyrics cache insert should succeed");
+
+    let cached = lyrics::get_lyrics_cache_entry(&connection, "song-b")
+        .expect("lyrics cache lookup should succeed")
+        .expect("lyrics cache entry should exist");
+    assert_eq!(cached.source, LyricsSource::LrcApi);
+}

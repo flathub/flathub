@@ -2,7 +2,7 @@
 
 **Goal:** 固定 `Phase 4` 代码侧已经实现的歌词抓取、解析、缓存和 offset 持久化语义，保证 UI Agent 与后续接手者都基于同一套返回结构继续。
 
-**Current starting point:** 本契约对应分支 `codex/phase0-m0` 上 LRCLIB client、LRC parser、抓取优先链、SQLite cache，以及 `fetch_lyrics / set_lyrics_offset` 命令接入之后的状态。
+**Current starting point:** 本契约对应分支 `codex/phase0-m0` 上 LRCLIB client、LrcApi client、LRC parser、抓取优先链、SQLite cache，以及 `fetch_lyrics / fetch_lyrics_online / set_lyrics_offset` 命令接入之后的状态。
 
 ## Owner
 
@@ -14,7 +14,7 @@
 1. `fetch_lyrics(song_id: String) -> LyricsPayload`
 2. `set_lyrics_offset(song_id: String, ms: i64) -> ()`
 3. `set_lyrics_font_step(step: i8) -> AppSettings`
-4. 抓取优先顺序固定为 `LRCLIB -> embedded -> sidecar .lrc`
+4. 抓取优先顺序固定为 `LRCLIB -> LrcApi -> embedded -> sidecar .lrc`
 5. SQLite `lyrics` 表按 `song_hash` 缓存原始 LRC 和 `offset_ms`
 6. 对同一首歌重复调用 `fetch_lyrics` 时，优先命中 SQLite cache，不重复发起 HTTP 请求
 7. 歌词字号是全局显示偏好，不写入 `lyrics` 表；它走 `AppSettings.lyrics_font_step`
@@ -65,11 +65,31 @@
 2. 后端会先检查 SQLite `lyrics` cache；命中后直接解析缓存的 LRC
 3. cache miss 时，后端按固定顺序尝试：
    - LRCLIB `GET /api/get`
+   - LrcApi `GET /jsonapi`
    - 音频文件内嵌歌词标签
    - 同名 sidecar `.lrc`
 4. 一旦抓到歌词，后端会先解析成 `Vec<LyricLine>`，再把原始 LRC、来源和 `offset_ms = 0` 写入 SQLite
-5. 如果所有来源都 miss，命令仍然成功返回；只是 `lines = []`、`source = null`
-6. 如果歌曲不存在、HTTP 请求失败、文件读取失败或 LRC 解析失败，命令返回 `CommandError`
+5. 在线 provider 的请求失败或 `jsonapi` 返回 `{"message":"未找到歌词"}` 时，不会中断后续 provider / 本地来源的查找
+6. 如果所有来源都 miss，命令仍然成功返回；只是 `lines = []`、`source = null`
+7. 如果歌曲不存在、文件读取失败或 LRC 解析失败，命令返回 `CommandError`
+
+### Command: `fetch_lyrics_online`
+
+**Input**
+
+```json
+{
+  "song_id": "sha256 hash string"
+}
+```
+
+**Semantics**
+
+1. 仅尝试在线 timed lyrics provider，不读取 embedded 或 sidecar `.lrc`
+2. 在线 provider 顺序固定为 `LRCLIB -> LrcApi`
+3. 如果两个 provider 都 miss，命令返回空 payload，而不是写入缓存
+4. 如果任一 provider 命中，返回的 `LyricsPayload` 与 `fetch_lyrics` 保持一致，并将结果写入 SQLite cache
+5. 如果所有在线 provider 都因为请求或响应错误而无法返回 timed lyrics，命令返回 `CommandError`
 
 ### Command: `set_lyrics_offset`
 
@@ -120,12 +140,12 @@
 
 ### Shared type: `LyricsPayload`
 
-| Field       | Type                                       | Notes                        |
-| ----------- | ------------------------------------------ | ---------------------------- |
-| `song_id`   | `String`                                   | 对应 `songs.hash`            |
-| `lines`     | `Vec<LyricLine>`                           | 已按 `time_ms` 升序排序      |
-| `source`    | `Option<"lrc_lib"\|"embedded"\|"sidecar">` | 无命中时为 `null`            |
-| `offset_ms` | `i64`                                      | 当前已持久化的 timing offset |
+| Field       | Type                                                            | Notes                        |
+| ----------- | --------------------------------------------------------------- | ---------------------------- |
+| `song_id`   | `String`                                                        | 对应 `songs.hash`            |
+| `lines`     | `Vec<LyricLine>`                                                | 已按 `time_ms` 升序排序      |
+| `source`    | `Option<"lrc_lib"\|"lrc_api"\|"embedded"\|"sidecar"\|"manual">` | 无命中时为 `null`            |
+| `offset_ms` | `i64`                                                           | 当前已持久化的 timing offset |
 
 ### Shared type: `LyricLine`
 
@@ -149,12 +169,14 @@
 2. 当前不会为 miss 结果写入空缓存行；只有真实命中的歌词才会落库
 3. `source` 序列化值固定为：
    - `lrc_lib`
+   - `lrc_api`
    - `embedded`
    - `sidecar`
+   - `manual`
 
 ## Required dependencies
 
-1. `reqwest` 负责 LRCLIB HTTP 请求
+1. `reqwest` 负责 LRCLIB 和 LrcApi HTTP 请求
 2. `lofty` 负责读取内嵌歌词标签
 3. `rusqlite` 负责缓存和 offset 持久化
 4. `playback-position` 事件继续由 Phase 2 播放契约提供，歌词契约本身不新增事件
@@ -164,7 +186,7 @@
 
 ```bash
 cd src-tauri
-cargo test --test phase4_lrclib --test phase4_parser --test phase4_fetch --test phase4_lyrics_cache --test phase4_commands
+cargo test --test phase4_lrclib --test phase4_lrcapi --test phase4_parser --test phase4_fetch --test phase4_lyrics_cache --test phase4_commands --test phase5_errors
 cargo test
 cd ..
 pnpm tauri build --debug --no-bundle --ci
@@ -173,10 +195,12 @@ pnpm tauri build --debug --no-bundle --ci
 **Expected evidence**
 
 1. `phase4_lrclib`
-2. `phase4_parser`
-3. `phase4_fetch`
-4. `phase4_lyrics_cache`
-5. `phase4_commands`
+2. `phase4_lrcapi`
+3. `phase4_parser`
+4. `phase4_fetch`
+5. `phase4_lyrics_cache`
+6. `phase4_commands`
+7. `phase5_errors`
 
 以上测试全部通过，并且调试构建成功。
 

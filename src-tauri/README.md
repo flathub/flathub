@@ -2,14 +2,14 @@
 
 Tauri application backend. Handles all heavy processing:
 
-| Module       | Responsibility                                        |
-| ------------ | ----------------------------------------------------- |
-| `audio/`     | Audio decoding (symphonia) and playback (cpal)        |
-| `separator/` | AI stem separation — Demucs v4 via ONNX Runtime       |
-| `lyrics/`    | Synced lyrics fetching (LRCLIB API) and LRC parsing   |
-| `metadata/`  | Audio file tag reading (ID3, Vorbis, FLAC via lofty)  |
-| `cache/`     | SQLite database and file-based cache for stems/lyrics |
-| `commands/`  | Tauri IPC command handlers exposed to the frontend    |
+| Module       | Responsibility                                           |
+| ------------ | -------------------------------------------------------- |
+| `audio/`     | Audio decoding (symphonia) and playback (cpal)           |
+| `separator/` | AI stem separation — Demucs v4 via ONNX Runtime          |
+| `lyrics/`    | Synced lyrics fetching (LRCLIB + LrcApi) and LRC parsing |
+| `metadata/`  | Audio file tag reading (ID3, Vorbis, FLAC via lofty)     |
+| `cache/`     | SQLite database and file-based cache for stems/lyrics    |
+| `commands/`  | Tauri IPC command handlers exposed to the frontend       |
 
 ## Models
 

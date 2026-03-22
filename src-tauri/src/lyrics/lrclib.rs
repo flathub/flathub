@@ -63,17 +63,17 @@ impl LrcLibClient {
 
         let response = request
             .send()
-            .context("failed to request lyrics from LRCLIB")?;
+            .context("failed to request timed lyrics")?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
 
         let response = response
             .error_for_status()
-            .context("LRCLIB returned a non-success response")?;
+            .context("timed lyrics provider returned a non-success response")?;
         let lyrics = response
             .json::<LrcLibLyrics>()
-            .context("failed to deserialize LRCLIB lyrics response")?;
+            .context("failed to deserialize timed lyrics response")?;
 
         Ok(Some(lyrics))
     }

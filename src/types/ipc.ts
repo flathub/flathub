@@ -282,7 +282,12 @@ export interface SeparationErrorEvent {
 
 // ─── Lyrics ──────────────────────────────────────────────
 
-export type LyricsSource = "lrc_lib" | "embedded" | "sidecar" | "manual";
+export type LyricsSource =
+  | "lrc_lib"
+  | "lrc_api"
+  | "embedded"
+  | "sidecar"
+  | "manual";
 
 export interface WordToken {
   time_ms: number;

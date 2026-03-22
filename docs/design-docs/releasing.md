@@ -40,7 +40,8 @@ Additional distribution channels are derived from those releases:
   `WINGET_FORK_REPO` and `WINGET_PR_TOKEN` are configured, opens or updates a PR
   against `microsoft/winget-pkgs`. If the token can push the fork branch but
   cannot create the upstream PR, the workflow now prints a compare URL and
-  keeps the release run green.
+  keeps the release run green. WinGet PR titles use the
+  `New version: <PackageIdentifier> version <Version>` convention.
 - **Flathub** — release automation renders the source-build Flatpak bundle and,
   when `FLATHUB_FORK_REPO` and `FLATHUB_PR_TOKEN` are configured, opens or
   updates a PR against the target Flathub app repository.

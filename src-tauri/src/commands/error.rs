@@ -200,8 +200,13 @@ pub fn lyrics_error(message: impl ToString) -> CommandError {
         );
     }
 
-    if message.contains("failed to request lyrics from LRCLIB")
+    if message.contains("failed to request timed lyrics")
+        || message.contains("timed lyrics provider returned a non-success response")
+        || message.contains("failed to deserialize timed lyrics response")
+        || message.contains("timed lyrics provider returned an unexpected response")
+        || message.contains("failed to request lyrics from LRCLIB")
         || message.contains("LRCLIB returned a non-success response")
+        || message.contains("failed to deserialize LRCLIB lyrics response")
     {
         return CommandError::new(
             ErrorCode::NetworkUnavailable,

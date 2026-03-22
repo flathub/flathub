@@ -1,6 +1,10 @@
 use crate::{
     library::Song,
-    lyrics::lrclib::{LrcLibClient, LyricsLookupQuery},
+    lyrics::{
+        lrcapi::LrcApiClient,
+        lrclib::{LrcLibClient, LyricsLookupQuery},
+        parser,
+    },
     metadata,
 };
 use anyhow::{Context, Result};
@@ -12,6 +16,7 @@ use std::{fs, path::Path};
 #[serde(rename_all = "snake_case")]
 pub enum LyricsSource {
     LrcLib,
+    LrcApi,
     Embedded,
     Sidecar,
     Manual,
@@ -23,22 +28,51 @@ pub struct LyricsFetchResult {
     pub raw_lrc: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TimedLyricsProvider<'a> {
+    LrcLib(&'a LrcLibClient),
+    LrcApi(&'a LrcApiClient),
+}
+
+impl TimedLyricsProvider<'_> {
+    fn source(self) -> LyricsSource {
+        match self {
+            Self::LrcLib(_) => LyricsSource::LrcLib,
+            Self::LrcApi(_) => LyricsSource::LrcApi,
+        }
+    }
+
+    fn fetch_timed_lrc(self, query: &LyricsLookupQuery) -> Result<Option<String>> {
+        match self {
+            Self::LrcLib(client) => client.fetch_by_track(query).map(|result| {
+                result.and_then(|lyrics| {
+                    lyrics
+                        .synced_lyrics
+                        .filter(|lyrics| !lyrics.trim().is_empty())
+                })
+            }),
+            Self::LrcApi(client) => client.fetch_by_track(query).map(|result| {
+                result.and_then(|lyrics| {
+                    let lrc = lyrics.lrc.trim();
+                    if lrc.is_empty() {
+                        None
+                    } else {
+                        Some(lyrics.lrc)
+                    }
+                })
+            }),
+        }
+    }
+}
+
 pub fn fetch_lyrics_for_song(
-    client: &LrcLibClient,
+    providers: &[TimedLyricsProvider<'_>],
     song: &Song,
     resolved_audio_path: &Path,
 ) -> Result<Option<LyricsFetchResult>> {
     if let Some(query) = lookup_query_from_song(song) {
-        if let Some(lyrics) = client.fetch_by_track(&query)? {
-            if let Some(synced_lyrics) = lyrics
-                .synced_lyrics
-                .filter(|lyrics| !lyrics.trim().is_empty())
-            {
-                return Ok(Some(LyricsFetchResult {
-                    source: LyricsSource::LrcLib,
-                    raw_lrc: synced_lyrics,
-                }));
-            }
+        if let Ok(Some(lyrics)) = fetch_online_timed_lyrics(providers, &query) {
+            return Ok(Some(lyrics));
         }
     }
 
@@ -70,6 +104,36 @@ pub fn lookup_query_from_song(song: &Song) -> Option<LyricsLookupQuery> {
         album_name: song.album.clone(),
         duration_seconds: Some((song.duration_ms / 1_000).max(0) as u64),
     })
+}
+
+pub fn fetch_online_timed_lyrics(
+    providers: &[TimedLyricsProvider<'_>],
+    query: &LyricsLookupQuery,
+) -> Result<Option<LyricsFetchResult>> {
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for provider in providers {
+        match (*provider).fetch_timed_lrc(query) {
+            Ok(Some(raw_lrc)) => {
+                if has_timed_lines(&raw_lrc) {
+                    return Ok(Some(LyricsFetchResult {
+                        source: (*provider).source(),
+                        raw_lrc,
+                    }));
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                last_error = Some(error);
+            }
+        }
+    }
+
+    if let Some(error) = last_error {
+        Err(error)
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn read_embedded_lyrics(path: &Path) -> Result<Option<String>> {
@@ -110,4 +174,10 @@ fn read_sidecar_lrc(path: &Path) -> Result<Option<String>> {
     }
 
     Ok(Some(contents))
+}
+
+fn has_timed_lines(raw_lrc: &str) -> bool {
+    parser::parse_lrc(raw_lrc)
+        .map(|lines| !lines.is_empty())
+        .unwrap_or(false)
 }

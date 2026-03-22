@@ -4,11 +4,11 @@ Lyrics backend for Phase 4.
 
 Current scope:
 
-- LRCLIB client for synced lyric lookup
+- LRCLIB and LrcApi clients for synced lyric lookup
 - LRC parser for timestamped lyric lines
-- Fetch priority chain: LRCLIB -> embedded tags -> sidecar `.lrc`
+- Fetch priority chain: LRCLIB -> LrcApi -> embedded tags -> sidecar `.lrc`
 - SQLite lyrics cache and per-song offset persistence
-- Command-facing payloads for `fetch_lyrics` and `set_lyrics_offset`
+- Command-facing payloads for `fetch_lyrics`, `fetch_lyrics_online`, and `set_lyrics_offset`
 
 Follow-up work outside this directory:
 

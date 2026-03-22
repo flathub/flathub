@@ -12,7 +12,11 @@ mod support;
 use openkara_lib::{
     library::Song,
     lyrics::{
-        fetch::{fetch_lyrics_for_song, read_embedded_lyrics, LyricsFetchResult, LyricsSource},
+        fetch::{
+            fetch_lyrics_for_song, read_embedded_lyrics, LyricsFetchResult, LyricsSource,
+            TimedLyricsProvider,
+        },
+        lrcapi::LrcApiClient,
         lrclib::LrcLibClient,
     },
 };
@@ -82,8 +86,15 @@ fn fetch_chain_prefers_lrclib_synced_lyrics_over_sidecar() {
         )
         .create();
 
+    let lrclib_client = LrcLibClient::new(server.url());
+    let lrcapi = LrcApiClient::new("http://127.0.0.1:9");
+    let providers = [
+        TimedLyricsProvider::LrcLib(&lrclib_client),
+        TimedLyricsProvider::LrcApi(&lrcapi),
+    ];
+
     let fetched = fetch_lyrics_for_song(
-        &LrcLibClient::new(server.url()),
+        &providers,
         &fixture_song(&audio_path),
         &audio_path,
     )
@@ -103,7 +114,7 @@ fn fetch_chain_prefers_lrclib_synced_lyrics_over_sidecar() {
 }
 
 #[test]
-fn fetch_chain_falls_back_to_sidecar_when_lrclib_misses() {
+fn fetch_chain_prefers_lrcapi_over_sidecar_when_lrclib_misses() {
     let fixture_dir = unique_fixture_dir();
     cleanup_dir(&fixture_dir);
     fs::create_dir_all(&fixture_dir).expect("fixture directory should create");
@@ -113,15 +124,103 @@ fn fetch_chain_falls_back_to_sidecar_when_lrclib_misses() {
     fs::write(audio_path.with_extension("lrc"), "[00:10.00] from sidecar")
         .expect("sidecar should write");
 
-    let mut server = mockito::Server::new();
-    let mock = server
+    let mut lrclib_server = mockito::Server::new();
+    let lrclib_mock = lrclib_server
         .mock("GET", "/api/get")
         .match_query(mockito::Matcher::Any)
         .with_status(404)
         .create();
 
+    let mut lrcapi_server = mockito::Server::new();
+    let lrcapi_mock = lrcapi_server
+        .mock("GET", "/jsonapi")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("title".into(), "Yellow".into()),
+            mockito::Matcher::UrlEncoded("artist".into(), "Coldplay".into()),
+            mockito::Matcher::UrlEncoded("album".into(), "Parachutes".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {
+                    "id": "2",
+                    "title": "Yellow",
+                    "artist": "Coldplay",
+                    "album": "Parachutes",
+                    "score": 99.0,
+                    "lrc": "[00:33.64] from lrcapi",
+                    "lrc_ttml": null,
+                    "lyric_path": "/lyrics/yellow"
+                }
+            ]"#,
+        )
+        .create();
+
+    let lrclib_client = LrcLibClient::new(lrclib_server.url());
+    let lrcapi = LrcApiClient::new(lrcapi_server.url());
+    let providers = [
+        TimedLyricsProvider::LrcLib(&lrclib_client),
+        TimedLyricsProvider::LrcApi(&lrcapi),
+    ];
+
     let fetched = fetch_lyrics_for_song(
-        &LrcLibClient::new(server.url()),
+        &providers,
+        &fixture_song(&audio_path),
+        &audio_path,
+    )
+    .expect("fetch chain should succeed")
+    .expect("LrcApi lyrics should be returned");
+
+    assert_eq!(
+        fetched,
+        LyricsFetchResult {
+            source: LyricsSource::LrcApi,
+            raw_lrc: "[00:33.64] from lrcapi".to_owned(),
+        }
+    );
+
+    lrclib_mock.assert();
+    lrcapi_mock.assert();
+    cleanup_dir(&fixture_dir);
+}
+
+#[test]
+fn fetch_chain_falls_back_to_sidecar_when_online_sources_miss() {
+    let fixture_dir = unique_fixture_dir();
+    cleanup_dir(&fixture_dir);
+    fs::create_dir_all(&fixture_dir).expect("fixture directory should create");
+
+    let audio_path = fixture_dir.join("yellow.mp3");
+    fs::copy(metadata_fixture_path("fixture.mp3"), &audio_path).expect("fixture audio should copy");
+    fs::write(audio_path.with_extension("lrc"), "[00:10.00] from sidecar")
+        .expect("sidecar should write");
+
+    let mut lrclib_server = mockito::Server::new();
+    let lrclib_mock = lrclib_server
+        .mock("GET", "/api/get")
+        .match_query(mockito::Matcher::Any)
+        .with_status(404)
+        .create();
+
+    let mut lrcapi_server = mockito::Server::new();
+    let lrcapi_mock = lrcapi_server
+        .mock("GET", "/jsonapi")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"message":"未找到歌词"}"#)
+        .create();
+
+    let lrclib_client = LrcLibClient::new(lrclib_server.url());
+    let lrcapi = LrcApiClient::new(lrcapi_server.url());
+    let providers = [
+        TimedLyricsProvider::LrcLib(&lrclib_client),
+        TimedLyricsProvider::LrcApi(&lrcapi),
+    ];
+
+    let fetched = fetch_lyrics_for_song(
+        &providers,
         &fixture_song(&audio_path),
         &audio_path,
     )
@@ -136,7 +235,8 @@ fn fetch_chain_falls_back_to_sidecar_when_lrclib_misses() {
         }
     );
 
-    mock.assert();
+    lrclib_mock.assert();
+    lrcapi_mock.assert();
     cleanup_dir(&fixture_dir);
 }
 

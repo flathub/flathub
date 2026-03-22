@@ -16,6 +16,7 @@ use openkara_lib::{
     },
     config::StemMode,
     library_root::LibraryRoot,
+    lyrics::{lrcapi::LrcApiClient, lrclib::LrcLibClient},
     separator::{job, model, model_cache::ModelCache},
 };
 use rusqlite::Connection;
@@ -102,7 +103,8 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
     let lyrics = fetch_lyrics_from_connection(
         &connection,
         &library,
-        &openkara_lib::lyrics::lrclib::LrcLibClient::new(server.url()),
+        &LrcLibClient::new(server.url()),
+        &LrcApiClient::new("http://127.0.0.1:9"),
         &song_id,
     )
     .expect("lyrics fetch should fall back to the sidecar file");
@@ -117,7 +119,8 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
     let cached_lyrics = fetch_lyrics_from_connection(
         &connection,
         &library,
-        &openkara_lib::lyrics::lrclib::LrcLibClient::new("http://127.0.0.1:9"),
+        &LrcLibClient::new("http://127.0.0.1:9"),
+        &LrcApiClient::new("http://127.0.0.1:9"),
         &song_id,
     )
     .expect("second fetch should read lyrics from cache");

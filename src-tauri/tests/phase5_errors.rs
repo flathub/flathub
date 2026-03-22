@@ -31,7 +31,7 @@ fn lyrics_errors_map_missing_cache_to_empty_state_fallback() {
 
 #[test]
 fn lyrics_errors_map_network_failures_to_retry_fallback() {
-    let error = lyrics_error("failed to request lyrics from LRCLIB");
+    let error = lyrics_error("failed to request timed lyrics");
 
     assert_eq!(error.code, ErrorCode::NetworkUnavailable);
     assert_eq!(error.fallback, FallbackAction::Retry);

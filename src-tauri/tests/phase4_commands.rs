@@ -23,7 +23,7 @@ use openkara_lib::{
     },
     library::Song,
     library_root::LibraryRoot,
-    lyrics::{fetch::LyricsSource, lrclib::LrcLibClient},
+    lyrics::{fetch::LyricsSource, lrcapi::LrcApiClient, lrclib::LrcLibClient},
 };
 use rusqlite::Connection;
 
@@ -126,6 +126,7 @@ fn fetch_lyrics_reads_cached_lrc_before_attempting_remote_fetch() {
         &connection,
         &library,
         &LrcLibClient::new("http://127.0.0.1:9"),
+        &LrcApiClient::new("http://127.0.0.1:9"),
         &song.hash,
     )
     .expect("cache-backed lyrics fetch should succeed");
@@ -139,7 +140,7 @@ fn fetch_lyrics_reads_cached_lrc_before_attempting_remote_fetch() {
 }
 
 #[test]
-fn fetch_lyrics_fetches_remote_lrc_and_persists_it_in_cache() {
+fn fetch_lyrics_fetches_remote_lrc_api_and_persists_it_in_cache() {
     let connection = Connection::open_in_memory().expect("in-memory database should open");
     cache::apply_migrations(&connection).expect("migrations should succeed");
 
@@ -158,46 +159,63 @@ fn fetch_lyrics_fetches_remote_lrc_and_persists_it_in_cache() {
     let song = fixture_song("song-b", Path::new("media/song-b.mp3"));
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
 
-    let mut server = mockito::Server::new();
-    let mock = server
+    let mut lrclib_server = mockito::Server::new();
+    let lrclib_mock = lrclib_server
         .mock("GET", "/api/get")
         .match_query(mockito::Matcher::Any)
+        .with_status(404)
+        .create();
+
+    let mut lrcapi_server = mockito::Server::new();
+    let lrcapi_mock = lrcapi_server
+        .mock("GET", "/jsonapi")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("title".into(), "Yellow".into()),
+            mockito::Matcher::UrlEncoded("artist".into(), "Coldplay".into()),
+            mockito::Matcher::UrlEncoded("album".into(), "Parachutes".into()),
+        ]))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
-            r#"{
-                "id": 1,
-                "trackName": "Yellow",
-                "artistName": "Coldplay",
-                "albumName": "Parachutes",
-                "duration": 267.0,
-                "instrumental": false,
-                "syncedLyrics": "[00:35.66] Look at the stars"
-            }"#,
+            r#"[
+                {
+                    "id": "1",
+                    "title": "Yellow",
+                    "artist": "Coldplay",
+                    "album": "Parachutes",
+                    "score": 95.0,
+                    "lrc": "[00:35.66] Look at the stars",
+                    "lrc_ttml": "<tt>ignored</tt>",
+                    "lyric_path": "/lyrics/yellow"
+                }
+            ]"#,
         )
         .create();
 
+    let lrcapi_client = LrcApiClient::new(lrcapi_server.url());
     let payload = fetch_lyrics_from_connection(
         &connection,
         &library,
-        &LrcLibClient::new(server.url()),
+        &LrcLibClient::new(lrclib_server.url()),
+        &lrcapi_client,
         &song.hash,
     )
     .expect("remote lyrics fetch should succeed");
 
     assert_eq!(payload.song_id, "song-b");
     assert_eq!(payload.offset_ms, 0);
-    assert_eq!(payload.source, Some(LyricsSource::LrcLib));
+    assert_eq!(payload.source, Some(LyricsSource::LrcApi));
     assert_eq!(payload.lines.len(), 1);
     assert_eq!(payload.lines[0].time_ms, 35_660);
 
     let cached = lyrics::get_lyrics_cache_entry(&connection, &song.hash)
         .expect("lyrics cache lookup should succeed")
         .expect("lyrics cache entry should exist after fetch");
-    assert_eq!(cached.source, LyricsSource::LrcLib);
+    assert_eq!(cached.source, LyricsSource::LrcApi);
     assert_eq!(cached.lrc, "[00:35.66] Look at the stars");
 
-    mock.assert();
+    lrclib_mock.assert();
+    lrcapi_mock.assert();
     cleanup_dir(&fixture_dir);
 }
 
@@ -221,17 +239,27 @@ fn fetch_lyrics_returns_empty_payload_when_no_synced_source_exists() {
     let song = fixture_song("song-c", Path::new("media/song-c.mp3"));
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
 
-    let mut server = mockito::Server::new();
-    let mock = server
+    let mut lrclib_server = mockito::Server::new();
+    let lrclib_mock = lrclib_server
         .mock("GET", "/api/get")
         .match_query(mockito::Matcher::Any)
         .with_status(404)
         .create();
 
+    let mut lrcapi_server = mockito::Server::new();
+    let lrcapi_mock = lrcapi_server
+        .mock("GET", "/jsonapi")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"message":"未找到歌词"}"#)
+        .create();
+
     let payload = fetch_lyrics_from_connection(
         &connection,
         &library,
-        &LrcLibClient::new(server.url()),
+        &LrcLibClient::new(lrclib_server.url()),
+        &LrcApiClient::new(lrcapi_server.url()),
         &song.hash,
     )
     .expect("lyrics miss should still succeed");
@@ -244,7 +272,8 @@ fn fetch_lyrics_returns_empty_payload_when_no_synced_source_exists() {
         .expect("lyrics cache lookup should succeed")
         .is_none());
 
-    mock.assert();
+    lrclib_mock.assert();
+    lrcapi_mock.assert();
     cleanup_dir(&fixture_dir);
 }
 

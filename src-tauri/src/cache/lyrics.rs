@@ -88,6 +88,7 @@ pub fn delete_all_lyrics_cache_entries(connection: &Connection) -> rusqlite::Res
 fn serialize_source(source: &LyricsSource) -> &'static str {
     match source {
         LyricsSource::LrcLib => "lrclib",
+        LyricsSource::LrcApi => "lrc_api",
         LyricsSource::Embedded => "embedded",
         LyricsSource::Sidecar => "sidecar",
         LyricsSource::Manual => "manual",
@@ -97,6 +98,7 @@ fn serialize_source(source: &LyricsSource) -> &'static str {
 fn deserialize_source(source: &str) -> Result<LyricsSource> {
     match source {
         "lrclib" => Ok(LyricsSource::LrcLib),
+        "lrc_api" => Ok(LyricsSource::LrcApi),
         "embedded" => Ok(LyricsSource::Embedded),
         "sidecar" => Ok(LyricsSource::Sidecar),
         "manual" => Ok(LyricsSource::Manual),
