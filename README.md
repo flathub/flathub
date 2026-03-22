@@ -233,11 +233,11 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 - [x] CI/CD pipeline (macOS, Windows, Linux)
 - [x] Release automation (tag → GitHub Release with binaries)
 
-### 🚧 v0.3.0 — Current Development Version
+### v0.3.0 — Released
 
-The repository now tracks `0.3.0` development builds. Public release
-automation, package metadata, and app-facing version information should use
-`0.3.0` while the release scope is being defined.
+OpenKara v0.3.0 is the current stable release. It adds CD+G and MP3+G support,
+expands stem separation to 2-stem and 4-stem workflows, improves lyrics sync,
+and rounds out the first full release-ready build of the app.
 
 - [x] CD+G sidecar playback for same-name audio + `.cdg` pairs
 - [x] MP3+G ZIP import and playback support
