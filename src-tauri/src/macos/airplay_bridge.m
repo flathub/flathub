@@ -383,6 +383,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 @property(nonatomic, strong) NSMutableData *pendingAudienceAudioData;
 @property(nonatomic, assign) NSUInteger pendingAudienceAudioOffset;
 @property(nonatomic, assign) uint64_t currentAudioEpoch;
+@property(nonatomic, assign) BOOL audioStreamingEnabled;
 
 @property(nonatomic, assign) OKAirPlayMode currentMode;
 @property(nonatomic, assign) OKAirPlayPhase currentPhase;
@@ -429,6 +430,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 - (BOOL)hasAudienceVideoRoute;
 - (BOOL)hasRemoteAudioRoute;
 - (BOOL)isAudienceStreamReadyForAttachment;
+- (NSDictionary *)stateSnapshot;
 
 @end
 
@@ -467,6 +469,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     _currentMode = OKAirPlayModeIdle;
     _currentPhase = OKAirPlayPhaseIdle;
     _currentAudioEpoch = 1;
+    _audioStreamingEnabled = NO;
     _streamGeneration = 1;
     _attachedGeneration = 0;
     _plainTextPageStartIndices = @[];
@@ -495,7 +498,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 }
 
-- (void)emitState {
+- (void)emitStateWithRuntimeState:(NSDictionary *)runtimeState mode:(OKAirPlayMode)mode {
     if (self.stateCallback == NULL) {
         return;
     }
@@ -504,10 +507,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     BOOL audioActive = [self hasRemoteAudioRoute];
     const char *detail = self.currentPhaseDetail.length > 0 ? self.currentPhaseDetail.UTF8String : NULL;
     NSNumber *displayedPositionMs = [self displayedPositionNumber];
-    NSNumber *latencyMs = [self latencyNumberForDisplayedPosition:displayedPositionMs];
+    NSNumber *latencyMs = [self latencyNumberForDisplayedPosition:displayedPositionMs
+                                                      runtimeState:runtimeState];
     BOOL changed = self.lastEmittedActive != active ||
         self.lastEmittedAudioActive != audioActive ||
-        self.lastEmittedMode != self.currentMode ||
+        self.lastEmittedMode != mode ||
         self.lastEmittedPhase != self.currentPhase ||
         self.lastEmittedStreamGeneration != self.streamGeneration ||
         self.lastEmittedDisplayedPositionMs != (displayedPositionMs != nil ? displayedPositionMs.longLongValue : -1) ||
@@ -521,7 +525,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     self.lastEmittedActive = active;
     self.lastEmittedAudioActive = audioActive;
-    self.lastEmittedMode = self.currentMode;
+    self.lastEmittedMode = mode;
     self.lastEmittedPhase = self.currentPhase;
     self.lastEmittedStreamGeneration = self.streamGeneration;
     self.lastEmittedDisplayedPositionMs =
@@ -533,7 +537,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         active,
         audioActive,
         NULL,
-        (int)self.currentMode,
+        (int)mode,
         (int)self.currentPhase,
         detail,
         displayedPositionMs != nil ? displayedPositionMs.longLongValue : -1,
@@ -543,9 +547,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (BOOL)isCurrentItemReadyForRouting {
+    OKAirPlayMode currentMode =
+        (OKAirPlayMode)OKIntegerValue([self stateSnapshot][@"modeTag"]);
     AVPlayerItem *item = self.player.currentItem;
     return self.player != nil && item != nil && item.status == AVPlayerItemStatusReadyToPlay &&
-        self.currentMode != OKAirPlayModeIdle;
+        currentMode != OKAirPlayModeIdle;
 }
 
 - (BOOL)hasAudienceVideoRoute {
@@ -619,8 +625,6 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     [self.audienceStream reset];
     self.realItemAttached = NO;
     self.lastPlaybackErrorDetail = nil;
-    [self.pendingAudienceAudioData setLength:0];
-    self.pendingAudienceAudioOffset = 0;
     [self resetOutputClockTracking];
 
     if (self.player != nil) {
@@ -682,8 +686,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (NSDictionary *)currentRenderScene {
-    NSDictionary *config = self.latestSceneConfig ?: @{};
-    NSDictionary *runtime = self.latestRuntimeState ?: @{};
+    NSDictionary *snapshot = [self stateSnapshot];
+    return [self currentRenderSceneForSnapshot:snapshot];
+}
+
+- (NSDictionary *)currentRenderSceneForSnapshot:(NSDictionary *)snapshot {
+    NSDictionary *config = OKDictionaryValue(snapshot[@"config"]) ?: @{};
+    NSDictionary *runtime = OKDictionaryValue(snapshot[@"runtime"]) ?: @{};
     if (config.count == 0 && runtime.count == 0) {
         return @{};
     }
@@ -691,6 +700,28 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     NSMutableDictionary *scene = [NSMutableDictionary dictionaryWithDictionary:config];
     [scene addEntriesFromDictionary:runtime];
     return scene;
+}
+
+- (NSDictionary *)stateSnapshot {
+    __block NSDictionary *snapshot = nil;
+    void (^readSnapshot)(void) = ^{
+        snapshot = @{
+            @"config": [self.latestSceneConfig copy] ?: @{},
+            @"runtime": [self.latestRuntimeState copy] ?: @{},
+            @"cdgFrame": [self.latestCdgFrame copy] ?: [NSData data],
+            @"modeTag": @((NSInteger)self.currentMode),
+            @"plainTextPageStarts": [self.plainTextPageStartIndices copy] ?: @[],
+            @"plainTextPageIndex": @(self.plainTextPageIndex),
+        };
+    };
+
+    if (dispatch_get_specific(OKAirPlayStateQueueSpecificKey) == OKAirPlayStateQueueSpecificKey) {
+        readSnapshot();
+    } else {
+        dispatch_sync(self.stateQueue, readSnapshot);
+    }
+
+    return snapshot;
 }
 
 - (NSString *)plainTextPaginationSignatureForScene:(NSDictionary *)scene {
@@ -788,16 +819,18 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     self.plainTextPaginationSignature = signature;
 }
 
-- (NSRange)plainTextPageRangeForLayouts:(NSArray<NSDictionary *> *)layouts {
-    if (layouts.count == 0 || self.plainTextPageStartIndices.count == 0) {
+- (NSRange)plainTextPageRangeForLayouts:(NSArray<NSDictionary *> *)layouts
+                       pageStartIndices:(NSArray<NSNumber *> *)pageStartIndices
+                              pageIndex:(NSUInteger)pageIndex {
+    if (layouts.count == 0 || pageStartIndices.count == 0) {
         return NSMakeRange(0, 0);
     }
 
-    NSUInteger pageIndex = MIN(self.plainTextPageIndex, self.plainTextPageStartIndices.count - 1);
-    NSUInteger startIndex = [self.plainTextPageStartIndices[pageIndex] unsignedIntegerValue];
+    NSUInteger safePageIndex = MIN(pageIndex, pageStartIndices.count - 1);
+    NSUInteger startIndex = [pageStartIndices[safePageIndex] unsignedIntegerValue];
     NSUInteger endIndex = layouts.count;
-    if (pageIndex + 1 < self.plainTextPageStartIndices.count) {
-        endIndex = [self.plainTextPageStartIndices[pageIndex + 1] unsignedIntegerValue];
+    if (safePageIndex + 1 < pageStartIndices.count) {
+        endIndex = [pageStartIndices[safePageIndex + 1] unsignedIntegerValue];
     }
     if (startIndex >= layouts.count || endIndex <= startIndex) {
         return NSMakeRange(0, 0);
@@ -837,12 +870,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return didChange;
 }
 
-- (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs {
-    if (displayedPositionMs == nil || self.latestRuntimeState == nil) {
+- (NSNumber *)latencyNumberForDisplayedPosition:(NSNumber *)displayedPositionMs
+                                   runtimeState:(NSDictionary *)runtimeState {
+    if (displayedPositionMs == nil || runtimeState == nil) {
         return nil;
     }
 
-    long long sourcePositionMs = OKLongLongValue(self.latestRuntimeState[@"positionMs"]);
+    long long sourcePositionMs = OKLongLongValue(runtimeState[@"positionMs"]);
     return @(MAX(0, sourcePositionMs - displayedPositionMs.longLongValue));
 }
 
@@ -857,6 +891,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 }
 
 - (void)refreshPlaybackPhase {
+    NSDictionary *snapshot = [self stateSnapshot];
+    NSDictionary *runtimeState = OKDictionaryValue(snapshot[@"runtime"]);
+    OKAirPlayMode currentMode = (OKAirPlayMode)OKIntegerValue(snapshot[@"modeTag"]);
     AVPlayerItem *item = self.player.currentItem;
     NSString *detail = nil;
     OKAirPlayPhase phase = OKAirPlayPhaseIdle;
@@ -870,7 +907,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     } else if (item != nil && item.status == AVPlayerItemStatusFailed) {
         phase = OKAirPlayPhaseFailed;
         detail = @"player_item_failed";
-    } else if (self.currentMode == OKAirPlayModeIdle) {
+    } else if (currentMode == OKAirPlayModeIdle) {
         phase = OKAirPlayPhaseIdle;
     } else if (item == nil || item.status == AVPlayerItemStatusUnknown) {
         phase = OKAirPlayPhaseBuffering;
@@ -886,7 +923,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 
     [self setPhase:phase detail:detail];
-    [self emitState];
+    [self emitStateWithRuntimeState:runtimeState mode:currentMode];
 }
 
 - (void)syncCurrentItemObservation {
@@ -1149,8 +1186,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
             stream.writerStarted = YES;
         }
 
-        self.pendingAudienceAudioOffset = 0;
-        [self.pendingAudienceAudioData setLength:0];
+        dispatch_async(self.audioQueue, ^{
+            self.pendingAudienceAudioOffset = 0;
+            [self.pendingAudienceAudioData setLength:0];
+        });
         self.realItemAttached = NO;
         self.lastPlaybackErrorDetail = nil;
         [self resetOutputClockTracking];
@@ -1333,8 +1372,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     CFRelease(line);
 }
 
-- (void)drawStatusSceneInContext:(CGContextRef)context message:(NSString *)message {
-    NSDictionary *presentationSpec = OKPresentationSpecValue([self currentRenderScene]);
+- (void)drawStatusSceneInContext:(CGContextRef)context
+                        message:(NSString *)message
+                          scene:(NSDictionary *)scene {
+    NSDictionary *presentationSpec = OKPresentationSpecValue(scene);
     NSDictionary *statusColor = OKColorDictionaryValue(
         presentationSpec,
         @"statusTextColor",
@@ -1353,10 +1394,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                    atPoint:CGPointMake(OKAirPlayVideoWidth * 0.5, OKAirPlayVideoHeight * 0.5)];
 }
 
-- (void)drawNoLyricsSceneInContext:(CGContextRef)context messages:(NSDictionary *)messages {
+- (void)drawNoLyricsSceneInContext:(CGContextRef)context
+                          messages:(NSDictionary *)messages
+                             scene:(NSDictionary *)scene {
     NSString *noLyrics =
         OKStringValue(messages[@"noLyrics"]) ?: @"No lyrics available for this track";
-    [self drawStatusSceneInContext:context message:noLyrics];
+    [self drawStatusSceneInContext:context message:noLyrics scene:scene];
 }
 
 - (NSArray<NSDictionary *> *)buildLyricLineLayoutsFromScene:(NSDictionary *)scene {
@@ -1514,7 +1557,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     return layouts;
 }
 
-- (void)drawLyricsSceneInContext:(CGContextRef)context scene:(NSDictionary *)scene {
+- (void)drawLyricsSceneInContext:(CGContextRef)context
+                           scene:(NSDictionary *)scene
+                   stateSnapshot:(NSDictionary *)snapshot {
     NSString *songId = OKStringValue(scene[@"songId"]);
     NSDictionary *messages = OKDictionaryValue(scene[@"messages"]);
     NSArray *lines = OKArrayValue(scene[@"lines"]);
@@ -1522,18 +1567,20 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
     if (songId.length == 0) {
         [self drawStatusSceneInContext:context
-                               message:OKStringValue(messages[@"selectSong"]) ?: @"Select a song to start"];
+                               message:OKStringValue(messages[@"selectSong"]) ?: @"Select a song to start"
+                                 scene:scene];
         return;
     }
 
     if (isLoading) {
         [self drawStatusSceneInContext:context
-                               message:OKStringValue(messages[@"loadingLyrics"]) ?: @"Loading lyrics..."];
+                               message:OKStringValue(messages[@"loadingLyrics"]) ?: @"Loading lyrics..."
+                                 scene:scene];
         return;
     }
 
     if (![lines isKindOfClass:[NSArray class]] || lines.count == 0) {
-        [self drawNoLyricsSceneInContext:context messages:messages ?: @{}];
+        [self drawNoLyricsSceneInContext:context messages:messages ?: @{} scene:scene];
         return;
     }
 
@@ -1567,7 +1614,9 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     CGFloat y = verticalPadding + MAX(0.0, (availableHeight - totalHeight) * 0.5);
     NSArray<NSDictionary *> *renderLayouts = layouts;
     if (isPlainText) {
-        NSRange pageRange = [self plainTextPageRangeForLayouts:layouts];
+        NSRange pageRange = [self plainTextPageRangeForLayouts:layouts
+                                               pageStartIndices:snapshot[@"plainTextPageStarts"]
+                                                      pageIndex:[snapshot[@"plainTextPageIndex"] unsignedIntegerValue]];
         if (pageRange.length == 0) {
             return;
         }
@@ -1624,14 +1673,14 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     }
 }
 
-- (void)drawCDGFrameInContext:(CGContextRef)context {
-    if (self.latestCdgFrame.length != 288 * 192 * 4) {
+- (void)drawCDGFrameInContext:(CGContextRef)context frameData:(NSData *)frameData {
+    if (frameData.length != 288 * 192 * 4) {
         return;
     }
 
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGDataProviderRef provider =
-        CGDataProviderCreateWithCFData((__bridge CFDataRef)self.latestCdgFrame);
+        CGDataProviderCreateWithCFData((__bridge CFDataRef)frameData);
     CGImageRef image = CGImageCreate(
         288,
         192,
@@ -1661,7 +1710,8 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     CGImageRelease(image);
 }
 
-- (CVPixelBufferRef)copyRenderedPixelBufferForScene:(NSDictionary *)scene {
+- (CVPixelBufferRef)copyRenderedPixelBufferForScene:(NSDictionary *)scene
+                                      stateSnapshot:(NSDictionary *)snapshot {
     if (self.audienceStream.pixelBufferAdaptor.pixelBufferPool == NULL) {
         return NULL;
     }
@@ -1702,10 +1752,11 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     OKSetFillColor(context, 0.0, 0.0, 0.0, 1.0);
     CGContextFillRect(context, CGRectMake(0, 0, OKAirPlayVideoWidth, OKAirPlayVideoHeight));
 
-    if (self.currentMode == OKAirPlayModeCdg) {
-        [self drawCDGFrameInContext:context];
+    OKAirPlayMode mode = (OKAirPlayMode)OKIntegerValue(snapshot[@"modeTag"]);
+    if (mode == OKAirPlayModeCdg) {
+        [self drawCDGFrameInContext:context frameData:snapshot[@"cdgFrame"]];
     } else {
-        [self drawLyricsSceneInContext:context scene:scene];
+        [self drawLyricsSceneInContext:context scene:scene stateSnapshot:snapshot];
     }
 
     CGContextRelease(context);
@@ -1720,8 +1771,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         return;
     }
 
-    NSDictionary *scene = [self currentRenderScene];
-    CVPixelBufferRef pixelBuffer = [self copyRenderedPixelBufferForScene:scene];
+    NSDictionary *snapshot = [self stateSnapshot];
+    NSDictionary *scene = [self currentRenderSceneForSnapshot:snapshot];
+    CVPixelBufferRef pixelBuffer = [self copyRenderedPixelBufferForScene:scene
+                                                           stateSnapshot:snapshot];
     if (pixelBuffer == NULL) {
         return;
     }
@@ -1843,8 +1896,13 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
 
         if (weakSelf.currentMode == OKAirPlayModeIdle) {
             dispatch_async(weakSelf.audioQueue, ^{
+                weakSelf.audioStreamingEnabled = NO;
                 [weakSelf.pendingAudienceAudioData setLength:0];
                 weakSelf.pendingAudienceAudioOffset = 0;
+            });
+        } else {
+            dispatch_async(weakSelf.audioQueue, ^{
+                weakSelf.audioStreamingEnabled = YES;
             });
         }
 
@@ -1882,7 +1940,7 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
         if (epoch < weakSelf.currentAudioEpoch) {
             return;
         }
-        if (weakSelf.currentMode == OKAirPlayModeIdle) {
+        if (!weakSelf.audioStreamingEnabled) {
             return;
         }
 
@@ -1971,10 +2029,12 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
     if ([keyPath isEqualToString:@"externalPlaybackActive"] && object == self.player) {
+        OKAirPlayMode currentMode =
+            (OKAirPlayMode)OKIntegerValue([self stateSnapshot][@"modeTag"]);
         BOOL isAudienceVideoRouteActive = [self hasAudienceVideoRoute];
         BOOL didActivateAudienceRoute =
             isAudienceVideoRouteActive && !self.lastKnownExternalPlaybackActive &&
-            self.currentMode != OKAirPlayModeIdle;
+            currentMode != OKAirPlayModeIdle;
         self.lastKnownExternalPlaybackActive = isAudienceVideoRouteActive;
 
         if (didActivateAudienceRoute) {
