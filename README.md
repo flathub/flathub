@@ -14,22 +14,19 @@ flatpak-builder build com.rootapp.Root.yml --force-clean --ccache --user --insta
 
 ## File Access
 
-Due to Flatpak's sandbox, Root has access only to a limited set of files, which can affect drag‑and‑drop or copy‑paste operations.
+By default, this Flatpak package is configured with `--filesystem=host` to ensure that drag-and-drop, copy-paste, and the native file picker work correctly. This grants the application access to your host filesystem.
 
-To address this, you have two straightforward options:
-
-1. Use the built‑in file picker, which always works within the sandbox.
-2. Grant Root access to your home directory (or any other directory you require) by running the following command, replacing `<your_directory>` with the desired path:
+If you prefer to restrict the application's access for security reasons, you can override this permission. For example, to restrict access strictly to your Downloads folder, you can run:
 
 ```bash
-flatpak override --filesystem=<your_directory> com.rootapp.Root
+flatpak override --nofilesystem=host --filesystem=xdg-download com.rootapp.Root
 ```
+*(Note: Restricting filesystem access will break the in-app file picker)*
 
 ## Known Issues (Upstream)
 
 The following issues are known upstream bugs in the Linux/Avalonia version of the Root App and are **not** caused by this Flatpak wrapper:
 
-*   **File Uploads:** Uploading files via the app's UI picker currently fails.
 *   **Webcam Screen Sharing:** Sharing the screen to the camera is not working.
 *   **Wayland Support:** Native Wayland is not supported yet and is forced to run via XWayland. This is due to [AvaloniaUI Issue #1243](https://github.com/AvaloniaUI/Avalonia/issues/1243).
 
