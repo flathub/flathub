@@ -110,11 +110,45 @@ jobs:
       - name: Verify formatting
         run: pnpm format
 
-      # Rust tests are skipped on Windows: pyke's static ORT build
-      # links DirectML/D3D12 dynamically, and headless Windows Server
-      # runners lack a compatible GPU/DirectX stack, causing
-      # STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) at process load.
-      # The Tauri build step still validates compilation and linking.
+      # ---- Windows cargo-test skip ----
+      #
+      # WHY: pyke's prebuilt onnxruntime.lib (ort-sys 2.0.0-rc.12) is
+      # compiled with DirectML baked in.  Even though ORT itself is
+      # statically linked, the build script emits:
+      #
+      #   cargo:rustc-link-lib=DirectML      (dynamic)
+      #   cargo:rustc-link-lib=D3D12         (dynamic)
+      #   cargo:rustc-link-lib=DXGI          (dynamic)
+      #   cargo:rustc-link-lib=DXCore        (dynamic)
+      #
+      # These create hard load-time DLL imports.  Headless Windows Server
+      # runners (2022 & 2025) lack a GPU-capable DirectX 12 stack, so the
+      # process loader fails with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
+      # before any test code runs.
+      #
+      # WHAT WAS TRIED (all failed):
+      #  1. Staging DirectML.dll v1.15.4 from Microsoft.AI.DirectML NuGet
+      #     → The staged DLL needs newer D3D12 APIs than Server 2022 has.
+      #  2. Pinning runner to windows-2022
+      #     → Same D3D12 incompatibility; Server 2022's GPU stack is too old.
+      #  3. Staging onnxruntime.dll from Microsoft.ML.OnnxRuntime.DirectML NuGet
+      #     → ORT is truly statically linked; the system WinML onnxruntime.dll
+      #       in System32 is not the issue.  The NuGet's DirectML.dll is a
+      #       0-byte stub, confirming it expects the system version.
+      #  4. D3D12 Agility SDK (Microsoft.Direct3D.D3D12 NuGet, D3D12Core.dll)
+      #     → Requires the application to export D3D12SDKVersion and
+      #       D3D12SDKPath symbols; cannot be enabled externally.
+      #  5. Adding deps/ to PATH as DLL search fallback
+      #     → DLLs were found but the entry-point mismatch is in the
+      #       system DirectX stack itself, not a search-order problem.
+      #
+      # The Tauri build step still validates that the code compiles and
+      # links correctly on Windows.  Full test coverage runs on macOS
+      # and Linux.
+      #
+      # TO RE-ENABLE: switch ort to load-dynamic linking (avoids the
+      # DirectML/D3D12 import table entries entirely) or wait for pyke
+      # to ship a Windows build without DirectML as default.
       - name: Run Rust tests
         if: runner.os != 'Windows'
         working-directory: src-tauri
