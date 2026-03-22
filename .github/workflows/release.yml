@@ -195,18 +195,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
           WINGET_FORK_REPO: ${{ vars.WINGET_FORK_REPO }}
+          WINGET_TARGET_REPO: ${{ vars.WINGET_TARGET_REPO || 'microsoft/winget-pkgs' }}
+          WINGET_BASE_BRANCH: ${{ vars.WINGET_BASE_BRANCH || 'master' }}
           VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
 
           branch="openkara/${VERSION}"
           fork_owner="${WINGET_FORK_REPO%%/*}"
+          target_repo="${WINGET_TARGET_REPO}"
+          base_branch="${WINGET_BASE_BRANCH}"
 
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${WINGET_FORK_REPO}.git" winget-fork
           cd winget-fork
-          git remote add upstream https://github.com/microsoft/winget-pkgs.git
-          git fetch upstream master
-          git checkout -B "${branch}" upstream/master
+          git remote add upstream "https://github.com/${target_repo}.git"
+          git fetch upstream "${base_branch}"
+          git checkout -B "${branch}" "upstream/${base_branch}"
 
           mkdir -p manifests/t/thedavidweng/OpenKara
           cp -R ../dist/winget/t/thedavidweng/OpenKara/"${VERSION}" manifests/t/thedavidweng/OpenKara/
@@ -223,18 +227,28 @@ jobs:
           git commit -m "Add OpenKara ${VERSION}"
           git push origin "${branch}" --force
 
-          pr_url="$(gh pr list --repo microsoft/winget-pkgs --head "${fork_owner}:${branch}" --json url --jq '.[0].url')"
+          pr_url="$(gh pr list --repo "${target_repo}" --head "${fork_owner}:${branch}" --json url --jq '.[0].url')"
           if [ -n "${pr_url}" ]; then
             echo "Existing WinGet PR: ${pr_url}"
             exit 0
           fi
 
-          gh pr create \
-            --repo microsoft/winget-pkgs \
-            --base master \
+          if gh pr create \
+            --repo "${target_repo}" \
+            --base "${base_branch}" \
             --head "${fork_owner}:${branch}" \
             --title "Add OpenKara ${VERSION}" \
-            --body "Automated WinGet manifest update for OpenKara ${VERSION}."
+            --body "Automated WinGet manifest update for OpenKara ${VERSION}."; then
+            exit 0
+          fi
+
+          compare_url="https://github.com/${WINGET_FORK_REPO}/compare/${base_branch}...${fork_owner}:${branch}?expand=1"
+          {
+            echo "WinGet PR could not be created automatically."
+            echo "Open this URL to create it manually:"
+            echo "${compare_url}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
 
   submit-flathub-pr:
     name: Submit Flathub PR
