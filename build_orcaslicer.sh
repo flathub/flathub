@@ -1,9 +1,15 @@
 #!/bin/bash
 
 # OrcaSlicer Flatpak Build Script
-# Builds OrcaSlicer from this Flathub repo using flatpak-builder
+# Builds OrcaSlicer from this Flathub repo using Docker with the same
+# container image as the Flathub CI.
+#
+# Requirements: Docker (or Podman with docker compatibility)
 
-set -e
+set -euo pipefail
+SECONDS=0
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,43 +20,36 @@ NC='\033[0m' # No Color
 
 # Default values
 ARCH=$(uname -m)
-BUILD_DIR="build_flatpak"
-CLEANUP=false
-INSTALL_RUNTIME=false
-JOBS=$(nproc)
-FORCE_CLEAN=false
-ENABLE_CCACHE=true
-DISABLE_ROFILES_FUSE=true
-NO_DEBUGINFO=true
-CACHE_DIR=".flatpak-builder"
+FORCE_PULL=false
+CONTAINER_IMAGE="ghcr.io/flathub-infra/flatpak-github-actions:gnome-49"
 
-MANIFEST="io.github.orcaslicer.OrcaSlicer.yml"
-APP_ID="io.github.orcaslicer.OrcaSlicer"
+MANIFEST="com.orcaslicer.OrcaSlicer.yml"
+APP_ID="com.orcaslicer.OrcaSlicer"
+
+normalize_arch() {
+    case "$1" in
+        arm64|aarch64)  echo "aarch64" ;;
+        x86_64|amd64)   echo "x86_64" ;;
+        *)              echo "$1" ;;
+    esac
+}
 
 # Help function
 show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Build OrcaSlicer as a Flatpak package"
+    echo "Build OrcaSlicer as a Flatpak package using Docker"
     echo ""
     echo "Options:"
     echo "  -a, --arch ARCH        Target architecture (x86_64, aarch64) [default: $ARCH]"
-    echo "  -d, --build-dir DIR    Build directory [default: $BUILD_DIR]"
-    echo "  -j, --jobs JOBS        Number of parallel build jobs [default: $JOBS]"
-    echo "  -c, --cleanup          Clean build directory before building"
-    echo "  -f, --force-clean      Force clean build (disables caching)"
-    echo "  --no-ccache            Disable ccache"
-    echo "  --enable-rofiles-fuse  Enable rofiles-fuse (disabled by default due to FUSE issues)"
-    echo "  --with-debuginfo       Include debug info (slower builds, needed for Flathub)"
-    echo "  --cache-dir DIR        Flatpak builder cache directory [default: $CACHE_DIR]"
-    echo "  -i, --install-runtime  Install required Flatpak runtime and SDK"
+    echo "  --pull                 Force pull the container image"
+    echo "  --image IMAGE          Override container image [default: $CONTAINER_IMAGE]"
     echo "  -h, --help             Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                     # Build for current architecture with caching enabled"
-    echo "  $0 -f                  # Force clean build (no caching)"
-    echo "  $0 -j 8                # Build with 8 parallel jobs (ccache enabled by default)"
-    echo "  $0 -i -j 16           # Install runtime, build with 16 jobs"
+    echo "  $0                     # Build for current architecture"
+    echo "  $0 --pull              # Force pull latest container image"
+    echo "  $0 -a aarch64          # Cross-build for aarch64"
 }
 
 # Parse command line arguments
@@ -60,41 +59,13 @@ while [[ $# -gt 0 ]]; do
             ARCH="$2"
             shift 2
             ;;
-        -d|--build-dir)
-            BUILD_DIR="$2"
+        --pull)
+            FORCE_PULL=true
+            shift
+            ;;
+        --image)
+            CONTAINER_IMAGE="$2"
             shift 2
-            ;;
-        -j|--jobs)
-            JOBS="$2"
-            shift 2
-            ;;
-        -c|--cleanup)
-            CLEANUP=true
-            shift
-            ;;
-        -f|--force-clean)
-            FORCE_CLEAN=true
-            shift
-            ;;
-        --no-ccache)
-            ENABLE_CCACHE=false
-            shift
-            ;;
-        --enable-rofiles-fuse)
-            DISABLE_ROFILES_FUSE=false
-            shift
-            ;;
-        --with-debuginfo)
-            NO_DEBUGINFO=false
-            shift
-            ;;
-        --cache-dir)
-            CACHE_DIR="$2"
-            shift 2
-            ;;
-        -i|--install-runtime)
-            INSTALL_RUNTIME=true
-            shift
             ;;
         -h|--help)
             show_help
@@ -108,90 +79,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+ARCH="$(normalize_arch "$ARCH")"
+
 # Validate architecture
 if [[ "$ARCH" != "x86_64" && "$ARCH" != "aarch64" ]]; then
     echo -e "${RED}Error: Unsupported architecture '$ARCH'. Supported: x86_64, aarch64${NC}"
     exit 1
 fi
 
-# Validate jobs parameter
-if ! [[ "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
-    echo -e "${RED}Error: Jobs must be a positive integer, got '$JOBS'${NC}"
-    exit 1
-fi
-
-echo -e "${BLUE}OrcaSlicer Flatpak Build Script${NC}"
-echo -e "${BLUE}================================${NC}"
-echo -e "Architecture: ${GREEN}$ARCH${NC}"
-echo -e "Build directory: ${GREEN}$BUILD_DIR${NC}"
-echo -e "Cache directory: ${GREEN}$CACHE_DIR${NC}"
-echo -e "Parallel jobs: ${GREEN}$JOBS${NC}"
-if [[ "$FORCE_CLEAN" == true ]]; then
-    echo -e "Cache mode: ${RED}DISABLED (force clean)${NC}"
-else
-    echo -e "Cache mode: ${GREEN}ENABLED${NC}"
-fi
-if [[ "$ENABLE_CCACHE" == true ]]; then
-    echo -e "Ccache: ${GREEN}ENABLED${NC}"
-else
-    echo -e "Ccache: ${YELLOW}DISABLED${NC}"
-fi
-echo ""
-
-# Check available disk space (flatpak builds need several GB)
-AVAILABLE_SPACE=$(df . | awk 'NR==2 {print $4}')
-REQUIRED_SPACE=$((5 * 1024 * 1024))  # 5GB in KB
-
-if [[ $AVAILABLE_SPACE -lt $REQUIRED_SPACE ]]; then
-    echo -e "${YELLOW}Warning: Low disk space detected.${NC}"
-    echo -e "Available: $(( AVAILABLE_SPACE / 1024 / 1024 ))GB, Recommended: 5GB+"
-    echo -e "Continue anyway? (y/N)"
-    read -r response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        echo "Build cancelled by user"
-        exit 1
-    fi
-fi
-
-# Check if flatpak is installed
-if ! command -v flatpak &> /dev/null; then
-    echo -e "${RED}Error: Flatpak is not installed. Please install it first.${NC}"
-    echo "On Ubuntu/Debian: sudo apt install flatpak"
-    echo "On Fedora: sudo dnf install flatpak"
-    echo "On Arch: sudo pacman -S flatpak"
-    exit 1
-fi
-
-# Check if flatpak-builder is installed
-if ! command -v flatpak-builder &> /dev/null; then
-    echo -e "${RED}Error: flatpak-builder is not installed. Please install it first.${NC}"
-    echo "On Ubuntu/Debian: sudo apt install flatpak-builder"
-    echo "On Fedora: sudo dnf install flatpak-builder"
-    echo "On Arch: sudo pacman -S flatpak-builder"
-    exit 1
-fi
-
-# Install runtime and SDK if requested
-if [[ "$INSTALL_RUNTIME" == true ]]; then
-    echo -e "${YELLOW}Installing GNOME runtime and SDK...${NC}"
-    flatpak install --user -y flathub org.gnome.Platform//48
-    flatpak install --user -y flathub org.gnome.Sdk//48
-fi
-
-# Check if required runtime is available
-if ! flatpak info --user org.gnome.Platform//48 &> /dev/null; then
-    echo -e "${RED}Error: GNOME Platform 48 runtime is not installed.${NC}"
-    echo "Run with -i flag to install it automatically, or install manually:"
-    echo "flatpak install --user flathub org.gnome.Platform//48"
-    exit 1
-fi
-
-if ! flatpak info --user org.gnome.Sdk//48 &> /dev/null; then
-    echo -e "${RED}Error: GNOME SDK 48 is not installed.${NC}"
-    echo "Run with -i flag to install it automatically, or install manually:"
-    echo "flatpak install --user flathub org.gnome.Sdk//48"
-    exit 1
-fi
+cd "$SCRIPT_DIR"
 
 # Check manifest exists
 if [[ ! -f "$MANIFEST" ]]; then
@@ -201,126 +97,140 @@ fi
 
 # Extract version from manifest git tag
 VER=$(grep -A2 'github.com/OrcaSlicer/OrcaSlicer' "$MANIFEST" | grep 'tag:' | head -1 | sed 's/.*tag: *//')
-echo -e "OrcaSlicer version: ${GREEN}${VER:-unknown}${NC}"
+BUNDLE_NAME="OrcaSlicer-Linux-flatpak_${VER:-dev}_${ARCH}.flatpak"
 
-# Cleanup build directory if requested
-if [[ "$CLEANUP" == true ]]; then
-    echo -e "${YELLOW}Cleaning up build directory...${NC}"
-    rm -rf "$BUILD_DIR"
+echo -e "${BLUE}OrcaSlicer Flatpak Build Script (Docker)${NC}"
+echo -e "${BLUE}==========================================${NC}"
+echo -e "  Version:      ${GREEN}${VER:-unknown}${NC}"
+echo -e "  Architecture: ${GREEN}$ARCH${NC}"
+echo -e "  Image:        ${GREEN}$CONTAINER_IMAGE${NC}"
+echo -e "  Bundle:       ${GREEN}$BUNDLE_NAME${NC}"
+echo -e "  Pull mode:    $([ "$FORCE_PULL" = true ] && echo -e "${YELLOW}force${NC}" || echo -e "${GREEN}auto${NC}")"
+echo -e "  ccache:       ${GREEN}enabled${NC}"
+echo ""
 
-    if [[ "$FORCE_CLEAN" == true ]]; then
-        echo -e "${YELLOW}Cleaning up build cache...${NC}"
-        rm -rf "$CACHE_DIR"
-    else
-        echo -e "${BLUE}Preserving build cache at: $CACHE_DIR${NC}"
-    fi
+# Check Docker is available
+DOCKER="${DOCKER:-docker}"
+if ! command -v "$DOCKER" &> /dev/null; then
+    echo -e "${RED}Error: Docker is not installed. Please install Docker first.${NC}"
+    echo "See: https://docs.docker.com/get-docker/"
+    exit 1
 fi
 
-# Create build directory
-mkdir -p "$BUILD_DIR"
-rm -rf "$BUILD_DIR/build-dir"
+BUILD_MANIFEST="$MANIFEST"
 
-# Build the Flatpak
-echo -e "${YELLOW}Building Flatpak package...${NC}"
+# Pull container image
+if [[ "$FORCE_PULL" == true ]]; then
+    echo -e "${YELLOW}Pulling container image (--pull requested)...${NC}"
+    "$DOCKER" pull "$CONTAINER_IMAGE"
+elif ! "$DOCKER" image inspect "$CONTAINER_IMAGE" &>/dev/null; then
+    echo -e "${YELLOW}Pulling container image (not found locally)...${NC}"
+    "$DOCKER" pull "$CONTAINER_IMAGE"
+else
+    echo -e "${GREEN}Using cached container image (use --pull to update)${NC}"
+fi
+
+# Determine which manifest to use inside the container
+CONTAINER_MANIFEST="$(basename "$BUILD_MANIFEST")"
+
+rm -f "$BUNDLE_NAME"
+
+echo ""
+echo -e "${YELLOW}Starting Flatpak build inside container...${NC}"
 echo -e "This may take a while (30+ minutes depending on your system)..."
 echo ""
 
-BUNDLE_NAME="OrcaSlicer-Linux-flatpak_${VER:-dev}_${ARCH}.flatpak"
-rm -f "$BUNDLE_NAME"
+DOCKER_RUN_ARGS=(run --rm -i --privileged)
 
-export FLATPAK_BUILDER_N_JOBS=$JOBS
+"$DOCKER" "${DOCKER_RUN_ARGS[@]}" \
+    -v "$SCRIPT_DIR":/src:Z \
+    -w /src \
+    -e "BUILD_ARCH=$ARCH" \
+    -e "BUNDLE_NAME=$BUNDLE_NAME" \
+    -e "CONTAINER_MANIFEST=$CONTAINER_MANIFEST" \
+    -e "APP_ID=$APP_ID" \
+    "$CONTAINER_IMAGE" \
+    bash -s <<'EOF'
+set -euo pipefail
 
-echo -e "${BLUE}Running flatpak-builder...${NC}"
-echo -e "Using $JOBS parallel jobs"
+format_duration() {
+    local total_seconds="$1"
+    local hours=$((total_seconds / 3600))
+    local minutes=$(((total_seconds % 3600) / 60))
+    local seconds=$((total_seconds % 60))
+    printf "%02d:%02d:%02d" "$hours" "$minutes" "$seconds"
+}
 
-FLATPAK_BUILDER_VERSION=$(flatpak-builder --version 2>/dev/null | head -1 | awk '{print $2}' || echo "unknown")
-echo -e "flatpak-builder version: $FLATPAK_BUILDER_VERSION"
+overall_start=$(date +%s)
+install_start=$overall_start
 
-# Build command
-BUILDER_ARGS=(
-    --arch="$ARCH"
-    --user
-    --install-deps-from=flathub
-    --repo="$BUILD_DIR/repo"
-    --verbose
-    --state-dir="$CACHE_DIR"
-    --jobs="$JOBS"
-    --mirror-screenshots-url=https://dl.flathub.org/media/
-)
+# Fix git ownership mismatch inside the container
+git config --global --add safe.directory '*'
 
-if [[ "$FORCE_CLEAN" == true ]]; then
-    BUILDER_ARGS+=(--force-clean)
-    echo -e "${YELLOW}Using --force-clean (caching disabled)${NC}"
-else
-    echo -e "${GREEN}Using build cache for faster rebuilds${NC}"
-fi
+# Clean stale per-module build dirs to prevent cp -al collisions
+# (type:git sources fail on repeat builds when .git/ already exists)
+rm -rf .flatpak-builder/build
 
-if [[ "$ENABLE_CCACHE" == true ]]; then
-    BUILDER_ARGS+=(--ccache)
-    echo -e "${GREEN}Using ccache for compiler caching${NC}"
-fi
+# Install required SDK extensions
+flatpak install -y --noninteractive --arch="$BUILD_ARCH" flathub \
+    org.gnome.Platform//49 \
+    org.gnome.Sdk//49 \
+    org.freedesktop.Sdk.Extension.llvm21//25.08 || true
 
-if [[ "$DISABLE_ROFILES_FUSE" == true ]]; then
-    BUILDER_ARGS+=(--disable-rofiles-fuse)
-    echo -e "${YELLOW}rofiles-fuse disabled${NC}"
-fi
+install_end=$(date +%s)
+install_duration=$((install_end - install_start))
 
-# Use a temp manifest with no-debuginfo if requested
-BUILD_MANIFEST="$MANIFEST"
-if [[ "$NO_DEBUGINFO" == true ]]; then
-    BUILD_MANIFEST="${MANIFEST%.yml}.no-debug.yml"
-    sed '0,/^finish-args:/s//build-options:\n  no-debuginfo: true\n  strip: true\nfinish-args:/' \
-        "$MANIFEST" > "$BUILD_MANIFEST"
-    echo -e "${YELLOW}Debug info disabled (using temp manifest)${NC}"
-fi
+builder_start=$(date +%s)
+flatpak-builder --force-clean \
+    --verbose \
+    --ccache \
+    --disable-rofiles-fuse \
+    --state-dir=.flatpak-builder \
+    --arch="$BUILD_ARCH" \
+    --repo=flatpak-repo \
+    flatpak-build \
+    "$CONTAINER_MANIFEST"
+builder_end=$(date +%s)
+builder_duration=$((builder_end - builder_start))
 
-if ! flatpak-builder \
-    "${BUILDER_ARGS[@]}" \
-    "$BUILD_DIR/build-dir" \
-    "$BUILD_MANIFEST"; then
-    echo -e "${RED}Error: flatpak-builder failed${NC}"
-    echo -e "${YELLOW}Check the build log above for details${NC}"
-    rm -f "$BUILD_MANIFEST"
-    exit 1
-fi
-
-# Clean up temp manifest
-if [[ "$BUILD_MANIFEST" != "$MANIFEST" ]]; then
-    rm -f "$BUILD_MANIFEST"
-fi
-
-# Create bundle
-echo -e "${YELLOW}Creating Flatpak bundle...${NC}"
-if ! flatpak build-bundle \
-    "$BUILD_DIR/repo" \
+bundle_start=$(date +%s)
+flatpak build-bundle \
+    --arch="$BUILD_ARCH" \
+    flatpak-repo \
     "$BUNDLE_NAME" \
-    "$APP_ID" \
-    --arch="$ARCH"; then
-    echo -e "${RED}Error: Failed to create Flatpak bundle${NC}"
-    exit 1
-fi
+    "$APP_ID"
+bundle_end=$(date +%s)
+bundle_duration=$((bundle_end - bundle_start))
+
+# Fix ownership so output files are not root-owned on the host
+owner="$(stat -c %u:%g /src)"
+chown -R "$owner" .flatpak-builder flatpak-build flatpak-repo "$BUNDLE_NAME" 2>/dev/null || true
+
+overall_end=$(date +%s)
+overall_duration=$((overall_end - overall_start))
+
+echo ""
+echo "=== Build Stats ==="
+echo "  Runtime install: $(format_duration "$install_duration")"
+echo "  flatpak-builder: $(format_duration "$builder_duration")"
+echo "  Bundle export:   $(format_duration "$bundle_duration")"
+echo "  Overall:         $(format_duration "$overall_duration")"
+EOF
 
 # Success message
 echo ""
 echo -e "${GREEN}Flatpak build completed successfully!${NC}"
 echo -e "Bundle created: ${GREEN}$BUNDLE_NAME${NC}"
 echo -e "Size: ${GREEN}$(du -h "$BUNDLE_NAME" | cut -f1)${NC}"
-if [[ "$FORCE_CLEAN" != true ]]; then
-    echo -e "Build cache: ${GREEN}$CACHE_DIR${NC} (preserved for faster future builds)"
-fi
 echo ""
 echo -e "${BLUE}To install:${NC}"
-echo -e "flatpak install --user $BUNDLE_NAME"
+echo -e "  flatpak install --user $BUNDLE_NAME"
 echo ""
 echo -e "${BLUE}To run:${NC}"
-echo -e "flatpak run $APP_ID"
+echo -e "  flatpak run $APP_ID"
 echo ""
 echo -e "${BLUE}To uninstall:${NC}"
-echo -e "flatpak uninstall --user $APP_ID"
-echo ""
-if [[ "$FORCE_CLEAN" != true ]]; then
-    echo -e "${BLUE}Cache Management:${NC}"
-    echo -e "  Subsequent builds will be faster thanks to caching"
-    echo -e "  To force a clean build: $0 -f"
-    echo -e "  To clean cache manually: rm -rf $CACHE_DIR"
-fi
+echo -e "  flatpak uninstall --user $APP_ID"
+
+elapsed=$SECONDS
+printf "\nBuild completed in %dh %dm %ds\n" $((elapsed/3600)) $((elapsed%3600/60)) $((elapsed%60))
