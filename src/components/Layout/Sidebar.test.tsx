@@ -49,11 +49,15 @@ vi.mock("@/stores/settings-store", () => ({
 }));
 
 vi.mock("@/components/Library/SearchBox", () => ({
-  SearchBox: () => <div>search</div>,
+  SearchBox: ({ variant }: { variant?: string }) => (
+    <div data-search-variant={variant}>search</div>
+  ),
 }));
 
 vi.mock("@/components/Library/SongList", () => ({
-  SongList: () => <div>songs</div>,
+  SongList: ({ variant }: { variant?: string }) => (
+    <div data-song-list-variant={variant}>songs</div>
+  ),
 }));
 
 vi.mock("@/components/Library/ImportButton", () => ({
@@ -73,6 +77,12 @@ vi.mock("@/lib/errors", () => ({
 }));
 
 describe("Sidebar", () => {
+  test("does not render a duplicate import icon beside the local music heading", () => {
+    const markup = renderToStaticMarkup(<Sidebar />);
+
+    expect(markup).not.toContain("lucide-cloud-upload");
+  });
+
   test("hides separate-all controls when the library has only media-g songs", () => {
     const markup = renderToStaticMarkup(<Sidebar />);
 
@@ -102,5 +112,13 @@ describe("Sidebar", () => {
 
     expect(markup).not.toContain("sidebar.separateAll");
     expect(markup).not.toContain("sidebar.upgradeAll");
+  });
+
+  test("passes the native visual variant through the sidebar composition", () => {
+    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
+
+    expect(markup).toContain('data-sidebar-visual-variant="native"');
+    expect(markup).toContain('data-search-variant="native"');
+    expect(markup).toContain('data-song-list-variant="native"');
   });
 });

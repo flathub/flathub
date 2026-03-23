@@ -1,3 +1,5 @@
+import type { WindowShellTier } from "@/types/ipc";
+
 export type PlaybackBarDensity = "relaxed" | "compact" | "tight";
 
 export const PLAYBACK_BAR_LEFT_MIN_WIDTH = 112;
@@ -17,6 +19,7 @@ export interface PlaybackBarLayoutTokens {
   outerPadding: number;
   zoneGap: number;
   rightZoneGap: number;
+  barHeightClass: string;
 }
 
 const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
@@ -31,6 +34,7 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
     outerPadding: 16,
     zoneGap: 16,
     rightZoneGap: 12,
+    barHeightClass: "h-20",
   },
   compact: {
     leftMaxWidth: 200,
@@ -39,6 +43,7 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
     outerPadding: 12,
     zoneGap: 12,
     rightZoneGap: 8,
+    barHeightClass: "h-[74px]",
   },
   tight: {
     leftMaxWidth: 160,
@@ -47,6 +52,40 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
     outerPadding: 10,
     zoneGap: 8,
     rightZoneGap: 6,
+    barHeightClass: "h-[68px]",
+  },
+};
+
+const MAC_NATIVE_PLAYBACK_BAR_LAYOUT_TOKENS: Record<
+  PlaybackBarDensity,
+  PlaybackBarLayoutTokens
+> = {
+  relaxed: {
+    leftMaxWidth: 228,
+    masterVolumeWidth: 72,
+    masterVolumeWidthClass: "w-[4.5rem]",
+    outerPadding: 18,
+    zoneGap: 18,
+    rightZoneGap: 10,
+    barHeightClass: "h-[86px]",
+  },
+  compact: {
+    leftMaxWidth: 188,
+    masterVolumeWidth: 52,
+    masterVolumeWidthClass: "w-[3.25rem]",
+    outerPadding: 14,
+    zoneGap: 14,
+    rightZoneGap: 8,
+    barHeightClass: "h-[78px]",
+  },
+  tight: {
+    leftMaxWidth: 148,
+    masterVolumeWidth: 40,
+    masterVolumeWidthClass: "w-10",
+    outerPadding: 12,
+    zoneGap: 10,
+    rightZoneGap: 6,
+    barHeightClass: "h-[70px]",
   },
 };
 
@@ -64,14 +103,18 @@ export function getPlaybackBarDensity(width: number): PlaybackBarDensity {
 
 export function getPlaybackBarLayoutTokens(
   density: PlaybackBarDensity,
+  shellTier: WindowShellTier = "desktop",
 ): PlaybackBarLayoutTokens {
-  return PLAYBACK_BAR_LAYOUT_TOKENS[density];
+  return shellTier === "mac_native"
+    ? MAC_NATIVE_PLAYBACK_BAR_LAYOUT_TOKENS[density]
+    : PLAYBACK_BAR_LAYOUT_TOKENS[density];
 }
 
 export function getPlaybackBarCenterMinWidth(
   density: PlaybackBarDensity,
+  shellTier: WindowShellTier = "desktop",
 ): number {
-  const { zoneGap } = getPlaybackBarLayoutTokens(density);
+  const { zoneGap } = getPlaybackBarLayoutTokens(density, shellTier);
 
   return (
     PLAYBACK_BAR_CONTROL_CLUSTER_MIN_WIDTH +

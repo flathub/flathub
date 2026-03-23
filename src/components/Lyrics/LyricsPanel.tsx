@@ -27,9 +27,11 @@ import {
   selectSyncDisplayPositionMs,
   usePlayerStore,
 } from "@/stores/player-store";
+import type { WindowShellTier } from "@/types/ipc";
 
 interface LyricsPanelProps {
   presentation?: "standard" | "audience";
+  shellTier?: WindowShellTier;
 }
 
 function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
@@ -39,7 +41,10 @@ function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
   );
 }
 
-export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
+export function LyricsPanel({
+  presentation = "standard",
+  shellTier = "desktop",
+}: LyricsPanelProps) {
   const { t } = useTranslation();
   const lines = useLyricsStore((s) => s.lines);
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
@@ -67,6 +72,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const [pageStartIndices, setPageStartIndices] = useState<number[]>([0]);
   const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
   const isAudience = presentation === "audience";
+  const nativeStageVariant = !isAudience && shellTier === "mac_native";
   const audiencePresentationSpec =
     buildAudiencePresentationSpec(lyricsFontStep);
 
@@ -326,7 +332,13 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   }
 
   return (
-    <div className="group relative flex flex-1 flex-col items-center overflow-hidden">
+    <div
+      className="group relative flex flex-1 flex-col items-center overflow-hidden"
+      data-lyrics-visual-variant={
+        nativeStageVariant ? "native-stage" : "default"
+      }
+      data-native-lyrics-layout={nativeStageVariant ? "true" : "false"}
+    >
       {songId && !isAudience ? (
         <>
           <div
@@ -415,7 +427,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
         key={songId}
         data-testid="lyrics-scroll-viewport"
         className={`custom-scrollbar flex w-full flex-1 overflow-y-auto animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)] ${
-          isAudience ? "" : "px-12 py-8"
+          isAudience ? "" : nativeStageVariant ? "px-16 py-10" : "px-12 py-8"
         }`}
         style={
           isAudience
@@ -431,7 +443,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
               ? shouldRenderAudiencePlainTextPages
                 ? "min-h-full justify-start"
                 : "min-h-full justify-center"
-              : "max-w-2xl gap-7"
+              : nativeStageVariant
+                ? "max-w-4xl gap-9"
+                : "max-w-2xl gap-7"
           }`}
           style={
             isAudience

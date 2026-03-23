@@ -24,9 +24,14 @@ import type { Song } from "@/types/ipc";
 interface SongListItemProps {
   song: Song;
   orderedHashes: string[];
+  variant?: "default" | "native";
 }
 
-export function SongListItem({ song, orderedHashes }: SongListItemProps) {
+export function SongListItem({
+  song,
+  orderedHashes,
+  variant = "default",
+}: SongListItemProps) {
   const { t } = useTranslation();
   const selectedSongIds = useLibraryStore((s) => s.selectedSongIds);
   const selectSong = useLibraryStore((s) => s.selectSong);
@@ -79,6 +84,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   );
   const isMultiSelected = selectedSongIds.size > 1 && isSelected;
   const supportsEmbeddedLyrics = song.media_g_container !== "zip";
+  const nativeVariant = variant === "native";
   const mediaGBadgeLabel =
     song.media_g_container === "paired"
       ? "CDG"
@@ -170,17 +176,26 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
       }
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      className={`group relative flex cursor-default select-none items-center gap-3 rounded-md px-3 py-2 transition-colors duration-150 ${
+      className={`group relative flex cursor-default select-none items-center transition-colors duration-150 ${
+        nativeVariant
+          ? "gap-2.5 rounded-[14px] px-3 py-2.5"
+          : "gap-3 rounded-md px-3 py-2"
+      } ${
         isSelected
-          ? "bg-[var(--color-accent)] text-white"
-          : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+          ? nativeVariant
+            ? "bg-[var(--native-selected-row-bg)] text-white shadow-[var(--native-selected-row-shadow)]"
+            : "bg-[var(--color-accent)] text-white"
+          : nativeVariant
+            ? "text-[var(--color-text)] hover:bg-[var(--native-hover-bg)]"
+            : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
       }`}
+      data-song-list-item-variant={variant}
     >
       <CoverArtThumbnail
         songHash={song.hash}
         coverArt={song.cover_art}
         alt={`${song.title || song.file_path.split("/").pop()} cover art`}
-        className="h-12 w-12 shrink-0"
+        className={`${nativeVariant ? "h-11 w-11" : "h-12 w-12"} shrink-0`}
       />
 
       <div className="flex min-w-0 flex-1 flex-col justify-center">
@@ -196,7 +211,9 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             ) : (
               <div className="w-3 shrink-0" />
             )}
-            <span className="truncate font-medium">
+            <span
+              className={`truncate ${nativeVariant ? "text-[15px] font-semibold" : "font-medium"}`}
+            >
               {song.title || song.file_path.split("/").pop()}
             </span>
           </div>
@@ -278,7 +295,9 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
 
         <div className="flex pl-5">
           <span
-            className={`truncate text-[11px] ${isSelected ? "text-white/80" : "text-[var(--color-text-dim)]"}`}
+            className={`truncate ${nativeVariant ? "text-[12px]" : "text-[11px]"} ${
+              isSelected ? "text-white/80" : "text-[var(--color-text-dim)]"
+            }`}
           >
             {song.artist || t("common.unknownArtist")}
           </span>

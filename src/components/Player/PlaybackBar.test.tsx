@@ -143,6 +143,17 @@ describe("PlaybackBar", () => {
     expect(markup).toContain("audio-level-slider w-10");
   });
 
+  test("keeps one shared structure while exposing the native playback bar variant", () => {
+    const markup = renderToStaticMarkup(
+      <PlaybackBar shellTier="mac_native" densityOverride="relaxed" />,
+    );
+
+    expect(markup).toContain('data-playback-bar-visual-variant="native"');
+    expect(markup).toContain('data-playback-zone="left"');
+    expect(markup).toContain('data-playback-zone="center"');
+    expect(markup).toContain('data-playback-zone="right"');
+  });
+
   test("measures the container width and updates the density through ResizeObserver", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
