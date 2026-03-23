@@ -251,9 +251,9 @@ OpenKara v0.2.0 is the release that established the current core app flow.
 - [x] Error toasts and user-facing error messages
 - [x] App icon and branding
 
-### v0.3.0 — Released
+### v0.4.0 — Released
 
-OpenKara v0.3.0 is the current stable release. It adds:
+OpenKara v0.4.0 is the current stable release. It adds:
 
 - AirPlay support for casting playback to compatible devices
 - Improved player behavior and layout at narrow window widths
@@ -305,7 +305,7 @@ pnpm tauri build             # production build with platform-specific bundle
 ### CI/CD
 
 - Pushes to `main` trigger the CI workflow ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — lint, build, and test on macOS, Windows, and Linux.
-- Pushing a version tag (e.g. `v0.3.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
+- Pushing a version tag (e.g. `v0.4.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
 
 ## Documentation
 

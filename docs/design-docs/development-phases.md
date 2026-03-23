@@ -169,7 +169,7 @@
 | --- | ---------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
 | 6.1 | Tauri build config — app ID, version, signing                          | `tauri.conf.json` complete | `pnpm tauri build` succeeds                                                                         |
 | 6.2 | GitHub Actions: build matrix (macOS arm64, macOS x64, Windows, Linux)  | CI workflow                | All 4 targets produce artifacts                                                                     |
-| 6.3 | GitHub Release automation — tag push triggers release with binaries    | Release workflow           | `git tag v0.3.0 && git push --tags` → Release created                                               |
+| 6.3 | GitHub Release automation — tag push triggers release with binaries    | Release workflow           | `git tag v0.4.0 && git push --tags` → Release created                                               |
 | 6.4 | Model bootstrap UX — startup check, prompt, background download, retry | Setup logic + UX contract  | Fresh install → user can download now/later, karaoke blocked until ready                            |
 | 6.5 | Smoke test on each platform                                            | Test report                | `./scripts/run-local-smoke.sh` on local corpus + app launch/playback smoke on macOS, Windows, Linux |
 | 6.6 | Homebrew Cask distribution (macOS)                                     | Tap repo + cask file       | `brew install --cask openkara` works                                                                |
