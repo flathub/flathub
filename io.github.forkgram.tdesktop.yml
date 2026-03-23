@@ -1,0 +1,376 @@
+id: io.github.forkgram.tdesktop
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: Forkgram
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.ayatana.indicator.application
+  - --talk-name=org.sigxcpu.Feedback
+  - --unset-env=QT_PLUGIN_PATH
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm22
+build-options:
+  append-path: /usr/lib/sdk/llvm22/bin
+  append-ld-library-path: /usr/lib/sdk/llvm22/lib
+  cflags: -g1
+  cxxflags: -g1
+  env:
+    CMAKE_BUILD_TYPE: None
+    CMAKE_PREFIX_PATH: /app
+modules:
+  - name: pkg-config
+    buildsystem: simple
+    build-commands:
+      - install -d $FLATPAK_DEST/bin
+      - |
+        cat <<EOF > $FLATPAK_DEST/bin/pkg-config
+        #!/bin/sh
+        unset PKG_CONFIG_ALLOW_SYSTEM_LIBS
+        exec /usr/bin/pkg-config "\$@"
+        EOF
+      - chmod +x $FLATPAK_DEST/bin/pkg-config
+    cleanup:
+      - '*'
+
+  - name: implib
+    buildsystem: simple
+    build-commands:
+      - |
+        install -d $FLATPAK_DEST/lib
+        mkdir build
+        cd build
+        implib() {
+          LIBFILE=$(basename $1)
+          LIBNAME=$(basename $1 .so)
+          ../implib-gen.py -q $1
+          gcc $CFLAGS -c -o $LIBFILE.tramp.o $LIBFILE.tramp.S
+          gcc $CFLAGS -c -o $LIBFILE.init.o $LIBFILE.init.c
+          ar rcs $FLATPAK_DEST/lib/$LIBNAME.a $LIBFILE.tramp.o $LIBFILE.init.o
+        }
+        implib /usr/lib/$FLATPAK_ARCH-linux-gnu/libgtk-3.so
+        implib /usr/lib/$FLATPAK_ARCH-linux-gnu/libgdk-3.so
+    sources:
+      - type: git
+        url: https://github.com/yugr/Implib.so.git
+        commit: ecf7bb51a92a0fb16834c5b698570ab25f9f1d21
+    cleanup:
+      - '*'
+
+  - name: jinja2
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        flit-core --no-build-isolation
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        "Jinja2" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/59/b6fc2188dfc7ea4f936cd12b49d707f66a1cb7a1d2c16172963534db741b/flit_core-3.12.0.tar.gz
+        sha256: 18f63100d6f94385c6ed57a72073443e1a71a4acb4339491615d0f16d6ff01b2
+        x-checker-data:
+          type: pypi
+          name: flit-core
+      - type: file
+        url: https://files.pythonhosted.org/packages/7e/99/7690b6d4034fffd95959cbe0c02de8deb3098cc577c67bb6a24fe5d7caa7/markupsafe-3.0.3.tar.gz
+        sha256: 722695808f4b6457b320fdc131280796bdceb04ab50fe1795cd540799ebe1698
+        x-checker-data:
+          type: pypi
+          name: MarkupSafe
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz
+        sha256: 0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d
+        x-checker-data:
+          type: pypi
+          name: Jinja2
+    cleanup:
+      - '*'
+
+  - name: systemd
+    buildsystem: meson
+    builddir: true
+    config-opts:
+      - --buildtype=plain
+    make-args:
+      - systemd-detect-virt
+    no-make-install: true
+    post-install:
+      - install -Dt "$FLATPAK_DEST/bin" systemd-detect-virt
+    sources:
+      - type: git
+        url: https://github.com/systemd/systemd.git
+        commit: c0a5a2516d28601fb3afc1a77d7b42fcfe38fced
+        tag: v260.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/systemd/systemd/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+      - type: shell
+        commands:
+          - >-
+            sed -i "s/'link_with' : libshared/'link_with' : [libshared_static, libsystemd_static,
+            libbasic_static]/" meson.build
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=regex
+      - ./b2 variant=release link=static runtime-link=shared cxxflags="$CXXFLAGS"
+        linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.bz2
+        sha256: 49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://archives.boost.io/release/$version/source/boost_${major}_${minor}_${patch}.tar.bz2
+    cleanup:
+      - '*'
+
+  - name: ada
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DADA_TOOLS=OFF
+    sources:
+      - type: git
+        url: https://github.com/ada-url/ada.git
+        commit: 8d50724a7dea209a05234a445e28f97994b0a5f6
+        tag: v3.4.4
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ada-url/ada/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        commit: 4b0c3aacf0657fbf38253b38918d3358dd4319ec
+        tag: v34.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protocolbuffers/protobuf/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: mozjpeg
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib
+      - -DENABLE_SHARED=OFF
+      - -DPNG_SUPPORTED=OFF
+    sources:
+      - type: git
+        url: https://github.com/mozilla/mozjpeg.git
+        commit: 6c9f0897afa1c2738d7222a0a9ab49e8b536a267
+        tag: v4.1.5
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+    cleanup:
+      - '*'
+
+  - name: openh264
+    buildsystem: meson
+    config-opts:
+      - --buildtype=plain
+      - --default-library=static
+      - -Dtests=disabled
+    sources:
+      - type: git
+        url: https://github.com/cisco/openh264.git
+        commit: 652bdb7719f30b52b08e506645a7322ff1b2cc6f
+        tag: v2.6.0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/cisco/openh264/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: rnnoise
+    config-opts:
+      - --disable-shared
+      - --disable-examples
+      - --disable-doc
+    sources:
+      - type: archive
+        url: https://github.com/xiph/rnnoise/releases/download/v0.2/rnnoise-0.2.tar.gz
+        sha256: 90fce4b00b9ff24c08dbfe31b82ffd43bae383d85c5535676d28b0a2b11c0d37
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/xiph/rnnoise/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+          url-query: '"https://github.com/xiph/rnnoise/releases/download/\($tag)/rnnoise-\($version).tar.gz"'
+      - type: shell
+        commands:
+          - sed -i 's/os_support.h/common.h/g;s/OPUS_CLEAR/RNN_CLEAR/g' src/vec{,_neon}.h
+    cleanup:
+      - '*'
+
+  - name: qt
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DBUILD_WITH_PCH=OFF
+      - -DQT_BUILD_SUBMODULES=qtbase;qtdeclarative;qtimageformats;qtshadertools;qtsvg;qtwayland
+      - -DQT_QPA_PLATFORMS=wayland;xcb
+      - -DFEATURE_glibc_fortify_source=OFF
+      - -DINPUT_openssl=linked
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/6.11/6.11.0/single/qt-everywhere-src-6.11.0.tar.xz
+        sha256: acf3b3db04c9e5d0820e8324b097320388954c297cee83d2bd698789234f68a4
+        x-checker-data:
+          type: json
+          parent-id: tdesktop-git-0
+          tag-data-url: >-
+            "https://github.com/forkgram/tdesktop/raw/\($parent.new.tag//$parent.current.tag)/snap/snapcraft.yaml"
+          tag-query: >-
+            .parts.qt."source-tag"
+          version-query: >-
+            $tag | sub("^[vV]"; "")
+          timestamp-data-url: >-
+            "https://api.github.com/repos/qt/qt5/commits/\($tag)"
+          timestamp-query: >-
+            .commit.committer.date
+          url-query: >-
+            $version | split(".") as $v |
+            "https://download.qt.io/archive/qt/\($v[0]).\($v[1])/\($version)/single/qt-everywhere-src-\($version).tar.xz"
+      - type: git
+        url: https://github.com/desktop-app/patches.git
+        commit: 4519c85c924b9da81f29d4aac045886f896ee479
+        dest: patches
+        x-checker-data:
+          type: json
+          parent-id: tdesktop-git-0
+          commit-data-url: >-
+            "https://github.com/forkgram/tdesktop/raw/\($parent.new.tag//$parent.current.tag)/snap/snapcraft.yaml"
+          commit-query: >-
+            .parts.patches."source-commit"
+          version-data-url: >-
+            "https://api.github.com/repos/desktop-app/patches/commits/\($commit)"
+          version-query: >-
+            "desktop-app/patches@\(.sha[0:7])"
+          timestamp-data-url: >-
+            "https://api.github.com/repos/desktop-app/patches/commits/\($commit)"
+          timestamp-query: >-
+            .commit.committer.date
+      - type: shell
+        commands:
+          - |
+            set -euo pipefail
+            QT="$(grep 'set(QT_REPO_MODULE_VERSION' qtbase/.cmake.conf | sed -r 's/.*"(.*)".*/\1/')"
+            find $PWD/patches/qtbase_${QT} -type f -print0 | sort -z | xargs -r0 git -C qtbase apply
+            find $PWD/patches/qtwayland_${QT} -type f -print0 | sort -z | xargs -r0 git -C qtwayland apply
+    cleanup:
+      - '*'
+
+  - name: tg_owt
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: git
+        url: https://github.com/desktop-app/tg_owt.git
+        commit: 26068e29bfa8d74a9dc9c8f7f94172fafbc262b8
+        x-checker-data:
+          type: json
+          parent-id: tdesktop-git-0
+          commit-data-url: >-
+            "https://github.com/forkgram/tdesktop/raw/\($parent.new.tag//$parent.current.tag)/snap/snapcraft.yaml"
+          commit-query: >-
+            .parts.webrtc."source-commit"
+          version-data-url: >-
+            "https://api.github.com/repos/desktop-app/tg_owt/commits/\($commit)"
+          version-query: >-
+            "desktop-app/tg_owt@\(.sha[0:7])"
+          timestamp-data-url: >-
+            "https://api.github.com/repos/desktop-app/tg_owt/commits/\($commit)"
+          timestamp-query: >-
+            .commit.committer.date
+    cleanup:
+      - '*'
+
+  - name: tde2e
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DTD_E2E_ONLY=ON
+    sources:
+      - type: git
+        url: https://github.com/tdlib/td.git
+        commit: 51743dfd01dff6179e2d8f7095729caa4e2222e9
+        x-checker-data:
+          type: json
+          parent-id: tdesktop-git-0
+          commit-data-url: >-
+            "https://github.com/forkgram/tdesktop/raw/\($parent.new.tag//$parent.current.tag)/snap/snapcraft.yaml"
+          commit-query: >-
+            .parts.tde2e."source-commit"
+          version-data-url: >-
+            "https://api.github.com/repos/tdlib/td/commits/\($commit)"
+          version-query: >-
+            "tdlib/td@\(.sha[0:7])"
+          timestamp-data-url: >-
+            "https://api.github.com/repos/tdlib/td/commits/\($commit)"
+          timestamp-query: >-
+            .commit.committer.date
+    cleanup:
+      - '*'
+
+  - name: tdesktop
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DTDESKTOP_API_ID=14577864
+      - -DTDESKTOP_API_HASH=54d3ae230fd8f985ce9adccf08fbd9d6
+    sources:
+      - type: git
+        url: https://github.com/forkgram/tdesktop.git
+        commit: be34977021b54446f6b54d38c39114f281f8b749
+        tag: v6.7.6
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/forkgram/tdesktop/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+      - type: shell
+        commands:
+          - sed -i '/-Werror/d' Telegram/ThirdParty/dispatch/cmake/modules/DispatchCompilerWarnings.cmake
+    cleanup:
+      - /share/icons/hicolor/512x512@2
