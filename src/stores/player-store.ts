@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import {
+  createWebviewSyncChannel,
+  type WebviewSyncChannel,
+} from "@/runtime/webview-sync";
 import { useLibraryStore } from "@/stores/library-store";
 import { useQueueStore } from "@/stores/queue-store";
 import type {
@@ -12,9 +16,6 @@ import {
   playTrackWithOptionalStems,
   shouldEnqueueInsteadOfReplacingCurrentSong,
 } from "./player-workflows";
-
-let airPlayPlainTextPagePendingTimer: ReturnType<typeof setTimeout> | null =
-  null;
 
 export const DEFAULT_AIRPLAY_OUTPUT_STATE: AirPlayOutputStateEvent = {
   active: false,
@@ -59,6 +60,42 @@ interface PlayerState {
   clearAirPlayPlainTextPagePending: () => void;
 }
 
+export interface PlayerSyncSnapshot {
+  snapshot: PlaybackStateSnapshot | null;
+  positionMs: number;
+  airPlayOutput: AirPlayOutputStateEvent;
+  localAudienceOutputActive: boolean;
+  airPlayPlainTextPagePending: boolean;
+  airPlayPlainTextPagePendingDirection: "prev" | "next" | null;
+}
+
+function createPlayerSyncSnapshot(state: PlayerState): PlayerSyncSnapshot {
+  return {
+    snapshot: state.snapshot,
+    positionMs: state.positionMs,
+    airPlayOutput: state.airPlayOutput,
+    localAudienceOutputActive: state.localAudienceOutputActive,
+    airPlayPlainTextPagePending: state.airPlayPlainTextPagePending,
+    airPlayPlainTextPagePendingDirection:
+      state.airPlayPlainTextPagePendingDirection,
+  };
+}
+
+function applyPlayerSyncSnapshot(
+  set: (partial: Partial<PlayerState>) => void,
+  payload: PlayerSyncSnapshot,
+) {
+  set({
+    snapshot: payload.snapshot,
+    positionMs: payload.positionMs,
+    airPlayOutput: payload.airPlayOutput,
+    localAudienceOutputActive: payload.localAudienceOutputActive,
+    airPlayPlainTextPagePending: payload.airPlayPlainTextPagePending,
+    airPlayPlainTextPagePendingDirection:
+      payload.airPlayPlainTextPagePendingDirection,
+  });
+}
+
 // RATIONALE: Once AirPlay is active, the audience surface must follow the TV's
 // displayed clock rather than the local playback clock. That keeps the
 // standard UI synchronized with the remote audience surface without changing
@@ -72,230 +109,265 @@ export function selectSyncDisplayPositionMs(
     : state.positionMs;
 }
 
-export const usePlayerStore = create<PlayerState>((set) => ({
-  snapshot: null,
-  positionMs: 0,
-  airPlayOutput: DEFAULT_AIRPLAY_OUTPUT_STATE,
-  localAudienceOutputActive: false,
-  airPlayPlainTextPagePending: false,
-  airPlayPlainTextPagePendingDirection: null,
+export function createPlayerStore(
+  syncChannel: WebviewSyncChannel<PlayerSyncSnapshot> = createWebviewSyncChannel<PlayerSyncSnapshot>(
+    "openkara.player",
+  ),
+) {
+  let airPlayPlainTextPagePendingTimer: ReturnType<typeof setTimeout> | null =
+    null;
 
-  playSong: async (songId) => {
-    const { snapshot } = usePlayerStore.getState();
-    if (shouldEnqueueInsteadOfReplacingCurrentSong(snapshot, songId)) {
-      useQueueStore.getState().addToQueue(songId);
-      return;
-    }
+  const store = create<PlayerState>((set, get) => {
+    const syncPatch = (patch: Partial<PlayerState>) => {
+      set(patch);
+      syncChannel.publish(createPlayerSyncSnapshot(get()));
+    };
 
-    try {
-      await playTrackWithOptionalStems(songId, {
-        play: api.play,
-        loadStems: api.loadStems,
-        getSeparationStatus: (nextSongId) =>
-          useLibraryStore.getState().separationStatuses[nextSongId],
-        applySnapshot: (nextSnapshot) =>
-          set({
-            snapshot: nextSnapshot,
-            positionMs: nextSnapshot.position_ms,
-          }),
-      });
-    } catch (e) {
-      notifyError(e, () => usePlayerStore.getState().playSong(songId));
-    }
-  },
-
-  playNow: async (songId) => {
-    try {
-      await playTrackWithOptionalStems(songId, {
-        play: api.play,
-        loadStems: api.loadStems,
-        getSeparationStatus: (nextSongId) =>
-          useLibraryStore.getState().separationStatuses[nextSongId],
-        applySnapshot: (nextSnapshot) =>
-          set({
-            snapshot: nextSnapshot,
-            positionMs: nextSnapshot.position_ms,
-          }),
-      });
-    } catch (e) {
-      notifyError(e, () => usePlayerStore.getState().playNow(songId));
-    }
-  },
-
-  resume: async () => {
-    try {
-      const snapshot = await api.resume();
-      set({ snapshot, positionMs: snapshot.position_ms });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  pause: async () => {
-    try {
-      const snapshot = await api.pause();
-      set({ snapshot, positionMs: snapshot.position_ms });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  seek: async (ms) => {
-    const current = usePlayerStore.getState().snapshot;
-    if (!current?.song_id) return;
-    try {
-      const clamped = Math.max(0, ms);
-      const snapshot = await api.seek(clamped);
-      set({ snapshot, positionMs: snapshot.position_ms });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  setVolume: async (level) => {
-    try {
-      const clamped = Math.max(0, Math.min(1, level));
-      const snapshot = await api.setVolume(clamped);
-      set({ snapshot });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  setStemVolume: async (stem, level) => {
-    try {
-      const clamped = Math.max(0, Math.min(1, level));
-      const snapshot = await api.setStemVolume(stem, clamped);
-      set({ snapshot });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  loadStems: async () => {
-    try {
-      const snapshot = await api.loadStems();
-      set({ snapshot });
-    } catch (e) {
-      notifyError(e, () => usePlayerStore.getState().loadStems());
-    }
-  },
-
-  updatePosition: (ms) => {
-    // Ignore position events when paused — the pause snapshot already set
-    // the correct position, and stale emitter events could reset it to 0.
-    const { snapshot } = usePlayerStore.getState();
-    if (snapshot && !snapshot.is_playing) return;
-    set({ positionMs: ms });
-  },
-
-  updateSnapshot: (snapshot) => {
-    set({ snapshot, positionMs: snapshot.position_ms });
-  },
-
-  loadState: async () => {
-    try {
-      const snapshot = await api.getPlaybackState();
-      set({ snapshot, positionMs: snapshot.position_ms });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  playNextFromQueue: async (endedSongId) => {
-    const { snapshot } = usePlayerStore.getState();
-    // Only auto-advance if the ended song is still the current one
-    if (snapshot?.song_id !== endedSongId) return;
-
-    const nextId = useQueueStore.getState().dequeue();
-    if (!nextId) return;
-
-    try {
-      await playTrackWithOptionalStems(nextId, {
-        play: api.play,
-        loadStems: api.loadStems,
-        getSeparationStatus: (nextSongId) =>
-          useLibraryStore.getState().separationStatuses[nextSongId],
-        applySnapshot: (nextSnapshot) =>
-          set({
-            snapshot: nextSnapshot,
-            positionMs: nextSnapshot.position_ms,
-          }),
-      });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  skipForward: async () => {
-    const nextId = useQueueStore.getState().dequeue();
-    if (!nextId) return;
-
-    try {
-      await playTrackWithOptionalStems(nextId, {
-        play: api.play,
-        loadStems: api.loadStems,
-        getSeparationStatus: (nextSongId) =>
-          useLibraryStore.getState().separationStatuses[nextSongId],
-        applySnapshot: (nextSnapshot) =>
-          set({
-            snapshot: nextSnapshot,
-            positionMs: nextSnapshot.position_ms,
-          }),
-      });
-    } catch (e) {
-      notifyError(e);
-    }
-  },
-
-  skipBack: async () => {
-    const { positionMs, snapshot } = usePlayerStore.getState();
-    if (!snapshot?.song_id) return;
-
-    if (positionMs > 3000) {
-      // Restart current song
-      try {
-        const newSnapshot = await api.seek(0);
-        set({ snapshot: newSnapshot, positionMs: newSnapshot.position_ms });
-      } catch (e) {
-        notifyError(e);
-      }
-    }
-  },
-
-  updateAirPlayOutput: (airPlayOutput) => {
-    set({ airPlayOutput });
-  },
-
-  updateLocalAudienceOutputActive: (active) => {
-    set({ localAudienceOutputActive: active });
-  },
-
-  startAirPlayPlainTextPagePending: (direction, lockMs) => {
-    if (airPlayPlainTextPagePendingTimer !== null) {
-      clearTimeout(airPlayPlainTextPagePendingTimer);
-    }
-
-    set({
-      airPlayPlainTextPagePending: true,
-      airPlayPlainTextPagePendingDirection: direction,
-    });
-
-    airPlayPlainTextPagePendingTimer = setTimeout(() => {
-      airPlayPlainTextPagePendingTimer = null;
-      usePlayerStore.getState().clearAirPlayPlainTextPagePending();
-    }, lockMs);
-  },
-
-  clearAirPlayPlainTextPagePending: () => {
-    if (airPlayPlainTextPagePendingTimer !== null) {
-      clearTimeout(airPlayPlainTextPagePendingTimer);
-      airPlayPlainTextPagePendingTimer = null;
-    }
-
-    set({
+    return {
+      snapshot: null,
+      positionMs: 0,
+      airPlayOutput: DEFAULT_AIRPLAY_OUTPUT_STATE,
+      localAudienceOutputActive: false,
       airPlayPlainTextPagePending: false,
       airPlayPlainTextPagePendingDirection: null,
-    });
-  },
-}));
+
+      playSong: async (songId) => {
+        const { snapshot } = get();
+        if (shouldEnqueueInsteadOfReplacingCurrentSong(snapshot, songId)) {
+          useQueueStore.getState().addToQueue(songId);
+          return;
+        }
+
+        try {
+          await playTrackWithOptionalStems(songId, {
+            play: api.play,
+            loadStems: api.loadStems,
+            getSeparationStatus: (nextSongId) =>
+              useLibraryStore.getState().separationStatuses[nextSongId],
+            applySnapshot: (nextSnapshot) =>
+              syncPatch({
+                snapshot: nextSnapshot,
+                positionMs: nextSnapshot.position_ms,
+              }),
+          });
+        } catch (e) {
+          notifyError(e, () => get().playSong(songId));
+        }
+      },
+
+      playNow: async (songId) => {
+        try {
+          await playTrackWithOptionalStems(songId, {
+            play: api.play,
+            loadStems: api.loadStems,
+            getSeparationStatus: (nextSongId) =>
+              useLibraryStore.getState().separationStatuses[nextSongId],
+            applySnapshot: (nextSnapshot) =>
+              syncPatch({
+                snapshot: nextSnapshot,
+                positionMs: nextSnapshot.position_ms,
+              }),
+          });
+        } catch (e) {
+          notifyError(e, () => get().playNow(songId));
+        }
+      },
+
+      resume: async () => {
+        try {
+          const snapshot = await api.resume();
+          syncPatch({ snapshot, positionMs: snapshot.position_ms });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      pause: async () => {
+        try {
+          const snapshot = await api.pause();
+          syncPatch({ snapshot, positionMs: snapshot.position_ms });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      seek: async (ms) => {
+        const current = get().snapshot;
+        if (!current?.song_id) return;
+        try {
+          const clamped = Math.max(0, ms);
+          const snapshot = await api.seek(clamped);
+          syncPatch({ snapshot, positionMs: snapshot.position_ms });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      setVolume: async (level) => {
+        try {
+          const clamped = Math.max(0, Math.min(1, level));
+          const snapshot = await api.setVolume(clamped);
+          syncPatch({ snapshot });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      setStemVolume: async (stem, level) => {
+        try {
+          const clamped = Math.max(0, Math.min(1, level));
+          const snapshot = await api.setStemVolume(stem, clamped);
+          syncPatch({ snapshot });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      loadStems: async () => {
+        try {
+          const snapshot = await api.loadStems();
+          syncPatch({ snapshot });
+        } catch (e) {
+          notifyError(e, () => get().loadStems());
+        }
+      },
+
+      updatePosition: (ms) => {
+        const { snapshot } = get();
+        if (snapshot && !snapshot.is_playing) return;
+        syncPatch({ positionMs: ms });
+      },
+
+      updateSnapshot: (snapshot) => {
+        syncPatch({ snapshot, positionMs: snapshot.position_ms });
+      },
+
+      loadState: async () => {
+        try {
+          const snapshot = await api.getPlaybackState();
+          syncPatch({ snapshot, positionMs: snapshot.position_ms });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      playNextFromQueue: async (endedSongId) => {
+        const { snapshot } = get();
+        if (snapshot?.song_id !== endedSongId) return;
+
+        const nextId = useQueueStore.getState().dequeue();
+        if (!nextId) return;
+
+        try {
+          await playTrackWithOptionalStems(nextId, {
+            play: api.play,
+            loadStems: api.loadStems,
+            getSeparationStatus: (nextSongId) =>
+              useLibraryStore.getState().separationStatuses[nextSongId],
+            applySnapshot: (nextSnapshot) =>
+              syncPatch({
+                snapshot: nextSnapshot,
+                positionMs: nextSnapshot.position_ms,
+              }),
+          });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      skipForward: async () => {
+        const nextId = useQueueStore.getState().dequeue();
+        if (!nextId) return;
+
+        try {
+          await playTrackWithOptionalStems(nextId, {
+            play: api.play,
+            loadStems: api.loadStems,
+            getSeparationStatus: (nextSongId) =>
+              useLibraryStore.getState().separationStatuses[nextSongId],
+            applySnapshot: (nextSnapshot) =>
+              syncPatch({
+                snapshot: nextSnapshot,
+                positionMs: nextSnapshot.position_ms,
+              }),
+          });
+        } catch (e) {
+          notifyError(e);
+        }
+      },
+
+      skipBack: async () => {
+        const { positionMs, snapshot } = get();
+        if (!snapshot?.song_id) return;
+
+        if (positionMs > 3000) {
+          try {
+            const newSnapshot = await api.seek(0);
+            syncPatch({
+              snapshot: newSnapshot,
+              positionMs: newSnapshot.position_ms,
+            });
+          } catch (e) {
+            notifyError(e);
+          }
+        }
+      },
+
+      updateAirPlayOutput: (airPlayOutput) => {
+        syncPatch({ airPlayOutput });
+      },
+
+      updateLocalAudienceOutputActive: (active) => {
+        syncPatch({ localAudienceOutputActive: active });
+      },
+
+      startAirPlayPlainTextPagePending: (direction, lockMs) => {
+        if (airPlayPlainTextPagePendingTimer !== null) {
+          clearTimeout(airPlayPlainTextPagePendingTimer);
+        }
+
+        syncPatch({
+          airPlayPlainTextPagePending: true,
+          airPlayPlainTextPagePendingDirection: direction,
+        });
+
+        airPlayPlainTextPagePendingTimer = setTimeout(() => {
+          airPlayPlainTextPagePendingTimer = null;
+          get().clearAirPlayPlainTextPagePending();
+        }, lockMs);
+      },
+
+      clearAirPlayPlainTextPagePending: () => {
+        if (airPlayPlainTextPagePendingTimer !== null) {
+          clearTimeout(airPlayPlainTextPagePendingTimer);
+          airPlayPlainTextPagePendingTimer = null;
+        }
+
+        syncPatch({
+          airPlayPlainTextPagePending: false,
+          airPlayPlainTextPagePendingDirection: null,
+        });
+      },
+    };
+  });
+
+  const unsubscribe = syncChannel.subscribe((payload) => {
+    applyPlayerSyncSnapshot(store.setState, payload);
+  });
+
+  return {
+    store,
+    dispose() {
+      if (airPlayPlainTextPagePendingTimer !== null) {
+        clearTimeout(airPlayPlainTextPagePendingTimer);
+        airPlayPlainTextPagePendingTimer = null;
+      }
+      unsubscribe();
+      syncChannel.close();
+    },
+  };
+}
+
+const defaultPlayerStore = createPlayerStore();
+
+export const usePlayerStore = defaultPlayerStore.store;

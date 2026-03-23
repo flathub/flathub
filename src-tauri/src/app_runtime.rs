@@ -20,8 +20,9 @@ use tauri::{Emitter, Manager, Runtime};
 pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let app_data_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_data_dir)?;
-
     let app_config = config::load_config(&app_data_dir)?;
+    let window_shell_state = crate::window_shell::initialize_main_window(app, app_config.as_ref());
+
     let playback = Arc::new(Mutex::new(PlaybackController::default()));
     let cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>> = Arc::new(Mutex::new(None));
     let airplay_audio_tap = Arc::new(airplay_stream::AirPlayAudioTap::new(12));
@@ -32,6 +33,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
     let model_bootstrap = build_startup_model_bootstrap(&app_data_dir, app_config.as_ref())?;
     let model_bootstrap_status = Arc::new(Mutex::new(model_bootstrap.status.clone()));
 
+    app.manage(window_shell_state);
     app.manage(AppState {
         library: Arc::new(Mutex::new(load_library(app_config.as_ref()))),
         app_data_dir,

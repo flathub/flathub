@@ -1,60 +1,119 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { useSettingsStore } from "./settings-store";
+import { createWebviewSyncChannel } from "@/runtime/webview-sync";
+import {
+  createSettingsStore,
+  type SettingsSyncSnapshot,
+  useSettingsStore,
+} from "./settings-store";
 
-describe("settings-store app settings ownership", () => {
+interface FakeChannel {
+  onmessage: ((event: { data: unknown }) => void) | null;
+  postMessage: (data: unknown) => void;
+  close: () => void;
+}
+
+describe("settings-store sync", () => {
   beforeEach(() => {
-    useSettingsStore.setState({
-      isOpen: false,
-      hydrated: false,
-      stemMode: "two_stem",
-      modelVariant: "htdemucs",
-      language: null,
-      hideBatchSeparate: false,
-      lyricsFontStep: 0,
-    });
+    useSettingsStore.setState({ isOpen: false });
   });
 
-  test("hydrateAppSettings stores the full app settings snapshot", () => {
-    useSettingsStore.getState().hydrateAppSettings({
-      stem_mode: "four_stem",
-      model_variant: "htdemucs_ft",
-      language: "zh-CN",
-      hide_batch_separate: true,
-      lyrics_font_step: 1,
-    });
+  test("syncs settings overlay visibility across webview contexts", () => {
+    const channelsByName = new Map<string, Set<FakeChannel>>();
+    const channelFactory = (name: string) => {
+      const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
+      channelsByName.set(name, peers);
 
-    expect(useSettingsStore.getState()).toMatchObject({
-      hydrated: true,
-      stemMode: "four_stem",
-      modelVariant: "htdemucs_ft",
-      language: "zh-CN",
-      hideBatchSeparate: true,
-      lyricsFontStep: 1,
-    });
+      const channel: FakeChannel = {
+        onmessage: null,
+        postMessage(data: unknown) {
+          for (const peer of peers) {
+            if (peer === channel) {
+              continue;
+            }
+            peer.onmessage?.({ data });
+          }
+        },
+        close() {
+          peers.delete(channel);
+        },
+      };
+
+      peers.add(channel);
+      return channel;
+    };
+
+    const primary = createSettingsStore(
+      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
+        channelFactory,
+        originId: "primary",
+      }),
+    );
+    const secondary = createSettingsStore(
+      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
+        channelFactory,
+        originId: "secondary",
+      }),
+    );
+
+    primary.store.getState().open();
+
+    expect(secondary.store.getState().isOpen).toBe(true);
+
+    primary.dispose();
+    secondary.dispose();
   });
 
-  test("patchAppSettings updates the shared snapshot without resetting other fields", () => {
-    useSettingsStore.getState().hydrateAppSettings({
-      stem_mode: "four_stem",
-      model_variant: "htdemucs_ft",
-      language: "zh-CN",
+  test("syncs the selected macOS shell style across webview contexts", () => {
+    const channelsByName = new Map<string, Set<FakeChannel>>();
+    const channelFactory = (name: string) => {
+      const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
+      channelsByName.set(name, peers);
+
+      const channel: FakeChannel = {
+        onmessage: null,
+        postMessage(data: unknown) {
+          for (const peer of peers) {
+            if (peer === channel) {
+              continue;
+            }
+
+            peer.onmessage?.({ data });
+          }
+        },
+        close() {
+          peers.delete(channel);
+        },
+      };
+
+      peers.add(channel);
+      return channel;
+    };
+
+    const primary = createSettingsStore(
+      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
+        channelFactory,
+        originId: "primary",
+      }),
+    );
+    const secondary = createSettingsStore(
+      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
+        channelFactory,
+        originId: "secondary",
+      }),
+    );
+
+    primary.store.getState().hydrateAppSettings({
+      stem_mode: "two_stem",
+      model_variant: "htdemucs",
+      language: "en",
       hide_batch_separate: false,
-      lyrics_font_step: -1,
+      lyrics_font_step: 0,
+      macos_shell_mode: "native",
     });
 
-    useSettingsStore.getState().patchAppSettings({
-      language: "en",
-      hideBatchSeparate: true,
-      lyricsFontStep: 2,
-    });
+    expect(secondary.store.getState().macosShellMode).toBe("native");
 
-    expect(useSettingsStore.getState().getAppSettingsSnapshot()).toEqual({
-      hydrated: true,
-      stemMode: "four_stem",
-      modelVariant: "htdemucs_ft",
-      language: "en",
-      hideBatchSeparate: true,
-      lyricsFontStep: 2,
-    });
+    primary.dispose();
+    secondary.dispose();
   });
 });

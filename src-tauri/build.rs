@@ -5,10 +5,12 @@ fn main() {
         // whenever the Objective-C source changes instead of reusing a stale bridge.
         println!("cargo:rerun-if-changed=src/macos/airplay_bridge.m");
         println!("cargo:rerun-if-changed=src/macos/import_picker.m");
+        println!("cargo:rerun-if-changed=src/macos/window_shell.m");
 
         cc::Build::new()
             .file("src/macos/airplay_bridge.m")
             .file("src/macos/import_picker.m")
+            .file("src/macos/window_shell.m")
             .flag("-mmacosx-version-min=11.0")
             .flag("-fobjc-arc")
             .compile("openkara-airplay-bridge");

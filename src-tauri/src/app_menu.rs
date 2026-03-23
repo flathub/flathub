@@ -9,11 +9,15 @@ pub const MENU_ACTION_EVENT: &str = "openkara://menu-action";
 pub const MENU_ACTION_IMPORT_FILES: &str = "import-files";
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MENU_ACTION_OPEN_SETTINGS: &str = "open-settings";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const MENU_ACTION_TOGGLE_SIDEBAR: &str = "toggle-sidebar";
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENU_ITEM_IMPORT_FILES: &str = "file.import";
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENU_ITEM_OPEN_SETTINGS: &str = "app.settings";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const MENU_ITEM_TOGGLE_SIDEBAR: &str = "view.toggle-sidebar";
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const ABOUT_AUTHOR_CREDIT: &str = "David Weng";
 
@@ -126,7 +130,17 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
                 app_handle,
                 "View",
                 true,
-                &[&PredefinedMenuItem::fullscreen(app_handle, None)?],
+                &[
+                    &MenuItem::with_id(
+                        app_handle,
+                        MENU_ITEM_TOGGLE_SIDEBAR,
+                        "Toggle Sidebar",
+                        true,
+                        Some("CmdOrCtrl+B"),
+                    )?,
+                    &PredefinedMenuItem::separator(app_handle)?,
+                    &PredefinedMenuItem::fullscreen(app_handle, None)?,
+                ],
             )?,
             &window_menu,
             &help_menu,
@@ -140,10 +154,13 @@ pub fn build_app_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Me
 pub fn handle_menu_event<R: Runtime>(app_handle: &AppHandle<R>, event: MenuEvent) {
     match event.id().as_ref() {
         MENU_ITEM_IMPORT_FILES => {
-            let _ = app_handle.emit(MENU_ACTION_EVENT, MENU_ACTION_IMPORT_FILES);
+            let _ = app_handle.emit_to("main", MENU_ACTION_EVENT, MENU_ACTION_IMPORT_FILES);
         }
         MENU_ITEM_OPEN_SETTINGS => {
-            let _ = app_handle.emit(MENU_ACTION_EVENT, MENU_ACTION_OPEN_SETTINGS);
+            let _ = app_handle.emit_to("main", MENU_ACTION_EVENT, MENU_ACTION_OPEN_SETTINGS);
+        }
+        MENU_ITEM_TOGGLE_SIDEBAR => {
+            let _ = app_handle.emit_to("main", MENU_ACTION_EVENT, MENU_ACTION_TOGGLE_SIDEBAR);
         }
         _ => {}
     }
@@ -162,6 +179,7 @@ mod tests {
     fn menu_actions_match_frontend_runtime_contract() {
         assert_eq!(MENU_ACTION_IMPORT_FILES, "import-files");
         assert_eq!(MENU_ACTION_OPEN_SETTINGS, "open-settings");
+        assert_eq!(MENU_ACTION_TOGGLE_SIDEBAR, "toggle-sidebar");
     }
 
     #[test]

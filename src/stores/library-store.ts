@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as api from "@/lib/tauri";
+import { createWebviewSyncChannel } from "@/runtime/webview-sync";
 import { invalidateCoverArtUrl } from "@/lib/cover-art";
 import { notifyError } from "@/lib/errors";
 import {
@@ -61,6 +62,16 @@ interface LibraryState {
 
 let pendingCdgChoiceResolver: ((audioPath: string | null) => void) | null =
   null;
+
+const librarySyncChannel = createWebviewSyncChannel<{ revision: number }>(
+  "openkara.library",
+);
+let librarySyncRevision = 0;
+
+function publishLibraryInvalidation() {
+  librarySyncRevision += 1;
+  librarySyncChannel.publish({ revision: librarySyncRevision });
+}
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   songs: [],
@@ -147,6 +158,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // Reload full library to get consistent state
       const songs = await api.getLibrary();
       set({ songs });
+      publishLibraryInvalidation();
     } catch (e) {
       notifyError(e);
     } finally {
@@ -236,6 +248,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             : s,
         ),
       }));
+      publishLibraryInvalidation();
       return true;
     } catch (e) {
       notifyError(e);
@@ -256,6 +269,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set((state) => ({
         songs: state.songs.map((song) => updatedByHash.get(song.hash) ?? song),
       }));
+
+      publishLibraryInvalidation();
 
       return true;
     } catch (e) {
@@ -281,6 +296,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             (song) => updatedByHash.get(song.hash) ?? song,
           ),
         }));
+        publishLibraryInvalidation();
       }
 
       for (const failure of result.failed) {
@@ -311,3 +327,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   clearImportErrors: () => set({ importErrors: [] }),
 }));
+
+librarySyncChannel.subscribe(() => {
+  void useLibraryStore.getState().loadLibrary();
+});

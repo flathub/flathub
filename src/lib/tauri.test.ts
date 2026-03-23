@@ -195,4 +195,40 @@ describe("tauri API wrappers", () => {
       direction: "next",
     });
   });
+
+  test("reads the native window shell snapshot through the dedicated command", async () => {
+    const { getWindowShellState } = await import("./tauri");
+
+    await getWindowShellState();
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_window_shell_state");
+  });
+
+  test("syncs native sidebar visibility through the dedicated shell command", async () => {
+    const { setNativeSidebarVisibility } = await import("./tauri");
+
+    await setNativeSidebarVisibility(false);
+
+    expect(mockInvoke).toHaveBeenCalledWith("set_native_sidebar_visibility", {
+      visible: false,
+    });
+  });
+
+  test("persists the macOS shell mode through the dedicated settings command", async () => {
+    const { setMacOsShellMode } = await import("./tauri");
+
+    await setMacOsShellMode("native");
+
+    expect(mockInvoke).toHaveBeenCalledWith("set_macos_shell_mode", {
+      mode: "native",
+    });
+  });
+
+  test("requests an app restart through the dedicated lifecycle command", async () => {
+    const { restartApp } = await import("./tauri");
+
+    await restartApp();
+
+    expect(mockInvoke).toHaveBeenCalledWith("restart_app");
+  });
 });

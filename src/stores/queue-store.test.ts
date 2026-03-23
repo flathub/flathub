@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { useQueueStore } from "./queue-store";
+import { createWebviewSyncChannel } from "@/runtime/webview-sync";
+import { createQueueStore, useQueueStore } from "./queue-store";
 
 type QueueStoreWithDragReorder = ReturnType<typeof useQueueStore.getState> & {
   reorderBySongId?: (activeId: string, overId: string) => void;
 };
+
+interface FakeChannel {
+  onmessage: ((event: { data: unknown }) => void) | null;
+  postMessage: (data: unknown) => void;
+  close: () => void;
+}
 
 describe("queue-store drag reorder", () => {
   beforeEach(() => {
@@ -56,5 +63,53 @@ describe("queue-store drag reorder", () => {
       "song-b",
       "song-c",
     ]);
+  });
+
+  test("syncs queue mutations across webview contexts", () => {
+    const channelsByName = new Map<string, Set<FakeChannel>>();
+    const channelFactory = (name: string) => {
+      const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
+      channelsByName.set(name, peers);
+
+      const channel: FakeChannel = {
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+        postMessage(data: unknown) {
+          for (const peer of peers) {
+            if (peer === channel) {
+              continue;
+            }
+
+            peer.onmessage?.({ data });
+          }
+        },
+        close() {
+          peers.delete(channel);
+        },
+      };
+
+      peers.add(channel);
+      return channel;
+    };
+
+    const primary = createQueueStore(
+      createWebviewSyncChannel("queue", {
+        channelFactory,
+        originId: "primary",
+      }),
+    );
+    const secondary = createQueueStore(
+      createWebviewSyncChannel("queue", {
+        channelFactory,
+        originId: "secondary",
+      }),
+    );
+
+    primary.store.getState().addToQueue("song-a");
+    primary.store.getState().addToQueue("song-b");
+
+    expect(secondary.store.getState().queue).toEqual(["song-a", "song-b"]);
+
+    primary.dispose();
+    secondary.dispose();
   });
 });

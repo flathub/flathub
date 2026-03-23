@@ -10,6 +10,7 @@ pub mod maintenance;
 pub mod playback;
 pub mod separation;
 pub mod settings;
+pub mod window_shell;
 
 pub use bootstrap::get_model_bootstrap_status;
 pub use cdg::get_cdg_frame;

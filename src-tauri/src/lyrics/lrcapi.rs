@@ -39,7 +39,7 @@ impl LrcApiClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             http: reqwest::blocking::Client::builder()
-                .user_agent("OpenKara/0.3.0")
+                .user_agent("OpenKara/0.4.0")
                 .build()
                 .expect("reqwest blocking client should build"),
         }
@@ -60,9 +60,7 @@ impl LrcApiClient {
             request = request.query(&[("album", album_name)]);
         }
 
-        let response = request
-            .send()
-            .context("failed to request timed lyrics")?;
+        let response = request.send().context("failed to request timed lyrics")?;
         let response = response
             .error_for_status()
             .context("timed lyrics provider returned a non-success response")?;
