@@ -1,6 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
+import type { WindowShellState } from "@/lib/window-shell";
 import { AppLayout } from "./AppLayout";
+
+const macNativeShellState = {
+  chromeVariant: "mac",
+  tier: "mac_native",
+  toolbarHeight: 56,
+  trafficLightInsetLeading: 78,
+  sidebarWidth: 260,
+} satisfies WindowShellState;
 
 const {
   mockPlayerState,
@@ -79,7 +88,17 @@ vi.mock("./ToastContainer", () => ({
 }));
 
 vi.mock("./WindowChrome", () => ({
-  WindowChrome: () => <div data-testid="window-chrome" />,
+  WindowChrome: ({
+    shellState,
+  }: {
+    shellState: { tier: string; trafficLightInsetLeading: number };
+  }) => (
+    <div
+      data-testid="window-chrome"
+      data-shell-tier={shellState.tier}
+      data-shell-inset={shellState.trafficLightInsetLeading}
+    />
+  ),
 }));
 
 vi.mock("@/hooks/use-animated-presence", () => ({
@@ -129,10 +148,15 @@ vi.mock("@/stores/settings-store", () => ({
 
 describe("AppLayout", () => {
   test("keeps the main window on the standard playback stage when AirPlay is active", () => {
-    const markup = renderToStaticMarkup(<AppLayout />);
+    const markup = renderToStaticMarkup(
+      <AppLayout initialWindowShellState={macNativeShellState} />,
+    );
 
     expect(markup).toContain('data-testid="playback-stage"');
     expect(markup).toContain('data-presentation="standard"');
     expect(markup).not.toContain('data-presentation="audience"');
+    expect(markup).toContain('data-window-shell-tier="mac_native"');
+    expect(markup).toContain("--window-shell-toolbar-height:56px");
+    expect(markup).toContain('data-shell-tier="mac_native"');
   });
 });

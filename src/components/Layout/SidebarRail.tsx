@@ -9,7 +9,7 @@ export function SidebarRail({ visible, children }: SidebarRailProps) {
   return (
     <div
       className={`shrink-0 overflow-hidden transition-[width] ${
-        visible ? "w-[260px]" : "w-0"
+        visible ? "w-[var(--window-shell-sidebar-width)]" : "w-0"
       }`}
       style={{
         transitionDuration: "var(--motion-duration-standard)",
@@ -17,7 +17,7 @@ export function SidebarRail({ visible, children }: SidebarRailProps) {
       }}
     >
       <div
-        className={`h-full w-[260px] transition-[opacity,transform] ${
+        className={`h-full w-[var(--window-shell-sidebar-width)] transition-[opacity,transform] ${
           visible ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0"
         }`}
         style={{

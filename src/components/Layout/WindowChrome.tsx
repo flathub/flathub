@@ -3,6 +3,7 @@ import {
   type ShortcutPlatform,
 } from "@/lib/app-shortcuts";
 import { getWindowChromeVariant } from "@/lib/window-chrome";
+import type { WindowShellState } from "@/lib/window-shell";
 import { DesktopTitlebar } from "./DesktopTitlebar";
 import { Toolbar } from "./Toolbar";
 
@@ -12,6 +13,7 @@ interface WindowChromeProps {
   onToggleSettings: () => void;
   onToggleSidebar: () => void;
   settingsOpen: boolean;
+  shellState?: WindowShellState;
   sidebarVisible: boolean;
   platform?: ShortcutPlatform;
 }
@@ -22,14 +24,19 @@ export function WindowChrome({
   onToggleSettings,
   onToggleSidebar,
   platform = getShortcutPlatform(),
+  shellState,
   settingsOpen,
   sidebarVisible,
 }: WindowChromeProps) {
-  if (getWindowChromeVariant(platform) === "mac") {
+  const chromeVariant =
+    shellState?.chromeVariant ?? getWindowChromeVariant(platform);
+
+  if (chromeVariant === "mac") {
     return (
       <Toolbar
         onToggleSidebar={onToggleSidebar}
         onToggleSettings={onToggleSettings}
+        shellState={shellState}
         settingsOpen={settingsOpen}
         sidebarVisible={sidebarVisible}
       />

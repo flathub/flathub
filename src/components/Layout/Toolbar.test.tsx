@@ -1,7 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
+import type { WindowShellState } from "@/lib/window-shell";
 import { Toolbar } from "./Toolbar";
+
+const macNativeShellState = {
+  chromeVariant: "mac",
+  tier: "mac_native",
+  toolbarHeight: 56,
+  trafficLightInsetLeading: 78,
+  sidebarWidth: 260,
+} satisfies WindowShellState;
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -84,6 +93,7 @@ describe("Toolbar drag region", () => {
       <Toolbar
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
+        shellState={macNativeShellState}
         settingsOpen={false}
         sidebarVisible
       />,
@@ -91,5 +101,36 @@ describe("Toolbar drag region", () => {
 
     expect(markup).toContain('data-airplay-button="true"');
     expect(markup).toContain('aria-label="player.selectMonitor"');
+  });
+
+  test("exposes the native shell tier and traffic-light spacing through markup", () => {
+    const markup = renderToStaticMarkup(
+      <Toolbar
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        shellState={macNativeShellState}
+        settingsOpen={false}
+        sidebarVisible
+      />,
+    );
+
+    expect(markup).toContain('data-window-shell-tier="mac_native"');
+    expect(markup).toContain("--window-shell-leading-controls-space:78px");
+  });
+
+  test("can omit the leading sidebar/import controls for native split shells", () => {
+    const markup = renderToStaticMarkup(
+      <Toolbar
+        hideLeadingShellControls
+        onToggleSidebar={() => {}}
+        onToggleSettings={() => {}}
+        shellState={macNativeShellState}
+        settingsOpen={false}
+        sidebarVisible
+      />,
+    );
+
+    expect(markup).not.toContain('aria-label="toolbar.toggleSidebar"');
+    expect(markup).not.toContain('aria-label="toolbar.import"');
   });
 });
