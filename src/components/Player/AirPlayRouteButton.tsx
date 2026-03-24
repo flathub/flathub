@@ -31,24 +31,37 @@ export function AirPlayRouteButton({
       return;
     }
 
+    const host = hostRef.current;
+
     const syncBounds = () => {
-      const host = hostRef.current;
-      if (!host) {
+      if (!hostRef.current) {
         return;
       }
 
-      void syncAirPlayRoutePicker(buildHostBounds(host)).catch(() => {
-        // The native control is auxiliary to local playback. If mount/update
-        // fails transiently, keep the toolbar responsive instead of surfacing
-        // a blocking error.
-      });
+      void syncAirPlayRoutePicker(buildHostBounds(hostRef.current)).catch(
+        () => {
+          // The native control is auxiliary to local playback. If mount/update
+          // fails transiently, keep the toolbar responsive instead of surfacing
+          // a blocking error.
+        },
+      );
     };
 
     syncBounds();
     window.addEventListener("resize", syncBounds);
 
+    // RATIONALE: The native AVRoutePickerView is mounted outside the DOM. When
+    // the floating shell reflows without a window resize, we must re-publish the
+    // host bounds or the visible click target drifts away from the toolbar slot.
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(syncBounds);
+    resizeObserver?.observe(host);
+
     return () => {
       window.removeEventListener("resize", syncBounds);
+      resizeObserver?.disconnect();
       void syncAirPlayRoutePicker(null).catch(() => {
         // Best effort teardown only.
       });

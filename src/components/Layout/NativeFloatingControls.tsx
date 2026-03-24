@@ -7,6 +7,12 @@ import { MonitorPicker } from "@/components/Player/MonitorPicker";
 import { useLayoutStore } from "@/stores/layout-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
+const nativeUtilityButtonClassName =
+  "motion-icon-button flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[14px] text-[var(--color-text-dim)] hover:bg-white/6 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30";
+
+const nativeUtilityControlHostClassName =
+  "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[14px]";
+
 export function NativeFloatingControls() {
   const { t } = useTranslation();
   const [monitorPickerOpen, setMonitorPickerOpen] = useState(false);
@@ -42,8 +48,8 @@ export function NativeFloatingControls() {
         className="pointer-events-none absolute right-4 top-4 z-20"
         data-native-floating-controls="true"
       >
-        <div className="pointer-events-auto flex items-center gap-2 rounded-[18px] border border-[var(--native-chrome-border)] bg-[var(--native-chrome-bg)] px-2 py-2 shadow-[var(--native-panel-shadow)] backdrop-blur-xl">
-          <AirPlayRouteButton />
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-[18px] border border-[var(--native-chrome-border)] bg-[var(--native-chrome-bg)] px-2.5 py-2 shadow-[var(--native-panel-shadow)] backdrop-blur-xl">
+          <AirPlayRouteButton className={nativeUtilityControlHostClassName} />
           <div>
             <Tooltip label={t("player.selectMonitor")}>
               <button
@@ -51,7 +57,7 @@ export function NativeFloatingControls() {
                 type="button"
                 onClick={() => setMonitorPickerOpen((open) => !open)}
                 aria-label={t("player.selectMonitor")}
-                className={`motion-icon-button rounded-[14px] p-2.5 text-[var(--color-text-dim)] hover:bg-white/6 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
+                className={`${nativeUtilityButtonClassName} ${
                   monitorPickerOpen
                     ? "bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
                     : ""
@@ -72,7 +78,7 @@ export function NativeFloatingControls() {
               type="button"
               onClick={toggleSettings}
               aria-label={t("toolbar.settings")}
-              className={`motion-icon-button rounded-[14px] p-2.5 text-[var(--color-text-dim)] hover:bg-white/6 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
+              className={`${nativeUtilityButtonClassName} ${
                 settingsOpen
                   ? "bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
                   : ""

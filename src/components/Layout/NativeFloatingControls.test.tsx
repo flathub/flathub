@@ -2,16 +2,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { NativeFloatingControls } from "./NativeFloatingControls";
 
-const { mockLayoutState, mockSettingsState } = vi.hoisted(() => ({
-  mockLayoutState: {
-    sidebarVisible: true,
-    toggleSidebar: vi.fn(),
-  },
-  mockSettingsState: {
-    isOpen: false,
-    toggle: vi.fn(),
-  },
-}));
+const { mockLayoutState, mockSettingsState, airPlayRouteButtonProps } =
+  vi.hoisted(() => ({
+    mockLayoutState: {
+      sidebarVisible: true,
+      toggleSidebar: vi.fn(),
+    },
+    mockSettingsState: {
+      isOpen: false,
+      toggle: vi.fn(),
+    },
+    airPlayRouteButtonProps: {
+      className: undefined as string | undefined,
+    },
+  }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -34,7 +38,10 @@ vi.mock("@/components/Overlay/Tooltip", () => ({
 }));
 
 vi.mock("@/components/Player/AirPlayRouteButton", () => ({
-  AirPlayRouteButton: () => <div data-airplay-route-button="true" />,
+  AirPlayRouteButton: ({ className }: { className?: string }) => {
+    airPlayRouteButtonProps.className = className;
+    return <div data-airplay-route-button="true" data-class-name={className} />;
+  },
 }));
 
 vi.mock("@/components/Player/MonitorPicker", () => ({
@@ -42,6 +49,14 @@ vi.mock("@/components/Player/MonitorPicker", () => ({
 }));
 
 describe("NativeFloatingControls", () => {
+  test("gives the AirPlay control the same utility button footprint as its neighbors", () => {
+    renderToStaticMarkup(<NativeFloatingControls />);
+
+    expect(airPlayRouteButtonProps.className).toContain("h-[38px]");
+    expect(airPlayRouteButtonProps.className).toContain("w-[38px]");
+    expect(airPlayRouteButtonProps.className).toContain("shrink-0");
+  });
+
   test("renders the right-side floating utility group", () => {
     const markup = renderToStaticMarkup(<NativeFloatingControls />);
 

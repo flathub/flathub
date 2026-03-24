@@ -16,9 +16,9 @@ use std::{
     },
     thread,
 };
-use tauri::{AppHandle, State, WebviewWindow};
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
+use tauri::{AppHandle, State, Webview};
 
 #[cfg(target_os = "macos")]
 use std::{
@@ -684,7 +684,7 @@ mod native {
     }
 
     pub(super) fn sync_route_picker(
-        window: &WebviewWindow,
+        webview: &Webview,
         stream_root: &PathBuf,
         playlist_url: &str,
         bounds: Option<AirPlayRoutePickerBounds>,
@@ -698,23 +698,26 @@ mod native {
 
         match bounds {
             Some(bounds) => {
-                let ns_view_ptr = window
-                    .ns_view()
-                    .map_err(|error| internal_error(format!("failed to get ns_view: {error}")))?;
-
-                // SAFETY: Tauri provides the active NSView pointer for the webview window.
-                unsafe {
-                    ok_airplay_sync_route_picker(
-                        ns_view_ptr,
-                        bounds.left,
-                        bounds.top,
-                        bounds.width,
-                        bounds.height,
-                        true,
-                        stream_root.as_ptr(),
-                        playlist_url.as_ptr(),
-                    );
-                }
+                // RATIONALE: In the native split shell the DOM host lives in the
+                // current child WKWebView, not the top-level NSWindow view. Using
+                // the invoking webview keeps AppKit coordinates aligned with the
+                // DOM bounds that the frontend reports.
+                webview
+                    .with_webview(move |platform_webview| unsafe {
+                        ok_airplay_sync_route_picker(
+                            platform_webview.inner(),
+                            bounds.left,
+                            bounds.top,
+                            bounds.width,
+                            bounds.height,
+                            true,
+                            stream_root.as_ptr(),
+                            playlist_url.as_ptr(),
+                        );
+                    })
+                    .map_err(|error| {
+                        internal_error(format!("failed to get current webview ns_view: {error}"))
+                    })?;
             }
             None => {
                 // SAFETY: A null pointer with mounted=false is the bridge teardown path.
@@ -788,7 +791,7 @@ mod native {
     use super::*;
 
     pub(super) fn sync_route_picker(
-        _window: &WebviewWindow,
+        _webview: &Webview,
         _stream_root: &PathBuf,
         _playlist_url: &str,
         _bounds: Option<AirPlayRoutePickerBounds>,
@@ -814,7 +817,7 @@ mod native {
 pub fn sync_airplay_route_picker(
     state: State<'_, AppState>,
     app_handle: AppHandle,
-    window: WebviewWindow,
+    webview: Webview,
     bounds: Option<AirPlayRoutePickerBounds>,
 ) -> CommandResult<()> {
     remember_runtime_handles(&app_handle, &state.airplay_local_output_suppressed);
@@ -824,7 +827,7 @@ pub fn sync_airplay_route_picker(
         state.airplay_stream_generation.clone(),
     );
     let (stream_root, playlist_url) = ensure_stream_server(&state)?;
-    native::sync_route_picker(&window, &stream_root, &playlist_url, bounds)
+    native::sync_route_picker(&webview, &stream_root, &playlist_url, bounds)
 }
 
 #[tauri::command]
@@ -1142,6 +1145,16 @@ mod tests {
             airplay_audience_playlist_url("http://192.168.1.8:8080"),
             "http://192.168.1.8:8080/audience-video.m3u8"
         );
+    }
+
+    #[test]
+    fn sync_airplay_route_picker_command_uses_current_webview_context() {
+        let _: fn(
+            State<'_, AppState>,
+            AppHandle,
+            tauri::Webview,
+            Option<AirPlayRoutePickerBounds>,
+        ) -> CommandResult<()> = sync_airplay_route_picker;
     }
 }
 
