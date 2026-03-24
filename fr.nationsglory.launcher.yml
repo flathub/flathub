@@ -1,0 +1,78 @@
+app-id: fr.nationsglory.launcher
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: nationsglory
+separate-locales: false
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --device=dri
+  - --socket=x11
+  - --socket=pulseaudio
+  - --persist=.config/.NationsGlory
+  - --persist=.config/NationsGlory
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+modules:
+  - shared-modules/squashfs-tools/squashfs-tools.json
+
+  - name: xrandr
+    sources:
+      - sha256: 980befa14b48de2fa74dc07bbb22f746acfd12e1f9dbd539eab9a3c9b434d667
+        type: archive
+        url: https://www.x.org/archive/individual/app/xrandr-1.5.3.tar.gz
+
+  - name: nationsglory
+    buildsystem: simple
+    sources:
+      - type: extra-data
+        url: https://download.nationsglory.fr/downloads/NationsGlory-5.0.105.AppImage
+        sha256: b8d46561b28ca7db7bd5d856ebe273fe548a3a505fde7ed828984c8659e7a45d
+        size: 105970290
+        filename: nationsglory.appimage
+        x-checker-data: 
+          type: rotating-url
+          url: https://nationsglory.fr/download?linux
+
+      # Solution taken from here : 
+      # https://github.com/flathub/io.httpie.Httpie/blob/1e516abf5002dcbe92483e0c946133efa57a358f/io.httpie.Httpie.yaml#L66
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          # Extract AppImage
+          - set -euo pipefail
+          - chmod +x nationsglory.appimage
+          - "offset=$(grep -aob -- 'hsqs' nationsglory.appimage | tail -n1 | cut -d: -f1)"
+          - unsquashfs -o $offset nationsglory.appimage
+          - mv squashfs-root nationsglory
+          - rm nationsglory.appimage
+          - mv ./nationsglory/nationsglory nationsglory/nationsglory-bin 
+          - cp /app/nationsglory-wrapper nationsglory/nationsglory
+
+      - type: file
+        path: nationsglory-wrapper
+
+      - type: file
+        path: nationsglory
+
+      - type: file
+        path: fr.nationsglory.desktop
+
+      - type: file
+        path: icons/recube.png
+
+      - type: file
+        path: fr.nationsglory.launcher.metainfo.xml
+
+    build-commands:
+      - install -Dm644 fr.nationsglory.launcher.metainfo.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+
+      - install -Dm755 apply_extra ${FLATPAK_DEST}/bin/apply_extra
+
+      - install nationsglory-wrapper "${FLATPAK_DEST}/nationsglory-wrapper"
+      - install nationsglory "${FLATPAK_DEST}/bin/nationsglory"
+
+      - install -Dm644 fr.nationsglory.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 recube.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
