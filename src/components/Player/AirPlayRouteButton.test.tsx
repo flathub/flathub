@@ -81,9 +81,15 @@ describe("AirPlayRouteButton", () => {
         toJSON: () => ({}),
       }),
     });
+
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
   });
 
-  test("mounts the native route picker inside the toolbar on macOS", async () => {
+  test("mounts the native route picker with screen bounds on macOS", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);

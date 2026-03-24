@@ -33,7 +33,7 @@ vi.mock("@/components/Player/MonitorPicker", () => ({
 }));
 
 describe("WindowChrome", () => {
-  test("renders the existing toolbar on macOS", () => {
+  test("renders nothing on macOS (chrome lives in AppLayout + Sidebar)", () => {
     const markup = renderToStaticMarkup(
       <WindowChrome
         platform="mac"
@@ -44,7 +44,7 @@ describe("WindowChrome", () => {
       />,
     );
 
-    expect(markup).toContain("data-tauri-drag-region");
+    expect(markup).toBe("");
     expect(markup).not.toContain('aria-label="windowChrome.minimize"');
     expect(markup).not.toContain("windowChrome.file");
   });

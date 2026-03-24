@@ -92,6 +92,10 @@ vi.mock("@/hooks/use-animated-presence", () => ({
 
 vi.mock("@/lib/app-shortcuts", () => ({
   getShortcutPlatform: () => "mac",
+  getShortcutDisplay: () => "",
+  APP_SHORTCUTS: {
+    toggleSettings: { id: "settings.toggle" },
+  },
 }));
 
 vi.mock("@/lib/window-chrome", () => ({

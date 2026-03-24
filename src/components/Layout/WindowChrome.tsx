@@ -4,7 +4,6 @@ import {
 } from "@/lib/app-shortcuts";
 import { getWindowChromeVariant } from "@/lib/window-chrome";
 import { DesktopTitlebar } from "./DesktopTitlebar";
-import { Toolbar } from "./Toolbar";
 
 interface WindowChromeProps {
   onImportMenuAction?: () => void | Promise<void>;
@@ -26,14 +25,7 @@ export function WindowChrome({
   sidebarVisible,
 }: WindowChromeProps) {
   if (getWindowChromeVariant(platform) === "mac") {
-    return (
-      <Toolbar
-        onToggleSidebar={onToggleSidebar}
-        onToggleSettings={onToggleSettings}
-        settingsOpen={settingsOpen}
-        sidebarVisible={sidebarVisible}
-      />
-    );
+    return null;
   }
 
   return (

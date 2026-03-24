@@ -1841,7 +1841,10 @@ static NSData *OKResampleStereoPCM(const float *samples, NSUInteger frameCount, 
     });
 
     CGFloat hostHeight = NSHeight(rootView.bounds);
-    NSRect frame = NSMakeRect(left, hostHeight - top - height, width, height);
+    // DOM coordinates are top-origin; AppKit is bottom-origin unless the view is flipped
+    // (WKWebView hosting views are typically flipped).
+    CGFloat originY = rootView.isFlipped ? top : (hostHeight - top - height);
+    NSRect frame = NSMakeRect(left, originY, width, height);
 
     if (self.routePickerView == nil) {
         self.routePickerView = [[AVRoutePickerView alloc] initWithFrame:frame];

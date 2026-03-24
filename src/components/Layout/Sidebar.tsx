@@ -1,17 +1,30 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Folder, CheckCircle2, UploadCloud, Layers } from "lucide-react";
+import { Folder, CheckCircle2, Layers, PanelLeft, Plus } from "lucide-react";
 import { ConfirmationDialog } from "@/components/Settings/ConfirmationDialog";
 import { SearchBox } from "@/components/Library/SearchBox";
 import { SongList } from "@/components/Library/SongList";
 import { ImportButton } from "@/components/Library/ImportButton";
+import { Tooltip } from "@/components/Overlay/Tooltip";
 import { songCanBeSeparated } from "@/lib/song-media";
 import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 
-export function Sidebar() {
+export interface SidebarProps {
+  onToggleSidebar: () => void;
+  sidebarVisible: boolean;
+  /** macOS: header row aligns with traffic lights; Windows/Linux omit. */
+  integratedWindowHeader: boolean;
+}
+
+export function Sidebar({
+  onToggleSidebar,
+  sidebarVisible,
+  integratedWindowHeader,
+}: SidebarProps) {
   const { t } = useTranslation();
   const songs = useLibraryStore((s) => s.songs);
   const filter = useLibraryStore((s) => s.filter);
@@ -64,11 +77,53 @@ export function Sidebar() {
     batchSeparation != null &&
     batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
+  const filterSelected =
+    "bg-[var(--color-sidebar-filter-selected-bg)] text-[var(--color-sidebar-filter-selected-fg)] shadow-[var(--color-sidebar-filter-selected-shadow)]";
+  const filterIdle =
+    "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]";
+
   return (
     <div className="app-panel-surface flex h-full w-[260px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)]">
-      <div className="shrink-0 px-3 pb-3 pt-3">
-        <SearchBox />
-      </div>
+      {integratedWindowHeader ? (
+        <>
+          <div className="flex shrink-0 items-center justify-between gap-2 pl-[72px] pr-3 pt-2 pb-1">
+            <Tooltip
+              label={t("toolbar.toggleSidebar")}
+              shortcut={getShortcutDisplay(APP_SHORTCUTS.toggleSidebar)}
+            >
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                aria-label={t("toolbar.toggleSidebar")}
+                className={`motion-icon-button rounded-full p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
+                  sidebarVisible
+                    ? "bg-[color-mix(in_srgb,var(--color-hover)_86%,transparent)] text-white"
+                    : "text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white"
+                }`}
+              >
+                <PanelLeft size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip
+              label={t("toolbar.import")}
+              shortcut={getShortcutDisplay(APP_SHORTCUTS.importFiles)}
+            >
+              <ImportButton ariaLabel={t("toolbar.import")}>
+                <span className="motion-icon-button inline-flex rounded-full p-2 text-[var(--color-text-dim)] hover:bg-white/4 hover:text-white">
+                  <Plus size={16} strokeWidth={2} />
+                </span>
+              </ImportButton>
+            </Tooltip>
+          </div>
+          <div className="shrink-0 px-3 pb-3 pt-1">
+            <SearchBox />
+          </div>
+        </>
+      ) : (
+        <div className="shrink-0 px-3 pb-3 pt-3">
+          <SearchBox />
+        </div>
+      )}
 
       {/* Filter tabs */}
       <div className="shrink-0 space-y-0.5 px-2">
@@ -76,11 +131,10 @@ export function Sidebar() {
           {t("sidebar.library")}
         </div>
         <button
+          type="button"
           onClick={() => setFilter("all")}
           className={`motion-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
-            filter === "all"
-              ? "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
-              : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
+            filter === "all" ? filterSelected : filterIdle
           }`}
         >
           <span className="flex items-center gap-2">
@@ -97,11 +151,10 @@ export function Sidebar() {
           </span>
         </button>
         <button
+          type="button"
           onClick={() => setFilter("separated")}
           className={`motion-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 ${
-            filter === "separated"
-              ? "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
-              : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
+            filter === "separated" ? filterSelected : filterIdle
           }`}
         >
           <span className="flex items-center gap-2">
@@ -116,14 +169,8 @@ export function Sidebar() {
 
       {/* Song list */}
       <div className="mt-4 flex flex-1 flex-col overflow-hidden px-2">
-        <div className="flex items-center justify-between px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
-          <span>{t("sidebar.localMusic")}</span>
-          <ImportButton>
-            <UploadCloud
-              size={12}
-              className="motion-icon-button rounded p-1 hover:bg-[var(--color-ghost-hover)] hover:text-white"
-            />
-          </ImportButton>
+        <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
+          {t("sidebar.localMusic")}
         </div>
         <SongList />
       </div>
@@ -154,6 +201,7 @@ export function Sidebar() {
             </div>
           ) : needsUpgrade ? (
             <button
+              type="button"
               onClick={() => setShowUpgradeConfirm(true)}
               className="motion-surface flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white"
             >
@@ -162,6 +210,7 @@ export function Sidebar() {
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleSeparateAll}
               disabled={separableSongs.length === 0}
               className="motion-surface flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white disabled:opacity-40"

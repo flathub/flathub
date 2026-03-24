@@ -44,6 +44,10 @@ vi.mock("@/stores/library-store", () => ({
     selector(mockLibraryState),
 }));
 
+vi.mock("@/lib/app-shortcuts", () => ({
+  getShortcutPlatform: () => "windows" as const,
+}));
+
 vi.mock("@/components/Cdg/CdgCanvas", () => ({
   CdgCanvas: () => <div data-testid="cdg-canvas">CDG</div>,
 }));

@@ -72,9 +72,24 @@ vi.mock("@/lib/errors", () => ({
   notifyError: vi.fn(),
 }));
 
+vi.mock("@/components/Overlay/Tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock("@/lib/app-shortcuts", () => ({
+  APP_SHORTCUTS: {},
+  getShortcutDisplay: () => "",
+}));
+
+const defaultSidebarProps = {
+  onToggleSidebar: vi.fn(),
+  sidebarVisible: true,
+  integratedWindowHeader: false,
+};
+
 describe("Sidebar", () => {
   test("hides separate-all controls when the library has only media-g songs", () => {
-    const markup = renderToStaticMarkup(<Sidebar />);
+    const markup = renderToStaticMarkup(<Sidebar {...defaultSidebarProps} />);
 
     expect(markup).not.toContain("sidebar.separateAll");
     expect(markup).not.toContain("sidebar.upgradeAll");
@@ -98,7 +113,7 @@ describe("Sidebar", () => {
       },
     ] as Song[];
 
-    const markup = renderToStaticMarkup(<Sidebar />);
+    const markup = renderToStaticMarkup(<Sidebar {...defaultSidebarProps} />);
 
     expect(markup).not.toContain("sidebar.separateAll");
     expect(markup).not.toContain("sidebar.upgradeAll");

@@ -1,6 +1,6 @@
 # Presentation Output Contract
 
-**Goal:** 固定 macOS 原生 AirPlay audience 输出的前后端契约：顶部独立 AirPlay 按钮挂载系统原生 `AVRoutePickerView`，backend 通过 `AVPlayer + LAN-reachable HLS` 输出 `歌曲音频 + 歌词/CDG`，而不是把电视先当成系统显示器来选择。
+**Goal:** 固定 macOS 原生 AirPlay audience 输出的前后端契约：主窗口内独立 AirPlay 按钮挂载系统原生 `AVRoutePickerView`，backend 通过 `AVPlayer + LAN-reachable HLS` 输出 `歌曲音频 + 歌词/CDG`，而不是把电视先当成系统显示器来选择。
 
 ## Scope
 
@@ -13,7 +13,7 @@
 ## Frontend behavior
 
 1. `MonitorPicker` 只继续列出 `availableMonitors()` 返回的本地显示器
-2. macOS 下，顶部独立 AirPlay 按钮挂载原生 AirPlay 控件宿主位
+2. macOS 下，主内容区右上角（工具胶囊内）独立 AirPlay 按钮挂载原生 AirPlay 控件宿主位
 3. 宿主位出现时，前端调用 `sync_airplay_route_picker(bounds)`；宿主位销毁时调用 `sync_airplay_route_picker(null)`
 4. 前端调用 `sync_airplay_audience_state(payload)` 同步当前歌曲/歌词配置；backend 自己负责运行时播放位置、歌词高亮和 CDG cadence
 5. 纯文本歌词页通过 `step_airplay_plain_text_page({ direction })` 交给 native bridge 翻页，不再依赖主窗口滚动进度；翻页必须直接作用于当前原生渲染状态，不能通过刷新 stream generation 来换页，否则会造成可听断音

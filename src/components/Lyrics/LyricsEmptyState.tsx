@@ -6,10 +6,13 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 
 interface LyricsEmptyStateProps {
   presentation?: "standard" | "audience";
+  /** When true, outer area passes pointer events through for window dragging (macOS). */
+  pointerEventsCoexistWithDragRegion?: boolean;
 }
 
 export function LyricsEmptyState({
   presentation = "standard",
+  pointerEventsCoexistWithDragRegion = false,
 }: LyricsEmptyStateProps) {
   const { t } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
@@ -18,7 +21,9 @@ export function LyricsEmptyState({
   const isAudience = presentation === "audience";
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4">
+    <div
+      className={`flex flex-1 flex-col items-center justify-center gap-4 ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
+    >
       <p className="text-[14px] text-[var(--color-text-dimmer)]">
         {t("lyrics.noLyrics")}
       </p>
@@ -28,8 +33,9 @@ export function LyricsEmptyState({
               surface. Reintroducing the add-lyrics CTA here would recreate the
               oversized background-info window we are intentionally removing. */}
           <button
+            type="button"
             onClick={() => setEditOpen(true)}
-            className="motion-surface rounded-md bg-[var(--color-hover)] px-4 py-2 text-[13px] text-[var(--color-control-primary)] hover:bg-[var(--color-active)]"
+            className={`motion-surface rounded-md bg-[var(--color-hover)] px-4 py-2 text-[13px] text-[var(--color-control-primary)] hover:bg-[var(--color-active)] ${pointerEventsCoexistWithDragRegion ? "pointer-events-auto" : ""}`}
           >
             {t("lyrics.addLyrics")}
           </button>

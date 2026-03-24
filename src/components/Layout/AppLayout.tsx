@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { SidebarRail } from "./SidebarRail";
+import { MacMainUtilityPill } from "./MacMainUtilityPill";
 import { WindowChrome } from "./WindowChrome";
 import { ToastContainer } from "./ToastContainer";
 import { PlaybackBar } from "@/components/Player/PlaybackBar";
@@ -55,29 +56,60 @@ export function AppLayout() {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <SidebarRail visible={sidebarVisible}>
-          <Sidebar />
+          <Sidebar
+            onToggleSidebar={toggleSidebar}
+            sidebarVisible={sidebarVisible}
+            integratedWindowHeader={windowChromeVariant === "mac"}
+          />
         </SidebarRail>
 
         <div
           className={`flex min-w-0 flex-1 flex-col ${settingsOpen ? "bg-[var(--color-surface-muted)]" : "bg-[var(--color-surface)]"}`}
         >
           <div className="relative flex min-h-0 flex-1 overflow-hidden">
+            {windowChromeVariant === "mac" && !settingsOpen ? (
+              <div
+                className="absolute inset-0 z-0"
+                data-tauri-drag-region
+                aria-hidden
+              />
+            ) : null}
             {settingsOpen ? (
               <SettingsOverlay />
             ) : (
               <>
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                  <ModelBootstrapBanner />
-                  <PlaybackStage />
-                </div>
-                {queueSidebar.shouldRender && (
+                <div
+                  className={`relative z-10 flex min-h-0 min-w-0 flex-1 overflow-hidden ${windowChromeVariant === "mac" ? "pointer-events-none" : ""}`}
+                >
                   <div
-                    className={`h-full ${queueSidebar.className}`}
-                    onAnimationEnd={queueSidebar.onAnimationEnd}
+                    className={`flex min-w-0 flex-1 flex-col overflow-hidden ${windowChromeVariant === "mac" ? "pointer-events-none" : ""}`}
                   >
-                    <QueuePanel />
+                    <div
+                      className={
+                        windowChromeVariant === "mac"
+                          ? "pointer-events-auto shrink-0"
+                          : undefined
+                      }
+                    >
+                      <ModelBootstrapBanner />
+                    </div>
+                    <PlaybackStage />
                   </div>
-                )}
+                  {queueSidebar.shouldRender && (
+                    <div
+                      className={`pointer-events-auto h-full ${queueSidebar.className}`}
+                      onAnimationEnd={queueSidebar.onAnimationEnd}
+                    >
+                      <QueuePanel />
+                    </div>
+                  )}
+                </div>
+                {windowChromeVariant === "mac" ? (
+                  <MacMainUtilityPill
+                    onToggleSettings={toggleSettings}
+                    settingsOpen={settingsOpen}
+                  />
+                ) : null}
               </>
             )}
           </div>

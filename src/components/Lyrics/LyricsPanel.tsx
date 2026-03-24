@@ -30,6 +30,8 @@ import {
 
 interface LyricsPanelProps {
   presentation?: "standard" | "audience";
+  /** When true, lyrics chrome cooperates with a full-window `data-tauri-drag-region` underlay (macOS). */
+  pointerEventsCoexistWithDragRegion?: boolean;
 }
 
 function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
@@ -39,7 +41,10 @@ function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
   );
 }
 
-export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
+export function LyricsPanel({
+  presentation = "standard",
+  pointerEventsCoexistWithDragRegion = false,
+}: LyricsPanelProps) {
   const { t } = useTranslation();
   const lines = useLyricsStore((s) => s.lines);
   const activeLineIndex = useLyricsStore((s) => s.activeLineIndex);
@@ -283,7 +288,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
 
   if (!songId) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div
+        className={`flex flex-1 items-center justify-center ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
+      >
         <p
           className="text-[var(--color-text-dimmer)]"
           style={
@@ -303,7 +310,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div
+        className={`flex flex-1 items-center justify-center ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
+      >
         <p
           className="text-[var(--color-text-dim)]"
           style={
@@ -322,15 +331,22 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   }
 
   if (lines.length === 0) {
-    return <LyricsEmptyState presentation={presentation} />;
+    return (
+      <LyricsEmptyState
+        presentation={presentation}
+        pointerEventsCoexistWithDragRegion={pointerEventsCoexistWithDragRegion}
+      />
+    );
   }
 
   return (
-    <div className="group relative flex flex-1 flex-col items-center overflow-hidden">
+    <div
+      className={`group relative flex flex-1 flex-col items-center overflow-hidden ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
+    >
       {songId && !isAudience ? (
         <>
           <div
-            className="contextual-reveal absolute right-4 top-4 z-10"
+            className="contextual-reveal pointer-events-auto absolute right-4 top-4 z-10"
             data-visible={utilityControlsPinned}
           >
             <Tooltip label={t("lyrics.editTooltip")}>
@@ -416,7 +432,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
         data-testid="lyrics-scroll-viewport"
         className={`custom-scrollbar flex w-full flex-1 overflow-y-auto animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)] ${
           isAudience ? "" : "px-12 py-8"
-        }`}
+        } ${pointerEventsCoexistWithDragRegion ? "pointer-events-auto" : ""}`}
         style={
           isAudience
             ? {

@@ -65,26 +65,37 @@ export function AirPlayRouteButton({
       return;
     }
 
+    const hostEl = hostRef.current;
+
     const syncBounds = () => {
       const host = hostRef.current;
       if (!host) {
         return;
       }
 
-      void syncAirPlayRoutePicker(buildHostBounds(host)).catch(() => {
-        // The native control is auxiliary to local playback. If mount/update
-        // fails transiently, keep the toolbar responsive instead of surfacing
-        // a blocking error.
+      void syncAirPlayRoutePicker(buildHostBounds(host)).catch((err) => {
+        // RATIONALE: The native control is auxiliary to local playback. Transient
+        // mount/update failures must not surface as blocking UI; log so operators
+        // can diagnose without leaving the toolbar unresponsive.
+        console.error("syncAirPlayRoutePicker failed:", err);
       });
     };
 
     syncBounds();
     window.addEventListener("resize", syncBounds);
 
+    const resizeObserver = new ResizeObserver(() => {
+      syncBounds();
+    });
+    resizeObserver.observe(hostEl);
+
     return () => {
       window.removeEventListener("resize", syncBounds);
-      void syncAirPlayRoutePicker(null).catch(() => {
-        // Best effort teardown only.
+      resizeObserver.disconnect();
+      void syncAirPlayRoutePicker(null).catch((err) => {
+        // RATIONALE: Teardown is best-effort; a failed unpick should not prevent
+        // unmount or obscure the underlying issue in devtools.
+        console.error("syncAirPlayRoutePicker teardown failed:", err);
       });
     };
   }, [platform]);
@@ -96,7 +107,7 @@ export function AirPlayRouteButton({
   return (
     <Tooltip label={t("player.airPlayOutput")}>
       <div
-        className={`relative overflow-hidden border transition-colors ${className} ${
+        className={`relative border transition-colors ${className} ${
           isActive
             ? "border-[color-mix(in_srgb,var(--color-accent)_42%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
             : "border-transparent bg-transparent"
