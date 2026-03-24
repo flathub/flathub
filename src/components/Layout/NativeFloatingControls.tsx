@@ -43,7 +43,7 @@ export function NativeFloatingControls() {
         data-native-floating-controls="true"
       >
         <div className="pointer-events-auto flex items-center gap-2 rounded-[18px] border border-[var(--native-chrome-border)] bg-[var(--native-chrome-bg)] px-2 py-2 shadow-[var(--native-panel-shadow)] backdrop-blur-xl">
-          <AirPlayRouteButton className="h-10 w-10 rounded-[14px]" />
+          <AirPlayRouteButton />
           <div>
             <Tooltip label={t("player.selectMonitor")}>
               <button

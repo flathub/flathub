@@ -224,9 +224,19 @@ bool ok_window_shell_configure_main_window(
         window.titleVisibility = NSWindowTitleHidden;
         window.titlebarAppearsTransparent = YES;
         window.tabbingMode = NSWindowTabbingModeDisallowed;
-        window.toolbarStyle = tier_tag == OKWindowShellTierMacNative
-                                  ? NSWindowToolbarStyleUnified
-                                  : NSWindowToolbarStyleUnifiedCompact;
+
+        // RATIONALE: NSWindowToolbarStyleUnified inflates the titlebar height
+        // even without a toolbar, creating the visual band that the native
+        // shell design explicitly avoids.  Only the legacy tier needs a
+        // toolbar style (UnifiedCompact) for its web-rendered toolbar.
+        if (tier_tag != OKWindowShellTierMacNative) {
+            window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+        }
+
+        if (tier_tag == OKWindowShellTierMacNative) {
+            window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+        }
+
         window.backgroundColor = [NSColor windowBackgroundColor];
 
         NSWindowStyleMask styleMask = [window styleMask];

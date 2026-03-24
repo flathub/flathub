@@ -33,29 +33,27 @@ export function SidebarWebviewApp({
 
   const header = nativeShell ? (
     <div
-      className="flex items-center justify-between gap-3"
+      className="flex h-[var(--window-shell-toolbar-height)] items-center justify-between gap-3 pr-2"
       data-native-sidebar-header="true"
       data-native-sidebar-header-layout="split"
       style={{
         paddingInlineStart: "var(--window-shell-leading-controls-space)",
       }}
     >
-      <div className="flex items-center rounded-[18px] border border-[var(--native-chrome-border)] bg-[var(--native-chrome-bg)] px-1.5 py-1 shadow-[var(--native-panel-shadow)]">
-        <Tooltip label={t("toolbar.toggleSidebar")}>
-          <button
-            onClick={toggleSidebar}
-            aria-label={t("toolbar.toggleSidebar")}
-            className="motion-icon-button rounded-[12px] p-2 text-[var(--color-control-primary)] hover:bg-white/6"
-          >
-            <PanelLeft size={16} />
-          </button>
-        </Tooltip>
-      </div>
+      <Tooltip label={t("toolbar.toggleSidebar")}>
+        <button
+          onClick={toggleSidebar}
+          aria-label={t("toolbar.toggleSidebar")}
+          className="motion-icon-button rounded-xl p-2 text-[var(--color-control-primary)] hover:bg-white/6"
+        >
+          <PanelLeft size={16} />
+        </button>
+      </Tooltip>
 
       <Tooltip label={t("toolbar.import")}>
         <ImportButton ariaLabel={t("toolbar.import")}>
-          <span className="motion-surface flex items-center justify-center rounded-[16px] border border-[var(--native-chrome-border)] bg-[var(--native-chrome-bg)] p-2.5 text-[var(--color-control-primary)] shadow-[var(--native-panel-shadow)] hover:bg-white/8 hover:text-white">
-            <Plus size={14} />
+          <span className="motion-surface flex items-center justify-center rounded-xl p-2 text-[var(--color-control-primary)] hover:bg-white/8 hover:text-white">
+            <Plus size={16} />
           </span>
         </ImportButton>
       </Tooltip>
