@@ -85,12 +85,6 @@ vi.mock("@/lib/app-shortcuts", () => ({
   getShortcutDisplay: () => "",
 }));
 
-const defaultSidebarProps = {
-  onToggleSidebar: vi.fn(),
-  sidebarVisible: true,
-  integratedWindowHeader: false,
-};
-
 describe("Sidebar", () => {
   test("does not render a duplicate import icon beside the local music heading", () => {
     const markup = renderToStaticMarkup(<Sidebar />);
@@ -99,7 +93,7 @@ describe("Sidebar", () => {
   });
 
   test("hides separate-all controls when the library has only media-g songs", () => {
-    const markup = renderToStaticMarkup(<Sidebar {...defaultSidebarProps} />);
+    const markup = renderToStaticMarkup(<Sidebar />);
 
     expect(markup).not.toContain("sidebar.separateAll");
     expect(markup).not.toContain("sidebar.upgradeAll");
@@ -123,7 +117,7 @@ describe("Sidebar", () => {
       },
     ] as Song[];
 
-    const markup = renderToStaticMarkup(<Sidebar {...defaultSidebarProps} />);
+    const markup = renderToStaticMarkup(<Sidebar />);
 
     expect(markup).not.toContain("sidebar.separateAll");
     expect(markup).not.toContain("sidebar.upgradeAll");

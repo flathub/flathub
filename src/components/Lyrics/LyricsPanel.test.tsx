@@ -132,9 +132,7 @@ describe("LyricsPanel contextual reveal", () => {
   test("renders utility chrome in an overlay layer without layout controls at rest", () => {
     const markup = renderToStaticMarkup(<LyricsPanel />);
 
-    expect(markup).toContain(
-      "contextual-reveal pointer-events-auto absolute right-4 top-4",
-    );
+    expect(markup).toContain("contextual-reveal absolute right-4 top-4");
     expect(markup).toContain("absolute inset-x-0 bottom-0");
     expect(markup).not.toContain('data-visible="true"');
   });
