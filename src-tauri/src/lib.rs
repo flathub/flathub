@@ -15,6 +15,7 @@ pub mod perf;
 pub mod separator;
 pub mod services;
 pub mod smoke;
+mod window_shell;
 use crate::audio::playback::PlaybackController;
 use crate::library_root::LibraryRoot;
 use crate::separator::{model::LoadedModel, model_cache::ModelCache};
@@ -189,6 +190,10 @@ pub fn run() {
             commands::settings::set_language,
             commands::settings::set_hide_batch_separate,
             commands::settings::set_lyrics_font_step,
+            commands::settings::set_macos_shell_mode,
+            commands::settings::restart_app,
+            commands::window_shell::get_window_shell_state,
+            commands::window_shell::set_native_sidebar_visibility,
             commands::bootstrap::download_model,
             commands::bootstrap::delete_model,
             commands::bootstrap::get_model_status

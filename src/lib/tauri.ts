@@ -14,12 +14,14 @@ import type {
   ImportSongsResult,
   LyricsPayload,
   ModelBootstrapStatusSnapshot,
+  MacOsShellMode,
   ModelStatusSnapshot,
   PlaybackStateSnapshot,
   SeparationStatusSnapshot,
   StemName,
   Song,
   SongProperties,
+  WindowShellStateSnapshot,
 } from "@/types/ipc";
 
 // ─── Library Setup ───────────────────────────────────────
@@ -204,6 +206,14 @@ export function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_settings");
 }
 
+export function getWindowShellState(): Promise<WindowShellStateSnapshot> {
+  return invoke<WindowShellStateSnapshot>("get_window_shell_state");
+}
+
+export function setNativeSidebarVisibility(visible: boolean): Promise<void> {
+  return invoke<void>("set_native_sidebar_visibility", { visible });
+}
+
 export function setStemMode(mode: string): Promise<AppSettings> {
   return invoke<AppSettings>("set_stem_mode", { mode });
 }
@@ -236,6 +246,14 @@ export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
 
 export function setLyricsFontStep(step: number): Promise<AppSettings> {
   return invoke<AppSettings>("set_lyrics_font_step", { step });
+}
+
+export function setMacOsShellMode(mode: MacOsShellMode): Promise<AppSettings> {
+  return invoke<AppSettings>("set_macos_shell_mode", { mode });
+}
+
+export function restartApp(): Promise<void> {
+  return invoke<void>("restart_app");
 }
 
 export function upgradeToFourStem(

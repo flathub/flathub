@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { PlaybackStage } from "./PlaybackStage";
+import type { Song } from "@/types/ipc";
 
 const { mockCdgState, mockPlayerState, mockLibraryState } = vi.hoisted(() => ({
   mockCdgState: { hasCdg: false },
@@ -25,7 +26,7 @@ const { mockCdgState, mockPlayerState, mockLibraryState } = vi.hoisted(() => ({
         imported_at: 0,
         original_ext: "mp3",
       },
-    ],
+    ] as Song[],
   },
 }));
 
@@ -44,8 +45,8 @@ vi.mock("@/stores/library-store", () => ({
     selector(mockLibraryState),
 }));
 
-vi.mock("@/lib/app-shortcuts", () => ({
-  getShortcutPlatform: () => "windows" as const,
+vi.mock("@/lib/cover-art", () => ({
+  useCoverArtUrl: () => "blob:stage-cover",
 }));
 
 vi.mock("@/components/Cdg/CdgCanvas", () => ({
@@ -71,5 +72,35 @@ describe("PlaybackStage", () => {
     );
 
     expect(markup).toContain('style="padding-bottom:144px"');
+  });
+
+  test("renders a native ambience backdrop for lyric stages in mac native mode", () => {
+    mockCdgState.hasCdg = false;
+    mockLibraryState.songs = [
+      {
+        hash: "song-2",
+        file_path: "Fuji Kaze/Hachiko.mp3",
+        cdg_path: null,
+        media_g_container: null,
+        instrumental: false,
+        title: "Hachiko",
+        artist: "Fuji Kaze",
+        album: null,
+        duration_ms: 270000,
+        cover_art: [0xff, 0xd8, 0x00],
+        imported_at: 0,
+        original_ext: "mp3",
+      },
+    ] as Song[];
+    mockPlayerState.snapshot = { song_id: "song-2" };
+
+    const markup = renderToStaticMarkup(
+      <PlaybackStage shellTier="mac_native" />,
+    );
+
+    expect(markup).toContain('data-stage-visual-variant="native"');
+    expect(markup).toContain('data-native-stage-backdrop="true"');
+    expect(markup).toContain("blob:stage-cover");
+    expect(markup).toContain("lyrics-panel");
   });
 });

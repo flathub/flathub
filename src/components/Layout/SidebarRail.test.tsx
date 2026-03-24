@@ -24,7 +24,7 @@ describe("SidebarRail", () => {
       </SidebarRail>,
     );
 
-    expect(markup).toContain("w-[260px]");
+    expect(markup).toContain("w-[var(--window-shell-sidebar-width)]");
     expect(markup).toContain("opacity-100");
     expect(markup).toContain("translate-x-0");
   });

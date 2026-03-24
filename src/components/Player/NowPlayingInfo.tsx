@@ -3,13 +3,16 @@ import { CoverArtThumbnail } from "@/components/Shared/CoverArtThumbnail";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { PlaybackBarDensity } from "./playback-bar-layout";
+import type { WindowShellTier } from "@/types/ipc";
 
 interface NowPlayingInfoProps {
   density?: PlaybackBarDensity;
+  shellTier?: WindowShellTier;
 }
 
 export function NowPlayingInfo({
   density = "relaxed",
+  shellTier = "desktop",
 }: NowPlayingInfoProps = {}) {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
@@ -35,6 +38,7 @@ export function NowPlayingInfo({
   const title = song?.title || t("common.unknownTitle");
   const artist = song?.artist || t("common.unknownArtist");
   const hideArtist = density === "tight";
+  const nativeVariant = shellTier === "mac_native";
 
   return (
     <div
@@ -46,19 +50,24 @@ export function NowPlayingInfo({
             ? "gap-2.5"
             : "gap-2"
       }`}
+      data-now-playing-visual-variant={nativeVariant ? "native" : "default"}
     >
       <CoverArtThumbnail
         songHash={snapshot.song_id}
         coverArt={song?.cover_art ?? null}
         alt={`${title} cover art`}
-        className="h-11 w-11 shrink-0"
+        className={`${nativeVariant ? "h-12 w-12" : "h-11 w-11"} shrink-0`}
       />
       <div className="flex min-w-0 flex-col overflow-hidden">
-        <span className="truncate text-[12px] font-medium text-white">
+        <span
+          className={`truncate text-white ${nativeVariant ? "text-[14px] font-semibold" : "text-[12px] font-medium"}`}
+        >
           {title}
         </span>
         {!hideArtist && (
-          <span className="truncate text-[10px] text-[var(--color-text-dim)]">
+          <span
+            className={`truncate text-[var(--color-text-dim)] ${nativeVariant ? "text-[12px]" : "text-[10px]"}`}
+          >
             {artist}
           </span>
         )}

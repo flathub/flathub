@@ -7,11 +7,12 @@ import { notifyError } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import { getShortcutPlatform } from "@/lib/app-shortcuts";
 import { useLibraryStore } from "@/stores/library-store";
+import { useLayoutStore } from "@/stores/layout-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
 export const APP_MENU_ACTION_EVENT = "openkara://menu-action";
 
-export type AppMenuAction = "import-files" | "open-settings";
+export type AppMenuAction = "import-files" | "open-settings" | "toggle-sidebar";
 
 export interface ExpandedImportPaths {
   paths: string[];
@@ -28,8 +29,9 @@ interface PromptImportFilesDependencies {
 }
 
 interface MenuActionDependencies {
-  openSettings: () => void;
+  toggleSettings: () => void;
   importFromDialog: () => Promise<void>;
+  toggleSidebar: () => void;
 }
 
 const IMPORT_FILE_EXTENSIONS = [
@@ -144,11 +146,14 @@ export async function promptImportFiles({
 
 export async function handleAppMenuAction(
   action: AppMenuAction,
-  { openSettings, importFromDialog }: MenuActionDependencies,
+  { toggleSettings, importFromDialog, toggleSidebar }: MenuActionDependencies,
 ): Promise<void> {
   switch (action) {
     case "open-settings":
-      openSettings();
+      toggleSettings();
+      return;
+    case "toggle-sidebar":
+      toggleSidebar();
       return;
     case "import-files":
       await importFromDialog();
@@ -160,7 +165,8 @@ export async function handleAppMenuAction(
 
 export function useAppMenuRuntime(enabled: boolean): void {
   const importFiles = useLibraryStore((s) => s.importFiles);
-  const openSettings = useSettingsStore((s) => s.open);
+  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
+  const toggleSettings = useSettingsStore((s) => s.toggle);
 
   useEffect(() => {
     if (!enabled) {
@@ -172,8 +178,9 @@ export function useAppMenuRuntime(enabled: boolean): void {
 
     listen<AppMenuAction>(APP_MENU_ACTION_EVENT, (event) => {
       void handleAppMenuAction(event.payload, {
-        openSettings,
+        toggleSettings,
         importFromDialog: () => promptImportFiles({ importFiles }),
+        toggleSidebar,
       });
     }).then((dispose) => {
       if (cancelled) {
@@ -187,5 +194,5 @@ export function useAppMenuRuntime(enabled: boolean): void {
       cancelled = true;
       unlisten?.();
     };
-  }, [enabled, importFiles, openSettings]);
+  }, [enabled, importFiles, toggleSettings, toggleSidebar]);
 }

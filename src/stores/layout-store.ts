@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import {
+  createWebviewSyncChannel,
+  type WebviewSyncChannel,
+} from "@/runtime/webview-sync";
 
 interface LayoutState {
   sidebarVisible: boolean;
@@ -6,14 +10,55 @@ interface LayoutState {
   toggleSidebar: () => void;
 }
 
-export const useLayoutStore = create<LayoutState>((set) => ({
-  sidebarVisible: true,
+export interface LayoutSyncSnapshot {
+  sidebarVisible: boolean;
+}
 
-  setSidebarVisible: (visible) => {
-    set({ sidebarVisible: visible });
-  },
+export function createLayoutStore(
+  syncChannel: WebviewSyncChannel<LayoutSyncSnapshot> = createWebviewSyncChannel<LayoutSyncSnapshot>(
+    "openkara.layout",
+  ),
+) {
+  const store = create<LayoutState>((set, get) => {
+    const syncSidebarVisible = (sidebarVisible: boolean) => {
+      if (get().sidebarVisible === sidebarVisible) {
+        return;
+      }
 
-  toggleSidebar: () => {
-    set((state) => ({ sidebarVisible: !state.sidebarVisible }));
-  },
-}));
+      set({ sidebarVisible });
+      syncChannel.publish({ sidebarVisible });
+    };
+
+    return {
+      sidebarVisible: true,
+
+      setSidebarVisible: (visible) => {
+        syncSidebarVisible(visible);
+      },
+
+      toggleSidebar: () => {
+        syncSidebarVisible(!get().sidebarVisible);
+      },
+    };
+  });
+
+  const unsubscribe = syncChannel.subscribe(({ sidebarVisible }) => {
+    if (store.getState().sidebarVisible === sidebarVisible) {
+      return;
+    }
+
+    store.setState({ sidebarVisible });
+  });
+
+  return {
+    store,
+    dispose() {
+      unsubscribe();
+      syncChannel.close();
+    },
+  };
+}
+
+const defaultLayoutStore = createLayoutStore();
+
+export const useLayoutStore = defaultLayoutStore.store;

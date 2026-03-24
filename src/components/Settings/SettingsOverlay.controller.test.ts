@@ -24,10 +24,14 @@ function createControllerHarness() {
       estimateStemsSize: vi.fn(),
       getAllSeparationStatuses: vi.fn(),
       getLibraryPath: vi.fn(),
+      getSettings: vi.fn(),
+      getWindowShellState: vi.fn(),
       getModelStatus: vi.fn(),
       openLibrary: vi.fn(),
+      restartApp: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
+      setMacOsShellMode: vi.fn(),
       setModelVariant: vi.fn(),
       setStemMode: vi.fn(),
     },
@@ -50,6 +54,7 @@ function createControllerHarness() {
           language: "zh-CN",
           hideBatchSeparate: true,
           lyricsFontStep: 0,
+          macosShellMode: "stable",
         }),
       ),
       hydrateAppSettings: vi.fn(),
@@ -85,6 +90,23 @@ describe("SettingsOverlay controller", () => {
     vi.mocked(harness.dependencies.api.getLibraryPath).mockResolvedValue(
       "/karaoke",
     );
+    vi.mocked(harness.dependencies.api.getSettings).mockResolvedValue({
+      stem_mode: "four_stem",
+      model_variant: "htdemucs_ft",
+      language: "zh-CN",
+      hide_batch_separate: true,
+      lyrics_font_step: 0,
+      macos_shell_mode: "native",
+    });
+    vi.mocked(harness.dependencies.api.getWindowShellState).mockResolvedValue({
+      chrome_variant: "mac",
+      tier: "mac_native",
+      toolbar_height: 56,
+      traffic_light_inset_leading: 78,
+      sidebar_width: 420,
+      sidebar_webview_label: "main-sidebar",
+      main_content_webview_label: "main",
+    });
     vi.mocked(harness.dependencies.api.getModelStatus)
       .mockResolvedValueOnce({
         variant: "htdemucs",
@@ -101,10 +123,17 @@ describe("SettingsOverlay controller", () => {
 
     expect(
       harness.dependencies.settingsStore.getAppSettingsSnapshot,
-    ).toHaveBeenCalled();
+    ).not.toHaveBeenCalled();
     expect(
       harness.dependencies.settingsStore.hydrateAppSettings,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledWith({
+      stem_mode: "four_stem",
+      model_variant: "htdemucs_ft",
+      language: "zh-CN",
+      hide_batch_separate: true,
+      lyrics_font_step: 0,
+      macos_shell_mode: "native",
+    });
     expect(harness.getSnapshot()).toMatchObject({
       state: {
         libraryPath: "/karaoke",
@@ -119,6 +148,7 @@ describe("SettingsOverlay controller", () => {
       },
       meta: {
         isInitializing: false,
+        appliedMacOsShellMode: "native",
       },
     });
   });
@@ -162,6 +192,7 @@ describe("SettingsOverlay controller", () => {
       language: "en",
       hide_batch_separate: false,
       lyrics_font_step: 0,
+      macos_shell_mode: "stable",
     });
 
     await harness.actions.selectModelVariant("htdemucs");
@@ -202,6 +233,7 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
+      macos_shell_mode: "stable",
     });
 
     await harness.actions.toggleHideBatchSeparate(true);
@@ -216,6 +248,62 @@ describe("SettingsOverlay controller", () => {
     expect(harness.dependencies.api.setHideBatchSeparate).toHaveBeenCalledWith(
       true,
     );
+  });
+
+  test("changing the macOS shell mode updates local state and settings store", async () => {
+    const harness = createControllerHarness();
+    vi.mocked(harness.dependencies.api.setMacOsShellMode).mockResolvedValue({
+      stem_mode: "four_stem",
+      model_variant: "htdemucs_ft",
+      language: "zh-CN",
+      hide_batch_separate: true,
+      lyrics_font_step: 0,
+      macos_shell_mode: "native",
+    });
+
+    await harness.actions.setMacOsShellMode("native");
+
+    expect(harness.getSnapshot().state.macosShellMode).toBe("native");
+    expect(
+      harness.dependencies.settingsStore.patchAppSettings,
+    ).toHaveBeenCalledWith({ macosShellMode: "native" });
+    expect(harness.dependencies.api.setMacOsShellMode).toHaveBeenCalledWith(
+      "native",
+    );
+  });
+
+  test("changing the macOS shell mode leaves restart pending until relaunch", async () => {
+    const harness = createControllerHarness();
+
+    harness.setSnapshot({
+      state: harness.getSnapshot().state,
+      meta: {
+        ...harness.getSnapshot().meta,
+        appliedMacOsShellMode: "stable",
+      },
+    });
+
+    vi.mocked(harness.dependencies.api.setMacOsShellMode).mockResolvedValue({
+      stem_mode: "four_stem",
+      model_variant: "htdemucs_ft",
+      language: "zh-CN",
+      hide_batch_separate: true,
+      lyrics_font_step: 0,
+      macos_shell_mode: "native",
+    });
+
+    await harness.actions.setMacOsShellMode("native");
+
+    expect(harness.getSnapshot().state.macosShellMode).toBe("native");
+    expect(harness.getSnapshot().meta.appliedMacOsShellMode).toBe("stable");
+  });
+
+  test("restart app delegates to the backend restart command", async () => {
+    const harness = createControllerHarness();
+
+    await harness.actions.restartApp();
+
+    expect(harness.dependencies.api.restartApp).toHaveBeenCalledOnce();
   });
 
   test("delete stems clears in-memory separation statuses after success", async () => {

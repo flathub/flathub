@@ -333,6 +333,11 @@ export function useEventListeners(enabled = true) {
   useBatchSeparationEvents(enabled);
 }
 
+export function useSidebarPaneEventListeners(enabled = true) {
+  useSeparationEvents(enabled);
+  useBatchSeparationEvents(enabled);
+}
+
 export function useFullscreenPlaybackRuntime() {
   const updatePosition = usePlayerStore((s) => s.updatePosition);
   const updateSnapshot = usePlayerStore((s) => s.updateSnapshot);

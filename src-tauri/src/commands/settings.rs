@@ -1,5 +1,5 @@
 use crate::commands::error::{internal_error, CommandResult};
-use crate::config::{self, AppConfig, ModelVariant, StemMode};
+use crate::config::{self, AppConfig, MacOsShellMode, ModelVariant, StemMode};
 use serde::Serialize;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -13,6 +13,15 @@ pub struct AppSettings {
     pub language: Option<String>,
     pub hide_batch_separate: bool,
     pub lyrics_font_step: i8,
+    pub macos_shell_mode: String,
+}
+
+fn parse_macos_shell_mode(mode: &str) -> CommandResult<MacOsShellMode> {
+    match mode {
+        "stable" => Ok(MacOsShellMode::Stable),
+        "native" => Ok(MacOsShellMode::Native),
+        _ => Err(internal_error(format!("invalid macOS shell mode: {mode}"))),
+    }
 }
 
 fn settings_from_config(config: &AppConfig) -> AppSettings {
@@ -27,6 +36,10 @@ fn settings_from_config(config: &AppConfig) -> AppSettings {
         language: config.language.clone(),
         hide_batch_separate: config.hide_batch_separate.unwrap_or(false),
         lyrics_font_step: config.effective_lyrics_font_step(),
+        macos_shell_mode: match config.effective_macos_shell_mode() {
+            MacOsShellMode::Stable => "stable".to_owned(),
+            MacOsShellMode::Native => "native".to_owned(),
+        },
     }
 }
 
@@ -170,6 +183,28 @@ pub fn set_lyrics_font_step(app_handle: AppHandle, step: i8) -> CommandResult<Ap
     persist_lyrics_font_step(&app_data_dir, step)
 }
 
+#[tauri::command]
+pub fn set_macos_shell_mode(app_handle: AppHandle, mode: String) -> CommandResult<AppSettings> {
+    let shell_mode = parse_macos_shell_mode(&mode)?;
+
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
+    let mut config = config::load_config(&app_data_dir)
+        .map_err(|e| internal_error(format!("failed to load config: {e}")))?
+        .unwrap_or_default();
+    config.macos_shell_mode = Some(shell_mode);
+    config::save_config(&app_data_dir, &config)
+        .map_err(|e| internal_error(format!("failed to save config: {e}")))?;
+    Ok(settings_from_config(&config))
+}
+
+#[tauri::command]
+pub fn restart_app(app_handle: AppHandle) {
+    app_handle.request_restart();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +213,7 @@ mod tests {
     fn settings_default_lyrics_font_step_is_zero() {
         let settings = settings_from_config(&AppConfig::default());
         assert_eq!(settings.lyrics_font_step, 0);
+        assert_eq!(settings.macos_shell_mode, "stable");
     }
 
     #[test]
@@ -209,5 +245,23 @@ mod tests {
                 .is_none(),
             "failed writes should not create a config file",
         );
+    }
+
+    #[test]
+    fn settings_snapshot_uses_native_shell_mode_when_configured() {
+        let settings = settings_from_config(&AppConfig {
+            macos_shell_mode: Some(MacOsShellMode::Native),
+            ..AppConfig::default()
+        });
+
+        assert_eq!(settings.macos_shell_mode, "native");
+    }
+
+    #[test]
+    fn parsing_macos_shell_mode_rejects_the_removed_legacy_alias() {
+        let error = parse_macos_shell_mode("native_experimental")
+            .expect_err("legacy shell mode alias should be rejected");
+
+        assert!(error.message.contains("invalid macOS shell mode"));
     }
 }

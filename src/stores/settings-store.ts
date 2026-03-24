@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import { notifyError } from "@/lib/errors";
+import {
+  createWebviewSyncChannel,
+  type WebviewSyncChannel,
+} from "@/runtime/webview-sync";
 import * as api from "@/lib/tauri";
-import type { AppSettings, ModelVariant, StemMode } from "@/types/ipc";
+import type {
+  AppSettings,
+  MacOsShellMode,
+  ModelVariant,
+  StemMode,
+} from "@/types/ipc";
 
 export interface AppSettingsSnapshot {
   hydrated: boolean;
@@ -10,6 +19,7 @@ export interface AppSettingsSnapshot {
   language: string | null;
   hideBatchSeparate: boolean;
   lyricsFontStep: number;
+  macosShellMode: MacOsShellMode;
 }
 
 interface SettingsState {
@@ -20,6 +30,7 @@ interface SettingsState {
   language: AppSettingsSnapshot["language"];
   hideBatchSeparate: AppSettingsSnapshot["hideBatchSeparate"];
   lyricsFontStep: AppSettingsSnapshot["lyricsFontStep"];
+  macosShellMode: AppSettingsSnapshot["macosShellMode"];
   toggle: () => void;
   close: () => void;
   open: () => void;
@@ -38,6 +49,7 @@ const DEFAULT_APP_SETTINGS: AppSettingsSnapshot = {
   language: null,
   hideBatchSeparate: false,
   lyricsFontStep: 0,
+  macosShellMode: "stable",
 };
 
 function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
@@ -48,6 +60,7 @@ function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
     language: settings.language,
     hideBatchSeparate: settings.hide_batch_separate,
     lyricsFontStep: settings.lyrics_font_step,
+    macosShellMode: settings.macos_shell_mode,
   };
 }
 
@@ -61,38 +74,96 @@ function selectAppSettingsSnapshot(
     language: state.language,
     hideBatchSeparate: state.hideBatchSeparate,
     lyricsFontStep: state.lyricsFontStep,
+    macosShellMode: state.macosShellMode,
   };
 }
 
-export const useSettingsStore = create<SettingsState>((set, get) => ({
-  isOpen: false,
-  ...DEFAULT_APP_SETTINGS,
-  toggle: () => set((s) => ({ isOpen: !s.isOpen })),
-  close: () => set({ isOpen: false }),
-  open: () => set({ isOpen: true }),
-  hydrateAppSettings: (settings) => set(toAppSettingsSnapshot(settings)),
-  patchAppSettings: (patch) => set(patch),
-  setLyricsFontStep: async (step) => {
-    try {
-      const settings = await api.setLyricsFontStep(step);
-      set(toAppSettingsSnapshot(settings));
-    } catch (error) {
-      notifyError(error);
-    }
-  },
-  adjustLyricsFontStep: async (delta) => {
-    const current = get().lyricsFontStep;
-    const nextStep = Math.max(-2, Math.min(2, current + delta));
-    if (nextStep === current) {
-      return;
-    }
-    await get().setLyricsFontStep(nextStep);
-  },
-  resetLyricsFontStep: async () => {
-    if (get().lyricsFontStep === 0) {
-      return;
-    }
-    await get().setLyricsFontStep(0);
-  },
-  getAppSettingsSnapshot: () => selectAppSettingsSnapshot(get()),
-}));
+export interface SettingsSyncSnapshot extends AppSettingsSnapshot {
+  isOpen: boolean;
+}
+
+function toSettingsSyncSnapshot(state: SettingsState): SettingsSyncSnapshot {
+  return {
+    isOpen: state.isOpen,
+    ...selectAppSettingsSnapshot(state),
+  };
+}
+
+function applySettingsSyncSnapshot(
+  set: (partial: Partial<SettingsState>) => void,
+  snapshot: SettingsSyncSnapshot,
+) {
+  set({
+    isOpen: snapshot.isOpen,
+    hydrated: snapshot.hydrated,
+    stemMode: snapshot.stemMode,
+    modelVariant: snapshot.modelVariant,
+    language: snapshot.language,
+    hideBatchSeparate: snapshot.hideBatchSeparate,
+    lyricsFontStep: snapshot.lyricsFontStep,
+    macosShellMode: snapshot.macosShellMode,
+  });
+}
+
+export function createSettingsStore(
+  syncChannel: WebviewSyncChannel<SettingsSyncSnapshot> = createWebviewSyncChannel<SettingsSyncSnapshot>(
+    "openkara.settings",
+  ),
+) {
+  const store = create<SettingsState>((set, get) => {
+    const syncPatch = (patch: Partial<SettingsState>) => {
+      set(patch);
+      syncChannel.publish(toSettingsSyncSnapshot(get()));
+    };
+
+    return {
+      isOpen: false,
+      ...DEFAULT_APP_SETTINGS,
+      toggle: () => syncPatch({ isOpen: !get().isOpen }),
+      close: () => syncPatch({ isOpen: false }),
+      open: () => syncPatch({ isOpen: true }),
+      hydrateAppSettings: (settings) =>
+        syncPatch(toAppSettingsSnapshot(settings)),
+      patchAppSettings: (patch) => syncPatch(patch),
+      setLyricsFontStep: async (step) => {
+        try {
+          const settings = await api.setLyricsFontStep(step);
+          syncPatch(toAppSettingsSnapshot(settings));
+        } catch (error) {
+          notifyError(error);
+        }
+      },
+      adjustLyricsFontStep: async (delta) => {
+        const current = get().lyricsFontStep;
+        const nextStep = Math.max(-2, Math.min(2, current + delta));
+        if (nextStep === current) {
+          return;
+        }
+        await get().setLyricsFontStep(nextStep);
+      },
+      resetLyricsFontStep: async () => {
+        if (get().lyricsFontStep === 0) {
+          return;
+        }
+        await get().setLyricsFontStep(0);
+      },
+      getAppSettingsSnapshot: () => selectAppSettingsSnapshot(get()),
+    };
+  });
+
+  const unsubscribe = syncChannel.subscribe((snapshot) => {
+    applySettingsSyncSnapshot(store.setState, snapshot);
+  });
+
+  return {
+    store,
+    dispose() {
+      unsubscribe();
+      syncChannel.close();
+    },
+  };
+}
+
+const defaultSettingsStore = createSettingsStore();
+
+export const useSettingsStore = defaultSettingsStore.store;

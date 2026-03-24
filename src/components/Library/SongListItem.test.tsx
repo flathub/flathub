@@ -176,6 +176,31 @@ describe("SongListItem", () => {
     vi.unstubAllGlobals();
   });
 
+  test("renders native row hooks when the native variant is requested", () => {
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        variant="native"
+        song={{
+          hash: "song-native",
+          file_path: "Fuji Kaze/Hachiko.mp3",
+          cdg_path: null,
+          media_g_container: null,
+          instrumental: false,
+          title: "Hachiko",
+          artist: "Fuji Kaze",
+          album: null,
+          duration_ms: 270000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-native"]}
+      />,
+    );
+
+    expect(markup).toContain('data-song-list-item-variant="native"');
+  });
+
   test("renders a compact cover art thumbnail when cover art arrives as Uint8Array", () => {
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:cover"),

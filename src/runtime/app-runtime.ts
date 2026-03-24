@@ -6,6 +6,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   useEventListeners,
   useLyricsAutoFetch,
+  useSidebarPaneEventListeners,
 } from "@/hooks/use-playback-runtime";
 import { useLyricsSync } from "@/hooks/use-lyrics-sync";
 import { useCdgSync } from "@/hooks/use-cdg-sync";
@@ -77,5 +78,11 @@ export function useMainWindowRuntimeWhen(enabled: boolean) {
   useAirPlayOutputState(enabled);
   useKeyboardShortcuts(enabled);
   useFileDrop(enabled);
+  useAppMenuRuntime(enabled);
+}
+
+export function useSidebarWindowRuntimeWhen(enabled: boolean) {
+  useSidebarPaneEventListeners(enabled);
+  useKeyboardShortcuts(enabled);
   useAppMenuRuntime(enabled);
 }

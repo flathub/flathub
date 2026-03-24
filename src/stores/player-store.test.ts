@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { selectSyncDisplayPositionMs, usePlayerStore } from "./player-store";
+import { createWebviewSyncChannel } from "@/runtime/webview-sync";
+import {
+  createPlayerStore,
+  DEFAULT_AIRPLAY_OUTPUT_STATE,
+  selectSyncDisplayPositionMs,
+  type PlayerSyncSnapshot,
+  usePlayerStore,
+} from "./player-store";
+
+interface FakeChannel {
+  onmessage: ((event: { data: unknown }) => void) | null;
+  postMessage: (data: unknown) => void;
+  close: () => void;
+}
 
 describe("selectSyncDisplayPositionMs", () => {
   beforeEach(() => {
@@ -66,5 +79,71 @@ describe("selectSyncDisplayPositionMs", () => {
     expect(usePlayerStore.getState().airPlayPlainTextPagePendingDirection).toBe(
       null,
     );
+  });
+
+  test("syncs playback snapshot and position across webview contexts", () => {
+    const channelsByName = new Map<string, Set<FakeChannel>>();
+    const channelFactory = (name: string) => {
+      const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
+      channelsByName.set(name, peers);
+
+      const channel: FakeChannel = {
+        onmessage: null,
+        postMessage(data: unknown) {
+          for (const peer of peers) {
+            if (peer === channel) {
+              continue;
+            }
+
+            peer.onmessage?.({ data });
+          }
+        },
+        close() {
+          peers.delete(channel);
+        },
+      };
+
+      peers.add(channel);
+      return channel;
+    };
+
+    const primary = createPlayerStore(
+      createWebviewSyncChannel<PlayerSyncSnapshot>("player", {
+        channelFactory,
+        originId: "primary",
+      }),
+    );
+    const secondary = createPlayerStore(
+      createWebviewSyncChannel<PlayerSyncSnapshot>("player", {
+        channelFactory,
+        originId: "secondary",
+      }),
+    );
+
+    primary.store.getState().updateSnapshot({
+      song_id: "song-1",
+      is_playing: true,
+      position_ms: 1200,
+      duration_ms: 3000,
+      volume: 1,
+      stem_volumes: {
+        vocals: 1,
+        drums: 1,
+        bass: 1,
+        other: 1,
+      },
+      has_stems: false,
+      stem_mode: null,
+    });
+    primary.store.getState().updatePosition(1500);
+
+    expect(secondary.store.getState().snapshot?.song_id).toBe("song-1");
+    expect(secondary.store.getState().positionMs).toBe(1500);
+    expect(secondary.store.getState().airPlayOutput).toEqual(
+      DEFAULT_AIRPLAY_OUTPUT_STATE,
+    );
+
+    primary.dispose();
+    secondary.dispose();
   });
 });

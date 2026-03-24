@@ -154,7 +154,7 @@ Shell  ─→ Library ─→ Playback ─→ Separation ─→ Lyrics ─→ Pol
 
 ---
 
-## M6 — v0.3.0 Release
+## M6 — v0.4.0 Release
 
 | Item              | Detail                                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -202,7 +202,7 @@ Shell  ─→ Library ─→ Playback ─→ Separation ─→ Lyrics ─→ Pol
 
 ## Post-MVP Milestones (Future)
 
-These milestones are scoped but not scheduled. They become relevant after v0.3.0 is released and validated.
+These milestones are scoped but not scheduled. They become relevant after v0.4.0 is released and validated.
 
 | Milestone                      | Scope                                                                 |
 | ------------------------------ | --------------------------------------------------------------------- |

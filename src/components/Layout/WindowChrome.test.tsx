@@ -1,6 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
+import type { WindowShellState } from "@/lib/window-shell";
 import { WindowChrome } from "./WindowChrome";
+
+const macNativeShellState = {
+  chromeVariant: "mac",
+  tier: "mac_native",
+  toolbarHeight: 56,
+  trafficLightInsetLeading: 78,
+  sidebarWidth: 260,
+} satisfies WindowShellState;
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -33,18 +42,20 @@ vi.mock("@/components/Player/MonitorPicker", () => ({
 }));
 
 describe("WindowChrome", () => {
-  test("renders nothing on macOS (chrome lives in AppLayout + Sidebar)", () => {
+  test("renders the existing toolbar on macOS", () => {
     const markup = renderToStaticMarkup(
       <WindowChrome
         platform="mac"
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
+        shellState={macNativeShellState}
         settingsOpen={false}
         sidebarVisible
       />,
     );
 
-    expect(markup).toBe("");
+    expect(markup).toContain("data-tauri-drag-region");
+    expect(markup).toContain('data-window-shell-tier="mac_native"');
     expect(markup).not.toContain('aria-label="windowChrome.minimize"');
     expect(markup).not.toContain("windowChrome.file");
   });

@@ -97,4 +97,12 @@ describe("NowPlayingInfo", () => {
 
     vi.unstubAllGlobals();
   });
+
+  test("exposes the native now playing variant without changing the shared component", () => {
+    const markup = renderToStaticMarkup(
+      <NowPlayingInfo shellTier="mac_native" />,
+    );
+
+    expect(markup).toContain('data-now-playing-visual-variant="native"');
+  });
 });

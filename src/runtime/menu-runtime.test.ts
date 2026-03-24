@@ -23,30 +23,53 @@ vi.mock("@/lib/app-shortcuts", async () => {
 describe("app menu runtime", () => {
   test("opens settings when the settings menu item is selected", async () => {
     mockGetShortcutPlatform.mockReturnValue("mac");
-    const openSettings = vi.fn();
+    const toggleSettings = vi.fn();
     const importFromDialog = vi.fn();
+    const toggleSidebar = vi.fn();
 
     await handleAppMenuAction("open-settings", {
-      openSettings,
+      toggleSettings,
       importFromDialog,
+      toggleSidebar,
     });
 
-    expect(openSettings).toHaveBeenCalledOnce();
+    expect(toggleSettings).toHaveBeenCalledOnce();
     expect(importFromDialog).not.toHaveBeenCalled();
+    expect(toggleSidebar).not.toHaveBeenCalled();
   });
 
   test("opens the import dialog when the import menu item is selected", async () => {
     mockGetShortcutPlatform.mockReturnValue("mac");
-    const openSettings = vi.fn();
+    const toggleSettings = vi.fn();
     const importFromDialog = vi.fn().mockResolvedValue(undefined);
+    const toggleSidebar = vi.fn();
 
     await handleAppMenuAction("import-files", {
-      openSettings,
+      toggleSettings,
       importFromDialog,
+      toggleSidebar,
     });
 
     expect(importFromDialog).toHaveBeenCalledOnce();
-    expect(openSettings).not.toHaveBeenCalled();
+    expect(toggleSettings).not.toHaveBeenCalled();
+    expect(toggleSidebar).not.toHaveBeenCalled();
+  });
+
+  test("toggles the sidebar when the native shell requests it", async () => {
+    mockGetShortcutPlatform.mockReturnValue("mac");
+    const toggleSettings = vi.fn();
+    const importFromDialog = vi.fn().mockResolvedValue(undefined);
+    const toggleSidebar = vi.fn();
+
+    await handleAppMenuAction("toggle-sidebar", {
+      toggleSettings,
+      importFromDialog,
+      toggleSidebar,
+    });
+
+    expect(toggleSidebar).toHaveBeenCalledOnce();
+    expect(importFromDialog).not.toHaveBeenCalled();
+    expect(toggleSettings).not.toHaveBeenCalled();
   });
 
   test("imports every selected path from the shared file picker", async () => {
@@ -189,15 +212,18 @@ describe("app menu runtime", () => {
 
   test("ignores unknown menu actions", async () => {
     mockGetShortcutPlatform.mockReturnValue("mac");
-    const openSettings = vi.fn();
+    const toggleSettings = vi.fn();
     const importFromDialog = vi.fn();
+    const toggleSidebar = vi.fn();
 
     await handleAppMenuAction("unknown" as AppMenuAction, {
-      openSettings,
+      toggleSettings,
       importFromDialog,
+      toggleSidebar,
     });
 
-    expect(openSettings).not.toHaveBeenCalled();
+    expect(toggleSettings).not.toHaveBeenCalled();
     expect(importFromDialog).not.toHaveBeenCalled();
+    expect(toggleSidebar).not.toHaveBeenCalled();
   });
 });

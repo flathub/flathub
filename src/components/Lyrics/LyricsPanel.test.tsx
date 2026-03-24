@@ -139,6 +139,13 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).not.toContain('data-visible="true"');
   });
 
+  test("uses the native stage lyric layout hooks in mac native standard presentation", () => {
+    const markup = renderToStaticMarkup(<LyricsPanel shellTier="mac_native" />);
+
+    expect(markup).toContain('data-lyrics-visual-variant="native-stage"');
+    expect(markup).toContain('data-native-lyrics-layout="true"');
+  });
+
   test("keeps lyric utility chrome visible when offset is non-zero", () => {
     mockLyricsState.offsetMs = 500;
 

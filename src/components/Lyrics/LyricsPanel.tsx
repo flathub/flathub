@@ -27,11 +27,11 @@ import {
   selectSyncDisplayPositionMs,
   usePlayerStore,
 } from "@/stores/player-store";
+import type { WindowShellTier } from "@/types/ipc";
 
 interface LyricsPanelProps {
   presentation?: "standard" | "audience";
-  /** When true, lyrics chrome cooperates with a full-window `data-tauri-drag-region` underlay (macOS). */
-  pointerEventsCoexistWithDragRegion?: boolean;
+  shellTier?: WindowShellTier;
 }
 
 function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
@@ -43,7 +43,7 @@ function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
 
 export function LyricsPanel({
   presentation = "standard",
-  pointerEventsCoexistWithDragRegion = false,
+  shellTier = "desktop",
 }: LyricsPanelProps) {
   const { t } = useTranslation();
   const lines = useLyricsStore((s) => s.lines);
@@ -72,6 +72,7 @@ export function LyricsPanel({
   const [pageStartIndices, setPageStartIndices] = useState<number[]>([0]);
   const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
   const isAudience = presentation === "audience";
+  const nativeStageVariant = !isAudience && shellTier === "mac_native";
   const audiencePresentationSpec =
     buildAudiencePresentationSpec(lyricsFontStep);
 
@@ -288,9 +289,7 @@ export function LyricsPanel({
 
   if (!songId) {
     return (
-      <div
-        className={`flex flex-1 items-center justify-center ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
-      >
+      <div className="flex flex-1 items-center justify-center">
         <p
           className="text-[var(--color-text-dimmer)]"
           style={
@@ -310,9 +309,7 @@ export function LyricsPanel({
 
   if (isLoading) {
     return (
-      <div
-        className={`flex flex-1 items-center justify-center ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
-      >
+      <div className="flex flex-1 items-center justify-center">
         <p
           className="text-[var(--color-text-dim)]"
           style={
@@ -331,22 +328,21 @@ export function LyricsPanel({
   }
 
   if (lines.length === 0) {
-    return (
-      <LyricsEmptyState
-        presentation={presentation}
-        pointerEventsCoexistWithDragRegion={pointerEventsCoexistWithDragRegion}
-      />
-    );
+    return <LyricsEmptyState presentation={presentation} />;
   }
 
   return (
     <div
-      className={`group relative flex flex-1 flex-col items-center overflow-hidden ${pointerEventsCoexistWithDragRegion ? "pointer-events-none" : ""}`}
+      className="group relative flex flex-1 flex-col items-center overflow-hidden"
+      data-lyrics-visual-variant={
+        nativeStageVariant ? "native-stage" : "default"
+      }
+      data-native-lyrics-layout={nativeStageVariant ? "true" : "false"}
     >
       {songId && !isAudience ? (
         <>
           <div
-            className="contextual-reveal pointer-events-auto absolute right-4 top-4 z-10"
+            className="contextual-reveal absolute right-4 top-4 z-10"
             data-visible={utilityControlsPinned}
           >
             <Tooltip label={t("lyrics.editTooltip")}>
@@ -431,8 +427,8 @@ export function LyricsPanel({
         key={songId}
         data-testid="lyrics-scroll-viewport"
         className={`custom-scrollbar flex w-full flex-1 overflow-y-auto animate-[song-fade-in_var(--motion-duration-slow)_var(--motion-ease-emphasized-out)] ${
-          isAudience ? "" : "px-12 py-8"
-        } ${pointerEventsCoexistWithDragRegion ? "pointer-events-auto" : ""}`}
+          isAudience ? "" : nativeStageVariant ? "px-16 py-10" : "px-12 py-8"
+        }`}
         style={
           isAudience
             ? {
@@ -447,7 +443,9 @@ export function LyricsPanel({
               ? shouldRenderAudiencePlainTextPages
                 ? "min-h-full justify-start"
                 : "min-h-full justify-center"
-              : "max-w-2xl gap-7"
+              : nativeStageVariant
+                ? "max-w-4xl gap-9"
+                : "max-w-2xl gap-7"
           }`}
           style={
             isAudience

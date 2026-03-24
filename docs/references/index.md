@@ -14,5 +14,6 @@ Reference docs are stable materials that other work can point at without repeati
 | [contracts/phase-5-error-contract.md](./contracts/phase-5-error-contract.md)                     | Structured error contract              |
 | [contracts/phase-6-model-bootstrap-contract.md](./contracts/phase-6-model-bootstrap-contract.md) | Model bootstrap contract               |
 | [contracts/presentation-output-contract.md](./contracts/presentation-output-contract.md)         | macOS AirPlay audience output contract |
+| [contracts/window-shell-contract.md](./contracts/window-shell-contract.md)                       | Desktop window shell IPC contract      |
 
 Future external references such as design-system snapshots or tool-specific notes should also live here.
