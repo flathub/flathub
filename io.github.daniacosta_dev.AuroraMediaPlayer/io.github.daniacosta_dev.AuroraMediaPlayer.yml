@@ -1,0 +1,128 @@
+app-id: io.github.daniacosta_dev.AuroraMediaPlayer
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: aurora-media
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # Broad filesystem access needed: media files can be anywhere on disk,
+  # session restore saves absolute paths, and screenshot output goes to ~/Pictures.
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --device=dri
+  - --own-name=org.mpris.MediaPlayer2.aurora-media-player
+  - --talk-name=org.mpris.MediaPlayer2.*
+  # xdg-desktop-portal for file chooser (used by GTK FileDialog)
+  - --talk-name=org.freedesktop.portal.Desktop
+  # libmpv and libplacebo install to lib64 on x86_64; expose it to the runtime linker
+  - --env=LD_LIBRARY_PATH=/app/lib64
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  prepend-pkg-config-path: /app/lib64/pkgconfig
+  env:
+    CARGO_HOME: /run/build/aurora-media/cargo
+
+modules:
+
+  # ─── libplacebo ───────────────────────────────────────────────────────────
+  # Required by mpv 0.38+ — not included in the GNOME 48 runtime.
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dd3d11=disabled
+      - -Dglslang=disabled
+      - -Dopengl=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.349.0.tar.gz
+        sha256: 627e32439a0b3d2b90368ead7e919f470ee7446c87cc0f7841bbe319b23aa8b1
+
+  # ─── libass ───────────────────────────────────────────────────────────────
+  - name: libass
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
+        sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+
+  # ─── mpv ──────────────────────────────────────────────────────────────────
+  # libmpv is not in the GNOME runtime — build it from source.
+  # ffmpeg, libass, and luajit are provided by the freedesktop SDK 24.08.
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dtests=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
+      - -Dlua=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
+        # Run: sha256sum mpv-0.38.0.tar.gz  or use `flatpak-builder --download-only`
+        sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+
+  # ─── yt-dlp ───────────────────────────────────────────────────────────────
+  # Bundled binary so URL playback works without network access to PyPI.
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2024.12.13/yt-dlp
+        # Run: sha256sum yt-dlp  after downloading
+        sha256: ec5f59f8b8908d93b2bdf6663c3ecba70781f39de21255d183220f250ebccc94
+        dest-filename: yt-dlp
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name == "yt-dlp") | .browser_download_url
+
+  # ─── Aurora Media Player ──────────────────────────────────────────────────
+  - name: aurora-media-player
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/aurora-media-player/cargo
+        RUST_BACKTRACE: '1'
+        LIBRARY_PATH: /app/lib64
+        RUSTFLAGS: '-L /app/lib64 -C link-arg=-lplacebo'
+    build-commands:
+      # Offline build using pre-generated cargo-sources.json
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --manifest-path Cargo.toml
+      # Binary
+      - install -Dm755 target/release/aurora-media /app/bin/aurora-media
+      # Desktop file
+      - install -Dm644 data/io.github.daniacosta_dev.AuroraMediaPlayer.desktop
+          /app/share/applications/io.github.daniacosta_dev.AuroraMediaPlayer.desktop
+      # AppStream metainfo
+      - install -Dm644 data/io.github.daniacosta_dev.AuroraMediaPlayer.metainfo.xml
+          /app/share/metainfo/io.github.daniacosta_dev.AuroraMediaPlayer.metainfo.xml
+      # Icon
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.daniacosta_dev.AuroraMediaPlayer.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.daniacosta_dev.AuroraMediaPlayer.svg
+    sources:
+      - type: git
+        url: https://github.com/daniacosta-dev/aurora-media-player
+        branch: main
+        commit: 7ace675e063129fbb0bbbd40a04485486b1e38d3
+      # Regenerate after any Cargo.lock change:
+      #   pip install flatpak-builder-tools
+      #   flatpak-cargo-generator.py Cargo.lock -o build-aux/cargo-sources.json
+      - cargo-sources.json
