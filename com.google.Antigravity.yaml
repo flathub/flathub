@@ -1,0 +1,53 @@
+app-id: com.google.Antigravity
+runtime: org.freedesktop.Sdk
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: antigravity
+
+finish-args:
+  # The massive sandbox holes required for the Agent Manager and internal browser
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --filesystem=host
+  - --device=dri # Required so the Agent's Chrome instance doesn't software-render
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.OpenURI
+  - --socket=session-bus
+  - --socket=system-bus
+
+modules:
+  - name: antigravity
+    buildsystem: simple
+    build-commands:
+      # Flatpak strictly expects the extraction script to be named and located exactly here
+      - install -D apply_extra.sh /app/bin/apply_extra
+      # The launch wrapper that the user actually clicks
+      - install -D antigravity.sh /app/bin/antigravity
+      - install -Dm644 com.google.Antigravity.desktop /app/share/applications/com.google.Antigravity.desktop
+      - install -Dm644 com.google.Antigravity.metainfo.xml /app/share/metainfo/com.google.Antigravity.metainfo.xml
+    sources:
+      # --- STEP 1: The extra-data loophole ---
+      - type: extra-data
+        filename: Antigravity.tar.gz
+        url: https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/stable/1.21.6-5723021441368064/linux-x64/Antigravity.tar.gz
+        sha256: 36fb3b270067c9654c0157a8f8b1ccf5986579f7f2f8e367cfb1616515f9eb14
+        size: 234733827
+
+      # --- STEP 2: The extraction script ---
+      - type: script
+        dest-filename: apply_extra.sh
+        commands:
+          # extra-data automatically downloads the file into the /app/extra/ directory.
+          # We unpack it right there and strip the top-level folder so the binaries sit cleanly in /app/extra.
+          - tar -xzf Antigravity.tar.gz --strip-components=1 -C /app/extra/
+          - rm Antigravity.tar.gz
+
+      # --- STEP 3: The launch wrapper ---
+      - type: script
+        dest-filename: antigravity.sh
+        commands:
+          # Point the main flatpak command to the newly extracted binary
+          - exec /app/extra/antigravity --no-sandbox "$@"
