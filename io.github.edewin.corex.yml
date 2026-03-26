@@ -1,0 +1,67 @@
+app-id: io.github.edewin.corex
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+command: corex-run
+
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  - --filesystem=/sys:ro
+  - --device=all
+  - --share=network
+
+modules:
+  - name: lm-sensors
+    no-autogen: true
+    make-install-args:
+      - PREFIX=/app
+      - ETCDIR=/app/etc
+    sources:
+      - type: git
+        url: https://github.com/lm-sensors/lm-sensors.git
+        tag: V3-6-0
+      - type: shell
+        commands:
+          - sed -i 's/\ land\ / \&\& /g' Makefile
+
+  - name: python-dependencies
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --prefix=/app PyQt6 pyqtgraph pynvml psutil
+    sources:
+      - type: shell
+        commands:
+          - echo "Installing all dependencies via pip"
+
+  - name: corex
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/Edewin/corex.git
+        branch: main
+      - type: file
+        path: io.github.edewin.corex.desktop
+      - type: file
+        path: io.github.edewin.corex.metainfo.xml
+    build-commands:
+      - cp -r corex /app/
+      - mkdir -p /app/bin
+      - |
+        echo '#!/bin/sh
+        export PATH=$PATH:/app/bin:/app/sbin
+        PY_VER=$(python3 -c "import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")")
+        export PYTHONPATH=$PYTHONPATH:/app:/app/lib/python$PY_VER/site-packages
+        exec python3 /app/corex/main.py "$@"' > /app/bin/corex-run
+      - chmod +x /app/bin/corex-run
+      - mkdir -p /app/share/applications
+      - cp io.github.edewin.corex.desktop /app/share/applications/
+      - mkdir -p /app/share/icons/hicolor/scalable/apps
+      - cp corex/assets/corex_icon.svg /app/share/icons/hicolor/scalable/apps/io.github.edewin.corex.svg
+      - mkdir -p /app/share/metainfo
+      - cp io.github.edewin.corex.metainfo.xml /app/share/metainfo/
