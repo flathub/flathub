@@ -9,6 +9,7 @@ const macNativeShellState = {
   tier: "mac_native",
   toolbarHeight: 56,
   trafficLightInsetLeading: 78,
+  sidebarHeaderHeight: 40,
   sidebarWidth: 260,
 } satisfies WindowShellState;
 

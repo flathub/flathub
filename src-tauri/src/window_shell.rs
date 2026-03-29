@@ -7,6 +7,9 @@ const MAC_NATIVE_TOOLBAR_HEIGHT: u16 = 56;
 const DESKTOP_TRAFFIC_LIGHT_INSET_LEADING: u16 = 0;
 const MAC_LEGACY_TRAFFIC_LIGHT_INSET_LEADING: u16 = 64;
 const MAC_NATIVE_TRAFFIC_LIGHT_INSET_LEADING: u16 = 78;
+const DESKTOP_SIDEBAR_HEADER_HEIGHT: u16 = 0;
+const MAC_LEGACY_SIDEBAR_HEADER_HEIGHT: u16 = 0;
+const MAC_NATIVE_SIDEBAR_HEADER_HEIGHT: u16 = 40;
 const DEFAULT_SIDEBAR_WIDTH: u16 = 260;
 const MAC_NATIVE_SIDEBAR_WIDTH: u16 = 420;
 pub const SIDEBAR_CHILD_WEBVIEW_LABEL: &str = "main-sidebar";
@@ -33,6 +36,7 @@ pub struct WindowShellState {
     pub tier: WindowShellTier,
     pub toolbar_height: u16,
     pub traffic_light_inset_leading: u16,
+    pub sidebar_header_height: u16,
     pub sidebar_width: u16,
     pub sidebar_webview_label: Option<String>,
     pub main_content_webview_label: Option<String>,
@@ -45,6 +49,7 @@ impl WindowShellState {
             tier: WindowShellTier::Desktop,
             toolbar_height: DESKTOP_TOOLBAR_HEIGHT,
             traffic_light_inset_leading: DESKTOP_TRAFFIC_LIGHT_INSET_LEADING,
+            sidebar_header_height: DESKTOP_SIDEBAR_HEADER_HEIGHT,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_webview_label: None,
             main_content_webview_label: None,
@@ -57,6 +62,7 @@ impl WindowShellState {
             tier: WindowShellTier::MacLegacy,
             toolbar_height: MAC_LEGACY_TOOLBAR_HEIGHT,
             traffic_light_inset_leading: MAC_LEGACY_TRAFFIC_LIGHT_INSET_LEADING,
+            sidebar_header_height: MAC_LEGACY_SIDEBAR_HEADER_HEIGHT,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_webview_label: None,
             main_content_webview_label: None,
@@ -69,6 +75,7 @@ impl WindowShellState {
             tier: WindowShellTier::MacNative,
             toolbar_height: MAC_NATIVE_TOOLBAR_HEIGHT,
             traffic_light_inset_leading: MAC_NATIVE_TRAFFIC_LIGHT_INSET_LEADING,
+            sidebar_header_height: MAC_NATIVE_SIDEBAR_HEADER_HEIGHT,
             sidebar_width: MAC_NATIVE_SIDEBAR_WIDTH,
             sidebar_webview_label: Some(SIDEBAR_CHILD_WEBVIEW_LABEL.to_owned()),
             main_content_webview_label: Some(MAIN_WEBVIEW_LABEL.to_owned()),
@@ -95,9 +102,11 @@ impl WindowShellState {
         mut self,
         toolbar_height: u16,
         traffic_light_inset_leading: u16,
+        sidebar_header_height: u16,
     ) -> Self {
         self.toolbar_height = toolbar_height;
         self.traffic_light_inset_leading = traffic_light_inset_leading;
+        self.sidebar_header_height = sidebar_header_height;
         self
     }
 }
@@ -187,6 +196,7 @@ mod native {
         tier_tag: isize,
         toolbar_height: isize,
         traffic_light_inset_leading: isize,
+        sidebar_header_height: isize,
     }
 
     unsafe extern "C" {
@@ -196,6 +206,7 @@ mod native {
             tier_tag: isize,
             toolbar_height: f64,
             traffic_light_inset_leading: f64,
+            sidebar_header_height: f64,
             profile_out: *mut NativeWindowShellProfile,
         ) -> bool;
         fn ok_window_shell_mount_container_views(
@@ -283,6 +294,7 @@ mod native {
         let toolbar_height = u16::try_from(profile.toolbar_height).ok()?;
         let traffic_light_inset_leading =
             u16::try_from(profile.traffic_light_inset_leading).ok()?;
+        let sidebar_header_height = u16::try_from(profile.sidebar_header_height).ok()?;
         let base_state = match profile.tier_tag {
             0 => WindowShellState::desktop(),
             1 => WindowShellState::mac_legacy(),
@@ -290,7 +302,11 @@ mod native {
             _ => return None,
         };
 
-        Some(base_state.with_native_metrics(toolbar_height, traffic_light_inset_leading))
+        Some(base_state.with_native_metrics(
+            toolbar_height,
+            traffic_light_inset_leading,
+            sidebar_header_height,
+        ))
     }
 
     pub(super) fn detect_window_shell_state() -> Option<WindowShellState> {
@@ -299,6 +315,7 @@ mod native {
             tier_tag: 0,
             toolbar_height: 0,
             traffic_light_inset_leading: 0,
+            sidebar_header_height: 0,
         };
 
         // SAFETY: The Objective-C bridge writes a small POD struct into the out pointer.
@@ -328,6 +345,7 @@ mod native {
             tier_tag,
             toolbar_height: state.toolbar_height as isize,
             traffic_light_inset_leading: state.traffic_light_inset_leading as isize,
+            sidebar_header_height: state.sidebar_header_height as isize,
         };
 
         // SAFETY: Tauri exposes the live NSView pointer for the current webview window.
@@ -337,6 +355,7 @@ mod native {
                 tier_tag,
                 f64::from(state.toolbar_height),
                 f64::from(state.traffic_light_inset_leading),
+                f64::from(state.sidebar_header_height),
                 &mut resolved_profile,
             )
         };
@@ -517,6 +536,7 @@ mod tests {
         assert_eq!(state.tier, WindowShellTier::MacNative);
         assert_eq!(state.toolbar_height, 56);
         assert_eq!(state.traffic_light_inset_leading, 78);
+        assert_eq!(state.sidebar_header_height, 40);
         assert_eq!(state.sidebar_width, 420);
     }
 
@@ -570,5 +590,6 @@ mod tests {
 
         assert_eq!(state.tier, WindowShellTier::MacNative);
         assert_eq!(state.toolbar_height, 56);
+        assert_eq!(state.sidebar_header_height, 40);
     }
 }

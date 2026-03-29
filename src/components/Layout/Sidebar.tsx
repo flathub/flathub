@@ -69,27 +69,27 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
     batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
   const nativeVariant = variant === "native";
+  const nativeBatchActionClassName =
+    "rounded-[12px] border border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] px-3 py-2 text-[13px] hover:border-[var(--native-sidebar-control-border)] hover:bg-[var(--native-sidebar-overlay-bg)]";
 
   return (
     <div
-      className={`app-panel-surface flex h-full shrink-0 flex-col ${
+      className={`${nativeVariant ? "" : "app-panel-surface "}flex h-full shrink-0 flex-col ${
         nativeVariant
-          ? "w-full overflow-hidden border-r border-[var(--native-sidebar-border)] bg-[var(--native-sidebar-bg)]"
+          ? "w-full overflow-hidden"
           : "w-[var(--window-shell-sidebar-width)] border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)]"
       }`}
       data-window-shell-section="sidebar"
       data-sidebar-visual-variant={variant}
     >
       {header ? (
-        <div
-          className={`shrink-0 ${nativeVariant ? "px-4 pb-3 pt-4" : "px-3 pb-2 pt-3"}`}
-        >
+        <div className={`shrink-0 ${nativeVariant ? "" : "px-3 pb-2 pt-3"}`}>
           {header}
         </div>
       ) : null}
 
       <div
-        className={`shrink-0 ${nativeVariant ? "px-4 pb-4" : "px-3 pb-3"} ${header ? "pt-1" : nativeVariant ? "pt-4" : "pt-3"}`}
+        className={`shrink-0 ${nativeVariant ? "px-4 pb-4" : "px-3 pb-3"} ${header ? (nativeVariant ? "pt-3" : "pt-1") : nativeVariant ? "pt-4" : "pt-3"}`}
       >
         <SearchBox variant={variant} />
       </div>
@@ -108,10 +108,10 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
           className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between ${nativeVariant ? "px-3 py-2.5" : "px-2 py-1.5"} ${
             filter === "all"
               ? nativeVariant
-                ? "bg-[var(--native-selected-row-bg)] text-white shadow-[var(--native-selected-row-shadow)]"
+                ? "border border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
                 : "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
               : nativeVariant
-                ? "text-[var(--color-text)] hover:bg-[var(--native-hover-bg)]"
+                ? "border border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
                 : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
           }`}
         >
@@ -133,10 +133,10 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
           className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between ${nativeVariant ? "px-3 py-2.5" : "px-2 py-1.5"} ${
             filter === "separated"
               ? nativeVariant
-                ? "bg-[var(--native-selected-row-bg)] text-white shadow-[var(--native-selected-row-shadow)]"
+                ? "border border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
                 : "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
               : nativeVariant
-                ? "text-[var(--color-text)] hover:bg-[var(--native-hover-bg)]"
+                ? "border border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
                 : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
           }`}
         >
@@ -191,7 +191,7 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
           ) : needsUpgrade ? (
             <button
               onClick={() => setShowUpgradeConfirm(true)}
-              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? "rounded-[12px] border border-[var(--native-sidebar-border)] bg-[var(--native-control-bg)] px-3 py-2 text-[13px]" : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px]"} text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white`}
+              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? nativeBatchActionClassName : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"} text-[var(--color-text)] hover:text-white`}
             >
               <Layers size={12} />
               {t("sidebar.upgradeAll")}
@@ -200,7 +200,7 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
             <button
               onClick={handleSeparateAll}
               disabled={separableSongs.length === 0}
-              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? "rounded-[12px] border border-[var(--native-sidebar-border)] bg-[var(--native-control-bg)] px-3 py-2 text-[13px] shadow-[0_10px_24px_rgba(0,0,0,0.14)]" : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px]"} text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)] hover:text-white disabled:opacity-40`}
+              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? nativeBatchActionClassName : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"} text-[var(--color-text)] hover:text-white disabled:opacity-40`}
             >
               <Layers size={12} />
               {t("sidebar.separateAll")}

@@ -30,9 +30,14 @@ export function SearchBox({ variant = "default" }: SearchBoxProps = {}) {
     <div
       className={`motion-surface relative flex items-center overflow-hidden border ${
         nativeVariant
-          ? "rounded-[14px] border-[var(--native-sidebar-border)] bg-[var(--native-search-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          ? "rounded-[14px] border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
           : "rounded-[8px] border-transparent bg-[var(--color-hover)]"
-      } focus-within:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] focus-within:bg-[var(--color-active)]`}
+      } focus-within:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] ${
+        nativeVariant
+          ? "focus-within:bg-[var(--native-sidebar-overlay-bg)]"
+          : "focus-within:bg-[var(--color-active)]"
+      }`}
+      data-native-overlay-surface={nativeVariant ? "search-control" : undefined}
       data-search-visual-variant={variant}
     >
       <Search

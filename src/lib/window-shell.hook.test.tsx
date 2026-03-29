@@ -30,6 +30,7 @@ describe("useWindowShellState", () => {
       tier: "mac_native",
       toolbar_height: 56,
       traffic_light_inset_leading: 92,
+      sidebar_header_height: 40,
       sidebar_width: 436,
       sidebar_webview_label: "main-sidebar",
       main_content_webview_label: "main",
@@ -41,10 +42,14 @@ describe("useWindowShellState", () => {
 
     function Probe() {
       const state = useWindowShellState(getNativeWindowShellState(), "mac");
+      const extendedState = state as typeof state & {
+        sidebarHeaderHeight?: number;
+      };
 
       return (
         <div
           data-leading={state.trafficLightInsetLeading}
+          data-header-height={extendedState.sidebarHeaderHeight}
           data-width={state.sidebarWidth}
         />
       );
@@ -55,6 +60,7 @@ describe("useWindowShellState", () => {
     });
 
     expect(container.innerHTML).toContain('data-leading="92"');
+    expect(container.innerHTML).toContain('data-header-height="40"');
     expect(container.innerHTML).toContain('data-width="436"');
 
     await act(async () => {

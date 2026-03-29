@@ -21,8 +21,9 @@ describe("SidebarWebviewApp", () => {
       tier: "mac_native",
       toolbarHeight: 56,
       trafficLightInsetLeading: 78,
+      sidebarHeaderHeight: 40,
       sidebarWidth: 420,
-    } satisfies WindowShellState;
+    } as WindowShellState;
 
     const markup = renderToStaticMarkup(
       <SidebarWebviewApp initialWindowShellState={shellState} />,
@@ -30,13 +31,24 @@ describe("SidebarWebviewApp", () => {
 
     expect(markup).toContain('data-native-sidebar-header="true"');
     expect(markup).toContain('data-native-sidebar-header-layout="split"');
+    expect(markup).toContain("--window-shell-sidebar-header-height:40px");
     expect(markup).toContain(
       "padding-inline-start:var(--window-shell-leading-controls-space)",
     );
+    expect(markup).toContain("h-[var(--window-shell-sidebar-header-height)]");
     expect(markup).toContain('aria-label="Toggle Sidebar"');
     expect(markup).toContain('aria-label="Import"');
     expect(markup).toContain('data-sidebar-visual-variant="native"');
+    expect(markup).toContain("hover:bg-[var(--native-sidebar-overlay-bg)]");
+    expect(markup).not.toContain("hover:bg-white/6");
+    expect(markup).not.toContain("hover:bg-white/8");
     expect(markup).toContain("lucide-plus");
     expect(markup).not.toContain("lucide-cloud-upload");
+  });
+
+  test("does not add a duplicate native host ownership marker", () => {
+    const markup = renderToStaticMarkup(<SidebarWebviewApp />);
+
+    expect(markup).not.toContain("data-native-sidebar-host");
   });
 });

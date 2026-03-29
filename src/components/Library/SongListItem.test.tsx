@@ -199,6 +199,77 @@ describe("SongListItem", () => {
     );
 
     expect(markup).toContain('data-song-list-item-variant="native"');
+    expect(markup).toContain('data-native-overlay-surface="song-row"');
+    expect(markup).toContain("hover:bg-[var(--native-sidebar-overlay-bg)]");
+  });
+
+  test("renders native selected rows and actions as overlay surfaces", () => {
+    mockLibraryState.selectedSongIds = new Set(["song-native-selected"]);
+
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        variant="native"
+        song={{
+          hash: "song-native-selected",
+          file_path: "Rina Sawayama/Hold The Girl.mp3",
+          cdg_path: null,
+          media_g_container: null,
+          instrumental: false,
+          title: "Hold The Girl",
+          artist: "Rina Sawayama",
+          album: null,
+          duration_ms: 240000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-native-selected"]}
+      />,
+    );
+
+    expect(markup).toContain("bg-[var(--native-sidebar-selected-bg)]");
+    expect(markup).toContain("border-[var(--native-sidebar-selected-border)]");
+    expect(markup).toContain('data-native-overlay-surface="song-action"');
+    expect(markup).toContain("bg-[var(--native-sidebar-control-bg)]");
+    expect(markup).toContain("border-[var(--native-sidebar-control-border)]");
+
+    mockLibraryState.selectedSongIds = new Set();
+  });
+
+  test("renders native badges as overlay surfaces instead of opaque fills", () => {
+    mockLibraryState.selectedSongIds = new Set();
+    mockLibraryState.separationStatuses = {
+      "song-native-badges": {
+        state: "completed",
+        drums_path: "drums.ogg",
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        variant="native"
+        song={{
+          hash: "song-native-badges",
+          file_path: "Rina Sawayama/Hold The Girl.mp3",
+          cdg_path: null,
+          media_g_container: "paired",
+          instrumental: false,
+          title: "Hold The Girl",
+          artist: "Rina Sawayama",
+          album: null,
+          duration_ms: 240000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-native-badges"]}
+      />,
+    );
+
+    expect(markup).toContain("bg-[var(--native-sidebar-overlay-bg)]");
+    expect(markup).not.toContain("bg-[var(--color-hover)]");
+
+    mockLibraryState.separationStatuses = {};
   });
 
   test("renders a compact cover art thumbnail when cover art arrives as Uint8Array", () => {

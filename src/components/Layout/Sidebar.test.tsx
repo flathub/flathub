@@ -130,4 +130,59 @@ describe("Sidebar", () => {
     expect(markup).toContain('data-search-variant="native"');
     expect(markup).toContain('data-song-list-variant="native"');
   });
+
+  test("keeps the native sidebar shell content-only", () => {
+    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
+
+    expect(markup).not.toContain("bg-[var(--native-sidebar-bg)]");
+    expect(markup).not.toContain("border-[var(--native-sidebar-border)]");
+  });
+
+  test("renders native batch actions with overlay control chrome", () => {
+    mockLibraryState.songs = [
+      {
+        hash: "song-3",
+        file_path: "music/song-3.mp3",
+        cdg_path: null,
+        media_g_container: null,
+        instrumental: false,
+        title: "Song 3",
+        artist: null,
+        album: null,
+        duration_ms: 1000,
+        cover_art: null,
+        imported_at: 0,
+        original_ext: "mp3",
+      },
+    ] as Song[];
+
+    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
+
+    expect(markup).toContain("bg-[var(--native-sidebar-control-bg)]");
+    expect(markup).toContain("border-[var(--native-sidebar-control-border)]");
+    expect(markup).toContain("hover:bg-[var(--native-sidebar-overlay-bg)]");
+    expect(markup).toContain(
+      "hover:border-[var(--native-sidebar-control-border)]",
+    );
+    expect(markup).not.toContain(
+      "hover:border-[var(--native-sidebar-selected-border)]",
+    );
+
+    mockLibraryState.songs = [
+      {
+        hash: "song-1",
+        file_path: "media-g/song-1.mp3",
+        cdg_path: "media-g/song-1.cdg",
+        media_g_container: "paired" as const,
+        instrumental: false,
+        title: "Song",
+        artist: null,
+        album: null,
+        duration_ms: 1000,
+        cover_art: null,
+        imported_at: 0,
+        original_ext: "mp3",
+      },
+    ] as Song[];
+  });
 });

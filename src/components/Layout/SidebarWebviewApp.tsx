@@ -33,7 +33,7 @@ export function SidebarWebviewApp({
 
   const header = nativeShell ? (
     <div
-      className="flex h-[var(--window-shell-toolbar-height)] items-center justify-between gap-3 pr-2"
+      className="flex h-[var(--window-shell-sidebar-header-height)] items-center justify-between pr-3"
       data-native-sidebar-header="true"
       data-native-sidebar-header-layout="split"
       style={{
@@ -44,7 +44,7 @@ export function SidebarWebviewApp({
         <button
           onClick={toggleSidebar}
           aria-label={t("toolbar.toggleSidebar")}
-          className="motion-icon-button rounded-xl p-2 text-[var(--color-control-primary)] hover:bg-white/6"
+          className="motion-icon-button rounded-lg p-1.5 text-[var(--color-control-primary)] hover:bg-[var(--native-sidebar-overlay-bg)]"
         >
           <PanelLeft size={16} />
         </button>
@@ -52,7 +52,7 @@ export function SidebarWebviewApp({
 
       <Tooltip label={t("toolbar.import")}>
         <ImportButton ariaLabel={t("toolbar.import")}>
-          <span className="motion-surface flex items-center justify-center rounded-xl p-2 text-[var(--color-control-primary)] hover:bg-white/8 hover:text-white">
+          <span className="motion-surface flex items-center justify-center rounded-lg p-1.5 text-[var(--color-control-primary)] hover:bg-[var(--native-sidebar-overlay-bg)] hover:text-white">
             <Plus size={16} />
           </span>
         </ImportButton>

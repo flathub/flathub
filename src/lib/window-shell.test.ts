@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  createWindowShellStyle,
   getDefaultWindowShellState,
   resolveWindowShellState,
 } from "./window-shell";
@@ -21,14 +22,35 @@ describe("window shell helpers", () => {
         tier: "mac_native",
         toolbarHeight: 56,
         trafficLightInsetLeading: 78,
+        sidebarHeaderHeight: 40,
         sidebarWidth: 380,
-      }),
+      } as never),
     ).toMatchObject({
       chromeVariant: "mac",
       tier: "mac_native",
       toolbarHeight: 56,
       trafficLightInsetLeading: 78,
+      sidebarHeaderHeight: 40,
       sidebarWidth: 380,
+    });
+  });
+
+  test("exposes the native sidebar header height token for traffic-light-safe layout", () => {
+    const style = createWindowShellStyle(
+      resolveWindowShellState("mac", {
+        chromeVariant: "mac",
+        tier: "mac_native",
+        toolbarHeight: 56,
+        trafficLightInsetLeading: 90,
+        sidebarHeaderHeight: 40,
+        sidebarWidth: 420,
+      } as never),
+    );
+
+    expect(style).toMatchObject({
+      "--window-shell-leading-controls-space": "90px",
+      "--window-shell-sidebar-header-height": "40px",
+      "--window-shell-sidebar-width": "420px",
     });
   });
 

@@ -103,6 +103,7 @@ describe("SettingsOverlay controller", () => {
       tier: "mac_native",
       toolbar_height: 56,
       traffic_light_inset_leading: 78,
+      sidebar_header_height: 40,
       sidebar_width: 420,
       sidebar_webview_label: "main-sidebar",
       main_content_webview_label: "main",

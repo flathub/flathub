@@ -15,6 +15,7 @@ export interface WindowShellState {
   tier: WindowShellTier;
   toolbarHeight: number;
   trafficLightInsetLeading: number;
+  sidebarHeaderHeight: number;
   sidebarWidth: number;
 }
 
@@ -23,6 +24,7 @@ const DESKTOP_WINDOW_SHELL_STATE: WindowShellState = {
   tier: "desktop",
   toolbarHeight: 48,
   trafficLightInsetLeading: 0,
+  sidebarHeaderHeight: 0,
   sidebarWidth: 260,
 };
 
@@ -31,6 +33,7 @@ const MAC_LEGACY_WINDOW_SHELL_STATE: WindowShellState = {
   tier: "mac_legacy",
   toolbarHeight: 52,
   trafficLightInsetLeading: 64,
+  sidebarHeaderHeight: 0,
   sidebarWidth: 260,
 };
 
@@ -39,6 +42,7 @@ const MAC_NATIVE_WINDOW_SHELL_STATE: WindowShellState = {
   tier: "mac_native",
   toolbarHeight: 56,
   trafficLightInsetLeading: 78,
+  sidebarHeaderHeight: 40,
   sidebarWidth: 420,
 };
 
@@ -58,6 +62,7 @@ function snapshotToWindowShellState(
     tier: snapshot.tier,
     toolbarHeight: snapshot.toolbar_height,
     trafficLightInsetLeading: snapshot.traffic_light_inset_leading,
+    sidebarHeaderHeight: snapshot.sidebar_header_height,
     sidebarWidth: snapshot.sidebar_width,
   };
 }
@@ -93,6 +98,9 @@ export function resolveWindowShellState(
     trafficLightInsetLeading: isPositiveNumber(state?.trafficLightInsetLeading)
       ? state.trafficLightInsetLeading
       : fallback.trafficLightInsetLeading,
+    sidebarHeaderHeight: isPositiveNumber(state?.sidebarHeaderHeight)
+      ? state.sidebarHeaderHeight
+      : fallback.sidebarHeaderHeight,
     sidebarWidth: isPositiveNumber(state?.sidebarWidth)
       ? state.sidebarWidth
       : fallback.sidebarWidth,
@@ -102,6 +110,7 @@ export function resolveWindowShellState(
 export function createWindowShellStyle(state: WindowShellState): CSSProperties {
   return {
     "--window-shell-leading-controls-space": `${state.trafficLightInsetLeading}px`,
+    "--window-shell-sidebar-header-height": `${state.sidebarHeaderHeight}px`,
     "--window-shell-sidebar-width": `${state.sidebarWidth}px`,
     "--window-shell-toolbar-height": `${state.toolbarHeight}px`,
   } as CSSProperties;

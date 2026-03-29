@@ -21,6 +21,7 @@ describe("MainWebviewApp", () => {
       tier: "mac_native",
       toolbarHeight: 56,
       trafficLightInsetLeading: 78,
+      sidebarHeaderHeight: 40,
       sidebarWidth: 420,
     } satisfies WindowShellState;
 

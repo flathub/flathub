@@ -150,6 +150,7 @@ export interface WindowShellStateSnapshot {
   tier: WindowShellTier;
   toolbar_height: number;
   traffic_light_inset_leading: number;
+  sidebar_header_height: number;
   sidebar_width: number;
   sidebar_webview_label?: string | null;
   main_content_webview_label?: string | null;

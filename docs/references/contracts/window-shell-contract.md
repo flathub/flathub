@@ -22,6 +22,7 @@ interface WindowShellStateSnapshot {
   tier: WindowShellTier;
   toolbar_height: number;
   traffic_light_inset_leading: number;
+  sidebar_header_height: number;
   sidebar_width: number;
   sidebar_webview_label?: string | null;
   main_content_webview_label?: string | null;
@@ -41,6 +42,8 @@ interface WindowShellStateSnapshot {
   - Native toolbar/titlebar height mirrored into CSS tokens
 - `traffic_light_inset_leading`
   - Leading inset reserved for standard window controls
+- `sidebar_header_height`
+  - Reserved native sidebar header strip height so search/list content starts below the system traffic lights instead of competing with them
 - `sidebar_width`
   - Shared shell width token for sidebar rail/layout alignment across all platforms
 - `sidebar_webview_label`
@@ -54,11 +57,13 @@ interface WindowShellStateSnapshot {
 - `WindowShellStateSnapshot` only controls host assembly and visual metrics:
   - toolbar/titlebar metrics
   - reserved leading inset for traffic lights
+  - reserved native sidebar header height for traffic-light-safe sidebar composition
   - sidebar width tokens
   - Native-only child webview/container wiring
 - Windows/Linux do not need to understand AppKit container details.
 - macOS Stable and macOS Native must continue to render the same product UI modules; Native only changes the host/container behavior.
 - Native visual alignment is still implemented inside the shared React UI. Sidebar, lyrics stage, and playback bar may consume `mac_native` layout and visual tokens, but they must remain shared components rather than separate product-specific implementations.
+- In `mac_native`, AppKit owns the sidebar material surface and divider. The sidebar child webview is transparent and renders content overlays only; it must not repaint a full sidebar background.
 - `mac_native` should not depend on a separate AppKit toolbar layer for its visible controls. The split container owns the full-height sidebar region, while native-only top-right utility controls live in the shared React content overlay.
 
 ## Shell Style Selection

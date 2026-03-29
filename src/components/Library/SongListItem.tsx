@@ -178,17 +178,18 @@ export function SongListItem({
       onContextMenu={handleContextMenu}
       className={`group relative flex cursor-default select-none items-center transition-colors duration-150 ${
         nativeVariant
-          ? "gap-2.5 rounded-[14px] px-3 py-2.5"
+          ? "gap-2.5 rounded-[14px] border px-3 py-2.5"
           : "gap-3 rounded-md px-3 py-2"
       } ${
         isSelected
           ? nativeVariant
-            ? "bg-[var(--native-selected-row-bg)] text-white shadow-[var(--native-selected-row-shadow)]"
+            ? "border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
             : "bg-[var(--color-accent)] text-white"
           : nativeVariant
-            ? "text-[var(--color-text)] hover:bg-[var(--native-hover-bg)]"
+            ? "border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
             : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
       }`}
+      data-native-overlay-surface={nativeVariant ? "song-row" : undefined}
       data-song-list-item-variant={variant}
     >
       <CoverArtThumbnail
@@ -224,7 +225,9 @@ export function SongListItem({
                 className={`inline-flex h-[14px] items-center justify-center rounded px-1.5 text-[9px] font-semibold leading-none tracking-[0.08em] ${
                   isSelected
                     ? "bg-white/20 text-white/80"
-                    : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                    : nativeVariant
+                      ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-text-dim)]"
+                      : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
                 }`}
               >
                 {mediaGBadgeLabel}
@@ -234,10 +237,17 @@ export function SongListItem({
               <button
                 onClick={handleSeparate}
                 className={`rounded px-1.5 py-0.5 text-[10px] border ${
-                  isSelected
-                    ? "border-white/30 hover:bg-white/20"
-                    : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
+                  nativeVariant
+                    ? isSelected
+                      ? "border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] text-white hover:bg-[var(--native-sidebar-overlay-bg)]"
+                      : "border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] text-[var(--color-text-dim)] hover:bg-[var(--native-sidebar-overlay-bg)]"
+                    : isSelected
+                      ? "border-white/30 hover:bg-white/20"
+                      : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
                 }`}
+                data-native-overlay-surface={
+                  nativeVariant ? "song-action" : undefined
+                }
               >
                 {t("library.separate")}
               </button>
@@ -259,10 +269,14 @@ export function SongListItem({
                     separationStatus?.drums_path
                       ? isSelected
                         ? "bg-white/20 text-white/80"
-                        : "bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
+                        : nativeVariant
+                          ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-accent)]"
+                          : "bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
                       : isSelected
                         ? "bg-white/20 text-white/80"
-                        : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                        : nativeVariant
+                          ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-text-dim)]"
+                          : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
                   }`}
                 >
                   {separationStatus?.drums_path ? "4" : "2"}
