@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 # Default values
 ARCH=$(uname -m)
 FORCE_PULL=false
-CONTAINER_IMAGE="ghcr.io/flathub-infra/flatpak-github-actions:gnome-49"
+CONTAINER_IMAGE="ghcr.io/flathub-infra/flatpak-github-actions:gnome-50"
 
 MANIFEST="com.orcaslicer.OrcaSlicer.yml"
 APP_ID="com.orcaslicer.OrcaSlicer"
@@ -173,8 +173,8 @@ rm -rf .flatpak-builder/build
 
 # Install required SDK extensions
 flatpak install -y --noninteractive --arch="$BUILD_ARCH" flathub \
-    org.gnome.Platform//49 \
-    org.gnome.Sdk//49 \
+    org.gnome.Platform//50 \
+    org.gnome.Sdk//50 \
     org.freedesktop.Sdk.Extension.llvm21//25.08 || true
 
 install_end=$(date +%s)
