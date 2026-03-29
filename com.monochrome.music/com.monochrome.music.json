@@ -1,0 +1,132 @@
+{
+    "app-id": "com.monochrome.music",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "24.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.node22"
+    ],
+    "command": "monochrome",
+    "finish-args": [
+        "--share=network",
+        "--share=ipc",
+        "--device=dri",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--socket=pulseaudio",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--talk-name=com.canonical.AppMenu.Registrar",
+        "--talk-name=org.freedesktop.ScreenSaver",
+        "--talk-name=org.freedesktop.portal.*",
+        "--filesystem=xdg-music:ro",
+        "--talk-name=org.freedesktop.DBus"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/node22/bin",
+        "no-debuginfo": true,
+        "env": {
+            "NPM_CONFIG_LOGLEVEL": "info",
+            "NPM_CONFIG_CACHE": "/run/build/monochrome/flatpak-node/npm-cache",
+            "NPM_CONFIG_JOBS": "4"
+        }
+    },
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/share/man",
+        "*.a",
+        "*.la",
+        "**/*.o",
+        "**/*.a"
+    ],
+    "cleanup-commands": [
+        "mkdir -p /app/share/icons/hicolor/scalable/apps",
+        "mkdir -p /app/share/metainfo"
+    ],
+    "modules": [
+        {
+            "name": "monochrome",
+            "buildsystem": "simple",
+            "build-commands": [
+                "npm install --offline --ignore-scripts",
+                "npm run build",
+                "cp main.js dist/",
+                "cp spa-server.py dist/",
+                "echo '{\"name\":\"monochrome-app\",\"version\":\"2.5.0\",\"main\":\"main.js\"}' > dist/package.json",
+                "mkdir -p /app/share/monochrome",
+                "cp -r dist/* /app/share/monochrome/",
+                "cp -r node_modules/electron /app/share/monochrome/node_modules/",
+                "cp -r node_modules/.bin /app/share/monochrome/node_modules/",
+                "install -Dm755 monochrome-wrapper /app/bin/monochrome",
+                "install -Dm644 /app/share/monochrome/com.monochrome.music.desktop /app/share/applications/com.monochrome.music.desktop",
+                "install -Dm644 /app/share/monochrome/monochrome.svg /app/share/icons/hicolor/scalable/apps/com.monochrome.music.svg",
+                "install -Dm644 com.monochrome.music.appdata.xml /app/share/metainfo/com.monochrome.music.appdata.xml"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/monochrome-music/monochrome.git",
+                    "tag": "v2.5.0",
+                    "commit": "placeholder"
+                },
+                {
+                    "type": "script",
+                    "dest-filename": "monochrome-wrapper",
+                    "commands": [
+                        "export TMPDIR=\"$HOME/.var/app/com.monochrome.music/cache/tmp\"",
+                        "mkdir -p \"$TMPDIR\"",
+                        "export ELECTRON_OZONE_PLATFORM_HINT=auto",
+                        "export GDK_BACKEND=x11",
+                        "export NIXOS_OZONE_WL=1",
+                        "export ELECTRON_DISABLE_GPU=1",
+                        "export ELECTRON_DISABLE_HARDWARE_ACCELERATION=1",
+                        "APP_DIR=/app/share/monochrome",
+                        "ELECTRON_BIN=\"$APP_DIR/node_modules/dist/electron\"",
+                        "if [ ! -f \"$ELECTRON_BIN\" ]; then",
+                        "    echo \"Error: Electron binary not found at $ELECTRON_BIN\"",
+                        "    ls -la \"$APP_DIR/node_modules/\" 2>&1 | head -20",
+                        "    exit 1",
+                        "fi",
+                        "PORT=8888",
+                        "while ss -tln 2>/dev/null | grep -q \":$PORT \"; do",
+                        "    PORT=$((PORT + 1))",
+                        "done",
+                        "cd \"$APP_DIR\"",
+                        "python3 spa-server.py $PORT &",
+                        "SERVER_PID=$!",
+                        "sleep 2",
+                        "# Launch Electron with GPU acceleration for visualizers (butterchurn)",
+                        "# Note: GPU enabled with system GL, fallback to software if unavailable",
+                        "exec \"$ELECTRON_BIN\" --no-sandbox --disable-dev-shm-usage --enable-gpu-rasterization --enable-accelerated-2d-canvas --ignore-gpu-blocklist --num-raster-threads=4 --app=http://127.0.0.1:$PORT \"$@\"",
+                        "kill $SERVER_PID 2>/dev/null || true"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "path": "monochrome/main.js"
+                },
+                {
+                    "type": "file",
+                    "path": "monochrome/spa-server.py"
+                },
+                {
+                    "type": "file",
+                    "path": "monochrome/package.json"
+                },
+                {
+                    "type": "file",
+                    "path": "icons/com.monochrome.music.svg"
+                },
+                {
+                    "type": "file",
+                    "path": "com.monochrome.music.appdata.xml"
+                },
+                {
+                    "type": "file",
+                    "path": "com.monochrome.music.desktop"
+                }
+            ]
+        }
+    ]
+}
