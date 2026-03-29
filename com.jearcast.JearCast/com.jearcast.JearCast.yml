@@ -1,0 +1,95 @@
+app-id: com.jearcast.JearCast
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: jearcast-wrapper
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  build-args:
+    - --share=network
+  env:
+    npm_config_cache: /run/build/jearcast/.npm-cache
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.DBus
+  - --own-name=org.mpris.MediaPlayer2.com.jearcast.JearCast
+  - --socket=session-bus
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download
+  - --filesystem=~/.local/share/jearcast:create
+  
+modules:
+  - name: jearcast
+    buildsystem: simple
+    build-commands:
+      - npm config set cache /run/build/jearcast/.npm-cache
+      - npm install
+      - npm run build -- --linux dir
+      
+      - mkdir -p /app/lib/jearcast
+      - mkdir -p /app/bin
+      - mkdir -p /app/share/applications
+      - mkdir -p /app/share/metainfo
+      - mkdir -p /app/share/icons/hicolor
+      
+      # Copiar el contenido del build de electron
+      - cp -r dist_electron/linux-unpacked/* /app/lib/jearcast/
+      
+      # COPIAR yt-dlp a MULTIPLES ubicaciones para asegurar que funcione
+      - mkdir -p /app/lib/jearcast/bin
+      - cp bin/yt-dlp /app/lib/jearcast/bin/yt-dlp
+      - chmod +x /app/lib/jearcast/bin/yt-dlp
+      
+      - mkdir -p /app/lib/jearcast/resources/bin
+      - cp bin/yt-dlp /app/lib/jearcast/resources/bin/yt-dlp
+      - chmod +x /app/lib/jearcast/resources/bin/yt-dlp
+      
+      - mkdir -p /app/lib/jearcast/resources/app.asar.unpacked/bin
+      - cp bin/yt-dlp /app/lib/jearcast/resources/app.asar.unpacked/bin/yt-dlp
+      - chmod +x /app/lib/jearcast/resources/app.asar.unpacked/bin/yt-dlp
+      
+      # Instalar wrapper
+      - install -Dm755 flathub/jearcast-wrapper /app/bin/jearcast-wrapper
+      
+      # Instalar archivos desktop y metainfo
+      - install -Dm644 flathub/com.jearcast.JearCast.desktop /app/share/applications/com.jearcast.JearCast.desktop
+      - install -Dm644 flathub/com.jearcast.JearCast.metainfo.xml /app/share/metainfo/com.jearcast.JearCast.metainfo.xml
+      
+      # --- SECCIÓN DE ICONOS MEJORADA ---
+      # Instalamos desde 16px (para menús pequeños) hasta 512px
+      - |
+        for size in 16 22 24 32 48 64 128 256 512; do
+          if [ -f flathub/icons/hicolor/${size}x${size}/apps/com.jearcast.JearCast.png ]; then
+            install -Dm644 flathub/icons/hicolor/${size}x${size}/apps/com.jearcast.JearCast.png /app/share/icons/hicolor/${size}x${size}/apps/com.jearcast.JearCast.png
+          fi
+        done
+
+      # Si tienes un icono simbólico, se instala aquí (opcional pero recomendado para GNOME)
+      - |
+        if [ -f flathub/icons/hicolor/symbolic/apps/com.jearcast.JearCast-symbolic.svg ]; then
+          install -Dm644 flathub/icons/hicolor/symbolic/apps/com.jearcast.JearCast-symbolic.svg /app/share/icons/hicolor/symbolic/apps/com.jearcast.JearCast-symbolic.svg
+        fi
+      
+      # Asegurar permisos
+      - chmod +x /app/lib/jearcast/jearcast
+      
+      # Verificación de yt-dlp
+      - test -f /app/lib/jearcast/bin/yt-dlp && echo "yt-dlp OK"
+      
+    sources:
+      - type: git
+        url: https://github.com/Josu09P/jearcastapp_electron_v3.git
+        branch: main
