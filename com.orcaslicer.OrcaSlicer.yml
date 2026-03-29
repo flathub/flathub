@@ -5,15 +5,14 @@ sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.llvm21
 command: entrypoint
-separate-locales: true
 rename-icon: OrcaSlicer
 build-options:
   append-path: /usr/lib/sdk/llvm21/bin
   prepend-ld-library-path: /usr/lib/sdk/llvm21/lib
+  ldflags: -fuse-ld=lld
   env:
     CC: clang
     CXX: clang++
-    LDFLAGS: "-fuse-ld=lld"
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -26,11 +25,15 @@ finish-args:
   - --filesystem=/run/spnav.sock:ro
   # Allow read-only access to OrcaSlicer's legacy config and cache directories (if they exist) for migration purposes.
   - --filesystem=~/.var/app/io.github.orcaslicer.OrcaSlicer:ro
-  # Allow OrcaSlicer to own and talk to instance-check D-Bus names (InstanceCheck.cpp)
-  - --talk-name=com.orcaslicer.OrcaSlicer.InstanceCheck.*
-  - --own-name=com.orcaslicer.OrcaSlicer.InstanceCheck.*
   - --system-talk-name=org.freedesktop.UDisks2
   - --env=SPNAV_SOCKET=/run/spnav.sock
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - "*.a"
+  - "*.la"
 
 modules:
 
@@ -57,11 +60,6 @@ modules:
       - type: archive
         url: https://ftp.osuosl.org/pub/blfs/conglomeration/glu/glu-9.0.2.tar.xz
         sha256: 6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4
-    cleanup:
-      - /include
-      - /lib/*.a
-      - /lib/*.la
-      - /lib/pkgconfig
 
   - name: kde-extra-cmake-modules
     buildsystem: cmake-ninja
@@ -71,7 +69,7 @@ modules:
         tag: v5.249.0
         commit: 008ae77d0cd2a97c346228ab30b99279643e5022
     cleanup:
-      - /
+      - '*'
 
   - name: libspnav
     sources:
@@ -115,74 +113,26 @@ modules:
       - -DwxUSE_LIBJPEG=sys
       - -DwxUSE_LIBTIFF=OFF
       - -DwxUSE_EXPAT=sys
-      - -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
-      - -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
-      - -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
     sources:
       - type: archive
         url: https://github.com/SoftFever/Orca-deps-wxWidgets/archive/refs/tags/orca-3.1.5-1.tar.gz
         sha256: 1dc9d3865d899cb71c27a7e549aa5491e832ef6e81a7b6653ccb11f9c37fa99d
 
-  # OrcaSlicer deps + slicer
-  - name: OrcaSlicer
-    buildsystem: simple
-    build-options:
-      env:
-        BUILD_DIR: deps/build_flatpak
-    build-commands:
-      # build deps
-      - |
-        cmake -S deps -B $BUILD_DIR \
-          -DFLATPAK=ON \
-          -DDEP_DOWNLOAD_DIR=/run/build/OrcaSlicer/external-packages \
-          -DCMAKE_PREFIX_PATH=/app \
-          -DDESTDIR=/app \
-          -DCMAKE_INSTALL_PREFIX=/app \
-          -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" \
-          -DCMAKE_MODULE_LINKER_FLAGS="-fuse-ld=lld"
-      - cmake --build $BUILD_DIR --parallel
-      - rm -rf /run/build/OrcaSlicer/external-packages
-      # build OrcaSlicer
-      - |
-        cmake . -B build_flatpak \
-          -DFLATPAK=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=/app \
-          -DCMAKE_INSTALL_PREFIX=/app \
-          -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" \
-          -DCMAKE_MODULE_LINKER_FLAGS="-fuse-ld=lld"
-
-      - cmake --build build_flatpak --target OrcaSlicer -j$FLATPAK_BUILDER_N_JOBS
-      - ./scripts/run_gettext.sh
-      - cmake --build build_flatpak --target install -j$FLATPAK_BUILDER_N_JOBS
-
-    cleanup:
-      - /include
-      - "*.a"
-      - "*.la"
-
+  # OrcaSlicer dependency libraries (ExternalProject-based, installed to /app)
+  - name: OrcaSlicer-deps
+    buildsystem: cmake-ninja
+    subdir: deps
+    no-make-install: true
+    config-opts:
+      - -DFLATPAK=ON
+      - -DDEP_DOWNLOAD_DIR=/run/build/OrcaSlicer-deps/external-packages
+      - -DDESTDIR=/app
     post-install:
-
-      - | # Desktop integration files
-        install -Dm644 -t /app/share/icons/hicolor/scalable/apps/ resources/images/OrcaSlicer.svg
-        install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
-        mv /app/share/applications/OrcaSlicer.desktop /app/share/applications/${FLATPAK_ID}.desktop
-        desktop-file-edit --set-key=Exec --set-value="entrypoint %U" /app/share/applications/${FLATPAK_ID}.desktop
-        install -Dm755 entrypoint /app/bin
-        install -Dm755 umount /app/bin
-
-      - install -Dm644 LICENSE.txt /app/share/licenses/${FLATPAK_ID}/LICENSE.txt
-
-      - | # Install fonts into fontconfig-scanned directory so Pango finds them
-        # before initialization (avoids ensure_faces crash from AddPrivateFont)
-        install -Dm644 -t /app/share/fonts/OrcaSlicer/ resources/fonts/*.ttf
-        fc-cache -f /app/share/fonts/OrcaSlicer/
-
+      - rm -rf /run/build/OrcaSlicer-deps/external-packages
     sources:
       # OrcaSlicer source tree (provides deps/ cmake files, patches, bundled sources)
-      - type: git
+      - &orcaslicer-git
+        type: git
         url: https://github.com/OrcaSlicer/OrcaSlicer.git
         tag: v2.3.2
         commit: c724a3f5f51c52336624b689e846c8fbc943a912
@@ -336,14 +286,32 @@ modules:
         sha256: efe71fd4b8246f1b0b1b9bfca13cfff1c9ad85930340c27df469733bbb620938
         dest: external-packages/FREETYPE
 
+  # OrcaSlicer application
+  - name: OrcaSlicer
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DFLATPAK=ON
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+    make-args:
+      - OrcaSlicer
+    build-commands:
+      - ./scripts/run_gettext.sh
+    post-install:
+      - | # Desktop integration files
+        install -Dm644 -t /app/share/icons/hicolor/scalable/apps/ resources/images/OrcaSlicer.svg
+        install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+        mv /app/share/applications/OrcaSlicer.desktop /app/share/applications/${FLATPAK_ID}.desktop
+        desktop-file-edit --set-key=Exec --set-value="entrypoint %U" /app/share/applications/${FLATPAK_ID}.desktop
+        install -Dm755 scripts/flatpak/entrypoint /app/bin
+        install -Dm755 scripts/flatpak/umount /app/bin
+      - install -Dm644 LICENSE.txt /app/share/licenses/${FLATPAK_ID}/LICENSE.txt
+      - | # Install fonts into fontconfig-scanned directory so Pango finds them
+        # before initialization (avoids ensure_faces crash from AddPrivateFont)
+        install -Dm644 -t /app/share/fonts/OrcaSlicer/ resources/fonts/*.ttf
+        fc-cache -f /app/share/fonts/OrcaSlicer/
+    sources:
+      - *orcaslicer-git
       # AppData metainfo for GNOME Software & Co.
       - type: file
         path: com.orcaslicer.OrcaSlicer.metainfo.xml
-
-      # Startup script
-      - type: file
-        path: entrypoint
-
-      # umount wrapper used to redirect umount calls to UDisks2
-      - type: file
-        path: umount
