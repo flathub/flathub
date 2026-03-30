@@ -96,7 +96,7 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # Extract version from manifest git tag
-VER=$(grep -A2 'github.com/OrcaSlicer/OrcaSlicer' "$MANIFEST" | grep 'tag:' | head -1 | sed 's/.*tag: *//')
+VER=$(grep -A2 'github.com/OrcaSlicer/OrcaSlicer' "$MANIFEST" | grep 'tag:' | head -1 | sed 's/.*tag: *//' || true)
 BUNDLE_NAME="OrcaSlicer-Linux-flatpak_${VER:-dev}_${ARCH}.flatpak"
 
 echo -e "${BLUE}OrcaSlicer Flatpak Build Script (Docker)${NC}"
