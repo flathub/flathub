@@ -1,0 +1,80 @@
+id: com.novaeduc.novaeduc_mobile
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+command: novaeduc_mobile
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+
+cleanup:
+  - /flatpak-pub-cache
+
+build-options:
+  env:
+    PUB_CACHE: /run/build/novaeduc-mobile/.pub-cache
+    XDG_CACHE_HOME: /run/build/novaeduc-mobile/.cache
+    HOME: /run/build/novaeduc-mobile/home
+    CI: "true"
+    PUB_ENVIRONMENT: flutter_bot:flatpak
+    FLUTTER_ROOT: /run/build/novaeduc-mobile/flutter-sdk
+    CC: gcc
+    CXX: g++
+  prepend-path: /run/build/novaeduc-mobile/flutter-sdk/bin
+
+modules:
+  - generated-pub-cache.yml
+  - generated-flutter-tools-pub-cache.yml
+  - name: novaeduc-mobile
+    # Flutter drives its own CMake/Ninja invocation through `flutter build linux`.
+    buildsystem: simple
+    build-commands:
+      - mkdir -p "$HOME" "$PUB_CACHE" "$XDG_CACHE_HOME"
+      - cp -a /app/flatpak-pub-cache/. "$PUB_CACHE"/
+      - mkdir -p flutter-sdk/packages/flutter_tools/.dart_tool
+      - mkdir -p toolchain-bin
+      - ln -sf "$(command -v gcc)" toolchain-bin/clang
+      - ln -sf "$(command -v g++)" toolchain-bin/clang++
+      - sed -e 's|file:///home/zad/.pub-cache/|file:///run/build/novaeduc-mobile/.pub-cache/|g' -e 's|file:///home/zad/development/flutter/|file:///run/build/novaeduc-mobile/flutter-sdk/|g' flutter-sdk/packages/flutter_tools/.dart_tool/package_config.json.template > flutter-sdk/packages/flutter_tools/.dart_tool/package_config.json
+      - sed -i '/^include(FetchContent)/,/^FetchContent_MakeAvailable(sqlite3)/c\set(sqlite3_SOURCE_DIR "/run/build/novaeduc-mobile/sqlite3-source")' "$PUB_CACHE/hosted/pub.dev/sqlite3_flutter_libs-0.5.42/linux/CMakeLists.txt"
+      - flutter --disable-analytics config --no-analytics --enable-linux-desktop
+      - cd source/mobile && flutter pub get --offline
+      - cd source/mobile && flutter pub run build_runner build --delete-conflicting-outputs
+      - sed -i '/-Wno-error=deprecated-literal-operator/d;/-Wno-deprecated-literal-operator/d' source/mobile/linux/CMakeLists.txt
+      - cd source/mobile && PATH=/run/build/novaeduc-mobile/toolchain-bin:$PATH flutter build linux --release
+      - install -Dm755 source/mobile/build/linux/x64/release/bundle/novaeduc_mobile /app/novaeduc_mobile
+      - printf '#!/bin/sh\ncd /app\nexec /app/novaeduc_mobile "$@"\n' > novaeduc_mobile-launcher
+      - install -Dm755 novaeduc_mobile-launcher /app/bin/novaeduc_mobile
+      - cp -a source/mobile/build/linux/x64/release/bundle/lib /app/
+      - cp -a source/mobile/build/linux/x64/release/bundle/data /app/
+      # App metadata and icons are shipped by upstream in the source tarball.
+      - install -Dm644 source/mobile/packaging/flatpak/com.novaeduc.novaeduc_mobile.desktop /app/share/applications/com.novaeduc.novaeduc_mobile.desktop
+      - install -Dm644 source/mobile/packaging/flatpak/com.novaeduc.novaeduc_mobile.metainfo.xml /app/share/metainfo/com.novaeduc.novaeduc_mobile.metainfo.xml
+      - install -Dm644 source/mobile/packaging/flatpak/icons/hicolor/128x128/apps/com.novaeduc.novaeduc_mobile.png /app/share/icons/hicolor/128x128/apps/com.novaeduc.novaeduc_mobile.png
+      - install -Dm644 source/mobile/packaging/flatpak/icons/hicolor/256x256/apps/com.novaeduc.novaeduc_mobile.png /app/share/icons/hicolor/256x256/apps/com.novaeduc.novaeduc_mobile.png
+      - install -Dm644 source/mobile/packaging/flatpak/icons/hicolor/512x512/apps/com.novaeduc.novaeduc_mobile.png /app/share/icons/hicolor/512x512/apps/com.novaeduc.novaeduc_mobile.png
+      - install -Dm644 source/mobile/packaging/flatpak/LICENSE /app/share/licenses/com.novaeduc.novaeduc_mobile/LICENSE
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.4-stable.tar.xz
+        sha256: c9c4e741ebcf83ee88303404176f7e22c3b6abfc8e9d60781098b6d4104327a9
+        dest: flutter-sdk
+        strip-components: 1
+      - type: archive
+        # Replace this URL and checksum after publishing the next upstream source tarball.
+        url: https://raw.githubusercontent.com/NovaCidadania/novaeduc-releases/master/source/v1.0.0/novaeduc-1.0.0.tar.gz
+        sha256: fff0e5f7d810c9ef77de706e74550b60fd40c41e07a6766bf8bfbe11c19bef80
+        dest: source
+        strip-components: 1
+      - type: archive
+        url: https://sqlite.org/2026/sqlite-autoconf-3520000.tar.gz
+        sha256: f6b50b0c103392af32a8be15b2b9d25959de9a00a70c3979128aafeaa5338b3f
+        dest: sqlite3-source
+        strip-components: 1
+      - type: file
+        path: flutter-tools/package_config.json.template
+        dest: flutter-sdk/packages/flutter_tools/.dart_tool
