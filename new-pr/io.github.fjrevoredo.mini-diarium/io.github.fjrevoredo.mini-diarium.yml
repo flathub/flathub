@@ -1,0 +1,56 @@
+app-id: io.github.fjrevoredo.mini-diarium
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: mini-diarium
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # WebKitGTK requires network access for proxy resolution via the portal.
+  # The app itself never makes network requests.
+  - --share=network
+  # GPU rendering (WebKit2GTK requires hardware acceleration)
+  - --device=dri
+  # Filesystem access (journal directory is user-configurable)
+  - --filesystem=home
+
+modules:
+  - name: mini-diarium
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+      env:
+        CARGO_HOME: /run/build/mini-diarium/cargo
+        npm_config_cache: /run/build/mini-diarium/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      # 1. Install pre-vendored node deps (offline, sourced from node-sources.json)
+      - npm ci --offline --legacy-peer-deps
+      # 2. Build frontend → dist/   (package.json "build" script = "vite build")
+      - npm run build
+      # 3. Build Rust binary — Tauri's build.rs (tauri_build::build()) reads tauri.conf.json,
+      #    finds frontendDist "../dist", and embeds it at compile time.
+      #    We use bare cargo, NOT the Tauri CLI, because the CLI would re-run
+      #    beforeBuildCommand ("bun run build") which would fail — Bun is not in the sandbox.
+      - cargo build --release --manifest-path src-tauri/Cargo.toml
+      # 4. Install files
+      - install -Dm755 src-tauri/target/release/mini-diarium /app/bin/mini-diarium
+      - install -Dm644 flatpak/io.github.fjrevoredo.mini-diarium.desktop /app/share/applications/io.github.fjrevoredo.mini-diarium.desktop
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.fjrevoredo.mini-diarium.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.fjrevoredo.mini-diarium.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.fjrevoredo.mini-diarium.png
+      - install -Dm644 flatpak/io.github.fjrevoredo.mini-diarium.metainfo.xml /app/share/metainfo/io.github.fjrevoredo.mini-diarium.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/fjrevoredo/mini-diarium
+        commit: 9ef479f3d86eb307efeeca74c9375c1b1fdfdc97
+      - node-sources.json
+      - cargo-sources.json
+      - type: file
+        path: package-lock.json
