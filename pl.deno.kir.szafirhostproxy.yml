@@ -1,0 +1,117 @@
+app-id: pl.deno.kir.szafirhostproxy
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: szafir-host-proxy
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk25
+
+finish-args:
+  # Display server connections and IPC: Wayland socket, X11 fallback socket (split variant
+  # only), GPU device access (DRI), and POSIX shared memory (--share=ipc).
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  # D-Bus name ownership and talk permissions for the proxy's well-known D-Bus service name,
+  # Flatpak host process spawning (split only), and system tray integration.
+  - --own-name=pl.deno.kir.szafirhostproxy
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Browser configuration directories for native messaging host installation. Access required
+  # during Landlock Phase 1 (limitOverrides) to install the native messaging manifest and
+  # wrapper; dropped in Phase 2 (dropBrowserAccess) after installation completes.
+  - --filesystem=~/.mozilla:create
+  - --filesystem=~/.librewolf:create
+  - --filesystem=~/.waterfox:create
+  - --filesystem=xdg-config/google-chrome:create
+  - --filesystem=xdg-config/google-chrome-unstable:create
+  - --filesystem=xdg-config/chromium:create
+  # Flatpak per-app override keyfiles directory (~/.local/share/flatpak/overrides). Required
+  # for granting flatpak browsers installed on host access to proxy's Link interface to
+  # facilitate seamless native host integration. Access is restricted to only specific
+  # override files early in the runtime: Landlock Phase 1 covers all override files (browsers
+  # + szafir apps); Phase 2 narrows to szafir app overrides only (browser files dropped).
+  - --filesystem=~/.local/share/flatpak/overrides:rw
+  # Read-only Flatpak icon export directories and application metadata paths. The
+  # exports/share/icons directories are added to XDG_DATA_DIRS so that KIconLoader and Qt's
+  # platform theme can resolve browser icons (e.g. firefox, google-chrome) in the system tray
+  # and browser list. The flatpak/app directories are required because the icon export
+  # directories contain symlinks that point back into flatpak/app/<id>/current/active/export/.
+  - --filesystem=~/.local/share/flatpak/exports/share/icons:ro
+  - --filesystem=/var/lib/flatpak/exports/share/icons:ro
+  - --filesystem=~/.local/share/flatpak/app:ro
+  - --filesystem=/var/lib/flatpak/app:ro
+  # Flatpak per-app sandbox data directories for each supported browser (~/.var/app/<flatpak-
+  # id>). Required to read and write the native messaging host manifest inside the browser's
+  # Flatpak sandbox.
+  - --filesystem=~/.var/app/org.mozilla.firefox:create
+  - --filesystem=~/.var/app/io.gitlab.librewolf-community:create
+  - --filesystem=~/.var/app/net.waterfox.waterfox:create
+  - --filesystem=~/.var/app/com.google.Chrome:create
+  - --filesystem=~/.var/app/com.google.ChromeDev:create
+  - --filesystem=~/.var/app/org.chromium.Chromium:create
+  - --filesystem=~/.var/app/io.github.ungoogled_software.ungoogled_chromium:create
+  # Additional permissions required in the bundled/in-process variant where szafir-host-proxy
+  # directly runs the SzafirHost JVM process: X11 socket for the JVM Swing UI, PC/SC smartcard
+  # daemon for direct smartcard access, and network access for component downloads and JVM
+  # communication.
+  - --socket=x11
+  - --socket=pcsc
+  - --share=network
+  # Java runtime working data: persistent ~/.java cache directory (shared between the Flatpak
+  # sandbox and the host via --persist=.java) and the required environment variables for the
+  # bundled OpenJDK runtime.
+  - --persist=.java
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+
+cleanup:
+  - /include
+  - /bin/pcsc-spy
+  - /lib/libpcscspy*
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - /sbin
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk25/install.sh
+
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      - -Dlibudev=false
+      - -Dlibsystemd=false
+      - -Dusb=false
+      - -Dlibusb=false
+      - -Dpolkit=false
+      - -Dserial=false
+      - -Dipcdir=/run/pcscd
+    post-install:
+      - install -Dm644 ../COPYING /app/share/licenses/$FLATPAK_ID/pcsc-lite/COPYING
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.3.3.tar.xz
+        sha256: cdff7d7153a0b37aa74e26dfec89ec7dc5c5286aa21b91b903e38739d227e8e7
+
+  - name: szafir-host-proxy
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUNDLED_HOST=ON
+      - -DAPP_ID=pl.deno.kir.szafirhostproxy
+      - -DAPP_VERSION=0.2.1
+    post-install:
+      - install -Dm755 start-szafir-host-native.sh /app/bin/start-szafir-host-native.sh
+      - install -Dm644 proxy_icon.svg /app/share/icons/hicolor/scalable/apps/pl.deno.kir.szafirhostproxy.svg
+      - install -Dm644 pl.deno.kir.szafirhostproxy.metainfo.xml /app/share/metainfo/pl.deno.kir.szafirhostproxy.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/deno/szafir-flatpak/releases/download/v0.2.1/szafir-host-proxy-0.2.1-source.tar.gz
+        sha256: 7184d4ba9fa2dd19379a3480eb033b244186425c21e327e40b056bfb031a6f76
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/deno/szafir-flatpak/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name == "szafir-host-proxy-\($version)-source.tar.gz") | .browser_download_url
