@@ -1,0 +1,171 @@
+# Flatpak manifest for HyprFM.
+#
+# Local build (run from repo root after committing your changes):
+#
+#   flatpak install -y flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+#   flatpak-builder --force-clean --user --install \
+#       build-flatpak io.github.soyeb_jim285.HyprFM.yml
+#   flatpak run io.github.soyeb_jim285.HyprFM
+#
+# For local iteration without committing, swap the `hyprfm` module's source
+# from `type: git` to `type: dir, path: .` (see comment below).
+#
+# For Flathub submission, this file is copied to a separate flathub repo
+# and the `hyprfm` source must stay as `type: git` with a pinned tag/commit.
+
+app-id: io.github.soyeb_jim285.HyprFM
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: hyprfm
+
+finish-args:
+  # Display + input
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Network — required for the Remote Access feature (sftp/ftp/dav via gvfs)
+  - --share=network
+
+  # File manager scope: needs to read/write user files anywhere on the host.
+  # Flathub reviewers accept this for file managers (Nautilus, Dolphin do
+  # the same), but be ready to justify it in the PR.
+  - --filesystem=host
+  # Removable media mount points so partitions mounted via UDisks2 are
+  # navigable from inside the sandbox.
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Access GVFS mounts (sftp:// etc.) exposed via the user runtime dir
+  - --filesystem=xdg-run/gvfs
+  - --filesystem=xdg-run/gvfsd
+
+  # DBus
+  # Mount/unmount removable devices (DeviceModel)
+  - --system-talk-name=org.freedesktop.UDisks2
+  # Allow other apps to ask us to "show item in file manager"
+  - --own-name=org.freedesktop.FileManager1
+  # Required by `flatpak-spawn --host` so FileOperations::openFile can
+  # ask the host to open files with the host's default applications.
+  # Without this, double-clicking a file inside HyprFM does nothing.
+  - --talk-name=org.freedesktop.Flatpak
+
+  # Prefer Wayland, fall back to xcb
+  - --env=QT_QPA_PLATFORM=wayland;xcb
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # ── rsync ──────────────────────────────────────────────────────────────
+  # Used by FileOperations for copy/move with progress reporting.
+  # The KDE runtime does not ship rsync, so we bundle it.
+  - name: rsync
+    buildsystem: autotools
+    config-opts:
+      - --disable-md2man
+      - --disable-zstd
+      - --disable-lz4
+      - --disable-xxhash
+    sources:
+      - type: git
+        url: https://github.com/RsyncProject/rsync.git
+        tag: v3.3.0
+
+  # ── wl-clipboard ───────────────────────────────────────────────────────
+  # ClipboardManager spawns wl-copy / wl-paste. Bundle them so the
+  # clipboard works without depending on host tools.
+  #
+  # We deliberately skip `meson install` because upstream's install rules
+  # try to write fish completions to /usr/share/fish/vendor_completions.d,
+  # which is read-only inside the Flatpak build sandbox. Instead we run
+  # meson + ninja ourselves and install only the two binaries we need.
+  - name: wl-clipboard
+    buildsystem: simple
+    build-commands:
+      - meson setup _build --prefix=/app --buildtype=release
+      - ninja -C _build
+      - install -Dm755 _build/src/wl-copy /app/bin/wl-copy
+      - install -Dm755 _build/src/wl-paste /app/bin/wl-paste
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.2.1
+
+  # ── fd ─────────────────────────────────────────────────────────────────
+  # Search backend. Optional — SearchService falls back to a Qt iterator
+  # if `fd` / `fdfind` is not on PATH — but bundling it makes search fast.
+  # We use the upstream prebuilt x86_64 static binary to avoid pulling in
+  # the full Rust toolchain. (Note: Flathub generally prefers building
+  # from source; if reviewers push back, switch to the rust-stable SDK
+  # extension and build fd from its git tag.)
+  - name: fd
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 fd /app/bin/fd
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-x86_64-unknown-linux-musl.tar.gz
+        sha256: d9bfa25ec28624545c222992e1b00673b7c9ca5eb15393c40369f10b28f9c932
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-aarch64-unknown-linux-gnu.tar.gz
+        sha256: 6de8be7a3d8ca27954a6d1e22bc327af4cf6fc7622791e68b820197f915c422b
+        # Same note as above — replace with the real checksum.
+
+  # ── bat ────────────────────────────────────────────────────────────────
+  # Optional syntax-highlighted text previews. Same prebuilt-binary
+  # approach as fd to avoid pulling in the Rust toolchain.
+  - name: bat
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bat /app/bin/bat
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/sharkdp/bat/releases/download/v0.24.0/bat-v0.24.0-x86_64-unknown-linux-musl.tar.gz
+        sha256: d39a21e3da57fe6a3e07184b3c1dc245f8dba379af569d3668b6dcdfe75e3052
+        # placeholder — flatpak-builder will print the real checksum on
+        # the first run; paste it back in here.
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/sharkdp/bat/releases/download/v0.24.0/bat-v0.24.0-aarch64-unknown-linux-gnu.tar.gz
+        sha256: feccae9a0576d97609c57e32d3914c5116136eab0df74c2ab74ef397d42c5b10
+
+  # ── HyprFM ─────────────────────────────────────────────────────────────
+  - name: hyprfm
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DHYPRFM_DATA_DIR=/app/share/hyprfm
+      - -DBUILD_TESTS=OFF
+      - -DHYPRFM_ENABLE_PCH=OFF
+      - -DHYPRFM_ENABLE_UNITY_BUILD=OFF
+    sources:
+      # ── FLATHUB SUBMISSION ──
+      - type: git
+        url: https://github.com/soyeb-jim285/hyprfm.git
+        tag: v0.4.6
+        # disable-submodules defaults to false, so quill + quill-icons
+        # are pulled in automatically.
+
+      # ── LOCAL ITERATION ──
+      # For testing uncommitted changes locally, comment out the git
+      # source above and uncomment the dir source below. Remember to
+      # revert before tagging a new release.
+      # - type: dir
+      #   path: .
