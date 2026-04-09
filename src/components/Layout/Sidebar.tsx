@@ -12,10 +12,12 @@ import { notifyError } from "@/lib/errors";
 
 interface SidebarProps {
   header?: ReactNode;
-  variant?: "default" | "native";
 }
 
-export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
+const batchActionClassName =
+  "rounded-[12px] border border-[var(--sidebar-control-border)] bg-[var(--sidebar-control-bg)] px-3 py-2 text-[13px] hover:border-[var(--sidebar-control-border)] hover:bg-[var(--sidebar-row-overlay-bg)]";
+
+export function Sidebar({ header }: SidebarProps = {}) {
   const { t } = useTranslation();
   const songs = useLibraryStore((s) => s.songs);
   const filter = useLibraryStore((s) => s.filter);
@@ -68,51 +70,29 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
     batchSeparation != null &&
     batchSeparation.completed + batchSeparation.failed < batchSeparation.total;
 
-  const nativeVariant = variant === "native";
-  const nativeBatchActionClassName =
-    "rounded-[12px] border border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] px-3 py-2 text-[13px] hover:border-[var(--native-sidebar-control-border)] hover:bg-[var(--native-sidebar-overlay-bg)]";
-
   return (
     <div
-      className={`${nativeVariant ? "" : "app-panel-surface "}flex h-full shrink-0 flex-col ${
-        nativeVariant
-          ? "w-full overflow-hidden"
-          : "w-[var(--window-shell-sidebar-width)] border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)]"
-      }`}
+      className="app-panel-surface flex h-full w-[var(--window-shell-sidebar-width)] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] shadow-[1px_0_0_rgba(255,255,255,0.02)]"
       data-window-shell-section="sidebar"
-      data-sidebar-visual-variant={variant}
+      data-sidebar-visual-variant="unified"
     >
-      {header ? (
-        <div className={`shrink-0 ${nativeVariant ? "" : "px-3 pb-2 pt-3"}`}>
-          {header}
-        </div>
-      ) : null}
+      {header ? <div className="shrink-0 px-3 pb-2 pt-3">{header}</div> : null}
 
-      <div
-        className={`shrink-0 ${nativeVariant ? "px-4 pb-4" : "px-3 pb-3"} ${header ? (nativeVariant ? "pt-3" : "pt-1") : nativeVariant ? "pt-4" : "pt-3"}`}
-      >
-        <SearchBox variant={variant} />
+      <div className={`shrink-0 px-3 pb-3 ${header ? "pt-1" : "pt-3"}`}>
+        <SearchBox />
       </div>
 
       {/* Filter tabs */}
-      <div
-        className={`shrink-0 space-y-0.5 ${nativeVariant ? "px-3" : "px-2"}`}
-      >
-        <div
-          className={`pb-1 font-semibold tracking-wide text-[var(--color-text-dim)] ${nativeVariant ? "px-3 text-[12px] normal-case" : "px-2 text-[11px]"}`}
-        >
+      <div className="shrink-0 space-y-0.5 px-2">
+        <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
           {t("sidebar.library")}
         </div>
         <button
           onClick={() => setFilter("all")}
-          className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between ${nativeVariant ? "px-3 py-2.5" : "px-2 py-1.5"} ${
+          className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between px-2 py-1.5 ${
             filter === "all"
-              ? nativeVariant
-                ? "border border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
-                : "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
-              : nativeVariant
-                ? "border border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
-                : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
+              ? "border border-[var(--sidebar-row-selected-border)] bg-[var(--sidebar-row-selected-bg)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
+              : "border border-transparent text-[var(--color-text)] hover:bg-[var(--sidebar-row-overlay-bg)]"
           }`}
         >
           <span className="flex items-center gap-2">
@@ -130,14 +110,10 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
         </button>
         <button
           onClick={() => setFilter("separated")}
-          className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between ${nativeVariant ? "px-3 py-2.5" : "px-2 py-1.5"} ${
+          className={`sidebar-source-list-row motion-surface flex w-full items-center justify-between px-2 py-1.5 ${
             filter === "separated"
-              ? nativeVariant
-                ? "border border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
-                : "bg-[color-mix(in_srgb,var(--color-hover)_88%,transparent)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
-              : nativeVariant
-                ? "border border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
-                : "text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"
+              ? "border border-[var(--sidebar-row-selected-border)] bg-[var(--sidebar-row-selected-bg)] text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)]"
+              : "border border-transparent text-[var(--color-text)] hover:bg-[var(--sidebar-row-overlay-bg)]"
           }`}
         >
           <span className="flex items-center gap-2">
@@ -151,22 +127,16 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
       </div>
 
       {/* Song list */}
-      <div
-        className={`mt-4 flex flex-1 flex-col overflow-hidden ${nativeVariant ? "px-3" : "px-2"}`}
-      >
-        <div
-          className={`pb-2 font-semibold tracking-wide text-[var(--color-text-dim)] ${nativeVariant ? "px-3 text-[12px] normal-case" : "px-2 pb-1 text-[11px]"}`}
-        >
+      <div className="mt-4 flex flex-1 flex-col overflow-hidden px-2">
+        <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-[var(--color-text-dim)]">
           {t("sidebar.localMusic")}
         </div>
-        <SongList variant={variant} />
+        <SongList />
       </div>
 
       {/* Batch separation controls */}
       {!(shouldHideButton && !isBatchRunning && batchSeparation == null) && (
-        <div
-          className={`shrink-0 ${nativeVariant ? "px-4 pb-4 pt-3" : "border-t border-[var(--color-border)] px-3 py-3"}`}
-        >
+        <div className="shrink-0 border-t border-[var(--color-border)] px-3 py-3">
           {isBatchRunning ? (
             <div className="text-center text-[11px] text-[var(--color-text-dim)]">
               {t("sidebar.separating", {
@@ -191,7 +161,7 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
           ) : needsUpgrade ? (
             <button
               onClick={() => setShowUpgradeConfirm(true)}
-              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? nativeBatchActionClassName : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"} text-[var(--color-text)] hover:text-white`}
+              className={`motion-surface flex w-full items-center justify-center gap-2 ${batchActionClassName} text-[var(--color-text)] hover:text-white`}
             >
               <Layers size={12} />
               {t("sidebar.upgradeAll")}
@@ -200,7 +170,7 @@ export function Sidebar({ header, variant = "default" }: SidebarProps = {}) {
             <button
               onClick={handleSeparateAll}
               disabled={separableSongs.length === 0}
-              className={`motion-surface flex w-full items-center justify-center gap-2 ${nativeVariant ? nativeBatchActionClassName : "rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_82%,transparent)]"} text-[var(--color-text)] hover:text-white disabled:opacity-40`}
+              className={`motion-surface flex w-full items-center justify-center gap-2 ${batchActionClassName} text-[var(--color-text)] hover:text-white disabled:opacity-40`}
             >
               <Layers size={12} />
               {t("sidebar.separateAll")}

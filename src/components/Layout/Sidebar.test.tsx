@@ -49,15 +49,11 @@ vi.mock("@/stores/settings-store", () => ({
 }));
 
 vi.mock("@/components/Library/SearchBox", () => ({
-  SearchBox: ({ variant }: { variant?: string }) => (
-    <div data-search-variant={variant}>search</div>
-  ),
+  SearchBox: () => <div data-search-visual-variant="mock">search</div>,
 }));
 
 vi.mock("@/components/Library/SongList", () => ({
-  SongList: ({ variant }: { variant?: string }) => (
-    <div data-song-list-variant={variant}>songs</div>
-  ),
+  SongList: () => <div data-song-list-visual-variant="mock">songs</div>,
 }));
 
 vi.mock("@/components/Library/ImportButton", () => ({
@@ -123,22 +119,15 @@ describe("Sidebar", () => {
     expect(markup).not.toContain("sidebar.upgradeAll");
   });
 
-  test("passes the native visual variant through the sidebar composition", () => {
-    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
+  test("uses the unified sidebar surface and composition markers", () => {
+    const markup = renderToStaticMarkup(<Sidebar />);
 
-    expect(markup).toContain('data-sidebar-visual-variant="native"');
-    expect(markup).toContain('data-search-variant="native"');
-    expect(markup).toContain('data-song-list-variant="native"');
+    expect(markup).toContain('data-sidebar-visual-variant="unified"');
+    expect(markup).toContain('data-search-visual-variant="mock"');
+    expect(markup).toContain('data-song-list-visual-variant="mock"');
   });
 
-  test("keeps the native sidebar shell content-only", () => {
-    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
-
-    expect(markup).not.toContain("bg-[var(--native-sidebar-bg)]");
-    expect(markup).not.toContain("border-[var(--native-sidebar-border)]");
-  });
-
-  test("renders native batch actions with overlay control chrome", () => {
+  test("renders batch actions with shared sidebar control tokens", () => {
     mockLibraryState.songs = [
       {
         hash: "song-3",
@@ -156,16 +145,14 @@ describe("Sidebar", () => {
       },
     ] as Song[];
 
-    const markup = renderToStaticMarkup(<Sidebar variant="native" />);
+    const markup = renderToStaticMarkup(<Sidebar />);
 
-    expect(markup).toContain("bg-[var(--native-sidebar-control-bg)]");
-    expect(markup).toContain("border-[var(--native-sidebar-control-border)]");
-    expect(markup).toContain("hover:bg-[var(--native-sidebar-overlay-bg)]");
-    expect(markup).toContain(
-      "hover:border-[var(--native-sidebar-control-border)]",
-    );
+    expect(markup).toContain("bg-[var(--sidebar-control-bg)]");
+    expect(markup).toContain("border-[var(--sidebar-control-border)]");
+    expect(markup).toContain("hover:bg-[var(--sidebar-row-overlay-bg)]");
+    expect(markup).toContain("hover:border-[var(--sidebar-control-border)]");
     expect(markup).not.toContain(
-      "hover:border-[var(--native-sidebar-selected-border)]",
+      "hover:border-[var(--sidebar-row-selected-border)]",
     );
 
     mockLibraryState.songs = [

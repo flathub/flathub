@@ -74,7 +74,7 @@ describe("PlaybackStage", () => {
     expect(markup).toContain('style="padding-bottom:144px"');
   });
 
-  test("renders a native ambience backdrop for lyric stages in mac native mode", () => {
+  test("renders a cover-art ambience backdrop for standard lyric stages without CDG", () => {
     mockCdgState.hasCdg = false;
     mockLibraryState.songs = [
       {
@@ -94,11 +94,9 @@ describe("PlaybackStage", () => {
     ] as Song[];
     mockPlayerState.snapshot = { song_id: "song-2" };
 
-    const markup = renderToStaticMarkup(
-      <PlaybackStage shellTier="mac_native" />,
-    );
+    const markup = renderToStaticMarkup(<PlaybackStage />);
 
-    expect(markup).toContain('data-stage-visual-variant="native"');
+    expect(markup).toContain('data-stage-visual-variant="ambience"');
     expect(markup).toContain('data-native-stage-backdrop="true"');
     expect(markup).toContain("blob:stage-cover");
     expect(markup).toContain("lyrics-panel");

@@ -1,5 +1,3 @@
-import type { WindowShellTier } from "@/types/ipc";
-
 export type PlaybackBarDensity = "relaxed" | "compact" | "tight";
 
 export const PLAYBACK_BAR_LEFT_MIN_WIDTH = 112;
@@ -22,41 +20,8 @@ export interface PlaybackBarLayoutTokens {
   barHeightClass: string;
 }
 
+/** Single layout table shared across shells (formerly the mac-only tier table). */
 const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
-  PlaybackBarDensity,
-  PlaybackBarLayoutTokens
-> = {
-  // Keep the utility cluster stable by letting metadata surrender width first.
-  relaxed: {
-    leftMaxWidth: 240,
-    masterVolumeWidth: 80,
-    masterVolumeWidthClass: "w-20",
-    outerPadding: 16,
-    zoneGap: 16,
-    rightZoneGap: 12,
-    barHeightClass: "h-20",
-  },
-  compact: {
-    leftMaxWidth: 200,
-    masterVolumeWidth: 56,
-    masterVolumeWidthClass: "w-14",
-    outerPadding: 12,
-    zoneGap: 12,
-    rightZoneGap: 8,
-    barHeightClass: "h-[74px]",
-  },
-  tight: {
-    leftMaxWidth: 160,
-    masterVolumeWidth: 40,
-    masterVolumeWidthClass: "w-10",
-    outerPadding: 10,
-    zoneGap: 8,
-    rightZoneGap: 6,
-    barHeightClass: "h-[68px]",
-  },
-};
-
-const MAC_NATIVE_PLAYBACK_BAR_LAYOUT_TOKENS: Record<
   PlaybackBarDensity,
   PlaybackBarLayoutTokens
 > = {
@@ -103,18 +68,14 @@ export function getPlaybackBarDensity(width: number): PlaybackBarDensity {
 
 export function getPlaybackBarLayoutTokens(
   density: PlaybackBarDensity,
-  shellTier: WindowShellTier = "desktop",
 ): PlaybackBarLayoutTokens {
-  return shellTier === "mac_native"
-    ? MAC_NATIVE_PLAYBACK_BAR_LAYOUT_TOKENS[density]
-    : PLAYBACK_BAR_LAYOUT_TOKENS[density];
+  return PLAYBACK_BAR_LAYOUT_TOKENS[density];
 }
 
 export function getPlaybackBarCenterMinWidth(
   density: PlaybackBarDensity,
-  shellTier: WindowShellTier = "desktop",
 ): number {
-  const { zoneGap } = getPlaybackBarLayoutTokens(density, shellTier);
+  const { zoneGap } = getPlaybackBarLayoutTokens(density);
 
   return (
     PLAYBACK_BAR_CONTROL_CLUSTER_MIN_WIDTH +

@@ -26,22 +26,13 @@ vi.mock("@/stores/library-store", () => ({
 }));
 
 describe("SearchBox", () => {
-  test("renders the shared search field by default", () => {
+  test("renders the unified search field chrome", () => {
     const markup = renderToStaticMarkup(<SearchBox />);
 
-    expect(markup).toContain('data-search-visual-variant="default"');
-  });
-
-  test("renders the native search field variant hooks for mac native sidebars", () => {
-    const markup = renderToStaticMarkup(<SearchBox variant="native" />);
-
-    expect(markup).toContain('data-search-visual-variant="native"');
-    expect(markup).toContain('data-native-overlay-surface="search-control"');
-    expect(markup).toContain("bg-[var(--native-sidebar-control-bg)]");
-    expect(markup).toContain("border-[var(--native-sidebar-control-border)]");
-    expect(markup).not.toContain("bg-[var(--native-search-bg)]");
-    expect(markup).not.toContain(
-      "border-[var(--native-sidebar-selected-border)]",
-    );
+    expect(markup).toContain('data-search-visual-variant="unified"');
+    expect(markup).toContain("bg-[var(--sidebar-control-bg)]");
+    expect(markup).toContain("border-[var(--sidebar-control-border)]");
+    expect(markup).toContain("focus-within:bg-[var(--sidebar-row-overlay-bg)]");
+    expect(markup).not.toContain("border-[var(--sidebar-row-selected-border)]");
   });
 });

@@ -28,26 +28,17 @@ const DESKTOP_WINDOW_SHELL_STATE: WindowShellState = {
   sidebarWidth: 260,
 };
 
-const MAC_LEGACY_WINDOW_SHELL_STATE: WindowShellState = {
+const MAC_WINDOW_SHELL_STATE: WindowShellState = {
   chromeVariant: "mac",
-  tier: "mac_legacy",
-  toolbarHeight: 52,
-  trafficLightInsetLeading: 64,
-  sidebarHeaderHeight: 0,
+  tier: "mac",
+  toolbarHeight: 48,
+  trafficLightInsetLeading: 78,
+  sidebarHeaderHeight: 28,
   sidebarWidth: 260,
 };
 
-const MAC_NATIVE_WINDOW_SHELL_STATE: WindowShellState = {
-  chromeVariant: "mac",
-  tier: "mac_native",
-  toolbarHeight: 56,
-  trafficLightInsetLeading: 78,
-  sidebarHeaderHeight: 40,
-  sidebarWidth: 420,
-};
-
 export function getNativeWindowShellState(): WindowShellState {
-  return { ...MAC_NATIVE_WINDOW_SHELL_STATE };
+  return { ...MAC_WINDOW_SHELL_STATE };
 }
 
 function isPositiveNumber(value: unknown): value is number {
@@ -71,7 +62,7 @@ export function getDefaultWindowShellState(
   platform: ShortcutPlatform,
 ): WindowShellState {
   return platform === "mac"
-    ? { ...MAC_LEGACY_WINDOW_SHELL_STATE }
+    ? { ...MAC_WINDOW_SHELL_STATE }
     : { ...DESKTOP_WINDOW_SHELL_STATE };
 }
 
@@ -83,15 +74,12 @@ export function resolveWindowShellState(
     return { ...DESKTOP_WINDOW_SHELL_STATE };
   }
 
-  const fallback =
-    state?.tier === "mac_native"
-      ? MAC_NATIVE_WINDOW_SHELL_STATE
-      : MAC_LEGACY_WINDOW_SHELL_STATE;
+  const fallback = MAC_WINDOW_SHELL_STATE;
 
   return {
     chromeVariant:
       state?.chromeVariant === "mac" ? "mac" : fallback.chromeVariant,
-    tier: state?.tier === "mac_native" ? "mac_native" : fallback.tier,
+    tier: "mac",
     toolbarHeight: isPositiveNumber(state?.toolbarHeight)
       ? state.toolbarHeight
       : fallback.toolbarHeight,
@@ -122,8 +110,7 @@ export function useWindowShellState(
 ): WindowShellState {
   const resolvedInitialState = resolveWindowShellState(platform, initialState);
   const [nativeState, setNativeState] = useState<WindowShellState | null>(null);
-  const shouldHydrateNativeSnapshot =
-    platform === "mac" && (!initialState || initialState.tier === "mac_native");
+  const shouldHydrateNativeSnapshot = platform === "mac";
 
   useEffect(() => {
     if (!shouldHydrateNativeSnapshot) {

@@ -5,18 +5,15 @@ import { useCdgStore } from "@/stores/cdg-store";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { songHasCdgMedia } from "@/lib/song-media";
-import type { WindowShellTier } from "@/types/ipc";
 
 interface PlaybackStageProps {
   presentation?: "standard" | "audience";
   bottomInsetPx?: number;
-  shellTier?: WindowShellTier;
 }
 
 export function PlaybackStage({
   presentation = "standard",
   bottomInsetPx = 0,
-  shellTier = "desktop",
 }: PlaybackStageProps) {
   const hasCdg = useCdgStore((s) => s.hasCdg);
   const songId = usePlayerStore((s) => s.snapshot?.song_id ?? null);
@@ -27,27 +24,24 @@ export function PlaybackStage({
     songId ?? "native-stage-empty",
     currentSong?.cover_art ?? null,
   );
-  const nativeVariant =
-    presentation === "standard" &&
-    shellTier === "mac_native" &&
-    !hasCdg &&
-    !currentSongHasCdg;
+  const stageAmbience =
+    presentation === "standard" && !hasCdg && !currentSongHasCdg;
 
   return (
     <div
       className="relative flex h-full w-full flex-1 overflow-hidden"
-      data-stage-visual-variant={nativeVariant ? "native" : "default"}
+      data-stage-visual-variant={stageAmbience ? "ambience" : "default"}
       style={
         presentation === "audience" && bottomInsetPx > 0
           ? { paddingBottom: bottomInsetPx }
           : undefined
       }
     >
-      {nativeVariant ? (
+      {stageAmbience ? (
         <>
           <div className="absolute inset-0" data-native-stage-backdrop="true">
             <div
-              className="absolute inset-[-8%] scale-[1.08] bg-center bg-cover opacity-38 blur-3xl saturate-[0.92]"
+              className="absolute inset-[-6%] scale-[1.06] bg-center bg-cover opacity-34 blur-2xl saturate-[0.92]"
               style={
                 nativeBackdropUrl
                   ? { backgroundImage: `url(${nativeBackdropUrl})` }
@@ -58,13 +52,13 @@ export function PlaybackStage({
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(12,14,18,0.22),rgba(11,13,16,0.54)_58%,rgba(13,15,18,0.72))]" />
           </div>
           <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
-            <LyricsPanel presentation={presentation} shellTier={shellTier} />
+            <LyricsPanel presentation={presentation} />
           </div>
         </>
       ) : hasCdg || currentSongHasCdg ? (
         <CdgCanvas />
       ) : (
-        <LyricsPanel presentation={presentation} shellTier={shellTier} />
+        <LyricsPanel presentation={presentation} />
       )}
     </div>
   );

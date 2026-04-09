@@ -2,11 +2,7 @@ import { SongListItem } from "./SongListItem";
 import { EmptyLibrary } from "./EmptyLibrary";
 import { useLibraryStore } from "@/stores/library-store";
 
-interface SongListProps {
-  variant?: "default" | "native";
-}
-
-export function SongList({ variant = "default" }: SongListProps = {}) {
+export function SongList() {
   const songs = useLibraryStore((s) => s.songs);
   const filter = useLibraryStore((s) => s.filter);
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
@@ -24,17 +20,14 @@ export function SongList({ variant = "default" }: SongListProps = {}) {
 
   return (
     <div
-      className={`custom-scrollbar flex-1 overflow-y-auto ${
-        variant === "native" ? "space-y-1" : "space-y-0.5"
-      }`}
-      data-song-list-visual-variant={variant}
+      className="custom-scrollbar flex-1 space-y-1 overflow-y-auto"
+      data-song-list-visual-variant="unified"
     >
       {filteredSongs.map((song) => (
         <SongListItem
           key={song.hash}
           song={song}
           orderedHashes={orderedHashes}
-          variant={variant}
         />
       ))}
     </div>

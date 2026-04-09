@@ -6,31 +6,31 @@ import {
 } from "./window-shell";
 
 describe("window shell helpers", () => {
-  test("defaults macOS to the intentional legacy shell before native state arrives", () => {
+  test("defaults macOS to the unified mac shell profile", () => {
     expect(getDefaultWindowShellState("mac")).toMatchObject({
       chromeVariant: "mac",
-      tier: "mac_legacy",
-      toolbarHeight: 52,
-      trafficLightInsetLeading: 64,
+      tier: "mac",
+      toolbarHeight: 48,
+      trafficLightInsetLeading: 78,
     });
   });
 
-  test("preserves the native mac shell profile returned by the backend", () => {
+  test("preserves the mac shell profile returned by the backend", () => {
     expect(
       resolveWindowShellState("mac", {
         chromeVariant: "mac",
-        tier: "mac_native",
-        toolbarHeight: 56,
+        tier: "mac",
+        toolbarHeight: 48,
         trafficLightInsetLeading: 78,
-        sidebarHeaderHeight: 40,
+        sidebarHeaderHeight: 28,
         sidebarWidth: 380,
       } as never),
     ).toMatchObject({
       chromeVariant: "mac",
-      tier: "mac_native",
-      toolbarHeight: 56,
+      tier: "mac",
+      toolbarHeight: 48,
       trafficLightInsetLeading: 78,
-      sidebarHeaderHeight: 40,
+      sidebarHeaderHeight: 28,
       sidebarWidth: 380,
     });
   });
@@ -39,18 +39,18 @@ describe("window shell helpers", () => {
     const style = createWindowShellStyle(
       resolveWindowShellState("mac", {
         chromeVariant: "mac",
-        tier: "mac_native",
-        toolbarHeight: 56,
+        tier: "mac",
+        toolbarHeight: 48,
         trafficLightInsetLeading: 90,
-        sidebarHeaderHeight: 40,
-        sidebarWidth: 420,
+        sidebarHeaderHeight: 28,
+        sidebarWidth: 260,
       } as never),
     );
 
     expect(style).toMatchObject({
       "--window-shell-leading-controls-space": "90px",
-      "--window-shell-sidebar-header-height": "40px",
-      "--window-shell-sidebar-width": "420px",
+      "--window-shell-sidebar-header-height": "28px",
+      "--window-shell-sidebar-width": "260px",
     });
   });
 
@@ -58,8 +58,8 @@ describe("window shell helpers", () => {
     expect(
       resolveWindowShellState("windows", {
         chromeVariant: "mac",
-        tier: "mac_native",
-        toolbarHeight: 56,
+        tier: "mac",
+        toolbarHeight: 48,
         trafficLightInsetLeading: 78,
       }),
     ).toMatchObject({

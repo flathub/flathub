@@ -14,7 +14,6 @@ import type {
   ImportSongsResult,
   LyricsPayload,
   ModelBootstrapStatusSnapshot,
-  MacOsShellMode,
   ModelStatusSnapshot,
   PlaybackStateSnapshot,
   SeparationStatusSnapshot,
@@ -246,10 +245,6 @@ export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
 
 export function setLyricsFontStep(step: number): Promise<AppSettings> {
   return invoke<AppSettings>("set_lyrics_font_step", { step });
-}
-
-export function setMacOsShellMode(mode: MacOsShellMode): Promise<AppSettings> {
-  return invoke<AppSettings>("set_macos_shell_mode", { mode });
 }
 
 export function restartApp(): Promise<void> {

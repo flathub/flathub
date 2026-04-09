@@ -22,6 +22,8 @@ interface AppLayoutProps {
 
 export function AppLayout({ initialWindowShellState }: AppLayoutProps) {
   const sidebarVisible = useLayoutStore((s) => s.sidebarVisible);
+  const sidebarWidth = useLayoutStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const settingsOpen = useSettingsStore((s) => s.isOpen);
   const openSettings = useSettingsStore((s) => s.open);
@@ -42,7 +44,10 @@ export function AppLayout({ initialWindowShellState }: AppLayoutProps) {
       className="flex h-screen w-full flex-col overflow-hidden font-sans"
       data-window-chrome-platform={windowShellState.chromeVariant}
       data-window-shell-tier={windowShellState.tier}
-      style={createWindowShellStyle(windowShellState)}
+      style={createWindowShellStyle({
+        ...windowShellState,
+        sidebarWidth,
+      })}
     >
       <WindowChrome
         onImportMenuAction={handleImportMenuAction}
@@ -55,11 +60,15 @@ export function AppLayout({ initialWindowShellState }: AppLayoutProps) {
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <SidebarRail visible={sidebarVisible}>
+        <SidebarRail
+          visible={sidebarVisible}
+          width={sidebarWidth}
+          onResize={setSidebarWidth}
+        >
           <Sidebar />
         </SidebarRail>
 
-        <MainContentView shellTier={windowShellState.tier} />
+        <MainContentView />
       </div>
 
       <ToastContainer />

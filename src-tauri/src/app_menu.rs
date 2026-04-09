@@ -19,7 +19,11 @@ const MENU_ITEM_OPEN_SETTINGS: &str = "app.settings";
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENU_ITEM_TOGGLE_SIDEBAR: &str = "view.toggle-sidebar";
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-const ABOUT_AUTHOR_CREDIT: &str = "David Weng";
+const ABOUT_AUTHOR_CREDIT: &str = "@David Weng";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const ABOUT_REPOSITORY_URL: &str = "https://github.com/thedavidweng/OpenKara";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const ABOUT_REPOSITORY_LABEL: &str = "Official Repository";
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn build_about_metadata<R: Runtime>(app_handle: &AppHandle<R>) -> AboutMetadata<'static> {
@@ -30,8 +34,10 @@ fn build_about_metadata<R: Runtime>(app_handle: &AppHandle<R>) -> AboutMetadata<
         name: Some(pkg_info.name.clone()),
         version: Some(pkg_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
-        authors: Some(vec!["David Weng".to_owned()]),
+        authors: Some(vec!["@David Weng".to_owned()]),
         credits: Some(ABOUT_AUTHOR_CREDIT.to_owned()),
+        website: Some(ABOUT_REPOSITORY_URL.to_owned()),
+        website_label: Some(ABOUT_REPOSITORY_LABEL.to_owned()),
         ..Default::default()
     }
 }
@@ -184,6 +190,15 @@ mod tests {
 
     #[test]
     fn mac_about_credit_is_stable() {
-        assert_eq!(ABOUT_AUTHOR_CREDIT, "David Weng");
+        assert_eq!(ABOUT_AUTHOR_CREDIT, "@David Weng");
+    }
+
+    #[test]
+    fn mac_about_repository_link_is_stable() {
+        assert_eq!(
+            ABOUT_REPOSITORY_URL,
+            "https://github.com/thedavidweng/OpenKara"
+        );
+        assert_eq!(ABOUT_REPOSITORY_LABEL, "Official Repository");
     }
 }

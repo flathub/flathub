@@ -63,57 +63,5 @@ describe("settings-store sync", () => {
     secondary.dispose();
   });
 
-  test("syncs the selected macOS shell style across webview contexts", () => {
-    const channelsByName = new Map<string, Set<FakeChannel>>();
-    const channelFactory = (name: string) => {
-      const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
-      channelsByName.set(name, peers);
-
-      const channel: FakeChannel = {
-        onmessage: null,
-        postMessage(data: unknown) {
-          for (const peer of peers) {
-            if (peer === channel) {
-              continue;
-            }
-
-            peer.onmessage?.({ data });
-          }
-        },
-        close() {
-          peers.delete(channel);
-        },
-      };
-
-      peers.add(channel);
-      return channel;
-    };
-
-    const primary = createSettingsStore(
-      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
-        channelFactory,
-        originId: "primary",
-      }),
-    );
-    const secondary = createSettingsStore(
-      createWebviewSyncChannel<SettingsSyncSnapshot>("settings", {
-        channelFactory,
-        originId: "secondary",
-      }),
-    );
-
-    primary.store.getState().hydrateAppSettings({
-      stem_mode: "two_stem",
-      model_variant: "htdemucs",
-      language: "en",
-      hide_batch_separate: false,
-      lyrics_font_step: 0,
-      macos_shell_mode: "native",
-    });
-
-    expect(secondary.store.getState().macosShellMode).toBe("native");
-
-    primary.dispose();
-    secondary.dispose();
-  });
+  // NOTE: macOS shell selection was removed; settings sync now only covers shared prefs.
 });

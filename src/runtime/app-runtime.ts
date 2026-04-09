@@ -6,7 +6,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   useEventListeners,
   useLyricsAutoFetch,
-  useSidebarPaneEventListeners,
 } from "@/hooks/use-playback-runtime";
 import { useLyricsSync } from "@/hooks/use-lyrics-sync";
 import { useCdgSync } from "@/hooks/use-cdg-sync";
@@ -65,10 +64,14 @@ export function useAppStartupRuntime(
   }, [libraryReady, loadBootstrapStatus, loadLibrary, loadPlayerState]);
 }
 
-export function useMainWindowRuntimeWhen(enabled: boolean) {
-  // Keep main-window side effects behind the library-ready gate so first-run
-  // setup does not accidentally enable file-drop imports or playback listeners
-  // before a library exists.
+/**
+ * Single product runtime graph (library-ready gated). There is no second
+ * webview/sidebar runtime path.
+ */
+export function useAppRuntime(enabled: boolean) {
+  // Keep side effects behind the library-ready gate so first-run setup does
+  // not accidentally enable file-drop imports or playback listeners before a
+  // library exists.
   useEventListeners(enabled);
   useLyricsAutoFetch(enabled);
   useLyricsSync(enabled);
@@ -78,11 +81,5 @@ export function useMainWindowRuntimeWhen(enabled: boolean) {
   useAirPlayOutputState(enabled);
   useKeyboardShortcuts(enabled);
   useFileDrop(enabled);
-  useAppMenuRuntime(enabled);
-}
-
-export function useSidebarWindowRuntimeWhen(enabled: boolean) {
-  useSidebarPaneEventListeners(enabled);
-  useKeyboardShortcuts(enabled);
   useAppMenuRuntime(enabled);
 }

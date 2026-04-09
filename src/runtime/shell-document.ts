@@ -1,7 +1,6 @@
-import { resolveCurrentAppShellMode } from "@/lib/app-shell";
-
+/** The document shell marker is always full-app; host uses a single webview tree. */
 export function applyShellDocumentMarker() {
-  const shellMode = resolveCurrentAppShellMode();
+  const shellMode = "full-app";
 
   document.documentElement.dataset.appShell = shellMode;
   document.body.dataset.appShell = shellMode;

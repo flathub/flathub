@@ -14,10 +14,6 @@ import {
 } from "./SettingsOverlay.context";
 import { SettingsStemModeSection } from "./SettingsStemModeSection";
 
-vi.mock("@/lib/app-shortcuts", () => ({
-  getShortcutPlatform: () => "mac",
-}));
-
 const { mockSettingsStore } = vi.hoisted(() => ({
   mockSettingsStore: {
     close: vi.fn(),
@@ -50,7 +46,6 @@ vi.mock("@/stores/settings-store", () => ({
           language: "en",
           hideBatchSeparate: false,
           lyricsFontStep: 0,
-          macosShellMode: "stable",
         }),
       }),
     },
@@ -98,33 +93,7 @@ describe("SettingsOverlay sections", () => {
     expect(markup).toContain("settings.stemMode.label");
     expect(markup).toContain("settings.modelVariant.label");
     expect(markup).toContain("settings.language.label");
-    expect(markup).toContain("settings.macosShellMode.label");
     expect(markup).toContain("settings.dangerZone.label");
-  });
-
-  test("renders the macOS shell mode choices on macOS", () => {
-    const value = createSettingsOverlayTestContextValue();
-
-    const markup = renderWithSettingsContext(<SettingsGeneralSection />, value);
-
-    expect(markup).toContain("settings.macosShellMode.stable");
-    expect(markup).toContain("settings.macosShellMode.native");
-  });
-
-  test("renders the restart button when the desired shell mode differs from the running shell", () => {
-    const value = createSettingsOverlayTestContextValue({
-      state: {
-        macosShellMode: "native",
-      },
-      meta: {
-        isInitializing: false,
-        appliedMacOsShellMode: "stable",
-      },
-    });
-
-    const markup = renderWithSettingsContext(<SettingsGeneralSection />, value);
-
-    expect(markup).toContain("settings.macosShellMode.restartButton");
   });
 
   test("renders downloaded, downloading, and not-downloaded model statuses", () => {

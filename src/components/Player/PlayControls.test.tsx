@@ -31,12 +31,10 @@ vi.mock("@/components/Overlay/Tooltip", () => ({
 }));
 
 describe("PlayControls", () => {
-  test("exposes the native visual variant while keeping the shared control cluster", () => {
-    const markup = renderToStaticMarkup(
-      <PlayControls shellTier="mac_native" />,
-    );
+  test("exposes the unified transport cluster markers", () => {
+    const markup = renderToStaticMarkup(<PlayControls />);
 
-    expect(markup).toContain('data-play-controls-visual-variant="native"');
+    expect(markup).toContain('data-play-controls-visual-variant="unified"');
     expect(markup).toContain('aria-label="player.play"');
   });
 });

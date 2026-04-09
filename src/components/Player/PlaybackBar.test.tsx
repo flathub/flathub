@@ -143,12 +143,12 @@ describe("PlaybackBar", () => {
     expect(markup).toContain("audio-level-slider w-10");
   });
 
-  test("keeps one shared structure while exposing the native playback bar variant", () => {
+  test("keeps one shared structure for the floating playback bar chrome", () => {
     const markup = renderToStaticMarkup(
-      <PlaybackBar shellTier="mac_native" densityOverride="relaxed" />,
+      <PlaybackBar densityOverride="relaxed" />,
     );
 
-    expect(markup).toContain('data-playback-bar-visual-variant="native"');
+    expect(markup).toContain('data-playback-bar-visual-variant="unified"');
     expect(markup).toContain('data-playback-zone="left"');
     expect(markup).toContain('data-playback-zone="center"');
     expect(markup).toContain('data-playback-zone="right"');

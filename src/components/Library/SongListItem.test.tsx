@@ -176,10 +176,9 @@ describe("SongListItem", () => {
     vi.unstubAllGlobals();
   });
 
-  test("renders native row hooks when the native variant is requested", () => {
+  test("renders unified row hooks for every song row", () => {
     const markup = renderToStaticMarkup(
       <SongListItem
-        variant="native"
         song={{
           hash: "song-native",
           file_path: "Fuji Kaze/Hachiko.mp3",
@@ -198,17 +197,16 @@ describe("SongListItem", () => {
       />,
     );
 
-    expect(markup).toContain('data-song-list-item-variant="native"');
+    expect(markup).toContain('data-song-list-item-variant="unified"');
     expect(markup).toContain('data-native-overlay-surface="song-row"');
-    expect(markup).toContain("hover:bg-[var(--native-sidebar-overlay-bg)]");
+    expect(markup).toContain("hover:bg-[var(--sidebar-row-overlay-bg)]");
   });
 
-  test("renders native selected rows and actions as overlay surfaces", () => {
+  test("renders selected rows and actions as overlay surfaces", () => {
     mockLibraryState.selectedSongIds = new Set(["song-native-selected"]);
 
     const markup = renderToStaticMarkup(
       <SongListItem
-        variant="native"
         song={{
           hash: "song-native-selected",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
@@ -227,16 +225,16 @@ describe("SongListItem", () => {
       />,
     );
 
-    expect(markup).toContain("bg-[var(--native-sidebar-selected-bg)]");
-    expect(markup).toContain("border-[var(--native-sidebar-selected-border)]");
+    expect(markup).toContain("bg-[var(--sidebar-row-selected-bg)]");
+    expect(markup).toContain("border-[var(--sidebar-row-selected-border)]");
     expect(markup).toContain('data-native-overlay-surface="song-action"');
-    expect(markup).toContain("bg-[var(--native-sidebar-control-bg)]");
-    expect(markup).toContain("border-[var(--native-sidebar-control-border)]");
+    expect(markup).toContain("bg-[var(--sidebar-control-bg)]");
+    expect(markup).toContain("border-[var(--sidebar-control-border)]");
 
     mockLibraryState.selectedSongIds = new Set();
   });
 
-  test("renders native badges as overlay surfaces instead of opaque fills", () => {
+  test("renders badges as overlay surfaces instead of opaque fills", () => {
     mockLibraryState.selectedSongIds = new Set();
     mockLibraryState.separationStatuses = {
       "song-native-badges": {
@@ -247,7 +245,6 @@ describe("SongListItem", () => {
 
     const markup = renderToStaticMarkup(
       <SongListItem
-        variant="native"
         song={{
           hash: "song-native-badges",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
@@ -266,7 +263,7 @@ describe("SongListItem", () => {
       />,
     );
 
-    expect(markup).toContain("bg-[var(--native-sidebar-overlay-bg)]");
+    expect(markup).toContain("bg-[var(--sidebar-row-overlay-bg)]");
     expect(markup).not.toContain("bg-[var(--color-hover)]");
 
     mockLibraryState.separationStatuses = {};

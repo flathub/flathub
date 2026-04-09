@@ -1,34 +1,19 @@
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-
-export type AppShellMode =
-  | "full-app"
-  | "sidebar-webview"
-  | "main-content-webview";
-
-export const SIDEBAR_CHILD_WEBVIEW_LABEL = "main-sidebar";
-export const MAIN_WEBVIEW_LABEL = "main";
+/**
+ * The product always runs as a single full-window React tree. Host-native code
+ * may still use webview labels internally, but the frontend must not branch on
+ * shell modes or secondary webviews.
+ */
+export type AppShellMode = "full-app";
 
 export function resolveAppShellMode(
-  search = typeof window === "undefined" ? "" : window.location.search,
-  webviewLabel?: string,
+  _search = typeof window === "undefined" ? "" : window.location.search,
+  _webviewLabel?: string,
 ): AppShellMode {
-  if (webviewLabel === SIDEBAR_CHILD_WEBVIEW_LABEL) {
-    return "sidebar-webview";
-  }
-
-  const shell = new URLSearchParams(search).get("shell");
-
-  if (shell === "sidebar-webview" || shell === "main-content-webview") {
-    return shell;
-  }
-
+  void _search;
+  void _webviewLabel;
   return "full-app";
 }
 
 export function resolveCurrentAppShellMode(): AppShellMode {
-  try {
-    return resolveAppShellMode(undefined, getCurrentWebviewWindow().label);
-  } catch {
-    return resolveAppShellMode();
-  }
+  return "full-app";
 }

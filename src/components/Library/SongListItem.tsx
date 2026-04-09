@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { CoverArtThumbnail } from "@/components/Shared/CoverArtThumbnail";
@@ -24,14 +24,9 @@ import type { Song } from "@/types/ipc";
 interface SongListItemProps {
   song: Song;
   orderedHashes: string[];
-  variant?: "default" | "native";
 }
 
-export function SongListItem({
-  song,
-  orderedHashes,
-  variant = "default",
-}: SongListItemProps) {
+export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const { t } = useTranslation();
   const selectedSongIds = useLibraryStore((s) => s.selectedSongIds);
   const selectSong = useLibraryStore((s) => s.selectSong);
@@ -84,7 +79,6 @@ export function SongListItem({
   );
   const isMultiSelected = selectedSongIds.size > 1 && isSelected;
   const supportsEmbeddedLyrics = song.media_g_container !== "zip";
-  const nativeVariant = variant === "native";
   const mediaGBadgeLabel =
     song.media_g_container === "paired"
       ? "CDG"
@@ -176,27 +170,25 @@ export function SongListItem({
       }
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      className={`group relative flex cursor-default select-none items-center transition-colors duration-150 ${
-        nativeVariant
-          ? "gap-2.5 rounded-[14px] border px-3 py-2.5"
-          : "gap-3 rounded-md px-3 py-2"
-      } ${
+      className={`group relative flex cursor-default select-none items-center gap-2.5 rounded-[14px] border px-3 py-2.5 transition-colors duration-150 ${
         isSelected
-          ? nativeVariant
-            ? "border-[var(--native-sidebar-selected-border)] bg-[var(--native-sidebar-selected-bg)] text-white"
-            : "bg-[var(--color-accent)] text-white"
-          : nativeVariant
-            ? "border-transparent text-[var(--color-text)] hover:bg-[var(--native-sidebar-overlay-bg)]"
-            : "text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+          ? "border-[var(--sidebar-row-selected-border)] bg-[var(--sidebar-row-selected-bg)] text-white"
+          : "border-transparent text-[var(--color-text)] hover:bg-[var(--sidebar-row-overlay-bg)]"
       }`}
-      data-native-overlay-surface={nativeVariant ? "song-row" : undefined}
-      data-song-list-item-variant={variant}
+      data-native-overlay-surface="song-row"
+      data-song-list-item-variant="unified"
+      style={
+        {
+          contentVisibility: "auto",
+          containIntrinsicSize: "64px",
+        } satisfies CSSProperties
+      }
     >
       <CoverArtThumbnail
         songHash={song.hash}
         coverArt={song.cover_art}
         alt={`${song.title || song.file_path.split("/").pop()} cover art`}
-        className={`${nativeVariant ? "h-11 w-11" : "h-12 w-12"} shrink-0`}
+        className="h-11 w-11 shrink-0"
       />
 
       <div className="flex min-w-0 flex-1 flex-col justify-center">
@@ -212,9 +204,7 @@ export function SongListItem({
             ) : (
               <div className="w-3 shrink-0" />
             )}
-            <span
-              className={`truncate ${nativeVariant ? "text-[15px] font-semibold" : "font-medium"}`}
-            >
+            <span className="truncate text-[15px] font-semibold">
               {song.title || song.file_path.split("/").pop()}
             </span>
           </div>
@@ -225,9 +215,7 @@ export function SongListItem({
                 className={`inline-flex h-[14px] items-center justify-center rounded px-1.5 text-[9px] font-semibold leading-none tracking-[0.08em] ${
                   isSelected
                     ? "bg-white/20 text-white/80"
-                    : nativeVariant
-                      ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-text-dim)]"
-                      : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                    : "bg-[var(--sidebar-row-overlay-bg)] text-[var(--color-text-dim)]"
                 }`}
               >
                 {mediaGBadgeLabel}
@@ -236,18 +224,12 @@ export function SongListItem({
             {sepState === "idle" && canSeparateSong && (
               <button
                 onClick={handleSeparate}
-                className={`rounded px-1.5 py-0.5 text-[10px] border ${
-                  nativeVariant
-                    ? isSelected
-                      ? "border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] text-white hover:bg-[var(--native-sidebar-overlay-bg)]"
-                      : "border-[var(--native-sidebar-control-border)] bg-[var(--native-sidebar-control-bg)] text-[var(--color-text-dim)] hover:bg-[var(--native-sidebar-overlay-bg)]"
-                    : isSelected
-                      ? "border-white/30 hover:bg-white/20"
-                      : "border-[var(--color-border-light)] bg-[var(--color-hover)] text-[var(--color-text-dim)] hover:bg-[var(--color-active)]"
+                className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                  isSelected
+                    ? "border-[var(--sidebar-control-border)] bg-[var(--sidebar-control-bg)] text-white hover:bg-[var(--sidebar-row-overlay-bg)]"
+                    : "border-[var(--sidebar-control-border)] bg-[var(--sidebar-control-bg)] text-[var(--color-text-dim)] hover:bg-[var(--sidebar-row-overlay-bg)]"
                 }`}
-                data-native-overlay-surface={
-                  nativeVariant ? "song-action" : undefined
-                }
+                data-native-overlay-surface="song-action"
               >
                 {t("library.separate")}
               </button>
@@ -269,14 +251,10 @@ export function SongListItem({
                     separationStatus?.drums_path
                       ? isSelected
                         ? "bg-white/20 text-white/80"
-                        : nativeVariant
-                          ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-accent)]"
-                          : "bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
+                        : "bg-[var(--sidebar-row-overlay-bg)] text-[var(--color-accent)]"
                       : isSelected
                         ? "bg-white/20 text-white/80"
-                        : nativeVariant
-                          ? "bg-[var(--native-sidebar-overlay-bg)] text-[var(--color-text-dim)]"
-                          : "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                        : "bg-[var(--sidebar-row-overlay-bg)] text-[var(--color-text-dim)]"
                   }`}
                 >
                   {separationStatus?.drums_path ? "4" : "2"}
@@ -309,7 +287,7 @@ export function SongListItem({
 
         <div className="flex pl-5">
           <span
-            className={`truncate ${nativeVariant ? "text-[12px]" : "text-[11px]"} ${
+            className={`truncate text-[12px] ${
               isSelected ? "text-white/80" : "text-[var(--color-text-dim)]"
             }`}
           >

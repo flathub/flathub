@@ -24,16 +24,14 @@ describe("useWindowShellState", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
-  test("hydrates real AppKit metrics even when native child webviews start from fallback tokens", async () => {
+  test("hydrates real AppKit metrics even when initial tokens are used", async () => {
     mockGetWindowShellState.mockResolvedValue({
       chrome_variant: "mac",
-      tier: "mac_native",
-      toolbar_height: 56,
+      tier: "mac",
+      toolbar_height: 48,
       traffic_light_inset_leading: 92,
-      sidebar_header_height: 40,
+      sidebar_header_height: 28,
       sidebar_width: 436,
-      sidebar_webview_label: "main-sidebar",
-      main_content_webview_label: "main",
     });
 
     const container = document.createElement("div");
@@ -60,7 +58,7 @@ describe("useWindowShellState", () => {
     });
 
     expect(container.innerHTML).toContain('data-leading="92"');
-    expect(container.innerHTML).toContain('data-header-height="40"');
+    expect(container.innerHTML).toContain('data-header-height="28"');
     expect(container.innerHTML).toContain('data-width="436"');
 
     await act(async () => {

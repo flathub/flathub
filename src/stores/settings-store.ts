@@ -5,12 +5,7 @@ import {
   type WebviewSyncChannel,
 } from "@/runtime/webview-sync";
 import * as api from "@/lib/tauri";
-import type {
-  AppSettings,
-  MacOsShellMode,
-  ModelVariant,
-  StemMode,
-} from "@/types/ipc";
+import type { AppSettings, ModelVariant, StemMode } from "@/types/ipc";
 
 export interface AppSettingsSnapshot {
   hydrated: boolean;
@@ -19,7 +14,6 @@ export interface AppSettingsSnapshot {
   language: string | null;
   hideBatchSeparate: boolean;
   lyricsFontStep: number;
-  macosShellMode: MacOsShellMode;
 }
 
 interface SettingsState {
@@ -30,7 +24,6 @@ interface SettingsState {
   language: AppSettingsSnapshot["language"];
   hideBatchSeparate: AppSettingsSnapshot["hideBatchSeparate"];
   lyricsFontStep: AppSettingsSnapshot["lyricsFontStep"];
-  macosShellMode: AppSettingsSnapshot["macosShellMode"];
   toggle: () => void;
   close: () => void;
   open: () => void;
@@ -49,7 +42,6 @@ const DEFAULT_APP_SETTINGS: AppSettingsSnapshot = {
   language: null,
   hideBatchSeparate: false,
   lyricsFontStep: 0,
-  macosShellMode: "stable",
 };
 
 function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
@@ -60,7 +52,6 @@ function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
     language: settings.language,
     hideBatchSeparate: settings.hide_batch_separate,
     lyricsFontStep: settings.lyrics_font_step,
-    macosShellMode: settings.macos_shell_mode,
   };
 }
 
@@ -74,7 +65,6 @@ function selectAppSettingsSnapshot(
     language: state.language,
     hideBatchSeparate: state.hideBatchSeparate,
     lyricsFontStep: state.lyricsFontStep,
-    macosShellMode: state.macosShellMode,
   };
 }
 
@@ -101,7 +91,6 @@ function applySettingsSyncSnapshot(
     language: snapshot.language,
     hideBatchSeparate: snapshot.hideBatchSeparate,
     lyricsFontStep: snapshot.lyricsFontStep,
-    macosShellMode: snapshot.macosShellMode,
   });
 }
 

@@ -20,7 +20,7 @@ export function CoverArtThumbnail({
 
   return (
     <div
-      className={`overflow-hidden rounded-[10px] border border-[color-mix(in_srgb,var(--color-border)_82%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] ${className}`}
+      className={`overflow-hidden rounded-[10px] border border-[color-mix(in_srgb,var(--color-border)_82%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-control-primary)_10%,transparent),color-mix(in_srgb,var(--color-control-primary)_4%,transparent))] ${className}`}
     >
       {/* These covers already live in the local database. In desktop WebViews,
           lazy/async image decoding can leave blob-backed thumbnails unpainted,
@@ -33,7 +33,7 @@ export function CoverArtThumbnail({
           className="block h-full w-full object-cover"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(255,255,255,0.04)_58%,rgba(0,0,0,0.12))]">
+        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--color-control-primary)_22%,transparent),color-mix(in_srgb,var(--color-control-primary)_6%,transparent)_58%,rgba(0,0,0,0.12))]">
           <span className="h-2.5 w-2.5 rounded-full bg-white/28" aria-hidden />
         </div>
       )}

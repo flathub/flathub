@@ -85,7 +85,6 @@ mod tests {
             hide_batch_separate: Some(true),
             model_variant: Some(config::ModelVariant::HtdemucsFt),
             lyrics_font_step: Some(2),
-            macos_shell_mode: Some(config::MacOsShellMode::Native),
         };
 
         let updated = updated_library_config(config, "/new".to_owned());
@@ -99,10 +98,6 @@ mod tests {
             Some(config::ModelVariant::HtdemucsFt)
         );
         assert_eq!(updated.lyrics_font_step, Some(2));
-        assert_eq!(
-            updated.macos_shell_mode,
-            Some(config::MacOsShellMode::Native)
-        );
     }
 
     #[test]
@@ -110,7 +105,6 @@ mod tests {
         let updated = updated_library_config(AppConfig::default(), "/library".to_owned());
 
         assert_eq!(updated.library_path.as_deref(), Some("/library"));
-        assert_eq!(updated.macos_shell_mode, None);
         assert_eq!(updated.language, None);
     }
 }

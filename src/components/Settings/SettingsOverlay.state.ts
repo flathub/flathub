@@ -3,12 +3,7 @@ import * as api from "@/lib/tauri";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type {
-  MacOsShellMode,
-  ModelVariant,
-  StemMode,
-  WindowShellStateSnapshot,
-} from "@/types/ipc";
+import type { ModelVariant, StemMode } from "@/types/ipc";
 
 export type DangerDialog =
   | "delete_stems"
@@ -31,11 +26,9 @@ export interface SettingsOverlayState {
   downloadingModel: ModelVariant | null;
   language: string;
   hideBatchSeparate: boolean;
-  macosShellMode: MacOsShellMode;
 }
 
 export interface SettingsOverlayMeta {
-  appliedMacOsShellMode: MacOsShellMode;
   isInitializing: boolean;
   dangerDialog: DangerDialog;
   stemsSize: number | null;
@@ -55,7 +48,6 @@ export interface SettingsOverlayActions {
   createLibrary: (dialogTitle: string) => Promise<void>;
   openLibrary: (dialogTitle: string) => Promise<void>;
   setLanguage: (language: string) => Promise<void>;
-  setMacOsShellMode: (mode: MacOsShellMode) => Promise<void>;
   restartApp: () => Promise<void>;
   setStemMode: (mode: StemMode) => Promise<void>;
   selectModelVariant: (variant: ModelVariant) => Promise<void>;
@@ -92,7 +84,6 @@ export interface SettingsOverlayControllerDependencies {
     | "restartApp"
     | "setHideBatchSeparate"
     | "setLanguage"
-    | "setMacOsShellMode"
     | "setModelVariant"
     | "setStemMode"
   >;
@@ -144,10 +135,8 @@ export function createInitialSettingsOverlaySnapshot(
       downloadingModel: null,
       language: initialSettings.language ?? "en",
       hideBatchSeparate: initialSettings.hideBatchSeparate,
-      macosShellMode: initialSettings.macosShellMode,
     },
     meta: {
-      appliedMacOsShellMode: "stable",
       isInitializing: true,
       dangerDialog: null,
       stemsSize: null,
@@ -157,12 +146,6 @@ export function createInitialSettingsOverlaySnapshot(
       downgradingInProgress: false,
     },
   };
-}
-
-function appliedMacOsShellModeFromWindowShell(
-  shellState: WindowShellStateSnapshot,
-): MacOsShellMode {
-  return shellState.tier === "mac_native" ? "native" : "stable";
 }
 
 export function createSettingsOverlayActions(
@@ -280,11 +263,7 @@ export function createSettingsOverlayActions(
       }
 
       if (windowShellResult.status === "fulfilled") {
-        patchMeta({
-          appliedMacOsShellMode: appliedMacOsShellModeFromWindowShell(
-            windowShellResult.value,
-          ),
-        });
+        void windowShellResult.value;
       } else {
         dependencies.notifyError(windowShellResult.reason);
       }
@@ -296,7 +275,6 @@ export function createSettingsOverlayActions(
           modelVariant: settingsResult.value.model_variant,
           language: settingsResult.value.language ?? "en",
           hideBatchSeparate: settingsResult.value.hide_batch_separate,
-          macosShellMode: settingsResult.value.macos_shell_mode,
         });
       } else {
         dependencies.notifyError(settingsResult.reason);
@@ -322,7 +300,6 @@ function createLibrarySettingsActions(
   | "createLibrary"
   | "openLibrary"
   | "setLanguage"
-  | "setMacOsShellMode"
   | "restartApp"
   | "setStemMode"
   | "toggleHideBatchSeparate"
@@ -371,19 +348,6 @@ function createLibrarySettingsActions(
       try {
         const settings = await dependencies.api.setLanguage(language);
         dependencies.settingsStore.hydrateAppSettings(settings);
-      } catch (error) {
-        dependencies.notifyError(error);
-      }
-    },
-
-    setMacOsShellMode: async (mode: MacOsShellMode) => {
-      try {
-        const settings = await dependencies.api.setMacOsShellMode(mode);
-        dependencies.settingsStore.patchAppSettings({
-          macosShellMode: settings.macos_shell_mode,
-        });
-        dependencies.settingsStore.hydrateAppSettings(settings);
-        patchState({ macosShellMode: settings.macos_shell_mode });
       } catch (error) {
         dependencies.notifyError(error);
       }

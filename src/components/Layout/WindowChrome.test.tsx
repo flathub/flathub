@@ -3,12 +3,12 @@ import { describe, expect, test, vi } from "vitest";
 import type { WindowShellState } from "@/lib/window-shell";
 import { WindowChrome } from "./WindowChrome";
 
-const macNativeShellState = {
+const macShellState = {
   chromeVariant: "mac",
-  tier: "mac_native",
-  toolbarHeight: 56,
+  tier: "mac",
+  toolbarHeight: 48,
   trafficLightInsetLeading: 78,
-  sidebarHeaderHeight: 40,
+  sidebarHeaderHeight: 28,
   sidebarWidth: 260,
 } satisfies WindowShellState;
 
@@ -49,14 +49,14 @@ describe("WindowChrome", () => {
         platform="mac"
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
-        shellState={macNativeShellState}
+        shellState={macShellState}
         settingsOpen={false}
         sidebarVisible
       />,
     );
 
     expect(markup).toContain("data-tauri-drag-region");
-    expect(markup).toContain('data-window-shell-tier="mac_native"');
+    expect(markup).toContain('data-window-shell-tier="mac"');
     expect(markup).not.toContain('aria-label="windowChrome.minimize"');
     expect(markup).not.toContain("windowChrome.file");
   });

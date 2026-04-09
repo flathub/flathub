@@ -18,17 +18,12 @@ import {
   shouldCollapsePlaybackBarMetadata,
 } from "./playback-bar-layout";
 import { usePlayerStore } from "@/stores/player-store";
-import type { WindowShellTier } from "@/types/ipc";
 
 interface PlaybackBarProps {
   densityOverride?: PlaybackBarDensity;
-  shellTier?: WindowShellTier;
 }
 
-export function PlaybackBar({
-  densityOverride,
-  shellTier = "desktop",
-}: PlaybackBarProps = {}) {
+export function PlaybackBar({ densityOverride }: PlaybackBarProps = {}) {
   const { t } = useTranslation();
   const snapshot = usePlayerStore((s) => s.snapshot);
   const setVolume = usePlayerStore((s) => s.setVolume);
@@ -82,9 +77,8 @@ export function PlaybackBar({
   };
 
   const density = densityOverride ?? measuredDensity;
-  const nativeVariant = shellTier === "mac_native";
-  const layoutTokens = getPlaybackBarLayoutTokens(density, shellTier);
-  const centerMinWidth = getPlaybackBarCenterMinWidth(density, shellTier);
+  const layoutTokens = getPlaybackBarLayoutTokens(density);
+  const centerMinWidth = getPlaybackBarCenterMinWidth(density);
   const shouldHideNowPlaying =
     !densityOverride && measuredWidth >= PLAYBACK_BAR_METADATA_COLLAPSE_WIDTH
       ? false
@@ -104,13 +98,9 @@ export function PlaybackBar({
   return (
     <div
       ref={containerRef}
-      className={`app-panel-surface flex shrink-0 flex-col justify-center ${layoutTokens.barHeightClass} ${
-        nativeVariant
-          ? "mx-3 mb-3 mt-2 rounded-[24px] border border-[var(--native-playback-border)] bg-[var(--native-playback-bg)] shadow-[var(--native-panel-shadow)]"
-          : "border-t border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)] shadow-[0_-1px_0_rgba(255,255,255,0.02)]"
-      }`}
+      className={`app-panel-surface mx-3 mb-3 mt-2 flex shrink-0 flex-col justify-center rounded-[24px] border border-[var(--playback-bar-surface-border)] bg-[var(--playback-bar-surface-bg)] shadow-[var(--chrome-panel-shadow)] ${layoutTokens.barHeightClass}`}
       data-playback-bar-density={density}
-      data-playback-bar-visual-variant={nativeVariant ? "native" : "default"}
+      data-playback-bar-visual-variant="unified"
       style={{ paddingInline: layoutTokens.outerPadding }}
     >
       <div className="grid w-full min-w-0 items-center" style={zoneStyle}>
@@ -120,7 +110,7 @@ export function PlaybackBar({
             className="min-w-0"
             style={{ maxWidth: layoutTokens.leftMaxWidth }}
           >
-            <NowPlayingInfo density={density} shellTier={shellTier} />
+            <NowPlayingInfo density={density} />
           </div>
         )}
 
@@ -129,7 +119,7 @@ export function PlaybackBar({
           className="grid min-w-0 items-center"
           style={centerZoneStyle}
         >
-          <PlayControls density={density} shellTier={shellTier} />
+          <PlayControls density={density} />
           <SeekBar density={density} />
         </div>
 
@@ -138,7 +128,7 @@ export function PlaybackBar({
           className="flex shrink-0 items-center justify-end"
           style={{ gap: layoutTokens.rightZoneGap }}
         >
-          <QueueButton shellTier={shellTier} />
+          <QueueButton />
           <VolumeSliders density={density} />
 
           <div
@@ -150,7 +140,7 @@ export function PlaybackBar({
             >
               <button
                 onClick={handleMasterMuteToggle}
-                className="motion-icon-button rounded-full p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+                className="motion-icon-button min-h-11 min-w-11 rounded-full p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
                 aria-label={
                   volume === 0 ? t("player.unmute") : t("player.mute")
                 }

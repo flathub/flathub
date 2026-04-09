@@ -26,10 +26,10 @@ vi.mock("@/components/Overlay/Tooltip", () => ({
 }));
 
 describe("QueueButton", () => {
-  test("exposes the native utility variant in mac native playback chrome", () => {
-    const markup = renderToStaticMarkup(<QueueButton shellTier="mac_native" />);
+  test("exposes the unified queue button chrome", () => {
+    const markup = renderToStaticMarkup(<QueueButton />);
 
-    expect(markup).toContain('data-queue-button-visual-variant="native"');
+    expect(markup).toContain('data-queue-button-visual-variant="unified"');
     expect(markup).toContain('aria-label="queue.title"');
   });
 });

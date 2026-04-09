@@ -34,15 +34,9 @@ export function Toolbar({
   const monitorBtnRef = useRef<HTMLButtonElement>(null);
   const resolvedShellState = shellState ?? getDefaultWindowShellState("mac");
   const macWindowChrome = resolvedShellState.chromeVariant === "mac";
-  const nativeShell = resolvedShellState.tier === "mac_native";
-
   return (
     <div
-      className={`flex shrink-0 items-center border-b px-4 shadow-[0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl ${
-        nativeShell
-          ? "border-[color-mix(in_srgb,var(--color-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_88%,transparent)]"
-          : "border-[color-mix(in_srgb,var(--color-border)_85%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_92%,transparent)]"
-      }`}
+      className="flex shrink-0 items-center border-b border-[color-mix(in_srgb,var(--color-border)_80%,transparent)] bg-[color-mix(in_srgb,var(--color-toolbar)_90%,transparent)] px-4 shadow-[0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-xl"
       data-window-shell-tier={resolvedShellState.tier}
       style={{
         ...createWindowShellStyle(resolvedShellState),
@@ -57,7 +51,6 @@ export function Toolbar({
               ? {
                   paddingInlineStart:
                     "var(--window-shell-leading-controls-space)",
-                  transform: nativeShell ? undefined : "translateY(-4px)",
                 }
               : undefined
           }
@@ -70,7 +63,6 @@ export function Toolbar({
               ? {
                   paddingInlineStart:
                     "var(--window-shell-leading-controls-space)",
-                  transform: nativeShell ? undefined : "translateY(-4px)",
                 }
               : undefined
           }

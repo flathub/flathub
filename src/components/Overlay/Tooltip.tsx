@@ -1,9 +1,13 @@
 import {
+  cloneElement,
   useEffect,
   useLayoutEffect,
   useReducer,
   useRef,
   useState,
+  useId,
+  isValidElement,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -19,10 +23,37 @@ export function Tooltip({ children, label, shortcut }: TooltipProps) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [open, dispatch] = useReducer(tooltipVisibilityReducer, false);
+  const tooltipId = useId();
   const [position, setPosition] = useState<{
     left: number;
     top: number;
   } | null>(null);
+
+  const describedChildren = (() => {
+    if (!open) {
+      return children;
+    }
+
+    if (!isValidElement(children)) {
+      return children;
+    }
+
+    const existing = (children.props as { "aria-describedby"?: string })?.[
+      "aria-describedby"
+    ];
+    const merged = existing
+      ? existing.split(/\s+/).includes(tooltipId)
+        ? existing
+        : `${existing} ${tooltipId}`
+      : tooltipId;
+
+    return cloneElement(
+      children as ReactElement,
+      {
+        "aria-describedby": merged,
+      } as Record<string, unknown>,
+    );
+  })();
 
   useLayoutEffect(() => {
     if (
@@ -96,7 +127,7 @@ export function Tooltip({ children, label, shortcut }: TooltipProps) {
           dispatch({ type: "blur" });
         }}
       >
-        {children}
+        {describedChildren}
       </span>
 
       {open && typeof document !== "undefined"
@@ -104,6 +135,7 @@ export function Tooltip({ children, label, shortcut }: TooltipProps) {
             <div
               ref={tooltipRef}
               role="tooltip"
+              id={tooltipId}
               className="app-panel-surface pointer-events-none fixed z-[80] flex items-center gap-2 rounded-xl border border-[color-mix(in_srgb,var(--color-border)_88%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_96%,transparent)] px-3 py-1.5 text-[11px] font-medium text-white shadow-[0_18px_36px_rgba(0,0,0,0.34)]"
               style={
                 position

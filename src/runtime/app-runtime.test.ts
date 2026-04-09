@@ -1,37 +1,23 @@
 import { describe, expect, test, vi } from "vitest";
 import { loadStartupSettings } from "./settings-runtime";
 
-describe("app runtime settings hydration", () => {
-  test("hydrates the persisted native macOS shell style", async () => {
-    const getSettings = vi.fn().mockResolvedValue({
-      stem_mode: "four_stem",
-      model_variant: "htdemucs_ft",
-      language: "en",
-      hide_batch_separate: true,
-      lyrics_font_step: 1,
-      macos_shell_mode: "native",
-    });
-    const hydrateAppSettings = vi.fn();
-    const changeLanguage = vi.fn().mockResolvedValue(undefined);
-    const detectFallbackLanguage = vi.fn(() => "en");
+describe("unified app runtime module", () => {
+  test("exports a single gated hook graph with no sidebar webview fork", async () => {
+    const { default: src } = await import("./app-runtime.ts?raw");
 
-    await loadStartupSettings({
-      getSettings,
-      hydrateAppSettings,
-      changeLanguage,
-      detectFallbackLanguage,
-    });
-
-    expect(hydrateAppSettings).toHaveBeenCalledWith({
-      stem_mode: "four_stem",
-      model_variant: "htdemucs_ft",
-      language: "en",
-      hide_batch_separate: true,
-      lyrics_font_step: 1,
-      macos_shell_mode: "native",
-    });
+    expect(src).toContain("export function useAppRuntime");
+    expect(src).not.toContain("useSidebarWindowRuntimeWhen");
+    expect(src).not.toContain("useSidebarPaneEventListeners");
+    expect(src).not.toContain("sidebar-webview");
+    expect(src).toContain("useEventListeners");
+    expect(src).toContain("useLyricsAutoFetch");
+    expect(src).toContain("useKeyboardShortcuts");
+    expect(src).toContain("useFileDrop");
+    expect(src).toContain("useAppMenuRuntime");
   });
+});
 
+describe("app runtime settings hydration", () => {
   test("hydrates settings and applies the persisted language", async () => {
     const getSettings = vi.fn().mockResolvedValue({
       stem_mode: "four_stem",
@@ -39,7 +25,6 @@ describe("app runtime settings hydration", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 1,
-      macos_shell_mode: "stable",
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);
@@ -58,7 +43,6 @@ describe("app runtime settings hydration", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 1,
-      macos_shell_mode: "stable",
     });
     expect(changeLanguage).toHaveBeenCalledWith("zh-CN");
     expect(detectFallbackLanguage).not.toHaveBeenCalled();
@@ -71,7 +55,6 @@ describe("app runtime settings hydration", () => {
       language: null,
       hide_batch_separate: false,
       lyrics_font_step: 0,
-      macos_shell_mode: "stable",
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);

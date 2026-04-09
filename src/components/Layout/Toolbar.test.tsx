@@ -4,12 +4,12 @@ import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import type { WindowShellState } from "@/lib/window-shell";
 import { Toolbar } from "./Toolbar";
 
-const macNativeShellState = {
+const macShellState = {
   chromeVariant: "mac",
-  tier: "mac_native",
-  toolbarHeight: 56,
+  tier: "mac",
+  toolbarHeight: 48,
   trafficLightInsetLeading: 78,
-  sidebarHeaderHeight: 40,
+  sidebarHeaderHeight: 28,
   sidebarWidth: 260,
 } satisfies WindowShellState;
 
@@ -94,7 +94,7 @@ describe("Toolbar drag region", () => {
       <Toolbar
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
-        shellState={macNativeShellState}
+        shellState={macShellState}
         settingsOpen={false}
         sidebarVisible
       />,
@@ -104,18 +104,18 @@ describe("Toolbar drag region", () => {
     expect(markup).toContain('aria-label="player.selectMonitor"');
   });
 
-  test("exposes the native shell tier and traffic-light spacing through markup", () => {
+  test("exposes the mac shell tier and traffic-light spacing through markup", () => {
     const markup = renderToStaticMarkup(
       <Toolbar
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
-        shellState={macNativeShellState}
+        shellState={macShellState}
         settingsOpen={false}
         sidebarVisible
       />,
     );
 
-    expect(markup).toContain('data-window-shell-tier="mac_native"');
+    expect(markup).toContain('data-window-shell-tier="mac"');
     expect(markup).toContain("--window-shell-leading-controls-space:78px");
   });
 
@@ -125,7 +125,7 @@ describe("Toolbar drag region", () => {
         hideLeadingShellControls
         onToggleSidebar={() => {}}
         onToggleSettings={() => {}}
-        shellState={macNativeShellState}
+        shellState={macShellState}
         settingsOpen={false}
         sidebarVisible
       />,

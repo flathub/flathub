@@ -14,13 +14,21 @@ interface FakeChannel {
 
 describe("layout-store", () => {
   beforeEach(() => {
-    useLayoutStore.setState({ sidebarVisible: true });
+    useLayoutStore.setState({ sidebarVisible: true, sidebarWidth: 260 });
   });
 
   test("toggles sidebar visibility locally", () => {
     useLayoutStore.getState().toggleSidebar();
 
     expect(useLayoutStore.getState().sidebarVisible).toBe(false);
+  });
+
+  test("clamps sidebar width updates locally", () => {
+    useLayoutStore.getState().setSidebarWidth(600);
+    expect(useLayoutStore.getState().sidebarWidth).toBe(420);
+
+    useLayoutStore.getState().setSidebarWidth(120);
+    expect(useLayoutStore.getState().sidebarWidth).toBe(240);
   });
 
   test("syncs sidebar visibility across webview contexts", () => {
@@ -65,6 +73,9 @@ describe("layout-store", () => {
     primary.store.getState().setSidebarVisible(false);
 
     expect(secondary.store.getState().sidebarVisible).toBe(false);
+
+    primary.store.getState().setSidebarWidth(340);
+    expect(secondary.store.getState().sidebarWidth).toBe(340);
 
     primary.dispose();
     secondary.dispose();

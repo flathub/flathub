@@ -137,10 +137,10 @@ describe("LyricsPanel contextual reveal", () => {
     expect(markup).not.toContain('data-visible="true"');
   });
 
-  test("uses the native stage lyric layout hooks in mac native standard presentation", () => {
-    const markup = renderToStaticMarkup(<LyricsPanel shellTier="mac_native" />);
+  test("uses the spacious stage lyric layout for standard presentation", () => {
+    const markup = renderToStaticMarkup(<LyricsPanel />);
 
-    expect(markup).toContain('data-lyrics-visual-variant="native-stage"');
+    expect(markup).toContain('data-lyrics-visual-variant="stage-layout"');
     expect(markup).toContain('data-native-lyrics-layout="true"');
   });
 

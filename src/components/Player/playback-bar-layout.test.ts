@@ -35,15 +35,15 @@ describe("getPlaybackBarLayoutTokens", () => {
 
   test("uses density-specific width caps for the now playing info and master volume", () => {
     expect(getPlaybackBarLayoutTokens("relaxed")).toMatchObject({
-      leftMaxWidth: 240,
-      masterVolumeWidth: 80,
+      leftMaxWidth: 228,
+      masterVolumeWidth: 72,
     });
     expect(getPlaybackBarLayoutTokens("compact")).toMatchObject({
-      leftMaxWidth: 200,
-      masterVolumeWidth: 56,
+      leftMaxWidth: 188,
+      masterVolumeWidth: 52,
     });
     expect(getPlaybackBarLayoutTokens("tight")).toMatchObject({
-      leftMaxWidth: 160,
+      leftMaxWidth: 148,
       masterVolumeWidth: 40,
     });
   });

@@ -98,11 +98,9 @@ describe("NowPlayingInfo", () => {
     vi.unstubAllGlobals();
   });
 
-  test("exposes the native now playing variant without changing the shared component", () => {
-    const markup = renderToStaticMarkup(
-      <NowPlayingInfo shellTier="mac_native" />,
-    );
+  test("exposes the unified now playing density markers", () => {
+    const markup = renderToStaticMarkup(<NowPlayingInfo />);
 
-    expect(markup).toContain('data-now-playing-visual-variant="native"');
+    expect(markup).toContain('data-now-playing-visual-variant="unified"');
   });
 });

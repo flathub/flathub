@@ -125,7 +125,6 @@ export interface ImportLyricsResult {
 
 export type StemMode = "two_stem" | "four_stem";
 export type ModelVariant = "htdemucs" | "htdemucs_ft";
-export type MacOsShellMode = "stable" | "native";
 
 export interface AppSettings {
   stem_mode: StemMode;
@@ -133,7 +132,6 @@ export interface AppSettings {
   language: string | null;
   hide_batch_separate: boolean;
   lyrics_font_step: number;
-  macos_shell_mode: MacOsShellMode;
 }
 
 export interface ModelStatusSnapshot {
@@ -143,7 +141,7 @@ export interface ModelStatusSnapshot {
 }
 
 export type WindowShellChromeVariant = "desktop" | "mac";
-export type WindowShellTier = "desktop" | "mac_legacy" | "mac_native";
+export type WindowShellTier = "desktop" | "mac";
 
 export interface WindowShellStateSnapshot {
   chrome_variant: WindowShellChromeVariant;
@@ -152,8 +150,6 @@ export interface WindowShellStateSnapshot {
   traffic_light_inset_leading: number;
   sidebar_header_height: number;
   sidebar_width: number;
-  sidebar_webview_label?: string | null;
-  main_content_webview_label?: string | null;
 }
 
 // ─── Playback ────────────────────────────────────────────

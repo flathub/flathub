@@ -29,10 +29,6 @@ vi.mock("@/hooks/use-animated-presence", () => ({
   }),
 }));
 
-vi.mock("@/components/Layout/NativeFloatingControls", () => ({
-  NativeFloatingControls: () => <div data-native-floating-controls="true" />,
-}));
-
 vi.mock("@/components/Layout/GlobalProgressBar", () => ({
   GlobalProgressBar: () => null,
 }));
@@ -58,15 +54,21 @@ vi.mock("@/components/Player/QueuePanel", () => ({
 }));
 
 describe("MainContentView", () => {
-  test("keeps native floating controls visible even while settings are open", () => {
+  test("marks the main column with the unified shell variant", () => {
+    const markup = renderToStaticMarkup(<MainContentView />);
+
+    expect(markup).toContain('data-main-content-visual-variant="unified"');
+    expect(markup).toContain('data-playback-stage="true"');
+    expect(markup).toContain('data-playback-bar="true"');
+  });
+
+  test("swaps to settings without native floating chrome", () => {
     mockSettingsState.isOpen = true;
 
-    const markup = renderToStaticMarkup(
-      <MainContentView shellTier="mac_native" />,
-    );
+    const markup = renderToStaticMarkup(<MainContentView />);
 
-    expect(markup).toContain('data-native-floating-controls="true"');
     expect(markup).toContain('data-settings-overlay="true"');
+    expect(markup).not.toContain("data-native-floating-controls");
 
     mockSettingsState.isOpen = false;
   });

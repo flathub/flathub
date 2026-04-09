@@ -214,16 +214,6 @@ describe("tauri API wrappers", () => {
     });
   });
 
-  test("persists the macOS shell mode through the dedicated settings command", async () => {
-    const { setMacOsShellMode } = await import("./tauri");
-
-    await setMacOsShellMode("native");
-
-    expect(mockInvoke).toHaveBeenCalledWith("set_macos_shell_mode", {
-      mode: "native",
-    });
-  });
-
   test("requests an app restart through the dedicated lifecycle command", async () => {
     const { restartApp } = await import("./tauri");
 
