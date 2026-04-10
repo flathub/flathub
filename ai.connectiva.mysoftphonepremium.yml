@@ -2,7 +2,7 @@
 # Visit the project at https://github.com/TheAppgineer/flatpak-flutter
 app-id: ai.connectiva.mysoftphonepremium
 runtime: org.gnome.Platform
-runtime-version: '49'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: FlatpakMySoftphone.sh
 finish-args:
@@ -17,53 +17,6 @@ finish-args:
   - --talk-name=com.canonical.AppMenu.Registrar
   - --device=all
 modules:
-  - name: ffmpeg
-    buildsystem: autotools
-    sources:
-      - type: archive
-        url: https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz
-        sha256: 8684f4b00f94b85461884c3719382f1261f0d9eb3d59640a1f4ac0873616f968
-    config-opts:
-      - --prefix=/app
-      - --disable-static
-      - --enable-shared
-      - --disable-debug
-      - --disable-doc
-      - --disable-programs
-      - --disable-everything
-      - --enable-avcodec
-      - --enable-avformat
-      - --enable-avutil
-      - --enable-swresample
-      - --enable-protocol=file
-  - name: libayatana-ido
-    buildsystem: cmake-ninja
-    sources:
-      - type: archive
-        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
-        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
-        strip-components: 1
-    config-opts:
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DCMAKE_INSTALL_LIBDIR=/app/lib
-      - -DENABLE_TESTS=OFF
-    build-options:
-      env:
-        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
-  - name: libayatana-indicator
-    buildsystem: cmake-ninja
-    sources:
-      - type: archive
-        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
-        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
-        strip-components: 1
-    config-opts:
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DCMAKE_INSTALL_LIBDIR=/app/lib
-      - -DENABLE_TESTS=OFF
-    build-options:
-      env:
-        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
   - name: intltool
     buildsystem: autotools
     sources:
@@ -73,47 +26,76 @@ modules:
     cleanup:
       - '*'
   - name: libdbusmenu
-    buildsystem: simple
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    cleanup:
+      - '*.la'
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share/doc
+      - /share/gtk-doc
     sources:
       - type: archive
         url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
         sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
-    build-options:
-      env:
-        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
-    build-commands:
-      - 'sed -i ''/^AC_ARG_ENABLE(massivedebugging,/i\
-
-        AM_CONDITIONAL([HAVE_VALGRIND], [test "x$enable_massivedebugging" = "xyes"])''
-        configure.ac
-
-        '
-      - autoreconf -fi
-      - ./configure --prefix=/app --disable-static --enable-shared --disable-dumper
-        --disable-tests --with-gtk=3 --enable-introspection=no --disable-vala --disable-gtk-doc
-        --disable-massivedebugging
-      - make -j${FLATPAK_BUILDER_N_JOBS} CFLAGS="-g -O2 -Wno-error"
-      - make install
-  - name: libayatana-appindicator
-    buildsystem: simple
+      - type: patch
+        paths:
+          - shared-modules/libayatana-appindicator/0001-Fix-HAVE_VALGRIND-AM_CONDITIONAL.patch
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_INTROSPECTION=OFF
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
     sources:
-      - type: archive
-        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.94.tar.gz
-        sha256: 884a6bc77994c0b58c961613ca4c4b974dc91aa0f804e70e92f38a542d0d0f90
-        strip-components: 1
-    build-options:
-      env:
-        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
-    build-commands:
-      - "if grep -q \"add_subdirectory *(docs\" CMakeLists.txt; then\n  sed -i 's/^[[:space:]]*add_subdirectory[[:space:]]*(docs.*)$/#\
-        \ &/g' CMakeLists.txt\nfi\n"
-      - "if [ -f docs/CMakeLists.txt ]; then\n  sed -i 's/^[[:space:]]*add_subdirectory[[:space:]]*(reference.*)$/#\
-        \ &/g' docs/CMakeLists.txt\nfi\n"
-      - cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app
-        -DCMAKE_INSTALL_LIBDIR=/app/lib -DENABLE_TESTS=OFF -DENABLE_BINDINGS_MONO=OFF
-        -DENABLE_BINDINGS_VALA=OFF
-      - ninja -C _build -j${FLATPAK_BUILDER_N_JOBS}
-      - ninja -C _build install
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: 0.10.4
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+      - type: patch
+        paths:
+          - shared-modules/libayatana-appindicator/0001-Make-introspection-configurable.patch
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: 0.9.4
+        commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.94
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
   - name: opencv
     buildsystem: cmake-ninja
     builddir: true
@@ -146,7 +128,6 @@ modules:
       - /bin
   - name: mysoftphonepremium
     buildsystem: simple
-    subdir: .
     build-options:
       append-path: /var/lib/flutter/bin
       env:
@@ -155,49 +136,26 @@ modules:
         CXX: g++
         CMAKE_PREFIX_PATH: /app
         OpenCV_DIR: /app/lib/cmake/opencv4
-        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
     build-commands:
-      - "echo \"=== Checking extracted cache contents ===\"\necho \"FLATPAK_BUILDER_BUILDDIR:\
-        \ $FLATPAK_BUILDER_BUILDDIR\"\necho \"PUB_CACHE: $PUB_CACHE\"\nls -la \"$FLATPAK_BUILDER_BUILDDIR\"\
-        \ || true\nif [ -d \"$FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/.pub-cache\"\
-        \ ]; then\n  echo \"Found .pub-cache in _flutter_sdk_cache\"\n  ls -la \"\
-        $FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/.pub-cache\" || true\n  if [\
-        \ -d \"$FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/.pub-cache/hosted/pub.dev\"\
-        \ ]; then\n    echo \"Checking for quiver in cache:\"\n    ls -1 \"$FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/.pub-cache/hosted/pub.dev\"\
-        \ | grep quiver || echo \"QUIVER NOT FOUND!\"\n  fi\nelse\n  echo \"NO .pub-cache\
-        \ directory found in _flutter_sdk_cache!\"\nfi\n"
-      - "echo \"Copying Flutter SDK to writable location...\"\ncp -a /var/lib/flutter\
-        \ \"$FLATPAK_BUILDER_BUILDDIR/_flutter\"\nif [ -d \"$FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/bin/cache\"\
-        \ ]; then\n  echo \"Merging bin/cache into writable Flutter SDK copy...\"\n\
-        \  cp -r \"$FLATPAK_BUILDER_BUILDDIR/_flutter_sdk_cache/bin/cache\"/* \"$FLATPAK_BUILDER_BUILDDIR/_flutter/bin/cache/\"\
-        \nfi\n"
-      - "WEBRTC_PKG_DIR=\"$(ls -d \"$PUB_CACHE/hosted/pub.dev\"/flutter_webrtc-* 2>/dev/null\
-        \ | sort -V | tail -1)\"\nWEBRTC_CMAKE=\"${WEBRTC_PKG_DIR}/linux/CMakeLists.txt\"\
-        \nif [ -n \"$WEBRTC_PKG_DIR\" ] && [ -f \"$WEBRTC_CMAKE\" ]; then\n  if grep\
-        \ -qF 'target_compile_options(${PLUGIN_NAME} PRIVATE -Wno-error)' \"$WEBRTC_CMAKE\"\
-        ; then\n    echo \"$WEBRTC_CMAKE already patched\"\n  elif grep -qF 'apply_standard_settings(${PLUGIN_NAME})'\
-        \ \"$WEBRTC_CMAKE\"; then\n    sed -i '/apply_standard_settings(\\${PLUGIN_NAME})/a\
-        \ target_compile_options(${PLUGIN_NAME} PRIVATE -Wno-error)' \"$WEBRTC_CMAKE\"\
-        \n    echo \"Patched $WEBRTC_CMAKE to disable -Werror for flutter_webrtc\"\
-        \n  else\n    echo \"Failed to patch $WEBRTC_CMAKE: marker not found\" >&2\n\
-        \    exit 1\n  fi\nfi\n"
-      - sh -c 'cd "$FLATPAK_BUILDER_BUILDDIR" && PATH="$FLATPAK_BUILDER_BUILDDIR/_flutter/bin:$PATH"
-        mkdir -p /tmp/cc-compat && ln -sf /usr/bin/gcc /tmp/cc-compat/clang && ln
-        -sf /usr/bin/g++ /tmp/cc-compat/clang++ && export PATH=/tmp/cc-compat:$PATH
-        && flutter pub get --offline && flutter build linux --release --no-pub'
-      - install -d /app/mysoftphone
-      - cp -r build/linux/x64/release/bundle/* /app/mysoftphone/
-      - install -Dm755 FlatpakMySoftphone.sh /app/bin/FlatpakMySoftphone.sh
-      - install -Dm644 ai.connectiva.mysoftphonepremium.desktop /app/share/applications/ai.connectiva.mysoftphonepremium.desktop
-      - install -Dm644 flatpak/icons/ai.connectiva.mysoftphonepremium.png /app/share/icons/hicolor/512x512/apps/ai.connectiva.mysoftphonepremium.png
-      - install -Dm644 ai.connectiva.mysoftphonepremium.metainfo.xml /app/share/metainfo/ai.connectiva.mysoftphonepremium.metainfo.xml
-      - "if [ -f /app/lib/libayatana-appindicator3.so.1 ] && [ ! -f /app/lib/libappindicator3.so.1\
-        \ ]; then\n  ln -sf /app/lib/libayatana-appindicator3.so.1 /app/lib/libappindicator3.so.1\n\
-        fi\n"
+      - flatpak/build-flutter.sh
+      - 'export PATH="$FLATPAK_BUILDER_BUILDDIR/_flutter/bin:$PATH"
+
+        mkdir -p /tmp/cc-compat
+
+        ln -sf /usr/bin/gcc /tmp/cc-compat/clang
+
+        ln -sf /usr/bin/g++ /tmp/cc-compat/clang++
+
+        export PATH=/tmp/cc-compat:$PATH
+
+        flutter pub get --offline && flutter build linux --release --no-pub
+
+        '
+      - flatpak/install-app.sh
     sources:
       - type: archive
         url: https://autoprov.connectiva.ai/getFile/mysoftphone_linux-6.4.10.tar.gz
-        sha256: 193dee4bcc2aea2ac3fe0fc8b7e68918ca324d885ff7fc945589910971b4f8f6
+        sha256: d7297b6c83b31b10068c400fc0f7422ffeded8228a51e6348d42cdb900343756
         strip-components: 0
         dest: .
       - type: archive
