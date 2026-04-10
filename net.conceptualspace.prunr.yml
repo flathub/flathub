@@ -1,0 +1,74 @@
+app-id: net.conceptualspace.prunr
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: run.sh
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --env=ELECTRON_TRASH=gio
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  - name: prunr
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/prunr/flatpak-node/cache
+        npm_config_cache: /run/build/prunr/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node24
+        npm_config_offline: 'true'
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app with webpack
+      - npm run build
+      # Build the Electron app as unpacked directory
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npx electron-builder $ELECTRON_BUILDER_ARCH_ARGS --linux --dir
+      # Bundle app and dependencies
+      - cp -a out/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      # Install AppStream metadata
+      - install -Dm644 net.conceptualspace.prunr.metainfo.xml /app/share/metainfo/net.conceptualspace.prunr.metainfo.xml
+      # Install desktop file
+      - install -Dm644 net.conceptualspace.prunr.desktop /app/share/applications/net.conceptualspace.prunr.desktop
+      # Install icon
+      - install -Dm644 assets/icons/icon-512-alpha.png /app/share/icons/hicolor/512x512/apps/net.conceptualspace.prunr.png
+    subdir: main
+    sources:
+      - type: archive
+        url: https://github.com/conceptualspace/prunr/archive/refs/tags/v1.2.4.tar.gz
+        sha256: 853a392ec6f3e0821835e28b32ce8f84bffda4a46af84053f34ecde780cff5d3
+        dest: main
+      - generated-sources.json
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/prunr "$@"
+      # For local testing
+      #- type: git
+      #  url: .
+      #  branch: electron-builder-flathub
+      #  dest: main
+      # Pre-downloaded npm packages and electron binary
+     # - generated-sources.json
+      # Wrapper to launch the app through zypak
+     # - type: script
+      #  dest-filename: run.sh
+     #   commands:
+      #    - zypak-wrapper.sh /app/main/prunr "$@"
