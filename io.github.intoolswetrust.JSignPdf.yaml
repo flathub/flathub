@@ -1,0 +1,66 @@
+app-id: io.github.intoolswetrust.JSignPdf
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+
+command: jsignpdf
+
+finish-args:
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+# Network is required for TSA (timestamps) functionality  
+  - --share=network
+  - --share=ipc
+# The Java framework doesn't support XDG portals, thus file system access is necessary for the users to access files
+  - --filesystem=home
+# Requires X11 to run
+  - --socket=x11
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+      - mkdir -p ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/openjdk
+      - cp -r /usr/lib/sdk/openjdk21/jvm/openjdk-21/legal/java.base/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/openjdk/
+
+  - name: jsignpdf
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/intoolswetrust/jsignpdf/archive/refs/tags/JSignPdf_2_3_0.tar.gz
+        sha256: eb9b606be6a9f899d7c26414e3ede52de578415acf7b6b08a2824a3b066999c1
+      - maven-dependencies.json
+# The following files has to be retrieved from the project git repo, but they've been accepted upstream, but aren't part of a stable release yet
+      - type: file
+        url: https://raw.githubusercontent.com/intoolswetrust/jsignpdf/ccf3888a37c368c6457cdc2a6ed112acc7f34be9/distribution/linux/jsignpdf.desktop
+        sha256: b6528f06a7b36c89e84d3afce3a78c51c43e5f4755b7c14c68a0b9424c0b4da7
+      - type: file
+        url: https://raw.githubusercontent.com/intoolswetrust/jsignpdf/ccf3888a37c368c6457cdc2a6ed112acc7f34be9/distribution/linux/flatpak/jsignpdf-flatpak.in
+        sha256: 95ca56e26d2ff190ee02c66b9a584f53a119057024ca3aa0dcf5e2ef02d6e5f4
+      - type: file
+        url: https://raw.githubusercontent.com/intoolswetrust/jsignpdf/ccf3888a37c368c6457cdc2a6ed112acc7f34be9/distribution/linux/io.github.intoolswetrust.JSignPdf.metainfo.xml
+        sha256: d9c25f5c1df297d5852e472468fb0289bfe249489ecd2cfab66deffd81041387
+      - type: file
+        url: https://raw.githubusercontent.com/intoolswetrust/jsignpdf/ccf3888a37c368c6457cdc2a6ed112acc7f34be9/distribution/linux/flatpak/jsignpdf.png
+        sha256: 362dc4fb237c8ee90e965f386044bf226c855730a49f511f1282307308045128
+    build-commands:
+      - |
+        . /usr/lib/sdk/openjdk21/enable.sh
+        mvn -o clean install \
+          -Dmaven.repo.local="$(pwd)/m2local" \
+          -DskipTests \
+          -Dmaven.javadoc.skip=true \
+          -Dmaven.source.skip=true \
+          -Dasciidoctor.skip=true
+      - unzip -o distribution/target/jsignpdf-*.zip -d distro
+      - mkdir -p ${FLATPAK_DEST}/share/jsignpdf
+      - cp -r distro/jsignpdf-*/JSignPdf.jar distro/jsignpdf-*/InstallCert.jar distro/jsignpdf-*/conf distro/jsignpdf-*/licenses ${FLATPAK_DEST}/share/jsignpdf/
+      - install -Dm755 jsignpdf-flatpak.in ${FLATPAK_DEST}/bin/jsignpdf
+      - install -Dm644 jsignpdf.desktop ${FLATPAK_DEST}/share/applications/io.github.intoolswetrust.JSignPdf.desktop
+      - sed -i '/<\/component>/i\  <branding>\n    <color type="primary" scheme_preference="light">\#99c1f1<\/color>\n    <color type="primary" scheme_preference="dark">\#1c71d8<\/color>\n  <\/branding>' io.github.intoolswetrust.JSignPdf.metainfo.xml
+      - install -Dm644 io.github.intoolswetrust.JSignPdf.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.intoolswetrust.JSignPdf.metainfo.xml
+      - install -Dm644 jsignpdf.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.intoolswetrust.JSignPdf.png
+      - mkdir -p ${FLATPAK_DEST}/share/licenses/io.github.intoolswetrust.JSignPdf
+      - cp -r distro/jsignpdf-*/licenses/* ${FLATPAK_DEST}/share/licenses/io.github.intoolswetrust.JSignPdf/
