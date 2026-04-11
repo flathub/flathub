@@ -75,3 +75,7 @@ Architecture decisions, project structure, and development guides. Kept in the r
 ### `src-tauri/models/` — Development Model Cache
 
 Local ONNX model cache for Demucs v4 during development and deterministic tests. These binaries are **not checked into git**. Runtime installs use the app data directory instead; `scripts/setup.sh` only prewarms this repo path for local workflows.
+
+### `src-tauri/generated/onnxruntime/` — Generated ORT Runtime Staging
+
+Ignored generated directory that holds the host-platform ONNX Runtime 1.23.2 shared library prepared by `scripts/prepare-onnx-runtime.mjs`. CI, local tests, and packaging all use this staged runtime so Linux builds stay compatible with Ubuntu 22.04 instead of inheriting pyke's newer-glibc prebuilts.

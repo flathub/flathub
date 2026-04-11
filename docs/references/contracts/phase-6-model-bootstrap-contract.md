@@ -14,9 +14,12 @@
 1. 应用启动时优先检查 `<app_data_dir>/models/htdemucs.onnx`
 2. 若运行时安装目录缺失模型，则回退检查开发目录 `src-tauri/models/htdemucs.onnx`
 3. 若两处都没有可验证的模型，应用启动后会在后台下载模型到 `<app_data_dir>/models/`
-4. `get_model_bootstrap_status() -> ModelBootstrapStatusSnapshot`
-5. `separate(song_id)` 在模型未 ready 时立即返回 `CommandError`
-6. 事件：
+4. 应用启动时会先显式加载 `src-tauri/generated/onnxruntime/` 或已打包资源中的
+   ONNX Runtime 1.23.2 动态库
+5. 分离会复用同一份动态库初始化，不再依赖 `ort`/pyke 自动下载预编译运行时
+6. `get_model_bootstrap_status() -> ModelBootstrapStatusSnapshot`
+7. `separate(song_id)` 在模型未 ready 时立即返回 `CommandError`
+8. 事件：
    - `model-bootstrap-progress`
    - `model-bootstrap-ready`
    - `model-bootstrap-error`
@@ -26,10 +29,14 @@
 1. 开发仓库中的 `src-tauri/models/` 只保留 `.gitkeep` 与说明文档；下载得到的
    `.onnx` 文件必须保持为本地忽略文件，不进入 git 历史
 2. `scripts/setup.sh` 只用于本地开发、离线验证或需要稳定模型输入的测试
-3. 面向终端用户时，默认安装位置是 `<app_data_dir>/models/`，不是仓库目录
-4. 后续如果调整模型来源或文件名，必须同时更新：
+3. `scripts/prepare-onnx-runtime.mjs` 负责把官方 ONNX Runtime CPU 1.23.2
+   动态库下载并规整到 `src-tauri/generated/onnxruntime/`
+4. 面向终端用户时，默认安装位置是 `<app_data_dir>/models/`，不是仓库目录；
+   但打包产物会随应用一起分发 ONNX Runtime 动态库
+5. 后续如果调整模型来源、运行时库版本或文件名，必须同时更新：
    - 本契约
    - `scripts/setup.sh`
+   - `scripts/prepare-onnx-runtime.mjs`
    - `src-tauri/models/README.md`
 
 ## Inputs / outputs / required dependencies
@@ -92,6 +99,18 @@ payload 为完整的 `ModelBootstrapStatusSnapshot`，其中：
 4. 若运行时安装目录缺失，但开发目录 `src-tauri/models/htdemucs.onnx` 存在且校验通过，则直接进入 `ready`
 5. 只有当两处都没有可用模型时，才会在后台从固定 URL 下载到运行时安装目录
 
+## ONNX Runtime path resolution semantics
+
+1. 应用启动时先检查打包后的资源目录 `onnxruntime/<platform-lib>`
+2. macOS 打包产物额外允许从 `Contents/Frameworks/libonnxruntime.dylib` 解析
+3. 若未打包运行时，则回退到开发目录 `src-tauri/generated/onnxruntime/<platform-lib>`
+4. 若三处都找不到运行时动态库，应用启动立即失败并提示执行
+   `./scripts/setup.sh` 或 `node scripts/prepare-onnx-runtime.mjs`
+5. Rust 侧固定使用 `ort 2.0.0-rc.11`，对应官方 ONNX Runtime CPU 1.23.2
+   动态库；不允许重新打开 `download-binaries` 或 `copy-dylibs`
+6. macOS 发布产物必须按目标架构分别准备 `arm64` / `x86_64` 动态库，不允许再把
+   universal2 ORT 放进两个安装包里浪费体积
+
 ## Product UX target
 
 现有后端行为已经支持“启动后自动 bootstrap + 状态事件 + 分离前置 gate”。后续
@@ -128,6 +147,7 @@ UI 与产品行为应以以下目标为准，而不是把后台下载继续当�
 1. `reqwest` 负责运行时模型下载
 2. `sha2` 负责 SHA-256 完整性校验
 3. `tauri::async_runtime::spawn_blocking` 负责后台下载，避免阻塞 app setup
+4. `ort 2.0.0-rc.11` 仅以 `load-dynamic` 模式加载官方 ONNX Runtime 1.23.2
 
 ## Verification commands
 
@@ -136,6 +156,7 @@ cd src-tauri
 cargo test --test phase6_model_bootstrap
 cargo test
 cd ..
+node scripts/prepare-onnx-runtime.mjs
 pnpm tauri build --debug --no-bundle --ci
 ```
 

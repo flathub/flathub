@@ -28,19 +28,22 @@ jobs:
           - name: macOS (Apple Silicon)
             os: macos-14
             args: --target aarch64-apple-darwin
+            ort_target: aarch64-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
           - name: macOS (Intel)
             os: macos-14
             args: --target x86_64-apple-darwin
+            ort_target: x86_64-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-            ort_dylib: true
           - name: Windows
             os: windows-latest
             args: ""
+            ort_target: x86_64-pc-windows-msvc
             rust_targets: ""
           - name: Linux
             os: ubuntu-22.04
             args: ""
+            ort_target: x86_64-unknown-linux-gnu
             rust_targets: ""
 
     steps:
@@ -66,6 +69,7 @@ jobs:
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
         with:
+          shared-key: ${{ github.workflow }}-${{ matrix.os }}
           workspaces: ./src-tauri -> target
 
       - name: Install Linux build dependencies
@@ -85,21 +89,9 @@ jobs:
             libxdo-dev \
             wget
 
-      - name: Download ONNX Runtime for Intel Mac cross-compile
-        if: matrix.ort_dylib
+      - name: Prepare ONNX Runtime
         run: |
-          ORT_VERSION="1.20.1"
-          curl -L -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
-          mkdir -p ${{ github.workspace }}/ort-x64
-          tar -xzf ort.tgz --strip-components=1 -C ${{ github.workspace }}/ort-x64
-          echo "ORT_LIB_LOCATION=${{ github.workspace }}/ort-x64/lib" >> $GITHUB_ENV
-          echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
-
-          # Inject macOS.frameworks into tauri.conf.json so the dylib is bundled inside .app
-          ORT_DYLIB=$(ls ${{ github.workspace }}/ort-x64/lib/libonnxruntime.*.dylib | head -1)
-          jq --arg dylib "$ORT_DYLIB" '.bundle.macOS.frameworks = [$dylib]' \
-            src-tauri/tauri.conf.json > src-tauri/tauri.conf.tmp \
-            && mv src-tauri/tauri.conf.tmp src-tauri/tauri.conf.json
+          node scripts/prepare-onnx-runtime.mjs --target "${{ matrix.ort_target }}"
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile

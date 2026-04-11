@@ -8,7 +8,8 @@ Rules:
 - Commit `.gitkeep` only.
 - Do **not** commit downloaded `.onnx` files.
 - `scripts/setup.sh` may populate this directory for local development and
-  tests.
+  tests. It also stages the matching ONNX Runtime shared library under
+  `src-tauri/generated/onnxruntime/`.
 - Runtime installs use the app data directory instead of this repo path.
 - End-user bundles should not rely on this directory being present.
 

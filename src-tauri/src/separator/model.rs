@@ -1,8 +1,23 @@
 use anyhow::{Context, Result};
-use ort::value::TensorElementType;
-use std::path::{Path, PathBuf};
+use ort::tensor::TensorElementType;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
 
 pub const EMBEDDED_MODEL_FILENAME: &str = "htdemucs.onnx";
+pub const ORT_RUNTIME_VERSION: &str = "1.23.2";
+pub const ORT_RUNTIME_STAGING_DIR: &str = "generated/onnxruntime";
+
+#[cfg(target_os = "windows")]
+pub const ORT_RUNTIME_FILENAME: &str = "onnxruntime.dll";
+#[cfg(target_os = "linux")]
+pub const ORT_RUNTIME_FILENAME: &str = "libonnxruntime.so";
+#[cfg(target_vendor = "apple")]
+pub const ORT_RUNTIME_FILENAME: &str = "libonnxruntime.dylib";
+
+static ORT_RUNTIME_PATH: OnceLock<PathBuf> = OnceLock::new();
+static ORT_RUNTIME_INIT_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct LoadedModel {
     pub model_path: PathBuf,
@@ -37,7 +52,96 @@ pub fn default_model_path() -> PathBuf {
     default_model_path_for_filename(EMBEDDED_MODEL_FILENAME)
 }
 
+pub fn default_runtime_library_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(ORT_RUNTIME_STAGING_DIR)
+        .join(ORT_RUNTIME_FILENAME)
+}
+
+fn bundled_runtime_library_path(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("onnxruntime").join(ORT_RUNTIME_FILENAME)
+}
+
+#[cfg(target_vendor = "apple")]
+fn bundled_framework_runtime_library_path(resource_dir: &Path) -> Option<PathBuf> {
+    resource_dir
+        .parent()
+        .map(|contents_dir| contents_dir.join("Frameworks").join(ORT_RUNTIME_FILENAME))
+}
+
+fn resolve_runtime_library_path_with_staging(
+    resource_dir: Option<&Path>,
+    staged_path: &Path,
+) -> Result<PathBuf> {
+    if let Some(resource_dir) = resource_dir {
+        let bundled_path = bundled_runtime_library_path(resource_dir);
+        if bundled_path.is_file() {
+            return Ok(bundled_path);
+        }
+
+        #[cfg(target_vendor = "apple")]
+        if let Some(framework_path) = bundled_framework_runtime_library_path(resource_dir) {
+            if framework_path.is_file() {
+                return Ok(framework_path);
+            }
+        }
+    }
+
+    if staged_path.is_file() {
+        return Ok(staged_path.to_path_buf());
+    }
+
+    Err(anyhow::anyhow!(
+        "missing ONNX Runtime shared library {}; run ./scripts/setup.sh or node scripts/prepare-onnx-runtime.mjs",
+        staged_path.display()
+    ))
+}
+
+pub fn resolve_runtime_library_path(resource_dir: Option<&Path>) -> Result<PathBuf> {
+    resolve_runtime_library_path_with_staging(resource_dir, &default_runtime_library_path())
+}
+
+pub fn ensure_runtime_loaded(resource_dir: Option<&Path>) -> Result<&'static Path> {
+    if let Some(path) = ORT_RUNTIME_PATH.get() {
+        return Ok(path.as_path());
+    }
+
+    let _init_guard = ORT_RUNTIME_INIT_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("onnx runtime initialization lock was poisoned"))?;
+    if let Some(path) = ORT_RUNTIME_PATH.get() {
+        return Ok(path.as_path());
+    }
+
+    let runtime_path = resolve_runtime_library_path(resource_dir)?;
+    let committed = ort::init_from(&runtime_path)?
+        .with_name("openkara")
+        .commit();
+    anyhow::ensure!(
+        committed,
+        "failed to initialize ONNX Runtime from {} before another ORT environment was configured",
+        runtime_path.display()
+    );
+
+    // The process-global ORT environment can only be configured once. We persist the
+    // exact loaded library path so every later session uses the same runtime contract.
+    let _ = ORT_RUNTIME_PATH.set(runtime_path);
+    Ok(ORT_RUNTIME_PATH
+        .get()
+        .expect("runtime path should be stored after successful initialization")
+        .as_path())
+}
+
+pub fn resolve_runtime_library_path_for_tests(
+    resource_dir: Option<&Path>,
+    staged_path: &Path,
+) -> Result<PathBuf> {
+    resolve_runtime_library_path_with_staging(resource_dir, staged_path)
+}
+
 pub fn load_from_path(path: &Path) -> Result<LoadedModel> {
+    ensure_runtime_loaded(None)?;
+
     let model_path = path.to_path_buf();
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get().min(8))

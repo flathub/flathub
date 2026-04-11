@@ -45,6 +45,7 @@ jobs:
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
         with:
+          shared-key: ${{ github.workflow }}-${{ matrix.os }}
           workspaces: ./src-tauri -> target
           # Include full OS name in cache key to distinguish ubuntu-22.04 from ubuntu-24.04
           key: ${{ matrix.os }}
@@ -55,6 +56,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            binutils \
             curl \
             file \
             patchelf \
@@ -68,6 +70,9 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Prepare ONNX Runtime
+        run: node scripts/prepare-onnx-runtime.mjs
 
       - name: Download separation model (Unix)
         if: runner.os != 'Windows'
@@ -112,49 +117,62 @@ jobs:
       - name: Verify formatting
         run: pnpm format
 
-      # ---- Windows cargo-test skip ----
-      #
-      # WHY: pyke's prebuilt onnxruntime.lib (ort-sys 2.0.0-rc.12) is
-      # compiled with DirectML baked in.  Even though ORT itself is
-      # statically linked, the build script emits:
-      #
-      #   cargo:rustc-link-lib=DirectML      (dynamic)
-      #   cargo:rustc-link-lib=D3D12         (dynamic)
-      #   cargo:rustc-link-lib=DXGI          (dynamic)
-      #   cargo:rustc-link-lib=DXCore        (dynamic)
-      #
-      # These create hard load-time DLL imports.  Headless Windows Server
-      # runners (2022 & 2025) lack a GPU-capable DirectX 12 stack, so the
-      # process loader fails with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
-      # before any test code runs.
-      #
-      # WHAT WAS TRIED (all failed):
-      #  1. Staging DirectML.dll v1.15.4 from Microsoft.AI.DirectML NuGet
-      #     → The staged DLL needs newer D3D12 APIs than Server 2022 has.
-      #  2. Pinning runner to windows-2022
-      #     → Same D3D12 incompatibility; Server 2022's GPU stack is too old.
-      #  3. Staging onnxruntime.dll from Microsoft.ML.OnnxRuntime.DirectML NuGet
-      #     → ORT is truly statically linked; the system WinML onnxruntime.dll
-      #       in System32 is not the issue.  The NuGet's DirectML.dll is a
-      #       0-byte stub, confirming it expects the system version.
-      #  4. D3D12 Agility SDK (Microsoft.Direct3D.D3D12 NuGet, D3D12Core.dll)
-      #     → Requires the application to export D3D12SDKVersion and
-      #       D3D12SDKPath symbols; cannot be enabled externally.
-      #  5. Adding deps/ to PATH as DLL search fallback
-      #     → DLLs were found but the entry-point mismatch is in the
-      #       system DirectX stack itself, not a search-order problem.
-      #
-      # The Tauri build step still validates that the code compiles and
-      # links correctly on Windows.  Full test coverage runs on macOS
-      # and Linux.
-      #
-      # TO RE-ENABLE: switch ort to load-dynamic linking (avoids the
-      # DirectML/D3D12 import table entries entirely) or wait for pyke
-      # to ship a Windows build without DirectML as default.
       - name: Run Rust tests
-        if: runner.os != 'Windows'
         working-directory: src-tauri
         run: cargo test -q
 
       - name: Validate Tauri build
-        run: pnpm tauri build --debug --no-bundle --ci
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            pnpm tauri build --ci --bundles deb
+          else
+            pnpm tauri build --debug --no-bundle --ci
+          fi
+        shell: bash
+
+      - name: Verify Linux glibc floor
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find_one() {
+            local pattern="$1"
+            find src-tauri/target/release -path "$pattern" -print -quit
+          }
+
+          max_glibc_version() {
+            local binary="$1"
+            objdump -T "$binary" \
+              | awk '
+                  match($0, /GLIBC_[0-9.]+/) {
+                    print substr($0, RSTART + 6, RLENGTH - 6)
+                  }
+                ' \
+              | sort -V \
+              | tail -1
+          }
+
+          assert_glibc_floor() {
+            local binary="$1"
+            local max_version
+            max_version="$(max_glibc_version "$binary")"
+            if [ -z "$max_version" ]; then
+              echo "No GLIBC symbols found in $binary"
+              return
+            fi
+
+            if [ "$(printf '%s\n%s\n' "$max_version" "2.35" | sort -V | tail -1)" != "2.35" ]; then
+              echo "$binary requires GLIBC_$max_version, which exceeds Ubuntu 22.04's GLIBC_2.35 baseline" >&2
+              exit 1
+            fi
+          }
+
+          app_binary="$(find_one '*/bundle/deb/*/usr/bin/openkara')"
+          ort_binary="$(find_one '*/bundle/deb/*/usr/lib/openkara/onnxruntime/libonnxruntime.so')"
+
+          test -n "$app_binary"
+          test -n "$ort_binary"
+
+          assert_glibc_floor "$app_binary"
+          assert_glibc_floor "$ort_binary"

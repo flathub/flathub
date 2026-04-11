@@ -27,6 +27,7 @@ verify_checksum() {
 }
 
 require_tool curl
+require_tool node
 require_tool shasum
 
 mkdir -p "$MODELS_DIR"
@@ -34,6 +35,7 @@ mkdir -p "$MODELS_DIR"
 if [[ -f "$MODEL_PATH" ]]; then
   if verify_checksum "$MODEL_PATH"; then
     echo "Model already present and verified at $MODEL_PATH"
+    node "$ROOT_DIR/scripts/prepare-onnx-runtime.mjs"
     exit 0
   fi
 
@@ -63,3 +65,4 @@ mv "$tmp_file" "$MODEL_PATH"
 trap - EXIT
 
 echo "Model verified and saved to $MODEL_PATH"
+node "$ROOT_DIR/scripts/prepare-onnx-runtime.mjs"

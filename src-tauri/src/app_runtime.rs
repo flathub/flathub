@@ -18,6 +18,8 @@ use std::{
 use tauri::{Emitter, Manager, Runtime};
 
 pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    separator::model::ensure_runtime_loaded(Some(&app.path().resource_dir()?))?;
+
     let app_data_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_data_dir)?;
     let app_config = config::load_config(&app_data_dir)?;
