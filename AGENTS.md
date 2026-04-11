@@ -97,22 +97,17 @@ GitHub Actions and Linux build constraints:
 - If all Verify jobs fail quickly on every OS, check whether they all failed at the same step before debugging platform-specific causes.
 - If the shared failure step is formatting, assume a repo-wide Prettier issue first.
 
-Windows `cargo test` constraint (DO NOT try to fix by staging DLLs):
+Windows `cargo test` constraint:
 
 - `cargo test` is intentionally skipped on Windows CI. See the detailed comment
   block in `.github/workflows/ci.yml` above the "Run Rust tests" step.
-- Root cause: pyke's prebuilt `onnxruntime.lib` (ort-sys) bakes in DirectML,
-  creating hard load-time imports for `DirectML.dll`, `D3D12.dll`, `DXGI.dll`,
-  and `DXCore.dll`. Headless Windows Server runners lack the GPU/DirectX 12
-  stack these DLLs require → `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139).
-- The following approaches were **already tried exhaustively and all failed**:
-  staging DirectML from NuGet, staging onnxruntime.dll from the official ORT
-  release, using the D3D12 Agility SDK, pinning to windows-2022, and
-  manipulating DLL search paths via PATH.
-- The only real fixes are: (a) switch ort to `load-dynamic` linking so the
-  DirectML/D3D12 imports are not in the binary's import table, or (b) wait
-  for pyke to ship a Windows build without DirectML as the default provider.
-- Windows CI still validates compilation and linking via `pnpm tauri build`.
+- We now use `ort` with `load-dynamic` plus the official ONNX Runtime CPU
+  download, but the hosted Windows runner still fails to start the Rust test
+  harness with `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139).
+- The current official CPU `onnxruntime.dll` still imports `dxgi.dll`, so the
+  Windows failure remains a runtime-loader issue, not a compile or link issue.
+- Windows CI still validates the desktop stack via `pnpm tauri build`, which
+  exercises compile, link, and Tauri packaging on the hosted runner.
 
 ## Completion Gate
 
