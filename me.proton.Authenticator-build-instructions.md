@@ -1,5 +1,13 @@
 # Building Proton Authenticator from Source (Flatpak)
 
+> **Maintenance tools** — these scripts are not used during the Flatpak build itself;
+> they are only needed when updating to a new upstream release:
+> - `flatpak-cargo-generator.py` — get it from
+>   [flatpak/flatpak-builder-tools](https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo)
+> - `tools/strip-private-registry-lockfile.py` — a custom script in this repo that
+>   filters private-registry packages out of the WebClients `yarn.lock` before building
+>   the frontend dist
+
 Proton Authenticator is a [Tauri v2](https://tauri.app/) desktop app that lives inside the
 [ProtonMail/WebClients](https://github.com/ProtonMail/WebClients) monorepo. Building it for
 Flatpak requires two pre-generated offline source lists — one for Cargo crates and one for
@@ -10,12 +18,12 @@ Node/Yarn packages — that must be committed alongside the manifest.
 ## Prerequisites
 
 ```sh
-# flatpak-node-generator (supports Yarn Berry / v4 lockfiles)
-pipx install "git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node"
-
-# flatpak-cargo-generator
+# flatpak-cargo-generator — needed to regenerate cargo-sources.json
 curl -LO https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
-# or clone the tools repo and use the script directly
+# Requires: Python 3.9+, no extra dependencies
+
+# tools/strip-private-registry-lockfile.py — already in this repo
+# No installation needed; run with python3 directly
 ```
 
 Make sure you are using a **recent** version of `flatpak-node-generator` — support for
@@ -47,38 +55,67 @@ cd webclient-src
 The Cargo lock file is inside the Tauri crate:
 
 ```sh
-python3 /path/to/flatpak-cargo-generator.py \
+python3 flatpak-cargo-generator.py \
     applications/authenticator/src-tauri/Cargo.lock \
     -o ../cargo-sources.json
 ```
+</invoke>
 
 This produces `cargo-sources.json` in your working directory (one level above the checkout).
 Copy it into the submission directory alongside the manifest.
 
 ---
 
-## Step 3 — Generate `node-sources.json`
+## Step 3 — Regenerate `authenticator-dist.tar.gz` (frontend, when needed)
 
-The monorepo uses **Yarn 4 (Berry)** with `nodeLinker: node-modules`.
-`flatpak-node-generator` handles this lockfile format:
+The frontend is pre-built and supplied as `authenticator-dist.tar.gz` rather than built
+inline. This avoids pulling the entire monorepo's Node dependency graph (which includes
+Playwright, Chromium, and hundreds of test-only packages) into a `node-sources.json`
+that would be several hundred MB — far larger than the 11 MB dist archive.
+
+The dist output is pure JS/CSS/HTML and is **architecture-independent**, so it only needs
+to be regenerated when the authenticator version changes. To regenerate it:
 
 ```sh
-# Run from the root of the WebClients checkout
-flatpak-node-generator yarn yarn.lock -o ../node-sources.json
+cd webclient-src   # the WebClients checkout from Step 1
+
+# 1. Strip private-registry packages from yarn.lock.
+#    tools/strip-private-registry-lockfile.py removes any block whose
+#    resolution URL points to a non-public registry (auto-detected from
+#    .yarnrc.yml, or pass --private-scope @scopename explicitly):
+python3 /path/to/this/repo/tools/strip-private-registry-lockfile.py \
+    yarn.lock yarn.lock.filtered
+cp yarn.lock yarn.lock.orig
+cp yarn.lock.filtered yarn.lock
+
+# 2. Remove private-registry config from .yarnrc.yml:
+python3 -c "
+import re, pathlib
+text = pathlib.Path('.yarnrc.yml').read_text()
+for key in ('httpProxy','httpsProxy','npmPublishRegistry'):
+  text = re.sub(rf'^{key}:.*\n','',text,flags=re.MULTILINE)
+for key in ('plugins','npmScopes'):
+  text = re.sub(rf'^{key}:\n([ \t]+.*\n)*','',text,flags=re.MULTILINE)
+pathlib.Path('.yarnrc.yml').write_text(text)"
+
+# 3. Add the missing @dnd-kit/sortable dep:
+python3 -c "
+import json,pathlib
+pkg=pathlib.Path('applications/authenticator/package.json')
+d=json.loads(pkg.read_text())
+d.setdefault('dependencies',{})['@dnd-kit/sortable']='^10.0.0'
+pkg.write_text(json.dumps(d,indent=4)+'\n')"
+
+# 4. Install workspace deps and build:
+node .yarn/releases/yarn-4.9.4.cjs workspaces focus proton-authenticator
+node .yarn/releases/yarn-4.9.4.cjs workspace proton-authenticator build:web
+
+# 5. Pack and record the checksum:
+tar -czf ../authenticator-dist.tar.gz applications/authenticator/dist/
+sha256sum ../authenticator-dist.tar.gz
 ```
 
-> ⚠️ **Warning:** The WebClients monorepo is large. The generated `node-sources.json`
-> will be several hundred MB. GitHub has a 100 MB per-file limit — use the `-s` flag
-> to split the output if needed:
->
-> ```sh
-> flatpak-node-generator yarn yarn.lock -s -o ../node-sources.json
-> # Produces node-sources.0.json, node-sources.1.json, …
-> ```
->
-> Then list each split file as a separate source in `me.proton.Authenticator.yml`.
-
-Copy the resulting file(s) into the submission directory.
+Update the `sha256:` field in `me.proton.Authenticator.yml` with the new checksum.
 
 ---
 
@@ -86,19 +123,14 @@ Copy the resulting file(s) into the submission directory.
 
 Open `me.proton.Authenticator.yml` and:
 
-1. **Fill in the commit hash** for the git source if you are using a commit SHA instead of a tag:
+1. **Fill in the commit hash** for the git source:
    ```yaml
    - type: git
      url: https://github.com/ProtonMail/WebClients.git
      commit: <sha>          # replace with the actual hash
    ```
 
-2. **Update split sources** if you used `-s` when generating the node sources:
-   ```yaml
-   - node-sources.0.json
-   - node-sources.1.json
-   # …
-   ```
+2. **Update the `sha256:`** for `authenticator-dist.tar.gz` if you regenerated it.
 
 ---
 
@@ -113,10 +145,17 @@ flatpak-builder \
     me.proton.Authenticator.yml
 ```
 
-Run the result:
+Install and run from a local repo (the `--run` shortcut is unreliable for GNOME 49
+apps because glycin's sub-sandboxing requires a full D-Bus session):
 
 ```sh
-flatpak-builder --run builddir me.proton.Authenticator.yml proton-authenticator
+flatpak --user remote-add --no-gpg-verify local-test repo
+flatpak --user install local-test me.proton.Authenticator
+flatpak run me.proton.Authenticator
+
+# Clean up when done:
+flatpak --user uninstall me.proton.Authenticator
+flatpak --user remote-delete local-test
 ```
 
 ---
@@ -127,9 +166,10 @@ flatpak-builder --run builddir me.proton.Authenticator.yml proton-authenticator
 |------|---------|
 | `me.proton.Authenticator.yml` | Main Flatpak manifest |
 | `me.proton.Authenticator.metainfo.xml` | AppStream metadata |
+| `me.proton.Authenticator.desktop` | Desktop entry |
 | `flathub.json` | Flathub-specific configuration |
-| `cargo-sources.json` | *(to be generated)* Offline Cargo crates |
-| `node-sources.json` | *(to be generated)* Offline Yarn packages |
+| `cargo-sources.json` | Offline Cargo crate sources (generated by `flatpak-cargo-generator.py`) |
+| `authenticator-dist.tar.gz` | Pre-built frontend dist (architecture-independent JS/CSS/HTML) |
 
 ---
 
