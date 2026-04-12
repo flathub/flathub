@@ -125,6 +125,7 @@ export interface ImportLyricsResult {
 
 export type StemMode = "two_stem" | "four_stem";
 export type ModelVariant = "htdemucs" | "htdemucs_ft";
+export type ExecutionProvider = "auto" | "cpu" | "coreml" | "directml";
 
 export interface AppSettings {
   stem_mode: StemMode;
@@ -132,6 +133,8 @@ export interface AppSettings {
   language: string | null;
   hide_batch_separate: boolean;
   lyrics_font_step: number;
+  execution_provider: ExecutionProvider;
+  available_execution_providers: ExecutionProvider[];
 }
 
 export interface ModelStatusSnapshot {

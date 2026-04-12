@@ -46,6 +46,8 @@ vi.mock("@/stores/settings-store", () => ({
           language: "en",
           hideBatchSeparate: false,
           lyricsFontStep: 0,
+          executionProvider: "auto" as const,
+          availableExecutionProviders: ["auto" as const, "cpu" as const],
         }),
       }),
     },

@@ -3,7 +3,7 @@ import * as api from "@/lib/tauri";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { ModelVariant, StemMode } from "@/types/ipc";
+import type { ExecutionProvider, ModelVariant, StemMode } from "@/types/ipc";
 
 export type DangerDialog =
   | "delete_stems"
@@ -26,6 +26,8 @@ export interface SettingsOverlayState {
   downloadingModel: ModelVariant | null;
   language: string;
   hideBatchSeparate: boolean;
+  executionProvider: ExecutionProvider;
+  availableExecutionProviders: ExecutionProvider[];
 }
 
 export interface SettingsOverlayMeta {
@@ -50,6 +52,7 @@ export interface SettingsOverlayActions {
   setLanguage: (language: string) => Promise<void>;
   restartApp: () => Promise<void>;
   setStemMode: (mode: StemMode) => Promise<void>;
+  setExecutionProvider: (provider: ExecutionProvider) => Promise<void>;
   selectModelVariant: (variant: ModelVariant) => Promise<void>;
   confirmFtModel: () => Promise<void>;
   deleteModel: (variant: ModelVariant) => Promise<void>;
@@ -82,6 +85,7 @@ export interface SettingsOverlayControllerDependencies {
     | "getModelStatus"
     | "openLibrary"
     | "restartApp"
+    | "setExecutionProvider"
     | "setHideBatchSeparate"
     | "setLanguage"
     | "setModelVariant"
@@ -135,6 +139,8 @@ export function createInitialSettingsOverlaySnapshot(
       downloadingModel: null,
       language: initialSettings.language ?? "en",
       hideBatchSeparate: initialSettings.hideBatchSeparate,
+      executionProvider: initialSettings.executionProvider,
+      availableExecutionProviders: initialSettings.availableExecutionProviders,
     },
     meta: {
       isInitializing: true,
@@ -275,6 +281,9 @@ export function createSettingsOverlayActions(
           modelVariant: settingsResult.value.model_variant,
           language: settingsResult.value.language ?? "en",
           hideBatchSeparate: settingsResult.value.hide_batch_separate,
+          executionProvider: settingsResult.value.execution_provider,
+          availableExecutionProviders:
+            settingsResult.value.available_execution_providers,
         });
       } else {
         dependencies.notifyError(settingsResult.reason);
@@ -302,6 +311,7 @@ function createLibrarySettingsActions(
   | "setLanguage"
   | "restartApp"
   | "setStemMode"
+  | "setExecutionProvider"
   | "toggleHideBatchSeparate"
 > {
   const { dependencies, patchState, selectSingleDirectory } = context;
@@ -366,6 +376,17 @@ function createLibrarySettingsActions(
         const settings = await dependencies.api.setStemMode(mode);
         dependencies.settingsStore.hydrateAppSettings(settings);
         patchState({ stemMode: settings.stem_mode });
+      } catch (error) {
+        dependencies.notifyError(error);
+      }
+    },
+
+    setExecutionProvider: async (provider) => {
+      try {
+        const settings =
+          await dependencies.api.setExecutionProvider(provider);
+        dependencies.settingsStore.hydrateAppSettings(settings);
+        patchState({ executionProvider: settings.execution_provider });
       } catch (error) {
         dependencies.notifyError(error);
       }
