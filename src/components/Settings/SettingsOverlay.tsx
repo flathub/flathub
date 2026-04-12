@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SettingsDangerZoneSection } from "./SettingsDangerZoneSection";
 import { SettingsDialogHost } from "./SettingsDialogHost";
+import { SettingsExecutionProviderSection } from "./SettingsExecutionProviderSection";
 import { SettingsGeneralSection } from "./SettingsGeneralSection";
 import { SettingsLibrarySection } from "./SettingsLibrarySection";
 import { SettingsModelVariantSection } from "./SettingsModelVariantSection";
@@ -33,6 +34,7 @@ export function SettingsOverlay() {
           <SettingsLibrarySection />
           <SettingsStemModeSection />
           <SettingsModelVariantSection />
+          <SettingsExecutionProviderSection />
           <SettingsGeneralSection />
           <SettingsDangerZoneSection />
           <SettingsDialogHost />

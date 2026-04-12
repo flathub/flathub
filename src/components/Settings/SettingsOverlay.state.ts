@@ -383,8 +383,7 @@ function createLibrarySettingsActions(
 
     setExecutionProvider: async (provider) => {
       try {
-        const settings =
-          await dependencies.api.setExecutionProvider(provider);
+        const settings = await dependencies.api.setExecutionProvider(provider);
         dependencies.settingsStore.hydrateAppSettings(settings);
         patchState({ executionProvider: settings.execution_provider });
       } catch (error) {
