@@ -1,0 +1,71 @@
+app-id: com.aloxbook.AloxBook
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: AloxBook
+
+finish-args:
+  # Display (Wayland native + X11 fallback)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GPU acceleration (for Avalonia rendering)
+  - --device=dri
+  # Access to home directory for .aloxbook files
+  - --filesystem=home
+
+modules:
+  - name: aloxbook
+    buildsystem: simple
+    build-commands:
+      # Install the launcher wrapper that points to the extra-data binary
+      - install -Dm755 aloxbook-launcher /app/bin/AloxBook
+      # Install the apply_extra script that runs after extra-data download
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      # Install the application icon
+      - install -Dm644 app_icon.png /app/share/icons/hicolor/256x256/apps/com.aloxbook.AloxBook.png
+      # Install the MIME type icon with app-ID prefix so Flatpak exports it to the host
+      - install -Dm644 app_icon.png /app/share/icons/hicolor/256x256/mimetypes/com.aloxbook.AloxBook-x-aloxbook.png
+      # Install the desktop file
+      - install -Dm644 com.aloxbook.AloxBook.desktop /app/share/applications/com.aloxbook.AloxBook.desktop
+      # Install the AppStream metadata
+      - install -Dm644 com.aloxbook.AloxBook.metainfo.xml /app/share/metainfo/com.aloxbook.AloxBook.metainfo.xml
+      # Install the MIME type definition
+      - install -Dm644 com.aloxbook.AloxBook.mime.xml /app/share/mime/packages/com.aloxbook.AloxBook.mime.xml
+    sources:
+      # Launcher wrapper: sets LD_LIBRARY_PATH and runs the extra-data binary
+      - type: script
+        dest-filename: aloxbook-launcher
+        commands:
+          - export LD_LIBRARY_PATH="/app/extra/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          - exec /app/extra/bin/AloxBook "$@"
+      # apply_extra script: runs after extra-data is downloaded, extracts and installs binary
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - tar -xJf AloxBook-*-linux-x64.tar.xz
+          - mkdir -p bin lib
+          - install -Dm755 AloxBook bin/AloxBook
+          - for f in *.so; do [ -f "$f" ] && install -Dm755 "$f" "lib/$f"; done
+          - rm -f AloxBook *.so AloxBook-*-linux-x64.tar.xz
+      - type: file
+        path: com.aloxbook.AloxBook.desktop
+      - type: file
+        path: com.aloxbook.AloxBook.metainfo.xml
+      - type: file
+        path: com.aloxbook.AloxBook.mime.xml
+      - type: file
+        path: app_icon.png
+      # Extra-data: pre-built NativeAOT binary downloaded at install time
+      - type: extra-data
+        filename: AloxBook-1.2.0-linux-x64.tar.xz
+        url: https://www.aloxbook.com/downloads/flatpak/AloxBook-1.2.0-linux-x64.tar.xz
+        sha256: "db73fde69ee575de24dd5c7939ab7f0a28576f722c41273645c02e7388636a6c"
+        size: 28979656
+        x-checker-data:
+          type: json
+          url: https://www.aloxbook.com/releases/flathub-latest.json
+          version-query: .version
+          url-query: .url
+          is-main-source: true
