@@ -17,7 +17,6 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -205,7 +204,7 @@ pub fn save_manual_lyrics(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LyricsMatch {
-    pub song_hash: String,
+    pub song_id: String,
     pub lrc_path: String,
 }
 
@@ -291,7 +290,7 @@ pub fn import_lyrics_files(
             let _ = cache::lyrics::upsert_lyrics_cache_entry(&connection, &entry);
 
             matched.push(LyricsMatch {
-                song_hash: song.hash.clone(),
+                song_id: song.hash.clone(),
                 lrc_path: path_str.clone(),
             });
         } else {
@@ -432,10 +431,4 @@ fn plain_text_to_lines(text: &str) -> Vec<LyricLine> {
         .collect()
 }
 
-fn current_unix_timestamp() -> Result<i64> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is set before Unix epoch")?;
-
-    Ok(duration.as_secs() as i64)
-}
+use super::error::current_unix_timestamp;

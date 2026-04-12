@@ -4,7 +4,7 @@ import type {
   SeparationStatusSnapshot,
 } from "@/types/ipc";
 import {
-  playTrackWithOptionalStems,
+  playSongWithOptionalStems,
   shouldEnqueueInsteadOfReplacingCurrentSong,
   shouldLoadSeparatedStems,
 } from "./player-workflows";
@@ -106,7 +106,7 @@ describe("player-workflows", () => {
     );
     const applySnapshot = vi.fn();
 
-    await playTrackWithOptionalStems("song-1", {
+    await playSongWithOptionalStems("song-1", {
       play,
       loadStems,
       getSeparationStatus: () => completedSeparationStatus(),
@@ -136,7 +136,7 @@ describe("player-workflows", () => {
     const loadStems = vi.fn();
     const applySnapshot = vi.fn();
 
-    await playTrackWithOptionalStems("song-2", {
+    await playSongWithOptionalStems("song-2", {
       play,
       loadStems,
       getSeparationStatus: () => undefined,

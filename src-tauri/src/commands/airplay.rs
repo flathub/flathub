@@ -880,12 +880,6 @@ pub fn sync_airplay_audience_state(
 mod tests {
     use super::*;
     use crate::audio::playback::StemVolumes;
-    use crate::commands::bootstrap;
-    use crate::separator::model_cache::ModelCache;
-    use crate::AppState;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-    use std::sync::{atomic::AtomicBool, Mutex};
 
     fn snapshot(
         song_id: Option<&str>,
@@ -906,32 +900,6 @@ mod tests {
             },
             has_stems: false,
             stem_mode: None,
-        }
-    }
-
-    fn plain_text_airplay_state() -> AppState {
-        AppState {
-            library: Arc::new(Mutex::new(None)),
-            app_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests")
-                .join("tmp"),
-            model_path: PathBuf::from("model.bin"),
-            playback: Arc::new(Mutex::new(PlaybackController::default())),
-            cdg_state: Arc::new(Mutex::new(None)),
-            airplay_audio_tap: Arc::new(crate::airplay_stream::AirPlayAudioTap::new(4)),
-            airplay_stream_generation: Arc::new(AtomicU64::new(7)),
-            airplay_audience_active: Arc::new(AtomicBool::new(true)),
-            airplay_control_refresh_token: Arc::new(AtomicU64::new(0)),
-            airplay_http_server: Arc::new(Mutex::new(None)),
-            airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
-            playback_request_id: AtomicU64::new(0),
-            audio_output_started: Arc::new(AtomicBool::new(true)),
-            audio_output_start_lock: Arc::new(Mutex::new(())),
-            model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),
-            separation_statuses: Arc::new(Mutex::new(HashMap::new())),
-            separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
-            batch_running: Arc::new(AtomicBool::new(false)),
-            batch_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -1087,39 +1055,6 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_page_step_does_not_refresh_airplay_stream_when_audience_is_active() {
-        let state = plain_text_airplay_state();
-        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
-        let initial_epoch = state.airplay_audio_tap.current_epoch();
-
-        let generation = refresh_airplay_stream_after_plain_text_page_step(&state);
-
-        assert_eq!(generation, None);
-        assert_eq!(
-            state.airplay_stream_generation.load(Ordering::SeqCst),
-            initial_generation
-        );
-        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
-    }
-
-    #[test]
-    fn plain_text_page_step_does_not_refresh_airplay_stream_when_audience_is_idle() {
-        let state = plain_text_airplay_state();
-        state.airplay_audience_active.store(false, Ordering::SeqCst);
-        let initial_generation = state.airplay_stream_generation.load(Ordering::SeqCst);
-        let initial_epoch = state.airplay_audio_tap.current_epoch();
-
-        let generation = refresh_airplay_stream_after_plain_text_page_step(&state);
-
-        assert_eq!(generation, None);
-        assert_eq!(
-            state.airplay_stream_generation.load(Ordering::SeqCst),
-            initial_generation
-        );
-        assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
-    }
-
-    #[test]
     fn airplay_output_state_event_serializes_audio_active() {
         let value = serde_json::to_value(AirPlayOutputStateEvent {
             active: false,
@@ -1168,10 +1103,6 @@ fn native_step_plain_text_page(_direction: i32) -> bool {
     false
 }
 
-fn refresh_airplay_stream_after_plain_text_page_step(_state: &AppState) -> Option<u64> {
-    None
-}
-
 #[tauri::command]
 pub fn step_airplay_plain_text_page(
     state: State<'_, AppState>,
@@ -1200,8 +1131,6 @@ pub fn step_airplay_plain_text_page(
     if !native_step_plain_text_page(direction) {
         return Ok(());
     }
-
-    let _ = refresh_airplay_stream_after_plain_text_page_step(&state);
 
     let snapshot = state
         .playback

@@ -126,6 +126,48 @@ Completion is not valid unless the final report includes:
 - Any intentionally skipped checks
 - Any known residual risks or missing manual validation
 
+## Cursor Cloud specific instructions
+
+### System dependencies (pre-installed in snapshot)
+
+The VM snapshot includes Tauri/audio Linux packages (`libwebkit2gtk-4.1-dev`,
+`libasound2-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libssl-dev`,
+`libxdo-dev`, `patchelf`, etc.) and Rust stable via `rustup`. These do not need
+to be reinstalled.
+
+### Running the app in Cloud
+
+- `pnpm tauri dev` launches a Vite dev server on `http://localhost:1420` and
+  compiles + runs the Rust backend in debug mode. The first dev compile takes
+  ~5 minutes; subsequent runs are fast thanks to incremental compilation.
+- `pnpm tauri build` produces `.AppImage` and `.deb` bundles under
+  `src-tauri/target/release/bundle/`.
+- The app opens a WebView window on first launch (requires a display). On first
+  run it prompts for language selection, library creation, and separation mode.
+
+### Model & ONNX Runtime setup
+
+`./scripts/setup.sh` downloads the Demucs ONNX model (~80 MB) and the ONNX
+Runtime shared library into `src-tauri/models/` and
+`src-tauri/generated/onnxruntime/` respectively. Both are cached locally and the
+script is idempotent (skips download when files are already verified).
+
+### Testing notes
+
+- Frontend: `pnpm test` runs 242 Vitest tests (jsdom environment).
+- Backend: `cd src-tauri && cargo test -q` runs 175+ Rust tests. These tests
+  exercise the separator, library, lyrics, audio, metadata, and command modules.
+- The esbuild warning about ignored build scripts during `pnpm install` is
+  harmless — esbuild's binary installs correctly via its platform-specific
+  optional dependency.
+
+### Gotchas
+
+- Rust 1.85+ is required. The `time` crate dependency needs edition2024 support,
+  which is not available in Rust <1.85. Use `rustup update stable` if the
+  pre-installed version is too old.
+- `pnpm tauri dev` needs a display (X11/Wayland) to open the WebView window.
+
 ## Why This Exists
 
 This repository has repeatedly seen CI failures caused by agents skipping local

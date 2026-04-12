@@ -150,8 +150,13 @@ jobs:
 
           max_glibc_version() {
             local binary="$1"
+            # Exclude weak undefined symbols — Rust's stdlib weak-imports
+            # glibc helpers like pidfd_spawnp / pidfd_getpid that gracefully
+            # fall back at runtime and do not create a hard dependency.
+            # objdump -T flags field: "  w   DF" for weak, "      DF" for strong.
             objdump -T "$binary" \
               | awk '
+                  /  w  .* \*UND\*/ { next }
                   match($0, /GLIBC_[0-9.]+/) {
                     print substr($0, RSTART + 6, RLENGTH - 6)
                   }
@@ -169,14 +174,17 @@ jobs:
               return
             fi
 
+            echo "$binary: highest strong GLIBC requirement is $max_version"
+
             if [ "$(printf '%s\n%s\n' "$max_version" "2.35" | sort -V | tail -1)" != "2.35" ]; then
-              echo "$binary requires GLIBC_$max_version, which exceeds Ubuntu 22.04's GLIBC_2.35 baseline" >&2
+              echo "::error::$binary requires GLIBC_$max_version, which exceeds Ubuntu 22.04's GLIBC_2.35 baseline"
+              objdump -T "$binary" | grep "GLIBC_$max_version" | head -5
               exit 1
             fi
           }
 
           app_binary="$(find_one '*/bundle/deb/*/usr/bin/openkara')"
-          ort_binary="$(find_one '*/bundle/deb/*/usr/lib/openkara/onnxruntime/libonnxruntime.so')"
+          ort_binary="$(find_one '*/bundle/deb/*/usr/lib/OpenKara/onnxruntime/libonnxruntime.so')"
 
           test -n "$app_binary"
           test -n "$ort_binary"

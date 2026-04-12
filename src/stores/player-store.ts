@@ -13,7 +13,7 @@ import type {
   StemName,
 } from "@/types/ipc";
 import {
-  playTrackWithOptionalStems,
+  playSongWithOptionalStems,
   shouldEnqueueInsteadOfReplacingCurrentSong,
 } from "./player-workflows";
 
@@ -139,7 +139,7 @@ export function createPlayerStore(
         }
 
         try {
-          await playTrackWithOptionalStems(songId, {
+          await playSongWithOptionalStems(songId, {
             play: api.play,
             loadStems: api.loadStems,
             getSeparationStatus: (nextSongId) =>
@@ -157,7 +157,7 @@ export function createPlayerStore(
 
       playNow: async (songId) => {
         try {
-          await playTrackWithOptionalStems(songId, {
+          await playSongWithOptionalStems(songId, {
             play: api.play,
             loadStems: api.loadStems,
             getSeparationStatus: (nextSongId) =>
@@ -259,7 +259,7 @@ export function createPlayerStore(
         if (!nextId) return;
 
         try {
-          await playTrackWithOptionalStems(nextId, {
+          await playSongWithOptionalStems(nextId, {
             play: api.play,
             loadStems: api.loadStems,
             getSeparationStatus: (nextSongId) =>
@@ -280,7 +280,7 @@ export function createPlayerStore(
         if (!nextId) return;
 
         try {
-          await playTrackWithOptionalStems(nextId, {
+          await playSongWithOptionalStems(nextId, {
             play: api.play,
             loadStems: api.loadStems,
             getSeparationStatus: (nextSongId) =>

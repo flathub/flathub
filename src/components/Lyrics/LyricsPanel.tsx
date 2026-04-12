@@ -1,11 +1,12 @@
-import { listen } from "@tauri-apps/api/event";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Edit2, LoaderCircle } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
+import { useLyricsAutoScroll } from "@/hooks/use-lyrics-auto-scroll";
+import { useAudiencePlainTextPaging } from "@/hooks/use-audience-plain-text-paging";
+import { useAirPlayPendingGuard } from "@/hooks/use-airplay-pending-guard";
 import { APP_SHORTCUTS, getShortcutDisplay } from "@/lib/app-shortcuts";
 import {
-  LOCAL_AUDIENCE_PLAIN_TEXT_PAGE_EVENT,
   stepPlainTextRemotePage,
   resolvePlainTextRemoteTarget,
   type PlainTextPageDirection,
@@ -16,8 +17,6 @@ import { LyricsFontSizeControl } from "./LyricsFontSizeControl";
 import { LyricsOffsetControl } from "./LyricsOffsetControl";
 import { LyricsEmptyState } from "./LyricsEmptyState";
 import { LyricsEditDialog } from "./LyricsEditDialog";
-import { getCenteredScrollTop } from "./lyrics-scroll";
-import { buildPlainTextPageStartIndices } from "./plain-text-pages";
 import {
   buildAudiencePresentationSpec,
   colorToCss,
@@ -29,13 +28,6 @@ import {
 } from "@/stores/player-store";
 interface LyricsPanelProps {
   presentation?: "standard" | "audience";
-}
-
-function arePageStartIndicesEqual(left: number[], right: number[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
 }
 
 export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
@@ -59,11 +51,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   );
   const lyricsFontStep = useSettingsStore((s) => s.lyricsFontStep);
   const adjustedMs = positionMs - offsetMs;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const measurementRef = useRef<HTMLDivElement>(null);
-  const lastPendingSongIdRef = useRef<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [pageStartIndices, setPageStartIndices] = useState<number[]>([0]);
   const utilityControlsPinned = offsetMs !== 0 || lyricsFontStep !== 0;
   const isAudience = presentation === "audience";
   const spaciousStageLayout = !isAudience;
@@ -85,163 +73,31 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const pageIdentity = shouldRenderAudiencePlainTextPages
     ? `${songId ?? ""}:${rawLrc}:${lyricsFontStep}`
     : "local";
-  const [pageState, setPageState] = useState({
-    identity: pageIdentity,
-    index: 0,
-  });
-  const pageIndex = pageState.identity === pageIdentity ? pageState.index : 0;
-  const currentPageStart = shouldRenderAudiencePlainTextPages
-    ? (pageStartIndices[pageIndex] ?? 0)
-    : 0;
-  const currentPageEnd = shouldRenderAudiencePlainTextPages
-    ? (pageStartIndices[pageIndex + 1] ?? lines.length)
-    : lines.length;
-  const visibleLines = shouldRenderAudiencePlainTextPages
-    ? lines.slice(currentPageStart, currentPageEnd)
-    : lines;
 
-  useLayoutEffect(() => {
-    if (!containerRef.current || !measurementRef.current) {
-      return;
-    }
-
-    const measurePages = () => {
-      if (!containerRef.current || !measurementRef.current) {
-        return;
-      }
-
-      const lineHeights = Array.from(
-        measurementRef.current.querySelectorAll<HTMLElement>(
-          "[data-plain-text-page-measure-line]",
-        ),
-      ).map((line) =>
-        Math.max(1, Math.ceil(line.getBoundingClientRect().height)),
-      );
-      const availableHeight = Math.max(
-        1,
-        containerRef.current.clientHeight -
-          audiencePresentationSpec.verticalPaddingPx * 2,
-      );
-      const nextPageStartIndices = buildPlainTextPageStartIndices(
-        lineHeights,
-        availableHeight,
-        audiencePresentationSpec.lineGapPx,
-      );
-
-      setPageStartIndices((current) =>
-        arePageStartIndicesEqual(current, nextPageStartIndices)
-          ? current
-          : nextPageStartIndices,
-      );
-      setPageState((current) => {
-        const activeIndex =
-          current.identity === pageIdentity ? current.index : 0;
-
-        return {
-          identity: pageIdentity,
-          index: Math.max(
-            0,
-            Math.min(activeIndex, nextPageStartIndices.length - 1),
-          ),
-        };
-      });
-    };
-
-    if (!shouldRenderAudiencePlainTextPages) {
-      return;
-    }
-
-    measurePages();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      measurePages();
-    });
-    observer.observe(containerRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [
-    audiencePresentationSpec.lineGapPx,
-    audiencePresentationSpec.verticalPaddingPx,
-    lines,
-    pageIdentity,
-    shouldRenderAudiencePlainTextPages,
-  ]);
-
-  useEffect(() => {
-    if (!shouldRenderAudiencePlainTextPages) {
-      return;
-    }
-
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    const setup = async () => {
-      unlisten = await listen<{ direction: PlainTextPageDirection }>(
-        LOCAL_AUDIENCE_PLAIN_TEXT_PAGE_EVENT,
-        (event) => {
-          if (cancelled) {
-            return;
-          }
-
-          const delta = event.payload.direction === "prev" ? -1 : 1;
-          setPageState((current) => {
-            const activeIndex =
-              current.identity === pageIdentity ? current.index : 0;
-
-            return {
-              identity: pageIdentity,
-              index: Math.max(
-                0,
-                Math.min(activeIndex + delta, pageStartIndices.length - 1),
-              ),
-            };
-          });
-        },
-      );
-    };
-
-    void setup();
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [
-    pageIdentity,
-    pageStartIndices.length,
-    shouldRenderAudiencePlainTextPages,
-  ]);
-
-  // Auto-scroll to active line (disabled for plain text)
-  useEffect(() => {
-    if (isPlainText) return;
-    if (activeLineIndex < 0 || !containerRef.current) return;
-    // The scroll viewport's direct child is the centered stack wrapper, not the
-    // lyric rows themselves. Target rows must be found through explicit markers
-    // or auto-scroll will silently stop tracking the active line.
-    const lineEl = containerRef.current.querySelector<HTMLElement>(
-      `[data-lyrics-line-index="${activeLineIndex}"]`,
-    );
-    if (!lineEl) return;
-
-    const top = getCenteredScrollTop({
-      viewportHeight: containerRef.current.clientHeight,
-      scrollHeight: containerRef.current.scrollHeight,
-      lineOffsetTop: lineEl.offsetTop,
-      lineHeight: lineEl.clientHeight,
+  const { containerRef, measurementRef, currentPageStart, visibleLines } =
+    useAudiencePlainTextPaging({
+      lines,
+      shouldRender: shouldRenderAudiencePlainTextPages,
+      pageIdentity,
+      audiencePresentationSpec,
     });
 
-    containerRef.current.scrollTo({
-      top,
-      behavior: "smooth",
-    });
-  }, [activeLineIndex, isPlainText, lyricsFontStep, presentation, songId]);
+  useLyricsAutoScroll(
+    containerRef,
+    activeLineIndex,
+    isPlainText,
+    lyricsFontStep,
+    presentation,
+    songId,
+  );
+
+  useAirPlayPendingGuard(
+    songId,
+    isPlainText,
+    isAudience,
+    isAirPlayRemotePagingTarget,
+    airPlayPlainTextPagePending,
+  );
 
   const handleRemotePageStep = (direction: PlainTextPageDirection) => {
     void stepPlainTextRemotePage(
@@ -252,34 +108,6 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
       // Remote paging must not interrupt the operator's local view.
     });
   };
-
-  useEffect(() => {
-    if (!airPlayPlainTextPagePending) {
-      lastPendingSongIdRef.current = songId ?? null;
-      return;
-    }
-
-    const songChanged =
-      lastPendingSongIdRef.current !== null &&
-      lastPendingSongIdRef.current !== (songId ?? null);
-    if (
-      isAudience ||
-      songChanged ||
-      !isPlainText ||
-      !isAirPlayRemotePagingTarget
-    ) {
-      usePlayerStore.getState().clearAirPlayPlainTextPagePending();
-      return;
-    }
-
-    lastPendingSongIdRef.current = songId ?? null;
-  }, [
-    airPlayPlainTextPagePending,
-    isAirPlayRemotePagingTarget,
-    isAudience,
-    isPlainText,
-    songId,
-  ]);
 
   if (!songId) {
     return (

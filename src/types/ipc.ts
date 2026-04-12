@@ -112,7 +112,7 @@ export interface ExtractEmbeddedCoverArtResult {
 }
 
 export interface LyricsMatch {
-  song_hash: string;
+  song_id: string;
   lrc_path: string;
 }
 
