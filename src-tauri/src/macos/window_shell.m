@@ -154,7 +154,11 @@ bool ok_window_shell_configure_main_window(
         window.titlebarAppearsTransparent = YES;
         window.tabbingMode = NSWindowTabbingModeDisallowed;
         window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
-        window.movableByWindowBackground = YES;
+        // RATIONALE: With full-size content view + a WKWebView filling the client
+        // area, movableByWindowBackground makes AppKit treat broad "background"
+        // hits (including scrollbar gutters) as window moves. We already expose a
+        // narrow drag affordance via data-tauri-drag-region in the web toolbar.
+        window.movableByWindowBackground = NO;
 
         window.backgroundColor = [NSColor windowBackgroundColor];
 
