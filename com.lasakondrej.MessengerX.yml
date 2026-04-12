@@ -1,0 +1,86 @@
+app-id: com.lasakondrej.MessengerX
+
+# org.gnome.Platform is required for WebKitGTK (webkit2gtk-4.1).
+# Update to //47 or later when Tauri v2 adds webkitgtk-6.0 (GTK4) support.
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: messenger-x
+
+finish-args:
+  # Network access to load messenger.com
+  - --share=network
+  # Shared memory for X11 display
+  - --share=ipc
+  # Wayland display with X11 fallback
+  - --socket=wayland
+  - --socket=fallback-x11
+  # PulseAudio for notification sounds
+  - --socket=pulseaudio
+  # GPU access for WebKit hardware acceleration
+  - --device=dri
+  # Desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+  # System tray (KDE/generic StatusNotifier)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # System tray (Ayatana AppIndicator — GNOME, elementary, etc.)
+  - --talk-name=org.ayatana.indicator.application
+  - --talk-name=com.canonical.indicator.application
+  # Workaround for WebKit compositing issues in some Wayland compositors
+  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+modules:
+  - name: messenger-x
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # CARGO_HOME must match the "cargo/" prefix used by cargo-sources.json
+        CARGO_HOME: /run/build/messenger-x/cargo
+        CARGO_NET_OFFLINE: 'true'
+
+    build-commands:
+      # Populate the offline vendor cache from pre-fetched cargo-sources.json
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+
+      # Build the Tauri Rust binary.
+      # tauri-build (build.rs) reads tauri.conf.json and embeds the src/ frontend
+      # assets into the binary at compile time — no separate npm/TypeScript step needed.
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+
+      # ── Install binary ───────────────────────────────────────────────────────
+      - install -Dm755 src-tauri/target/release/messengerx ${FLATPAK_DEST}/bin/messenger-x
+
+      # ── Install icons ────────────────────────────────────────────────────────
+      - install -Dm644 src-tauri/icons/32x32.png
+          ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png
+      - install -Dm644 src-tauri/icons/128x128.png
+          ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+
+      # ── Install .desktop entry ───────────────────────────────────────────────
+      - install -Dm644 flatpak/com.lasakondrej.MessengerX.desktop
+          ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+
+      # ── Install AppStream metainfo ───────────────────────────────────────────
+      - install -Dm644 flatpak/com.lasakondrej.MessengerX.metainfo.xml
+          ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/jimicze/fb-messanger-crossplatform
+        tag: v1.3.5
+        commit: cad38542fcf3e4c8128d37377face7f0d3b923e9
+
+      # Pre-fetched Cargo dependencies (offline vendor cache).
+      # Regenerate after updating Cargo.lock with:
+      #   pip3 install aiohttp tomlkit
+      #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o flatpak/cargo-sources.json
+      # Tool: https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo
+      - cargo-sources.json
