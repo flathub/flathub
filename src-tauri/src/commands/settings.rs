@@ -1,5 +1,5 @@
 use crate::commands::error::{internal_error, CommandResult};
-use crate::config::{self, AppConfig, ModelVariant, StemMode};
+use crate::config::{self, AppConfig, ExecutionProviderPreference, ModelVariant, StemMode};
 use serde::Serialize;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -13,11 +13,14 @@ pub struct AppSettings {
     pub language: Option<String>,
     pub hide_batch_separate: bool,
     pub lyrics_font_step: i8,
+    pub execution_provider: String,
+    pub available_execution_providers: Vec<&'static str>,
 }
 
 fn settings_from_config(config: &AppConfig) -> AppSettings {
     let mode = config.effective_stem_mode();
     let variant = config.effective_model_variant();
+    let ep = config.effective_execution_provider();
     AppSettings {
         stem_mode: match mode {
             StemMode::TwoStem => "two_stem".to_owned(),
@@ -27,6 +30,8 @@ fn settings_from_config(config: &AppConfig) -> AppSettings {
         language: config.language.clone(),
         hide_batch_separate: config.hide_batch_separate.unwrap_or(false),
         lyrics_font_step: config.effective_lyrics_font_step(),
+        execution_provider: ep.as_str().to_owned(),
+        available_execution_providers: ExecutionProviderPreference::available_for_current_platform(),
     }
 }
 
@@ -168,6 +173,26 @@ pub fn set_lyrics_font_step(app_handle: AppHandle, step: i8) -> CommandResult<Ap
         .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
 
     persist_lyrics_font_step(&app_data_dir, step)
+}
+
+#[tauri::command]
+pub fn set_execution_provider(
+    app_handle: AppHandle,
+    provider: String,
+) -> CommandResult<AppSettings> {
+    let ep = ExecutionProviderPreference::from_str(&provider)
+        .ok_or_else(|| internal_error(format!("invalid execution provider: {provider}")))?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
+    let mut config = config::load_config(&app_data_dir)
+        .map_err(|e| internal_error(format!("failed to load config: {e}")))?
+        .unwrap_or_default();
+    config.execution_provider = Some(ep);
+    config::save_config(&app_data_dir, &config)
+        .map_err(|e| internal_error(format!("failed to save config: {e}")))?;
+    Ok(settings_from_config(&config))
 }
 
 #[tauri::command]
