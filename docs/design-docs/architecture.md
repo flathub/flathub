@@ -227,10 +227,10 @@ The cache key is a SHA-256 hash of the audio file content, ensuring deduplicatio
 
 ## Platform Considerations
 
-| Platform | Audio Backend   | AI Acceleration     |
-| -------- | --------------- | ------------------- |
-| macOS    | CoreAudio       | CoreML (optional)   |
-| Windows  | WASAPI          | DirectML (optional) |
-| Linux    | PulseAudio/ALSA | CPU only (default)  |
+| Platform | Audio Backend   | AI Acceleration                              |
+| -------- | --------------- | -------------------------------------------- |
+| macOS    | CoreAudio       | CoreML (Auto on Apple Silicon, CPU on Intel) |
+| Windows  | WASAPI          | DirectML (Auto)                              |
+| Linux    | PulseAudio/ALSA | CPU only                                     |
 
-ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is a future optimization.
+ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences (`Auto` by default). The `Auto` mode selects CoreML on Apple Silicon Macs, DirectML on Windows, and CPU everywhere else. Users can override to force CPU if hardware acceleration causes issues. The code gracefully falls back to CPU if the selected EP fails at session creation time.
