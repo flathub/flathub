@@ -85,6 +85,7 @@ mod tests {
             hide_batch_separate: Some(true),
             model_variant: Some(config::ModelVariant::HtdemucsFt),
             lyrics_font_step: Some(2),
+            execution_provider: None,
         };
 
         let updated = updated_library_config(config, "/new".to_owned());
