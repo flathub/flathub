@@ -1,0 +1,151 @@
+app-id: me.proton.Authenticator
+runtime: org.gnome.Platform
+sdk: org.gnome.Sdk
+runtime-version: "49"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: proton-authenticator
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.secrets
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  # Disable WebKit JIT to work around SIGILL crashes on ARM64 platforms
+  # (e.g. Snapdragon X Elite) where WebKit's JIT compiler emits instructions
+  # not supported by the CPU.  JIT is an optimisation only; the interpreter
+  # still runs JavaScript correctly.
+  - --env=WEBKIT_DISABLE_JIT=1
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/proton-authenticator/cargo
+modules:
+  - name: proton-authenticator
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/proton-authenticator/cargo
+    build-commands:
+      # ── Rust / Cargo offline build ───────────────────────────────────────────
+      # cargo-sources.json has already populated ${CARGO_HOME} with all crates.
+      # The pre-built frontend dist (authenticator-dist.tar.gz) has been
+      # extracted on top of the git checkout, so applications/authenticator/dist/
+      # already exists when tauri-build runs.
+      # tauri.conf.json → "frontendDist": "../dist"
+      # tauri-build (the build.rs dependency) reads tauri.conf.json and embeds
+      # the dist/ frontend; no separate tauri CLI step is needed.
+      - |
+        export CARGO_NET_OFFLINE=true
+        cargo build \
+          --release \
+          --features tauri/custom-protocol \
+          --manifest-path applications/authenticator/src-tauri/Cargo.toml
+
+      # ── Install binary ───────────────────────────────────────────────────────
+      - install -Dm755 applications/authenticator/src-tauri/target/release/proton-authenticator
+        /app/bin/proton-authenticator
+
+      # ── Icons ────────────────────────────────────────────────────────────────
+      - install -Dm644 applications/authenticator/src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/me.proton.Authenticator.png
+      - install -Dm644 applications/authenticator/src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/me.proton.Authenticator.png
+      - install -Dm644 applications/authenticator/src-tauri/icons/128x128@2x.png
+        /app/share/icons/hicolor/256x256/apps/me.proton.Authenticator.png
+
+      # ── .desktop file ────────────────────────────────────────────────────────
+      # Tauri only generates a .desktop entry as part of its deb/rpm bundles.
+      # We ship a handcrafted one alongside the manifest.
+      - install -Dm644 me.proton.Authenticator.desktop
+        /app/share/applications/me.proton.Authenticator.desktop
+
+      # ── AppStream metadata ───────────────────────────────────────────────────
+      - install -Dm644 me.proton.Authenticator.metainfo.xml
+        /app/share/metainfo/me.proton.Authenticator.metainfo.xml
+
+      # ── License ──────────────────────────────────────────────────────────────
+      - install -Dm644 LICENSE
+        /app/share/licenses/me.proton.Authenticator/LICENSE
+
+    sources:
+      # ── Upstream monorepo ────────────────────────────────────────────────────
+      # Proton Authenticator lives inside ProtonMail/WebClients.
+      # The tag naming convention for other apps in this repo is e.g.
+      # "proton-mail@5.0.111.0". Verify the authenticator tag with:
+      #   git ls-remote --tags https://github.com/ProtonMail/WebClients.git \
+      #       'refs/tags/proton-authenticator@*'
+      # The WebClients repo has no per-app tags for the authenticator.
+      # 7d223376 is the "Authenticator release" commit (2025-09-19), the
+      # earliest visible point in the GitHub mirror and closest to the
+      # 1.1.4 binary. Its Cargo.lock reflects the crate versions shipped.
+      #
+      # To update to a new release:
+      #   1. Check https://proton.me/download/authenticator/linux/version.json
+      #   2. Find the release commit:
+      #        git clone https://github.com/ProtonMail/WebClients.git
+      #        git log --all --oneline -- applications/authenticator/CHANGELOG.md
+      #   3. Update the commit hash below, rebuild the frontend locally,
+      #      regenerate cargo-sources.json, update authenticator-dist.tar.gz
+      #      and its sha256, and update the version in metainfo.xml.
+      - type: git
+        url: https://github.com/ProtonMail/WebClients.git
+        commit: 7d223376dd948c22fc893698075d120da5ee56aa
+
+      # ── Pre-built frontend dist ──────────────────────────────────────────────
+      # The authenticator frontend is built from the WebClients monorepo using
+      # Yarn 4 (Berry) with nodeLinker: node-modules.  Yarn 4's offline cache
+      # format (.zip) is not yet supported by flatpak-node-generator, so the
+      # dist is built locally and supplied as a pre-built archive.
+      #
+      # The dist output is pure JS/CSS/HTML — architecture-independent — and is
+      # embedded into the Rust binary at compile time by tauri-build via the
+      # "frontendDist": "../dist" setting in tauri.conf.json.
+      #
+      # To regenerate authenticator-dist.tar.gz for a new release:
+      #   1. Check out the new WebClients commit.
+      #   2. From the webclient-src root:
+      #        # Strip private-registry packages and patch .yarnrc.yml:
+      #        python3 strip-private-registry-lockfile.py yarn.lock yarn.lock.filtered
+      #        cp yarn.lock yarn.lock.orig && cp yarn.lock.filtered yarn.lock
+      #        python3 -c "
+      #          import re, pathlib
+      #          text = pathlib.Path('.yarnrc.yml').read_text()
+      #          for key in ('httpProxy','httpsProxy','npmPublishRegistry'):
+      #            text = re.sub(rf'^{key}:.*\n','',text,flags=re.MULTILINE)
+      #          for key in ('plugins','npmScopes'):
+      #            text = re.sub(rf'^{key}:\n([ \t]+.*\n)*','',text,flags=re.MULTILINE)
+      #          pathlib.Path('.yarnrc.yml').write_text(text)"
+      #        # Add the missing @dnd-kit/sortable dep:
+      #        python3 -c "
+      #          import json,pathlib
+      #          pkg=pathlib.Path('applications/authenticator/package.json')
+      #          d=json.loads(pkg.read_text())
+      #          d.setdefault('dependencies',{})['@dnd-kit/sortable']='^10.0.0'
+      #          pkg.write_text(json.dumps(d,indent=4)+'\n')"
+      #        node .yarn/releases/yarn-4.9.4.cjs workspaces focus proton-authenticator
+      #        node .yarn/releases/yarn-4.9.4.cjs workspace proton-authenticator build:web
+      #        tar -czf ../authenticator-dist.tar.gz applications/authenticator/dist/
+      #        sha256sum ../authenticator-dist.tar.gz
+      #   3. Update the sha256 below.
+      - type: archive
+        path: authenticator-dist.tar.gz
+        sha256: 3ed54f97cca9bc9fc2155d754010fc264dd602bc3162759461c20fdb1e746f58
+        strip-components: 0
+
+      # ── Pre-generated Cargo sources ──────────────────────────────────────────
+      # Generate with (from the WebClients checkout root):
+      #   python3 flatpak-cargo-generator.py \
+      #       applications/authenticator/src-tauri/Cargo.lock \
+      #       -o cargo-sources.json
+      - cargo-sources.json
+
+      # ── Local files ──────────────────────────────────────────────────────────
+      - type: file
+        path: me.proton.Authenticator.desktop
+
+      - type: file
+        path: me.proton.Authenticator.metainfo.xml
