@@ -1,77 +1,45 @@
-# Autofirma Flatpak (`es.gob.afirma`)
+# Autofirma Flatpak
 
 [Read in English](README.en.md)
 
 ---
 
-Flatpak no oficial de Autofirma, la aplicación de firma electrónica del Gobierno de España.
+## Acciones necesarias para la mayoria de navegadores
 
-> [!WARNING]
-> **Paquete comunitario no oficial** - No está soportado por el Gobierno de España.
+Autofirma requiere instalar un certificado en el navegador que vayas a utilizar. Recomendamos leer el [FAQ oficial] para instalar los certificados manualmente.
 
-## Estado actual
+Puedes encontrar el archivo del certificado a instalar en la siguiente ubicacion:
 
-✅ **Compatible con:**
-- Firma local de documentos
-- Firefox, Chromium, Google Chrome, etc. (puede requerir de una [acción manual][issue-ca-install])
-
-❌ **No verificado:**
-- DNIe (probablemente no funcione)
-
-### Acciones necesarias para características determinadas
-
-Acude a [la sección de _troubleshooting_][troubleshooting] para conocer diferentes soluciones a algunos problemas que puedes encontrar al usar esta distribución comunitaria de Autofirma.
-
-
-## Instalación
-
-**Prerrequisitos:**
-```sh
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.openjdk17//25.08
+```
+~/.var/app/es.gob.afirma/.afirma/Autofirma/Autofirma_ROOT.cer
 ```
 
-**Construir e instalar:**
-```sh
-git clone https://github.com/flathub/es.gob.afirma.git
-cd es.gob.afirma
-flatpak-builder --force-clean --user --install build-dir es.gob.afirma.yaml
-```
+Puedes comprobar tu configuracion en las siguientes paginas: 
+- https://valide.redsara.es/valide/
+- https://www.sededgsfp.gob.es/es/Paginas/TestAutofirma.aspx
 
-Y luego la puedes lanzar desde la terminal con
-```sh
-flatpak run es.gob.afirma
-```
+## FAQ
 
+> ¿Por qué necesito instalar manualmente el certificado? 
+> ¿Autofirma no hace esto automatico en Windows?
 
-## Colaboración
+No realmente, el código de auto-instalación de certificados de Autofirma no es robusto.
+Solo es capaz de detectar los dos principales navegadores (Chrome/Chromium y Firefox) incluso en Windows, y solo es capaz de detectarlos en
+las siguientes configuraciones automaticamente sin permisos adicionales:
+- Chrome Nativo (gestor de paquetes)
+- Otros que comprueben el almacen NSS compartido (`~/.pki/nssdb`)
+Y los siguientes con permisos adicionales:
+- Firefox Snap
+- Firefox (gestor de paquetes)
+- Chromium Snap
 
-¡Ayúdanos a mejorar!
+También, dar permiso a estos ultimos abriría una brecha de ataque grande a tu navegador, por ello no lo habilitamos por defecto ni documentamos como hacerlo aquí.
 
-- [**Reportar incidencias**][issues]
-- [**Chat en Matrix**][matrix-chat]
+## Contribuir
 
+Cualquier contribución es bien recibida.
+Para resolver dudas o cuestiones al respecto estamos disponibles en [Matrix]: [#autofirma-flatpak:matrix.org][matrix-chat]
 
-## Agradecimientos
-
-- a [Alberto Ruiz](https://github.com/aruiz) por mostrar un camino a recorrer
-- a [Ismael Asensio](https://gitlab.com/ismailof), por desbloquear por fin la compilación desde el código fuente
-- a [David Marzal](https://gitlab.com/Marzal), por sus investigaciones y ayuda con logs, certificados y capturas de pantalla
-- a [toda la comunidad en Mastodon](https://mastodon.social/tags/AutofirmaFlatpak) que ha estado apoyando esta idea
-
-## Referencias
-
-- [Sitio oficial de AutoFirma][official-website]
-- [Repositorio oficial][official-repo]
-- [Documentación Flatpak][flatpak-docs]
-- [**Intento de construcción no oficial por aruiz**][aruiz-repo]
-
-[aruiz-repo]: https://github.com/aruiz/autofirma-flatpak
-[firefox-flathub]: https://flathub.org/apps/org.mozilla.firefox
-[flatpak-docs]: https://docs.flatpak.org/
-[issues]: https://github.com/flathub/es.gob.afirma/issues
-[issue-ca-install]: docs/users/troubleshooting/es.md#fallo-al-llamar-a-autofirma-desde-el-navegador
+[Matrix]: https://matrix.org
 [matrix-chat]: https://matrix.to/#/#autofirma-flatpak:matrix.org
-[official-repo]: https://github.com/ctt-gob-es/clienteafirma
-[official-website]: https://firmaelectronica.gob.es/
-[troubleshooting]: docs/users/troubleshooting/es.md
+[FAQ oficial]:https://github.com/ctt-gob-es/clienteafirma/wiki/Faq-autofirma-execution#no-se-abre-autofirma-al-ejecutar-firmas-desde-el-navegador

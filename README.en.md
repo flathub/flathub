@@ -1,80 +1,51 @@
-# AutoFirma Flatpak (`es.gob.afirma`)
+# AutoFirma Flatpak
 
 [Leer en español](README.md)
 
 ---
 
-Unofficial Flatpak for AutoFirma, the digital signature application provided by the Government of Spain.
+## Required actions for most browsers
 
-> [!WARNING]
-> **Unofficial community package** - This is not supported by the Spanish Government.
+Autofirma requires you to install its self-signed certificate on the browser you use it with.
+We recommend reading the [official FAQ] for instructions to manually install it.
 
-## Current status
-
-✅ **Compatible with:**
-- Local document signing
-- Firefox, Chromium, Google Chrome, etc. (may require [manual action][issue-ca-install])
-
-❌ **Unverified:**
-- DNIe (Spanish Electronic ID) — likely non-functional
-
-### Actions required for specific features
-
-Visit the [troubleshooting section][troubleshooting] to find solutions for common issues you might encounter using this community distribution of AutoFirma.
-
-## Installation
-
-**Prerequisites:**
-```sh
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.openjdk17//25.08
-
+You can find the certificate file on the following path:
+```
+~/.var/app/es.gob.afirma/.afirma/Autofirma/Autofirma_ROOT.cer
 ```
 
-**Build and install:**
+You can check if your setup is working on the following websites: 
+- https://valide.redsara.es/valide/?lang=en
+- https://www.sededgsfp.gob.es/es/Paginas/TestAutofirma.aspx (Spanish Only)
 
-```sh
-git clone https://github.com/flathub/es.gob.afirma.git
-cd es.gob.afirma
-flatpak-builder --force-clean --user --install build-dir es.gob.afirma.yaml
+## FAQ
 
-```
+ > Doesn't Autofirma works out-of-the-box on Windows?
+ > Why do I need to manually install a certificate?
 
-You can then launch it from the terminal using:
+Autofirma's certificate auto-installation code is not robust. 
+Only detects the two main browsers (Firefox and Chrome/Chromium) even on Windows,
+and its only able to detect them on the following setups without additional 
+permissions:
+- Chrome (package manager)
+- Other browsers that check NSS's shared database (`~/.pki/nssdb`)
 
-```sh
-flatpak run es.gob.afirma
+And the following ones with additional permissions:
+- Firefox Snap
+- Firefox (package manager)
+- Chromium Snap
 
-```
+Also, giving permission to these last ones would open a big attack surface to your
+browser, so we don't enable them by default and don't document how to do it here.
 
 ## Contributing
 
-Help us improve!
+Any contributions are welcomed.
 
-* [**Report issues**][issues]
-* [**Matrix chat**][matrix-chat]
+For solving questions, we are available in [Matrix]: at [#autofirma-flatpak:matrix.org][matrix-chat]
 
-## Acknowledgements
+Please be aware that most conversation takes place in spanish.
 
-- To [Alberto Ruiz](https://github.com/aruiz) for paving the way.
-- To [Ismael Asensio](https://gitlab.com/ismailof) for finally getting source-code compilation over the line.
-- To [David Marzal](https://gitlab.com/Marzal) for his research and assistance with logs, certificates, and screenshots.
-- To the [entire Mastodon community](https://mastodon.social/tags/AutofirmaFlatpak) for their ongoing support of this project.
-
-## References
-
-* [Official AutoFirma website][official-website]
-* [Official repository][official-repo]
-* [Flatpak documentation][flatpak-docs]
-* [**Unofficial build attempt by aruiz**][aruiz-repo]
-
-
-[aruiz-repo]: https://github.com/aruiz/autofirma-flatpak
-[firefox-flathub]: https://flathub.org/apps/org.mozilla.firefox
-[flatpak-docs]: https://docs.flatpak.org/
-[issues]: https://github.com/flathub/es.gob.afirma/issues
-[issue-ca-install]: docs/users/troubleshooting/en.md#failure-to-call-autofirma-from-the-browser
+[Matrix]: https://matrix.org
 [matrix-chat]: https://matrix.to/#/#autofirma-flatpak:matrix.org
-[official-repo]: https://github.com/ctt-gob-es/clienteafirma
-[official-website]: https://firmaelectronica.gob.es/  
-[troubleshooting]: docs/users/troubleshooting/en.md
+[official FAQ]: https://github.com/ctt-gob-es/clienteafirma/wiki/Faq-autofirma-execution-en-US
