@@ -231,7 +231,40 @@ export function DesktopTitlebar({
             </span>
           </div>
 
-          <div className="ml-1 flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
+            <Tooltip
+              label={t("toolbar.toggleSidebar")}
+              shortcut={getShortcutDisplay(APP_SHORTCUTS.toggleSidebar)}
+            >
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                aria-label={t("toolbar.toggleSidebar")}
+                className={`motion-icon-button rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
+                  sidebarVisible
+                    ? "bg-[var(--color-hover)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
+                    : "text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white"
+                }`}
+              >
+                <PanelLeft size={15} />
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              label={t("toolbar.import")}
+              shortcut={getShortcutDisplay(APP_SHORTCUTS.importFiles)}
+            >
+              <ImportButton ariaLabel={t("toolbar.import")}>
+                <span className="motion-surface flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[var(--color-active)] hover:text-white">
+                  <UploadCloud size={13} /> {t("toolbar.import")}
+                </span>
+              </ImportButton>
+            </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-[var(--color-border-light)]" />
+
+          <div className="flex items-center gap-0.5">
             {DESKTOP_MENU_KEYS.map((key) => (
               <button
                 key={key}
@@ -256,35 +289,6 @@ export function DesktopTitlebar({
         />
 
         <div className="flex shrink-0 items-center gap-1">
-          <Tooltip
-            label={t("toolbar.toggleSidebar")}
-            shortcut={getShortcutDisplay(APP_SHORTCUTS.toggleSidebar)}
-          >
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              aria-label={t("toolbar.toggleSidebar")}
-              className={`motion-icon-button rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30 ${
-                sidebarVisible
-                  ? "bg-[var(--color-hover)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
-                  : "text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white"
-              }`}
-            >
-              <PanelLeft size={15} />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            label={t("toolbar.import")}
-            shortcut={getShortcutDisplay(APP_SHORTCUTS.importFiles)}
-          >
-            <ImportButton ariaLabel={t("toolbar.import")}>
-              <span className="motion-surface flex items-center gap-1.5 rounded-md border border-[var(--color-border-light)] bg-[var(--color-hover)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-text)] hover:border-[color-mix(in_srgb,var(--color-accent)_24%,var(--color-border-light))] hover:bg-[var(--color-active)] hover:text-white">
-                <UploadCloud size={13} /> {t("toolbar.import")}
-              </span>
-            </ImportButton>
-          </Tooltip>
-
           <Tooltip
             label={t("toolbar.settings")}
             shortcut={getShortcutDisplay(APP_SHORTCUTS.toggleSettings)}
