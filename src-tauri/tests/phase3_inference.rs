@@ -7,6 +7,7 @@ mod support;
 
 use openkara_lib::{
     audio::decode,
+    config::ExecutionProviderPreference,
     separator::{inference, model},
 };
 
@@ -34,6 +35,7 @@ fn separates_fixture_audio_into_named_stems_and_writes_wavs() {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("models")
             .join("htdemucs.onnx"),
+        ExecutionProviderPreference::Cpu,
     )
     .expect("demucs model should load");
     let decoded = decode::decode_file(&fixture_path("audio", "fixture.wav"))
@@ -85,6 +87,7 @@ fn separates_audio_longer_than_a_single_demucs_window() {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("models")
             .join("htdemucs.onnx"),
+        ExecutionProviderPreference::Cpu,
     )
     .expect("demucs model should load");
     let fixture = decode::decode_file(&fixture_path("audio", "fixture.wav"))

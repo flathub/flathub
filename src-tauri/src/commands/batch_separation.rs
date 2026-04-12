@@ -63,6 +63,10 @@ pub fn batch_separate(
         .unwrap_or_default()
         .as_str()
         .to_owned();
+    let ep_preference = app_config
+        .as_ref()
+        .map(|c| c.effective_execution_provider())
+        .unwrap_or_default();
 
     // Resolve the list of song hashes to process.
     let hashes: Vec<String> = if song_ids.is_empty() {
@@ -194,6 +198,7 @@ pub fn batch_separate(
                     &worker_song_id,
                     stem_mode,
                     &worker_model_variant,
+                    ep_preference,
                     |percent| {
                         let snapshot = running_status(&progress_song_id, percent);
                         if let Ok(mut statuses) = worker_statuses.lock() {

@@ -2,7 +2,7 @@ mod support;
 
 use std::path::PathBuf;
 
-use openkara_lib::separator::model;
+use openkara_lib::{config::ExecutionProviderPreference, separator::model};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -76,8 +76,11 @@ fn resolves_macos_framework_runtime_library_path() {
 
 #[test]
 fn loads_embedded_demucs_model_session() {
-    let loaded = model::load_from_path(&repo_root().join("models").join("htdemucs.onnx"))
-        .expect("demucs model should load");
+    let loaded = model::load_from_path(
+        &repo_root().join("models").join("htdemucs.onnx"),
+        ExecutionProviderPreference::Cpu,
+    )
+    .expect("demucs model should load");
 
     assert!(!loaded.inputs.is_empty());
     assert!(!loaded.outputs.is_empty());
@@ -86,7 +89,8 @@ fn loads_embedded_demucs_model_session() {
 #[test]
 fn fails_with_clear_error_for_missing_model_file() {
     let missing_path = repo_root().join("models").join("missing-model.onnx");
-    let error = model::load_from_path(&missing_path).expect_err("missing model should fail");
+    let error = model::load_from_path(&missing_path, ExecutionProviderPreference::Cpu)
+        .expect_err("missing model should fail");
 
     assert!(error.to_string().contains("missing-model.onnx"));
 }

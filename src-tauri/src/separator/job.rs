@@ -1,7 +1,7 @@
 use crate::{
     audio::decode,
     cache,
-    config::StemMode,
+    config::{ExecutionProviderPreference, StemMode},
     library_root::LibraryRoot,
     separator::{checkpoint, inference, model, model_cache::ModelCache},
 };
@@ -37,6 +37,7 @@ pub fn separate_song_into_cache(
     song_hash: &str,
     stem_mode: StemMode,
     model_variant: &str,
+    ep_preference: ExecutionProviderPreference,
     mut report_progress: impl FnMut(u8),
 ) -> Result<SeparationArtifacts> {
     if let Some(cached) =
@@ -69,7 +70,7 @@ pub fn separate_song_into_cache(
         .lock()
         .map_err(|_| anyhow::anyhow!("separator model cache lock was poisoned"))?;
     let loaded_model = model_cache.get_or_load_with(model_path, |path| {
-        model::load_from_path(path)
+        model::load_from_path(path, ep_preference)
             .with_context(|| format!("failed to load Demucs model from {}", path.display()))
     })?;
 

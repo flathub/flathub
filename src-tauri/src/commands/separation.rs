@@ -1,7 +1,7 @@
 use crate::{
     cache,
     commands::error::{separation_error, state_lock_error, CommandError, CommandResult},
-    config::{self, StemMode},
+    config::{self, ExecutionProviderPreference, StemMode},
     separator::{self, model::LoadedModel, model_cache::ModelCache},
     AppState,
 };
@@ -62,6 +62,7 @@ struct SeparationExecutionContext {
     library_root: crate::library_root::LibraryRoot,
     model_path: PathBuf,
     model_variant: String,
+    ep_preference: ExecutionProviderPreference,
     statuses: Arc<Mutex<HashMap<String, SeparationStatusSnapshot>>>,
     model_cache: Arc<Mutex<ModelCache<LoadedModel>>>,
 }
@@ -177,6 +178,7 @@ fn spawn_separation_job(
         library_root,
         model_path,
         model_variant,
+        ep_preference,
         statuses,
         model_cache,
     } = execution_context;
@@ -199,6 +201,7 @@ fn spawn_separation_job(
                 &worker_song_id,
                 stem_mode,
                 &model_variant,
+                ep_preference,
                 |percent| {
                     let snapshot = running_status(&progress_song_id, percent);
                     store_status(&progress_statuses, &progress_song_id, snapshot);
@@ -260,18 +263,23 @@ fn emit_terminal_status(
 fn build_execution_context(
     state: &State<'_, AppState>,
 ) -> CommandResult<SeparationExecutionContext> {
-    let model_variant = config::load_config(&state.app_data_dir)
-        .ok()
-        .flatten()
-        .map(|config| config.effective_model_variant())
+    let app_config = config::load_config(&state.app_data_dir).ok().flatten();
+    let model_variant = app_config
+        .as_ref()
+        .map(|c| c.effective_model_variant())
         .unwrap_or_default()
         .as_str()
         .to_owned();
+    let ep_preference = app_config
+        .as_ref()
+        .map(|c| c.effective_execution_provider())
+        .unwrap_or_default();
 
     Ok(SeparationExecutionContext {
         library_root: state.library_root()?,
         model_path: state.resolve_model_path()?,
         model_variant,
+        ep_preference,
         statuses: Arc::clone(&state.separation_statuses),
         model_cache: Arc::clone(&state.separator_model_cache),
     })

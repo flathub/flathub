@@ -196,6 +196,7 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                             &song.hash,
                             StemMode::default(),
                             "htdemucs",
+                            crate::config::ExecutionProviderPreference::default(),
                             |_| {},
                         ) {
                             Ok(artifacts) => (

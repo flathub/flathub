@@ -7,7 +7,7 @@ mod support;
 
 use openkara_lib::{
     cache,
-    config::StemMode,
+    config::{ExecutionProviderPreference, StemMode},
     library::Song,
     library_root::LibraryRoot,
     separator::{job, model, model_cache::ModelCache},
@@ -80,6 +80,7 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
         "fixture-song",
         StemMode::default(),
         "htdemucs",
+        ExecutionProviderPreference::Cpu,
         |percent| first_progress.push(percent),
     )
     .expect("first separation should succeed");
@@ -101,6 +102,7 @@ fn separation_job_reports_monotonic_progress_and_hits_cache_on_second_run() {
         "fixture-song",
         StemMode::default(),
         "htdemucs",
+        ExecutionProviderPreference::Cpu,
         |percent| second_progress.push(percent),
     )
     .expect("second separation should hit cache");
