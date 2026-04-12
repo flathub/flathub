@@ -5,7 +5,12 @@ import {
   type WebviewSyncChannel,
 } from "@/runtime/webview-sync";
 import * as api from "@/lib/tauri";
-import type { AppSettings, ModelVariant, StemMode } from "@/types/ipc";
+import type {
+  AppSettings,
+  ExecutionProvider,
+  ModelVariant,
+  StemMode,
+} from "@/types/ipc";
 
 export interface AppSettingsSnapshot {
   hydrated: boolean;
@@ -14,6 +19,8 @@ export interface AppSettingsSnapshot {
   language: string | null;
   hideBatchSeparate: boolean;
   lyricsFontStep: number;
+  executionProvider: ExecutionProvider;
+  availableExecutionProviders: ExecutionProvider[];
 }
 
 interface SettingsState {
@@ -24,6 +31,8 @@ interface SettingsState {
   language: AppSettingsSnapshot["language"];
   hideBatchSeparate: AppSettingsSnapshot["hideBatchSeparate"];
   lyricsFontStep: AppSettingsSnapshot["lyricsFontStep"];
+  executionProvider: AppSettingsSnapshot["executionProvider"];
+  availableExecutionProviders: AppSettingsSnapshot["availableExecutionProviders"];
   toggle: () => void;
   close: () => void;
   open: () => void;
@@ -42,6 +51,8 @@ const DEFAULT_APP_SETTINGS: AppSettingsSnapshot = {
   language: null,
   hideBatchSeparate: false,
   lyricsFontStep: 0,
+  executionProvider: "auto",
+  availableExecutionProviders: ["auto", "cpu"],
 };
 
 function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
@@ -52,6 +63,8 @@ function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
     language: settings.language,
     hideBatchSeparate: settings.hide_batch_separate,
     lyricsFontStep: settings.lyrics_font_step,
+    executionProvider: settings.execution_provider,
+    availableExecutionProviders: settings.available_execution_providers,
   };
 }
 
@@ -65,6 +78,8 @@ function selectAppSettingsSnapshot(
     language: state.language,
     hideBatchSeparate: state.hideBatchSeparate,
     lyricsFontStep: state.lyricsFontStep,
+    executionProvider: state.executionProvider,
+    availableExecutionProviders: state.availableExecutionProviders,
   };
 }
 
@@ -91,6 +106,8 @@ function applySettingsSyncSnapshot(
     language: snapshot.language,
     hideBatchSeparate: snapshot.hideBatchSeparate,
     lyricsFontStep: snapshot.lyricsFontStep,
+    executionProvider: snapshot.executionProvider,
+    availableExecutionProviders: snapshot.availableExecutionProviders,
   });
 }
 

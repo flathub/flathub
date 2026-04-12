@@ -6,6 +6,7 @@ import type {
   DeleteSongsResult,
   DeleteStemsResult,
   DowngradeResult,
+  ExecutionProvider,
   ExtractEmbeddedCoverArtResult,
   ExpandedImportPaths,
   ImportCandidateDetails,
@@ -241,6 +242,12 @@ export function setLanguage(language: string): Promise<AppSettings> {
 
 export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
   return invoke<AppSettings>("set_hide_batch_separate", { value });
+}
+
+export function setExecutionProvider(
+  provider: ExecutionProvider,
+): Promise<AppSettings> {
+  return invoke<AppSettings>("set_execution_provider", { provider });
 }
 
 export function setLyricsFontStep(step: number): Promise<AppSettings> {

@@ -40,6 +40,62 @@ impl ModelVariant {
     }
 }
 
+/// Hardware acceleration preference for ONNX Runtime inference.
+///
+/// `Auto` detects the best available provider for the current platform:
+/// - Apple Silicon → CoreML (CPU + Neural Engine)
+/// - Intel Mac → CPU (Metal EP is not well-suited for Demucs workloads)
+/// - Windows with DirectX 12 GPU → DirectML
+/// - Linux → CPU
+///
+/// Users can override to force a specific provider or fall back to CPU
+/// if hardware acceleration causes issues with their hardware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionProviderPreference {
+    #[default]
+    Auto,
+    Cpu,
+    #[serde(alias = "coreml")]
+    CoreMl,
+    #[serde(alias = "directml")]
+    DirectMl,
+}
+
+impl ExecutionProviderPreference {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cpu => "cpu",
+            Self::CoreMl => "coreml",
+            Self::DirectMl => "directml",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "auto" => Some(Self::Auto),
+            "cpu" => Some(Self::Cpu),
+            "coreml" => Some(Self::CoreMl),
+            "directml" => Some(Self::DirectMl),
+            _ => None,
+        }
+    }
+
+    /// Returns the execution provider options valid for the current platform.
+    /// Used by the frontend to populate the settings dropdown.
+    pub fn available_for_current_platform() -> Vec<&'static str> {
+        let mut options = vec!["auto", "cpu"];
+        if cfg!(target_vendor = "apple") {
+            options.push("coreml");
+        }
+        if cfg!(target_os = "windows") {
+            options.push("directml");
+        }
+        options
+    }
+}
+
 /// Per-machine configuration stored in `{app_data_dir}/config.json`.
 ///
 /// This is the only file that stays outside the portable library directory.
@@ -61,6 +117,8 @@ pub struct AppConfig {
     // config.json with the rest of app settings rather than in the lyrics table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_font_step: Option<i8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_provider: Option<ExecutionProviderPreference>,
 }
 
 impl AppConfig {
@@ -76,6 +134,9 @@ impl AppConfig {
         self.lyrics_font_step.unwrap_or(0)
     }
 
+    pub fn effective_execution_provider(&self) -> ExecutionProviderPreference {
+        self.execution_provider.unwrap_or_default()
+    }
 }
 
 /// Load the per-machine config. Returns `Ok(None)` if the file does not exist.
@@ -131,6 +192,7 @@ mod tests {
             hide_batch_separate: None,
             model_variant: None,
             lyrics_font_step: Some(1),
+            execution_provider: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
@@ -155,6 +217,7 @@ mod tests {
             hide_batch_separate: None,
             model_variant: None,
             lyrics_font_step: None,
+            execution_provider: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("stem_mode"));
@@ -175,8 +238,38 @@ mod tests {
             hide_batch_separate: None,
             model_variant: None,
             lyrics_font_step: None,
+            execution_provider: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("lyrics_font_step"));
+    }
+
+    #[test]
+    fn execution_provider_none_is_omitted_from_json() {
+        let config = AppConfig {
+            library_path: None,
+            stem_mode: None,
+            language: None,
+            hide_batch_separate: None,
+            model_variant: None,
+            lyrics_font_step: None,
+            execution_provider: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("execution_provider"));
+    }
+
+    #[test]
+    fn execution_provider_round_trips_through_json() {
+        let config = AppConfig {
+            execution_provider: Some(ExecutionProviderPreference::CoreMl),
+            ..AppConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let loaded: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            loaded.execution_provider,
+            Some(ExecutionProviderPreference::CoreMl)
+        );
     }
 }

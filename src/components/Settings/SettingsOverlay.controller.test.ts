@@ -29,6 +29,7 @@ function createControllerHarness() {
       getModelStatus: vi.fn(),
       openLibrary: vi.fn(),
       restartApp: vi.fn(),
+      setExecutionProvider: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
       setModelVariant: vi.fn(),
@@ -53,6 +54,8 @@ function createControllerHarness() {
           language: "zh-CN",
           hideBatchSeparate: true,
           lyricsFontStep: 0,
+          executionProvider: "auto",
+          availableExecutionProviders: ["auto", "cpu"],
         }),
       ),
       hydrateAppSettings: vi.fn(),
@@ -94,6 +97,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
+      execution_provider: "auto",
+      available_execution_providers: ["auto", "cpu"],
     });
     vi.mocked(harness.dependencies.api.getWindowShellState).mockResolvedValue({
       chrome_variant: "mac",
@@ -128,6 +133,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
+      execution_provider: "auto",
+      available_execution_providers: ["auto", "cpu"],
     });
     expect(harness.getSnapshot()).toMatchObject({
       state: {
@@ -186,6 +193,8 @@ describe("SettingsOverlay controller", () => {
       language: "en",
       hide_batch_separate: false,
       lyrics_font_step: 0,
+      execution_provider: "auto",
+      available_execution_providers: ["auto", "cpu"],
     });
 
     await harness.actions.selectModelVariant("htdemucs");
@@ -226,6 +235,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
+      execution_provider: "auto",
+      available_execution_providers: ["auto", "cpu"],
     });
 
     await harness.actions.toggleHideBatchSeparate(true);

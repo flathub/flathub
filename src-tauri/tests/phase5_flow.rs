@@ -14,7 +14,7 @@ use openkara_lib::{
         lyrics::{fetch_lyrics_from_connection, set_lyrics_offset_in_connection},
         playback::play_song_from_library,
     },
-    config::StemMode,
+    config::{ExecutionProviderPreference, StemMode},
     library_root::LibraryRoot,
     lyrics::{lrcapi::LrcApiClient, lrclib::LrcLibClient},
     separator::{job, model, model_cache::ModelCache},
@@ -88,6 +88,7 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
         &song_id,
         StemMode::default(),
         "htdemucs",
+        ExecutionProviderPreference::Cpu,
         |_| {},
     )
     .expect("separation should succeed for the imported fixture");

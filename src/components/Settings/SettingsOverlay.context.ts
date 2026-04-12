@@ -52,6 +52,7 @@ export function createSettingsOverlayTestContextValue(
       setLanguage: async () => {},
       restartApp: async () => {},
       setStemMode: async () => {},
+      setExecutionProvider: async () => {},
       selectModelVariant: async () => {},
       confirmFtModel: async () => {},
       deleteModel: async () => {},

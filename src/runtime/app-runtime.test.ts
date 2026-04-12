@@ -55,6 +55,8 @@ describe("app runtime settings hydration", () => {
       language: null,
       hide_batch_separate: false,
       lyrics_font_step: 0,
+      execution_provider: "auto",
+      available_execution_providers: ["auto", "cpu"],
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);
