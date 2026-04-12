@@ -1,4 +1,6 @@
+use anyhow::{Context, Result};
 use serde::Serialize;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -257,4 +259,12 @@ pub fn separation_error(message: impl ToString) -> CommandError {
         true,
         FallbackAction::Retry,
     )
+}
+
+pub fn current_unix_timestamp() -> Result<i64> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system clock is set before Unix epoch")?;
+
+    Ok(duration.as_secs() as i64)
 }

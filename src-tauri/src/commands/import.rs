@@ -21,7 +21,6 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::State;
 
@@ -773,13 +772,7 @@ fn sha256_for_file(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn current_unix_timestamp() -> Result<i64> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is set before Unix epoch")?;
-
-    Ok(duration.as_secs() as i64)
-}
+use super::error::current_unix_timestamp;
 
 fn try_extract_embedded_lyrics(connection: &Connection, song: &Song, library: &LibraryRoot) {
     if let Ok(Some(_)) = cache::lyrics::get_lyrics_cache_entry(connection, &song.hash) {

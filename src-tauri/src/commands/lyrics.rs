@@ -17,7 +17,6 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -432,10 +431,4 @@ fn plain_text_to_lines(text: &str) -> Vec<LyricLine> {
         .collect()
 }
 
-fn current_unix_timestamp() -> Result<i64> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is set before Unix epoch")?;
-
-    Ok(duration.as_secs() as i64)
-}
+use super::error::current_unix_timestamp;

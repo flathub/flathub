@@ -28,7 +28,7 @@ export function shouldLoadSeparatedStems(
   return separationStatus?.state === "completed" && !snapshot.has_stems;
 }
 
-export async function playTrackWithOptionalStems(
+export async function playSongWithOptionalStems(
   songId: string,
   dependencies: PlayerWorkflowDependencies,
 ): Promise<void> {
