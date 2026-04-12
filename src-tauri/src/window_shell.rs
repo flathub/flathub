@@ -1,5 +1,7 @@
 use serde::Serialize;
-use tauri::{Manager, Runtime};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+use tauri::Runtime;
 
 const DESKTOP_TOOLBAR_HEIGHT: u16 = 48;
 const MAC_TOOLBAR_HEIGHT: u16 = 48;
@@ -57,6 +59,7 @@ impl WindowShellState {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn with_native_metrics(
         mut self,
         toolbar_height: u16,
