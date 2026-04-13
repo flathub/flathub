@@ -1,8 +1,16 @@
 diff --git a/markview.py b/markview.py
-index 1b24a3d..bd4bbf4 100755
+index 1b24a3d..95badc1 100755
 --- a/markview.py
 +++ b/markview.py
-@@ -19,7 +19,11 @@ from pathlib import Path
+@@ -11,6 +11,7 @@ import argparse
+ import html as html_mod
+ import subprocess
+ import datetime
++import gzip
+ import urllib.request
+ import urllib.error
+ from html.parser import HTMLParser
+@@ -19,7 +20,11 @@ from pathlib import Path
  import gi
  gi.require_version("Gtk", "3.0")
  gi.require_version("WebKit2", "4.1")
@@ -15,3 +23,56 @@ index 1b24a3d..bd4bbf4 100755
  from gi.repository import Gtk, WebKit2, Gio, GLib, Gdk, GtkSource, Pango, GdkPixbuf  # noqa: E402
  
  import markdown  # noqa: E402
+@@ -2243,13 +2248,32 @@ class Viewer(Gtk.ApplicationWindow):
+         d.destroy()
+ 
+     def _latest_changelog_section(self) -> str:
+-        cp = APP_DIR / "CHANGELOG.md"
+-        if not cp.exists():
++        candidates = [
++            APP_DIR / "CHANGELOG.md",                      # flatpak/local copy
++            APP_DIR.parent / "CHANGELOG.md",               # local dev layout
++            Path("/usr/share/doc") / APP_NAME / "CHANGELOG.md",
++            Path("/usr/share/doc") / APP_NAME / "CHANGELOG.md.gz",
++            Path("/usr/share/doc") / APP_NAME / "changelog.gz",
++        ]
++        text = None
++        found_unreadable = False
++        for cp in candidates:
++            if not cp.exists():
++                continue
++            try:
++                if cp.suffix == ".gz":
++                    with gzip.open(cp, "rt", encoding="utf-8", errors="replace") as fh:
++                        text = fh.read()
++                else:
++                    text = cp.read_text(encoding="utf-8", errors="replace")
++                break
++            except OSError:
++                found_unreadable = True
++                continue
++        if text is None:
++            if found_unreadable:
++                return f"# {APP_NAME} {__version__}\n\n(CHANGELOG.md unreadable.)"
+             return f"# {APP_NAME} {__version__}\n\n(No CHANGELOG.md found.)"
+-        try:
+-            text = cp.read_text(encoding="utf-8")
+-        except OSError:
+-            return f"# {APP_NAME} {__version__}\n\n(CHANGELOG.md unreadable.)"
+         # find the FIRST `## [<not-Unreleased>]` heading and capture until the next `## [`
+         pat = re.compile(r"^## \[(?!Unreleased)([^\]]+)\][^\n]*$", re.MULTILINE)
+         m = pat.search(text)
+@@ -2306,8 +2330,12 @@ class Viewer(Gtk.ApplicationWindow):
+             ("<Primary>k", "Link"),
+             ("<Primary>h", "Heading 1"),
+         ]))
+-        win.add_section(section)
++        if hasattr(win, "add_section"):
++            win.add_section(section)
++        else:
++            win.add(section)
+         win.show_all()
++        win.present()
+ 
+     def _maybe_show_whats_new_on_upgrade(self):
+         try:
