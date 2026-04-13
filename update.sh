@@ -87,7 +87,7 @@ for spec in `cat _requirements.txt | sed 's/\\s*#.*$//'`; do
   curl -s "https://pypi.org/pypi/${package}/json" | \
     jq ".releases[\"${version}\"] | map(select(.packagetype == \"sdist\"))[0] | { type: \"archive\", url: .url, sha256: .digests.sha256, dest: \"pydists/${package}\" }"
 done | jq -s >generated-sources-pyodide-packages.json
-flatpak_pip_generator packaging setuptools_scm flit_core -o generated-sources-pyodide-packages-build-deps
+flatpak_pip_generator packaging setuptools_scm flit_core -o generated-sources-pyodide-packages-build-deps --cleanup all
 
 # cleanup intermediate files
 echo "** Cleaning up" 2>&1
