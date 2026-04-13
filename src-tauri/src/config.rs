@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -164,8 +165,19 @@ pub fn load_config(app_data_dir: &Path) -> Result<Option<AppConfig>> {
 
     let contents = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config at {}", config_path.display()))?;
-    let config: AppConfig = serde_json::from_str(&contents)
+    let (config, migrated) = parse_config_with_legacy_migration(&contents)
         .with_context(|| format!("failed to parse config at {}", config_path.display()))?;
+
+    // Legacy execution_provider="auto" must be normalized at the config
+    // boundary so startup and command paths both see the same explicit schema.
+    if migrated {
+        save_config(app_data_dir, &config).with_context(|| {
+            format!(
+                "failed to rewrite migrated config at {}",
+                config_path.display()
+            )
+        })?;
+    }
 
     Ok(Some(config))
 }
@@ -185,6 +197,24 @@ pub fn save_config(app_data_dir: &Path, config: &AppConfig) -> Result<()> {
 
 fn config_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(CONFIG_FILENAME)
+}
+
+fn parse_config_with_legacy_migration(contents: &str) -> Result<(AppConfig, bool)> {
+    let mut raw: Value = serde_json::from_str(contents)?;
+    let migrated = normalize_legacy_execution_provider(&mut raw);
+    let config = serde_json::from_value(raw)?;
+    Ok((config, migrated))
+}
+
+fn normalize_legacy_execution_provider(raw: &mut Value) -> bool {
+    let Some(object) = raw.as_object_mut() else {
+        return false;
+    };
+
+    matches!(
+        object.get("execution_provider"),
+        Some(Value::String(value)) if value == "auto"
+    ) && object.remove("execution_provider").is_some()
 }
 
 #[cfg(test)]
@@ -329,5 +359,46 @@ mod tests {
             config.effective_execution_provider(),
             ExecutionProviderPreference::Cpu
         );
+    }
+
+    #[test]
+    fn load_config_migrates_legacy_auto_execution_provider_to_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join(CONFIG_FILENAME);
+        fs::write(
+            &config_path,
+            r#"{
+  "library_path": "/Users/test/Music/MyLibrary",
+  "execution_provider": "auto"
+}"#,
+        )
+        .unwrap();
+
+        let loaded = load_config(tmp.path()).unwrap().unwrap();
+
+        assert_eq!(loaded.library_path.as_deref(), Some("/Users/test/Music/MyLibrary"));
+        assert_eq!(loaded.execution_provider, None);
+    }
+
+    #[test]
+    fn load_config_rewrites_legacy_auto_execution_provider_without_preserving_auto() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join(CONFIG_FILENAME);
+        fs::write(
+            &config_path,
+            r#"{
+  "execution_provider": "auto",
+  "stem_mode": "four_stem"
+}"#,
+        )
+        .unwrap();
+
+        let loaded = load_config(tmp.path()).unwrap().unwrap();
+        assert_eq!(loaded.execution_provider, None);
+
+        let rewritten = fs::read_to_string(&config_path).unwrap();
+        assert!(!rewritten.contains(r#""execution_provider": "auto""#));
+        assert!(!rewritten.contains(r#""execution_provider""#));
+        assert!(rewritten.contains(r#""stem_mode": "four_stem""#));
     }
 }

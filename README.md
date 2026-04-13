@@ -120,7 +120,7 @@ OpenKara uses custom ONNX builds of [Demucs](https://github.com/adefossez/demucs
 | `htdemucs`    | Standard — Hybrid Transformer Demucs       | Stereo audio at 44.1 kHz (7.8s) | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
 | `htdemucs_ft` | High Quality — Fine-tuned 4-model ensemble | Stereo audio at 44.1 kHz (7.8s) | 4 stems: drums, bass, other, vocals | ONNX (opset 17) |
 
-On first launch, OpenKara automatically downloads the standard model into the app data directory. The high quality model is optional and can be downloaded from Settings. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline. For local development and deterministic tests, run `./scripts/setup.sh` to populate `src-tauri/models/`.
+On first launch, OpenKara automatically downloads the standard `openkara-models` v2.0.1 asset into the app data directory. The current standard model is ~339 MiB on disk, and the optional high quality model is ~1.32 GiB. Both assets are ONNX Runtime-optimized and carry metadata used for cache invalidation. See the [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) for details on the conversion pipeline. For local development and deterministic tests, run `./scripts/setup.sh` to populate `src-tauri/models/`.
 
 ## Tech Stack
 

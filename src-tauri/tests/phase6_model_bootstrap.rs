@@ -120,6 +120,34 @@ fn install_verified_model_bytes_rejects_checksum_mismatch_without_creating_desti
 }
 
 #[test]
+fn htdemucs_descriptor_points_at_v2_release_asset() {
+    let descriptor = bootstrap::descriptor_for(ModelVariant::Htdemucs);
+
+    assert_eq!(
+        descriptor.download_url,
+        "https://github.com/thedavidweng/openkara-models/releases/download/model-v2.0.1/htdemucs.onnx"
+    );
+    assert_eq!(
+        descriptor.sha256,
+        "8fa3dab679c59aeb049dd229f57a212c9339b3fc17ebf50541daad9e799364a1"
+    );
+}
+
+#[test]
+fn htdemucs_ft_descriptor_points_at_v2_release_asset() {
+    let descriptor = bootstrap::descriptor_for(ModelVariant::HtdemucsFt);
+
+    assert_eq!(
+        descriptor.download_url,
+        "https://github.com/thedavidweng/openkara-models/releases/download/model-ft-v2.0.1/htdemucs_ft.onnx"
+    );
+    assert_eq!(
+        descriptor.sha256,
+        "0f2efbd7044182c10a6e8169b670392a3a91f904635e29329d6a3667375f5c94"
+    );
+}
+
+#[test]
 fn get_model_bootstrap_status_returns_latest_snapshot() {
     let statuses = Arc::new(Mutex::new(commands::bootstrap::ready_status(
         "/tmp/openkara-model.onnx",

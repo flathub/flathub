@@ -38,6 +38,13 @@
    - `scripts/setup.sh`
    - `scripts/prepare-onnx-runtime.mjs`
    - `src-tauri/models/README.md`
+6. 当前 pinned 的 release 资源为：
+   - `htdemucs`: `model-v2.0.1/htdemucs.onnx`
+   - `htdemucs_ft`: `model-ft-v2.0.1/htdemucs_ft.onnx`
+7. `openkara-models v2.0.1` 资源会携带：
+   - `openkara.model_cache_key`
+   - `openkara.optimized_by=onnxruntime`
+     Rust 运行时必须把前者纳入 session/CoreML compiled cache 失效条件，并对后者关闭重复图优化。
 
 ## Inputs / outputs / required dependencies
 
@@ -93,10 +100,10 @@ payload 为完整的 `ModelBootstrapStatusSnapshot`，其中：
 
 ## Runtime path resolution semantics
 
-1. 优先使用 `<app_data_dir>/models/htdemucs.onnx`
+1. 优先使用活动模型 variant 对应的 `<app_data_dir>/models/<descriptor.filename>`
 2. 若运行时安装目录已有模型且 SHA-256 校验通过，直接进入 `ready`
 3. 若运行时安装目录模型存在但校验失败，会先删除损坏文件，再进入后台下载
-4. 若运行时安装目录缺失，但开发目录 `src-tauri/models/htdemucs.onnx` 存在且校验通过，则直接进入 `ready`
+4. 若运行时安装目录缺失，但开发目录 `src-tauri/models/<descriptor.filename>` 存在且校验通过，则直接进入 `ready`
 5. 只有当两处都没有可用模型时，才会在后台从固定 URL 下载到运行时安装目录
 
 ## ONNX Runtime path resolution semantics

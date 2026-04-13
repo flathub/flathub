@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODELS_DIR="$ROOT_DIR/src-tauri/models"
 MODEL_FILENAME="htdemucs.onnx"
 MODEL_PATH="$MODELS_DIR/$MODEL_FILENAME"
-MODEL_URL="https://github.com/thedavidweng/openkara-models/releases/download/model-v1.0.0/htdemucs.onnx"
-MODEL_SHA256="66eebc928e4a9f7e5b837605794f4db2b91748f163b0bcbc8f29a526ffe5607e"
+MODEL_URL="https://github.com/thedavidweng/openkara-models/releases/download/model-v2.0.1/htdemucs.onnx"
+MODEL_SHA256="8fa3dab679c59aeb049dd229f57a212c9339b3fc17ebf50541daad9e799364a1"
 
 require_tool() {
   local tool="$1"

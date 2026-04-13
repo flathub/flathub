@@ -70,7 +70,9 @@ pub fn separate_song_into_cache(
     let mut model_cache = model_cache
         .lock()
         .map_err(|_| anyhow::anyhow!("separator model cache lock was poisoned"))?;
-    let cache_key = format!("{}::{}", model_path.display(), ep_preference.as_str());
+    let runtime_metadata = model::read_model_runtime_metadata(model_path)
+        .with_context(|| format!("failed to inspect model metadata for {}", model_path.display()))?;
+    let cache_key = model::session_cache_key(model_path, ep_preference, &runtime_metadata);
     let loaded_model = model_cache.get_or_load_with_key(cache_key, || {
         model::load_from_path(model_path, ep_preference, Some(app_data_dir))
             .with_context(|| format!("failed to load Demucs model from {}", model_path.display()))

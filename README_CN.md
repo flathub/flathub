@@ -120,7 +120,7 @@ OpenKara 使用自定义 ONNX 格式的 [Demucs](https://github.com/adefossez/de
 | `htdemucs`    | 标准 — Hybrid Transformer Demucs | 44.1 kHz 立体声音频（7.8 秒） | 4 条音轨：鼓、贝斯、其他、人声 | ONNX（opset 17） |
 | `htdemucs_ft` | 高质量 — 微调 4 模型集成         | 44.1 kHz 立体声音频（7.8 秒） | 4 条音轨：鼓、贝斯、其他、人声 | ONNX（opset 17） |
 
-首次启动时，OpenKara 会将标准模型下载到应用数据目录。高质量模型为可选项，可在设置中下载。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线。开发环境和需要稳定输入的测试可运行 `./scripts/setup.sh` 填充 `src-tauri/models/`。
+首次启动时，OpenKara 会将标准 `openkara-models` v2.0.1 资源下载到应用数据目录。当前标准模型磁盘大小约为 339 MiB，可选的高质量模型约为 1.32 GiB。两者都已完成 ONNX Runtime 离线优化，并携带用于缓存失效的 metadata。详见 [openkara-models README](https://github.com/thedavidweng/openkara-models#readme) 了解转换流水线。开发环境和需要稳定输入的测试可运行 `./scripts/setup.sh` 填充 `src-tauri/models/`。
 
 ## 技术栈
 

@@ -5,8 +5,8 @@ Stem separation backend built around the embedded Demucs ONNX model.
 Current coverage:
 
 - resolve the runtime model from either:
-  - `<app_data_dir>/models/htdemucs.onnx`
-  - `src-tauri/models/htdemucs.onnx` as the local development fallback
+  - `<app_data_dir>/models/<active-variant>.onnx`
+  - `src-tauri/models/<active-variant>.onnx` as the local development fallback
 - resolve the ONNX Runtime shared library from either:
   - bundled app resources / macOS Frameworks
   - `src-tauri/generated/onnxruntime/` as the local development and CI staging
@@ -17,6 +17,9 @@ Current coverage:
   ready yet
 - explicitly initialize `ort` against the staged ONNX Runtime 1.23.2 shared
   library before any session builder is used
+- read `openkara.model_cache_key` / `openkara.optimized_by` from ONNX
+  `metadata_props` so session reuse, CoreML compiled cache invalidation, and
+  runtime graph optimization stay aligned with the shipped model bytes
 - preprocess decoded stereo PCM into the model's fixed input window
 - run ORT inference, including zero-filled auxiliary tensors required by the
   model

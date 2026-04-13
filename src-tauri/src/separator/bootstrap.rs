@@ -17,14 +17,14 @@ pub struct ModelDescriptor {
 
 pub const HTDEMUCS: ModelDescriptor = ModelDescriptor {
     filename: "htdemucs.onnx",
-    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-v1.0.0/htdemucs.onnx",
-    sha256: "66eebc928e4a9f7e5b837605794f4db2b91748f163b0bcbc8f29a526ffe5607e",
+    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-v2.0.1/htdemucs.onnx",
+    sha256: "8fa3dab679c59aeb049dd229f57a212c9339b3fc17ebf50541daad9e799364a1",
 };
 
 pub const HTDEMUCS_FT: ModelDescriptor = ModelDescriptor {
     filename: "htdemucs_ft.onnx",
-    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-ft-v1.0.0/htdemucs_ft.onnx",
-    sha256: "edc2ce809e6502193d56da6cccc2d16036cbe8c4cae37016d1eb32b0edfa3ebf",
+    download_url: "https://github.com/thedavidweng/openkara-models/releases/download/model-ft-v2.0.1/htdemucs_ft.onnx",
+    sha256: "0f2efbd7044182c10a6e8169b670392a3a91f904635e29329d6a3667375f5c94",
 };
 
 /// Backward-compatible aliases used by existing code and tests.

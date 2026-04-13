@@ -195,7 +195,7 @@ This is a nice-to-have, not MVP scope.
 - **License**: MIT
 - **Input**: Raw PCM audio (44100 Hz, stereo)
 - **Output**: 4 stems (vocals, drums, bass, other). We mix drums + bass + other into a single accompaniment track.
-- **Model size**: ~80 MB (ONNX)
+- **Model size**: `htdemucs` v2.0.1 is ~339 MiB on disk; `htdemucs_ft` v2.0.1 is ~1.32 GiB (see GitHub release assets for exact byte counts)
 - **Inference time**: ~30-60s per 4-min song on Apple Silicon, ~2-3 min on older CPUs
 - **Runtime**: ONNX Runtime with platform defaults chosen internally by the app. Apple Silicon prefers CoreML with CPU fallback; users can still force CPU from Settings when diagnosing hardware-specific issues.
 
@@ -233,4 +233,4 @@ The cache key is a SHA-256 hash of the audio file content, ensuring deduplicatio
 | Windows  | WASAPI          | DirectML by default when available                |
 | Linux    | PulseAudio/ALSA | CPU only                                          |
 
-ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences, which only exposes explicit providers such as `CPU` and `CoreML`. When the setting is unset, the app chooses a platform default internally. Session setup logs the requested provider path, and the runtime still falls back to CPU if the selected accelerated provider fails during session creation.
+ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences, which only exposes explicit providers such as `CPU` and `CoreML`. When the setting is unset, the app chooses a platform default internally. Session setup logs the requested provider path, still falls back to CPU if the selected accelerated provider fails during session creation, keys the in-process/CoreML compiled caches with `openkara.model_cache_key` when present, and disables runtime graph optimization for models tagged with `openkara.optimized_by=onnxruntime`.

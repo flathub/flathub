@@ -204,6 +204,7 @@ pub fn restart_app(app_handle: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ExecutionProviderPreference;
 
     #[test]
     fn settings_default_lyrics_font_step_is_zero() {
@@ -239,6 +240,19 @@ mod tests {
                 .expect("config load should succeed")
                 .is_none(),
             "failed writes should not create a config file",
+        );
+    }
+
+    #[test]
+    fn settings_snapshot_uses_platform_default_execution_provider_when_unset() {
+        let settings = settings_from_config(&AppConfig {
+            execution_provider: None,
+            ..AppConfig::default()
+        });
+
+        assert_eq!(
+            settings.execution_provider,
+            ExecutionProviderPreference::default_for_current_platform().as_str()
         );
     }
 }

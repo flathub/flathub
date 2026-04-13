@@ -4,7 +4,7 @@
 
 **Goal:** Make Apple Silicon separation prefer a well-configured CoreML path by default, keep the settings UI to `CPU` and `CoreML`, and ensure provider changes actually take effect on the next separation.
 
-**Architecture:** Remove `auto` from the persisted execution-provider model entirely. When config does not yet contain an execution provider, the app should choose a platform default directly, return only explicit providers to the frontend, and build sessions through an internal provider chain keyed by the effective provider. CoreML-specific session options should enable static-shape specialization and compiled-model caching in the app data directory.
+**Architecture:** Remove `auto` from the persisted execution-provider model entirely, and migrate any legacy `execution_provider="auto"` config to the current unset/`None` semantics at load time. When config does not yet contain an execution provider, the app should choose a platform default directly, return only explicit providers to the frontend, and build sessions through an internal provider chain keyed by the effective provider plus `openkara.model_cache_key` when present. CoreML-specific session options should enable static-shape specialization, metadata-aware compiled-model caching in the app data directory, and disable duplicate runtime graph optimization for models tagged `openkara.optimized_by=onnxruntime`.
 
 **Tech Stack:** Rust (`tauri`, `ort`), TypeScript/React, Zustand, Vitest, Cargo tests
 
