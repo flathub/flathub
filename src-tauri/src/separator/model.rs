@@ -307,9 +307,12 @@ fn build_execution_provider_list(
     match preference {
         ExecutionProviderPreference::Cpu => vec![],
         ExecutionProviderPreference::CoreMl => {
+            // `RequireStaticInputShapes` would leave many Demucs subgraph nodes on CPU-only
+            // paths because the ONNX graph still carries dynamic axes internally; keep the
+            // ORT default (dynamic allowed) so CoreML can cover more ops while inputs stay
+            // fixed-size at runtime via our preprocessing.
             let mut provider = ep::CoreML::default()
                 .with_subgraphs(true)
-                .with_static_input_shapes(true)
                 .with_model_format(ep::coreml::ModelFormat::MLProgram);
 
             #[cfg(target_vendor = "apple")]

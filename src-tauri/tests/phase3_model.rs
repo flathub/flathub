@@ -122,3 +122,25 @@ fn describes_coreml_fallback_provider_path() {
         "coreml -> cpu"
     );
 }
+
+/// Regression: Demucs must complete session creation when CoreML is preferred on macOS.
+///
+/// Uses a **stable** cache directory under `target/` (not a fresh `tempfile`) so CoreML's
+/// `ModelCacheDirectory` can reuse compiled artifacts across test runs; a random temp dir
+/// forces a full MLProgram recompile (~50s) every time and masks cache regressions.
+#[cfg(target_vendor = "apple")]
+#[test]
+fn loads_embedded_demucs_when_coreml_is_preferred() {
+    let cache_dir = repo_root().join("target/openkara_coreml_session_test_cache");
+    std::fs::create_dir_all(&cache_dir).expect("coreml test cache dir");
+
+    let loaded = model::load_from_path(
+        &repo_root().join("models").join("htdemucs.onnx"),
+        ExecutionProviderPreference::CoreMl,
+        Some(&cache_dir),
+    )
+    .expect("demucs should load with CoreML preference on macOS");
+
+    assert!(!loaded.inputs.is_empty());
+    assert!(!loaded.outputs.is_empty());
+}

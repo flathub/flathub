@@ -20,6 +20,9 @@ Current coverage:
 - read `openkara.model_cache_key` / `openkara.optimized_by` from ONNX
   `metadata_props` so session reuse, CoreML compiled cache invalidation, and
   runtime graph optimization stay aligned with the shipped model bytes
+- configure the CoreML EP with MLProgram + subgraph support while leaving ORT’s
+  default dynamic-shape partitioning enabled so large Demucs graphs still assign
+  meaningful work to CoreML
 - preprocess decoded stereo PCM into the model's fixed input window
 - run ORT inference, including zero-filled auxiliary tensors required by the
   model
