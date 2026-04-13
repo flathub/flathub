@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "@/lib/tauri";
 import { formatDuration, formatBytes } from "@/lib/format";
@@ -102,7 +103,11 @@ export function SongPropertiesDialog({
     if (e.target === backdropRef.current) onClose();
   };
 
-  return (
+  if (typeof document === "undefined" || !document.body) {
+    return null;
+  }
+
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={handleBackdropClick}
@@ -353,6 +358,7 @@ export function SongPropertiesDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

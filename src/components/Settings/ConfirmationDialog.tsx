@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 interface ConfirmationDialogProps {
@@ -35,7 +36,11 @@ export function ConfirmationDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel]);
 
-  return (
+  if (typeof document === "undefined" || !document.body) {
+    return null;
+  }
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
@@ -78,6 +83,7 @@ export function ConfirmationDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

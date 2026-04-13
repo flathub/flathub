@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/stores/library-store";
 import type { Song } from "@/types/ipc";
@@ -59,7 +60,11 @@ export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
     }
   };
 
-  return (
+  if (typeof document === "undefined" || !document.body) {
+    return null;
+  }
+
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={handleBackdropClick}
@@ -141,6 +146,7 @@ export function SongEditDialog({ song, onClose }: SongEditDialogProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
