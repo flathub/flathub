@@ -79,7 +79,7 @@ mod tests {
         assert_eq!(*model, 1);
 
         let model = cache
-            .get_or_load_with_key("/tmp/model.onnx::coreml", || {
+            .get_or_load_with_key("/tmp/model.onnx::xnnpack", || {
                 loads += 1;
                 Ok::<_, anyhow::Error>(loads)
             })

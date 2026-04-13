@@ -189,7 +189,7 @@ fn spawn_playback_position_emitter<R: Runtime>(
     });
 }
 
-fn spawn_model_bootstrap_worker<R: Runtime>(
+pub(crate) fn spawn_model_bootstrap_worker<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     model_path: PathBuf,
     descriptor: &'static separator::bootstrap::ModelDescriptor,
@@ -249,7 +249,8 @@ fn spawn_model_bootstrap_worker<R: Runtime>(
                 commands::bootstrap::MODEL_BOOTSTRAP_ERROR_EVENT
             }
             commands::bootstrap::ModelBootstrapState::Pending
-            | commands::bootstrap::ModelBootstrapState::Downloading => return,
+            | commands::bootstrap::ModelBootstrapState::Downloading
+            | commands::bootstrap::ModelBootstrapState::Outdated => return,
         };
         let _ = app_handle.emit(event, snapshot);
     });

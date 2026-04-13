@@ -125,7 +125,7 @@ export interface ImportLyricsResult {
 
 export type StemMode = "two_stem" | "four_stem";
 export type ModelVariant = "htdemucs" | "htdemucs_ft";
-export type ExecutionProvider = "cpu" | "coreml" | "directml";
+export type ExecutionProvider = "cpu" | "xnnpack" | "directml";
 
 export interface AppSettings {
   stem_mode: StemMode;
@@ -140,6 +140,8 @@ export interface AppSettings {
 export interface ModelStatusSnapshot {
   variant: string;
   downloaded: boolean;
+  /** Managed file exists but SHA-256 does not match the pinned release. */
+  legacy_install_present: boolean;
   file_size: number | null;
 }
 
@@ -349,6 +351,7 @@ export interface BatchSeparationProgress {
 export type ModelBootstrapState =
   | "pending"
   | "downloading"
+  | "outdated"
   | "ready"
   | "failed";
 

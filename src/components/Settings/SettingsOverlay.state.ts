@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "@/lib/tauri";
+import { useBootstrapStore } from "@/stores/bootstrap-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -14,6 +15,7 @@ export type DangerDialog =
 
 export interface ModelStatusView {
   downloaded: boolean;
+  legacy_install_present: boolean;
   file_size: number | null;
 }
 
@@ -189,10 +191,12 @@ export function createSettingsOverlayActions(
         modelStatuses: {
           htdemucs: {
             downloaded: standard.downloaded,
+            legacy_install_present: standard.legacy_install_present,
             file_size: standard.file_size,
           },
           htdemucs_ft: {
             downloaded: hq.downloaded,
+            legacy_install_present: hq.legacy_install_present,
             file_size: hq.file_size,
           },
         },
@@ -211,6 +215,7 @@ export function createSettingsOverlayActions(
         patchState({ downloadingModel: variant });
         await dependencies.api.downloadModel(variant);
         await refreshModelStatuses();
+        void useBootstrapStore.getState().loadStatus();
         patchState({ downloadingModel: null });
       }
 
@@ -438,13 +443,10 @@ function createModelSettingsActions(
     },
 
     deleteModel: async (variant) => {
-      if (variant === controls.getSnapshot().state.modelVariant) {
-        return;
-      }
-
       try {
         await dependencies.api.deleteModel(variant);
         await refreshModelStatuses();
+        void useBootstrapStore.getState().loadStatus();
       } catch (error) {
         dependencies.notifyError(error);
       }

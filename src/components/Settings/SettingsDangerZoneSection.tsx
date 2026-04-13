@@ -47,11 +47,11 @@ function DeleteModelAction({ variant }: { variant: ModelVariant }) {
   const { state, actions } = useSettingsOverlay();
   const status = state.modelStatuses[variant];
 
-  if (!status?.downloaded) {
+  const hasRemovableFile =
+    status?.downloaded === true || status?.legacy_install_present === true;
+  if (!hasRemovableFile) {
     return null;
   }
-
-  const isActiveModel = state.modelVariant === variant;
 
   return (
     <DangerActionRow
@@ -64,8 +64,6 @@ function DeleteModelAction({ variant }: { variant: ModelVariant }) {
         status.file_size ? ` (${formatBytes(status.file_size)})` : ""
       }`}
       actionLabel={t("settings.dangerZone.deleteModelButton")}
-      actionState={isActiveModel ? "disabled" : "idle"}
-      actionTitle={isActiveModel ? "Cannot delete the active model" : undefined}
       onClick={() => void actions.deleteModel(variant)}
     />
   );

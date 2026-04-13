@@ -197,7 +197,7 @@ This is a nice-to-have, not MVP scope.
 - **Output**: 4 stems (vocals, drums, bass, other). We mix drums + bass + other into a single accompaniment track.
 - **Model size**: `htdemucs` v2.0.1 is ~339 MiB on disk; `htdemucs_ft` v2.0.1 is ~1.32 GiB (see GitHub release assets for exact byte counts)
 - **Inference time**: ~30-60s per 4-min song on Apple Silicon, ~2-3 min on older CPUs
-- **Runtime**: ONNX Runtime with platform defaults chosen internally by the app. Apple Silicon prefers CoreML with CPU fallback; users can still force CPU from Settings when diagnosing hardware-specific issues.
+- **Runtime**: ONNX Runtime with platform defaults chosen internally by the app. XNNPACK provides SIMD-accelerated FP32 inference on ARM64 (NEON) and x86-64 (AVX2/AVX-512) without AOT compilation overhead. DirectML remains available on Windows for GPU-accelerated inference and falls back through XNNPACK to CPU if the GPU path fails.
 
 ### Why Demucs
 
@@ -227,10 +227,10 @@ The cache key is a SHA-256 hash of the audio file content, ensuring deduplicatio
 
 ## Platform Considerations
 
-| Platform | Audio Backend   | AI Acceleration                                   |
-| -------- | --------------- | ------------------------------------------------- |
-| macOS    | CoreAudio       | CoreML by default on Apple Silicon, CPU otherwise |
-| Windows  | WASAPI          | DirectML by default when available                |
-| Linux    | PulseAudio/ALSA | CPU only                                          |
+| Platform | Audio Backend   | AI Acceleration                                      |
+| -------- | --------------- | ---------------------------------------------------- |
+| macOS    | CoreAudio       | XNNPACK (NEON SIMD) by default on all Apple hardware |
+| Windows  | WASAPI          | DirectML by default; falls back to XNNPACK then CPU  |
+| Linux    | PulseAudio/ALSA | XNNPACK by default                                   |
 
-ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences, which only exposes explicit providers such as `CPU` and `CoreML`. When the setting is unset, the app chooses a platform default internally. Session setup logs the requested provider path, still falls back to CPU if the selected accelerated provider fails during session creation, keys the in-process/CoreML compiled caches with `openkara.model_cache_key` when present, and disables runtime graph optimization for models tagged with `openkara.optimized_by=onnxruntime`.
+ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences, which only exposes explicit providers such as `CPU`, `XNNPACK`, and `DirectML`. When the setting is unset, the app chooses a platform default internally. Session setup logs the requested provider path, still falls back to CPU if the selected accelerated provider fails during session creation, keys the in-process model session cache with `openkara.model_cache_key` when present, and disables runtime graph optimization for models tagged with `openkara.optimized_by=onnxruntime`.

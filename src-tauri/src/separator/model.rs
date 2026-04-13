@@ -5,6 +5,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+    time::Instant,
 };
 
 pub const EMBEDDED_MODEL_FILENAME: &str = "htdemucs.onnx";
@@ -176,7 +177,6 @@ pub(crate) fn session_cache_key(
 pub fn load_from_path(
     path: &Path,
     ep_preference: ExecutionProviderPreference,
-    app_data_dir: Option<&Path>,
 ) -> Result<LoadedModel> {
     eprintln!(
         "Attempting ONNX session load for {} via {}",
@@ -188,7 +188,7 @@ pub fn load_from_path(
     let mut last_error = None;
 
     for (index, provider) in provider_chain.iter().copied().enumerate() {
-        match load_with_ep(path, provider, app_data_dir) {
+        match load_with_ep(path, provider) {
             Ok(model) => {
                 if index > 0 {
                     eprintln!(
@@ -226,7 +226,6 @@ pub fn provider_diagnostic_summary(preference: ExecutionProviderPreference) -> S
 fn load_with_ep(
     path: &Path,
     ep_preference: ExecutionProviderPreference,
-    app_data_dir: Option<&Path>,
 ) -> Result<LoadedModel> {
     ensure_runtime_loaded(None)?;
     let runtime_metadata = read_model_runtime_metadata(path)?;
@@ -239,26 +238,49 @@ fn load_with_ep(
     let mut builder =
         ort::session::Session::builder().context("failed to create ONNX session builder")?;
 
+    // `intra_threads` controls ORT CPU EP intra-op parallelism for operators
+    // that XNNPACK does not handle (for example, some LSTM nodes).
     builder = builder
         .with_intra_threads(num_threads)
         .map_err(|e| anyhow::anyhow!("failed to set intra-op thread count: {e}"))?;
+
+    // XNNPACK has its own internal worker pool. When XNNPACK owns conv/matmul
+    // operators, ORT intra-op spinning can compete for CPU time; disable
+    // spinning so the OS scheduler can arbitrate cores fairly.
+    if matches!(ep_preference, ExecutionProviderPreference::Xnnpack) {
+        builder = builder
+            .with_intra_op_spinning(false)
+            .map_err(|e| anyhow::anyhow!("failed to disable intra-op spinning: {e}"))?;
+    }
+
     builder = builder
         .with_optimization_level(graph_optimization_level_for(&runtime_metadata))
         .map_err(|e| anyhow::anyhow!("failed to set graph optimization level: {e}"))?;
 
-    // Register platform-specific execution providers. ORT falls back to CPU
-    // automatically if the requested EP is unavailable, but we log the attempt
-    // so users can diagnose performance issues.
-    let ep_list = build_execution_provider_list(path, ep_preference, app_data_dir, &runtime_metadata);
+    // Register execution providers. ORT falls back to CPU automatically if the
+    // requested EP is unavailable, but we log the attempt so users can diagnose
+    // performance issues.
+    let ep_list = build_execution_provider_list(ep_preference, num_threads);
     if !ep_list.is_empty() {
         builder = builder
             .with_execution_providers(ep_list)
             .map_err(|e| anyhow::anyhow!("failed to configure execution providers: {e}"))?;
     }
 
+    eprintln!(
+        "Committing ONNX session for {} (provider preference: {})",
+        path.display(),
+        ep_preference.as_str()
+    );
+    let commit_start = Instant::now();
     let session = builder
         .commit_from_file(path)
         .with_context(|| format!("failed to load ONNX model from {}", path.display()))?;
+    eprintln!(
+        "Committed ONNX session for {} in {:?}",
+        path.display(),
+        commit_start.elapsed()
+    );
 
     let inputs = session
         .inputs()
@@ -297,35 +319,22 @@ fn load_with_ep(
 }
 
 fn build_execution_provider_list(
-    model_path: &Path,
     preference: ExecutionProviderPreference,
-    app_data_dir: Option<&Path>,
-    metadata: &ModelRuntimeMetadata,
+    num_threads: usize,
 ) -> Vec<ort::ep::ExecutionProviderDispatch> {
     use ort::ep;
+    use std::num::NonZeroUsize;
 
     match preference {
+        // Empty list means ORT uses the built-in CPU EP.
         ExecutionProviderPreference::Cpu => vec![],
-        ExecutionProviderPreference::CoreMl => {
-            // `RequireStaticInputShapes` would leave many Demucs subgraph nodes on CPU-only
-            // paths because the ONNX graph still carries dynamic axes internally; keep the
-            // ORT default (dynamic allowed) so CoreML can cover more ops while inputs stay
-            // fixed-size at runtime via our preprocessing.
-            let mut provider = ep::CoreML::default()
-                .with_subgraphs(true)
-                .with_model_format(ep::coreml::ModelFormat::MLProgram);
-
-            #[cfg(target_vendor = "apple")]
-            if let Some(app_data_dir) = app_data_dir {
-                provider = provider.with_model_cache_dir(
-                    coreml_model_cache_dir(app_data_dir, model_path, metadata.model_cache_key.as_deref())
-                        .display()
-                        .to_string(),
-                );
-            }
-
-            vec![provider.build()]
-        }
+        // Keep XNNPACK worker count aligned with ORT intra-op threads to avoid
+        // oversubscription. Unsupported operators fall back to ORT CPU EP.
+        ExecutionProviderPreference::Xnnpack => vec![ep::XNNPACK::default()
+            .with_intra_op_num_threads(
+                NonZeroUsize::new(num_threads).expect("num_threads is non-zero"),
+            )
+            .build()],
         ExecutionProviderPreference::DirectMl => vec![ep::DirectML::default().build()],
     }
 }
@@ -334,36 +343,18 @@ fn execution_provider_chain(
     preference: ExecutionProviderPreference,
 ) -> Vec<ExecutionProviderPreference> {
     match preference {
-        ExecutionProviderPreference::CoreMl => vec![
-            ExecutionProviderPreference::CoreMl,
+        // If XNNPACK session creation fails, drop to bare CPU.
+        ExecutionProviderPreference::Xnnpack => vec![
+            ExecutionProviderPreference::Xnnpack,
             ExecutionProviderPreference::Cpu,
         ],
+        // If DirectML fails, retry with XNNPACK SIMD before bare CPU.
         ExecutionProviderPreference::DirectMl => vec![
             ExecutionProviderPreference::DirectMl,
+            ExecutionProviderPreference::Xnnpack,
             ExecutionProviderPreference::Cpu,
         ],
         resolved => vec![resolved],
-    }
-}
-
-#[cfg(target_vendor = "apple")]
-fn coreml_model_cache_dir(
-    app_data_dir: &Path,
-    model_path: &Path,
-    model_cache_key: Option<&str>,
-) -> PathBuf {
-    let model_name = model_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("model");
-    let base_dir = app_data_dir
-        .join("onnxruntime")
-        .join("coreml")
-        .join(model_name);
-
-    match model_cache_key {
-        Some(model_cache_key) => base_dir.join(model_cache_key),
-        None => base_dir,
     }
 }
 
@@ -534,40 +525,24 @@ mod tests {
         bytes
     }
 
-    #[cfg(target_vendor = "apple")]
     #[test]
-    fn coreml_model_cache_dir_uses_app_data_directory() {
-        let app_data_dir = PathBuf::from("/tmp/openkara-app-data");
-        let model_path = PathBuf::from("/tmp/models/htdemucs.onnx");
-
-        let cache_dir = coreml_model_cache_dir(&app_data_dir, &model_path, None);
-
-        assert!(cache_dir.starts_with(&app_data_dir));
-        assert!(cache_dir.ends_with(Path::new("onnxruntime/coreml/htdemucs")));
-    }
-
-    #[cfg(target_vendor = "apple")]
-    #[test]
-    fn coreml_model_cache_dir_uses_model_cache_key_when_present() {
-        let app_data_dir = PathBuf::from("/tmp/openkara-app-data");
-        let model_path = PathBuf::from("/tmp/models/htdemucs.onnx");
-
-        let cache_dir =
-            coreml_model_cache_dir(&app_data_dir, &model_path, Some("abc123-model-cache-key"));
-
-        assert!(cache_dir.starts_with(&app_data_dir));
-        assert!(cache_dir.ends_with(Path::new(
-            "onnxruntime/coreml/htdemucs/abc123-model-cache-key"
-        )));
-    }
-
-    #[cfg(target_vendor = "apple")]
-    #[test]
-    fn provider_chain_keeps_cpu_fallback_for_coreml() {
+    fn provider_chain_keeps_xnnpack_cpu_fallback() {
         assert_eq!(
-            execution_provider_chain(ExecutionProviderPreference::CoreMl),
+            execution_provider_chain(ExecutionProviderPreference::Xnnpack),
             vec![
-                ExecutionProviderPreference::CoreMl,
+                ExecutionProviderPreference::Xnnpack,
+                ExecutionProviderPreference::Cpu,
+            ]
+        );
+    }
+
+    #[test]
+    fn provider_chain_includes_xnnpack_between_directml_and_cpu() {
+        assert_eq!(
+            execution_provider_chain(ExecutionProviderPreference::DirectMl),
+            vec![
+                ExecutionProviderPreference::DirectMl,
+                ExecutionProviderPreference::Xnnpack,
                 ExecutionProviderPreference::Cpu,
             ]
         );
@@ -626,8 +601,8 @@ mod tests {
         };
 
         assert_eq!(
-            session_cache_key(model_path, ExecutionProviderPreference::CoreMl, &metadata),
-            "/tmp/models/htdemucs.onnx::coreml::cache-key-123"
+            session_cache_key(model_path, ExecutionProviderPreference::Xnnpack, &metadata),
+            "/tmp/models/htdemucs.onnx::xnnpack::cache-key-123"
         );
     }
 }

@@ -42,9 +42,9 @@ function useEpLabels() {
       title: t("settings.executionProvider.cpu"),
       description: t("settings.executionProvider.cpuDescription"),
     },
-    coreml: {
-      title: t("settings.executionProvider.coreml"),
-      description: t("settings.executionProvider.coremlDescription"),
+    xnnpack: {
+      title: t("settings.executionProvider.xnnpack"),
+      description: t("settings.executionProvider.xnnpackDescription"),
     },
     directml: {
       title: t("settings.executionProvider.directml"),

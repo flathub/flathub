@@ -6,7 +6,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub struct ModelDescriptor {
@@ -50,6 +50,18 @@ pub struct ResolvedModelPath {
     pub source: ModelSource,
 }
 
+/// Result of locating a managed + optional dev ONNX install for a pinned SHA-256.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelInstallationResolution {
+    /// Checksum matches at managed or dev path.
+    Ready(ResolvedModelPath),
+    /// A file exists at the managed install path but its digest does not match the
+    /// pinned release. The file is kept so the user can delete it from Settings.
+    LegacyManaged(PathBuf),
+    /// No verified install at either location.
+    Absent,
+}
+
 pub fn managed_model_path(app_data_dir: &Path) -> PathBuf {
     managed_model_path_for(app_data_dir, &HTDEMUCS)
 }
@@ -72,6 +84,14 @@ pub fn model_file_size(app_data_dir: &Path, variant: ModelVariant) -> Option<u64
     fs::metadata(&path).ok().map(|m| m.len())
 }
 
+/// True when a managed file exists but does not match the pinned checksum.
+pub fn legacy_managed_install_present(app_data_dir: &Path, variant: ModelVariant) -> bool {
+    let descriptor = descriptor_for(variant);
+    let path = managed_model_path_for(app_data_dir, descriptor);
+    path.exists()
+        && !verify_file_checksum(&path, descriptor.sha256).unwrap_or(false)
+}
+
 /// Delete a model variant from disk.
 pub fn delete_model_file(app_data_dir: &Path, variant: ModelVariant) -> Result<()> {
     let descriptor = descriptor_for(variant);
@@ -83,40 +103,61 @@ pub fn delete_model_file(app_data_dir: &Path, variant: ModelVariant) -> Result<(
     Ok(())
 }
 
-pub fn resolve_existing_model_path(
+pub fn resolve_model_installation(
     managed_path: &Path,
     dev_path: &Path,
     expected_sha256: &str,
-) -> Result<Option<ResolvedModelPath>> {
-    if managed_path.exists() {
-        if verify_file_checksum(managed_path, expected_sha256)
-            .with_context(|| format!("failed to verify managed model {}", managed_path.display()))?
-        {
-            return Ok(Some(ResolvedModelPath {
+) -> Result<ModelInstallationResolution> {
+    let managed_invalid = if managed_path.exists() {
+        let ok = verify_file_checksum(managed_path, expected_sha256).with_context(|| {
+            format!(
+                "failed to verify managed model {}",
+                managed_path.display()
+            )
+        })?;
+        if ok {
+            return Ok(ModelInstallationResolution::Ready(ResolvedModelPath {
                 path: managed_path.to_path_buf(),
                 source: ModelSource::ManagedInstall,
             }));
         }
-
-        fs::remove_file(managed_path).with_context(|| {
-            format!(
-                "failed to remove corrupt managed model {} before re-download",
-                managed_path.display()
-            )
-        })?;
-    }
+        true
+    } else {
+        false
+    };
 
     if dev_path.exists()
         && verify_file_checksum(dev_path, expected_sha256)
             .with_context(|| format!("failed to verify development model {}", dev_path.display()))?
     {
-        return Ok(Some(ResolvedModelPath {
+        return Ok(ModelInstallationResolution::Ready(ResolvedModelPath {
             path: dev_path.to_path_buf(),
             source: ModelSource::DevelopmentFallback,
         }));
     }
 
-    Ok(None)
+    if managed_invalid {
+        return Ok(ModelInstallationResolution::LegacyManaged(
+            managed_path.to_path_buf(),
+        ));
+    }
+
+    Ok(ModelInstallationResolution::Absent)
+}
+
+pub fn resolve_existing_model_path(
+    managed_path: &Path,
+    dev_path: &Path,
+    expected_sha256: &str,
+) -> Result<Option<ResolvedModelPath>> {
+    Ok(
+        match resolve_model_installation(managed_path, dev_path, expected_sha256)? {
+            ModelInstallationResolution::Ready(path) => Some(path),
+            ModelInstallationResolution::LegacyManaged(_) | ModelInstallationResolution::Absent => {
+                None
+            }
+        },
+    )
 }
 
 pub fn install_verified_model_bytes(
@@ -178,7 +219,22 @@ pub fn download_and_install_model(
         .with_context(|| format!("failed to download ONNX model from {download_url}"))?;
 
     let total_bytes = response.content_length();
-    progress(0, total_bytes);
+    let mut last_emit_bytes = 0_u64;
+    let mut last_emit_at = Instant::now();
+    let emit_interval = Duration::from_millis(150);
+    let emit_min_step: u64 = 256 * 1024;
+
+    let mut emit = |downloaded: u64, total: Option<u64>, force: bool| {
+        let step_ok = downloaded.saturating_sub(last_emit_bytes) >= emit_min_step;
+        let time_ok = last_emit_at.elapsed() >= emit_interval;
+        if force || step_ok || time_ok {
+            progress(downloaded, total);
+            last_emit_bytes = downloaded;
+            last_emit_at = Instant::now();
+        }
+    };
+
+    emit(0, total_bytes, true);
 
     let mut payload = Vec::new();
     let mut downloaded_bytes = 0_u64;
@@ -194,8 +250,10 @@ pub fn download_and_install_model(
 
         payload.extend_from_slice(&buffer[..read]);
         downloaded_bytes += read as u64;
-        progress(downloaded_bytes, total_bytes);
+        emit(downloaded_bytes, total_bytes, false);
     }
+
+    emit(downloaded_bytes, total_bytes, true);
 
     install_verified_model_bytes(destination, &payload, expected_sha256)
 }

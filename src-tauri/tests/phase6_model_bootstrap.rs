@@ -212,6 +212,45 @@ fn startup_bootstrap_keeps_verified_managed_model_ready_without_spawning_worker(
 }
 
 #[test]
+fn startup_bootstrap_detects_legacy_managed_model_without_spawning_worker() {
+    let temp_dir = unique_temp_dir();
+    let managed_path = bootstrap::managed_model_path(&temp_dir);
+    let development_path = temp_dir.join("dev").join("htdemucs.onnx");
+    let wrong_bytes = b"legacy-model-bytes";
+
+    write_file(&managed_path, wrong_bytes);
+
+    let startup = derive_startup_model_bootstrap(
+        &temp_dir,
+        &development_path,
+        ModelVariant::Htdemucs,
+        &sha256_hex(b"pinned-expected-bytes"),
+    )
+    .expect("startup bootstrap should classify legacy managed install");
+
+    assert_eq!(
+        startup.status.state,
+        commands::bootstrap::ModelBootstrapState::Outdated
+    );
+    assert!(!startup.should_spawn_bootstrap_worker);
+    assert!(managed_path.exists(), "legacy file should remain for user deletion");
+
+    remove_dir_if_exists(&temp_dir);
+}
+
+#[test]
+fn ensure_model_ready_rejects_outdated_install() {
+    let statuses = Arc::new(Mutex::new(commands::bootstrap::outdated_status(
+        "/tmp/openkara-model.onnx",
+    )));
+
+    let error = commands::bootstrap::ensure_model_ready(&statuses)
+        .expect_err("outdated install should block separation");
+
+    assert_eq!(error.code, ErrorCode::ModelUnavailable);
+}
+
+#[test]
 fn startup_bootstrap_uses_active_variant_descriptor_for_managed_model_resolution() {
     let temp_dir = unique_temp_dir();
     let descriptor = bootstrap::descriptor_for(ModelVariant::HtdemucsFt);

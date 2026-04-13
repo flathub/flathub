@@ -87,14 +87,28 @@ impl AppState {
         let descriptor = separator::bootstrap::descriptor_for(variant);
         let managed = separator::bootstrap::managed_model_path_for(&self.app_data_dir, descriptor);
         let dev_path = separator::model::default_model_path_for_filename(descriptor.filename);
-        let resolved = separator::bootstrap::resolve_existing_model_path(
+        match separator::bootstrap::resolve_model_installation(
             &managed,
             &dev_path,
             descriptor.sha256,
         )
-        .map_err(|error| commands::error::internal_error(error.to_string()))?;
-
-        Ok(resolved.map(|resolved| resolved.path).unwrap_or(managed))
+        .map_err(|error| commands::error::internal_error(error.to_string()))?
+        {
+            separator::bootstrap::ModelInstallationResolution::Ready(resolved) => {
+                Ok(resolved.path)
+            }
+            separator::bootstrap::ModelInstallationResolution::LegacyManaged(_) => Err(
+                commands::error::model_bootstrap_error(
+                    "installed model does not match the pinned release; open Settings to delete it and download the update"
+                        .to_string(),
+                ),
+            ),
+            separator::bootstrap::ModelInstallationResolution::Absent => Err(
+                commands::error::model_bootstrap_error(
+                    "model is not installed or is still downloading".to_string(),
+                ),
+            ),
+        }
     }
 }
 
@@ -109,20 +123,28 @@ pub fn derive_startup_model_bootstrap(
     // what prevents re-downloading already-installed models on every launch.
     let descriptor = separator::bootstrap::descriptor_for(active_variant);
     let managed_model_path = separator::bootstrap::managed_model_path_for(app_data_dir, descriptor);
-    let resolved_model = separator::bootstrap::resolve_existing_model_path(
+    let resolution = separator::bootstrap::resolve_model_installation(
         &managed_model_path,
         development_model_path,
         expected_sha256,
     )?;
-    let model_path = resolved_model
-        .as_ref()
-        .map(|resolved| resolved.path.clone())
-        .unwrap_or_else(|| managed_model_path.clone());
-    let status = match resolved_model.as_ref() {
-        Some(resolved) => commands::bootstrap::ready_status(resolved.path.display().to_string()),
-        None => commands::bootstrap::pending_status(managed_model_path.display().to_string()),
+    let (model_path, status, should_spawn_bootstrap_worker) = match resolution {
+        separator::bootstrap::ModelInstallationResolution::Ready(resolved) => (
+            resolved.path.clone(),
+            commands::bootstrap::ready_status(resolved.path.display().to_string()),
+            false,
+        ),
+        separator::bootstrap::ModelInstallationResolution::LegacyManaged(path) => (
+            path.clone(),
+            commands::bootstrap::outdated_status(path.display().to_string()),
+            false,
+        ),
+        separator::bootstrap::ModelInstallationResolution::Absent => (
+            managed_model_path.clone(),
+            commands::bootstrap::pending_status(managed_model_path.display().to_string()),
+            true,
+        ),
     };
-    let should_spawn_bootstrap_worker = resolved_model.is_none();
 
     Ok(StartupModelBootstrapPlan {
         model_path,

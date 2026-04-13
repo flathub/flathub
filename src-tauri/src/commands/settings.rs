@@ -2,7 +2,7 @@ use crate::commands::error::{internal_error, CommandResult};
 use crate::config::{self, AppConfig, ExecutionProviderPreference, ModelVariant, StemMode};
 use serde::Serialize;
 use std::path::Path;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
 
@@ -111,27 +111,7 @@ pub fn set_model_variant(
         &state.model_bootstrap_status,
     )?;
 
-    match snapshot.state {
-        crate::commands::bootstrap::ModelBootstrapState::Ready => {
-            let _ = app_handle.emit(
-                crate::commands::bootstrap::MODEL_BOOTSTRAP_READY_EVENT,
-                snapshot,
-            );
-        }
-        crate::commands::bootstrap::ModelBootstrapState::Failed => {
-            let _ = app_handle.emit(
-                crate::commands::bootstrap::MODEL_BOOTSTRAP_ERROR_EVENT,
-                snapshot,
-            );
-        }
-        crate::commands::bootstrap::ModelBootstrapState::Pending
-        | crate::commands::bootstrap::ModelBootstrapState::Downloading => {
-            let _ = app_handle.emit(
-                crate::commands::bootstrap::MODEL_BOOTSTRAP_PROGRESS_EVENT,
-                snapshot,
-            );
-        }
-    }
+    crate::commands::bootstrap::emit_model_bootstrap_snapshot(&app_handle, &snapshot);
 
     Ok(settings_from_config(&config))
 }

@@ -8,7 +8,7 @@ use crate::{
 use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 pub const MODEL_BOOTSTRAP_PROGRESS_EVENT: &str = "model-bootstrap-progress";
 pub const MODEL_BOOTSTRAP_READY_EVENT: &str = "model-bootstrap-ready";
@@ -19,6 +19,9 @@ pub const MODEL_BOOTSTRAP_ERROR_EVENT: &str = "model-bootstrap-error";
 pub enum ModelBootstrapState {
     Pending,
     Downloading,
+    /// Managed ONNX exists but its digest does not match the pinned release.
+    /// The file is kept so the user can remove it from Settings.
+    Outdated,
     Ready,
     Failed,
 }
@@ -48,6 +51,20 @@ pub fn get_model_bootstrap_status_from_state(
         .map_err(|_| state_lock_error("model bootstrap status lock was poisoned"))
 }
 
+pub fn emit_model_bootstrap_snapshot<R: Runtime>(
+    app: &AppHandle<R>,
+    snapshot: &ModelBootstrapStatusSnapshot,
+) {
+    let event = match snapshot.state {
+        ModelBootstrapState::Ready => MODEL_BOOTSTRAP_READY_EVENT,
+        ModelBootstrapState::Failed => MODEL_BOOTSTRAP_ERROR_EVENT,
+        ModelBootstrapState::Pending
+        | ModelBootstrapState::Downloading
+        | ModelBootstrapState::Outdated => MODEL_BOOTSTRAP_PROGRESS_EVENT,
+    };
+    let _ = app.emit(event, snapshot);
+}
+
 pub fn ensure_model_ready(status: &Arc<Mutex<ModelBootstrapStatusSnapshot>>) -> CommandResult<()> {
     let snapshot = get_model_bootstrap_status_from_state(status)?;
 
@@ -59,6 +76,10 @@ pub fn ensure_model_ready(status: &Arc<Mutex<ModelBootstrapStatusSnapshot>>) -> 
         ))),
         ModelBootstrapState::Downloading => Err(model_bootstrap_error(format!(
             "model bootstrap is still downloading to {}",
+            snapshot.model_path
+        ))),
+        ModelBootstrapState::Outdated => Err(model_bootstrap_error(format!(
+            "installed model at {} does not match the current release; open Settings to delete it and download the update",
             snapshot.model_path
         ))),
         ModelBootstrapState::Failed => Err(snapshot.error.unwrap_or_else(|| {
@@ -132,6 +153,16 @@ pub fn downloading_status(
     }
 }
 
+pub fn outdated_status(model_path: impl Into<String>) -> ModelBootstrapStatusSnapshot {
+    ModelBootstrapStatusSnapshot {
+        state: ModelBootstrapState::Outdated,
+        model_path: model_path.into(),
+        downloaded_bytes: None,
+        total_bytes: None,
+        error: None,
+    }
+}
+
 pub fn ready_status(model_path: impl Into<String>) -> ModelBootstrapStatusSnapshot {
     ModelBootstrapStatusSnapshot {
         state: ModelBootstrapState::Ready,
@@ -159,6 +190,8 @@ pub fn failed_status(
 pub struct ModelStatusSnapshot {
     pub variant: String,
     pub downloaded: bool,
+    /// True when `models/<variant>.onnx` exists but its SHA-256 does not match the pinned release.
+    pub legacy_install_present: bool,
     pub file_size: Option<u64>,
 }
 
@@ -174,10 +207,13 @@ pub fn get_model_status(
         .app_data_dir()
         .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
     let downloaded = separator::bootstrap::is_model_available(&app_data_dir, model_variant);
+    let legacy_install_present =
+        separator::bootstrap::legacy_managed_install_present(&app_data_dir, model_variant);
     let file_size = separator::bootstrap::model_file_size(&app_data_dir, model_variant);
     Ok(ModelStatusSnapshot {
         variant,
         downloaded,
+        legacy_install_present,
         file_size,
     })
 }
@@ -292,7 +328,11 @@ pub fn download_model(
 }
 
 #[tauri::command]
-pub fn delete_model(app_handle: AppHandle, variant: String) -> CommandResult<()> {
+pub fn delete_model(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    variant: String,
+) -> CommandResult<()> {
     let model_variant = ModelVariant::from_str(&variant)
         .ok_or_else(|| internal_error(format!("invalid model variant: {variant}")))?;
     let app_data_dir = app_handle
@@ -301,5 +341,27 @@ pub fn delete_model(app_handle: AppHandle, variant: String) -> CommandResult<()>
         .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
     separator::bootstrap::delete_model_file(&app_data_dir, model_variant)
         .map_err(|e| internal_error(format!("failed to delete model: {e}")))?;
+
+    let snapshot = sync_active_model_bootstrap_status(&app_data_dir, &state.model_bootstrap_status)?;
+    emit_model_bootstrap_snapshot(&app_handle, &snapshot);
+
+    if matches!(snapshot.state, ModelBootstrapState::Pending) {
+        let active = config::load_config(&app_data_dir)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+            .effective_model_variant();
+        if model_variant == active {
+            let descriptor = separator::bootstrap::descriptor_for(active);
+            let managed = separator::bootstrap::managed_model_path_for(&app_data_dir, descriptor);
+            crate::app_runtime::spawn_model_bootstrap_worker(
+                app_handle.clone(),
+                managed,
+                descriptor,
+                Arc::clone(&state.model_bootstrap_status),
+            );
+        }
+    }
+
     Ok(())
 }

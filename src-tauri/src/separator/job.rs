@@ -33,7 +33,6 @@ pub fn separate_song_into_cache(
     connection: &Connection,
     library_root: &LibraryRoot,
     model_cache: &Arc<Mutex<ModelCache<model::LoadedModel>>>,
-    app_data_dir: &Path,
     model_path: &Path,
     song_hash: &str,
     stem_mode: StemMode,
@@ -74,7 +73,7 @@ pub fn separate_song_into_cache(
         .with_context(|| format!("failed to inspect model metadata for {}", model_path.display()))?;
     let cache_key = model::session_cache_key(model_path, ep_preference, &runtime_metadata);
     let loaded_model = model_cache.get_or_load_with_key(cache_key, || {
-        model::load_from_path(model_path, ep_preference, Some(app_data_dir))
+        model::load_from_path(model_path, ep_preference)
             .with_context(|| format!("failed to load Demucs model from {}", model_path.display()))
     })?;
 

@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+
+vi.mock("@/stores/bootstrap-store", () => ({
+  useBootstrapStore: {
+    getState: () => ({
+      loadStatus: () => Promise.resolve(),
+    }),
+  },
+}));
+
 import {
   createInitialSettingsOverlaySnapshot,
   createSettingsOverlayActions,
@@ -54,8 +63,8 @@ function createControllerHarness() {
           language: "zh-CN",
           hideBatchSeparate: true,
           lyricsFontStep: 0,
-          executionProvider: "coreml",
-          availableExecutionProviders: ["cpu", "coreml"],
+          executionProvider: "xnnpack",
+          availableExecutionProviders: ["cpu", "xnnpack"],
         }),
       ),
       hydrateAppSettings: vi.fn(),
@@ -97,8 +106,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "coreml",
-      available_execution_providers: ["cpu", "coreml"],
+      execution_provider: "xnnpack",
+      available_execution_providers: ["cpu", "xnnpack"],
     });
     vi.mocked(harness.dependencies.api.getWindowShellState).mockResolvedValue({
       chrome_variant: "mac",
@@ -112,11 +121,13 @@ describe("SettingsOverlay controller", () => {
       .mockResolvedValueOnce({
         variant: "htdemucs",
         downloaded: true,
+        legacy_install_present: false,
         file_size: 123,
       })
       .mockResolvedValueOnce({
         variant: "htdemucs_ft",
         downloaded: false,
+        legacy_install_present: false,
         file_size: null,
       });
 
@@ -133,8 +144,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "coreml",
-      available_execution_providers: ["cpu", "coreml"],
+      execution_provider: "xnnpack",
+      available_execution_providers: ["cpu", "xnnpack"],
     });
     expect(harness.getSnapshot()).toMatchObject({
       state: {
@@ -144,8 +155,16 @@ describe("SettingsOverlay controller", () => {
         language: "zh-CN",
         hideBatchSeparate: true,
         modelStatuses: {
-          htdemucs: { downloaded: true, file_size: 123 },
-          htdemucs_ft: { downloaded: false, file_size: null },
+          htdemucs: {
+            downloaded: true,
+            legacy_install_present: false,
+            file_size: 123,
+          },
+          htdemucs_ft: {
+            downloaded: false,
+            legacy_install_present: false,
+            file_size: null,
+          },
         },
       },
       meta: {
@@ -162,8 +181,16 @@ describe("SettingsOverlay controller", () => {
         ...harness.getSnapshot().state,
         modelVariant: "htdemucs_ft",
         modelStatuses: {
-          htdemucs: { downloaded: false, file_size: null },
-          htdemucs_ft: { downloaded: true, file_size: 10 },
+          htdemucs: {
+            downloaded: false,
+            legacy_install_present: false,
+            file_size: null,
+          },
+          htdemucs_ft: {
+            downloaded: true,
+            legacy_install_present: false,
+            file_size: 10,
+          },
         },
       },
       meta: harness.getSnapshot().meta,
@@ -180,11 +207,13 @@ describe("SettingsOverlay controller", () => {
       .mockResolvedValueOnce({
         variant: "htdemucs",
         downloaded: true,
+        legacy_install_present: false,
         file_size: 2048,
       })
       .mockResolvedValueOnce({
         variant: "htdemucs_ft",
         downloaded: true,
+        legacy_install_present: false,
         file_size: 4096,
       });
     vi.mocked(harness.dependencies.api.setModelVariant).mockResolvedValue({
@@ -193,8 +222,8 @@ describe("SettingsOverlay controller", () => {
       language: "en",
       hide_batch_separate: false,
       lyrics_font_step: 0,
-      execution_provider: "coreml",
-      available_execution_providers: ["cpu", "coreml"],
+      execution_provider: "xnnpack",
+      available_execution_providers: ["cpu", "xnnpack"],
     });
 
     await harness.actions.selectModelVariant("htdemucs");
@@ -219,12 +248,98 @@ describe("SettingsOverlay controller", () => {
     expect(harness.dependencies.api.setModelVariant).not.toHaveBeenCalled();
   });
 
-  test("deleting the active model is ignored", async () => {
+  test("deleting the active model is allowed when install is verified", async () => {
     const harness = createControllerHarness();
+
+    harness.setSnapshot({
+      state: {
+        ...harness.getSnapshot().state,
+        modelVariant: "htdemucs",
+        modelStatuses: {
+          htdemucs: {
+            downloaded: true,
+            legacy_install_present: false,
+            file_size: 100,
+          },
+          htdemucs_ft: {
+            downloaded: false,
+            legacy_install_present: false,
+            file_size: null,
+          },
+        },
+      },
+      meta: harness.getSnapshot().meta,
+    });
+
+    vi.mocked(harness.dependencies.api.deleteModel).mockResolvedValue(
+      undefined,
+    );
+    vi.mocked(harness.dependencies.api.getModelStatus)
+      .mockResolvedValueOnce({
+        variant: "htdemucs",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      })
+      .mockResolvedValueOnce({
+        variant: "htdemucs_ft",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      });
 
     await harness.actions.deleteModel("htdemucs");
 
-    expect(harness.dependencies.api.deleteModel).not.toHaveBeenCalled();
+    expect(harness.dependencies.api.deleteModel).toHaveBeenCalledWith(
+      "htdemucs",
+    );
+  });
+
+  test("deleting the active model is allowed when legacy install is present", async () => {
+    const harness = createControllerHarness();
+
+    harness.setSnapshot({
+      state: {
+        ...harness.getSnapshot().state,
+        modelVariant: "htdemucs",
+        modelStatuses: {
+          htdemucs: {
+            downloaded: false,
+            legacy_install_present: true,
+            file_size: 999,
+          },
+          htdemucs_ft: {
+            downloaded: false,
+            legacy_install_present: false,
+            file_size: null,
+          },
+        },
+      },
+      meta: harness.getSnapshot().meta,
+    });
+
+    vi.mocked(harness.dependencies.api.deleteModel).mockResolvedValue(
+      undefined,
+    );
+    vi.mocked(harness.dependencies.api.getModelStatus)
+      .mockResolvedValueOnce({
+        variant: "htdemucs",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      })
+      .mockResolvedValueOnce({
+        variant: "htdemucs_ft",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      });
+
+    await harness.actions.deleteModel("htdemucs");
+
+    expect(harness.dependencies.api.deleteModel).toHaveBeenCalledWith(
+      "htdemucs",
+    );
   });
 
   test("hide batch separate updates local state and the settings store", async () => {
@@ -235,8 +350,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "coreml",
-      available_execution_providers: ["cpu", "coreml"],
+      execution_provider: "xnnpack",
+      available_execution_providers: ["cpu", "xnnpack"],
     });
 
     await harness.actions.toggleHideBatchSeparate(true);

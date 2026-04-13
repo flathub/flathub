@@ -44,7 +44,7 @@
 7. `openkara-models v2.0.1` 资源会携带：
    - `openkara.model_cache_key`
    - `openkara.optimized_by=onnxruntime`
-     Rust 运行时必须把前者纳入 session/CoreML compiled cache 失效条件，并对后者关闭重复图优化。
+     Rust 运行时必须把前者纳入 session cache key 失效条件，并对后者关闭重复图优化。
 
 ## Inputs / outputs / required dependencies
 
@@ -64,13 +64,13 @@
 
 ### Shared type: `ModelBootstrapStatusSnapshot`
 
-| Field             | Type                                                | Notes                                |
-| ----------------- | --------------------------------------------------- | ------------------------------------ |
-| `state`           | `"pending" \| "downloading" \| "ready" \| "failed"` | 状态字段固定为 snake_case enum       |
-| `modelPath`       | `String`                                            | 当前运行时实际模型路径或目标安装路径 |
-| `downloadedBytes` | `Option<u64>`                                       | `downloading` 时存在                 |
-| `totalBytes`      | `Option<u64>`                                       | 下载端若返回 `Content-Length` 则存在 |
-| `error`           | `Option<CommandError>`                              | `failed` 时存在                      |
+| Field             | Type                                                              | Notes                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `state`           | `"pending" \| "downloading" \| "outdated" \| "ready" \| "failed"` | 状态字段固定为 snake_case enum；`outdated` 表示托管路径上存在文件但 SHA-256 与当前 pin 不一致（文件保留，供用户在设置中删除） |
+| `modelPath`       | `String`                                                          | 当前运行时实际模型路径或目标安装路径                                                                                          |
+| `downloadedBytes` | `Option<u64>`                                                     | `downloading` 时存在                                                                                                          |
+| `totalBytes`      | `Option<u64>`                                                     | 下载端若返回 `Content-Length` 则存在                                                                                          |
+| `error`           | `Option<CommandError>`                                            | `failed` 时存在                                                                                                               |
 
 ### Events
 
@@ -78,9 +78,9 @@
 
 payload 为完整的 `ModelBootstrapStatusSnapshot`，其中：
 
-- `state = "downloading"`
-- `downloadedBytes` 单调递增
-- `modelPath` 固定为运行时安装路径
+- `state = "downloading"`：`downloadedBytes` 在事件流中应单调不减（实现侧可节流）；`model_path` 固定为运行时安装路径
+- `state = "outdated"`：校验失败但文件未自动删除；`downloadedBytes` / `totalBytes` 为 `null`
+- `state = "pending"`：等待后台 worker 或用户操作
 
 #### `model-bootstrap-ready`
 
@@ -102,7 +102,7 @@ payload 为完整的 `ModelBootstrapStatusSnapshot`，其中：
 
 1. 优先使用活动模型 variant 对应的 `<app_data_dir>/models/<descriptor.filename>`
 2. 若运行时安装目录已有模型且 SHA-256 校验通过，直接进入 `ready`
-3. 若运行时安装目录模型存在但校验失败，会先删除损坏文件，再进入后台下载
+3. 若运行时安装目录模型存在但校验失败（含旧版本 pin 不匹配），进入 `outdated`，**保留**托管文件以便用户在设置的危险区删除；不会静默删除后再下载
 4. 若运行时安装目录缺失，但开发目录 `src-tauri/models/<descriptor.filename>` 存在且校验通过，则直接进入 `ready`
 5. 只有当两处都没有可用模型时，才会在后台从固定 URL 下载到运行时安装目录
 
@@ -136,7 +136,7 @@ UI 与产品行为应以以下目标为准，而不是把后台下载继续当�
 
 1. `separate(song_id)` 现在依赖模型 bootstrap 状态
 2. `state = ready` 时才允许启动推理 worker
-3. `state = pending / downloading / failed` 时，命令立即返回：
+3. `state = pending / downloading / outdated / failed` 时，命令立即返回（`outdated` 时错误文案应引导用户打开设置删除旧文件并重新下载）：
 
 ```json
 {

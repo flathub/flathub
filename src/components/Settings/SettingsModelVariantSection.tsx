@@ -50,6 +50,12 @@ export function SettingsModelVariantSection() {
 
     const status = state.modelStatuses[variant];
 
+    if (status?.legacy_install_present && !status.downloaded) {
+      return `${t("settings.modelVariant.legacyOnDisk")}${
+        status.file_size ? ` (${formatBytes(status.file_size)})` : ""
+      }`;
+    }
+
     if (status?.downloaded) {
       return `${t("settings.modelVariant.downloaded")}${
         status.file_size ? ` (${formatBytes(status.file_size)})` : ""

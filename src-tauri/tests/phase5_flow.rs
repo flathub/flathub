@@ -84,7 +84,6 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
         &connection,
         &library,
         &model_cache,
-        library.root(),
         &model::default_model_path(),
         &song_id,
         StemMode::default(),

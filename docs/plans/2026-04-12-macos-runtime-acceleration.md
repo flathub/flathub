@@ -1,5 +1,8 @@
 # macOS Runtime Acceleration Implementation Plan
 
+> **Status: SUPERSEDED.** CoreML EP was removed; XNNPACK is now the default
+> accelerator on all platforms. This plan is retained for historical reference only.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make Apple Silicon separation prefer a well-configured CoreML path by default, keep the settings UI to `CPU` and `CoreML`, and ensure provider changes actually take effect on the next separation.

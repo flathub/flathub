@@ -55,8 +55,8 @@ describe("app runtime settings hydration", () => {
       language: null,
       hide_batch_separate: false,
       lyrics_font_step: 0,
-      execution_provider: "coreml",
-      available_execution_providers: ["cpu", "coreml"],
+      execution_provider: "xnnpack",
+      available_execution_providers: ["cpu", "xnnpack"],
     });
     const hydrateAppSettings = vi.fn();
     const changeLanguage = vi.fn().mockResolvedValue(undefined);

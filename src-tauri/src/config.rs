@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -49,8 +48,9 @@ impl ModelVariant {
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionProviderPreference {
     Cpu,
-    #[serde(alias = "coreml")]
-    CoreMl,
+    // XNNPACK uses NEON on ARM64 and AVX2/AVX-512 on x86-64 for conv/matmul,
+    // avoids CoreML AOT compile overhead, and ships inside the existing ORT dylib.
+    Xnnpack,
     #[serde(alias = "directml")]
     DirectMl,
 }
@@ -63,29 +63,22 @@ impl Default for ExecutionProviderPreference {
 
 impl ExecutionProviderPreference {
     pub fn default_for_current_platform() -> Self {
-        #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
-        {
-            return Self::CoreMl;
-        }
-
+        // Windows prefers the DirectML GPU path; other platforms use XNNPACK SIMD.
         #[cfg(target_os = "windows")]
         {
             return Self::DirectMl;
         }
 
-        #[cfg(not(any(
-            all(target_vendor = "apple", target_arch = "aarch64"),
-            target_os = "windows"
-        )))]
+        #[cfg(not(target_os = "windows"))]
         {
-            return Self::Cpu;
+            return Self::Xnnpack;
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Cpu => "cpu",
-            Self::CoreMl => "coreml",
+            Self::Xnnpack => "xnnpack",
             Self::DirectMl => "directml",
         }
     }
@@ -93,7 +86,7 @@ impl ExecutionProviderPreference {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "cpu" => Some(Self::Cpu),
-            "coreml" => Some(Self::CoreMl),
+            "xnnpack" => Some(Self::Xnnpack),
             "directml" => Some(Self::DirectMl),
             _ => None,
         }
@@ -102,10 +95,8 @@ impl ExecutionProviderPreference {
     /// Returns the execution provider options valid for the current platform.
     /// Used by the frontend to populate the settings dropdown.
     pub fn available_for_current_platform() -> Vec<&'static str> {
-        let mut options = vec!["cpu"];
-        if cfg!(target_vendor = "apple") {
-            options.push("coreml");
-        }
+        // XNNPACK is available on all platforms and built into the ORT shared library.
+        let mut options = vec!["cpu", "xnnpack"];
         if cfg!(target_os = "windows") {
             options.push("directml");
         }
@@ -165,19 +156,8 @@ pub fn load_config(app_data_dir: &Path) -> Result<Option<AppConfig>> {
 
     let contents = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config at {}", config_path.display()))?;
-    let (config, migrated) = parse_config_with_legacy_migration(&contents)
+    let config: AppConfig = serde_json::from_str(&contents)
         .with_context(|| format!("failed to parse config at {}", config_path.display()))?;
-
-    // Legacy execution_provider="auto" must be normalized at the config
-    // boundary so startup and command paths both see the same explicit schema.
-    if migrated {
-        save_config(app_data_dir, &config).with_context(|| {
-            format!(
-                "failed to rewrite migrated config at {}",
-                config_path.display()
-            )
-        })?;
-    }
 
     Ok(Some(config))
 }
@@ -197,24 +177,6 @@ pub fn save_config(app_data_dir: &Path, config: &AppConfig) -> Result<()> {
 
 fn config_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(CONFIG_FILENAME)
-}
-
-fn parse_config_with_legacy_migration(contents: &str) -> Result<(AppConfig, bool)> {
-    let mut raw: Value = serde_json::from_str(contents)?;
-    let migrated = normalize_legacy_execution_provider(&mut raw);
-    let config = serde_json::from_value(raw)?;
-    Ok((config, migrated))
-}
-
-fn normalize_legacy_execution_provider(raw: &mut Value) -> bool {
-    let Some(object) = raw.as_object_mut() else {
-        return false;
-    };
-
-    matches!(
-        object.get("execution_provider"),
-        Some(Value::String(value)) if value == "auto"
-    ) && object.remove("execution_provider").is_some()
 }
 
 #[cfg(test)]
@@ -308,14 +270,14 @@ mod tests {
     #[test]
     fn execution_provider_round_trips_through_json() {
         let config = AppConfig {
-            execution_provider: Some(ExecutionProviderPreference::CoreMl),
+            execution_provider: Some(ExecutionProviderPreference::Xnnpack),
             ..AppConfig::default()
         };
         let json = serde_json::to_string(&config).unwrap();
         let loaded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(
             loaded.execution_provider,
-            Some(ExecutionProviderPreference::CoreMl)
+            Some(ExecutionProviderPreference::Xnnpack)
         );
     }
 
@@ -324,9 +286,7 @@ mod tests {
         let providers = ExecutionProviderPreference::available_for_current_platform();
         assert!(!providers.contains(&"auto"));
         assert!(providers.contains(&"cpu"));
-
-        #[cfg(target_vendor = "apple")]
-        assert!(providers.contains(&"coreml"));
+        assert!(providers.contains(&"xnnpack"));
 
         #[cfg(target_os = "windows")]
         assert!(providers.contains(&"directml"));
@@ -336,69 +296,17 @@ mod tests {
     fn effective_execution_provider_defaults_to_platform_default() {
         let config = AppConfig::default();
 
-        #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
-        assert_eq!(
-            config.effective_execution_provider(),
-            ExecutionProviderPreference::CoreMl
-        );
-
-        #[cfg(all(target_vendor = "apple", not(target_arch = "aarch64")))]
-        assert_eq!(
-            config.effective_execution_provider(),
-            ExecutionProviderPreference::Cpu
-        );
-
         #[cfg(target_os = "windows")]
         assert_eq!(
             config.effective_execution_provider(),
             ExecutionProviderPreference::DirectMl
         );
 
-        #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+        #[cfg(not(target_os = "windows"))]
         assert_eq!(
             config.effective_execution_provider(),
-            ExecutionProviderPreference::Cpu
+            ExecutionProviderPreference::Xnnpack
         );
     }
 
-    #[test]
-    fn load_config_migrates_legacy_auto_execution_provider_to_none() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join(CONFIG_FILENAME);
-        fs::write(
-            &config_path,
-            r#"{
-  "library_path": "/Users/test/Music/MyLibrary",
-  "execution_provider": "auto"
-}"#,
-        )
-        .unwrap();
-
-        let loaded = load_config(tmp.path()).unwrap().unwrap();
-
-        assert_eq!(loaded.library_path.as_deref(), Some("/Users/test/Music/MyLibrary"));
-        assert_eq!(loaded.execution_provider, None);
-    }
-
-    #[test]
-    fn load_config_rewrites_legacy_auto_execution_provider_without_preserving_auto() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join(CONFIG_FILENAME);
-        fs::write(
-            &config_path,
-            r#"{
-  "execution_provider": "auto",
-  "stem_mode": "four_stem"
-}"#,
-        )
-        .unwrap();
-
-        let loaded = load_config(tmp.path()).unwrap().unwrap();
-        assert_eq!(loaded.execution_provider, None);
-
-        let rewritten = fs::read_to_string(&config_path).unwrap();
-        assert!(!rewritten.contains(r#""execution_provider": "auto""#));
-        assert!(!rewritten.contains(r#""execution_provider""#));
-        assert!(rewritten.contains(r#""stem_mode": "four_stem""#));
-    }
 }

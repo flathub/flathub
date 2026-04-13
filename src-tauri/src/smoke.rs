@@ -9,6 +9,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::{
     collections::HashMap,
+    env,
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -154,6 +155,11 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
         .collect::<HashMap<_, _>>();
 
     let model = resolve_model_status(&config)?;
+    let ep_preference = env::var("OPENKARA_SMOKE_EP")
+        .ok()
+        .as_deref()
+        .and_then(crate::config::ExecutionProviderPreference::from_str)
+        .unwrap_or_default();
     let separator_model_cache = Arc::new(Mutex::new(ModelCache::<model::LoadedModel>::default()));
     let mut songs = Vec::with_capacity(audio_files.len());
 
@@ -192,12 +198,11 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                             &connection,
                             &library,
                             &separator_model_cache,
-                            config.output_dir.as_path(),
                             Path::new(model_path),
                             &song.hash,
                             StemMode::default(),
                             "htdemucs",
-                            crate::config::ExecutionProviderPreference::default(),
+                            ep_preference,
                             |_| {},
                         ) {
                             Ok(artifacts) => (

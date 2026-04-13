@@ -79,7 +79,6 @@ fn loads_embedded_demucs_model_session() {
     let loaded = model::load_from_path(
         &repo_root().join("models").join("htdemucs.onnx"),
         ExecutionProviderPreference::Cpu,
-        None,
     )
     .expect("demucs model should load");
 
@@ -90,7 +89,7 @@ fn loads_embedded_demucs_model_session() {
 #[test]
 fn fails_with_clear_error_for_missing_model_file() {
     let missing_path = repo_root().join("models").join("missing-model.onnx");
-    let error = model::load_from_path(&missing_path, ExecutionProviderPreference::Cpu, None)
+    let error = model::load_from_path(&missing_path, ExecutionProviderPreference::Cpu)
         .expect_err("missing model should fail");
 
     assert!(error.to_string().contains("missing-model.onnx"));
@@ -114,32 +113,31 @@ fn describes_cpu_only_provider_path() {
     );
 }
 
-#[cfg(target_vendor = "apple")]
 #[test]
-fn describes_coreml_fallback_provider_path() {
+fn describes_xnnpack_fallback_provider_path() {
     assert_eq!(
-        model::provider_diagnostic_summary(ExecutionProviderPreference::CoreMl),
-        "coreml -> cpu"
+        model::provider_diagnostic_summary(ExecutionProviderPreference::Xnnpack),
+        "xnnpack -> cpu"
     );
 }
 
-/// Regression: Demucs must complete session creation when CoreML is preferred on macOS.
-///
-/// Uses a **stable** cache directory under `target/` (not a fresh `tempfile`) so CoreML's
-/// `ModelCacheDirectory` can reuse compiled artifacts across test runs; a random temp dir
-/// forces a full MLProgram recompile (~50s) every time and masks cache regressions.
-#[cfg(target_vendor = "apple")]
 #[test]
-fn loads_embedded_demucs_when_coreml_is_preferred() {
-    let cache_dir = repo_root().join("target/openkara_coreml_session_test_cache");
-    std::fs::create_dir_all(&cache_dir).expect("coreml test cache dir");
+fn describes_directml_full_fallback_provider_path() {
+    assert_eq!(
+        model::provider_diagnostic_summary(ExecutionProviderPreference::DirectMl),
+        "directml -> xnnpack -> cpu"
+    );
+}
 
+/// XNNPACK session creation should be near-instant because there is no AOT compile step.
+/// Exercises the full XNNPACK -> CPU session-level fallback on the embedded model.
+#[test]
+fn loads_embedded_demucs_model_with_xnnpack_preference() {
     let loaded = model::load_from_path(
         &repo_root().join("models").join("htdemucs.onnx"),
-        ExecutionProviderPreference::CoreMl,
-        Some(&cache_dir),
+        ExecutionProviderPreference::Xnnpack,
     )
-    .expect("demucs should load with CoreML preference on macOS");
+    .expect("demucs model should load with XNNPACK preference");
 
     assert!(!loaded.inputs.is_empty());
     assert!(!loaded.outputs.is_empty());

@@ -8,6 +8,28 @@ interface BootstrapState {
   updateStatus: (status: ModelBootstrapStatusSnapshot) => void;
 }
 
+function mergeBootstrapStatus(
+  previous: ModelBootstrapStatusSnapshot | null,
+  incoming: ModelBootstrapStatusSnapshot,
+): ModelBootstrapStatusSnapshot {
+  if (
+    previous &&
+    incoming.state === "downloading" &&
+    previous.state === "downloading" &&
+    incoming.model_path === previous.model_path
+  ) {
+    const prevDown = previous.downloaded_bytes ?? 0;
+    const nextDown = Math.max(prevDown, incoming.downloaded_bytes ?? 0);
+    const nextTotal = incoming.total_bytes ?? previous.total_bytes ?? null;
+    return {
+      ...incoming,
+      downloaded_bytes: nextDown,
+      total_bytes: nextTotal,
+    };
+  }
+  return incoming;
+}
+
 export const useBootstrapStore = create<BootstrapState>((set) => ({
   status: null,
 
@@ -16,5 +38,8 @@ export const useBootstrapStore = create<BootstrapState>((set) => ({
     set({ status });
   },
 
-  updateStatus: (status) => set({ status }),
+  updateStatus: (incoming) =>
+    set((s) => ({
+      status: mergeBootstrapStatus(s.status, incoming),
+    })),
 }));
