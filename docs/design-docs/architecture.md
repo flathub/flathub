@@ -197,7 +197,7 @@ This is a nice-to-have, not MVP scope.
 - **Output**: 4 stems (vocals, drums, bass, other). We mix drums + bass + other into a single accompaniment track.
 - **Model size**: ~80 MB (ONNX)
 - **Inference time**: ~30-60s per 4-min song on Apple Silicon, ~2-3 min on older CPUs
-- **Runtime**: ONNX Runtime with CPU execution provider (GPU optional via CoreML/DirectML)
+- **Runtime**: ONNX Runtime with platform defaults chosen internally by the app. Apple Silicon prefers CoreML with CPU fallback; users can still force CPU from Settings when diagnosing hardware-specific issues.
 
 ### Why Demucs
 
@@ -227,10 +227,10 @@ The cache key is a SHA-256 hash of the audio file content, ensuring deduplicatio
 
 ## Platform Considerations
 
-| Platform | Audio Backend   | AI Acceleration                              |
-| -------- | --------------- | -------------------------------------------- |
-| macOS    | CoreAudio       | CoreML (Auto on Apple Silicon, CPU on Intel) |
-| Windows  | WASAPI          | DirectML (Auto)                              |
-| Linux    | PulseAudio/ALSA | CPU only                                     |
+| Platform | Audio Backend   | AI Acceleration                                   |
+| -------- | --------------- | ------------------------------------------------- |
+| macOS    | CoreAudio       | CoreML by default on Apple Silicon, CPU otherwise |
+| Windows  | WASAPI          | DirectML by default when available                |
+| Linux    | PulseAudio/ALSA | CPU only                                          |
 
-ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences (`Auto` by default). The `Auto` mode selects CoreML on Apple Silicon Macs, DirectML on Windows, and CPU everywhere else. Users can override to force CPU if hardware acceleration causes issues. The code gracefully falls back to CPU if the selected EP fails at session creation time.
+ONNX Runtime CPU execution provider works on all platforms out of the box. Hardware acceleration is configured via the **Hardware Acceleration** setting in Preferences, which only exposes explicit providers such as `CPU` and `CoreML`. When the setting is unset, the app chooses a platform default internally. Session setup logs the requested provider path, and the runtime still falls back to CPU if the selected accelerated provider fails during session creation.

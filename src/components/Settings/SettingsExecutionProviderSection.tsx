@@ -38,10 +38,6 @@ function ExecutionProviderOption({
 function useEpLabels() {
   const { t } = useTranslation();
   return {
-    auto: {
-      title: t("settings.executionProvider.auto"),
-      description: t("settings.executionProvider.autoDescription"),
-    },
     cpu: {
       title: t("settings.executionProvider.cpu"),
       description: t("settings.executionProvider.cpuDescription"),

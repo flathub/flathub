@@ -79,6 +79,7 @@ fn loads_embedded_demucs_model_session() {
     let loaded = model::load_from_path(
         &repo_root().join("models").join("htdemucs.onnx"),
         ExecutionProviderPreference::Cpu,
+        None,
     )
     .expect("demucs model should load");
 
@@ -89,7 +90,7 @@ fn loads_embedded_demucs_model_session() {
 #[test]
 fn fails_with_clear_error_for_missing_model_file() {
     let missing_path = repo_root().join("models").join("missing-model.onnx");
-    let error = model::load_from_path(&missing_path, ExecutionProviderPreference::Cpu)
+    let error = model::load_from_path(&missing_path, ExecutionProviderPreference::Cpu, None)
         .expect_err("missing model should fail");
 
     assert!(error.to_string().contains("missing-model.onnx"));
@@ -103,4 +104,21 @@ fn fails_with_clear_error_for_missing_runtime_library() {
         .expect_err("missing runtime library should fail");
 
     assert!(error.to_string().contains("prepare-onnx-runtime"));
+}
+
+#[test]
+fn describes_cpu_only_provider_path() {
+    assert_eq!(
+        model::provider_diagnostic_summary(ExecutionProviderPreference::Cpu),
+        "cpu"
+    );
+}
+
+#[cfg(target_vendor = "apple")]
+#[test]
+fn describes_coreml_fallback_provider_path() {
+    assert_eq!(
+        model::provider_diagnostic_summary(ExecutionProviderPreference::CoreMl),
+        "coreml -> cpu"
+    );
 }

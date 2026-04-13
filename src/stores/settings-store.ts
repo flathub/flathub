@@ -51,8 +51,8 @@ const DEFAULT_APP_SETTINGS: AppSettingsSnapshot = {
   language: null,
   hideBatchSeparate: false,
   lyricsFontStep: 0,
-  executionProvider: "auto",
-  availableExecutionProviders: ["auto", "cpu"],
+  executionProvider: "cpu",
+  availableExecutionProviders: ["cpu"],
 };
 
 function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {

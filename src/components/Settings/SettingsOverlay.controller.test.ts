@@ -54,8 +54,8 @@ function createControllerHarness() {
           language: "zh-CN",
           hideBatchSeparate: true,
           lyricsFontStep: 0,
-          executionProvider: "auto",
-          availableExecutionProviders: ["auto", "cpu"],
+          executionProvider: "coreml",
+          availableExecutionProviders: ["cpu", "coreml"],
         }),
       ),
       hydrateAppSettings: vi.fn(),
@@ -97,8 +97,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "auto",
-      available_execution_providers: ["auto", "cpu"],
+      execution_provider: "coreml",
+      available_execution_providers: ["cpu", "coreml"],
     });
     vi.mocked(harness.dependencies.api.getWindowShellState).mockResolvedValue({
       chrome_variant: "mac",
@@ -133,8 +133,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "auto",
-      available_execution_providers: ["auto", "cpu"],
+      execution_provider: "coreml",
+      available_execution_providers: ["cpu", "coreml"],
     });
     expect(harness.getSnapshot()).toMatchObject({
       state: {
@@ -193,8 +193,8 @@ describe("SettingsOverlay controller", () => {
       language: "en",
       hide_batch_separate: false,
       lyrics_font_step: 0,
-      execution_provider: "auto",
-      available_execution_providers: ["auto", "cpu"],
+      execution_provider: "coreml",
+      available_execution_providers: ["cpu", "coreml"],
     });
 
     await harness.actions.selectModelVariant("htdemucs");
@@ -235,8 +235,8 @@ describe("SettingsOverlay controller", () => {
       language: "zh-CN",
       hide_batch_separate: true,
       lyrics_font_step: 0,
-      execution_provider: "auto",
-      available_execution_providers: ["auto", "cpu"],
+      execution_provider: "coreml",
+      available_execution_providers: ["cpu", "coreml"],
     });
 
     await harness.actions.toggleHideBatchSeparate(true);

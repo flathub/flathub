@@ -42,19 +42,11 @@ impl ModelVariant {
 
 /// Hardware acceleration preference for ONNX Runtime inference.
 ///
-/// `Auto` detects the best available provider for the current platform:
-/// - Apple Silicon → CoreML (CPU + Neural Engine)
-/// - Intel Mac → CPU (Metal EP is not well-suited for Demucs workloads)
-/// - Windows with DirectX 12 GPU → DirectML
-/// - Linux → CPU
-///
-/// Users can override to force a specific provider or fall back to CPU
-/// if hardware acceleration causes issues with their hardware.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// The persisted value is always explicit. When config does not yet contain an
+/// execution provider, the app chooses a platform default at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionProviderPreference {
-    #[default]
-    Auto,
     Cpu,
     #[serde(alias = "coreml")]
     CoreMl,
@@ -62,10 +54,35 @@ pub enum ExecutionProviderPreference {
     DirectMl,
 }
 
+impl Default for ExecutionProviderPreference {
+    fn default() -> Self {
+        Self::default_for_current_platform()
+    }
+}
+
 impl ExecutionProviderPreference {
+    pub fn default_for_current_platform() -> Self {
+        #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
+        {
+            return Self::CoreMl;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            return Self::DirectMl;
+        }
+
+        #[cfg(not(any(
+            all(target_vendor = "apple", target_arch = "aarch64"),
+            target_os = "windows"
+        )))]
+        {
+            return Self::Cpu;
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Auto => "auto",
             Self::Cpu => "cpu",
             Self::CoreMl => "coreml",
             Self::DirectMl => "directml",
@@ -74,7 +91,6 @@ impl ExecutionProviderPreference {
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "auto" => Some(Self::Auto),
             "cpu" => Some(Self::Cpu),
             "coreml" => Some(Self::CoreMl),
             "directml" => Some(Self::DirectMl),
@@ -85,7 +101,7 @@ impl ExecutionProviderPreference {
     /// Returns the execution provider options valid for the current platform.
     /// Used by the frontend to populate the settings dropdown.
     pub fn available_for_current_platform() -> Vec<&'static str> {
-        let mut options = vec!["auto", "cpu"];
+        let mut options = vec!["cpu"];
         if cfg!(target_vendor = "apple") {
             options.push("coreml");
         }
@@ -270,6 +286,48 @@ mod tests {
         assert_eq!(
             loaded.execution_provider,
             Some(ExecutionProviderPreference::CoreMl)
+        );
+    }
+
+    #[test]
+    fn available_execution_providers_are_explicit_only() {
+        let providers = ExecutionProviderPreference::available_for_current_platform();
+        assert!(!providers.contains(&"auto"));
+        assert!(providers.contains(&"cpu"));
+
+        #[cfg(target_vendor = "apple")]
+        assert!(providers.contains(&"coreml"));
+
+        #[cfg(target_os = "windows")]
+        assert!(providers.contains(&"directml"));
+    }
+
+    #[test]
+    fn effective_execution_provider_defaults_to_platform_default() {
+        let config = AppConfig::default();
+
+        #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
+        assert_eq!(
+            config.effective_execution_provider(),
+            ExecutionProviderPreference::CoreMl
+        );
+
+        #[cfg(all(target_vendor = "apple", not(target_arch = "aarch64")))]
+        assert_eq!(
+            config.effective_execution_provider(),
+            ExecutionProviderPreference::Cpu
+        );
+
+        #[cfg(target_os = "windows")]
+        assert_eq!(
+            config.effective_execution_provider(),
+            ExecutionProviderPreference::DirectMl
+        );
+
+        #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+        assert_eq!(
+            config.effective_execution_provider(),
+            ExecutionProviderPreference::Cpu
         );
     }
 }

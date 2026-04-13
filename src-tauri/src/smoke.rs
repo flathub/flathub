@@ -192,6 +192,7 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
                             &connection,
                             &library,
                             &separator_model_cache,
+                            config.output_dir.as_path(),
                             Path::new(model_path),
                             &song.hash,
                             StemMode::default(),

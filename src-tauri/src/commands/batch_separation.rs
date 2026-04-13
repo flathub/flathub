@@ -46,6 +46,7 @@ pub fn batch_separate(
     }
 
     let library_root = state.library_root()?;
+    let app_data_dir = state.app_data_dir.clone();
     let model_path = state.resolve_model_path()?;
     let separation_statuses = Arc::clone(&state.separation_statuses);
     let model_cache: Arc<Mutex<ModelCache<LoadedModel>>> = Arc::clone(&state.separator_model_cache);
@@ -175,6 +176,7 @@ pub fn batch_separate(
             );
 
             let worker_library_root = library_root.clone();
+            let worker_app_data_dir = app_data_dir.clone();
             let worker_model_path = model_path.clone();
             let worker_song_id = song_id.clone();
             let worker_statuses = Arc::clone(&separation_statuses);
@@ -194,6 +196,7 @@ pub fn batch_separate(
                     &connection,
                     &worker_library_root,
                     &worker_model_cache,
+                    &worker_app_data_dir,
                     &worker_model_path,
                     &worker_song_id,
                     stem_mode,

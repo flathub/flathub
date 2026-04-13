@@ -31,7 +31,8 @@ fn settings_from_config(config: &AppConfig) -> AppSettings {
         hide_batch_separate: config.hide_batch_separate.unwrap_or(false),
         lyrics_font_step: config.effective_lyrics_font_step(),
         execution_provider: ep.as_str().to_owned(),
-        available_execution_providers: ExecutionProviderPreference::available_for_current_platform(),
+        available_execution_providers: ExecutionProviderPreference::available_for_current_platform(
+        ),
     }
 }
 

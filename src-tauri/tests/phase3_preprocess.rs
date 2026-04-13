@@ -21,6 +21,7 @@ fn preprocesses_stereo_audio_into_channels_first_model_tensor() {
             .join("models")
             .join("htdemucs.onnx"),
         ExecutionProviderPreference::Cpu,
+        None,
     )
     .expect("demucs model should load");
     let decoded = decode::decode_file(&fixture_path("audio", "fixture.wav"))
@@ -73,6 +74,7 @@ fn prepares_model_input_from_pre_normalized_audio_without_re_normalizing() {
             .join("models")
             .join("htdemucs.onnx"),
         ExecutionProviderPreference::Cpu,
+        None,
     )
     .expect("demucs model should load");
     let decoded = decode::decode_file(&fixture_path("audio", "fixture.wav"))

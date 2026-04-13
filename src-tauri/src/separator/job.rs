@@ -33,6 +33,7 @@ pub fn separate_song_into_cache(
     connection: &Connection,
     library_root: &LibraryRoot,
     model_cache: &Arc<Mutex<ModelCache<model::LoadedModel>>>,
+    app_data_dir: &Path,
     model_path: &Path,
     song_hash: &str,
     stem_mode: StemMode,
@@ -69,9 +70,10 @@ pub fn separate_song_into_cache(
     let mut model_cache = model_cache
         .lock()
         .map_err(|_| anyhow::anyhow!("separator model cache lock was poisoned"))?;
-    let loaded_model = model_cache.get_or_load_with(model_path, |path| {
-        model::load_from_path(path, ep_preference)
-            .with_context(|| format!("failed to load Demucs model from {}", path.display()))
+    let cache_key = format!("{}::{}", model_path.display(), ep_preference.as_str());
+    let loaded_model = model_cache.get_or_load_with_key(cache_key, || {
+        model::load_from_path(model_path, ep_preference, Some(app_data_dir))
+            .with_context(|| format!("failed to load Demucs model from {}", model_path.display()))
     })?;
 
     let checkpoint_dir = checkpoint::checkpoint_dir(&library_root.stems_dir(), song_hash);

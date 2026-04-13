@@ -59,6 +59,7 @@ pub struct SeparationErrorEvent {
 }
 
 struct SeparationExecutionContext {
+    app_data_dir: PathBuf,
     library_root: crate::library_root::LibraryRoot,
     model_path: PathBuf,
     model_variant: String,
@@ -175,6 +176,7 @@ fn spawn_separation_job(
     stem_mode: StemMode,
 ) {
     let SeparationExecutionContext {
+        app_data_dir,
         library_root,
         model_path,
         model_variant,
@@ -197,6 +199,7 @@ fn spawn_separation_job(
                 &connection,
                 &worker_library_root,
                 &model_cache,
+                &app_data_dir,
                 &worker_model_path,
                 &worker_song_id,
                 stem_mode,
@@ -276,6 +279,7 @@ fn build_execution_context(
         .unwrap_or_default();
 
     Ok(SeparationExecutionContext {
+        app_data_dir: state.app_data_dir.clone(),
         library_root: state.library_root()?,
         model_path: state.resolve_model_path()?,
         model_variant,

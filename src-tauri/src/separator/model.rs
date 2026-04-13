@@ -143,25 +143,57 @@ pub fn resolve_runtime_library_path_for_tests(
 pub fn load_from_path(
     path: &Path,
     ep_preference: ExecutionProviderPreference,
+    app_data_dir: Option<&Path>,
 ) -> Result<LoadedModel> {
-    match load_with_ep(path, ep_preference) {
-        Ok(model) => Ok(model),
-        Err(accel_error) if ep_preference != ExecutionProviderPreference::Cpu => {
-            // Hardware acceleration failed — fall back to CPU so the user
-            // can still separate stems. Log the original error for diagnostics.
-            eprintln!(
-                "Hardware-accelerated ONNX session failed ({}), falling back to CPU: {accel_error:#}",
-                ep_preference.as_str()
-            );
-            load_with_ep(path, ExecutionProviderPreference::Cpu)
+    eprintln!(
+        "Attempting ONNX session load for {} via {}",
+        path.display(),
+        provider_diagnostic_summary(ep_preference)
+    );
+
+    let provider_chain = execution_provider_chain(ep_preference);
+    let mut last_error = None;
+
+    for (index, provider) in provider_chain.iter().copied().enumerate() {
+        match load_with_ep(path, provider, app_data_dir) {
+            Ok(model) => {
+                if index > 0 {
+                    eprintln!(
+                        "Recovered ONNX session load by falling back to {} for {}",
+                        provider.as_str(),
+                        path.display()
+                    );
+                }
+                return Ok(model);
+            }
+            Err(error) => {
+                if index + 1 < provider_chain.len() {
+                    eprintln!(
+                        "ONNX session load failed with {} for {}: {error:#}",
+                        provider.as_str(),
+                        path.display()
+                    );
+                }
+                last_error = Some(error);
+            }
         }
-        Err(e) => Err(e),
     }
+
+    Err(last_error.expect("provider chain should contain at least one provider"))
+}
+
+pub fn provider_diagnostic_summary(preference: ExecutionProviderPreference) -> String {
+    execution_provider_chain(preference)
+        .into_iter()
+        .map(|provider| provider.as_str())
+        .collect::<Vec<_>>()
+        .join(" -> ")
 }
 
 fn load_with_ep(
     path: &Path,
     ep_preference: ExecutionProviderPreference,
+    app_data_dir: Option<&Path>,
 ) -> Result<LoadedModel> {
     ensure_runtime_loaded(None)?;
 
@@ -170,8 +202,8 @@ fn load_with_ep(
         .map(|n| n.get().min(8))
         .unwrap_or(4);
 
-    let mut builder = ort::session::Session::builder()
-        .context("failed to create ONNX session builder")?;
+    let mut builder =
+        ort::session::Session::builder().context("failed to create ONNX session builder")?;
 
     builder = builder
         .with_intra_threads(num_threads)
@@ -180,7 +212,7 @@ fn load_with_ep(
     // Register platform-specific execution providers. ORT falls back to CPU
     // automatically if the requested EP is unavailable, but we log the attempt
     // so users can diagnose performance issues.
-    let ep_list = build_execution_provider_list(ep_preference);
+    let ep_list = build_execution_provider_list(path, ep_preference, app_data_dir);
     if !ep_list.is_empty() {
         builder = builder
             .with_execution_providers(ep_list)
@@ -228,51 +260,96 @@ fn load_with_ep(
 }
 
 fn build_execution_provider_list(
+    model_path: &Path,
     preference: ExecutionProviderPreference,
+    app_data_dir: Option<&Path>,
 ) -> Vec<ort::ep::ExecutionProviderDispatch> {
     use ort::ep;
 
-    match resolve_ep_for_platform(preference) {
+    match preference {
         ExecutionProviderPreference::Cpu => vec![],
         ExecutionProviderPreference::CoreMl => {
-            vec![ep::CoreML::default().with_subgraphs(true).build()]
+            let mut provider = ep::CoreML::default()
+                .with_subgraphs(true)
+                .with_static_input_shapes(true)
+                .with_model_format(ep::coreml::ModelFormat::MLProgram);
+
+            #[cfg(target_vendor = "apple")]
+            if let Some(app_data_dir) = app_data_dir {
+                provider = provider.with_model_cache_dir(
+                    coreml_model_cache_dir(app_data_dir, model_path)
+                        .display()
+                        .to_string(),
+                );
+            }
+
+            vec![provider.build()]
         }
-        ExecutionProviderPreference::DirectMl => {
-            vec![ep::DirectML::default().build()]
-        }
-        ExecutionProviderPreference::Auto => {
-            // Auto is resolved by resolve_ep_for_platform, so this branch
-            // should not be reached. Fall back to CPU as a safety net.
-            vec![]
-        }
+        ExecutionProviderPreference::DirectMl => vec![ep::DirectML::default().build()],
     }
 }
 
-/// Resolve `Auto` to a concrete EP based on the current platform.
-fn resolve_ep_for_platform(
+fn execution_provider_chain(
     preference: ExecutionProviderPreference,
-) -> ExecutionProviderPreference {
-    if preference != ExecutionProviderPreference::Auto {
-        return preference;
+) -> Vec<ExecutionProviderPreference> {
+    match preference {
+        ExecutionProviderPreference::CoreMl => vec![
+            ExecutionProviderPreference::CoreMl,
+            ExecutionProviderPreference::Cpu,
+        ],
+        ExecutionProviderPreference::DirectMl => vec![
+            ExecutionProviderPreference::DirectMl,
+            ExecutionProviderPreference::Cpu,
+        ],
+        resolved => vec![resolved],
+    }
+}
+
+#[cfg(target_vendor = "apple")]
+fn coreml_model_cache_dir(app_data_dir: &Path, model_path: &Path) -> PathBuf {
+    let model_name = model_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("model");
+    app_data_dir
+        .join("onnxruntime")
+        .join("coreml")
+        .join(model_name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn coreml_model_cache_dir_uses_app_data_directory() {
+        let app_data_dir = PathBuf::from("/tmp/openkara-app-data");
+        let model_path = PathBuf::from("/tmp/models/htdemucs.onnx");
+
+        let cache_dir = coreml_model_cache_dir(&app_data_dir, &model_path);
+
+        assert!(cache_dir.starts_with(&app_data_dir));
+        assert!(cache_dir.ends_with(Path::new("onnxruntime/coreml/htdemucs")));
     }
 
-    #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
-    {
-        return ExecutionProviderPreference::CoreMl;
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn provider_chain_keeps_cpu_fallback_for_coreml() {
+        assert_eq!(
+            execution_provider_chain(ExecutionProviderPreference::CoreMl),
+            vec![
+                ExecutionProviderPreference::CoreMl,
+                ExecutionProviderPreference::Cpu,
+            ]
+        );
     }
 
-    #[cfg(all(target_vendor = "apple", not(target_arch = "aarch64")))]
-    {
-        return ExecutionProviderPreference::Cpu;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        return ExecutionProviderPreference::DirectMl;
-    }
-
-    #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
-    {
-        return ExecutionProviderPreference::Cpu;
+    #[test]
+    fn provider_chain_keeps_cpu_only_when_requested() {
+        assert_eq!(
+            execution_provider_chain(ExecutionProviderPreference::Cpu),
+            vec![ExecutionProviderPreference::Cpu]
+        );
     }
 }

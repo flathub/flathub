@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import { SettingsDangerZoneSection } from "./SettingsDangerZoneSection";
 import { SettingsOverlay } from "./SettingsOverlay";
 import { SettingsDialogHost } from "./SettingsDialogHost";
+import { SettingsExecutionProviderSection } from "./SettingsExecutionProviderSection";
 import { SettingsGeneralSection } from "./SettingsGeneralSection";
 import { SettingsLibrarySection } from "./SettingsLibrarySection";
 import { SettingsModelVariantSection } from "./SettingsModelVariantSection";
@@ -46,8 +47,8 @@ vi.mock("@/stores/settings-store", () => ({
           language: "en",
           hideBatchSeparate: false,
           lyricsFontStep: 0,
-          executionProvider: "auto" as const,
-          availableExecutionProviders: ["auto" as const, "cpu" as const],
+          executionProvider: "coreml" as const,
+          availableExecutionProviders: ["cpu" as const, "coreml" as const],
         }),
       }),
     },
@@ -85,6 +86,7 @@ describe("SettingsOverlay sections", () => {
         <SettingsLibrarySection />
         <SettingsStemModeSection />
         <SettingsModelVariantSection />
+        <SettingsExecutionProviderSection />
         <SettingsGeneralSection />
         <SettingsDangerZoneSection />
       </>,
@@ -94,6 +96,9 @@ describe("SettingsOverlay sections", () => {
     expect(markup).toContain("settings.library.label");
     expect(markup).toContain("settings.stemMode.label");
     expect(markup).toContain("settings.modelVariant.label");
+    expect(markup).toContain("settings.executionProvider.cpu");
+    expect(markup).toContain("settings.executionProvider.coreml");
+    expect(markup).not.toContain("settings.executionProvider.auto");
     expect(markup).toContain("settings.language.label");
     expect(markup).toContain("settings.dangerZone.label");
   });
