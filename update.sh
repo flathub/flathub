@@ -5,8 +5,6 @@
 
 # pyodide versions we are using (different from upstream, for packaging reasons)
 PYODIDE_VERSION=0.29.3
-# sqlite3 version we last saw, to check it hasn't changed yet
-PREV_SQLITE3_VERSION="5.1.4-grist.8"
 
 # Command-line arguments
 DESKTOP_VERSION="$1"
@@ -69,16 +67,6 @@ yarn install --cwd _worker/_build/worker
 cp _worker/_build/worker/package.json pyodide-worker-package.json
 cp _worker/_build/worker/yarn.lock pyodide-worker-yarn.lock
 flatpak-node-generator yarn -o generated-sources-worker.json pyodide-worker-yarn.lock
-
-# node-sqlite3 compiled modules (can drop this after source build works again the manifest is adapted)
-echo "** Checking node-sqlite3"
-NEW_SQLITE3_VERSION=`cat generated-sources-core.json | sed 's/^.*@gristlabs\/sqlite3\/-\/sqlite3-\([^#]\+\)\.tgz.*$/\1/p;d'`
-if [ "${NEW_SQLITE3_VERSION}" != "${PREV_SQLITE3_VERSION}" ]; then
-  echo ""
-  echo "  IMPORTANT: update node-sqlite3 manually in com.getgrist.grist.yml" 2>&1
-  echo "             and update PREV_SQLITE3_VERSION to ${NEW_SQLITE3_VERSION} in update.sh" 2>&1
-  echo ""
-fi
 
 # update manifest
 echo "** Updating manifest" 2>&1
