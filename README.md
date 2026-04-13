@@ -2,6 +2,14 @@
 
 Flatpak for [Grist Desktop](https://www.getgrist.com/), spreadsheet software to end data chaos.
 
+## Build
+
+To build and install the Flatpak locally, run
+
+```sh
+flatpak-builder build com.getgrist.grist.yml --force-clean --install --user
+```
+
 ## Updating to a new Grist version
 
 1. Find out the latest grist-desktop release from its [releases](https://github.com/gristlabs/grist-desktop/releases).
