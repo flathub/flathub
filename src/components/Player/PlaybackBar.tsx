@@ -98,7 +98,7 @@ export function PlaybackBar({ densityOverride }: PlaybackBarProps = {}) {
   return (
     <div
       ref={containerRef}
-      className={`app-panel-surface mx-3 mb-3 mt-2 flex shrink-0 flex-col justify-center rounded-[24px] border border-[var(--playback-bar-surface-border)] bg-[var(--playback-bar-surface-bg)] shadow-[var(--chrome-panel-shadow)] ${layoutTokens.barHeightClass}`}
+      className={`app-panel-surface z-10 mx-3 mb-3 mt-2 flex shrink-0 flex-col justify-center rounded-[24px] border border-[var(--playback-bar-surface-border)] bg-[var(--playback-bar-surface-bg)] shadow-[var(--chrome-panel-shadow)] ${layoutTokens.barHeightClass}`}
       data-playback-bar-density={density}
       data-playback-bar-visual-variant="unified"
       style={{ paddingInline: layoutTokens.outerPadding }}

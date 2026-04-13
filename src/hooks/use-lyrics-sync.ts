@@ -7,12 +7,14 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 
 const LYRICS_SYNC_INTERVAL_MS = 33;
 
-function syncLyricsToPlayback(prevIndexRef: { current: number }) {
+export function syncLyricsToPlayback(prevIndexRef: { current: number }) {
   const state = usePlayerStore.getState();
   const { snapshot } = state;
   const { lines, offsetMs, setActiveLineIndex } = useLyricsStore.getState();
 
-  if (!snapshot?.is_playing || lines.length === 0) {
+  // Allow sync when paused so seek-while-paused immediately updates the active line.
+  // Guard only against no song loaded or no lines to sync.
+  if (!snapshot?.song_id || lines.length === 0) {
     return;
   }
 
