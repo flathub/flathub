@@ -1,0 +1,134 @@
+# Flathub manifest for PearPass Desktop Application
+# A secure, decentralized and fully local password manager
+#
+# Installs from pre-built AppImages published on GitHub Releases.
+# Supports x86_64 and aarch64 (see flathub.json).
+#
+# Build locally with:
+#   flatpak-builder --force-clean build-dir com.pears.pass.yml
+
+id: com.pears.pass
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: pearpass
+
+finish-args:
+  # Inter-process communication (required for Electron/Chromium)
+  - --share=ipc
+  # Network access (required for peer-to-peer sync functionality)
+  - --share=network
+  # X11 backend — auto-detected Wayland produces a black window in the sandbox
+  - --socket=x11
+  - --socket=fallback-x11
+  # GPU acceleration for rendering
+  - --device=dri
+  # Full home access — required so users can import/export vault files anywhere
+  - --filesystem=home
+  # Persistent Pear runtime storage
+  - --filesystem=xdg-config/pear:create
+  # Desktop notifications and secret storage
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  # System DBus for UPower / Bluez (used by Pear transports)
+  - --system-talk-name=org.freedesktop.DBus
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.UPower
+
+modules:
+  - name: pearpass
+    buildsystem: simple
+    build-commands:
+      # ── Extract AppImage ──────────────────────────────────────────────
+      - chmod +x PearPass.AppImage
+      - ./PearPass.AppImage --appimage-extract
+
+      # ── Install extracted AppImage payload ────────────────────────────
+      - mkdir -p /app/lib/pearpass
+      - cp -a squashfs-root/. /app/lib/pearpass/
+
+      # ── Install wrapper script ────────────────────────────────────────
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/pearpass <<'WRAPPER'
+        #!/bin/sh
+        APP_ROOT="/app/lib/pearpass"
+        export LD_LIBRARY_PATH="$APP_ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        # Force X11 backend: Wayland auto-detection inside the flatpak sandbox
+        # is unreliable and was producing a black window on CI-built bundles.
+        # X11 works natively on X11 sessions and via XWayland on Wayland sessions.
+        export GDK_BACKEND=x11
+        cd "$APP_ROOT"
+        exec "$APP_ROOT/pearpass-app-desktop" \
+          --no-sandbox \
+          --disable-gpu \
+          --disable-gpu-sandbox \
+          --disable-dev-shm-usage \
+          --enable-features=UseOzonePlatform \
+          --ozone-platform=x11 \
+          --use-gl=angle \
+          --use-angle=swiftshader \
+          "$@"
+        WRAPPER
+      - chmod +x /app/bin/pearpass
+
+      # ── Native messaging host entry point ────────────────────────────
+      # Invoked via `flatpak run --command=pearpass-native-host com.pears.pass`
+      # by the host-side wrapper script that Chrome's Native Messaging API
+      # launches. Runs the bridge bundle through Electron's embedded Node.
+      - |
+        cat > /app/bin/pearpass-native-host <<'NMHOST'
+        #!/bin/sh
+        # Call the Electron binary directly, bypassing the pearpass-app-desktop
+        # shell launcher which unconditionally injects --no-sandbox. Under
+        # ELECTRON_RUN_AS_NODE=1 the binary runs as Node and rejects that flag,
+        # causing Chrome to see "Native host has exited".
+        APP_ROOT="/app/lib/pearpass"
+        export LD_LIBRARY_PATH="$APP_ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export ELECTRON_RUN_AS_NODE=1
+        exec "$APP_ROOT/pearpass-app-desktop.bin" \
+          "$APP_ROOT/resources/app/dist/native-messaging-bridge.bundle.cjs" \
+          "$@"
+        NMHOST
+      - chmod +x /app/bin/pearpass-native-host
+
+      # ── Desktop integration ───────────────────────────────────────────
+      - install -Dm644 com.pears.pass.desktop /app/share/applications/com.pears.pass.desktop
+      - install -Dm644 com.pears.pass.metainfo.xml /app/share/metainfo/com.pears.pass.metainfo.xml
+
+      # ── Install icon (resized to 512x512 at release time) ─────────────
+      - install -Dm644 com.pears.pass.png /app/share/icons/hicolor/512x512/apps/com.pears.pass.png
+
+    sources:
+      # AppImage published on GitHub Releases for the matching tag.
+      # TODO: replace the URLs below with public GitHub Release asset URLs
+      # (format: https://github.com/<org>/<repo>/releases/download/<tag>/<file>).
+      # The URLs currently pointing at /actions/runs/ artifacts are NOT
+      # reachable from Flathub CI — they require auth and expire after 90 days.
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/tetherto/pearpass-apps-releases/actions/runs/24401598442/artifacts/6428818822
+        sha256: b8ea2108f34484df709e02da0a79a4ea91d7dda16d8ea35fa0bc212225c40524
+        dest-filename: PearPass.AppImage
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://github.com/tetherto/pearpass-apps-releases/actions/runs/24401598442/artifacts/6428815931
+        sha256: f36ee6caba2ec023ece077a0f13abd31d68e105b1bc6f253a791d780e2af8fbc
+        dest-filename: PearPass.AppImage
+
+      # 512x512 application icon.
+      # TODO: replace with a stable URL + sha512 (e.g. a release asset).
+      - type: file
+        url: https://pass.pears.com/wp-content/uploads/downloads/pearpass-logo-512x512.png
+        sha512: 08dcb60ad2671e1c3218c7fbd2323a9cf7a97a80ab460307bd1c85d91334b2052033d7ad8651ef4e88e0b31af59ffc002785ac76f0945108ef317a242f1bd040
+        dest-filename: com.pears.pass.png
+
+      # Desktop entry and AppStream metainfo live alongside the manifest.
+      - type: file
+        path: com.pears.pass.desktop
+      - type: file
+        path: com.pears.pass.metainfo.xml
