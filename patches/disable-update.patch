@@ -1,0 +1,59 @@
+--- a/main/README.md
++++ b/main/README.md
+@@ -140,6 +140,9 @@ which is still supported but deprecated. When both are set, `GRIST_DESKTOP_AUTH`
+ has higher precedence. If you are still using `GRIST_ELECTRON_AUTH`, please consider
+ switching to `GRIST_DESKTOP_AUTH`. Default: `strict`
+ 
++**`GRIST_DESKTOP_USE_UPDATE`**: Whether to show auto-update functionality or not. Must
++be one of `true` or `false`. Default: `true`
++
+ **`GRIST_SANDBOX_FLAVOR`**: The sandbox mechanism to use. It is recommended to stick
+ to the default. Must be one of `pyodide`, `gvisor`, `macSandboxExec` and
+ `unsandboxed`. See this [note](#note-on-sandboxing) for more info. Default: `pyodide`
+diff --git a/ext/app/electron/AppMenu.js b/ext/app/electron/AppMenu.js
+index 7ab0402..432b60d 100644
+--- a/main/ext/app/electron/AppMenu.js
++++ b/main/ext/app/electron/AppMenu.js
+@@ -5,6 +5,8 @@ const path       = require('path');
+ const isMac      = process.platform === 'darwin';
+ // const isWin   = process.platform === 'win32';
+ 
++const useUpdate  = process.env.GRIST_DESKTOP_USE_UPDATE === 'true';
++
+ const app        = electron.app;
+ const appName    = electron.app.getName();
+ 
+@@ -58,7 +60,7 @@ class AppMenu extends events.EventEmitter {
+         submenu: [
+           { role: 'about' },
+           // On Mac, the "Check for Updates" item goes into the leftmost "Grist" menu.
+-          ...this.buildUpdateItemsTemplate(),
++          ...(useUpdate ? this.buildUpdateItemsTemplate() : []),
+ 
+           { type: 'separator' },
+           { role: 'services', },
+@@ -136,7 +138,7 @@ class AppMenu extends events.EventEmitter {
+       role: 'help',
+       submenu: (
+         // On Windows, the "Check for Updates" item goes in the rightmost Help menu.
+-        (isMac ? [] : [ ...this.buildUpdateItemsTemplate(), { type: 'separator' }])
++        ((useUpdate && !isMac) ? [ ...this.buildUpdateItemsTemplate(), { type: 'separator' }] : [])
+         .concat({
+           label: 'Grist User Help',
+           click: (item, win) => win.webContents.executeJavaScript('gristApp.allCommands.help.run()')
+diff --git a/ext/app/electron/config.ts b/ext/app/electron/config.ts
+index 5efefec..bcb2d93 100644
+--- a/main/ext/app/electron/config.ts
++++ b/main/ext/app/electron/config.ts
+@@ -35,6 +35,11 @@ export async function loadConfig() {
+       log.warn("GRIST_DESKTOP_AUTH set, ignoring GRIST_ELECTRON_AUTH (deprecated).");
+     }
+   }
++  validateOrFallback(
++    "GRIST_DESKTOP_USE_UPDATE",
++    (useUpdate) => ["true", "false"].includes(useUpdate),
++    "true"
++  )
+   validateOrFallback(
+     "GRIST_DEFAULT_USERNAME",
+     NO_VALIDATION,
