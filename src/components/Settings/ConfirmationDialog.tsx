@@ -36,11 +36,7 @@ export function ConfirmationDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel]);
 
-  if (typeof document === "undefined" || !document.body) {
-    return null;
-  }
-
-  return createPortal(
+  const dialogContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
@@ -83,7 +79,15 @@ export function ConfirmationDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+
+  // In non-browser environments (SSR, Node test runner) the portal target is
+  // unavailable. Render inline so the content is still reachable by the server
+  // renderer and static-markup tests.
+  if (typeof document === "undefined" || !document.body) {
+    return dialogContent;
+  }
+
+  return createPortal(dialogContent, document.body);
 }
