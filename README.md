@@ -1,24 +1,6 @@
 # Chirp Flatpak
 
-A third party flatpak distribution of CHIRP.
+A flatpak distribution of CHIRP.
 
-## How to build
-
-### 1. Install Flatpak Builder
-
-Add flathub repo
-
-```bash
-flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-```
-
-Install builder
-```bash
-flatpak install org.flatpak.Builder
-```
-
-### 2. Build and Install Flatpak
-
-```bash
-flatpak run org.flatpak.Builder build --user --install --force-clean com.chirpmyradio.chirp.yaml
-```
+> [!IMPORTANT]
+> For the app to fully function, adding your Linux user to the dialout group will be required in order for CHIRP to access serial ports. This is usually done like this: `sudo usermod -aG dialout $USER`
