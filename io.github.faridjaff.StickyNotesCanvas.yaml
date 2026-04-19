@@ -1,167 +1,76 @@
-# Flatpak build manifest for Sticky Notes (StickyNotesCanvas)
-#
-# Build strategy: extract the upstream AppImage that we already publish to
-# GitHub Releases at every tag, then re-wrap it with zypak for the Electron
-# sandbox.
-#
-# Why AppImage-extract instead of build-from-source:
-#   - electron-builder source builds inside Flathub's offline builder require
-#     pre-resolving every npm dependency into a sources.json via
-#     `flatpak-node-generator`, which has to be re-run on every release and
-#     produces a 200+KB sources file that needs to stay in sync with
-#     package-lock.json. For a first Flathub submission, that's a lot of
-#     moving parts to get right.
-#   - The AppImage we ship is already produced by electron-builder from the
-#     same source tree at the tagged commit, so functionally it's equivalent
-#     to a from-source build — just done upstream by our release CI instead
-#     of by Flathub's builder.
-#   - AppImages are squashfs archives that extract cleanly with
-#     `appimage-extract`, no network needed at build time.
-#
-# Future improvement: switch to building from source with
-# flatpak-node-generator once the manifest has had one successful release
-# cycle. See README.md in this directory for notes.
-
 app-id: io.github.faridjaff.StickyNotesCanvas
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
 base: org.electronjs.Electron2.BaseApp
-base-version: '24.08'
+base-version: '25.08'
 command: sticky-notes-canvas
 separate-locales: false
 
 finish-args:
-  # GUI sockets — Electron app needs both X11 and Wayland to cover all
-  # session types; the runtime picks the right one at launch.
   - --share=ipc
   - --socket=x11
   - --socket=wayland
-  # Audio — Electron pulls in PulseAudio whether or not the app uses it;
-  # without this the chromium sandbox logs noisy warnings.
-  - --socket=pulseaudio
-  # Network access — used by the once-a-day "check for updates" call to
-  # the GitHub Releases API. The app degrades gracefully without it.
   - --share=network
-  # GPU acceleration for canvas rendering.
   - --device=dri
-  # Persistent storage for notes.json + window.json. The app writes to
-  # whatever app.getPath('userData') returns, which inside a flatpak
-  # resolves to ~/.var/app/io.github.faridjaff.StickyNotesCanvas/config —
-  # so this filesystem permission is technically redundant with the
-  # default flatpak per-app config dir, but we keep it explicit so the
-  # XDG_CONFIG_HOME override works the same way as it does in the snap.
   - --filesystem=xdg-config/sticky-notes-canvas:create
-  # Read/write access to ~/Documents so the export/import file dialogs
-  # can land in a sensible default location.
-  - --filesystem=xdg-documents
-  # Notification API access — currently unused but the app may surface
-  # update-available toasts in a future release.
-  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    XDG_CACHE_HOME: /run/build/sticky-notes-canvas/flatpak-node/cache
+    npm_config_cache: /run/build/sticky-notes-canvas/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 modules:
-  # zypak is the wrapper that lets a sandboxed Electron/Chromium app run
-  # inside flatpak's bubblewrap sandbox. Without it the multi-process
-  # chromium architecture trips over its own setuid expectations and
-  # refuses to start. Every Electron flatpak on Flathub uses this.
-  - name: zypak
-    sources:
-      - type: git
-        url: https://github.com/refi64/zypak
-        tag: v2024.01.17
-        commit: ded79a2f8a509adc21834b95a9892073d4a91fdc
-
   - name: sticky-notes-canvas
     buildsystem: simple
     build-commands:
-      # Extract the AppImage. The AppImage is a self-mounting squashfs;
-      # passing --appimage-extract dumps its contents into ./squashfs-root/.
-      - chmod +x sticky-notes.AppImage
-      - ./sticky-notes.AppImage --appimage-extract
-      # Move the extracted Electron app tree into /app. The AppImage layout
-      # puts the Electron executable at squashfs-root/sticky-notes-canvas
-      # and the resources next to it.
-      - mkdir -p /app/sticky-notes-canvas
-      - cp -a squashfs-root/. /app/sticky-notes-canvas/
-      # Install the launcher wrapper. zypak-wrapper takes the Electron
-      # binary as its argument and handles all the chromium-sandbox glue.
+      - npm install --offline --legacy-peer-deps
+      - mkdir -p node_modules/electron/dist
+      - |
+        if [ "$(uname -m)" = "x86_64" ]; then ARCH=x64; else ARCH=arm64; fi
+        unzip -q "electron-v32.3.3-linux-${ARCH}.zip" -d node_modules/electron/dist
+        echo "v32.3.3" > node_modules/electron/dist/version
+      - npx --offline electron-builder --linux dir
+          --config.electronDist=node_modules/electron/dist
+          --config.electronVersion=32.3.3
+      - cp -a dist/linux-unpacked /app/sticky-notes-canvas
       - install -Dm755 sticky-notes-canvas.sh /app/bin/sticky-notes-canvas
-      # Desktop entry, AppStream metainfo, and icons.
-      - install -Dm644 io.github.faridjaff.StickyNotesCanvas.desktop /app/share/applications/io.github.faridjaff.StickyNotesCanvas.desktop
-      - install -Dm644 io.github.faridjaff.StickyNotesCanvas.metainfo.xml /app/share/metainfo/io.github.faridjaff.StickyNotesCanvas.metainfo.xml
-      # Icons at every size electron-builder produced. Flathub wants at
-      # minimum 128x128 and 256x256; we ship every size we have so any
-      # future scaling factor is covered.
-      - install -Dm644 icons/16x16.png   /app/share/icons/hicolor/16x16/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/24x24.png   /app/share/icons/hicolor/24x24/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/32x32.png   /app/share/icons/hicolor/32x32/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/48x48.png   /app/share/icons/hicolor/48x48/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/64x64.png   /app/share/icons/hicolor/64x64/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.faridjaff.StickyNotesCanvas.png
-      - install -Dm644 icons/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 flatpak/io.github.faridjaff.StickyNotesCanvas.desktop
+          /app/share/applications/io.github.faridjaff.StickyNotesCanvas.desktop
+      - install -Dm644 flatpak/io.github.faridjaff.StickyNotesCanvas.metainfo.xml
+          /app/share/metainfo/io.github.faridjaff.StickyNotesCanvas.metainfo.xml
+      - install -Dm644 build/icons/16x16.png   /app/share/icons/hicolor/16x16/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/24x24.png   /app/share/icons/hicolor/24x24/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/32x32.png   /app/share/icons/hicolor/32x32/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/48x48.png   /app/share/icons/hicolor/48x48/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/64x64.png   /app/share/icons/hicolor/64x64/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.faridjaff.StickyNotesCanvas.png
+      - install -Dm644 build/icons/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.faridjaff.StickyNotesCanvas.png
 
     sources:
-      # The upstream AppImage. electron-builder produces it as
-      # "Sticky.Notes-<ver>.AppImage" — dots, no spaces, no URL encoding.
-      - type: file
-        url: https://github.com/faridjaff/sticky-notes/releases/download/v1.3.3/Sticky.Notes-1.3.3.AppImage
-        sha256: e60e7511ff4bf9a969d84436214caafcd718d419d5518a179795e07826cc18cb
-        dest-filename: sticky-notes.AppImage
+      - type: git
+        url: https://github.com/faridjaff/sticky-notes
+        commit: 3bd3ee3dcba964c0b5de501e74ba97bf425267c2
 
-      # Wrapper script that hands the Electron binary off to zypak.
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v32.3.3/electron-v32.3.3-linux-x64.zip
+        sha256: 0e1f1540492e48e3b8805f87c5096c3b99995c4c1b581ee57e9c836538bae813
+        only-arches: [x86_64]
+
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v32.3.3/electron-v32.3.3-linux-arm64.zip
+        sha256: 6b18f435855284852be2b2c1b49e58df380a56784d78b358a13ea77bbace4a8a
+        only-arches: [aarch64]
+
       - type: script
         dest-filename: sticky-notes-canvas.sh
         commands:
           - exec zypak-wrapper /app/sticky-notes-canvas/sticky-notes-canvas "$@"
 
-      # Desktop entry, metainfo, and icon files come from the Flathub repo
-      # alongside this manifest (so they're versioned together).
-      - type: file
-        path: io.github.faridjaff.StickyNotesCanvas.desktop
-      - type: file
-        path: io.github.faridjaff.StickyNotesCanvas.metainfo.xml
-
-      # Icons are downloaded fresh from the GitHub repo at the v1.3.3 tag
-      # so we don't have to vendor binary blobs into the Flathub manifest
-      # repo. Flathub's offline builder fetches them once at build time.
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/16x16.png
-        sha256: f6ca58de90337c3027fa3145064bef529e9cbc5abb7da579cf189b62fc6e7d6f
-        dest: icons
-        dest-filename: 16x16.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/24x24.png
-        sha256: 197c5943d69d6ccf485e60ee357b48cde5fdb701e450d8cd933adfaad347a4d4
-        dest: icons
-        dest-filename: 24x24.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/32x32.png
-        sha256: 59552880d7a462164ef42005abb771122dae02ea8e320882b8bd53d1a3bf0d75
-        dest: icons
-        dest-filename: 32x32.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/48x48.png
-        sha256: dcb8a2ad0717b522124f0418332e61976bbe19155818f0ceb04ad2a596700731
-        dest: icons
-        dest-filename: 48x48.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/64x64.png
-        sha256: f3543cd75055f4f40eaec072cd30596587f3452c4262af98a40f4b90e244ae33
-        dest: icons
-        dest-filename: 64x64.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/128x128.png
-        sha256: 4572fa0842c3821d2c8dfd5476edf28baad789c5a23a7d1f9839c0d991b6093f
-        dest: icons
-        dest-filename: 128x128.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/256x256.png
-        sha256: 1d768109ab05732580f02924eb00c8a63bd639893c173c248b067535ec9b7260
-        dest: icons
-        dest-filename: 256x256.png
-      - type: file
-        url: https://raw.githubusercontent.com/faridjaff/sticky-notes/v1.3.3/build/icons/512x512.png
-        sha256: e19c83b6fe7792019c27b32dec760149d6b1d40effe1a8f9cdf301aa18f245da
-        dest: icons
-        dest-filename: 512x512.png
+      - generated-sources.json
