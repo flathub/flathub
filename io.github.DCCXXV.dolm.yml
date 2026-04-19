@@ -1,0 +1,120 @@
+id: io.github.DCCXXV.dolm
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.ocaml
+command: dolm
+
+build-options:
+    append-path: /app/share/runtime/ocaml/bin:/app/share/runtime/ocaml/switch/_opam/bin:/usr/lib/sdk/ocaml/bin
+    env:
+        CAML_LD_LIBRARY_PATH: /app/share/runtime/ocaml/switch/_opam/lib/stublibs:/app/share/runtime/ocaml/switch/_opam/lib/ocaml/stublibs:/app/share/runtime/ocaml/switch/_opam/lib/ocaml
+        OCAML_TOPLEVEL_PATH: /app/share/runtime/ocaml/switch/_opam/lib/toplevel
+        OPAMROOT: /app/share/runtime/ocaml
+        OPAMSWITCH: /app/share/runtime/ocaml/switch
+        OPAM_SWITCH_PREFIX: /app/share/runtime/ocaml/switch/_opam
+    no-debuginfo: true
+
+finish-args:
+    - --share=ipc
+    - --socket=fallback-x11
+    - --socket=wayland
+    - --device=dri
+    - --env=SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
+
+modules:
+    # -------------------------------------------------------------------------
+    # OCaml switch
+    # -------------------------------------------------------------------------
+    - name: switch
+      buildsystem: simple
+      sources:
+          - type: git
+            url: https://github.com/ocaml/opam-repository
+            commit: 4e7f3a62e3e8654e6c3b146b76136959efbcb3f5
+          - type: file
+            url: https://raw.githubusercontent.com/ocaml/ocaml/bcb802e851a1391ac6fff957d63b0edbf849225a/tools/opam/gen_ocaml-system_config.ml.in
+            sha256: 71bcd3d35e28cbf71eda81991c8741268f4b87ced71573b2e75f64f136cebfc1
+            dest: cache/sha256/71
+            dest-filename: 71bcd3d35e28cbf71eda81991c8741268f4b87ced71573b2e75f64f136cebfc1
+          - type: file
+            url: https://raw.githubusercontent.com/ocaml/ocaml/66f33f6e08857f3c3cb53fc1759fbad6860c59bd/tools/opam/gen_ocaml_config.ml.in
+            sha256: a9ad8d84a08961159653a978db92d10f694510182b206cacb96d5c9f63b5121e
+            dest: cache/sha256/a9
+            dest-filename: a9ad8d84a08961159653a978db92d10f694510182b206cacb96d5c9f63b5121e
+          - type: file
+            url: https://raw.githubusercontent.com/ocaml/ocaml/363fb9f5a2fb87dbd5f8cc579af87dd04e14343b/tools/opam/ocaml-config.install
+            sha256: 6e4fd93f4cce6bad0ed3c08afd0248dbe7d7817109281de6294e5b5ef5597051
+            dest: cache/sha256/6e
+            dest-filename: 6e4fd93f4cce6bad0ed3c08afd0248dbe7d7817109281de6294e5b5ef5597051
+      build-commands:
+          - mkdir -p ${FLATPAK_DEST}/share/runtime/ocaml
+          - opam init -y --bare --disable-sandboxing .
+          - mkdir -p ${OPAMROOT}/download-cache/sha256
+          - cp -r cache/sha256/. ${OPAMROOT}/download-cache/sha256/
+          - opam switch create -y ${FLATPAK_DEST}/share/runtime/ocaml/switch ocaml-system
+      post-install:
+          - opam switch list
+
+    # tsdl, tsdl-ttf and their opam dependencies
+    - name: ocaml-packages
+      buildsystem: simple
+      sources:
+          - sources/dolm.json
+      build-commands:
+          - for d in sha256 sha512 md5; do [ -d cache/$d ] && cp -r cache/$d ${OPAMROOT}/download-cache/ || true; done
+          - mkdir -p ${OPAMROOT}/download-cache/md5/ca
+          - cp ${OPAMROOT}/download-cache/sha256/d6/d6899935ccabf67f067a9af3f3f88d94e310075d13c648fa03ff498769ce039d
+            ${OPAMROOT}/download-cache/md5/ca/ca770e5806032a96131b670f6e07f146
+          - opam install -y --no-depexts tsdl.1.2.0 tsdl-ttf.0.6 dune.3.21.1 ocamlfind.1.9.8
+      post-install:
+          - opam info --field name,all-installed-versions tsdl
+
+    # -------------------------------------------------------------------------
+    # SDL2_ttf (tsdl-ttf dlopens libSDL2_ttf at runtime)
+    # -------------------------------------------------------------------------
+    - name: SDL2_ttf
+      buildsystem: cmake-ninja
+      builddir: true
+      config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_SHARED_LIBS=ON
+          - -DSDL2TTF_SAMPLES=OFF
+          - -DSDL2TTF_VENDORED=ON
+      sources:
+          - type: archive
+            url: https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-2.22.0.tar.gz
+            sha256: d48cbd1ce475b9e178206bf3b72d56b66d84d44f64ac05803328396234d67723
+      cleanup:
+          - /bin
+          - /include
+          - /lib/cmake
+          - /lib/pkgconfig
+          - /share
+
+    # -------------------------------------------------------------------------
+    # Dolm
+    # -------------------------------------------------------------------------
+    - name: dolm
+      buildsystem: simple
+      sources:
+          - type: git
+            url: https://github.com/DCCXXV/dolm.git
+            tag: v1.0.3
+            commit: 987774f388fc968358ff9ed3760d5fdd00ace09c
+      build-commands:
+          - dune build
+          - install -Dm755 _build/default/bin/main.exe /app/bin/dolm
+          - mkdir -p /app/lib
+          - find ${OPAM_SWITCH_PREFIX}/lib/stublibs -name '*.so' -exec install -m755 {} /app/lib/ \;
+          - install -Dm644 assets/font/Micro5-Regular.ttf
+            /app/share/dolm/assets/font/Micro5-Regular.ttf
+          - install -Dm644 data/io.github.DCCXXV.dolm.desktop
+            /app/share/applications/io.github.DCCXXV.dolm.desktop
+          - install -Dm644 data/io.github.DCCXXV.dolm.appdata.xml
+            /app/share/metainfo/io.github.DCCXXV.dolm.appdata.xml
+          - install -Dm644 assets/img/icon.png
+            /app/share/icons/hicolor/256x256/apps/io.github.DCCXXV.dolm.png
+      post-install:
+          - rm -rf /app/share/runtime/ocaml
