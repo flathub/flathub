@@ -5,10 +5,23 @@ sdk: org.kde.Sdk
 command: multigit.sh
 
 
-modules:
-  - packaging/flatpak/python3-requirements-release.json
+cleanup:
+  # let's reduce a bit the size of the flatpak
+  - /lib/python3.13/site-packages/PySide6/include
+  - /lib/python3.13/site-packages/PySide6/scripts
+  - /lib/python3.13/site-packages/PySide6/typesystems
+  - /lib/python3.13/site-packages/PySide6/assistant
+  - /lib/python3.13/site-packages/PySide6/linguist
+  - /lib/python3.13/site-packages/PySide6/lupdate
+  - /lib/python3.13/site-packages/PySide6/qmlls
+  - /lib/python3.13/site-packages/PySide6/qmlformat
+  - /lib/python3.13/site-packages/PySide6/Qt/qml
 
-  ### Build from sources
+
+
+modules:
+  - python3-requirements.json
+
   - name: multigit
     buildsystem: simple
     build-commands:
@@ -30,11 +43,13 @@ modules:
       - cp -a /app/multigit/images/multigit-logo-32.png /app/share/icons/hicolor/32x32/apps/io.github.idemia.Multigit.png
       - cp -a /app/multigit/images/multigit-logo-16.png /app/share/icons/hicolor/16x16/apps/io.github.idemia.Multigit.png
 
-    sources: 
-      - type: git 
+    sources:
+      # build from git
+      - type: git
         url: https://github.com/idemia/multigit
-        commit: e1140250ae32d6934205ca7512598b56aca81d7a
+        tag: flathub/Multigit-v1.8-submission2
 
+      # local build
 #      - type: dir
 #        path: .
 
@@ -44,18 +59,6 @@ modules:
           - exec python3 /app/multigit/multigit.py "$@"
 
 
-cleanup:
-  - /lib/python3.12/site-packages/PySide6/include
-  - /lib/python3.12/site-packages/PySide6/scripts
-  - /lib/python3.12/site-packages/PySide6/typesystems
-  - /lib/python3.12/site-packages/PySide6/assistant
-  - /lib/python3.12/site-packages/PySide6/linguist
-  - /lib/python3.12/site-packages/PySide6/lupdate
-  - /lib/python3.12/site-packages/PySide6/qmlls
-  - /lib/python3.12/site-packages/PySide6/qmlformat
-  - /lib/python3.12/site-packages/PySide6/Qt/qml
-
-
 finish-args:
   # Qt
   - --share=ipc
@@ -63,13 +66,26 @@ finish-args:
   - --socket=wayland
   - --device=dri
 
-  # Ability to launch programs on the host
+  # Needed for running program on the host with `flatpak spawn`.
+  # We run the following programs:
+  # - git
+  # - Git frontends, with direct executable: Sublime Merge, Git-gui, Gitk
+  # - Git frontentds through `flatpak info` and `flatpak run`
+  # - Git frontentds through /snap/bin/program
   - --talk-name=org.freedesktop.Flatpak
-  - --talk-name=org.freedesktop.portal.Desktop
 
-  # Multigit interacts with user directory: check existence of directories, of files
-  # add directory when user requests it through the file dialog, removes directories
-  # when they stand in the way of a clone
+  # Multigit interacts with host filesystem (see https://github.com/idemia/multigit/blob/main/doc/use%20of%20filesystem%20by%20Multigit.md)
+  # - scan a directory content to find git repositories (check the existence of .git and other git repository markers)
+  # - check the existence of directories to inform the user that a git clone will fail
+  # - delete directories (on user request) when they prevent a clone to succeed
+  # - open a Multigit file on the host filesystem
+  # - export a multigit file, CSV file on the host filesystem
+
+  # - home is the standard location for users to store their git repositories
+  # - /media is used by some users to store their projects on removable media
+  # - /tmp is used by some users to check how multigit works on an example
+  # Note that if a user stores its development work outside of its home directory, let's say in /work
+  # Multigit won't be able to access it
   - --filesystem=home
   - --filesystem=/media
   - --filesystem=/tmp  
