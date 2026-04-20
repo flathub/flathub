@@ -22,6 +22,10 @@ import { SongPropertiesDialog } from "./SongPropertiesDialog";
 import { buildSongListContextMenuItems } from "./song-list-item-menu";
 import type { Song } from "@/types/ipc";
 
+function getSongDisplayName(song: Song): string {
+  return song.title ?? song.file_path?.split("/").pop() ?? song.hash;
+}
+
 interface SongListItemProps {
   song: Song;
   orderedHashes: string[];
@@ -194,7 +198,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
       <CoverArtThumbnail
         songHash={song.hash}
         coverArt={song.cover_art}
-        alt={`${song.title || song.file_path.split("/").pop()} cover art`}
+        alt={`${getSongDisplayName(song)} cover art`}
         className="h-11 w-11 shrink-0"
       />
 
@@ -212,7 +216,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               <div className="w-3 shrink-0" />
             )}
             <span className="truncate text-[15px] font-semibold">
-              {song.title || song.file_path.split("/").pop()}
+              {getSongDisplayName(song)}
             </span>
           </div>
 
@@ -298,10 +302,8 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             {separationStatus?.state === "running" && (
               <TaskProgressBar
                 label={t("progress.separating", {
-                  title: song.title || song.file_path.split("/").pop() || "",
-                  defaultValue: `Separating: ${
-                    song.title || song.file_path.split("/").pop() || ""
-                  }`,
+                  title: getSongDisplayName(song),
+                  defaultValue: `Separating: ${getSongDisplayName(song)}`,
                 })}
                 percent={separationStatus.percent}
               />
@@ -309,10 +311,10 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             {uploadStatus?.state === "running" && (
               <TaskProgressBar
                 label={t("progress.uploadingToRemote", {
-                  title: song.title || song.file_path.split("/").pop() || "",
-                  defaultValue: `Uploading to remote library: ${
-                    song.title || song.file_path.split("/").pop() || ""
-                  }`,
+                  title: getSongDisplayName(song),
+                  defaultValue: `Uploading to remote library: ${getSongDisplayName(
+                    song,
+                  )}`,
                 })}
                 percent={uploadStatus.percent}
               />

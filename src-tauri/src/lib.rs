@@ -174,7 +174,6 @@ pub fn run() {
             commands::import::get_song_properties,
             commands::library_setup::create_library,
             commands::library_setup::open_library,
-            commands::library_setup::connect_remote_library,
             commands::library_setup::switch_library,
             commands::library_setup::get_library_path,
             commands::library_setup::get_library_registry,

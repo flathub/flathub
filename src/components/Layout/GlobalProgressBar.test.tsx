@@ -76,6 +76,7 @@ describe("GlobalProgressBar", () => {
       {
         hash: "song-separate",
         file_path: "/music/separate.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,
@@ -90,6 +91,7 @@ describe("GlobalProgressBar", () => {
       {
         hash: "song-upload",
         file_path: "/music/upload.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,

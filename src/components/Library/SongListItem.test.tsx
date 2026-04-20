@@ -122,6 +122,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-cdg",
           file_path: "Taylor Swift/22.mp3",
+          audio_source_kind: "original",
           cdg_path: "Taylor Swift/22.cdg",
           media_g_container: "paired",
           instrumental: false,
@@ -153,6 +154,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-1",
           file_path: "Brent Faiyaz/Loose Change.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -183,6 +185,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native",
           file_path: "Fuji Kaze/Hachiko.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -211,6 +214,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native-selected",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -249,6 +253,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native-badges",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: "paired",
           instrumental: false,
@@ -303,6 +308,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native-progress",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -337,6 +343,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-typed-array",
           file_path: "Madvillain/Bistro.m4a",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -467,6 +474,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-instrumental",
           file_path: "Artist/Official Instrumental.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: true,

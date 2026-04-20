@@ -362,7 +362,13 @@ pub fn get_song_properties(
         .map_err(|e| database_error(e.to_string()))?
         .ok_or_else(|| database_error(format!("song with hash {song_id} not found")))?;
 
-    let file_path = library.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        return Err(library_error(format!(
+            "song {} does not have a local file path",
+            song_id
+        )));
+    };
+    let file_path = library.resolve(song_path);
     let ext = song
         .original_ext
         .as_deref()

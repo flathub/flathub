@@ -44,10 +44,11 @@ fn fixture_song(hash: &str, library: &LibraryRoot) -> Song {
     fs::copy(&src, &dest).expect("fixture audio should copy into library");
     Song {
         hash: hash.to_owned(),
-        file_path: relative,
+        file_path: Some(relative),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),

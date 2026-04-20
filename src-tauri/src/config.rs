@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
-use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -112,58 +112,204 @@ pub enum LibraryKind {
     Remote,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteLibraryProvider {
+    GoogleDrive,
+    Dropbox,
+    #[serde(rename = "webdav")]
+    WebDav,
+}
+
+impl RemoteLibraryProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GoogleDrive => "google_drive",
+            Self::Dropbox => "dropbox",
+            Self::WebDav => "webdav",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "google_drive" => Some(Self::GoogleDrive),
+            "dropbox" => Some(Self::Dropbox),
+            "webdav" => Some(Self::WebDav),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RegisteredLibrary {
-    pub id: String,
-    pub kind: LibraryKind,
-    pub display_name: String,
-    pub root_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_root_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub account_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached_db_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_revision: Option<String>,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RegisteredLibrary {
+    Local {
+        id: String,
+        display_name: String,
+        root_path: String,
+    },
+    Remote {
+        id: String,
+        display_name: String,
+        provider: RemoteLibraryProvider,
+        account_id: String,
+        remote_root_locator: String,
+        remote_path_display: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cached_db_path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        remote_revision: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bound_local_library_id: Option<String>,
+    },
 }
 
 impl RegisteredLibrary {
     pub fn local(root_path: String, display_name: String) -> Self {
-        Self {
+        Self::Local {
             id: library_id_for_path(&root_path),
-            kind: LibraryKind::Local,
             display_name,
             root_path,
-            provider: None,
-            remote_root_id: None,
-            account_id: None,
-            cached_db_path: None,
-            remote_revision: None,
         }
     }
 
     pub fn remote(
-        root_path: String,
+        id: String,
         display_name: String,
-        provider: Option<String>,
-        remote_root_id: Option<String>,
-        account_id: Option<String>,
+        provider: RemoteLibraryProvider,
+        account_id: String,
+        remote_root_locator: String,
+        remote_path_display: String,
         cached_db_path: Option<String>,
         remote_revision: Option<String>,
+        bound_local_library_id: Option<String>,
     ) -> Self {
-        Self {
-            id: library_id_for_path(&root_path),
-            kind: LibraryKind::Remote,
+        Self::Remote {
+            id,
             display_name,
-            root_path,
             provider,
-            remote_root_id,
             account_id,
+            remote_root_locator,
+            remote_path_display,
             cached_db_path,
             remote_revision,
+            bound_local_library_id,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Local { id, .. } | Self::Remote { id, .. } => id,
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::Local { display_name, .. } | Self::Remote { display_name, .. } => display_name,
+        }
+    }
+
+    pub fn provider(&self) -> Option<RemoteLibraryProvider> {
+        match self {
+            Self::Remote { provider, .. } => Some(*provider),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn account_id(&self) -> Option<&str> {
+        match self {
+            Self::Remote { account_id, .. } => Some(account_id.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_root_locator(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_root_locator,
+                ..
+            } => Some(remote_root_locator.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_path_display(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_path_display,
+                ..
+            } => Some(remote_path_display.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn cached_db_path(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                cached_db_path: Some(cached_db_path),
+                ..
+            } => Some(cached_db_path.as_str()),
+            Self::Remote {
+                cached_db_path: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_revision(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_revision: Some(remote_revision),
+                ..
+            } => Some(remote_revision.as_str()),
+            Self::Remote {
+                remote_revision: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn bound_local_library_id(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                bound_local_library_id: Some(bound_local_library_id),
+                ..
+            } => Some(bound_local_library_id.as_str()),
+            Self::Remote {
+                bound_local_library_id: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn kind(&self) -> LibraryKind {
+        match self {
+            Self::Local { .. } => LibraryKind::Local,
+            Self::Remote { .. } => LibraryKind::Remote,
+        }
+    }
+
+    pub fn working_copy_root(&self) -> Option<PathBuf> {
+        match self {
+            Self::Local { root_path, .. } => Some(PathBuf::from(root_path)),
+            Self::Remote {
+                cached_db_path: Some(cached_db_path),
+                ..
+            } => Path::new(cached_db_path).parent().map(Path::to_path_buf),
+            Self::Remote {
+                cached_db_path: None,
+                ..
+            } => None,
+        }
+    }
+
+    pub fn root_path(&self) -> Option<&str> {
+        match self {
+            Self::Local { root_path, .. } => Some(root_path.as_str()),
+            Self::Remote { remote_path_display, .. } => Some(remote_path_display.as_str()),
         }
     }
 }
@@ -205,10 +351,7 @@ impl AppConfig {
         }
 
         if self.active_library_id.is_none() {
-            self.active_library_id = self
-                .libraries
-                .first()
-                .map(|library| library.id.clone());
+            self.active_library_id = self.libraries.first().map(|library| library.id().to_owned());
         }
 
         self
@@ -216,7 +359,9 @@ impl AppConfig {
 
     pub fn active_library(&self) -> Option<&RegisteredLibrary> {
         if let Some(active_id) = self.active_library_id.as_deref() {
-            self.libraries.iter().find(|library| library.id == active_id)
+            self.libraries
+                .iter()
+                .find(|library| library.id() == active_id)
         } else {
             self.libraries.first()
         }
@@ -258,10 +403,7 @@ pub fn load_config(app_data_dir: &Path) -> Result<Option<AppConfig>> {
                 .and_then(|name| name.to_str())
                 .unwrap_or("OpenKara Library")
                 .to_owned();
-            config.libraries.push(RegisteredLibrary::local(
-                library_path,
-                display_name,
-            ));
+            config.libraries.push(RegisteredLibrary::local(library_path, display_name));
         }
     }
 
@@ -306,7 +448,7 @@ pub fn migrate_legacy_library_path(config: &mut AppConfig) {
                 path.clone(),
                 library_display_name(&path),
             ));
-            config.active_library_id = config.libraries.first().map(|library| library.id.clone());
+            config.active_library_id = config.libraries.first().map(|library| library.id().to_owned());
         }
     }
 }

@@ -16,6 +16,17 @@ describe("tauri API wrappers", () => {
     mockInvoke.mockResolvedValue(null);
   });
 
+  test("starts remote provider auth through the dedicated backend command", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("google_drive");
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "google_drive",
+      payload: null,
+    });
+  });
+
   test("sends the backend positionMs payload name", async () => {
     await getCdgFrame(123.6);
 
@@ -92,22 +103,6 @@ describe("tauri API wrappers", () => {
     await getLibraryRegistry();
 
     expect(mockInvoke).toHaveBeenCalledWith("get_library_registry");
-  });
-
-  test("opens a remote library through the dedicated backend command", async () => {
-    const { connectRemoteLibrary } = await import("./tauri");
-
-    mockInvoke.mockResolvedValueOnce({
-      active_library_id: "remote:drive",
-      libraries: [],
-    });
-
-    await connectRemoteLibrary("/remote/library", "remote library");
-
-    expect(mockInvoke).toHaveBeenCalledWith("connect_remote_library", {
-      path: "/remote/library",
-      displayName: "remote library",
-    });
   });
 
   test("syncs audience state to the AirPlay backend", async () => {

@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   type LucideIcon,
+  Cloud,
   FolderOpen,
+  Server,
   Plus,
   Music,
   Globe,
@@ -15,9 +17,20 @@ import {
 import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
+import type {
+  RemoteLibraryProvider,
+  RemoteWebDavAuthPayload,
+} from "@/types/ipc";
 
-type Step = "language" | "library" | "stemMode";
+type Step = "language" | "library" | "remoteProvider" | "stemMode";
 type LibraryChoiceKind = "create_local" | "open_local" | "open_remote";
+
+interface RemoteProviderChoice {
+  provider: RemoteLibraryProvider;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
 
 interface LibraryChoice {
   kind: LibraryChoiceKind;
@@ -48,12 +61,34 @@ export const librarySetupChoices: LibraryChoice[] = [
   },
 ];
 
+// eslint-disable-next-line react-refresh/only-export-components
+export const remoteLibraryProviders: RemoteProviderChoice[] = [
+  {
+    provider: "google_drive",
+    icon: Cloud,
+    title: "Google Drive",
+    description: "Sign in with your Google account in the browser.",
+  },
+  {
+    provider: "dropbox",
+    icon: Globe,
+    title: "Dropbox",
+    description: "Sign in with your Dropbox account in the browser.",
+  },
+  {
+    provider: "webdav",
+    icon: Server,
+    title: "WebDAV",
+    description: "Connect with a server URL and credentials.",
+  },
+];
+
 interface LibrarySetupProps {
   onComplete: () => void;
 }
 
 function StepIndicator({ current }: { current: Step }) {
-  const steps: Step[] = ["language", "library", "stemMode"];
+  const steps: Step[] = ["language", "library", "remoteProvider", "stemMode"];
   const currentIndex = steps.indexOf(current);
 
   return (
@@ -82,6 +117,12 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [step, setStep] = useState<Step>("language");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedRemoteProvider, setSelectedRemoteProvider] =
+    useState<RemoteLibraryProvider | null>(null);
+  const [remoteMessage, setRemoteMessage] = useState<string | null>(null);
+  const [webDavBaseUrl, setWebDavBaseUrl] = useState("");
+  const [webDavUsername, setWebDavUsername] = useState("");
+  const [webDavPassword, setWebDavPassword] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState(
     () =>
       settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
@@ -92,6 +133,14 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
   const resolveSingleDirectory = (selected: string | string[] | null) =>
     typeof selected === "string" ? selected : (selected?.[0] ?? null);
+
+  const resetRemoteWizard = () => {
+    setSelectedRemoteProvider(null);
+    setRemoteMessage(null);
+    setWebDavBaseUrl("");
+    setWebDavUsername("");
+    setWebDavPassword("");
+  };
 
   useEffect(() => {
     if (!settingsHydrated) {
@@ -171,26 +220,67 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     }
   };
 
-  const handleOpenRemote = async () => {
-    const selected = await open({
-      directory: true,
-      title: t("setup.dialogTitleOpen"),
-    });
+  const handleOpenRemote = () => {
+    resetRemoteWizard();
+    setError(null);
+    setStep("remoteProvider");
+  };
 
-    if (!selected) return;
-    const selectedDirectory = resolveSingleDirectory(selected);
-    if (!selectedDirectory) return;
+  const handleRemoteProviderSelect = async (
+    provider: RemoteLibraryProvider,
+  ) => {
+    setError(null);
+    setRemoteMessage(null);
+    setSelectedRemoteProvider(provider);
+
+    if (provider === "webdav") {
+      return;
+    }
 
     setLoading(true);
+    try {
+      const start = await api.beginRemoteAuth(provider);
+      setRemoteMessage(
+        start.authorization_url
+          ? t("setup.remoteAuthBrowserPrompt", {
+              defaultValue:
+                "Sign-in has opened in your browser. Finish the provider flow there.",
+            })
+          : t("setup.remoteAuthStarted", {
+              defaultValue: "Remote authorization has started.",
+            }),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectWebDav = async () => {
     setError(null);
+    setRemoteMessage(null);
+    setLoading(true);
 
     try {
-      const pathSegments = selectedDirectory.split(/[\\/]/).filter(Boolean);
-      await api.connectRemoteLibrary(
-        selectedDirectory,
-        pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : null,
+      const payload: RemoteWebDavAuthPayload = {
+        base_url: webDavBaseUrl.trim(),
+        username: webDavUsername.trim(),
+        password: webDavPassword,
+      };
+
+      const start = await api.beginRemoteAuth("webdav", payload);
+      setRemoteMessage(
+        start.authorization_url
+          ? t("setup.remoteAuthBrowserPrompt", {
+              defaultValue:
+                "WebDAV credentials were accepted. Continue in the browser if prompted.",
+            })
+          : t("setup.remoteAuthStarted", {
+              defaultValue: "WebDAV connection has started.",
+            }),
       );
-      setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -338,6 +428,168 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
             <button
               onClick={() => setStep("language")}
+              className="flex items-center justify-center gap-1 text-[13px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+            >
+              <ChevronLeft size={14} />
+              {t("setup.back")}
+            </button>
+          </>
+        )}
+
+        {/* Step 3: Remote Provider */}
+        {step === "remoteProvider" && (
+          <>
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15">
+                <Cloud size={32} className="text-[var(--color-accent)]" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">
+                {t("setup.openRemoteLibrary", {
+                  defaultValue: "Choose a remote provider",
+                })}
+              </h1>
+              <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
+                {t("setup.openRemoteLibraryDescription", {
+                  defaultValue:
+                    "Google Drive and Dropbox open the browser for OAuth. WebDAV uses server credentials directly.",
+                })}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {remoteLibraryProviders.map((choice) => {
+                const Icon = choice.icon;
+                const isActive = selectedRemoteProvider === choice.provider;
+
+                return (
+                  <button
+                    key={choice.provider}
+                    onClick={() =>
+                      void handleRemoteProviderSelect(choice.provider)
+                    }
+                    disabled={loading}
+                    className={`flex w-full items-start gap-3 rounded-lg border px-5 py-4 text-left transition-colors disabled:opacity-50 ${
+                      isActive
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
+                        : "border-[var(--color-border-light)] bg-[var(--color-sidebar)] hover:bg-[var(--color-hover)]"
+                    }`}
+                  >
+                    <Icon
+                      size={20}
+                      className={`mt-0.5 shrink-0 ${
+                        choice.provider === "webdav"
+                          ? "text-[var(--color-text-dim)]"
+                          : "text-[var(--color-accent)]"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium text-white">
+                        {choice.title}
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-dim)]">
+                        {choice.description}
+                      </div>
+                    </div>
+                    {isActive && (
+                      <Check
+                        size={16}
+                        className="mt-0.5 shrink-0 text-[var(--color-accent)]"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedRemoteProvider === "webdav" && (
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div className="space-y-1">
+                  <p className="text-[13px] font-medium text-white">
+                    {t("setup.webdavTitle", {
+                      defaultValue: "WebDAV connection",
+                    })}
+                  </p>
+                  <p className="text-[12px] text-[var(--color-text-dim)]">
+                    {t("setup.webdavDescription", {
+                      defaultValue:
+                        "Enter the server URL and a username/password or app password.",
+                    })}
+                  </p>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
+                    {t("setup.webdavUrl", { defaultValue: "Server URL" })}
+                  </span>
+                  <input
+                    value={webDavBaseUrl}
+                    onChange={(event) => setWebDavBaseUrl(event.target.value)}
+                    placeholder="https://example.com/remote.php/dav/files/user"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
+                    {t("setup.webdavUsername", { defaultValue: "Username" })}
+                  </span>
+                  <input
+                    value={webDavUsername}
+                    onChange={(event) => setWebDavUsername(event.target.value)}
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
+                    {t("setup.webdavPassword", { defaultValue: "Password" })}
+                  </span>
+                  <input
+                    type="password"
+                    value={webDavPassword}
+                    onChange={(event) => setWebDavPassword(event.target.value)}
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <button
+                  onClick={() => void handleConnectWebDav()}
+                  disabled={
+                    loading ||
+                    webDavBaseUrl.trim().length === 0 ||
+                    webDavUsername.trim().length === 0 ||
+                    webDavPassword.length === 0
+                  }
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {loading
+                    ? t("setup.settingUp")
+                    : t("setup.connectWebdav", {
+                        defaultValue: "Connect WebDAV",
+                      })}
+                </button>
+              </div>
+            )}
+
+            {selectedRemoteProvider && selectedRemoteProvider !== "webdav" && (
+              <p className="text-[13px] text-[var(--color-text-dim)]">
+                {remoteMessage ??
+                  t("setup.remoteAuthBrowserPrompt", {
+                    defaultValue:
+                      "Sign-in has been started in your browser. Return here after the provider flow completes.",
+                  })}
+              </p>
+            )}
+
+            {selectedRemoteProvider === "webdav" && remoteMessage && (
+              <p className="text-[13px] text-[var(--color-text-dim)]">
+                {remoteMessage}
+              </p>
+            )}
+
+            {error && <p className="text-[13px] text-red-400">{error}</p>}
+
+            <button
+              onClick={() => {
+                resetRemoteWizard();
+                setStep("library");
+              }}
               className="flex items-center justify-center gap-1 text-[13px] text-[var(--color-text-dim)] transition-colors hover:text-white"
             >
               <ChevronLeft size={14} />

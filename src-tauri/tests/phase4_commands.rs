@@ -48,10 +48,11 @@ fn cleanup_dir(path: &Path) {
 fn fixture_song(hash: &str, file_path: &Path) -> Song {
     Song {
         hash: hash.to_owned(),
-        file_path: file_path.display().to_string(),
+        file_path: Some(file_path.display().to_string()),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),
@@ -350,10 +351,11 @@ fn extract_embedded_cover_art_updates_a_regular_song_and_persists_it() {
 
     let song = Song {
         hash: "song-cover".to_owned(),
-        file_path: "media/song-cover.mp3".to_owned(),
+        file_path: Some("media/song-cover.mp3".to_owned()),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -408,10 +410,11 @@ fn extract_embedded_cover_art_reads_cover_art_from_media_g_zip_audio_bytes() {
 
     let song = Song {
         hash: "song-zip".to_owned(),
-        file_path: "media-g/song-zip.zip".to_owned(),
+        file_path: Some("media-g/song-zip.zip".to_owned()),
         cdg_path: None,
         media_g_container: Some("zip".to_owned()),
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -445,10 +448,11 @@ fn extract_embedded_cover_art_keeps_existing_cover_when_a_song_has_no_embedded_a
 
     let song = Song {
         hash: "song-no-cover".to_owned(),
-        file_path: "media/song-no-cover.wav".to_owned(),
+        file_path: Some("media/song-no-cover.wav".to_owned()),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("No Cover".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: None,

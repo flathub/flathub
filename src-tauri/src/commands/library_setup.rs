@@ -36,7 +36,11 @@ fn persist_app_config(app_data_dir: &Path, config: &AppConfig) -> CommandResult<
 }
 
 fn upsert_library(config: &mut AppConfig, library: RegisteredLibrary) {
-    if let Some(existing) = config.libraries.iter_mut().find(|entry| entry.id == library.id) {
+    if let Some(existing) = config
+        .libraries
+        .iter_mut()
+        .find(|entry| entry.id() == library.id())
+    {
         *existing = library;
     } else {
         config.libraries.push(library);
@@ -73,7 +77,7 @@ fn register_library(
 
     let mut config = load_app_config(app_data_dir)?;
     upsert_library(&mut config, library.clone());
-    set_active_library(&mut config, library.id.clone());
+    set_active_library(&mut config, library.id().to_owned());
     persist_app_config(app_data_dir, &config)?;
 
     store_active_library(state, &mut config, root)?;
@@ -93,11 +97,14 @@ fn activate_library(
     let library = config
         .libraries
         .iter()
-        .find(|entry| entry.id == library_id)
+        .find(|entry| entry.id() == library_id)
         .cloned()
         .ok_or_else(|| library_error(format!("library {library_id} was not found")))?;
 
-    let lib = LibraryRoot::open(Path::new(&library.root_path)).map_err(library_error)?;
+    let root_path = library
+        .working_copy_root()
+        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+    let lib = LibraryRoot::open(&root_path).map_err(library_error)?;
     let db_path = lib.database_path();
     cache::initialize_library_database(&db_path).map_err(library_error)?;
 
@@ -116,7 +123,7 @@ fn activate_library(
         *cdg_state = None;
     }
 
-    set_active_library(&mut config, library.id.clone());
+    set_active_library(&mut config, library.id().to_owned());
     persist_app_config(app_data_dir, &config)?;
     store_active_library(state, &mut config, lib)?;
 
@@ -155,29 +162,6 @@ pub fn open_library(
     let library = RegisteredLibrary::local(
         canonical_root.clone(),
         config::library_display_name(&canonical_root),
-    );
-
-    register_library(&state, &state.app_data_dir, library, lib)
-}
-
-#[tauri::command]
-pub fn connect_remote_library(
-    state: State<'_, AppState>,
-    path: String,
-    display_name: Option<String>,
-) -> CommandResult<LibraryRegistrySnapshot> {
-    let lib_path = PathBuf::from(&path);
-
-    let lib = LibraryRoot::open(&lib_path).map_err(library_error)?;
-    let canonical_root = canonical_path_string(lib.root());
-    let library = RegisteredLibrary::remote(
-        canonical_root.clone(),
-        display_name.unwrap_or_else(|| config::library_display_name(&canonical_root)),
-        None,
-        None,
-        None,
-        None,
-        None,
     );
 
     register_library(&state, &state.app_data_dir, library, lib)
@@ -238,10 +222,10 @@ pub fn remove_library(
         .map_err(|error| library_error(error.to_string()))?;
     let mut config = load_app_config(&app_data_dir)?;
     let removed_active = config.active_library_id.as_deref() == Some(library_id.as_str());
-    config.libraries.retain(|library| library.id != library_id);
+    config.libraries.retain(|library| library.id() != library_id);
 
     if removed_active {
-        config.active_library_id = config.libraries.first().map(|library| library.id.clone());
+        config.active_library_id = config.libraries.first().map(|library| library.id().to_owned());
     }
 
     persist_app_config(&app_data_dir, &config)?;
@@ -289,8 +273,8 @@ mod tests {
         let mut config = AppConfig::default();
         let library = RegisteredLibrary::local("/tmp/library".to_owned(), "library".to_owned());
         upsert_library(&mut config, library.clone());
-        set_active_library(&mut config, library.id.clone());
-        assert_eq!(config.active_library_id.as_deref(), Some(library.id.as_str()));
+        set_active_library(&mut config, library.id().to_owned());
+        assert_eq!(config.active_library_id.as_deref(), Some(library.id()));
         assert_eq!(config.libraries.len(), 1);
     }
 
@@ -302,6 +286,6 @@ mod tests {
         upsert_library(&mut config, first);
         upsert_library(&mut config, second.clone());
         assert_eq!(config.libraries.len(), 1);
-        assert_eq!(config.libraries[0].display_name, second.display_name);
+        assert_eq!(config.libraries[0].display_name(), second.display_name());
     }
 }

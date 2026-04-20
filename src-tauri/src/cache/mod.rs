@@ -210,6 +210,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -217,12 +218,13 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cover_art,
             imported_at,
             original_ext
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hash) DO UPDATE SET
             file_path = excluded.file_path,
             cdg_path = excluded.cdg_path,
             media_g_container = excluded.media_g_container,
             instrumental = excluded.instrumental,
+            audio_source_kind = excluded.audio_source_kind,
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
@@ -236,6 +238,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             song.cdg_path,
             song.media_g_container,
             song.instrumental,
+            song.audio_source_kind,
             song.title,
             song.artist,
             song.album,
@@ -257,6 +260,7 @@ pub fn list_songs(connection: &Connection) -> rusqlite::Result<Vec<Song>> {
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -284,6 +288,7 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -295,7 +300,7 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
         WHERE lower(coalesce(title, '')) LIKE ?1
            OR lower(coalesce(artist, '')) LIKE ?1
            OR lower(coalesce(album, '')) LIKE ?1
-           OR lower(file_path) LIKE ?1
+           OR lower(coalesce(file_path, '')) LIKE ?1
         ORDER BY imported_at DESC, title COLLATE NOCASE ASC, hash ASC",
     )?;
 
@@ -314,6 +319,7 @@ pub fn get_song_by_hash(connection: &Connection, hash: &str) -> rusqlite::Result
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -376,13 +382,14 @@ fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
         cdg_path: row.get(2)?,
         media_g_container: row.get(3)?,
         instrumental: row.get(4)?,
-        title: row.get(5)?,
-        artist: row.get(6)?,
-        album: row.get(7)?,
-        duration_ms: row.get(8)?,
-        cover_art: row.get(9)?,
-        imported_at: row.get(10)?,
-        original_ext: row.get(11)?,
+        audio_source_kind: row.get(5)?,
+        title: row.get(6)?,
+        artist: row.get(7)?,
+        album: row.get(8)?,
+        duration_ms: row.get(9)?,
+        cover_art: row.get(10)?,
+        imported_at: row.get(11)?,
+        original_ext: row.get(12)?,
     })
 }
 

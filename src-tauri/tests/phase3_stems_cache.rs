@@ -69,10 +69,11 @@ fn sample_separation() -> SeparationResult {
 fn sample_song(hash: &str, extension: &str) -> Song {
     Song {
         hash: hash.to_owned(),
-        file_path: format!("media/{hash}.{extension}"),
+        file_path: Some(format!("media/{hash}.{extension}")),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
         album: Some("Fixture Album".to_owned()),
@@ -147,7 +148,7 @@ fn caches_stems_under_hash_directory_and_hits_cache_on_second_request() {
     let library = unique_library_root();
     let library_root_path = library.root().to_owned();
     let song = tagged_song_in_library(&library, "song-hash");
-    let source_audio_path = library.resolve(&song.file_path);
+    let source_audio_path = library.resolve(song.file_path.as_deref().unwrap());
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
     let generation_count = Cell::new(0_usize);
 
@@ -215,7 +216,7 @@ fn two_stem_cache_preserves_metadata_and_overrides_titles() {
     let library = unique_library_root();
     let library_root_path = library.root().to_owned();
     let song = tagged_song_in_library(&library, "song-two-stem");
-    let source_audio_path = library.resolve(&song.file_path);
+    let source_audio_path = library.resolve(song.file_path.as_deref().unwrap());
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
 
     let cached = stems::get_or_create_stem_cache(
@@ -255,7 +256,7 @@ fn four_stem_cache_writes_per_stem_titles() {
     let library = unique_library_root();
     let library_root_path = library.root().to_owned();
     let song = tagged_song_in_library(&library, "song-four-stem");
-    let source_audio_path = library.resolve(&song.file_path);
+    let source_audio_path = library.resolve(song.file_path.as_deref().unwrap());
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
 
     let cached = stems::get_or_create_stem_cache(
@@ -298,7 +299,7 @@ fn downgrade_to_two_stem_rewrites_accompaniment_metadata() {
     let library = unique_library_root();
     let library_root_path = library.root().to_owned();
     let song = tagged_song_in_library(&library, "song-downgrade");
-    let source_audio_path = library.resolve(&song.file_path);
+    let source_audio_path = library.resolve(song.file_path.as_deref().unwrap());
     cache::upsert_song(&connection, &song).expect("song insert should succeed");
 
     stems::get_or_create_stem_cache(

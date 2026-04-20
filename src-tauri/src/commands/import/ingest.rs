@@ -66,10 +66,11 @@ pub(super) fn build_and_store_song(
 
     Ok(Song {
         hash,
-        file_path: relative_path,
+        file_path: Some(relative_path),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title,
         artist: metadata.artist,
         album: metadata.album,
@@ -109,10 +110,11 @@ pub(super) fn build_and_store_media_g_pair(
 
     Ok(Song {
         hash: hash.clone(),
-        file_path: format!("media-g/{}.{}", hash, ext),
+        file_path: Some(format!("media-g/{}.{}", hash, ext)),
         cdg_path: Some(format!("media-g/{}.cdg", hash)),
         media_g_container: Some(MEDIA_G_PAIRED.to_owned()),
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title,
         artist: metadata.artist,
         album: metadata.album,
@@ -135,10 +137,11 @@ pub(super) fn build_and_store_media_g_zip(source: &Path, library: &LibraryRoot) 
 
     Ok(Song {
         hash: hash.clone(),
-        file_path: format!("media-g/{}.zip", hash),
+        file_path: Some(format!("media-g/{}.zip", hash)),
         cdg_path: None,
         media_g_container: Some(MEDIA_G_ZIP.to_owned()),
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title,
         artist: metadata.artist,
         album: metadata.album,
@@ -200,7 +203,7 @@ pub(super) fn try_extract_embedded_lyrics(
 
     let raw_lrc = match song.media_g_container.as_deref() {
         Some(MEDIA_G_ZIP) => {
-            let archive_path = library.resolve(&song.file_path);
+            let archive_path = library.resolve(song.file_path.as_deref().unwrap());
             match media_g::inspect_zip_for_media_g(&archive_path).and_then(|asset| {
                 read_embedded_lyrics_from_bytes(&asset.audio_bytes, &asset.audio_extension)
             }) {
@@ -209,7 +212,7 @@ pub(super) fn try_extract_embedded_lyrics(
             }
         }
         _ => {
-            let resolved_path = library.resolve(&song.file_path);
+            let resolved_path = library.resolve(song.file_path.as_deref().unwrap());
             match read_embedded_lyrics(&resolved_path) {
                 Ok(Some(lrc)) => lrc,
                 _ => return,

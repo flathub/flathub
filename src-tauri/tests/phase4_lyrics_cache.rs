@@ -8,10 +8,11 @@ use rusqlite::Connection;
 fn sample_song(hash: &str) -> Song {
     Song {
         hash: hash.to_owned(),
-        file_path: format!("/music/{hash}.mp3"),
+        file_path: Some(format!("/music/{hash}.mp3")),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

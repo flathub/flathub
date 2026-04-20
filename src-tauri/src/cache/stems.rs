@@ -481,7 +481,10 @@ pub fn downgrade_to_two_stem(
     // Write accompaniment file.
     let accomp_rel = format!("{STEMS_CACHE_DIRECTORY}/{song_hash}/{ACCOMPANIMENT_FILENAME}");
     let accomp_abs = library_root.resolve(&accomp_rel);
-    let source_abs = library_root.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        anyhow::bail!("song {song_hash} does not have a local file path");
+    };
+    let source_abs = library_root.resolve(song_path);
     write_stem_with_metadata(
         &source_abs,
         &accomp_abs,

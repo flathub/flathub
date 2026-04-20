@@ -168,7 +168,8 @@ function useActiveTasks(modelDownloadCompleteFlash: boolean): ActiveTask[] {
     );
     if (runningSep) {
       const song = songs.find((s) => s.hash === runningSep.song_id);
-      const title = song?.title ?? song?.file_path.split("/").pop() ?? "";
+      const title =
+        song?.title ?? song?.file_path?.split("/").pop() ?? song?.hash ?? "";
       tasks.push({
         key: `sep-${runningSep.song_id}`,
         label: t("progress.separating", { title }),
@@ -183,7 +184,8 @@ function useActiveTasks(modelDownloadCompleteFlash: boolean): ActiveTask[] {
 
   for (const upload of runningUploads) {
     const song = songs.find((candidate) => candidate.hash === upload.song_id);
-    const title = song?.title ?? song?.file_path.split("/").pop() ?? "";
+    const title =
+      song?.title ?? song?.file_path?.split("/").pop() ?? song?.hash ?? "";
     tasks.push({
       key: `upload-${upload.song_id}`,
       label: t("progress.uploadingToRemote", {

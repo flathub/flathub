@@ -19,16 +19,24 @@ pub(super) fn delete_song_from_library(
     if let Some(container) = song.media_g_container.as_deref() {
         match container {
             MEDIA_G_PAIRED => {
-                delete_relative_file(library, &song.file_path)?;
+                if let Some(relative_path) = song.file_path.as_deref() {
+                    delete_relative_file(library, relative_path)?;
+                }
                 if let Some(cdg_path) = song.cdg_path.as_deref() {
                     delete_relative_file(library, cdg_path)?;
                 }
             }
-            MEDIA_G_ZIP => delete_relative_file(library, &song.file_path)?,
+            MEDIA_G_ZIP => {
+                if let Some(relative_path) = song.file_path.as_deref() {
+                    delete_relative_file(library, relative_path)?;
+                }
+            }
             _ => {}
         }
     } else {
-        delete_relative_file(library, &song.file_path)?;
+        if let Some(relative_path) = song.file_path.as_deref() {
+            delete_relative_file(library, relative_path)?;
+        }
     }
 
     cache::stems::delete_stem_cache_entry(connection, library, song_id).ok();

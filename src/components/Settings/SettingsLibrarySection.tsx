@@ -2,6 +2,35 @@ import { FolderOpen, Plus, CheckCircle2, Library, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SettingsSectionCard } from "./SettingsSectionCard";
 import { useSettingsOverlay } from "./SettingsOverlay.context";
+import type { RemoteLibraryProvider } from "@/types/ipc";
+
+const remoteProviderLabels: Record<RemoteLibraryProvider, string> = {
+  google_drive: "Google Drive",
+  dropbox: "Dropbox",
+  webdav: "WebDAV",
+};
+
+function describeLibrarySubtitle(
+  library:
+    | {
+        kind: "local";
+        root_path: string;
+      }
+    | {
+        kind: "remote";
+        provider: RemoteLibraryProvider;
+        remote_path_display: string;
+        remote_root_locator: string;
+      },
+) {
+  if (library.kind === "local") {
+    return library.root_path;
+  }
+
+  return `${remoteProviderLabels[library.provider]} · ${
+    library.remote_path_display || library.remote_root_locator
+  }`;
+}
 
 export function SettingsLibrarySection() {
   const { t } = useTranslation();
@@ -46,7 +75,7 @@ export function SettingsLibrarySection() {
                     {library.display_name}
                   </p>
                   <p className="truncate text-[11px] text-[var(--color-text-dim)]">
-                    {library.root_path}
+                    {describeLibrarySubtitle(library)}
                   </p>
                 </div>
                 {isActive ? (

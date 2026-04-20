@@ -10,7 +10,10 @@ pub fn load_cdg_state_for_song(
     library_root: &LibraryRoot,
     song: &crate::library::Song,
 ) -> Option<CdgPlaybackState> {
-    let absolute_path = library_root.resolve(&song.file_path);
+    let absolute_path = song
+        .file_path
+        .as_deref()
+        .map(|path| library_root.resolve(path))?;
     match song.media_g_container.as_deref() {
         Some(MEDIA_G_ZIP) => load_cdg_state_from_zip(&absolute_path),
         _ => {

@@ -42,10 +42,11 @@ fn cleanup_dir(path: &Path) {
 fn fixture_song(file_path: &Path) -> Song {
     Song {
         hash: "fixture-song".to_owned(),
-        file_path: file_path.display().to_string(),
+        file_path: Some(file_path.display().to_string()),
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+        audio_source_kind: "original".to_owned(),
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),
         album: Some("Parachutes".to_owned()),

@@ -649,10 +649,11 @@ mod tests {
     fn validate_song_can_be_separated_rejects_instrumental_songs() {
         let song = crate::library::Song {
             hash: "song-1".to_owned(),
-            file_path: "media/song-1.mp3".to_owned(),
+            file_path: Some("media/song-1.mp3".to_owned()),
             cdg_path: None,
             media_g_container: None,
             instrumental: true,
+            audio_source_kind: "original".to_owned(),
             title: Some("Song".to_owned()),
             artist: None,
             album: None,

@@ -82,7 +82,13 @@ pub fn fetch_lyrics_from_connection(
         return payload_from_cached_entry(song.hash, cached);
     }
 
-    let resolved_path = library_root.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        return Err(anyhow::anyhow!(
+            "song {} does not have a local file path",
+            song_id
+        ));
+    };
+    let resolved_path = library_root.resolve(song_path);
     let providers = [
         TimedLyricsProvider::LrcLib(lrclib_client),
         TimedLyricsProvider::LrcApi(lrcapi_client),
@@ -252,7 +258,10 @@ pub fn import_lyrics_files(
 
         if let Some(ref stem) = lrc_stem {
             found_song = all_songs.iter().find(|song| {
-                let song_path = Path::new(&song.file_path);
+                let Some(song_path) = song.file_path.as_deref() else {
+                    return false;
+                };
+                let song_path = Path::new(song_path);
                 let song_stem = song_path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -316,7 +325,13 @@ pub fn extract_embedded_lyrics(
         .map_err(|e| lyrics_error(e.to_string()))?
         .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
 
-    let resolved_path = library_root.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        return Err(lyrics_error(format!(
+            "song {} does not have a local file path",
+            song_id
+        )));
+    };
+    let resolved_path = library_root.resolve(song_path);
     let embedded = lyrics::fetch::read_embedded_lyrics(&resolved_path)
         .map_err(|e| lyrics_error(e.to_string()))?
         .ok_or_else(|| lyrics_error("No embedded lyrics found in this file".to_owned()))?;

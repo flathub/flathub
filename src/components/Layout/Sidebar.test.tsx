@@ -9,6 +9,7 @@ const { mockLibraryState, mockSettingsState } = vi.hoisted(() => ({
       {
         hash: "song-1",
         file_path: "media-g/song-1.mp3",
+        audio_source_kind: "original",
         cdg_path: "media-g/song-1.cdg",
         media_g_container: "paired" as const,
         instrumental: false,
@@ -100,6 +101,7 @@ describe("Sidebar", () => {
       {
         hash: "song-2",
         file_path: "music/song-2.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: true,
@@ -132,6 +134,7 @@ describe("Sidebar", () => {
       {
         hash: "song-3",
         file_path: "music/song-3.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,
@@ -159,6 +162,7 @@ describe("Sidebar", () => {
       {
         hash: "song-1",
         file_path: "media-g/song-1.mp3",
+        audio_source_kind: "original",
         cdg_path: "media-g/song-1.cdg",
         media_g_container: "paired" as const,
         instrumental: false,

@@ -38,7 +38,41 @@ export interface CommandError {
 
 export type CoverArtBytes = number[] | Uint8Array | ArrayBuffer | null;
 export type LibraryKind = "local" | "remote";
-export type RemoteLibraryProvider = "google_drive" | "dropbox";
+export type RemoteLibraryProvider = "google_drive" | "dropbox" | "webdav";
+
+export interface RemoteWebDavAuthPayload {
+  base_url: string;
+  username: string;
+  password: string;
+}
+
+export type RemoteAuthPayload = RemoteWebDavAuthPayload | null;
+
+export interface RemoteAuthStart {
+  session_id: string;
+  provider: RemoteLibraryProvider;
+  authorization_url: string | null;
+  expires_at_ms: number | null;
+}
+
+export type RemoteAuthState = "pending" | "ready" | "failed";
+
+export interface RemoteAuthStatus {
+  session_id: string;
+  provider: RemoteLibraryProvider;
+  state: RemoteAuthState;
+  remote_root_locator: string | null;
+  display_name: string | null;
+  error: CommandError | null;
+}
+
+export interface RemoteLibraryCandidate {
+  provider: RemoteLibraryProvider;
+  remote_root_locator: string;
+  remote_path_display: string;
+  display_name: string;
+  account_id: string | null;
+}
 
 export interface LocalLibraryRegistration {
   id: string;
@@ -51,12 +85,13 @@ export interface RemoteLibraryRegistration {
   id: string;
   kind: "remote";
   display_name: string;
-  root_path: string;
-  provider: RemoteLibraryProvider | null;
-  remote_root_id: string | null;
-  account_id: string | null;
+  provider: RemoteLibraryProvider;
+  remote_root_locator: string;
+  remote_path_display: string;
+  account_id: string;
   cached_db_path: string | null;
   remote_revision: string | null;
+  bound_local_library_id: string | null;
 }
 
 export type RegisteredLibrary =
@@ -70,7 +105,8 @@ export interface LibraryRegistrySnapshot {
 
 export interface Song {
   hash: string;
-  file_path: string;
+  file_path: string | null;
+  audio_source_kind: "original" | "original_remote" | "stems_remote";
   cdg_path: string | null;
   media_g_container: "paired" | "zip" | null;
   instrumental: boolean;

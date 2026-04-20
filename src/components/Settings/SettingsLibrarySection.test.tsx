@@ -1,0 +1,41 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, test } from "vitest";
+import { SettingsLibrarySection } from "./SettingsLibrarySection";
+import {
+  SettingsOverlayContext,
+  createSettingsOverlayTestContextValue,
+} from "./SettingsOverlay.context";
+
+describe("SettingsLibrarySection", () => {
+  test("renders provider metadata for remote libraries", () => {
+    const value = createSettingsOverlayTestContextValue({
+      state: {
+        libraries: [
+          {
+            id: "remote:drive",
+            kind: "remote",
+            display_name: "Drive Library",
+            provider: "google_drive",
+            remote_root_locator: "drive-root",
+            remote_path_display: "OpenKara / Team Karaoke",
+            account_id: "acct-1",
+            cached_db_path: null,
+            remote_revision: null,
+            bound_local_library_id: null,
+          },
+        ],
+        activeLibraryId: "remote:drive",
+      },
+    });
+
+    const markup = renderToStaticMarkup(
+      <SettingsOverlayContext value={value}>
+        <SettingsLibrarySection />
+      </SettingsOverlayContext>,
+    );
+
+    expect(markup).toContain("Drive Library");
+    expect(markup).toContain("Google Drive");
+    expect(markup).toContain("OpenKara / Team Karaoke");
+  });
+});
