@@ -1,0 +1,121 @@
+id: com.notepadmd.NotepadMD
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: notepadmd
+
+build-options:
+  prepend-path: /usr/libexec
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Network (auto-update, licence validation)
+  - --share=network
+
+modules:
+  - name: notepadmd
+    buildsystem: simple
+    build-commands:
+      # Extract AppImage
+      - chmod +x NotepadMDSetup.AppImage
+      - ./NotepadMDSetup.AppImage --appimage-extract
+      
+      # Install application binaries into /app/lib so the launcher symlink works
+      - mkdir -p /app/lib/notepadmd
+      - cp -r squashfs-root/usr/bin/* /app/lib/notepadmd/
+      - chmod +x /app/lib/notepadmd/NotepadMD.App
+
+      # Create launcher symlink on PATH
+      - mkdir -p /app/bin
+      - ln -sf /app/lib/notepadmd/NotepadMD.App /app/bin/notepadmd
+      
+      # appstream-compose compatibility wrapper
+      - |
+        cat > /app/bin/appstream-compose <<'EOF'
+        #!/usr/bin/env bash
+        set -e
+        option_args=()
+        source_args=()
+        skip_next=0
+        has_data_dir=0
+        for arg in "$@"; do
+          if [ "$skip_next" -eq 1 ]; then
+            skip_next=0
+            continue
+          fi
+
+          case "$arg" in
+            --basename=*)
+              ;;
+            --basename)
+              skip_next=1
+              ;;
+            *)
+              if [[ "$arg" == -* ]]; then
+                if [[ "$arg" == --data-dir=* ]]; then
+                  has_data_dir=1
+                fi
+                option_args+=("$arg")
+              elif [[ "$arg" == */* ]]; then
+                source_args+=("$arg")
+              else
+                source_args+=(".")
+              fi
+              ;;
+          esac
+        done
+        if [ "${#source_args[@]}" -eq 0 ]; then
+          source_args+=(".")
+        fi
+        if [ "$has_data_dir" -eq 0 ]; then
+          option_args+=("--data-dir=app/share/app-info/xmls")
+        fi
+        cd /
+        exec /usr/libexec/appstreamcli-compose "${option_args[@]}" "${source_args[@]}"
+        EOF
+        chmod +x /app/bin/appstream-compose
+
+      # Desktop integration
+      - install -Dm644 com.notepadmd.NotepadMD.desktop /app/share/applications/com.notepadmd.NotepadMD.desktop
+      - install -Dm644 com.notepadmd.NotepadMD.metainfo.xml /app/share/metainfo/com.notepadmd.NotepadMD.metainfo.xml
+
+      # Icons
+      - |
+        if [ -f com.notepadmd.NotepadMD.png ]; then
+          install -Dm644 com.notepadmd.NotepadMD.png /app/share/icons/hicolor/256x256/apps/com.notepadmd.NotepadMD.png
+        fi
+      - |
+        if [ -f com.notepadmd.NotepadMD.svg ]; then
+          install -Dm644 com.notepadmd.NotepadMD.svg /app/share/icons/hicolor/scalable/apps/com.notepadmd.NotepadMD.svg
+        fi
+
+    sources:
+      # x64 AppImage source
+      - type: file
+        url: https://downloadsr2.notepadmd.com/NotepadMDSetup.AppImage
+        sha256: 0fd32e62202462829e71233e51331bbdd047c58d2564cf17d9d3bd2618e82b12
+        dest-filename: NotepadMDSetup.AppImage
+        only-arches: [x86_64]
+      
+      # ARM64 AppImage source
+      - type: file
+        url: https://downloadsr2.notepadmd.com/NotepadMDSetup-arm64.AppImage
+        sha256: 4b908bde55654704a7c6df49a5e492179314f0df040bed37dd6552f7c0820a6b
+        dest-filename: NotepadMDSetup.AppImage
+        only-arches: [aarch64]
+
+      - type: file
+        path: com.notepadmd.NotepadMD.desktop
+      
+      - type: file
+        path: com.notepadmd.NotepadMD.metainfo.xml
+      
+      - type: file
+        path: com.notepadmd.NotepadMD.png
+      
+      - type: file
+        path: com.notepadmd.NotepadMD.svg
