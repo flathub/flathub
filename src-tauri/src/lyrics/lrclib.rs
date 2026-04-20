@@ -61,9 +61,7 @@ impl LrcLibClient {
             request = request.query(&[("duration", duration_seconds)]);
         }
 
-        let response = request
-            .send()
-            .context("failed to request timed lyrics")?;
+        let response = request.send().context("failed to request timed lyrics")?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }

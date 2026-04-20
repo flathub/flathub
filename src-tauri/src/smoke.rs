@@ -9,8 +9,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},

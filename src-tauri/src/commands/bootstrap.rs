@@ -342,7 +342,8 @@ pub fn delete_model(
     separator::bootstrap::delete_model_file(&app_data_dir, model_variant)
         .map_err(|e| internal_error(format!("failed to delete model: {e}")))?;
 
-    let snapshot = sync_active_model_bootstrap_status(&app_data_dir, &state.model_bootstrap_status)?;
+    let snapshot =
+        sync_active_model_bootstrap_status(&app_data_dir, &state.model_bootstrap_status)?;
     emit_model_bootstrap_snapshot(&app_handle, &snapshot);
 
     if matches!(snapshot.state, ModelBootstrapState::Pending) {

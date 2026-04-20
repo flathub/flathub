@@ -6,7 +6,9 @@ use crate::{
     library_root::LibraryRoot,
     lyrics::{
         self,
-        fetch::{fetch_online_timed_lyrics, lookup_query_from_song, LyricsSource, TimedLyricsProvider},
+        fetch::{
+            fetch_online_timed_lyrics, lookup_query_from_song, LyricsSource, TimedLyricsProvider,
+        },
         lrcapi::LrcApiClient,
         lrclib::LrcLibClient,
         parser::LyricLine,
@@ -88,7 +90,8 @@ pub fn fetch_lyrics_from_connection(
 
     // Online requests are opportunistic: if they fail, we still want embedded
     // and sidecar sources to rescue the fetch instead of failing the whole song.
-    let Some(fetched) = lyrics::fetch::fetch_lyrics_for_song(&providers, &song, &resolved_path)? else {
+    let Some(fetched) = lyrics::fetch::fetch_lyrics_for_song(&providers, &song, &resolved_path)?
+    else {
         return Ok(LyricsPayload {
             song_id: song.hash,
             lines: Vec::new(),
@@ -380,8 +383,8 @@ pub fn fetch_lyrics_online(
         }
     };
 
-    let Some(fetched) = fetch_online_timed_lyrics(&providers, &query)
-        .map_err(|e| lyrics_error(e.to_string()))?
+    let Some(fetched) =
+        fetch_online_timed_lyrics(&providers, &query).map_err(|e| lyrics_error(e.to_string()))?
     else {
         return Ok(LyricsPayload {
             song_id: song.hash,
@@ -392,8 +395,8 @@ pub fn fetch_lyrics_online(
         });
     };
 
-    let lines = lyrics::parser::parse_lrc(&fetched.raw_lrc)
-        .map_err(|e| lyrics_error(e.to_string()))?;
+    let lines =
+        lyrics::parser::parse_lrc(&fetched.raw_lrc).map_err(|e| lyrics_error(e.to_string()))?;
 
     let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 

@@ -27,12 +27,8 @@ use std::collections::HashSet;
 use tauri::State;
 
 use delete::delete_song_from_library;
-use expand::{
-    build_selected_cdg_lookup, classify_import_paths, collect_expandable_import_paths,
-};
-use ingest::{
-    build_and_store_media_g_zip, build_and_store_song, try_extract_embedded_lyrics,
-};
+use expand::{build_selected_cdg_lookup, classify_import_paths, collect_expandable_import_paths};
+use ingest::{build_and_store_media_g_zip, build_and_store_song, try_extract_embedded_lyrics};
 use preview::{display_audio_format, inspect_import_candidate};
 
 #[cfg(target_os = "macos")]

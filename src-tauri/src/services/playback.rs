@@ -349,7 +349,22 @@ where
     Ok(playback.snapshot(monotonic_now_ms()))
 }
 
-fn load_song_audio(
+pub(crate) fn probe_song_audio(
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Result<()> {
+    let absolute_path = library_root.resolve(&song.file_path);
+    if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
+        let asset = media_g::inspect_zip_for_media_g(&absolute_path)?;
+        return decode::probe_bytes(asset.audio_bytes, &asset.audio_extension)
+            .with_context(|| format!("failed to probe audio for {}", song.file_path));
+    }
+
+    decode::probe_file(&absolute_path)
+        .with_context(|| format!("failed to probe audio for {}", song.file_path))
+}
+
+pub(crate) fn load_song_audio(
     library_root: &LibraryRoot,
     song: &crate::library::Song,
 ) -> Result<decode::DecodedAudio> {

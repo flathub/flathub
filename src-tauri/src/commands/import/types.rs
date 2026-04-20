@@ -1,7 +1,4 @@
-use crate::{
-    commands::error::CommandError,
-    library::Song,
-};
+use crate::{commands::error::CommandError, library::Song};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

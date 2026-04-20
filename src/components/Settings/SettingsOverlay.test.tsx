@@ -78,6 +78,24 @@ vi.mock("react-i18next", async (importOriginal) => {
   };
 });
 
+vi.mock("./ConfirmationDialog", () => ({
+  ConfirmationDialog: ({
+    title,
+    message,
+    confirmLabel,
+  }: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+  }) => (
+    <div data-testid="confirmation-dialog">
+      <span>{title}</span>
+      <span>{message}</span>
+      <span>{confirmLabel}</span>
+    </div>
+  ),
+}));
+
 function renderWithSettingsContext(
   node: ReactElement,
   value: SettingsOverlayContextValue,
@@ -233,6 +251,7 @@ describe("SettingsOverlay sections", () => {
     const markup = renderWithSettingsContext(<SettingsDialogHost />, value);
 
     expect(markup).toContain("settings.modelVariant.ftWarningTitle");
+    expect(markup).toContain("settings.modelVariant.ftWarningMessage");
     expect(markup).toContain("settings.modelVariant.ftWarningConfirm");
   });
 
