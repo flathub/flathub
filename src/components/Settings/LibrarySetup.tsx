@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  type LucideIcon,
   FolderOpen,
   Plus,
   Music,
@@ -16,6 +17,36 @@ import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
 
 type Step = "language" | "library" | "stemMode";
+type LibraryChoiceKind = "create_local" | "open_local" | "open_remote";
+
+interface LibraryChoice {
+  kind: LibraryChoiceKind;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const librarySetupChoices: LibraryChoice[] = [
+  {
+    kind: "create_local",
+    icon: Plus,
+    title: "setup.createNew",
+    description: "setup.createNewDescription",
+  },
+  {
+    kind: "open_local",
+    icon: FolderOpen,
+    title: "setup.openExisting",
+    description: "setup.openExistingDescription",
+  },
+  {
+    kind: "open_remote",
+    icon: Globe,
+    title: "setup.openRemoteLibrary",
+    description: "setup.openRemoteLibraryDescription",
+  },
+];
 
 interface LibrarySetupProps {
   onComplete: () => void;
@@ -59,6 +90,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     "two_stem" | "four_stem"
   >(settingsStemMode);
 
+  const resolveSingleDirectory = (selected: string | string[] | null) =>
+    typeof selected === "string" ? selected : (selected?.[0] ?? null);
+
   useEffect(() => {
     if (!settingsHydrated) {
       return;
@@ -97,12 +131,14 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     });
 
     if (!selected) return;
+    const selectedDirectory = resolveSingleDirectory(selected);
+    if (!selectedDirectory) return;
 
-    const libraryDir = `${selected}/OpenKara`;
+    const libraryDir = `${selectedDirectory}/OpenKara`;
     setLoading(true);
     setError(null);
     try {
-      await api.createLibrary(libraryDir);
+      await api.createLocalLibrary(libraryDir);
       setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -119,11 +155,41 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     });
 
     if (!selected) return;
+    const selectedDirectory = resolveSingleDirectory(selected);
+    if (!selectedDirectory) return;
 
     setLoading(true);
     setError(null);
     try {
-      await api.openLibrary(selected);
+      await api.registerLocalLibrary(selectedDirectory);
+      setStep("stemMode");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenRemote = async () => {
+    const selected = await open({
+      directory: true,
+      title: t("setup.dialogTitleOpen"),
+    });
+
+    if (!selected) return;
+    const selectedDirectory = resolveSingleDirectory(selected);
+    if (!selectedDirectory) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const pathSegments = selectedDirectory.split(/[\\/]/).filter(Boolean);
+      await api.connectRemoteLibrary(
+        selectedDirectory,
+        pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : null,
+      );
       setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -208,43 +274,58 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             </div>
 
             <div className="space-y-3">
-              <button
-                onClick={handleCreate}
-                disabled={loading}
-                className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
-              >
-                <Plus
-                  size={20}
-                  className="shrink-0 text-[var(--color-accent)]"
-                />
-                <div>
-                  <div className="text-[14px] font-medium text-white">
-                    {t("setup.createNew")}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-dim)]">
-                    {t("setup.createNewDescription")}
-                  </div>
-                </div>
-              </button>
+              {librarySetupChoices.map((choice) => {
+                const Icon = choice.icon;
+                const disabled = loading;
 
-              <button
-                onClick={handleOpen}
-                disabled={loading}
-                className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
-              >
-                <FolderOpen
-                  size={20}
-                  className="shrink-0 text-[var(--color-text-dim)]"
-                />
-                <div>
-                  <div className="text-[14px] font-medium text-white">
-                    {t("setup.openExisting")}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-dim)]">
-                    {t("setup.openExistingDescription")}
-                  </div>
-                </div>
-              </button>
+                return (
+                  <button
+                    key={choice.kind}
+                    onClick={
+                      choice.kind === "create_local"
+                        ? handleCreate
+                        : choice.kind === "open_local"
+                          ? handleOpen
+                          : handleOpenRemote
+                    }
+                    disabled={disabled}
+                    className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
+                  >
+                    <Icon
+                      size={20}
+                      className={`shrink-0 ${
+                        choice.kind === "open_remote"
+                          ? "text-[var(--color-accent)]"
+                          : choice.kind === "create_local"
+                            ? "text-[var(--color-accent)]"
+                            : "text-[var(--color-text-dim)]"
+                      }`}
+                    />
+                    <div>
+                      <div className="text-[14px] font-medium text-white">
+                        {t(choice.title, {
+                          defaultValue:
+                            choice.kind === "create_local"
+                              ? "Create new local library"
+                              : choice.kind === "open_local"
+                                ? "Open existing local library"
+                                : "Open remote library",
+                        })}
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-dim)]">
+                        {t(choice.description, {
+                          defaultValue:
+                            choice.kind === "create_local"
+                              ? "Create a new local library folder on this machine."
+                              : choice.kind === "open_local"
+                                ? "Register an existing local library folder."
+                                : "Connect to a cloud-hosted library without copying the original files.",
+                        })}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {error && <p className="text-[13px] text-red-400">{error}</p>}

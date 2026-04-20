@@ -62,6 +62,8 @@ export function SettingsOverlayProvider({
       libraryStore: {
         clearAllSeparationStatuses:
           useLibraryStore.getState().clearAllSeparationStatuses,
+        clearAllUploadStatuses:
+          useLibraryStore.getState().clearAllUploadStatuses,
         updateSeparationStatus:
           useLibraryStore.getState().updateSeparationStatus,
       },

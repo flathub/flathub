@@ -37,6 +37,36 @@ export interface CommandError {
 // ─── Library ─────────────────────────────────────────────
 
 export type CoverArtBytes = number[] | Uint8Array | ArrayBuffer | null;
+export type LibraryKind = "local" | "remote";
+export type RemoteLibraryProvider = "google_drive" | "dropbox";
+
+export interface LocalLibraryRegistration {
+  id: string;
+  kind: "local";
+  display_name: string;
+  root_path: string;
+}
+
+export interface RemoteLibraryRegistration {
+  id: string;
+  kind: "remote";
+  display_name: string;
+  root_path: string;
+  provider: RemoteLibraryProvider | null;
+  remote_root_id: string | null;
+  account_id: string | null;
+  cached_db_path: string | null;
+  remote_revision: string | null;
+}
+
+export type RegisteredLibrary =
+  | LocalLibraryRegistration
+  | RemoteLibraryRegistration;
+
+export interface LibraryRegistrySnapshot {
+  active_library_id: string | null;
+  libraries: RegisteredLibrary[];
+}
 
 export interface Song {
   hash: string;
@@ -294,6 +324,35 @@ export interface SeparationCompleteEvent {
 
 export interface SeparationErrorEvent {
   song_id: string;
+  error: CommandError;
+}
+
+export type UploadState = "idle" | "running" | "completed" | "failed";
+
+export interface UploadStatusSnapshot {
+  song_id: string;
+  state: UploadState;
+  percent: number;
+  remote_library_id?: string | null;
+  detail?: string | null;
+  error: CommandError | null;
+}
+
+export interface UploadProgressEvent {
+  song_id: string;
+  percent: number;
+  remote_library_id?: string | null;
+  detail?: string | null;
+}
+
+export interface UploadCompleteEvent {
+  song_id: string;
+  remote_library_id?: string | null;
+}
+
+export interface UploadErrorEvent {
+  song_id: string;
+  remote_library_id?: string | null;
   error: CommandError;
 }
 

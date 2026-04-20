@@ -18,6 +18,54 @@ interface ActiveTask {
   onCancel?: () => void;
 }
 
+export interface TaskProgressBarProps extends Omit<ActiveTask, "key"> {
+  className?: string;
+}
+
+export function TaskProgressBar({
+  label,
+  detail,
+  percent,
+  indeterminate,
+  onCancel,
+  className,
+}: TaskProgressBarProps) {
+  return (
+    <div className={className ?? "space-y-1"}>
+      <div className="flex items-center justify-between">
+        <span className="min-w-0 truncate text-[11px] text-[var(--color-text-dim)]">
+          {label}
+          {detail && (
+            <span className="ml-1 text-[var(--color-text-dimmer)]">
+              {detail}
+            </span>
+          )}
+        </span>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="motion-icon-button shrink-0 rounded p-0.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
+        {indeterminate ? (
+          <div className="relative h-full w-full overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-accent)_22%,transparent)]">
+            <div className="model-indeterminate-bar absolute inset-y-0 left-0 rounded-full bg-[var(--color-accent)] will-change-transform" />
+          </div>
+        ) : (
+          <div
+            className="motion-surface h-full rounded-full bg-[var(--color-accent)]"
+            style={{ width: `${percent}%` }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function useModelDownloadCompleteFlash(): boolean {
   const bootstrapState = useBootstrapStore((s) => s.status?.state);
   const [flash, setFlash] = useState(false);
@@ -52,6 +100,7 @@ function useActiveTasks(modelDownloadCompleteFlash: boolean): ActiveTask[] {
   const { t } = useTranslation();
   const bootstrapStatus = useBootstrapStore((s) => s.status);
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
+  const uploadStatuses = useLibraryStore((s) => s.uploadStatuses);
   const batchSeparation = useLibraryStore((s) => s.batchSeparation);
   const songs = useLibraryStore((s) => s.songs);
 
@@ -128,6 +177,23 @@ function useActiveTasks(modelDownloadCompleteFlash: boolean): ActiveTask[] {
     }
   }
 
+  const runningUploads = Object.values(uploadStatuses).filter(
+    (status) => status.state === "running",
+  );
+
+  for (const upload of runningUploads) {
+    const song = songs.find((candidate) => candidate.hash === upload.song_id);
+    const title = song?.title ?? song?.file_path.split("/").pop() ?? "";
+    tasks.push({
+      key: `upload-${upload.song_id}`,
+      label: t("progress.uploadingToRemote", {
+        title,
+        defaultValue: `Uploading to remote library: ${title}`,
+      }),
+      percent: upload.percent,
+    });
+  }
+
   return tasks;
 }
 
@@ -139,39 +205,8 @@ export function GlobalProgressBar() {
 
   return (
     <div className="app-panel-surface shrink-0 space-y-2 border-t border-[color-mix(in_srgb,var(--color-border)_86%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_94%,transparent)] px-3 py-2">
-      {tasks.map((task) => (
-        <div key={task.key} className="space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="min-w-0 truncate text-[11px] text-[var(--color-text-dim)]">
-              {task.label}
-              {task.detail && (
-                <span className="ml-1 text-[var(--color-text-dimmer)]">
-                  {task.detail}
-                </span>
-              )}
-            </span>
-            {task.onCancel && (
-              <button
-                onClick={task.onCancel}
-                className="motion-icon-button shrink-0 rounded p-0.5 text-[var(--color-text-dim)] hover:bg-[var(--color-ghost-hover)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/30"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
-            {task.indeterminate ? (
-              <div className="relative h-full w-full overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-accent)_22%,transparent)]">
-                <div className="model-indeterminate-bar absolute inset-y-0 left-0 rounded-full bg-[var(--color-accent)] will-change-transform" />
-              </div>
-            ) : (
-              <div
-                className="motion-surface h-full rounded-full bg-[var(--color-accent)]"
-                style={{ width: `${task.percent}%` }}
-              />
-            )}
-          </div>
-        </div>
+      {tasks.map(({ key, ...task }) => (
+        <TaskProgressBar key={key} {...task} />
       ))}
     </div>
   );

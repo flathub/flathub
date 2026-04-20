@@ -112,7 +112,9 @@ fn build_startup_model_bootstrap(
 }
 
 fn load_library(app_config: Option<&config::AppConfig>) -> Option<LibraryRoot> {
-    let path = app_config.and_then(|config| config.library_path.clone())?;
+    let path = app_config
+        .and_then(|config| config.active_library())
+        .map(|library| library.root_path.clone())?;
     let lib_path = PathBuf::from(&path);
 
     match LibraryRoot::open(&lib_path) {

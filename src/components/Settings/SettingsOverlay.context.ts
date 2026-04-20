@@ -49,6 +49,7 @@ export function createSettingsOverlayTestContextValue(
       initialize: async () => {},
       createLibrary: async () => {},
       openLibrary: async () => {},
+      switchLibrary: async () => {},
       setLanguage: async () => {},
       restartApp: async () => {},
       setStemMode: async () => {},

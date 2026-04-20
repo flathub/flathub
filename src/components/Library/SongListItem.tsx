@@ -8,6 +8,7 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useQueueStore } from "@/stores/queue-store";
 import { formatDuration } from "@/lib/format";
+import { TaskProgressBar } from "@/components/Layout/GlobalProgressBar";
 import {
   songCanBeSeparated,
   songSupportsInstrumentalFlag,
@@ -33,6 +34,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const separationStatus = useLibraryStore(
     (s) => s.separationStatuses[song.hash],
   );
+  const uploadStatus = useLibraryStore((s) => s.uploadStatuses[song.hash]);
   const songs = useLibraryStore((s) => s.songs);
   const extractEmbeddedCoverArt = useLibraryStore(
     (s) => s.extractEmbeddedCoverArt,
@@ -124,6 +126,11 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             : state.lastClickedSongId,
           separationStatuses: Object.fromEntries(
             Object.entries(state.separationStatuses).filter(
+              ([id]) => !result.deleted_song_ids.includes(id),
+            ),
+          ),
+          uploadStatuses: Object.fromEntries(
+            Object.entries(state.uploadStatuses).filter(
               ([id]) => !result.deleted_song_ids.includes(id),
             ),
           ),
@@ -284,6 +291,34 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             )}
           </div>
         </div>
+
+        {(separationStatus?.state === "running" ||
+          uploadStatus?.state === "running") && (
+          <div className="mt-1 space-y-1">
+            {separationStatus?.state === "running" && (
+              <TaskProgressBar
+                label={t("progress.separating", {
+                  title: song.title || song.file_path.split("/").pop() || "",
+                  defaultValue: `Separating: ${
+                    song.title || song.file_path.split("/").pop() || ""
+                  }`,
+                })}
+                percent={separationStatus.percent}
+              />
+            )}
+            {uploadStatus?.state === "running" && (
+              <TaskProgressBar
+                label={t("progress.uploadingToRemote", {
+                  title: song.title || song.file_path.split("/").pop() || "",
+                  defaultValue: `Uploading to remote library: ${
+                    song.title || song.file_path.split("/").pop() || ""
+                  }`,
+                })}
+                percent={uploadStatus.percent}
+              />
+            )}
+          </div>
+        )}
 
         <div className="flex pl-5">
           <span

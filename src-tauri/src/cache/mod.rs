@@ -74,6 +74,9 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
             "ALTER TABLE songs ADD COLUMN instrumental INTEGER NOT NULL DEFAULT 0;",
         )?;
     }
+    if !column_exists(connection, "songs", "audio_source_kind")? {
+        connection.execute_batch(include_str!("../../migrations/005_audio_source_kind.sql"))?;
+    }
 
     // 005_individual_stem_paths – add per-instrument columns to stems table.
     if !column_exists(connection, "stems", "drums_path")? {
@@ -92,6 +95,8 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
             .execute_batch("ALTER TABLE stems ADD COLUMN model_variant TEXT DEFAULT 'htdemucs';")?;
     }
 
+    migrate_legacy_song_schema(connection)?;
+
     Ok(())
 }
 
@@ -102,6 +107,92 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> rusqlite
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(names.iter().any(|name| name == column))
+}
+
+fn column_is_not_null(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+) -> rusqlite::Result<bool> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = connection.prepare(&sql)?;
+    let columns = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(columns
+        .into_iter()
+        .any(|(name, not_null)| name == column && not_null != 0))
+}
+
+fn migrate_legacy_song_schema(connection: &Connection) -> rusqlite::Result<()> {
+    let file_path_is_not_null = column_is_not_null(connection, "songs", "file_path")?;
+    let has_audio_source_kind = column_exists(connection, "songs", "audio_source_kind")?;
+
+    if !file_path_is_not_null && has_audio_source_kind {
+        return Ok(());
+    }
+
+    connection.execute_batch(
+        "
+        PRAGMA foreign_keys = OFF;
+        BEGIN;
+        DROP TABLE IF EXISTS songs_new;
+        CREATE TABLE songs_new (
+            hash               TEXT PRIMARY KEY,
+            file_path          TEXT,
+            title              TEXT,
+            artist             TEXT,
+            album              TEXT,
+            duration_ms        INTEGER,
+            cover_art          BLOB,
+            imported_at        INTEGER NOT NULL,
+            original_ext       TEXT,
+            cdg_path           TEXT,
+            media_g_container  TEXT,
+            instrumental       INTEGER NOT NULL DEFAULT 0,
+            audio_source_kind  TEXT NOT NULL DEFAULT 'original'
+        );
+        INSERT INTO songs_new (
+            hash,
+            file_path,
+            title,
+            artist,
+            album,
+            duration_ms,
+            cover_art,
+            imported_at,
+            original_ext,
+            cdg_path,
+            media_g_container,
+            instrumental,
+            audio_source_kind
+        )
+        SELECT
+            hash,
+            file_path,
+            title,
+            artist,
+            album,
+            duration_ms,
+            cover_art,
+            imported_at,
+            original_ext,
+            cdg_path,
+            media_g_container,
+            instrumental,
+            COALESCE(audio_source_kind, 'original')
+        FROM songs;
+        DROP TABLE songs;
+        ALTER TABLE songs_new RENAME TO songs;
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+        ",
+    )?;
+
+    Ok(())
 }
 
 /// Initialize a database at an explicit path (for use inside a LibraryRoot).
@@ -352,5 +443,70 @@ mod tests {
 
         apply_migrations(&connection).expect("first migration pass should succeed");
         apply_migrations(&connection).expect("second migration pass should also succeed");
+    }
+
+    #[test]
+    fn migrates_legacy_song_schema_to_nullable_file_path_and_audio_source_kind() {
+        let connection = Connection::open_in_memory().expect("in-memory database should open");
+
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE songs (
+                    hash        TEXT PRIMARY KEY,
+                    file_path   TEXT NOT NULL,
+                    title       TEXT,
+                    artist      TEXT,
+                    album       TEXT,
+                    duration_ms INTEGER,
+                    cover_art   BLOB,
+                    imported_at INTEGER NOT NULL
+                );
+                INSERT INTO songs (
+                    hash, file_path, title, artist, album, duration_ms, cover_art, imported_at
+                ) VALUES (
+                    'song-1',
+                    'media/song-1.mp3',
+                    'Song',
+                    'Artist',
+                    'Album',
+                    1234,
+                    X'',
+                    1
+                );
+                ",
+            )
+            .expect("legacy schema should create");
+
+        apply_migrations(&connection).expect("legacy schema migration should succeed");
+
+        let file_path_nullable: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name = 'file_path' AND \"notnull\" = 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("file_path nullability lookup should succeed");
+        assert_eq!(file_path_nullable, 1);
+
+        let audio_source_kind_present: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name = 'audio_source_kind'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("audio_source_kind lookup should succeed");
+        assert_eq!(audio_source_kind_present, 1);
+
+        let (file_path, audio_source_kind): (Option<String>, String) = connection
+            .query_row(
+                "SELECT file_path, audio_source_kind FROM songs WHERE hash = 'song-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("migrated song row should load");
+
+        assert_eq!(file_path.as_deref(), Some("media/song-1.mp3"));
+        assert_eq!(audio_source_kind, "original");
     }
 }

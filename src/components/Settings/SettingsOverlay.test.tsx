@@ -35,6 +35,16 @@ vi.mock("./SettingsOverlay.controller", async () => {
   };
 });
 
+vi.mock("./ConfirmationDialog", () => ({
+  ConfirmationDialog: ({
+    title,
+    confirmLabel,
+  }: {
+    title: string;
+    confirmLabel: string;
+  }) => <div>{`${title} ${confirmLabel}`}</div>,
+}));
+
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: Object.assign(
     (selector: (state: typeof mockSettingsStore) => unknown) =>

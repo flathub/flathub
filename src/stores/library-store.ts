@@ -14,6 +14,7 @@ import type {
   ImportFailure,
   SeparationStatusSnapshot,
   Song,
+  UploadStatusSnapshot,
 } from "@/types/ipc";
 
 interface LibraryState {
@@ -24,6 +25,7 @@ interface LibraryState {
   selectedSongIds: Set<string>;
   lastClickedSongId: string | null;
   separationStatuses: Record<string, SeparationStatusSnapshot>;
+  uploadStatuses: Record<string, UploadStatusSnapshot>;
   filter: "all" | "separated";
   batchSeparation: BatchSeparationProgress | null;
   pendingImportCdgChoice: AmbiguousCdgChoiceRequest | null;
@@ -55,6 +57,9 @@ interface LibraryState {
   extractEmbeddedCoverArt: (songIds: string[]) => Promise<boolean>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearAllSeparationStatuses: () => void;
+  updateUploadStatus: (status: UploadStatusSnapshot) => void;
+  clearUploadStatus: (songId: string) => void;
+  clearAllUploadStatuses: () => void;
   updateBatchProgress: (progress: BatchSeparationProgress) => void;
   clearBatchSeparation: () => void;
   clearImportErrors: () => void;
@@ -81,6 +86,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   selectedSongIds: new Set<string>(),
   lastClickedSongId: null,
   separationStatuses: {},
+  uploadStatuses: {},
   filter: "all",
   batchSeparation: null,
   pendingImportCdgChoice: null,
@@ -320,6 +326,28 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   clearAllSeparationStatuses: () => set({ separationStatuses: {} }),
+
+  updateUploadStatus: (status) => {
+    set((state) => ({
+      uploadStatuses: {
+        ...state.uploadStatuses,
+        [status.song_id]: status,
+      },
+    }));
+  },
+
+  clearUploadStatus: (songId) =>
+    set((state) => {
+      if (!(songId in state.uploadStatuses)) {
+        return {};
+      }
+
+      const next = { ...state.uploadStatuses };
+      delete next[songId];
+      return { uploadStatuses: next };
+    }),
+
+  clearAllUploadStatuses: () => set({ uploadStatuses: {} }),
 
   updateBatchProgress: (progress) => set({ batchSeparation: progress }),
 

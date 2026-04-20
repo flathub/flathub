@@ -24,6 +24,7 @@ function createControllerHarness() {
   const dependencies: SettingsOverlayControllerDependencies = {
     api: {
       createLibrary: vi.fn(),
+      createLocalLibrary: vi.fn(),
       deleteAllCachedLyrics: vi.fn(),
       deleteAllStems: vi.fn(),
       deleteModel: vi.fn(),
@@ -33,11 +34,14 @@ function createControllerHarness() {
       estimateStemsSize: vi.fn(),
       getAllSeparationStatuses: vi.fn(),
       getLibraryPath: vi.fn(),
+      getLibraryRegistry: vi.fn(),
       getSettings: vi.fn(),
       getWindowShellState: vi.fn(),
       getModelStatus: vi.fn(),
       openLibrary: vi.fn(),
+      registerLocalLibrary: vi.fn(),
       restartApp: vi.fn(),
+      switchLibrary: vi.fn(),
       setExecutionProvider: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
@@ -49,6 +53,7 @@ function createControllerHarness() {
     changeLanguage: vi.fn(),
     libraryStore: {
       clearAllSeparationStatuses: vi.fn(),
+      clearAllUploadStatuses: vi.fn(),
       updateSeparationStatus: vi.fn(),
     },
     lyricsStore: {
@@ -97,9 +102,17 @@ describe("SettingsOverlay controller", () => {
   test("initial load populates library path, settings, and model statuses", async () => {
     const harness = createControllerHarness();
 
-    vi.mocked(harness.dependencies.api.getLibraryPath).mockResolvedValue(
-      "/karaoke",
-    );
+    vi.mocked(harness.dependencies.api.getLibraryRegistry).mockResolvedValue({
+      active_library_id: "local:/karaoke",
+      libraries: [
+        {
+          id: "local:/karaoke",
+          kind: "local",
+          display_name: "karaoke",
+          root_path: "/karaoke",
+        },
+      ],
+    });
     vi.mocked(harness.dependencies.api.getSettings).mockResolvedValue({
       stem_mode: "four_stem",
       model_variant: "htdemucs_ft",
@@ -150,6 +163,26 @@ describe("SettingsOverlay controller", () => {
     expect(harness.getSnapshot()).toMatchObject({
       state: {
         libraryPath: "/karaoke",
+        libraryRegistry: {
+          active_library_id: "local:/karaoke",
+          libraries: [
+            {
+              id: "local:/karaoke",
+              kind: "local",
+              display_name: "karaoke",
+              root_path: "/karaoke",
+            },
+          ],
+        },
+        libraries: [
+          {
+            id: "local:/karaoke",
+            kind: "local",
+            display_name: "karaoke",
+            root_path: "/karaoke",
+          },
+        ],
+        activeLibraryId: "local:/karaoke",
         stemMode: "four_stem",
         modelVariant: "htdemucs_ft",
         language: "zh-CN",
@@ -171,6 +204,37 @@ describe("SettingsOverlay controller", () => {
         isInitializing: false,
       },
     });
+  });
+
+  test("creating a local library refreshes the registry snapshot", async () => {
+    const harness = createControllerHarness();
+
+    vi.mocked(harness.dependencies.openDirectory).mockResolvedValue("/music");
+    vi.mocked(harness.dependencies.api.createLocalLibrary).mockResolvedValue(
+      undefined,
+    );
+    vi.mocked(harness.dependencies.api.getLibraryRegistry).mockResolvedValue({
+      active_library_id: "local:/music/OpenKara",
+      libraries: [
+        {
+          id: "local:/music/OpenKara",
+          kind: "local",
+          display_name: "OpenKara",
+          root_path: "/music/OpenKara",
+        },
+      ],
+    });
+
+    await harness.actions.createLibrary("Create library");
+
+    expect(harness.dependencies.api.createLocalLibrary).toHaveBeenCalledWith(
+      "/music/OpenKara",
+    );
+    expect(harness.getSnapshot().state.activeLibraryId).toBe(
+      "local:/music/OpenKara",
+    );
+    expect(harness.getSnapshot().state.libraryPath).toBe("/music/OpenKara");
+    expect(harness.getSnapshot().state.libraries).toHaveLength(1);
   });
 
   test("selecting an undownloaded model downloads it before applying the variant", async () => {

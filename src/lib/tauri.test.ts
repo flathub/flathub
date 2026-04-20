@@ -74,6 +74,42 @@ describe("tauri API wrappers", () => {
     });
   });
 
+  test("reads the library registry through the dedicated backend command", async () => {
+    const { getLibraryRegistry } = await import("./tauri");
+
+    mockInvoke.mockResolvedValueOnce({
+      active_library_id: "local:/karaoke",
+      libraries: [
+        {
+          id: "local:/karaoke",
+          kind: "local",
+          display_name: "karaoke",
+          root_path: "/karaoke",
+        },
+      ],
+    });
+
+    await getLibraryRegistry();
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_library_registry");
+  });
+
+  test("opens a remote library through the dedicated backend command", async () => {
+    const { connectRemoteLibrary } = await import("./tauri");
+
+    mockInvoke.mockResolvedValueOnce({
+      active_library_id: "remote:drive",
+      libraries: [],
+    });
+
+    await connectRemoteLibrary("/remote/library", "remote library");
+
+    expect(mockInvoke).toHaveBeenCalledWith("connect_remote_library", {
+      path: "/remote/library",
+      displayName: "remote library",
+    });
+  });
+
   test("syncs audience state to the AirPlay backend", async () => {
     const { syncAirPlayAudienceState } = await import("./tauri");
 

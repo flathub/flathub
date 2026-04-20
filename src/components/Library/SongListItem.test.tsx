@@ -13,6 +13,7 @@ const {
     selectedSongIds: new Set<string>(),
     selectSong: vi.fn(),
     separationStatuses: {},
+    uploadStatuses: {},
     songs: [],
     loadLibrary: vi.fn(),
     lastClickedSongId: null,
@@ -267,6 +268,62 @@ describe("SongListItem", () => {
     expect(markup).not.toContain("bg-[var(--color-hover)]");
 
     mockLibraryState.separationStatuses = {};
+  });
+
+  test("renders shared progress bars for running separation and upload tasks", () => {
+    mockLibraryState.selectedSongIds = new Set();
+    mockLibraryState.separationStatuses = {
+      "song-native-progress": {
+        song_id: "song-native-progress",
+        state: "running",
+        percent: 55,
+        cache_hit: false,
+        vocals_path: null,
+        accomp_path: null,
+        drums_path: null,
+        bass_path: null,
+        other_path: null,
+        model_variant: null,
+        error: null,
+      },
+    };
+    mockLibraryState.uploadStatuses = {
+      "song-native-progress": {
+        song_id: "song-native-progress",
+        state: "running",
+        percent: 88,
+        remote_library_id: null,
+        detail: null,
+        error: null,
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        song={{
+          hash: "song-native-progress",
+          file_path: "Rina Sawayama/Hold The Girl.mp3",
+          cdg_path: null,
+          media_g_container: null,
+          instrumental: false,
+          title: "Hold The Girl",
+          artist: "Rina Sawayama",
+          album: null,
+          duration_ms: 240000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-native-progress"]}
+      />,
+    );
+
+    expect(markup).toContain("progress.separating:Hold The Girl");
+    expect(markup).toContain("progress.uploadingToRemote:Hold The Girl");
+    expect(markup).toContain("h-1.5 w-full overflow-hidden rounded-full");
+
+    mockLibraryState.separationStatuses = {};
+    mockLibraryState.uploadStatuses = {};
   });
 
   test("renders a compact cover art thumbnail when cover art arrives as Uint8Array", () => {

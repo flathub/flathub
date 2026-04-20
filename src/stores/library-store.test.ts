@@ -81,6 +81,7 @@ describe("library-store updateSongMetadata", () => {
       selectedSongIds: new Set<string>(),
       lastClickedSongId: null,
       separationStatuses: {},
+      uploadStatuses: {},
       filter: "all",
       batchSeparation: null,
       pendingImportCdgChoice: null,
@@ -240,5 +241,25 @@ describe("library-store updateSongMetadata", () => {
     expect(useLibraryStore.getState().songs[0].cover_art).toBeNull();
     expect(mockInvalidateCoverArtUrl).not.toHaveBeenCalled();
     expect(mockNotifyError).toHaveBeenCalledWith(error);
+  });
+
+  test("tracks upload progress and clears individual upload statuses", () => {
+    useLibraryStore.getState().updateUploadStatus({
+      song_id: "song-1",
+      state: "running",
+      percent: 35,
+      remote_library_id: null,
+      detail: null,
+      error: null,
+    });
+
+    expect(useLibraryStore.getState().uploadStatuses["song-1"]).toMatchObject({
+      state: "running",
+      percent: 35,
+    });
+
+    useLibraryStore.getState().clearUploadStatus("song-1");
+
+    expect(useLibraryStore.getState().uploadStatuses["song-1"]).toBeUndefined();
   });
 });

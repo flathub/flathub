@@ -227,6 +227,8 @@ mod tests {
     fn settings_snapshot_uses_platform_default_execution_provider_when_unset() {
         let settings = settings_from_config(&AppConfig {
             execution_provider: None,
+            libraries: vec![],
+            active_library_id: None,
             ..AppConfig::default()
         });
 
