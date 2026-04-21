@@ -79,8 +79,8 @@ export const remoteLibraryProviders: RemoteProviderChoice[] = [
     icon: Globe,
     title: "Dropbox",
     description:
-      "Planned next: browser sign-in and Dropbox-backed remote libraries.",
-    availableNow: false,
+      "Connect through Dropbox OAuth and keep an OpenKara library in your Dropbox.",
+    availableNow: true,
   },
   {
     provider: "webdav",
@@ -134,6 +134,8 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [remoteDisplayName, setRemoteDisplayName] = useState("WebDAV Library");
   const [googleClientId, setGoogleClientId] = useState("");
   const [googleClientSecret, setGoogleClientSecret] = useState("");
+  const [dropboxAppKey, setDropboxAppKey] = useState("");
+  const [dropboxAppSecret, setDropboxAppSecret] = useState("");
   const [remoteServerUrl, setRemoteServerUrl] = useState("");
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
@@ -156,6 +158,8 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setRemoteDisplayName("WebDAV Library");
     setGoogleClientId("");
     setGoogleClientSecret("");
+    setDropboxAppKey("");
+    setDropboxAppSecret("");
     setRemoteServerUrl("");
     setRemoteUsername("");
     setRemotePassword("");
@@ -261,15 +265,21 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               client_id: googleClientId.trim(),
               client_secret: googleClientSecret.trim() || null,
             }
-          : provider === "webdav"
+          : provider === "dropbox"
             ? {
-                type: "webdav",
-                server_url: remoteServerUrl,
-                username: remoteUsername,
-                password: remotePassword,
-                root_path: remoteRootPath.trim() || null,
+                type: "dropbox",
+                app_key: dropboxAppKey.trim(),
+                app_secret: dropboxAppSecret.trim() || null,
               }
-            : null,
+            : provider === "webdav"
+              ? {
+                  type: "webdav",
+                  server_url: remoteServerUrl,
+                  username: remoteUsername,
+                  password: remotePassword,
+                  root_path: remoteRootPath.trim() || null,
+                }
+              : null,
       );
 
       if (start.authorization_url) {
@@ -277,7 +287,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
         setRemoteMessage(
           provider === "google_drive"
             ? "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
-            : null,
+            : provider === "dropbox"
+              ? "Dropbox sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+              : null,
         );
         globalThis.open?.(
           start.authorization_url,
@@ -305,7 +317,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           throw new Error(
             provider === "google_drive"
               ? "Google sign-in timed out before OpenKara received the callback."
-              : "Remote sign-in timed out.",
+              : provider === "dropbox"
+                ? "Dropbox sign-in timed out before OpenKara received the callback."
+                : "Remote sign-in timed out.",
           );
         }
       }
@@ -324,9 +338,11 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           defaultValue:
             provider === "google_drive"
               ? "Google Drive library connected successfully."
-              : provider === "webdav"
-                ? "WebDAV library connected successfully."
-                : "Remote library connected successfully.",
+              : provider === "dropbox"
+                ? "Dropbox library connected successfully."
+                : provider === "webdav"
+                  ? "WebDAV library connected successfully."
+                  : "Remote library connected successfully.",
         }),
       );
       setStep("stemMode");
@@ -364,6 +380,15 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     }
 
     await connectRemoteLibrary("google_drive");
+  };
+
+  const handleDropboxConnect = async () => {
+    if (!dropboxAppKey.trim()) {
+      setError("Enter the Dropbox app key first.");
+      return;
+    }
+
+    await connectRemoteLibrary("dropbox");
   };
 
   const handleFinish = async () => {
@@ -528,7 +553,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
                 {t("setup.openRemoteLibraryDescription", {
                   defaultValue:
-                    "Connect Google Drive or WebDAV to your remote library.",
+                    "Connect Google Drive, Dropbox, or WebDAV to your remote library.",
                 })}
               </p>
             </div>
@@ -742,11 +767,71 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             )}
 
             {selectedRemoteProvider === "dropbox" && (
-              <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-4 py-3 text-left text-[12px] text-[var(--color-text-dim)]">
-                Dropbox still stays in the completion plan, but it is not wired
-                yet in this build. OpenKara now keeps Google Drive and WebDAV as
-                the real remote-library paths instead of pretending Dropbox is
-                ready before the provider code exists.
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="Dropbox Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    App key
+                  </label>
+                  <input
+                    value={dropboxAppKey}
+                    onChange={(event) => setDropboxAppKey(event.target.value)}
+                    placeholder="Dropbox app key"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    App secret (optional)
+                  </label>
+                  <input
+                    value={dropboxAppSecret}
+                    onChange={(event) =>
+                      setDropboxAppSecret(event.target.value)
+                    }
+                    placeholder="optional for confidential Dropbox apps"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                    OpenKara will create or reuse a folder with the display name
+                    above in Dropbox, then keep the remote library there.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => void handleDropboxConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {loading ? "Waiting for Dropbox…" : "Connect Dropbox"}
+                </button>
+
+                {remoteAuthorizationUrl && (
+                  <a
+                    href={remoteAuthorizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
+                  >
+                    Open Dropbox sign-in in your browser again
+                  </a>
+                )}
               </div>
             )}
 
