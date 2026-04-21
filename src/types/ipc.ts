@@ -46,6 +46,12 @@ export interface GoogleDriveRemoteAuthPayload {
   client_secret: string | null;
 }
 
+export interface DropboxRemoteAuthPayload {
+  type: "dropbox";
+  app_key: string;
+  app_secret: string | null;
+}
+
 export interface WebDavRemoteAuthPayload {
   type: "webdav";
   server_url: string;
@@ -56,6 +62,7 @@ export interface WebDavRemoteAuthPayload {
 
 export type RemoteAuthPayload =
   | GoogleDriveRemoteAuthPayload
+  | DropboxRemoteAuthPayload
   | WebDavRemoteAuthPayload
   | null;
 
@@ -100,10 +107,25 @@ export interface RemoteLibraryRegistration {
   remote_root_locator: string;
   remote_path_display: string;
   account_id: string;
+  connection_config: RemoteLibraryConnectionConfig | null;
   cached_db_path: string | null;
   remote_revision: string | null;
   bound_local_library_id: string | null;
 }
+
+export type RemoteLibraryConnectionConfig =
+  | {
+      type: "google_drive";
+      oauth_client_id: string;
+    }
+  | {
+      type: "dropbox";
+      app_key: string;
+    }
+  | {
+      type: "webdav";
+      server_url: string;
+    };
 
 export type RegisteredLibrary =
   | LocalLibraryRegistration

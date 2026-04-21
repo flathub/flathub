@@ -58,6 +58,25 @@ describe("tauri API wrappers", () => {
     });
   });
 
+  test("passes Dropbox auth payloads through unchanged", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("dropbox", {
+      type: "dropbox",
+      app_key: "dropbox-app-key",
+      app_secret: "dropbox-app-secret",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "dropbox",
+      payload: {
+        type: "dropbox",
+        app_key: "dropbox-app-key",
+        app_secret: "dropbox-app-secret",
+      },
+    });
+  });
+
   test("sends the backend positionMs payload name", async () => {
     await getCdgFrame(123.6);
 

@@ -31,6 +31,10 @@ describe("ipc type shapes", () => {
       remote_root_locator: "drive-root",
       remote_path_display: "OpenKara / Team Karaoke",
       account_id: "acct-1",
+      connection_config: {
+        type: "webdav",
+        server_url: "https://dav.example.com/remote.php/dav/files/user/",
+      },
       cached_db_path: null,
       remote_revision: null,
       bound_local_library_id: null,
