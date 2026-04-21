@@ -140,6 +140,14 @@ impl RemoteLibraryProvider {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RemoteLibraryConnectionConfig {
+    GoogleDrive { oauth_client_id: String },
+    Dropbox { app_key: String },
+    WebDav { server_url: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RegisteredLibrary {
     Local {
@@ -154,6 +162,8 @@ pub enum RegisteredLibrary {
         account_id: String,
         remote_root_locator: String,
         remote_path_display: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        connection_config: Option<RemoteLibraryConnectionConfig>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cached_db_path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,6 +189,7 @@ impl RegisteredLibrary {
         account_id: String,
         remote_root_locator: String,
         remote_path_display: String,
+        connection_config: Option<RemoteLibraryConnectionConfig>,
         cached_db_path: Option<String>,
         remote_revision: Option<String>,
         bound_local_library_id: Option<String>,
@@ -190,6 +201,7 @@ impl RegisteredLibrary {
             account_id,
             remote_root_locator,
             remote_path_display,
+            connection_config,
             cached_db_path,
             remote_revision,
             bound_local_library_id,
@@ -242,6 +254,15 @@ impl RegisteredLibrary {
         }
     }
 
+    pub fn connection_config(&self) -> Option<&RemoteLibraryConnectionConfig> {
+        match self {
+            Self::Remote {
+                connection_config, ..
+            } => connection_config.as_ref(),
+            Self::Local { .. } => None,
+        }
+    }
+
     pub fn cached_db_path(&self) -> Option<&str> {
         match self {
             Self::Remote {
@@ -281,6 +302,29 @@ impl RegisteredLibrary {
                 ..
             }
             | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn google_drive_client_id(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::GoogleDrive { oauth_client_id }) => {
+                Some(oauth_client_id.as_str())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dropbox_app_key(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::Dropbox { app_key }) => Some(app_key.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn webdav_server_url(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::WebDav { server_url }) => Some(server_url.as_str()),
+            _ => None,
         }
     }
 

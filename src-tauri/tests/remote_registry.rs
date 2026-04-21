@@ -1,4 +1,6 @@
-use openkara_lib::config::{AppConfig, RegisteredLibrary, RemoteLibraryProvider};
+use openkara_lib::config::{
+    AppConfig, RegisteredLibrary, RemoteLibraryConnectionConfig, RemoteLibraryProvider,
+};
 
 #[test]
 fn serializes_local_and_remote_libraries_with_distinct_shapes() {
@@ -13,6 +15,9 @@ fn serializes_local_and_remote_libraries_with_distinct_shapes() {
         "account-1".to_owned(),
         "root-folder-id".to_owned(),
         "My Drive/OpenKara".to_owned(),
+        Some(RemoteLibraryConnectionConfig::GoogleDrive {
+            oauth_client_id: "client-123.apps.googleusercontent.com".to_owned(),
+        }),
         Some("cached/openkara.db".to_owned()),
         Some("rev-1".to_owned()),
         Some("local-library-id".to_owned()),

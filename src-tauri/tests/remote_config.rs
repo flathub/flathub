@@ -1,7 +1,10 @@
 #[path = "../src/config.rs"]
 mod config;
 
-use config::{load_config, AppConfig, RegisteredLibrary, RemoteLibraryProvider};
+use config::{
+    load_config, AppConfig, RegisteredLibrary, RemoteLibraryConnectionConfig,
+    RemoteLibraryProvider,
+};
 use serde_json::Value;
 use std::fs;
 
@@ -14,6 +17,9 @@ fn remote_registered_library_serializes_as_discriminated_union() {
         "acct-1".to_owned(),
         "folders/root".to_owned(),
         "OpenKara Drive".to_owned(),
+        Some(RemoteLibraryConnectionConfig::GoogleDrive {
+            oauth_client_id: "client-123.apps.googleusercontent.com".to_owned(),
+        }),
         Some("/tmp/cache/openkara.db".to_owned()),
         Some("rev-7".to_owned()),
         Some("local-123".to_owned()),
@@ -73,6 +79,9 @@ fn remote_library_entries_round_trip_through_app_config() {
             "acct-2".to_owned(),
             "apps/openkara".to_owned(),
             "OpenKara Dropbox".to_owned(),
+            Some(RemoteLibraryConnectionConfig::Dropbox {
+                app_key: "dropbox-app-key".to_owned(),
+            }),
             None,
             Some("rev-9".to_owned()),
             None,
