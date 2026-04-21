@@ -117,7 +117,6 @@ pub enum LibraryKind {
 pub enum RemoteLibraryProvider {
     GoogleDrive,
     Dropbox,
-    #[serde(rename = "webdav")]
     WebDav,
 }
 

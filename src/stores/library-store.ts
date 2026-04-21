@@ -93,6 +93,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   loadLibrary: async () => {
     try {
+      try {
+        const activeLibrary = await api.getActiveLibrary();
+        if (activeLibrary?.kind === "remote") {
+          await api.syncActiveRemoteLibrary();
+        }
+      } catch {
+        // Keep stale cache visible if the remote sync attempt fails.
+      }
+
       const songs = await api.getLibrary();
       set({ songs });
 

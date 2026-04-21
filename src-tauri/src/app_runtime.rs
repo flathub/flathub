@@ -53,6 +53,8 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         audio_output_start_lock: Arc::new(Mutex::new(())),
         model_bootstrap_status: Arc::clone(&model_bootstrap_status),
         separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+        remote_auth_sessions: Arc::new(Mutex::new(HashMap::new())),
+        remote_upload_statuses: Arc::new(Mutex::new(HashMap::new())),
         separator_model_cache: Arc::new(Mutex::new(separator::model_cache::ModelCache::default())),
         batch_running: Arc::new(AtomicBool::new(false)),
         batch_cancel: Arc::new(AtomicBool::new(false)),
@@ -130,7 +132,11 @@ fn load_library(app_config: Option<&config::AppConfig>) -> Option<LibraryRoot> {
             Some(lib)
         }
         Err(err) => {
-            eprintln!("warning: could not open library at {}: {}", lib_path.display(), err);
+            eprintln!(
+                "warning: could not open library at {}: {}",
+                lib_path.display(),
+                err
+            );
             None
         }
     }

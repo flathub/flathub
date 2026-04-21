@@ -15,7 +15,7 @@ describe("SettingsLibrarySection", () => {
             id: "remote:drive",
             kind: "remote",
             display_name: "Drive Library",
-            provider: "google_drive",
+            provider: "webdav",
             remote_root_locator: "drive-root",
             remote_path_display: "OpenKara / Team Karaoke",
             account_id: "acct-1",
@@ -35,7 +35,7 @@ describe("SettingsLibrarySection", () => {
     );
 
     expect(markup).toContain("Drive Library");
-    expect(markup).toContain("Google Drive");
+    expect(markup).toContain("WebDAV");
     expect(markup).toContain("OpenKara / Team Karaoke");
   });
 });

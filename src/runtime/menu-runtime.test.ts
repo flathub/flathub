@@ -38,6 +38,23 @@ describe("app menu runtime", () => {
     expect(toggleSidebar).not.toHaveBeenCalled();
   });
 
+  test("opens settings when the switch library menu item is selected", async () => {
+    mockGetShortcutPlatform.mockReturnValue("mac");
+    const toggleSettings = vi.fn();
+    const importFromDialog = vi.fn();
+    const toggleSidebar = vi.fn();
+
+    await handleAppMenuAction("switch-library", {
+      toggleSettings,
+      importFromDialog,
+      toggleSidebar,
+    });
+
+    expect(toggleSettings).toHaveBeenCalledOnce();
+    expect(importFromDialog).not.toHaveBeenCalled();
+    expect(toggleSidebar).not.toHaveBeenCalled();
+  });
+
   test("opens the import dialog when the import menu item is selected", async () => {
     mockGetShortcutPlatform.mockReturnValue("mac");
     const toggleSettings = vi.fn();

@@ -19,11 +19,42 @@ describe("tauri API wrappers", () => {
   test("starts remote provider auth through the dedicated backend command", async () => {
     const { beginRemoteAuth } = await import("./tauri");
 
-    await beginRemoteAuth("google_drive");
+    await beginRemoteAuth("webdav", {
+      type: "webdav",
+      server_url: "https://dav.example.com/remote.php/dav/files/user/",
+      username: "user",
+      password: "secret",
+      root_path: "/OpenKara",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "webdav",
+      payload: {
+        type: "webdav",
+        server_url: "https://dav.example.com/remote.php/dav/files/user/",
+        username: "user",
+        password: "secret",
+        root_path: "/OpenKara",
+      },
+    });
+  });
+
+  test("passes Google Drive auth payloads through unchanged", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("google_drive", {
+      type: "google_drive",
+      client_id: "client-123.apps.googleusercontent.com",
+      client_secret: "secret-456",
+    });
 
     expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
       provider: "google_drive",
-      payload: null,
+      payload: {
+        type: "google_drive",
+        client_id: "client-123.apps.googleusercontent.com",
+        client_secret: "secret-456",
+      },
     });
   });
 

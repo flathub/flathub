@@ -81,6 +81,13 @@ fn register_library(
     persist_app_config(app_data_dir, &config)?;
 
     store_active_library(state, &mut config, root)?;
+    {
+        let mut upload_statuses = state
+            .remote_upload_statuses
+            .lock()
+            .map_err(|_| state_lock_error("remote upload status lock was poisoned"))?;
+        upload_statuses.clear();
+    }
 
     Ok(LibraryRegistrySnapshot {
         active_library_id: config.active_library_id.clone(),
@@ -121,6 +128,13 @@ fn activate_library(
             .lock()
             .map_err(|_| state_lock_error("CDG state lock was poisoned"))?;
         *cdg_state = None;
+    }
+    {
+        let mut upload_statuses = state
+            .remote_upload_statuses
+            .lock()
+            .map_err(|_| state_lock_error("remote upload status lock was poisoned"))?;
+        upload_statuses.clear();
     }
 
     set_active_library(&mut config, library.id().to_owned());
@@ -222,10 +236,15 @@ pub fn remove_library(
         .map_err(|error| library_error(error.to_string()))?;
     let mut config = load_app_config(&app_data_dir)?;
     let removed_active = config.active_library_id.as_deref() == Some(library_id.as_str());
-    config.libraries.retain(|library| library.id() != library_id);
+    config
+        .libraries
+        .retain(|library| library.id() != library_id);
 
     if removed_active {
-        config.active_library_id = config.libraries.first().map(|library| library.id().to_owned());
+        config.active_library_id = config
+            .libraries
+            .first()
+            .map(|library| library.id().to_owned());
     }
 
     persist_app_config(&app_data_dir, &config)?;
@@ -249,6 +268,13 @@ pub fn remove_library(
                 .lock()
                 .map_err(|_| state_lock_error("CDG state lock was poisoned"))?;
             *cdg_state = None;
+        }
+        {
+            let mut upload_statuses = state
+                .remote_upload_statuses
+                .lock()
+                .map_err(|_| state_lock_error("remote upload status lock was poisoned"))?;
+            upload_statuses.clear();
         }
     } else if removed_active {
         activate_library(

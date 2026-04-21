@@ -27,7 +27,7 @@ describe("ipc type shapes", () => {
       id: "remote:drive",
       kind: "remote",
       display_name: "Drive Library",
-      provider: "google_drive",
+      provider: "webdav",
       remote_root_locator: "drive-root",
       remote_path_display: "OpenKara / Team Karaoke",
       account_id: "acct-1",
@@ -36,6 +36,6 @@ describe("ipc type shapes", () => {
       bound_local_library_id: null,
     };
 
-    expect(library.provider).toBe("google_drive");
+    expect(library.provider).toBe("webdav");
   });
 });

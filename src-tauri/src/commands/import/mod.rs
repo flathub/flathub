@@ -17,6 +17,7 @@ use crate::{
     commands::error::{
         database_error, internal_error, library_error, state_lock_error, CommandResult,
     },
+    commands::remote_library,
     library::{ImportFailure, ImportSongsResult, Song},
     library_root::LibraryRoot,
     media_g::{self, MEDIA_G_PAIRED, MEDIA_G_ZIP},
@@ -308,6 +309,8 @@ pub fn update_song_metadata(
     cache::update_song_title_artist(&connection, &hash, title.as_deref(), artist.as_deref())
         .map_err(|e| database_error(e.to_string()))?;
 
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+
     cache::get_song_by_hash(&connection, &hash)
         .map_err(|e| database_error(e.to_string()))?
         .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
@@ -322,7 +325,9 @@ pub fn set_songs_instrumental(
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)
+    let result = set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)?;
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    Ok(result)
 }
 
 pub fn set_songs_instrumental_in_connection(
@@ -368,6 +373,12 @@ pub fn get_song_properties(
             song_id
         )));
     };
+    if song.is_remote() {
+        remote_library::ensure_remote_file_cached(&state.app_data_dir, song_path)?;
+        if let Some(cdg_path) = song.cdg_path.as_deref() {
+            remote_library::ensure_remote_file_cached(&state.app_data_dir, cdg_path)?;
+        }
+    }
     let file_path = library.resolve(song_path);
     let ext = song
         .original_ext

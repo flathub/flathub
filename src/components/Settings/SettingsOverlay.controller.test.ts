@@ -42,6 +42,7 @@ function createControllerHarness() {
       registerLocalLibrary: vi.fn(),
       restartApp: vi.fn(),
       switchLibrary: vi.fn(),
+      syncActiveRemoteLibrary: vi.fn(),
       setExecutionProvider: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),

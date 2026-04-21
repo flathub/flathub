@@ -27,6 +27,7 @@ import type {
   StemName,
   Song,
   SongProperties,
+  UploadStatusSnapshot,
   WindowShellStateSnapshot,
 } from "@/types/ipc";
 
@@ -124,8 +125,8 @@ export function publishSongsToRemote(songIds: string[]): Promise<unknown> {
   return invoke<unknown>("publish_songs_to_remote", { songIds });
 }
 
-export function getAllUploadStatuses(): Promise<unknown[]> {
-  return invoke<unknown[]>("get_all_upload_statuses");
+export function getAllUploadStatuses(): Promise<UploadStatusSnapshot[]> {
+  return invoke<UploadStatusSnapshot[]>("get_all_upload_statuses");
 }
 
 export function switchLibrary(

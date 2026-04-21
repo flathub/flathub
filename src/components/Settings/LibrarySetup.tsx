@@ -5,7 +5,6 @@ import {
   type LucideIcon,
   Cloud,
   FolderOpen,
-  Server,
   Plus,
   Music,
   Globe,
@@ -17,10 +16,7 @@ import {
 import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
-import type {
-  RemoteLibraryProvider,
-  RemoteWebDavAuthPayload,
-} from "@/types/ipc";
+import type { RemoteLibraryProvider } from "@/types/ipc";
 
 type Step = "language" | "library" | "remoteProvider" | "stemMode";
 type LibraryChoiceKind = "create_local" | "open_local" | "open_remote";
@@ -30,6 +26,7 @@ interface RemoteProviderChoice {
   icon: LucideIcon;
   title: string;
   description: string;
+  availableNow: boolean;
 }
 
 interface LibraryChoice {
@@ -38,6 +35,12 @@ interface LibraryChoice {
   title: string;
   description: string;
 }
+
+const remoteProviderDisplayNames: Record<RemoteLibraryProvider, string> = {
+  google_drive: "Google Drive Library",
+  dropbox: "Dropbox Library",
+  webdav: "WebDAV Library",
+};
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const librarySetupChoices: LibraryChoice[] = [
@@ -67,19 +70,24 @@ export const remoteLibraryProviders: RemoteProviderChoice[] = [
     provider: "google_drive",
     icon: Cloud,
     title: "Google Drive",
-    description: "Sign in with your Google account in the browser.",
+    description:
+      "Connect through Google OAuth and keep an OpenKara library in My Drive.",
+    availableNow: true,
   },
   {
     provider: "dropbox",
     icon: Globe,
     title: "Dropbox",
-    description: "Sign in with your Dropbox account in the browser.",
+    description:
+      "Planned next: browser sign-in and Dropbox-backed remote libraries.",
+    availableNow: false,
   },
   {
     provider: "webdav",
-    icon: Server,
+    icon: FolderOpen,
     title: "WebDAV",
-    description: "Connect with a server URL and credentials.",
+    description: "Connect to a WebDAV-hosted OpenKara library right now.",
+    availableNow: true,
   },
 ];
 
@@ -120,9 +128,16 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [selectedRemoteProvider, setSelectedRemoteProvider] =
     useState<RemoteLibraryProvider | null>(null);
   const [remoteMessage, setRemoteMessage] = useState<string | null>(null);
-  const [webDavBaseUrl, setWebDavBaseUrl] = useState("");
-  const [webDavUsername, setWebDavUsername] = useState("");
-  const [webDavPassword, setWebDavPassword] = useState("");
+  const [remoteAuthorizationUrl, setRemoteAuthorizationUrl] = useState<
+    string | null
+  >(null);
+  const [remoteDisplayName, setRemoteDisplayName] = useState("WebDAV Library");
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [googleClientSecret, setGoogleClientSecret] = useState("");
+  const [remoteServerUrl, setRemoteServerUrl] = useState("");
+  const [remoteUsername, setRemoteUsername] = useState("");
+  const [remotePassword, setRemotePassword] = useState("");
+  const [remoteRootPath, setRemoteRootPath] = useState("/OpenKara");
   const [selectedLanguage, setSelectedLanguage] = useState(
     () =>
       settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
@@ -137,9 +152,14 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const resetRemoteWizard = () => {
     setSelectedRemoteProvider(null);
     setRemoteMessage(null);
-    setWebDavBaseUrl("");
-    setWebDavUsername("");
-    setWebDavPassword("");
+    setRemoteAuthorizationUrl(null);
+    setRemoteDisplayName("WebDAV Library");
+    setGoogleClientId("");
+    setGoogleClientSecret("");
+    setRemoteServerUrl("");
+    setRemoteUsername("");
+    setRemotePassword("");
+    setRemoteRootPath("/OpenKara");
   };
 
   useEffect(() => {
@@ -226,30 +246,90 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setStep("remoteProvider");
   };
 
-  const handleRemoteProviderSelect = async (
-    provider: RemoteLibraryProvider,
-  ) => {
+  const connectRemoteLibrary = async (provider: RemoteLibraryProvider) => {
     setError(null);
     setRemoteMessage(null);
+    setRemoteAuthorizationUrl(null);
     setSelectedRemoteProvider(provider);
-
-    if (provider === "webdav") {
-      return;
-    }
-
     setLoading(true);
     try {
-      const start = await api.beginRemoteAuth(provider);
-      setRemoteMessage(
-        start.authorization_url
-          ? t("setup.remoteAuthBrowserPrompt", {
-              defaultValue:
-                "Sign-in has opened in your browser. Finish the provider flow there.",
-            })
-          : t("setup.remoteAuthStarted", {
-              defaultValue: "Remote authorization has started.",
-            }),
+      const start = await api.beginRemoteAuth(
+        provider,
+        provider === "google_drive"
+          ? {
+              type: "google_drive",
+              client_id: googleClientId.trim(),
+              client_secret: googleClientSecret.trim() || null,
+            }
+          : provider === "webdav"
+            ? {
+                type: "webdav",
+                server_url: remoteServerUrl,
+                username: remoteUsername,
+                password: remotePassword,
+                root_path: remoteRootPath.trim() || null,
+              }
+            : null,
       );
+
+      if (start.authorization_url) {
+        setRemoteAuthorizationUrl(start.authorization_url);
+        setRemoteMessage(
+          provider === "google_drive"
+            ? "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+            : null,
+        );
+        globalThis.open?.(
+          start.authorization_url,
+          "_blank",
+          "noopener,noreferrer",
+        );
+
+        const deadline = Date.now() + 120_000;
+        let ready = false;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const status = await api.pollRemoteAuth(start.session_id);
+          if (status.state === "ready") {
+            ready = true;
+            break;
+          }
+          if (status.state === "failed") {
+            throw new Error(
+              status.error?.message ?? "Remote sign-in failed unexpectedly.",
+            );
+          }
+        }
+
+        if (!ready) {
+          throw new Error(
+            provider === "google_drive"
+              ? "Google sign-in timed out before OpenKara received the callback."
+              : "Remote sign-in timed out.",
+          );
+        }
+      }
+
+      const candidate = await api.createRemoteLibrary(
+        start.session_id,
+        remoteDisplayName.trim() || remoteProviderDisplayNames[provider],
+      );
+      await api.registerRemoteLibrary(
+        start.session_id,
+        candidate.remote_root_locator,
+        remoteDisplayName.trim() || candidate.display_name,
+      );
+      setRemoteMessage(
+        t("setup.remoteAuthStarted", {
+          defaultValue:
+            provider === "google_drive"
+              ? "Google Drive library connected successfully."
+              : provider === "webdav"
+                ? "WebDAV library connected successfully."
+                : "Remote library connected successfully.",
+        }),
+      );
+      setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -258,35 +338,32 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     }
   };
 
-  const handleConnectWebDav = async () => {
-    setError(null);
-    setRemoteMessage(null);
-    setLoading(true);
-
-    try {
-      const payload: RemoteWebDavAuthPayload = {
-        base_url: webDavBaseUrl.trim(),
-        username: webDavUsername.trim(),
-        password: webDavPassword,
-      };
-
-      const start = await api.beginRemoteAuth("webdav", payload);
-      setRemoteMessage(
-        start.authorization_url
-          ? t("setup.remoteAuthBrowserPrompt", {
-              defaultValue:
-                "WebDAV credentials were accepted. Continue in the browser if prompted.",
-            })
-          : t("setup.remoteAuthStarted", {
-              defaultValue: "WebDAV connection has started.",
-            }),
-      );
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-    } finally {
-      setLoading(false);
+  const handleWebDavConnect = async () => {
+    if (!remoteServerUrl.trim()) {
+      setError("Enter the WebDAV server URL first.");
+      return;
     }
+
+    if (!remoteUsername.trim()) {
+      setError("Enter the WebDAV username first.");
+      return;
+    }
+
+    if (!remotePassword.trim()) {
+      setError("Enter the WebDAV password first.");
+      return;
+    }
+
+    await connectRemoteLibrary("webdav");
+  };
+
+  const handleGoogleDriveConnect = async () => {
+    if (!googleClientId.trim()) {
+      setError("Enter the Google OAuth client ID first.");
+      return;
+    }
+
+    await connectRemoteLibrary("google_drive");
   };
 
   const handleFinish = async () => {
@@ -451,7 +528,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
                 {t("setup.openRemoteLibraryDescription", {
                   defaultValue:
-                    "Google Drive and Dropbox open the browser for OAuth. WebDAV uses server credentials directly.",
+                    "Connect Google Drive or WebDAV to your remote library.",
                 })}
               </p>
             </div>
@@ -464,9 +541,15 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                 return (
                   <button
                     key={choice.provider}
-                    onClick={() =>
-                      void handleRemoteProviderSelect(choice.provider)
-                    }
+                    onClick={() => {
+                      setSelectedRemoteProvider(choice.provider);
+                      setRemoteMessage(null);
+                      setError(null);
+                      setRemoteAuthorizationUrl(null);
+                      setRemoteDisplayName(
+                        remoteProviderDisplayNames[choice.provider],
+                      );
+                    }}
                     disabled={loading}
                     className={`flex w-full items-start gap-3 rounded-lg border px-5 py-4 text-left transition-colors disabled:opacity-50 ${
                       isActive
@@ -476,11 +559,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   >
                     <Icon
                       size={20}
-                      className={`mt-0.5 shrink-0 ${
-                        choice.provider === "webdav"
-                          ? "text-[var(--color-text-dim)]"
-                          : "text-[var(--color-accent)]"
-                      }`}
+                      className="mt-0.5 shrink-0 text-[var(--color-accent)]"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] font-medium text-white">
@@ -488,6 +567,11 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                       </div>
                       <div className="text-[12px] text-[var(--color-text-dim)]">
                         {choice.description}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                        {choice.availableNow
+                          ? "Available in this build"
+                          : "Planned in the next provider phase"}
                       </div>
                     </div>
                     {isActive && (
@@ -501,83 +585,172 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               })}
             </div>
 
-            {selectedRemoteProvider === "webdav" && (
+            {selectedRemoteProvider === "google_drive" && (
               <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
-                <div className="space-y-1">
-                  <p className="text-[13px] font-medium text-white">
-                    {t("setup.webdavTitle", {
-                      defaultValue: "WebDAV connection",
-                    })}
-                  </p>
-                  <p className="text-[12px] text-[var(--color-text-dim)]">
-                    {t("setup.webdavDescription", {
-                      defaultValue:
-                        "Enter the server URL and a username/password or app password.",
-                    })}
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="Google Drive Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    OAuth client ID
+                  </label>
+                  <input
+                    value={googleClientId}
+                    onChange={(event) => setGoogleClientId(event.target.value)}
+                    placeholder="1234567890-abc.apps.googleusercontent.com"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    OAuth client secret (optional)
+                  </label>
+                  <input
+                    value={googleClientSecret}
+                    onChange={(event) =>
+                      setGoogleClientSecret(event.target.value)
+                    }
+                    placeholder="optional for some desktop clients"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                    OpenKara will create or reuse a folder with the display name
+                    above in My Drive, then keep the remote library there.
                   </p>
                 </div>
-                <label className="block space-y-1">
-                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
-                    {t("setup.webdavUrl", { defaultValue: "Server URL" })}
-                  </span>
-                  <input
-                    value={webDavBaseUrl}
-                    onChange={(event) => setWebDavBaseUrl(event.target.value)}
-                    placeholder="https://example.com/remote.php/dav/files/user"
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
-                    {t("setup.webdavUsername", { defaultValue: "Username" })}
-                  </span>
-                  <input
-                    value={webDavUsername}
-                    onChange={(event) => setWebDavUsername(event.target.value)}
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
-                    {t("setup.webdavPassword", { defaultValue: "Password" })}
-                  </span>
-                  <input
-                    type="password"
-                    value={webDavPassword}
-                    onChange={(event) => setWebDavPassword(event.target.value)}
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--color-accent)]"
-                  />
-                </label>
+
                 <button
-                  onClick={() => void handleConnectWebDav()}
-                  disabled={
-                    loading ||
-                    webDavBaseUrl.trim().length === 0 ||
-                    webDavUsername.trim().length === 0 ||
-                    webDavPassword.length === 0
-                  }
-                  className="w-full rounded-lg bg-[var(--color-accent)] px-5 py-3 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  onClick={() => void handleGoogleDriveConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
-                  {loading
-                    ? t("setup.settingUp")
-                    : t("setup.connectWebdav", {
-                        defaultValue: "Connect WebDAV",
-                      })}
+                  {loading ? "Waiting for Google…" : "Connect Google Drive"}
+                </button>
+
+                {remoteAuthorizationUrl && (
+                  <a
+                    href={remoteAuthorizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
+                  >
+                    Open Google sign-in in your browser again
+                  </a>
+                )}
+              </div>
+            )}
+
+            {selectedRemoteProvider === "webdav" && (
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="WebDAV Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Server URL
+                  </label>
+                  <input
+                    value={remoteServerUrl}
+                    onChange={(event) => setRemoteServerUrl(event.target.value)}
+                    placeholder="https://dav.example.com/remote.php/dav/files/you/"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Library path
+                  </label>
+                  <input
+                    value={remoteRootPath}
+                    onChange={(event) => setRemoteRootPath(event.target.value)}
+                    placeholder="/OpenKara"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                    Point this at an existing remote library path, or enter a
+                    new folder name and OpenKara will initialize it for you.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-white">
+                      Username
+                    </label>
+                    <input
+                      value={remoteUsername}
+                      onChange={(event) =>
+                        setRemoteUsername(event.target.value)
+                      }
+                      placeholder="username"
+                      className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-white">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={remotePassword}
+                      onChange={(event) =>
+                        setRemotePassword(event.target.value)
+                      }
+                      placeholder="password"
+                      className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => void handleWebDavConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {loading ? "Connecting…" : "Connect WebDAV library"}
                 </button>
               </div>
             )}
 
-            {selectedRemoteProvider && selectedRemoteProvider !== "webdav" && (
-              <p className="text-[13px] text-[var(--color-text-dim)]">
-                {remoteMessage ??
-                  t("setup.remoteAuthBrowserPrompt", {
-                    defaultValue:
-                      "Sign-in has been started in your browser. Return here after the provider flow completes.",
-                  })}
-              </p>
+            {selectedRemoteProvider === "dropbox" && (
+              <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-4 py-3 text-left text-[12px] text-[var(--color-text-dim)]">
+                Dropbox still stays in the completion plan, but it is not wired
+                yet in this build. OpenKara now keeps Google Drive and WebDAV as
+                the real remote-library paths instead of pretending Dropbox is
+                ready before the provider code exists.
+              </div>
             )}
 
-            {selectedRemoteProvider === "webdav" && remoteMessage && (
+            {selectedRemoteProvider && remoteMessage && (
               <p className="text-[13px] text-[var(--color-text-dim)]">
                 {remoteMessage}
               </p>

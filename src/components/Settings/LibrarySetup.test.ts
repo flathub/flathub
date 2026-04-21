@@ -15,4 +15,12 @@ describe("LibrarySetup", () => {
       "webdav",
     ]);
   });
+
+  test("marks Google Drive and WebDAV as currently available provider paths", () => {
+    const availableNow = remoteLibraryProviders
+      .filter((choice) => choice.availableNow)
+      .map((choice) => choice.provider);
+
+    expect(availableNow).toEqual(["google_drive", "webdav"]);
+  });
 });

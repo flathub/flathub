@@ -47,6 +47,10 @@ pub struct AppState {
     pub model_bootstrap_status: Arc<Mutex<commands::bootstrap::ModelBootstrapStatusSnapshot>>,
     pub separation_statuses:
         Arc<Mutex<HashMap<String, commands::separation::SeparationStatusSnapshot>>>,
+    pub remote_auth_sessions:
+        Arc<Mutex<HashMap<String, commands::remote_library::RemoteAuthSession>>>,
+    pub remote_upload_statuses:
+        Arc<Mutex<HashMap<String, commands::remote_library::UploadStatusSnapshot>>>,
     pub separator_model_cache: Arc<Mutex<ModelCache<LoadedModel>>>,
     pub batch_running: Arc<AtomicBool>,
     pub batch_cancel: Arc<AtomicBool>,
@@ -179,6 +183,16 @@ pub fn run() {
             commands::library_setup::get_library_registry,
             commands::library_setup::get_active_library,
             commands::library_setup::remove_library,
+            commands::remote_library::begin_remote_auth,
+            commands::remote_library::poll_remote_auth,
+            commands::remote_library::list_remote_library_roots,
+            commands::remote_library::create_remote_library,
+            commands::remote_library::register_remote_library,
+            commands::remote_library::set_remote_mirror,
+            commands::remote_library::sync_active_remote_library,
+            commands::remote_library::publish_song_to_remote,
+            commands::remote_library::publish_songs_to_remote,
+            commands::remote_library::get_all_upload_statuses,
             commands::lyrics::fetch_lyrics,
             commands::lyrics::set_lyrics_offset,
             commands::lyrics::save_manual_lyrics,

@@ -12,7 +12,11 @@ import { useSettingsStore } from "@/stores/settings-store";
 
 export const APP_MENU_ACTION_EVENT = "openkara://menu-action";
 
-export type AppMenuAction = "import-files" | "open-settings" | "toggle-sidebar";
+export type AppMenuAction =
+  | "import-files"
+  | "open-settings"
+  | "switch-library"
+  | "toggle-sidebar";
 
 export interface ExpandedImportPaths {
   paths: string[];
@@ -150,6 +154,9 @@ export async function handleAppMenuAction(
 ): Promise<void> {
   switch (action) {
     case "open-settings":
+      toggleSettings();
+      return;
+    case "switch-library":
       toggleSettings();
       return;
     case "toggle-sidebar":

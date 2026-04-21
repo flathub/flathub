@@ -103,6 +103,7 @@ export interface SettingsOverlayControllerDependencies {
     | "registerLocalLibrary"
     | "restartApp"
     | "switchLibrary"
+    | "syncActiveRemoteLibrary"
     | "setExecutionProvider"
     | "setHideBatchSeparate"
     | "setLanguage"
@@ -412,7 +413,13 @@ function createLibrarySettingsActions(
       patchState({ libraryError: null });
 
       try {
-        await dependencies.api.switchLibrary(libraryId);
+        const registry = await dependencies.api.switchLibrary(libraryId);
+        const target = registry.libraries.find(
+          (library) => library.id === libraryId,
+        );
+        if (target?.kind === "remote") {
+          await dependencies.api.syncActiveRemoteLibrary();
+        }
         dependencies.libraryStore.clearAllSeparationStatuses();
         dependencies.libraryStore.clearAllUploadStatuses();
         useLibraryStore.getState().clearSelection();
@@ -488,7 +495,9 @@ function describeLibrary(library: RegisteredLibrary): string {
     return library.root_path;
   }
 
-  return `${library.display_name} · ${library.provider ?? "remote"}`;
+  return `${library.display_name} · ${
+    library.remote_path_display || library.remote_root_locator
+  }`;
 }
 
 function createModelSettingsActions(

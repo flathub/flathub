@@ -2,6 +2,7 @@ use crate::{
     cache,
     cache::lyrics::LyricsCacheEntry,
     commands::error::{database_error, lyrics_error, CommandResult},
+    commands::remote_library,
     library::Song,
     library_root::LibraryRoot,
     lyrics::{
@@ -44,6 +45,11 @@ pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResul
         &lrcapi_client,
         &song_id,
     )
+    .and_then(|payload| {
+        remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)
+            .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+        Ok(payload)
+    })
     .map_err(|error| {
         // Lower-level lyrics modules still return anyhow errors. Classify them
         // here so UI-facing commands expose stable error codes and fallback hints
@@ -62,7 +68,9 @@ pub fn set_lyrics_offset(
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
     set_lyrics_offset_in_connection(&connection, &song_id, ms)
-        .map_err(|error| lyrics_error(error.to_string()))
+        .map_err(|error| lyrics_error(error.to_string()))?;
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    Ok(())
 }
 
 pub fn fetch_lyrics_from_connection(
@@ -83,10 +91,13 @@ pub fn fetch_lyrics_from_connection(
     }
 
     let Some(song_path) = song.file_path.as_deref() else {
-        return Err(anyhow::anyhow!(
-            "song {} does not have a local file path",
-            song_id
-        ));
+        return Ok(LyricsPayload {
+            song_id: song.hash,
+            lines: Vec::new(),
+            source: None,
+            offset_ms: 0,
+            raw_lrc: String::new(),
+        });
     };
     let resolved_path = library_root.resolve(song_path);
     let providers = [
@@ -202,6 +213,8 @@ pub fn save_manual_lyrics(
     )
     .map_err(|e| database_error(e.to_string()))?;
 
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+
     Ok(LyricsPayload {
         song_id,
         lines,
@@ -310,6 +323,10 @@ pub fn import_lyrics_files(
         }
     }
 
+    if !matched.is_empty() {
+        remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    }
+
     Ok(ImportLyricsResult { matched, unmatched })
 }
 
@@ -357,6 +374,8 @@ pub fn extract_embedded_lyrics(
         },
     )
     .map_err(|e| database_error(e.to_string()))?;
+
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
 
     Ok(LyricsPayload {
         song_id,
@@ -426,6 +445,8 @@ pub fn fetch_lyrics_online(
         },
     )
     .map_err(|e| database_error(e.to_string()))?;
+
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
 
     Ok(LyricsPayload {
         song_id,
