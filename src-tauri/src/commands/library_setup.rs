@@ -236,9 +236,17 @@ pub fn remove_library(
         .map_err(|error| library_error(error.to_string()))?;
     let mut config = load_app_config(&app_data_dir)?;
     let removed_active = config.active_library_id.as_deref() == Some(library_id.as_str());
-    config
+    let removed_libraries: Vec<_> = config
         .libraries
-        .retain(|library| library.id() != library_id);
+        .iter()
+        .filter(|library| library.id() == library_id)
+        .cloned()
+        .collect();
+    config.libraries.retain(|library| library.id() != library_id);
+
+    for library in &removed_libraries {
+        crate::commands::remote_library::remove_remote_library_credentials(&app_data_dir, library)?;
+    }
 
     if removed_active {
         config.active_library_id = config

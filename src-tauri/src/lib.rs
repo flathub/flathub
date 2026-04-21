@@ -15,6 +15,7 @@ pub mod perf;
 pub mod separator;
 pub mod services;
 pub mod smoke;
+pub mod system_credentials;
 mod window_shell;
 use crate::audio::playback::PlaybackController;
 use crate::library_root::LibraryRoot;
