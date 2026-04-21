@@ -39,41 +39,25 @@ describe("tauri API wrappers", () => {
     });
   });
 
-  test("passes Google Drive auth payloads through unchanged", async () => {
+  test("allows Google Drive auth to start without any frontend credential payload", async () => {
     const { beginRemoteAuth } = await import("./tauri");
 
-    await beginRemoteAuth("google_drive", {
-      type: "google_drive",
-      client_id: "client-123.apps.googleusercontent.com",
-      client_secret: "secret-456",
-    });
+    await beginRemoteAuth("google_drive");
 
     expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
       provider: "google_drive",
-      payload: {
-        type: "google_drive",
-        client_id: "client-123.apps.googleusercontent.com",
-        client_secret: "secret-456",
-      },
+      payload: null,
     });
   });
 
-  test("passes Dropbox auth payloads through unchanged", async () => {
+  test("allows Dropbox auth to start without any frontend credential payload", async () => {
     const { beginRemoteAuth } = await import("./tauri");
 
-    await beginRemoteAuth("dropbox", {
-      type: "dropbox",
-      app_key: "dropbox-app-key",
-      app_secret: "dropbox-app-secret",
-    });
+    await beginRemoteAuth("dropbox");
 
     expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
       provider: "dropbox",
-      payload: {
-        type: "dropbox",
-        app_key: "dropbox-app-key",
-        app_secret: "dropbox-app-secret",
-      },
+      payload: null,
     });
   });
 

@@ -12,6 +12,12 @@ describe("SettingsLibrarySection", () => {
       state: {
         libraries: [
           {
+            id: "local:/karaoke",
+            kind: "local",
+            display_name: "Main Library",
+            root_path: "/karaoke",
+          },
+          {
             id: "remote:drive",
             kind: "remote",
             display_name: "Drive Library",
@@ -25,7 +31,7 @@ describe("SettingsLibrarySection", () => {
             },
             cached_db_path: null,
             remote_revision: null,
-            bound_local_library_id: null,
+            bound_local_library_id: "local:/karaoke",
           },
         ],
         activeLibraryId: "remote:drive",
@@ -41,5 +47,7 @@ describe("SettingsLibrarySection", () => {
     expect(markup).toContain("Drive Library");
     expect(markup).toContain("WebDAV");
     expect(markup).toContain("OpenKara / Team Karaoke");
+    expect(markup).toContain("Mirroring Main Library");
+    expect(markup).toContain("Add Remote Library");
   });
 });

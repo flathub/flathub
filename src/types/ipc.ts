@@ -40,18 +40,6 @@ export type CoverArtBytes = number[] | Uint8Array | ArrayBuffer | null;
 export type LibraryKind = "local" | "remote";
 export type RemoteLibraryProvider = "google_drive" | "dropbox" | "webdav";
 
-export interface GoogleDriveRemoteAuthPayload {
-  type: "google_drive";
-  client_id: string;
-  client_secret: string | null;
-}
-
-export interface DropboxRemoteAuthPayload {
-  type: "dropbox";
-  app_key: string;
-  app_secret: string | null;
-}
-
 export interface WebDavRemoteAuthPayload {
   type: "webdav";
   server_url: string;
@@ -60,11 +48,7 @@ export interface WebDavRemoteAuthPayload {
   root_path: string | null;
 }
 
-export type RemoteAuthPayload =
-  | GoogleDriveRemoteAuthPayload
-  | DropboxRemoteAuthPayload
-  | WebDavRemoteAuthPayload
-  | null;
+export type RemoteAuthPayload = WebDavRemoteAuthPayload | null;
 
 export interface RemoteAuthStart {
   session_id: string;

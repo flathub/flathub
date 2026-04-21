@@ -132,10 +132,6 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     string | null
   >(null);
   const [remoteDisplayName, setRemoteDisplayName] = useState("WebDAV Library");
-  const [googleClientId, setGoogleClientId] = useState("");
-  const [googleClientSecret, setGoogleClientSecret] = useState("");
-  const [dropboxAppKey, setDropboxAppKey] = useState("");
-  const [dropboxAppSecret, setDropboxAppSecret] = useState("");
   const [remoteServerUrl, setRemoteServerUrl] = useState("");
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
@@ -156,10 +152,6 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
     setRemoteDisplayName("WebDAV Library");
-    setGoogleClientId("");
-    setGoogleClientSecret("");
-    setDropboxAppKey("");
-    setDropboxAppSecret("");
     setRemoteServerUrl("");
     setRemoteUsername("");
     setRemotePassword("");
@@ -259,27 +251,15 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     try {
       const start = await api.beginRemoteAuth(
         provider,
-        provider === "google_drive"
+        provider === "webdav"
           ? {
-              type: "google_drive",
-              client_id: googleClientId.trim(),
-              client_secret: googleClientSecret.trim() || null,
+              type: "webdav",
+              server_url: remoteServerUrl,
+              username: remoteUsername,
+              password: remotePassword,
+              root_path: remoteRootPath.trim() || null,
             }
-          : provider === "dropbox"
-            ? {
-                type: "dropbox",
-                app_key: dropboxAppKey.trim(),
-                app_secret: dropboxAppSecret.trim() || null,
-              }
-            : provider === "webdav"
-              ? {
-                  type: "webdav",
-                  server_url: remoteServerUrl,
-                  username: remoteUsername,
-                  password: remotePassword,
-                  root_path: remoteRootPath.trim() || null,
-                }
-              : null,
+          : null,
       );
 
       if (start.authorization_url) {
@@ -374,20 +354,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   };
 
   const handleGoogleDriveConnect = async () => {
-    if (!googleClientId.trim()) {
-      setError("Enter the Google OAuth client ID first.");
-      return;
-    }
-
     await connectRemoteLibrary("google_drive");
   };
 
   const handleDropboxConnect = async () => {
-    if (!dropboxAppKey.trim()) {
-      setError("Enter the Dropbox app key first.");
-      return;
-    }
-
     await connectRemoteLibrary("dropbox");
   };
 
@@ -625,38 +595,11 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
                   />
                 </div>
-
-                <div>
-                  <label className="mb-1 block text-[12px] font-medium text-white">
-                    OAuth client ID
-                  </label>
-                  <input
-                    value={googleClientId}
-                    onChange={(event) => setGoogleClientId(event.target.value)}
-                    placeholder="1234567890-abc.apps.googleusercontent.com"
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
-                    spellCheck={false}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[12px] font-medium text-white">
-                    OAuth client secret (optional)
-                  </label>
-                  <input
-                    value={googleClientSecret}
-                    onChange={(event) =>
-                      setGoogleClientSecret(event.target.value)
-                    }
-                    placeholder="optional for some desktop clients"
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
-                    spellCheck={false}
-                  />
-                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
-                    OpenKara will create or reuse a folder with the display name
-                    above in My Drive, then keep the remote library there.
-                  </p>
-                </div>
+                <p className="text-[11px] text-[var(--color-text-dimmer)]">
+                  OpenKara uses its bundled Google Drive app registration and
+                  will create or reuse a folder with this display name in My
+                  Drive.
+                </p>
 
                 <button
                   onClick={() => void handleGoogleDriveConnect()}
@@ -781,38 +724,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
                   />
                 </div>
-
-                <div>
-                  <label className="mb-1 block text-[12px] font-medium text-white">
-                    App key
-                  </label>
-                  <input
-                    value={dropboxAppKey}
-                    onChange={(event) => setDropboxAppKey(event.target.value)}
-                    placeholder="Dropbox app key"
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
-                    spellCheck={false}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[12px] font-medium text-white">
-                    App secret (optional)
-                  </label>
-                  <input
-                    value={dropboxAppSecret}
-                    onChange={(event) =>
-                      setDropboxAppSecret(event.target.value)
-                    }
-                    placeholder="optional for confidential Dropbox apps"
-                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
-                    spellCheck={false}
-                  />
-                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
-                    OpenKara will create or reuse a folder with the display name
-                    above in Dropbox, then keep the remote library there.
-                  </p>
-                </div>
+                <p className="text-[11px] text-[var(--color-text-dimmer)]">
+                  OpenKara uses its bundled Dropbox app registration and will
+                  create or reuse a folder with this display name in Dropbox.
+                </p>
 
                 <button
                   onClick={() => void handleDropboxConnect()}

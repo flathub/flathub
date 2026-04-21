@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::{
     collections::HashMap,
+    env,
     fs,
     io::Write,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
@@ -34,18 +35,18 @@ use tiny_http::{Response as TinyHttpResponse, Server};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const REMOTE_LIBRARIES_DIR: &str = "remote-libraries";
+const GOOGLE_DRIVE_CLIENT_ID_ENV: &str = "OPENKARA_GOOGLE_DRIVE_CLIENT_ID";
+const GOOGLE_DRIVE_CLIENT_SECRET_ENV: &str = "OPENKARA_GOOGLE_DRIVE_CLIENT_SECRET";
+const DROPBOX_APP_KEY_ENV: &str = "OPENKARA_DROPBOX_APP_KEY";
+const DROPBOX_APP_SECRET_ENV: &str = "OPENKARA_DROPBOX_APP_SECRET";
+const DROPBOX_FIXED_REDIRECT_PORT: u16 = 53_682;
+const DROPBOX_FIXED_REDIRECT_URI: &str = "http://127.0.0.1:53682/oauth2/callback";
+const GOOGLE_DRIVE_OAUTH_SCOPE: &str =
+    "openid email https://www.googleapis.com/auth/drive.file";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum RemoteAuthPayloadInput {
-    GoogleDrive {
-        client_id: String,
-        client_secret: Option<String>,
-    },
-    Dropbox {
-        app_key: String,
-        app_secret: Option<String>,
-    },
     WebDav {
         server_url: String,
         username: String,
@@ -136,6 +137,18 @@ struct StoredWebDavSecret {
     password: String,
 }
 
+#[derive(Debug, Clone)]
+struct GoogleDriveProviderCredentials {
+    client_id: String,
+    client_secret: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DropboxProviderCredentials {
+    app_key: String,
+    app_secret: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct GoogleDriveTokenResponse {
     access_token: String,
@@ -152,15 +165,9 @@ struct DropboxTokenResponse {
 
 #[derive(Debug, Deserialize)]
 struct GoogleDriveUserInfoResponse {
-    user: Option<GoogleDriveUser>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GoogleDriveUser {
+    sub: String,
     #[serde(default)]
-    email_address: Option<String>,
-    #[serde(default)]
-    permission_id: Option<String>,
+    email: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -717,7 +724,7 @@ fn build_google_drive_authorization_url(session: &GoogleDriveSessionData) -> Com
         .append_pair("client_id", &session.client_id)
         .append_pair("redirect_uri", &session.redirect_uri)
         .append_pair("response_type", "code")
-        .append_pair("scope", "https://www.googleapis.com/auth/drive")
+        .append_pair("scope", GOOGLE_DRIVE_OAUTH_SCOPE)
         .append_pair("access_type", "offline")
         .append_pair("prompt", "consent")
         .append_pair("code_challenge", &oauth_pkce_code_challenge(&session.code_verifier))
@@ -740,76 +747,90 @@ fn build_dropbox_authorization_url(session: &DropboxSessionData) -> CommandResul
     Ok(url.to_string())
 }
 
-fn parse_google_drive_payload(
-    payload: Option<serde_json::Value>,
-) -> CommandResult<GoogleDriveSessionData> {
-    let payload = payload.ok_or_else(|| {
-        library_error("Google Drive client configuration is required for this provider".to_owned())
-    })?;
-
-    match serde_json::from_value::<RemoteAuthPayloadInput>(payload)
-        .map_err(|error| library_error(format!("invalid remote auth payload: {error}")))?
-    {
-        RemoteAuthPayloadInput::GoogleDrive {
-            client_id,
-            client_secret,
-        } => {
-            if client_id.trim().is_empty() {
-                return Err(library_error("Google Drive client ID cannot be empty".to_owned()));
-            }
-
-            Ok(GoogleDriveSessionData {
-                client_id,
-                client_secret,
-                code_verifier: random_token(64),
-                redirect_uri: String::new(),
-                state_token: random_token(48),
-                root_folder_id: None,
-                access_token: None,
-                refresh_token: None,
-                access_token_expires_at_ms: None,
-            })
-        }
-        RemoteAuthPayloadInput::Dropbox { .. } => Err(library_error(
-            "expected a Google Drive auth payload".to_owned(),
-        )),
-        RemoteAuthPayloadInput::WebDav { .. } => Err(library_error(
-            "expected a Google Drive auth payload".to_owned(),
-        )),
-    }
+fn env_optional(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
-fn parse_dropbox_payload(payload: Option<serde_json::Value>) -> CommandResult<DropboxSessionData> {
-    let payload = payload.ok_or_else(|| {
-        library_error("Dropbox app configuration is required for this provider".to_owned())
-    })?;
+fn google_drive_provider_credentials_from_env(
+    client_id: Option<String>,
+    client_secret: Option<String>,
+) -> CommandResult<GoogleDriveProviderCredentials> {
+    let Some(client_id) = client_id.filter(|value| !value.trim().is_empty()) else {
+        return Err(library_error(format!(
+            "Google Drive is not available because the official app credential is missing. Set {GOOGLE_DRIVE_CLIENT_ID_ENV} before starting OpenKara."
+        )));
+    };
 
-    match serde_json::from_value::<RemoteAuthPayloadInput>(payload)
-        .map_err(|error| library_error(format!("invalid remote auth payload: {error}")))?
-    {
-        RemoteAuthPayloadInput::Dropbox { app_key, app_secret } => {
-            if app_key.trim().is_empty() {
-                return Err(library_error("Dropbox app key cannot be empty".to_owned()));
-            }
+    Ok(GoogleDriveProviderCredentials {
+        client_id,
+        client_secret: client_secret.filter(|value| !value.trim().is_empty()),
+    })
+}
 
-            Ok(DropboxSessionData {
-                app_key,
-                app_secret,
-                code_verifier: random_token(64),
-                redirect_uri: String::new(),
-                state_token: random_token(48),
-                access_token: None,
-                refresh_token: None,
-                access_token_expires_at_ms: None,
-            })
-        }
-        RemoteAuthPayloadInput::GoogleDrive { .. } => Err(library_error(
-            "expected a Dropbox auth payload".to_owned(),
-        )),
-        RemoteAuthPayloadInput::WebDav { .. } => Err(library_error(
-            "expected a Dropbox auth payload".to_owned(),
-        )),
-    }
+fn dropbox_provider_credentials_from_env(
+    app_key: Option<String>,
+    app_secret: Option<String>,
+) -> CommandResult<DropboxProviderCredentials> {
+    let Some(app_key) = app_key.filter(|value| !value.trim().is_empty()) else {
+        return Err(library_error(format!(
+            "Dropbox is not available because the official app credential is missing. Set {DROPBOX_APP_KEY_ENV} before starting OpenKara."
+        )));
+    };
+
+    Ok(DropboxProviderCredentials {
+        app_key,
+        app_secret: app_secret.filter(|value| !value.trim().is_empty()),
+    })
+}
+
+fn resolve_google_drive_provider_credentials() -> CommandResult<GoogleDriveProviderCredentials> {
+    google_drive_provider_credentials_from_env(
+        env_optional(GOOGLE_DRIVE_CLIENT_ID_ENV),
+        env_optional(GOOGLE_DRIVE_CLIENT_SECRET_ENV),
+    )
+}
+
+fn resolve_dropbox_provider_credentials() -> CommandResult<DropboxProviderCredentials> {
+    dropbox_provider_credentials_from_env(
+        env_optional(DROPBOX_APP_KEY_ENV),
+        env_optional(DROPBOX_APP_SECRET_ENV),
+    )
+}
+
+fn parse_google_drive_payload(
+    _payload: Option<serde_json::Value>,
+) -> CommandResult<GoogleDriveSessionData> {
+    let credentials = resolve_google_drive_provider_credentials()?;
+
+    Ok(GoogleDriveSessionData {
+        client_id: credentials.client_id,
+        client_secret: credentials.client_secret,
+        code_verifier: random_token(64),
+        redirect_uri: String::new(),
+        state_token: random_token(48),
+        root_folder_id: None,
+        access_token: None,
+        refresh_token: None,
+        access_token_expires_at_ms: None,
+    })
+}
+
+fn parse_dropbox_payload(_payload: Option<serde_json::Value>) -> CommandResult<DropboxSessionData> {
+    let credentials = resolve_dropbox_provider_credentials()?;
+
+    Ok(DropboxSessionData {
+        app_key: credentials.app_key,
+        app_secret: credentials.app_secret,
+        code_verifier: random_token(64),
+        redirect_uri: String::new(),
+        state_token: random_token(48),
+        access_token: None,
+        refresh_token: None,
+        access_token_expires_at_ms: None,
+    })
 }
 
 fn parse_webdav_payload(payload: Option<serde_json::Value>) -> CommandResult<WebDavSessionData> {
@@ -843,12 +864,6 @@ fn parse_webdav_payload(payload: Option<serde_json::Value>) -> CommandResult<Web
                 root_path: root_path.map(|value| value.trim().to_owned()),
             })
         }
-        RemoteAuthPayloadInput::GoogleDrive { .. } => Err(library_error(
-            "expected a WebDAV auth payload".to_owned(),
-        )),
-        RemoteAuthPayloadInput::Dropbox { .. } => Err(library_error(
-            "expected a WebDAV auth payload".to_owned(),
-        )),
     }
 }
 
@@ -1370,8 +1385,8 @@ fn google_drive_exchange_code_for_tokens(
 }
 
 fn google_drive_fetch_account_id(access_token: &str) -> CommandResult<String> {
-    let mut url = google_drive_api_url("/drive/v3/about")?;
-    url.query_pairs_mut().append_pair("fields", "user");
+    let url = Url::parse("https://openidconnect.googleapis.com/v1/userinfo")
+        .map_err(|error| library_error(format!("failed to build Google userinfo URL: {error}")))?;
     let response = Client::new()
         .get(url)
         .bearer_auth(access_token)
@@ -1386,12 +1401,7 @@ fn google_drive_fetch_account_id(access_token: &str) -> CommandResult<String> {
     let body: GoogleDriveUserInfoResponse = response
         .json()
         .map_err(|error| library_error(format!("failed to parse Google Drive account info: {error}")))?;
-    let user = body
-        .user
-        .ok_or_else(|| library_error("Google Drive account response did not include user info".to_owned()))?;
-    user.email_address
-        .or(user.permission_id)
-        .ok_or_else(|| library_error("Google Drive account info did not include a stable identifier".to_owned()))
+    Ok(body.email.unwrap_or(body.sub))
 }
 
 fn dropbox_exchange_code_for_tokens(
@@ -1584,18 +1594,20 @@ fn spawn_dropbox_auth_worker(
     session_id: String,
     session: DropboxSessionData,
 ) -> CommandResult<DropboxSessionData> {
-    let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).map_err(|error| {
-        library_error(format!("failed to bind Dropbox OAuth loopback listener: {error}"))
+    let listener = TcpListener::bind(SocketAddrV4::new(
+        Ipv4Addr::LOCALHOST,
+        DROPBOX_FIXED_REDIRECT_PORT,
+    ))
+    .map_err(|error| {
+        library_error(format!(
+            "failed to bind Dropbox OAuth listener on {DROPBOX_FIXED_REDIRECT_URI}: {error}"
+        ))
     })?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| library_error(format!("failed to read Dropbox OAuth listener address: {error}")))?
-        .port();
     let server = Server::from_listener(listener, None)
         .map_err(|error| library_error(format!("failed to start Dropbox OAuth listener: {error}")))?;
 
     let mut session = session;
-    session.redirect_uri = format!("http://127.0.0.1:{port}/oauth2/callback");
+    session.redirect_uri = DROPBOX_FIXED_REDIRECT_URI.to_owned();
     let worker_session = session.clone();
 
     thread::spawn(move || {
@@ -1622,7 +1634,7 @@ fn spawn_dropbox_auth_worker(
             }
         };
 
-        let callback_url = format!("http://127.0.0.1:{}{}", port, request.url());
+        let callback_url = format!("http://127.0.0.1:{}{}", DROPBOX_FIXED_REDIRECT_PORT, request.url());
         let parsed = match Url::parse(&callback_url) {
             Ok(parsed) => parsed,
             Err(error) => {
@@ -2486,6 +2498,74 @@ fn initialize_or_sync_dropbox_library(
     Ok(revision)
 }
 
+fn google_drive_delete_entry(
+    app_data_dir: &Path,
+    secret: &mut GoogleDriveSecret,
+    file_id: &str,
+) -> CommandResult<()> {
+    let url = google_drive_api_url(&format!("/drive/v3/files/{file_id}"))?;
+    let response = google_drive_authorized_request(app_data_dir, secret, Method::DELETE, url)?
+        .send()
+        .map_err(|error| library_error(format!("failed to delete Google Drive entry: {error}")))?;
+    match response.status() {
+        StatusCode::NO_CONTENT | StatusCode::NOT_FOUND => Ok(()),
+        status => Err(library_error(format!(
+            "Google Drive delete failed with status {status}"
+        ))),
+    }
+}
+
+fn google_drive_delete_relative_path_from_remote(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+    relative_path: &str,
+) -> CommandResult<()> {
+    let mut secret = load_google_drive_secret(app_data_dir, library)?;
+    let root_folder_id = library
+        .remote_root_locator()
+        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+    let Some(entry) =
+        google_drive_find_relative_entry(app_data_dir, &mut secret, root_folder_id, relative_path)?
+    else {
+        return Ok(());
+    };
+    google_drive_delete_entry(app_data_dir, &mut secret, &entry.id)
+}
+
+fn dropbox_delete_path(
+    app_data_dir: &Path,
+    secret: &mut DropboxSecret,
+    path: &str,
+) -> CommandResult<()> {
+    let url = dropbox_api_url("/2/files/delete_v2")?;
+    let response = dropbox_authorized_request(app_data_dir, secret, Method::POST, url)?
+        .json(&serde_json::json!({ "path": path }))
+        .send()
+        .map_err(|error| library_error(format!("failed to delete Dropbox path: {error}")))?;
+    match response.status() {
+        StatusCode::OK | StatusCode::CONFLICT => Ok(()),
+        status => Err(library_error(format!(
+            "Dropbox delete failed with status {status}"
+        ))),
+    }
+}
+
+fn dropbox_delete_relative_path_from_remote(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+    relative_path: &str,
+) -> CommandResult<()> {
+    let mut secret = load_dropbox_secret(app_data_dir, library)?;
+    let root_path = library
+        .remote_root_locator()
+        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+    dropbox_delete_path(
+        app_data_dir,
+        &mut secret,
+        &dropbox_join_path(root_path, relative_path),
+    )
+}
+
 fn update_remote_revision_in_config(
     app_data_dir: &Path,
     library_id: &str,
@@ -2573,6 +2653,32 @@ fn upload_directory_to_remote(
     }
 
     Ok(())
+}
+
+fn webdav_delete_relative_path_from_remote(
+    secret: &WebDavSecret,
+    relative_path: &str,
+) -> CommandResult<()> {
+    let client = webdav_client()?;
+    let url = join_url(&secret.root_url, relative_path)?;
+    let response = webdav_send(
+        &client,
+        Method::DELETE,
+        &url,
+        &secret.username,
+        &secret.password,
+        None,
+        None,
+    )?;
+    match response.status() {
+        StatusCode::OK
+        | StatusCode::NO_CONTENT
+        | StatusCode::ACCEPTED
+        | StatusCode::NOT_FOUND => Ok(()),
+        status => Err(library_error(format!(
+            "failed to delete {url}: {status}"
+        ))),
+    }
 }
 
 fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> CommandResult<()> {
@@ -2751,6 +2857,120 @@ fn resolve_remote_binding(
     })
 }
 
+fn remote_delete_relative_path(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+    relative_path: &str,
+) -> CommandResult<()> {
+    match library.provider() {
+        Some(RemoteLibraryProvider::WebDav) => {
+            let secret = load_webdav_secret(app_data_dir, library)?;
+            webdav_delete_relative_path_from_remote(&secret, relative_path)
+        }
+        Some(RemoteLibraryProvider::GoogleDrive) => {
+            google_drive_delete_relative_path_from_remote(app_data_dir, library, relative_path)
+        }
+        Some(RemoteLibraryProvider::Dropbox) => {
+            dropbox_delete_relative_path_from_remote(app_data_dir, library, relative_path)
+        }
+        None => Err(library_error(
+            "the bound remote provider is not supported for deletion".to_owned(),
+        )),
+    }
+}
+
+fn song_ready_for_remote_publish(
+    connection: &rusqlite::Connection,
+    library_root: &LibraryRoot,
+    song: &Song,
+) -> CommandResult<bool> {
+    if !song.is_separable() {
+        return Ok(true);
+    }
+
+    let Some(entry) = cache::stems::get_cached_stem_entry(connection, &song.hash)
+        .map_err(|error| database_error(error.to_string()))?
+    else {
+        return Ok(false);
+    };
+
+    Ok(cache::stems::cache_entry_files_valid(library_root, &entry))
+}
+
+fn desired_remote_audio_source_kind(
+    connection: &rusqlite::Connection,
+    library_root: &LibraryRoot,
+    song: &Song,
+) -> CommandResult<Option<&'static str>> {
+    if !song_ready_for_remote_publish(connection, library_root, song)? {
+        return Ok(None);
+    }
+
+    Ok(Some(if song.is_separable() {
+        "stems_remote"
+    } else {
+        "original_remote"
+    }))
+}
+
+fn sync_song_lyrics_to_remote(
+    local_connection: &rusqlite::Connection,
+    remote_connection: &rusqlite::Connection,
+    song_id: &str,
+) -> CommandResult<()> {
+    if let Some(entry) = cache::lyrics::get_lyrics_cache_entry(local_connection, song_id)
+        .map_err(|error| database_error(error.to_string()))?
+    {
+        cache::lyrics::upsert_lyrics_cache_entry(remote_connection, &entry)
+            .map_err(|error| database_error(error.to_string()))?;
+    } else {
+        remote_connection
+            .execute("DELETE FROM lyrics WHERE song_hash = ?1", [song_id])
+            .map_err(|error| database_error(error.to_string()))?;
+    }
+    Ok(())
+}
+
+fn delete_remote_stem_cache_if_present(
+    remote_connection: &rusqlite::Connection,
+    remote_root: &LibraryRoot,
+    song_id: &str,
+) -> CommandResult<()> {
+    if cache::stems::get_cached_stem_entry(remote_connection, song_id)
+        .map_err(|error| database_error(error.to_string()))?
+        .is_some()
+    {
+        cache::stems::delete_stem_cache_entry(remote_connection, remote_root, song_id)
+            .map_err(|error| database_error(error.to_string()))?;
+    }
+    Ok(())
+}
+
+fn delete_remote_song_from_mirror(
+    app_data_dir: &Path,
+    remote_library: &RegisteredLibrary,
+    remote_root: &LibraryRoot,
+    remote_connection: &rusqlite::Connection,
+    song: &Song,
+) -> CommandResult<()> {
+    if let Some(file_path) = song.file_path.as_deref() {
+        remote_delete_relative_path(app_data_dir, remote_library, file_path)?;
+    }
+    if let Some(cdg_path) = song.cdg_path.as_deref() {
+        remote_delete_relative_path(app_data_dir, remote_library, cdg_path)?;
+    }
+    if song.is_remote_stems()
+        || cache::stems::get_cached_stem_entry(remote_connection, &song.hash)
+            .map_err(|error| database_error(error.to_string()))?
+            .is_some()
+    {
+        remote_delete_relative_path(app_data_dir, remote_library, &format!("stems/{}", song.hash))?;
+    }
+    crate::commands::import::delete::delete_song_from_library(remote_connection, remote_root, &song.hash)
+        .map_err(|error| library_error(error.to_string()))?;
+    Ok(())
+}
+
 fn copy_remote_song_assets(
     local_root: &LibraryRoot,
     remote_root: &LibraryRoot,
@@ -2772,6 +2992,102 @@ fn update_remote_song(
         song.file_path = None;
     }
     cache::upsert_song(connection, &song).map_err(|error| database_error(error.to_string()))?;
+    Ok(())
+}
+
+pub(crate) fn maybe_publish_song_to_bound_remote<R: tauri::Runtime>(
+    state: &State<'_, AppState>,
+    app_handle: &AppHandle<R>,
+    song_id: &str,
+) -> CommandResult<()> {
+    let config = load_app_config(&state.app_data_dir)?;
+    let active_library_id = config.active_library().map(|library| library.id().to_owned());
+    if resolve_remote_binding(&config, active_library_id.as_deref()).is_none() {
+        return Ok(());
+    }
+
+    let local_root = state.library_root()?;
+    let local_connection = cache::open_database(&local_root.database_path())
+        .map_err(|error| database_error(error.to_string()))?;
+    let Some(song) = cache::get_song_by_hash(&local_connection, song_id)
+        .map_err(|error| database_error(error.to_string()))?
+    else {
+        return Ok(());
+    };
+
+    if song_ready_for_remote_publish(&local_connection, &local_root, &song)? {
+        let _ = publish_song_internal(state, app_handle, song_id)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn maybe_publish_songs_to_bound_remote<R: tauri::Runtime>(
+    state: &State<'_, AppState>,
+    app_handle: &AppHandle<R>,
+    song_ids: &[String],
+) -> CommandResult<()> {
+    for song_id in song_ids {
+        maybe_publish_song_to_bound_remote(state, app_handle, song_id)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
+    state: &State<'_, AppState>,
+    app_handle: &AppHandle<R>,
+) -> CommandResult<()> {
+    let config = load_app_config(&state.app_data_dir)?;
+    let Some(active_library) = config.active_library() else {
+        return Ok(());
+    };
+    if !matches!(active_library, RegisteredLibrary::Local { .. }) {
+        return Ok(());
+    }
+
+    let Some(remote_library) = resolve_remote_binding(&config, Some(active_library.id())) else {
+        return Ok(());
+    };
+
+    let local_root = state.library_root()?;
+    let local_connection = cache::open_database(&local_root.database_path())
+        .map_err(|error| database_error(error.to_string()))?;
+    let remote_root = load_remote_root(&state.app_data_dir, &remote_library)?;
+    let remote_connection = cache::open_database(&remote_root.database_path())
+        .map_err(|error| database_error(error.to_string()))?;
+    let local_songs = cache::list_songs(&local_connection).map_err(|error| database_error(error.to_string()))?;
+    let remote_songs = cache::list_songs(&remote_connection).map_err(|error| database_error(error.to_string()))?;
+
+    let mut desired_kinds = HashMap::new();
+    for song in &local_songs {
+        if let Some(kind) =
+            desired_remote_audio_source_kind(&local_connection, &local_root, song)?
+        {
+            desired_kinds.insert(song.hash.clone(), kind);
+        }
+    }
+
+    for remote_song in &remote_songs {
+        match desired_kinds.get(&remote_song.hash) {
+            Some(kind) if remote_song.audio_source_kind == *kind => {}
+            Some(_) | None => {
+                delete_remote_song_from_mirror(
+                    &state.app_data_dir,
+                    &remote_library,
+                    &remote_root,
+                    &remote_connection,
+                    remote_song,
+                )?;
+            }
+        }
+    }
+
+    let desired_song_ids: Vec<String> = local_songs
+        .into_iter()
+        .filter_map(|song| desired_kinds.contains_key(&song.hash).then_some(song.hash))
+        .collect();
+    maybe_publish_songs_to_bound_remote(state, app_handle, &desired_song_ids)?;
+    upload_remote_database(&state.app_data_dir, &remote_library)?;
     Ok(())
 }
 
@@ -2861,6 +3177,7 @@ fn publish_song_internal<R: tauri::Runtime>(
                 ));
             }
         }
+        sync_song_lyrics_to_remote(&local_connection, &remote_connection, song_id)?;
         Ok::<_, CommandError>(())
     } else {
         if let Some(file_path) = song.file_path.as_deref() {
@@ -2944,7 +3261,10 @@ fn publish_song_internal<R: tauri::Runtime>(
             }
         }
 
+        delete_remote_stem_cache_if_present(&remote_connection, &remote_root, song_id)?;
+
         update_remote_song(&remote_connection, song.clone(), "original_remote")?;
+        sync_song_lyrics_to_remote(&local_connection, &remote_connection, song_id)?;
         Ok(())
     };
 
@@ -3482,6 +3802,7 @@ pub fn register_remote_library(
 
 #[tauri::command]
 pub fn set_remote_mirror(
+    state: State<'_, AppState>,
     app_handle: AppHandle,
     local_library_id: String,
     remote_library_id: Option<String>,
@@ -3508,7 +3829,19 @@ pub fn set_remote_mirror(
         )));
     }
 
-    if let Some(remote_library_id) = remote_library_id {
+    for library in &mut config.libraries {
+        if let RegisteredLibrary::Remote {
+            bound_local_library_id,
+            ..
+        } = library
+        {
+            if bound_local_library_id.as_deref() == Some(local_library_id.as_str()) {
+                *bound_local_library_id = None;
+            }
+        }
+    }
+
+    if let Some(remote_library_id) = remote_library_id.clone() {
         let Some(remote_library) = config
             .libraries
             .iter_mut()
@@ -3528,21 +3861,15 @@ pub fn set_remote_mirror(
         } else {
             return Err(library_error("the target library must be remote"));
         }
-    } else {
-        for library in &mut config.libraries {
-            if let RegisteredLibrary::Remote {
-                bound_local_library_id,
-                ..
-            } = library
-            {
-                if bound_local_library_id.as_deref() == Some(local_library_id.as_str()) {
-                    *bound_local_library_id = None;
-                }
-            }
-        }
     }
 
     persist_app_config(&app_data_dir, &config)?;
+
+    if remote_library_id.is_some()
+        && config.active_library_id.as_deref() == Some(local_library_id.as_str())
+    {
+        sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+    }
 
     Ok(crate::commands::library_setup::LibraryRegistrySnapshot {
         active_library_id: config.active_library_id.clone(),
@@ -3621,29 +3948,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_google_drive_payload_with_optional_secret() {
-        let payload = serde_json::json!({
-            "type": "google_drive",
-            "client_id": "client-123.apps.googleusercontent.com",
-            "client_secret": "secret-456"
-        });
-
-        let parsed = parse_google_drive_payload(Some(payload)).expect("payload should parse");
-        assert_eq!(parsed.client_id, "client-123.apps.googleusercontent.com");
-        assert_eq!(parsed.client_secret.as_deref(), Some("secret-456"));
+    fn resolves_google_drive_credentials_from_non_ui_source() {
+        let credentials = google_drive_provider_credentials_from_env(
+            Some("client-123.apps.googleusercontent.com".to_owned()),
+            Some("secret-456".to_owned()),
+        )
+        .expect("credentials should resolve");
+        assert_eq!(credentials.client_id, "client-123.apps.googleusercontent.com");
+        assert_eq!(credentials.client_secret.as_deref(), Some("secret-456"));
     }
 
     #[test]
-    fn parses_dropbox_payload_with_optional_secret() {
-        let payload = serde_json::json!({
-            "type": "dropbox",
-            "app_key": "dropbox-app-key",
-            "app_secret": "dropbox-app-secret"
-        });
+    fn resolves_dropbox_credentials_from_non_ui_source() {
+        let credentials = dropbox_provider_credentials_from_env(
+            Some("dropbox-app-key".to_owned()),
+            Some("dropbox-app-secret".to_owned()),
+        )
+        .expect("credentials should resolve");
+        assert_eq!(credentials.app_key, "dropbox-app-key");
+        assert_eq!(credentials.app_secret.as_deref(), Some("dropbox-app-secret"));
+    }
 
-        let parsed = parse_dropbox_payload(Some(payload)).expect("payload should parse");
-        assert_eq!(parsed.app_key, "dropbox-app-key");
-        assert_eq!(parsed.app_secret.as_deref(), Some("dropbox-app-secret"));
+    #[test]
+    fn google_drive_credentials_require_a_client_id() {
+        let error = google_drive_provider_credentials_from_env(None, None)
+            .expect_err("missing client id should fail");
+        assert!(error.message.contains(GOOGLE_DRIVE_CLIENT_ID_ENV));
+    }
+
+    #[test]
+    fn dropbox_credentials_require_an_app_key() {
+        let error = dropbox_provider_credentials_from_env(None, None)
+            .expect_err("missing app key should fail");
+        assert!(error.message.contains(DROPBOX_APP_KEY_ENV));
     }
 
     #[test]
@@ -3668,6 +4005,7 @@ mod tests {
         assert_eq!(query.get("client_id"), Some(&session.client_id));
         assert_eq!(query.get("response_type"), Some(&"code".to_owned()));
         assert_eq!(query.get("redirect_uri"), Some(&session.redirect_uri));
+        assert_eq!(query.get("scope"), Some(&GOOGLE_DRIVE_OAUTH_SCOPE.to_owned()));
         assert_eq!(query.get("access_type"), Some(&"offline".to_owned()));
         assert_eq!(query.get("prompt"), Some(&"consent".to_owned()));
         assert_eq!(query.get("code_challenge_method"), Some(&"S256".to_owned()));
@@ -3680,7 +4018,7 @@ mod tests {
             app_key: "dropbox-app-key".to_owned(),
             app_secret: Some("dropbox-app-secret".to_owned()),
             code_verifier: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJK".to_owned(),
-            redirect_uri: "http://127.0.0.1:43123/oauth2/callback".to_owned(),
+            redirect_uri: DROPBOX_FIXED_REDIRECT_URI.to_owned(),
             state_token: "state-123".to_owned(),
             access_token: None,
             refresh_token: None,

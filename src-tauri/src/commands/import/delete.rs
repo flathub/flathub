@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::fs;
 
-pub(super) fn delete_song_from_library(
+pub(crate) fn delete_song_from_library(
     connection: &Connection,
     library: &LibraryRoot,
     song_id: &str,

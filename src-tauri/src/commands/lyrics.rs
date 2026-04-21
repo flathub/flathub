@@ -20,7 +20,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LyricsPayload {
@@ -32,7 +32,11 @@ pub struct LyricsPayload {
 }
 
 #[tauri::command]
-pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResult<LyricsPayload> {
+pub fn fetch_lyrics(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    song_id: String,
+) -> CommandResult<LyricsPayload> {
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
     let lrclib_client = LrcLibClient::new_default();
@@ -48,6 +52,8 @@ pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResul
     .and_then(|payload| {
         remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)
             .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+        remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)
+            .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
         Ok(payload)
     })
     .map_err(|error| {
@@ -61,6 +67,7 @@ pub fn fetch_lyrics(state: State<'_, AppState>, song_id: String) -> CommandResul
 #[tauri::command]
 pub fn set_lyrics_offset(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_id: String,
     ms: i64,
 ) -> CommandResult<()> {
@@ -70,6 +77,7 @@ pub fn set_lyrics_offset(
     set_lyrics_offset_in_connection(&connection, &song_id, ms)
         .map_err(|error| lyrics_error(error.to_string()))?;
     remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
     Ok(())
 }
 
@@ -185,6 +193,7 @@ fn payload_from_cached_entry(song_id: String, cached: LyricsCacheEntry) -> Resul
 #[tauri::command]
 pub fn save_manual_lyrics(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_id: String,
     text: String,
 ) -> CommandResult<LyricsPayload> {
@@ -214,6 +223,7 @@ pub fn save_manual_lyrics(
     .map_err(|e| database_error(e.to_string()))?;
 
     remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
 
     Ok(LyricsPayload {
         song_id,
@@ -239,6 +249,7 @@ pub struct ImportLyricsResult {
 #[tauri::command]
 pub fn import_lyrics_files(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     paths: Vec<String>,
 ) -> CommandResult<ImportLyricsResult> {
     let library = state.library_root()?;
@@ -325,6 +336,13 @@ pub fn import_lyrics_files(
 
     if !matched.is_empty() {
         remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+        let matched_song_ids: Vec<String> =
+            matched.iter().map(|entry| entry.song_id.clone()).collect();
+        remote_library::maybe_publish_songs_to_bound_remote(
+            &state,
+            &app_handle,
+            &matched_song_ids,
+        )?;
     }
 
     Ok(ImportLyricsResult { matched, unmatched })
@@ -333,6 +351,7 @@ pub fn import_lyrics_files(
 #[tauri::command]
 pub fn extract_embedded_lyrics(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
     let library_root = state.library_root()?;
@@ -376,6 +395,7 @@ pub fn extract_embedded_lyrics(
     .map_err(|e| database_error(e.to_string()))?;
 
     remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
 
     Ok(LyricsPayload {
         song_id,
@@ -389,6 +409,7 @@ pub fn extract_embedded_lyrics(
 #[tauri::command]
 pub fn fetch_lyrics_online(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
     let library_root = state.library_root()?;
@@ -447,6 +468,7 @@ pub fn fetch_lyrics_online(
     .map_err(|e| database_error(e.to_string()))?;
 
     remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
 
     Ok(LyricsPayload {
         song_id,

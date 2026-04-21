@@ -1,10 +1,11 @@
 use crate::{
     cache,
     commands::error::{database_error, internal_error, CommandResult},
+    commands::remote_library,
     AppState,
 };
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Serialize)]
 pub struct DeleteStemsResult {
@@ -13,7 +14,10 @@ pub struct DeleteStemsResult {
 }
 
 #[tauri::command]
-pub fn delete_all_stems(state: State<'_, AppState>) -> CommandResult<DeleteStemsResult> {
+pub fn delete_all_stems(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> CommandResult<DeleteStemsResult> {
     let library_root = state.library_root()?;
 
     // Estimate disk usage before deletion.
@@ -30,6 +34,8 @@ pub fn delete_all_stems(state: State<'_, AppState>) -> CommandResult<DeleteStems
     if let Ok(mut statuses) = state.separation_statuses.lock() {
         statuses.clear();
     }
+
+    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
 
     Ok(DeleteStemsResult {
         deleted_count,
@@ -51,7 +57,10 @@ pub struct DowngradeResult {
 }
 
 #[tauri::command]
-pub fn downgrade_all_to_two_stem(state: State<'_, AppState>) -> CommandResult<DowngradeResult> {
+pub fn downgrade_all_to_two_stem(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> CommandResult<DowngradeResult> {
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| database_error(e.to_string()))?;
@@ -73,6 +82,8 @@ pub fn downgrade_all_to_two_stem(state: State<'_, AppState>) -> CommandResult<Do
         }
     }
 
+    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+
     Ok(DowngradeResult {
         downgraded_count,
         freed_bytes,
@@ -90,11 +101,16 @@ pub fn estimate_downgrade_savings(state: State<'_, AppState>) -> CommandResult<u
 }
 
 #[tauri::command]
-pub fn delete_all_cached_lyrics(state: State<'_, AppState>) -> CommandResult<usize> {
+pub fn delete_all_cached_lyrics(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> CommandResult<usize> {
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| database_error(e.to_string()))?;
 
-    cache::lyrics::delete_all_lyrics_cache_entries(&connection)
-        .map_err(|e| database_error(e.to_string()))
+    let deleted = cache::lyrics::delete_all_lyrics_cache_entries(&connection)
+        .map_err(|e| database_error(e.to_string()))?;
+    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+    Ok(deleted)
 }
