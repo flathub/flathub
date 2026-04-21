@@ -71,11 +71,11 @@ flatpak-node-generator yarn -o generated-sources-worker.json pyodide-worker-yarn
 # update manifest
 echo "** Updating manifest" 2>&1
 DESKTOP_ARCHIVE_HASH=`openssl sha256 _grist-desktop.tar.gz | sed 's/^.*=\\s*//'`
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop")) | .[].url) |= "'"${DESKTOP_ARCHIVE_URL}"'"' com.getgrist.grist.yml
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop")) | .[].sha256) |= "'"${DESKTOP_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/archive/")) | .[].url) |= "'"${DESKTOP_ARCHIVE_URL}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/archive/")) | .[].sha256) |= "'"${DESKTOP_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
 CORE_ARCHIVE_HASH=`openssl sha256 _grist-core.tar.gz | sed 's/^.*=\\s*//'`
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core")) | .[].url) |= "'"${CORE_ARCHIVE_URL}"'"' com.getgrist.grist.yml
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core")) | .[].sha256) |= "'"${CORE_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/archive/")) | .[].url) |= "'"${CORE_ARCHIVE_URL}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/archive/")) | .[].sha256) |= "'"${CORE_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
 
 # pyodide packages build step
 # note dependencies are pip-compiled, so have their version specified with ==
