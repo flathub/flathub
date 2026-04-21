@@ -3,8 +3,8 @@
 # Update to a new Grist version
 #
 
-# pyodide versions we are using (different from upstream, for packaging reasons)
-PYODIDE_VERSION=0.29.3
+# pyodide versions we are using (may be different from upstream, for packaging reasons)
+PYODIDE_VERSION=0.28.1
 
 # Command-line arguments
 DESKTOP_VERSION="$1"

@@ -35,7 +35,26 @@ flatpak-builder build com.getgrist.grist.yml --force-clean --install --user
    and updating them in the manifest. Also update the version in the update script.
    (Note that this step can be removed when the source build works again.)
 
-Note that pyodide is not updated by the update script, if you want to update this, you need to dive into
-finding the specific emsdk and dependencies, and updating the build commands to let emsdk work offline.
-Remember to also update its version in the update script.
+Note that pyodide is not updated by the update script, you currently need to take care of this yourself
+if the used version changes.
+
+
+## Updating pyodide
+
+This currently requires a manual step.
+
+1. Update `PYODIDE_VERSION` in [`update.sh`](update.sh), and run the update script.
+
+2. In [the manifest `com.getgrist.grist.yml`](com.getgrist.grist.yml), update version in the `pyodide xbuildenv env` command.
+
+3. Find the version in https://pyodide.github.io/pyodide/api/pyodide-cross-build-environments.json
+
+  a. Check the Python version matches what is in the base image. If not, either don't upgrade, or install and use that Python version to build.
+
+  b. Update the `xbuildenv` URL and hash in the manifest module's sources.
+
+  c. Check the emscripten version, and update `emsdk` version in the manifest module's sources.
+
+4. Figure out what URLs `emsdk`'s components use and integrate it into the manifest module's sources (needs to be worked out more).
+   One way is trying to build, figuring out what URLs cannot be fetched, and adding them manually.
 
