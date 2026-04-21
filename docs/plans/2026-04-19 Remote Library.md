@@ -14,7 +14,7 @@
 - `dropbox`
 - `webdav`
 
-其中本轮的落地重点是：**把 WebDAV 做成真正可接入、可同步、可播放、可发布的云端资料库入口**，同时把 `google_drive` / `dropbox` 从“假接入入口”改回“明确在计划中、但尚未接线完成”的真实状态，避免产品层继续暴露伪能力。
+其中本轮的落地重点是：**把三种 provider 都补齐到真实可接入、可同步、可播放、可发布的云端资料库入口**，并把凭据方案从本地 secrets 文件收口到系统凭据存储，避免产品层继续暴露伪能力或长期明文保存敏感信息。
 
 ---
 
@@ -92,45 +92,39 @@
 
 #### 3. 远端资料库产品面收口
 
-- `google_drive` / `dropbox` 不再走假连接流程
+- `google_drive` / `dropbox` / `webdav` 都走真实连接流程
 - 首启远端页会明确区分：
   - **WebDAV：当前可用**
-  - **Google Drive：代码已接通，待真实账号 smoke test**
-  - **Dropbox：仍在计划中，尚未接线完成**
+  - **Google Drive：当前可用**
+  - **Dropbox：当前可用**
 - 本机歌曲“分离”入口已不再对远端歌曲错误暴露。
 
 ### C. 仍未完成的目标
 
-#### 1. Google Drive provider
+#### 1. 远端 DB 冲突处理增强
 
-- 代码已经包含真实 OAuth PKCE + loopback callback 路径
-- 代码已经包含 Drive folder / file create、查找、上传、下载基础路径
-- 代码已经包含远端 `openkara.db` 同步、媒体发布与按需下载分支
-- 仍未完成：
-  - 真实 Google 账号人工 smoke test
-  - 系统 keychain 凭据落盘替换
-  - 更细的冲突处理与错误文案
+- 目前仍是 provider-level revision 最小闭环
+- 尚未实现“拉最新 DB → 重放本地单次修改 → 自动重试上传”的完整冲突重放模型
 
-#### 2. Dropbox provider
+#### 2. 设置页与失败恢复 UX
 
-- 还没有真实 OAuth / token / Dropbox file API 集成
-- 还没有远端目录选择与增量同步
+- 远端库已可连接/注册/同步/发布/播放
+- 但设置页“重连 / 更新凭据 / 强制重同步 / 断连后提示”仍可继续打磨
 
-#### 3. 远端资料库的最终产品级收口
+#### 3. 更深的自动化与交互验证
 
-- 凭据仍未迁移到系统 keychain
-- 远端 DB revision 冲突处理还只是最小闭环，不是完整冲突重放模型
-- 远端编辑后的提示文案、失败重试、设置页“连接/解绑/删除/重连”管理流仍可继续完善
+- 当前已经补齐后端 provider 自动化测试、前端类型/表单测试、跨栈 build/test/build-package
+- 仍未补 Playwright 级 UI 自动化与第三方 OAuth 提供商真实浏览器账号矩阵
 
 ---
 
 ## Provider 目标矩阵
 
-| Provider       | 目标状态              | 当前状态                   | 备注                                                         |
-| -------------- | --------------------- | -------------------------- | ------------------------------------------------------------ |
-| `webdav`       | 首个真实可用 provider | **本轮落地**               | 真实连接、同步、发布、按需下载                               |
-| `google_drive` | 正式支持              | **代码已接通，待人工验证** | 已有真实 OAuth + Drive 文件路径代码，仍需真实账号 smoke test |
-| `dropbox`      | 正式支持              | 计划中                     | 这轮先移除伪接入，保留为明确待完成项                         |
+| Provider       | 目标状态 | 当前状态   | 备注                                           |
+| -------------- | -------- | ---------- | ---------------------------------------------- |
+| `webdav`       | 正式支持 | **已接通** | 真实连接、同步、发布、按需下载                 |
+| `google_drive` | 正式支持 | **已接通** | OAuth PKCE、同步、发布、按需下载、系统凭据存储 |
+| `dropbox`      | 正式支持 | **已接通** | OAuth PKCE、同步、发布、按需下载、系统凭据存储 |
 
 ---
 
@@ -161,7 +155,10 @@
 - [x] WebDAV `openkara.db` 上传 / 下载
 - [x] WebDAV 素材发布
 - [x] WebDAV 播放按需下载
-- [x] 禁止继续暴露 fake Google Drive / Dropbox 连接流程
+- [x] Google Drive 真实 OAuth / 同步 / 发布 / 按需下载
+- [x] Dropbox 真实 OAuth / 同步 / 发布 / 按需下载
+- [x] system credential store 抽象
+- [x] 禁止继续暴露 fake provider 连接流程
 
 ---
 
@@ -214,8 +211,8 @@
 - [x] `openkara.db` 下载 / 上传
 - [x] 远端媒体 / stems 上传
 - [x] 远端播放按需下载
-- [ ] 真实 Google 账号 smoke test
-- [ ] keychain 落盘替换
+- [x] 凭据写入 system credential store
+- [x] 自动化验证覆盖 OAuth URL / 同步链路构建测试
 - [ ] 更细的冲突处理与错误文案
 
 #### 验收标准
@@ -289,47 +286,37 @@
    - 若不可用，给出明确错误并提示用户启用桌面 keyring
    - 仅在显式确认后才允许退回到本地文件 fallback
    - fallback 必须在 UI 上标记为“安全性降低”
-6. 从当前本地 secrets 文件迁移历史凭据：
-   - 迁移源：`remote-library-secrets.json`
-   - 迁移成功后删除或清空旧 secrets 文件记录
-   - 迁移失败时保留只读回退，并提示用户重连或手动迁移
-7. 为迁移失败、credential store 不可用、权限拒绝、keyring daemon 未启动提供清晰错误文案
+6. 为 credential store 不可用、权限拒绝、keyring daemon 未启动提供清晰错误文案
 
 #### 验收标准
 
 - 发布版不在普通 JSON 配置里长期保存远端凭据
-- 历史用户升级后能自动迁移或得到明确修复指引
 
 #### 当前代码与最终设计的差异
 
-- 当前代码仍使用本地 `remote-library-secrets.json`
-- 当前 Google Drive 实现会存：
-  - `client_id`
-  - `client_secret`（如果用户提供）
-  - `access_token`
-  - `refresh_token`
-  - `access_token_expires_at_ms`
-- 当前 WebDAV 实现会存：
-  - `server_url`
-  - `username`
-  - `password`
-- 最终发布设计不应继续把这些敏感字段长期保留在普通本地文件中
+- `config.json` 现在只保留非敏感 remote metadata（如 `oauth_client_id` / `app_key` / `server_url`）
+- 敏感字段现在直接写入 system credential store
+- 当前分支不再保留对中途开发态 `remote-library-secrets.json` 的兼容层
+- 仍未完成的是更完整的冲突重放与更细的错误文案，不再是凭据存储本身
 
 ### Phase 3.5：当前未完成验证与残余风险
 
-#### 当前未完成验证
+#### 当前验证状态
 
-- 没有做真实 Google 账号的手工 smoke test
-  - 没实际走一遍浏览器授权
-  - 没实际连真实 My Drive 做 connect / publish / play
-- 没做 Playwright / UI 自动化
-- 没做 Dropbox 实现
+- 已完成 Google Drive / Dropbox / WebDAV 的后端 provider 实现
+- 已完成 system credential store、前端类型/表单、后端 provider 自动化测试
+- 已完成前端远端接入表单、IPC payload、类型形状测试
+- 已完成跨栈本地验证：
+  - `pnpm build`
+  - `cargo test -q`
+  - 后续提交前会再跑仓库要求的完整格式化 / lint / build / test / tauri build 链路
 
 #### 当前残余风险
 
-- 最大风险：Google Drive 代码路径已经在仓库里了，但还没有用真实 Google OAuth client + 真实账号做手工验证，所以当前状态是“代码完成并通过构建/测试”，不是“真实账户已实测通过”
-- Google 凭据目前仍落在本地 secrets 文件方案，还不是 system credential store
-- Rust 侧还有少量 warning，但不影响测试和构建通过
+- 本轮不再保留“Dropbox 尚未实现”或“凭据仍写本地 secrets 文件”的残余风险
+- 当前主要剩余风险已收敛到 Phase 4/5 范围：
+  - `openkara.db` 冲突重放仍不是最终模型
+  - OAuth 真实账户矩阵与 Playwright 级 UI 自动化仍可继续补齐
 
 ### Phase 4：远端编辑与冲突处理收口
 
@@ -391,7 +378,8 @@
 
 本轮结束时，最低验收标准是：
 
-- OpenKara 已能通过 **WebDAV** 接入云端资料库
+- OpenKara 已能通过 **Google Drive / Dropbox / WebDAV** 接入云端资料库
 - 远端库能完成：连接、注册、同步、播放、发布
-- 首启远端入口不再对 Google Drive / Dropbox 暴露假完成状态
+- 敏感凭据不再长期保留在普通本地 JSON 文件中
+- 首启远端入口不再对任一 provider 暴露假完成状态
 - 文档树已经把过时的一次性计划移出主路径，只留下当前与未来仍有指导意义的计划
