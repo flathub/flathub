@@ -124,7 +124,7 @@ fn imports_audio_and_matching_cdg_into_media_g_directory() {
     assert_eq!(song.media_g_container.as_deref(), Some("paired"));
     let expected_cdg_path = format!("media-g/{}.cdg", song.hash);
     assert_eq!(song.cdg_path.as_deref(), Some(expected_cdg_path.as_str()));
-    assert!(library.resolve(&song.file_path).exists());
+    assert!(library.resolve(song.file_path.as_deref().unwrap()).exists());
     assert!(library.resolve(song.cdg_path.as_deref().unwrap()).exists());
 }
 
@@ -154,8 +154,8 @@ fn imports_mp3g_zip_without_unpacking_it() {
     let song = &result.imported[0];
     assert_eq!(song.media_g_container.as_deref(), Some("zip"));
     assert!(song.cdg_path.is_none());
-    assert_eq!(song.file_path, format!("media-g/{}.zip", song.hash));
-    assert!(library.resolve(&song.file_path).exists());
+    assert_eq!(song.file_path.as_deref(), Some(format!("media-g/{}.zip", song.hash).as_str()));
+    assert!(library.resolve(song.file_path.as_deref().unwrap()).exists());
 }
 
 #[test]
@@ -213,14 +213,14 @@ fn explicit_cdg_selection_pairs_only_the_chosen_audio_when_multiple_candidates_e
     let paired_song = result
         .imported
         .iter()
-        .find(|song| song.file_path.ends_with(".m4a"))
+        .find(|song| song.file_path.as_deref().is_some_and(|path| path.ends_with(".m4a")))
         .expect("m4a song should import");
     assert_eq!(paired_song.media_g_container.as_deref(), Some("paired"));
 
     let plain_song = result
         .imported
         .iter()
-        .find(|song| song.file_path.ends_with(".mp3"))
+        .find(|song| song.file_path.as_deref().is_some_and(|path| path.ends_with(".mp3")))
         .expect("mp3 song should import");
     assert_eq!(plain_song.media_g_container, None);
     assert_eq!(plain_song.cdg_path, None);
@@ -250,7 +250,11 @@ fn imports_mp4_audio_even_when_extension_is_aac() {
     );
     assert_eq!(result.imported[0].artist.as_deref(), Some("Fixture Artist"));
     assert_eq!(result.imported[0].original_ext.as_deref(), Some("aac"));
-    assert!(library.resolve(&result.imported[0].file_path).exists());
+    assert!(
+        library
+            .resolve(result.imported[0].file_path.as_deref().unwrap())
+            .exists()
+    );
 }
 
 #[test]

@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use anyhow::{Context, Result};
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -104,15 +105,272 @@ impl ExecutionProviderPreference {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryKind {
+    Local,
+    Remote,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteLibraryProvider {
+    GoogleDrive,
+    Dropbox,
+    WebDav,
+}
+
+impl RemoteLibraryProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GoogleDrive => "google_drive",
+            Self::Dropbox => "dropbox",
+            Self::WebDav => "webdav",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "google_drive" => Some(Self::GoogleDrive),
+            "dropbox" => Some(Self::Dropbox),
+            "webdav" => Some(Self::WebDav),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RemoteLibraryConnectionConfig {
+    GoogleDrive { oauth_client_id: String },
+    Dropbox { app_key: String },
+    WebDav { server_url: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RegisteredLibrary {
+    Local {
+        id: String,
+        display_name: String,
+        root_path: String,
+    },
+    Remote {
+        id: String,
+        display_name: String,
+        provider: RemoteLibraryProvider,
+        account_id: String,
+        remote_root_locator: String,
+        remote_path_display: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        connection_config: Option<RemoteLibraryConnectionConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cached_db_path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        remote_revision: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bound_local_library_id: Option<String>,
+    },
+}
+
+impl RegisteredLibrary {
+    pub fn local(root_path: String, display_name: String) -> Self {
+        Self::Local {
+            id: library_id_for_path(&root_path),
+            display_name,
+            root_path,
+        }
+    }
+
+    pub fn remote(
+        id: String,
+        display_name: String,
+        provider: RemoteLibraryProvider,
+        account_id: String,
+        remote_root_locator: String,
+        remote_path_display: String,
+        connection_config: Option<RemoteLibraryConnectionConfig>,
+        cached_db_path: Option<String>,
+        remote_revision: Option<String>,
+        bound_local_library_id: Option<String>,
+    ) -> Self {
+        Self::Remote {
+            id,
+            display_name,
+            provider,
+            account_id,
+            remote_root_locator,
+            remote_path_display,
+            connection_config,
+            cached_db_path,
+            remote_revision,
+            bound_local_library_id,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Local { id, .. } | Self::Remote { id, .. } => id,
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::Local { display_name, .. } | Self::Remote { display_name, .. } => display_name,
+        }
+    }
+
+    pub fn provider(&self) -> Option<RemoteLibraryProvider> {
+        match self {
+            Self::Remote { provider, .. } => Some(*provider),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn account_id(&self) -> Option<&str> {
+        match self {
+            Self::Remote { account_id, .. } => Some(account_id.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_root_locator(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_root_locator,
+                ..
+            } => Some(remote_root_locator.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_path_display(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_path_display,
+                ..
+            } => Some(remote_path_display.as_str()),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn connection_config(&self) -> Option<&RemoteLibraryConnectionConfig> {
+        match self {
+            Self::Remote {
+                connection_config, ..
+            } => connection_config.as_ref(),
+            Self::Local { .. } => None,
+        }
+    }
+
+    pub fn cached_db_path(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                cached_db_path: Some(cached_db_path),
+                ..
+            } => Some(cached_db_path.as_str()),
+            Self::Remote {
+                cached_db_path: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn remote_revision(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                remote_revision: Some(remote_revision),
+                ..
+            } => Some(remote_revision.as_str()),
+            Self::Remote {
+                remote_revision: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn bound_local_library_id(&self) -> Option<&str> {
+        match self {
+            Self::Remote {
+                bound_local_library_id: Some(bound_local_library_id),
+                ..
+            } => Some(bound_local_library_id.as_str()),
+            Self::Remote {
+                bound_local_library_id: None,
+                ..
+            }
+            | Self::Local { .. } => None,
+        }
+    }
+
+    pub fn google_drive_client_id(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::GoogleDrive { oauth_client_id }) => {
+                Some(oauth_client_id.as_str())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dropbox_app_key(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::Dropbox { app_key }) => Some(app_key.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn webdav_server_url(&self) -> Option<&str> {
+        match self.connection_config() {
+            Some(RemoteLibraryConnectionConfig::WebDav { server_url }) => Some(server_url.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn kind(&self) -> LibraryKind {
+        match self {
+            Self::Local { .. } => LibraryKind::Local,
+            Self::Remote { .. } => LibraryKind::Remote,
+        }
+    }
+
+    pub fn working_copy_root(&self) -> Option<PathBuf> {
+        match self {
+            Self::Local { root_path, .. } => Some(PathBuf::from(root_path)),
+            Self::Remote {
+                cached_db_path: Some(cached_db_path),
+                ..
+            } => Path::new(cached_db_path).parent().map(Path::to_path_buf),
+            Self::Remote {
+                cached_db_path: None,
+                ..
+            } => None,
+        }
+    }
+
+    pub fn root_path(&self) -> Option<&str> {
+        match self {
+            Self::Local { root_path, .. } => Some(root_path.as_str()),
+            Self::Remote { remote_path_display, .. } => Some(remote_path_display.as_str()),
+        }
+    }
+}
+
 /// Per-machine configuration stored in `{app_data_dir}/config.json`.
 ///
 /// This is the only file that stays outside the portable library directory.
-/// It tells the app where the user's karaoke library lives.
+/// It tracks user preferences and the registered library set.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
-    /// Absolute path to the library root directory.
+    /// Legacy single-library path. Kept only for migration from older config
+    /// files and omitted from new saves once the registry exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub libraries: Vec<RegisteredLibrary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_library_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stem_mode: Option<StemMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,6 +388,28 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    pub fn normalize_for_save(mut self) -> Self {
+        if !self.libraries.is_empty() {
+            self.library_path = None;
+        }
+
+        if self.active_library_id.is_none() {
+            self.active_library_id = self.libraries.first().map(|library| library.id().to_owned());
+        }
+
+        self
+    }
+
+    pub fn active_library(&self) -> Option<&RegisteredLibrary> {
+        if let Some(active_id) = self.active_library_id.as_deref() {
+            self.libraries
+                .iter()
+                .find(|library| library.id() == active_id)
+        } else {
+            self.libraries.first()
+        }
+    }
+
     pub fn effective_stem_mode(&self) -> StemMode {
         self.stem_mode.unwrap_or_default()
     }
@@ -156,10 +436,21 @@ pub fn load_config(app_data_dir: &Path) -> Result<Option<AppConfig>> {
 
     let contents = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config at {}", config_path.display()))?;
-    let config: AppConfig = serde_json::from_str(&contents)
+    let mut config: AppConfig = serde_json::from_str(&contents)
         .with_context(|| format!("failed to parse config at {}", config_path.display()))?;
 
-    Ok(Some(config))
+    if config.libraries.is_empty() {
+        if let Some(library_path) = config.library_path.clone() {
+            let display_name = Path::new(&library_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("OpenKara Library")
+                .to_owned();
+            config.libraries.push(RegisteredLibrary::local(library_path, display_name));
+        }
+    }
+
+    Ok(Some(config.normalize_for_save()))
 }
 
 /// Persist the per-machine config to disk.
@@ -168,7 +459,8 @@ pub fn save_config(app_data_dir: &Path, config: &AppConfig) -> Result<()> {
         .with_context(|| format!("failed to create app data dir {}", app_data_dir.display()))?;
 
     let config_path = config_path(app_data_dir);
-    let json = serde_json::to_string_pretty(config).context("failed to serialize config")?;
+    let json = serde_json::to_string_pretty(&config.clone().normalize_for_save())
+        .context("failed to serialize config")?;
     fs::write(&config_path, json)
         .with_context(|| format!("failed to write config to {}", config_path.display()))?;
 
@@ -177,6 +469,31 @@ pub fn save_config(app_data_dir: &Path, config: &AppConfig) -> Result<()> {
 
 fn config_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(CONFIG_FILENAME)
+}
+
+pub fn library_id_for_path(path: &str) -> String {
+    let digest = Sha256::digest(path.as_bytes());
+    format!("library-{:x}", digest)
+}
+
+pub fn library_display_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+        .to_owned()
+}
+
+pub fn migrate_legacy_library_path(config: &mut AppConfig) {
+    if config.libraries.is_empty() {
+        if let Some(path) = config.library_path.clone() {
+            config.libraries.push(RegisteredLibrary::local(
+                path.clone(),
+                library_display_name(&path),
+            ));
+            config.active_library_id = config.libraries.first().map(|library| library.id().to_owned());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -194,18 +511,24 @@ mod tests {
     fn save_and_load_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
         let config = AppConfig {
-            library_path: Some("/Users/test/Music/MyLibrary".to_owned()),
+            libraries: vec![RegisteredLibrary::local(
+                "/Users/test/Music/MyLibrary".to_owned(),
+                "MyLibrary".to_owned(),
+            )],
+            active_library_id: Some(library_id_for_path("/Users/test/Music/MyLibrary")),
             stem_mode: Some(StemMode::FourStem),
             language: None,
             hide_batch_separate: None,
             model_variant: None,
             lyrics_font_step: Some(1),
             execution_provider: None,
+            library_path: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
         let loaded = load_config(tmp.path()).unwrap().unwrap();
-        assert_eq!(loaded.library_path, config.library_path);
+        assert_eq!(loaded.libraries.len(), 1);
+        assert_eq!(loaded.active_library_id, config.active_library_id);
         assert_eq!(loaded.stem_mode, Some(StemMode::FourStem));
         assert_eq!(loaded.lyrics_font_step, Some(1));
     }
@@ -220,6 +543,8 @@ mod tests {
     fn stem_mode_none_is_omitted_from_json() {
         let config = AppConfig {
             library_path: None,
+            libraries: vec![],
+            active_library_id: None,
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
@@ -241,6 +566,8 @@ mod tests {
     fn lyrics_font_step_none_is_omitted_from_json() {
         let config = AppConfig {
             library_path: None,
+            libraries: vec![],
+            active_library_id: None,
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
@@ -256,6 +583,8 @@ mod tests {
     fn execution_provider_none_is_omitted_from_json() {
         let config = AppConfig {
             library_path: None,
+            libraries: vec![],
+            active_library_id: None,
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
@@ -279,6 +608,29 @@ mod tests {
             loaded.execution_provider,
             Some(ExecutionProviderPreference::Xnnpack)
         );
+    }
+
+    #[test]
+    fn legacy_library_path_is_migrated_to_registry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy = AppConfig {
+            library_path: Some("/Users/test/Music/Legacy".to_owned()),
+            stem_mode: Some(StemMode::TwoStem),
+            language: Some("zh-CN".to_owned()),
+            hide_batch_separate: Some(true),
+            model_variant: Some(ModelVariant::HtdemucsFt),
+            lyrics_font_step: Some(1),
+            execution_provider: None,
+            libraries: vec![],
+            active_library_id: None,
+        };
+
+        save_config(tmp.path(), &legacy).unwrap();
+        let loaded = load_config(tmp.path()).unwrap().unwrap();
+
+        assert!(loaded.library_path.is_none());
+        assert_eq!(loaded.libraries.len(), 1);
+        assert_eq!(loaded.active_library(), loaded.libraries.first());
     }
 
     #[test]
@@ -308,5 +660,4 @@ mod tests {
             ExecutionProviderPreference::Xnnpack
         );
     }
-
 }

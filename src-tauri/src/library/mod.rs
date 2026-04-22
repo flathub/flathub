@@ -4,10 +4,11 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Song {
     pub hash: String,
-    pub file_path: String,
+    pub file_path: Option<String>,
     pub cdg_path: Option<String>,
     pub media_g_container: Option<String>,
     pub instrumental: bool,
+    pub audio_source_kind: String,
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
@@ -33,6 +34,14 @@ impl Song {
     pub fn is_media_g_zip(&self) -> bool {
         self.media_g_container.as_deref() == Some("zip")
     }
+
+    pub fn is_remote(&self) -> bool {
+        self.audio_source_kind != "original"
+    }
+
+    pub fn is_remote_stems(&self) -> bool {
+        self.audio_source_kind == "stems_remote"
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -54,10 +63,11 @@ mod tests {
     fn sample_song() -> Song {
         Song {
             hash: "song-1".to_owned(),
-            file_path: "media/song-1.mp3".to_owned(),
+            file_path: Some("media/song-1.mp3".to_owned()),
             cdg_path: None,
             media_g_container: None,
             instrumental: false,
+            audio_source_kind: "original".to_owned(),
             title: Some("Song".to_owned()),
             artist: None,
             album: None,

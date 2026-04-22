@@ -74,6 +74,9 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
             "ALTER TABLE songs ADD COLUMN instrumental INTEGER NOT NULL DEFAULT 0;",
         )?;
     }
+    if !column_exists(connection, "songs", "audio_source_kind")? {
+        connection.execute_batch(include_str!("../../migrations/005_audio_source_kind.sql"))?;
+    }
 
     // 005_individual_stem_paths – add per-instrument columns to stems table.
     if !column_exists(connection, "stems", "drums_path")? {
@@ -92,6 +95,8 @@ pub fn apply_migrations(connection: &Connection) -> rusqlite::Result<()> {
             .execute_batch("ALTER TABLE stems ADD COLUMN model_variant TEXT DEFAULT 'htdemucs';")?;
     }
 
+    migrate_legacy_song_schema(connection)?;
+
     Ok(())
 }
 
@@ -102,6 +107,92 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> rusqlite
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(names.iter().any(|name| name == column))
+}
+
+fn column_is_not_null(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+) -> rusqlite::Result<bool> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = connection.prepare(&sql)?;
+    let columns = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(columns
+        .into_iter()
+        .any(|(name, not_null)| name == column && not_null != 0))
+}
+
+fn migrate_legacy_song_schema(connection: &Connection) -> rusqlite::Result<()> {
+    let file_path_is_not_null = column_is_not_null(connection, "songs", "file_path")?;
+    let has_audio_source_kind = column_exists(connection, "songs", "audio_source_kind")?;
+
+    if !file_path_is_not_null && has_audio_source_kind {
+        return Ok(());
+    }
+
+    connection.execute_batch(
+        "
+        PRAGMA foreign_keys = OFF;
+        BEGIN;
+        DROP TABLE IF EXISTS songs_new;
+        CREATE TABLE songs_new (
+            hash               TEXT PRIMARY KEY,
+            file_path          TEXT,
+            title              TEXT,
+            artist             TEXT,
+            album              TEXT,
+            duration_ms        INTEGER,
+            cover_art          BLOB,
+            imported_at        INTEGER NOT NULL,
+            original_ext       TEXT,
+            cdg_path           TEXT,
+            media_g_container  TEXT,
+            instrumental       INTEGER NOT NULL DEFAULT 0,
+            audio_source_kind  TEXT NOT NULL DEFAULT 'original'
+        );
+        INSERT INTO songs_new (
+            hash,
+            file_path,
+            title,
+            artist,
+            album,
+            duration_ms,
+            cover_art,
+            imported_at,
+            original_ext,
+            cdg_path,
+            media_g_container,
+            instrumental,
+            audio_source_kind
+        )
+        SELECT
+            hash,
+            file_path,
+            title,
+            artist,
+            album,
+            duration_ms,
+            cover_art,
+            imported_at,
+            original_ext,
+            cdg_path,
+            media_g_container,
+            instrumental,
+            COALESCE(audio_source_kind, 'original')
+        FROM songs;
+        DROP TABLE songs;
+        ALTER TABLE songs_new RENAME TO songs;
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+        ",
+    )?;
+
+    Ok(())
 }
 
 /// Initialize a database at an explicit path (for use inside a LibraryRoot).
@@ -119,6 +210,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -126,12 +218,13 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             cover_art,
             imported_at,
             original_ext
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hash) DO UPDATE SET
             file_path = excluded.file_path,
             cdg_path = excluded.cdg_path,
             media_g_container = excluded.media_g_container,
             instrumental = excluded.instrumental,
+            audio_source_kind = excluded.audio_source_kind,
             title = excluded.title,
             artist = excluded.artist,
             album = excluded.album,
@@ -145,6 +238,7 @@ pub fn upsert_song(connection: &Connection, song: &Song) -> rusqlite::Result<()>
             song.cdg_path,
             song.media_g_container,
             song.instrumental,
+            song.audio_source_kind,
             song.title,
             song.artist,
             song.album,
@@ -166,6 +260,7 @@ pub fn list_songs(connection: &Connection) -> rusqlite::Result<Vec<Song>> {
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -193,6 +288,7 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -204,7 +300,7 @@ pub fn search_songs(connection: &Connection, query: &str) -> rusqlite::Result<Ve
         WHERE lower(coalesce(title, '')) LIKE ?1
            OR lower(coalesce(artist, '')) LIKE ?1
            OR lower(coalesce(album, '')) LIKE ?1
-           OR lower(file_path) LIKE ?1
+           OR lower(coalesce(file_path, '')) LIKE ?1
         ORDER BY imported_at DESC, title COLLATE NOCASE ASC, hash ASC",
     )?;
 
@@ -223,6 +319,7 @@ pub fn get_song_by_hash(connection: &Connection, hash: &str) -> rusqlite::Result
             cdg_path,
             media_g_container,
             instrumental,
+            audio_source_kind,
             title,
             artist,
             album,
@@ -285,13 +382,14 @@ fn map_song_row(row: &Row<'_>) -> rusqlite::Result<Song> {
         cdg_path: row.get(2)?,
         media_g_container: row.get(3)?,
         instrumental: row.get(4)?,
-        title: row.get(5)?,
-        artist: row.get(6)?,
-        album: row.get(7)?,
-        duration_ms: row.get(8)?,
-        cover_art: row.get(9)?,
-        imported_at: row.get(10)?,
-        original_ext: row.get(11)?,
+        audio_source_kind: row.get(5)?,
+        title: row.get(6)?,
+        artist: row.get(7)?,
+        album: row.get(8)?,
+        duration_ms: row.get(9)?,
+        cover_art: row.get(10)?,
+        imported_at: row.get(11)?,
+        original_ext: row.get(12)?,
     })
 }
 
@@ -352,5 +450,70 @@ mod tests {
 
         apply_migrations(&connection).expect("first migration pass should succeed");
         apply_migrations(&connection).expect("second migration pass should also succeed");
+    }
+
+    #[test]
+    fn migrates_legacy_song_schema_to_nullable_file_path_and_audio_source_kind() {
+        let connection = Connection::open_in_memory().expect("in-memory database should open");
+
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE songs (
+                    hash        TEXT PRIMARY KEY,
+                    file_path   TEXT NOT NULL,
+                    title       TEXT,
+                    artist      TEXT,
+                    album       TEXT,
+                    duration_ms INTEGER,
+                    cover_art   BLOB,
+                    imported_at INTEGER NOT NULL
+                );
+                INSERT INTO songs (
+                    hash, file_path, title, artist, album, duration_ms, cover_art, imported_at
+                ) VALUES (
+                    'song-1',
+                    'media/song-1.mp3',
+                    'Song',
+                    'Artist',
+                    'Album',
+                    1234,
+                    X'',
+                    1
+                );
+                ",
+            )
+            .expect("legacy schema should create");
+
+        apply_migrations(&connection).expect("legacy schema migration should succeed");
+
+        let file_path_nullable: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name = 'file_path' AND \"notnull\" = 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("file_path nullability lookup should succeed");
+        assert_eq!(file_path_nullable, 1);
+
+        let audio_source_kind_present: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name = 'audio_source_kind'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("audio_source_kind lookup should succeed");
+        assert_eq!(audio_source_kind_present, 1);
+
+        let (file_path, audio_source_kind): (Option<String>, String) = connection
+            .query_row(
+                "SELECT file_path, audio_source_kind FROM songs WHERE hash = 'song-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("migrated song row should load");
+
+        assert_eq!(file_path.as_deref(), Some("media/song-1.mp3"));
+        assert_eq!(audio_source_kind, "original");
     }
 }

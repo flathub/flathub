@@ -11,6 +11,7 @@ describe("songHasCdgMedia", () => {
       songHasCdgMedia({
         hash: "song-1",
         file_path: "media-g/song-1.mp3",
+        audio_source_kind: "original",
         cdg_path: "media-g/song-1.cdg",
         media_g_container: "paired",
         instrumental: false,
@@ -30,6 +31,7 @@ describe("songHasCdgMedia", () => {
       songHasCdgMedia({
         hash: "song-2",
         file_path: "media-g/song-2.zip",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: "zip",
         instrumental: false,
@@ -49,6 +51,7 @@ describe("songHasCdgMedia", () => {
       songSupportsInstrumentalFlag({
         hash: "song-3",
         file_path: "music/song.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,
@@ -68,6 +71,7 @@ describe("songHasCdgMedia", () => {
       songCanBeSeparated({
         hash: "song-4",
         file_path: "music/song.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: true,

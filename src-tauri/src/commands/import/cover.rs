@@ -57,7 +57,10 @@ pub(super) fn extract_embedded_cover_art_for_song(
 }
 
 pub(super) fn read_embedded_cover_art(library: &LibraryRoot, song: &Song) -> Result<Vec<u8>> {
-    let resolved_path = library.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        anyhow::bail!("song {} does not have a local file path", song.hash);
+    };
+    let resolved_path = library.resolve(song_path);
 
     let metadata = match song.media_g_container.as_deref() {
         Some(MEDIA_G_ZIP) => {

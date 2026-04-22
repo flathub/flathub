@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  type LucideIcon,
+  Cloud,
   FolderOpen,
   Plus,
   Music,
@@ -14,15 +16,87 @@ import {
 import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
+import type { RemoteLibraryProvider } from "@/types/ipc";
 
-type Step = "language" | "library" | "stemMode";
+type Step = "language" | "library" | "remoteProvider" | "stemMode";
+type LibraryChoiceKind = "create_local" | "open_local" | "open_remote";
+
+interface RemoteProviderChoice {
+  provider: RemoteLibraryProvider;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  availableNow: boolean;
+}
+
+interface LibraryChoice {
+  kind: LibraryChoiceKind;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
+
+const remoteProviderDisplayNames: Record<RemoteLibraryProvider, string> = {
+  google_drive: "Google Drive Library",
+  dropbox: "Dropbox Library",
+  webdav: "WebDAV Library",
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const librarySetupChoices: LibraryChoice[] = [
+  {
+    kind: "create_local",
+    icon: Plus,
+    title: "setup.createNew",
+    description: "setup.createNewDescription",
+  },
+  {
+    kind: "open_local",
+    icon: FolderOpen,
+    title: "setup.openExisting",
+    description: "setup.openExistingDescription",
+  },
+  {
+    kind: "open_remote",
+    icon: Globe,
+    title: "setup.openRemoteLibrary",
+    description: "setup.openRemoteLibraryDescription",
+  },
+];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const remoteLibraryProviders: RemoteProviderChoice[] = [
+  {
+    provider: "google_drive",
+    icon: Cloud,
+    title: "Google Drive",
+    description:
+      "Connect through Google OAuth and keep an OpenKara library in My Drive.",
+    availableNow: true,
+  },
+  {
+    provider: "dropbox",
+    icon: Globe,
+    title: "Dropbox",
+    description:
+      "Connect through Dropbox OAuth and keep an OpenKara library in your Dropbox.",
+    availableNow: true,
+  },
+  {
+    provider: "webdav",
+    icon: FolderOpen,
+    title: "WebDAV",
+    description: "Connect to a WebDAV-hosted OpenKara library right now.",
+    availableNow: true,
+  },
+];
 
 interface LibrarySetupProps {
   onComplete: () => void;
 }
 
 function StepIndicator({ current }: { current: Step }) {
-  const steps: Step[] = ["language", "library", "stemMode"];
+  const steps: Step[] = ["language", "library", "remoteProvider", "stemMode"];
   const currentIndex = steps.indexOf(current);
 
   return (
@@ -51,6 +125,17 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [step, setStep] = useState<Step>("language");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedRemoteProvider, setSelectedRemoteProvider] =
+    useState<RemoteLibraryProvider | null>(null);
+  const [remoteMessage, setRemoteMessage] = useState<string | null>(null);
+  const [remoteAuthorizationUrl, setRemoteAuthorizationUrl] = useState<
+    string | null
+  >(null);
+  const [remoteDisplayName, setRemoteDisplayName] = useState("WebDAV Library");
+  const [remoteServerUrl, setRemoteServerUrl] = useState("");
+  const [remoteUsername, setRemoteUsername] = useState("");
+  const [remotePassword, setRemotePassword] = useState("");
+  const [remoteRootPath, setRemoteRootPath] = useState("/OpenKara");
   const [selectedLanguage, setSelectedLanguage] = useState(
     () =>
       settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
@@ -58,6 +143,20 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [selectedStemMode, setSelectedStemMode] = useState<
     "two_stem" | "four_stem"
   >(settingsStemMode);
+
+  const resolveSingleDirectory = (selected: string | string[] | null) =>
+    typeof selected === "string" ? selected : (selected?.[0] ?? null);
+
+  const resetRemoteWizard = () => {
+    setSelectedRemoteProvider(null);
+    setRemoteMessage(null);
+    setRemoteAuthorizationUrl(null);
+    setRemoteDisplayName("WebDAV Library");
+    setRemoteServerUrl("");
+    setRemoteUsername("");
+    setRemotePassword("");
+    setRemoteRootPath("/OpenKara");
+  };
 
   useEffect(() => {
     if (!settingsHydrated) {
@@ -97,12 +196,14 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     });
 
     if (!selected) return;
+    const selectedDirectory = resolveSingleDirectory(selected);
+    if (!selectedDirectory) return;
 
-    const libraryDir = `${selected}/OpenKara`;
+    const libraryDir = `${selectedDirectory}/OpenKara`;
     setLoading(true);
     setError(null);
     try {
-      await api.createLibrary(libraryDir);
+      await api.createLocalLibrary(libraryDir);
       setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -119,11 +220,13 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     });
 
     if (!selected) return;
+    const selectedDirectory = resolveSingleDirectory(selected);
+    if (!selectedDirectory) return;
 
     setLoading(true);
     setError(null);
     try {
-      await api.openLibrary(selected);
+      await api.registerLocalLibrary(selectedDirectory);
       setStep("stemMode");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -131,6 +234,131 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenRemote = () => {
+    resetRemoteWizard();
+    setError(null);
+    setStep("remoteProvider");
+  };
+
+  const connectRemoteLibrary = async (provider: RemoteLibraryProvider) => {
+    setError(null);
+    setRemoteMessage(null);
+    setRemoteAuthorizationUrl(null);
+    setSelectedRemoteProvider(provider);
+    setLoading(true);
+    try {
+      const start = await api.beginRemoteAuth(
+        provider,
+        provider === "webdav"
+          ? {
+              type: "webdav",
+              server_url: remoteServerUrl,
+              username: remoteUsername,
+              password: remotePassword,
+              root_path: remoteRootPath.trim() || null,
+            }
+          : null,
+      );
+
+      if (start.authorization_url) {
+        setRemoteAuthorizationUrl(start.authorization_url);
+        setRemoteMessage(
+          provider === "google_drive"
+            ? "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+            : provider === "dropbox"
+              ? "Dropbox sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+              : null,
+        );
+        globalThis.open?.(
+          start.authorization_url,
+          "_blank",
+          "noopener,noreferrer",
+        );
+
+        const deadline = Date.now() + 120_000;
+        let ready = false;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const status = await api.pollRemoteAuth(start.session_id);
+          if (status.state === "ready") {
+            ready = true;
+            break;
+          }
+          if (status.state === "failed") {
+            throw new Error(
+              status.error?.message ?? "Remote sign-in failed unexpectedly.",
+            );
+          }
+        }
+
+        if (!ready) {
+          throw new Error(
+            provider === "google_drive"
+              ? "Google sign-in timed out before OpenKara received the callback."
+              : provider === "dropbox"
+                ? "Dropbox sign-in timed out before OpenKara received the callback."
+                : "Remote sign-in timed out.",
+          );
+        }
+      }
+
+      const candidate = await api.createRemoteLibrary(
+        start.session_id,
+        remoteDisplayName.trim() || remoteProviderDisplayNames[provider],
+      );
+      await api.registerRemoteLibrary(
+        start.session_id,
+        candidate.remote_root_locator,
+        remoteDisplayName.trim() || candidate.display_name,
+      );
+      setRemoteMessage(
+        t("setup.remoteAuthStarted", {
+          defaultValue:
+            provider === "google_drive"
+              ? "Google Drive library connected successfully."
+              : provider === "dropbox"
+                ? "Dropbox library connected successfully."
+                : provider === "webdav"
+                  ? "WebDAV library connected successfully."
+                  : "Remote library connected successfully.",
+        }),
+      );
+      setStep("stemMode");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWebDavConnect = async () => {
+    if (!remoteServerUrl.trim()) {
+      setError("Enter the WebDAV server URL first.");
+      return;
+    }
+
+    if (!remoteUsername.trim()) {
+      setError("Enter the WebDAV username first.");
+      return;
+    }
+
+    if (!remotePassword.trim()) {
+      setError("Enter the WebDAV password first.");
+      return;
+    }
+
+    await connectRemoteLibrary("webdav");
+  };
+
+  const handleGoogleDriveConnect = async () => {
+    await connectRemoteLibrary("google_drive");
+  };
+
+  const handleDropboxConnect = async () => {
+    await connectRemoteLibrary("dropbox");
   };
 
   const handleFinish = async () => {
@@ -208,43 +436,58 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             </div>
 
             <div className="space-y-3">
-              <button
-                onClick={handleCreate}
-                disabled={loading}
-                className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
-              >
-                <Plus
-                  size={20}
-                  className="shrink-0 text-[var(--color-accent)]"
-                />
-                <div>
-                  <div className="text-[14px] font-medium text-white">
-                    {t("setup.createNew")}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-dim)]">
-                    {t("setup.createNewDescription")}
-                  </div>
-                </div>
-              </button>
+              {librarySetupChoices.map((choice) => {
+                const Icon = choice.icon;
+                const disabled = loading;
 
-              <button
-                onClick={handleOpen}
-                disabled={loading}
-                className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
-              >
-                <FolderOpen
-                  size={20}
-                  className="shrink-0 text-[var(--color-text-dim)]"
-                />
-                <div>
-                  <div className="text-[14px] font-medium text-white">
-                    {t("setup.openExisting")}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-dim)]">
-                    {t("setup.openExistingDescription")}
-                  </div>
-                </div>
-              </button>
+                return (
+                  <button
+                    key={choice.kind}
+                    onClick={
+                      choice.kind === "create_local"
+                        ? handleCreate
+                        : choice.kind === "open_local"
+                          ? handleOpen
+                          : handleOpenRemote
+                    }
+                    disabled={disabled}
+                    className="flex w-full items-center gap-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] px-5 py-4 text-left transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
+                  >
+                    <Icon
+                      size={20}
+                      className={`shrink-0 ${
+                        choice.kind === "open_remote"
+                          ? "text-[var(--color-accent)]"
+                          : choice.kind === "create_local"
+                            ? "text-[var(--color-accent)]"
+                            : "text-[var(--color-text-dim)]"
+                      }`}
+                    />
+                    <div>
+                      <div className="text-[14px] font-medium text-white">
+                        {t(choice.title, {
+                          defaultValue:
+                            choice.kind === "create_local"
+                              ? "Create new local library"
+                              : choice.kind === "open_local"
+                                ? "Open existing local library"
+                                : "Open remote library",
+                        })}
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-dim)]">
+                        {t(choice.description, {
+                          defaultValue:
+                            choice.kind === "create_local"
+                              ? "Create a new local library folder on this machine."
+                              : choice.kind === "open_local"
+                                ? "Register an existing local library folder."
+                                : "Connect to a cloud-hosted library without copying the original files.",
+                        })}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {error && <p className="text-[13px] text-red-400">{error}</p>}
@@ -257,6 +500,269 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
             <button
               onClick={() => setStep("language")}
+              className="flex items-center justify-center gap-1 text-[13px] text-[var(--color-text-dim)] transition-colors hover:text-white"
+            >
+              <ChevronLeft size={14} />
+              {t("setup.back")}
+            </button>
+          </>
+        )}
+
+        {/* Step 3: Remote Provider */}
+        {step === "remoteProvider" && (
+          <>
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15">
+                <Cloud size={32} className="text-[var(--color-accent)]" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">
+                {t("setup.openRemoteLibrary", {
+                  defaultValue: "Choose a remote provider",
+                })}
+              </h1>
+              <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
+                {t("setup.openRemoteLibraryDescription", {
+                  defaultValue:
+                    "Connect Google Drive, Dropbox, or WebDAV to your remote library.",
+                })}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {remoteLibraryProviders.map((choice) => {
+                const Icon = choice.icon;
+                const isActive = selectedRemoteProvider === choice.provider;
+
+                return (
+                  <button
+                    key={choice.provider}
+                    onClick={() => {
+                      setSelectedRemoteProvider(choice.provider);
+                      setRemoteMessage(null);
+                      setError(null);
+                      setRemoteAuthorizationUrl(null);
+                      setRemoteDisplayName(
+                        remoteProviderDisplayNames[choice.provider],
+                      );
+                    }}
+                    disabled={loading}
+                    className={`flex w-full items-start gap-3 rounded-lg border px-5 py-4 text-left transition-colors disabled:opacity-50 ${
+                      isActive
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
+                        : "border-[var(--color-border-light)] bg-[var(--color-sidebar)] hover:bg-[var(--color-hover)]"
+                    }`}
+                  >
+                    <Icon
+                      size={20}
+                      className="mt-0.5 shrink-0 text-[var(--color-accent)]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium text-white">
+                        {choice.title}
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-dim)]">
+                        {choice.description}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                        {choice.availableNow
+                          ? "Available in this build"
+                          : "Planned in the next provider phase"}
+                      </div>
+                    </div>
+                    {isActive && (
+                      <Check
+                        size={16}
+                        className="mt-0.5 shrink-0 text-[var(--color-accent)]"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedRemoteProvider === "google_drive" && (
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="Google Drive Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+                <p className="text-[11px] text-[var(--color-text-dimmer)]">
+                  OpenKara uses its bundled Google Drive app registration and
+                  will create or reuse a folder with this display name in My
+                  Drive.
+                </p>
+
+                <button
+                  onClick={() => void handleGoogleDriveConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {loading ? "Waiting for Google…" : "Connect Google Drive"}
+                </button>
+
+                {remoteAuthorizationUrl && (
+                  <a
+                    href={remoteAuthorizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
+                  >
+                    Open Google sign-in in your browser again
+                  </a>
+                )}
+              </div>
+            )}
+
+            {selectedRemoteProvider === "webdav" && (
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="WebDAV Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Server URL
+                  </label>
+                  <input
+                    value={remoteServerUrl}
+                    onChange={(event) => setRemoteServerUrl(event.target.value)}
+                    placeholder="https://dav.example.com/remote.php/dav/files/you/"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Library path
+                  </label>
+                  <input
+                    value={remoteRootPath}
+                    onChange={(event) => setRemoteRootPath(event.target.value)}
+                    placeholder="/OpenKara"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    spellCheck={false}
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
+                    Point this at an existing remote library path, or enter a
+                    new folder name and OpenKara will initialize it for you.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-white">
+                      Username
+                    </label>
+                    <input
+                      value={remoteUsername}
+                      onChange={(event) =>
+                        setRemoteUsername(event.target.value)
+                      }
+                      placeholder="username"
+                      className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[12px] font-medium text-white">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={remotePassword}
+                      onChange={(event) =>
+                        setRemotePassword(event.target.value)
+                      }
+                      placeholder="password"
+                      className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => void handleWebDavConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {loading ? "Connecting…" : "Connect WebDAV library"}
+                </button>
+              </div>
+            )}
+
+            {selectedRemoteProvider === "dropbox" && (
+              <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
+                <div>
+                  <label className="mb-1 block text-[12px] font-medium text-white">
+                    Display name
+                  </label>
+                  <input
+                    value={remoteDisplayName}
+                    onChange={(event) =>
+                      setRemoteDisplayName(event.target.value)
+                    }
+                    placeholder="Dropbox Library"
+                    className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </div>
+                <p className="text-[11px] text-[var(--color-text-dimmer)]">
+                  OpenKara uses its bundled Dropbox app registration and will
+                  create or reuse a folder with this display name in Dropbox.
+                </p>
+
+                <button
+                  onClick={() => void handleDropboxConnect()}
+                  disabled={loading}
+                  className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {loading ? "Waiting for Dropbox…" : "Connect Dropbox"}
+                </button>
+
+                {remoteAuthorizationUrl && (
+                  <a
+                    href={remoteAuthorizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
+                  >
+                    Open Dropbox sign-in in your browser again
+                  </a>
+                )}
+              </div>
+            )}
+
+            {selectedRemoteProvider && remoteMessage && (
+              <p className="text-[13px] text-[var(--color-text-dim)]">
+                {remoteMessage}
+              </p>
+            )}
+
+            {error && <p className="text-[13px] text-red-400">{error}</p>}
+
+            <button
+              onClick={() => {
+                resetRemoteWizard();
+                setStep("library");
+              }}
               className="flex items-center justify-center gap-1 text-[13px] text-[var(--color-text-dim)] transition-colors hover:text-white"
             >
               <ChevronLeft size={14} />

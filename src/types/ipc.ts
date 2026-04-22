@@ -37,10 +37,93 @@ export interface CommandError {
 // ─── Library ─────────────────────────────────────────────
 
 export type CoverArtBytes = number[] | Uint8Array | ArrayBuffer | null;
+export type LibraryKind = "local" | "remote";
+export type RemoteLibraryProvider = "google_drive" | "dropbox" | "webdav";
+
+export interface WebDavRemoteAuthPayload {
+  type: "webdav";
+  server_url: string;
+  username: string;
+  password: string;
+  root_path: string | null;
+}
+
+export type RemoteAuthPayload = WebDavRemoteAuthPayload | null;
+
+export interface RemoteAuthStart {
+  session_id: string;
+  provider: RemoteLibraryProvider;
+  authorization_url: string | null;
+  expires_at_ms: number | null;
+}
+
+export type RemoteAuthState = "pending" | "ready" | "failed";
+
+export interface RemoteAuthStatus {
+  session_id: string;
+  provider: RemoteLibraryProvider;
+  state: RemoteAuthState;
+  remote_root_locator: string | null;
+  display_name: string | null;
+  error: CommandError | null;
+}
+
+export interface RemoteLibraryCandidate {
+  provider: RemoteLibraryProvider;
+  remote_root_locator: string;
+  remote_path_display: string;
+  display_name: string;
+  account_id: string | null;
+}
+
+export interface LocalLibraryRegistration {
+  id: string;
+  kind: "local";
+  display_name: string;
+  root_path: string;
+}
+
+export interface RemoteLibraryRegistration {
+  id: string;
+  kind: "remote";
+  display_name: string;
+  provider: RemoteLibraryProvider;
+  remote_root_locator: string;
+  remote_path_display: string;
+  account_id: string;
+  connection_config: RemoteLibraryConnectionConfig | null;
+  cached_db_path: string | null;
+  remote_revision: string | null;
+  bound_local_library_id: string | null;
+}
+
+export type RemoteLibraryConnectionConfig =
+  | {
+      type: "google_drive";
+      oauth_client_id: string;
+    }
+  | {
+      type: "dropbox";
+      app_key: string;
+    }
+  | {
+      type: "webdav";
+      server_url: string;
+    };
+
+export type RegisteredLibrary =
+  | LocalLibraryRegistration
+  | RemoteLibraryRegistration;
+
+export interface LibraryRegistrySnapshot {
+  active_library_id: string | null;
+  libraries: RegisteredLibrary[];
+}
 
 export interface Song {
   hash: string;
-  file_path: string;
+  file_path: string | null;
+  audio_source_kind: "original" | "original_remote" | "stems_remote";
   cdg_path: string | null;
   media_g_container: "paired" | "zip" | null;
   instrumental: boolean;
@@ -294,6 +377,35 @@ export interface SeparationCompleteEvent {
 
 export interface SeparationErrorEvent {
   song_id: string;
+  error: CommandError;
+}
+
+export type UploadState = "idle" | "running" | "completed" | "failed";
+
+export interface UploadStatusSnapshot {
+  song_id: string;
+  state: UploadState;
+  percent: number;
+  remote_library_id?: string | null;
+  detail?: string | null;
+  error: CommandError | null;
+}
+
+export interface UploadProgressEvent {
+  song_id: string;
+  percent: number;
+  remote_library_id?: string | null;
+  detail?: string | null;
+}
+
+export interface UploadCompleteEvent {
+  song_id: string;
+  remote_library_id?: string | null;
+}
+
+export interface UploadErrorEvent {
+  song_id: string;
+  remote_library_id?: string | null;
   error: CommandError;
 }
 

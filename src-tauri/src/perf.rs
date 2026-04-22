@@ -1,14 +1,17 @@
 use crate::{
     audio::playback::{PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
+    cache,
     library_root::LibraryRoot,
-    services::playback::play_song_from_library,
+    services::playback::{load_song_audio, probe_song_audio},
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::{fs, path::Path, time::Instant};
 
-pub const PLAYBACK_LOAD_LATENCY_THRESHOLD_MS: f64 = 200.0;
+pub const PLAYBACK_DB_LOOKUP_LATENCY_THRESHOLD_MS: f64 = 25.0;
+pub const PLAYBACK_METADATA_PROBE_LATENCY_THRESHOLD_MS: f64 = 100.0;
+pub const PLAYBACK_FULL_DECODE_LATENCY_THRESHOLD_MS: f64 = 1_000.0;
 pub const SEEK_LATENCY_THRESHOLD_MS: f64 = 200.0;
 pub const LYRICS_JITTER_THRESHOLD_MS: u64 = 50;
 
@@ -20,7 +23,9 @@ pub struct PerformanceReport {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlaybackPerformanceReport {
-    pub track_load_latency_ms: f64,
+    pub track_db_lookup_latency_ms: f64,
+    pub track_metadata_probe_latency_ms: f64,
+    pub track_full_decode_latency_ms: f64,
     pub seek_latency_avg_ms: f64,
     pub seek_latency_p95_ms: f64,
     pub seek_latency_max_ms: f64,
@@ -39,21 +44,22 @@ pub fn build_backend_performance_report(
     song_id: &str,
     seek_iterations: usize,
 ) -> Result<PerformanceReport> {
-    let mut playback = PlaybackController::default();
-    let load_start = Instant::now();
-    let snapshot = play_song_from_library(connection, library_root, &mut playback, song_id, 1_000)
-        .with_context(|| format!("failed to load playback fixture for song {song_id}"))?;
-    let track_load_latency_ms = elapsed_ms(load_start.elapsed());
-    let duration_ms = snapshot
-        .duration_ms
-        .context("loaded playback snapshot is missing duration")?;
+    // Playback is an eager full decode into memory, so cold-path variance is
+    // concentrated in the decode step instead of the DB lookup or controller swap.
+    let mut track_load = measure_track_load_breakdown(connection, library_root, song_id, 1_000)?;
 
-    let seek_samples = measure_seek_latencies(&mut playback, duration_ms, seek_iterations)
+    let seek_samples = measure_seek_latencies(
+        &mut track_load.playback,
+        track_load.duration_ms,
+        seek_iterations,
+    )
         .context("failed to profile playback seek latency")?;
 
     Ok(PerformanceReport {
         playback: PlaybackPerformanceReport {
-            track_load_latency_ms,
+            track_db_lookup_latency_ms: track_load.db_lookup_latency_ms,
+            track_metadata_probe_latency_ms: track_load.metadata_probe_latency_ms,
+            track_full_decode_latency_ms: track_load.full_decode_latency_ms,
             seek_latency_avg_ms: average(&seek_samples),
             seek_latency_p95_ms: percentile(&seek_samples, 0.95),
             seek_latency_max_ms: seek_samples.iter().copied().fold(0.0_f64, f64::max),
@@ -67,6 +73,47 @@ pub fn build_backend_performance_report(
             position_event_interval_ms: PLAYBACK_POSITION_POLL_INTERVAL_MS,
             jitter_budget_ms: PLAYBACK_POSITION_POLL_INTERVAL_MS,
         },
+    })
+}
+
+struct TrackLoadBreakdown {
+    db_lookup_latency_ms: f64,
+    metadata_probe_latency_ms: f64,
+    full_decode_latency_ms: f64,
+    duration_ms: u64,
+    playback: PlaybackController,
+}
+
+fn measure_track_load_breakdown(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+    song_id: &str,
+    now_ms: u64,
+) -> Result<TrackLoadBreakdown> {
+    let mut playback = PlaybackController::default();
+    let lookup_start = Instant::now();
+    let song = cache::get_song_by_hash(connection, song_id)
+        .context("failed to load song from library")?
+        .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
+    let db_lookup_latency_ms = elapsed_ms(lookup_start.elapsed());
+
+    let probe_start = Instant::now();
+    probe_song_audio(library_root, &song)?;
+    let metadata_probe_latency_ms = elapsed_ms(probe_start.elapsed());
+
+    let decode_start = Instant::now();
+    let decoded_audio = load_song_audio(library_root, &song)?;
+    let full_decode_latency_ms = elapsed_ms(decode_start.elapsed());
+    let duration_ms = decoded_audio.duration_ms;
+
+    playback.start_track(song.hash, decoded_audio, now_ms);
+
+    Ok(TrackLoadBreakdown {
+        db_lookup_latency_ms,
+        metadata_probe_latency_ms,
+        full_decode_latency_ms,
+        duration_ms,
+        playback,
     })
 }
 

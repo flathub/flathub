@@ -13,6 +13,7 @@ const {
     selectedSongIds: new Set<string>(),
     selectSong: vi.fn(),
     separationStatuses: {},
+    uploadStatuses: {},
     songs: [],
     loadLibrary: vi.fn(),
     lastClickedSongId: null,
@@ -121,6 +122,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-cdg",
           file_path: "Taylor Swift/22.mp3",
+          audio_source_kind: "original",
           cdg_path: "Taylor Swift/22.cdg",
           media_g_container: "paired",
           instrumental: false,
@@ -152,6 +154,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-1",
           file_path: "Brent Faiyaz/Loose Change.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -182,6 +185,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native",
           file_path: "Fuji Kaze/Hachiko.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -210,6 +214,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native-selected",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -248,6 +253,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-native-badges",
           file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: "paired",
           instrumental: false,
@@ -269,6 +275,63 @@ describe("SongListItem", () => {
     mockLibraryState.separationStatuses = {};
   });
 
+  test("renders shared progress bars for running separation and upload tasks", () => {
+    mockLibraryState.selectedSongIds = new Set();
+    mockLibraryState.separationStatuses = {
+      "song-native-progress": {
+        song_id: "song-native-progress",
+        state: "running",
+        percent: 55,
+        cache_hit: false,
+        vocals_path: null,
+        accomp_path: null,
+        drums_path: null,
+        bass_path: null,
+        other_path: null,
+        model_variant: null,
+        error: null,
+      },
+    };
+    mockLibraryState.uploadStatuses = {
+      "song-native-progress": {
+        song_id: "song-native-progress",
+        state: "running",
+        percent: 88,
+        remote_library_id: null,
+        detail: null,
+        error: null,
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <SongListItem
+        song={{
+          hash: "song-native-progress",
+          file_path: "Rina Sawayama/Hold The Girl.mp3",
+          audio_source_kind: "original",
+          cdg_path: null,
+          media_g_container: null,
+          instrumental: false,
+          title: "Hold The Girl",
+          artist: "Rina Sawayama",
+          album: null,
+          duration_ms: 240000,
+          cover_art: null,
+          imported_at: 0,
+          original_ext: "mp3",
+        }}
+        orderedHashes={["song-native-progress"]}
+      />,
+    );
+
+    expect(markup).toContain("progress.separating:Hold The Girl");
+    expect(markup).toContain("progress.uploadingToRemote:Hold The Girl");
+    expect(markup).toContain("h-1.5 w-full overflow-hidden rounded-full");
+
+    mockLibraryState.separationStatuses = {};
+    mockLibraryState.uploadStatuses = {};
+  });
+
   test("renders a compact cover art thumbnail when cover art arrives as Uint8Array", () => {
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:cover"),
@@ -280,6 +343,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-typed-array",
           file_path: "Madvillain/Bistro.m4a",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: false,
@@ -410,6 +474,7 @@ describe("SongListItem", () => {
         song={{
           hash: "song-instrumental",
           file_path: "Artist/Official Instrumental.mp3",
+          audio_source_kind: "original",
           cdg_path: null,
           media_g_container: null,
           instrumental: true,

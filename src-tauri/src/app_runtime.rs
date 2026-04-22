@@ -53,6 +53,8 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         audio_output_start_lock: Arc::new(Mutex::new(())),
         model_bootstrap_status: Arc::clone(&model_bootstrap_status),
         separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+        remote_auth_sessions: Arc::new(Mutex::new(HashMap::new())),
+        remote_upload_statuses: Arc::new(Mutex::new(HashMap::new())),
         separator_model_cache: Arc::new(Mutex::new(separator::model_cache::ModelCache::default())),
         batch_running: Arc::new(AtomicBool::new(false)),
         batch_cancel: Arc::new(AtomicBool::new(false)),
@@ -112,7 +114,9 @@ fn build_startup_model_bootstrap(
 }
 
 fn load_library(app_config: Option<&config::AppConfig>) -> Option<LibraryRoot> {
-    let path = app_config.and_then(|config| config.library_path.clone())?;
+    let path = app_config
+        .and_then(|config| config.active_library())
+        .and_then(|library| library.working_copy_root())?;
     let lib_path = PathBuf::from(&path);
 
     match LibraryRoot::open(&lib_path) {
@@ -121,13 +125,18 @@ fn load_library(app_config: Option<&config::AppConfig>) -> Option<LibraryRoot> {
             if let Err(err) = cache::initialize_library_database(&db_path) {
                 eprintln!(
                     "warning: failed to apply migrations on library at {}: {}",
-                    path, err
+                    lib_path.display(),
+                    err
                 );
             }
             Some(lib)
         }
         Err(err) => {
-            eprintln!("warning: could not open library at {}: {}", path, err);
+            eprintln!(
+                "warning: could not open library at {}: {}",
+                lib_path.display(),
+                err
+            );
             None
         }
     }

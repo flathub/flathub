@@ -3,6 +3,12 @@ import type {
   AirPlayAudienceStatePayload,
   AirPlayRoutePickerBounds,
   AppSettings,
+  LibraryRegistrySnapshot,
+  RemoteAuthPayload,
+  RemoteAuthStart,
+  RemoteAuthStatus,
+  RemoteLibraryCandidate,
+  RemoteLibraryProvider,
   DeleteSongsResult,
   DeleteStemsResult,
   DowngradeResult,
@@ -21,6 +27,7 @@ import type {
   StemName,
   Song,
   SongProperties,
+  UploadStatusSnapshot,
   WindowShellStateSnapshot,
 } from "@/types/ipc";
 
@@ -30,12 +37,120 @@ export function getLibraryPath(): Promise<string | null> {
   return invoke<string | null>("get_library_path");
 }
 
-export function createLibrary(path: string): Promise<void> {
+export function getLibraryRegistry(): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("get_library_registry");
+}
+
+export function getActiveLibrary(): Promise<
+  LibraryRegistrySnapshot["libraries"][number] | null
+> {
+  return invoke<LibraryRegistrySnapshot["libraries"][number] | null>(
+    "get_active_library",
+  );
+}
+
+export function createLocalLibrary(path: string): Promise<void> {
   return invoke<void>("create_library", { path });
 }
 
-export function openLibrary(path: string): Promise<void> {
+export function registerLocalLibrary(path: string): Promise<void> {
   return invoke<void>("open_library", { path });
+}
+
+export function beginRemoteAuth(
+  provider: RemoteLibraryProvider,
+  payload: RemoteAuthPayload = null,
+): Promise<RemoteAuthStart> {
+  return invoke<RemoteAuthStart>("begin_remote_auth", {
+    provider,
+    payload,
+  });
+}
+
+export function pollRemoteAuth(sessionId: string): Promise<RemoteAuthStatus> {
+  return invoke<RemoteAuthStatus>("poll_remote_auth", {
+    sessionId,
+  });
+}
+
+export function listRemoteLibraryRoots(
+  sessionId: string,
+): Promise<RemoteLibraryCandidate[]> {
+  return invoke<RemoteLibraryCandidate[]>("list_remote_library_roots", {
+    sessionId,
+  });
+}
+
+export function createRemoteLibrary(
+  sessionId: string,
+  displayName: string,
+): Promise<RemoteLibraryCandidate> {
+  return invoke<RemoteLibraryCandidate>("create_remote_library", {
+    sessionId,
+    displayName,
+  });
+}
+
+export function registerRemoteLibrary(
+  sessionId: string,
+  remoteRootLocator: string,
+  displayName?: string | null,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("register_remote_library", {
+    sessionId,
+    remoteRootLocator,
+    displayName: displayName ?? null,
+  });
+}
+
+export function setRemoteMirror(
+  localLibraryId: string,
+  remoteLibraryId: string | null,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("set_remote_mirror", {
+    localLibraryId,
+    remoteLibraryId,
+  });
+}
+
+export function syncActiveRemoteLibrary(): Promise<unknown> {
+  return invoke<unknown>("sync_active_remote_library");
+}
+
+export function publishSongToRemote(songId: string): Promise<unknown> {
+  return invoke<unknown>("publish_song_to_remote", { songId });
+}
+
+export function publishSongsToRemote(songIds: string[]): Promise<unknown> {
+  return invoke<unknown>("publish_songs_to_remote", { songIds });
+}
+
+export function getAllUploadStatuses(): Promise<UploadStatusSnapshot[]> {
+  return invoke<UploadStatusSnapshot[]>("get_all_upload_statuses");
+}
+
+export function switchLibrary(
+  libraryId: string,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("switch_library", {
+    libraryId,
+  });
+}
+
+export function removeLibrary(
+  libraryId: string,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("remove_library", {
+    libraryId,
+  });
+}
+
+export function createLibrary(path: string): Promise<void> {
+  return createLocalLibrary(path);
+}
+
+export function openLibrary(path: string): Promise<void> {
+  return registerLocalLibrary(path);
 }
 
 // ─── Library ─────────────────────────────────────────────

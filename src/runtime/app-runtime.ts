@@ -45,8 +45,8 @@ export function useAppStartupRuntime(
 
   useEffect(() => {
     api
-      .getLibraryPath()
-      .then((path) => setLibraryReady(path !== null))
+      .getLibraryRegistry()
+      .then((registry) => setLibraryReady(registry.active_library_id !== null))
       .catch((error) => {
         notifyError(error);
         setLibraryReady(false);

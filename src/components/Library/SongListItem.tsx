@@ -8,6 +8,7 @@ import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useQueueStore } from "@/stores/queue-store";
 import { formatDuration } from "@/lib/format";
+import { TaskProgressBar } from "@/components/Layout/GlobalProgressBar";
 import {
   songCanBeSeparated,
   songSupportsInstrumentalFlag,
@@ -21,6 +22,10 @@ import { SongPropertiesDialog } from "./SongPropertiesDialog";
 import { buildSongListContextMenuItems } from "./song-list-item-menu";
 import type { Song } from "@/types/ipc";
 
+function getSongDisplayName(song: Song): string {
+  return song.title ?? song.file_path?.split("/").pop() ?? song.hash;
+}
+
 interface SongListItemProps {
   song: Song;
   orderedHashes: string[];
@@ -33,6 +38,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const separationStatus = useLibraryStore(
     (s) => s.separationStatuses[song.hash],
   );
+  const uploadStatus = useLibraryStore((s) => s.uploadStatuses[song.hash]);
   const songs = useLibraryStore((s) => s.songs);
   const extractEmbeddedCoverArt = useLibraryStore(
     (s) => s.extractEmbeddedCoverArt,
@@ -127,6 +133,11 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               ([id]) => !result.deleted_song_ids.includes(id),
             ),
           ),
+          uploadStatuses: Object.fromEntries(
+            Object.entries(state.uploadStatuses).filter(
+              ([id]) => !result.deleted_song_ids.includes(id),
+            ),
+          ),
         }));
         await useLibraryStore.getState().loadLibrary();
         await usePlayerStore.getState().loadState();
@@ -187,7 +198,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
       <CoverArtThumbnail
         songHash={song.hash}
         coverArt={song.cover_art}
-        alt={`${song.title || song.file_path.split("/").pop()} cover art`}
+        alt={`${getSongDisplayName(song)} cover art`}
         className="h-11 w-11 shrink-0"
       />
 
@@ -205,7 +216,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               <div className="w-3 shrink-0" />
             )}
             <span className="truncate text-[15px] font-semibold">
-              {song.title || song.file_path.split("/").pop()}
+              {getSongDisplayName(song)}
             </span>
           </div>
 
@@ -284,6 +295,32 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             )}
           </div>
         </div>
+
+        {(separationStatus?.state === "running" ||
+          uploadStatus?.state === "running") && (
+          <div className="mt-1 space-y-1">
+            {separationStatus?.state === "running" && (
+              <TaskProgressBar
+                label={t("progress.separating", {
+                  title: getSongDisplayName(song),
+                  defaultValue: `Separating: ${getSongDisplayName(song)}`,
+                })}
+                percent={separationStatus.percent}
+              />
+            )}
+            {uploadStatus?.state === "running" && (
+              <TaskProgressBar
+                label={t("progress.uploadingToRemote", {
+                  title: getSongDisplayName(song),
+                  defaultValue: `Uploading to remote library: ${getSongDisplayName(
+                    song,
+                  )}`,
+                })}
+                percent={uploadStatus.percent}
+              />
+            )}
+          </div>
+        )}
 
         <div className="flex pl-5">
           <span

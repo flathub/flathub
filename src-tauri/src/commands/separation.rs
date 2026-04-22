@@ -1,6 +1,7 @@
 use crate::{
     cache,
     commands::error::{separation_error, state_lock_error, CommandError, CommandResult},
+    commands::remote_library,
     config::{self, ExecutionProviderPreference, StemMode},
     separator::{self, model::LoadedModel, model_cache::ModelCache},
     AppState,
@@ -11,7 +12,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const SEPARATION_PROGRESS_EVENT: &str = "separation-progress";
 pub const SEPARATION_COMPLETE_EVENT: &str = "separation-complete";
@@ -245,8 +246,12 @@ fn emit_terminal_status(
         SeparationState::Completed => {
             let _ = app_handle.emit(
                 SEPARATION_COMPLETE_EVENT,
-                SeparationCompleteEvent { song_id },
+                SeparationCompleteEvent {
+                    song_id: song_id.clone(),
+                },
             );
+            let state = app_handle.state::<AppState>();
+            let _ = remote_library::maybe_publish_song_to_bound_remote(&state, app_handle, &song_id);
         }
         SeparationState::Failed => {
             if let Some(error) = error {
@@ -373,6 +378,7 @@ pub fn downgrade_single_to_two_stem(
             song_id: song_id.clone(),
         },
     );
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
 
     Ok(completed)
 }
@@ -649,10 +655,11 @@ mod tests {
     fn validate_song_can_be_separated_rejects_instrumental_songs() {
         let song = crate::library::Song {
             hash: "song-1".to_owned(),
-            file_path: "media/song-1.mp3".to_owned(),
+            file_path: Some("media/song-1.mp3".to_owned()),
             cdg_path: None,
             media_g_container: None,
             instrumental: true,
+            audio_source_kind: "original".to_owned(),
             title: Some("Song".to_owned()),
             artist: None,
             album: None,

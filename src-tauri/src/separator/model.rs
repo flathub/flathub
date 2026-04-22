@@ -223,10 +223,7 @@ pub fn provider_diagnostic_summary(preference: ExecutionProviderPreference) -> S
         .join(" -> ")
 }
 
-fn load_with_ep(
-    path: &Path,
-    ep_preference: ExecutionProviderPreference,
-) -> Result<LoadedModel> {
+fn load_with_ep(path: &Path, ep_preference: ExecutionProviderPreference) -> Result<LoadedModel> {
     ensure_runtime_loaded(None)?;
     let runtime_metadata = read_model_runtime_metadata(path)?;
 

@@ -15,6 +15,7 @@ const { mockCdgState, mockPlayerState, mockLibraryState } = vi.hoisted(() => ({
       {
         hash: "song-1",
         file_path: "media-g/song-1.mp3",
+        audio_source_kind: "original",
         cdg_path: "media-g/song-1.cdg",
         media_g_container: "paired" as const,
         instrumental: false,
@@ -80,6 +81,7 @@ describe("PlaybackStage", () => {
       {
         hash: "song-2",
         file_path: "Fuji Kaze/Hachiko.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,

@@ -14,6 +14,7 @@ const { mockPlayerState, mockLibraryState } = vi.hoisted(() => ({
       {
         hash: "song-1",
         file_path: "Taylor Swift/22.mp3",
+        audio_source_kind: "original",
         cdg_path: null,
         media_g_container: null,
         instrumental: false,

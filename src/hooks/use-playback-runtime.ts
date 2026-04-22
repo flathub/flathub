@@ -17,6 +17,9 @@ import type {
   SeparationCompleteEvent,
   SeparationErrorEvent,
   SeparationProgressEvent,
+  UploadCompleteEvent,
+  UploadErrorEvent,
+  UploadProgressEvent,
 } from "@/types/ipc";
 
 export function useLyricsAutoFetch(enabled = true) {
@@ -325,12 +328,117 @@ function useBatchSeparationEvents(enabled: boolean) {
   }, [enabled, clearBatchSeparation, updateBatchProgress]);
 }
 
+function useUploadEvents(enabled: boolean) {
+  const updateUploadStatus = useLibraryStore((s) => s.updateUploadStatus);
+  const clearUploadStatus = useLibraryStore((s) => s.clearUploadStatus);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const unlisteners: (() => void)[] = [];
+    let cancelled = false;
+    const clearTimers = new Map<string, number>();
+
+    const clearTimerFor = (songId: string) => {
+      const timer = clearTimers.get(songId);
+      if (timer != null) {
+        window.clearTimeout(timer);
+        clearTimers.delete(songId);
+      }
+    };
+
+    const scheduleClear = (songId: string) => {
+      clearTimerFor(songId);
+      clearTimers.set(
+        songId,
+        window.setTimeout(() => {
+          clearTimers.delete(songId);
+          clearUploadStatus(songId);
+        }, 3000),
+      );
+    };
+
+    const setup = async () => {
+      const progressUnlisten = await listen<UploadProgressEvent>(
+        "upload-progress",
+        (e) => {
+          if (cancelled) return;
+          const songId = e.payload.song_id;
+          clearTimerFor(songId);
+          updateUploadStatus({
+            song_id: songId,
+            state: "running",
+            percent: e.payload.percent,
+            remote_library_id: e.payload.remote_library_id,
+            detail: e.payload.detail,
+            error: null,
+          });
+        },
+      );
+
+      const completeUnlisten = await listen<UploadCompleteEvent>(
+        "upload-complete",
+        (e) => {
+          if (cancelled) return;
+          const songId = e.payload.song_id;
+          updateUploadStatus({
+            song_id: songId,
+            state: "completed",
+            percent: 100,
+            remote_library_id: e.payload.remote_library_id,
+            detail: null,
+            error: null,
+          });
+          scheduleClear(songId);
+        },
+      );
+
+      const errorUnlisten = await listen<UploadErrorEvent>(
+        "upload-error",
+        (e) => {
+          if (cancelled) return;
+          clearTimerFor(e.payload.song_id);
+          updateUploadStatus({
+            song_id: e.payload.song_id,
+            state: "failed",
+            percent: 0,
+            remote_library_id: e.payload.remote_library_id,
+            detail: null,
+            error: e.payload.error,
+          });
+          notifyError(e.payload.error);
+        },
+      );
+
+      if (cancelled) {
+        progressUnlisten();
+        completeUnlisten();
+        errorUnlisten();
+      } else {
+        unlisteners.push(progressUnlisten, completeUnlisten, errorUnlisten);
+      }
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      clearTimers.forEach((timer) => window.clearTimeout(timer));
+      clearTimers.clear();
+      unlisteners.forEach((fn) => fn());
+    };
+  }, [clearUploadStatus, enabled, updateUploadStatus]);
+}
+
 export function useEventListeners(enabled = true) {
   usePlaybackPositionEvents(enabled);
   useSeparationEvents(enabled);
   useBootstrapEvents(enabled);
   usePlaybackEndedQueueAdvance(enabled);
   useBatchSeparationEvents(enabled);
+  useUploadEvents(enabled);
 }
 
 export function useFullscreenPlaybackRuntime() {

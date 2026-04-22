@@ -77,6 +77,10 @@ export function SongPropertiesDialog({
         ? t("songProperties.mediaGPaired")
         : null;
   const canSeparateSong = songCanBeSeparated(currentSong);
+  const displayTitle =
+    currentSong.title ??
+    currentSong.file_path?.split("/").pop() ??
+    currentSong.hash;
 
   useEffect(() => {
     api
@@ -142,7 +146,7 @@ export function SongPropertiesDialog({
         {/* Song title/artist */}
         <div className="border-b border-[var(--color-border)] px-5 py-3">
           <p className="truncate text-[13px] font-medium text-white">
-            {currentSong.title || currentSong.file_path.split("/").pop()}
+            {displayTitle}
           </p>
           {currentSong.artist && (
             <p className="truncate text-[11px] text-[var(--color-text-dim)]">

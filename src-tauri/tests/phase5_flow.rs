@@ -66,7 +66,8 @@ fn backend_karaoke_flow_imports_plays_separates_fetches_lyrics_and_switches_mode
     let song_id = import_result.imported[0].hash.clone();
 
     // Write sidecar .lrc next to the imported media file inside the library
-    let imported_media = library.resolve(&import_result.imported[0].file_path);
+    let imported_media = library
+        .resolve(import_result.imported[0].file_path.as_deref().unwrap());
     fs::write(
         imported_media.with_extension("lrc"),
         "[00:10.00] Look at the stars\n[00:20.00] Look how they shine for you",

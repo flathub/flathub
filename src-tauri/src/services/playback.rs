@@ -7,6 +7,7 @@ use crate::{
         },
     },
     cache,
+    commands::remote_library,
     library_root::LibraryRoot,
     media_g::{self, MEDIA_G_ZIP},
     services::cdg::{load_cdg_state_for_song, mark_cdg_reset_for_seek},
@@ -102,13 +103,24 @@ pub fn play<R: Runtime>(
     let song = cache::get_song_by_hash(&connection, song_id)?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
     let active_song_id = song.hash.clone();
+    let PlaybackSourceLoad {
+        decoded_audio,
+        stems,
+    } = load_playback_source(Some(&state.app_data_dir), &connection, &library_root, &song)?;
     let snapshot = decode_then_start_track_if_latest(
         &state.playback,
         &state.playback_request_id,
         request_id,
         active_song_id.clone(),
-        || load_song_audio(&library_root, &song),
+        move || Ok(decoded_audio),
     )?;
+    let snapshot = if let Some(stems) = stems {
+        decode_then_attach_stems_if_current_song(&state.playback, &active_song_id, move || {
+            Ok(stems)
+        })?
+    } else {
+        snapshot
+    };
 
     if snapshot.song_id.as_deref() == Some(active_song_id.as_str()) {
         // Only attach CDG state if this play request still won. Slow decode or
@@ -243,7 +255,37 @@ pub fn load_stems(state: &AppState) -> Result<PlaybackStateSnapshot> {
         return Ok(playback.snapshot(monotonic_now_ms()));
     }
 
+    let song = cache::get_song_by_hash(&connection, &song_id)
+        .context("failed to load song before stem attachment")?
+        .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
     drop(playback);
+
+    if song.is_remote_stems() {
+        if let Some(cached) = cache::stems::get_cached_stem_entry(&connection, &song_id)
+            .context("failed to load cached stems")?
+        {
+            remote_library::ensure_remote_file_cached(&state.app_data_dir, &cached.vocals_path)
+                .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            remote_library::ensure_remote_file_cached(&state.app_data_dir, &cached.accomp_path)
+                .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            if let Some(drums_path) = cached.drums_path.as_deref() {
+                remote_library::ensure_remote_file_cached(&state.app_data_dir, drums_path)
+                    .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            }
+            if let Some(bass_path) = cached.bass_path.as_deref() {
+                remote_library::ensure_remote_file_cached(&state.app_data_dir, bass_path)
+                    .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            }
+            if let Some(other_path) = cached.other_path.as_deref() {
+                remote_library::ensure_remote_file_cached(&state.app_data_dir, other_path)
+                    .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            }
+        }
+        let PlaybackSourceLoad { stems, .. } =
+            load_playback_source(Some(&state.app_data_dir), &connection, &library_root, &song)?;
+        let stems = stems.context("remote stems song did not yield attached stems")?;
+        return decode_then_attach_stems_if_current_song(&state.playback, &song_id, || Ok(stems));
+    }
 
     let cached = cache::stems::get_cached_stem_entry(&connection, &song_id)
         .context("failed to load cached stems")?
@@ -289,8 +331,16 @@ pub fn play_song_from_library(
     let song = cache::get_song_by_hash(connection, song_id)
         .context("failed to load song from library")?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
-    let decoded_audio = load_song_audio(library_root, &song)?;
-    Ok(controller.start_track(song.hash, decoded_audio, now_ms))
+    let PlaybackSourceLoad {
+        decoded_audio,
+        stems,
+    } = load_playback_source(None, connection, library_root, &song)?;
+    let snapshot = controller.start_track(song.hash.clone(), decoded_audio, now_ms);
+    if let Some(stems) = stems {
+        controller.attach_stems(&song.hash, stems)?;
+        return Ok(controller.snapshot(now_ms));
+    }
+    Ok(snapshot)
 }
 
 fn ensure_output_thread(state: &AppState) -> Result<()> {
@@ -349,19 +399,124 @@ where
     Ok(playback.snapshot(monotonic_now_ms()))
 }
 
-fn load_song_audio(
+pub(crate) fn probe_song_audio(
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Result<()> {
+    let song_path = resolve_song_file_path(song)?;
+    let absolute_path = library_root.resolve(song_path);
+    if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
+        let asset = media_g::inspect_zip_for_media_g(&absolute_path)?;
+        return decode::probe_bytes(asset.audio_bytes, &asset.audio_extension)
+            .with_context(|| format!("failed to probe audio for {}", song_path));
+    }
+
+    decode::probe_file(&absolute_path)
+        .with_context(|| format!("failed to probe audio for {}", song_path))
+}
+
+pub(crate) fn load_song_audio(
     library_root: &LibraryRoot,
     song: &crate::library::Song,
 ) -> Result<decode::DecodedAudio> {
-    let absolute_path = library_root.resolve(&song.file_path);
+    let song_path = resolve_song_file_path(song)?;
+    let absolute_path = library_root.resolve(song_path);
     if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
         let asset = media_g::inspect_zip_for_media_g(&absolute_path)?;
         return decode::decode_bytes(asset.audio_bytes, &asset.audio_extension)
-            .with_context(|| format!("failed to decode audio for {}", song.file_path));
+            .with_context(|| format!("failed to decode audio for {}", song_path));
     }
 
     decode::decode_file(&absolute_path)
-        .with_context(|| format!("failed to decode audio for {}", song.file_path))
+        .with_context(|| format!("failed to decode audio for {}", song_path))
+}
+
+struct PlaybackSourceLoad {
+    decoded_audio: decode::DecodedAudio,
+    stems: Option<LoadedStems>,
+}
+
+fn resolve_song_file_path(song: &crate::library::Song) -> Result<&str> {
+    song.file_path
+        .as_deref()
+        .with_context(|| format!("song {} does not have a local file path", song.hash))
+}
+
+fn load_playback_source(
+    app_data_dir: Option<&std::path::Path>,
+    connection: &Connection,
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Result<PlaybackSourceLoad> {
+    if song.is_remote_stems() {
+        return load_remote_stems_playback_source(connection, library_root, song);
+    }
+
+    if song.is_remote() {
+        if let (Some(app_data_dir), Some(file_path)) = (app_data_dir, song.file_path.as_deref()) {
+            remote_library::ensure_remote_file_cached(app_data_dir, file_path)
+                .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            if let Some(cdg_path) = song.cdg_path.as_deref() {
+                remote_library::ensure_remote_file_cached(app_data_dir, cdg_path)
+                    .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
+            }
+        }
+    }
+
+    Ok(PlaybackSourceLoad {
+        decoded_audio: load_song_audio(library_root, song)?,
+        stems: None,
+    })
+}
+
+fn load_remote_stems_playback_source(
+    connection: &Connection,
+    library_root: &LibraryRoot,
+    song: &crate::library::Song,
+) -> Result<PlaybackSourceLoad> {
+    let cached = cache::stems::get_cached_stem_entry(connection, &song.hash)
+        .context("failed to load cached stems")?
+        .with_context(|| format!("no cached stems for song {}", song.hash))?;
+
+    let load_stem = |path: &str| -> Result<decode::DecodedAudio> {
+        let abs = library_root.resolve(path);
+        decode::decode_file(&abs).with_context(|| format!("failed to decode stem {}", path))
+    };
+
+    if cached.has_individual_stems() {
+        let vocals = load_stem(&cached.vocals_path)?;
+        let drums_path = cached
+            .drums_path
+            .as_deref()
+            .context("missing drums stem path")?;
+        let bass_path = cached
+            .bass_path
+            .as_deref()
+            .context("missing bass stem path")?;
+        let other_path = cached
+            .other_path
+            .as_deref()
+            .context("missing other stem path")?;
+        Ok(PlaybackSourceLoad {
+            decoded_audio: vocals.clone(),
+            stems: Some(LoadedStems::FourStem(StemSet {
+                vocals,
+                drums: load_stem(drums_path)?,
+                bass: load_stem(bass_path)?,
+                other: load_stem(other_path)?,
+            })),
+        })
+    } else {
+        let vocals = load_stem(&cached.vocals_path)?;
+        let accompaniment = load_stem(&cached.accomp_path)?;
+        Ok(PlaybackSourceLoad {
+            decoded_audio: accompaniment.clone(),
+            stems: Some(LoadedStems::TwoStem {
+                vocals,
+                accompaniment,
+            }),
+        })
+    }
 }
 
 pub fn emit_playback_position<R: Runtime>(
@@ -444,6 +599,8 @@ mod tests {
             audio_output_start_lock: Arc::new(Mutex::new(())),
             model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),
             separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+            remote_auth_sessions: Arc::new(Mutex::new(HashMap::new())),
+            remote_upload_statuses: Arc::new(Mutex::new(HashMap::new())),
             separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
             batch_running: Arc::new(AtomicBool::new(false)),
             batch_cancel: Arc::new(AtomicBool::new(false)),

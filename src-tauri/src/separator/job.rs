@@ -61,16 +61,26 @@ pub fn separate_song_into_cache(
         .with_context(|| format!("song with hash {song_hash} was not found in the library"))?;
 
     report_progress(DECODE_PROGRESS);
-    let absolute_path = library_root.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        return Err(anyhow::anyhow!(
+            "song {} does not have a local file path",
+            song_hash
+        ));
+    };
+    let absolute_path = library_root.resolve(song_path);
     let decoded_audio = decode::decode_file(&absolute_path)
-        .with_context(|| format!("failed to decode audio for {}", song.file_path))?;
+        .with_context(|| format!("failed to decode audio for {}", song_path))?;
 
     report_progress(MODEL_LOAD_PROGRESS);
     let mut model_cache = model_cache
         .lock()
         .map_err(|_| anyhow::anyhow!("separator model cache lock was poisoned"))?;
-    let runtime_metadata = model::read_model_runtime_metadata(model_path)
-        .with_context(|| format!("failed to inspect model metadata for {}", model_path.display()))?;
+    let runtime_metadata = model::read_model_runtime_metadata(model_path).with_context(|| {
+        format!(
+            "failed to inspect model metadata for {}",
+            model_path.display()
+        )
+    })?;
     let cache_key = model::session_cache_key(model_path, ep_preference, &runtime_metadata);
     let loaded_model = model_cache.get_or_load_with_key(cache_key, || {
         model::load_from_path(model_path, ep_preference)

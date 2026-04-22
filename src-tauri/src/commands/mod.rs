@@ -8,6 +8,7 @@ pub mod library_setup;
 pub mod lyrics;
 pub mod maintenance;
 pub mod playback;
+pub mod remote_library;
 pub mod separation;
 pub mod settings;
 pub mod window_shell;

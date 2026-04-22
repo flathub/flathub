@@ -2,9 +2,17 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "@/lib/tauri";
 import { useBootstrapStore } from "@/stores/bootstrap-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { usePlayerStore } from "@/stores/player-store";
+import { useQueueStore } from "@/stores/queue-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { ExecutionProvider, ModelVariant, StemMode } from "@/types/ipc";
+import type {
+  ExecutionProvider,
+  LibraryRegistrySnapshot,
+  ModelVariant,
+  RegisteredLibrary,
+  StemMode,
+} from "@/types/ipc";
 
 export type DangerDialog =
   | "delete_stems"
@@ -22,6 +30,9 @@ export interface ModelStatusView {
 export interface SettingsOverlayState {
   libraryPath: string | null;
   libraryError: string | null;
+  libraryRegistry: LibraryRegistrySnapshot | null;
+  libraries: RegisteredLibrary[];
+  activeLibraryId: string | null;
   stemMode: StemMode;
   modelVariant: ModelVariant;
   modelStatuses: Partial<Record<ModelVariant, ModelStatusView>>;
@@ -51,6 +62,7 @@ export interface SettingsOverlayActions {
   initialize: () => Promise<void>;
   createLibrary: (dialogTitle: string) => Promise<void>;
   openLibrary: (dialogTitle: string) => Promise<void>;
+  switchLibrary: (libraryId: string) => Promise<void>;
   setLanguage: (language: string) => Promise<void>;
   restartApp: () => Promise<void>;
   setStemMode: (mode: StemMode) => Promise<void>;
@@ -73,6 +85,7 @@ export interface SettingsOverlayControllerDependencies {
   api: Pick<
     typeof api,
     | "createLibrary"
+    | "createLocalLibrary"
     | "deleteAllCachedLyrics"
     | "deleteAllStems"
     | "deleteModel"
@@ -82,11 +95,15 @@ export interface SettingsOverlayControllerDependencies {
     | "estimateStemsSize"
     | "getAllSeparationStatuses"
     | "getLibraryPath"
+    | "getLibraryRegistry"
     | "getSettings"
     | "getWindowShellState"
     | "getModelStatus"
     | "openLibrary"
+    | "registerLocalLibrary"
     | "restartApp"
+    | "switchLibrary"
+    | "syncActiveRemoteLibrary"
     | "setExecutionProvider"
     | "setHideBatchSeparate"
     | "setLanguage"
@@ -98,7 +115,9 @@ export interface SettingsOverlayControllerDependencies {
   changeLanguage: (language: string) => void | Promise<unknown>;
   libraryStore: Pick<
     ReturnType<typeof useLibraryStore.getState>,
-    "clearAllSeparationStatuses" | "updateSeparationStatus"
+    | "clearAllSeparationStatuses"
+    | "clearAllUploadStatuses"
+    | "updateSeparationStatus"
   >;
   lyricsStore: Pick<ReturnType<typeof useLyricsStore.getState>, "clear">;
   settingsStore: Pick<
@@ -122,6 +141,7 @@ interface SettingsActionContext {
   controls: SettingsOverlayStateControls;
   patchState: PatchState;
   patchMeta: PatchMeta;
+  refreshLibraryRegistry: () => Promise<void>;
   refreshModelStatuses: () => Promise<void>;
   applyModelVariant: (variant: ModelVariant) => Promise<void>;
   selectSingleDirectory: (dialogTitle: string) => Promise<string | null>;
@@ -135,6 +155,9 @@ export function createInitialSettingsOverlaySnapshot(
     state: {
       libraryPath: null,
       libraryError: null,
+      libraryRegistry: null,
+      libraries: [],
+      activeLibraryId: null,
       stemMode: initialSettings.stemMode,
       modelVariant: initialSettings.modelVariant,
       modelStatuses: {},
@@ -178,6 +201,29 @@ export function createSettingsOverlayActions(
         ...patch,
       },
     }));
+  };
+
+  const applyRegistrySnapshot = (registry: LibraryRegistrySnapshot) => {
+    const activeLibrary = registry.libraries.find(
+      (library) => library.id === registry.active_library_id,
+    );
+
+    patchState({
+      libraryRegistry: registry,
+      libraries: registry.libraries,
+      activeLibraryId: registry.active_library_id,
+      libraryPath: activeLibrary ? describeLibrary(activeLibrary) : null,
+      libraryError: null,
+    });
+  };
+
+  const refreshLibraryRegistry = async () => {
+    try {
+      const registry = await dependencies.api.getLibraryRegistry();
+      applyRegistrySnapshot(registry);
+    } catch (error) {
+      dependencies.notifyError(error);
+    }
   };
 
   const refreshModelStatuses = async () => {
@@ -250,6 +296,7 @@ export function createSettingsOverlayActions(
     controls,
     patchState,
     patchMeta,
+    refreshLibraryRegistry,
     refreshModelStatuses,
     applyModelVariant,
     selectSingleDirectory,
@@ -260,17 +307,17 @@ export function createSettingsOverlayActions(
     initialize: async () => {
       patchMeta({ isInitializing: true });
 
-      const [libraryPathResult, settingsResult, windowShellResult] =
+      const [registryResult, settingsResult, windowShellResult] =
         await Promise.allSettled([
-          dependencies.api.getLibraryPath(),
+          dependencies.api.getLibraryRegistry(),
           dependencies.api.getSettings(),
           dependencies.api.getWindowShellState(),
         ]);
 
-      if (libraryPathResult.status === "fulfilled") {
-        patchState({ libraryPath: libraryPathResult.value });
+      if (registryResult.status === "fulfilled") {
+        applyRegistrySnapshot(registryResult.value);
       } else {
-        dependencies.notifyError(libraryPathResult.reason);
+        dependencies.notifyError(registryResult.reason);
       }
 
       if (windowShellResult.status === "fulfilled") {
@@ -313,13 +360,20 @@ function createLibrarySettingsActions(
   SettingsOverlayActions,
   | "createLibrary"
   | "openLibrary"
+  | "switchLibrary"
   | "setLanguage"
   | "restartApp"
   | "setStemMode"
   | "setExecutionProvider"
   | "toggleHideBatchSeparate"
 > {
-  const { dependencies, patchState, selectSingleDirectory } = context;
+  const {
+    dependencies,
+    patchState,
+    refreshLibraryRegistry,
+    selectSingleDirectory,
+    refreshModelStatuses,
+  } = context;
 
   return {
     createLibrary: async (dialogTitle) => {
@@ -330,8 +384,8 @@ function createLibrarySettingsActions(
       patchState({ libraryError: null });
 
       try {
-        await dependencies.api.createLibrary(libraryDir);
-        patchState({ libraryPath: libraryDir });
+        await dependencies.api.createLocalLibrary(libraryDir);
+        await refreshLibraryRegistry();
       } catch (error: unknown) {
         patchState({
           libraryError: error instanceof Error ? error.message : String(error),
@@ -346,8 +400,34 @@ function createLibrarySettingsActions(
       patchState({ libraryError: null });
 
       try {
-        await dependencies.api.openLibrary(selectedDirectory);
-        patchState({ libraryPath: selectedDirectory });
+        await dependencies.api.registerLocalLibrary(selectedDirectory);
+        await refreshLibraryRegistry();
+      } catch (error: unknown) {
+        patchState({
+          libraryError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+
+    switchLibrary: async (libraryId) => {
+      patchState({ libraryError: null });
+
+      try {
+        const registry = await dependencies.api.switchLibrary(libraryId);
+        const target = registry.libraries.find(
+          (library) => library.id === libraryId,
+        );
+        if (target?.kind === "remote") {
+          await dependencies.api.syncActiveRemoteLibrary();
+        }
+        dependencies.libraryStore.clearAllSeparationStatuses();
+        dependencies.libraryStore.clearAllUploadStatuses();
+        useLibraryStore.getState().clearSelection();
+        useQueueStore.getState().clearQueue();
+        dependencies.lyricsStore.clear();
+        await usePlayerStore.getState().loadState();
+        await refreshLibraryRegistry();
+        await refreshModelStatuses();
       } catch (error: unknown) {
         patchState({
           libraryError: error instanceof Error ? error.message : String(error),
@@ -408,6 +488,16 @@ function createLibrarySettingsActions(
       }
     },
   };
+}
+
+function describeLibrary(library: RegisteredLibrary): string {
+  if (library.kind === "local") {
+    return library.root_path;
+  }
+
+  return `${library.display_name} · ${
+    library.remote_path_display || library.remote_root_locator
+  }`;
 }
 
 function createModelSettingsActions(

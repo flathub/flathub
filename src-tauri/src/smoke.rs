@@ -9,8 +9,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -133,7 +132,9 @@ pub fn run_local_audio_smoke(config: LocalAudioSmokeConfig) -> Result<LocalAudio
             })
             .context("failed to set up smoke library root")?;
     let import_result = import_songs_from_paths(&connection, &library, &import_paths);
-    // `song.file_path` is now a library-relative path (`media/{hash}.{ext}`),
+    // `song.file_path` is now a library-relative path (`media/{hash}.{ext}`) for
+    // local songs; remote songs may omit it entirely and are excluded from this
+    // local-only smoke path.
     // so we reconstruct a source-path-to-Song map.  `import_songs_from_paths`
     // processes paths in order: each goes into either `imported` or `failed`,
     // preserving the original order within each bucket.

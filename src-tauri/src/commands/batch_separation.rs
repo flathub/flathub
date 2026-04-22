@@ -1,6 +1,7 @@
 use crate::{
     cache,
     commands::error::{database_error, separation_error, CommandResult},
+    commands::remote_library,
     commands::separation::{
         completed_status, failed_status, running_status, SeparationCompleteEvent,
         SeparationErrorEvent, SeparationProgressEvent, SEPARATION_COMPLETE_EVENT,
@@ -12,7 +13,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::sync::{atomic::Ordering, Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const BATCH_SEPARATION_PROGRESS_EVENT: &str = "batch-separation-progress";
 pub const BATCH_SEPARATION_COMPLETE_EVENT: &str = "batch-separation-complete";
@@ -247,6 +248,12 @@ pub fn batch_separate(
                         SeparationCompleteEvent {
                             song_id: song_id.clone(),
                         },
+                    );
+                    let state = app_handle.state::<AppState>();
+                    let _ = remote_library::maybe_publish_song_to_bound_remote(
+                        &state,
+                        &app_handle,
+                        song_id,
                     );
                     completed += 1;
                 }

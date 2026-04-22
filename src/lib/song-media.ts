@@ -19,5 +19,5 @@ export function songCanBeSeparated(song: Song | null | undefined): boolean {
     return false;
   }
 
-  return !song.instrumental;
+  return song.audio_source_kind === "original" && !song.instrumental;
 }

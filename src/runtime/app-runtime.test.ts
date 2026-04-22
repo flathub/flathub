@@ -14,6 +14,8 @@ describe("unified app runtime module", () => {
     expect(src).toContain("useKeyboardShortcuts");
     expect(src).toContain("useFileDrop");
     expect(src).toContain("useAppMenuRuntime");
+    expect(src).toContain("getLibraryRegistry");
+    expect(src).not.toContain("getLibraryPath()");
   });
 });
 

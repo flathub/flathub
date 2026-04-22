@@ -1,5 +1,5 @@
 mod cover;
-mod delete;
+pub(crate) mod delete;
 mod expand;
 mod ingest;
 mod preview;
@@ -17,6 +17,7 @@ use crate::{
     commands::error::{
         database_error, internal_error, library_error, state_lock_error, CommandResult,
     },
+    commands::remote_library,
     library::{ImportFailure, ImportSongsResult, Song},
     library_root::LibraryRoot,
     media_g::{self, MEDIA_G_PAIRED, MEDIA_G_ZIP},
@@ -24,15 +25,11 @@ use crate::{
 };
 use rusqlite::Connection;
 use std::collections::HashSet;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use delete::delete_song_from_library;
-use expand::{
-    build_selected_cdg_lookup, classify_import_paths, collect_expandable_import_paths,
-};
-use ingest::{
-    build_and_store_media_g_zip, build_and_store_song, try_extract_embedded_lyrics,
-};
+use expand::{build_selected_cdg_lookup, classify_import_paths, collect_expandable_import_paths};
+use ingest::{build_and_store_media_g_zip, build_and_store_song, try_extract_embedded_lyrics};
 use preview::{display_audio_format, inspect_import_candidate};
 
 #[cfg(target_os = "macos")]
@@ -41,18 +38,27 @@ use std::ffi::{c_char, CStr, CString};
 #[tauri::command]
 pub fn import_songs(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     paths: Vec<String>,
     options: Option<ImportSongsOptions>,
 ) -> CommandResult<ImportSongsResult> {
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    Ok(import_songs_from_paths_with_options(
+    let result = import_songs_from_paths_with_options(
         &connection,
         &library,
         &paths,
         &options.unwrap_or_default(),
-    ))
+    );
+    let imported_song_ids: Vec<String> = result
+        .imported
+        .iter()
+        .map(|song| song.hash.clone())
+        .collect();
+    remote_library::maybe_publish_songs_to_bound_remote(&state, &app_handle, &imported_song_ids)?;
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -152,6 +158,7 @@ pub fn search_library(state: State<'_, AppState>, query: String) -> CommandResul
 #[tauri::command]
 pub fn delete_songs(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_ids: Vec<String>,
 ) -> CommandResult<DeleteSongsResult> {
     let library = state.library_root()?;
@@ -195,6 +202,10 @@ pub fn delete_songs(
         *cdg_state = None;
     }
 
+    if !deleted_song_ids.is_empty() {
+        remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+    }
+
     Ok(DeleteSongsResult {
         deleted_song_ids,
         failed,
@@ -204,16 +215,25 @@ pub fn delete_songs(
 #[tauri::command]
 pub fn extract_embedded_cover_art(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_ids: Vec<String>,
 ) -> CommandResult<ExtractEmbeddedCoverArtResult> {
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    Ok(extract_embedded_cover_art_from_connection(
+    let result = extract_embedded_cover_art_from_connection(
         &connection,
         &library,
         &song_ids,
-    ))
+    );
+    let updated_song_ids: Vec<String> = result
+        .updated_songs
+        .iter()
+        .map(|song| song.hash.clone())
+        .collect();
+    remote_library::maybe_publish_songs_to_bound_remote(&state, &app_handle, &updated_song_ids)?;
+
+    Ok(result)
 }
 
 pub fn import_songs_from_paths(
@@ -302,6 +322,7 @@ pub fn get_library_from_connection(connection: &Connection) -> rusqlite::Result<
 #[tauri::command]
 pub fn update_song_metadata(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     hash: String,
     title: Option<String>,
     artist: Option<String>,
@@ -312,6 +333,9 @@ pub fn update_song_metadata(
     cache::update_song_title_artist(&connection, &hash, title.as_deref(), artist.as_deref())
         .map_err(|e| database_error(e.to_string()))?;
 
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &hash)?;
+
     cache::get_song_by_hash(&connection, &hash)
         .map_err(|e| database_error(e.to_string()))?
         .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
@@ -320,13 +344,17 @@ pub fn update_song_metadata(
 #[tauri::command]
 pub fn set_songs_instrumental(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     song_ids: Vec<String>,
     instrumental: bool,
 ) -> CommandResult<Vec<Song>> {
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)
+    let result = set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)?;
+    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
+    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+    Ok(result)
 }
 
 pub fn set_songs_instrumental_in_connection(
@@ -366,7 +394,19 @@ pub fn get_song_properties(
         .map_err(|e| database_error(e.to_string()))?
         .ok_or_else(|| database_error(format!("song with hash {song_id} not found")))?;
 
-    let file_path = library.resolve(&song.file_path);
+    let Some(song_path) = song.file_path.as_deref() else {
+        return Err(library_error(format!(
+            "song {} does not have a local file path",
+            song_id
+        )));
+    };
+    if song.is_remote() {
+        remote_library::ensure_remote_file_cached(&state.app_data_dir, song_path)?;
+        if let Some(cdg_path) = song.cdg_path.as_deref() {
+            remote_library::ensure_remote_file_cached(&state.app_data_dir, cdg_path)?;
+        }
+    }
+    let file_path = library.resolve(song_path);
     let ext = song
         .original_ext
         .as_deref()

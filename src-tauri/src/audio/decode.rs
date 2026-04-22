@@ -40,10 +40,56 @@ pub fn decode_bytes(bytes: Vec<u8>, extension: &str) -> Result<DecodedAudio> {
     )
 }
 
+pub fn probe_file(path: &Path) -> Result<()> {
+    let file = File::open(path)
+        .with_context(|| format!("failed to open audio file at {}", path.display()))?;
+    probe_source(
+        file,
+        path.extension().and_then(|value| value.to_str()),
+        &path.display().to_string(),
+    )
+}
+
+pub fn probe_bytes(bytes: Vec<u8>, extension: &str) -> Result<()> {
+    probe_source(
+        Cursor::new(bytes),
+        Some(extension),
+        "in-memory Media+G audio",
+    )
+}
+
 fn extend_interleaved_samples(samples: &mut Vec<f32>, decoded: AudioBufferRef<'_>) {
     let mut sample_buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
     sample_buffer.copy_interleaved_ref(decoded);
     samples.extend_from_slice(sample_buffer.samples());
+}
+
+fn probe_source<R>(source: R, extension: Option<&str>, source_label: &str) -> Result<()>
+where
+    R: Read + Seek + MediaSource + Send + Sync + 'static,
+{
+    let media_source_stream = MediaSourceStream::new(Box::new(source), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(extension) = extension {
+        hint.with_extension(extension);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            media_source_stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .with_context(|| format!("failed to probe audio format for {source_label}"))?;
+
+    probed
+        .format
+        .default_track()
+        .context("audio container does not expose a default track")?;
+
+    Ok(())
 }
 
 fn decode_source<R>(source: R, extension: Option<&str>, source_label: &str) -> Result<DecodedAudio>

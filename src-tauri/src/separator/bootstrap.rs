@@ -88,8 +88,7 @@ pub fn model_file_size(app_data_dir: &Path, variant: ModelVariant) -> Option<u64
 pub fn legacy_managed_install_present(app_data_dir: &Path, variant: ModelVariant) -> bool {
     let descriptor = descriptor_for(variant);
     let path = managed_model_path_for(app_data_dir, descriptor);
-    path.exists()
-        && !verify_file_checksum(&path, descriptor.sha256).unwrap_or(false)
+    path.exists() && !verify_file_checksum(&path, descriptor.sha256).unwrap_or(false)
 }
 
 /// Delete a model variant from disk.
@@ -110,10 +109,7 @@ pub fn resolve_model_installation(
 ) -> Result<ModelInstallationResolution> {
     let managed_invalid = if managed_path.exists() {
         let ok = verify_file_checksum(managed_path, expected_sha256).with_context(|| {
-            format!(
-                "failed to verify managed model {}",
-                managed_path.display()
-            )
+            format!("failed to verify managed model {}", managed_path.display())
         })?;
         if ok {
             return Ok(ModelInstallationResolution::Ready(ResolvedModelPath {

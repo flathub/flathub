@@ -35,6 +35,16 @@ vi.mock("./SettingsOverlay.controller", async () => {
   };
 });
 
+vi.mock("./ConfirmationDialog", () => ({
+  ConfirmationDialog: ({
+    title,
+    confirmLabel,
+  }: {
+    title: string;
+    confirmLabel: string;
+  }) => <div>{`${title} ${confirmLabel}`}</div>,
+}));
+
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: Object.assign(
     (selector: (state: typeof mockSettingsStore) => unknown) =>
@@ -67,6 +77,24 @@ vi.mock("react-i18next", async (importOriginal) => {
     }),
   };
 });
+
+vi.mock("./ConfirmationDialog", () => ({
+  ConfirmationDialog: ({
+    title,
+    message,
+    confirmLabel,
+  }: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+  }) => (
+    <div data-testid="confirmation-dialog">
+      <span>{title}</span>
+      <span>{message}</span>
+      <span>{confirmLabel}</span>
+    </div>
+  ),
+}));
 
 function renderWithSettingsContext(
   node: ReactElement,
@@ -223,6 +251,7 @@ describe("SettingsOverlay sections", () => {
     const markup = renderWithSettingsContext(<SettingsDialogHost />, value);
 
     expect(markup).toContain("settings.modelVariant.ftWarningTitle");
+    expect(markup).toContain("settings.modelVariant.ftWarningMessage");
     expect(markup).toContain("settings.modelVariant.ftWarningConfirm");
   });
 

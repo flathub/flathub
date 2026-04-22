@@ -16,6 +16,51 @@ describe("tauri API wrappers", () => {
     mockInvoke.mockResolvedValue(null);
   });
 
+  test("starts remote provider auth through the dedicated backend command", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("webdav", {
+      type: "webdav",
+      server_url: "https://dav.example.com/remote.php/dav/files/user/",
+      username: "user",
+      password: "secret",
+      root_path: "/OpenKara",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "webdav",
+      payload: {
+        type: "webdav",
+        server_url: "https://dav.example.com/remote.php/dav/files/user/",
+        username: "user",
+        password: "secret",
+        root_path: "/OpenKara",
+      },
+    });
+  });
+
+  test("allows Google Drive auth to start without any frontend credential payload", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("google_drive");
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "google_drive",
+      payload: null,
+    });
+  });
+
+  test("allows Dropbox auth to start without any frontend credential payload", async () => {
+    const { beginRemoteAuth } = await import("./tauri");
+
+    await beginRemoteAuth("dropbox");
+
+    expect(mockInvoke).toHaveBeenCalledWith("begin_remote_auth", {
+      provider: "dropbox",
+      payload: null,
+    });
+  });
+
   test("sends the backend positionMs payload name", async () => {
     await getCdgFrame(123.6);
 
@@ -72,6 +117,26 @@ describe("tauri API wrappers", () => {
     expect(mockInvoke).toHaveBeenCalledWith("pick_import_paths", {
       defaultPath: null,
     });
+  });
+
+  test("reads the library registry through the dedicated backend command", async () => {
+    const { getLibraryRegistry } = await import("./tauri");
+
+    mockInvoke.mockResolvedValueOnce({
+      active_library_id: "local:/karaoke",
+      libraries: [
+        {
+          id: "local:/karaoke",
+          kind: "local",
+          display_name: "karaoke",
+          root_path: "/karaoke",
+        },
+      ],
+    });
+
+    await getLibraryRegistry();
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_library_registry");
   });
 
   test("syncs audience state to the AirPlay backend", async () => {
