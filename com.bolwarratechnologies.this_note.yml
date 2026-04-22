@@ -1,6 +1,6 @@
 app-id: com.bolwarratechnologies.this_note
 runtime: org.gnome.Platform
-runtime-version: '47'
+runtime-version: '48'
 sdk: org.gnome.Sdk
 command: this_note
 
@@ -10,8 +10,6 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # App data directory (SQLite DB + settings.json)
-  - --filesystem=xdg-data/this_note_linux:create
   # Master encryption key via libsecret / GNOME Keyring
   - --talk-name=org.freedesktop.secrets
   # No --share=network: this app never touches the internet
@@ -20,11 +18,16 @@ modules:
   - name: this_note_linux
     buildsystem: simple
     build-commands:
-      # Install the main binary
-      - install -Dm755 this_note /app/bin/this_note
-      # Flutter looks for data/ and lib/ adjacent to its own executable
-      - cp -r data /app/bin/data
-      - cp -r lib /app/bin/lib
+      # Binary and architecture-dependent libs
+      - install -Dm755 this_note /app/lib/this_note/this_note
+      - cp -r lib /app/lib/this_note/lib
+      # Architecture-independent data goes in /app/share per FHS
+      - install -d /app/share/this_note
+      - cp -r data/. /app/share/this_note/
+      # Symlink so Flutter finds data/ adjacent to the binary
+      - ln -s /app/share/this_note /app/lib/this_note/data
+      # Wrapper script on PATH that delegates to the real binary
+      - install -Dm755 this_note_wrapper.sh /app/bin/this_note
       # Desktop entry, icon, and AppStream metadata
       - install -Dm644 com.bolwarratechnologies.this_note.desktop
           /app/share/applications/com.bolwarratechnologies.this_note.desktop
@@ -33,21 +36,16 @@ modules:
       - install -Dm644 com.bolwarratechnologies.this_note.metainfo.xml
           /app/share/metainfo/com.bolwarratechnologies.this_note.metainfo.xml
     sources:
-      # ── Pre-built Flutter Linux release bundle ──────────────────────────────
-      # Steps before submitting:
-      #   1. flutter build linux --release
-      #   2. cd build/linux/x64/release/bundle
-      #   3. tar -czf this_note_linux_v1.0.0.tar.gz .
-      #   4. Upload the .tar.gz to a GitHub release (tag: v1.0.0)
-      #   5. sha256sum this_note_linux_v1.0.0.tar.gz  →  paste below
-      #   6. Update the url to the raw GitHub release download link
       - type: archive
         url: https://github.com/Perszus/this-note-linux/releases/download/v1.0.4/this_note_linux_v1.0.4.tar.xz
         sha256: e3dc6c82f6c8a522878a248ab29edcfe65f39d2c83c2146dd088e9c47fc7e607
-      # Metadata files (live in this repo alongside the manifest)
       - type: file
         path: com.bolwarratechnologies.this_note.desktop
       - type: file
         path: com.bolwarratechnologies.this_note.png
       - type: file
         path: com.bolwarratechnologies.this_note.metainfo.xml
+      - type: script
+        dest-filename: this_note_wrapper.sh
+        commands:
+          - exec /app/lib/this_note/this_note "$@"
