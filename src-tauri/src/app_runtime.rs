@@ -18,7 +18,8 @@ use std::{
 use tauri::{Emitter, Manager, Runtime};
 
 pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    separator::model::ensure_runtime_loaded(Some(&app.path().resource_dir()?))?;
+    let app_resource_dir = app.path().resource_dir()?;
+    separator::model::ensure_runtime_loaded(Some(&app_resource_dir))?;
 
     let app_data_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_data_dir)?;
@@ -39,6 +40,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
     app.manage(AppState {
         library: Arc::new(Mutex::new(load_library(app_config.as_ref()))),
         app_data_dir,
+        app_resource_dir,
         model_path: model_bootstrap.model_path.clone(),
         playback: Arc::clone(&playback),
         cdg_state: Arc::clone(&cdg_state),

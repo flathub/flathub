@@ -585,6 +585,9 @@ mod tests {
             app_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("tests")
                 .join("tmp"),
+            app_resource_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures"),
             model_path: PathBuf::from("model.bin"),
             playback: Arc::new(Mutex::new(playback)),
             cdg_state: Arc::new(Mutex::new(None)),

@@ -33,6 +33,8 @@ pub struct AppState {
     pub library: Arc<Mutex<Option<LibraryRoot>>>,
     /// Per-machine app data directory (stores config.json and AI model).
     pub app_data_dir: PathBuf,
+    /// App-bundled runtime resources such as packaged OAuth client metadata.
+    pub app_resource_dir: PathBuf,
     pub model_path: PathBuf,
     pub playback: Arc<Mutex<PlaybackController>>,
     pub cdg_state: Arc<Mutex<Option<commands::cdg::CdgPlaybackState>>>,

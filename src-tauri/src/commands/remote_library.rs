@@ -37,7 +37,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const REMOTE_LIBRARIES_DIR: &str = "remote-libraries";
 const GOOGLE_DRIVE_CLIENT_ID_ENV: &str = "OPENKARA_GOOGLE_DRIVE_CLIENT_ID";
 const GOOGLE_DRIVE_CLIENT_SECRET_ENV: &str = "OPENKARA_GOOGLE_DRIVE_CLIENT_SECRET";
-const GOOGLE_DRIVE_PROVIDER_CREDENTIAL_KEY: &str = "__google_drive_provider_credentials__";
+const GOOGLE_DRIVE_OAUTH_CLIENT_RESOURCE_PATH: &str = "oauth/google-drive-client.json";
 const DROPBOX_APP_KEY_ENV: &str = "OPENKARA_DROPBOX_APP_KEY";
 const DROPBOX_APP_SECRET_ENV: &str = "OPENKARA_DROPBOX_APP_SECRET";
 const DROPBOX_FIXED_REDIRECT_PORT: u16 = 53_682;
@@ -139,8 +139,14 @@ struct StoredWebDavSecret {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredGoogleDriveProviderCredentials {
+struct BundledGoogleDriveOAuthClientFile {
+    installed: BundledGoogleDriveInstalledClient,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BundledGoogleDriveInstalledClient {
     client_id: String,
+    #[serde(default)]
     client_secret: Option<String>,
 }
 
@@ -793,29 +799,39 @@ fn dropbox_provider_credentials_from_env(
     })
 }
 
-fn load_google_drive_provider_credentials_from_store(
-    app_data_dir: &Path,
+fn load_google_drive_provider_credentials_from_resource_dir(
+    resource_dir: &Path,
 ) -> CommandResult<Option<GoogleDriveProviderCredentials>> {
-    let stored = system_credentials::load_json::<StoredGoogleDriveProviderCredentials>(
-        app_data_dir,
-        GOOGLE_DRIVE_PROVIDER_CREDENTIAL_KEY,
-    )
-    .map_err(|error| {
+    let path = resource_dir.join(GOOGLE_DRIVE_OAUTH_CLIENT_RESOURCE_PATH);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path).map_err(|error| {
         library_error(format!(
-            "failed to load Google Drive app credential from the system credential store: {error}"
+            "failed to read bundled Google Drive OAuth client metadata at {}: {error}",
+            path.display()
         ))
     })?;
+    let bundled: BundledGoogleDriveOAuthClientFile =
+        serde_json::from_str(&raw).map_err(|error| {
+            library_error(format!(
+                "failed to parse bundled Google Drive OAuth client metadata at {}: {error}",
+                path.display()
+            ))
+        })?;
 
-    Ok(stored.map(|credentials| GoogleDriveProviderCredentials {
-        client_id: credentials.client_id,
-        client_secret: credentials.client_secret,
+    Ok(Some(GoogleDriveProviderCredentials {
+        client_id: bundled.installed.client_id,
+        client_secret: bundled.installed.client_secret,
     }))
 }
 
 fn resolve_google_drive_provider_credentials(
-    app_data_dir: &Path,
+    resource_dir: &Path,
 ) -> CommandResult<GoogleDriveProviderCredentials> {
-    if let Some(credentials) = load_google_drive_provider_credentials_from_store(app_data_dir)? {
+    if let Some(credentials) = load_google_drive_provider_credentials_from_resource_dir(resource_dir)?
+    {
         return Ok(credentials);
     }
 
@@ -833,10 +849,10 @@ fn resolve_dropbox_provider_credentials() -> CommandResult<DropboxProviderCreden
 }
 
 fn parse_google_drive_payload(
-    app_data_dir: &Path,
+    resource_dir: &Path,
     _payload: Option<serde_json::Value>,
 ) -> CommandResult<GoogleDriveSessionData> {
-    let credentials = resolve_google_drive_provider_credentials(app_data_dir)?;
+    let credentials = resolve_google_drive_provider_credentials(resource_dir)?;
 
     Ok(GoogleDriveSessionData {
         client_id: credentials.client_id,
@@ -3342,7 +3358,7 @@ pub fn begin_remote_auth(
     let mut dropbox = None;
     let webdav = match provider {
         RemoteLibraryProvider::GoogleDrive => {
-            let google = parse_google_drive_payload(&state.app_data_dir, payload)?;
+            let google = parse_google_drive_payload(&state.app_resource_dir, payload)?;
             google_drive = Some(spawn_google_drive_auth_worker(
                 Arc::clone(&state.remote_auth_sessions),
                 session_id.clone(),
@@ -3993,25 +4009,26 @@ mod tests {
     }
 
     #[test]
-    fn resolves_google_drive_credentials_from_system_credential_store_before_env() {
+    fn resolves_google_drive_credentials_from_bundled_resource_before_env() {
         let temp_dir = tempdir().expect("temp dir should create");
-        std::env::set_var("OPENKARA_TEST_CREDENTIAL_STORE_DIR", temp_dir.path());
-        system_credentials::store_json(
-            temp_dir.path(),
-            GOOGLE_DRIVE_PROVIDER_CREDENTIAL_KEY,
-            &StoredGoogleDriveProviderCredentials {
-                client_id: "stored-client.apps.googleusercontent.com".to_owned(),
-                client_secret: Some("stored-secret".to_owned()),
-            },
+        let oauth_dir = temp_dir.path().join("oauth");
+        fs::create_dir_all(&oauth_dir).expect("oauth directory should create");
+        fs::write(
+            oauth_dir.join("google-drive-client.json"),
+            serde_json::to_vec(&BundledGoogleDriveOAuthClientFile {
+                installed: BundledGoogleDriveInstalledClient {
+                    client_id: "stored-client.apps.googleusercontent.com".to_owned(),
+                    client_secret: Some("stored-secret".to_owned()),
+                },
+            })
+            .expect("oauth file should serialize"),
         )
-        .expect("provider credential should store");
+        .expect("oauth file should write");
 
         let credentials = resolve_google_drive_provider_credentials(temp_dir.path())
             .expect("credentials should resolve");
         assert_eq!(credentials.client_id, "stored-client.apps.googleusercontent.com");
         assert_eq!(credentials.client_secret.as_deref(), Some("stored-secret"));
-
-        std::env::remove_var("OPENKARA_TEST_CREDENTIAL_STORE_DIR");
     }
 
     #[test]
