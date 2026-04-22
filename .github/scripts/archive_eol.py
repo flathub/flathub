@@ -133,6 +133,7 @@ def main() -> None:
         "ru.linux_gaming.PortProton",
         "org.videolan.VLC.Plugin.makemkv",
         "net.code_industry.MasterPDFEditor",
+        "com.redis.RedisInsight",
     }
 
     stable = get_eol_refs("x86_64", "flathub") | get_eol_refs("aarch64", "flathub")
