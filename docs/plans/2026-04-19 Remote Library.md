@@ -295,9 +295,13 @@
 #### 当前代码与最终设计的差异
 
 - `config.json` 现在只保留非敏感 remote metadata（如 `oauth_client_id` / `app_key` / `server_url`）
+- 发布构建现在会把 provider app metadata 打进 Tauri resource bundle：
+  - Google Drive → `oauth/google-drive-client.json`
+  - Dropbox → `oauth/dropbox-client.json`
 - 敏感字段现在直接写入 system credential store
 - 当前分支不再保留对中途开发态 `remote-library-secrets.json` 的兼容层
 - 仍未完成的是更完整的冲突重放与更细的错误文案，不再是凭据存储本身
+- 桌面端随应用分发的 OAuth app secret 仍不能视为“对终端用户绝对保密”；真正需要保密的是用户自己的 refresh/access token，它们继续保存在 system credential store
 
 ### Phase 3.5：当前未完成验证与残余风险
 

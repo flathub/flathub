@@ -73,6 +73,16 @@ export function pollRemoteAuth(sessionId: string): Promise<RemoteAuthStatus> {
   });
 }
 
+export function cancelRemoteAuth(sessionId: string): Promise<void> {
+  return invoke<void>("cancel_remote_auth", {
+    sessionId,
+  });
+}
+
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke<void>("open_external_url", { url });
+}
+
 export function listRemoteLibraryRoots(
   sessionId: string,
 ): Promise<RemoteLibraryCandidate[]> {

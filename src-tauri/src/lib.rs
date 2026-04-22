@@ -188,6 +188,8 @@ pub fn run() {
             commands::library_setup::remove_library,
             commands::remote_library::begin_remote_auth,
             commands::remote_library::poll_remote_auth,
+            commands::remote_library::cancel_remote_auth,
+            commands::remote_library::open_external_url,
             commands::remote_library::list_remote_library_roots,
             commands::remote_library::create_remote_library,
             commands::remote_library::register_remote_library,

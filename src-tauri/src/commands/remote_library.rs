@@ -40,6 +40,7 @@ const GOOGLE_DRIVE_CLIENT_SECRET_ENV: &str = "OPENKARA_GOOGLE_DRIVE_CLIENT_SECRE
 const GOOGLE_DRIVE_OAUTH_CLIENT_RESOURCE_PATH: &str = "oauth/google-drive-client.json";
 const DROPBOX_APP_KEY_ENV: &str = "OPENKARA_DROPBOX_APP_KEY";
 const DROPBOX_APP_SECRET_ENV: &str = "OPENKARA_DROPBOX_APP_SECRET";
+const DROPBOX_OAUTH_CLIENT_RESOURCE_PATH: &str = "oauth/dropbox-client.json";
 const DROPBOX_FIXED_REDIRECT_PORT: u16 = 53_682;
 const DROPBOX_FIXED_REDIRECT_URI: &str = "http://127.0.0.1:53682/oauth2/callback";
 const GOOGLE_DRIVE_OAUTH_SCOPE: &str =
@@ -141,6 +142,13 @@ struct StoredWebDavSecret {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BundledGoogleDriveOAuthClientFile {
     installed: BundledGoogleDriveInstalledClient,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BundledDropboxOAuthClientFile {
+    app_key: String,
+    #[serde(default)]
+    app_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -827,6 +835,30 @@ fn load_google_drive_provider_credentials_from_resource_dir(
     }))
 }
 
+fn load_dropbox_provider_credentials_from_resource_dir(
+    resource_dir: &Path,
+) -> CommandResult<Option<DropboxProviderCredentials>> {
+    let path = resource_dir.join(DROPBOX_OAUTH_CLIENT_RESOURCE_PATH);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path).map_err(|error| {
+        library_error(format!(
+            "failed to read bundled Dropbox OAuth client metadata at {}: {error}",
+            path.display()
+        ))
+    })?;
+    let bundled: BundledDropboxOAuthClientFile = serde_json::from_str(&raw).map_err(|error| {
+        library_error(format!(
+            "failed to parse bundled Dropbox OAuth client metadata at {}: {error}",
+            path.display()
+        ))
+    })?;
+
+    dropbox_provider_credentials_from_env(Some(bundled.app_key), bundled.app_secret).map(Some)
+}
+
 fn resolve_google_drive_provider_credentials(
     resource_dir: &Path,
 ) -> CommandResult<GoogleDriveProviderCredentials> {
@@ -841,7 +873,11 @@ fn resolve_google_drive_provider_credentials(
     )
 }
 
-fn resolve_dropbox_provider_credentials() -> CommandResult<DropboxProviderCredentials> {
+fn resolve_dropbox_provider_credentials(resource_dir: &Path) -> CommandResult<DropboxProviderCredentials> {
+    if let Some(credentials) = load_dropbox_provider_credentials_from_resource_dir(resource_dir)? {
+        return Ok(credentials);
+    }
+
     dropbox_provider_credentials_from_env(
         env_optional(DROPBOX_APP_KEY_ENV),
         env_optional(DROPBOX_APP_SECRET_ENV),
@@ -867,8 +903,11 @@ fn parse_google_drive_payload(
     })
 }
 
-fn parse_dropbox_payload(_payload: Option<serde_json::Value>) -> CommandResult<DropboxSessionData> {
-    let credentials = resolve_dropbox_provider_credentials()?;
+fn parse_dropbox_payload(
+    resource_dir: &Path,
+    _payload: Option<serde_json::Value>,
+) -> CommandResult<DropboxSessionData> {
+    let credentials = resolve_dropbox_provider_credentials(resource_dir)?;
 
     Ok(DropboxSessionData {
         app_key: credentials.app_key,
@@ -1399,6 +1438,17 @@ fn update_remote_auth_session(
     }
 }
 
+fn remote_auth_session_exists(
+    sessions: &Arc<Mutex<HashMap<String, RemoteAuthSession>>>,
+    session_id: &str,
+) -> bool {
+    sessions
+        .lock()
+        .ok()
+        .map(|guard| guard.contains_key(session_id))
+        .unwrap_or(false)
+}
+
 fn google_drive_exchange_code_for_tokens(
     session: &GoogleDriveSessionData,
     code: &str,
@@ -1528,26 +1578,35 @@ fn spawn_google_drive_auth_worker(
     let worker_session = session.clone();
 
     thread::spawn(move || {
-        let request = match server.recv_timeout(std::time::Duration::from_secs(300)) {
-            Ok(Some(request)) => request,
-            Ok(None) => {
-                update_remote_auth_session(&sessions, &session_id, |state| {
-                    state.state = RemoteAuthState::Failed;
-                    state.error = Some(library_error(
-                        "Google sign-in timed out before the browser returned to OpenKara."
-                            .to_owned(),
-                    ));
-                });
+        let started_at = std::time::Instant::now();
+        let request = loop {
+            if !remote_auth_session_exists(&sessions, &session_id) {
                 return;
             }
-            Err(error) => {
-                update_remote_auth_session(&sessions, &session_id, |state| {
-                    state.state = RemoteAuthState::Failed;
-                    state.error = Some(library_error(format!(
-                        "Google sign-in listener failed: {error}"
-                    )));
-                });
-                return;
+
+            match server.recv_timeout(std::time::Duration::from_secs(1)) {
+                Ok(Some(request)) => break request,
+                Ok(None) => {
+                    if started_at.elapsed() >= std::time::Duration::from_secs(300) {
+                        update_remote_auth_session(&sessions, &session_id, |state| {
+                            state.state = RemoteAuthState::Failed;
+                            state.error = Some(library_error(
+                                "Google sign-in timed out before the browser returned to OpenKara."
+                                    .to_owned(),
+                            ));
+                        });
+                        return;
+                    }
+                }
+                Err(error) => {
+                    update_remote_auth_session(&sessions, &session_id, |state| {
+                        state.state = RemoteAuthState::Failed;
+                        state.error = Some(library_error(format!(
+                            "Google sign-in listener failed: {error}"
+                        )));
+                    });
+                    return;
+                }
             }
         };
 
@@ -1660,26 +1719,35 @@ fn spawn_dropbox_auth_worker(
     let worker_session = session.clone();
 
     thread::spawn(move || {
-        let request = match server.recv_timeout(std::time::Duration::from_secs(300)) {
-            Ok(Some(request)) => request,
-            Ok(None) => {
-                update_remote_auth_session(&sessions, &session_id, |state| {
-                    state.state = RemoteAuthState::Failed;
-                    state.error = Some(library_error(
-                        "Dropbox sign-in timed out before the browser returned to OpenKara."
-                            .to_owned(),
-                    ));
-                });
+        let started_at = std::time::Instant::now();
+        let request = loop {
+            if !remote_auth_session_exists(&sessions, &session_id) {
                 return;
             }
-            Err(error) => {
-                update_remote_auth_session(&sessions, &session_id, |state| {
-                    state.state = RemoteAuthState::Failed;
-                    state.error = Some(library_error(format!(
-                        "Dropbox sign-in listener failed: {error}"
-                    )));
-                });
-                return;
+
+            match server.recv_timeout(std::time::Duration::from_secs(1)) {
+                Ok(Some(request)) => break request,
+                Ok(None) => {
+                    if started_at.elapsed() >= std::time::Duration::from_secs(300) {
+                        update_remote_auth_session(&sessions, &session_id, |state| {
+                            state.state = RemoteAuthState::Failed;
+                            state.error = Some(library_error(
+                                "Dropbox sign-in timed out before the browser returned to OpenKara."
+                                    .to_owned(),
+                            ));
+                        });
+                        return;
+                    }
+                }
+                Err(error) => {
+                    update_remote_auth_session(&sessions, &session_id, |state| {
+                        state.state = RemoteAuthState::Failed;
+                        state.error = Some(library_error(format!(
+                            "Dropbox sign-in listener failed: {error}"
+                        )));
+                    });
+                    return;
+                }
             }
         };
 
@@ -3367,7 +3435,7 @@ pub fn begin_remote_auth(
             None
         }
         RemoteLibraryProvider::Dropbox => {
-            let session = parse_dropbox_payload(payload)?;
+            let session = parse_dropbox_payload(&state.app_resource_dir, payload)?;
             dropbox = Some(spawn_dropbox_auth_worker(
                 Arc::clone(&state.remote_auth_sessions),
                 session_id.clone(),
@@ -3522,6 +3590,26 @@ pub fn poll_remote_auth(
         remote_root_locator: session.remote_root_locator.clone(),
         display_name: session.display_name.clone(),
         error: session.error.clone(),
+    })
+}
+
+#[tauri::command]
+pub fn cancel_remote_auth(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> CommandResult<()> {
+    state
+        .remote_auth_sessions
+        .lock()
+        .map_err(|_| state_lock_error("remote auth session lock was poisoned"))?
+        .remove(&session_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> CommandResult<()> {
+    open::that_detached(url.clone()).map_err(|error| {
+        library_error(format!("failed to open external URL {url}: {error}"))
     })
 }
 
@@ -4040,6 +4128,30 @@ mod tests {
         .expect("credentials should resolve");
         assert_eq!(credentials.app_key, "dropbox-app-key");
         assert_eq!(credentials.app_secret.as_deref(), Some("dropbox-app-secret"));
+    }
+
+    #[test]
+    fn resolves_dropbox_credentials_from_bundled_resource_before_env() {
+        let temp_dir = tempdir().expect("temp dir should create");
+        let oauth_dir = temp_dir.path().join("oauth");
+        fs::create_dir_all(&oauth_dir).expect("oauth directory should create");
+        fs::write(
+            oauth_dir.join("dropbox-client.json"),
+            serde_json::to_vec(&BundledDropboxOAuthClientFile {
+                app_key: "stored-dropbox-app-key".to_owned(),
+                app_secret: Some("stored-dropbox-app-secret".to_owned()),
+            })
+            .expect("oauth file should serialize"),
+        )
+        .expect("oauth file should write");
+
+        let credentials = resolve_dropbox_provider_credentials(temp_dir.path())
+            .expect("credentials should resolve");
+        assert_eq!(credentials.app_key, "stored-dropbox-app-key");
+        assert_eq!(
+            credentials.app_secret.as_deref(),
+            Some("stored-dropbox-app-secret")
+        );
     }
 
     #[test]

@@ -61,6 +61,26 @@ describe("tauri API wrappers", () => {
     });
   });
 
+  test("cancels remote auth through the dedicated backend command", async () => {
+    const { cancelRemoteAuth } = await import("./tauri");
+
+    await cancelRemoteAuth("session-123");
+
+    expect(mockInvoke).toHaveBeenCalledWith("cancel_remote_auth", {
+      sessionId: "session-123",
+    });
+  });
+
+  test("opens external URLs through the dedicated backend command", async () => {
+    const { openExternalUrl } = await import("./tauri");
+
+    await openExternalUrl("https://example.com/oauth");
+
+    expect(mockInvoke).toHaveBeenCalledWith("open_external_url", {
+      url: "https://example.com/oauth",
+    });
+  });
+
   test("sends the backend positionMs payload name", async () => {
     await getCdgFrame(123.6);
 

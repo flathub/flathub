@@ -103,12 +103,15 @@ pnpm install
 pnpm tauri dev
 ```
 
-To bundle the official Google Drive Desktop OAuth client into a release build,
-set `OPENKARA_GOOGLE_DRIVE_OAUTH_CLIENT_JSON` or
-`OPENKARA_GOOGLE_DRIVE_OAUTH_CLIENT_JSON_PATH` before `pnpm tauri build`.
-OpenKara treats the per-user refresh/access tokens as secrets and stores them in
-the OS credential store; for desktop apps, the OAuth `client_secret` itself
-cannot be treated as confidential.
+To bundle the official desktop OAuth app registrations into a release build, set
+`OPENKARA_GOOGLE_DRIVE_OAUTH_CLIENT_JSON` or
+`OPENKARA_GOOGLE_DRIVE_OAUTH_CLIENT_JSON_PATH` for Google Drive and
+`OPENKARA_DROPBOX_APP_KEY` plus `OPENKARA_DROPBOX_APP_SECRET` for Dropbox
+before `pnpm tauri build`.
+OpenKara treats per-user refresh/access tokens as secrets and stores them in
+the OS credential store; for desktop apps, an OAuth `client_secret` shipped in
+the app bundle itself still cannot be treated as confidential against the end
+user.
 
 ### App Icon
 
