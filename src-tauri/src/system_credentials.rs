@@ -5,7 +5,6 @@ use std::{
     env,
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 const SERVICE_NAME: &str = "org.openkara.remote-library";
@@ -81,6 +80,7 @@ fn test_store_path(directory: &Path, library_id: &str) -> PathBuf {
 #[cfg(target_os = "macos")]
 mod platform {
     use super::*;
+    use std::process::Command;
 
     pub fn store(target: String, payload: &str) -> Result<()> {
         let output = Command::new("security")
@@ -163,7 +163,7 @@ mod platform {
 #[cfg(target_os = "linux")]
 mod platform {
     use super::*;
-    use std::process::Stdio;
+    use std::process::{Command, Stdio};
 
     const ATTR_SCOPE: &str = "openkara_scope";
     const ATTR_LIBRARY_ID: &str = "library_id";
@@ -374,8 +374,9 @@ mod platform {
             )
         };
         let value = String::from_utf8(bytes.to_vec())
-            .map_err(|error| anyhow!("failed to decode Windows credential payload: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("failed to decode Windows credential payload: {error}"));
         unsafe { CredFree(credential_ptr.cast()) };
+        let value = value?;
         Ok(Some(value))
     }
 
