@@ -2,12 +2,14 @@
 
 ## Public Site
 
-| Document                                | Description                                              |
-| --------------------------------------- | -------------------------------------------------------- |
-| [site/index.html](./site/index.html)    | Handcrafted homepage source for the public landing page  |
-| [site/faq.md](./site/faq.md)            | Markdown source for the public FAQ page                  |
-| [site/\_layouts/](./site/_layouts)      | Custom Jekyll layouts for the homepage and content pages |
-| [site/\_config.yml](./site/_config.yml) | Jekyll configuration for the GitHub Pages site           |
+| Document                                 | Description                                              |
+| ---------------------------------------- | -------------------------------------------------------- |
+| [site/index.html](./site/index.html)     | Handcrafted homepage source for the public landing page  |
+| [site/faq.html](./site/faq.html)         | Handcrafted FAQ page for the public website              |
+| [site/privacy.html](./site/privacy.html) | Public privacy policy for the website and desktop app    |
+| [site/terms.html](./site/terms.html)     | Public terms of service for the website and desktop app  |
+| [site/\_layouts/](./site/_layouts)       | Custom Jekyll layouts for the homepage and content pages |
+| [site/\_config.yml](./site/_config.yml)  | Jekyll configuration for the GitHub Pages site           |
 
 Install guidance lives inside `docs/site/index.html` instead of a standalone install page.
 
