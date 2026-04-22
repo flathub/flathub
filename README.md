@@ -30,11 +30,6 @@ flatpak-builder build com.getgrist.grist.yml --force-clean --install --user
 4. Build the flatpak with `flatpak-builder build com.getgrist.grist.yml --install --user`,
    and run it with `flatpak run com.getgrist.grist`. Make sure it works well.
 
-5. If the update script mentioned anything about updating sqlite3, do this manually by downloading
-   the relevant binary modules from [@gristlabs/sqlite3 releases](https://github.com/gristlabs/node-sqlite3/releases),
-   and updating them in the manifest. Also update the version in the update script.
-   (Note that this step can be removed when the source build works again.)
-
 Note that pyodide is not updated by the update script, you currently need to take care of this yourself
 if the used version changes.
 
