@@ -16,6 +16,28 @@ function isCommandError(err: unknown): err is CommandError {
   );
 }
 
+function isErrorWithMessage(err: unknown): err is { message: string } {
+  if (typeof err !== "object" || err === null) return false;
+  const obj = err as Record<string, unknown>;
+  return typeof obj.message === "string";
+}
+
+export function getErrorMessage(error: unknown): string {
+  if (isCommandError(error)) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 export function notifyError(error: unknown, retryAction?: () => void) {
   const store = useNotificationStore.getState();
 
@@ -31,7 +53,7 @@ export function notifyError(error: unknown, retryAction?: () => void) {
     return;
   }
 
-  const message = error instanceof Error ? error.message : String(error);
+  const message = getErrorMessage(error);
 
   store.addNotification({
     type: "error",

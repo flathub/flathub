@@ -62,12 +62,13 @@ describe("MainContentView", () => {
     expect(markup).toContain('data-playback-bar="true"');
   });
 
-  test("swaps to settings without native floating chrome", () => {
+  test("overlays settings without unmounting playback content", () => {
     mockSettingsState.isOpen = true;
 
     const markup = renderToStaticMarkup(<MainContentView />);
 
     expect(markup).toContain('data-settings-overlay="true"');
+    expect(markup).toContain('data-playback-stage="true"');
     expect(markup).not.toContain("data-native-floating-controls");
 
     mockSettingsState.isOpen = false;

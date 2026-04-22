@@ -35,16 +35,6 @@ vi.mock("./SettingsOverlay.controller", async () => {
   };
 });
 
-vi.mock("./ConfirmationDialog", () => ({
-  ConfirmationDialog: ({
-    title,
-    confirmLabel,
-  }: {
-    title: string;
-    confirmLabel: string;
-  }) => <div>{`${title} ${confirmLabel}`}</div>,
-}));
-
 vi.mock("@/stores/settings-store", () => ({
   useSettingsStore: Object.assign(
     (selector: (state: typeof mockSettingsStore) => unknown) =>
@@ -259,5 +249,12 @@ describe("SettingsOverlay sections", () => {
     const markup = renderToStaticMarkup(<SettingsOverlay />);
 
     expect(markup).toContain('aria-label="common.close"');
+  });
+
+  test("settings overlay only captures pointer events inside the panel", () => {
+    const markup = renderToStaticMarkup(<SettingsOverlay />);
+
+    expect(markup).toContain("pointer-events-none");
+    expect(markup).toContain("pointer-events-auto");
   });
 });

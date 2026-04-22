@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "@/lib/tauri";
+import { getErrorMessage } from "@/lib/errors";
 import { useBootstrapStore } from "@/stores/bootstrap-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { usePlayerStore } from "@/stores/player-store";
@@ -388,7 +389,7 @@ function createLibrarySettingsActions(
         await refreshLibraryRegistry();
       } catch (error: unknown) {
         patchState({
-          libraryError: error instanceof Error ? error.message : String(error),
+          libraryError: getErrorMessage(error),
         });
       }
     },
@@ -404,7 +405,7 @@ function createLibrarySettingsActions(
         await refreshLibraryRegistry();
       } catch (error: unknown) {
         patchState({
-          libraryError: error instanceof Error ? error.message : String(error),
+          libraryError: getErrorMessage(error),
         });
       }
     },
@@ -430,7 +431,7 @@ function createLibrarySettingsActions(
         await refreshModelStatuses();
       } catch (error: unknown) {
         patchState({
-          libraryError: error instanceof Error ? error.message : String(error),
+          libraryError: getErrorMessage(error),
         });
       }
     },

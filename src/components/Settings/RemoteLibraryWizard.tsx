@@ -1,17 +1,46 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Cloud, FolderOpen, Globe, X } from "lucide-react";
+import { Cloud, X } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import type { RegisteredLibrary, RemoteLibraryProvider } from "@/types/ipc";
 import { useSettingsOverlay } from "./SettingsOverlay.context";
 
 type RemoteSetupMode = "open_remote" | "mirror_active_local";
 
-const remoteProviderDisplayNames: Record<RemoteLibraryProvider, string> = {
-  google_drive: "Google Drive Library",
-  dropbox: "Dropbox Library",
-  webdav: "WebDAV Library",
-};
+function getRemoteProviderDisplayName(
+  t: ReturnType<typeof useTranslation>["t"],
+  provider: RemoteLibraryProvider,
+) {
+  return provider === "google_drive"
+    ? t("settings.library.googleDriveLibraryName", {
+        defaultValue: "Google Drive Library",
+      })
+    : provider === "dropbox"
+      ? t("settings.library.dropboxLibraryName", {
+          defaultValue: "Dropbox Library",
+        })
+      : t("settings.library.webdavLibraryName", {
+          defaultValue: "WebDAV Library",
+        });
+}
+
+function getRemoteProviderLabel(
+  t: ReturnType<typeof useTranslation>["t"],
+  provider: RemoteLibraryProvider,
+) {
+  return provider === "google_drive"
+    ? t("setup.remoteProvider.googleDrive.title", {
+        defaultValue: "Google Drive",
+      })
+    : provider === "dropbox"
+      ? t("setup.remoteProvider.dropbox.title", {
+          defaultValue: "Dropbox",
+        })
+      : t("setup.remoteProvider.webdav.title", {
+          defaultValue: "WebDAV",
+        });
+}
 
 export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -23,8 +52,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
+  const [authSessionId, setAuthSessionId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(
-    remoteProviderDisplayNames.google_drive,
+    getRemoteProviderDisplayName(t, "google_drive"),
   );
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -37,13 +67,34 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const activeLocalLibrary =
     activeLibrary?.kind === "local" ? activeLibrary : null;
   const canMirrorActiveLocal = activeLocalLibrary !== null;
+  const cancelledRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+      mountedRef.current = false;
+    };
+  }, []);
 
   const resetProviderState = (nextProvider: RemoteLibraryProvider) => {
     setProvider(nextProvider);
-    setDisplayName(remoteProviderDisplayNames[nextProvider]);
+    setDisplayName(getRemoteProviderDisplayName(t, nextProvider));
     setError(null);
     setMessage(null);
     setAuthorizationUrl(null);
+    setAuthSessionId(null);
+  };
+
+  const requestClose = () => {
+    cancelledRef.current = true;
+    if (authSessionId) {
+      void api.cancelRemoteAuth(authSessionId);
+    }
+    if (mountedRef.current) {
+      setLoading(false);
+    }
+    onClose();
   };
 
   const completeBrowserAuth = async (
@@ -52,45 +103,80 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   ) => {
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
+      if (cancelledRef.current) {
+        throw new Error("__remote_auth_cancelled__");
+      }
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      if (cancelledRef.current) {
+        throw new Error("__remote_auth_cancelled__");
+      }
       const status = await api.pollRemoteAuth(sessionId);
       if (status.state === "ready") {
         return;
       }
       if (status.state === "failed") {
         throw new Error(
-          status.error?.message ?? "Remote sign-in failed unexpectedly.",
+          status.error?.message ??
+            t("settings.library.remoteSignInFailedUnexpectedly", {
+              defaultValue: "Remote sign-in failed unexpectedly.",
+            }),
         );
       }
     }
 
     throw new Error(
       nextProvider === "google_drive"
-        ? "Google sign-in timed out before OpenKara received the callback."
+        ? t("settings.library.googleSignInTimedOut", {
+            defaultValue:
+              "Google sign-in timed out before OpenKara received the callback.",
+          })
         : nextProvider === "dropbox"
-          ? "Dropbox sign-in timed out before OpenKara received the callback."
-          : "Remote sign-in timed out.",
+          ? t("settings.library.dropboxSignInTimedOut", {
+              defaultValue:
+                "Dropbox sign-in timed out before OpenKara received the callback.",
+            })
+          : t("settings.library.remoteSignInTimedOut", {
+              defaultValue: "Remote sign-in timed out.",
+            }),
     );
   };
 
   const connect = async () => {
+    cancelledRef.current = false;
+    let startedSessionId: string | null = null;
     if (provider === "webdav") {
       if (!serverUrl.trim()) {
-        setError("Enter the WebDAV server URL first.");
+        setError(
+          t("settings.library.webdavEnterServerUrl", {
+            defaultValue: "Enter the WebDAV server URL first.",
+          }),
+        );
         return;
       }
       if (!username.trim()) {
-        setError("Enter the WebDAV username first.");
+        setError(
+          t("settings.library.webdavEnterUsername", {
+            defaultValue: "Enter the WebDAV username first.",
+          }),
+        );
         return;
       }
       if (!password.trim()) {
-        setError("Enter the WebDAV password first.");
+        setError(
+          t("settings.library.webdavEnterPassword", {
+            defaultValue: "Enter the WebDAV password first.",
+          }),
+        );
         return;
       }
     }
 
     if (mode === "mirror_active_local" && !activeLocalLibrary) {
-      setError("Switch to the local library you want to mirror first.");
+      setError(
+        t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
+          defaultValue: "Switch to the local library you want to mirror first.",
+        }),
+      );
       return;
     }
 
@@ -112,20 +198,22 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             }
           : null,
       );
+      startedSessionId = start.session_id;
 
       if (start.authorization_url) {
+        setAuthSessionId(start.session_id);
         setAuthorizationUrl(start.authorization_url);
-        globalThis.open?.(
-          start.authorization_url,
-          "_blank",
-          "noopener,noreferrer",
-        );
+        await api.openExternalUrl(start.authorization_url);
         await completeBrowserAuth(start.session_id, provider);
+      }
+
+      if (cancelledRef.current) {
+        return;
       }
 
       const candidate = await api.createRemoteLibrary(
         start.session_id,
-        displayName.trim() || remoteProviderDisplayNames[provider],
+        displayName.trim() || getRemoteProviderDisplayName(t, provider),
       );
       const registry = await api.registerRemoteLibrary(
         start.session_id,
@@ -135,7 +223,12 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
       const remoteLibraryId = registry.active_library_id;
 
       if (!remoteLibraryId) {
-        throw new Error("The new remote library was registered without an ID.");
+        throw new Error(
+          t("settings.library.remoteLibraryMissingId", {
+            defaultValue:
+              "The new remote library was registered without an ID.",
+          }),
+        );
       }
 
       if (mode === "mirror_active_local" && activeLocalLibrary) {
@@ -143,18 +236,36 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
         await api.setRemoteMirror(activeLocalLibrary.id, remoteLibraryId);
         await actions.initialize();
         setMessage(
-          `Remote library created and now mirroring ${activeLocalLibrary.display_name}.`,
+          t("settings.library.remoteLibraryCreatedAndMirroring", {
+            defaultValue:
+              "Remote library created and now mirroring {{displayName}}.",
+            displayName: activeLocalLibrary.display_name,
+          }),
         );
       } else {
         await actions.switchLibrary(remoteLibraryId);
-        setMessage("Remote library connected.");
+        setMessage(
+          t("settings.library.remoteLibraryConnected", {
+            defaultValue: "Remote library connected.",
+          }),
+        );
       }
 
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (startedSessionId) {
+        void api.cancelRemoteAuth(startedSessionId);
+      }
+      if (getErrorMessage(err) !== "__remote_auth_cancelled__") {
+        setError(getErrorMessage(err));
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setAuthSessionId(null);
+      }
+      if (mountedRef.current && !cancelledRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -181,8 +292,8 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <button
-            onClick={onClose}
-            disabled={loading}
+            onClick={requestClose}
+            aria-label={t("common.close")}
             className="rounded-md p-1 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white"
           >
             <X size={16} />
@@ -200,10 +311,15 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             }`}
           >
             <p className="text-sm font-medium text-white">
-              Open Remote Library
+              {t("settings.library.openRemoteLibrary", {
+                defaultValue: "Open Remote Library",
+              })}
             </p>
             <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-              Register a remote working copy and switch into it.
+              {t("settings.library.openRemoteLibraryDescription", {
+                defaultValue:
+                  "Register a remote working copy and switch into it.",
+              })}
             </p>
           </button>
           <button
@@ -216,12 +332,21 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             } disabled:opacity-50`}
           >
             <p className="text-sm font-medium text-white">
-              Create And Mirror Active Local
+              {t("settings.library.createAndMirrorActiveLocal", {
+                defaultValue: "Create And Mirror Active Local",
+              })}
             </p>
             <p className="mt-1 text-xs text-[var(--color-text-dim)]">
               {activeLocalLibrary
-                ? `Mirror ${activeLocalLibrary.display_name} into a new remote library.`
-                : "Switch to the local library you want to mirror first."}
+                ? t("settings.library.mirrorActiveLocalDescriptionWithName", {
+                    defaultValue:
+                      "Mirror {{displayName}} into a new remote library.",
+                    displayName: activeLocalLibrary.display_name,
+                  })
+                : t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
+                    defaultValue:
+                      "Switch to the local library you want to mirror first.",
+                  })}
             </p>
           </button>
         </div>
@@ -230,8 +355,8 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
           {(
             [
               ["google_drive", Cloud],
-              ["dropbox", Globe],
-              ["webdav", FolderOpen],
+              ["dropbox", Cloud],
+              ["webdav", Cloud],
             ] as const
           ).map(([candidate, Icon]) => (
             <button
@@ -246,11 +371,7 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             >
               <Icon size={16} className="mb-2 text-[var(--color-accent)]" />
               <p className="text-sm font-medium text-white">
-                {candidate === "google_drive"
-                  ? "Google Drive"
-                  : candidate === "dropbox"
-                    ? "Dropbox"
-                    : "WebDAV"}
+                {getRemoteProviderLabel(t, candidate)}
               </p>
             </button>
           ))}
@@ -259,7 +380,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
         <div className="mt-4 space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface)] p-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-white">
-              Display name
+              {t("settings.library.displayName", {
+                defaultValue: "Display name",
+              })}
             </label>
             <input
               value={displayName}
@@ -270,15 +393,19 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
 
           {provider === "google_drive" && (
             <p className="text-xs text-[var(--color-text-dim)]">
-              OpenKara uses its bundled Google Drive app registration and will
-              create or reuse a folder with this display name in My Drive.
+              {t("settings.library.googleDriveBundledDescription", {
+                defaultValue:
+                  "OpenKara uses its bundled Google Drive app registration and will create or reuse a folder with this display name in My Drive.",
+              })}
             </p>
           )}
 
           {provider === "dropbox" && (
             <p className="text-xs text-[var(--color-text-dim)]">
-              OpenKara uses its bundled Dropbox app registration and will create
-              or reuse a folder with this display name in Dropbox.
+              {t("settings.library.dropboxBundledDescription", {
+                defaultValue:
+                  "OpenKara uses its bundled Dropbox app registration and will create or reuse a folder with this display name in Dropbox.",
+              })}
             </p>
           )}
 
@@ -286,7 +413,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             <>
               <div>
                 <label className="mb-1 block text-xs font-medium text-white">
-                  Server URL
+                  {t("settings.library.webdavServerUrl", {
+                    defaultValue: "Server URL",
+                  })}
                 </label>
                 <input
                   value={serverUrl}
@@ -298,7 +427,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-white">
-                  Library path
+                  {t("settings.library.webdavLibraryPath", {
+                    defaultValue: "Library path",
+                  })}
                 </label>
                 <input
                   value={rootPath}
@@ -311,7 +442,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-white">
-                    Username
+                    {t("settings.library.webdavUsername", {
+                      defaultValue: "Username",
+                    })}
                   </label>
                   <input
                     value={username}
@@ -322,7 +455,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-white">
-                    Password
+                    {t("settings.library.webdavPassword", {
+                      defaultValue: "Password",
+                    })}
                   </label>
                   <input
                     type="password"
@@ -341,10 +476,16 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             {loading
-              ? "Connecting…"
+              ? t("settings.library.connecting", {
+                  defaultValue: "Connecting…",
+                })
               : mode === "mirror_active_local"
-                ? "Create Remote Library And Start Mirror"
-                : "Open Remote Library"}
+                ? t("settings.library.createRemoteLibraryAndStartMirror", {
+                    defaultValue: "Create Remote Library And Start Mirror",
+                  })
+                : t("settings.library.openRemoteLibrary", {
+                    defaultValue: "Open Remote Library",
+                  })}
           </button>
 
           {authorizationUrl && (
@@ -354,7 +495,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
               rel="noreferrer"
               className="block text-xs text-[var(--color-accent)] underline underline-offset-2"
             >
-              Open browser sign-in again
+              {t("settings.library.openBrowserSignInAgain", {
+                defaultValue: "Open browser sign-in again",
+              })}
             </a>
           )}
 
@@ -367,7 +510,9 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
         {remoteLibraries.length > 0 && (
           <div className="mt-4 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface)] p-4">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-text-dim)]">
-              Existing Remote Libraries
+              {t("settings.library.existingRemoteLibraries", {
+                defaultValue: "Existing Remote Libraries",
+              })}
             </p>
             <div className="space-y-2">
               {remoteLibraries.map((library) => (

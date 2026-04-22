@@ -1,3 +1,4 @@
+import { Cloud } from "lucide-react";
 import { describe, expect, test } from "vitest";
 import { librarySetupChoices, remoteLibraryProviders } from "./LibrarySetup";
 
@@ -22,5 +23,24 @@ describe("LibrarySetup", () => {
       .map((choice) => choice.provider);
 
     expect(availableNow).toEqual(["google_drive", "dropbox", "webdav"]);
+  });
+
+  test("uses translation keys for provider titles and descriptions", () => {
+    expect(remoteLibraryProviders.map((choice) => choice.title)).toEqual([
+      "setup.remoteProvider.googleDrive.title",
+      "setup.remoteProvider.dropbox.title",
+      "setup.remoteProvider.webdav.title",
+    ]);
+    expect(remoteLibraryProviders.map((choice) => choice.description)).toEqual([
+      "setup.remoteProvider.googleDrive.description",
+      "setup.remoteProvider.dropbox.description",
+      "setup.remoteProvider.webdav.description",
+    ]);
+  });
+
+  test("uses a consistent cloud icon for all remote providers", () => {
+    expect(
+      remoteLibraryProviders.every((choice) => choice.icon === Cloud),
+    ).toBe(true);
   });
 });

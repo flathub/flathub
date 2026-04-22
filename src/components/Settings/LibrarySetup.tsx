@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   Check,
 } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -35,12 +36,6 @@ interface LibraryChoice {
   title: string;
   description: string;
 }
-
-const remoteProviderDisplayNames: Record<RemoteLibraryProvider, string> = {
-  google_drive: "Google Drive Library",
-  dropbox: "Dropbox Library",
-  webdav: "WebDAV Library",
-};
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const librarySetupChoices: LibraryChoice[] = [
@@ -69,27 +64,42 @@ export const remoteLibraryProviders: RemoteProviderChoice[] = [
   {
     provider: "google_drive",
     icon: Cloud,
-    title: "Google Drive",
-    description:
-      "Connect through Google OAuth and keep an OpenKara library in My Drive.",
+    title: "setup.remoteProvider.googleDrive.title",
+    description: "setup.remoteProvider.googleDrive.description",
     availableNow: true,
   },
   {
     provider: "dropbox",
-    icon: Globe,
-    title: "Dropbox",
-    description:
-      "Connect through Dropbox OAuth and keep an OpenKara library in your Dropbox.",
+    icon: Cloud,
+    title: "setup.remoteProvider.dropbox.title",
+    description: "setup.remoteProvider.dropbox.description",
     availableNow: true,
   },
   {
     provider: "webdav",
-    icon: FolderOpen,
-    title: "WebDAV",
-    description: "Connect to a WebDAV-hosted OpenKara library right now.",
+    icon: Cloud,
+    title: "setup.remoteProvider.webdav.title",
+    description: "setup.remoteProvider.webdav.description",
     availableNow: true,
   },
 ];
+
+function getRemoteProviderDisplayName(
+  t: ReturnType<typeof useTranslation>["t"],
+  provider: RemoteLibraryProvider,
+) {
+  return provider === "google_drive"
+    ? t("settings.library.googleDriveLibraryName", {
+        defaultValue: "Google Drive Library",
+      })
+    : provider === "dropbox"
+      ? t("settings.library.dropboxLibraryName", {
+          defaultValue: "Dropbox Library",
+        })
+      : t("settings.library.webdavLibraryName", {
+          defaultValue: "WebDAV Library",
+        });
+}
 
 interface LibrarySetupProps {
   onComplete: () => void;
@@ -131,7 +141,12 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [remoteAuthorizationUrl, setRemoteAuthorizationUrl] = useState<
     string | null
   >(null);
-  const [remoteDisplayName, setRemoteDisplayName] = useState("WebDAV Library");
+  const [remoteAuthSessionId, setRemoteAuthSessionId] = useState<string | null>(
+    null,
+  );
+  const [remoteDisplayName, setRemoteDisplayName] = useState(() =>
+    getRemoteProviderDisplayName(t, "webdav"),
+  );
   const [remoteServerUrl, setRemoteServerUrl] = useState("");
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
@@ -151,7 +166,8 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setSelectedRemoteProvider(null);
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
-    setRemoteDisplayName("WebDAV Library");
+    setRemoteAuthSessionId(null);
+    setRemoteDisplayName(getRemoteProviderDisplayName(t, "webdav"));
     setRemoteServerUrl("");
     setRemoteUsername("");
     setRemotePassword("");
@@ -206,8 +222,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
       await api.createLocalLibrary(libraryDir);
       setStep("stemMode");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -229,8 +244,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
       await api.registerLocalLibrary(selectedDirectory);
       setStep("stemMode");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -243,6 +257,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   };
 
   const connectRemoteLibrary = async (provider: RemoteLibraryProvider) => {
+    let startedSessionId: string | null = null;
     setError(null);
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
@@ -261,21 +276,25 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
             }
           : null,
       );
+      startedSessionId = start.session_id;
 
       if (start.authorization_url) {
+        setRemoteAuthSessionId(start.session_id);
         setRemoteAuthorizationUrl(start.authorization_url);
         setRemoteMessage(
           provider === "google_drive"
-            ? "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+            ? t("settings.library.googleSignInOpened", {
+                defaultValue:
+                  "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically.",
+              })
             : provider === "dropbox"
-              ? "Dropbox sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically."
+              ? t("settings.library.dropboxSignInOpened", {
+                  defaultValue:
+                    "Dropbox sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically.",
+                })
               : null,
         );
-        globalThis.open?.(
-          start.authorization_url,
-          "_blank",
-          "noopener,noreferrer",
-        );
+        await api.openExternalUrl(start.authorization_url);
 
         const deadline = Date.now() + 120_000;
         let ready = false;
@@ -288,7 +307,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
           }
           if (status.state === "failed") {
             throw new Error(
-              status.error?.message ?? "Remote sign-in failed unexpectedly.",
+              status.error?.message ??
+                t("settings.library.remoteSignInFailedUnexpectedly", {
+                  defaultValue: "Remote sign-in failed unexpectedly.",
+                }),
             );
           }
         }
@@ -296,17 +318,25 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
         if (!ready) {
           throw new Error(
             provider === "google_drive"
-              ? "Google sign-in timed out before OpenKara received the callback."
+              ? t("settings.library.googleSignInTimedOut", {
+                  defaultValue:
+                    "Google sign-in timed out before OpenKara received the callback.",
+                })
               : provider === "dropbox"
-                ? "Dropbox sign-in timed out before OpenKara received the callback."
-                : "Remote sign-in timed out.",
+                ? t("settings.library.dropboxSignInTimedOut", {
+                    defaultValue:
+                      "Dropbox sign-in timed out before OpenKara received the callback.",
+                  })
+                : t("settings.library.remoteSignInTimedOut", {
+                    defaultValue: "Remote sign-in timed out.",
+                  }),
           );
         }
       }
 
       const candidate = await api.createRemoteLibrary(
         start.session_id,
-        remoteDisplayName.trim() || remoteProviderDisplayNames[provider],
+        remoteDisplayName.trim() || getRemoteProviderDisplayName(t, provider),
       );
       await api.registerRemoteLibrary(
         start.session_id,
@@ -314,7 +344,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
         remoteDisplayName.trim() || candidate.display_name,
       );
       setRemoteMessage(
-        t("setup.remoteAuthStarted", {
+        t("settings.library.remoteLibraryConnected", {
           defaultValue:
             provider === "google_drive"
               ? "Google Drive library connected successfully."
@@ -327,26 +357,41 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
       );
       setStep("stemMode");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      if (startedSessionId) {
+        void api.cancelRemoteAuth(startedSessionId);
+      }
+      setError(getErrorMessage(err));
     } finally {
+      setRemoteAuthSessionId(null);
       setLoading(false);
     }
   };
 
   const handleWebDavConnect = async () => {
     if (!remoteServerUrl.trim()) {
-      setError("Enter the WebDAV server URL first.");
+      setError(
+        t("settings.library.webdavEnterServerUrl", {
+          defaultValue: "Enter the WebDAV server URL first.",
+        }),
+      );
       return;
     }
 
     if (!remoteUsername.trim()) {
-      setError("Enter the WebDAV username first.");
+      setError(
+        t("settings.library.webdavEnterUsername", {
+          defaultValue: "Enter the WebDAV username first.",
+        }),
+      );
       return;
     }
 
     if (!remotePassword.trim()) {
-      setError("Enter the WebDAV password first.");
+      setError(
+        t("settings.library.webdavEnterPassword", {
+          defaultValue: "Enter the WebDAV password first.",
+        }),
+      );
       return;
     }
 
@@ -542,7 +587,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                       setError(null);
                       setRemoteAuthorizationUrl(null);
                       setRemoteDisplayName(
-                        remoteProviderDisplayNames[choice.provider],
+                        getRemoteProviderDisplayName(t, choice.provider),
                       );
                     }}
                     disabled={loading}
@@ -558,15 +603,22 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] font-medium text-white">
-                        {choice.title}
+                        {t(choice.title, { defaultValue: choice.title })}
                       </div>
                       <div className="text-[12px] text-[var(--color-text-dim)]">
-                        {choice.description}
+                        {t(choice.description, {
+                          defaultValue: choice.description,
+                        })}
                       </div>
                       <div className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
                         {choice.availableNow
-                          ? "Available in this build"
-                          : "Planned in the next provider phase"}
+                          ? t("setup.remoteProvider.availableNow", {
+                              defaultValue: "Available in this build",
+                            })
+                          : t("setup.remoteProvider.plannedLater", {
+                              defaultValue:
+                                "Planned in the next provider phase",
+                            })}
                       </div>
                     </div>
                     {isActive && (
@@ -584,21 +636,27 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-white">
-                    Display name
+                    {t("settings.library.displayName", {
+                      defaultValue: "Display name",
+                    })}
                   </label>
                   <input
                     value={remoteDisplayName}
                     onChange={(event) =>
                       setRemoteDisplayName(event.target.value)
                     }
-                    placeholder="Google Drive Library"
+                    placeholder={getRemoteProviderDisplayName(
+                      t,
+                      "google_drive",
+                    )}
                     className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
                   />
                 </div>
                 <p className="text-[11px] text-[var(--color-text-dimmer)]">
-                  OpenKara uses its bundled Google Drive app registration and
-                  will create or reuse a folder with this display name in My
-                  Drive.
+                  {t("settings.library.googleDriveBundledDescription", {
+                    defaultValue:
+                      "OpenKara uses its bundled Google Drive app registration and will create or reuse a folder with this display name in My Drive.",
+                  })}
                 </p>
 
                 <button
@@ -606,7 +664,13 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   disabled={loading}
                   className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
-                  {loading ? "Waiting for Google…" : "Connect Google Drive"}
+                  {loading
+                    ? t("settings.library.waitingForGoogle", {
+                        defaultValue: "Waiting for Google…",
+                      })
+                    : t("settings.library.connectGoogleDrive", {
+                        defaultValue: "Connect Google Drive",
+                      })}
                 </button>
 
                 {remoteAuthorizationUrl && (
@@ -616,7 +680,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     rel="noreferrer"
                     className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
                   >
-                    Open Google sign-in in your browser again
+                    {t("settings.library.openGoogleBrowserSignInAgain", {
+                      defaultValue: "Open Google sign-in in your browser again",
+                    })}
                   </a>
                 )}
               </div>
@@ -626,21 +692,25 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-white">
-                    Display name
+                    {t("settings.library.displayName", {
+                      defaultValue: "Display name",
+                    })}
                   </label>
                   <input
                     value={remoteDisplayName}
                     onChange={(event) =>
                       setRemoteDisplayName(event.target.value)
                     }
-                    placeholder="WebDAV Library"
+                    placeholder={getRemoteProviderDisplayName(t, "webdav")}
                     className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
                   />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-white">
-                    Server URL
+                    {t("settings.library.webdavServerUrl", {
+                      defaultValue: "Server URL",
+                    })}
                   </label>
                   <input
                     value={remoteServerUrl}
@@ -653,7 +723,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-white">
-                    Library path
+                    {t("settings.library.webdavLibraryPath", {
+                      defaultValue: "Library path",
+                    })}
                   </label>
                   <input
                     value={remoteRootPath}
@@ -663,15 +735,19 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     spellCheck={false}
                   />
                   <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
-                    Point this at an existing remote library path, or enter a
-                    new folder name and OpenKara will initialize it for you.
+                    {t("settings.library.webdavLibraryPathDescription", {
+                      defaultValue:
+                        "Point this at an existing remote library path, or enter a new folder name and OpenKara will initialize it for you.",
+                    })}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-[12px] font-medium text-white">
-                      Username
+                      {t("settings.library.webdavUsername", {
+                        defaultValue: "Username",
+                      })}
                     </label>
                     <input
                       value={remoteUsername}
@@ -685,7 +761,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   </div>
                   <div>
                     <label className="mb-1 block text-[12px] font-medium text-white">
-                      Password
+                      {t("settings.library.webdavPassword", {
+                        defaultValue: "Password",
+                      })}
                     </label>
                     <input
                       type="password"
@@ -704,7 +782,13 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   disabled={loading}
                   className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
-                  {loading ? "Connecting…" : "Connect WebDAV library"}
+                  {loading
+                    ? t("settings.library.connecting", {
+                        defaultValue: "Connecting…",
+                      })
+                    : t("settings.library.connectWebdavLibrary", {
+                        defaultValue: "Connect WebDAV library",
+                      })}
                 </button>
               </div>
             )}
@@ -713,20 +797,24 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <div className="space-y-3 rounded-lg border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-4 text-left">
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-white">
-                    Display name
+                    {t("settings.library.displayName", {
+                      defaultValue: "Display name",
+                    })}
                   </label>
                   <input
                     value={remoteDisplayName}
                     onChange={(event) =>
                       setRemoteDisplayName(event.target.value)
                     }
-                    placeholder="Dropbox Library"
+                    placeholder={getRemoteProviderDisplayName(t, "dropbox")}
                     className="w-full rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-white outline-none transition-colors focus:border-[var(--color-accent)]"
                   />
                 </div>
                 <p className="text-[11px] text-[var(--color-text-dimmer)]">
-                  OpenKara uses its bundled Dropbox app registration and will
-                  create or reuse a folder with this display name in Dropbox.
+                  {t("settings.library.dropboxBundledDescription", {
+                    defaultValue:
+                      "OpenKara uses its bundled Dropbox app registration and will create or reuse a folder with this display name in Dropbox.",
+                  })}
                 </p>
 
                 <button
@@ -734,7 +822,13 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   disabled={loading}
                   className="w-full rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
-                  {loading ? "Waiting for Dropbox…" : "Connect Dropbox"}
+                  {loading
+                    ? t("settings.library.waitingForDropbox", {
+                        defaultValue: "Waiting for Dropbox…",
+                      })
+                    : t("settings.library.connectDropbox", {
+                        defaultValue: "Connect Dropbox",
+                      })}
                 </button>
 
                 {remoteAuthorizationUrl && (
@@ -744,7 +838,10 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                     rel="noreferrer"
                     className="block text-[12px] text-[var(--color-accent)] underline underline-offset-2"
                   >
-                    Open Dropbox sign-in in your browser again
+                    {t("settings.library.openDropboxBrowserSignInAgain", {
+                      defaultValue:
+                        "Open Dropbox sign-in in your browser again",
+                    })}
                   </a>
                 )}
               </div>
@@ -760,6 +857,9 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
             <button
               onClick={() => {
+                if (remoteAuthSessionId) {
+                  void api.cancelRemoteAuth(remoteAuthSessionId);
+                }
                 resetRemoteWizard();
                 setStep("library");
               }}
