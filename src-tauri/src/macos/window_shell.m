@@ -157,7 +157,9 @@ bool ok_window_shell_configure_main_window(
         // RATIONALE: With full-size content view + a WKWebView filling the client
         // area, movableByWindowBackground makes AppKit treat broad "background"
         // hits (including scrollbar gutters) as window moves. We already expose a
-        // narrow drag affordance via data-tauri-drag-region in the web toolbar.
+        // narrow drag affordance via data-tauri-drag-region in the web toolbar,
+        // and the packaged app must keep `core:window:allow-start-dragging` in the
+        // default capability or that affordance becomes a dead button.
         window.movableByWindowBackground = NO;
 
         window.backgroundColor = [NSColor windowBackgroundColor];
