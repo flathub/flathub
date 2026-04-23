@@ -97,13 +97,11 @@ export function Toolbar({
         </div>
       )}
 
-      <div
-        className="min-w-0 flex-1 self-stretch px-4"
-        data-tauri-drag-region
-      >
-        {/* Keep this strip broad: packaged mac builds depend on this exact drag
-        affordance plus the window drag capability in the default Tauri
-        capability set. If either side changes alone, the window stops moving. */}
+      <div className="min-w-0 flex-1 self-stretch px-4" data-tauri-drag-region>
+        {/* Keep this strip broad. Packaged mac builds depend on this exact drag
+            affordance plus the window drag capability in the default Tauri
+            capability set. If either side changes alone, the window stops
+            moving. */}
       </div>
 
       <div className="flex items-center gap-4">

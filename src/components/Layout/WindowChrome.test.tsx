@@ -79,6 +79,6 @@ describe("WindowChrome", () => {
     expect(markup).toContain('aria-label="windowChrome.minimize"');
     expect(markup).toContain('aria-label="windowChrome.maximize"');
     expect(markup).toContain('aria-label="windowChrome.close"');
-    expect(markup).not.toContain("data-tauri-drag-region");
+    expect(markup).toContain("data-tauri-drag-region");
   });
 });

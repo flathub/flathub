@@ -342,9 +342,9 @@ export function createSettingsOverlayActions(
         dependencies.notifyError(settingsResult.reason);
       }
 
-      await refreshModelStatuses();
-
       patchMeta({ isInitializing: false });
+
+      void refreshModelStatuses();
     },
 
     refreshModelStatuses,

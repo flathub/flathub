@@ -206,9 +206,19 @@ pub fn get_model_status(
         .path()
         .app_data_dir()
         .map_err(|e| internal_error(format!("failed to get app data dir: {e}")))?;
-    let downloaded = separator::bootstrap::is_model_available(&app_data_dir, model_variant);
-    let legacy_install_present =
-        separator::bootstrap::legacy_managed_install_present(&app_data_dir, model_variant);
+    let descriptor = separator::bootstrap::descriptor_for(model_variant);
+    let model_path = separator::bootstrap::managed_model_path_for(&app_data_dir, descriptor);
+    let resolved = separator::bootstrap::resolve_model_installation(
+        &model_path,
+        &app_data_dir.join("__no_dev_fallback_model__"),
+        descriptor.sha256,
+    )
+    .map_err(|error| internal_error(format!("failed to inspect model status: {error}")))?;
+    let (downloaded, legacy_install_present) = match resolved {
+        separator::bootstrap::ModelInstallationResolution::Ready(_) => (true, false),
+        separator::bootstrap::ModelInstallationResolution::LegacyManaged(_) => (false, true),
+        separator::bootstrap::ModelInstallationResolution::Absent => (false, false),
+    };
     let file_size = separator::bootstrap::model_file_size(&app_data_dir, model_variant);
     Ok(ModelStatusSnapshot {
         variant,

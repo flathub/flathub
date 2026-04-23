@@ -188,6 +188,18 @@ describe("SettingsOverlay controller", () => {
         modelVariant: "htdemucs_ft",
         language: "zh-CN",
         hideBatchSeparate: true,
+        modelStatuses: {},
+      },
+      meta: {
+        isInitializing: false,
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(harness.getSnapshot()).toMatchObject({
+      state: {
         modelStatuses: {
           htdemucs: {
             downloaded: true,
@@ -200,9 +212,6 @@ describe("SettingsOverlay controller", () => {
             file_size: null,
           },
         },
-      },
-      meta: {
-        isInitializing: false,
       },
     });
   });
