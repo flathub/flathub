@@ -108,6 +108,9 @@ To bundle the official desktop OAuth app registrations into a release build, set
 `OPENKARA_GOOGLE_DRIVE_OAUTH_CLIENT_JSON_PATH` for Google Drive and
 `OPENKARA_DROPBOX_APP_KEY` plus `OPENKARA_DROPBOX_APP_SECRET` for Dropbox
 before `pnpm tauri build`.
+Dropbox sign-in uses the fixed loopback callback
+`http://localhost:53682/oauth2/callback`; add that exact URI, including the
+path, in the Dropbox developer console for the app.
 OpenKara treats per-user refresh/access tokens as secrets and stores them in
 the OS credential store; for desktop apps, an OAuth `client_secret` shipped in
 the app bundle itself still cannot be treated as confidential against the end

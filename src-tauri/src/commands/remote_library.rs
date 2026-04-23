@@ -42,7 +42,7 @@ const DROPBOX_APP_KEY_ENV: &str = "OPENKARA_DROPBOX_APP_KEY";
 const DROPBOX_APP_SECRET_ENV: &str = "OPENKARA_DROPBOX_APP_SECRET";
 const DROPBOX_OAUTH_CLIENT_RESOURCE_PATH: &str = "oauth/dropbox-client.json";
 const DROPBOX_FIXED_REDIRECT_PORT: u16 = 53_682;
-const DROPBOX_FIXED_REDIRECT_URI: &str = "http://127.0.0.1:53682/oauth2/callback";
+const DROPBOX_FIXED_REDIRECT_URI: &str = "http://localhost:53682/oauth2/callback";
 const GOOGLE_DRIVE_OAUTH_SCOPE: &str =
     "openid email https://www.googleapis.com/auth/drive.file";
 
