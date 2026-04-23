@@ -5,6 +5,8 @@ import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { useLibraryStore } from "@/stores/library-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
+import { usePlayerStore } from "@/stores/player-store";
+import { useQueueStore } from "@/stores/queue-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   SettingsOverlayContext,
@@ -64,8 +66,15 @@ export function SettingsOverlayProvider({
           useLibraryStore.getState().clearAllSeparationStatuses,
         clearAllUploadStatuses:
           useLibraryStore.getState().clearAllUploadStatuses,
+        clearSelection: useLibraryStore.getState().clearSelection,
         updateSeparationStatus:
           useLibraryStore.getState().updateSeparationStatus,
+      },
+      queueStore: {
+        clearQueue: useQueueStore.getState().clearQueue,
+      },
+      playerStore: {
+        loadState: usePlayerStore.getState().loadState,
       },
       lyricsStore: {
         clear: useLyricsStore.getState().clear,

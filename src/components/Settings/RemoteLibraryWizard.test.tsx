@@ -249,6 +249,51 @@ describe("RemoteLibraryWizard", () => {
     container.remove();
   });
 
+  test("cancels pending auth when the wizard unmounts", async () => {
+    mockBeginRemoteAuth.mockResolvedValue({
+      session_id: "session-1",
+      provider: "dropbox",
+      authorization_url: "https://example.com/oauth",
+      expires_at_ms: null,
+    });
+    mockOpenExternalUrl.mockResolvedValue(undefined);
+
+    const value = createSettingsOverlayTestContextValue({
+      meta: { isInitializing: false },
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SettingsOverlayContext value={value}>
+          <RemoteLibraryWizard onClose={() => {}} />
+        </SettingsOverlayContext>,
+      );
+    });
+
+    const openRemoteButtons = [...container.querySelectorAll("button")].filter(
+      (button) =>
+        button.textContent?.includes("settings.library.openRemoteLibrary"),
+    );
+    const connectButton = openRemoteButtons[openRemoteButtons.length - 1];
+
+    await act(async () => {
+      connectButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+
+    expect(mockCancelRemoteAuth).toHaveBeenCalledWith("session-1");
+    container.remove();
+  });
+
   test("opens OAuth URLs through the dedicated desktop opener", async () => {
     mockBeginRemoteAuth.mockResolvedValue({
       session_id: "session-1",

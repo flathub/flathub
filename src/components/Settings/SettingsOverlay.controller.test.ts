@@ -55,7 +55,14 @@ function createControllerHarness() {
     libraryStore: {
       clearAllSeparationStatuses: vi.fn(),
       clearAllUploadStatuses: vi.fn(),
+      clearSelection: vi.fn(),
       updateSeparationStatus: vi.fn(),
+    },
+    queueStore: {
+      clearQueue: vi.fn(),
+    },
+    playerStore: {
+      loadState: vi.fn(),
     },
     lyricsStore: {
       clear: vi.fn(),
@@ -245,6 +252,84 @@ describe("SettingsOverlay controller", () => {
     );
     expect(harness.getSnapshot().state.libraryPath).toBe("/music/OpenKara");
     expect(harness.getSnapshot().state.libraries).toHaveLength(1);
+  });
+
+  test("switching libraries clears transient state and syncs active remotes", async () => {
+    const harness = createControllerHarness();
+
+    vi.mocked(harness.dependencies.api.switchLibrary).mockResolvedValue({
+      active_library_id: "remote:library-1",
+      libraries: [
+        {
+          id: "remote:library-1",
+          kind: "remote",
+          display_name: "Drive",
+          provider: "google_drive",
+          account_id: "account-1",
+          remote_root_locator: "root-1",
+          remote_path_display: "Google Drive Library",
+          connection_config: null,
+          cached_db_path: "/tmp/drive/library.sqlite3",
+          remote_revision: null,
+          bound_local_library_id: null,
+        },
+      ],
+    });
+    vi.mocked(harness.dependencies.api.getLibraryRegistry).mockResolvedValue({
+      active_library_id: "remote:library-1",
+      libraries: [
+        {
+          id: "remote:library-1",
+          kind: "remote",
+          display_name: "Drive",
+          provider: "google_drive",
+          account_id: "account-1",
+          remote_root_locator: "root-1",
+          remote_path_display: "Google Drive Library",
+          connection_config: null,
+          cached_db_path: "/tmp/drive/library.sqlite3",
+          remote_revision: null,
+          bound_local_library_id: null,
+        },
+      ],
+    });
+    vi.mocked(harness.dependencies.api.getModelStatus)
+      .mockResolvedValueOnce({
+        variant: "htdemucs",
+        downloaded: true,
+        legacy_install_present: false,
+        file_size: 1,
+      })
+      .mockResolvedValueOnce({
+        variant: "htdemucs_ft",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      });
+
+    await harness.actions.switchLibrary("remote:library-1");
+
+    expect(harness.dependencies.api.switchLibrary).toHaveBeenCalledWith(
+      "remote:library-1",
+    );
+    expect(
+      harness.dependencies.api.syncActiveRemoteLibrary,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearAllSeparationStatuses,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearAllUploadStatuses,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearSelection,
+    ).toHaveBeenCalledOnce();
+    expect(harness.dependencies.queueStore.clearQueue).toHaveBeenCalledOnce();
+    expect(harness.dependencies.lyricsStore.clear).toHaveBeenCalledOnce();
+    expect(harness.dependencies.playerStore.loadState).toHaveBeenCalledOnce();
+    expect(harness.getSnapshot().state.activeLibraryId).toBe(
+      "remote:library-1",
+    );
   });
 
   test("selecting an undownloaded model downloads it before applying the variant", async () => {

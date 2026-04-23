@@ -5,42 +5,16 @@ import { getErrorMessage } from "@/lib/errors";
 import * as api from "@/lib/tauri";
 import type { RegisteredLibrary, RemoteLibraryProvider } from "@/types/ipc";
 import { useSettingsOverlay } from "./SettingsOverlay.context";
+import {
+  REMOTE_AUTH_CANCELLED,
+  runRemoteLibraryRegistrationFlow,
+} from "./remote-library-flow";
+import {
+  getRemoteProviderDisplayName,
+  getRemoteProviderLabel,
+} from "./remote-library-copy";
 
 type RemoteSetupMode = "open_remote" | "mirror_active_local";
-
-function getRemoteProviderDisplayName(
-  t: ReturnType<typeof useTranslation>["t"],
-  provider: RemoteLibraryProvider,
-) {
-  return provider === "google_drive"
-    ? t("settings.library.googleDriveLibraryName", {
-        defaultValue: "Google Drive Library",
-      })
-    : provider === "dropbox"
-      ? t("settings.library.dropboxLibraryName", {
-          defaultValue: "Dropbox Library",
-        })
-      : t("settings.library.webdavLibraryName", {
-          defaultValue: "WebDAV Library",
-        });
-}
-
-function getRemoteProviderLabel(
-  t: ReturnType<typeof useTranslation>["t"],
-  provider: RemoteLibraryProvider,
-) {
-  return provider === "google_drive"
-    ? t("setup.remoteProvider.googleDrive.title", {
-        defaultValue: "Google Drive",
-      })
-    : provider === "dropbox"
-      ? t("setup.remoteProvider.dropbox.title", {
-          defaultValue: "Dropbox",
-        })
-      : t("setup.remoteProvider.webdav.title", {
-          defaultValue: "WebDAV",
-        });
-}
 
 export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -52,7 +26,6 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
-  const [authSessionId, setAuthSessionId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(
     getRemoteProviderDisplayName(t, "google_drive"),
   );
@@ -69,11 +42,15 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const canMirrorActiveLocal = activeLocalLibrary !== null;
   const cancelledRef = useRef(false);
   const mountedRef = useRef(true);
+  const authSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       cancelledRef.current = true;
       mountedRef.current = false;
+      if (authSessionIdRef.current) {
+        void api.cancelRemoteAuth(authSessionIdRef.current);
+      }
     };
   }, []);
 
@@ -83,13 +60,13 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
     setError(null);
     setMessage(null);
     setAuthorizationUrl(null);
-    setAuthSessionId(null);
+    authSessionIdRef.current = null;
   };
 
   const requestClose = () => {
     cancelledRef.current = true;
-    if (authSessionId) {
-      void api.cancelRemoteAuth(authSessionId);
+    if (authSessionIdRef.current) {
+      void api.cancelRemoteAuth(authSessionIdRef.current);
     }
     if (mountedRef.current) {
       setLoading(false);
@@ -97,80 +74,8 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  const completeBrowserAuth = async (
-    sessionId: string,
-    nextProvider: RemoteLibraryProvider,
-  ) => {
-    const deadline = Date.now() + 120_000;
-    while (Date.now() < deadline) {
-      if (cancelledRef.current) {
-        throw new Error("__remote_auth_cancelled__");
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      if (cancelledRef.current) {
-        throw new Error("__remote_auth_cancelled__");
-      }
-      const status = await api.pollRemoteAuth(sessionId);
-      if (status.state === "ready") {
-        return;
-      }
-      if (status.state === "failed") {
-        throw new Error(
-          status.error?.message ??
-            t("settings.library.remoteSignInFailedUnexpectedly", {
-              defaultValue: "Remote sign-in failed unexpectedly.",
-            }),
-        );
-      }
-    }
-
-    throw new Error(
-      nextProvider === "google_drive"
-        ? t("settings.library.googleSignInTimedOut", {
-            defaultValue:
-              "Google sign-in timed out before OpenKara received the callback.",
-          })
-        : nextProvider === "dropbox"
-          ? t("settings.library.dropboxSignInTimedOut", {
-              defaultValue:
-                "Dropbox sign-in timed out before OpenKara received the callback.",
-            })
-          : t("settings.library.remoteSignInTimedOut", {
-              defaultValue: "Remote sign-in timed out.",
-            }),
-    );
-  };
-
   const connect = async () => {
     cancelledRef.current = false;
-    let startedSessionId: string | null = null;
-    if (provider === "webdav") {
-      if (!serverUrl.trim()) {
-        setError(
-          t("settings.library.webdavEnterServerUrl", {
-            defaultValue: "Enter the WebDAV server URL first.",
-          }),
-        );
-        return;
-      }
-      if (!username.trim()) {
-        setError(
-          t("settings.library.webdavEnterUsername", {
-            defaultValue: "Enter the WebDAV username first.",
-          }),
-        );
-        return;
-      }
-      if (!password.trim()) {
-        setError(
-          t("settings.library.webdavEnterPassword", {
-            defaultValue: "Enter the WebDAV password first.",
-          }),
-        );
-        return;
-      }
-    }
-
     if (mode === "mirror_active_local" && !activeLocalLibrary) {
       setError(
         t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
@@ -186,40 +91,36 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
     setAuthorizationUrl(null);
 
     try {
-      const start = await api.beginRemoteAuth(
+      const { registry } = await runRemoteLibraryRegistrationFlow({
         provider,
-        provider === "webdav"
-          ? {
-              type: "webdav",
-              server_url: serverUrl,
-              username,
-              password,
-              root_path: rootPath.trim() || null,
-            }
-          : null,
-      );
-      startedSessionId = start.session_id;
-
-      if (start.authorization_url) {
-        setAuthSessionId(start.session_id);
-        setAuthorizationUrl(start.authorization_url);
-        await api.openExternalUrl(start.authorization_url);
-        await completeBrowserAuth(start.session_id, provider);
-      }
+        displayName,
+        t,
+        webdav: {
+          serverUrl,
+          username,
+          password,
+          rootPath,
+        },
+        isCancelled: () => cancelledRef.current,
+        onSessionIdChange: (sessionId) => {
+          authSessionIdRef.current = sessionId;
+        },
+        onAuthorizationUrlChange: (nextAuthorizationUrl) => {
+          if (mountedRef.current) {
+            setAuthorizationUrl(nextAuthorizationUrl);
+          }
+        },
+        onMessageChange: (nextMessage) => {
+          if (mountedRef.current) {
+            setMessage(nextMessage);
+          }
+        },
+      });
 
       if (cancelledRef.current) {
         return;
       }
 
-      const candidate = await api.createRemoteLibrary(
-        start.session_id,
-        displayName.trim() || getRemoteProviderDisplayName(t, provider),
-      );
-      const registry = await api.registerRemoteLibrary(
-        start.session_id,
-        candidate.remote_root_locator,
-        displayName.trim() || candidate.display_name,
-      );
       const remoteLibraryId = registry.active_library_id;
 
       if (!remoteLibraryId) {
@@ -253,16 +154,10 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
 
       onClose();
     } catch (err: unknown) {
-      if (startedSessionId) {
-        void api.cancelRemoteAuth(startedSessionId);
-      }
-      if (getErrorMessage(err) !== "__remote_auth_cancelled__") {
+      if (getErrorMessage(err) !== REMOTE_AUTH_CANCELLED) {
         setError(getErrorMessage(err));
       }
     } finally {
-      if (mountedRef.current) {
-        setAuthSessionId(null);
-      }
       if (mountedRef.current && !cancelledRef.current) {
         setLoading(false);
       }

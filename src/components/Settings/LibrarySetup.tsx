@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -18,6 +18,11 @@ import * as api from "@/lib/tauri";
 import i18next, { SUPPORTED_LANGUAGES, detectSystemLanguage } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { RemoteLibraryProvider } from "@/types/ipc";
+import { runRemoteLibraryRegistrationFlow } from "./remote-library-flow";
+import {
+  getRemoteLibraryConnectedMessage,
+  getRemoteProviderDisplayName,
+} from "./remote-library-copy";
 
 type Step = "language" | "library" | "remoteProvider" | "stemMode";
 type LibraryChoiceKind = "create_local" | "open_local" | "open_remote";
@@ -84,23 +89,6 @@ export const remoteLibraryProviders: RemoteProviderChoice[] = [
   },
 ];
 
-function getRemoteProviderDisplayName(
-  t: ReturnType<typeof useTranslation>["t"],
-  provider: RemoteLibraryProvider,
-) {
-  return provider === "google_drive"
-    ? t("settings.library.googleDriveLibraryName", {
-        defaultValue: "Google Drive Library",
-      })
-    : provider === "dropbox"
-      ? t("settings.library.dropboxLibraryName", {
-          defaultValue: "Dropbox Library",
-        })
-      : t("settings.library.webdavLibraryName", {
-          defaultValue: "WebDAV Library",
-        });
-}
-
 interface LibrarySetupProps {
   onComplete: () => void;
 }
@@ -141,9 +129,6 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [remoteAuthorizationUrl, setRemoteAuthorizationUrl] = useState<
     string | null
   >(null);
-  const [remoteAuthSessionId, setRemoteAuthSessionId] = useState<string | null>(
-    null,
-  );
   const [remoteDisplayName, setRemoteDisplayName] = useState(() =>
     getRemoteProviderDisplayName(t, "webdav"),
   );
@@ -158,6 +143,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [selectedStemMode, setSelectedStemMode] = useState<
     "two_stem" | "four_stem"
   >(settingsStemMode);
+  const remoteAuthSessionIdRef = useRef<string | null>(null);
 
   const resolveSingleDirectory = (selected: string | string[] | null) =>
     typeof selected === "string" ? selected : (selected?.[0] ?? null);
@@ -166,7 +152,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setSelectedRemoteProvider(null);
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
-    setRemoteAuthSessionId(null);
+    remoteAuthSessionIdRef.current = null;
     setRemoteDisplayName(getRemoteProviderDisplayName(t, "webdav"));
     setRemoteServerUrl("");
     setRemoteUsername("");
@@ -191,6 +177,14 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
     setSelectedStemMode(settingsStemMode);
   }, [settingsHydrated, settingsStemMode]);
+
+  useEffect(() => {
+    return () => {
+      if (remoteAuthSessionIdRef.current) {
+        void api.cancelRemoteAuth(remoteAuthSessionIdRef.current);
+      }
+    };
+  }, []);
 
   const handleLanguageSelect = (code: string) => {
     setSelectedLanguage(code);
@@ -257,144 +251,38 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   };
 
   const connectRemoteLibrary = async (provider: RemoteLibraryProvider) => {
-    let startedSessionId: string | null = null;
     setError(null);
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
     setSelectedRemoteProvider(provider);
     setLoading(true);
     try {
-      const start = await api.beginRemoteAuth(
+      await runRemoteLibraryRegistrationFlow({
         provider,
-        provider === "webdav"
-          ? {
-              type: "webdav",
-              server_url: remoteServerUrl,
-              username: remoteUsername,
-              password: remotePassword,
-              root_path: remoteRootPath.trim() || null,
-            }
-          : null,
-      );
-      startedSessionId = start.session_id;
-
-      if (start.authorization_url) {
-        setRemoteAuthSessionId(start.session_id);
-        setRemoteAuthorizationUrl(start.authorization_url);
-        setRemoteMessage(
-          provider === "google_drive"
-            ? t("settings.library.googleSignInOpened", {
-                defaultValue:
-                  "Google sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically.",
-              })
-            : provider === "dropbox"
-              ? t("settings.library.dropboxSignInOpened", {
-                  defaultValue:
-                    "Dropbox sign-in opened in your browser. Finish the consent flow and OpenKara will continue automatically.",
-                })
-              : null,
-        );
-        await api.openExternalUrl(start.authorization_url);
-
-        const deadline = Date.now() + 120_000;
-        let ready = false;
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1000));
-          const status = await api.pollRemoteAuth(start.session_id);
-          if (status.state === "ready") {
-            ready = true;
-            break;
-          }
-          if (status.state === "failed") {
-            throw new Error(
-              status.error?.message ??
-                t("settings.library.remoteSignInFailedUnexpectedly", {
-                  defaultValue: "Remote sign-in failed unexpectedly.",
-                }),
-            );
-          }
-        }
-
-        if (!ready) {
-          throw new Error(
-            provider === "google_drive"
-              ? t("settings.library.googleSignInTimedOut", {
-                  defaultValue:
-                    "Google sign-in timed out before OpenKara received the callback.",
-                })
-              : provider === "dropbox"
-                ? t("settings.library.dropboxSignInTimedOut", {
-                    defaultValue:
-                      "Dropbox sign-in timed out before OpenKara received the callback.",
-                  })
-                : t("settings.library.remoteSignInTimedOut", {
-                    defaultValue: "Remote sign-in timed out.",
-                  }),
-          );
-        }
-      }
-
-      const candidate = await api.createRemoteLibrary(
-        start.session_id,
-        remoteDisplayName.trim() || getRemoteProviderDisplayName(t, provider),
-      );
-      await api.registerRemoteLibrary(
-        start.session_id,
-        candidate.remote_root_locator,
-        remoteDisplayName.trim() || candidate.display_name,
-      );
-      setRemoteMessage(
-        t("settings.library.remoteLibraryConnected", {
-          defaultValue:
-            provider === "google_drive"
-              ? "Google Drive library connected successfully."
-              : provider === "dropbox"
-                ? "Dropbox library connected successfully."
-                : provider === "webdav"
-                  ? "WebDAV library connected successfully."
-                  : "Remote library connected successfully.",
-        }),
-      );
+        displayName: remoteDisplayName,
+        t,
+        webdav: {
+          serverUrl: remoteServerUrl,
+          username: remoteUsername,
+          password: remotePassword,
+          rootPath: remoteRootPath,
+        },
+        onSessionIdChange: (sessionId) => {
+          remoteAuthSessionIdRef.current = sessionId;
+        },
+        onAuthorizationUrlChange: setRemoteAuthorizationUrl,
+        onMessageChange: setRemoteMessage,
+      });
+      setRemoteMessage(getRemoteLibraryConnectedMessage(t, provider));
       setStep("stemMode");
     } catch (err: unknown) {
-      if (startedSessionId) {
-        void api.cancelRemoteAuth(startedSessionId);
-      }
       setError(getErrorMessage(err));
     } finally {
-      setRemoteAuthSessionId(null);
       setLoading(false);
     }
   };
 
   const handleWebDavConnect = async () => {
-    if (!remoteServerUrl.trim()) {
-      setError(
-        t("settings.library.webdavEnterServerUrl", {
-          defaultValue: "Enter the WebDAV server URL first.",
-        }),
-      );
-      return;
-    }
-
-    if (!remoteUsername.trim()) {
-      setError(
-        t("settings.library.webdavEnterUsername", {
-          defaultValue: "Enter the WebDAV username first.",
-        }),
-      );
-      return;
-    }
-
-    if (!remotePassword.trim()) {
-      setError(
-        t("settings.library.webdavEnterPassword", {
-          defaultValue: "Enter the WebDAV password first.",
-        }),
-      );
-      return;
-    }
-
     await connectRemoteLibrary("webdav");
   };
 
@@ -857,8 +745,8 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
             <button
               onClick={() => {
-                if (remoteAuthSessionId) {
-                  void api.cancelRemoteAuth(remoteAuthSessionId);
+                if (remoteAuthSessionIdRef.current) {
+                  void api.cancelRemoteAuth(remoteAuthSessionIdRef.current);
                 }
                 resetRemoteWizard();
                 setStep("library");
