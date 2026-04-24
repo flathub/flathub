@@ -52,4 +52,7 @@ This currently requires a manual step.
 
 4. Figure out what URLs `emsdk`'s components use and integrate it into the manifest module's sources (needs to be worked out more).
    One way is trying to build, figuring out what URLs cannot be fetched, and adding them manually.
+   Emscripten has config files for [tools](https://github.com/emscripten-core/emsdk/blob/4.0.9/emsdk_manifest.json)
+   and [release tags](https://github.com/emscripten-core/emsdk/blob/4.0.9/emscripten-releases-tags.json) (remember to pick relevant emscripten tag),
+   which may help figuring out URLs.
 
