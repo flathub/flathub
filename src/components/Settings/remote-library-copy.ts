@@ -5,17 +5,10 @@ export function getRemoteProviderDisplayName(
   t: TFunction,
   provider: RemoteLibraryProvider,
 ): string {
-  return provider === "google_drive"
-    ? t("settings.library.googleDriveLibraryName", {
-        defaultValue: "Google Drive Library",
-      })
-    : provider === "dropbox"
-      ? t("settings.library.dropboxLibraryName", {
-          defaultValue: "Dropbox Library",
-        })
-      : t("settings.library.webdavLibraryName", {
-          defaultValue: "WebDAV Library",
-        });
+  void provider;
+  return t("settings.library.remoteLibraryDisplayName", {
+    defaultValue: "OpenKara",
+  });
 }
 
 export function getRemoteProviderLabel(

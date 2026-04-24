@@ -9,7 +9,6 @@ use crate::{
     AppState,
 };
 use std::{fs, path::Path};
-use tauri::AppHandle;
 
 use super::{
     dropbox::{
@@ -249,7 +248,6 @@ pub(crate) fn register_remote_library(
         connection_config.clone(),
         Some(library_root.database_path().display().to_string()),
         None,
-        None,
     );
     let remote_revision = match provider {
         RemoteLibraryProvider::GoogleDrive => {
@@ -331,7 +329,6 @@ pub(crate) fn register_remote_library(
         connection_config,
         Some(library_root.database_path().display().to_string()),
         remote_revision.or_else(|| Some(current_unix_time_ms().to_string())),
-        None,
     );
     let mut config = load_app_config(app_data_dir)?;
 
@@ -358,79 +355,6 @@ pub(crate) fn register_remote_library(
             .lock()
             .map_err(|_| state_lock_error("remote upload status lock was poisoned"))?;
         upload_statuses.clear();
-    }
-
-    Ok(LibraryRegistrySnapshot {
-        active_library_id: config.active_library_id.clone(),
-        libraries: config.libraries.clone(),
-    })
-}
-
-pub(crate) fn set_remote_mirror(
-    state: &AppState,
-    app_handle: &AppHandle,
-    app_data_dir: &Path,
-    local_library_id: String,
-    remote_library_id: Option<String>,
-) -> CommandResult<LibraryRegistrySnapshot> {
-    let mut config = load_app_config(app_data_dir)?;
-
-    if let Some(local_library) = config
-        .libraries
-        .iter()
-        .find(|entry| entry.id() == local_library_id)
-    {
-        if !matches!(local_library, RegisteredLibrary::Local { .. }) {
-            return Err(library_error(
-                "the local library id must point to a local library",
-            ));
-        }
-    } else {
-        return Err(library_error(format!(
-            "local library {local_library_id} was not found"
-        )));
-    }
-
-    for library in &mut config.libraries {
-        if let RegisteredLibrary::Remote {
-            bound_local_library_id,
-            ..
-        } = library
-        {
-            if bound_local_library_id.as_deref() == Some(local_library_id.as_str()) {
-                *bound_local_library_id = None;
-            }
-        }
-    }
-
-    if let Some(remote_library_id) = remote_library_id.clone() {
-        let Some(remote_library) = config
-            .libraries
-            .iter_mut()
-            .find(|entry| entry.id() == remote_library_id)
-        else {
-            return Err(library_error(format!(
-                "remote library {remote_library_id} was not found"
-            )));
-        };
-
-        if let RegisteredLibrary::Remote {
-            bound_local_library_id,
-            ..
-        } = remote_library
-        {
-            *bound_local_library_id = Some(local_library_id.clone());
-        } else {
-            return Err(library_error("the target library must be remote"));
-        }
-    }
-
-    persist_app_config(app_data_dir, &config)?;
-
-    if remote_library_id.is_some()
-        && config.active_library_id.as_deref() == Some(local_library_id.as_str())
-    {
-        super::sync::sync_bound_remote_for_active_local_library(state, app_handle)?;
     }
 
     Ok(LibraryRegistrySnapshot {

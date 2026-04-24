@@ -35,6 +35,64 @@ fn persist_app_config(app_data_dir: &Path, config: &AppConfig) -> CommandResult<
     config::save_config(app_data_dir, config).map_err(library_error)
 }
 
+fn update_library_display_name(
+    app_data_dir: &Path,
+    library_id: &str,
+    display_name: &str,
+) -> CommandResult<LibraryRegistrySnapshot> {
+    let mut config = load_app_config(app_data_dir)?;
+    let Some(library) = config
+        .libraries
+        .iter_mut()
+        .find(|entry| entry.id() == library_id)
+    else {
+        return Err(library_error(format!(
+            "library {library_id} was not found"
+        )));
+    };
+
+    match library {
+        RegisteredLibrary::Local { display_name: name, .. }
+        | RegisteredLibrary::Remote { display_name: name, .. } => {
+            *name = display_name.to_owned();
+        }
+    }
+
+    persist_app_config(app_data_dir, &config)?;
+
+    Ok(LibraryRegistrySnapshot {
+        active_library_id: config.active_library_id.clone(),
+        libraries: config.libraries.clone(),
+    })
+}
+
+fn delete_library_data(app_data_dir: &Path, library: &RegisteredLibrary) -> CommandResult<()> {
+    match library {
+        RegisteredLibrary::Local { root_path, .. } => {
+            if Path::new(root_path).exists() {
+                fs::remove_dir_all(root_path).map_err(|error| {
+                    library_error(format!("failed to delete {root_path}: {error}"))
+                })?;
+            }
+        }
+        RegisteredLibrary::Remote { .. } => {
+            crate::commands::remote_library::delete_remote_library_root(app_data_dir, library)?;
+            if let Some(working_copy_root) = library.working_copy_root() {
+                if working_copy_root.exists() {
+                    fs::remove_dir_all(&working_copy_root).map_err(|error| {
+                        library_error(format!(
+                            "failed to delete {}: {error}",
+                            working_copy_root.display()
+                        ))
+                    })?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn upsert_library(config: &mut AppConfig, library: RegisteredLibrary) {
     if let Some(existing) = config
         .libraries
@@ -296,6 +354,45 @@ pub fn remove_library(
         active_library_id: config.active_library_id.clone(),
         libraries: config.libraries.clone(),
     })
+}
+
+#[tauri::command]
+pub fn rename_library(
+    app_handle: AppHandle,
+    library_id: String,
+    display_name: String,
+) -> CommandResult<LibraryRegistrySnapshot> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| library_error(error.to_string()))?;
+    update_library_display_name(&app_data_dir, &library_id, &display_name)
+}
+
+#[tauri::command]
+pub fn delete_library(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    library_id: String,
+) -> CommandResult<LibraryRegistrySnapshot> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| library_error(error.to_string()))?;
+    let config = load_app_config(&app_data_dir)?;
+    let Some(library) = config
+        .libraries
+        .iter()
+        .find(|entry| entry.id() == library_id)
+        .cloned()
+    else {
+        return Err(library_error(format!(
+            "library {library_id} was not found"
+        )));
+    };
+
+    delete_library_data(&app_data_dir, &library)?;
+    remove_library(state, app_handle, library_id)
 }
 
 #[cfg(test)]

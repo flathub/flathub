@@ -925,6 +925,17 @@ pub(crate) fn delete_relative_path_from_remote(
     google_drive_delete_entry(app_data_dir, &mut secret, &entry.id)
 }
 
+pub(crate) fn delete_remote_root(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<()> {
+    let mut secret = load_google_drive_secret(app_data_dir, library)?;
+    let root_folder_id = library
+        .remote_root_locator()
+        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+    google_drive_delete_entry(app_data_dir, &mut secret, root_folder_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

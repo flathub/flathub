@@ -1,5 +1,14 @@
-import { useMemo, useState } from "react";
-import { FolderOpen, Plus, CheckCircle2, Library, Globe } from "lucide-react";
+import { useState } from "react";
+import {
+  CheckCircle2,
+  FolderOpen,
+  Globe,
+  Library,
+  PencilLine,
+  Plus,
+  Trash2,
+  Unlink2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SettingsSectionCard } from "./SettingsSectionCard";
 import { RemoteLibraryWizard } from "./RemoteLibraryWizard";
@@ -12,24 +21,14 @@ const remoteProviderLabels: Record<RemoteLibraryProvider, string> = {
   webdav: "WebDAV",
 };
 
-function describeLibrarySubtitle(
-  library: RegisteredLibrary,
-  libraries: RegisteredLibrary[],
-) {
+function describeLibrarySubtitle(library: RegisteredLibrary) {
   if (library.kind === "local") {
     return library.root_path;
   }
 
-  const boundLocalLibrary = libraries.find(
-    (candidate) => candidate.id === library.bound_local_library_id,
-  );
-  const bindingLabel = boundLocalLibrary
-    ? ` · Mirroring ${boundLocalLibrary.display_name}`
-    : "";
-
   return `${remoteProviderLabels[library.provider]} · ${
     library.remote_path_display || library.remote_root_locator
-  }${bindingLabel}`;
+  }`;
 }
 
 export function SettingsLibrarySection() {
@@ -37,13 +36,6 @@ export function SettingsLibrarySection() {
   const { state, meta, actions } = useSettingsOverlay();
   const hasLibraries = state.libraries.length > 0;
   const [remoteWizardOpen, setRemoteWizardOpen] = useState(false);
-  const activeLibrary = useMemo(
-    () =>
-      state.libraries.find((library) => library.id === state.activeLibraryId) ??
-      null,
-    [state.activeLibraryId, state.libraries],
-  );
-
   return (
     <SettingsSectionCard title={t("settings.library.label")}>
       {!hasLibraries ? (
@@ -56,42 +48,81 @@ export function SettingsLibrarySection() {
             const isActive = library.id === state.activeLibraryId;
             const isRemote = library.kind === "remote";
             return (
-              <button
+              <div
                 key={library.id}
-                onClick={() => void actions.switchLibrary(library.id)}
-                disabled={meta.isInitializing || isActive}
                 className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                   isActive
                     ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
                     : "border-[var(--color-border-light)] bg-[var(--color-surface)] hover:bg-[var(--color-hover)]"
                 }`}
               >
-                {isRemote ? (
-                  <Globe
-                    size={12}
-                    className="shrink-0 text-[var(--color-accent)]"
-                  />
-                ) : (
-                  <Library
-                    size={12}
-                    className="shrink-0 text-[var(--color-text-dim)]"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] text-white">
-                    {library.display_name}
-                  </p>
-                  <p className="truncate text-[11px] text-[var(--color-text-dim)]">
-                    {describeLibrarySubtitle(library, state.libraries)}
-                  </p>
+                <button
+                  onClick={() => void actions.switchLibrary(library.id)}
+                  disabled={meta.isInitializing || isActive}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  {isRemote ? (
+                    <Globe
+                      size={12}
+                      className="shrink-0 text-[var(--color-accent)]"
+                    />
+                  ) : (
+                    <Library
+                      size={12}
+                      className="shrink-0 text-[var(--color-text-dim)]"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] text-white">
+                      {library.display_name}
+                    </p>
+                    <p className="truncate text-[11px] text-[var(--color-text-dim)]">
+                      {describeLibrarySubtitle(library)}
+                    </p>
+                  </div>
+                  {isActive ? (
+                    <CheckCircle2
+                      size={14}
+                      className="shrink-0 text-[var(--color-accent)]"
+                    />
+                  ) : null}
+                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void actions.renameLibrary(library.id)}
+                    disabled={meta.isInitializing}
+                    title={t("settings.library.renameLibrary", {
+                      defaultValue: "Rename library",
+                    })}
+                    className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
+                  >
+                    <PencilLine size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void actions.removeLibrary(library.id)}
+                    disabled={meta.isInitializing}
+                    title={t("settings.library.removeLibrary", {
+                      defaultValue: "Disconnect library",
+                    })}
+                    className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
+                  >
+                    <Unlink2 size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void actions.deleteLibrary(library.id)}
+                    disabled={meta.isInitializing}
+                    title={t("settings.library.deleteLibrary", {
+                      defaultValue: "Delete library",
+                    })}
+                    className="rounded-md border border-red-500/40 bg-red-600/10 p-1.5 text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
-                {isActive ? (
-                  <CheckCircle2
-                    size={14}
-                    className="shrink-0 text-[var(--color-accent)]"
-                  />
-                ) : null}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -125,15 +156,6 @@ export function SettingsLibrarySection() {
           })}
         </button>
       </div>
-
-      {activeLibrary?.kind !== "local" && (
-        <p className="text-[12px] text-[var(--color-text-dim)]">
-          {t("settings.library.remoteMirrorHint", {
-            defaultValue:
-              "Switch to the local library you want to mirror before creating a new remote mirror.",
-          })}
-        </p>
-      )}
 
       {state.libraryError && (
         <p className="text-[12px] text-red-400">{state.libraryError}</p>

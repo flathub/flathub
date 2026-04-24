@@ -133,9 +133,11 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
       }
 
       if (mode === "mirror_active_local" && activeLocalLibrary) {
-        await actions.switchLibrary(activeLocalLibrary.id);
-        await api.setRemoteMirror(activeLocalLibrary.id, remoteLibraryId);
-        await actions.initialize();
+        await api.mirrorLocalLibraryToRemote(
+          activeLocalLibrary.id,
+          remoteLibraryId,
+        );
+        await actions.switchLibrary(remoteLibraryId);
         setMessage(
           t("settings.library.remoteLibraryCreatedAndMirroring", {
             defaultValue:
@@ -411,15 +413,20 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
             </p>
             <div className="space-y-2">
               {remoteLibraries.map((library) => (
-                <div
+                <button
                   key={library.id}
+                  type="button"
+                  onClick={() =>
+                    void actions.switchLibrary(library.id).then(() => onClose())
+                  }
+                  disabled={loading}
                   className="rounded-md border border-[var(--color-border-light)] px-3 py-2"
                 >
                   <p className="text-sm text-white">{library.display_name}</p>
                   <p className="text-xs text-[var(--color-text-dim)]">
                     {library.remote_path_display || library.remote_root_locator}
                   </p>
-                </div>
+                </button>
               ))}
             </div>
           </div>

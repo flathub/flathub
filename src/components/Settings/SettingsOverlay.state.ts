@@ -190,23 +190,15 @@ export function createSettingsOverlayActions(
     initialize: async () => {
       patchMeta({ isInitializing: true });
 
-      const [registryResult, settingsResult, windowShellResult] =
-        await Promise.allSettled([
-          dependencies.api.getLibraryRegistry(),
-          dependencies.api.getSettings(),
-          dependencies.api.getWindowShellState(),
-        ]);
+      const [registryResult, settingsResult] = await Promise.allSettled([
+        dependencies.api.getLibraryRegistry(),
+        dependencies.api.getSettings(),
+      ]);
 
       if (registryResult.status === "fulfilled") {
         applyRegistrySnapshot(registryResult.value);
       } else {
         dependencies.notifyError(registryResult.reason);
-      }
-
-      if (windowShellResult.status === "fulfilled") {
-        void windowShellResult.value;
-      } else {
-        dependencies.notifyError(windowShellResult.reason);
       }
 
       if (settingsResult.status === "fulfilled") {

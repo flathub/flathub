@@ -130,7 +130,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     string | null
   >(null);
   const [remoteDisplayName, setRemoteDisplayName] = useState(() =>
-    getRemoteProviderDisplayName(t, "webdav"),
+    getRemoteProviderDisplayName(t, "google_drive"),
   );
   const [remoteServerUrl, setRemoteServerUrl] = useState("");
   const [remoteUsername, setRemoteUsername] = useState("");
@@ -153,7 +153,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
     setRemoteMessage(null);
     setRemoteAuthorizationUrl(null);
     remoteAuthSessionIdRef.current = null;
-    setRemoteDisplayName(getRemoteProviderDisplayName(t, "webdav"));
+    setRemoteDisplayName(getRemoteProviderDisplayName(t, "google_drive"));
     setRemoteServerUrl("");
     setRemoteUsername("");
     setRemotePassword("");

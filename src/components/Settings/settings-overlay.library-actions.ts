@@ -1,4 +1,5 @@
 import { getErrorMessage } from "@/lib/errors";
+import { useLibraryStore } from "@/stores/library-store";
 import type { LibraryRegistrySnapshot, RegisteredLibrary } from "@/types/ipc";
 import type {
   SettingsActionContext,
@@ -21,6 +22,7 @@ async function applyLibrarySwitchSideEffects(
   context.dependencies.queueStore.clearQueue();
   context.dependencies.lyricsStore.clear();
   await context.dependencies.playerStore.loadState();
+  await context.dependencies.libraryStore.loadLibrary();
   await context.refreshLibraryRegistry();
   await context.refreshModelStatuses();
 }
@@ -42,6 +44,9 @@ export function createLibrarySettingsActions(
   | "createLibrary"
   | "openLibrary"
   | "switchLibrary"
+  | "renameLibrary"
+  | "removeLibrary"
+  | "deleteLibrary"
   | "setLanguage"
   | "restartApp"
   | "setStemMode"
@@ -50,10 +55,33 @@ export function createLibrarySettingsActions(
 > {
   const {
     dependencies,
+    controls,
     patchState,
     refreshLibraryRegistry,
+    refreshModelStatuses,
     selectSingleDirectory,
   } = context;
+
+  const refreshLibraryStateAfterMutation = async (
+    registry?: LibraryRegistrySnapshot,
+  ) => {
+    const nextRegistry =
+      registry ?? (await dependencies.api.getLibraryRegistry());
+    if (nextRegistry.active_library_id) {
+      await dependencies.libraryStore.loadLibrary();
+    } else {
+      useLibraryStore.setState({ songs: [], searchQuery: "" });
+      dependencies.libraryStore.clearAllSeparationStatuses();
+      dependencies.libraryStore.clearAllUploadStatuses();
+      dependencies.libraryStore.clearSelection();
+      dependencies.queueStore.clearQueue();
+      dependencies.lyricsStore.clear();
+      await dependencies.playerStore.loadState();
+    }
+    await refreshLibraryRegistry();
+    await refreshModelStatuses();
+    return nextRegistry;
+  };
 
   return {
     createLibrary: async (dialogTitle) => {
@@ -95,6 +123,91 @@ export function createLibrarySettingsActions(
       try {
         const registry = await dependencies.api.switchLibrary(libraryId);
         await applyLibrarySwitchSideEffects(context, libraryId, registry);
+      } catch (error: unknown) {
+        patchState({
+          libraryError: getErrorMessage(error),
+        });
+      }
+    },
+
+    renameLibrary: async (libraryId) => {
+      patchState({ libraryError: null });
+
+      const currentLibrary = controls
+        .getSnapshot()
+        .state.libraries.find((library) => library.id === libraryId);
+      const currentName = currentLibrary?.display_name ?? "";
+      const nextName = window.prompt(
+        currentLibrary?.kind === "remote"
+          ? "Rename the remote library"
+          : "Rename the local library",
+        currentName,
+      );
+      if (nextName == null) {
+        return;
+      }
+
+      const trimmedName = nextName.trim();
+      if (!trimmedName || trimmedName === currentName) {
+        return;
+      }
+
+      try {
+        const registry = await dependencies.api.renameLibrary(
+          libraryId,
+          trimmedName,
+        );
+        await refreshLibraryStateAfterMutation(registry);
+      } catch (error: unknown) {
+        patchState({
+          libraryError: getErrorMessage(error),
+        });
+      }
+    },
+
+    removeLibrary: async (libraryId) => {
+      patchState({ libraryError: null });
+
+      if (
+        !window.confirm(
+          "Disconnect this library from OpenKara? The library data will stay on disk.",
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const registry = await dependencies.api.removeLibrary(libraryId);
+        await refreshLibraryStateAfterMutation(registry);
+      } catch (error: unknown) {
+        patchState({
+          libraryError: getErrorMessage(error),
+        });
+      }
+    },
+
+    deleteLibrary: async (libraryId) => {
+      patchState({ libraryError: null });
+
+      if (
+        !window.confirm(
+          "Delete this library from OpenKara? This removes the local cache or remote working copy.",
+        )
+      ) {
+        return;
+      }
+
+      if (
+        !window.confirm(
+          "This action is permanent. Type confirmation is not available here, so only continue if you want to delete the library data.",
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const registry = await dependencies.api.deleteLibrary(libraryId);
+        await refreshLibraryStateAfterMutation(registry);
       } catch (error: unknown) {
         patchState({
           libraryError: getErrorMessage(error),

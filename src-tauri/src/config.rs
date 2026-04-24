@@ -168,8 +168,6 @@ pub enum RegisteredLibrary {
         cached_db_path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         remote_revision: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        bound_local_library_id: Option<String>,
     },
 }
 
@@ -192,7 +190,6 @@ impl RegisteredLibrary {
         connection_config: Option<RemoteLibraryConnectionConfig>,
         cached_db_path: Option<String>,
         remote_revision: Option<String>,
-        bound_local_library_id: Option<String>,
     ) -> Self {
         Self::Remote {
             id,
@@ -204,7 +201,6 @@ impl RegisteredLibrary {
             connection_config,
             cached_db_path,
             remote_revision,
-            bound_local_library_id,
         }
     }
 
@@ -285,20 +281,6 @@ impl RegisteredLibrary {
             } => Some(remote_revision.as_str()),
             Self::Remote {
                 remote_revision: None,
-                ..
-            }
-            | Self::Local { .. } => None,
-        }
-    }
-
-    pub fn bound_local_library_id(&self) -> Option<&str> {
-        match self {
-            Self::Remote {
-                bound_local_library_id: Some(bound_local_library_id),
-                ..
-            } => Some(bound_local_library_id.as_str()),
-            Self::Remote {
-                bound_local_library_id: None,
                 ..
             }
             | Self::Local { .. } => None,
@@ -631,6 +613,36 @@ mod tests {
         assert!(loaded.library_path.is_none());
         assert_eq!(loaded.libraries.len(), 1);
         assert_eq!(loaded.active_library(), loaded.libraries.first());
+    }
+
+    #[test]
+    fn stale_remote_mirror_binding_is_dropped_on_save() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw = r#"{
+          "libraries": [
+            {
+              "kind": "remote",
+              "id": "remote-1",
+              "display_name": "OpenKara",
+              "provider": "dropbox",
+              "account_id": "account-1",
+              "remote_root_locator": "/OpenKara",
+              "remote_path_display": "/OpenKara",
+              "connection_config": { "type": "dropbox", "app_key": "key" },
+              "cached_db_path": "/tmp/openkara.db",
+              "remote_revision": "rev-1",
+              "bound_local_library_id": "local-1"
+            }
+          ],
+          "active_library_id": "remote-1"
+        }"#;
+        fs::write(tmp.path().join(CONFIG_FILENAME), raw).unwrap();
+
+        let loaded = load_config(tmp.path()).unwrap().unwrap();
+        save_config(tmp.path(), &loaded).unwrap();
+        let saved = fs::read_to_string(tmp.path().join(CONFIG_FILENAME)).unwrap();
+
+        assert!(!saved.contains("bound_local_library_id"));
     }
 
     #[test]

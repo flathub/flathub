@@ -345,15 +345,7 @@ pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> Co
     }
 }
 
-fn resolve_remote_binding(config: &AppConfig, active_library_id: Option<&str>) -> Option<RegisteredLibrary> {
-    if let Some(active_library_id) = active_library_id {
-        if let Some(remote_library) = config.libraries.iter().find(|library| {
-            matches!(library, RegisteredLibrary::Remote { bound_local_library_id: Some(bound_local_library_id), .. } if bound_local_library_id == active_library_id)
-        }) {
-            return Some(remote_library.clone());
-        }
-    }
-
+fn resolve_active_remote(config: &AppConfig) -> Option<RegisteredLibrary> {
     config.active_library().and_then(|library| match library {
         RegisteredLibrary::Remote { .. } => Some(library.clone()),
         RegisteredLibrary::Local { .. } => None,
@@ -504,8 +496,7 @@ pub(crate) fn maybe_publish_song_to_bound_remote<R: tauri::Runtime>(
     song_id: &str,
 ) -> CommandResult<()> {
     let config = load_app_config(&state.app_data_dir)?;
-    let active_library_id = config.active_library().map(|library| library.id().to_owned());
-    if resolve_remote_binding(&config, active_library_id.as_deref()).is_none() {
+    if resolve_active_remote(&config).is_none() {
         return Ok(());
     }
 
@@ -541,14 +532,7 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
     app_handle: &AppHandle<R>,
 ) -> CommandResult<()> {
     let config = load_app_config(&state.app_data_dir)?;
-    let Some(active_library) = config.active_library() else {
-        return Ok(());
-    };
-    if !matches!(active_library, RegisteredLibrary::Local { .. }) {
-        return Ok(());
-    }
-
-    let Some(remote_library) = resolve_remote_binding(&config, Some(active_library.id())) else {
+    let Some(remote_library) = resolve_active_remote(&config) else {
         return Ok(());
     };
 
@@ -594,14 +578,63 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
     Ok(())
 }
 
+pub(crate) fn mirror_local_library_to_remote<R: tauri::Runtime>(
+    state: &AppState,
+    app_handle: &AppHandle<R>,
+    local_library_id: &str,
+    remote_library_id: &str,
+) -> CommandResult<()> {
+    let mut config = load_app_config(&state.app_data_dir)?;
+    let Some(local_library) = config
+        .libraries
+        .iter()
+        .find(|entry| entry.id() == local_library_id)
+    else {
+        return Err(library_error(format!(
+            "local library {local_library_id} was not found"
+        )));
+    };
+    if !matches!(local_library, RegisteredLibrary::Local { .. }) {
+        return Err(library_error(
+            "the source library must be a local library".to_owned(),
+        ));
+    }
+
+    let Some(remote_library) = config
+        .libraries
+        .iter()
+        .find(|entry| entry.id() == remote_library_id)
+    else {
+        return Err(library_error(format!(
+            "remote library {remote_library_id} was not found"
+        )));
+    };
+    if !matches!(remote_library, RegisteredLibrary::Remote { .. }) {
+        return Err(library_error(
+            "the target library must be a remote library".to_owned(),
+        ));
+    }
+
+    let original_active_library_id = config.active_library_id.clone();
+    config.active_library_id = Some(remote_library_id.to_owned());
+    persist_app_config(&state.app_data_dir, &config)?;
+
+    let sync_result = sync_bound_remote_for_active_local_library(state, app_handle);
+
+    let mut restore_config = load_app_config(&state.app_data_dir)?;
+    restore_config.active_library_id = original_active_library_id;
+    persist_app_config(&state.app_data_dir, &restore_config)?;
+
+    sync_result
+}
+
 fn publish_song_internal<R: tauri::Runtime>(
     state: &AppState,
     app_handle: &AppHandle<R>,
     song_id: &str,
 ) -> CommandResult<UploadStatusSnapshot> {
     let config = load_app_config(&state.app_data_dir)?;
-    let active_library_id = config.active_library().map(|library| library.id().to_owned());
-    let remote_library = resolve_remote_binding(&config, active_library_id.as_deref())
+    let remote_library = resolve_active_remote(&config)
         .ok_or_else(|| library_error("no bound remote library is available for publishing"))?;
 
     let local_root = state.library_root()?;

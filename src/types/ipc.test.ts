@@ -37,7 +37,6 @@ describe("ipc type shapes", () => {
       },
       cached_db_path: null,
       remote_revision: null,
-      bound_local_library_id: null,
     };
 
     expect(library.provider).toBe("webdav");

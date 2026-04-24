@@ -62,6 +62,9 @@ export interface SettingsOverlayActions {
   createLibrary: (dialogTitle: string) => Promise<void>;
   openLibrary: (dialogTitle: string) => Promise<void>;
   switchLibrary: (libraryId: string) => Promise<void>;
+  renameLibrary: (libraryId: string) => Promise<void>;
+  removeLibrary: (libraryId: string) => Promise<void>;
+  deleteLibrary: (libraryId: string) => Promise<void>;
   setLanguage: (language: string) => Promise<void>;
   restartApp: () => Promise<void>;
   setStemMode: (mode: StemMode) => Promise<void>;
@@ -96,10 +99,13 @@ export interface SettingsOverlayControllerDependencies {
     | "getLibraryPath"
     | "getLibraryRegistry"
     | "getSettings"
-    | "getWindowShellState"
     | "getModelStatus"
     | "openLibrary"
     | "registerLocalLibrary"
+    | "renameLibrary"
+    | "removeLibrary"
+    | "deleteLibrary"
+    | "mirrorLocalLibraryToRemote"
     | "restartApp"
     | "switchLibrary"
     | "syncActiveRemoteLibrary"
@@ -117,6 +123,7 @@ export interface SettingsOverlayControllerDependencies {
     | "clearAllSeparationStatuses"
     | "clearAllUploadStatuses"
     | "clearSelection"
+    | "loadLibrary"
     | "updateSeparationStatus"
   >;
   queueStore: Pick<ReturnType<typeof useQueueStore.getState>, "clearQueue">;

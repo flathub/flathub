@@ -94,7 +94,6 @@ export interface RemoteLibraryRegistration {
   connection_config: RemoteLibraryConnectionConfig | null;
   cached_db_path: string | null;
   remote_revision: string | null;
-  bound_local_library_id: string | null;
 }
 
 export type RemoteLibraryConnectionConfig =

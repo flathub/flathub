@@ -20,7 +20,6 @@ fn serializes_local_and_remote_libraries_with_distinct_shapes() {
         }),
         Some("cached/openkara.db".to_owned()),
         Some("rev-1".to_owned()),
-        Some("local-library-id".to_owned()),
     );
 
     let config = AppConfig {
