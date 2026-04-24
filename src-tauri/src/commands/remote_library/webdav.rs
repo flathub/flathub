@@ -479,3 +479,11 @@ pub(crate) fn delete_relative_path_from_remote(
         status => Err(library_error(format!("failed to delete {url}: {status}"))),
     }
 }
+
+pub(crate) fn delete_remote_root(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<()> {
+    let secret = load_webdav_secret(app_data_dir, library)?;
+    delete_relative_path_from_remote(&secret, "")
+}

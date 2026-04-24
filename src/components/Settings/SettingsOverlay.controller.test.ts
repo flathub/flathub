@@ -36,13 +36,16 @@ function createControllerHarness() {
       getLibraryPath: vi.fn(),
       getLibraryRegistry: vi.fn(),
       getSettings: vi.fn(),
-      getWindowShellState: vi.fn(),
       getModelStatus: vi.fn(),
       openLibrary: vi.fn(),
       registerLocalLibrary: vi.fn(),
       restartApp: vi.fn(),
       switchLibrary: vi.fn(),
       syncActiveRemoteLibrary: vi.fn(),
+      renameLibrary: vi.fn(),
+      removeLibrary: vi.fn(),
+      deleteLibrary: vi.fn(),
+      mirrorLocalLibraryToRemote: vi.fn(),
       setExecutionProvider: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
@@ -56,6 +59,7 @@ function createControllerHarness() {
       clearAllSeparationStatuses: vi.fn(),
       clearAllUploadStatuses: vi.fn(),
       clearSelection: vi.fn(),
+      loadLibrary: vi.fn(),
       updateSeparationStatus: vi.fn(),
     },
     queueStore: {
@@ -129,14 +133,6 @@ describe("SettingsOverlay controller", () => {
       lyrics_font_step: 0,
       execution_provider: "xnnpack",
       available_execution_providers: ["cpu", "xnnpack"],
-    });
-    vi.mocked(harness.dependencies.api.getWindowShellState).mockResolvedValue({
-      chrome_variant: "mac",
-      tier: "mac",
-      toolbar_height: 48,
-      traffic_light_inset_leading: 78,
-      sidebar_header_height: 28,
-      sidebar_width: 260,
     });
     vi.mocked(harness.dependencies.api.getModelStatus)
       .mockResolvedValueOnce({
@@ -271,7 +267,6 @@ describe("SettingsOverlay controller", () => {
           connection_config: null,
           cached_db_path: "/tmp/drive/library.sqlite3",
           remote_revision: null,
-          bound_local_library_id: null,
         },
       ],
     });
@@ -289,7 +284,6 @@ describe("SettingsOverlay controller", () => {
           connection_config: null,
           cached_db_path: "/tmp/drive/library.sqlite3",
           remote_revision: null,
-          bound_local_library_id: null,
         },
       ],
     });
@@ -323,6 +317,9 @@ describe("SettingsOverlay controller", () => {
     ).toHaveBeenCalledOnce();
     expect(
       harness.dependencies.libraryStore.clearSelection,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.loadLibrary,
     ).toHaveBeenCalledOnce();
     expect(harness.dependencies.queueStore.clearQueue).toHaveBeenCalledOnce();
     expect(harness.dependencies.lyricsStore.clear).toHaveBeenCalledOnce();

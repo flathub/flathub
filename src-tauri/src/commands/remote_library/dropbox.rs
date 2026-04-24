@@ -813,6 +813,13 @@ pub(crate) fn delete_relative_path_from_remote(
     )
 }
 
+pub(crate) fn delete_remote_root(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<()> {
+    delete_relative_path_from_remote(app_data_dir, library, "")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

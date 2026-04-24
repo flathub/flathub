@@ -22,7 +22,6 @@ fn remote_registered_library_serializes_as_discriminated_union() {
         }),
         Some("/tmp/cache/openkara.db".to_owned()),
         Some("rev-7".to_owned()),
-        Some("local-123".to_owned()),
     );
 
     let json = serde_json::to_value(&library).expect("remote library should serialize");
@@ -84,7 +83,6 @@ fn remote_library_entries_round_trip_through_app_config() {
             }),
             None,
             Some("rev-9".to_owned()),
-            None,
         )],
         active_library_id: Some("library-remote-1".to_owned()),
         ..AppConfig::default()

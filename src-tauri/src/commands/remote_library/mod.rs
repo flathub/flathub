@@ -8,7 +8,7 @@ mod webdav;
 
 use crate::{
     commands::error::{library_error, CommandResult},
-    config::RemoteLibraryProvider,
+    config::{RegisteredLibrary, RemoteLibraryProvider},
     AppState,
 };
 use tauri::{AppHandle, Manager, State};
@@ -90,23 +90,13 @@ pub fn register_remote_library(
 }
 
 #[tauri::command]
-pub fn set_remote_mirror(
+pub fn mirror_local_library_to_remote(
     state: State<'_, AppState>,
     app_handle: AppHandle,
     local_library_id: String,
-    remote_library_id: Option<String>,
-) -> CommandResult<crate::commands::library_setup::LibraryRegistrySnapshot> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|error| library_error(error.to_string()))?;
-    registry::set_remote_mirror(
-        &state,
-        &app_handle,
-        &app_data_dir,
-        local_library_id,
-        remote_library_id,
-    )
+    remote_library_id: String,
+) -> CommandResult<()> {
+    sync::mirror_local_library_to_remote(&state, &app_handle, &local_library_id, &remote_library_id)
 }
 
 #[tauri::command]
@@ -137,4 +127,20 @@ pub fn get_all_upload_statuses(
     state: State<'_, AppState>,
 ) -> CommandResult<Vec<UploadStatusSnapshot>> {
     sync::get_all_upload_statuses(&state)
+}
+
+pub(crate) fn delete_remote_library_root(
+    app_data_dir: &std::path::Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<()> {
+    match library.provider() {
+        Some(RemoteLibraryProvider::GoogleDrive) => {
+            google_drive::delete_remote_root(app_data_dir, library)
+        }
+        Some(RemoteLibraryProvider::Dropbox) => dropbox::delete_remote_root(app_data_dir, library),
+        Some(RemoteLibraryProvider::WebDav) => webdav::delete_remote_root(app_data_dir, library),
+        None => Err(library_error(
+            "the target library must be remote".to_owned(),
+        )),
+    }
 }

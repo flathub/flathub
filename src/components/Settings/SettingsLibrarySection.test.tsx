@@ -31,7 +31,6 @@ describe("SettingsLibrarySection", () => {
             },
             cached_db_path: null,
             remote_revision: null,
-            bound_local_library_id: "local:/karaoke",
           },
         ],
         activeLibraryId: "remote:drive",
@@ -47,7 +46,44 @@ describe("SettingsLibrarySection", () => {
     expect(markup).toContain("Drive Library");
     expect(markup).toContain("WebDAV");
     expect(markup).toContain("OpenKara / Team Karaoke");
-    expect(markup).toContain("Mirroring Main Library");
     expect(markup).toContain("Add Remote Library");
+  });
+
+  test("renders library management actions separately from switching", () => {
+    const value = createSettingsOverlayTestContextValue({
+      state: {
+        libraries: [
+          {
+            id: "local:/karaoke",
+            kind: "local",
+            display_name: "Main Library",
+            root_path: "/karaoke",
+          },
+          {
+            id: "remote:drive",
+            kind: "remote",
+            display_name: "Drive Library",
+            provider: "dropbox",
+            remote_root_locator: "/OpenKara",
+            remote_path_display: "/OpenKara",
+            account_id: "acct-1",
+            connection_config: null,
+            cached_db_path: "/tmp/openkara.db",
+            remote_revision: null,
+          },
+        ],
+        activeLibraryId: "local:/karaoke",
+      },
+    });
+
+    const markup = renderToStaticMarkup(
+      <SettingsOverlayContext value={value}>
+        <SettingsLibrarySection />
+      </SettingsOverlayContext>,
+    );
+
+    expect(markup).toContain("Rename library");
+    expect(markup).toContain("Disconnect library");
+    expect(markup).toContain("Delete library");
   });
 });

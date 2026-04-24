@@ -11,8 +11,11 @@ import {
   validateWebDavRemoteLibraryFields,
   type RemoteLibraryFlowApi,
 } from "./remote-library-flow";
+import { getRemoteProviderDisplayName } from "./remote-library-copy";
 
 const t = ((key: string) => key) as TFunction;
+const tWithDefault = ((key: string, options?: { defaultValue?: string }) =>
+  options?.defaultValue ?? key) as TFunction;
 
 function createRemoteApiMock(): RemoteLibraryFlowApi {
   return {
@@ -59,6 +62,18 @@ describe("remote-library-flow", () => {
         password: "secret",
       }),
     ).toBeNull();
+  });
+
+  test("uses OpenKara as the default remote library display name for every provider", () => {
+    expect(getRemoteProviderDisplayName(tWithDefault, "google_drive")).toBe(
+      "OpenKara",
+    );
+    expect(getRemoteProviderDisplayName(tWithDefault, "dropbox")).toBe(
+      "OpenKara",
+    );
+    expect(getRemoteProviderDisplayName(tWithDefault, "webdav")).toBe(
+      "OpenKara",
+    );
   });
 
   test("polls remote auth until the session becomes ready", async () => {

@@ -113,11 +113,11 @@ export function registerRemoteLibrary(
   });
 }
 
-export function setRemoteMirror(
+export function mirrorLocalLibraryToRemote(
   localLibraryId: string,
-  remoteLibraryId: string | null,
-): Promise<LibraryRegistrySnapshot> {
-  return invoke<LibraryRegistrySnapshot>("set_remote_mirror", {
+  remoteLibraryId: string,
+): Promise<void> {
+  return invoke<void>("mirror_local_library_to_remote", {
     localLibraryId,
     remoteLibraryId,
   });
@@ -151,6 +151,24 @@ export function removeLibrary(
   libraryId: string,
 ): Promise<LibraryRegistrySnapshot> {
   return invoke<LibraryRegistrySnapshot>("remove_library", {
+    libraryId,
+  });
+}
+
+export function renameLibrary(
+  libraryId: string,
+  displayName: string,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("rename_library", {
+    libraryId,
+    displayName,
+  });
+}
+
+export function deleteLibrary(
+  libraryId: string,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("delete_library", {
     libraryId,
   });
 }

@@ -158,7 +158,6 @@ pub fn search_library(state: State<'_, AppState>, query: String) -> CommandResul
 #[tauri::command]
 pub fn delete_songs(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
     song_ids: Vec<String>,
 ) -> CommandResult<DeleteSongsResult> {
     let library = state.library_root()?;
@@ -200,10 +199,6 @@ pub fn delete_songs(
             .lock()
             .map_err(|_| state_lock_error("CDG state lock was poisoned"))?;
         *cdg_state = None;
-    }
-
-    if !deleted_song_ids.is_empty() {
-        remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
     }
 
     Ok(DeleteSongsResult {
