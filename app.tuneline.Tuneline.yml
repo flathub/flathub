@@ -1,0 +1,168 @@
+# Flatpak manifest for Tuneline.
+# Ships a pre-built Linux tarball and builds libmpv as nested modules,
+# adapted from io.github.celluloid_player.Celluloid.
+
+app-id: app.tuneline.Tuneline
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: tuneline
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  # flutter_secure_storage_linux uses libsecret (DBus Secret Service).
+  - --talk-name=org.freedesktop.secrets
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.la"
+  - "*.a"
+
+modules:
+  # libmpv runtime stack (ffmpeg, libass, libplacebo, libmpv), adapted
+  # from Celluloid. media_kit dlopens libmpv.so.2 from /app/lib.
+
+  - name: ffmpeg
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg/examples
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --enable-gnutls
+      - --enable-gpl
+      - --disable-doc
+      - --disable-programs
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz
+        sha256: b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a
+        x-checker-data:
+          type: anitya
+          project-id: 5405
+          stable-only: true
+          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.xz
+        sha256: 78f1179b838d025e9c26e8fef33f8092f65611444ffa1bfc0cfac6a33511a05a
+        x-checker-data:
+          type: anitya
+          project-id: 1560
+          stable-only: true
+          url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dlibdir=lib  # meson defaults to lib64 on x86_64; force lib so libmpv's pkg-config can see libplacebo.pc
+      - -Ddemos=false  # skips plplay and its Nuklear submodule
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: libmpv
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/applications
+      - /share/bash-completion
+      - /share/doc
+      - /share/icons
+      - /share/man
+      - /share/zsh
+    buildsystem: meson
+    config-opts:
+      - -Dlibdir=lib  # match libplacebo so libmpv.so lands in /app/lib where media_kit dlopen()s it
+      - -Dlibmpv=true
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dlua=disabled
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          stable-only: true
+          url-template: https://github.com/mpv-player/mpv/archive/v$version.tar.gz
+
+  - name: libsecret
+    # flutter_secure_storage_linux dlopens libsecret-1.so.0 (not shipped in the freedesktop runtime).
+    buildsystem: meson
+    config-opts:
+      - -Dlibdir=lib  # meson defaults to lib64 on x86_64; force lib so the linker finds it
+      - -Dmanpage=false
+      - -Dgtk_doc=false
+      - -Dvapi=false
+      - -Dintrospection=false
+      - -Dbash_completion=disabled
+      - -Dtpm2=false
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz
+        sha256: 6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e
+        x-checker-data:
+          type: gnome
+          name: libsecret
+
+  - name: tuneline
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/tuneline
+      - cp -r lib /app/lib/tuneline/lib
+      - cp -r data /app/lib/tuneline/data
+      - install -Dm755 tuneline /app/lib/tuneline/tuneline
+      - mkdir -p /app/bin
+      - ln -s /app/lib/tuneline/tuneline /app/bin/tuneline
+      - install -Dm644 app.tuneline.Tuneline.desktop /app/share/applications/app.tuneline.Tuneline.desktop
+      - install -Dm644 app.tuneline.Tuneline.metainfo.xml /app/share/metainfo/app.tuneline.Tuneline.metainfo.xml
+      - install -Dm644 app.tuneline.Tuneline.png /app/share/icons/hicolor/512x512/apps/app.tuneline.Tuneline.png
+    sources:
+      - type: archive
+        url: https://tuneline.app/downloads/tuneline-0.1.0-linux-x86_64.tar.gz
+        sha256: 82db0df492cf21b4a2e1bafe6f1dd1ae4cab07d3b14105149ec17e4490b8c1e8
+        x-checker-data:
+          type: anitya
+          project-id: 389740
+          stable-only: true
+          url-template: https://tuneline.app/downloads/tuneline-$version-linux-x86_64.tar.gz
+      - type: file
+        path: app.tuneline.Tuneline.desktop
+      - type: file
+        path: app.tuneline.Tuneline.metainfo.xml
+      - type: dir
+        path: icons
