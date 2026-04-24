@@ -1,0 +1,76 @@
+# SilkTex - Modern LaTeX Editor
+# Copyright (C) 2026 Bela Georg Barthelmes
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Flathub-ready manifest. The GNOME 49 Platform already provides GTK 4
+# (>= 4.20), libadwaita (>= 1.8), gtksourceview 5 and poppler-glib, so
+# the only module we build is SilkTex itself.
+#
+# NOTE on LaTeX compilation inside the sandbox: SilkTex shells out to
+# pdflatex / bibtex / makeindex / synctex at runtime. Since TeX Live is
+# several GB, we use the host's install via `flatpak-spawn --host` rather
+# than bundling it. That requires `--talk-name=org.freedesktop.Flatpak`,
+# which Flathub reviewers will flag as a sandbox hole. Alternatives if a
+# reviewer objects:
+#   1. Build against the `org.freedesktop.Sdk.Extension.texlive` SDK
+#      extension and use the in-sandbox binaries. Adds a few hundred MB.
+#   2. Ship without compile support and point users at `flatpak override
+#      --user --talk-name=org.freedesktop.Flatpak app.silktex.SilkTex`.
+app-id: app.silktex.SilkTex
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: silktex
+
+finish-args:
+  # Basics for a GUI app.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Online LaTeX packages, biblatex online lookups, documentation links.
+  - --share=network
+
+  # Users keep .tex projects anywhere on their disk; the editor is
+  # inherently a file-system tool.  `host` is kept here to match the
+  # behaviour of other LaTeX editors on Flathub (TeXstudio, Setzer, Kile).
+  - --filesystem=host
+
+  # Per-user config + cache (snippets.cfg, silktex.ini, compile logs).
+  - --filesystem=xdg-config/silktex:create
+  - --filesystem=xdg-cache/silktex:create
+
+  # Let the user launch the compiled PDF in an external viewer via the
+  # OpenURI portal (no extra filesystem access needed).
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+  # Run host-installed TeX Live. See the note at the top of this file.
+  - --talk-name=org.freedesktop.Flatpak
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/gtk-doc
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: silktex
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+      - -Dprefix=/app
+    sources:
+      # Flathub requires reproducible sources. Replace `commit:` with the
+      # exact SHA of the tag you are publishing (CI keeps this in sync,
+      # see the `Update Flathub manifest` workflow in the SilkTex repo).
+      - type: git
+        url: https://github.com/DERK0CHER/SilkTex.git
+        tag: v0.9.1
+        commit: ecc2019deedb42724b1061b7ff27a5c2e8dbb4f0
+        x-checker-data:
+          type: git
+          tag-pattern: '^v([\d.]+)$'
