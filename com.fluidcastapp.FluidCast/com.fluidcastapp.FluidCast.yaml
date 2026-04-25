@@ -1,0 +1,108 @@
+app-id: com.fluidcastapp.FluidCast
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: fluidcast
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --talk-name=org.mpris.MediaPlayer2.*
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=xdg-run/pipewire-0
+  - --system-talk-name=org.freedesktop.NetworkManager
+
+modules:
+  - name: FluidCast
+    buildsystem: simple
+    # Archive extracts to build root as bundle/; scripts and files land alongside it.
+    build-commands:
+      - install -d /app/FluidCast
+      - cp -r bundle/* /app/FluidCast/
+      - chmod +x /app/FluidCast/FluidCast
+      # Remove host-compiled GL/Vulkan loader libs so the Flatpak runtime's versions are
+      # used instead. These loaders do runtime driver/ICD discovery at host system paths
+      # that don't exist inside the Flatpak sandbox, causing a null-pointer jump on startup.
+      # X11/xcb libs are kept — they are stable protocol libs, and some (e.g. libXpresent)
+      # are not present in org.freedesktop.Platform.
+      - rm -f /app/FluidCast/lib/libGL.so.1
+      - rm -f /app/FluidCast/lib/libGLX.so.0
+      - rm -f /app/FluidCast/lib/libEGL.so.1
+      - rm -f /app/FluidCast/lib/libGLdispatch.so.0
+      - rm -f /app/FluidCast/lib/libvulkan.so.1
+      # Remove bundled glibc and GCC runtime libs. Loading a different glibc than the
+      # Flatpak runtime's own ld-linux will crash the process; the runtime provides these.
+      - rm -f /app/FluidCast/lib/libc.so.6
+      - rm -f /app/FluidCast/lib/libm.so.6
+      - rm -f /app/FluidCast/lib/libdl.so.2
+      - rm -f /app/FluidCast/lib/libpthread.so.0
+      - rm -f /app/FluidCast/lib/libresolv.so.2
+      - rm -f /app/FluidCast/lib/libgcc_s.so.1
+      - rm -f /app/FluidCast/lib/libstdc++.so.6
+      - rm -f /app/FluidCast/lib/libgomp.so.1
+      - rm -f /app/FluidCast/lib/libatomic.so.1
+      # Remove bundled GTK/GLib/Wayland stack. The Fedora 43 gdk-pixbuf uses glycin for
+      # SVG loading which is not available in the runtime; the runtime's GTK3 stack is
+      # clean and must be used for icon/image loading to work.
+      - rm -f /app/FluidCast/lib/libgtk-3.so.0 /app/FluidCast/lib/libgdk-3.so.0
+      - rm -f /app/FluidCast/lib/libgdk_pixbuf-2.0.so.0 /app/FluidCast/lib/librsvg-2.so.2
+      - rm -f /app/FluidCast/lib/libglib-2.0.so.0 /app/FluidCast/lib/libgio-2.0.so.0
+      - rm -f /app/FluidCast/lib/libgobject-2.0.so.0 /app/FluidCast/lib/libgmodule-2.0.so.0
+      - rm -f /app/FluidCast/lib/libcairo.so.2 /app/FluidCast/lib/libcairo-gobject.so.2
+      - rm -f /app/FluidCast/lib/libepoxy.so.0
+      - rm -f /app/FluidCast/lib/libpango-1.0.so.0 /app/FluidCast/lib/libpangocairo-1.0.so.0 /app/FluidCast/lib/libpangoft2-1.0.so.0
+      - rm -f /app/FluidCast/lib/libatk-1.0.so.0 /app/FluidCast/lib/libatk-bridge-2.0.so.0
+      - rm -f /app/FluidCast/lib/libharfbuzz.so.0 /app/FluidCast/lib/libharfbuzz-icu.so.0
+      - rm -f /app/FluidCast/lib/libfontconfig.so.1 /app/FluidCast/lib/libfreetype.so.6 /app/FluidCast/lib/libfribidi.so.0
+      - rm -f /app/FluidCast/lib/libwayland-client.so.0 /app/FluidCast/lib/libwayland-cursor.so.0
+      - rm -f /app/FluidCast/lib/libwayland-egl.so.1 /app/FluidCast/lib/libwayland-server.so.0
+      - rm -f /app/FluidCast/lib/libxkbcommon.so.0
+      # TLS/crypto stack — Fedora-compiled versions expect Fedora crypto-policy config
+      # files absent in Flatpak; use runtime's versions instead.
+      - rm -f /app/FluidCast/lib/libgnutls.so.30
+      - rm -f /app/FluidCast/lib/libgcrypt.so.20
+      - rm -f /app/FluidCast/lib/libgpg-error.so.0
+      - rm -f /app/FluidCast/lib/libhogweed.so.6
+      - rm -f /app/FluidCast/lib/libnettle.so.8
+      - rm -f /app/FluidCast/lib/libp11-kit.so.0
+      - rm -f /app/FluidCast/lib/libtasn1.so.6
+      - rm -f /app/FluidCast/lib/libidn2.so.0
+      - rm -f /app/FluidCast/lib/libunistring.so.5
+      # ALSA — Fedora libasound looks for plugins at /usr/lib64/alsa-lib/ (absent in Flatpak)
+      - rm -f /app/FluidCast/lib/libasound.so.2
+      # D-Bus / systemd — use runtime's versions for proper sandbox socket paths
+      - rm -f /app/FluidCast/lib/libdbus-1.so.3
+      - rm -f /app/FluidCast/lib/libsystemd.so.0
+      # PipeWire — Fedora client lib looks for SPA plugins at /usr/lib64/spa-0.2/ (absent in sandbox)
+      - rm -f /app/FluidCast/lib/libpipewire-0.3.so.0
+      # JACK — not available in Flatpak sandbox
+      - rm -f /app/FluidCast/lib/libjack.so.0
+      - install -Dm755 fluidcast.sh /app/bin/fluidcast
+      - install -Dm644 com.fluidcastapp.FluidCast.desktop /app/share/applications/com.fluidcastapp.FluidCast.desktop
+      - install -Dm644 icons/256/com.fluidcastapp.FluidCast.png /app/share/icons/hicolor/256x256/apps/com.fluidcastapp.FluidCast.png
+      - install -Dm644 icons/128/com.fluidcastapp.FluidCast.png /app/share/icons/hicolor/128x128/apps/com.fluidcastapp.FluidCast.png
+      - install -Dm644 com.fluidcastapp.FluidCast.metainfo.xml /app/share/metainfo/com.fluidcastapp.FluidCast.metainfo.xml
+    sources:
+      # Pre-built Flutter Linux bundle — tarball contains a top-level bundle/ directory.
+      - type: archive
+        url: https://github.com/fluidcastapp/fluidcastapp.github.io/releases/download/v1.1.0/FluidCast-1.1.0-linux-bundle.tar.gz
+        sha256: 5d924862b2319106abb25c151d48c25a38be6384b4c21817d40cb7b003c9f726
+        strip-components: 0
+      - type: script
+        dest-filename: fluidcast.sh
+        commands:
+          - export LD_LIBRARY_PATH=/app/FluidCast/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+          - exec /app/FluidCast/FluidCast "$@"
+      - type: file
+        path: com.fluidcastapp.FluidCast.desktop
+      - type: file
+        path: com.fluidcastapp.FluidCast.metainfo.xml
+      - type: dir
+        path: icons
+        dest: icons
