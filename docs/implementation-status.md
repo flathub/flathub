@@ -93,4 +93,4 @@ OpenKara v0.6.0 is the current stable release. It adds:
 
 ---
 
-*For the full technical roadmap with milestones and phase planning, see [Technical Roadmap](./roadmap.md).*
+_For the full technical roadmap with milestones and phase planning, see [Technical Roadmap](./roadmap.md)._

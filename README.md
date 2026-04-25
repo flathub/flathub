@@ -59,15 +59,14 @@ So my no-compromise solution was born: OpenKara uses open-source AI to separate 
 - **Efficient Stem Storage** — Separated stems are cached compactly to keep library storage practical.
 - **Resumable Separation** — Per-chunk checkpointing means separation resumes from where it left off if the app is closed mid-process.
 
-
 ## OpenMusic Series
 
 OpenKara is part of the **OpenMusic** series, alongside [OpenLoop](https://github.com/thedavidweng/OpenLoop).
 
-| Project | Purpose | Status |
-|---|---|---|
-| [OpenKara](https://github.com/thedavidweng/OpenKara) | Turn local songs into karaoke tracks with on-device AI stem separation and synced lyrics | Active |
-| [OpenLoop](https://github.com/thedavidweng/OpenLoop) | Generate new music locally from prompts, lyrics, and musical parameters | Alpha in development |
+| Project                                              | Purpose                                                                                  | Status               |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------- |
+| [OpenKara](https://github.com/thedavidweng/OpenKara) | Turn local songs into karaoke tracks with on-device AI stem separation and synced lyrics | Active               |
+| [OpenLoop](https://github.com/thedavidweng/OpenLoop) | Generate new music locally from prompts, lyrics, and musical parameters                  | Alpha in development |
 
 The shared philosophy is simple: music tools should be local-first, ownership-friendly, transparent, and useful with the media and hardware you already have.
 
