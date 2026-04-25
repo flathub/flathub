@@ -1,0 +1,82 @@
+id: dev.sprintster.OpenLegato
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: open-legato
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --talk-name=org.freedesktop.portal.Desktop
+  # Read PDFs the user picks. Library writes live in the auto-sandboxed
+  # $XDG_DATA_HOME and need no extra permission.
+  - --filesystem=home:ro
+  # Route GTK file dialogs through xdg-desktop-portal.
+  - --env=GTK_USE_PORTAL=1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/open-legato/cargo
+    CARGO_NET_OFFLINE: 'true'
+    # Tell pnpm it's non-interactive so it doesn't prompt to purge node_modules.
+    CI: 'true'
+
+modules:
+  - name: open-legato
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/ggyorfi/open-legato
+        tag: v1.0.0
+        commit: 024adc02b869f8a0eaad8e3ee6ad4fab0e582913
+
+      # Vendored Rust deps (flatpak-cargo-generator).
+      - cargo-sources.json
+
+      # Vendored Node deps (flatpak-node-generator pnpm mode). Populates
+      # flatpak-node/pnpm-store and writes .npmrc pointing at it.
+      - pnpm-sources.json
+
+      # pnpm itself — the node20 SDK extension doesn't bundle it.
+      - type: file
+        url: https://registry.npmjs.org/pnpm/-/pnpm-10.33.0.tgz
+        sha256: bfcc1bcbad279b13a516c446a75b3c58b6904b45d57a1951411015e50b751a80
+        dest-filename: pnpm.tgz
+
+    build-commands:
+      - set -e
+
+      # --- bootstrap pnpm from the vendored tarball ---
+      - mkdir -p pnpm-boot
+      - tar -xzf pnpm.tgz -C pnpm-boot --strip-components=1
+      - chmod +x pnpm-boot/bin/pnpm.cjs
+      - ln -sf "$PWD/pnpm-boot/bin/pnpm.cjs" pnpm-boot/pnpm
+
+      # --- pnpm install, fully offline, from pre-populated store ---
+      - PATH="$PWD/pnpm-boot:$PATH" pnpm install --frozen-lockfile --offline
+
+      # --- tauri: build Rust backend + Vite frontend, no bundler ---
+      - PATH="$PWD/pnpm-boot:$PATH" pnpm tauri build --no-bundle
+
+      # --- install binary ---
+      - install -Dm755 src-tauri/target/release/open-legato /app/bin/open-legato
+
+      # --- install desktop file + AppStream metainfo ---
+      - install -Dm644 flatpak/dev.sprintster.OpenLegato.desktop
+          /app/share/applications/dev.sprintster.OpenLegato.desktop
+      - install -Dm644 flatpak/dev.sprintster.OpenLegato.metainfo.xml
+          /app/share/metainfo/dev.sprintster.OpenLegato.metainfo.xml
+
+      # --- install icons (renamed to the flatpak ID, as Flathub requires) ---
+      - install -Dm644 src-tauri/icons/32x32.png
+          /app/share/icons/hicolor/32x32/apps/dev.sprintster.OpenLegato.png
+      - install -Dm644 src-tauri/icons/128x128.png
+          /app/share/icons/hicolor/128x128/apps/dev.sprintster.OpenLegato.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png
+          /app/share/icons/hicolor/256x256/apps/dev.sprintster.OpenLegato.png
