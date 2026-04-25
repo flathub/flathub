@@ -65,7 +65,7 @@ OpenKara is part of the **OpenMusic** series, alongside [OpenLoop](https://githu
 
 | Project                                              | Purpose                                                                                  | Status               |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------- |
-| [OpenKara](https://github.com/thedavidweng/OpenKara) | Turn local songs into karaoke tracks with on-device AI stem separation and synced lyrics | Active               |
+| OpenKara                                             | Turn local songs into karaoke tracks with on-device AI stem separation and synced lyrics | Active               |
 | [OpenLoop](https://github.com/thedavidweng/OpenLoop) | Generate new music locally from prompts, lyrics, and musical parameters                  | Alpha in development |
 
 The shared philosophy is simple: music tools should be local-first, ownership-friendly, transparent, and useful with the media and hardware you already have.
