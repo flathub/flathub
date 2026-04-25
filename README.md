@@ -59,6 +59,20 @@ So my no-compromise solution was born: OpenKara uses open-source AI to separate 
 - **Efficient Stem Storage** — Separated stems are cached compactly to keep library storage practical.
 - **Resumable Separation** — Per-chunk checkpointing means separation resumes from where it left off if the app is closed mid-process.
 
+
+## OpenMusic Series
+
+OpenKara is part of the **OpenMusic** series, alongside [OpenLoop](https://github.com/thedavidweng/OpenLoop).
+
+| Project | Purpose | Status |
+|---|---|---|
+| [OpenKara](https://github.com/thedavidweng/OpenKara) | Turn local songs into karaoke tracks with on-device AI stem separation and synced lyrics | Active |
+| [OpenLoop](https://github.com/thedavidweng/OpenLoop) | Generate new music locally from prompts, lyrics, and musical parameters | Alpha in development |
+
+The shared philosophy is simple: music tools should be local-first, ownership-friendly, transparent, and useful with the media and hardware you already have.
+
+---
+
 ## Quick Start
 
 ### Install from Release
@@ -223,64 +237,13 @@ All paths in the database are relative — including CD+G sidecars and MP3+G ZIP
 
 ## Roadmap
 
-### ✅ v0.1 — MVP
+For the detailed, up-to-date implementation status and future plans, see:
 
-- [x] Project scaffolding (Tauri 2 + React + TypeScript + Vite)
-- [x] SQLite database with migration system
-- [x] Audio import with metadata extraction (ID3v2, Vorbis, FLAC)
-- [x] Library search and browsing
-- [x] Audio decode and playback (symphonia + cpal)
-- [x] Playback state machine (play / pause / seek / volume)
-- [x] Demucs v4 ONNX stem separation with progress tracking
-- [x] Stems caching (hash-based, no re-inference on replay)
-- [x] Karaoke mode toggle (original / instrumental)
-- [x] Synced lyrics fetch (LRCLIB → embedded → sidecar .lrc)
-- [x] Lyrics display with rAF-based sync and click-to-seek
-- [x] Per-song lyrics timing offset
-- [x] First-launch AI model bootstrap with background download
-- [x] Portable library system with relative paths
-- [x] Full frontend UI (sidebar, player, lyrics panel, settings)
-- [x] Queue panel with play next, drag reorder, and auto-advance
-- [x] Keyboard shortcuts (space, arrows)
-- [x] Drag-and-drop file import
-- [x] CI/CD pipeline (macOS, Windows, Linux)
-- [x] Release automation (tag → GitHub Release with binaries)
+- **[Implementation Status](./docs/implementation-status.md)** — Completed milestones, released versions, and planned features
+- **[Technical Roadmap](./docs/design-docs/roadmap.md)** — Architecture phases, technical decisions, and risk mitigations
+- **[Milestones](./docs/design-docs/milestones.md)** — High-level project milestones and timeline
 
-### v0.2.0 — Released
-
-OpenKara v0.2.0 is the release that established the current core app flow.
-
-- [x] CD+G sidecar playback for same-name audio + `.cdg` pairs
-- [x] MP3+G ZIP import and playback support
-- [x] Managed CD+G library storage and pairing disambiguation
-- [x] Second-display fullscreen audience window
-- [x] 4-stem volume mixer with collapsible UI
-- [x] Dual separation modes (2-stem / 4-stem) with settings persistence
-- [x] Efficient compressed stem storage
-- [x] Resumable separation with per-chunk checkpointing
-- [x] Multi-threaded ONNX inference optimization
-- [x] Settings system (stem mode configuration)
-- [x] UI polish and transitions
-- [x] Error toasts and user-facing error messages
-- [x] App icon and branding
-
-### v0.4.0 — Released
-
-OpenKara v0.4.0 is the current stable release. It adds:
-
-- AirPlay support for casting playback to compatible devices
-- Improved player behavior and layout at narrow window widths
-- Visual refinements to the Windows app appearance
-- Better preservation of original track metadata on import
-- WinGet installation support on Windows
-
-### 📋 Future
-
-- **Mic Input & Vocal Effects** — Microphone capture, reverb, echo, volume mix
-- **Saved Playlists & Singer Rotation** — Named playlists, singer assignment, and stronger turn-based queue workflows
-- **Pitch & Key Shift** — Real-time pitch shifting of the accompaniment track
-- **Session Recording** — Record vocal performances, export as audio
-- **CJK Transliteration** — Romaji / Pinyin display alongside original lyrics
+---
 
 ## Development
 
