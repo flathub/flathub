@@ -1,0 +1,199 @@
+id: com.hannes_campidell.MelodicMix
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: melodicmix
+finish-args:
+    - --share=ipc
+    - --socket=fallback-x11
+    - --talk-name=org.kde.StatusNotifierWatcher
+    - --socket=wayland
+    - --device=dri
+    - --filesystem=xdg-run/pipewire-0:ro
+    - --env=LV2_PATH=/app/lib/lv2:/app/extensions/Plugins/lv2
+    - --env=LADSPA_PATH=/app/lib/ladspa
+cleanup:
+    - '*.a'
+    - '*.h'
+    - '*.la'
+    - /bin/analyseplugin
+    - /bin/applyplugin
+    - /bin/listplugins
+    - /include
+    - /lib/pkgconfig
+    - /lib/python*
+    - /share/info
+add-extensions:
+    org.freedesktop.LinuxAudio.Plugins:
+        directory: extensions/Plugins
+        version: '25.08'
+        add-ld-path: lib
+        merge-dirs: lv2
+        subdirectories: true
+        no-autodownload: true
+    org.freedesktop.LinuxAudio.Plugins.Calf:
+        directory: extensions/Plugins/Calf
+        version: '25.08'
+        add-ld-path: lib
+        merge-dirs: lv2
+        autodelete: false
+        subdirectories: true
+    org.freedesktop.LinuxAudio.Plugins.LSP:
+        directory: extensions/Plugins/LSP
+        version: '25.08'
+        add-ld-path: lib
+        merge-dirs: lv2
+        autodelete: false
+        subdirectories: true
+    org.freedesktop.LinuxAudio.Plugins.MDA:
+        directory: extensions/Plugins/MDA
+        version: '25.08'
+        add-ld-path: lib
+        merge-dirs: lv2
+        autodelete: false
+        subdirectories: true
+modules:
+    - name: melodicmix
+      buildsystem: cmake-ninja
+      config-opts:
+          - -DENABLE_LIBPORTAL=1
+      sources:
+        - type: git
+          url: https://gitlab.com/hannescam/melodicmix
+          commit: 73574293e8472499e172e1dd54499108eee769ad
+      post-install:
+        - mkdir -pm755 $FLATPAK_DEST/extensions/Presets
+        - mkdir -pm755 $FLATPAK_DEST/extensions/Plugins
+      modules:
+        - shared-modules/linux-audio/lv2.json
+        - shared-modules/linux-audio/lilv.json
+        - shared-modules/linux-audio/fftw3f.json
+        - name: bs2b
+          rm-configure: true
+          sources:
+            - type: archive
+              url: https://downloads.sourceforge.net/sourceforge/bs2b/libbs2b-3.1.0.tar.gz
+              sha256: 6aaafd81aae3898ee40148dd1349aab348db9bfae9767d0e66e0b07ddd4b2528
+            - type: script
+              dest-filename: autogen.sh
+              commands:
+                - cp -p /usr/share/automake-*/config.{sub,guess} build-aux
+                - autoreconf -vfi
+            - type: patch
+              path: patch/bs2b/001-fix-automake-dist-lzma.patch
+        - name: qt6-graphs
+          buildsystem: cmake-ninja
+          sources:
+            - type: git
+              url: https://github.com/qt/qtgraphs.git
+              tag: v6.10.2
+              commit: 6cd2b17ad3828029520c5b590060bff91ac43ceb
+              x-checker-data:
+                type: git
+                tag-pattern: ^v([\d.]+)$
+                //: make sure version matches KDE runtime version of org.kde.Platform
+                versions:
+                  - '>': v6.9
+                  - '<': v6.11
+          post-install:
+              - install $FLATPAK_DEST/lib/*-linux-gnu/*.so $FLATPAK_DEST/lib/*-linux-gnu/*.so.* $FLATPAK_DEST/lib
+        - name: libsigc++
+          buildsystem: meson
+          config-opts:
+            - -Dbuild-examples=false
+          sources:
+            - type: archive
+              url: https://download.gnome.org/sources/libsigc++/3.6/libsigc++-3.6.0.tar.xz
+              sha256: c3d23b37dfd6e39f2e09f091b77b1541fbfa17c4f0b6bf5c89baef7229080e17
+              x-checker-data:
+                type: gnome
+                name: libsigc++
+                stable-only: true
+          cleanup:
+            - /lib/sigc++*
+        - name: libebur128
+          buildsystem: cmake-ninja
+          config-opts:
+            - -DCMAKE_BUILD_TYPE=Release
+            - -DBUILD_STATIC_LIBS=OFF
+            - -DCMAKE_INSTALL_LIBDIR=lib
+            - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          sources:
+            - type: git
+              url: https://github.com/jiixyj/libebur128
+              tag: v1.2.6
+              commit: 67b33abe1558160ed76ada1322329b0e9e058b02
+              x-checker-data:
+                type: json
+                url: https://api.github.com/repos/jiixyj/libebur128/releases/latest
+                tag-query: .tag_name
+                version-query: $tag | sub("^jq-"; "")
+                timestamp-query: .published_at
+        - name: soundtouch
+          buildsystem: cmake-ninja
+          sources:
+            - type: git
+              url: https://codeberg.org/soundtouch/soundtouch.git
+              tag: 2.4.0
+              commit: d994965fbbcf0f6ceeed0e72516968130c2912f0
+              x-checker-data:
+                type: git
+                tag-pattern: ^([\d.]+)$
+                versions: 
+                  - !=: 2.3.2
+          cleanup:
+            - /bin
+            - /lib/cmake
+            - /share/doc
+        - name: nlohmann-json
+          buildsystem: cmake-ninja
+          config-opts:
+            - -DCMAKE_BUILD_TYPE=Release
+            - -DJSON_BuildTests=false
+          sources:
+            - type: git
+              url: https://github.com/nlohmann/json
+              tag: v3.12.0
+              commit: 55f93686c01528224f448c19128836e7df245f72
+              x-checker-data:
+                type: json
+                url: https://api.github.com/repos/nlohmann/json/releases/latest
+                tag-query: .tag_name
+                version-query: $tag | sub("^jq-"; "")
+                timestamp-query: .published_at
+        - name: libportal
+          buildsystem: meson
+          config-opts:
+            - -Ddocs=false
+            - -Dbackend-qt6=enabled
+            - -Dvapi=false
+          sources:
+            - type: git
+              url: https://github.com/flatpak/libportal.git
+              //: use commit from master as we need these unreleased changes to build on qt 6.9
+              commit: 796053d2eebe4532aad6bd3fd80cdf3b197806ec
+        - name: gsl
+          sources:
+            - type: archive
+              url: https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz
+              sha256: 6a99eeed15632c6354895b1dd542ed5a855c0f15d9ad1326c6fe2b2c9e423190
+              x-checker-data:
+                type: anitya
+                project-id: 1267
+                stable-only: true
+                url-template: https://ftp.gnu.org/gnu/gsl/gsl-$version.tar.gz
+        - name: tbb
+          buildsystem: cmake-ninja
+          builddir: true
+          config-opts:
+            - -DTBB_TEST=OFF
+          sources:
+            - type: archive
+              url: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2022.3.0.tar.gz
+              sha256: 01598a46c1162c27253a0de0236f520fd8ee8166e9ebb84a4243574f88e6e50a
+              x-checker-data:
+                type: anitya
+                project-id: 227581
+                stable-only: true
+                url-template: https://github.com/oneapi-src/oneTBB/archive/refs/tags/v$version.tar.gz
+
