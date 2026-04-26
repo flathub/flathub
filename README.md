@@ -167,33 +167,30 @@ On first launch, OpenKara automatically downloads the standard `openkara-models`
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Tauri Frontend (React)                   │
-│  ┌────────────────┐               ┌──────────────────────┐  │
-│  │  File Import   │               │ Karaoke Player       │  │
-│  │   & Library    │               │ / Mixer              │  │
-│  │                │               │ (lyrics sync)        │  │
-│  └────────────────┘               └──────────────────────┘  │
-│  ┌────────────────┐               ┌──────────────────────┐  │
-│  │   Playback     │               │ Progress & Volume    │  │
-│  │   Controls     │               │ Controls             │  │
-│  └────────────────┘               └──────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│                    Tauri Rust Backend                       │
-│  ┌────────────────┐               ┌──────────────────────┐  │
-│  │   Audio Decode │               │  AI Stem Separation  │  │
-│  │    & Playback  │               │ (Demucs v4 / ONNX)   │  │
-│  └────────────────┘               └──────────────────────┘  │
-│  ┌────────────────┐               ┌──────────────────────┐  │
-│  │  Metadata      │               │   Lyrics Fetcher     │  │
-│  │   Reader       │               │ (LRCLIB + embedded)  │  │
-│  └────────────────┘               └──────────────────────┘  │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │             Portable Library                          │  │
-│  │        (SQLite + media files + stems)                 │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph FE["Tauri Frontend (React)"]
+    FI["File Import & Library"]
+    KP["Karaoke Player / Mixer"]
+    PC["Playback Controls"]
+  end
+
+  subgraph BE["Tauri Rust Backend"]
+    AD["Audio Decode & Playback"]
+    AS["AI Stem Separation<br/>(Demucs v4 / ONNX)"]
+    MR["Metadata Reader"]
+    LF["Lyrics Fetcher<br/>(LRCLIB + embedded)"]
+    PL["Portable Library<br/>(SQLite + media files + stems)"]
+  end
+
+  FE --> BE
+  FI --> AD
+  KP --> AS
+  PC --> AD
+  AD --> PL
+  AS --> PL
+  MR --> LF
+  LF --> PL
 ```
 
 ## Supported Formats
