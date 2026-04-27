@@ -1,10 +1,10 @@
 # Flatpak manifest for Tuneline.
-# Ships a pre-built Linux tarball and builds libmpv as nested modules,
-# adapted from io.github.celluloid_player.Celluloid.
+# Ships a pre-built Linux tarball and builds the libmpv stack as nested
+# modules (adapted from io.github.celluloid_player.Celluloid).
 
 app-id: app.tuneline.Tuneline
 runtime: org.freedesktop.Platform
-runtime-version: "24.08"
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 command: tuneline
 
@@ -15,8 +15,8 @@ finish-args:
   - --socket=wayland
   - --socket=pulseaudio
   - --device=dri
-  - --talk-name=org.freedesktop.Notifications
-  # flutter_secure_storage_linux uses libsecret (DBus Secret Service).
+  # flutter_secure_storage_linux talks to the SecretService over D-Bus
+  # via libsecret directly; there is no portal-based equivalent today.
   - --talk-name=org.freedesktop.secrets
 
 cleanup:
@@ -27,30 +27,8 @@ cleanup:
   - "*.a"
 
 modules:
-  # libmpv runtime stack (ffmpeg, libass, libplacebo, libmpv), adapted
-  # from Celluloid. media_kit dlopens libmpv.so.2 from /app/lib.
-
-  - name: ffmpeg
-    cleanup:
-      - /include
-      - /lib/pkgconfig
-      - /share/ffmpeg/examples
-    config-opts:
-      - --enable-shared
-      - --disable-static
-      - --enable-gnutls
-      - --enable-gpl
-      - --disable-doc
-      - --disable-programs
-    sources:
-      - type: archive
-        url: https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz
-        sha256: b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a
-        x-checker-data:
-          type: anitya
-          project-id: 5405
-          stable-only: true
-          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+  # libmpv runtime stack (libass, libplacebo, libmpv) — ffmpeg ships in
+  # the freedesktop runtime. media_kit dlopens libmpv.so.2 from /app/lib.
 
   - name: libass
     cleanup:
@@ -72,7 +50,6 @@ modules:
   - name: libplacebo
     buildsystem: meson
     config-opts:
-      - -Dlibdir=lib  # meson defaults to lib64 on x86_64; force lib so libmpv's pkg-config can see libplacebo.pc
       - -Ddemos=false  # skips plplay and its Nuklear submodule
     cleanup:
       - /include
@@ -98,7 +75,6 @@ modules:
       - /share/zsh
     buildsystem: meson
     config-opts:
-      - -Dlibdir=lib  # match libplacebo so libmpv.so lands in /app/lib where media_kit dlopen()s it
       - -Dlibmpv=true
       - -Dbuild-date=false
       - -Dalsa=disabled
@@ -116,29 +92,6 @@ modules:
           stable-only: true
           url-template: https://github.com/mpv-player/mpv/archive/v$version.tar.gz
 
-  - name: libsecret
-    # flutter_secure_storage_linux dlopens libsecret-1.so.0 (not shipped in the freedesktop runtime).
-    buildsystem: meson
-    config-opts:
-      - -Dlibdir=lib  # meson defaults to lib64 on x86_64; force lib so the linker finds it
-      - -Dmanpage=false
-      - -Dgtk_doc=false
-      - -Dvapi=false
-      - -Dintrospection=false
-      - -Dbash_completion=disabled
-      - -Dtpm2=false
-    cleanup:
-      - /include
-      - /lib/pkgconfig
-      - /share/man
-    sources:
-      - type: archive
-        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz
-        sha256: 6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e
-        x-checker-data:
-          type: gnome
-          name: libsecret
-
   - name: tuneline
     buildsystem: simple
     build-commands:
@@ -148,21 +101,15 @@ modules:
       - install -Dm755 tuneline /app/lib/tuneline/tuneline
       - mkdir -p /app/bin
       - ln -s /app/lib/tuneline/tuneline /app/bin/tuneline
-      - install -Dm644 app.tuneline.Tuneline.desktop /app/share/applications/app.tuneline.Tuneline.desktop
-      - install -Dm644 app.tuneline.Tuneline.metainfo.xml /app/share/metainfo/app.tuneline.Tuneline.metainfo.xml
-      - install -Dm644 app.tuneline.Tuneline.png /app/share/icons/hicolor/512x512/apps/app.tuneline.Tuneline.png
+      - install -Dm644 share/applications/app.tuneline.Tuneline.desktop /app/share/applications/app.tuneline.Tuneline.desktop
+      - install -Dm644 share/metainfo/app.tuneline.Tuneline.metainfo.xml /app/share/metainfo/app.tuneline.Tuneline.metainfo.xml
+      - install -Dm644 share/icons/hicolor/512x512/apps/app.tuneline.Tuneline.png /app/share/icons/hicolor/512x512/apps/app.tuneline.Tuneline.png
     sources:
       - type: archive
         url: https://tuneline.app/downloads/tuneline-0.1.0-linux-x86_64.tar.gz
-        sha256: 82db0df492cf21b4a2e1bafe6f1dd1ae4cab07d3b14105149ec17e4490b8c1e8
+        sha256: dcb07d7ca26bc2e46df0b86d9996cec6d0fe41740e2eaed7a88b2979fdda0dfe
         x-checker-data:
           type: anitya
           project-id: 389740
           stable-only: true
           url-template: https://tuneline.app/downloads/tuneline-$version-linux-x86_64.tar.gz
-      - type: file
-        path: app.tuneline.Tuneline.desktop
-      - type: file
-        path: app.tuneline.Tuneline.metainfo.xml
-      - type: dir
-        path: icons
