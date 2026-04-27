@@ -1,0 +1,241 @@
+app-id: app.vibevox.VibeVox
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: vibevox-launch
+
+# ── Flathub Submission Manifest ──────────────────────────────────────────────
+# App ID: app.vibevox.VibeVox
+# Domain: vibevox.app (owned) → reversed → app.vibevox → App ID: app.vibevox.VibeVox
+# Strategy: extra-data — downloads the pre-built PyInstaller tarball at install time
+# PHASE STATUS: Phase 1 (extra-data fallback)
+# Phase 2 native build: app.vibevox.VibeVox-native.yml
+# Switch to Phase 2 after flatpak-builder-lint validation passes.
+#
+# BEFORE SUBMITTING TO FLATHUB:
+#   1. Build:   .venv/bin/pyinstaller build_linux.spec --noconfirm
+#   2. Package: tar -czf VibeVox-linux-v1.5.5.tar.gz -C dist VibeVox
+#   3. Upload:  GitHub Releases → tag v1.5.5 → VibeVox-linux-v1.5.5.tar.gz
+#   4. Hash:    sha256sum VibeVox-linux-v1.5.5.tar.gz  →  paste into sha256 below
+#   5. Size:    wc -c VibeVox-linux-v1.5.5.tar.gz      →  paste into size below
+#   6. Lint:    flatpak-builder-lint manifest app.vibevox.VibeVox.yml
+#   7. Fork:    github.com/flathub/flathub → branch: new-pr/app.vibevox.VibeVox
+#   8. Add:     this file as app.vibevox.VibeVox.yml in the new-pr branch
+#   9. PR:      open against the new-pr branch (NOT main)
+#
+# Domain verification (required for Verified badge):
+#   File:    https://vibevox.app/.well-known/org.flathub.VerifiedApps.txt
+#   Content: app.vibevox.VibeVox
+#
+# NOTE: extra-data sources are fetched at install time, not build time.
+# Pre-built binaries are explicitly allowed under this scheme.
+# See: https://docs.flatpak.org/en/latest/module-sources.html#extra-data
+
+finish-args:
+  # Network: Groq / OpenAI / Gemini / Supabase API calls
+  - --share=network
+  - --share=ipc
+  # Display: Wayland-native with X11/XWayland fallback
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio: microphone input via PipeWire (covers PulseAudio transparently on modern distros)
+  - --socket=pulseaudio
+  # Input devices: required for dotool/ydotool text injection via /dev/uinput
+  # NOTE: --device=input requires Flatpak >= 1.16.0 + manual Flathub exception
+  # Exception rationale: text injection via /dev/uinput is the app's core output mechanism
+  - --device=input
+  - --require-version=1.16.0
+  # D-Bus: desktop notifications + system tray
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # D-Bus: Secret Service / keyring (API key storage)
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: VibeVox
+    buildsystem: simple
+    build-commands:
+      # Create directory structure
+      - install -d /app/lib/vibevox /app/bin
+      - install -d /app/share/applications
+      - install -d /app/share/metainfo
+      - install -d /app/share/icons/hicolor/512x512/apps
+      - install -d /app/share/icons/hicolor/symbolic/apps
+
+      # Unpack PyInstaller binary (available in /app after extra-data install)
+      - cp -r VibeVox/. /app/lib/vibevox/
+
+      # App icon (512x512 raster)
+      - install -Dm644 vibevox_icon_512.png /app/share/icons/hicolor/512x512/apps/app.vibevox.VibeVox.png
+
+      # Symbolic icon (GNOME HighContrast / Kudos)
+      - install -Dm644 linux/icons/hicolor/symbolic/apps/app.vibevox.VibeVox-symbolic.svg /app/share/icons/hicolor/symbolic/apps/app.vibevox.VibeVox-symbolic.svg
+
+      # Launcher wrapper — sets Qt env vars before exec
+      - |
+        cat > /app/bin/vibevox-launch << 'LAUNCH_EOF'
+        #!/bin/bash
+        # VibeVox Flatpak launcher
+        # Forces Wayland platform plugin where available; falls back to xcb (X11/XWayland)
+        export LD_LIBRARY_PATH="/app/lib/vibevox:${LD_LIBRARY_PATH}"
+        export QT_PLUGIN_PATH="/app/lib/vibevox/PySide6/Qt/plugins"
+        export QT_QPA_PLATFORM_PLUGIN_PATH="/app/lib/vibevox/PySide6/Qt/plugins/platforms"
+        export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+        # PipeWire quantum lock: prevents WirePlumber suspend + VAD jitter
+        export PIPEWIRE_QUANTUM="${PIPEWIRE_QUANTUM:-256/16000}"
+        export PIPEWIRE_LATENCY="${PIPEWIRE_LATENCY:-256/16000}"
+        exec /app/lib/vibevox/VibeVox "$@"
+        LAUNCH_EOF
+      - chmod +x /app/bin/vibevox-launch
+
+      # Desktop entry
+      - |
+        cat > /app/share/applications/app.vibevox.VibeVox.desktop << 'DESKTOP_EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=VibeVox
+        GenericName=Voice Dictation
+        Comment=AI voice dictation for Hungarian, Slovak, Polish and Czech
+        Exec=vibevox-launch
+        Icon=app.vibevox.VibeVox
+        Categories=Utility;Audio;Accessibility;
+        Keywords=voice;dictation;speech;stt;transcription;hungarian;slovak;polish;czech;whisper;
+        StartupNotify=true
+        StartupWMClass=VibeVox
+        Terminal=false
+        DESKTOP_EOF
+
+      # MetaInfo (Flathub requires .metainfo.xml — NOT .appdata.xml)
+      - |
+        cat > /app/share/metainfo/app.vibevox.VibeVox.metainfo.xml << 'META_EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!-- Copyright 2026 VibeVox / Európa Trade Stúdió LLC -->
+        <component type="desktop-application">
+          <id>app.vibevox.VibeVox</id>
+          <name>VibeVox</name>
+          <summary>AI voice dictation for Hungarian, Slovak, Polish and Czech</summary>
+          <metadata_license>CC0-1.0</metadata_license>
+          <project_license>LicenseRef-proprietary=https://vibevox.app/legal</project_license>
+          <developer id="app.vibevox">
+            <name>VibeVox</name>
+          </developer>
+          <launchable type="desktop-id">app.vibevox.VibeVox.desktop</launchable>
+
+          <description>
+            <p>
+              VibeVox is a privacy-first speech-to-text and voice dictation application
+              for Linux — distributed as a Flatpak and built natively for Wayland.
+              Hold a hotkey, speak naturally, and the transcription appears in any
+              focused window: browser, code editor, email client, or document editor.
+              Designed for Central and Eastern European languages — Hungarian, Slovak,
+              Polish, and Czech — with full Wayland GlobalShortcuts Portal support and
+              compositor-agnostic text injection via dotool.
+            </p>
+            <p>Key features:</p>
+            <ul>
+              <li>Real-time transcription via Groq Whisper (EU Frankfurt servers)</li>
+              <li>True Zero Access privacy: no screenshots, no clipboard snooping, no background listening</li>
+              <li>Intelligent filler-word removal (ő/ű/ą/č-aware for HU, SK, PL, CZ)</li>
+              <li>Custom vocabulary for names, brands and technical terms</li>
+              <li>Managed Cloud (180 min/month free) or Bring Your Own API Key</li>
+              <li>Native PySide6 app — no Electron, &lt;150 MB RAM active</li>
+              <li>Full Wayland support: GlobalShortcuts Portal, dotool injection</li>
+              <li>Hungarian and Slovak UI localisation</li>
+            </ul>
+          </description>
+
+          <screenshots>
+            <screenshot type="default">
+              <caption>Recent Dictations — transcribed text ready to copy or review</caption>
+              <image>https://raw.githubusercontent.com/Joe-ETS/vibevox-releases/main/screenshots/history.png</image>
+            </screenshot>
+            <screenshot>
+              <caption>Milestones — gamified dictation goals inspired by great literary works</caption>
+              <image>https://raw.githubusercontent.com/Joe-ETS/vibevox-releases/main/screenshots/milestones.png</image>
+            </screenshot>
+            <screenshot>
+              <caption>Built-in Vocabulary Packs — Legal and Medical terms for CEE professionals</caption>
+              <image>https://raw.githubusercontent.com/Joe-ETS/vibevox-releases/main/screenshots/vocabulary.png</image>
+            </screenshot>
+          </screenshots>
+
+          <url type="homepage">https://vibevox.app</url>
+          <url type="bugtracker">https://github.com/Joe-ETS/VibeVox/issues</url>
+          <url type="donation">https://vibevox.app/pricing</url>
+
+          <branding>
+            <color type="primary" scheme_preference="light">#6C5CE7</color>
+            <color type="primary" scheme_preference="dark">#4A42CC</color>
+          </branding>
+
+          <releases>
+            <release version="1.5.5" date="2026-04-19">
+              <url type="details">https://github.com/Joe-ETS/vibevox-releases/releases/tag/v1.5.5</url>
+              <description>
+                <p>VibeVox rebrand release — initial Linux Flatpak distribution.</p>
+                <ul>
+                  <li>Rebranded from Voice Typing by Joe to VibeVox</li>
+                  <li>Floating bubble UI redesign</li>
+                  <li>Full Wayland GlobalShortcuts Portal support</li>
+                  <li>EAA accessibility foundations</li>
+                </ul>
+              </description>
+            </release>
+            <release version="1.5.0" date="2026-04-05">
+              <description>
+                <p>Cloud sync, Hungarian and Slovak localisation, session hard cap, crash reporting.</p>
+              </description>
+            </release>
+          </releases>
+
+          <content_rating type="oars-1.1"/>
+
+          <requires>
+            <internet>always</internet>
+          </requires>
+
+          <keywords>
+            <!-- Funkcionális -->
+            <keyword>voice</keyword>
+            <keyword>dictation</keyword>
+            <keyword>speech-to-text</keyword>
+            <keyword>voice-typing</keyword>
+            <keyword>transcription</keyword>
+            <keyword>whisper</keyword>
+            <!-- Privacy/Tech -->
+            <keyword>privacy</keyword>
+            <keyword>gdpr</keyword>
+            <keyword>byok</keyword>
+            <keyword>eu-hosted</keyword>
+            <!-- Accessibility -->
+            <keyword>rsi</keyword>
+            <keyword>assistive</keyword>
+            <keyword>accessibility</keyword>
+            <!-- CEE lokalizált -->
+            <keyword xml:lang="hu">diktálás</keyword>
+            <keyword xml:lang="pl">dyktowanie</keyword>
+            <keyword xml:lang="cs">dikce</keyword>
+            <keyword xml:lang="sk">diktovanie</keyword>
+          </keywords>
+        </component>
+        META_EOF
+
+    sources:
+      # extra-data: fetched at install time, not build time
+      # Allows distributing the pre-built PyInstaller binary legally on Flathub
+      - type: extra-data
+        filename: VibeVox-linux-v1.5.5.tar.gz
+        url: https://github.com/Joe-ETS/VibeVox-releases/releases/download/v1.5.5/VibeVox-linux-v1.5.5.tar.gz
+        sha256: ea7bb615982fb55e519ddf26fd6231acfb5aa0fb5947c396d1d74e62152b54b1
+        size: 98366744
+        x-checker-data:
+          type: json
+          url: https://raw.githubusercontent.com/Joe-ETS/vibevox-releases/main/version.json
+          version-query: .version
+          url-query: '"https://github.com/Joe-ETS/vibevox-releases/releases/download/v" + $version + "/VibeVox-linux-v" + $version + ".tar.gz"'
+
+      # App icon (fetched from release assets)
+      - type: file
+        url: https://raw.githubusercontent.com/Joe-ETS/vibevox-releases/main/assets/vibevox_icon_512.png
+        sha256: 13645fe4e146cc356e23c9bdad8b69d607ae9c5918f0c08ce53a82c130bf84ee
+        dest-filename: vibevox_icon_512.png
