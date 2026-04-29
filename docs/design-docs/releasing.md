@@ -3,7 +3,7 @@
 ## Release Flow
 
 1. **Trigger**: Go to GitHub Actions → **Release** workflow → **Run workflow**
-2. **Input**: Enter the version number (e.g. `0.4.0`) — do not include the `v` prefix
+2. **Input**: Enter the version number (e.g. `0.7.0`) — do not include the `v` prefix
 3. **Build**: CI builds for all 4 platforms (macOS ARM64, macOS x64, Windows, Linux)
 4. **Publish**: GitHub Release is created automatically with DMG, NSIS installer, and AppImage
 5. **Homebrew**: The tap repo (`thedavidweng/homebrew-tap`) polls for new releases once per day and updates the cask when it detects a new version. Expect up to about 24 hours before the scheduled sync picks it up.

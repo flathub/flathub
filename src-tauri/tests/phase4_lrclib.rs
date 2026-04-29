@@ -11,6 +11,10 @@ fn fetches_synced_lyrics_from_lrclib_get_endpoint() {
             mockito::Matcher::UrlEncoded("album_name".into(), "Parachutes".into()),
             mockito::Matcher::UrlEncoded("duration".into(), "267".into()),
         ]))
+        .match_header(
+            "user-agent",
+            format!("OpenKara/{}", env!("CARGO_PKG_VERSION")).as_str(),
+        )
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(

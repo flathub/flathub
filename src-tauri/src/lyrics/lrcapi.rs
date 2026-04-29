@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 const DEFAULT_BASE_URL: &str = "https://api.lrc.cx";
+const USER_AGENT: &str = concat!("OpenKara/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct LrcApiLyrics {
@@ -39,7 +40,7 @@ impl LrcApiClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             http: reqwest::blocking::Client::builder()
-                .user_agent("OpenKara/0.4.0")
+                .user_agent(USER_AGENT)
                 .build()
                 .expect("reqwest blocking client should build"),
         }

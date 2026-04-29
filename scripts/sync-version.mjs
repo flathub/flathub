@@ -8,6 +8,7 @@ const projectRoot = path.resolve(__dirname, "..");
 
 const packageJsonPath = path.join(projectRoot, "package.json");
 const cargoTomlPath = path.join(projectRoot, "src-tauri", "Cargo.toml");
+const cargoLockPath = path.join(projectRoot, "src-tauri", "Cargo.lock");
 const tauriConfigPath = path.join(projectRoot, "src-tauri", "tauri.conf.json");
 
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
@@ -31,6 +32,25 @@ const nextCargoTomlContent = cargoTomlContent.replace(
 if (cargoTomlContent !== nextCargoTomlContent) {
   await writeFile(cargoTomlPath, nextCargoTomlContent, "utf8");
   updates.push("src-tauri/Cargo.toml");
+}
+
+const cargoLockContent = await readFile(cargoLockPath, "utf8");
+const openKaraCargoLockPackage =
+  /(\[\[package\]\]\nname = "openkara"\nversion = ")([^"]+)(")/;
+if (!openKaraCargoLockPackage.test(cargoLockContent)) {
+  throw new Error(
+    "Could not find openkara package entry in src-tauri/Cargo.lock",
+  );
+}
+
+const nextCargoLockContent = cargoLockContent.replace(
+  openKaraCargoLockPackage,
+  `$1${version}$3`,
+);
+
+if (cargoLockContent !== nextCargoLockContent) {
+  await writeFile(cargoLockPath, nextCargoLockContent, "utf8");
+  updates.push("src-tauri/Cargo.lock");
 }
 
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));

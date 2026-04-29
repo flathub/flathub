@@ -240,13 +240,20 @@ OpenKara v0.2.0 是确立当前核心应用流程的版本。
 
 ### v0.4.0 — 已发布
 
-OpenKara v0.4.0 现在是当前稳定版本。本次更新包含：
+OpenKara v0.4.0 本次更新包含：
 
 - 支持 AirPlay 投放播放内容到兼容设备
 - 改进了窄窗口宽度下的播放器行为与布局
 - 优化了 Windows 应用外观细节
 - 导入时更好地保留原始音轨元数据
 - 支持在 Windows 上通过 WinGet 安装
+
+### v0.7.0 — 当前应用版本
+
+OpenKara v0.7.0 是当前源码和应用版本。本次更新包含：
+
+- 版本元数据同步到前端包、Cargo、Tauri 配置和发布打包校验流程
+- 在线歌词客户端的 User-Agent 跟随编译时应用版本
 
 ### 📋 未来计划
 
@@ -293,7 +300,7 @@ pnpm tauri build             # 生产构建，生成平台特定安装包
 ### CI/CD
 
 - 推送到 `main` 会触发 CI 流程（[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)）— 在 macOS、Windows、Linux 上运行 lint、构建和测试。
-- 推送版本标签（如 `v0.4.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
+- 推送版本标签（如 `v0.7.0`）会触发发布流程（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）— 构建并上传二进制文件到 GitHub Release。
 
 ## 文档
 

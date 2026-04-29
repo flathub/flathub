@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 const DEFAULT_BASE_URL: &str = "https://lrclib.net";
+const USER_AGENT: &str = concat!("OpenKara/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LyricsLookupQuery {
@@ -36,7 +37,7 @@ impl LrcLibClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             http: reqwest::blocking::Client::builder()
-                .user_agent("OpenKara/0.1.0")
+                .user_agent(USER_AGENT)
                 .build()
                 .expect("reqwest blocking client should build"),
         }

@@ -277,7 +277,7 @@ pnpm tauri build             # production build with platform-specific bundle
 ### CI/CD
 
 - Pushes to `main` trigger the CI workflow ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — lint, build, and test on macOS, Windows, and Linux.
-- Pushing a version tag (e.g. `v0.4.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
+- Pushing a version tag (e.g. `v0.7.0`) triggers the release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — builds and attaches binaries to a GitHub Release.
 
 ## Documentation
 

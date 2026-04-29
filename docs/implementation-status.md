@@ -1,6 +1,6 @@
 # Current Implementation Status
 
-> **Last updated:** 2026-04-25 · This file tracks the implementation status and is updated alongside releases.
+> **Last updated:** 2026-04-29 · This file tracks the implementation status and is updated alongside releases.
 
 ## Completed Milestones
 
@@ -72,17 +72,24 @@ OpenKara v0.5.1 adds:
 - [x] Refined desktop titlebar controls placement for better usability
 - [x] Includes lyrics auto-scroll behavior improvements
 
-### ✅ v0.6.0 — Released (Current Stable)
+### ✅ v0.6.0 — Released
 
-OpenKara v0.6.0 is the current stable release. It adds:
+OpenKara v0.6.0 adds:
 
 - [x] Remote Library Support: Fully implemented connection, sync, and playback for Google Drive, Dropbox, and WebDAV providers
 - [x] Secure Credential Storage: Authentication tokens are now securely stored in the system Keychain (macOS) or Credential Manager (Windows)
 - [x] Legal & Privacy: Added dedicated Privacy Policy and Terms of Service disclosures
 
+### ✅ v0.7.0 — Current App Version
+
+OpenKara v0.7.0 is the current source and package version. It includes:
+
+- [x] Version metadata sync across the frontend package, Cargo, Tauri config, and release packaging validation
+- [x] Online lyrics provider User-Agent metadata tied to the compiled app version
+
 ## Planned Future Features
 
-### 🎯 v0.7 and Beyond
+### 🎯 v0.8 and Beyond
 
 - **Mic Input & Vocal Effects** — Microphone capture, reverb, echo, volume mix
 - **Saved Playlists & Singer Rotation** — Named playlists, singer assignment, and stronger turn-based queue workflows

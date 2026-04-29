@@ -13,6 +13,10 @@ fn fetches_highest_scoring_candidate_from_jsonapi() {
             mockito::Matcher::UrlEncoded("artist".into(), "Coldplay".into()),
             mockito::Matcher::UrlEncoded("album".into(), "Parachutes".into()),
         ]))
+        .match_header(
+            "user-agent",
+            format!("OpenKara/{}", env!("CARGO_PKG_VERSION")).as_str(),
+        )
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
