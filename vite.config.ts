@@ -15,6 +15,7 @@ export default defineConfig(async () => ({
     // be collected as part of this package's unit test run.
     include: ["src/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
+    setupFiles: ["./src/test-setup.ts"],
   },
   resolve: {
     alias: {

@@ -12,6 +12,7 @@ interface LyricLineProps {
   adjustedMs: number;
   presentation?: "standard" | "audience";
   lyricsFontStep: number;
+  romanizedText?: string;
 }
 
 const STANDARD_TEXT_SIZE_CLASSES = {
@@ -67,7 +68,8 @@ function areLyricLinePropsEqual(
     previous.line !== next.line ||
     previous.state !== next.state ||
     previous.presentation !== next.presentation ||
-    previous.lyricsFontStep !== next.lyricsFontStep
+    previous.lyricsFontStep !== next.lyricsFontStep ||
+    previous.romanizedText !== next.romanizedText
   ) {
     return false;
   }
@@ -85,6 +87,7 @@ export const LyricLine = memo(function LyricLine({
   adjustedMs,
   presentation = "standard",
   lyricsFontStep,
+  romanizedText,
 }: LyricLineProps) {
   const seek = usePlayerStore((s) => s.seek);
   const isSeekable = state !== "plain";
@@ -234,6 +237,39 @@ export const LyricLine = memo(function LyricLine({
           {line.text}
         </span>
       )}
+      {romanizedText ? (
+        <span
+          className={
+            presentation === "audience"
+              ? "motion-surface font-medium tracking-tight opacity-50"
+              : `motion-surface text-sm font-medium md:text-base ${
+                  state === "plain" || state === "active"
+                    ? "text-[var(--color-text-dim)]"
+                    : state === "past"
+                      ? "text-[var(--color-text-dimmer)]"
+                      : "text-[var(--color-text-dim)]"
+                }`
+          }
+          style={
+            presentation === "audience"
+              ? {
+                  fontSize: audiencePresentationSpec.fontSizePx * 0.55,
+                  lineHeight: audiencePresentationSpec.lineHeightMultiple,
+                  color: colorToCss(
+                    state === "plain" || state === "active"
+                      ? audiencePresentationSpec.activeTextColor
+                      : state === "past"
+                        ? audiencePresentationSpec.pastTextColor
+                        : audiencePresentationSpec.futureTextColor,
+                  ),
+                  opacity: 0.45,
+                }
+              : undefined
+          }
+        >
+          {romanizedText}
+        </span>
+      ) : null}
     </div>
   );
 }, areLyricLinePropsEqual);

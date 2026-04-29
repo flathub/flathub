@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, Edit2, LoaderCircle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  Languages,
+  LoaderCircle,
+} from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
 import { useLyricsAutoScroll } from "@/hooks/use-lyrics-auto-scroll";
 import { useAudiencePlainTextPaging } from "@/hooks/use-audience-plain-text-paging";
@@ -37,6 +43,10 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const offsetMs = useLyricsStore((s) => s.offsetMs);
   const isLoading = useLyricsStore((s) => s.isLoading);
   const rawLrc = useLyricsStore((s) => s.rawLrc);
+  const romanizedLines = useLyricsStore((s) => s.romanizedLines);
+  const isRomanizing = useLyricsStore((s) => s.isRomanizing);
+  const showRomanized = useLyricsStore((s) => s.showRomanized);
+  const toggleRomanized = useLyricsStore((s) => s.toggleRomanized);
   const songId = usePlayerStore((s) => s.snapshot?.song_id);
   const positionMs = usePlayerStore(selectSyncDisplayPositionMs);
   const airPlayOutput = usePlayerStore((s) => s.airPlayOutput);
@@ -164,9 +174,28 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
       {songId && !isAudience ? (
         <>
           <div
-            className="contextual-reveal absolute right-4 top-4 z-10"
+            className="contextual-reveal absolute right-4 top-4 z-10 flex gap-2"
             data-visible={utilityControlsPinned}
           >
+            <Tooltip label={t("lyrics.romanizeTooltip")}>
+              <button
+                type="button"
+                onClick={toggleRomanized}
+                aria-label={t("lyrics.romanizeTooltip")}
+                disabled={isRomanizing}
+                className={`app-panel-surface motion-icon-button rounded-full border p-2 shadow-[0_16px_30px_rgba(0,0,0,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35 ${
+                  showRomanized
+                    ? "border-[color-mix(in_srgb,var(--color-accent)_40%,var(--color-border-light))] bg-[color-mix(in_srgb,var(--color-accent)_18%,var(--color-sidebar))] text-[var(--color-control-primary)]"
+                    : "border-[color-mix(in_srgb,var(--color-border-light)_78%,transparent)] bg-[color-mix(in_srgb,var(--color-sidebar)_76%,transparent)] text-[var(--color-text-dim)] hover:border-[color-mix(in_srgb,var(--color-accent)_28%,var(--color-border-light))] hover:bg-[color-mix(in_srgb,var(--color-hover)_78%,transparent)] hover:text-[var(--color-control-primary)]"
+                }`}
+              >
+                {isRomanizing ? (
+                  <LoaderCircle size={14} className="animate-spin" />
+                ) : (
+                  <Languages size={14} />
+                )}
+              </button>
+            </Tooltip>
             <Tooltip label={t("lyrics.editTooltip")}>
               <button
                 type="button"
@@ -303,6 +332,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
                   adjustedMs={isPlainText ? 0 : adjustedMs}
                   presentation={presentation}
                   lyricsFontStep={lyricsFontStep}
+                  romanizedText={
+                    showRomanized ? romanizedLines[absoluteIndex] : undefined
+                  }
                 />
               </div>
             );
@@ -340,6 +372,9 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
                     adjustedMs={0}
                     presentation={presentation}
                     lyricsFontStep={lyricsFontStep}
+                    romanizedText={
+                      showRomanized ? romanizedLines[idx] : undefined
+                    }
                   />
                 </div>
               ))}

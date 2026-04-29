@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createRomanizer, isLatinScript } from "lyric-romanizer";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import type { LyricLine, LyricsSource } from "@/types/ipc";
@@ -12,11 +13,17 @@ interface LyricsState {
   activeLineIndex: number;
   isLoading: boolean;
 
+  romanizedLines: string[];
+  isRomanizing: boolean;
+  showRomanized: boolean;
+
   fetchLyrics: (songId: string) => Promise<void>;
   setOffset: (songId: string, ms: number) => Promise<void>;
   adjustOffset: (songId: string, deltaMs: number) => Promise<void>;
   saveManualLyrics: (songId: string, text: string) => Promise<boolean>;
   setActiveLineIndex: (index: number) => void;
+  toggleRomanized: () => void;
+  romanizeCurrentLyrics: () => Promise<void>;
   clear: () => void;
 }
 
@@ -28,6 +35,9 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   rawLrc: "",
   activeLineIndex: -1,
   isLoading: false,
+  romanizedLines: [],
+  isRomanizing: false,
+  showRomanized: false,
 
   fetchLyrics: async (songId) => {
     set({
@@ -36,6 +46,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       source: null,
       rawLrc: "",
       activeLineIndex: -1,
+      romanizedLines: [],
+      showRomanized: false,
     });
     try {
       const payload = await api.fetchLyrics(songId);
@@ -115,6 +127,40 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     }
   },
 
+  toggleRomanized: () => {
+    const { showRomanized, romanizedLines, lines } = get();
+    if (!showRomanized && romanizedLines.length === 0 && lines.length > 0) {
+      // First toggle — kick off romanization, then show once ready
+      set({ showRomanized: true });
+      void get().romanizeCurrentLyrics();
+    } else {
+      set({ showRomanized: !showRomanized });
+    }
+  },
+
+  romanizeCurrentLyrics: async () => {
+    const { lines, isRomanizing } = get();
+    if (isRomanizing || lines.length === 0) return;
+
+    const texts = lines.map((l) => l.text);
+    if (isLatinScript(texts)) {
+      set({ romanizedLines: texts, isRomanizing: false });
+      return;
+    }
+
+    set({ isRomanizing: true });
+    try {
+      const romanizer = createRomanizer();
+      const result = await romanizer.romanizeLines(texts);
+      set({ romanizedLines: result.lines });
+    } catch {
+      // Romanization failure is non-fatal; leave lines empty
+      set({ romanizedLines: [] });
+    } finally {
+      set({ isRomanizing: false });
+    }
+  },
+
   clear: () =>
     set({
       songId: null,
@@ -123,5 +169,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       offsetMs: 0,
       rawLrc: "",
       activeLineIndex: -1,
+      romanizedLines: [],
+      isRomanizing: false,
+      showRomanized: false,
     }),
 }));
