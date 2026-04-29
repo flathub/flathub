@@ -28,6 +28,7 @@ pub fn separate_audio(
     decoded_audio: &DecodedAudio,
     mut on_chunk_complete: impl FnMut(usize, usize),
     checkpoint_dir: Option<&Path>,
+    song_hash: &str,
 ) -> Result<SeparationResult> {
     let normalized_audio = preprocess::normalize_audio_for_model(decoded_audio)?;
     let input_frame_count = normalized_audio.samples.len() / normalized_audio.channels;
@@ -40,6 +41,7 @@ pub fn separate_audio(
             target_frame_count,
             &mut on_chunk_complete,
             checkpoint_dir,
+            song_hash,
         );
     }
 
@@ -120,6 +122,7 @@ fn separate_chunked_audio(
     target_frame_count: usize,
     on_chunk_complete: &mut impl FnMut(usize, usize),
     checkpoint_dir: Option<&Path>,
+    song_hash: &str,
 ) -> Result<SeparationResult> {
     let input_frame_count = decoded_audio.samples.len() / decoded_audio.channels;
     let total_chunks = (input_frame_count + target_frame_count - 1) / target_frame_count;
@@ -127,7 +130,7 @@ fn separate_chunked_audio(
     // Write checkpoint manifest and discover already-completed chunks.
     let completed_set: HashSet<usize> = if let Some(dir) = checkpoint_dir {
         let manifest = checkpoint::CheckpointManifest {
-            song_hash: String::new(),
+            song_hash: song_hash.to_string(),
             total_chunks,
             target_frame_count,
             input_frame_count,

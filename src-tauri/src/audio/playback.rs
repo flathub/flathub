@@ -207,13 +207,17 @@ impl PlaybackController {
 
     pub fn snapshot(&mut self, now_ms: u64) -> PlaybackStateSnapshot {
         if let Some(track) = self.current_track.as_mut() {
-            let position_ms = track.position_ms(now_ms);
+            let raw_position = track.position_ms(now_ms);
             let duration_ms = track.duration_ms();
 
-            if position_ms >= duration_ms {
+            // Clamp to duration and stop playback if past the end.
+            let position_ms = if raw_position >= duration_ms {
                 track.base_position_ms = duration_ms;
                 track.started_at_ms = None;
-            }
+                duration_ms
+            } else {
+                raw_position
+            };
 
             let stem_mode = track.stems.as_ref().map(|s| match s {
                 LoadedStems::TwoStem { .. } => "two_stem".to_owned(),
@@ -223,7 +227,7 @@ impl PlaybackController {
             return PlaybackStateSnapshot {
                 song_id: Some(track.song_id.clone()),
                 is_playing: track.started_at_ms.is_some(),
-                position_ms: track.position_ms(now_ms),
+                position_ms,
                 duration_ms: Some(duration_ms),
                 volume: self.volume,
                 stem_volumes: self.stem_volumes,

@@ -37,6 +37,8 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
     let model_bootstrap_status = Arc::new(Mutex::new(model_bootstrap.status.clone()));
 
     app.manage(window_shell_state);
+    let shutdown = Arc::new(AtomicBool::new(false));
+
     app.manage(AppState {
         library: Arc::new(Mutex::new(load_library(app_config.as_ref()))),
         app_data_dir,
@@ -60,6 +62,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         separator_model_cache: Arc::new(Mutex::new(separator::model_cache::ModelCache::default())),
         batch_running: Arc::new(AtomicBool::new(false)),
         batch_cancel: Arc::new(AtomicBool::new(false)),
+        shutdown: Arc::clone(&shutdown),
     });
 
     airplay_stream::spawn_audio_forwarder(Arc::clone(&airplay_audio_tap));
@@ -68,6 +71,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         Arc::clone(&airplay_control_refresh_token),
         Arc::clone(&airplay_audio_tap),
         Arc::clone(&airplay_stream_generation),
+        Arc::clone(&shutdown),
     );
     spawn_playback_position_emitter(app.handle().clone(), playback);
 

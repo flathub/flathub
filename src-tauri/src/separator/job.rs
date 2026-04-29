@@ -101,6 +101,7 @@ pub fn separate_song_into_cache(
         &decoded_audio,
         inference_progress,
         Some(checkpoint_dir.as_path()),
+        song_hash,
     )
     .with_context(|| format!("failed to separate stems for song {song_hash}"))?;
 

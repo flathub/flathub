@@ -19,6 +19,7 @@ pub fn ensure_output_thread(
     playback: Arc<Mutex<PlaybackController>>,
     airplay_audio_tap: Arc<AirPlayAudioTap>,
     airplay_local_output_suppressed: Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
     if started.load(Ordering::SeqCst) {
         return Ok(());
@@ -38,6 +39,7 @@ pub fn ensure_output_thread(
             airplay_audio_tap,
             airplay_local_output_suppressed,
             startup_tx,
+            shutdown,
         ) {
             eprintln!("audio output thread failed to start: {error:#}");
         }
@@ -362,6 +364,7 @@ fn start_output_thread(
     airplay_audio_tap: Arc<AirPlayAudioTap>,
     airplay_local_output_suppressed: Arc<AtomicBool>,
     startup_tx: mpsc::SyncSender<Result<()>>,
+    shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
     let host = cpal::default_host();
     let device = host
@@ -402,10 +405,12 @@ fn start_output_thread(
         .context("failed to start audio output stream")?;
     let _ = startup_tx.send(Ok(()));
 
-    loop {
+    while !shutdown.load(Ordering::Relaxed) {
         thread::sleep(Duration::from_secs(60));
         let _keep_alive = &stream;
     }
+
+    Ok(())
 }
 
 fn forward_rendered_audio_to_airplay(
@@ -437,8 +442,18 @@ fn downmix_for_airplay(samples: &[f32], channels: usize) -> Vec<f32> {
 
     let mut stereo = Vec::with_capacity((samples.len() / channels).saturating_mul(2));
     for frame in samples.chunks(channels) {
-        let left = frame[0];
-        let right = if channels == 1 { frame[0] } else { frame[1] };
+        let (left, right) = match channels {
+            1 => (frame[0], frame[0]),
+            2 => (frame[0], frame[1]),
+            _ => {
+                // For multi-channel audio (e.g., 5.1), mix down to stereo.
+                // Standard downmix: L = FL + 0.707*C + 0.707*SL, R = FR + 0.707*C + 0.707*SR
+                // Without knowing exact layout, average all channels into left and right.
+                let sum: f32 = frame.iter().sum();
+                let avg = sum / channels as f32;
+                (avg, avg)
+            }
+        };
         stereo.push(left);
         stereo.push(right);
     }

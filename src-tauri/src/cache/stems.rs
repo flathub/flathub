@@ -471,6 +471,17 @@ pub fn downgrade_to_two_stem(
         mixed_samples.push(d + b + o);
     }
 
+    // Peak normalization to prevent clipping when stems have high amplitude.
+    let peak = mixed_samples
+        .iter()
+        .map(|s| s.abs())
+        .fold(0.0_f32, f32::max);
+    if peak > 1.0 {
+        for sample in &mut mixed_samples {
+            *sample /= peak;
+        }
+    }
+
     let mixed_audio = crate::audio::decode::DecodedAudio {
         sample_rate: drums_audio.sample_rate,
         channels: drums_audio.channels,

@@ -57,6 +57,7 @@ pub struct AppState {
     pub separator_model_cache: Arc<Mutex<ModelCache<LoadedModel>>>,
     pub batch_running: Arc<AtomicBool>,
     pub batch_cancel: Arc<AtomicBool>,
+    pub shutdown: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

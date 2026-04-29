@@ -297,19 +297,19 @@ export function createPlayerStore(
       },
 
       skipBack: async () => {
-        const { positionMs, snapshot } = get();
+        const { snapshot } = get();
         if (!snapshot?.song_id) return;
 
-        if (positionMs > 3000) {
-          try {
-            const newSnapshot = await api.seek(0);
-            syncPatch({
-              snapshot: newSnapshot,
-              positionMs: newSnapshot.position_ms,
-            });
-          } catch (e) {
-            notifyError(e);
-          }
+        // Always seek to 0 when skipBack is called.
+        // A "previous track" feature would require a history stack, which isn't implemented yet.
+        try {
+          const newSnapshot = await api.seek(0);
+          syncPatch({
+            snapshot: newSnapshot,
+            positionMs: newSnapshot.position_ms,
+          });
+        } catch (e) {
+          notifyError(e);
         }
       },
 

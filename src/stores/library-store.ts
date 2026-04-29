@@ -17,6 +17,14 @@ import type {
   UploadStatusSnapshot,
 } from "@/types/ipc";
 
+function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return ((...args: Parameters<T>) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
 interface LibraryState {
   songs: Song[];
   searchQuery: string;
@@ -77,6 +85,15 @@ function publishLibraryInvalidation() {
   librarySyncRevision += 1;
   librarySyncChannel.publish({ revision: librarySyncRevision });
 }
+
+const debouncedSearch = debounce(async (query: string) => {
+  try {
+    const songs = await api.searchLibrary(query);
+    useLibraryStore.setState({ songs });
+  } catch (e) {
+    notifyError(e);
+  }
+}, 300);
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   songs: [],
@@ -167,7 +184,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // Import LRC files (must happen after audio so songs exist for matching)
       if (lrcPaths.length > 0) {
         const lrcResult = await api.importLyricsFiles(lrcPaths);
-        void lrcResult;
+        if (lrcResult.unmatched.length > 0) {
+          for (const path of lrcResult.unmatched) {
+            notifyError(`Lyrics file could not be matched to a song: ${path}`);
+          }
+        }
       }
 
       // Reload full library to get consistent state
@@ -198,7 +219,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setSearchQuery: (query) => {
     set({ searchQuery: query });
     if (query.trim()) {
-      get().searchSongs(query);
+      debouncedSearch(query);
     } else {
       get().loadLibrary();
     }
@@ -348,7 +369,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   clearUploadStatus: (songId) =>
     set((state) => {
       if (!(songId in state.uploadStatuses)) {
-        return {};
+        return state;
       }
 
       const next = { ...state.uploadStatuses };

@@ -36,6 +36,7 @@ pub(crate) fn spawn_airplay_control_refresh_worker(
     airplay_control_refresh_token: Arc<AtomicU64>,
     airplay_audio_tap: Arc<crate::airplay_stream::AirPlayAudioTap>,
     airplay_stream_generation: Arc<AtomicU64>,
+    shutdown: Arc<AtomicBool>,
 ) {
     spawn_airplay_control_refresh_worker_with_timing(
         airplay_audience_active,
@@ -44,6 +45,7 @@ pub(crate) fn spawn_airplay_control_refresh_worker(
         airplay_stream_generation,
         Duration::from_millis(180),
         Duration::from_millis(25),
+        shutdown,
     );
 }
 
@@ -54,13 +56,14 @@ fn spawn_airplay_control_refresh_worker_with_timing(
     airplay_stream_generation: Arc<AtomicU64>,
     debounce_window: Duration,
     poll_interval: Duration,
+    shutdown: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
         let mut flushed_token = 0u64;
         let mut pending_token: Option<u64> = None;
         let mut pending_since: Option<Instant> = None;
 
-        loop {
+        while !shutdown.load(Ordering::Relaxed) {
             let current_token = airplay_control_refresh_token.load(Ordering::SeqCst);
             if current_token != flushed_token && pending_token != Some(current_token) {
                 pending_token = Some(current_token);
@@ -350,6 +353,7 @@ fn ensure_output_thread(state: &AppState) -> Result<()> {
         state.playback.clone(),
         state.airplay_audio_tap.clone(),
         state.airplay_local_output_suppressed.clone(),
+        state.shutdown.clone(),
     )?;
     Ok(())
 }

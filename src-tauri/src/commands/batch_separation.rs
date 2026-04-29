@@ -69,10 +69,12 @@ pub fn batch_separate(
         .map(|c| c.effective_execution_provider())
         .unwrap_or_default();
 
+    // Open database connection once for all queries.
+    let connection = cache::open_database(&library_root.database_path())
+        .map_err(|e| database_error(e.to_string()))?;
+
     // Resolve the list of song hashes to process.
     let hashes: Vec<String> = if song_ids.is_empty() {
-        let connection = cache::open_database(&library_root.database_path())
-            .map_err(|e| database_error(e.to_string()))?;
         let songs = cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
         songs
             .into_iter()
@@ -80,8 +82,6 @@ pub fn batch_separate(
             .map(|s| s.hash)
             .collect()
     } else {
-        let connection = cache::open_database(&library_root.database_path())
-            .map_err(|e| database_error(e.to_string()))?;
         song_ids
             .into_iter()
             .filter(|song_id| {
@@ -95,8 +95,6 @@ pub fn batch_separate(
     };
 
     // Filter out already-separated songs.
-    let connection = cache::open_database(&library_root.database_path())
-        .map_err(|e| database_error(e.to_string()))?;
     let mut to_separate = Vec::new();
     let mut skipped: usize = 0;
     for hash in &hashes {
