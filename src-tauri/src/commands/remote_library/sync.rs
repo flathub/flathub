@@ -640,6 +640,16 @@ fn publish_song_internal<R: tauri::Runtime>(
     let local_root = state.library_root()?;
     let remote_library_id = remote_library.id().to_owned();
     let remote_root = load_remote_root(&state.app_data_dir, &remote_library)?;
+
+    // When the active library IS the remote library (user is directly working
+    // in a remote library), local_root and remote_root point to the same
+    // directory.  In that case the "copy to remote" step must be skipped —
+    // `copy_directory_recursive` would delete the source before reading it,
+    // destroying stems and media files.  The cloud upload reads from the
+    // working copy via `RegisteredLibrary::working_copy_root()`, so it works
+    // correctly regardless.
+    let same_root = local_root.root() == remote_root.root();
+
     let local_connection = cache::open_database(&local_root.database_path())
         .map_err(|error| database_error(error.to_string()))?;
     let remote_connection = cache::open_database(&remote_root.database_path())
@@ -668,9 +678,11 @@ fn publish_song_internal<R: tauri::Runtime>(
                     "song {song_id} must have cached stems before publishing to a remote library"
                 ))
             })?;
-        let source_stems_dir = local_root.resolve(&format!("stems/{song_id}"));
-        let destination_stems_dir = remote_root.resolve(&format!("stems/{song_id}"));
-        copy_directory_recursive(&source_stems_dir, &destination_stems_dir)?;
+        if !same_root {
+            let source_stems_dir = local_root.resolve(&format!("stems/{song_id}"));
+            let destination_stems_dir = remote_root.resolve(&format!("stems/{song_id}"));
+            copy_directory_recursive(&source_stems_dir, &destination_stems_dir)?;
+        }
         upsert_stem_entry(&remote_connection, &stem_entry)?;
 
         update_remote_song(&remote_connection, song.clone(), "stems_remote")?;
@@ -715,7 +727,9 @@ fn publish_song_internal<R: tauri::Runtime>(
         Ok::<_, CommandError>(())
     } else {
         if let Some(file_path) = song.file_path.as_deref() {
-            copy_remote_song_assets(&local_root, &remote_root, file_path, file_path)?;
+            if !same_root {
+                copy_remote_song_assets(&local_root, &remote_root, file_path, file_path)?;
+            }
             match remote_library.provider() {
                 Some(RemoteLibraryProvider::WebDav) => {
                     let remote_secret = load_webdav_secret(&state.app_data_dir, &remote_library)?;
@@ -755,7 +769,9 @@ fn publish_song_internal<R: tauri::Runtime>(
             }
         }
         if let Some(cdg_path) = song.cdg_path.as_deref() {
-            copy_remote_song_assets(&local_root, &remote_root, cdg_path, cdg_path)?;
+            if !same_root {
+                copy_remote_song_assets(&local_root, &remote_root, cdg_path, cdg_path)?;
+            }
             match remote_library.provider() {
                 Some(RemoteLibraryProvider::WebDav) => {
                     let remote_secret = load_webdav_secret(&state.app_data_dir, &remote_library)?;
