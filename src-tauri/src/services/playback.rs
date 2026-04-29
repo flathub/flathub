@@ -611,6 +611,7 @@ mod tests {
             separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
             batch_running: Arc::new(AtomicBool::new(false)),
             batch_cancel: Arc::new(AtomicBool::new(false)),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -825,6 +826,7 @@ mod tests {
             Arc::clone(&state.airplay_stream_generation),
             Duration::from_millis(300),
             Duration::from_millis(5),
+            Arc::clone(&state.shutdown),
         );
 
         set_stem_volume(&state, StemName::Vocals, 0.9).expect("stem update should succeed");
@@ -847,6 +849,7 @@ mod tests {
             Duration::from_millis(1_500),
         ));
         assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch + 1);
+        state.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -864,6 +867,7 @@ mod tests {
             Arc::clone(&state.airplay_stream_generation),
             Duration::from_millis(300),
             Duration::from_millis(5),
+            Arc::clone(&state.shutdown),
         );
 
         set_volume(&state, 0.9).expect("volume update should succeed");
@@ -885,6 +889,7 @@ mod tests {
             Duration::from_millis(1_500),
         ));
         assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch + 1);
+        state.shutdown.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -902,6 +907,7 @@ mod tests {
             Arc::clone(&state.airplay_stream_generation),
             Duration::from_millis(300),
             Duration::from_millis(5),
+            Arc::clone(&state.shutdown),
         );
 
         set_volume(&state, 0.6).expect("volume update should succeed");
@@ -912,5 +918,6 @@ mod tests {
             initial_generation
         );
         assert_eq!(state.airplay_audio_tap.current_epoch(), initial_epoch);
+        state.shutdown.store(true, Ordering::Relaxed);
     }
 }

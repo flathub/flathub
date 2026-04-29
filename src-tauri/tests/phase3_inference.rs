@@ -41,7 +41,8 @@ fn separates_fixture_audio_into_named_stems_and_writes_wavs() {
     let decoded = decode::decode_file(&fixture_path("audio", "fixture.wav"))
         .expect("wav fixture should decode");
 
-    let separated = inference::separate_audio(&mut loaded_model, &decoded, |_, _| {}, None)
+    let separated =
+        inference::separate_audio(&mut loaded_model, &decoded, |_, _| {}, None, "fixture")
         .expect("fixture audio should separate into stems");
 
     assert_eq!(separated.stems.len(), 4);
@@ -96,7 +97,8 @@ fn separates_audio_longer_than_a_single_demucs_window() {
     let mut long_audio = fixture.clone();
     long_audio.samples = fixture.samples.repeat(8);
 
-    let separated = inference::separate_audio(&mut loaded_model, &long_audio, |_, _| {}, None)
+    let separated =
+        inference::separate_audio(&mut loaded_model, &long_audio, |_, _| {}, None, "fixture-long")
         .expect("audio longer than one model window should separate");
 
     assert_eq!(separated.stems.len(), 4);
