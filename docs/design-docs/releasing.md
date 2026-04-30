@@ -43,8 +43,15 @@ Additional distribution channels are derived from those releases:
   keeps the release run green. WinGet PR titles use the
   `New version: <PackageIdentifier> version <Version>` convention.
 - **Flathub** — release automation renders the source-build Flatpak bundle and,
-  when `FLATHUB_FORK_REPO` and `FLATHUB_PR_TOKEN` are configured, opens or
-  updates a PR against the target Flathub app repository.
+  when `FLATHUB_FORK_REPO` and `FLATHUB_PR_TOKEN` are configured, prepares the
+  correct Flathub branch. Because OpenKara is not published on Flathub yet, the
+  workflow targets `flathub/flathub:new-pr`, pushes an initial-submission
+  branch to the fork, and prints a GitHub web compare URL with the official
+  Flathub submission notes prefilled. The submission PR itself must still be
+  reviewed and opened manually. After Flathub creates
+  `flathub/io.github.thedavidweng.OpenKara`, set `FLATHUB_TARGET_REPO` to that
+  app repo and `FLATHUB_BASE_BRANCH` to `master` so release automation can open
+  update PRs.
 
 Repo-local source of truth:
 
@@ -68,7 +75,8 @@ Repo-local validation:
 ### Linux
 
 - **Flatpak**: Source-build Flathub-ready manifest is maintained in-repo and can
-  be submitted automatically after bootstrap. Final Flatpak binaries are still
-  built by Flathub, not by GitHub Actions.
+  be prepared automatically after bootstrap. The first Flathub submission PR is
+  still opened manually against `flathub/flathub:new-pr`; final Flatpak
+  binaries are built by Flathub, not by GitHub Actions.
 - **AUR**: Write a PKGBUILD. Community can help maintain. Deferred.
 - **Snap**: Write a snapcraft.yaml. Deferred.
