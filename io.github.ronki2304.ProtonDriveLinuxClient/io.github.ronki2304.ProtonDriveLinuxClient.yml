@@ -1,0 +1,80 @@
+app-id: io.github.ronki2304.ProtonDriveLinuxClient
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: protondrive
+
+finish-args:
+  # Network access — ProtonDrive API, Proton auth endpoints
+  - --share=network
+  # X11 shared memory — required for GPU compositing on X11
+  - --share=ipc
+  # Wayland + X11 fallback — run on both display servers
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU rendering — Libadwaita uses GPU-accelerated compositing
+  - --device=dri
+  # Filesystem — inotify requires direct access to user's home.
+  # The Flatpak portal FUSE layer does not generate inotify events
+  # (upstream bug: https://github.com/flatpak/xdg-desktop-portal/issues/567).
+  # Without --filesystem=home, file-change detection is broken.
+  - --filesystem=home
+  # Credentials — libsecret uses the Flatpak Secret portal
+  # (org.freedesktop.portal.Secret) automatically when --talk-name=org.freedesktop.secrets
+  # is NOT granted. No explicit talk-name is needed for the portal.
+
+modules:
+  # Python dependencies
+  - name: python3-pyyaml
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps ./pyyaml-6.0.3.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz
+        sha256: d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
+
+  # UI module — Python/GTK4/Libadwaita
+  - name: protondrive-ui
+    buildsystem: meson
+    subdir: ui
+    post-install:
+      - glib-compile-schemas /app/share/glib-2.0/schemas
+    sources:
+      - type: git
+        url: https://github.com/ronki2304/ProtonDriveLinuxClient
+        commit: 299671b99cbabbd51fc14d29091d8ab61928605b
+
+  # Engine module — TypeScript/Bun sync engine compiled to self-contained binary.
+  # `bun build --compile` embeds the Bun runtime + bun:sqlite; no Bun needed at runtime.
+  #
+  # Bun is not in the GNOME SDK — we download the official precompiled release as a
+  # build-time-only tool (NOT installed into /app). npm packages are pre-fetched
+  # offline via generated-sources.json; npm (from the SDK) installs them into
+  # node_modules, then Bun compiles the TypeScript to a single self-contained binary.
+  - name: protondrive-engine
+    buildsystem: simple
+    # Bun-compiled binaries embed the source/runtime in a non-standard layout
+    # that `strip` and the debuginfo-extract pipeline corrupt. Disable them.
+    build-options:
+      strip: false
+      no-debuginfo: true
+      no-debuginfo-compression: true
+    build-commands:
+      - chmod +x ./bun
+      - cd engine && npm --cache ../flatpak-node/npm-cache install --prefer-offline
+      - cd engine && ../bun build --compile src/main.ts --outfile=dist/engine
+      - install -Dm755 engine/dist/engine /app/lib/protondrive-engine/dist/engine
+    sources:
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-aarch64.zip
+        sha256: d13944da12a53ecc74bf6a720bd1d04c4555c038dfe422365356a7be47691fdf
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
+        sha256: 8611ba935af886f05a6f38740a15160326c15e5d5d07adef966130b4493607ed
+      - type: git
+        url: https://github.com/ronki2304/ProtonDriveLinuxClient
+        commit: 299671b99cbabbd51fc14d29091d8ab61928605b
+      - generated-sources.json
