@@ -160,6 +160,7 @@ pub(crate) struct DropboxTokenResponse {
     pub(crate) access_token: String,
     pub(crate) expires_in: Option<i64>,
     pub(crate) refresh_token: Option<String>,
+    pub(crate) account_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -182,13 +183,6 @@ pub(crate) struct GoogleDriveFileMetadata {
 pub(crate) struct GoogleDriveFileListResponse {
     #[serde(default)]
     pub(crate) files: Vec<GoogleDriveFileMetadata>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct DropboxAccountResponse {
-    pub(crate) account_id: String,
-    #[serde(default)]
-    pub(crate) email: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

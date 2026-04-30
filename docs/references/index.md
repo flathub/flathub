@@ -15,5 +15,6 @@ Reference docs are stable materials that other work can point at without repeati
 | [contracts/phase-6-model-bootstrap-contract.md](./contracts/phase-6-model-bootstrap-contract.md) | Model bootstrap contract               |
 | [contracts/presentation-output-contract.md](./contracts/presentation-output-contract.md)         | macOS AirPlay audience output contract |
 | [contracts/window-shell-contract.md](./contracts/window-shell-contract.md)                       | Desktop window shell IPC contract      |
+| [dropbox-review.md](./dropbox-review.md)                                                         | Dropbox review scopes and smoke test   |
 
 Future external references such as design-system snapshots or tool-specific notes should also live here.

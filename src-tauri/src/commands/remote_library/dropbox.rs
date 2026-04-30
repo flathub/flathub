@@ -24,13 +24,16 @@ use super::{
     types::{
         current_unix_time_ms, load_remote_credential, slugify_display_name,
         store_remote_credential, stored_dropbox_app_key, BundledDropboxOAuthClientFile,
-        DropboxAccountResponse, DropboxCreateFolderResponse, DropboxMetadata,
-        DropboxProviderCredentials, DropboxSecret, DropboxSessionData, DropboxTokenResponse,
-        RemoteAuthSession, RemoteAuthState, StoredDropboxSecret, DROPBOX_APP_KEY_ENV,
-        DROPBOX_APP_SECRET_ENV, DROPBOX_FIXED_REDIRECT_PORT, DROPBOX_FIXED_REDIRECT_URI,
+        DropboxCreateFolderResponse, DropboxMetadata, DropboxProviderCredentials, DropboxSecret,
+        DropboxSessionData, DropboxTokenResponse, RemoteAuthSession, RemoteAuthState,
+        StoredDropboxSecret, DROPBOX_APP_KEY_ENV, DROPBOX_APP_SECRET_ENV,
+        DROPBOX_FIXED_REDIRECT_PORT, DROPBOX_FIXED_REDIRECT_URI,
         DROPBOX_OAUTH_CLIENT_RESOURCE_PATH,
     },
 };
+
+const DROPBOX_REMOTE_LIBRARY_OAUTH_SCOPE: &str =
+    "files.metadata.read files.content.read files.content.write";
 
 pub(crate) fn build_dropbox_authorization_url(
     session: &DropboxSessionData,
@@ -42,6 +45,7 @@ pub(crate) fn build_dropbox_authorization_url(
         .append_pair("redirect_uri", &session.redirect_uri)
         .append_pair("response_type", "code")
         .append_pair("token_access_type", "offline")
+        .append_pair("scope", DROPBOX_REMOTE_LIBRARY_OAUTH_SCOPE)
         .append_pair("code_challenge", &oauth_pkce_code_challenge(&session.code_verifier))
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", &session.state_token);
@@ -268,27 +272,6 @@ fn dropbox_exchange_code_for_tokens(
         .map_err(|error| library_error(format!("failed to parse Dropbox token response: {error}")))
 }
 
-fn dropbox_fetch_account_id(access_token: &str) -> CommandResult<String> {
-    let url = dropbox_api_url("/2/users/get_current_account")?;
-    let response = reqwest::blocking::Client::new()
-        .post(url)
-        .bearer_auth(access_token)
-        .header("Content-Type", "application/json")
-        .body("{}")
-        .send()
-        .map_err(|error| library_error(format!("failed to fetch Dropbox account info: {error}")))?;
-    if !response.status().is_success() {
-        return Err(library_error(format!(
-            "Dropbox account lookup failed with status {}",
-            response.status()
-        )));
-    }
-    let body: DropboxAccountResponse = response
-        .json()
-        .map_err(|error| library_error(format!("failed to parse Dropbox account info: {error}")))?;
-    Ok(body.email.unwrap_or(body.account_id))
-}
-
 pub(crate) fn spawn_dropbox_auth_worker(
     sessions: Arc<Mutex<HashMap<String, RemoteAuthSession>>>,
     session_id: String,
@@ -395,7 +378,9 @@ pub(crate) fn spawn_dropbox_auth_worker(
         };
 
         match dropbox_exchange_code_for_tokens(&worker_session, code).and_then(|tokens| {
-            let account_id = dropbox_fetch_account_id(&tokens.access_token)?;
+            let account_id = tokens.account_id.clone().ok_or_else(|| {
+                library_error("Dropbox token response did not include an account ID.".to_owned())
+            })?;
             Ok((tokens, account_id))
         }) {
             Ok((tokens, account_id)) => {
@@ -891,5 +876,43 @@ mod tests {
         assert_eq!(query.get("token_access_type"), Some(&"offline".to_owned()));
         assert_eq!(query.get("code_challenge_method"), Some(&"S256".to_owned()));
         assert_eq!(query.get("state"), Some(&session.state_token));
+    }
+
+    #[test]
+    fn dropbox_auth_url_requests_only_required_remote_library_scopes() {
+        let session = DropboxSessionData {
+            app_key: "dropbox-app-key".to_owned(),
+            app_secret: None,
+            code_verifier: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJK".to_owned(),
+            redirect_uri: DROPBOX_FIXED_REDIRECT_URI.to_owned(),
+            state_token: "state-123".to_owned(),
+            access_token: None,
+            refresh_token: None,
+            access_token_expires_at_ms: None,
+        };
+
+        let url = build_dropbox_authorization_url(&session).expect("url should build");
+        let parsed = Url::parse(&url).expect("auth url should parse");
+        let query: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+
+        assert_eq!(
+            query.get("scope"),
+            Some(&"files.metadata.read files.content.read files.content.write".to_owned())
+        );
+    }
+
+    #[test]
+    fn dropbox_token_response_accepts_account_id_from_oauth_exchange() {
+        let body = serde_json::json!({
+            "access_token": "sl.short-lived",
+            "expires_in": 14_400,
+            "refresh_token": "refresh-token",
+            "account_id": "dbid:account-1"
+        });
+
+        let token: DropboxTokenResponse =
+            serde_json::from_value(body).expect("token response should parse");
+
+        assert_eq!(token.account_id.as_deref(), Some("dbid:account-1"));
     }
 }

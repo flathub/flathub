@@ -124,6 +124,11 @@ before `pnpm tauri build`.
 Dropbox sign-in uses the fixed loopback callback
 `http://localhost:53682/oauth2/callback`; add that exact URI, including the
 path, in the Dropbox developer console for the app.
+The Dropbox app only needs `files.metadata.read`, `files.content.read`, and
+`files.content.write`. Metadata read access is used to detect library files and
+remote revisions, content read access downloads remote database/media/stem files,
+and content write access creates folders plus uploads or deletes library files.
+It does not need `account_info.read` or `files.metadata.write`.
 OpenKara treats per-user refresh/access tokens as secrets and stores them in
 the OS credential store; for desktop apps, an OAuth `client_secret` shipped in
 the app bundle itself still cannot be treated as confidential against the end
