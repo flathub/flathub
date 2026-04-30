@@ -117,6 +117,9 @@ payload 为完整的 `ModelBootstrapStatusSnapshot`，其中：
    动态库；不允许重新打开 `download-binaries` 或 `copy-dylibs`
 6. macOS 发布产物必须按目标架构分别准备 `arm64` / `x86_64` 动态库，不允许再把
    universal2 ORT 放进两个安装包里浪费体积
+7. macOS 发布包启用 hardened runtime 时必须携带
+   `com.apple.security.cs.disable-library-validation` entitlement；官方 ORT dylib
+   由 Microsoft Developer ID 签名，应用需要该最小豁免才能在启动阶段加载它。
 
 ## Product UX target
 

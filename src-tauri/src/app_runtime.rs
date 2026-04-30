@@ -4,6 +4,7 @@ use crate::{
     audio::playback::{monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
     cache, commands, config, derive_startup_model_bootstrap, separator, AppState,
 };
+use anyhow::Context;
 use std::{
     collections::HashMap,
     fs,
@@ -18,12 +19,33 @@ use std::{
 use tauri::{Emitter, Manager, Runtime};
 
 pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    let app_resource_dir = app.path().resource_dir()?;
-    separator::model::ensure_runtime_loaded(Some(&app_resource_dir))?;
+    let app_resource_dir = app
+        .path()
+        .resource_dir()
+        .context("failed to resolve bundled resource directory")?;
+    separator::model::ensure_runtime_loaded(Some(&app_resource_dir))
+        .context("failed to load ONNX Runtime shared library")?;
 
-    let app_data_dir = app.path().app_data_dir()?;
-    fs::create_dir_all(&app_data_dir)?;
-    let app_config = config::load_config(&app_data_dir)?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .context("failed to resolve application data directory")?;
+    fs::create_dir_all(&app_data_dir).with_context(|| {
+        format!(
+            "failed to create application data directory at {}",
+            app_data_dir.display()
+        )
+    })?;
+    let app_config = config::load_config(&app_data_dir).with_context(|| {
+        format!(
+            "failed to load application config from {}",
+            app_data_dir.display()
+        )
+    })?;
+    let configured_window_count = app.webview_windows().len();
+    if configured_window_count == 0 {
+        eprintln!("warning: no Tauri webview windows were created during startup");
+    }
     let window_shell_state = crate::window_shell::initialize_main_window(app, app_config.as_ref());
 
     let playback = Arc::new(Mutex::new(PlaybackController::default()));

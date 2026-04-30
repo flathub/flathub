@@ -130,18 +130,19 @@ pub(crate) fn ensure_webdav_collection_chain(
     let target = Url::parse(target_url)
         .map_err(|error| library_error(format!("invalid WebDAV target URL: {error}")))?;
 
-    let server_segments: Vec<String> = server
-        .path_segments()
-        .map(|segments| segments.map(str::to_owned).collect())
-        .unwrap_or_default();
-    let target_segments: Vec<String> = target
-        .path_segments()
-        .map(|segments| segments.map(str::to_owned).collect())
-        .unwrap_or_default();
+    let server_segments = non_empty_path_segments(&server);
+    let target_segments = non_empty_path_segments(&target);
+    if !target_segments.starts_with(&server_segments) {
+        return Err(library_error(format!(
+            "WebDAV target URL {target_url} is not inside server URL {server_url}"
+        )));
+    }
 
-    let mut current = server.clone();
-    for segment in target_segments.iter().skip(server_segments.len()) {
-        let next_path = format!("{}{segment}/", current.path());
+    let mut current_segments = server_segments;
+    for segment in target_segments.iter().skip(current_segments.len()) {
+        current_segments.push(segment.clone());
+        let next_path = format!("/{}/", current_segments.join("/"));
+        let mut current = server.clone();
         current.set_path(&next_path);
         let current_url = current.to_string();
         if webdav_exists(client, &current_url, username, password)? {
@@ -167,6 +168,17 @@ pub(crate) fn ensure_webdav_collection_chain(
         }
     }
     Ok(())
+}
+
+fn non_empty_path_segments(url: &Url) -> Vec<String> {
+    url.path_segments()
+        .map(|segments| {
+            segments
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub(crate) fn download_webdav_file(
@@ -486,4 +498,212 @@ pub(crate) fn delete_remote_root(
 ) -> CommandResult<()> {
     let secret = load_webdav_secret(app_data_dir, library)?;
     delete_relative_path_from_remote(&secret, "")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        cache,
+        config::{RemoteLibraryConnectionConfig, RemoteLibraryProvider},
+        library::Song,
+    };
+    use std::{
+        collections::{HashMap, HashSet},
+        net::{Ipv4Addr, SocketAddrV4, TcpListener},
+        sync::{Arc, Mutex},
+        thread::{self, JoinHandle},
+        time::Duration,
+    };
+    use tempfile::tempdir;
+    use tiny_http::{Header, Method as HttpMethod, Response, Server, StatusCode as HttpStatusCode};
+
+    struct TestWebDavServer {
+        base_url: String,
+        directories: Arc<Mutex<HashSet<String>>>,
+        files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+        server: Option<Arc<Server>>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl TestWebDavServer {
+        fn start() -> Self {
+            let listener =
+                TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = Arc::new(Server::from_listener(listener, None).unwrap());
+            let directories = Arc::new(Mutex::new(HashSet::from(["/".to_owned()])));
+            let files = Arc::new(Mutex::new(HashMap::new()));
+            let thread_directories = Arc::clone(&directories);
+            let thread_files = Arc::clone(&files);
+            let thread_server = Arc::clone(&server);
+            let thread = thread::spawn(move || {
+                while let Ok(Some(request)) =
+                    thread_server.recv_timeout(Duration::from_millis(100))
+                {
+                    respond_to_webdav_request(request, &thread_directories, &thread_files);
+                }
+            });
+
+            Self {
+                base_url: format!("http://127.0.0.1:{}/", address.port()),
+                directories,
+                files,
+                server: Some(server),
+                thread: Some(thread),
+            }
+        }
+
+        fn directory_exists(&self, path: &str) -> bool {
+            self.directories.lock().unwrap().contains(path)
+        }
+
+        fn file(&self, path: &str) -> Option<Vec<u8>> {
+            self.files.lock().unwrap().get(path).cloned()
+        }
+    }
+
+    impl Drop for TestWebDavServer {
+        fn drop(&mut self) {
+            if let Some(server) = self.server.take() {
+                server.unblock();
+            }
+            if let Some(thread) = self.thread.take() {
+                thread.join().unwrap();
+            }
+        }
+    }
+
+    fn respond_to_webdav_request(
+        mut request: tiny_http::Request,
+        directories: &Arc<Mutex<HashSet<String>>>,
+        files: &Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    ) {
+        let path = request.url().split('?').next().unwrap_or("/").to_owned();
+        match request.method() {
+            &HttpMethod::Head => {
+                let exists = if path.ends_with('/') {
+                    directories.lock().unwrap().contains(&path)
+                } else {
+                    files.lock().unwrap().contains_key(&path)
+                };
+                let status = if exists { 204 } else { 404 };
+                let _ = request.respond(Response::empty(HttpStatusCode(status)));
+            }
+            &HttpMethod::Put => {
+                let mut body = Vec::new();
+                request.as_reader().read_to_end(&mut body).unwrap();
+                files.lock().unwrap().insert(path, body);
+                let mut response = Response::empty(HttpStatusCode(201));
+                response.add_header(Header::from_bytes("ETag", b"test-etag").unwrap());
+                let _ = request.respond(response);
+            }
+            &HttpMethod::Get => {
+                let body = files.lock().unwrap().get(&path).cloned();
+                match body {
+                    Some(body) => {
+                        let mut response =
+                            Response::from_data(body).with_status_code(HttpStatusCode(200));
+                        response.add_header(Header::from_bytes("ETag", b"test-etag").unwrap());
+                        let _ = request.respond(response);
+                    }
+                    None => {
+                        let _ = request.respond(Response::empty(HttpStatusCode(404)));
+                    }
+                }
+            }
+            &HttpMethod::NonStandard(ref method) if method.as_str() == "MKCOL" => {
+                directories.lock().unwrap().insert(path);
+                let _ = request.respond(Response::empty(HttpStatusCode(201)));
+            }
+            _ => {
+                let _ = request.respond(Response::empty(HttpStatusCode(405)));
+            }
+        }
+    }
+
+    fn test_remote_library(root_path: &Path, server_url: &str, root_url: &str) -> RegisteredLibrary {
+        RegisteredLibrary::remote(
+            "remote-webdav-test".to_owned(),
+            "Remote WebDAV Test".to_owned(),
+            RemoteLibraryProvider::WebDav,
+            "openkara".to_owned(),
+            root_url.to_owned(),
+            "127.0.0.1/OpenKara".to_owned(),
+            Some(RemoteLibraryConnectionConfig::WebDav {
+                server_url: server_url.to_owned(),
+            }),
+            Some(root_path.join("openkara.db").to_string_lossy().into_owned()),
+            None,
+        )
+    }
+
+    #[test]
+    fn webdav_initializes_uploads_and_reopens_remote_library() {
+        let server = TestWebDavServer::start();
+        let app_data_dir = tempdir().unwrap();
+        let first_working_copy = tempdir().unwrap();
+        let root_url = join_url(&server.base_url, "OpenKara/").unwrap();
+        let secret = WebDavSecret {
+            root_url: root_url.clone(),
+            username: "openkara".to_owned(),
+            password: "secret".to_owned(),
+        };
+        let first_library =
+            test_remote_library(first_working_copy.path(), &server.base_url, &root_url);
+
+        initialize_or_sync_webdav_library(app_data_dir.path(), &first_library, &secret)
+            .expect("new WebDAV remote library should initialize");
+        let local_root = LibraryRoot::open(first_working_copy.path()).unwrap();
+        let media_path = local_root.media_path("song-1", "wav");
+        fs::write(&media_path, b"openkara test audio").unwrap();
+        let connection = cache::open_database(&local_root.database_path()).unwrap();
+        cache::upsert_song(
+            &connection,
+            &Song {
+                hash: "song-1".to_owned(),
+                file_path: Some("media/song-1.wav".to_owned()),
+                cdg_path: None,
+                media_g_container: None,
+                instrumental: true,
+                audio_source_kind: "original".to_owned(),
+                title: Some("Remote Song".to_owned()),
+                artist: Some("OpenKara".to_owned()),
+                album: None,
+                duration_ms: 1_000,
+                cover_art: None,
+                imported_at: 1,
+                original_ext: Some("wav".to_owned()),
+            },
+        )
+        .unwrap();
+
+        upload_relative_file_to_remote(&first_library, &secret, "media/song-1.wav")
+            .expect("media file should upload");
+        upload_relative_file_to_remote(&first_library, &secret, "openkara.db")
+            .expect("library metadata should upload");
+
+        assert!(server.directory_exists("/OpenKara/"));
+        assert!(server.directory_exists("/OpenKara/media/"));
+        assert!(server.directory_exists("/OpenKara/media-g/"));
+        assert!(server.directory_exists("/OpenKara/stems/"));
+        assert_eq!(
+            server.file("/OpenKara/media/song-1.wav").as_deref(),
+            Some(b"openkara test audio".as_slice())
+        );
+        assert!(server.file("/OpenKara/openkara.db").is_some());
+
+        let second_working_copy = tempdir().unwrap();
+        let second_library =
+            test_remote_library(second_working_copy.path(), &server.base_url, &root_url);
+        initialize_or_sync_webdav_library(app_data_dir.path(), &second_library, &secret)
+            .expect("existing WebDAV remote library should reopen");
+        let second_root = LibraryRoot::open(second_working_copy.path()).unwrap();
+        let second_connection = cache::open_database(&second_root.database_path()).unwrap();
+        let songs = cache::list_songs(&second_connection).unwrap();
+
+        assert_eq!(songs.len(), 1);
+        assert_eq!(songs[0].title.as_deref(), Some("Remote Song"));
+        assert_eq!(songs[0].file_path.as_deref(), Some("media/song-1.wav"));
+    }
 }
