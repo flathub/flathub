@@ -198,7 +198,140 @@ fn update_remote_revision_in_config(
     persist_app_config(app_data_dir, &config)
 }
 
+fn load_registered_remote_library(
+    app_data_dir: &Path,
+    library_id: &str,
+) -> CommandResult<RegisteredLibrary> {
+    let config = load_app_config(app_data_dir)?;
+    let library = config
+        .libraries
+        .iter()
+        .find(|entry| entry.id() == library_id)
+        .ok_or_else(|| library_error(format!("remote library {library_id} was not found")))?;
+    if !matches!(library, RegisteredLibrary::Remote { .. }) {
+        return Err(library_error(format!(
+            "library {library_id} is not a remote library"
+        )));
+    }
+    Ok(library.clone())
+}
+
+fn remote_database_revision(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<Option<String>> {
+    match library.provider() {
+        Some(RemoteLibraryProvider::WebDav) => {
+            let secret = load_webdav_secret(app_data_dir, library)?;
+            webdav_get_etag(
+                &webdav_client()?,
+                &webdav_database_url(&secret.root_url)?,
+                &secret.username,
+                &secret.password,
+            )
+        }
+        Some(RemoteLibraryProvider::GoogleDrive) => {
+            let mut secret = load_google_drive_secret(app_data_dir, library)?;
+            let root_folder_id = library
+                .remote_root_locator()
+                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+            Ok(google_drive_find_relative_entry(
+                app_data_dir,
+                &mut secret,
+                root_folder_id,
+                "openkara.db",
+            )?
+            .and_then(|metadata| metadata.head_revision_id.or(metadata.modified_time)))
+        }
+        Some(RemoteLibraryProvider::Dropbox) => {
+            let mut secret = load_dropbox_secret(app_data_dir, library)?;
+            let root_path = library
+                .remote_root_locator()
+                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+            Ok(dropbox_get_metadata(
+                app_data_dir,
+                &mut secret,
+                &dropbox_join_path(root_path, "openkara.db"),
+            )?
+            .and_then(|metadata| dropbox_metadata_revision(&metadata)))
+        }
+        _ => Err(library_error(
+            "the active remote provider is not supported for database revision checks".to_owned(),
+        )),
+    }
+}
+
+fn remote_database_revision_is_stale(
+    stored_revision: Option<&str>,
+    provider_revision: Option<&str>,
+) -> bool {
+    provider_revision.is_some_and(|revision| Some(revision) != stored_revision)
+}
+
+fn remote_database_conflict_error(provider_revision: Option<&str>) -> CommandError {
+    let revision_detail = provider_revision
+        .map(|revision| format!(" Remote revision: {revision}."))
+        .unwrap_or_default();
+    library_error(format!(
+        "Remote library database changed on another device before this upload. \
+         OpenKara stopped before overwriting it. Use Settings > Karaoke Library > \
+         Force Resync, then retry this edit. If sync fails because authentication \
+         or the server changed, use Reconnect Provider or Update Credentials first.{revision_detail}"
+    ))
+}
+
+fn sync_remote_database_from_provider(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<RegisteredLibrary> {
+    let revision = match library.provider() {
+        Some(RemoteLibraryProvider::WebDav) => {
+            let secret = load_webdav_secret(app_data_dir, library)?;
+            initialize_or_sync_webdav_library(app_data_dir, library, &secret)?
+        }
+        Some(RemoteLibraryProvider::GoogleDrive) => {
+            let secret = load_google_drive_secret(app_data_dir, library)?;
+            initialize_or_sync_google_drive_library(app_data_dir, library, &secret)?
+        }
+        Some(RemoteLibraryProvider::Dropbox) => {
+            let secret = load_dropbox_secret(app_data_dir, library)?;
+            initialize_or_sync_dropbox_library(app_data_dir, library, &secret)?
+        }
+        None => {
+            return Err(library_error(
+                "the active remote provider is not supported for sync".to_owned(),
+            ))
+        }
+    };
+    update_remote_revision_in_config(app_data_dir, library.id(), revision)?;
+    load_registered_remote_library(app_data_dir, library.id())
+}
+
+fn prepare_remote_database_for_mutation(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<RegisteredLibrary> {
+    let provider_revision = remote_database_revision(app_data_dir, library)?;
+    if remote_database_revision_is_stale(library.remote_revision(), provider_revision.as_deref()) {
+        return sync_remote_database_from_provider(app_data_dir, library);
+    }
+    Ok(library.clone())
+}
+
+fn ensure_remote_database_upload_safe(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+) -> CommandResult<()> {
+    let provider_revision = remote_database_revision(app_data_dir, library)?;
+    if remote_database_revision_is_stale(library.remote_revision(), provider_revision.as_deref()) {
+        return Err(remote_database_conflict_error(provider_revision.as_deref()));
+    }
+    Ok(())
+}
+
 fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> CommandResult<()> {
+    ensure_remote_database_upload_safe(app_data_dir, library)?;
+
     match library.provider() {
         Some(RemoteLibraryProvider::WebDav) => {
             let secret = load_webdav_secret(app_data_dir, library)?;
@@ -287,6 +420,14 @@ pub fn sync_active_remote_database_if_needed(app_data_dir: &Path) -> CommandResu
         return Ok(());
     };
     upload_remote_database(app_data_dir, &library)
+}
+
+pub fn prepare_active_remote_database_for_mutation(app_data_dir: &Path) -> CommandResult<()> {
+    let Some(library) = active_remote_library(app_data_dir)? else {
+        return Ok(());
+    };
+    let _ = prepare_remote_database_for_mutation(app_data_dir, &library)?;
+    Ok(())
 }
 
 pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> CommandResult<()> {
@@ -535,6 +676,7 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
     let Some(remote_library) = resolve_active_remote(&config) else {
         return Ok(());
     };
+    let remote_library = prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
 
     let local_root = state.library_root()?;
     let local_connection = cache::open_database(&local_root.database_path())
@@ -574,6 +716,7 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
         .filter_map(|song| desired_kinds.contains_key(&song.hash).then_some(song.hash))
         .collect();
     maybe_publish_songs_to_bound_remote(state, app_handle, &desired_song_ids)?;
+    let remote_library = load_registered_remote_library(&state.app_data_dir, remote_library.id())?;
     upload_remote_database(&state.app_data_dir, &remote_library)?;
     Ok(())
 }
@@ -636,6 +779,7 @@ fn publish_song_internal<R: tauri::Runtime>(
     let config = load_app_config(&state.app_data_dir)?;
     let remote_library = resolve_active_remote(&config)
         .ok_or_else(|| library_error("no bound remote library is available for publishing"))?;
+    let remote_library = prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
 
     let local_root = state.library_root()?;
     let remote_library_id = remote_library.id().to_owned();
@@ -855,26 +999,7 @@ pub(crate) fn sync_active_remote_library(state: &AppState) -> CommandResult<()> 
     };
 
     if matches!(active_library, RegisteredLibrary::Remote { .. }) {
-        let revision = match active_library.provider() {
-            Some(RemoteLibraryProvider::WebDav) => {
-                let secret = load_webdav_secret(&state.app_data_dir, active_library)?;
-                initialize_or_sync_webdav_library(&state.app_data_dir, active_library, &secret)?
-            }
-            Some(RemoteLibraryProvider::GoogleDrive) => {
-                let secret = load_google_drive_secret(&state.app_data_dir, active_library)?;
-                initialize_or_sync_google_drive_library(&state.app_data_dir, active_library, &secret)?
-            }
-            Some(RemoteLibraryProvider::Dropbox) => {
-                let secret = load_dropbox_secret(&state.app_data_dir, active_library)?;
-                initialize_or_sync_dropbox_library(&state.app_data_dir, active_library, &secret)?
-            }
-            None => {
-                return Err(library_error(
-                    "the active remote provider is not supported for sync".to_owned(),
-                ))
-            }
-        };
-        update_remote_revision_in_config(&state.app_data_dir, active_library.id(), revision)?;
+        let _ = sync_remote_database_from_provider(&state.app_data_dir, active_library)?;
     }
 
     Ok(())
@@ -906,4 +1031,27 @@ pub(crate) fn get_all_upload_statuses(state: &AppState) -> CommandResult<Vec<Upl
         .lock()
         .map_err(|_| state_lock_error("remote upload status lock was poisoned"))?;
     Ok(guard.values().cloned().collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_revision_is_stale_when_provider_revision_changed() {
+        assert!(!remote_database_revision_is_stale(None, None));
+        assert!(!remote_database_revision_is_stale(Some("rev-1"), None));
+        assert!(!remote_database_revision_is_stale(Some("rev-1"), Some("rev-1")));
+        assert!(remote_database_revision_is_stale(None, Some("rev-1")));
+        assert!(remote_database_revision_is_stale(Some("rev-1"), Some("rev-2")));
+    }
+
+    #[test]
+    fn database_conflict_error_points_to_settings_recovery_actions() {
+        let error = remote_database_conflict_error(Some("rev-2"));
+
+        assert!(error.retryable);
+        assert!(error.message.contains("Force Resync"));
+        assert!(error.message.contains("Update Credentials"));
+    }
 }

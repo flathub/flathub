@@ -37,6 +37,7 @@ pub fn fetch_lyrics(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
     let lrclib_client = LrcLibClient::new_default();
@@ -71,6 +72,7 @@ pub fn set_lyrics_offset(
     song_id: String,
     ms: i64,
 ) -> CommandResult<()> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -197,6 +199,7 @@ pub fn save_manual_lyrics(
     song_id: String,
     text: String,
 ) -> CommandResult<LyricsPayload> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -252,6 +255,7 @@ pub fn import_lyrics_files(
     app_handle: AppHandle,
     paths: Vec<String>,
 ) -> CommandResult<ImportLyricsResult> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -354,6 +358,7 @@ pub fn extract_embedded_lyrics(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
 
@@ -412,6 +417,7 @@ pub fn fetch_lyrics_online(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
 

@@ -329,6 +329,95 @@ describe("SettingsOverlay controller", () => {
     );
   });
 
+  test("force syncing the active remote library refreshes the working copy without switching", async () => {
+    const harness = createControllerHarness();
+
+    harness.setSnapshot({
+      state: {
+        ...harness.getSnapshot().state,
+        activeLibraryId: "remote:library-1",
+        libraries: [
+          {
+            id: "remote:library-1",
+            kind: "remote",
+            display_name: "Drive",
+            provider: "google_drive",
+            account_id: "account-1",
+            remote_root_locator: "root-1",
+            remote_path_display: "Google Drive Library",
+            connection_config: null,
+            cached_db_path: "/tmp/drive/library.sqlite3",
+            remote_revision: "rev-1",
+          },
+        ],
+      },
+      meta: harness.getSnapshot().meta,
+    });
+    vi.mocked(
+      harness.dependencies.api.syncActiveRemoteLibrary,
+    ).mockResolvedValue(undefined);
+    vi.mocked(harness.dependencies.api.getLibraryRegistry).mockResolvedValue({
+      active_library_id: "remote:library-1",
+      libraries: [
+        {
+          id: "remote:library-1",
+          kind: "remote",
+          display_name: "Drive",
+          provider: "google_drive",
+          account_id: "account-1",
+          remote_root_locator: "root-1",
+          remote_path_display: "Google Drive Library",
+          connection_config: null,
+          cached_db_path: "/tmp/drive/library.sqlite3",
+          remote_revision: "rev-2",
+        },
+      ],
+    });
+    vi.mocked(harness.dependencies.api.getModelStatus)
+      .mockResolvedValueOnce({
+        variant: "htdemucs",
+        downloaded: true,
+        legacy_install_present: false,
+        file_size: 1,
+      })
+      .mockResolvedValueOnce({
+        variant: "htdemucs_ft",
+        downloaded: false,
+        legacy_install_present: false,
+        file_size: null,
+      });
+
+    await harness.actions.forceSyncRemoteLibrary("remote:library-1");
+
+    expect(harness.dependencies.api.switchLibrary).not.toHaveBeenCalled();
+    expect(
+      harness.dependencies.api.syncActiveRemoteLibrary,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearAllSeparationStatuses,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearAllUploadStatuses,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.clearSelection,
+    ).toHaveBeenCalledOnce();
+    expect(
+      harness.dependencies.libraryStore.loadLibrary,
+    ).toHaveBeenCalledOnce();
+    expect(harness.dependencies.queueStore.clearQueue).toHaveBeenCalledOnce();
+    expect(harness.dependencies.lyricsStore.clear).toHaveBeenCalledOnce();
+    expect(harness.dependencies.playerStore.loadState).toHaveBeenCalledOnce();
+    const refreshedLibrary =
+      harness.getSnapshot().state.libraryRegistry?.libraries[0];
+    expect(refreshedLibrary?.kind).toBe("remote");
+    expect(
+      refreshedLibrary?.kind === "remote"
+        ? refreshedLibrary.remote_revision
+        : null,
+    ).toBe("rev-2");
+  });
+
   test("selecting an undownloaded model downloads it before applying the variant", async () => {
     const harness = createControllerHarness();
 

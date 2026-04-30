@@ -14,3 +14,5 @@ Current archive split:
 - `archive/plans/development-phases.md` and `archive/plans/milestones.md` —
   historical delivery plans retained for context, not current execution
   guidance
+- `archive/plans/remote-library-hardening.md` — completed remote-library
+  conflict handling, recovery UX, and deterministic verification work

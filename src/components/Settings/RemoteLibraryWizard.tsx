@@ -15,24 +15,41 @@ import {
 } from "./remote-library-copy";
 
 type RemoteSetupMode = "open_remote" | "mirror_active_local";
+type RemoteLibraryWizardPurpose = "add" | "reconnect" | "update_credentials";
 
-export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
+interface RemoteLibraryWizardProps {
+  onClose: () => void;
+  initialProvider?: RemoteLibraryProvider;
+  initialDisplayName?: string;
+  initialServerUrl?: string;
+  initialRootPath?: string;
+  purpose?: RemoteLibraryWizardPurpose;
+}
+
+export function RemoteLibraryWizard({
+  onClose,
+  initialProvider = "google_drive",
+  initialDisplayName,
+  initialServerUrl = "",
+  initialRootPath = "/OpenKara",
+  purpose = "add",
+}: RemoteLibraryWizardProps) {
   const { t } = useTranslation();
   const { state, meta, actions } = useSettingsOverlay();
   const [mode, setMode] = useState<RemoteSetupMode>("open_remote");
   const [provider, setProvider] =
-    useState<RemoteLibraryProvider>("google_drive");
+    useState<RemoteLibraryProvider>(initialProvider);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(
-    getRemoteProviderDisplayName(t, "google_drive"),
+    initialDisplayName ?? getRemoteProviderDisplayName(t, initialProvider),
   );
-  const [serverUrl, setServerUrl] = useState("");
+  const [serverUrl, setServerUrl] = useState(initialServerUrl);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rootPath, setRootPath] = useState("/OpenKara");
+  const [rootPath, setRootPath] = useState(initialRootPath);
 
   const activeLibrary = state.libraries.find(
     (library) => library.id === state.activeLibraryId,
@@ -40,6 +57,7 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
   const activeLocalLibrary =
     activeLibrary?.kind === "local" ? activeLibrary : null;
   const canMirrorActiveLocal = activeLocalLibrary !== null;
+  const isRecoveryFlow = purpose !== "add";
   const cancelledRef = useRef(false);
   const mountedRef = useRef(true);
   const authSessionIdRef = useRef<string | null>(null);
@@ -76,7 +94,11 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
 
   const connect = async () => {
     cancelledRef.current = false;
-    if (mode === "mirror_active_local" && !activeLocalLibrary) {
+    if (
+      !isRecoveryFlow &&
+      mode === "mirror_active_local" &&
+      !activeLocalLibrary
+    ) {
       setError(
         t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
           defaultValue: "Switch to the local library you want to mirror first.",
@@ -132,7 +154,11 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
         );
       }
 
-      if (mode === "mirror_active_local" && activeLocalLibrary) {
+      if (
+        !isRecoveryFlow &&
+        mode === "mirror_active_local" &&
+        activeLocalLibrary
+      ) {
         await api.mirrorLocalLibraryToRemote(
           activeLocalLibrary.id,
           remoteLibraryId,
@@ -171,18 +197,37 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
       library.kind === "remote",
   );
 
+  const titleKey =
+    purpose === "reconnect"
+      ? "settings.library.reconnectRemoteProvider"
+      : purpose === "update_credentials"
+        ? "settings.library.updateRemoteCredentials"
+        : "settings.library.addRemoteLibrary";
+  const descriptionKey =
+    purpose === "reconnect"
+      ? "settings.library.reconnectRemoteProviderDescription"
+      : purpose === "update_credentials"
+        ? "settings.library.updateRemoteCredentialsDescription"
+        : "settings.library.addRemoteLibraryDescription";
+  const connectKey =
+    purpose === "reconnect"
+      ? "settings.library.reconnectRemoteProvider"
+      : purpose === "update_credentials"
+        ? "settings.library.updateRemoteCredentials"
+        : "settings.library.openRemoteLibrary";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-xl rounded-xl border border-[var(--color-border-light)] bg-[var(--color-sidebar)] p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              {t("settings.library.addRemoteLibrary", {
+              {t(titleKey, {
                 defaultValue: "Add Remote Library",
               })}
             </h2>
             <p className="mt-1 text-sm text-[var(--color-text-dim)]">
-              {t("settings.library.addRemoteLibraryDescription", {
+              {t(descriptionKey, {
                 defaultValue:
                   "Open an existing remote library, or create one and mirror the active local library.",
               })}
@@ -197,56 +242,58 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <button
-            onClick={() => setMode("open_remote")}
-            disabled={loading}
-            className={`rounded-lg border px-4 py-3 text-left ${
-              mode === "open_remote"
-                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
-                : "border-[var(--color-border-light)] bg-[var(--color-surface)]"
-            }`}
-          >
-            <p className="text-sm font-medium text-white">
-              {t("settings.library.openRemoteLibrary", {
-                defaultValue: "Open Remote Library",
-              })}
-            </p>
-            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-              {t("settings.library.openRemoteLibraryDescription", {
-                defaultValue:
-                  "Register a remote working copy and switch into it.",
-              })}
-            </p>
-          </button>
-          <button
-            onClick={() => setMode("mirror_active_local")}
-            disabled={loading || !canMirrorActiveLocal}
-            className={`rounded-lg border px-4 py-3 text-left ${
-              mode === "mirror_active_local"
-                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
-                : "border-[var(--color-border-light)] bg-[var(--color-surface)]"
-            } disabled:opacity-50`}
-          >
-            <p className="text-sm font-medium text-white">
-              {t("settings.library.createAndMirrorActiveLocal", {
-                defaultValue: "Create And Mirror Active Local",
-              })}
-            </p>
-            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-              {activeLocalLibrary
-                ? t("settings.library.mirrorActiveLocalDescriptionWithName", {
-                    defaultValue:
-                      "Mirror {{displayName}} into a new remote library.",
-                    displayName: activeLocalLibrary.display_name,
-                  })
-                : t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
-                    defaultValue:
-                      "Switch to the local library you want to mirror first.",
-                  })}
-            </p>
-          </button>
-        </div>
+        {!isRecoveryFlow && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              onClick={() => setMode("open_remote")}
+              disabled={loading}
+              className={`rounded-lg border px-4 py-3 text-left ${
+                mode === "open_remote"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)]"
+              }`}
+            >
+              <p className="text-sm font-medium text-white">
+                {t("settings.library.openRemoteLibrary", {
+                  defaultValue: "Open Remote Library",
+                })}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                {t("settings.library.openRemoteLibraryDescription", {
+                  defaultValue:
+                    "Register a remote working copy and switch into it.",
+                })}
+              </p>
+            </button>
+            <button
+              onClick={() => setMode("mirror_active_local")}
+              disabled={loading || !canMirrorActiveLocal}
+              className={`rounded-lg border px-4 py-3 text-left ${
+                mode === "mirror_active_local"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
+                  : "border-[var(--color-border-light)] bg-[var(--color-surface)]"
+              } disabled:opacity-50`}
+            >
+              <p className="text-sm font-medium text-white">
+                {t("settings.library.createAndMirrorActiveLocal", {
+                  defaultValue: "Create And Mirror Active Local",
+                })}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+                {activeLocalLibrary
+                  ? t("settings.library.mirrorActiveLocalDescriptionWithName", {
+                      defaultValue:
+                        "Mirror {{displayName}} into a new remote library.",
+                      displayName: activeLocalLibrary.display_name,
+                    })
+                  : t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
+                      defaultValue:
+                        "Switch to the local library you want to mirror first.",
+                    })}
+              </p>
+            </button>
+          </div>
+        )}
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {(
@@ -376,11 +423,11 @@ export function RemoteLibraryWizard({ onClose }: { onClose: () => void }) {
               ? t("settings.library.connecting", {
                   defaultValue: "Connecting…",
                 })
-              : mode === "mirror_active_local"
+              : !isRecoveryFlow && mode === "mirror_active_local"
                 ? t("settings.library.createRemoteLibraryAndStartMirror", {
                     defaultValue: "Create Remote Library And Start Mirror",
                   })
-                : t("settings.library.openRemoteLibrary", {
+                : t(connectKey, {
                     defaultValue: "Open Remote Library",
                   })}
           </button>

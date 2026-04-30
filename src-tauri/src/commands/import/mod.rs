@@ -42,6 +42,7 @@ pub fn import_songs(
     paths: Vec<String>,
     options: Option<ImportSongsOptions>,
 ) -> CommandResult<ImportSongsResult> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -213,6 +214,7 @@ pub fn extract_embedded_cover_art(
     app_handle: AppHandle,
     song_ids: Vec<String>,
 ) -> CommandResult<ExtractEmbeddedCoverArtResult> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -322,6 +324,7 @@ pub fn update_song_metadata(
     title: Option<String>,
     artist: Option<String>,
 ) -> CommandResult<Song> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
@@ -343,6 +346,7 @@ pub fn set_songs_instrumental(
     song_ids: Vec<String>,
     instrumental: bool,
 ) -> CommandResult<Vec<Song>> {
+    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 

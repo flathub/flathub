@@ -1,10 +1,23 @@
 # Remote Library Hardening Plan
 
-## Status
+## Archived Status
 
 Google Drive, Dropbox, and WebDAV are implemented as real remote-library
-providers. The active work is no longer provider bring-up; it is hardening the
-remaining edge cases around conflict handling, recovery UX, and verification.
+providers. This plan was completed and archived on 2026-04-30.
+
+Completion notes:
+
+- Remote database uploads now compare provider revision metadata before upload.
+- User-visible remote-library mutations sync the latest remote database before
+  applying the local edit, so the edit is replayed on the current working copy.
+- Upload races that occur after the local edit are blocked with a Settings
+  recovery message instead of overwriting the newer remote database.
+- Settings exposes force resync, reconnect provider, and update credentials
+  controls for registered remote libraries.
+- Deterministic frontend and backend coverage was added for the revision guard
+  and Settings recovery controls.
+- Real-account OAuth/browser smoke coverage remains a release smoke-test item;
+  it is no longer tracked as active implementation work in this plan.
 
 ## Completed Baseline
 
@@ -17,7 +30,7 @@ remaining edge cases around conflict handling, recovery UX, and verification.
   directly to each provider API.
 - Remote songs and stems can be downloaded on demand for playback.
 
-## Active Goals
+## Completed Goals
 
 ### 1. Remote database conflict handling
 

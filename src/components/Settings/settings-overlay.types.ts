@@ -62,6 +62,7 @@ export interface SettingsOverlayActions {
   createLibrary: (dialogTitle: string) => Promise<void>;
   openLibrary: (dialogTitle: string) => Promise<void>;
   switchLibrary: (libraryId: string) => Promise<void>;
+  forceSyncRemoteLibrary: (libraryId: string) => Promise<void>;
   renameLibrary: (libraryId: string) => Promise<void>;
   removeLibrary: (libraryId: string) => Promise<void>;
   deleteLibrary: (libraryId: string) => Promise<void>;

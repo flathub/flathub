@@ -89,6 +89,26 @@ describe("RemoteLibraryWizard", () => {
     expect(markup).not.toContain("Display name");
   });
 
+  test("renders recovery copy and preselects the requested provider", () => {
+    const value = createSettingsOverlayTestContextValue();
+
+    const markup = renderToStaticMarkup(
+      <SettingsOverlayContext value={value}>
+        <RemoteLibraryWizard
+          onClose={() => {}}
+          initialProvider="webdav"
+          purpose="update_credentials"
+        />
+      </SettingsOverlayContext>,
+    );
+
+    expect(markup).toContain("settings.library.updateRemoteCredentials");
+    expect(markup).toContain(
+      "settings.library.updateRemoteCredentialsDescription",
+    );
+    expect(markup).toContain("settings.library.webdavServerUrl");
+  });
+
   test("shows structured command error messages instead of [object Object]", async () => {
     mockBeginRemoteAuth.mockResolvedValue({
       session_id: "session-1",

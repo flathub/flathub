@@ -16,8 +16,8 @@ use tauri::{AppHandle, Manager, State};
 pub(crate) use registry::remove_remote_library_credentials;
 pub(crate) use sync::{
     ensure_remote_file_cached, maybe_publish_song_to_bound_remote,
-    maybe_publish_songs_to_bound_remote, sync_active_remote_database_if_needed,
-    sync_bound_remote_for_active_local_library,
+    maybe_publish_songs_to_bound_remote, prepare_active_remote_database_for_mutation,
+    sync_active_remote_database_if_needed, sync_bound_remote_for_active_local_library,
 };
 pub use types::{
     RemoteAuthSession, RemoteAuthStart, RemoteAuthState, RemoteAuthStatus,

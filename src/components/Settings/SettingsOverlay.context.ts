@@ -50,6 +50,7 @@ export function createSettingsOverlayTestContextValue(
       createLibrary: async () => {},
       openLibrary: async () => {},
       switchLibrary: async () => {},
+      forceSyncRemoteLibrary: async () => {},
       renameLibrary: async () => {},
       removeLibrary: async () => {},
       deleteLibrary: async () => {},

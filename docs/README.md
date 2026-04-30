@@ -18,11 +18,10 @@ summaries, and historical records.
 
 ## Execution Plans
 
-| Document                                                                                         | Description                                                      |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| [exec-plans/active/index.md](./exec-plans/active/index.md)                                       | In-progress or still-actionable implementation plans             |
-| [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md)                             | Cross-cutting debt items that do not belong to one feature       |
-| [exec-plans/active/remote-library-hardening.md](./exec-plans/active/remote-library-hardening.md) | Current remote-library conflict, recovery, and verification plan |
+| Document                                                             | Description                                                |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [exec-plans/active/index.md](./exec-plans/active/index.md)           | In-progress or still-actionable implementation plans       |
+| [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md) | Cross-cutting debt items that do not belong to one feature |
 
 Point-in-time plans that no longer drive active work live under
 [archive/](./archive/README.md). Active plans live under
@@ -51,6 +50,7 @@ Point-in-time plans that no longer drive active work live under
 
 ## Archive
 
-| Document                                 | Description                                                                |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| [archive/README.md](./archive/README.md) | Historical plans and docs kept for traceability, not active implementation |
+| Document                                                                                 | Description                                                                |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [archive/README.md](./archive/README.md)                                                 | Historical plans and docs kept for traceability, not active implementation |
+| [archive/plans/remote-library-hardening.md](./archive/plans/remote-library-hardening.md) | Completed remote-library conflict, recovery, and verification plan         |

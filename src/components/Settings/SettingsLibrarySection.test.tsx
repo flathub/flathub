@@ -85,5 +85,8 @@ describe("SettingsLibrarySection", () => {
     expect(markup).toContain("Rename library");
     expect(markup).toContain("Disconnect library");
     expect(markup).toContain("Delete library");
+    expect(markup).toContain("Force resync remote library");
+    expect(markup).toContain("Reconnect provider");
+    expect(markup).toContain("Update credentials");
   });
 });
