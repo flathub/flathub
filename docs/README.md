@@ -1,17 +1,8 @@
 # Documentation
 
-## Public Site
-
-| Document                                 | Description                                              |
-| ---------------------------------------- | -------------------------------------------------------- |
-| [site/index.html](./site/index.html)     | Handcrafted homepage source for the public landing page  |
-| [site/faq.html](./site/faq.html)         | Handcrafted FAQ page for the public website              |
-| [site/privacy.html](./site/privacy.html) | Public privacy policy for the website and desktop app    |
-| [site/terms.html](./site/terms.html)     | Public terms of service for the website and desktop app  |
-| [site/\_layouts/](./site/_layouts)       | Custom Jekyll layouts for the homepage and content pages |
-| [site/\_config.yml](./site/_config.yml)  | Jekyll configuration for the GitHub Pages site           |
-
-Install guidance lives inside `docs/site/index.html` instead of a standalone install page.
+The public website source lives at [`../website/`](../website/) so this folder
+can stay focused on engineering docs, product specs, references, generated
+summaries, and historical records.
 
 ## Design Docs
 
@@ -21,23 +12,21 @@ Install guidance lives inside `docs/site/index.html` instead of a standalone ins
 | [design-docs/architecture.md](./design-docs/architecture.md)                                 | System architecture, tech stack, data flow, and runtime design    |
 | [design-docs/core-beliefs.md](./design-docs/core-beliefs.md)                                 | Core product and engineering principles                           |
 | [design-docs/project-structure.md](./design-docs/project-structure.md)                       | Directory layout and module responsibilities                      |
-| [design-docs/development-phases.md](./design-docs/development-phases.md)                     | Executable development phase checklist with verify steps          |
 | [design-docs/roadmap.md](./design-docs/roadmap.md)                                           | Technical roadmap, API contracts, and risk notes                  |
-| [design-docs/milestones.md](./design-docs/milestones.md)                                     | Milestone task table with exit criteria and ownership tracking    |
 | [design-docs/releasing.md](./design-docs/releasing.md)                                       | Release workflow, Homebrew distribution, and future channels      |
 | [design-docs/performance/phase-5-baseline.md](./design-docs/performance/phase-5-baseline.md) | Backend benchmark baseline for profiling work                     |
 
 ## Execution Plans
 
-| Document                                                                                                                 | Description                                                |
-| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| [exec-plans/active/index.md](./exec-plans/active/index.md)                                                               | In-progress or still-actionable implementation plans       |
-| [exec-plans/completed/index.md](./exec-plans/completed/index.md)                                                         | Archived design and implementation plans                   |
-| [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md)                                                     | Cross-cutting debt items that do not belong to one feature |
-| [exec-plans/active/2026-03-16-docs-reorg-implementation.md](./exec-plans/active/2026-03-16-docs-reorg-implementation.md) | Current documentation cleanup plan                         |
-| [plans/2026-04-19 Remote Library.md](./plans/2026-04-19%20Remote%20Library.md)                                           | Current remote-library implementation and completion plan  |
+| Document                                                                                         | Description                                                      |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [exec-plans/active/index.md](./exec-plans/active/index.md)                                       | In-progress or still-actionable implementation plans             |
+| [exec-plans/tech-debt-tracker.md](./exec-plans/tech-debt-tracker.md)                             | Cross-cutting debt items that do not belong to one feature       |
+| [exec-plans/active/remote-library-hardening.md](./exec-plans/active/remote-library-hardening.md) | Current remote-library conflict, recovery, and verification plan |
 
-Point-in-time plans that no longer drive active work now live under [archive/](./archive/README.md). The top-level `docs/plans/` folder only keeps plans that still guide current or next-step implementation.
+Point-in-time plans that no longer drive active work live under
+[archive/](./archive/README.md). Active plans live under
+`docs/exec-plans/active/`.
 
 ## Generated Docs
 

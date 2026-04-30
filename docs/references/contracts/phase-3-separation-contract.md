@@ -187,7 +187,7 @@ pnpm tauri build --debug --no-bundle --ci
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../internal/roadmap.md](../internal/roadmap.md)
+1. 接手前先读本文件，再读 [../../design-docs/roadmap.md](../../design-docs/roadmap.md)
 2. 先跑验证命令，确认分离链路没有被后续改动打破
 3. 如果要改命令名、事件名、状态字段或缓存目录：
    - 先更新本契约

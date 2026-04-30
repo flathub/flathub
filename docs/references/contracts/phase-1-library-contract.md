@@ -312,7 +312,7 @@ cargo test
 
 ## Pause-and-resume instructions
 
-1. 接手前先读本文件，再读 [../internal/roadmap.md](../internal/roadmap.md)
+1. 接手前先读本文件，再读 [../../design-docs/roadmap.md](../../design-docs/roadmap.md)
 2. 执行上面的验证命令，确认当前分支状态真实可用
 3. 若后续需要修改字段或命令语义：
    - 先更新本契约

@@ -21,9 +21,8 @@ OpenKara/
 │   ├── product-specs/         # Product-facing behavior and experience specs
 │   │   ├── index.md
 │   │   └── new-user-onboarding.md
-│   ├── references/            # Frozen contracts and other reference material
-│   │   └── contracts/
-│   └── site/                  # GitHub Pages public microsite
+│   └── references/            # Frozen contracts and other reference material
+│       └── contracts/
 ├── public/                    # Static frontend assets
 ├── src/                       # React frontend
 │   ├── components/
@@ -55,6 +54,7 @@ OpenKara/
 │   └── tauri.conf.json        # Tauri bundle/runtime configuration
 ├── README.md                  # English project overview
 ├── README_CN.md               # Chinese project overview
+├── website/                   # GitHub Pages public microsite source
 └── package.json               # Frontend scripts and dependencies
 ```
 

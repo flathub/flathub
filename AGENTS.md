@@ -84,8 +84,8 @@ Delivery reports must include:
 Common formatting hotspots that are easy to miss:
 
 - `pnpm-lock.yaml`
-- `docs/site/**/*.html`
-- `docs/site/**/*.css`
+- `website/**/*.html`
+- `website/**/*.css`
 - `src-tauri/tauri.conf.json`
 - `.github/workflows/*.yml`
 - Any Markdown, JSON, HTML, CSS, or YAML file touched in the change

@@ -11,3 +11,6 @@ Rules:
 Current archive split:
 
 - `archive/plans/` — superseded point-in-time implementation plans
+- `archive/plans/development-phases.md` and `archive/plans/milestones.md` —
+  historical delivery plans retained for context, not current execution
+  guidance

@@ -4,7 +4,7 @@ This document freezes the split between **shared product UI** and **platform win
 
 ## Single frontend path
 
-- **Owner:** React `AppLayout` in [`src/components/Layout/AppLayout.tsx`](../src/components/Layout/AppLayout.tsx) is the only product shell.
+- **Owner:** React `AppLayout` in [`src/components/Layout/AppLayout.tsx`](../../src/components/Layout/AppLayout.tsx) is the only product shell.
 - **Invariant:** There is no second entry tree for `sidebar-webview` / `main-content-webview`; those modes are not part of the product surface.
 - **Runtime:** All listeners that affect product behavior run in the same process and the same hook graph: `useAppRuntime` in [`src/runtime/app-runtime.ts`](../../src/runtime/app-runtime.ts).
 

@@ -100,4 +100,4 @@ OpenKara v0.7.0 is the current source and package version. It includes:
 
 ---
 
-_For the full technical roadmap with milestones and phase planning, see [Technical Roadmap](./roadmap.md)._
+_For the current technical roadmap, see [Technical Roadmap](./design-docs/roadmap.md)._

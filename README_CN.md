@@ -304,12 +304,10 @@ pnpm tauri build             # 生产构建，生成平台特定安装包
 
 ## 文档
 
-- [文档总览](./docs/README.md) — 设计文档、执行计划、产品规范、参考资料与站点内容总入口
+- [文档总览](./docs/README.md) — 设计文档、执行计划、产品规范、参考资料与归档总入口
 - [系统架构](./docs/design-docs/architecture.md) — 系统设计、技术栈、数据流与运行时细节
 - [项目结构](./docs/design-docs/project-structure.md) — 当前目录布局与模块职责
-- [开发阶段](./docs/design-docs/development-phases.md) — 阶段清单与验证步骤
 - [技术路线图](./docs/design-docs/roadmap.md) — 技术选型、API 契约与风险应对
-- [里程碑](./docs/design-docs/milestones.md) — 里程碑任务表与交付标准
 
 ## 参与贡献
 

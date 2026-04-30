@@ -237,7 +237,6 @@ For the detailed, up-to-date implementation status and future plans, see:
 
 - **[Implementation Status](./docs/implementation-status.md)** — Completed milestones, released versions, and planned features
 - **[Technical Roadmap](./docs/design-docs/roadmap.md)** — Architecture phases, technical decisions, and risk mitigations
-- **[Milestones](./docs/design-docs/milestones.md)** — High-level project milestones and timeline
 
 ---
 
@@ -281,12 +280,10 @@ pnpm tauri build             # production build with platform-specific bundle
 
 ## Documentation
 
-- [Docs Hub](./docs/README.md) — Canonical index for design docs, plans, specs, references, and site content
+- [Docs Hub](./docs/README.md) — Canonical index for design docs, plans, specs, references, and archive
 - [Architecture](./docs/design-docs/architecture.md) — System design, tech stack, data flow, and runtime details
 - [Project Structure](./docs/design-docs/project-structure.md) — Current directory layout and module responsibilities
-- [Development Phases](./docs/design-docs/development-phases.md) — Phase checklist with verification steps
 - [Technical Roadmap](./docs/design-docs/roadmap.md) — Technology choices, API contracts, and risk mitigations
-- [Milestones](./docs/design-docs/milestones.md) — Milestone task table with exit criteria
 
 ## Contributing
 

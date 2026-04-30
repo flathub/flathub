@@ -25,11 +25,11 @@ A new user should be able to install OpenKara, point it at a music library, impo
 - Import should work with common local audio formats.
 - The app should remain usable even before a model download finishes.
 - Lyrics should degrade gracefully: cached, online, embedded, sidecar, or manual.
-- Remote setup should clearly distinguish between providers that are available now and providers that are still planned.
+- Remote setup should clearly distinguish Google Drive, Dropbox, and WebDAV provider requirements.
 
 ## Remote Library Expectations
 
 - A user connecting by Google Drive should be guided through browser-based OAuth and brought back into OpenKara without having to understand the Drive API model.
 - A user connecting by WebDAV should be able to enter the server URL, credentials, and target library path without reading engineering docs.
 - If remote setup fails, the UI should explain whether the problem is authentication, server reachability, or remote library initialization.
-- Planned providers such as Dropbox must not be presented as already-working flows before the real provider code ships.
+- Google Drive, Dropbox, and WebDAV should all be presented as working provider flows, with provider-specific setup and recovery guidance.
