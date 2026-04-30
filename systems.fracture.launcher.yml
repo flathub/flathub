@@ -1,0 +1,97 @@
+id: systems.fracture.launcher
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm20
+  - org.freedesktop.Sdk.Extension.rust-stable
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=xdg-run/pipewire-0
+  - --talk-name=org.freedesktop.Notifications
+  # GNOME users can optionally enable extension support allowing
+  # them to easily launch on the active window.
+  - --talk-name=org.gnome.Shell
+  - --talk-name=org.gnome.Shell.Extensions
+  - --talk-name=org.gnome.Mutter.ScreenCast
+
+  # It uses dconf to add a keyboard shortcut
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules/
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+command: launcher
+modules:
+  - name: fracture-build
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/fracture-build/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo build --offline --release --all-features
+      - install -Dm0755 target/release/fracture /app/bin/fracture
+      - install -Dm644 flatpak/fracture.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm755 flatpak/fracture.desktop
+        /app/share/applications/$FLATPAK_ID.desktop
+      - install -Dm755 flatpak/img/icon/95x95.png
+        /app/share/icons/hicolor/95x95/apps/$FLATPAK_ID.png
+      - install -Dm755 flatpak/img/icon/32x32.png
+        /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm755 flatpak/img/icon/64x64.png
+        /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm755 flatpak/img/icon/128x128.png
+        /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm755 flatpak/img/icon/256x256.png
+        /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm755 flatpak/img/icon/512x512.png
+        /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/parker-bryce-andrew/fracture.git
+        commit: 030502f6332f9a707102e5fc5350f42603491053
+      - cargo-fracture-sources.json
+
+  - name: launcher-build
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/launcher-build/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo build --offline --release --all-features
+      - install -Dm0755 target/release/gsc-launcher /app/bin/launcher
+    sources:
+      - type: git
+        url: https://github.com/parker-bryce-andrew/fracture-launcher.git
+        commit: d40424ff57f2a99e3171fe8e0ce7801e13df1660
+      - cargo-launcher-sources.json
+
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share/dbus-1
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz
+        sha256: 16a47e49a58156dbb96578e1708325299e4c19eea9be128d5bd12fd0963d6c36
+      - type: patch
+        path: dconf-override.patch
