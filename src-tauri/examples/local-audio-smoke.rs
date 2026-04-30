@@ -35,7 +35,7 @@ fn main() -> Result<()> {
 }
 
 fn usage() -> String {
-    "usage: cargo run --bin local-audio-smoke -- <input-dir> <output-dir> [--skip-separation]"
+    "usage: cargo run --example local-audio-smoke -- <input-dir> <output-dir> [--skip-separation]"
         .to_string()
 }
 

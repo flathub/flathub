@@ -9,7 +9,7 @@ mkdir -p "$OUTPUT_DIR"
 
 cargo run \
   --manifest-path "$ROOT_DIR/src-tauri/Cargo.toml" \
-  --bin local-audio-smoke \
+  --example local-audio-smoke \
   -- \
   "$INPUT_DIR" \
   "$OUTPUT_DIR"
