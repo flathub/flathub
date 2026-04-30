@@ -513,7 +513,6 @@ mod tests {
         net::{Ipv4Addr, SocketAddrV4, TcpListener},
         sync::{Arc, Mutex},
         thread::{self, JoinHandle},
-        time::Duration,
     };
     use tempfile::tempdir;
     use tiny_http::{Header, Method as HttpMethod, Response, Server, StatusCode as HttpStatusCode};
@@ -538,9 +537,7 @@ mod tests {
             let thread_files = Arc::clone(&files);
             let thread_server = Arc::clone(&server);
             let thread = thread::spawn(move || {
-                while let Ok(Some(request)) =
-                    thread_server.recv_timeout(Duration::from_millis(100))
-                {
+                while let Ok(request) = thread_server.recv() {
                     respond_to_webdav_request(request, &thread_directories, &thread_files);
                 }
             });

@@ -13,7 +13,10 @@ export default defineConfig(async () => ({
   test: {
     // Nested git worktrees under `.worktrees/` duplicate `src/**` and must not
     // be collected as part of this package's unit test run.
-    include: ["src/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+    include: [
+      "src/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "tests/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+    ],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
     setupFiles: ["./src/test-setup.ts"],
   },
