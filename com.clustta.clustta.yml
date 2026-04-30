@@ -2,41 +2,55 @@ app-id: com.clustta.clustta
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node20
+
 command: clustta
 
 finish-args:
-  # Display
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # GPU acceleration for WebKitGTK
   - --device=dri
-  # Network access for sync and collaboration
   - --share=network
-  # Keyring access for authentication tokens
-  - --talk-name=org.freedesktop.secrets
-  # System tray icon
   - --talk-name=org.kde.StatusNotifierWatcher
+
+build-options:
+  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node20/bin
+  env:
+    GOPATH: /run/build/clustta/go
+    GOBIN: /run/build/clustta/go/bin
+    npm_config_nodedir: /usr/lib/sdk/node20
 
 modules:
   - name: clustta
     buildsystem: simple
     build-commands:
-      - install -Dm755 clustta -t /app/bin/
-      - install -Dm644 com.clustta.clustta.desktop -t /app/share/applications/
-      - install -Dm644 com.clustta.clustta.metainfo.xml -t /app/share/metainfo/
-      - install -Dm644 appicon-256.png /app/share/icons/hicolor/256x256/apps/com.clustta.clustta.png
-      - install -Dm644 clustta-clst.xml /app/share/mime/packages/com.clustta.clustta-clst.xml
+      # Configure yarn to use offline mirror
+      - yarn config set yarn-offline-mirror "$PWD/flatpak-node/yarn-mirror"
+      # Build frontend
+      - cd frontend && yarn install --offline --frozen-lockfile
+      - cd frontend && yarn build
+      # Build Go binary with vendored dependencies
+      - |
+        . /usr/lib/sdk/golang/enable.sh
+        CGO_ENABLED=1 go build -mod=vendor -tags production -trimpath -buildvcs=false \
+          -ldflags="-w -s" -o /app/bin/clustta
+      # Install desktop integration files
+      - install -Dm644 build/linux/com.clustta.clustta.desktop /app/share/applications/com.clustta.clustta.desktop
+      - install -Dm644 build/linux/com.clustta.clustta.metainfo.xml /app/share/metainfo/com.clustta.clustta.metainfo.xml
+      - install -Dm644 build/linux/com.clustta.clustta-clst.xml /app/share/mime/packages/com.clustta.clustta-clst.xml
+      - |
+        if command -v ffmpeg >/dev/null 2>&1; then
+          ffmpeg -y -i build/appicon.png -vf scale=256:256 /tmp/appicon-256.png
+          install -Dm644 /tmp/appicon-256.png /app/share/icons/hicolor/256x256/apps/com.clustta.clustta.png
+        else
+          install -Dm644 build/appicon.png /app/share/icons/hicolor/256x256/apps/com.clustta.clustta.png
+        fi
     sources:
-      - type: file
-        url: https://github.com/eaxum/clustta-client/releases/download/v0.4.33/clustta-0.4.33-linux-amd64
-        sha256: d418d2fbc9a9f6351ca81c24819492a46f84b81b88ec9810bb07d555b39e39db
-        dest-filename: clustta
-      - type: file
-        path: com.clustta.clustta.desktop
-      - type: file
-        path: com.clustta.clustta.metainfo.xml
-      - type: file
-        path: appicon-256.png
-      - type: file
-        path: clustta-clst.xml
+      - type: git
+        url: https://github.com/eaxum/clustta-client.git
+        tag: v0.4.34
+        commit: 563ec09726289d324862e6e0dadf637074c9f650
+      - generated-sources.json
