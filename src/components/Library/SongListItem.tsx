@@ -312,7 +312,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
               <TaskProgressBar
                 label={t("progress.uploadingToRemote", {
                   title: getSongDisplayName(song),
-                  defaultValue: `Uploading to remote library: ${getSongDisplayName(
+                  defaultValue: `Publishing to remote repository: ${getSongDisplayName(
                     song,
                   )}`,
                 })}

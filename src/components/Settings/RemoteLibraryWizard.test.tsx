@@ -15,15 +15,19 @@ const {
   mockCancelRemoteAuth,
   mockPollRemoteAuth,
   mockCreateRemoteLibrary,
+  mockResolveRemoteLibraryCandidate,
   mockOpenExternalUrl,
   mockRegisterRemoteLibrary,
+  mockReauthorizeRemoteLibrary,
 } = vi.hoisted(() => ({
   mockBeginRemoteAuth: vi.fn(),
   mockCancelRemoteAuth: vi.fn(),
   mockPollRemoteAuth: vi.fn(),
   mockCreateRemoteLibrary: vi.fn(),
+  mockResolveRemoteLibraryCandidate: vi.fn(),
   mockOpenExternalUrl: vi.fn(),
   mockRegisterRemoteLibrary: vi.fn(),
+  mockReauthorizeRemoteLibrary: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -47,8 +51,10 @@ vi.mock("@/lib/tauri", () => ({
   cancelRemoteAuth: mockCancelRemoteAuth,
   pollRemoteAuth: mockPollRemoteAuth,
   createRemoteLibrary: mockCreateRemoteLibrary,
+  resolveRemoteLibraryCandidate: mockResolveRemoteLibraryCandidate,
   openExternalUrl: mockOpenExternalUrl,
   registerRemoteLibrary: mockRegisterRemoteLibrary,
+  reauthorizeRemoteLibrary: mockReauthorizeRemoteLibrary,
 }));
 
 async function flushEffects() {
@@ -59,14 +65,25 @@ async function flushEffects() {
   });
 }
 
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 describe("RemoteLibraryWizard", () => {
   beforeEach(() => {
     mockBeginRemoteAuth.mockReset();
     mockCancelRemoteAuth.mockReset();
     mockPollRemoteAuth.mockReset();
     mockCreateRemoteLibrary.mockReset();
+    mockResolveRemoteLibraryCandidate.mockReset();
     mockOpenExternalUrl.mockReset();
     mockRegisterRemoteLibrary.mockReset();
+    mockReauthorizeRemoteLibrary.mockReset();
     vi.restoreAllMocks();
 
     (
@@ -89,7 +106,7 @@ describe("RemoteLibraryWizard", () => {
     expect(markup).not.toContain("Display name");
   });
 
-  test("renders recovery copy and preselects the requested provider", () => {
+  test("renders reauthorization copy and preselects the requested provider", () => {
     const value = createSettingsOverlayTestContextValue();
 
     const markup = renderToStaticMarkup(
@@ -97,16 +114,201 @@ describe("RemoteLibraryWizard", () => {
         <RemoteLibraryWizard
           onClose={() => {}}
           initialProvider="webdav"
-          purpose="update_credentials"
+          purpose="reauthorize"
         />
       </SettingsOverlayContext>,
     );
 
-    expect(markup).toContain("settings.library.updateRemoteCredentials");
+    expect(markup).toContain("settings.library.reauthorizeRemoteRepository");
     expect(markup).toContain(
-      "settings.library.updateRemoteCredentialsDescription",
+      "settings.library.reauthorizeRemoteRepositoryDescription",
     );
     expect(markup).toContain("settings.library.webdavServerUrl");
+  });
+
+  test("reauthorizes an existing remote repository without registering a new one when the location is unchanged", async () => {
+    mockBeginRemoteAuth.mockResolvedValue({
+      session_id: "session-1",
+      provider: "webdav",
+      authorization_url: null,
+      expires_at_ms: null,
+    });
+    mockResolveRemoteLibraryCandidate.mockResolvedValue({
+      provider: "webdav",
+      remote_root_locator: "https://dav.example.com/OpenKara/",
+      remote_path_display: "dav.example.com/OpenKara",
+      display_name: "Drive",
+      account_id: "user@dav.example.com",
+    });
+    mockReauthorizeRemoteLibrary.mockResolvedValue({
+      active_library_id: "remote:existing",
+      libraries: [],
+    });
+    const switchLibrary = vi.fn();
+    const onClose = vi.fn();
+    const value = createSettingsOverlayTestContextValue(
+      {
+        meta: { isInitializing: false },
+        state: {
+          libraries: [
+            {
+              id: "remote:existing",
+              kind: "remote",
+              display_name: "Drive",
+              provider: "webdav",
+              remote_root_locator: "https://dav.example.com/OpenKara/",
+              remote_path_display: "dav.example.com/OpenKara",
+              account_id: "user@dav.example.com",
+              connection_config: {
+                type: "webdav",
+                server_url: "https://dav.example.com/",
+              },
+              cached_db_path: "/tmp/openkara.db",
+              remote_revision: "rev-1",
+            },
+          ],
+          activeLibraryId: "remote:existing",
+        },
+      },
+      { switchLibrary },
+    );
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SettingsOverlayContext value={value}>
+          <RemoteLibraryWizard
+            onClose={onClose}
+            libraryId="remote:existing"
+            initialProvider="webdav"
+            initialDisplayName="Drive"
+            initialServerUrl="https://dav.example.com/"
+            initialRemoteRootLocator="https://dav.example.com/OpenKara/"
+            initialRemotePathDisplay="dav.example.com/OpenKara"
+            initialRootPath="/OpenKara"
+            purpose="reauthorize"
+          />
+        </SettingsOverlayContext>,
+      );
+    });
+
+    const inputs = [...container.querySelectorAll("input")];
+    await act(async () => {
+      setInputValue(inputs[3], "user");
+      setInputValue(inputs[4], "secret");
+    });
+
+    const reauthorizeButton = [...container.querySelectorAll("button")].find(
+      (button) =>
+        button.textContent?.includes(
+          "settings.library.reauthorizeRemoteRepository",
+        ),
+    );
+    expect(reauthorizeButton).toBeTruthy();
+
+    await act(async () => {
+      reauthorizeButton?.click();
+    });
+    await flushEffects();
+
+    expect(mockReauthorizeRemoteLibrary).toHaveBeenCalledWith(
+      "remote:existing",
+      "session-1",
+      "https://dav.example.com/OpenKara/",
+      "Drive",
+      false,
+    );
+    expect(mockRegisterRemoteLibrary).not.toHaveBeenCalled();
+    expect(switchLibrary).toHaveBeenCalledWith("remote:existing");
+    expect(onClose).toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  test("asks before relocating a remote repository when reauthorization returns a different location", async () => {
+    mockBeginRemoteAuth.mockResolvedValue({
+      session_id: "session-1",
+      provider: "webdav",
+      authorization_url: null,
+      expires_at_ms: null,
+    });
+    mockResolveRemoteLibraryCandidate.mockResolvedValue({
+      provider: "webdav",
+      remote_root_locator: "https://dav.example.com/MovedOpenKara/",
+      remote_path_display: "dav.example.com/MovedOpenKara",
+      display_name: "Drive",
+      account_id: "user@dav.example.com",
+    });
+    mockReauthorizeRemoteLibrary.mockResolvedValue({
+      active_library_id: "remote:existing",
+      libraries: [],
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const value = createSettingsOverlayTestContextValue({
+      meta: { isInitializing: false },
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <SettingsOverlayContext value={value}>
+          <RemoteLibraryWizard
+            onClose={() => {}}
+            libraryId="remote:existing"
+            initialProvider="webdav"
+            initialDisplayName="Drive"
+            initialServerUrl="https://dav.example.com/"
+            initialRemoteRootLocator="https://dav.example.com/OpenKara/"
+            initialRemotePathDisplay="dav.example.com/OpenKara"
+            initialRootPath="/OpenKara"
+            purpose="reauthorize"
+          />
+        </SettingsOverlayContext>,
+      );
+    });
+
+    const inputs = [...container.querySelectorAll("input")];
+    await act(async () => {
+      setInputValue(inputs[3], "user");
+      setInputValue(inputs[4], "secret");
+    });
+
+    const reauthorizeButton = [...container.querySelectorAll("button")].find(
+      (button) =>
+        button.textContent?.includes(
+          "settings.library.reauthorizeRemoteRepository",
+        ),
+    );
+
+    await act(async () => {
+      reauthorizeButton?.click();
+    });
+    await flushEffects();
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "settings.library.confirmRemoteRepositoryRelocation",
+      ),
+    );
+    expect(mockReauthorizeRemoteLibrary).toHaveBeenCalledWith(
+      "remote:existing",
+      "session-1",
+      "https://dav.example.com/MovedOpenKara/",
+      "Drive",
+      true,
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   test("shows structured command error messages instead of [object Object]", async () => {

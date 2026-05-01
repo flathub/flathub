@@ -359,20 +359,20 @@ pub(crate) fn stored_google_drive_client_id(library: &RegisteredLibrary) -> Comm
         .map(str::to_owned)
         .ok_or_else(|| {
             library_error(
-                "remote library is missing the Google Drive OAuth client ID metadata".to_owned(),
+                "remote repository is missing the Google Drive OAuth client ID metadata".to_owned(),
             )
         })
 }
 
 pub(crate) fn stored_dropbox_app_key(library: &RegisteredLibrary) -> CommandResult<String> {
     library.dropbox_app_key().map(str::to_owned).ok_or_else(|| {
-        library_error("remote library is missing the Dropbox app key metadata".to_owned())
+        library_error("remote repository is missing the Dropbox app key metadata".to_owned())
     })
 }
 
 pub(crate) fn stored_webdav_server_url(library: &RegisteredLibrary) -> CommandResult<String> {
     library.webdav_server_url().map(str::to_owned).ok_or_else(|| {
-        library_error("remote library is missing the WebDAV server URL metadata".to_owned())
+        library_error("remote repository is missing the WebDAV server URL metadata".to_owned())
     })
 }
 
@@ -392,7 +392,7 @@ pub(crate) fn load_remote_root(
 ) -> CommandResult<LibraryRoot> {
     let root_path = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let root = if root_path.join(".openkara-library").exists() {
         LibraryRoot::open(&root_path).map_err(library_error)?
     } else {
@@ -401,7 +401,7 @@ pub(crate) fn load_remote_root(
     cache::initialize_library_database(&root.database_path()).map_err(library_error)?;
 
     // Ensure the directory structure exists even if the cached copy was created
-    // before the remote library folder layout stabilized.
+    // before the remote repository folder layout stabilized.
     let _ = app_data_dir;
     Ok(root)
 }

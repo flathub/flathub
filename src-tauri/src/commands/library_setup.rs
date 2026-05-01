@@ -168,7 +168,7 @@ fn activate_library(
 
     let root_path = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let lib = LibraryRoot::open(&root_path).map_err(library_error)?;
     let db_path = lib.database_path();
     cache::initialize_library_database(&db_path).map_err(library_error)?;

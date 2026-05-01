@@ -22,7 +22,7 @@ describe("ipc type shapes", () => {
     expect(song.audio_source_kind).toBe("original_remote");
   });
 
-  test("accepts remote library registrations with provider metadata", () => {
+  test("accepts remote repository registrations with provider metadata", () => {
     const library: RegisteredLibrary = {
       id: "remote:drive",
       kind: "remote",

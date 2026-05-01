@@ -101,6 +101,16 @@ export function createRemoteLibrary(
   });
 }
 
+export function resolveRemoteLibraryCandidate(
+  sessionId: string,
+  displayName: string,
+): Promise<RemoteLibraryCandidate> {
+  return invoke<RemoteLibraryCandidate>("resolve_remote_library_candidate", {
+    sessionId,
+    displayName,
+  });
+}
+
 export function registerRemoteLibrary(
   sessionId: string,
   remoteRootLocator: string,
@@ -110,6 +120,22 @@ export function registerRemoteLibrary(
     sessionId,
     remoteRootLocator,
     displayName: displayName ?? null,
+  });
+}
+
+export function reauthorizeRemoteLibrary(
+  libraryId: string,
+  sessionId: string,
+  remoteRootLocator: string,
+  displayName: string,
+  allowRelocation: boolean,
+): Promise<LibraryRegistrySnapshot> {
+  return invoke<LibraryRegistrySnapshot>("reauthorize_remote_library", {
+    libraryId,
+    sessionId,
+    remoteRootLocator,
+    displayName,
+    allowRelocation,
   });
 }
 

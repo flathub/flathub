@@ -172,7 +172,7 @@ mod platform {
         let mut child = Command::new("secret-tool")
             .args([
                 "store",
-                "--label=OpenKara remote library credentials",
+                "--label=OpenKara remote repository credentials",
                 ATTR_SCOPE,
                 SERVICE_NAME,
                 ATTR_LIBRARY_ID,
@@ -261,7 +261,7 @@ mod platform {
     }
 
     fn linux_unavailable_help() -> &'static str {
-        "Install or unlock a desktop keyring provider, then reconnect the remote library."
+        "Install or unlock a desktop keyring provider, then reauthorize the remote repository."
     }
 }
 

@@ -46,7 +46,7 @@ describe("SettingsLibrarySection", () => {
     expect(markup).toContain("Drive Library");
     expect(markup).toContain("WebDAV");
     expect(markup).toContain("OpenKara / Team Karaoke");
-    expect(markup).toContain("Add Remote Library");
+    expect(markup).toContain("Add Remote Repository");
   });
 
   test("renders library management actions separately from switching", () => {
@@ -83,10 +83,12 @@ describe("SettingsLibrarySection", () => {
     );
 
     expect(markup).toContain("Rename library");
-    expect(markup).toContain("Disconnect library");
-    expect(markup).toContain("Delete library");
-    expect(markup).toContain("Force resync remote library");
-    expect(markup).toContain("Reconnect provider");
-    expect(markup).toContain("Update credentials");
+    expect(markup).toContain("Disconnect repository");
+    expect(markup).toContain("Delete repository");
+    expect(markup).toContain("Refresh remote repository");
+    expect(markup).toContain("Reauthorize remote repository");
+    expect(markup).not.toContain("Force resync remote library");
+    expect(markup).not.toContain("Reconnect provider");
+    expect(markup).not.toContain("Update credentials");
   });
 });

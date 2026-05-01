@@ -23,7 +23,9 @@ function createRemoteApiMock(): RemoteLibraryFlowApi {
     openExternalUrl: vi.fn(),
     pollRemoteAuth: vi.fn(),
     createRemoteLibrary: vi.fn(),
+    resolveRemoteLibraryCandidate: vi.fn(),
     registerRemoteLibrary: vi.fn(),
+    reauthorizeRemoteLibrary: vi.fn(),
     cancelRemoteAuth: vi.fn(),
   };
 }
@@ -64,7 +66,7 @@ describe("remote-library-flow", () => {
     ).toBeNull();
   });
 
-  test("uses OpenKara as the default remote library display name for every provider", () => {
+  test("uses OpenKara as the default remote repository display name for every provider", () => {
     expect(getRemoteProviderDisplayName(tWithDefault, "google_drive")).toBe(
       "OpenKara",
     );

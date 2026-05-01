@@ -308,7 +308,7 @@ pub(crate) fn load_webdav_secret(
 ) -> CommandResult<WebDavSecret> {
     let remote_root_url = library
         .remote_root_locator()
-        .ok_or_else(|| library_error("remote library is missing a remote locator"))?
+        .ok_or_else(|| library_error("remote repository is missing a remote locator"))?
         .to_owned();
     if let Some(secret) = load_remote_credential::<StoredWebDavSecret>(app_data_dir, library.id())?
     {
@@ -319,7 +319,7 @@ pub(crate) fn load_webdav_secret(
         });
     }
     Err(library_error(
-        "missing stored credentials for the remote library".to_owned(),
+        "missing stored credentials for the remote repository".to_owned(),
     ))
 }
 
@@ -338,7 +338,7 @@ pub(crate) fn initialize_or_sync_webdav_library(
 ) -> CommandResult<Option<String>> {
     let root_path = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let root = if root_path.join(".openkara-library").exists() {
         LibraryRoot::open(&root_path).map_err(library_error)?
     } else {
@@ -372,7 +372,7 @@ pub(crate) fn initialize_or_sync_webdav_library(
         upload_webdav_bytes(
             &client,
             &marker_url,
-            b"openkara remote library\n".to_vec(),
+            b"openkara remote repository\n".to_vec(),
             &secret.username,
             &secret.password,
         )?;
@@ -401,6 +401,41 @@ pub(crate) fn initialize_or_sync_webdav_library(
     Ok(etag)
 }
 
+pub(crate) fn refresh_existing_webdav_library(
+    _app_data_dir: &Path,
+    library: &RegisteredLibrary,
+    secret: &WebDavSecret,
+) -> CommandResult<Option<String>> {
+    let root_path = library
+        .working_copy_root()
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
+    let root = if root_path.join(".openkara-library").exists() {
+        LibraryRoot::open(&root_path).map_err(library_error)?
+    } else {
+        LibraryRoot::create(&root_path).map_err(library_error)?
+    };
+    cache::initialize_library_database(&root.database_path()).map_err(library_error)?;
+
+    let client = webdav_client()?;
+    let marker_url = webdav_marker_url(&secret.root_url)?;
+    if !webdav_exists(&client, &marker_url, &secret.username, &secret.password)? {
+        return Err(library_error(
+            "The selected WebDAV path is not an OpenKara remote repository.".to_owned(),
+        ));
+    }
+
+    let database_url = webdav_database_url(&secret.root_url)?;
+    download_webdav_file(
+        &client,
+        &database_url,
+        &root.database_path(),
+        &secret.username,
+        &secret.password,
+    )?
+    .ok_or_else(|| library_error("The selected WebDAV path is missing openkara.db.".to_owned()))
+    .map(Some)
+}
+
 pub(crate) fn upload_relative_file_to_remote(
     library: &RegisteredLibrary,
     secret: &WebDavSecret,
@@ -408,7 +443,7 @@ pub(crate) fn upload_relative_file_to_remote(
 ) -> CommandResult<()> {
     let local_root = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let source = local_root.join(relative_path);
     let client = webdav_client()?;
     let server_url = stored_webdav_server_url(library)?;
@@ -441,7 +476,7 @@ pub(crate) fn upload_directory_to_remote(
 ) -> CommandResult<()> {
     let local_root = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let base = local_root.join(relative_directory);
     if !base.exists() {
         return Ok(());
@@ -650,7 +685,7 @@ mod tests {
             test_remote_library(first_working_copy.path(), &server.base_url, &root_url);
 
         initialize_or_sync_webdav_library(app_data_dir.path(), &first_library, &secret)
-            .expect("new WebDAV remote library should initialize");
+            .expect("new WebDAV remote repository should initialize");
         let local_root = LibraryRoot::open(first_working_copy.path()).unwrap();
         let media_path = local_root.media_path("song-1", "wav");
         fs::write(&media_path, b"openkara test audio").unwrap();
@@ -694,7 +729,7 @@ mod tests {
         let second_library =
             test_remote_library(second_working_copy.path(), &server.base_url, &root_url);
         initialize_or_sync_webdav_library(app_data_dir.path(), &second_library, &secret)
-            .expect("existing WebDAV remote library should reopen");
+            .expect("existing WebDAV remote repository should reopen");
         let second_root = LibraryRoot::open(second_working_copy.path()).unwrap();
         let second_connection = cache::open_database(&second_root.database_path()).unwrap();
         let songs = cache::list_songs(&second_connection).unwrap();
@@ -702,5 +737,28 @@ mod tests {
         assert_eq!(songs.len(), 1);
         assert_eq!(songs[0].title.as_deref(), Some("Remote Song"));
         assert_eq!(songs[0].file_path.as_deref(), Some("media/song-1.wav"));
+    }
+
+    #[test]
+    fn webdav_refresh_existing_rejects_empty_remote_location() {
+        let server = TestWebDavServer::start();
+        let app_data_dir = tempdir().unwrap();
+        let working_copy = tempdir().unwrap();
+        let root_url = join_url(&server.base_url, "MovedOpenKara/").unwrap();
+        let secret = WebDavSecret {
+            root_url: root_url.clone(),
+            username: "openkara".to_owned(),
+            password: "secret".to_owned(),
+        };
+        let library = test_remote_library(working_copy.path(), &server.base_url, &root_url);
+
+        let error = refresh_existing_webdav_library(app_data_dir.path(), &library, &secret)
+            .expect_err("empty WebDAV path should not be initialized during relocation");
+
+        assert!(error
+            .message
+            .contains("not an OpenKara remote repository"));
+        assert!(!server.directory_exists("/MovedOpenKara/"));
+        assert!(server.file("/MovedOpenKara/openkara.db").is_none());
     }
 }

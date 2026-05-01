@@ -15,23 +15,29 @@ import {
 } from "./remote-library-copy";
 
 type RemoteSetupMode = "open_remote" | "mirror_active_local";
-type RemoteLibraryWizardPurpose = "add" | "reconnect" | "update_credentials";
+type RemoteLibraryWizardPurpose = "add" | "reauthorize";
 
 interface RemoteLibraryWizardProps {
   onClose: () => void;
+  libraryId?: string;
   initialProvider?: RemoteLibraryProvider;
   initialDisplayName?: string;
   initialServerUrl?: string;
+  initialRemoteRootLocator?: string;
+  initialRemotePathDisplay?: string;
   initialRootPath?: string;
   purpose?: RemoteLibraryWizardPurpose;
 }
 
 export function RemoteLibraryWizard({
   onClose,
+  libraryId,
   initialProvider = "google_drive",
   initialDisplayName,
   initialServerUrl = "",
   initialRootPath = "/OpenKara",
+  initialRemoteRootLocator = initialRootPath,
+  initialRemotePathDisplay,
   purpose = "add",
 }: RemoteLibraryWizardProps) {
   const { t } = useTranslation();
@@ -57,7 +63,8 @@ export function RemoteLibraryWizard({
   const activeLocalLibrary =
     activeLibrary?.kind === "local" ? activeLibrary : null;
   const canMirrorActiveLocal = activeLocalLibrary !== null;
-  const isRecoveryFlow = purpose !== "add";
+  const isReauthorizeFlow = purpose === "reauthorize";
+  const isRecoveryFlow = isReauthorizeFlow;
   const cancelledRef = useRef(false);
   const mountedRef = useRef(true);
   const authSessionIdRef = useRef<string | null>(null);
@@ -113,43 +120,76 @@ export function RemoteLibraryWizard({
     setAuthorizationUrl(null);
 
     try {
-      const { registry } = await runRemoteLibraryRegistrationFlow({
-        provider,
-        displayName,
-        t,
-        webdav: {
-          serverUrl,
-          username,
-          password,
-          rootPath,
-        },
-        isCancelled: () => cancelledRef.current,
-        onSessionIdChange: (sessionId) => {
-          authSessionIdRef.current = sessionId;
-        },
-        onAuthorizationUrlChange: (nextAuthorizationUrl) => {
-          if (mountedRef.current) {
-            setAuthorizationUrl(nextAuthorizationUrl);
-          }
-        },
-        onMessageChange: (nextMessage) => {
-          if (mountedRef.current) {
-            setMessage(nextMessage);
-          }
-        },
-      });
+      const runRegistration = async (allowRelocation: boolean) =>
+        runRemoteLibraryRegistrationFlow({
+          provider,
+          displayName,
+          t,
+          libraryId: isReauthorizeFlow ? libraryId : undefined,
+          existingRemoteRootLocator: isReauthorizeFlow
+            ? initialRemoteRootLocator
+            : undefined,
+          existingRemotePathDisplay: isReauthorizeFlow
+            ? initialRemotePathDisplay
+            : undefined,
+          allowRelocation,
+          webdav: {
+            serverUrl,
+            username,
+            password,
+            rootPath,
+          },
+          isCancelled: () => cancelledRef.current,
+          onSessionIdChange: (sessionId) => {
+            authSessionIdRef.current = sessionId;
+          },
+          onAuthorizationUrlChange: (nextAuthorizationUrl) => {
+            if (mountedRef.current) {
+              setAuthorizationUrl(nextAuthorizationUrl);
+            }
+          },
+          onMessageChange: (nextMessage) => {
+            if (mountedRef.current) {
+              setMessage(nextMessage);
+            }
+          },
+        });
+
+      const result = await runRegistration(false);
+      const { candidate } = result;
+      let { registry } = result;
+
+      if (
+        isReauthorizeFlow &&
+        candidate.remote_root_locator !== initialRemoteRootLocator
+      ) {
+        const confirmed = window.confirm(
+          t("settings.library.confirmRemoteRepositoryRelocation", {
+            defaultValue:
+              "The selected remote repository location changed. Replace OpenKara's saved location with {{nextLocation}}? The old remote contents will not be deleted.",
+            nextLocation: candidate.remote_path_display,
+          }),
+        );
+        if (!confirmed) {
+          return;
+        }
+        const relocationResult = await runRegistration(true);
+        registry = relocationResult.registry;
+      }
 
       if (cancelledRef.current) {
         return;
       }
 
-      const remoteLibraryId = registry.active_library_id;
+      const remoteLibraryId = isReauthorizeFlow
+        ? libraryId
+        : registry.active_library_id;
 
       if (!remoteLibraryId) {
         throw new Error(
           t("settings.library.remoteLibraryMissingId", {
             defaultValue:
-              "The new remote library was registered without an ID.",
+              "The new remote repository was registered without an ID.",
           }),
         );
       }
@@ -167,7 +207,7 @@ export function RemoteLibraryWizard({
         setMessage(
           t("settings.library.remoteLibraryCreatedAndMirroring", {
             defaultValue:
-              "Remote library created and now mirroring {{displayName}}.",
+              "Remote repository created and now mirroring {{displayName}}.",
             displayName: activeLocalLibrary.display_name,
           }),
         );
@@ -175,7 +215,7 @@ export function RemoteLibraryWizard({
         await actions.switchLibrary(remoteLibraryId);
         setMessage(
           t("settings.library.remoteLibraryConnected", {
-            defaultValue: "Remote library connected.",
+            defaultValue: "Remote repository connected.",
           }),
         );
       }
@@ -197,24 +237,15 @@ export function RemoteLibraryWizard({
       library.kind === "remote",
   );
 
-  const titleKey =
-    purpose === "reconnect"
-      ? "settings.library.reconnectRemoteProvider"
-      : purpose === "update_credentials"
-        ? "settings.library.updateRemoteCredentials"
-        : "settings.library.addRemoteLibrary";
-  const descriptionKey =
-    purpose === "reconnect"
-      ? "settings.library.reconnectRemoteProviderDescription"
-      : purpose === "update_credentials"
-        ? "settings.library.updateRemoteCredentialsDescription"
-        : "settings.library.addRemoteLibraryDescription";
-  const connectKey =
-    purpose === "reconnect"
-      ? "settings.library.reconnectRemoteProvider"
-      : purpose === "update_credentials"
-        ? "settings.library.updateRemoteCredentials"
-        : "settings.library.openRemoteLibrary";
+  const titleKey = isReauthorizeFlow
+    ? "settings.library.reauthorizeRemoteRepository"
+    : "settings.library.addRemoteLibrary";
+  const descriptionKey = isReauthorizeFlow
+    ? "settings.library.reauthorizeRemoteRepositoryDescription"
+    : "settings.library.addRemoteLibraryDescription";
+  const connectKey = isReauthorizeFlow
+    ? "settings.library.reauthorizeRemoteRepository"
+    : "settings.library.openRemoteLibrary";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -223,13 +254,16 @@ export function RemoteLibraryWizard({
           <div>
             <h2 className="text-lg font-semibold text-white">
               {t(titleKey, {
-                defaultValue: "Add Remote Library",
+                defaultValue: isReauthorizeFlow
+                  ? "Reauthorize remote repository"
+                  : "Add Remote Repository",
               })}
             </h2>
             <p className="mt-1 text-sm text-[var(--color-text-dim)]">
               {t(descriptionKey, {
-                defaultValue:
-                  "Open an existing remote library, or create one and mirror the active local library.",
+                defaultValue: isReauthorizeFlow
+                  ? "Renew access to this remote repository without changing its contents."
+                  : "Open an existing remote repository, or create one and mirror the active local library.",
               })}
             </p>
           </div>
@@ -255,7 +289,7 @@ export function RemoteLibraryWizard({
             >
               <p className="text-sm font-medium text-white">
                 {t("settings.library.openRemoteLibrary", {
-                  defaultValue: "Open Remote Library",
+                  defaultValue: "Open Remote Repository",
                 })}
               </p>
               <p className="mt-1 text-xs text-[var(--color-text-dim)]">
@@ -283,7 +317,7 @@ export function RemoteLibraryWizard({
                 {activeLocalLibrary
                   ? t("settings.library.mirrorActiveLocalDescriptionWithName", {
                       defaultValue:
-                        "Mirror {{displayName}} into a new remote library.",
+                        "Mirror {{displayName}} into a new remote repository.",
                       displayName: activeLocalLibrary.display_name,
                     })
                   : t("settings.library.mirrorActiveLocalDescriptionNoLocal", {
@@ -425,10 +459,12 @@ export function RemoteLibraryWizard({
                 })
               : !isRecoveryFlow && mode === "mirror_active_local"
                 ? t("settings.library.createRemoteLibraryAndStartMirror", {
-                    defaultValue: "Create Remote Library And Start Mirror",
+                    defaultValue: "Create Remote Repository And Start Mirror",
                   })
                 : t(connectKey, {
-                    defaultValue: "Open Remote Library",
+                    defaultValue: isReauthorizeFlow
+                      ? "Reauthorize remote repository"
+                      : "Open Remote Repository",
                   })}
           </button>
 

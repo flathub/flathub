@@ -76,7 +76,7 @@ OpenKara v0.5.1 adds:
 
 OpenKara v0.6.0 adds:
 
-- [x] Remote Library Support: Fully implemented connection, sync, and playback for Google Drive, Dropbox, and WebDAV providers
+- [x] Remote Repository Support: Fully implemented connection, refresh, publish, playback, reauthorization, and deletion semantics for Google Drive, Dropbox, and WebDAV providers
 - [x] Secure Credential Storage: Authentication tokens are now securely stored in the system Keychain (macOS) or Credential Manager (Windows)
 - [x] Legal & Privacy: Added dedicated Privacy Policy and Terms of Service disclosures
 

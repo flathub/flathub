@@ -3,9 +3,7 @@ import {
   CheckCircle2,
   FolderOpen,
   Globe,
-  KeyRound,
   Library,
-  Link2,
   PencilLine,
   Plus,
   RefreshCw,
@@ -28,9 +26,31 @@ type RemoteWizardOptions = {
   initialProvider?: RemoteLibraryProvider;
   initialDisplayName?: string;
   initialServerUrl?: string;
+  initialRemoteRootLocator?: string;
+  initialRemotePathDisplay?: string;
   initialRootPath?: string;
-  purpose?: "add" | "reconnect" | "update_credentials";
+  libraryId?: string;
+  purpose?: "add" | "reauthorize";
 };
+
+function webDavRootPathFromLocator(
+  serverUrl: string,
+  remoteRootLocator: string,
+) {
+  try {
+    const server = new URL(serverUrl);
+    const remote = new URL(remoteRootLocator);
+    const serverPath = server.pathname.endsWith("/")
+      ? server.pathname
+      : `${server.pathname}/`;
+    const relative = remote.pathname.startsWith(serverPath)
+      ? remote.pathname.slice(serverPath.length)
+      : remote.pathname;
+    return `/${relative.replace(/^\/+|\/+$/g, "")}`;
+  } catch {
+    return remoteRootLocator;
+  }
+}
 
 function describeLibrarySubtitle(library: RegisteredLibrary) {
   if (library.kind === "local") {
@@ -110,7 +130,7 @@ export function SettingsLibrarySection() {
                         }
                         disabled={meta.isInitializing}
                         title={t("settings.library.forceResyncRemoteLibrary", {
-                          defaultValue: "Force resync remote library",
+                          defaultValue: "Refresh remote repository",
                         })}
                         className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
                       >
@@ -126,39 +146,32 @@ export function SettingsLibrarySection() {
                               library.connection_config?.type === "webdav"
                                 ? library.connection_config.server_url
                                 : undefined,
-                            initialRootPath: library.remote_root_locator,
-                            purpose: "reconnect",
-                          })
-                        }
-                        disabled={meta.isInitializing}
-                        title={t("settings.library.reconnectRemoteProvider", {
-                          defaultValue: "Reconnect provider",
-                        })}
-                        className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
-                      >
-                        <Link2 size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRemoteWizard({
-                            initialProvider: library.provider,
-                            initialDisplayName: library.display_name,
-                            initialServerUrl:
+                            initialRemoteRootLocator:
+                              library.remote_root_locator,
+                            initialRemotePathDisplay:
+                              library.remote_path_display ||
+                              library.remote_root_locator,
+                            initialRootPath:
                               library.connection_config?.type === "webdav"
-                                ? library.connection_config.server_url
-                                : undefined,
-                            initialRootPath: library.remote_root_locator,
-                            purpose: "update_credentials",
+                                ? webDavRootPathFromLocator(
+                                    library.connection_config.server_url,
+                                    library.remote_root_locator,
+                                  )
+                                : library.remote_root_locator,
+                            libraryId: library.id,
+                            purpose: "reauthorize",
                           })
                         }
                         disabled={meta.isInitializing}
-                        title={t("settings.library.updateRemoteCredentials", {
-                          defaultValue: "Update credentials",
-                        })}
+                        title={t(
+                          "settings.library.reauthorizeRemoteRepository",
+                          {
+                            defaultValue: "Reauthorize remote repository",
+                          },
+                        )}
                         className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
                       >
-                        <KeyRound size={12} />
+                        <RefreshCw size={12} />
                       </button>
                     </>
                   ) : null}
@@ -178,7 +191,7 @@ export function SettingsLibrarySection() {
                     onClick={() => void actions.removeLibrary(library.id)}
                     disabled={meta.isInitializing}
                     title={t("settings.library.removeLibrary", {
-                      defaultValue: "Disconnect library",
+                      defaultValue: "Disconnect repository",
                     })}
                     className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"
                   >
@@ -189,7 +202,7 @@ export function SettingsLibrarySection() {
                     onClick={() => void actions.deleteLibrary(library.id)}
                     disabled={meta.isInitializing}
                     title={t("settings.library.deleteLibrary", {
-                      defaultValue: "Delete library",
+                      defaultValue: "Delete repository",
                     })}
                     className="rounded-md border border-red-500/40 bg-red-600/10 p-1.5 text-red-400 transition-colors hover:bg-red-600/20 hover:text-red-300 disabled:opacity-50"
                   >
@@ -226,7 +239,7 @@ export function SettingsLibrarySection() {
         >
           <Globe size={12} />{" "}
           {t("settings.library.addRemoteLibrary", {
-            defaultValue: "Add Remote Library",
+            defaultValue: "Add Remote Repository",
           })}
         </button>
       </div>
@@ -241,7 +254,10 @@ export function SettingsLibrarySection() {
           initialProvider={remoteWizard.initialProvider}
           initialDisplayName={remoteWizard.initialDisplayName}
           initialServerUrl={remoteWizard.initialServerUrl}
+          initialRemoteRootLocator={remoteWizard.initialRemoteRootLocator}
+          initialRemotePathDisplay={remoteWizard.initialRemotePathDisplay}
           initialRootPath={remoteWizard.initialRootPath}
+          libraryId={remoteWizard.libraryId}
           purpose={remoteWizard.purpose}
         />
       )}

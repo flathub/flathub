@@ -404,7 +404,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                               ? "Create new local library"
                               : choice.kind === "open_local"
                                 ? "Open existing local library"
-                                : "Open remote library",
+                                : "Open remote repository",
                         })}
                       </div>
                       <div className="text-[12px] text-[var(--color-text-dim)]">
@@ -456,7 +456,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               <p className="text-[14px] leading-relaxed text-[var(--color-text-dim)]">
                 {t("setup.openRemoteLibraryDescription", {
                   defaultValue:
-                    "Connect Google Drive, Dropbox, or WebDAV to your remote library.",
+                    "Connect Google Drive, Dropbox, or WebDAV to your remote repository.",
                 })}
               </p>
             </div>
@@ -625,7 +625,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
                   <p className="mt-1 text-[11px] text-[var(--color-text-dimmer)]">
                     {t("settings.library.webdavLibraryPathDescription", {
                       defaultValue:
-                        "Point this at an existing remote library path, or enter a new folder name and OpenKara will initialize it for you.",
+                        "Point this at an existing remote repository path, or enter a new folder name and OpenKara will initialize it for you.",
                     })}
                   </p>
                 </div>

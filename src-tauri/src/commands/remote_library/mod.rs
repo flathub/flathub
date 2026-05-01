@@ -69,6 +69,15 @@ pub fn create_remote_library(
 }
 
 #[tauri::command]
+pub fn resolve_remote_library_candidate(
+    state: State<'_, AppState>,
+    session_id: String,
+    display_name: String,
+) -> CommandResult<RemoteLibraryCandidate> {
+    registry::resolve_remote_library_candidate(&state, session_id, display_name)
+}
+
+#[tauri::command]
 pub fn register_remote_library(
     state: State<'_, AppState>,
     app_handle: AppHandle,
@@ -86,6 +95,31 @@ pub fn register_remote_library(
         session_id,
         remote_root_locator,
         display_name,
+    )
+}
+
+#[tauri::command]
+pub fn reauthorize_remote_library(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    library_id: String,
+    session_id: String,
+    remote_root_locator: String,
+    display_name: String,
+    allow_relocation: bool,
+) -> CommandResult<crate::commands::library_setup::LibraryRegistrySnapshot> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| library_error(error.to_string()))?;
+    registry::reauthorize_remote_library(
+        &state,
+        &app_data_dir,
+        library_id,
+        session_id,
+        remote_root_locator,
+        display_name,
+        allow_relocation,
     )
 }
 

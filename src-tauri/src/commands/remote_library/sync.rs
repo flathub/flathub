@@ -207,10 +207,10 @@ fn load_registered_remote_library(
         .libraries
         .iter()
         .find(|entry| entry.id() == library_id)
-        .ok_or_else(|| library_error(format!("remote library {library_id} was not found")))?;
+        .ok_or_else(|| library_error(format!("remote repository {library_id} was not found")))?;
     if !matches!(library, RegisteredLibrary::Remote { .. }) {
         return Err(library_error(format!(
-            "library {library_id} is not a remote library"
+            "library {library_id} is not a remote repository"
         )));
     }
     Ok(library.clone())
@@ -234,7 +234,7 @@ fn remote_database_revision(
             let mut secret = load_google_drive_secret(app_data_dir, library)?;
             let root_folder_id = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             Ok(google_drive_find_relative_entry(
                 app_data_dir,
                 &mut secret,
@@ -247,7 +247,7 @@ fn remote_database_revision(
             let mut secret = load_dropbox_secret(app_data_dir, library)?;
             let root_path = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             Ok(dropbox_get_metadata(
                 app_data_dir,
                 &mut secret,
@@ -273,10 +273,10 @@ fn remote_database_conflict_error(provider_revision: Option<&str>) -> CommandErr
         .map(|revision| format!(" Remote revision: {revision}."))
         .unwrap_or_default();
     library_error(format!(
-        "Remote library database changed on another device before this upload. \
+        "Remote repository database changed on another device before this publish. \
          OpenKara stopped before overwriting it. Use Settings > Karaoke Library > \
-         Force Resync, then retry this edit. If sync fails because authentication \
-         or the server changed, use Reconnect Provider or Update Credentials first.{revision_detail}"
+         Refresh remote repository, then retry this edit. If refresh fails because authentication \
+         or the server changed, use Reauthorize remote repository first.{revision_detail}"
     ))
 }
 
@@ -351,7 +351,7 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
             let secret = load_google_drive_secret(app_data_dir, library)?;
             let root_folder_id = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             google_drive_upload_relative_file_to_remote(
                 app_data_dir,
                 library,
@@ -377,7 +377,7 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
             let secret = load_dropbox_secret(app_data_dir, library)?;
             let root_path = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             dropbox_upload_relative_file_to_remote(
                 app_data_dir,
                 library,
@@ -459,7 +459,7 @@ pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> Co
             let mut secret = load_google_drive_secret(app_data_dir, &library)?;
             let root_folder_id = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             let entry = google_drive_find_relative_entry(
                 app_data_dir,
                 &mut secret,
@@ -473,7 +473,7 @@ pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> Co
             let mut secret = load_dropbox_secret(app_data_dir, &library)?;
             let root_path = library
                 .remote_root_locator()
-                .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
             let remote_path = dropbox_join_path(root_path, relative_path);
             if dropbox_get_metadata(app_data_dir, &mut secret, &remote_path)?.is_none() {
                 return Err(library_error(format!("remote file {relative_path} was not found")));
@@ -749,12 +749,12 @@ pub(crate) fn mirror_local_library_to_remote<R: tauri::Runtime>(
         .find(|entry| entry.id() == remote_library_id)
     else {
         return Err(library_error(format!(
-            "remote library {remote_library_id} was not found"
+            "remote repository {remote_library_id} was not found"
         )));
     };
     if !matches!(remote_library, RegisteredLibrary::Remote { .. }) {
         return Err(library_error(
-            "the target library must be a remote library".to_owned(),
+            "the target library must be a remote repository".to_owned(),
         ));
     }
 
@@ -778,15 +778,15 @@ fn publish_song_internal<R: tauri::Runtime>(
 ) -> CommandResult<UploadStatusSnapshot> {
     let config = load_app_config(&state.app_data_dir)?;
     let remote_library = resolve_active_remote(&config)
-        .ok_or_else(|| library_error("no bound remote library is available for publishing"))?;
+        .ok_or_else(|| library_error("no bound remote repository is available for publishing"))?;
     let remote_library = prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
 
     let local_root = state.library_root()?;
     let remote_library_id = remote_library.id().to_owned();
     let remote_root = load_remote_root(&state.app_data_dir, &remote_library)?;
 
-    // When the active library IS the remote library (user is directly working
-    // in a remote library), local_root and remote_root point to the same
+    // When the active library IS the remote repository (user is directly working
+    // in a remote repository), local_root and remote_root point to the same
     // directory.  In that case the "copy to remote" step must be skipped —
     // `copy_directory_recursive` would delete the source before reading it,
     // destroying stems and media files.  The cloud upload reads from the
@@ -819,7 +819,7 @@ fn publish_song_internal<R: tauri::Runtime>(
             .map_err(|error| database_error(error.to_string()))?
             .ok_or_else(|| {
                 library_error(format!(
-                    "song {song_id} must have cached stems before publishing to a remote library"
+                    "song {song_id} must have cached stems before publishing to a remote repository"
                 ))
             })?;
         if !same_root {
@@ -838,7 +838,7 @@ fn publish_song_internal<R: tauri::Runtime>(
             Some(RemoteLibraryProvider::GoogleDrive) => {
                 let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
                 let root_folder_id = remote_library.remote_root_locator().ok_or_else(|| {
-                    library_error("remote library is missing a remote locator".to_owned())
+                    library_error("remote repository is missing a remote locator".to_owned())
                 })?;
                 google_drive_upload_directory_to_remote(
                     &state.app_data_dir,
@@ -851,7 +851,7 @@ fn publish_song_internal<R: tauri::Runtime>(
             Some(RemoteLibraryProvider::Dropbox) => {
                 let remote_secret = load_dropbox_secret(&state.app_data_dir, &remote_library)?;
                 let root_path = remote_library.remote_root_locator().ok_or_else(|| {
-                    library_error("remote library is missing a remote locator".to_owned())
+                    library_error("remote repository is missing a remote locator".to_owned())
                 })?;
                 dropbox_upload_directory_to_remote(
                     &state.app_data_dir,
@@ -882,7 +882,7 @@ fn publish_song_internal<R: tauri::Runtime>(
                 Some(RemoteLibraryProvider::GoogleDrive) => {
                     let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
                     let root_folder_id = remote_library.remote_root_locator().ok_or_else(|| {
-                        library_error("remote library is missing a remote locator".to_owned())
+                        library_error("remote repository is missing a remote locator".to_owned())
                     })?;
                     google_drive_upload_relative_file_to_remote(
                         &state.app_data_dir,
@@ -895,7 +895,7 @@ fn publish_song_internal<R: tauri::Runtime>(
                 Some(RemoteLibraryProvider::Dropbox) => {
                     let remote_secret = load_dropbox_secret(&state.app_data_dir, &remote_library)?;
                     let root_path = remote_library.remote_root_locator().ok_or_else(|| {
-                        library_error("remote library is missing a remote locator".to_owned())
+                        library_error("remote repository is missing a remote locator".to_owned())
                     })?;
                     dropbox_upload_relative_file_to_remote(
                         &state.app_data_dir,
@@ -924,7 +924,7 @@ fn publish_song_internal<R: tauri::Runtime>(
                 Some(RemoteLibraryProvider::GoogleDrive) => {
                     let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
                     let root_folder_id = remote_library.remote_root_locator().ok_or_else(|| {
-                        library_error("remote library is missing a remote locator".to_owned())
+                        library_error("remote repository is missing a remote locator".to_owned())
                     })?;
                     google_drive_upload_relative_file_to_remote(
                         &state.app_data_dir,
@@ -937,7 +937,7 @@ fn publish_song_internal<R: tauri::Runtime>(
                 Some(RemoteLibraryProvider::Dropbox) => {
                     let remote_secret = load_dropbox_secret(&state.app_data_dir, &remote_library)?;
                     let root_path = remote_library.remote_root_locator().ok_or_else(|| {
-                        library_error("remote library is missing a remote locator".to_owned())
+                        library_error("remote repository is missing a remote locator".to_owned())
                     })?;
                     dropbox_upload_relative_file_to_remote(
                         &state.app_data_dir,
@@ -1051,7 +1051,7 @@ mod tests {
         let error = remote_database_conflict_error(Some("rev-2"));
 
         assert!(error.retryable);
-        assert!(error.message.contains("Force Resync"));
-        assert!(error.message.contains("Update Credentials"));
+        assert!(error.message.contains("Refresh remote repository"));
+        assert!(error.message.contains("Reauthorize remote repository"));
     }
 }

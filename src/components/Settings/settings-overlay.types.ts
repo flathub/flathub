@@ -107,6 +107,7 @@ export interface SettingsOverlayControllerDependencies {
     | "removeLibrary"
     | "deleteLibrary"
     | "mirrorLocalLibraryToRemote"
+    | "reauthorizeRemoteLibrary"
     | "restartApp"
     | "switchLibrary"
     | "syncActiveRemoteLibrary"

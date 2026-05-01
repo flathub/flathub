@@ -38,6 +38,18 @@ export function describeLibrary(library: RegisteredLibrary): string {
   }`;
 }
 
+function remoteProviderDisplayName(library: RegisteredLibrary): string {
+  if (library.kind !== "remote") {
+    return "the selected storage provider";
+  }
+
+  return library.provider === "google_drive"
+    ? "Google Drive"
+    : library.provider === "dropbox"
+      ? "Dropbox"
+      : "WebDAV";
+}
+
 export function createLibrarySettingsActions(
   context: SettingsActionContext,
 ): Pick<
@@ -171,7 +183,7 @@ export function createLibrarySettingsActions(
       const currentName = currentLibrary?.display_name ?? "";
       const nextName = window.prompt(
         currentLibrary?.kind === "remote"
-          ? "Rename the remote library"
+          ? "Rename the remote repository"
           : "Rename the local library",
         currentName,
       );
@@ -200,9 +212,15 @@ export function createLibrarySettingsActions(
     removeLibrary: async (libraryId) => {
       patchState({ libraryError: null });
 
+      const currentLibrary = controls
+        .getSnapshot()
+        .state.libraries.find((library) => library.id === libraryId);
+
       if (
         !window.confirm(
-          "Disconnect this library from OpenKara? The library data will stay on disk.",
+          currentLibrary?.kind === "remote"
+            ? `Disconnect "${currentLibrary.display_name}" from OpenKara? The remote repository contents will stay in ${remoteProviderDisplayName(currentLibrary)}.`
+            : "Disconnect this library from OpenKara? The library data will stay on disk.",
         )
       ) {
         return;
@@ -221,19 +239,27 @@ export function createLibrarySettingsActions(
     deleteLibrary: async (libraryId) => {
       patchState({ libraryError: null });
 
+      const currentLibrary = controls
+        .getSnapshot()
+        .state.libraries.find((library) => library.id === libraryId);
+      const isRemoteRepository = currentLibrary?.kind === "remote";
+      const displayName = currentLibrary?.display_name ?? "this library";
+
       if (
         !window.confirm(
-          "Delete this library from OpenKara? This removes the local cache or remote working copy.",
+          isRemoteRepository
+            ? `Delete "${displayName}"? This will delete the remote repository contents from ${remoteProviderDisplayName(currentLibrary)} at ${describeLibrary(currentLibrary)} and remove the local working copy.`
+            : `Delete "${displayName}" from OpenKara? This removes the local library data from disk.`,
         )
       ) {
         return;
       }
 
-      if (
-        !window.confirm(
-          "This action is permanent. Type confirmation is not available here, so only continue if you want to delete the library data.",
-        )
-      ) {
+      const typedConfirmation = window.prompt(
+        `Type "${displayName}" to confirm permanent deletion.`,
+        "",
+      );
+      if (typedConfirmation !== displayName) {
         return;
       }
 

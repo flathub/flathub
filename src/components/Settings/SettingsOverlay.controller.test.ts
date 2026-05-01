@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@/stores/bootstrap-store", () => ({
@@ -46,6 +48,7 @@ function createControllerHarness() {
       removeLibrary: vi.fn(),
       deleteLibrary: vi.fn(),
       mirrorLocalLibraryToRemote: vi.fn(),
+      reauthorizeRemoteLibrary: vi.fn(),
       setExecutionProvider: vi.fn(),
       setHideBatchSeparate: vi.fn(),
       setLanguage: vi.fn(),
@@ -329,7 +332,7 @@ describe("SettingsOverlay controller", () => {
     );
   });
 
-  test("force syncing the active remote library refreshes the working copy without switching", async () => {
+  test("refreshing the active remote repository updates the working copy without switching", async () => {
     const harness = createControllerHarness();
 
     harness.setSnapshot({
@@ -416,6 +419,86 @@ describe("SettingsOverlay controller", () => {
         ? refreshedLibrary.remote_revision
         : null,
     ).toBe("rev-2");
+  });
+
+  test("delete remote repository confirmation names provider-hosted content and requires display-name confirmation", async () => {
+    const harness = createControllerHarness();
+    harness.setSnapshot({
+      state: {
+        ...harness.getSnapshot().state,
+        activeLibraryId: "remote:library-1",
+        libraries: [
+          {
+            id: "remote:library-1",
+            kind: "remote",
+            display_name: "Drive",
+            provider: "google_drive",
+            account_id: "account-1",
+            remote_root_locator: "root-1",
+            remote_path_display: "Google Drive / OpenKara",
+            connection_config: null,
+            cached_db_path: "/tmp/drive/library.sqlite3",
+            remote_revision: "rev-1",
+          },
+        ],
+      },
+      meta: harness.getSnapshot().meta,
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue("Drive");
+    vi.mocked(harness.dependencies.api.deleteLibrary).mockResolvedValue({
+      active_library_id: null,
+      libraries: [],
+    });
+
+    await harness.actions.deleteLibrary("remote:library-1");
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "delete the remote repository contents from Google Drive",
+      ),
+    );
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("Google Drive / OpenKara"),
+    );
+    expect(prompt).toHaveBeenCalledWith(
+      expect.stringContaining('Type "Drive"'),
+      "",
+    );
+    expect(harness.dependencies.api.deleteLibrary).toHaveBeenCalledWith(
+      "remote:library-1",
+    );
+  });
+
+  test("delete remote repository is cancelled when display-name confirmation does not match", async () => {
+    const harness = createControllerHarness();
+    harness.setSnapshot({
+      state: {
+        ...harness.getSnapshot().state,
+        activeLibraryId: "remote:library-1",
+        libraries: [
+          {
+            id: "remote:library-1",
+            kind: "remote",
+            display_name: "Drive",
+            provider: "dropbox",
+            account_id: "account-1",
+            remote_root_locator: "/OpenKara",
+            remote_path_display: "/OpenKara",
+            connection_config: null,
+            cached_db_path: "/tmp/drive/library.sqlite3",
+            remote_revision: "rev-1",
+          },
+        ],
+      },
+      meta: harness.getSnapshot().meta,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(window, "prompt").mockReturnValue("Wrong");
+
+    await harness.actions.deleteLibrary("remote:library-1");
+
+    expect(harness.dependencies.api.deleteLibrary).not.toHaveBeenCalled();
   });
 
   test("selecting an undownloaded model downloads it before applying the variant", async () => {

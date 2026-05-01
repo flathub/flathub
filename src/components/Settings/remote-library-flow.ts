@@ -29,7 +29,9 @@ export interface RemoteLibraryFlowApi {
   openExternalUrl: typeof api.openExternalUrl;
   pollRemoteAuth: typeof api.pollRemoteAuth;
   createRemoteLibrary: typeof api.createRemoteLibrary;
+  resolveRemoteLibraryCandidate: typeof api.resolveRemoteLibraryCandidate;
   registerRemoteLibrary: typeof api.registerRemoteLibrary;
+  reauthorizeRemoteLibrary: typeof api.reauthorizeRemoteLibrary;
   cancelRemoteAuth: typeof api.cancelRemoteAuth;
 }
 
@@ -47,6 +49,10 @@ export interface RunRemoteLibraryRegistrationFlowOptions {
   provider: RemoteLibraryProvider;
   displayName: string;
   t: TFunction;
+  libraryId?: string;
+  existingRemoteRootLocator?: string;
+  existingRemotePathDisplay?: string;
+  allowRelocation?: boolean;
   webdav?: WebDavRemoteLibraryFields;
   remoteApi?: RemoteLibraryFlowApi;
   isCancelled?: () => boolean;
@@ -66,7 +72,9 @@ const defaultRemoteLibraryFlowApi: RemoteLibraryFlowApi = {
   openExternalUrl: api.openExternalUrl,
   pollRemoteAuth: api.pollRemoteAuth,
   createRemoteLibrary: api.createRemoteLibrary,
+  resolveRemoteLibraryCandidate: api.resolveRemoteLibraryCandidate,
   registerRemoteLibrary: api.registerRemoteLibrary,
+  reauthorizeRemoteLibrary: api.reauthorizeRemoteLibrary,
   cancelRemoteAuth: api.cancelRemoteAuth,
 };
 
@@ -148,6 +156,10 @@ export async function runRemoteLibraryRegistrationFlow({
   provider,
   displayName,
   t,
+  libraryId,
+  existingRemoteRootLocator,
+  existingRemotePathDisplay,
+  allowRelocation = false,
   webdav,
   remoteApi = defaultRemoteLibraryFlowApi,
   isCancelled,
@@ -205,15 +217,39 @@ export async function runRemoteLibraryRegistrationFlow({
 
     const requestedDisplayName =
       displayName.trim() || getRemoteProviderDisplayName(t, provider);
-    const candidate = await remoteApi.createRemoteLibrary(
-      start.session_id,
-      requestedDisplayName,
-    );
-    const registry = await remoteApi.registerRemoteLibrary(
-      start.session_id,
-      candidate.remote_root_locator,
-      displayName.trim() || candidate.display_name,
-    );
+    const candidate =
+      libraryId && provider !== "webdav"
+        ? {
+            provider,
+            remote_root_locator: existingRemoteRootLocator ?? "",
+            remote_path_display:
+              existingRemotePathDisplay ?? existingRemoteRootLocator ?? "",
+            display_name: requestedDisplayName,
+            account_id: "",
+          }
+        : libraryId
+          ? await remoteApi.resolveRemoteLibraryCandidate(
+              start.session_id,
+              requestedDisplayName,
+            )
+          : await remoteApi.createRemoteLibrary(
+              start.session_id,
+              requestedDisplayName,
+            );
+    const nextDisplayName = displayName.trim() || candidate.display_name;
+    const registry = libraryId
+      ? await remoteApi.reauthorizeRemoteLibrary(
+          libraryId,
+          start.session_id,
+          candidate.remote_root_locator,
+          nextDisplayName,
+          allowRelocation,
+        )
+      : await remoteApi.registerRemoteLibrary(
+          start.session_id,
+          candidate.remote_root_locator,
+          nextDisplayName,
+        );
 
     return {
       start,

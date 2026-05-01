@@ -190,7 +190,7 @@ function useActiveTasks(modelDownloadCompleteFlash: boolean): ActiveTask[] {
       key: `upload-${upload.song_id}`,
       label: t("progress.uploadingToRemote", {
         title,
-        defaultValue: `Uploading to remote library: ${title}`,
+        defaultValue: `Publishing to remote repository: ${title}`,
       }),
       percent: upload.percent,
     });

@@ -164,7 +164,7 @@ pub(crate) fn load_google_drive_secret(
         });
     }
     Err(library_error(
-        "missing stored credentials for the remote library".to_owned(),
+        "missing stored credentials for the remote repository".to_owned(),
     ))
 }
 
@@ -742,7 +742,7 @@ pub(crate) fn google_drive_upload_relative_file_to_remote(
 ) -> CommandResult<()> {
     let local_root = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let source = local_root.join(relative_path);
     let bytes = fs::read(&source)
         .map_err(|error| library_error(format!("failed to read {}: {error}", source.display())))?;
@@ -780,7 +780,7 @@ pub(crate) fn google_drive_upload_directory_to_remote(
 ) -> CommandResult<()> {
     let local_root = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let base = local_root.join(relative_directory);
     if !base.exists() {
         return Ok(());
@@ -823,7 +823,7 @@ pub(crate) fn initialize_or_sync_google_drive_library(
 ) -> CommandResult<Option<String>> {
     let root_path = library
         .working_copy_root()
-        .ok_or_else(|| library_error("remote library is missing a cached working copy"))?;
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
     let root = if root_path.join(".openkara-library").exists() {
         LibraryRoot::open(&root_path).map_err(library_error)?
     } else {
@@ -833,7 +833,7 @@ pub(crate) fn initialize_or_sync_google_drive_library(
 
     let root_folder_id = library
         .remote_root_locator()
-        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+        .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
     let mut secret = secret.clone();
     for directory in ["media", "media-g", "stems"] {
         let _ = google_drive_get_or_create_folder(app_data_dir, &mut secret, root_folder_id, directory)?;
@@ -843,7 +843,7 @@ pub(crate) fn initialize_or_sync_google_drive_library(
         .is_none()
     {
         let marker_path = root.resolve(".openkara-library");
-        fs::write(&marker_path, b"openkara remote library\n").map_err(|error| {
+        fs::write(&marker_path, b"openkara remote repository\n").map_err(|error| {
             library_error(format!("failed to write {}: {error}", marker_path.display()))
         })?;
         google_drive_upload_relative_file_to_remote(
@@ -891,6 +891,49 @@ pub(crate) fn initialize_or_sync_google_drive_library(
     Ok(revision)
 }
 
+pub(crate) fn refresh_existing_google_drive_library(
+    app_data_dir: &Path,
+    library: &RegisteredLibrary,
+    secret: &GoogleDriveSecret,
+) -> CommandResult<Option<String>> {
+    let root_path = library
+        .working_copy_root()
+        .ok_or_else(|| library_error("remote repository is missing a cached working copy"))?;
+    let root = if root_path.join(".openkara-library").exists() {
+        LibraryRoot::open(&root_path).map_err(library_error)?
+    } else {
+        LibraryRoot::create(&root_path).map_err(library_error)?
+    };
+    cache::initialize_library_database(&root.database_path()).map_err(library_error)?;
+
+    let root_folder_id = library
+        .remote_root_locator()
+        .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+    let mut secret = secret.clone();
+    if google_drive_find_relative_entry(app_data_dir, &mut secret, root_folder_id, ".openkara-library")?
+        .is_none()
+    {
+        return Err(library_error(
+            "The selected Google Drive folder is not an OpenKara remote repository."
+                .to_owned(),
+        ));
+    }
+    let database_entry =
+        google_drive_find_relative_entry(app_data_dir, &mut secret, root_folder_id, "openkara.db")?
+            .ok_or_else(|| {
+                library_error(
+                    "The selected Google Drive folder is missing openkara.db.".to_owned(),
+                )
+            })?;
+    google_drive_download_file(
+        app_data_dir,
+        &mut secret,
+        &database_entry.id,
+        &root.database_path(),
+    )?;
+    Ok(database_entry.head_revision_id.or(database_entry.modified_time))
+}
+
 fn google_drive_delete_entry(
     app_data_dir: &Path,
     secret: &mut GoogleDriveSecret,
@@ -916,7 +959,7 @@ pub(crate) fn delete_relative_path_from_remote(
     let mut secret = load_google_drive_secret(app_data_dir, library)?;
     let root_folder_id = library
         .remote_root_locator()
-        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+        .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
     let Some(entry) =
         google_drive_find_relative_entry(app_data_dir, &mut secret, root_folder_id, relative_path)?
     else {
@@ -932,7 +975,7 @@ pub(crate) fn delete_remote_root(
     let mut secret = load_google_drive_secret(app_data_dir, library)?;
     let root_folder_id = library
         .remote_root_locator()
-        .ok_or_else(|| library_error("remote library is missing a remote locator".to_owned()))?;
+        .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
     google_drive_delete_entry(app_data_dir, &mut secret, root_folder_id)
 }
 

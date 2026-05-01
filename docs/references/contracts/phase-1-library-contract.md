@@ -219,6 +219,29 @@
 4. 若文件没有内嵌封面，当前数据库里的 `cover_art` 保持不变，并在 `failed` 中返回结构化错误
 5. 顶层命令只在数据库不可用等整体失败时返回 `CommandError`
 
+### Remote Repository command semantics
+
+远程资料库是 provider-hosted OpenKara repository，不是单纯的登录状态或本地数据库副本。合同术语如下：
+
+| User model                     | Command surface                                                                       | Semantics                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Refresh Repository             | `sync_active_remote_library`                                                          | 只把远端 `openkara.db` 和需要的文件刷新到本地 working copy；不发布本地修改。                                                                            |
+| Publish Changes / Publish Song | `mirror_local_library_to_remote`, `publish_song_to_remote`, `publish_songs_to_remote` | 将本地 portable library 数据库和相关媒体文件写入远程资料库。发布前若 remote revision 已变化，必须停止并要求刷新后重试。                                 |
+| Reauthorize Repository         | `reauthorize_remote_library`                                                          | 更新 OAuth token 或 WebDAV 凭据。OAuth provider 必须保持同一账号；WebDAV 用户名/密码可变，因为它们属于凭据。                                            |
+| Relocate Repository            | `reauthorize_remote_library(..., allow_relocation=true)`                              | 用户重新授权时选中了不同远端位置。UI 必须先询问是否替换已保存的位置，并保留取消路径。后端只接受已有 OpenKara 资料库位置，不能把空目录初始化成新资料库。 |
+| Disconnect Repository          | `remove_library`                                                                      | 只移除本地注册和本机凭据，不删除 provider-hosted 内容。                                                                                                 |
+| Delete Repository              | `delete_library`                                                                      | 删除 provider-hosted 远程资料库内容和本地 working copy；UI 必须把它表达为永久删除远程资料库。                                                           |
+
+新增命令：
+
+1. `resolve_remote_library_candidate(session_id: String, display_name: String) -> RemoteLibraryCandidate`
+   - 用当前授权会话和用户输入解析候选远端位置，不注册、不写配置。
+   - WebDAV 用于在重新授权时比较新旧 repository location。
+2. `reauthorize_remote_library(library_id: String, session_id: String, remote_root_locator: String, display_name: String, allow_relocation: bool) -> LibraryRegistrySnapshot`
+   - 必须先验证目标位置已经包含 `.openkara-library` 和 `openkara.db`。
+   - 验证成功后才写入新凭据、保存新的 remote root locator，并刷新本地 working copy。
+   - 若位置变化且 `allow_relocation=false`，返回错误，等待 UI 进行用户确认。
+
 ### Command: `set_songs_instrumental`
 
 **Input**
