@@ -1,0 +1,92 @@
+id: de.penguincitizen.penguincitizen
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.rust-stable
+- org.freedesktop.Sdk.Extension.node20
+- org.freedesktop.Sdk.Extension.mingw-w64
+command: penguin-citizen
+add-extensions:
+  org.freedesktop.Platform.VulkanLayer.MangoHud:
+    directory: extensions/MangoHud
+    version: '25.08'
+    add-ld-path: lib
+    autodelete: false
+    no-autodownload: false
+    download-if: active-gl-driver
+  org.freedesktop.Platform.VulkanLayer.gamescope:
+    directory: extensions/gamescope
+    version: '25.08'
+    add-ld-path: lib
+    autodelete: false
+    no-autodownload: false
+    download-if: active-gl-driver
+finish-args:
+- --socket=wayland
+- --socket=x11
+- --share=ipc
+- --socket=pulseaudio
+- --device=dri
+- --device=all
+- --filesystem=home
+- --filesystem=/run/media
+- --filesystem=/mnt
+- --filesystem=/media
+- --filesystem=xdg-run/gamescope-0:rw
+- --filesystem=xdg-config/dconf:ro
+- --filesystem=xdg-run/dconf
+- --filesystem=xdg-config/kdeglobals:ro
+- --share=network
+- --allow=multiarch
+- --allow=per-app-dev-shm
+- --allow=devel
+- --allow=bluetooth
+- --system-talk-name=org.freedesktop.UDisks2
+- --talk-name=org.freedesktop.Notifications
+- --talk-name=org.kde.StatusNotifierWatcher
+- --talk-name=ca.desrt.dconf
+- --talk-name=org.freedesktop.portal.*
+- --talk-name=org.freedesktop.Flatpak
+- --env=FLATPAK=1
+- --env=DCONF_USER_CONFIG_DIR=.config/dconf
+- --env=LD_LIBRARY_PATH=/app/lib:/app/lib32
+modules:
+- name: penguin-citizen-helper
+  buildsystem: simple
+  build-options:
+    append-path: /usr/lib/sdk/mingw-w64/bin
+  sources:
+  - type: dir
+    path: ../src-tauri/helper
+  build-commands:
+  - x86_64-w64-mingw32-gcc -o penguin-citizen-helper.exe dinput_helper.c -ldinput8
+    -ldxguid -lole32 -Wall -O2 -static
+  - install -Dm755 penguin-citizen-helper.exe /app/lib/penguin-citizen/penguin-citizen-helper.exe
+- name: penguin-citizen
+  buildsystem: simple
+  build-options:
+    append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+    env:
+      CARGO_HOME: /run/build/penguin-citizen/cargo
+      CARGO_NET_OFFLINE: 'true'
+      npm_config_cache: /run/build/penguin-citizen/flatpak-node/npm-cache
+      npm_config_offline: 'true'
+      PENGUIN_CITIZEN_FLATPAK_HELPER: /app/lib/penguin-citizen/penguin-citizen-helper.exe
+  sources:
+  - type: git
+    url: https://github.com/TomRhodan/penguin-citizen.git
+    tag: v0.5.5
+    commit: b1d677fecff7ca4829952b33a6acf01aa8249612
+  - cargo-sources.json
+  - node-sources.json
+  build-commands:
+  - npm ci --offline
+  - npm run tauri build -- --no-bundle
+  - install -Dm755 src-tauri/target/release/penguin-citizen /app/bin/penguin-citizen
+  - install -Dm644 flatpak/de.penguincitizen.penguincitizen.metainfo.xml /app/share/metainfo/de.penguincitizen.penguincitizen.metainfo.xml
+  - install -Dm644 flatpak/de.penguincitizen.penguincitizen.desktop /app/share/applications/de.penguincitizen.penguincitizen.desktop
+  - "for size in 16 32 48 64 128 256 512; do\n  install -Dm644 flatpak/icons/${size}x${size}/de.penguincitizen.penguincitizen.png\
+    \ \\\n    /app/share/icons/hicolor/${size}x${size}/apps/de.penguincitizen.penguincitizen.png\n\
+    done\n"
+  - mkdir -p /app/extensions/MangoHud /app/extensions/gamescope
