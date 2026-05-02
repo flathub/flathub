@@ -1,5 +1,3 @@
-mod support;
-
 use openkara_lib::{
     audio::playback::PlaybackController,
     cache,
