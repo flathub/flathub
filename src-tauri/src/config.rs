@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::hash;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -455,7 +456,7 @@ fn config_path(app_data_dir: &Path) -> PathBuf {
 
 pub fn library_id_for_path(path: &str) -> String {
     let digest = Sha256::digest(path.as_bytes());
-    format!("library-{:x}", digest)
+    format!("library-{}", hash::hex_lower(digest))
 }
 
 pub fn library_display_name(path: &str) -> String {

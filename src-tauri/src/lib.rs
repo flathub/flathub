@@ -6,6 +6,7 @@ pub mod cache;
 pub mod cdg;
 pub mod commands;
 pub mod config;
+pub mod hash;
 pub mod library;
 pub mod library_root;
 pub mod lyrics;

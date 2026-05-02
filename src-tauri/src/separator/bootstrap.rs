@@ -1,4 +1,5 @@
 use crate::config::ModelVariant;
+use crate::hash;
 use anyhow::{bail, Context, Result};
 use reqwest::blocking::Client;
 use sha2::{Digest, Sha256};
@@ -263,7 +264,7 @@ fn verify_file_checksum(path: &Path, expected_sha256: &str) -> Result<bool> {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hash::hex_lower(hasher.finalize())
 }
 
 fn temporary_download_path(destination: &Path) -> PathBuf {

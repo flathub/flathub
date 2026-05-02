@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use crate::hash;
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
@@ -136,7 +137,7 @@ pub fn media_g_hash(audio_bytes: &[u8], cdg_bytes: &[u8]) -> String {
     hasher.update(audio_bytes);
     hasher.update(b"cdg\0");
     hasher.update(cdg_bytes);
-    format!("{:x}", hasher.finalize())
+    hash::hex_lower(hasher.finalize())
 }
 
 fn read_zip_entry_bytes<R>(archive: &mut ZipArchive<R>, index: usize) -> Result<Vec<u8>>

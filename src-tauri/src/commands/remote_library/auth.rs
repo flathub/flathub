@@ -4,7 +4,7 @@ use crate::{
     AppState,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::{distr::Alphanumeric, Rng};
+use rand::distr::{Alphanumeric, SampleString};
 use reqwest::{Method, StatusCode, Url};
 use sha2::Digest;
 use std::{
@@ -215,11 +215,7 @@ pub(crate) fn open_external_url(url: String) -> CommandResult<()> {
 }
 
 pub(crate) fn random_token(length: usize) -> String {
-    rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
+    Alphanumeric.sample_string(&mut rand::rng(), length)
 }
 
 pub(crate) fn oauth_pkce_code_challenge(code_verifier: &str) -> String {

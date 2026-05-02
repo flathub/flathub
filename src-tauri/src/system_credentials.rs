@@ -1,3 +1,4 @@
+use crate::hash;
 use anyhow::{bail, Context, Result};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
@@ -74,7 +75,7 @@ fn test_store_dir() -> Option<PathBuf> {
 
 fn test_store_path(directory: &Path, library_id: &str) -> PathBuf {
     let digest = Sha256::digest(library_id.as_bytes());
-    directory.join(format!("{:x}.json", digest))
+    directory.join(format!("{}.json", hash::hex_lower(digest)))
 }
 
 #[cfg(target_os = "macos")]

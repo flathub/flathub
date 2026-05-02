@@ -2,6 +2,7 @@ use super::expand::match_cdg_source;
 use crate::{
     cache,
     commands::error::current_unix_timestamp,
+    hash,
     library::Song,
     library_root::LibraryRoot,
     lyrics::fetch::read_embedded_lyrics,
@@ -189,7 +190,7 @@ pub(super) fn sha256_for_file(path: &Path) -> Result<String> {
         hasher.update(&buffer[..bytes_read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hash::hex_lower(hasher.finalize()))
 }
 
 pub(super) fn try_extract_embedded_lyrics(

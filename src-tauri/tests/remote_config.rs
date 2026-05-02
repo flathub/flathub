@@ -1,7 +1,4 @@
-#[path = "../src/config.rs"]
-mod config;
-
-use config::{
+use openkara_lib::config::{
     load_config, AppConfig, RegisteredLibrary, RemoteLibraryConnectionConfig,
     RemoteLibraryProvider,
 };

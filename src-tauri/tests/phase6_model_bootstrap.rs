@@ -10,6 +10,7 @@ use openkara_lib::{
     commands::{self, error::ErrorCode},
     config::ModelVariant,
     derive_startup_model_bootstrap,
+    hash,
     separator::bootstrap::{self, ModelSource},
 };
 use sha2::{Digest, Sha256};
@@ -21,7 +22,7 @@ fn unique_temp_dir() -> PathBuf {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hash::hex_lower(hasher.finalize())
 }
 
 fn write_file(path: &Path, contents: &[u8]) {
