@@ -27,15 +27,22 @@ pub fn delete_all_stems(
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| database_error(e.to_string()))?;
 
-    let deleted_count = cache::stems::delete_all_stem_cache_entries(&connection, &library_root)
-        .map_err(|e| internal_error(format!("failed to delete all stems: {e}")))?;
+    let deleted_count = remote_library::run_active_library_mirror_mutation(
+        &state,
+        &app_handle,
+        || {
+            let deleted_count =
+                cache::stems::delete_all_stem_cache_entries(&connection, &library_root)
+                    .map_err(|e| internal_error(format!("failed to delete all stems: {e}")))?;
 
-    // Clear in-memory separation statuses so the frontend reflects the change.
-    if let Ok(mut statuses) = state.separation_statuses.lock() {
-        statuses.clear();
-    }
+            // Clear in-memory separation statuses so the frontend reflects the change.
+            if let Ok(mut statuses) = state.separation_statuses.lock() {
+                statuses.clear();
+            }
 
-    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+            Ok(deleted_count)
+        },
+    )?;
 
     Ok(DeleteStemsResult {
         deleted_count,
@@ -65,24 +72,29 @@ pub fn downgrade_all_to_two_stem(
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| database_error(e.to_string()))?;
 
-    let (downgraded_count, freed_bytes) =
-        cache::stems::batch_downgrade_to_two_stem(&connection, &library_root)
-            .map_err(|e| internal_error(format!("failed to downgrade stems: {e}")))?;
+    let (downgraded_count, freed_bytes) = remote_library::run_active_library_mirror_mutation(
+        &state,
+        &app_handle,
+        || {
+            let (downgraded_count, freed_bytes) =
+                cache::stems::batch_downgrade_to_two_stem(&connection, &library_root)
+                    .map_err(|e| internal_error(format!("failed to downgrade stems: {e}")))?;
 
-    // Update in-memory separation statuses: clear individual stem paths for downgraded songs.
-    if let Ok(mut statuses) = state.separation_statuses.lock() {
-        for status in statuses.values_mut() {
-            if status.drums_path.is_some() {
-                let accomp_path = format!("stems/{}/accompaniment.ogg", status.song_id);
-                status.accomp_path = Some(accomp_path);
-                status.drums_path = None;
-                status.bass_path = None;
-                status.other_path = None;
+            // Update in-memory separation statuses: clear individual stem paths for downgraded songs.
+            if let Ok(mut statuses) = state.separation_statuses.lock() {
+                for status in statuses.values_mut() {
+                    if status.drums_path.is_some() {
+                        let accomp_path = format!("stems/{}/accompaniment.ogg", status.song_id);
+                        status.accomp_path = Some(accomp_path);
+                        status.drums_path = None;
+                        status.bass_path = None;
+                        status.other_path = None;
+                    }
+                }
             }
-        }
-    }
-
-    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+            Ok((downgraded_count, freed_bytes))
+        },
+    )?;
 
     Ok(DowngradeResult {
         downgraded_count,
@@ -109,8 +121,9 @@ pub fn delete_all_cached_lyrics(
     let connection = cache::open_database(&library_root.database_path())
         .map_err(|e| database_error(e.to_string()))?;
 
-    let deleted = cache::lyrics::delete_all_lyrics_cache_entries(&connection)
-        .map_err(|e| database_error(e.to_string()))?;
-    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
+    let deleted = remote_library::run_active_library_mirror_mutation(&state, &app_handle, || {
+        cache::lyrics::delete_all_lyrics_cache_entries(&connection)
+            .map_err(|e| database_error(e.to_string()))
+    })?;
     Ok(deleted)
 }

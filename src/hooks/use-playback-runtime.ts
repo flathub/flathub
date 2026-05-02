@@ -8,6 +8,16 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { notifyError } from "@/lib/errors";
 import i18next, { detectSystemLanguage } from "@/lib/i18n";
 import * as api from "@/lib/tauri";
+import {
+  createBatchSeparationClearScheduler,
+  createStatusClearScheduler,
+  fallbackSeparationCompleteStatus,
+  separationErrorStatus,
+  separationProgressStatus,
+  uploadCompleteStatus,
+  uploadErrorStatus,
+  uploadProgressStatus,
+} from "@/runtime/event-reducers";
 import { loadStartupSettings } from "@/runtime/settings-runtime";
 import type {
   BatchSeparationProgress,
@@ -40,9 +50,10 @@ export function useLyricsAutoFetch(enabled = true) {
   }, [enabled, songId, fetchLyrics]);
 }
 
-function usePlaybackPositionEvents(enabled: boolean) {
-  const updatePosition = usePlayerStore((s) => s.updatePosition);
-
+function usePlaybackPositionSubscription(
+  enabled: boolean,
+  onPosition: (event: PlaybackPositionEvent) => void,
+) {
   useEffect(() => {
     if (!enabled) {
       return;
@@ -55,7 +66,7 @@ function usePlaybackPositionEvents(enabled: boolean) {
       unlisten = await listen<PlaybackPositionEvent>(
         "playback-position",
         (e) => {
-          if (!cancelled) updatePosition(e.payload.ms);
+          if (!cancelled) onPosition(e.payload);
         },
       );
     };
@@ -66,7 +77,12 @@ function usePlaybackPositionEvents(enabled: boolean) {
       cancelled = true;
       unlisten?.();
     };
-  }, [enabled, updatePosition]);
+  }, [enabled, onPosition]);
+}
+
+function usePlaybackPositionEvents(enabled: boolean) {
+  const updatePosition = usePlayerStore((s) => s.updatePosition);
+  usePlaybackPositionSubscription(enabled, (event) => updatePosition(event.ms));
 }
 
 function useSeparationEvents(enabled: boolean) {
@@ -100,19 +116,7 @@ function useSeparationEvents(enabled: boolean) {
         "separation-progress",
         (e) => {
           if (!cancelled) {
-            updateSeparationStatus({
-              song_id: e.payload.song_id,
-              state: "running",
-              percent: e.payload.percent,
-              cache_hit: false,
-              vocals_path: null,
-              accomp_path: null,
-              drums_path: null,
-              bass_path: null,
-              other_path: null,
-              model_variant: null,
-              error: null,
-            });
+            updateSeparationStatus(separationProgressStatus(e.payload));
           }
         },
       );
@@ -125,19 +129,9 @@ function useSeparationEvents(enabled: boolean) {
             .getSeparationStatus(e.payload.song_id)
             .then((status) => updateSeparationStatus(status))
             .catch(() =>
-              updateSeparationStatus({
-                song_id: e.payload.song_id,
-                state: "completed",
-                percent: 100,
-                cache_hit: false,
-                vocals_path: null,
-                accomp_path: null,
-                drums_path: null,
-                bass_path: null,
-                other_path: null,
-                model_variant: null,
-                error: null,
-              }),
+              updateSeparationStatus(
+                fallbackSeparationCompleteStatus(e.payload.song_id),
+              ),
             );
 
           if (e.payload.song_id === currentSongIdRef.current) {
@@ -150,19 +144,7 @@ function useSeparationEvents(enabled: boolean) {
         "separation-error",
         (e) => {
           if (!cancelled) {
-            updateSeparationStatus({
-              song_id: e.payload.song_id,
-              state: "failed",
-              percent: 0,
-              cache_hit: false,
-              vocals_path: null,
-              accomp_path: null,
-              drums_path: null,
-              bass_path: null,
-              other_path: null,
-              model_variant: null,
-              error: e.payload.error,
-            });
+            updateSeparationStatus(separationErrorStatus(e.payload));
             notifyError(e.payload.error);
           }
         },
@@ -272,14 +254,8 @@ function useBatchSeparationEvents(enabled: boolean) {
 
     const unlisteners: (() => void)[] = [];
     let cancelled = false;
-    let clearTimer: number | null = null;
-
-    const scheduleClear = () => {
-      if (clearTimer !== null) {
-        window.clearTimeout(clearTimer);
-      }
-      clearTimer = window.setTimeout(() => clearBatchSeparation(), 3000);
-    };
+    const clearScheduler =
+      createBatchSeparationClearScheduler(clearBatchSeparation);
 
     const setup = async () => {
       const progressUnlisten = await listen<BatchSeparationProgress>(
@@ -293,7 +269,7 @@ function useBatchSeparationEvents(enabled: boolean) {
         (e) => {
           if (!cancelled) {
             updateBatchProgress(e.payload);
-            scheduleClear();
+            clearScheduler.scheduleAfterTerminalProgress();
           }
         },
       );
@@ -302,7 +278,7 @@ function useBatchSeparationEvents(enabled: boolean) {
         (e) => {
           if (!cancelled) {
             updateBatchProgress(e.payload);
-            scheduleClear();
+            clearScheduler.scheduleAfterTerminalProgress();
           }
         },
       );
@@ -320,9 +296,7 @@ function useBatchSeparationEvents(enabled: boolean) {
 
     return () => {
       cancelled = true;
-      if (clearTimer !== null) {
-        window.clearTimeout(clearTimer);
-      }
+      clearScheduler.clearAll();
       unlisteners.forEach((fn) => fn());
     };
   }, [enabled, clearBatchSeparation, updateBatchProgress]);
@@ -339,26 +313,8 @@ function useUploadEvents(enabled: boolean) {
 
     const unlisteners: (() => void)[] = [];
     let cancelled = false;
-    const clearTimers = new Map<string, number>();
-
-    const clearTimerFor = (songId: string) => {
-      const timer = clearTimers.get(songId);
-      if (timer != null) {
-        window.clearTimeout(timer);
-        clearTimers.delete(songId);
-      }
-    };
-
-    const scheduleClear = (songId: string) => {
-      clearTimerFor(songId);
-      clearTimers.set(
-        songId,
-        window.setTimeout(() => {
-          clearTimers.delete(songId);
-          clearUploadStatus(songId);
-        }, 3000),
-      );
-    };
+    const clearScheduler =
+      createStatusClearScheduler<string>(clearUploadStatus);
 
     const setup = async () => {
       const progressUnlisten = await listen<UploadProgressEvent>(
@@ -366,15 +322,8 @@ function useUploadEvents(enabled: boolean) {
         (e) => {
           if (cancelled) return;
           const songId = e.payload.song_id;
-          clearTimerFor(songId);
-          updateUploadStatus({
-            song_id: songId,
-            state: "running",
-            percent: e.payload.percent,
-            remote_library_id: e.payload.remote_library_id,
-            detail: e.payload.detail,
-            error: null,
-          });
+          clearScheduler.cancel(songId);
+          updateUploadStatus(uploadProgressStatus(e.payload));
         },
       );
 
@@ -383,15 +332,8 @@ function useUploadEvents(enabled: boolean) {
         (e) => {
           if (cancelled) return;
           const songId = e.payload.song_id;
-          updateUploadStatus({
-            song_id: songId,
-            state: "completed",
-            percent: 100,
-            remote_library_id: e.payload.remote_library_id,
-            detail: null,
-            error: null,
-          });
-          scheduleClear(songId);
+          updateUploadStatus(uploadCompleteStatus(e.payload));
+          clearScheduler.schedule(songId);
         },
       );
 
@@ -399,15 +341,8 @@ function useUploadEvents(enabled: boolean) {
         "upload-error",
         (e) => {
           if (cancelled) return;
-          clearTimerFor(e.payload.song_id);
-          updateUploadStatus({
-            song_id: e.payload.song_id,
-            state: "failed",
-            percent: 0,
-            remote_library_id: e.payload.remote_library_id,
-            detail: null,
-            error: e.payload.error,
-          });
+          clearScheduler.cancel(e.payload.song_id);
+          updateUploadStatus(uploadErrorStatus(e.payload));
           notifyError(e.payload.error);
         },
       );
@@ -425,8 +360,7 @@ function useUploadEvents(enabled: boolean) {
 
     return () => {
       cancelled = true;
-      clearTimers.forEach((timer) => window.clearTimeout(timer));
-      clearTimers.clear();
+      clearScheduler.clearAll();
       unlisteners.forEach((fn) => fn());
     };
   }, [clearUploadStatus, enabled, updateUploadStatus]);
@@ -460,26 +394,7 @@ export function useFullscreenPlaybackRuntime() {
     }).catch(() => {});
   }, [hydrateAppSettings, updateSnapshot]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    const setup = async () => {
-      unlisten = await listen<PlaybackPositionEvent>(
-        "playback-position",
-        (e) => {
-          if (!cancelled) updatePosition(e.payload.ms);
-        },
-      );
-    };
-
-    setup();
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [updatePosition]);
+  usePlaybackPositionSubscription(true, (event) => updatePosition(event.ms));
 
   useEffect(() => {
     const interval = window.setInterval(() => {

@@ -2,7 +2,7 @@ use crate::{
     audio::playback::{PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
     cache,
     library_root::LibraryRoot,
-    services::playback::{load_song_audio, probe_song_audio},
+    services::playback_source::{load_song_audio, probe_song_audio},
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;

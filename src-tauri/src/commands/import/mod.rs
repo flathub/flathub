@@ -42,24 +42,17 @@ pub fn import_songs(
     paths: Vec<String>,
     options: Option<ImportSongsOptions>,
 ) -> CommandResult<ImportSongsResult> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    let result = import_songs_from_paths_with_options(
-        &connection,
-        &library,
-        &paths,
-        &options.unwrap_or_default(),
-    );
-    let imported_song_ids: Vec<String> = result
-        .imported
-        .iter()
-        .map(|song| song.hash.clone())
-        .collect();
-    remote_library::maybe_publish_songs_to_bound_remote(&state, &app_handle, &imported_song_ids)?;
-
-    Ok(result)
+    remote_library::run_imported_songs_mutation(&state, &app_handle, || {
+        import_songs_from_paths_with_options(
+            &connection,
+            &library,
+            &paths,
+            &options.unwrap_or_default(),
+        )
+    })
 }
 
 #[tauri::command]
@@ -214,23 +207,15 @@ pub fn extract_embedded_cover_art(
     app_handle: AppHandle,
     song_ids: Vec<String>,
 ) -> CommandResult<ExtractEmbeddedCoverArtResult> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    let result = extract_embedded_cover_art_from_connection(
-        &connection,
-        &library,
-        &song_ids,
-    );
-    let updated_song_ids: Vec<String> = result
-        .updated_songs
-        .iter()
-        .map(|song| song.hash.clone())
-        .collect();
-    remote_library::maybe_publish_songs_to_bound_remote(&state, &app_handle, &updated_song_ids)?;
-
-    Ok(result)
+    remote_library::run_updated_songs_mutation(
+        &state,
+        &app_handle,
+        || Ok(extract_embedded_cover_art_from_connection(&connection, &library, &song_ids)),
+        |result| remote_library::song_ids_from_songs(&result.updated_songs),
+    )
 }
 
 pub fn import_songs_from_paths(
@@ -324,19 +309,17 @@ pub fn update_song_metadata(
     title: Option<String>,
     artist: Option<String>,
 ) -> CommandResult<Song> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    cache::update_song_title_artist(&connection, &hash, title.as_deref(), artist.as_deref())
-        .map_err(|e| database_error(e.to_string()))?;
+    remote_library::run_song_database_mutation(&state, &app_handle, &hash, || {
+        cache::update_song_title_artist(&connection, &hash, title.as_deref(), artist.as_deref())
+            .map_err(|e| database_error(e.to_string()))?;
 
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &hash)?;
-
-    cache::get_song_by_hash(&connection, &hash)
-        .map_err(|e| database_error(e.to_string()))?
-        .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
+        cache::get_song_by_hash(&connection, &hash)
+            .map_err(|e| database_error(e.to_string()))?
+            .ok_or_else(|| database_error(format!("song with hash {hash} not found")))
+    })
 }
 
 #[tauri::command]
@@ -346,14 +329,12 @@ pub fn set_songs_instrumental(
     song_ids: Vec<String>,
     instrumental: bool,
 ) -> CommandResult<Vec<Song>> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    let result = set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)?;
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::sync_bound_remote_for_active_local_library(&state, &app_handle)?;
-    Ok(result)
+    remote_library::run_database_then_library_mirror_mutation(&state, &app_handle, || {
+        set_songs_instrumental_in_connection(&connection, &song_ids, instrumental)
+    })
 }
 
 pub fn set_songs_instrumental_in_connection(

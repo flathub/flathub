@@ -248,7 +248,7 @@ pub fn batch_separate(
                         },
                     );
                     let state = app_handle.state::<AppState>();
-                    let _ = remote_library::maybe_publish_song_to_bound_remote(
+                    let _ = remote_library::publish_song_to_active_remote_if_ready(
                         &state,
                         &app_handle,
                         song_id,

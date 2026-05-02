@@ -37,31 +37,25 @@ pub fn fetch_lyrics(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
     let lrclib_client = LrcLibClient::new_default();
     let lrcapi_client = LrcApiClient::new_default();
 
-    fetch_lyrics_from_connection(
-        &connection,
-        &library_root,
-        &lrclib_client,
-        &lrcapi_client,
-        &song_id,
-    )
-    .and_then(|payload| {
-        remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)
-            .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
-        remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)
-            .map_err(|error| anyhow::anyhow!(error.message.clone()))?;
-        Ok(payload)
-    })
-    .map_err(|error| {
-        // Lower-level lyrics modules still return anyhow errors. Classify them
-        // here so UI-facing commands expose stable error codes and fallback hints
-        // before the internal modules are fully migrated to typed domain errors.
-        lyrics_error(error.to_string())
+    remote_library::run_song_database_mutation(&state, &app_handle, &song_id, || {
+        fetch_lyrics_from_connection(
+            &connection,
+            &library_root,
+            &lrclib_client,
+            &lrcapi_client,
+            &song_id,
+        )
+        .map_err(|error| {
+            // Lower-level lyrics modules still return anyhow errors. Classify them
+            // here so UI-facing commands expose stable error codes and fallback hints
+            // before the internal modules are fully migrated to typed domain errors.
+            lyrics_error(error.to_string())
+        })
     })
 }
 
@@ -72,15 +66,13 @@ pub fn set_lyrics_offset(
     song_id: String,
     ms: i64,
 ) -> CommandResult<()> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    set_lyrics_offset_in_connection(&connection, &song_id, ms)
-        .map_err(|error| lyrics_error(error.to_string()))?;
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
-    Ok(())
+    remote_library::run_song_database_mutation(&state, &app_handle, &song_id, || {
+        set_lyrics_offset_in_connection(&connection, &song_id, ms)
+            .map_err(|error| lyrics_error(error.to_string()))
+    })
 }
 
 pub fn fetch_lyrics_from_connection(
@@ -199,41 +191,40 @@ pub fn save_manual_lyrics(
     song_id: String,
     text: String,
 ) -> CommandResult<LyricsPayload> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    // Try parsing as LRC first
-    let lines = match lyrics::parser::parse_lrc(&text) {
-        Ok(parsed) if !parsed.is_empty() => parsed,
-        _ => plain_text_to_lines(&text),
-    };
+    let publish_song_id = song_id.clone();
+    remote_library::run_song_database_mutation(&state, &app_handle, &song_id, || {
+        // Try parsing as LRC first
+        let lines = match lyrics::parser::parse_lrc(&text) {
+            Ok(parsed) if !parsed.is_empty() => parsed,
+            _ => plain_text_to_lines(&text),
+        };
 
-    let raw_lrc = text.clone();
+        let raw_lrc = text.clone();
 
-    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
+        let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
-    cache::lyrics::upsert_lyrics_cache_entry(
-        &connection,
-        &LyricsCacheEntry {
-            song_hash: song_id.clone(),
-            lrc: text,
-            source: LyricsSource::Manual,
+        cache::lyrics::upsert_lyrics_cache_entry(
+            &connection,
+            &LyricsCacheEntry {
+                song_hash: publish_song_id.clone(),
+                lrc: text,
+                source: LyricsSource::Manual,
+                offset_ms: 0,
+                fetched_at,
+            },
+        )
+        .map_err(|e| database_error(e.to_string()))?;
+
+        Ok(LyricsPayload {
+            song_id: publish_song_id,
+            lines,
+            source: Some(LyricsSource::Manual),
             offset_ms: 0,
-            fetched_at,
-        },
-    )
-    .map_err(|e| database_error(e.to_string()))?;
-
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
-
-    Ok(LyricsPayload {
-        song_id,
-        lines,
-        source: Some(LyricsSource::Manual),
-        offset_ms: 0,
-        raw_lrc,
+            raw_lrc,
+        })
     })
 }
 
@@ -255,101 +246,98 @@ pub fn import_lyrics_files(
     app_handle: AppHandle,
     paths: Vec<String>,
 ) -> CommandResult<ImportLyricsResult> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library = state.library_root()?;
     let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
 
-    let all_songs = cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
+    remote_library::run_songs_database_mutation(
+        &state,
+        &app_handle,
+        || {
+            let all_songs =
+                cache::list_songs(&connection).map_err(|e| database_error(e.to_string()))?;
 
-    let mut matched = Vec::new();
-    let mut unmatched = Vec::new();
+            let mut matched = Vec::new();
+            let mut unmatched = Vec::new();
 
-    for path_str in &paths {
-        let path = Path::new(path_str);
+            for path_str in &paths {
+                let path = Path::new(path_str);
 
-        // Read LRC file content
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => {
-                unmatched.push(path_str.clone());
-                continue;
-            }
-        };
-
-        // Try filename matching first
-        let lrc_stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_lowercase());
-
-        let mut found_song: Option<&Song> = None;
-
-        if let Some(ref stem) = lrc_stem {
-            found_song = all_songs.iter().find(|song| {
-                let Some(song_path) = song.file_path.as_deref() else {
-                    return false;
+                // Read LRC file content
+                let content = match std::fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        unmatched.push(path_str.clone());
+                        continue;
+                    }
                 };
-                let song_path = Path::new(song_path);
-                let song_stem = song_path
+
+                // Try filename matching first
+                let lrc_stem = path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .map(|s| s.to_lowercase());
-                song_stem.as_deref() == Some(stem.as_str())
-            });
-        }
 
-        // If no filename match, try metadata matching
-        if found_song.is_none() {
-            let meta = lyrics::parser::parse_lrc_metadata(&content);
-            if let (Some(ref lrc_artist), Some(ref lrc_title)) = (meta.artist, meta.title) {
-                let artist_lower = lrc_artist.to_lowercase();
-                let title_lower = lrc_title.to_lowercase();
-                found_song = all_songs.iter().find(|song| {
-                    let song_artist = song.artist.as_deref().unwrap_or("").to_lowercase();
-                    let song_title = song.title.as_deref().unwrap_or("").to_lowercase();
-                    song_artist == artist_lower && song_title == title_lower
-                });
+                let mut found_song: Option<&Song> = None;
+
+                if let Some(ref stem) = lrc_stem {
+                    found_song = all_songs.iter().find(|song| {
+                        let Some(song_path) = song.file_path.as_deref() else {
+                            return false;
+                        };
+                        let song_path = Path::new(song_path);
+                        let song_stem = song_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_lowercase());
+                        song_stem.as_deref() == Some(stem.as_str())
+                    });
+                }
+
+                // If no filename match, try metadata matching
+                if found_song.is_none() {
+                    let meta = lyrics::parser::parse_lrc_metadata(&content);
+                    if let (Some(ref lrc_artist), Some(ref lrc_title)) = (meta.artist, meta.title) {
+                        let artist_lower = lrc_artist.to_lowercase();
+                        let title_lower = lrc_title.to_lowercase();
+                        found_song = all_songs.iter().find(|song| {
+                            let song_artist = song.artist.as_deref().unwrap_or("").to_lowercase();
+                            let song_title = song.title.as_deref().unwrap_or("").to_lowercase();
+                            song_artist == artist_lower && song_title == title_lower
+                        });
+                    }
+                }
+
+                if let Some(song) = found_song {
+                    let offset_ms = lyrics::parser::parse_lrc_metadata(&content)
+                        .offset_ms
+                        .unwrap_or(0);
+
+                    let fetched_at =
+                        current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
+
+                    let entry = LyricsCacheEntry {
+                        song_hash: song.hash.clone(),
+                        lrc: content,
+                        source: LyricsSource::Manual,
+                        offset_ms,
+                        fetched_at,
+                    };
+
+                    let _ = cache::lyrics::upsert_lyrics_cache_entry(&connection, &entry);
+
+                    matched.push(LyricsMatch {
+                        song_id: song.hash.clone(),
+                        lrc_path: path_str.clone(),
+                    });
+                } else {
+                    unmatched.push(path_str.clone());
+                }
             }
-        }
 
-        if let Some(song) = found_song {
-            let offset_ms = lyrics::parser::parse_lrc_metadata(&content)
-                .offset_ms
-                .unwrap_or(0);
-
-            let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
-
-            let entry = LyricsCacheEntry {
-                song_hash: song.hash.clone(),
-                lrc: content,
-                source: LyricsSource::Manual,
-                offset_ms,
-                fetched_at,
-            };
-
-            let _ = cache::lyrics::upsert_lyrics_cache_entry(&connection, &entry);
-
-            matched.push(LyricsMatch {
-                song_id: song.hash.clone(),
-                lrc_path: path_str.clone(),
-            });
-        } else {
-            unmatched.push(path_str.clone());
-        }
-    }
-
-    if !matched.is_empty() {
-        remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-        let matched_song_ids: Vec<String> =
-            matched.iter().map(|entry| entry.song_id.clone()).collect();
-        remote_library::maybe_publish_songs_to_bound_remote(
-            &state,
-            &app_handle,
-            &matched_song_ids,
-        )?;
-    }
-
-    Ok(ImportLyricsResult { matched, unmatched })
+            Ok(ImportLyricsResult { matched, unmatched })
+        },
+        |result| result.matched.iter().map(|entry| entry.song_id.clone()).collect(),
+    )
 }
 
 #[tauri::command]
@@ -358,56 +346,55 @@ pub fn extract_embedded_lyrics(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
 
-    let song = cache::get_song_by_hash(&connection, &song_id)
-        .map_err(|e| lyrics_error(e.to_string()))?
-        .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
+    let publish_song_id = song_id.clone();
+    remote_library::run_song_database_mutation(&state, &app_handle, &song_id, || {
+        let song = cache::get_song_by_hash(&connection, &publish_song_id)
+            .map_err(|e| lyrics_error(e.to_string()))?
+            .ok_or_else(|| lyrics_error(format!("song {publish_song_id} not found")))?;
 
-    let Some(song_path) = song.file_path.as_deref() else {
-        return Err(lyrics_error(format!(
-            "song {} does not have a local file path",
-            song_id
-        )));
-    };
-    let resolved_path = library_root.resolve(song_path);
-    let embedded = lyrics::fetch::read_embedded_lyrics(&resolved_path)
-        .map_err(|e| lyrics_error(e.to_string()))?
-        .ok_or_else(|| lyrics_error("No embedded lyrics found in this file".to_owned()))?;
+        let Some(song_path) = song.file_path.as_deref() else {
+            return Err(lyrics_error(format!(
+                "song {} does not have a local file path",
+                publish_song_id
+            )));
+        };
+        let resolved_path = library_root.resolve(song_path);
+        let embedded = lyrics::fetch::read_embedded_lyrics(&resolved_path)
+            .map_err(|e| lyrics_error(e.to_string()))?
+            .ok_or_else(|| lyrics_error("No embedded lyrics found in this file".to_owned()))?;
 
-    // Parse and cache
-    let lines = match lyrics::parser::parse_lrc(&embedded) {
-        Ok(parsed) if !parsed.is_empty() => parsed,
-        _ => plain_text_to_lines(&embedded),
-    };
+        // Parse and cache
+        let lines = match lyrics::parser::parse_lrc(&embedded) {
+            Ok(parsed) if !parsed.is_empty() => parsed,
+            _ => plain_text_to_lines(&embedded),
+        };
 
-    let raw_lrc = embedded.clone();
+        let raw_lrc = embedded.clone();
 
-    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
+        let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
 
-    cache::lyrics::upsert_lyrics_cache_entry(
-        &connection,
-        &LyricsCacheEntry {
-            song_hash: song_id.clone(),
-            lrc: embedded,
-            source: LyricsSource::Embedded,
+        cache::lyrics::upsert_lyrics_cache_entry(
+            &connection,
+            &LyricsCacheEntry {
+                song_hash: publish_song_id.clone(),
+                lrc: embedded,
+                source: LyricsSource::Embedded,
+                offset_ms: 0,
+                fetched_at,
+            },
+        )
+        .map_err(|e| database_error(e.to_string()))?;
+
+        Ok(LyricsPayload {
+            song_id: publish_song_id,
+            lines,
+            source: Some(LyricsSource::Embedded),
             offset_ms: 0,
-            fetched_at,
-        },
-    )
-    .map_err(|e| database_error(e.to_string()))?;
-
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
-
-    Ok(LyricsPayload {
-        song_id,
-        lines,
-        source: Some(LyricsSource::Embedded),
-        offset_ms: 0,
-        raw_lrc,
+            raw_lrc,
+        })
     })
 }
 
@@ -417,72 +404,75 @@ pub fn fetch_lyrics_online(
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<LyricsPayload> {
-    remote_library::prepare_active_remote_database_for_mutation(&state.app_data_dir)?;
     let library_root = state.library_root()?;
     let connection = cache::open_database(&library_root.database_path()).map_err(database_error)?;
 
-    let song = cache::get_song_by_hash(&connection, &song_id)
-        .map_err(|e| lyrics_error(e.to_string()))?
-        .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
+    remote_library::run_song_database_mutation_with_result(
+        &state,
+        &app_handle,
+        || {
+            let song = cache::get_song_by_hash(&connection, &song_id)
+                .map_err(|e| lyrics_error(e.to_string()))?
+                .ok_or_else(|| lyrics_error(format!("song {song_id} not found")))?;
 
-    let lrclib_client = LrcLibClient::new_default();
-    let lrcapi_client = LrcApiClient::new_default();
-    let providers = [
-        TimedLyricsProvider::LrcLib(&lrclib_client),
-        TimedLyricsProvider::LrcApi(&lrcapi_client),
-    ];
-    let query = match lookup_query_from_song(&song) {
-        Some(q) => q,
-        None => {
-            return Ok(LyricsPayload {
-                song_id: song.hash,
-                lines: Vec::new(),
-                source: None,
+            let lrclib_client = LrcLibClient::new_default();
+            let lrcapi_client = LrcApiClient::new_default();
+            let providers = [
+                TimedLyricsProvider::LrcLib(&lrclib_client),
+                TimedLyricsProvider::LrcApi(&lrcapi_client),
+            ];
+            let query = match lookup_query_from_song(&song) {
+                Some(q) => q,
+                None => {
+                    return Ok(LyricsPayload {
+                        song_id: song.hash,
+                        lines: Vec::new(),
+                        source: None,
+                        offset_ms: 0,
+                        raw_lrc: String::new(),
+                    });
+                }
+            };
+
+            let Some(fetched) = fetch_online_timed_lyrics(&providers, &query)
+                .map_err(|e| lyrics_error(e.to_string()))?
+            else {
+                return Ok(LyricsPayload {
+                    song_id: song.hash,
+                    lines: Vec::new(),
+                    source: None,
+                    offset_ms: 0,
+                    raw_lrc: String::new(),
+                });
+            };
+
+            let lines = lyrics::parser::parse_lrc(&fetched.raw_lrc)
+                .map_err(|e| lyrics_error(e.to_string()))?;
+
+            let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
+
+            cache::lyrics::upsert_lyrics_cache_entry(
+                &connection,
+                &LyricsCacheEntry {
+                    song_hash: song_id.clone(),
+                    lrc: fetched.raw_lrc.clone(),
+                    source: fetched.source.clone(),
+                    offset_ms: 0,
+                    fetched_at,
+                },
+            )
+            .map_err(|e| database_error(e.to_string()))?;
+
+            Ok(LyricsPayload {
+                song_id,
+                lines,
+                source: Some(fetched.source),
                 offset_ms: 0,
-                raw_lrc: String::new(),
-            });
-        }
-    };
-
-    let Some(fetched) =
-        fetch_online_timed_lyrics(&providers, &query).map_err(|e| lyrics_error(e.to_string()))?
-    else {
-        return Ok(LyricsPayload {
-            song_id: song.hash,
-            lines: Vec::new(),
-            source: None,
-            offset_ms: 0,
-            raw_lrc: String::new(),
-        });
-    };
-
-    let lines =
-        lyrics::parser::parse_lrc(&fetched.raw_lrc).map_err(|e| lyrics_error(e.to_string()))?;
-
-    let fetched_at = current_unix_timestamp().map_err(|e| lyrics_error(e.to_string()))?;
-
-    cache::lyrics::upsert_lyrics_cache_entry(
-        &connection,
-        &LyricsCacheEntry {
-            song_hash: song_id.clone(),
-            lrc: fetched.raw_lrc.clone(),
-            source: fetched.source.clone(),
-            offset_ms: 0,
-            fetched_at,
+                raw_lrc: fetched.raw_lrc,
+            })
         },
+        |payload| payload.source.as_ref().map(|_| payload.song_id.clone()),
     )
-    .map_err(|e| database_error(e.to_string()))?;
-
-    remote_library::sync_active_remote_database_if_needed(&state.app_data_dir)?;
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
-
-    Ok(LyricsPayload {
-        song_id,
-        lines,
-        source: Some(fetched.source),
-        offset_ms: 0,
-        raw_lrc: fetched.raw_lrc,
-    })
 }
 
 /// Convert plain text (no LRC timestamps) into `LyricLine` entries with

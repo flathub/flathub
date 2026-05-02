@@ -251,7 +251,8 @@ fn emit_terminal_status(
                 },
             );
             let state = app_handle.state::<AppState>();
-            let _ = remote_library::maybe_publish_song_to_bound_remote(&state, app_handle, &song_id);
+            let _ =
+                remote_library::publish_song_to_active_remote_if_ready(&state, app_handle, &song_id);
         }
         SeparationState::Failed => {
             if let Some(error) = error {
@@ -378,7 +379,7 @@ pub fn downgrade_single_to_two_stem(
             song_id: song_id.clone(),
         },
     );
-    remote_library::maybe_publish_song_to_bound_remote(&state, &app_handle, &song_id)?;
+    remote_library::publish_song_to_active_remote_if_ready(&state, &app_handle, &song_id)?;
 
     Ok(completed)
 }

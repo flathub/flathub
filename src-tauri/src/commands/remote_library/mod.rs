@@ -1,6 +1,7 @@
 mod auth;
 mod dropbox;
 mod google_drive;
+mod mutation;
 mod registry;
 mod sync;
 mod types;
@@ -14,11 +15,14 @@ use crate::{
 use tauri::{AppHandle, Manager, State};
 
 pub(crate) use registry::remove_remote_library_credentials;
-pub(crate) use sync::{
-    ensure_remote_file_cached, maybe_publish_song_to_bound_remote,
-    maybe_publish_songs_to_bound_remote, prepare_active_remote_database_for_mutation,
-    sync_active_remote_database_if_needed, sync_bound_remote_for_active_local_library,
+pub(crate) use mutation::{
+    publish_song_to_active_remote_if_ready,
+    run_active_library_mirror_mutation, run_database_then_library_mirror_mutation,
+    run_imported_songs_mutation, run_song_database_mutation,
+    run_song_database_mutation_with_result, run_songs_database_mutation, run_updated_songs_mutation,
+    song_ids_from_songs,
 };
+pub(crate) use sync::ensure_remote_file_cached;
 pub use types::{
     RemoteAuthSession, RemoteAuthStart, RemoteAuthState, RemoteAuthStatus,
     RemoteLibraryCandidate, UploadState, UploadStatusSnapshot,

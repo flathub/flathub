@@ -3,12 +3,8 @@ import * as api from "@/lib/tauri";
 import { createWebviewSyncChannel } from "@/runtime/webview-sync";
 import { invalidateCoverArtUrl } from "@/lib/cover-art";
 import { notifyError } from "@/lib/errors";
-import {
-  buildAmbiguousCdgChoiceRequests,
-  buildImportSongsOptions,
-  type AmbiguousCdgChoiceRequest,
-  type ExplicitCdgSelection,
-} from "@/lib/import-cdg-selection";
+import { runImportWorkflow } from "@/runtime/import-workflow";
+import type { AmbiguousCdgChoiceRequest } from "@/lib/import-cdg-selection";
 import type {
   BatchSeparationProgress,
   ImportFailure,
@@ -142,59 +138,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   importFiles: async (paths) => {
     set({ isImporting: true, importErrors: [] });
     try {
-      // Split paths into audio and lyrics files
-      const audioPaths = paths.filter((p) => !p.toLowerCase().endsWith(".lrc"));
-      const lrcPaths = paths.filter((p) => p.toLowerCase().endsWith(".lrc"));
-      const explicitSelections: ExplicitCdgSelection[] = [];
-      const excludedAmbiguousAudioPaths = new Set<string>();
-
-      for (const request of buildAmbiguousCdgChoiceRequests(audioPaths)) {
-        const selectedAudioPath = await get().promptForCdgChoice(request);
-        if (selectedAudioPath) {
-          for (const candidate of request.audioCandidates) {
-            if (candidate !== selectedAudioPath) {
-              excludedAmbiguousAudioPaths.add(candidate);
-            }
-          }
-          explicitSelections.push({
-            audioPath: selectedAudioPath,
-            cdgPath: request.cdgPath,
-          });
-        }
-      }
-
-      const audioPathsToImport = audioPaths.filter(
-        (path) => !excludedAmbiguousAudioPaths.has(path),
-      );
-
-      // Import audio files
-      if (audioPathsToImport.length > 0) {
-        const result = await api.importSongs(
-          audioPathsToImport,
-          buildImportSongsOptions(explicitSelections),
-        );
-        if (result.failed.length > 0) {
-          set({ importErrors: result.failed });
-          for (const failure of result.failed) {
-            notifyError(failure.error);
-          }
-        }
-      }
-
-      // Import LRC files (must happen after audio so songs exist for matching)
-      if (lrcPaths.length > 0) {
-        const lrcResult = await api.importLyricsFiles(lrcPaths);
-        if (lrcResult.unmatched.length > 0) {
-          for (const path of lrcResult.unmatched) {
-            notifyError(`Lyrics file could not be matched to a song: ${path}`);
-          }
-        }
-      }
-
-      // Reload full library to get consistent state
-      const songs = await api.getLibrary();
-      set({ songs });
-      publishLibraryInvalidation();
+      await runImportWorkflow({
+        paths,
+        api,
+        promptForCdgChoice: get().promptForCdgChoice,
+        notifyError,
+        setImportErrors: (importErrors) => set({ importErrors }),
+        setSongs: (songs) => set({ songs }),
+        publishLibraryInvalidation,
+      });
     } catch (e) {
       notifyError(e);
     } finally {
