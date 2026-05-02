@@ -1,0 +1,190 @@
+# Flatpak manifest for UniStream — FLATHUB-FACING VARIANT
+#
+# This manifest fetches the Flutter Linux bundle from a GitHub Release
+# tarball. The url + sha256 below are placeholders rewritten by
+# prepare-flathub-submission.sh once a release is cut.
+#
+# For local-dev builds use fr.unimaru.unistream.dev.yml instead — it
+# points the source at build/linux/x64/release/bundle so you can iterate
+# without hitting GitHub.
+#
+# Build for Flathub:
+#   1. Cut a GitHub Release with tag v1.0.0
+#   2. CI uploads unistream-linux-x86_64.tar.gz as a release asset
+#   3. bash packaging/linux/prepare-flathub-submission.sh v1.0.0
+#   4. Submit PR with the generated files to github.com/flathub
+#
+# First Flathub build is long (10-20 min) — flatpak-builder compiles
+# libmpv, ffmpeg and libplacebo from source.
+
+app-id: fr.unimaru.unistream
+# GNOME Platform ships GTK3 + libsecret-1, both required by the Flutter
+# Linux bundle (the latter via flutter_secure_storage_linux).
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: unistream
+
+finish-args:
+  # Network access (IPTV streaming + Supabase + TMDB)
+  - --share=network
+  # IPC + display (X11 fallback + native Wayland)
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Audio (PulseAudio / PipeWire bridge)
+  - --socket=pulseaudio
+  # GPU acceleration (mpv hardware decode)
+  - --device=dri
+  # XDG portals — file picker (M3U import), notifications (EPG reminders),
+  # window mgmt
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
+  # Host keyring — flutter_secure_storage_linux stores Xtream creds there
+  - --talk-name=org.freedesktop.secrets
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - /share/gtk-doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # ---------------------------------------------------------------------
+  # libmpv stack — copied from io.github.celluloid_player.Celluloid which
+  # has been shipping libmpv on Flathub since 2018. Trimmed for IPTV use:
+  # no libopenmpt (tracker music), no lua/mujs (no scripting), no
+  # rubberband (no audio time-stretching).
+  # ---------------------------------------------------------------------
+
+  - name: libplacebo
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  - name: ffmpeg
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg/examples
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --enable-gnutls
+      - --enable-gpl
+      - --disable-doc
+      - --disable-programs
+      - --disable-encoders
+      - --disable-muxers
+      - --enable-encoder=png
+      - --enable-libv4l2
+      - --enable-libdav1d
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz
+        sha256: b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a
+
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.xz
+        sha256: 78f1179b838d025e9c26e8fef33f8092f65611444ffa1bfc0cfac6a33511a05a
+
+  - name: uchardet
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_STATIC=0
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+        sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+
+  - name: libmpv
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/applications
+      - /share/bash-completion
+      - /share/doc
+      - /share/icons
+      - /share/man
+      - /share/zsh
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+
+  # ---------------------------------------------------------------------
+  # UniStream itself — Flutter bundle staged from a GitHub Release.
+  # ---------------------------------------------------------------------
+  - name: unistream
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin/bundle
+      - cp -r bundle/. /app/bin/bundle/
+      - install -Dm755 bundle/unistream /app/bin/bundle/unistream
+      - ln -sf /app/bin/bundle/unistream /app/bin/unistream
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/fr.unimaru.unistream.desktop      /app/share/applications/fr.unimaru.unistream.desktop
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/fr.unimaru.unistream.metainfo.xml /app/share/metainfo/fr.unimaru.unistream.metainfo.xml
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/icon.png /app/share/icons/hicolor/256x256/apps/fr.unimaru.unistream.png
+      - sed -i 's/^Icon=.*/Icon=fr.unimaru.unistream/' /app/share/applications/fr.unimaru.unistream.desktop
+    sources:
+      # The release tarball — produced by `build-appimage.sh` and uploaded
+      # to GitHub Releases. prepare-flathub-submission.sh patches the URL
+      # and sha256 below for each tag.
+      #
+      # strip-components: 0 is critical. flatpak-builder defaults to 1,
+      # which silently drops every file at the root of the archive — and
+      # our tarball is built with `tar czf … *` so `unistream`, `data/`
+      # and `lib/` ARE at the root. Without this we get
+      # "install: cannot stat 'bundle/unistream'" at build time because
+      # the binary itself was thrown away during extraction.
+      - type: archive
+        url: https://github.com/unimaru69/unistream/releases/download/v1.0.2/unistream-linux-x86_64.tar.gz
+        sha256: "e58f78b7cbe8b0e8b7148ce22922325b05a91de7d1dc78dcbd793f7d3046a4ca"
+        strip-components: 0
+        dest: bundle
+
+      - type: file
+        path: unistream.desktop
+        dest-filename: fr.unimaru.unistream.desktop
+      - type: file
+        path: fr.unimaru.unistream.metainfo.xml
+      - type: file
+        path: unistream.png
+        dest-filename: icon.png
