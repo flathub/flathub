@@ -17,6 +17,7 @@ import {
   createSettingsOverlayActions,
   type SettingsOverlayControllerDependencies,
   type SettingsOverlaySnapshot,
+  type SettingsOverlayStateControls,
 } from "./SettingsOverlay.state";
 
 export interface SettingsOverlayProviderProps {
@@ -36,24 +37,16 @@ export function SettingsOverlayProvider({
   const [snapshot, setSnapshot] = useState<SettingsOverlaySnapshot>(
     initialSnapshot ?? createInitialSettingsOverlaySnapshot(),
   );
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
+  const didInitializeRef = useRef(false);
 
-  const stateControls = useMemo(
-    () => ({
-      getSnapshot: () => snapshotRef.current,
-      setSnapshot: (
-        updater: (previous: SettingsOverlaySnapshot) => SettingsOverlaySnapshot,
-      ) => {
-        setSnapshot((previous) => {
-          const next = updater(previous);
-          snapshotRef.current = next;
-          return next;
-        });
-      },
-    }),
-    [],
-  );
+  const stateControls = useMemo<SettingsOverlayStateControls>(() => ({
+    getSnapshot: () => snapshot,
+    setSnapshot: (
+      updater: (previous: SettingsOverlaySnapshot) => SettingsOverlaySnapshot,
+    ) => {
+      setSnapshot(updater);
+    },
+  }), [snapshot]);
 
   const defaultDependencies = useMemo<SettingsOverlayControllerDependencies>(
     () => ({
@@ -104,10 +97,11 @@ export function SettingsOverlayProvider({
   );
 
   useEffect(() => {
-    if (skipInitialize) {
+    if (skipInitialize || didInitializeRef.current) {
       return;
     }
 
+    didInitializeRef.current = true;
     void actions.initialize();
   }, [actions, skipInitialize]);
 

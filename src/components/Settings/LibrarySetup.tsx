@@ -115,7 +115,6 @@ function StepIndicator({ current }: { current: Step }) {
 
 export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const { t } = useTranslation();
-  const settingsHydrated = useSettingsStore((s) => s.hydrated);
   const settingsLanguage = useSettingsStore((s) => s.language);
   const settingsStemMode = useSettingsStore((s) => s.stemMode);
   const patchAppSettings = useSettingsStore((s) => s.patchAppSettings);
@@ -136,14 +135,19 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   const [remoteUsername, setRemoteUsername] = useState("");
   const [remotePassword, setRemotePassword] = useState("");
   const [remoteRootPath, setRemoteRootPath] = useState("/OpenKara");
-  const [selectedLanguage, setSelectedLanguage] = useState(
-    () =>
-      settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
-  );
-  const [selectedStemMode, setSelectedStemMode] = useState<
-    "two_stem" | "four_stem"
-  >(settingsStemMode);
+  const [selectedLanguageDraft, setSelectedLanguageDraft] = useState<
+    string | null
+  >(null);
+  const [selectedStemModeDraft, setSelectedStemModeDraft] = useState<
+    "two_stem" | "four_stem" | null
+  >(null);
   const remoteAuthSessionIdRef = useRef<string | null>(null);
+  const selectedLanguage =
+    selectedLanguageDraft ??
+    settingsLanguage ??
+    i18next.resolvedLanguage ??
+    detectSystemLanguage();
+  const selectedStemMode = selectedStemModeDraft ?? settingsStemMode;
 
   const resolveSingleDirectory = (selected: string | string[] | null) =>
     typeof selected === "string" ? selected : (selected?.[0] ?? null);
@@ -161,24 +165,6 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   };
 
   useEffect(() => {
-    if (!settingsHydrated) {
-      return;
-    }
-
-    setSelectedLanguage(
-      settingsLanguage ?? i18next.resolvedLanguage ?? detectSystemLanguage(),
-    );
-  }, [settingsHydrated, settingsLanguage]);
-
-  useEffect(() => {
-    if (!settingsHydrated) {
-      return;
-    }
-
-    setSelectedStemMode(settingsStemMode);
-  }, [settingsHydrated, settingsStemMode]);
-
-  useEffect(() => {
     return () => {
       if (remoteAuthSessionIdRef.current) {
         void api.cancelRemoteAuth(remoteAuthSessionIdRef.current);
@@ -187,7 +173,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
   }, []);
 
   const handleLanguageSelect = (code: string) => {
-    setSelectedLanguage(code);
+    setSelectedLanguageDraft(code);
     patchAppSettings({ language: code });
     i18next.changeLanguage(code);
     api
@@ -776,7 +762,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
 
             <div className="space-y-3">
               <button
-                onClick={() => setSelectedStemMode("two_stem")}
+                onClick={() => setSelectedStemModeDraft("two_stem")}
                 className={`flex w-full items-center gap-3 rounded-lg border px-5 py-4 text-left transition-colors ${
                   selectedStemMode === "two_stem"
                     ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
@@ -807,7 +793,7 @@ export function LibrarySetup({ onComplete }: LibrarySetupProps) {
               </button>
 
               <button
-                onClick={() => setSelectedStemMode("four_stem")}
+                onClick={() => setSelectedStemModeDraft("four_stem")}
                 className={`flex w-full items-center gap-3 rounded-lg border px-5 py-4 text-left transition-colors ${
                   selectedStemMode === "four_stem"
                     ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
