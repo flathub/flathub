@@ -43,7 +43,7 @@ function createControllerHarness() {
       registerLocalLibrary: vi.fn(),
       restartApp: vi.fn(),
       switchLibrary: vi.fn(),
-      syncActiveRemoteLibrary: vi.fn(),
+      refreshRemoteRepository: vi.fn(),
       renameLibrary: vi.fn(),
       removeLibrary: vi.fn(),
       deleteLibrary: vi.fn(),
@@ -310,7 +310,7 @@ describe("SettingsOverlay controller", () => {
       "remote:library-1",
     );
     expect(
-      harness.dependencies.api.syncActiveRemoteLibrary,
+      harness.dependencies.api.refreshRemoteRepository,
     ).toHaveBeenCalledOnce();
     expect(
       harness.dependencies.libraryStore.clearAllSeparationStatuses,
@@ -357,7 +357,7 @@ describe("SettingsOverlay controller", () => {
       meta: harness.getSnapshot().meta,
     });
     vi.mocked(
-      harness.dependencies.api.syncActiveRemoteLibrary,
+      harness.dependencies.api.refreshRemoteRepository,
     ).mockResolvedValue(undefined);
     vi.mocked(harness.dependencies.api.getLibraryRegistry).mockResolvedValue({
       active_library_id: "remote:library-1",
@@ -390,11 +390,11 @@ describe("SettingsOverlay controller", () => {
         file_size: null,
       });
 
-    await harness.actions.forceSyncRemoteLibrary("remote:library-1");
+    await harness.actions.refreshRemoteRepository("remote:library-1");
 
     expect(harness.dependencies.api.switchLibrary).not.toHaveBeenCalled();
     expect(
-      harness.dependencies.api.syncActiveRemoteLibrary,
+      harness.dependencies.api.refreshRemoteRepository,
     ).toHaveBeenCalledOnce();
     expect(
       harness.dependencies.libraryStore.clearAllSeparationStatuses,

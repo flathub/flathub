@@ -109,10 +109,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       try {
         const activeLibrary = await api.getActiveLibrary();
         if (activeLibrary?.kind === "remote") {
-          await api.syncActiveRemoteLibrary();
+          await api.refreshRemoteRepository();
         }
       } catch {
-        // Keep stale cache visible if the remote sync attempt fails.
+        // Keep stale cache visible if the repository refresh attempt fails.
       }
 
       const songs = await api.getLibrary();

@@ -101,7 +101,7 @@ export function mirrorLocalLibraryToRemote(
   });
 }
 
-export function syncActiveRemoteLibrary(): Promise<unknown> {
+export function refreshRemoteRepository(): Promise<unknown> {
   return invoke<unknown>("sync_active_remote_library");
 }
 

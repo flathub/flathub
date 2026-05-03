@@ -10,11 +10,11 @@ async function applyLibrarySwitchSideEffects(
   context: SettingsActionContext,
   libraryId: string,
   registry: LibraryRegistrySnapshot,
-  options: { syncRemote?: boolean } = {},
+  options: { refreshRemoteRepository?: boolean } = {},
 ) {
   const target = registry.libraries.find((library) => library.id === libraryId);
-  if (target?.kind === "remote" && options.syncRemote !== false) {
-    await context.dependencies.api.syncActiveRemoteLibrary();
+  if (target?.kind === "remote" && options.refreshRemoteRepository !== false) {
+    await context.dependencies.api.refreshRemoteRepository();
   }
 
   context.dependencies.libraryStore.clearAllSeparationStatuses();
@@ -57,7 +57,7 @@ export function createLibrarySettingsActions(
   | "createLibrary"
   | "openLibrary"
   | "switchLibrary"
-  | "forceSyncRemoteLibrary"
+  | "refreshRemoteRepository"
   | "renameLibrary"
   | "removeLibrary"
   | "deleteLibrary"
@@ -144,7 +144,7 @@ export function createLibrarySettingsActions(
       }
     },
 
-    forceSyncRemoteLibrary: async (libraryId) => {
+    refreshRemoteRepository: async (libraryId) => {
       patchState({ libraryError: null });
 
       const current = controls.getSnapshot().state;
@@ -162,10 +162,10 @@ export function createLibrarySettingsActions(
           return;
         }
 
-        await dependencies.api.syncActiveRemoteLibrary();
+        await dependencies.api.refreshRemoteRepository();
         const registry = await dependencies.api.getLibraryRegistry();
         await applyLibrarySwitchSideEffects(context, libraryId, registry, {
-          syncRemote: false,
+          refreshRemoteRepository: false,
         });
       } catch (error: unknown) {
         patchState({

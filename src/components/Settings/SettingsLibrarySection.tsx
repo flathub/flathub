@@ -126,10 +126,10 @@ export function SettingsLibrarySection() {
                       <button
                         type="button"
                         onClick={() =>
-                          void actions.forceSyncRemoteLibrary(library.id)
+                          void actions.refreshRemoteRepository(library.id)
                         }
                         disabled={meta.isInitializing}
-                        title={t("settings.library.forceResyncRemoteLibrary", {
+                        title={t("settings.library.refreshRemoteRepository", {
                           defaultValue: "Refresh remote repository",
                         })}
                         className="rounded-md border border-[var(--color-border-light)] bg-[var(--color-surface)] p-1.5 text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-hover)] hover:text-white disabled:opacity-50"

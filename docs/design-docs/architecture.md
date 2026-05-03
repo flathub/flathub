@@ -46,11 +46,11 @@ User's local music files
 | Audio playback    | [cpal](https://github.com/RustAudio/cpal) (Rust)                                                                                            |
 | AI inference      | [ONNX Runtime](https://github.com/microsoft/onnxruntime) (ort crate)                                                                        |
 | AI model          | Demucs v4 (HTDemucs), ONNX export                                                                                                           |
-| Lyrics API        | LRCLIB (primary), Musixmatch (fallback)                                                                                                     |
+| Lyrics API        | LRCLIB (primary), LrcApi (`api.lrc.cx`) fallback                                                                                            |
 | Metadata          | [lofty](https://github.com/Serial-ATA/lofty-rs) (Rust, ID3/Vorbis/FLAC tags)                                                                |
 | Cache / DB        | [SQLite](https://github.com/sqlite/sqlite) via rusqlite                                                                                     |
 | Build / Bundle    | Tauri CLI + [Vite](https://github.com/vitejs/vite)                                                                                          |
-| Distribution      | GitHub Releases, Homebrew                                                                                                                   |
+| Distribution      | GitHub Releases, Homebrew, WinGet, Flatpak packaging                                                                                        |
 
 ## Data Flow
 
@@ -72,11 +72,11 @@ User's local music files
 ```
 1. Use song title + artist from metadata
 2. Query LRCLIB API for synced LRC lyrics
-3. If not found, try Musixmatch API
+3. If not found, try the LrcApi provider (`api.lrc.cx`)
 4. If not found, check for embedded lyrics in audio file tags
 5. If not found, check for .lrc file alongside audio file
 6. User can also: import .lrc files (auto-matched) or type lyrics manually
-7. Cache result in SQLite (source: "lrclib" | "embedded" | "sidecar" | "file_import" | "manual")
+7. Cache result in SQLite (source: "lrclib" | "lrc_api" | "embedded" | "sidecar" | "manual")
 ```
 
 ### Playback
@@ -126,7 +126,7 @@ GET https://lrclib.net/api/get?track_name={title}&artist_name={artist}&album_nam
 | Priority | Source                  | Notes                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------- |
 | 1        | LRCLIB API              | Best coverage for synced lyrics                                   |
-| 2        | Musixmatch API          | Wider catalog, free tier has rate limits                          |
+| 2        | LrcApi (`api.lrc.cx`)   | Secondary timed lyrics provider using title/artist/album metadata |
 | 3        | Embedded lyrics in tags | ID3v2 SYLT/USLT, Vorbis LYRICS tag — extracted during import      |
 | 4        | Sidecar .lrc file       | Same directory, same filename as audio                            |
 | 5        | LRC file import         | User imports .lrc files, auto-matched by filename or artist/title |
@@ -185,7 +185,7 @@ monochrome supports Japanese → Romaji conversion via kuroshiro/kuromoji. For O
 - Optional Romaji/Pinyin transliteration display
 - Font fallback chain for CJK glyphs
 
-This is a nice-to-have, not MVP scope.
+OpenKara includes optional lyrics romanization support in the frontend and can display transliterated lyrics alongside the original text.
 
 ## AI Model Details
 
@@ -218,7 +218,7 @@ This is a nice-to-have, not MVP scope.
 
 All expensive computations are cached to avoid redundant processing:
 
-- **Separated stems**: Stored as WAV files in `~/.openkara/cache/stems/{hash}/`
+- **Separated stems**: Stored as compact OGG/Vorbis files under the active portable library's `stems/{hash}/` directory
 - **Lyrics**: Stored in SQLite with song hash as key
 - **Metadata**: Stored in SQLite for library browsing
 - **Timing offsets**: Stored in SQLite per song hash
