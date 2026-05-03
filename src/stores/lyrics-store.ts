@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import { createRomanizer, isLatinScript } from "lyric-romanizer";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
+import { romanizeLyricsLines } from "@/lib/lyrics-romanizer";
 import type { LyricLine, LyricsSource } from "@/types/ipc";
 
 interface LyricsState {
@@ -143,16 +143,10 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     if (isRomanizing || lines.length === 0) return;
 
     const texts = lines.map((l) => l.text);
-    if (isLatinScript(texts)) {
-      set({ romanizedLines: texts, isRomanizing: false });
-      return;
-    }
-
     set({ isRomanizing: true });
     try {
-      const romanizer = createRomanizer();
-      const result = await romanizer.romanizeLines(texts);
-      set({ romanizedLines: result.lines });
+      const romanizedLines = await romanizeLyricsLines(texts);
+      set({ romanizedLines });
     } catch {
       // Romanization failure is non-fatal; leave lines empty
       set({ romanizedLines: [] });

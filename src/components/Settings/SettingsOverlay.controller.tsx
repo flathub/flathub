@@ -39,14 +39,17 @@ export function SettingsOverlayProvider({
   );
   const didInitializeRef = useRef(false);
 
-  const stateControls = useMemo<SettingsOverlayStateControls>(() => ({
-    getSnapshot: () => snapshot,
-    setSnapshot: (
-      updater: (previous: SettingsOverlaySnapshot) => SettingsOverlaySnapshot,
-    ) => {
-      setSnapshot(updater);
-    },
-  }), [snapshot]);
+  const stateControls = useMemo<SettingsOverlayStateControls>(
+    () => ({
+      getSnapshot: () => snapshot,
+      setSnapshot: (
+        updater: (previous: SettingsOverlaySnapshot) => SettingsOverlaySnapshot,
+      ) => {
+        setSnapshot(updater);
+      },
+    }),
+    [snapshot],
+  );
 
   const defaultDependencies = useMemo<SettingsOverlayControllerDependencies>(
     () => ({
