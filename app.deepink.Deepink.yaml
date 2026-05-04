@@ -1,0 +1,91 @@
+app-id: app.deepink.Deepink
+
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+
+command: deepink
+
+finish-args:
+  # ── Display ──────────────────────────────────────────────────────────────
+  # Primary display socket. Electron 20+ can run natively on Wayland when
+  # launched with --ozone-platform-hint=auto (see deepink.sh).
+  - --socket=wayland
+  # Automatically falls back to X11/XWayland on systems without Wayland.
+  # Use fallback-x11 (not plain x11) when wayland is also listed.
+  - --socket=fallback-x11
+  # X11 shared-memory (MIT-SHM) — required for correct rendering on X11/XWayland.
+  - --share=ipc
+
+  # ── GPU ──────────────────────────────────────────────────────────────────
+  # Grants access to /dev/dri for hardware-accelerated rendering.
+  # Without this Chromium falls back to software rendering or crashes.
+  - --device=dri
+
+  # ── Network ──────────────────────────────────────────────────────────────
+  # Needed for the built-in update-checker and any future sync features.
+  - --share=network
+
+  # ── File system ──────────────────────────────────────────────────────────
+  # Deepink stores encrypted vaults as files that the user can place anywhere
+  # on the system (Documents, external drives, etc.)
+  - --filesystem=home
+
+  # ── D-Bus ────────────────────────────────────────────────────────────────
+  # Send desktop notifications (used by the Reminders feature).
+  # Also used to listen for the screen lock events and lock vault automatically
+  - --talk-name=org.freedesktop.Notifications
+  # Allow the tray icon to register itself on KDE/Plasma.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Support for the global application menu on KDE.
+  - --talk-name=com.canonical.AppMenu.Registrar
+
+modules:
+  - name: deepink
+    buildsystem: simple
+
+    build-commands:
+      # Install Electron app under /app/lib/deepink/
+      - mkdir -p /app/lib/deepink
+      - cp -r * /app/lib/deepink
+      - chmod +x /app/lib/deepink/deepink
+
+      # Install the launcher wrapper
+      # The wrapper passes --no-sandbox because Electron's setuid
+      # chrome-sandbox cannot be used inside a Flatpak (setuid is disallowed).
+      # The Flatpak sandbox itself provides equivalent isolation.
+      - install -Dm755 deepink.sh /app/bin/deepink
+
+      # Install the application icon
+      # The icon is bundled in the verified zip as an extra resource.
+      # If this path does not exist after extraction, run:
+      #   unzip -l deepink-linux-x64-0.1.3.zip | grep -i png
+      # to find the real path and adjust accordingly.
+      - install -Dm644 /app/lib/deepink/resources/assets/icons/app.png
+        /app/share/icons/hicolor/256x256/apps/app.deepink.Deepink.png
+
+      # Install the desktop entry
+      - install -Dm644 app.deepink.Deepink.desktop
+        /app/share/applications/app.deepink.Deepink.desktop
+
+      # Install AppStream metadata
+      - install -Dm644 app.deepink.Deepink.metainfo.xml
+        /app/share/metainfo/app.deepink.Deepink.metainfo.xml
+
+    sources:
+      # ── Pre-built release artifact from GitHub ───────────────────────────
+      # flatpak-builder downloads and verifies the sha256 before building.
+      # Update both url and sha256 on every new release.
+      - type: archive
+        url: https://github.com/DeepinkApp/deepink/releases/download/v0.1.3/deepink-linux-x64-0.1.3.zip
+        sha256: 0b54b4f5ba2c287ba5d338402d748d63a402ecd2b5b8745d2df27685b68aaf06
+
+      # ── Supporting files (local, alongside this manifest) ────────────────
+      - type: file
+        path: deepink.sh
+
+      - type: file
+        path: app.deepink.Deepink.desktop
+
+      - type: file
+        path: app.deepink.Deepink.metainfo.xml
