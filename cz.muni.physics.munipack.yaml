@@ -1,0 +1,97 @@
+app-id: cz.muni.physics.munipack
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: xmunipack
+finish-args:
+  # Display & Graphics
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Internet access for Virtual Observatory
+  - --share=network
+  # File access to open FITS images
+  - --filesystem=home
+modules:
+  # Follows Munipack build instructions from https://munipack.physics.muni.cz/SourceInstallation.html 
+  # 1. CFITSIO
+  - name: cfitsio
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio-4.6.4.tar.gz
+        sha256: 227b637b91c9820ea96f39a65eb087f053de567d82f4338e2884f123f8183c55
+  # 2. MINPACK (Original Fortran Version)
+  - name: minpack
+    buildsystem: simple
+    build-commands:
+      # Compile all Fortran files into object files
+      - gfortran -O2 -fPIC -c *.f
+      # Archive them into a static library
+      - ar rcs libminpack.a *.o
+      # Install the library to the Flatpak /app/lib directory
+      - install -D -m 644 libminpack.a /app/lib/libminpack.a
+    sources:
+      - type: archive
+        url: http://ftp.debian.org/debian/pool/main/m/minpack/minpack_19961126+dfsg1.orig.tar.gz
+        sha256: 7d10509cc0faefcbe38a06453cb13a40aaecd2bebc1594fb7ee0943429d8f6d1
+  # 3. WXWIDGETS
+  - name: wxwidgets
+    buildsystem: autotools
+    config-opts:
+      - "--with-gtk=3" # Forces it to build the GTK3 version Munipack expects
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6.tar.bz2
+        sha256: 939e5b77ddc5b6092d1d7d29491fe67010a2433cf9b9c0d841ee4d04acb9dce7
+  # 4. PLPLOT
+  - name: plplot
+    buildsystem: cmake
+    config-opts:
+      - "-DPLD_cairo=ON" # Forces the Cairo driver that Munipack requested
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/plplot/files/plplot/5.15.0%20Source/plplot-5.15.0.tar.gz
+        sha256: b92de4d8f626a9b20c84fc94f4f6a9976edd76e33fb1eae44f6804bdcc628c7b
+  # --- OAKLEAF ---
+  - name: oakleaf
+    buildsystem: autotools
+    # This translates: ./configure FCFLAGS="-O2 -ffpe-trap=invalid,zero,overflow"
+    config-opts:
+      - 'FCFLAGS=-O2 -ffpe-trap=invalid,zero,overflow'
+    sources:
+      - type: archive
+        url: https://integral.physics.muni.cz/ftp/oakleaf/oakleaf-1.0.1.tar.gz
+        sha256: 03e54f55f8c4c23b0455d1546b3fcf5bf0e725c05ab4e3797249de17acade59b
+  # --- MUNIPACK ---
+  - name: munipack
+    buildsystem: autotools
+    # Changed /usr/local to /app because of the Flatpak sandbox
+    config-opts:
+      - 'LDFLAGS=-L/app/lib'
+      - 'CPPFLAGS=-I/app/include'
+      - 'FCFLAGS=-I/app/include'
+    post-install:
+      - rm -rf /app/share/metainfo
+    sources:
+      - type: archive
+        url: https://integral.physics.muni.cz/ftp/munipack/munipack-0.6.2.tar.gz
+        sha256: 7a3abbb1270188c600d6e8feca57f46c3a1a58439f91422934efccac47755d3b
+  # --- ICON, DESKTOP AND METAINFO ---
+  - name: extra-data
+    buildsystem: simple
+    build-commands:
+      # .desktop 
+      - install -D cz.muni.physics.munipack.desktop /app/share/applications/cz.muni.physics.munipack.desktop
+      # icon
+      - install -D munipack_icon.png /app/share/icons/hicolor/256x256/apps/cz.muni.physics.munipack.png
+      # AppStream metadata
+      - install -D cz.muni.physics.munipack.metainfo.xml /app/share/metainfo/cz.muni.physics.munipack.metainfo.xml
+    sources:
+      - type: file
+        path: cz.muni.physics.munipack.desktop
+      - type: file
+        path: munipack_icon.png
+      - type: file
+        path: cz.muni.physics.munipack.metainfo.xml
