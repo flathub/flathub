@@ -1,0 +1,75 @@
+# Flatpak manifest for wflow, Flathub submission variant.
+#
+# This file is the version that gets copied into the per-app Flathub
+# repository (github.com/flathub/io.github.cushycush.wflow). It is
+# identical to io.github.cushycush.wflow.yaml except the `sources`
+# stanza pulls from the tagged release on GitHub instead of a local
+# directory, so reviewers and users build from a verifiable revision.
+#
+# Per-release upkeep: bump the `tag` below to the new version, bump
+# the matching <release> in metainfo.xml, regenerate
+# cargo-sources.json from the new Cargo.lock, then open a PR to the
+# Flathub per-app repo with this file. See packaging/flatpak/README.md.
+
+id: io.github.cushycush.wflow
+
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: wflow
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/wflow/cargo
+    RUSTFLAGS: ""
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --filesystem=xdg-config/wflow:create
+  # Host-spawn for the user's `shell "..."` action and the
+  # `clipboard` action only. Input/window goes through the libei
+  # portal in process; notifications go through the Notification
+  # portal. What's left is exactly the user-facing feature wflow
+  # can't replace with a portal: running arbitrary user commands.
+  # REVIEW.md at the repo root has the threat model.
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - name: wflow
+    buildsystem: simple
+    build-commands:
+      - mkdir -p .cargo
+      - cp -v packaging/flatpak/cargo-config.toml .cargo/config.toml
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --locked --verbose
+
+      - install -Dm755 target/release/wflow /app/bin/wflow
+      - install -d /app/share/bash-completion/completions
+      - target/release/wflow completions bash > /app/share/bash-completion/completions/wflow
+      - install -d /app/share/zsh/site-functions
+      - target/release/wflow completions zsh > /app/share/zsh/site-functions/_wflow
+      - install -d /app/share/fish/vendor_completions.d
+      - target/release/wflow completions fish > /app/share/fish/vendor_completions.d/wflow.fish
+      - install -d /app/share/man/man1
+      - target/release/wflow man --output /app/share/man/man1 >/dev/null
+
+      - install -Dm644 packaging/flatpak/io.github.cushycush.wflow.desktop /app/share/applications/io.github.cushycush.wflow.desktop
+      - install -Dm644 packaging/flatpak/io.github.cushycush.wflow.metainfo.xml /app/share/metainfo/io.github.cushycush.wflow.metainfo.xml
+      - install -Dm644 packaging/flatpak/io.github.cushycush.wflow.svg /app/share/icons/hicolor/scalable/apps/io.github.cushycush.wflow.svg
+
+      - install -Dm644 LICENSE-MIT /app/share/licenses/io.github.cushycush.wflow/LICENSE-MIT
+      - install -Dm644 LICENSE-APACHE /app/share/licenses/io.github.cushycush.wflow/LICENSE-APACHE
+    sources:
+      - type: git
+        url: https://github.com/cushycush/wflow.git
+        tag: v1.0.2
+        commit: adfec45ef65506d15c69ac2b463a5765e3137947
+      - cargo-sources.json
