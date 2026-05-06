@@ -1,0 +1,94 @@
+# Flatpak manifest for Refrain — Flathub submission target.
+#
+# Local build / test:
+#   flatpak install -y flathub org.kde.Platform//6.10 org.kde.Sdk//6.10
+#   flatpak-builder --user --install --force-clean build-dir io.github.Rockykln.Refrain.yaml
+#   flatpak run io.github.Rockykln.Refrain
+#
+# Refresh the bundled Python deps when pinning a new release:
+#   cd packaging/flatpak
+#   flatpak-pip-generator --runtime org.kde.Sdk//6.10 \
+#       --requirements-file=../../requirements.txt -o python-deps
+#   git add python-deps.json
+#
+# When bumping `tag:` below, also bump the matching <release/> entry in
+# io.github.Rockykln.Refrain.metainfo.xml — Flathub's CI fails the build
+# without it.
+
+id: io.github.Rockykln.Refrain
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+# PySide6 is huge and Flathub-policy says use the official BaseApp instead
+# of vendoring it as a Python wheel. The BaseApp's branch must match the
+# runtime branch (6.10 → 6.10). Cleanup= drops headers / pyc files we
+# inherit from the BaseApp but don't need at runtime.
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+command: refrain
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Network for the iTunes Search cover-art lookup + Discord IPC fallback
+  - --share=network
+  # Bluetooth metadata via the system bus
+  - --system-talk-name=org.bluez
+  # Notifications
+  - --talk-name=org.freedesktop.Notifications
+  # MPRIS metadata from any media player on the session bus
+  - --talk-name=org.mpris.MediaPlayer2.*
+  # Discord IPC sockets (Discord may use any of 0..9)
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/discord-ipc-1
+  - --filesystem=xdg-run/discord-ipc-2
+  - --filesystem=xdg-run/discord-ipc-3
+  - --filesystem=xdg-run/discord-ipc-4
+  - --filesystem=xdg-run/discord-ipc-5
+  - --filesystem=xdg-run/discord-ipc-6
+  - --filesystem=xdg-run/discord-ipc-7
+  - --filesystem=xdg-run/discord-ipc-8
+  - --filesystem=xdg-run/discord-ipc-9
+  # XDG-style config / state / cache
+  - --filesystem=xdg-config/refrain:create
+  - --filesystem=xdg-cache/refrain:create
+  - --filesystem=xdg-data/refrain:create
+
+modules:
+  # patchelf is a build-time dependency of meson-python (the PEP 517 backend
+  # used by dbus-python). The KDE SDK doesn't ship it, so we build it once
+  # here and clean it up before the final image.
+  - name: patchelf
+    buildsystem: autotools
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0.tar.gz
+        sha256: 64de10e4c6b8b8379db7e87f58030f336ea747c0515f381132e810dbf84a86e7
+
+  # Python deps that aren't part of the KDE Platform runtime, vendored as
+  # individual file: sources because Flathub builds run offline. Regenerate
+  # via the flatpak-pip-generator command in the header comment.
+  - python-deps.json
+
+  - name: refrain
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation .
+      - install -Dm644 packaging/flatpak/io.github.Rockykln.Refrain.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.Rockykln.Refrain.desktop
+      - install -Dm644 src/refrain/assets/icons/refrain.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.Rockykln.Refrain.svg
+      - install -Dm644 packaging/flatpak/io.github.Rockykln.Refrain.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.Rockykln.Refrain.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Rockykln/refrain.git
+        tag: v0.1.4
+        commit: cd8665333ce223d875bd6cd1cc7be91ea1cea779
