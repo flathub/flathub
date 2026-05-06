@@ -11,6 +11,10 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@/components/Overlay/Tooltip";
 import { AudioLevelSlider } from "./AudioLevelSlider";
+import {
+  createTrailingRateLimiter,
+  type TrailingRateLimiter,
+} from "@/lib/rate-limit";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { StemName } from "@/types/ipc";
@@ -29,6 +33,16 @@ export function VolumeSliders({
   const separationStatuses = useLibraryStore((s) => s.separationStatuses);
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const throttledSetStemVolumeRef = useRef(
+    new Map<StemName, TrailingRateLimiter<number>>(),
+  );
+
+  useEffect(() => {
+    throttledSetStemVolumeRef.current.forEach((limiter) => limiter.cancel());
+    throttledSetStemVolumeRef.current = new Map();
+    return () =>
+      throttledSetStemVolumeRef.current.forEach((limiter) => limiter.cancel());
+  }, [setStemVolume]);
 
   const stemVolumes = useMemo(
     () =>
@@ -78,7 +92,15 @@ export function VolumeSliders({
 
   const handleStemChange = useCallback(
     (stem: StemName, value: number) => {
-      setStemVolume(stem, value);
+      let limiter = throttledSetStemVolumeRef.current.get(stem);
+      if (!limiter) {
+        limiter = createTrailingRateLimiter(
+          (nextValue: number) => setStemVolume(stem, nextValue),
+          20,
+        );
+        throttledSetStemVolumeRef.current.set(stem, limiter);
+      }
+      limiter(value);
     },
     [setStemVolume],
   );
@@ -95,22 +117,22 @@ export function VolumeSliders({
       if (isTwoStem) {
         // In 2-stem mode, set all three sub-stems to the same value;
         // the backend uses max gain as the accompaniment gain.
-        setStemVolume("drums", newValue);
-        setStemVolume("bass", newValue);
-        setStemVolume("other", newValue);
+        handleStemChange("drums", newValue);
+        handleStemChange("bass", newValue);
+        handleStemChange("other", newValue);
       } else if (accompValue === 0) {
         // All sub-stems are 0; set them all to the new value
-        setStemVolume("drums", newValue);
-        setStemVolume("bass", newValue);
-        setStemVolume("other", newValue);
+        handleStemChange("drums", newValue);
+        handleStemChange("bass", newValue);
+        handleStemChange("other", newValue);
       } else {
         const ratio = newValue / accompValue;
-        setStemVolume("drums", Math.min(1, stemVolumes.drums * ratio));
-        setStemVolume("bass", Math.min(1, stemVolumes.bass * ratio));
-        setStemVolume("other", Math.min(1, stemVolumes.other * ratio));
+        handleStemChange("drums", Math.min(1, stemVolumes.drums * ratio));
+        handleStemChange("bass", Math.min(1, stemVolumes.bass * ratio));
+        handleStemChange("other", Math.min(1, stemVolumes.other * ratio));
       }
     },
-    [isTwoStem, accompValue, stemVolumes, setStemVolume],
+    [isTwoStem, accompValue, stemVolumes, handleStemChange],
   );
 
   const handleVocalsMuteToggle = useCallback(() => {

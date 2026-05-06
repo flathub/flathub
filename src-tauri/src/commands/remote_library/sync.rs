@@ -1,18 +1,13 @@
 use crate::{
-    cache,
+    AppState, cache,
     commands::error::{
-        database_error, library_error, state_lock_error, CommandError, CommandResult,
+        CommandError, CommandResult, database_error, library_error, state_lock_error,
     },
     config::{AppConfig, RegisteredLibrary, RemoteLibraryProvider},
     library::Song,
     library_root::LibraryRoot,
-    AppState,
 };
-use std::{
-    collections::HashMap,
-    fs,
-    path::Path,
-};
+use std::{collections::HashMap, fs, path::Path};
 use tauri::{AppHandle, Emitter};
 
 use super::{
@@ -29,9 +24,9 @@ use super::{
         initialize_or_sync_google_drive_library, load_google_drive_secret,
     },
     types::{
-        current_unix_time_ms, load_app_config, load_remote_root, persist_app_config,
-        upsert_stem_entry, UploadCompletePayload, UploadErrorPayload, UploadProgressPayload,
-        UploadState, UploadStatusSnapshot,
+        UploadCompletePayload, UploadErrorPayload, UploadProgressPayload, UploadState,
+        UploadStatusSnapshot, current_unix_time_ms, load_app_config, load_remote_root,
+        persist_app_config, upsert_stem_entry,
     },
     webdav::{
         delete_relative_path_from_remote as webdav_delete_relative_path_from_remote,
@@ -67,7 +62,10 @@ fn mark_upload_status(
     Ok(snapshot)
 }
 
-fn emit_upload_progress<R: tauri::Runtime>(app_handle: &AppHandle<R>, snapshot: &UploadStatusSnapshot) {
+fn emit_upload_progress<R: tauri::Runtime>(
+    app_handle: &AppHandle<R>,
+    snapshot: &UploadStatusSnapshot,
+) {
     let payload = UploadProgressPayload {
         song_id: snapshot.song_id.clone(),
         percent: snapshot.percent,
@@ -77,7 +75,10 @@ fn emit_upload_progress<R: tauri::Runtime>(app_handle: &AppHandle<R>, snapshot: 
     let _ = app_handle.emit("upload-progress", payload);
 }
 
-fn emit_upload_complete<R: tauri::Runtime>(app_handle: &AppHandle<R>, snapshot: &UploadStatusSnapshot) {
+fn emit_upload_complete<R: tauri::Runtime>(
+    app_handle: &AppHandle<R>,
+    snapshot: &UploadStatusSnapshot,
+) {
     let payload = UploadCompletePayload {
         song_id: snapshot.song_id.clone(),
         remote_library_id: snapshot.remote_library_id.clone(),
@@ -232,9 +233,9 @@ fn remote_database_revision(
         }
         Some(RemoteLibraryProvider::GoogleDrive) => {
             let mut secret = load_google_drive_secret(app_data_dir, library)?;
-            let root_folder_id = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_folder_id = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             Ok(google_drive_find_relative_entry(
                 app_data_dir,
                 &mut secret,
@@ -245,9 +246,9 @@ fn remote_database_revision(
         }
         Some(RemoteLibraryProvider::Dropbox) => {
             let mut secret = load_dropbox_secret(app_data_dir, library)?;
-            let root_path = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_path = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             Ok(dropbox_get_metadata(
                 app_data_dir,
                 &mut secret,
@@ -300,7 +301,7 @@ fn sync_remote_database_from_provider(
         None => {
             return Err(library_error(
                 "the active remote provider is not supported for sync".to_owned(),
-            ))
+            ));
         }
     };
     update_remote_revision_in_config(app_data_dir, library.id(), revision)?;
@@ -349,9 +350,9 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
         }
         Some(RemoteLibraryProvider::GoogleDrive) => {
             let secret = load_google_drive_secret(app_data_dir, library)?;
-            let root_folder_id = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_folder_id = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             google_drive_upload_relative_file_to_remote(
                 app_data_dir,
                 library,
@@ -366,7 +367,9 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
                 root_folder_id,
                 "openkara.db",
             )?
-            .ok_or_else(|| library_error("Google Drive database file is missing after upload".to_owned()))?;
+            .ok_or_else(|| {
+                library_error("Google Drive database file is missing after upload".to_owned())
+            })?;
             update_remote_revision_in_config(
                 app_data_dir,
                 library.id(),
@@ -375,9 +378,9 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
         }
         Some(RemoteLibraryProvider::Dropbox) => {
             let secret = load_dropbox_secret(app_data_dir, library)?;
-            let root_path = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_path = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             dropbox_upload_relative_file_to_remote(
                 app_data_dir,
                 library,
@@ -391,7 +394,9 @@ fn upload_remote_database(app_data_dir: &Path, library: &RegisteredLibrary) -> C
                 &mut refreshed_secret,
                 &dropbox_join_path(root_path, "openkara.db"),
             )?
-            .ok_or_else(|| library_error("Dropbox database file is missing after upload".to_owned()))?;
+            .ok_or_else(|| {
+                library_error("Dropbox database file is missing after upload".to_owned())
+            })?;
             update_remote_revision_in_config(
                 app_data_dir,
                 library.id(),
@@ -457,9 +462,9 @@ pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> Co
         }
         Some(RemoteLibraryProvider::GoogleDrive) => {
             let mut secret = load_google_drive_secret(app_data_dir, &library)?;
-            let root_folder_id = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_folder_id = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             let entry = google_drive_find_relative_entry(
                 app_data_dir,
                 &mut secret,
@@ -471,12 +476,14 @@ pub fn ensure_remote_file_cached(app_data_dir: &Path, relative_path: &str) -> Co
         }
         Some(RemoteLibraryProvider::Dropbox) => {
             let mut secret = load_dropbox_secret(app_data_dir, &library)?;
-            let root_path = library
-                .remote_root_locator()
-                .ok_or_else(|| library_error("remote repository is missing a remote locator".to_owned()))?;
+            let root_path = library.remote_root_locator().ok_or_else(|| {
+                library_error("remote repository is missing a remote locator".to_owned())
+            })?;
             let remote_path = dropbox_join_path(root_path, relative_path);
             if dropbox_get_metadata(app_data_dir, &mut secret, &remote_path)?.is_none() {
-                return Err(library_error(format!("remote file {relative_path} was not found")));
+                return Err(library_error(format!(
+                    "remote file {relative_path} was not found"
+                )));
             }
             dropbox_download_file(app_data_dir, &mut secret, &remote_path, &destination)
         }
@@ -600,10 +607,18 @@ fn delete_remote_song_from_mirror(
             .map_err(|error| database_error(error.to_string()))?
             .is_some()
     {
-        remote_delete_relative_path(app_data_dir, remote_library, &format!("stems/{}", song.hash))?;
+        remote_delete_relative_path(
+            app_data_dir,
+            remote_library,
+            &format!("stems/{}", song.hash),
+        )?;
     }
-    crate::commands::import::delete::delete_song_from_library(remote_connection, remote_root, &song.hash)
-        .map_err(|error| library_error(error.to_string()))?;
+    crate::commands::import::delete::delete_song_from_library(
+        remote_connection,
+        remote_root,
+        &song.hash,
+    )
+    .map_err(|error| library_error(error.to_string()))?;
     Ok(())
 }
 
@@ -676,7 +691,8 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
     let Some(remote_library) = resolve_active_remote(&config) else {
         return Ok(());
     };
-    let remote_library = prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
+    let remote_library =
+        prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
 
     let local_root = state.library_root()?;
     let local_connection = cache::open_database(&local_root.database_path())
@@ -691,7 +707,8 @@ pub(crate) fn sync_bound_remote_for_active_local_library<R: tauri::Runtime>(
 
     let mut desired_kinds = HashMap::new();
     for song in &local_songs {
-        if let Some(kind) = desired_remote_audio_source_kind(&local_connection, &local_root, song)? {
+        if let Some(kind) = desired_remote_audio_source_kind(&local_connection, &local_root, song)?
+        {
             desired_kinds.insert(song.hash.clone(), kind);
         }
     }
@@ -779,7 +796,8 @@ fn publish_song_internal<R: tauri::Runtime>(
     let config = load_app_config(&state.app_data_dir)?;
     let remote_library = resolve_active_remote(&config)
         .ok_or_else(|| library_error("no bound remote repository is available for publishing"))?;
-    let remote_library = prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
+    let remote_library =
+        prepare_remote_database_for_mutation(&state.app_data_dir, &remote_library)?;
 
     let local_root = state.library_root()?;
     let remote_library_id = remote_library.id().to_owned();
@@ -833,7 +851,11 @@ fn publish_song_internal<R: tauri::Runtime>(
         match remote_library.provider() {
             Some(RemoteLibraryProvider::WebDav) => {
                 let remote_secret = load_webdav_secret(&state.app_data_dir, &remote_library)?;
-                upload_directory_to_remote(&remote_library, &remote_secret, &format!("stems/{song_id}"))?;
+                upload_directory_to_remote(
+                    &remote_library,
+                    &remote_secret,
+                    &format!("stems/{song_id}"),
+                )?;
             }
             Some(RemoteLibraryProvider::GoogleDrive) => {
                 let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
@@ -880,7 +902,8 @@ fn publish_song_internal<R: tauri::Runtime>(
                     upload_relative_file_to_remote(&remote_library, &remote_secret, file_path)?;
                 }
                 Some(RemoteLibraryProvider::GoogleDrive) => {
-                    let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
+                    let remote_secret =
+                        load_google_drive_secret(&state.app_data_dir, &remote_library)?;
                     let root_folder_id = remote_library.remote_root_locator().ok_or_else(|| {
                         library_error("remote repository is missing a remote locator".to_owned())
                     })?;
@@ -922,7 +945,8 @@ fn publish_song_internal<R: tauri::Runtime>(
                     upload_relative_file_to_remote(&remote_library, &remote_secret, cdg_path)?;
                 }
                 Some(RemoteLibraryProvider::GoogleDrive) => {
-                    let remote_secret = load_google_drive_secret(&state.app_data_dir, &remote_library)?;
+                    let remote_secret =
+                        load_google_drive_secret(&state.app_data_dir, &remote_library)?;
                     let root_folder_id = remote_library.remote_root_locator().ok_or_else(|| {
                         library_error("remote repository is missing a remote locator".to_owned())
                     })?;
@@ -1010,7 +1034,25 @@ pub(crate) fn publish_song_to_remote<R: tauri::Runtime>(
     app_handle: &AppHandle<R>,
     song_id: String,
 ) -> CommandResult<UploadStatusSnapshot> {
-    publish_song_internal(state, app_handle, &song_id)
+    let snapshot = mark_upload_status(
+        state,
+        &song_id,
+        None,
+        UploadState::Running,
+        0,
+        Some("Preparing remote publish".to_owned()),
+        None,
+    )?;
+    emit_upload_progress(app_handle, &snapshot);
+
+    let background_state = state.clone_for_background();
+    let background_handle = app_handle.clone();
+    let song_id = song_id.clone();
+    std::thread::spawn(move || {
+        let _ = publish_song_internal(&background_state, &background_handle, &song_id);
+    });
+
+    Ok(snapshot)
 }
 
 pub(crate) fn publish_songs_to_remote<R: tauri::Runtime>(
@@ -1019,13 +1061,35 @@ pub(crate) fn publish_songs_to_remote<R: tauri::Runtime>(
     song_ids: Vec<String>,
 ) -> CommandResult<Vec<UploadStatusSnapshot>> {
     let mut snapshots = Vec::with_capacity(song_ids.len());
-    for song_id in song_ids {
-        snapshots.push(publish_song_internal(state, app_handle, &song_id)?);
+    for song_id in &song_ids {
+        let snapshot = mark_upload_status(
+            state,
+            song_id,
+            None,
+            UploadState::Running,
+            0,
+            Some("Preparing remote publish".to_owned()),
+            None,
+        )?;
+        emit_upload_progress(app_handle, &snapshot);
+        snapshots.push(snapshot);
     }
+
+    let background_state = state.clone_for_background();
+    let background_handle = app_handle.clone();
+    let song_ids = song_ids.to_vec();
+    std::thread::spawn(move || {
+        for song_id in song_ids {
+            let _ = publish_song_internal(&background_state, &background_handle, &song_id);
+        }
+    });
+
     Ok(snapshots)
 }
 
-pub(crate) fn get_all_upload_statuses(state: &AppState) -> CommandResult<Vec<UploadStatusSnapshot>> {
+pub(crate) fn get_all_upload_statuses(
+    state: &AppState,
+) -> CommandResult<Vec<UploadStatusSnapshot>> {
     let guard = state
         .remote_upload_statuses
         .lock()
@@ -1041,9 +1105,15 @@ mod tests {
     fn stored_revision_is_stale_when_provider_revision_changed() {
         assert!(!remote_database_revision_is_stale(None, None));
         assert!(!remote_database_revision_is_stale(Some("rev-1"), None));
-        assert!(!remote_database_revision_is_stale(Some("rev-1"), Some("rev-1")));
+        assert!(!remote_database_revision_is_stale(
+            Some("rev-1"),
+            Some("rev-1")
+        ));
         assert!(remote_database_revision_is_stale(None, Some("rev-1")));
-        assert!(remote_database_revision_is_stale(Some("rev-1"), Some("rev-2")));
+        assert!(remote_database_revision_is_stale(
+            Some("rev-1"),
+            Some("rev-2")
+        ));
     }
 
     #[test]

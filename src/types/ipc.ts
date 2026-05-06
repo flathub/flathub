@@ -242,6 +242,7 @@ export interface WindowShellStateSnapshot {
 // ─── Playback ────────────────────────────────────────────
 
 export type StemName = "vocals" | "drums" | "bass" | "other";
+export type PlaybackTransportState = "idle" | "loading" | "playing";
 
 export interface StemVolumes {
   vocals: number;
@@ -252,6 +253,8 @@ export interface StemVolumes {
 
 export interface PlaybackStateSnapshot {
   song_id: string | null;
+  /** Backend transport lifecycle; pause is represented by `is_playing: false`. */
+  state: PlaybackTransportState;
   is_playing: boolean;
   position_ms: number;
   duration_ms: number | null;
@@ -263,6 +266,7 @@ export interface PlaybackStateSnapshot {
 
 export interface PlaybackPositionEvent {
   ms: number;
+  snapshot: PlaybackStateSnapshot;
 }
 
 export interface PlaybackEndedEvent {
@@ -372,6 +376,7 @@ export interface SeparationProgressEvent {
 
 export interface SeparationCompleteEvent {
   song_id: string;
+  status: SeparationStatusSnapshot;
 }
 
 export interface SeparationErrorEvent {

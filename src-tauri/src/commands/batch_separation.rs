@@ -239,12 +239,13 @@ pub fn batch_separate(
                         artifacts.other_path,
                     );
                     if let Ok(mut statuses) = separation_statuses.lock() {
-                        statuses.insert(song_id.clone(), status);
+                        statuses.insert(song_id.clone(), status.clone());
                     }
                     let _ = app_handle.emit(
                         SEPARATION_COMPLETE_EVENT,
                         SeparationCompleteEvent {
                             song_id: song_id.clone(),
+                            status: status.clone(),
                         },
                     );
                     let state = app_handle.state::<AppState>();

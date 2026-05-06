@@ -61,10 +61,10 @@ Events (Backend → Frontend):
 ┌───────────────────────────┬──────────────────────────────────┐
 │ Event                     │ Payload                          │
 ├───────────────────────────┼──────────────────────────────────┤
-│ playback-position         │ { ms: u64 }                      │
+│ playback-position         │ { ms, snapshot }                 │
 │ playback-ended            │ { song_id: String }              │
 │ separation-progress       │ { song_id: String, percent: u8 } │
-│ separation-complete       │ { song_id: String }              │
+│ separation-complete       │ { song_id, status }              │
 │ separation-error          │ { song_id: String, error: String}│
 │ model-bootstrap-progress  │ { state, model_path, bytes... }  │
 │ model-bootstrap-ready     │ { state, model_path }            │
@@ -232,23 +232,21 @@ Song metadata (title, artist, album, duration)
 ```
              Rust backend (cpal)
                     │
-        emit "playback-position" { ms }
-              (on timeupdate / seek)
+        emit "playback-position" { ms, snapshot }
+              (poll loop + transport commands)
                     │
                     ▼
         ┌─ useLyricsSync hook ─────────────────────────┐
         │                                               │
-        │  On position event:                           │
-        │    baseTimeMs = event.ms                      │
-        │    lastTimestamp = performance.now()           │
+        │  Playback runtime applies event.snapshot       │
+        │  as the authoritative transport state.         │
         │                                               │
-        │  requestAnimationFrame loop:                  │
-        │    elapsed = performance.now() - lastTimestamp │
-        │    currentMs = baseTimeMs + elapsed - offset  │
+        │  Fixed interval sync loop:                     │
+        │    currentMs = store.positionMs - offset       │
         │    activeLineIndex = binary search in lyrics  │
         │                                               │
-        │  On pause: cancel rAF                         │
-        │  On seek:  re-anchor baseTimeMs               │
+        │  On seek/pause/resume: command snapshot and    │
+        │  playback-position event both refresh state.   │
         └───────────────────────────────────────────────┘
                     │
                     ▼

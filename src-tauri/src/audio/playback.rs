@@ -1,12 +1,12 @@
 use crate::audio::decode::DecodedAudio;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Instant;
 
 pub const PLAYBACK_POSITION_EVENT: &str = "playback-position";
 pub const PLAYBACK_ENDED_EVENT: &str = "playback-ended";
-pub const PLAYBACK_POSITION_POLL_INTERVAL_MS: u64 = 16;
+pub const PLAYBACK_POSITION_POLL_INTERVAL_MS: u64 = 33;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StemVolumes {
@@ -58,6 +58,9 @@ pub enum LoadedStems {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlaybackStateSnapshot {
     pub song_id: Option<String>,
+    /// Backend transport lifecycle; pause is represented by `is_playing: false`.
+    /// `playing` means a decoded track owns the transport, not that time is advancing.
+    pub state: String,
     pub is_playing: bool,
     pub position_ms: u64,
     pub duration_ms: Option<u64>,
@@ -65,6 +68,22 @@ pub struct PlaybackStateSnapshot {
     pub stem_volumes: StemVolumes,
     pub has_stems: bool,
     pub stem_mode: Option<String>,
+}
+
+impl PlaybackStateSnapshot {
+    pub fn idle() -> Self {
+        Self {
+            song_id: None,
+            state: "idle".to_owned(),
+            is_playing: false,
+            position_ms: 0,
+            duration_ms: None,
+            volume: 1.0,
+            stem_volumes: StemVolumes::default(),
+            has_stems: false,
+            stem_mode: None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -82,6 +101,7 @@ pub(crate) struct LoadedTrack {
 #[derive(Debug)]
 pub struct PlaybackController {
     pub(crate) current_track: Option<LoadedTrack>,
+    loading_song_id: Option<String>,
     volume: f32,
     stem_volumes: StemVolumes,
 }
@@ -90,6 +110,7 @@ impl Default for PlaybackController {
     fn default() -> Self {
         Self {
             current_track: None,
+            loading_song_id: None,
             volume: 1.0,
             stem_volumes: StemVolumes::default(),
         }
@@ -103,6 +124,7 @@ impl PlaybackController {
         decoded_audio: DecodedAudio,
         now_ms: u64,
     ) -> PlaybackStateSnapshot {
+        self.loading_song_id = None;
         self.current_track = Some(LoadedTrack {
             song_id,
             original_audio: decoded_audio,
@@ -112,6 +134,15 @@ impl PlaybackController {
             render_frame: 0,
         });
         self.snapshot(now_ms)
+    }
+
+    /// Mark a track as loading — the audio data will arrive later from a
+    /// background download/decode task.  The snapshot reports `state: "loading"`
+    /// so the UI can show a spinner without freezing the window.
+    pub fn start_track_loading(&mut self, song_id: &str) -> PlaybackStateSnapshot {
+        self.current_track = None;
+        self.loading_song_id = Some(song_id.to_owned());
+        self.snapshot(monotonic_now_ms())
     }
 
     pub fn play(&mut self, now_ms: u64) -> Result<PlaybackStateSnapshot> {
@@ -226,6 +257,7 @@ impl PlaybackController {
 
             return PlaybackStateSnapshot {
                 song_id: Some(track.song_id.clone()),
+                state: "playing".to_owned(),
                 is_playing: track.started_at_ms.is_some(),
                 position_ms,
                 duration_ms: Some(duration_ms),
@@ -236,16 +268,21 @@ impl PlaybackController {
             };
         }
 
-        PlaybackStateSnapshot {
-            song_id: None,
-            is_playing: false,
-            position_ms: 0,
-            duration_ms: None,
-            volume: self.volume,
-            stem_volumes: self.stem_volumes,
-            has_stems: false,
-            stem_mode: None,
+        if let Some(song_id) = &self.loading_song_id {
+            return PlaybackStateSnapshot {
+                song_id: Some(song_id.clone()),
+                state: "loading".to_owned(),
+                is_playing: false,
+                position_ms: 0,
+                duration_ms: None,
+                volume: self.volume,
+                stem_volumes: self.stem_volumes,
+                has_stems: false,
+                stem_mode: None,
+            };
         }
+
+        self.idle_snapshot()
     }
 
     pub fn current_song_id(&self) -> Option<&str> {
@@ -256,6 +293,15 @@ impl PlaybackController {
 
     pub fn clear_track(&mut self) {
         self.current_track = None;
+        self.loading_song_id = None;
+    }
+
+    fn idle_snapshot(&self) -> PlaybackStateSnapshot {
+        PlaybackStateSnapshot {
+            volume: self.volume,
+            stem_volumes: self.stem_volumes,
+            ..PlaybackStateSnapshot::idle()
+        }
     }
 
     /// Returns the current render frame (source-rate frame index).
@@ -296,9 +342,10 @@ pub fn monotonic_now_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlaybackPositionEvent {
     pub ms: u64,
+    pub snapshot: PlaybackStateSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -306,12 +353,66 @@ pub struct PlaybackEndedEvent {
     pub song_id: String,
 }
 
-pub fn playback_position_event(snapshot: &PlaybackStateSnapshot) -> Result<PlaybackPositionEvent> {
-    if snapshot.song_id.is_none() {
-        bail!("cannot emit playback position without a loaded track");
+pub fn playback_position_event(snapshot: &PlaybackStateSnapshot) -> PlaybackPositionEvent {
+    PlaybackPositionEvent {
+        ms: snapshot.position_ms,
+        snapshot: snapshot.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PLAYBACK_POSITION_POLL_INTERVAL_MS, PlaybackStateSnapshot, StemVolumes,
+        playback_position_event,
+    };
+
+    #[test]
+    fn playback_position_poll_interval_targets_thirty_hz() {
+        assert_eq!(PLAYBACK_POSITION_POLL_INTERVAL_MS, 33);
     }
 
-    Ok(PlaybackPositionEvent {
-        ms: snapshot.position_ms,
-    })
+    #[test]
+    fn playback_position_event_carries_the_authoritative_snapshot() {
+        let snapshot = PlaybackStateSnapshot {
+            song_id: Some("song-a".to_owned()),
+            state: "playing".to_owned(),
+            is_playing: true,
+            position_ms: 1_234,
+            duration_ms: Some(5_000),
+            volume: 0.8,
+            stem_volumes: StemVolumes::default(),
+            has_stems: false,
+            stem_mode: None,
+        };
+
+        let event = playback_position_event(&snapshot);
+
+        assert_eq!(event.ms, 1_234);
+        assert_eq!(event.snapshot, snapshot);
+    }
+
+    #[test]
+    fn playback_controller_reports_loading_until_track_starts() {
+        let mut controller = super::PlaybackController::default();
+
+        let loading = controller.start_track_loading("song-a");
+        assert_eq!(loading.song_id.as_deref(), Some("song-a"));
+        assert_eq!(loading.state, "loading");
+
+        let snapshot = controller.snapshot(1_000);
+        assert_eq!(snapshot.song_id.as_deref(), Some("song-a"));
+        assert_eq!(snapshot.state, "loading");
+        assert!(!snapshot.is_playing);
+
+        let decoded = super::DecodedAudio {
+            sample_rate: 44_100,
+            channels: 2,
+            duration_ms: 1_000,
+            samples: vec![0.0; 44_100 * 2],
+        };
+        let started = controller.start_track("song-a".to_owned(), decoded, 1_000);
+        assert_eq!(started.state, "playing");
+        assert!(started.is_playing);
+    }
 }

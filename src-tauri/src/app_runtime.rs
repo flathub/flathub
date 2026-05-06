@@ -1,8 +1,8 @@
 use crate::library_root::LibraryRoot;
 use crate::{
-    airplay_stream, audio,
-    audio::playback::{monotonic_now_ms, PlaybackController, PLAYBACK_POSITION_POLL_INTERVAL_MS},
-    cache, commands, config, derive_startup_model_bootstrap, separator, AppState,
+    AppState, airplay_stream, audio,
+    audio::playback::{PLAYBACK_POSITION_POLL_INTERVAL_MS, PlaybackController, monotonic_now_ms},
+    cache, commands, config, derive_startup_model_bootstrap, separator,
 };
 use anyhow::Context;
 use std::{
@@ -10,8 +10,8 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
     time::Duration,
@@ -74,7 +74,7 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         airplay_control_refresh_token: Arc::clone(&airplay_control_refresh_token),
         airplay_http_server: Arc::new(Mutex::new(None)),
         airplay_local_output_suppressed: Arc::clone(&airplay_local_output_suppressed),
-        playback_request_id: AtomicU64::new(0),
+        playback_request_id: Arc::new(AtomicU64::new(0)),
         audio_output_started: Arc::new(AtomicBool::new(false)),
         audio_output_start_lock: Arc::new(Mutex::new(())),
         model_bootstrap_status: Arc::clone(&model_bootstrap_status),
@@ -87,6 +87,12 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         shutdown: Arc::clone(&shutdown),
     });
 
+    if let Err(err) =
+        crate::services::playback::ensure_output_thread(app.state::<AppState>().inner())
+    {
+        eprintln!("warning: failed to pre-warm audio output: {err:#}");
+    }
+
     airplay_stream::spawn_audio_forwarder(Arc::clone(&airplay_audio_tap));
     crate::services::playback::spawn_airplay_control_refresh_worker(
         Arc::clone(&airplay_audience_active),
@@ -95,7 +101,11 @@ pub fn setup_app<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std:
         Arc::clone(&airplay_stream_generation),
         Arc::clone(&shutdown),
     );
-    spawn_playback_position_emitter(app.handle().clone(), playback);
+    spawn_playback_position_emitter(
+        app.handle().clone(),
+        playback,
+        Arc::clone(&airplay_audience_active),
+    );
 
     if model_bootstrap.should_spawn_bootstrap_worker {
         spawn_model_bootstrap_worker(
@@ -173,6 +183,7 @@ fn load_library(app_config: Option<&config::AppConfig>) -> Option<LibraryRoot> {
 fn spawn_playback_position_emitter<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     playback: Arc<Mutex<PlaybackController>>,
+    airplay_audience_active: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
         let mut last_emitted_position = None;
@@ -213,12 +224,19 @@ fn spawn_playback_position_emitter<R: Runtime>(
                 continue;
             }
 
-            if last_emitted_position != Some(snapshot.position_ms) {
+            if airplay_audience_active.load(Ordering::SeqCst) {
+                last_emitted_position = Some(snapshot.position_ms);
+                continue;
+            }
+
+            let position_delta_ms = last_emitted_position
+                .map(|last| snapshot.position_ms.abs_diff(last))
+                .unwrap_or(u64::MAX);
+
+            if position_delta_ms > 16 {
                 let _ = app_handle.emit(
                     audio::playback::PLAYBACK_POSITION_EVENT,
-                    audio::playback::PlaybackPositionEvent {
-                        ms: snapshot.position_ms,
-                    },
+                    audio::playback::playback_position_event(&snapshot),
                 );
                 last_emitted_position = Some(snapshot.position_ms);
             }

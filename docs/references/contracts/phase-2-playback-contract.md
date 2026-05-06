@@ -21,7 +21,7 @@
 6. `set_stem_volume(stem: StemName, level: f32) -> PlaybackStateSnapshot`
 7. `load_stems() -> PlaybackStateSnapshot`
 8. `get_playback_state() -> PlaybackStateSnapshot`
-9. `playback-position` 事件 payload 为 `{ ms: u64 }`
+9. `playback-position` 事件 payload 为 `{ ms: u64, snapshot: PlaybackStateSnapshot }`
 
 ### 后续 Phase 依赖
 
@@ -150,16 +150,17 @@
 
 ### Shared type: `PlaybackStateSnapshot`
 
-| Field         | Type                                | Notes                     |
-| ------------- | ----------------------------------- | ------------------------- |
-| `songId`      | `Option<String>`                    | 当前未加载轨道时为 `null` |
-| `isPlaying`   | `bool`                              | 当前是否处于播放推进状态  |
-| `positionMs`  | `u64`                               | 当前播放位置              |
-| `durationMs`  | `Option<u64>`                       | 未加载轨道时为 `null`     |
-| `volume`      | `f32`                               | `0.0..1.0`                |
-| `stemVolumes` | `{ vocals, drums, bass, other }`    | 各 stem 音量              |
-| `hasStems`    | `bool`                              | 当前是否已挂载 stems      |
-| `stemMode`    | `"two_stem" \| "four_stem" \| null` | 当前 stem 模式            |
+| Field         | Type                                | Notes                                                  |
+| ------------- | ----------------------------------- | ------------------------------------------------------ |
+| `songId`      | `Option<String>`                    | 当前未加载轨道时为 `null`                              |
+| `state`       | `"idle" \| "loading" \| "playing"`  | 后端 transport 生命周期；暂停由 `isPlaying=false` 表示 |
+| `isPlaying`   | `bool`                              | 当前是否处于播放推进状态                               |
+| `positionMs`  | `u64`                               | 当前播放位置                                           |
+| `durationMs`  | `Option<u64>`                       | 未加载轨道时为 `null`                                  |
+| `volume`      | `f32`                               | `0.0..1.0`                                             |
+| `stemVolumes` | `{ vocals, drums, bass, other }`    | 各 stem 音量                                           |
+| `hasStems`    | `bool`                              | 当前是否已挂载 stems                                   |
+| `stemMode`    | `"two_stem" \| "four_stem" \| null` | 当前 stem 模式                                         |
 
 ### Event: `playback-position`
 
@@ -167,17 +168,34 @@
 
 ```json
 {
-  "ms": 1234
+  "ms": 1234,
+  "snapshot": {
+    "song_id": "abc123",
+    "state": "playing",
+    "is_playing": true,
+    "position_ms": 1234,
+    "duration_ms": 180000,
+    "volume": 1.0,
+    "stem_volumes": {
+      "vocals": 1.0,
+      "drums": 1.0,
+      "bass": 1.0,
+      "other": 1.0
+    },
+    "has_stems": false,
+    "stem_mode": null
+  }
 }
 ```
 
 **Semantics**
 
 1. 事件名固定为 `playback-position`
-2. 仅在存在已加载轨道时发出
-3. 后端线程约每 `16ms` 检查一次位置，并在位置变化时发出事件
+2. 仅在 snapshot 有 `song_id` 时发出，包括远程音频仍处于 `state="loading"` 的阶段
+3. 后端线程约每 `33ms` 检查一次位置，并在位置变化时发出事件
 4. `play`、`pause`、`seek`、`resume` 命令执行后也会立即补发一次最新位置
-5. `playback-ended` 是额外内部事件，用于前端队列自动推进；不替代 `playback-position`
+5. `snapshot` 是前端播放状态的权威来源；远端加载从 `loading` 切到 `playing` 时，不需要前端再反查 `get_playback_state`
+6. `playback-ended` 是额外内部事件，用于前端队列自动推进；不替代 `playback-position`
 
 ### Shared error type: `CommandError`
 

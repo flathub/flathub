@@ -45,6 +45,10 @@ const {
     offsetMs: 0,
     isLoading: false,
     rawLrc: "line one\nline two\nline three\nline four",
+    romanizedLines: [],
+    isRomanizing: false,
+    showRomanized: false,
+    toggleRomanized: vi.fn(),
     songId: "song-1",
   },
   mockSettingsState: {

@@ -16,6 +16,7 @@ import {
   PLAYBACK_BAR_METADATA_COLLAPSE_WIDTH,
   type PlaybackBarDensity,
   shouldCollapsePlaybackBarMetadata,
+  shouldHideCoverArt,
 } from "./playback-bar-layout";
 import { usePlayerStore } from "@/stores/player-store";
 
@@ -83,6 +84,7 @@ export function PlaybackBar({ densityOverride }: PlaybackBarProps = {}) {
     !densityOverride && measuredWidth >= PLAYBACK_BAR_METADATA_COLLAPSE_WIDTH
       ? false
       : !densityOverride && shouldCollapsePlaybackBarMetadata(measuredWidth);
+  const hideCoverArt = !densityOverride && shouldHideCoverArt(measuredWidth);
 
   const zoneStyle: CSSProperties = {
     gridTemplateColumns: shouldHideNowPlaying
@@ -110,7 +112,7 @@ export function PlaybackBar({ densityOverride }: PlaybackBarProps = {}) {
             className="min-w-0"
             style={{ maxWidth: layoutTokens.leftMaxWidth }}
           >
-            <NowPlayingInfo density={density} />
+            <NowPlayingInfo density={density} hideCoverArt={hideCoverArt} />
           </div>
         )}
 

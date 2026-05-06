@@ -41,6 +41,10 @@ const {
     offsetMs: 0,
     isLoading: false,
     rawLrc: "[00:00.00]line one",
+    romanizedLines: [],
+    isRomanizing: false,
+    showRomanized: false,
+    toggleRomanized: vi.fn(),
     songId: "song-1",
     adjustOffset: vi.fn(),
   } as {
@@ -53,6 +57,10 @@ const {
     offsetMs: number;
     isLoading: boolean;
     rawLrc: string;
+    romanizedLines: string[];
+    isRomanizing: boolean;
+    showRomanized: boolean;
+    toggleRomanized: ReturnType<typeof vi.fn>;
     songId: string;
     adjustOffset: ReturnType<typeof vi.fn>;
   },
@@ -124,6 +132,10 @@ describe("LyricsPanel contextual reveal", () => {
     mockLyricsState.offsetMs = 0;
     mockLyricsState.isLoading = false;
     mockLyricsState.rawLrc = "[00:00.00]line one";
+    mockLyricsState.romanizedLines = [];
+    mockLyricsState.isRomanizing = false;
+    mockLyricsState.showRomanized = false;
+    mockLyricsState.toggleRomanized.mockReset();
     mockLyricsState.songId = "song-1";
     mockLyricsState.adjustOffset.mockReset();
     mockSettingsState.lyricsFontStep = 0;

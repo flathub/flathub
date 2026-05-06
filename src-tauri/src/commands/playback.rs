@@ -8,12 +8,19 @@ use tauri::{AppHandle, State};
 pub use crate::services::playback::play_song_from_library;
 
 #[tauri::command]
-pub fn play(
+pub async fn play(
     state: State<'_, AppState>,
     app_handle: AppHandle,
     song_id: String,
 ) -> CommandResult<PlaybackStateSnapshot> {
-    services::playback::play(&state, &app_handle, &song_id).map_err(playback_error)
+    let background_state = state.inner().clone_for_background();
+    let background_handle = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        services::playback::play(&background_state, &background_handle, &song_id)
+    })
+    .await
+    .map_err(|error| playback_error(format!("playback task failed: {error}")))?
+    .map_err(playback_error)
 }
 
 #[tauri::command]
@@ -56,8 +63,12 @@ pub fn set_stem_volume(
 }
 
 #[tauri::command]
-pub fn load_stems(state: State<'_, AppState>) -> CommandResult<PlaybackStateSnapshot> {
-    services::playback::load_stems(&state).map_err(playback_error)
+pub async fn load_stems(state: State<'_, AppState>) -> CommandResult<PlaybackStateSnapshot> {
+    let background_state = state.inner().clone_for_background();
+    tauri::async_runtime::spawn_blocking(move || services::playback::load_stems(&background_state))
+        .await
+        .map_err(|error| playback_error(format!("load stems task failed: {error}")))?
+        .map_err(playback_error)
 }
 
 #[tauri::command]

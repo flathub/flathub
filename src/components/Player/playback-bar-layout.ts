@@ -1,14 +1,15 @@
 export type PlaybackBarDensity = "relaxed" | "compact" | "tight";
 
 export const PLAYBACK_BAR_LEFT_MIN_WIDTH = 112;
-export const PLAYBACK_BAR_SEEK_MIN_WIDTH = 248;
-export const PLAYBACK_BAR_SEEK_MIN_WIDTH_CLASS = "min-w-[248px]";
-export const PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH = 160;
-export const PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH_CLASS = "min-w-[160px]";
+export const PLAYBACK_BAR_SEEK_MIN_WIDTH = 180;
+export const PLAYBACK_BAR_SEEK_MIN_WIDTH_CLASS = "min-w-[180px]";
+export const PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH = 120;
+export const PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH_CLASS = "min-w-[120px]";
 export const PLAYBACK_BAR_TIME_LABEL_WIDTH_REM = 3.25;
 export const PLAYBACK_BAR_TIME_LABEL_WIDTH_CLASS = "w-[3.25rem]";
 export const PLAYBACK_BAR_CONTROL_CLUSTER_MIN_WIDTH = 120;
 export const PLAYBACK_BAR_METADATA_COLLAPSE_WIDTH = 760;
+export const PLAYBACK_BAR_COVER_ART_COLLAPSE_WIDTH = 780;
 
 export interface PlaybackBarLayoutTokens {
   leftMaxWidth: number;
@@ -26,7 +27,7 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
   PlaybackBarLayoutTokens
 > = {
   relaxed: {
-    leftMaxWidth: 228,
+    leftMaxWidth: 268,
     masterVolumeWidth: 72,
     masterVolumeWidthClass: "w-[4.5rem]",
     outerPadding: 18,
@@ -35,7 +36,7 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
     barHeightClass: "h-[86px]",
   },
   compact: {
-    leftMaxWidth: 188,
+    leftMaxWidth: 218,
     masterVolumeWidth: 52,
     masterVolumeWidthClass: "w-[3.25rem]",
     outerPadding: 14,
@@ -44,7 +45,7 @@ const PLAYBACK_BAR_LAYOUT_TOKENS: Record<
     barHeightClass: "h-[78px]",
   },
   tight: {
-    leftMaxWidth: 148,
+    leftMaxWidth: 160,
     masterVolumeWidth: 40,
     masterVolumeWidthClass: "w-10",
     outerPadding: 12,
@@ -86,4 +87,8 @@ export function getPlaybackBarCenterMinWidth(
 
 export function shouldCollapsePlaybackBarMetadata(width: number): boolean {
   return width < PLAYBACK_BAR_METADATA_COLLAPSE_WIDTH;
+}
+
+export function shouldHideCoverArt(width: number): boolean {
+  return width < PLAYBACK_BAR_COVER_ART_COLLAPSE_WIDTH;
 }

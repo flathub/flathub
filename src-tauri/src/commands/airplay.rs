@@ -1,18 +1,18 @@
 use crate::{
-    airplay_stream::stream_tick_interval,
-    airplay_stream::{default_stream_root, AirPlayHttpServer},
-    audio::playback::{monotonic_now_ms, PlaybackController, PlaybackStateSnapshot},
-    commands::cdg::{render_cdg_frame_bytes, CdgPlaybackState},
-    commands::error::{internal_error, CommandResult},
-    lyrics::parser::LyricLine,
     AppState,
+    airplay_stream::stream_tick_interval,
+    airplay_stream::{AirPlayHttpServer, default_stream_root},
+    audio::playback::{PlaybackController, PlaybackStateSnapshot, monotonic_now_ms},
+    commands::cdg::{CdgPlaybackState, render_cdg_frame_bytes},
+    commands::error::{CommandResult, internal_error},
+    lyrics::parser::LyricLine,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
 };
@@ -22,7 +22,7 @@ use tauri::{AppHandle, State, Webview};
 
 #[cfg(target_os = "macos")]
 use std::{
-    ffi::{c_char, c_void, CStr, CString},
+    ffi::{CStr, CString, c_char, c_void},
     ptr::null,
 };
 
@@ -486,17 +486,19 @@ fn spawn_airplay_audience_coordinator(
     cdg_state: Arc<Mutex<Option<CdgPlaybackState>>>,
     stream_generation: Arc<AtomicU64>,
 ) {
-    thread::spawn(move || loop {
-        // RATIONALE: AirPlay must advance from backend playback time, not the
-        // occlusion-prone main-window JS loop. Otherwise macOS can throttle the
-        // source window and regress TV lyrics/CDG back to slideshow cadence.
-        thread::sleep(stream_tick_interval());
+    thread::spawn(move || {
+        loop {
+            // RATIONALE: AirPlay must advance from backend playback time, not the
+            // occlusion-prone main-window JS loop. Otherwise macOS can throttle the
+            // source window and regress TV lyrics/CDG back to slideshow cadence.
+            thread::sleep(stream_tick_interval());
 
-        let Some(runtime) = build_current_runtime_payload(&playback, &stream_generation) else {
-            continue;
-        };
-        let cdg_frame = build_current_cdg_frame(&cdg_state, &runtime);
-        let _ = native::sync_audience_runtime(&runtime, cdg_frame.as_deref());
+            let Some(runtime) = build_current_runtime_payload(&playback, &stream_generation) else {
+                continue;
+            };
+            let cdg_frame = build_current_cdg_frame(&cdg_state, &runtime);
+            let _ = native::sync_audience_runtime(&runtime, cdg_frame.as_deref());
+        }
     });
 }
 
@@ -888,6 +890,7 @@ mod tests {
     ) -> PlaybackStateSnapshot {
         PlaybackStateSnapshot {
             song_id: song_id.map(str::to_owned),
+            state: "playing".to_owned(),
             is_playing,
             position_ms,
             duration_ms: Some(240_000),

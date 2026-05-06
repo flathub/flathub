@@ -27,8 +27,8 @@ describe("SeekBar", () => {
   test("keeps a minimum safe width for the whole control and the draggable rail", () => {
     const markup = renderToStaticMarkup(<SeekBar density="tight" />);
 
-    expect(markup).toContain("min-w-[248px]");
-    expect(markup).toContain("min-w-[160px]");
+    expect(markup).toContain("min-w-[180px]");
+    expect(markup).toContain("min-w-[120px]");
     expect(markup).toContain("w-[3.25rem]");
     expect(markup).toContain("font-[tabular-nums]");
     expect(markup).toContain("whitespace-nowrap");

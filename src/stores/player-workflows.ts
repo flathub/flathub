@@ -25,7 +25,11 @@ export function shouldLoadSeparatedStems(
   snapshot: PlaybackStateSnapshot,
   separationStatus: SeparationStatusSnapshot | undefined,
 ): boolean {
-  return separationStatus?.state === "completed" && !snapshot.has_stems;
+  return (
+    snapshot.state !== "loading" &&
+    separationStatus?.state === "completed" &&
+    !snapshot.has_stems
+  );
 }
 
 export async function playSongWithOptionalStems(

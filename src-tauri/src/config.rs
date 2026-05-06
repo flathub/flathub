@@ -335,7 +335,10 @@ impl RegisteredLibrary {
     pub fn root_path(&self) -> Option<&str> {
         match self {
             Self::Local { root_path, .. } => Some(root_path.as_str()),
-            Self::Remote { remote_path_display, .. } => Some(remote_path_display.as_str()),
+            Self::Remote {
+                remote_path_display,
+                ..
+            } => Some(remote_path_display.as_str()),
         }
     }
 }
@@ -368,6 +371,11 @@ pub struct AppConfig {
     pub lyrics_font_step: Option<i8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_provider: Option<ExecutionProviderPreference>,
+    /// Remote file cache cap in bytes. When set, the cache directory is
+    /// trimmed to stay under this limit, deleting the least-recently-used
+    /// files. When absent the cache grows unbounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_cache_bytes_limit: Option<u64>,
 }
 
 impl AppConfig {
@@ -377,7 +385,10 @@ impl AppConfig {
         }
 
         if self.active_library_id.is_none() {
-            self.active_library_id = self.libraries.first().map(|library| library.id().to_owned());
+            self.active_library_id = self
+                .libraries
+                .first()
+                .map(|library| library.id().to_owned());
         }
 
         self
@@ -408,6 +419,10 @@ impl AppConfig {
     pub fn effective_execution_provider(&self) -> ExecutionProviderPreference {
         self.execution_provider.unwrap_or_default()
     }
+
+    pub fn effective_remote_cache_bytes_limit(&self) -> Option<u64> {
+        self.remote_cache_bytes_limit
+    }
 }
 
 /// Load the per-machine config. Returns `Ok(None)` if the file does not exist.
@@ -429,7 +444,9 @@ pub fn load_config(app_data_dir: &Path) -> Result<Option<AppConfig>> {
                 .and_then(|name| name.to_str())
                 .unwrap_or("OpenKara Library")
                 .to_owned();
-            config.libraries.push(RegisteredLibrary::local(library_path, display_name));
+            config
+                .libraries
+                .push(RegisteredLibrary::local(library_path, display_name));
         }
     }
 
@@ -474,7 +491,10 @@ pub fn migrate_legacy_library_path(config: &mut AppConfig) {
                 path.clone(),
                 library_display_name(&path),
             ));
-            config.active_library_id = config.libraries.first().map(|library| library.id().to_owned());
+            config.active_library_id = config
+                .libraries
+                .first()
+                .map(|library| library.id().to_owned());
         }
     }
 }
@@ -506,6 +526,7 @@ mod tests {
             lyrics_font_step: Some(1),
             execution_provider: None,
             library_path: None,
+            remote_cache_bytes_limit: None,
         };
 
         save_config(tmp.path(), &config).unwrap();
@@ -534,6 +555,7 @@ mod tests {
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
+            remote_cache_bytes_limit: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("stem_mode"));
@@ -557,6 +579,7 @@ mod tests {
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
+            remote_cache_bytes_limit: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("lyrics_font_step"));
@@ -574,6 +597,7 @@ mod tests {
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
+            remote_cache_bytes_limit: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("execution_provider"));
@@ -606,6 +630,7 @@ mod tests {
             execution_provider: None,
             libraries: vec![],
             active_library_id: None,
+            remote_cache_bytes_limit: None,
         };
 
         save_config(tmp.path(), &legacy).unwrap();

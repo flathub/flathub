@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { createUserScrollGuard } from "./use-lyrics-auto-scroll";
+import { act, createElement, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  createUserScrollGuard,
+  useLyricsAutoScroll,
+} from "./use-lyrics-auto-scroll";
 
 const PAUSE_MS = 3000;
 
@@ -149,5 +154,68 @@ describe("createUserScrollGuard", () => {
     expect(guard.isActive()).toBe(false);
 
     guard.destroy();
+  });
+});
+
+describe("useLyricsAutoScroll", () => {
+  test("re-centers the active line when lyric layout changes without an index change", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const scrollTo = vi.fn();
+
+    function TestHarness({ layoutVersion }: { layoutVersion: string }) {
+      const ref = (node: HTMLDivElement | null) => {
+        if (!node) return;
+        Object.defineProperty(node, "clientHeight", {
+          configurable: true,
+          value: 100,
+        });
+        Object.defineProperty(node, "scrollHeight", {
+          configurable: true,
+          value: 500,
+        });
+        node.scrollTo = scrollTo;
+      };
+
+      const containerRef = useRef<HTMLDivElement | null>(null);
+      useLyricsAutoScroll(
+        containerRef,
+        1,
+        false,
+        0,
+        "standard",
+        "song-1",
+        layoutVersion,
+      );
+
+      return createElement(
+        "div",
+        {
+          ref: (node: HTMLDivElement | null) => {
+            containerRef.current = node;
+            ref(node);
+          },
+        },
+        createElement("div", { "data-lyrics-line-index": "1" }, "Line"),
+      );
+    }
+
+    await act(async () => {
+      root.render(
+        createElement(TestHarness, { layoutVersion: "romanized-off" }),
+      );
+    });
+
+    await act(async () => {
+      root.render(
+        createElement(TestHarness, { layoutVersion: "romanized-on" }),
+      );
+    });
+
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+
+    root.unmount();
+    host.remove();
   });
 });

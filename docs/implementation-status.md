@@ -86,6 +86,7 @@ OpenKara v0.7.0 is the current source and package version. It includes:
 
 - [x] Version metadata sync across the frontend package, Cargo, Tauri config, and release packaging validation
 - [x] Online lyrics provider User-Agent metadata tied to the compiled app version
+- [x] Pronunciation display for non-Latin lyrics using `lyric-romanizer`
 
 ## Planned Future Features
 
@@ -95,7 +96,6 @@ OpenKara v0.7.0 is the current source and package version. It includes:
 - **Saved Playlists & Singer Rotation** — Named playlists, singer assignment, and stronger turn-based queue workflows
 - **Pitch & Key Shift** — Real-time pitch shifting of the accompaniment track
 - **Session Recording** — Record vocal performances, export as audio
-- **CJK Transliteration** — Romaji / Pinyin display alongside original lyrics
 - **Mobile Companion App** — Remote control and lyrics display on phone/tablet
 
 ---

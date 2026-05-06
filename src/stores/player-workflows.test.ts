@@ -14,6 +14,7 @@ function playbackSnapshot(
 ): PlaybackStateSnapshot {
   return {
     song_id: null,
+    state: "idle",
     is_playing: false,
     position_ms: 0,
     duration_ms: null,
@@ -83,10 +84,39 @@ describe("player-workflows", () => {
     ).toBe(false);
     expect(
       shouldLoadSeparatedStems(
+        playbackSnapshot({ state: "loading", has_stems: false }),
+        completedSeparationStatus(),
+      ),
+    ).toBe(false);
+    expect(
+      shouldLoadSeparatedStems(
         playbackSnapshot({ has_stems: false }),
         completedSeparationStatus({ state: "running" }),
       ),
     ).toBe(false);
+  });
+
+  test("does not load stems while remote playback is still loading", async () => {
+    const play = vi.fn().mockResolvedValue(
+      playbackSnapshot({
+        song_id: "song-remote",
+        state: "loading",
+        is_playing: false,
+        has_stems: false,
+      }),
+    );
+    const loadStems = vi.fn();
+    const applySnapshot = vi.fn();
+
+    await playSongWithOptionalStems("song-remote", {
+      play,
+      loadStems,
+      getSeparationStatus: () => completedSeparationStatus(),
+      applySnapshot,
+    });
+
+    expect(loadStems).not.toHaveBeenCalled();
+    expect(applySnapshot).toHaveBeenCalledTimes(1);
   });
 
   test("plays the requested song and then loads cached stems when available", async () => {

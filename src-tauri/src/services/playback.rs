@@ -1,24 +1,25 @@
 use crate::{
+    AppState,
     audio::{
         decode, output,
         playback::{
-            monotonic_now_ms, playback_position_event, LoadedStems, PlaybackController,
-            PlaybackStateSnapshot, StemName, PLAYBACK_POSITION_EVENT,
+            LoadedStems, PLAYBACK_POSITION_EVENT, PlaybackController, PlaybackStateSnapshot,
+            StemName, monotonic_now_ms, playback_position_event,
         },
     },
-    cache,
+    cache, library,
     library_root::LibraryRoot,
     services::{
         cdg::{load_cdg_state_for_song, mark_cdg_reset_for_seek},
-        playback_source::{load_cached_stems_for_song, load_playback_source, PlaybackSourceLoad},
+        playback_source::{PlaybackSourceLoad, load_cached_stems_for_song, load_playback_source},
     },
-    AppState,
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use std::path::Path;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::{
     thread,
@@ -107,6 +108,41 @@ pub fn play<R: Runtime>(
     let song = cache::get_song_by_hash(&connection, song_id)?
         .with_context(|| format!("song with hash {song_id} was not found in the library"))?;
     let active_song_id = song.hash.clone();
+    let needs_remote_download = song.is_remote() || song.is_remote_stems();
+
+    if needs_remote_download {
+        let snapshot = {
+            let mut playback = state
+                .playback
+                .lock()
+                .map_err(|_| anyhow::anyhow!("playback controller lock was poisoned"))?;
+            playback.start_track_loading(&active_song_id)
+        };
+        emit_playback_position(app_handle, &snapshot)?;
+
+        let background_state = state.clone_for_background();
+        let background_handle = app_handle.clone();
+        let app_data_dir = state.app_data_dir.clone();
+        let library_root = library_root.clone();
+        let playback_arc = state.playback.clone();
+        let latest_request_id = state.playback_request_id.clone();
+        let song = song.clone();
+        std::thread::spawn(move || {
+            let _ = play_remote_background(
+                &background_state,
+                &background_handle,
+                &app_data_dir,
+                &library_root,
+                &song,
+                &playback_arc,
+                request_id,
+                &latest_request_id,
+            );
+        });
+
+        return Ok(snapshot);
+    }
+
     let PlaybackSourceLoad {
         decoded_audio,
         stems,
@@ -127,8 +163,6 @@ pub fn play<R: Runtime>(
     };
 
     if snapshot.song_id.as_deref() == Some(active_song_id.as_str()) {
-        // Only attach CDG state if this play request still won. Slow decode or
-        // sidecar work from an older request must not clobber the current song.
         let next_cdg_state = load_cdg_state_for_song(&library_root, &song);
         let mut cdg_state = state
             .cdg_state
@@ -277,6 +311,59 @@ pub fn get_state(state: &AppState) -> Result<PlaybackStateSnapshot> {
     Ok(playback.snapshot(monotonic_now_ms()))
 }
 
+/// Background task: download remote audio/stems, decode, then start playback.
+/// Runs on a spawned thread so the UI stays responsive during download.
+fn play_remote_background<R: Runtime>(
+    state: &AppState,
+    app_handle: &AppHandle<R>,
+    app_data_dir: &Path,
+    library_root: &LibraryRoot,
+    song: &library::Song,
+    playback_arc: &Arc<Mutex<PlaybackController>>,
+    request_id: u64,
+    request_id_arc: &AtomicU64,
+) -> Result<()> {
+    let connection = cache::open_database(&library_root.database_path())?;
+    let PlaybackSourceLoad {
+        decoded_audio,
+        stems,
+    } = load_playback_source(Some(app_data_dir), &connection, library_root, song)?;
+
+    // Swap in the track with a latest-request-wins guard.
+    let snapshot = {
+        let mut playback = playback_arc
+            .lock()
+            .map_err(|_| anyhow::anyhow!("playback controller lock was poisoned"))?;
+
+        if request_id_arc.load(Ordering::SeqCst) != request_id {
+            return Ok(());
+        }
+
+        let now = monotonic_now_ms();
+        let snapshot = playback.start_track(song.hash.clone(), decoded_audio, now);
+        if let Some(stems) = stems {
+            playback.attach_stems(&song.hash, stems)?;
+        }
+        snapshot
+    };
+
+    emit_playback_position(app_handle, &snapshot)?;
+
+    // Attach CDG state if this song still owns the player.
+    if snapshot.song_id.as_deref() == Some(song.hash.as_str()) {
+        let next_cdg_state = load_cdg_state_for_song(library_root, song);
+        let mut cdg_state = state
+            .cdg_state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("CDG state lock was poisoned"))?;
+        *cdg_state = next_cdg_state;
+    }
+
+    ensure_output_thread(state)?;
+
+    Ok(())
+}
+
 pub fn play_song_from_library(
     connection: &Connection,
     library_root: &LibraryRoot,
@@ -299,7 +386,7 @@ pub fn play_song_from_library(
     Ok(snapshot)
 }
 
-fn ensure_output_thread(state: &AppState) -> Result<()> {
+pub(crate) fn ensure_output_thread(state: &AppState) -> Result<()> {
     output::ensure_output_thread(
         &state.audio_output_started,
         &state.audio_output_start_lock,
@@ -366,7 +453,7 @@ pub fn emit_playback_position<R: Runtime>(
 
     app_handle.emit(
         PLAYBACK_POSITION_EVENT,
-        playback_position_event(snapshot).map_err(|error| tauri::Error::Anyhow(error.into()))?,
+        playback_position_event(snapshot),
     )
 }
 
@@ -374,15 +461,16 @@ pub fn emit_playback_position<R: Runtime>(
 mod tests {
     use super::*;
     use crate::{
-        airplay_stream::AirPlayAudioTap, commands::bootstrap, separator::model_cache::ModelCache,
-        AppState,
+        AppState, airplay_stream::AirPlayAudioTap, commands::bootstrap,
+        separator::model_cache::ModelCache,
     };
     use std::{
         collections::HashMap,
         path::PathBuf,
         sync::{
+            Arc, Mutex,
             atomic::{AtomicBool, AtomicU64, Ordering},
-            mpsc, Arc, Mutex,
+            mpsc,
         },
         time::Duration,
     };
@@ -434,7 +522,7 @@ mod tests {
             airplay_control_refresh_token: Arc::new(AtomicU64::new(0)),
             airplay_http_server: Arc::new(Mutex::new(None)),
             airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
-            playback_request_id: AtomicU64::new(0),
+            playback_request_id: Arc::new(AtomicU64::new(0)),
             audio_output_started: Arc::new(AtomicBool::new(true)),
             audio_output_start_lock: Arc::new(Mutex::new(())),
             model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),

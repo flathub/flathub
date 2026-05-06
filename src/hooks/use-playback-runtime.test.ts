@@ -11,4 +11,11 @@ describe("use-playback-runtime wiring", () => {
     expect(src).toContain("clearUploadStatus");
     expect(src).toContain("separation-progress");
   });
+
+  test("applies playback-position snapshots directly without a state refresh fallback", async () => {
+    const { default: src } = await import("./use-playback-runtime.ts?raw");
+
+    expect(src).toContain("applyPlaybackPositionEvent");
+    expect(src).not.toContain("getPlaybackState: api.getPlaybackState");
+  });
 });

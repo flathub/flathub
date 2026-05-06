@@ -33,24 +33,24 @@ describe("getPlaybackBarLayoutTokens", () => {
     expect(PLAYBACK_BAR_LEFT_MIN_WIDTH).toBe(112);
   });
 
-  test("uses density-specific width caps for the now playing info and master volume", () => {
+  test("uses density-specific left max widths and master volume widths", () => {
     expect(getPlaybackBarLayoutTokens("relaxed")).toMatchObject({
-      leftMaxWidth: 228,
+      leftMaxWidth: 268,
       masterVolumeWidth: 72,
     });
     expect(getPlaybackBarLayoutTokens("compact")).toMatchObject({
-      leftMaxWidth: 188,
+      leftMaxWidth: 218,
       masterVolumeWidth: 52,
     });
     expect(getPlaybackBarLayoutTokens("tight")).toMatchObject({
-      leftMaxWidth: 148,
+      leftMaxWidth: 160,
       masterVolumeWidth: 40,
     });
   });
 
   test("uses the tighter seek-bar safety dimensions", () => {
-    expect(PLAYBACK_BAR_SEEK_MIN_WIDTH).toBe(248);
-    expect(PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH).toBe(160);
+    expect(PLAYBACK_BAR_SEEK_MIN_WIDTH).toBe(180);
+    expect(PLAYBACK_BAR_SEEK_RAIL_MIN_WIDTH).toBe(120);
     expect(PLAYBACK_BAR_TIME_LABEL_WIDTH_REM).toBe(3.25);
   });
 

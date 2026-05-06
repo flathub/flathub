@@ -67,6 +67,7 @@ export function useLyricsAutoScroll(
   lyricsFontStep: number,
   presentation: "standard" | "audience",
   songId: string | null | undefined,
+  layoutVersion = "",
 ): void {
   const guardRef = useRef<ReturnType<typeof createUserScrollGuard> | null>(
     null,
@@ -119,5 +120,6 @@ export function useLyricsAutoScroll(
     lyricsFontStep,
     presentation,
     songId,
+    layoutVersion,
   ]);
 }

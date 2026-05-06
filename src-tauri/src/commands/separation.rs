@@ -51,6 +51,7 @@ pub struct SeparationProgressEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SeparationCompleteEvent {
     pub song_id: String,
+    pub status: SeparationStatusSnapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -240,7 +241,7 @@ fn emit_terminal_status(
     let song_id = status.song_id.clone();
     let error = status.error.clone();
     let state = status.state.clone();
-    store_status(statuses, &song_id, status);
+    store_status(statuses, &song_id, status.clone());
 
     match state {
         SeparationState::Completed => {
@@ -248,6 +249,7 @@ fn emit_terminal_status(
                 SEPARATION_COMPLETE_EVENT,
                 SeparationCompleteEvent {
                     song_id: song_id.clone(),
+                    status: status.clone(),
                 },
             );
             let state = app_handle.state::<AppState>();
@@ -377,6 +379,7 @@ pub fn downgrade_single_to_two_stem(
         SEPARATION_COMPLETE_EVENT,
         SeparationCompleteEvent {
             song_id: song_id.clone(),
+            status: completed.clone(),
         },
     );
     remote_library::publish_song_to_active_remote_if_ready(&state, &app_handle, &song_id)?;

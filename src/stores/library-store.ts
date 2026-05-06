@@ -130,6 +130,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       } catch {
         // Non-fatal: separation statuses will remain empty
       }
+
+      // Hydrate upload statuses so in-progress uploads survive app restart.
+      try {
+        const uploads = await api.getAllUploadStatuses();
+        const uploadMap: Record<string, UploadStatusSnapshot> = {};
+        for (const s of uploads) {
+          uploadMap[s.song_id] = s;
+        }
+        set({ uploadStatuses: uploadMap });
+      } catch {
+        // Non-fatal: upload statuses will remain empty
+      }
     } catch (e) {
       notifyError(e);
     }

@@ -11,7 +11,6 @@ import * as api from "@/lib/tauri";
 import {
   createBatchSeparationClearScheduler,
   createStatusClearScheduler,
-  fallbackSeparationCompleteStatus,
   separationErrorStatus,
   separationProgressStatus,
   uploadCompleteStatus,
@@ -81,8 +80,10 @@ function usePlaybackPositionSubscription(
 }
 
 function usePlaybackPositionEvents(enabled: boolean) {
-  const updatePosition = usePlayerStore((s) => s.updatePosition);
-  usePlaybackPositionSubscription(enabled, (event) => updatePosition(event.ms));
+  const applyPlaybackPositionEvent = usePlayerStore(
+    (s) => s.applyPlaybackPositionEvent,
+  );
+  usePlaybackPositionSubscription(enabled, applyPlaybackPositionEvent);
 }
 
 function useSeparationEvents(enabled: boolean) {
@@ -125,14 +126,7 @@ function useSeparationEvents(enabled: boolean) {
         "separation-complete",
         (e) => {
           if (cancelled) return;
-          api
-            .getSeparationStatus(e.payload.song_id)
-            .then((status) => updateSeparationStatus(status))
-            .catch(() =>
-              updateSeparationStatus(
-                fallbackSeparationCompleteStatus(e.payload.song_id),
-              ),
-            );
+          updateSeparationStatus(e.payload.status);
 
           if (e.payload.song_id === currentSongIdRef.current) {
             loadStems().catch((err) => notifyError(err));
@@ -376,7 +370,9 @@ export function useEventListeners(enabled = true) {
 }
 
 export function useFullscreenPlaybackRuntime() {
-  const updatePosition = usePlayerStore((s) => s.updatePosition);
+  const applyPlaybackPositionEvent = usePlayerStore(
+    (s) => s.applyPlaybackPositionEvent,
+  );
   const updateSnapshot = usePlayerStore((s) => s.updateSnapshot);
   const hydrateAppSettings = useSettingsStore((s) => s.hydrateAppSettings);
 
@@ -384,28 +380,15 @@ export function useFullscreenPlaybackRuntime() {
     void api
       .getPlaybackState()
       .then((snapshot) => updateSnapshot(snapshot))
-      .catch(() => {});
+      .catch(notifyError);
 
     void loadStartupSettings({
       getSettings: api.getSettings,
       hydrateAppSettings,
       changeLanguage: i18next.changeLanguage,
       detectFallbackLanguage: detectSystemLanguage,
-    }).catch(() => {});
+    }).catch(notifyError);
   }, [hydrateAppSettings, updateSnapshot]);
 
-  usePlaybackPositionSubscription(true, (event) => updatePosition(event.ms));
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      api
-        .getPlaybackState()
-        .then((snapshot) => updateSnapshot(snapshot))
-        .catch(() => {});
-    }, 500);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [updateSnapshot]);
+  usePlaybackPositionSubscription(true, applyPlaybackPositionEvent);
 }

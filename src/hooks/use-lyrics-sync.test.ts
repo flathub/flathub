@@ -3,10 +3,12 @@ import { usePlayerStore } from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 import { startLyricsSyncLoop, syncLyricsToPlayback } from "./use-lyrics-sync";
 
-// Replace store modules with minimal stubs. selectSyncDisplayPositionMs is a
-// pure helper; proxy it to return positionMs directly (the non-AirPlay path).
+// Replace store modules with minimal stubs. selectCurrentPositionMs is a
+// pure helper that extrapolates from the last synced position; the mock
+// returns positionMs directly for deterministic test behaviour.
 vi.mock("@/stores/player-store", () => ({
   usePlayerStore: { getState: vi.fn() },
+  selectCurrentPositionMs: (state: { positionMs: number }) => state.positionMs,
   selectSyncDisplayPositionMs: (state: { positionMs: number }) =>
     state.positionMs,
 }));

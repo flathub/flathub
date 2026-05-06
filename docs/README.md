@@ -53,4 +53,5 @@ Point-in-time plans that no longer drive active work live under
 | Document                                                                                 | Description                                                                |
 | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [archive/README.md](./archive/README.md)                                                 | Historical plans and docs kept for traceability, not active implementation |
+| [archive/plans/playback-optimization.md](./archive/plans/playback-optimization.md)       | Archived playback optimization review and implementation outcome           |
 | [archive/plans/remote-library-hardening.md](./archive/plans/remote-library-hardening.md) | Completed remote-library conflict, recovery, and verification plan         |

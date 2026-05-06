@@ -31,7 +31,10 @@ pub(crate) fn probe_song_audio(library_root: &LibraryRoot, song: &Song) -> Resul
         .with_context(|| format!("failed to probe audio for {}", song_path))
 }
 
-pub(crate) fn load_song_audio(library_root: &LibraryRoot, song: &Song) -> Result<decode::DecodedAudio> {
+pub(crate) fn load_song_audio(
+    library_root: &LibraryRoot,
+    song: &Song,
+) -> Result<decode::DecodedAudio> {
     let song_path = resolve_song_file_path(song)?;
     let absolute_path = library_root.resolve(song_path);
     if song.media_g_container.as_deref() == Some(MEDIA_G_ZIP) {
@@ -84,13 +87,16 @@ pub(crate) fn load_cached_stems_for_song(
     decode_stem_entry(library_root, &cached)
 }
 
-fn resolve_song_file_path(song: &Song) -> Result<&str> {
+pub(crate) fn resolve_song_file_path(song: &Song) -> Result<&str> {
     song.file_path
         .as_deref()
         .with_context(|| format!("song {} does not have a local file path", song.hash))
 }
 
-fn ensure_remote_song_files_cached(app_data_dir: Option<&Path>, song: &Song) -> Result<()> {
+pub(crate) fn ensure_remote_song_files_cached(
+    app_data_dir: Option<&Path>,
+    song: &Song,
+) -> Result<()> {
     let Some(app_data_dir) = app_data_dir else {
         return Ok(());
     };
@@ -196,9 +202,24 @@ fn decode_stem_entry(
     if cached.has_individual_stems() {
         Ok(LoadedStems::FourStem(StemSet {
             vocals: load_stem(&cached.vocals_path)?,
-            drums: load_stem(cached.drums_path.as_deref().context("missing drums stem path")?)?,
-            bass: load_stem(cached.bass_path.as_deref().context("missing bass stem path")?)?,
-            other: load_stem(cached.other_path.as_deref().context("missing other stem path")?)?,
+            drums: load_stem(
+                cached
+                    .drums_path
+                    .as_deref()
+                    .context("missing drums stem path")?,
+            )?,
+            bass: load_stem(
+                cached
+                    .bass_path
+                    .as_deref()
+                    .context("missing bass stem path")?,
+            )?,
+            other: load_stem(
+                cached
+                    .other_path
+                    .as_deref()
+                    .context("missing other stem path")?,
+            )?,
         }))
     } else {
         Ok(LoadedStems::TwoStem {

@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import {
   createBatchSeparationClearScheduler,
   createStatusClearScheduler,
-  fallbackSeparationCompleteStatus,
   separationErrorStatus,
   separationProgressStatus,
   uploadCompleteStatus,
@@ -26,12 +25,6 @@ describe("event reducers", () => {
       state: "running",
       percent: 42,
       error: null,
-    });
-
-    expect(fallbackSeparationCompleteStatus("song-1")).toMatchObject({
-      song_id: "song-1",
-      state: "completed",
-      percent: 100,
     });
 
     expect(separationErrorStatus({ song_id: "song-1", error })).toMatchObject({

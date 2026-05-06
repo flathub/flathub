@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  selectSyncDisplayPositionMs,
-  usePlayerStore,
-} from "@/stores/player-store";
+import { selectCurrentPositionMs, usePlayerStore } from "@/stores/player-store";
 import { useLyricsStore } from "@/stores/lyrics-store";
 
 const LYRICS_SYNC_INTERVAL_MS = 33;
@@ -18,7 +15,11 @@ export function syncLyricsToPlayback(prevIndexRef: { current: number }) {
     return;
   }
 
-  const positionMs = selectSyncDisplayPositionMs(state);
+  // For determining the highlighted lyric line we extrapolate from the last
+  // known authoritative position so we stay smooth even when IPC position
+  // events are late or lost. For the audience-pacing display clock we still
+  // consult selectSyncDisplayPositionMs.
+  const positionMs = selectCurrentPositionMs(state);
   const adjustedMs = positionMs - offsetMs;
   const index = binarySearchLine(lines, adjustedMs);
 

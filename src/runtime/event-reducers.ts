@@ -28,24 +28,6 @@ export function separationProgressStatus(
   };
 }
 
-export function fallbackSeparationCompleteStatus(
-  songId: string,
-): SeparationStatusSnapshot {
-  return {
-    song_id: songId,
-    state: "completed",
-    percent: 100,
-    cache_hit: false,
-    vocals_path: null,
-    accomp_path: null,
-    drums_path: null,
-    bass_path: null,
-    other_path: null,
-    model_variant: null,
-    error: null,
-  };
-}
-
 export function separationErrorStatus(
   event: SeparationErrorEvent,
 ): SeparationStatusSnapshot {

@@ -16,3 +16,5 @@ Current archive split:
   guidance
 - `archive/plans/remote-library-hardening.md` — completed remote-library
   conflict handling, recovery UX, and deterministic verification work
+- `archive/plans/playback-optimization.md` — archived playback optimization
+  review with implemented items and rejected outdated items

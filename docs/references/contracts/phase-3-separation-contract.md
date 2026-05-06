@@ -16,7 +16,7 @@
 3. `re_separate(song_id: String, stem_mode: StemMode) -> SeparationStatusSnapshot`
 4. `get_separation_status(song_id: String) -> SeparationStatusSnapshot`
 5. `separation-progress` 事件 payload 为 `{ song_id: String, percent: u8 }`
-6. `separation-complete` 事件 payload 为 `{ song_id: String }`
+6. `separation-complete` 事件 payload 为 `{ song_id: String, status: SeparationStatusSnapshot }`
 7. `separation-error` 事件 payload 为 `{ song_id: String, error: CommandError }`
 8. stem cache 目录固定为 `<app_cache_dir>/stems/{song_hash}/`
 9. `separate(song_id)` 只有在模型 bootstrap 为 `ready` 时才会真正启动后台 worker
@@ -119,7 +119,20 @@
 
 ```json
 {
-  "songId": "sha256 hash string"
+  "song_id": "sha256 hash string",
+  "status": {
+    "song_id": "sha256 hash string",
+    "state": "completed",
+    "percent": 100,
+    "cache_hit": false,
+    "vocals_path": "stems/song/vocals.ogg",
+    "accomp_path": "stems/song/accompaniment.ogg",
+    "drums_path": null,
+    "bass_path": null,
+    "other_path": null,
+    "model_variant": "two_stem",
+    "error": null
+  }
 }
 ```
 

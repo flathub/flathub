@@ -35,8 +35,8 @@ Captured on `2026-03-13` from branch `codex/phase0-m0`:
     "seek_samples": 128
   },
   "lyrics_sync": {
-    "position_event_interval_ms": 16,
-    "jitter_budget_ms": 16
+    "position_event_interval_ms": 33,
+    "jitter_budget_ms": 33
   }
 }
 ```

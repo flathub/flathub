@@ -45,7 +45,7 @@ pub struct AppState {
     pub airplay_control_refresh_token: Arc<AtomicU64>,
     pub airplay_http_server: Arc<Mutex<Option<airplay_stream::AirPlayHttpServer>>>,
     pub airplay_local_output_suppressed: Arc<AtomicBool>,
-    pub playback_request_id: AtomicU64,
+    pub playback_request_id: Arc<AtomicU64>,
     pub audio_output_started: Arc<AtomicBool>,
     pub audio_output_start_lock: Arc<Mutex<()>>,
     pub model_bootstrap_status: Arc<Mutex<commands::bootstrap::ModelBootstrapStatusSnapshot>>,
@@ -59,6 +59,49 @@ pub struct AppState {
     pub batch_running: Arc<AtomicBool>,
     pub batch_cancel: Arc<AtomicBool>,
     pub shutdown: Arc<AtomicBool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        airplay_stream::AirPlayAudioTap, commands::bootstrap, separator::model_cache::ModelCache,
+    };
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn background_app_state_shares_playback_request_generation() {
+        let state = AppState {
+            library: Arc::new(Mutex::new(None)),
+            app_data_dir: PathBuf::from("app-data"),
+            app_resource_dir: PathBuf::from("resources"),
+            model_path: PathBuf::from("model.bin"),
+            playback: Arc::new(Mutex::new(audio::playback::PlaybackController::default())),
+            cdg_state: Arc::new(Mutex::new(None)),
+            airplay_audio_tap: Arc::new(AirPlayAudioTap::new(4)),
+            airplay_stream_generation: Arc::new(AtomicU64::new(1)),
+            airplay_audience_active: Arc::new(AtomicBool::new(false)),
+            airplay_control_refresh_token: Arc::new(AtomicU64::new(0)),
+            airplay_http_server: Arc::new(Mutex::new(None)),
+            airplay_local_output_suppressed: Arc::new(AtomicBool::new(false)),
+            playback_request_id: Arc::new(AtomicU64::new(41)),
+            audio_output_started: Arc::new(AtomicBool::new(false)),
+            audio_output_start_lock: Arc::new(Mutex::new(())),
+            model_bootstrap_status: Arc::new(Mutex::new(bootstrap::pending_status("model.bin"))),
+            separation_statuses: Arc::new(Mutex::new(HashMap::new())),
+            remote_auth_sessions: Arc::new(Mutex::new(HashMap::new())),
+            remote_upload_statuses: Arc::new(Mutex::new(HashMap::new())),
+            separator_model_cache: Arc::new(Mutex::new(ModelCache::default())),
+            batch_running: Arc::new(AtomicBool::new(false)),
+            batch_cancel: Arc::new(AtomicBool::new(false)),
+            shutdown: Arc::new(AtomicBool::new(false)),
+        };
+        let background = state.clone_for_background();
+
+        state.playback_request_id.fetch_add(1, Ordering::SeqCst);
+
+        assert_eq!(background.playback_request_id.load(Ordering::SeqCst), 42);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +122,36 @@ impl AppState {
         guard
             .clone()
             .ok_or_else(|| commands::error::library_error("no library configured".to_owned()))
+    }
+
+    /// Produce a lightweight clone suitable for a background thread. Only
+    /// the fields needed by publish and download operations are shared.
+    pub fn clone_for_background(&self) -> Self {
+        Self {
+            library: self.library.clone(),
+            app_data_dir: self.app_data_dir.clone(),
+            remote_upload_statuses: self.remote_upload_statuses.clone(),
+            remote_auth_sessions: self.remote_auth_sessions.clone(),
+            model_path: self.model_path.clone(),
+            playback: self.playback.clone(),
+            cdg_state: self.cdg_state.clone(),
+            airplay_audio_tap: self.airplay_audio_tap.clone(),
+            airplay_stream_generation: self.airplay_stream_generation.clone(),
+            airplay_audience_active: self.airplay_audience_active.clone(),
+            airplay_control_refresh_token: self.airplay_control_refresh_token.clone(),
+            airplay_http_server: self.airplay_http_server.clone(),
+            airplay_local_output_suppressed: self.airplay_local_output_suppressed.clone(),
+            playback_request_id: self.playback_request_id.clone(),
+            audio_output_started: self.audio_output_started.clone(),
+            audio_output_start_lock: self.audio_output_start_lock.clone(),
+            model_bootstrap_status: self.model_bootstrap_status.clone(),
+            separation_statuses: self.separation_statuses.clone(),
+            separator_model_cache: self.separator_model_cache.clone(),
+            batch_running: self.batch_running.clone(),
+            batch_cancel: self.batch_cancel.clone(),
+            shutdown: self.shutdown.clone(),
+            app_resource_dir: self.app_resource_dir.clone(),
+        }
     }
 
     /// Resolve the path to the active AI model based on the current config.

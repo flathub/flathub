@@ -83,6 +83,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
   const pageIdentity = shouldRenderAudiencePlainTextPages
     ? `${songId ?? ""}:${rawLrc}:${lyricsFontStep}`
     : "local";
+  const lyricsLayoutVersion = `${showRomanized}:${romanizedLines.join("\u0000")}`;
 
   const { containerRef, measurementRef, currentPageStart, visibleLines } =
     useAudiencePlainTextPaging({
@@ -99,6 +100,7 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
     lyricsFontStep,
     presentation,
     songId,
+    lyricsLayoutVersion,
   );
 
   useAirPlayPendingGuard(
