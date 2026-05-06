@@ -5,7 +5,7 @@ let romanizerPromise: Promise<Romanizer> | null = null;
 
 async function getRomanizer() {
   romanizerPromise ??= import("lyric-romanizer").then(({ createRomanizer }) =>
-    createRomanizer(),
+    createRomanizer({ japaneseDictPath: "/dict/" }),
   );
   return romanizerPromise;
 }
