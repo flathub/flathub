@@ -341,6 +341,8 @@ export function LyricsPanel({ presentation = "standard" }: LyricsPanelProps) {
               </div>
             );
           })}
+          {/* Keep the last lyric line readable above floating controls */}
+          <div className="h-[30vh] w-full shrink-0" />
         </div>
       </div>
       {shouldRenderAudiencePlainTextPages ? (

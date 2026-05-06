@@ -147,8 +147,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     try {
       const romanizedLines = await romanizeLyricsLines(texts);
       set({ romanizedLines });
-    } catch {
-      // Romanization failure is non-fatal; leave lines empty
+    } catch (err) {
+      console.error("Romanization failed:", err);
       set({ romanizedLines: [] });
     } finally {
       set({ isRomanizing: false });

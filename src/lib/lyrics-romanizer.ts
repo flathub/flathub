@@ -16,6 +16,21 @@ export async function romanizeLyricsLines(lines: readonly string[]) {
   }
 
   const romanizer = await getRomanizer();
-  const result = await romanizer.romanizeLines(lines);
-  return result.lines;
+  // Romanize line-by-line so mixed-language content (e.g. Japanese +
+  // English) doesn't push pure-Latin lines into a non-Latin pipeline.
+  // The library's romanizeLines() picks one global script and applies it
+  // to every line, which sends English lines through Kuroshiro when the
+  // global script is Japanese.
+  const result = await Promise.all(
+    lines.map(async (line) => {
+      if (isLatinScript([line])) return line;
+      try {
+        const r = await romanizer.romanizeLines([line]);
+        return r.lines[0] ?? line;
+      } catch {
+        return line;
+      }
+    }),
+  );
+  return result;
 }

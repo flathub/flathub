@@ -477,9 +477,9 @@ pub fn fetch_lyrics_online(
 
 /// Convert plain text (no LRC timestamps) into `LyricLine` entries with
 /// `time_ms: 0` so the frontend can display them as unsynced lyrics.
+/// Preserve empty lines so paragraph breaks entered by the user are kept.
 fn plain_text_to_lines(text: &str) -> Vec<LyricLine> {
     text.lines()
-        .filter(|l| !l.trim().is_empty())
         .map(|l| LyricLine {
             time_ms: 0,
             text: l.to_string(),
