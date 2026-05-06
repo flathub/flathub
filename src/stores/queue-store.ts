@@ -4,6 +4,8 @@ import {
   type WebviewSyncChannel,
 } from "@/runtime/webview-sync";
 
+const MAX_PLAY_HISTORY = 500;
+
 interface QueueState {
   queue: string[];
   playHistory: string[];
@@ -133,7 +135,15 @@ export function createQueueStore(
       pushToHistory: (songId) => {
         const { playHistory, queue } = get();
         const deduped = playHistory.filter((id) => id !== songId);
-        syncQueue(queue, [...deduped, songId]);
+        const next = [...deduped, songId];
+        // Cap the history stack to prevent unbounded growth.
+        // 500 entries covers ~25 hours of continuous playback; far beyond
+        // any real session yet small enough to be a non-issue for memory.
+        const capped =
+          next.length > MAX_PLAY_HISTORY
+            ? next.slice(next.length - MAX_PLAY_HISTORY)
+            : next;
+        syncQueue(queue, capped);
       },
 
       popFromHistory: () => {
