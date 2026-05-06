@@ -1,0 +1,88 @@
+id: io.github.delaytyper
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.toolchain-i686
+
+command: delay-typer
+
+finish-args:
+  # Wayland display access
+  - --socket=wayland
+  # IPC (required by some Wayland compositors)
+  - --share=ipc
+  # Full device access — required for /dev/uinput keyboard injection.
+  # This app's core function is synthesizing keyboard input via the Linux
+  # input subsystem. No lesser permission grants /dev/uinput access.
+  - --device=all
+  # Fallback X11 (optional, for compositors that offer XWayland)
+  - --socket=fallback-x11
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+
+  # ---- wl-clipboard -------------------------------------------------------
+  # Provides wl-copy and wl-paste used by the clipboard-based typing engine.
+  # Bundled because it is not part of org.gnome.Platform.
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dzshcompletiondir=no
+      - -Dfishcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+
+  # ---- python3-evdev ------------------------------------------------------
+  # Python bindings for the Linux input subsystem (evdev / uinput).
+  # Used to synthesize Ctrl+V and Enter keystrokes via /dev/uinput.
+  - name: python3-evdev
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/a5/f5/397b61091120a9ca5001041dd7bf76c385b3bfd67a0e5bcb74b852bd22a4/evdev-1.9.3.tar.gz
+        sha256: 2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9
+
+  # ---- delay-typer app ----------------------------------------------------
+  - name: delay-typer
+    buildsystem: simple
+    build-commands:
+      # Install the Python package
+      - install -d ${FLATPAK_DEST}/lib/delay-typer
+      - cp -r autotyper ${FLATPAK_DEST}/lib/delay-typer/
+      - cp run.py ${FLATPAK_DEST}/lib/delay-typer/
+
+      # Wrapper script that launches the app
+      - |
+        cat > ${FLATPAK_DEST}/bin/delay-typer << 'EOF'
+        #!/bin/bash
+        exec python3 /app/lib/delay-typer/run.py "$@"
+        EOF
+      - chmod +x ${FLATPAK_DEST}/bin/delay-typer
+
+      # Desktop file
+      - install -Dm644 data/io.github.delaytyper.desktop \
+          ${FLATPAK_DEST}/share/applications/io.github.delaytyper.desktop
+
+      # Icon
+      - install -Dm644 data/icons/io.github.delaytyper.png \
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.delaytyper.png
+
+      # AppStream metadata
+      - install -Dm644 data/io.github.delaytyper.metainfo.xml \
+          ${FLATPAK_DEST}/share/metainfo/io.github.delaytyper.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/tomsontomno/delay-typer.git
+        commit: 3eaa752fe10515878dfd8f8832b201f89e8928d6
