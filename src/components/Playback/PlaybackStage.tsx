@@ -2,8 +2,9 @@ import { LyricsPanel } from "@/components/Lyrics/LyricsPanel";
 import { CdgCanvas } from "@/components/Cdg/CdgCanvas";
 import { useCoverArtUrl } from "@/lib/cover-art";
 import { useCdgStore } from "@/stores/cdg-store";
-import { usePlayerStore } from "@/stores/player-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { usePlayerStore } from "@/stores/player-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { songHasCdgMedia } from "@/lib/song-media";
 
 interface PlaybackStageProps {
@@ -20,12 +21,16 @@ export function PlaybackStage({
   const songs = useLibraryStore((s) => s.songs);
   const currentSong = songs.find((song) => song.hash === songId) ?? null;
   const currentSongHasCdg = songHasCdgMedia(currentSong);
+  const coverArtBackdrop = useSettingsStore((s) => s.coverArtBackdrop);
   const nativeBackdropUrl = useCoverArtUrl(
     songId ?? "native-stage-empty",
     currentSong?.cover_art ?? null,
   );
   const stageAmbience =
-    presentation === "standard" && !hasCdg && !currentSongHasCdg;
+    coverArtBackdrop &&
+    presentation === "standard" &&
+    !hasCdg &&
+    !currentSongHasCdg;
 
   return (
     <div

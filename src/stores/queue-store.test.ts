@@ -14,7 +14,7 @@ interface FakeChannel {
 
 describe("queue-store drag reorder", () => {
   beforeEach(() => {
-    useQueueStore.setState({ queue: [], isOpen: false });
+    useQueueStore.setState({ queue: [], playHistory: [], isOpen: false });
   });
 
   test("moves the dragged song before the hovered song", () => {
@@ -65,7 +65,37 @@ describe("queue-store drag reorder", () => {
     ]);
   });
 
-  test("syncs queue mutations across webview contexts", () => {
+  test("manages a play history stack for previous-track navigation", () => {
+    useQueueStore.setState({ queue: [], playHistory: [], isOpen: false });
+
+    const store = useQueueStore.getState();
+
+    store.pushToHistory("song-1");
+    expect(useQueueStore.getState().playHistory).toEqual(["song-1"]);
+
+    store.pushToHistory("song-2");
+    expect(useQueueStore.getState().playHistory).toEqual(["song-1", "song-2"]);
+
+    const popped = store.popFromHistory();
+    expect(popped).toBe("song-2");
+    expect(useQueueStore.getState().playHistory).toEqual(["song-1"]);
+
+    const popped2 = store.popFromHistory();
+    expect(popped2).toBe("song-1");
+    expect(useQueueStore.getState().playHistory).toEqual([]);
+
+    const popped3 = store.popFromHistory();
+    expect(popped3).toBeUndefined();
+
+    store.pushToHistory("song-1");
+    store.pushToHistory("song-1");
+    expect(useQueueStore.getState().playHistory).toEqual(["song-1"]);
+
+    store.clearHistory();
+    expect(useQueueStore.getState().playHistory).toEqual([]);
+  });
+
+  test("syncs queue and playHistory across webview contexts", () => {
     const channelsByName = new Map<string, Set<FakeChannel>>();
     const channelFactory = (name: string) => {
       const peers = channelsByName.get(name) ?? new Set<FakeChannel>();
@@ -106,8 +136,10 @@ describe("queue-store drag reorder", () => {
 
     primary.store.getState().addToQueue("song-a");
     primary.store.getState().addToQueue("song-b");
+    primary.store.getState().pushToHistory("song-0");
 
     expect(secondary.store.getState().queue).toEqual(["song-a", "song-b"]);
+    expect(secondary.store.getState().playHistory).toEqual(["song-0"]);
 
     primary.dispose();
     secondary.dispose();

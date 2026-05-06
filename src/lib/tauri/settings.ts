@@ -53,6 +53,10 @@ export function setHideBatchSeparate(value: boolean): Promise<AppSettings> {
   return invoke<AppSettings>("set_hide_batch_separate", { value });
 }
 
+export function setCoverArtBackdrop(value: boolean): Promise<AppSettings> {
+  return invoke<AppSettings>("set_cover_art_backdrop", { value });
+}
+
 export function setExecutionProvider(
   provider: ExecutionProvider,
 ): Promise<AppSettings> {

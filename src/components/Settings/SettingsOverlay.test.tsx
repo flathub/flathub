@@ -251,10 +251,10 @@ describe("SettingsOverlay sections", () => {
     expect(markup).toContain('aria-label="common.close"');
   });
 
-  test("settings overlay only captures pointer events inside the panel", () => {
+  test("settings overlay captures pointer events across the entire backdrop", () => {
     const markup = renderToStaticMarkup(<SettingsOverlay />);
 
-    expect(markup).toContain("pointer-events-none");
     expect(markup).toContain("pointer-events-auto");
+    expect(markup).not.toContain("pointer-events-none");
   });
 });

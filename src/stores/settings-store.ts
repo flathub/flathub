@@ -18,6 +18,7 @@ export interface AppSettingsSnapshot {
   modelVariant: ModelVariant;
   language: string | null;
   hideBatchSeparate: boolean;
+  coverArtBackdrop: boolean;
   lyricsFontStep: number;
   executionProvider: ExecutionProvider;
   availableExecutionProviders: ExecutionProvider[];
@@ -30,6 +31,7 @@ interface SettingsState {
   modelVariant: AppSettingsSnapshot["modelVariant"];
   language: AppSettingsSnapshot["language"];
   hideBatchSeparate: AppSettingsSnapshot["hideBatchSeparate"];
+  coverArtBackdrop: AppSettingsSnapshot["coverArtBackdrop"];
   lyricsFontStep: AppSettingsSnapshot["lyricsFontStep"];
   executionProvider: AppSettingsSnapshot["executionProvider"];
   availableExecutionProviders: AppSettingsSnapshot["availableExecutionProviders"];
@@ -50,6 +52,7 @@ const DEFAULT_APP_SETTINGS: AppSettingsSnapshot = {
   modelVariant: "htdemucs",
   language: null,
   hideBatchSeparate: false,
+  coverArtBackdrop: true,
   lyricsFontStep: 0,
   executionProvider: "cpu",
   availableExecutionProviders: ["cpu"],
@@ -62,6 +65,7 @@ function toAppSettingsSnapshot(settings: AppSettings): AppSettingsSnapshot {
     modelVariant: settings.model_variant,
     language: settings.language,
     hideBatchSeparate: settings.hide_batch_separate,
+    coverArtBackdrop: settings.cover_art_backdrop,
     lyricsFontStep: settings.lyrics_font_step,
     executionProvider: settings.execution_provider,
     availableExecutionProviders: settings.available_execution_providers,
@@ -77,6 +81,7 @@ function selectAppSettingsSnapshot(
     modelVariant: state.modelVariant,
     language: state.language,
     hideBatchSeparate: state.hideBatchSeparate,
+    coverArtBackdrop: state.coverArtBackdrop,
     lyricsFontStep: state.lyricsFontStep,
     executionProvider: state.executionProvider,
     availableExecutionProviders: state.availableExecutionProviders,

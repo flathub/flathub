@@ -47,6 +47,7 @@ export function createInitialSettingsOverlaySnapshot(
       downloadingModel: null,
       language: initialSettings.language ?? "en",
       hideBatchSeparate: initialSettings.hideBatchSeparate,
+      coverArtBackdrop: initialSettings.coverArtBackdrop,
       executionProvider: initialSettings.executionProvider,
       availableExecutionProviders: initialSettings.availableExecutionProviders,
     },
@@ -208,6 +209,7 @@ export function createSettingsOverlayActions(
           modelVariant: settingsResult.value.model_variant,
           language: settingsResult.value.language ?? "en",
           hideBatchSeparate: settingsResult.value.hide_batch_separate,
+          coverArtBackdrop: settingsResult.value.cover_art_backdrop,
           executionProvider: settingsResult.value.execution_provider,
           availableExecutionProviders:
             settingsResult.value.available_execution_providers,

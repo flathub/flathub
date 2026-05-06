@@ -26,6 +26,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      cover_art_backdrop: true,
       lyrics_font_step: 1,
     });
     const hydrateAppSettings = vi.fn();
@@ -44,6 +45,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs_ft",
       language: "zh-CN",
       hide_batch_separate: true,
+      cover_art_backdrop: true,
       lyrics_font_step: 1,
     });
     expect(changeLanguage).toHaveBeenCalledWith("zh-CN");
@@ -56,6 +58,7 @@ describe("app runtime settings hydration", () => {
       model_variant: "htdemucs",
       language: null,
       hide_batch_separate: false,
+      cover_art_backdrop: true,
       lyrics_font_step: 0,
       execution_provider: "xnnpack",
       available_execution_providers: ["cpu", "xnnpack"],

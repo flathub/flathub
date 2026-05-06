@@ -313,6 +313,7 @@ pub fn run() {
             commands::settings::set_model_variant,
             commands::settings::set_language,
             commands::settings::set_hide_batch_separate,
+            commands::settings::set_cover_art_backdrop,
             commands::settings::set_lyrics_font_step,
             commands::settings::set_execution_provider,
             commands::settings::restart_app,

@@ -197,6 +197,10 @@ export function createPlayerStore(
           return;
         }
 
+        if (snapshot?.song_id) {
+          useQueueStore.getState().pushToHistory(snapshot.song_id);
+        }
+
         try {
           await playSongAndApplySnapshot(songId);
         } catch (e) {
@@ -205,6 +209,12 @@ export function createPlayerStore(
       },
 
       playNow: async (songId) => {
+        const { snapshot } = get();
+
+        if (snapshot?.song_id) {
+          useQueueStore.getState().pushToHistory(snapshot.song_id);
+        }
+
         try {
           await playSongAndApplySnapshot(songId);
         } catch (e) {
@@ -331,6 +341,8 @@ export function createPlayerStore(
         const nextId = useQueueStore.getState().dequeue();
         if (!nextId) return;
 
+        useQueueStore.getState().pushToHistory(endedSongId);
+
         try {
           await playSongAndApplySnapshot(nextId);
         } catch (e) {
@@ -339,8 +351,13 @@ export function createPlayerStore(
       },
 
       skipForward: async () => {
+        const { snapshot } = get();
         const nextId = useQueueStore.getState().dequeue();
         if (!nextId) return;
+
+        if (snapshot?.song_id) {
+          useQueueStore.getState().pushToHistory(snapshot.song_id);
+        }
 
         try {
           await playSongAndApplySnapshot(nextId);
@@ -353,8 +370,16 @@ export function createPlayerStore(
         const { snapshot } = get();
         if (!snapshot?.song_id) return;
 
-        // Always seek to 0 when skipBack is called.
-        // A "previous track" feature would require a history stack, which isn't implemented yet.
+        const previousSongId = useQueueStore.getState().popFromHistory();
+        if (previousSongId) {
+          try {
+            await playSongAndApplySnapshot(previousSongId);
+          } catch (e) {
+            notifyError(e);
+          }
+          return;
+        }
+
         try {
           const newSnapshot = await api.seek(0);
           syncPatch({

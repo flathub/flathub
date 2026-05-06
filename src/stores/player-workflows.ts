@@ -15,9 +15,7 @@ export function shouldEnqueueInsteadOfReplacingCurrentSong(
   requestedSongId: string,
 ): boolean {
   return Boolean(
-    currentSnapshot?.is_playing &&
-    currentSnapshot.song_id &&
-    currentSnapshot.song_id !== requestedSongId,
+    currentSnapshot?.song_id && currentSnapshot.song_id !== requestedSongId,
   );
 }
 

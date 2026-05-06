@@ -6,6 +6,7 @@ import {
 
 interface QueueState {
   queue: string[];
+  playHistory: string[];
   isOpen: boolean;
 
   addToQueue: (songId: string) => void;
@@ -16,11 +17,15 @@ interface QueueState {
   reorderBySongId: (activeId: string, overId: string) => void;
   clearQueue: () => void;
   dequeue: () => string | undefined;
+  pushToHistory: (songId: string) => void;
+  popFromHistory: () => string | undefined;
+  clearHistory: () => void;
   togglePanel: () => void;
 }
 
 interface QueueSyncSnapshot {
   queue: string[];
+  playHistory: string[];
 }
 
 function reorderQueue(queue: string[], fromIndex: number, toIndex: number) {
@@ -58,17 +63,21 @@ export function createQueueStore(
   ),
 ) {
   const store = create<QueueState>((set, get) => {
-    const syncQueue = (nextQueue: string[]) => {
+    const syncQueue = (nextQueue: string[], nextHistory?: string[]) => {
+      const history = nextHistory ?? get().playHistory;
       if (queuesEqual(get().queue, nextQueue)) {
+        set({ playHistory: history });
+        syncChannel.publish({ queue: nextQueue, playHistory: history });
         return;
       }
 
-      set({ queue: nextQueue });
-      syncChannel.publish({ queue: nextQueue });
+      set({ queue: nextQueue, playHistory: history });
+      syncChannel.publish({ queue: nextQueue, playHistory: history });
     };
 
     return {
       queue: [],
+      playHistory: [],
       isOpen: false,
 
       addToQueue: (songId) => {
@@ -121,16 +130,30 @@ export function createQueueStore(
         return next;
       },
 
+      pushToHistory: (songId) => {
+        const { playHistory, queue } = get();
+        const deduped = playHistory.filter((id) => id !== songId);
+        syncQueue(queue, [...deduped, songId]);
+      },
+
+      popFromHistory: () => {
+        const { playHistory, queue } = get();
+        if (playHistory.length === 0) return undefined;
+        syncQueue(queue, playHistory.slice(0, -1));
+        return playHistory[playHistory.length - 1];
+      },
+
+      clearHistory: () => {
+        const { queue } = get();
+        syncQueue(queue, []);
+      },
+
       togglePanel: () => set((state) => ({ isOpen: !state.isOpen })),
     };
   });
 
-  const unsubscribe = syncChannel.subscribe(({ queue }) => {
-    if (queuesEqual(store.getState().queue, queue)) {
-      return;
-    }
-
-    store.setState({ queue });
+  const unsubscribe = syncChannel.subscribe(({ queue, playHistory }) => {
+    store.setState({ queue, playHistory });
   });
 
   return {

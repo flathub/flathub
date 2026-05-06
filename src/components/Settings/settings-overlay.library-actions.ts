@@ -66,6 +66,7 @@ export function createLibrarySettingsActions(
   | "setStemMode"
   | "setExecutionProvider"
   | "toggleHideBatchSeparate"
+  | "toggleCoverArtBackdrop"
 > {
   const {
     dependencies,
@@ -320,6 +321,18 @@ export function createLibrarySettingsActions(
 
       try {
         const settings = await dependencies.api.setHideBatchSeparate(value);
+        dependencies.settingsStore.hydrateAppSettings(settings);
+      } catch (error) {
+        dependencies.notifyError(error);
+      }
+    },
+
+    toggleCoverArtBackdrop: async (value) => {
+      patchState({ coverArtBackdrop: value });
+      dependencies.settingsStore.patchAppSettings({ coverArtBackdrop: value });
+
+      try {
+        const settings = await dependencies.api.setCoverArtBackdrop(value);
         dependencies.settingsStore.hydrateAppSettings(settings);
       } catch (error) {
         dependencies.notifyError(error);

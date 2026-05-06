@@ -363,6 +363,9 @@ pub struct AppConfig {
     pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_batch_separate: Option<bool>,
+    /// When false, the lyrics stage renders without the blurred album-art backdrop.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_art_backdrop: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_variant: Option<ModelVariant>,
     // Lyrics font size is a per-machine display preference, so it belongs in
@@ -522,6 +525,7 @@ mod tests {
             stem_mode: Some(StemMode::FourStem),
             language: None,
             hide_batch_separate: None,
+            cover_art_backdrop: None,
             model_variant: None,
             lyrics_font_step: Some(1),
             execution_provider: None,
@@ -552,6 +556,7 @@ mod tests {
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
+            cover_art_backdrop: None,
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
@@ -576,6 +581,7 @@ mod tests {
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
+            cover_art_backdrop: None,
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
@@ -594,6 +600,7 @@ mod tests {
             stem_mode: None,
             language: None,
             hide_batch_separate: None,
+            cover_art_backdrop: None,
             model_variant: None,
             lyrics_font_step: None,
             execution_provider: None,
@@ -625,6 +632,7 @@ mod tests {
             stem_mode: Some(StemMode::TwoStem),
             language: Some("zh-CN".to_owned()),
             hide_batch_separate: Some(true),
+            cover_art_backdrop: None,
             model_variant: Some(ModelVariant::HtdemucsFt),
             lyrics_font_step: Some(1),
             execution_provider: None,

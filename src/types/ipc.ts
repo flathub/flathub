@@ -214,6 +214,7 @@ export interface AppSettings {
   model_variant: ModelVariant;
   language: string | null;
   hide_batch_separate: boolean;
+  cover_art_backdrop: boolean;
   lyrics_font_step: number;
   execution_provider: ExecutionProvider;
   available_execution_providers: ExecutionProvider[];

@@ -94,7 +94,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
 
   const handleDoubleClick = () => {
     const current = usePlayerStore.getState().snapshot;
-    if (current?.is_playing && current?.song_id !== song.hash) {
+    if (current?.song_id && current.song_id !== song.hash) {
       useQueueStore.getState().addToQueue(song.hash);
     } else {
       playSong(song.hash);

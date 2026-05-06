@@ -51,13 +51,31 @@ function completedSeparationStatus(
 }
 
 describe("player-workflows", () => {
-  test("queues instead of replacing when another song is already playing", () => {
+  test("queues instead of replacing when another song is already loaded", () => {
     expect(
       shouldEnqueueInsteadOfReplacingCurrentSong(
         playbackSnapshot({ song_id: "current", is_playing: true }),
         "next-song",
       ),
     ).toBe(true);
+  });
+
+  test("queues instead of replacing even when the other song is paused", () => {
+    expect(
+      shouldEnqueueInsteadOfReplacingCurrentSong(
+        playbackSnapshot({ song_id: "current", is_playing: false }),
+        "next-song",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not queue when no song is loaded yet", () => {
+    expect(
+      shouldEnqueueInsteadOfReplacingCurrentSong(
+        playbackSnapshot({ song_id: null, is_playing: false }),
+        "next-song",
+      ),
+    ).toBe(false);
   });
 
   test("does not queue when replaying the current song", () => {

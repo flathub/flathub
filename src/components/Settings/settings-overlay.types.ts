@@ -38,6 +38,7 @@ export interface SettingsOverlayState {
   downloadingModel: ModelVariant | null;
   language: string;
   hideBatchSeparate: boolean;
+  coverArtBackdrop: boolean;
   executionProvider: ExecutionProvider;
   availableExecutionProviders: ExecutionProvider[];
 }
@@ -74,6 +75,7 @@ export interface SettingsOverlayActions {
   confirmFtModel: () => Promise<void>;
   deleteModel: (variant: ModelVariant) => Promise<void>;
   toggleHideBatchSeparate: (value: boolean) => Promise<void>;
+  toggleCoverArtBackdrop: (value: boolean) => Promise<void>;
   openDeleteStemsDialog: () => Promise<void>;
   confirmDeleteStems: () => Promise<void>;
   openDowngradeDialog: () => Promise<void>;
@@ -113,6 +115,7 @@ export interface SettingsOverlayControllerDependencies {
     | "refreshRemoteRepository"
     | "setExecutionProvider"
     | "setHideBatchSeparate"
+    | "setCoverArtBackdrop"
     | "setLanguage"
     | "setModelVariant"
     | "setStemMode"
