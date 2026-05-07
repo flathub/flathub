@@ -36,7 +36,7 @@ const nodeSourceFiles = readdirSync(join(templateRoot, "generated"))
 const nodeSourcesYaml = nodeSourceFiles
   .map(
     (file) =>
-      `      - type: file\n        path: packaging/flatpak/generated/${file}`,
+      `      - type: file\n        path: ${file}`,
   )
   .join("\n");
 
