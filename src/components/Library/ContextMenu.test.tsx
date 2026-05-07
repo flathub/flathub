@@ -11,6 +11,7 @@ vi.mock("react-dom", () => ({
 
 import { ContextMenu } from "./ContextMenu";
 import { isInSafetyZone, pointInConvexPolygon } from "./submenu-safety-zone";
+import type { Point } from "./submenu-safety-zone";
 import { getContextMenuPosition } from "./context-menu-position";
 
 describe("getContextMenuPosition", () => {
