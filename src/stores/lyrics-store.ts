@@ -143,13 +143,13 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   },
 
   toggleRomanized: () => {
-    const { showRomanized, romanizedLines, lines } = get();
-    if (!showRomanized && romanizedLines.length === 0 && lines.length > 0) {
-      // First toggle — kick off romanization, then show once ready
+    const { showRomanized, lines } = get();
+    if (lines.length === 0) return;
+    if (!showRomanized) {
       set({ showRomanized: true });
       void get().romanizeCurrentLyrics();
     } else {
-      set({ showRomanized: !showRomanized });
+      set({ showRomanized: false });
     }
   },
 
@@ -184,3 +184,17 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       showRomanized: false,
     }),
 }));
+
+useLibraryStore.subscribe((state, prevState) => {
+  const currentSongId = useLyricsStore.getState().songId;
+  if (!currentSongId) return;
+
+  const prevSong = prevState.songs.find((s) => s.hash === currentSongId);
+  const currSong = state.songs.find((s) => s.hash === currentSongId);
+  if (prevSong?.language === currSong?.language) return;
+
+  const { showRomanized, lines } = useLyricsStore.getState();
+  if (showRomanized && lines.length > 0) {
+    void useLyricsStore.getState().romanizeCurrentLyrics();
+  }
+});
