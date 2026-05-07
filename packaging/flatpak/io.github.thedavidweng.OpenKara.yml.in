@@ -1,9 +1,9 @@
 app-id: io.github.thedavidweng.OpenKara
 runtime: org.gnome.Platform
-runtime-version: "48"
+runtime-version: "50"
 sdk: org.gnome.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.node24
   - org.freedesktop.Sdk.Extension.rust-stable
 command: openkara
 finish-args:
@@ -14,7 +14,7 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
 build-options:
-  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+  append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
   env:
     CARGO_HOME: /run/build/openkara/cargo
     CARGO_NET_OFFLINE: "true"
@@ -25,10 +25,12 @@ modules:
     build-commands:
       - mkdir -p .cargo
       - printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "cargo/vendor"\n' > .cargo/config.toml
+      - sh -c 'mkdir -p src-tauri/generated/onnxruntime && runtime_path="$(find src-tauri/generated/onnxruntime-source -name "libonnxruntime.so*" ! -name "*providers*" ! -name "*.a" | sort | head -n 1)" && test -n "$runtime_path" && cp -f "$runtime_path" src-tauri/generated/onnxruntime/libonnxruntime.so && printf "{\"version\":\"1.23.2\",\"target\":\"flatpak-linux\",\"sourceArchive\":\"flatpak-builder-source\"}\n" > src-tauri/generated/onnxruntime/manifest.json'
       - npm install -g --prefix /run/build/openkara/pnpm-install ./pnpm-package
       - PATH="/run/build/openkara/pnpm-install/bin:$PATH" pnpm install --offline --frozen-lockfile
       - PATH="/run/build/openkara/pnpm-install/bin:$PATH" pnpm tauri build --config packaging/flatpak/tauri.flatpak.conf.json --bundles none
       - install -Dm0755 src-tauri/target/release/openkara ${FLATPAK_DEST}/bin/openkara
+      - install -Dm0644 src-tauri/generated/onnxruntime/libonnxruntime.so ${FLATPAK_DEST}/lib/openkara/onnxruntime/libonnxruntime.so
       - install -Dm0644 packaging/flatpak/io.github.thedavidweng.OpenKara.desktop ${FLATPAK_DEST}/share/applications/io.github.thedavidweng.OpenKara.desktop
       - install -Dm0644 packaging/flatpak/io.github.thedavidweng.OpenKara.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.thedavidweng.OpenKara.metainfo.xml
       - install -Dm0644 src-tauri/icons/128x128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/io.github.thedavidweng.OpenKara.png
@@ -37,10 +39,21 @@ modules:
         url: @@SOURCE_URL@@
         sha256: @@SOURCE_SHA256@@
         strip-components: 1
-      - type: file
-        path: cargo-sources.json
+      - cargo-sources.json
       - type: archive
         url: https://registry.npmjs.org/pnpm/-/pnpm-10.33.2.tgz
         sha256: 7a7bcf13d7f6ceb3946c03978373d99be9fde1cafc3000bdfed4c4f791167610
         dest: pnpm-package
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz
+        sha256: 1fa4dcaef22f6f7d5cd81b28c2800414350c10116f5fdd46a2160082551c5f9b
+        dest: src-tauri/generated/onnxruntime-source
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-aarch64-1.23.2.tgz
+        sha256: 7c63c73560ed76b1fac6cff8204ffe34fe180e70d6582b5332ec094810241e5c
+        dest: src-tauri/generated/onnxruntime-source
+        only-arches:
+          - aarch64
 @@NODE_SOURCES@@

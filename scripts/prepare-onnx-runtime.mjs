@@ -35,6 +35,11 @@ const TARGET_CONFIG = {
     outputName: "libonnxruntime.so",
     manifestTarget: "x86_64-unknown-linux-gnu",
   },
+  "aarch64-unknown-linux-gnu": {
+    archiveName: `onnxruntime-linux-aarch64-${ORT_VERSION}.tgz`,
+    outputName: "libonnxruntime.so",
+    manifestTarget: "aarch64-unknown-linux-gnu",
+  },
   "x86_64-pc-windows-msvc": {
     archiveName: `onnxruntime-win-x64-${ORT_VERSION}.zip`,
     outputName: "onnxruntime.dll",
@@ -82,7 +87,9 @@ function defaultTargetForHost() {
   }
 
   if (process.platform === "linux") {
-    return "x86_64-unknown-linux-gnu";
+    return process.arch === "arm64"
+      ? "aarch64-unknown-linux-gnu"
+      : "x86_64-unknown-linux-gnu";
   }
 
   if (process.platform === "win32") {

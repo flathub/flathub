@@ -5,19 +5,31 @@ on:
     paths:
       - ".github/workflows/packaging.yml"
       - ".github/workflows/release.yml"
+      - "package.json"
       - "packaging/**"
+      - "pnpm-lock.yaml"
+      - "scripts/prepare-onnx-runtime.mjs"
       - "scripts/render-*.mjs"
       - "scripts/release-metadata.mjs"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/Cargo.toml"
       - "src-tauri/tauri.conf.json"
+      - "tests/flatpak-packaging.test.ts"
   push:
     branches: ["main", "codex/**"]
     paths:
       - ".github/workflows/packaging.yml"
       - ".github/workflows/release.yml"
+      - "package.json"
       - "packaging/**"
+      - "pnpm-lock.yaml"
+      - "scripts/prepare-onnx-runtime.mjs"
       - "scripts/render-*.mjs"
       - "scripts/release-metadata.mjs"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/Cargo.toml"
       - "src-tauri/tauri.conf.json"
+      - "tests/flatpak-packaging.test.ts"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -88,33 +100,39 @@ jobs:
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24
-          package-manager-cache: false
+          cache: pnpm
 
-      - name: Resolve latest public release version
-        id: release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version="$(gh release list --repo "${GITHUB_REPOSITORY}" --limit 1 --json tagName --jq '.[0].tagName | sub("^v"; "")')"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Install metadata validators
+      - name: Install Flatpak validators
         run: |
           sudo apt-get update
-          sudo apt-get install -y appstream flatpak-builder
+          sudo apt-get install -y appstream flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Render Flatpak manifests from current public release
+      - name: Validate Flatpak packaging invariants
+        run: pnpm test tests/flatpak-packaging.test.ts
+
+      - name: Validate upstream AppStream metadata
         run: |
+          appstreamcli validate packaging/flatpak/io.github.thedavidweng.OpenKara.metainfo.xml
+
+      - name: Render Flatpak manifests from current checkout
+        env:
+          SOURCE_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
           node scripts/render-flatpak-manifest.mjs \
-            --version "${{ steps.release.outputs.version }}" \
-            --output "${{ github.workspace }}/dist/flatpak" \
-            --screenshot-base-url "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/packaging/flatpak/screenshots"
-
-      - name: Validate AppStream metadata
-        run: |
-          appstreamcli validate "${{ github.workspace }}/dist/flatpak/io.github.thedavidweng.OpenKara/io.github.thedavidweng.OpenKara.metainfo.xml"
+            --version "${version}" \
+            --source-url "https://github.com/${SOURCE_REPO}/archive/${SOURCE_SHA}.tar.gz" \
+            --output "${{ github.workspace }}/dist/flatpak"
 
       - name: Validate Flatpak manifest syntax
         run: |
           flatpak-builder --show-manifest "${{ github.workspace }}/dist/flatpak/io.github.thedavidweng.OpenKara/io.github.thedavidweng.OpenKara.yml" > /dev/null
+
+      - name: Validate Flatpak dependency source downloads
+        run: |
+          flatpak-builder --user --force-clean --install-deps-from=flathub --download-only "${{ github.workspace }}/flatpak-build" "${{ github.workspace }}/dist/flatpak/io.github.thedavidweng.OpenKara/io.github.thedavidweng.OpenKara.yml"

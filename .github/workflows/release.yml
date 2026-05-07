@@ -121,6 +121,8 @@ jobs:
     name: Prepare distribution manifests
     runs-on: ubuntu-latest
     needs: publish
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout
@@ -147,8 +149,7 @@ jobs:
         run: |
           node scripts/render-flatpak-manifest.mjs \
             --version "${{ github.event.inputs.version }}" \
-            --output "${{ github.workspace }}/dist/flatpak" \
-            --screenshot-base-url "https://raw.githubusercontent.com/thedavidweng/OpenKara/v${{ github.event.inputs.version }}/packaging/flatpak/screenshots"
+            --output "${{ github.workspace }}/dist/flatpak"
 
       - name: Upload WinGet manifest artifact
         uses: actions/upload-artifact@v7.0.1
@@ -175,9 +176,8 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN}" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "WINGET_PR_TOKEN is not configured; skipping WinGet PR automation."
-            exit 0
+            echo "::error::WINGET_PR_TOKEN is required when WINGET_FORK_REPO is configured."
+            exit 1
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -236,22 +236,12 @@ jobs:
             exit 0
           fi
 
-          if gh pr create \
+          gh pr create \
             --repo "${target_repo}" \
             --base "${base_branch}" \
             --head "${fork_owner}:${branch}" \
             --title "New version: ${WINGET_PACKAGE_IDENTIFIER} version ${VERSION}" \
-            --body "Automated WinGet manifest update for OpenKara ${VERSION}."; then
-            exit 0
-          fi
-
-          compare_url="https://github.com/${target_repo}/compare/${base_branch}...${fork_owner}:${branch}?expand=1"
-          {
-            echo "WinGet PR could not be created automatically."
-            echo "Open this URL to create it manually:"
-            echo "${compare_url}"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-          exit 0
+            --body "Automated WinGet manifest update for OpenKara ${VERSION}."
 
   submit-flathub-pr:
     name: Prepare or submit Flathub PR
@@ -266,9 +256,8 @@ jobs:
           GH_TOKEN: ${{ secrets.FLATHUB_PR_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN}" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "FLATHUB_PR_TOKEN is not configured; skipping Flathub PR automation."
-            exit 0
+            echo "::error::FLATHUB_PR_TOKEN is required when FLATHUB_FORK_REPO is configured."
+            exit 1
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -353,38 +342,18 @@ jobs:
           [reqs2]: https://docs.flathub.org/docs/for-app-authors/submission
           EOF
           )"
-            urlencode() {
-              python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.stdin.read(), safe=""))'
-            }
-            encoded_title="$(printf "%s" "${pr_title}" | urlencode)"
-            encoded_body="$(printf "%s" "${pr_body}" | urlencode)"
-            compare_url="https://github.com/${target_repo}/compare/${base_branch}...${fork_owner}:${branch}?expand=1&title=${encoded_title}&body=${encoded_body}"
-
-            {
-              echo "Initial Flathub submission branch prepared."
-              echo
-              echo "Open this prefilled GitHub URL to create the Flathub submission PR:"
-              echo "${compare_url}"
-              echo
-              echo "The PR title and official Flathub submission notes are already filled in. Keep GitHub Copilot automatic review disabled before opening the PR."
-            } | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 0
+            gh pr create \
+              --draft \
+              --repo "${target_repo}" \
+              --base "${base_branch}" \
+              --head "${fork_owner}:${branch}" \
+              --title "${pr_title}" \
+              --body "${pr_body}"
+          else
+            gh pr create \
+              --repo "${target_repo}" \
+              --base "${base_branch}" \
+              --head "${fork_owner}:${branch}" \
+              --title "${pr_title}" \
+              --body "Flatpak manifest update for OpenKara ${VERSION}."
           fi
-
-          compare_url="https://github.com/${target_repo}/compare/${base_branch}...${fork_owner}:${branch}?expand=1"
-
-          if gh pr create \
-            --repo "${target_repo}" \
-            --base "${base_branch}" \
-            --head "${fork_owner}:${branch}" \
-            --title "${pr_title}" \
-            --body "Flatpak manifest update for OpenKara ${VERSION}."; then
-            exit 0
-          fi
-
-          {
-            echo "Flathub update PR could not be created automatically."
-            echo "Open this URL to create it manually:"
-            echo "${compare_url}"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-          exit 0
