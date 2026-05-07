@@ -14,20 +14,43 @@ function githubHeaders() {
 }
 
 export async function fetchReleaseByTag({ owner, repo, tag }) {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`,
-    {
-      headers: githubHeaders(),
-    },
-  );
+  const releaseByTagUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
+  const response = await fetch(releaseByTagUrl, {
+    headers: githubHeaders(),
+  });
 
-  if (!response.ok) {
+  if (response.ok) {
+    return response.json();
+  }
+
+  if (response.status !== 404) {
     throw new Error(
       `failed to fetch release ${owner}/${repo}@${tag}: ${response.status} ${response.statusText}`,
     );
   }
 
-  return response.json();
+  const releasesResponse = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/releases?per_page=100`,
+    {
+      headers: githubHeaders(),
+    },
+  );
+
+  if (!releasesResponse.ok) {
+    throw new Error(
+      `failed to list releases ${owner}/${repo}: ${releasesResponse.status} ${releasesResponse.statusText}`,
+    );
+  }
+
+  const releases = await releasesResponse.json();
+  const release = releases.find((candidate) => candidate.tag_name === tag);
+  if (!release) {
+    throw new Error(
+      `failed to fetch release ${owner}/${repo}@${tag}: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return release;
 }
 
 export async function sha256ForUrl(url) {

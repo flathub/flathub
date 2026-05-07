@@ -92,6 +92,8 @@ describe("Flatpak packaging", () => {
     const releaseWorkflow = readProjectFile(".github/workflows/release.yml");
 
     expect(releaseWorkflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
+    expect(releaseWorkflow).toContain("Ensure release source tag exists");
+    expect(releaseWorkflow).toContain('git push origin "refs/tags/${tag}"');
     expect(releaseWorkflow).toContain(
       '--title "New version: ${WINGET_PACKAGE_IDENTIFIER} version ${VERSION}"',
     );
