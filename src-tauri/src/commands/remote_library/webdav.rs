@@ -698,6 +698,7 @@ mod tests {
                 cdg_path: None,
                 media_g_container: None,
                 instrumental: true,
+                language: None,
                 audio_source_kind: "original".to_owned(),
                 title: Some("Remote Song".to_owned()),
                 artist: Some("OpenKara".to_owned()),

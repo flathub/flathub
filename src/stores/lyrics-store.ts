@@ -2,7 +2,22 @@ import { create } from "zustand";
 import * as api from "@/lib/tauri";
 import { notifyError } from "@/lib/errors";
 import { romanizeLyricsLines } from "@/lib/lyrics-romanizer";
+import {
+  SONG_LANGUAGES,
+  type SongLanguage,
+} from "@/components/Library/song-list-item-menu";
+import { useLibraryStore } from "@/stores/library-store";
 import type { LyricLine, LyricsSource } from "@/types/ipc";
+
+function getSongLanguage(songId: string | null): SongLanguage | null {
+  if (!songId) return null;
+  const song = useLibraryStore.getState().songs.find((s) => s.hash === songId);
+  const lang = song?.language;
+  if (lang && SONG_LANGUAGES.includes(lang as SongLanguage)) {
+    return lang as SongLanguage;
+  }
+  return null;
+}
 
 interface LyricsState {
   songId: string | null;
@@ -145,7 +160,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     const texts = lines.map((l) => l.text);
     set({ isRomanizing: true });
     try {
-      const romanizedLines = await romanizeLyricsLines(texts);
+      const language = getSongLanguage(get().songId);
+      const romanizedLines = await romanizeLyricsLines(texts, language);
       set({ romanizedLines });
     } catch (err) {
       console.error("Romanization failed:", err);

@@ -46,6 +46,7 @@ fn fixture_song(file_path: &Path) -> Song {
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+            language: None,
         audio_source_kind: "original".to_owned(),
         title: Some("Yellow".to_owned()),
         artist: Some("Coldplay".to_owned()),

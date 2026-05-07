@@ -5,6 +5,37 @@ type TranslateFn = (
   options?: Record<string, string | number>,
 ) => string;
 
+export type SongLanguage =
+  | "mandarin"
+  | "cantonese"
+  | "japanese"
+  | "korean"
+  | "cyrillic"
+  | "thai"
+  | "devanagari"
+  | "gujarati"
+  | "gurmukhi"
+  | "telugu"
+  | "kannada"
+  | "odia"
+  | "tamil";
+
+export const SONG_LANGUAGES: SongLanguage[] = [
+  "mandarin",
+  "cantonese",
+  "japanese",
+  "korean",
+  "cyrillic",
+  "thai",
+  "devanagari",
+  "gujarati",
+  "gurmukhi",
+  "telugu",
+  "kannada",
+  "odia",
+  "tamil",
+];
+
 interface BuildSongListContextMenuItemsArgs {
   t: TranslateFn;
   isMultiSelected: boolean;
@@ -13,6 +44,8 @@ interface BuildSongListContextMenuItemsArgs {
   selectedHasSeparableSongs: boolean;
   selectedCanToggleInstrumentalSongs: boolean;
   selectedInstrumentalState: "checked" | "mixed" | "unchecked";
+  selectedLanguage: SongLanguage | null;
+  setSelectedLanguage: (language: SongLanguage | null) => void;
   supportsEmbeddedLyrics: boolean;
   queueAllSelected: () => void;
   separateAllSelected: () => void;
@@ -38,6 +71,8 @@ export function buildSongListContextMenuItems({
   selectedHasSeparableSongs,
   selectedCanToggleInstrumentalSongs,
   selectedInstrumentalState,
+  selectedLanguage,
+  setSelectedLanguage,
   supportsEmbeddedLyrics,
   queueAllSelected,
   separateAllSelected,
@@ -61,6 +96,21 @@ export function buildSongListContextMenuItems({
         : selectedInstrumentalState === "mixed"
           ? "mixed"
           : null;
+
+    const languageChildren: ContextMenuItem[] = [
+      {
+        label: t("library.languageAuto"),
+        onClick: () => setSelectedLanguage(null),
+        indicator: selectedLanguage === null ? "checked" : null,
+      },
+      ...SONG_LANGUAGES.map((lang) => ({
+        label: t(`library.language_${lang}`),
+        onClick: () => setSelectedLanguage(lang),
+        indicator: (selectedLanguage === lang
+          ? "checked"
+          : null) as ContextMenuItem["indicator"],
+      })),
+    ];
 
     return [
       {
@@ -91,6 +141,10 @@ export function buildSongListContextMenuItems({
           ]
         : []),
       {
+        label: t("library.language"),
+        children: languageChildren,
+      },
+      {
         label: t("library.extractEmbeddedCoverArtSelected", {
           count: selectedCount || selectedSongIds.length,
         }),
@@ -104,6 +158,21 @@ export function buildSongListContextMenuItems({
       },
     ];
   }
+
+  const languageChildren: ContextMenuItem[] = [
+    {
+      label: t("library.languageAuto"),
+      onClick: () => setSelectedLanguage(null),
+      indicator: selectedLanguage === null ? "checked" : null,
+    },
+    ...SONG_LANGUAGES.map((lang) => ({
+      label: t(`library.language_${lang}`),
+      onClick: () => setSelectedLanguage(lang),
+      indicator: (selectedLanguage === lang
+        ? "checked"
+        : null) as ContextMenuItem["indicator"],
+    })),
+  ];
 
   return [
     {
@@ -133,6 +202,10 @@ export function buildSongListContextMenuItems({
     {
       label: t("library.fetchLyricsOnline"),
       onClick: fetchLyricsOnline,
+    },
+    {
+      label: t("library.language"),
+      children: languageChildren,
     },
     {
       label: t("library.editInfo"),

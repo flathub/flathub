@@ -95,7 +95,10 @@ describe("lyrics-store saveManualLyrics", () => {
       ]),
     );
 
-    expect(mockRomanizeLyricsLines).toHaveBeenCalledWith(["你好", "世界"]);
+    expect(mockRomanizeLyricsLines).toHaveBeenCalledWith(
+      ["你好", "世界"],
+      null,
+    );
     expect(useLyricsStore.getState().showRomanized).toBe(true);
     expect(useLyricsStore.getState().isRomanizing).toBe(false);
   });

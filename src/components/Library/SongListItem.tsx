@@ -20,6 +20,7 @@ import { ConfirmationDialog } from "../Settings/ConfirmationDialog";
 import { SongEditDialog } from "./SongEditDialog";
 import { SongPropertiesDialog } from "./SongPropertiesDialog";
 import { buildSongListContextMenuItems } from "./song-list-item-menu";
+import { SONG_LANGUAGES, type SongLanguage } from "./song-list-item-menu";
 import type { Song } from "@/types/ipc";
 
 function getSongDisplayName(song: Song): string {
@@ -44,6 +45,7 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
     (s) => s.extractEmbeddedCoverArt,
   );
   const setSongsInstrumental = useLibraryStore((s) => s.setSongsInstrumental);
+  const setSongsLanguage = useLibraryStore((s) => s.setSongsLanguage);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const playSong = usePlayerStore((s) => s.playSong);
   const closeSettings = useSettingsStore((s) => s.close);
@@ -83,6 +85,22 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
   const selectedInstrumentalSongIds = selectedInstrumentalSongs.map(
     (candidate) => candidate.hash,
   );
+  const selectedLanguage: SongLanguage | null =
+    selectedSongIds.size > 0
+      ? (() => {
+          const first = selectedSongs[0]?.language;
+          if (!first || !SONG_LANGUAGES.includes(first as SongLanguage))
+            return null;
+          const allSame = selectedSongs.every(
+            (candidate) => candidate.language === first,
+          );
+          return allSame ? (first as SongLanguage) : null;
+        })()
+      : song.language && SONG_LANGUAGES.includes(song.language as SongLanguage)
+        ? (song.language as SongLanguage)
+        : null;
+  const selectedLanguageSongIds =
+    selectedSongIds.size > 0 ? [...selectedSongIds] : [song.hash];
   const isMultiSelected = selectedSongIds.size > 1 && isSelected;
   const supportsEmbeddedLyrics = song.media_g_container !== "zip";
   const mediaGBadgeLabel =
@@ -346,6 +364,10 @@ export function SongListItem({ song, orderedHashes }: SongListItemProps) {
             selectedHasSeparableSongs,
             selectedCanToggleInstrumentalSongs,
             selectedInstrumentalState,
+            selectedLanguage,
+            setSelectedLanguage: (language) => {
+              void setSongsLanguage(selectedLanguageSongIds, language);
+            },
             supportsEmbeddedLyrics,
             queueAllSelected: () => {
               const queue = useQueueStore.getState();

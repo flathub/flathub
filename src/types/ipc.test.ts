@@ -10,6 +10,7 @@ describe("ipc type shapes", () => {
       cdg_path: null,
       media_g_container: null,
       instrumental: false,
+      language: null,
       title: "Remote Song",
       artist: "Artist",
       album: null,

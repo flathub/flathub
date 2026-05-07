@@ -253,6 +253,7 @@ pub fn run() {
             commands::import::extract_embedded_cover_art,
             commands::import::update_song_metadata,
             commands::import::set_songs_instrumental,
+            commands::import::set_songs_language,
             commands::import::get_song_properties,
             commands::library_setup::create_library,
             commands::library_setup::open_library,

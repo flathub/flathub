@@ -363,6 +363,46 @@ pub fn set_songs_instrumental_in_connection(
 }
 
 #[tauri::command]
+pub fn set_songs_language(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    song_ids: Vec<String>,
+    language: Option<String>,
+) -> CommandResult<Vec<Song>> {
+    let library = state.library_root()?;
+    let connection = cache::open_database(&library.database_path()).map_err(database_error)?;
+
+    remote_library::run_database_then_library_mirror_mutation(&state, &app_handle, || {
+        set_songs_language_in_connection(&connection, &song_ids, language.as_deref())
+    })
+}
+
+pub fn set_songs_language_in_connection(
+    connection: &Connection,
+    song_ids: &[String],
+    language: Option<&str>,
+) -> CommandResult<Vec<Song>> {
+    let mut updated_songs = Vec::with_capacity(song_ids.len());
+
+    for song_id in song_ids {
+        let updated = cache::update_song_language(connection, song_id, language)
+            .map_err(|error| database_error(error.to_string()))?;
+        if updated == 0 {
+            return Err(database_error(format!(
+                "song with hash {song_id} not found"
+            )));
+        }
+
+        let song = cache::get_song_by_hash(connection, song_id)
+            .map_err(|error| database_error(error.to_string()))?
+            .ok_or_else(|| database_error(format!("song with hash {song_id} not found")))?;
+        updated_songs.push(song);
+    }
+
+    Ok(updated_songs)
+}
+
+#[tauri::command]
 pub fn get_song_properties(
     state: State<'_, AppState>,
     song_id: String,

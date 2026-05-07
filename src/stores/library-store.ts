@@ -58,6 +58,10 @@ interface LibraryState {
     songIds: string[],
     instrumental: boolean,
   ) => Promise<boolean>;
+  setSongsLanguage: (
+    songIds: string[],
+    language: string | null,
+  ) => Promise<boolean>;
   extractEmbeddedCoverArt: (songIds: string[]) => Promise<boolean>;
   updateSeparationStatus: (status: SeparationStatusSnapshot) => void;
   clearAllSeparationStatuses: () => void;
@@ -262,6 +266,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         songIds,
         instrumental,
       );
+      const updatedByHash = new Map(
+        updatedSongs.map((song) => [song.hash, song]),
+      );
+
+      set((state) => ({
+        songs: state.songs.map((song) => updatedByHash.get(song.hash) ?? song),
+      }));
+
+      publishLibraryInvalidation();
+
+      return true;
+    } catch (e) {
+      notifyError(e);
+      return false;
+    }
+  },
+
+  setSongsLanguage: async (songIds, language) => {
+    try {
+      const updatedSongs = await api.setSongsLanguage(songIds, language);
       const updatedByHash = new Map(
         updatedSongs.map((song) => [song.hash, song]),
       );

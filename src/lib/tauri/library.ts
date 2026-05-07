@@ -59,6 +59,13 @@ export function setSongsInstrumental(
   return invoke<Song[]>("set_songs_instrumental", { songIds, instrumental });
 }
 
+export function setSongsLanguage(
+  songIds: string[],
+  language: string | null,
+): Promise<Song[]> {
+  return invoke<Song[]>("set_songs_language", { songIds, language });
+}
+
 export function deleteSongs(songIds: string[]): Promise<DeleteSongsResult> {
   return invoke<DeleteSongsResult>("delete_songs", { songIds });
 }

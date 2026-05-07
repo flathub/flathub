@@ -1,5 +1,6 @@
 import { isLatinScript } from "lyric-romanizer/detector";
-import type { Romanizer } from "lyric-romanizer";
+import type { Romanizer, RomanizeOptions } from "lyric-romanizer";
+import type { SongLanguage } from "@/components/Library/song-list-item-menu";
 
 let romanizerPromise: Promise<Romanizer> | null = null;
 
@@ -10,22 +11,30 @@ async function getRomanizer() {
   return romanizerPromise;
 }
 
-export async function romanizeLyricsLines(lines: readonly string[]) {
+function buildOptions(
+  language: SongLanguage | null,
+): RomanizeOptions | undefined {
+  if (language === "cantonese") {
+    return { script: "chinese", dialect: "cantonese" };
+  }
+  return undefined;
+}
+
+export async function romanizeLyricsLines(
+  lines: readonly string[],
+  language?: SongLanguage | null,
+) {
   if (isLatinScript(lines)) {
     return [...lines];
   }
 
   const romanizer = await getRomanizer();
-  // Romanize line-by-line so mixed-language content (e.g. Japanese +
-  // English) doesn't push pure-Latin lines into a non-Latin pipeline.
-  // The library's romanizeLines() picks one global script and applies it
-  // to every line, which sends English lines through Kuroshiro when the
-  // global script is Japanese.
+  const options = buildOptions(language ?? null);
   const result = await Promise.all(
     lines.map(async (line) => {
       if (isLatinScript([line])) return line;
       try {
-        const r = await romanizer.romanizeLines([line]);
+        const r = await romanizer.romanizeLines([line], options);
         return r.lines[0] ?? line;
       } catch {
         return line;

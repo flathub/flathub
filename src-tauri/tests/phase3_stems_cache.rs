@@ -73,6 +73,7 @@ fn sample_song(hash: &str, extension: &str) -> Song {
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+            language: None,
         audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song MP3".to_owned()),
         artist: Some("Fixture Artist".to_owned()),

@@ -663,6 +663,7 @@ mod tests {
             cdg_path: None,
             media_g_container: None,
             instrumental: true,
+            language: None,
             audio_source_kind: "original".to_owned(),
             title: Some("Song".to_owned()),
             artist: None,

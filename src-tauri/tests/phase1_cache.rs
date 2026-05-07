@@ -8,6 +8,7 @@ fn sample_song(hash: &str, title: &str, artist: &str, imported_at: i64) -> Song 
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+            language: None,
         audio_source_kind: "original".to_owned(),
         title: Some(title.to_owned()),
         artist: Some(artist.to_owned()),

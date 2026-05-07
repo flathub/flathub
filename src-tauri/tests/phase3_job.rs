@@ -48,6 +48,7 @@ fn fixture_song(hash: &str, library: &LibraryRoot) -> Song {
         cdg_path: None,
         media_g_container: None,
         instrumental: false,
+            language: None,
         audio_source_kind: "original".to_owned(),
         title: Some("Fixture Song".to_owned()),
         artist: Some("Fixture Artist".to_owned()),
