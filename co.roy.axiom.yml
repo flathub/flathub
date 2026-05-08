@@ -1,0 +1,66 @@
+# Flathub manifest — pre-built-bundle strategy.
+#
+# This manifest extracts the `flutter build linux --release` bundle from
+# a GitHub release asset. The bundle is produced in CI (or locally) and
+# attached to the release; this manifest just stages it into the
+# Flatpak filesystem and wires up the desktop integration.
+#
+# For each new release:
+#   1. Bump version in pubspec.yaml and tag a GitHub release (vX.Y.Z).
+#   2. Attach axiom-linux-x64.tar.gz (the contents of
+#      build/linux/x64/release/bundle, tar -czvf'd from inside that dir).
+#   3. Update the `url` and `sha256` below.
+#   4. Add a <release> entry in co.roy.axiom.metainfo.xml.
+#   5. Test locally with `flatpak-builder` (see flatpak/README.md).
+#   6. Open a PR on flathub/flathub.
+
+app-id: co.roy.axiom
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: axiom
+
+finish-args:
+  # Standard desktop integration.
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Persistent home for the SQLite history DB. path_provider's
+  # getApplicationSupportDirectory() resolves to ~/.local/share/co.roy.axiom
+  # on Linux, so we expose ~/.local/share read/write to that subpath.
+  - --filesystem=xdg-data/co.roy.axiom:create
+  # url_launcher needs to spawn the system browser for the chanunkha.com
+  # link in the welcome / help dialogs.
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  - name: axiom
+    buildsystem: simple
+    build-commands:
+      # Stage the bundle under /app/axiom and expose a launcher on PATH.
+      # The Flutter binary expects `data/` and `lib/` next to itself, so
+      # we don't symlink the binary — we wrap it.
+      - mkdir -p /app/axiom
+      - cp -r bundle/* /app/axiom/
+      - chmod +x /app/axiom/calc
+      - install -Dm755 axiom-launcher /app/bin/axiom
+      - install -Dm644 co.roy.axiom.desktop /app/share/applications/co.roy.axiom.desktop
+      - install -Dm644 co.roy.axiom.metainfo.xml /app/share/metainfo/co.roy.axiom.metainfo.xml
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/co.roy.axiom.png
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/co.roy.axiom.png
+    sources:
+      - type: archive
+        url: https://github.com/Skipper-116/axiom/releases/download/v1.0.0/axiom-linux-x64-1.0.0.tar.gz
+        sha256: fecf3ca2b705b24170120dd4c4532204a5633f50bdcc0b7fbcf6a1f5c8bdfb2c
+        dest: bundle
+      - type: file
+        path: axiom-launcher
+      - type: file
+        path: co.roy.axiom.desktop
+      - type: file
+        path: co.roy.axiom.metainfo.xml
+      - type: file
+        path: icon-256.png
+      - type: file
+        path: icon-512.png
