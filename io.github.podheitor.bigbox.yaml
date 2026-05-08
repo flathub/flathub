@@ -1,0 +1,68 @@
+app-id: io.github.podheitor.bigbox
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: bigbox
+
+finish-args:
+  # Network: required for messaging services and Service Worker fetches.
+  - --share=network
+  - --share=ipc
+  # Display: Wayland preferred, X11 fallback for legacy compositors.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU access for WebKit hardware-accelerated video decoding.
+  - --device=dri
+  # Audio: PipeWire (Pulse fallback handled automatically by xdg-portal).
+  - --socket=pulseaudio
+  # Notifications, file chooser, screen sharing portals.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.Notification
+  # Persistent per-service WebKit data: cookies, localStorage, IndexedDB.
+  - --persist=.local/share/io.github.podheitor.bigbox
+  # Downloads land in the user's Downloads folder.
+  - --filesystem=xdg-download:rw
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  build-args:
+    # Cargo + npm need network for first build inside the sandbox.
+    # Once vendored (see x-vendor below), remove this for offline builds.
+    - --share=network
+  env:
+    CARGO_HOME: /run/build/bigbox/cargo
+    RUST_BACKTRACE: '1'
+
+modules:
+  - name: bigbox
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --manifest-path src-tauri/Cargo.toml
+      # Strip + install binary
+      - install -Dm755 src-tauri/target/release/bigbox /app/bin/bigbox
+      # Desktop entry (uses Flathub-required app-id name)
+      - install -Dm644 flatpak/io.github.podheitor.bigbox.desktop /app/share/applications/io.github.podheitor.bigbox.desktop
+      # Metainfo
+      - install -Dm644 flatpak/io.github.podheitor.bigbox.metainfo.xml /app/share/metainfo/io.github.podheitor.bigbox.metainfo.xml
+      # Icon — install all sizes provided in the repo
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.podheitor.bigbox.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.podheitor.bigbox.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.podheitor.bigbox.png
+      - install -Dm644 frontend/bigbox.svg /app/share/icons/hicolor/scalable/apps/io.github.podheitor.bigbox.svg
+    sources:
+      - type: git
+        url: https://github.com/podheitor/BigBox.git
+        # x-checker-data lets flathub-bot track upstream releases automatically:
+        # whenever a new v* tag appears on GitHub, it opens a PR bumping `tag`
+        # and `commit` here. See https://github.com/flathub/flatpak-external-data-checker
+        x-checker-data:
+          type: anitya
+          project-id: 0  # TODO: register at release-monitoring.org and replace
+          stable-only: true
+          url-template: https://github.com/podheitor/BigBox/archive/refs/tags/v$version.tar.gz
+        tag: v0.1.1
+        commit: 17387c4c2dc09490185246b87bb76d9ca0725eba
