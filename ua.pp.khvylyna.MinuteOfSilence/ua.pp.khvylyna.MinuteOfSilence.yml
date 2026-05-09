@@ -1,0 +1,83 @@
+app-id: ua.pp.khvylyna.MinuteOfSilence
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: MinuteOfSilence
+finish-args:
+  # Graphical access
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  # Environment
+  - --env=LD_LIBRARY_PATH=/app/lib64:/app/lib
+  # Network (needed for NTP sync)
+  - --share=network
+  # Audio (Pulseaudio/Pipewire)
+  - --socket=pulseaudio
+  # MPRIS (Control other media players)
+  - --talk-name=org.mpris.MediaPlayer2.*
+  # Notifications
+  - --talk-name=org.freedesktop.Notifications
+  # System Settings
+  - --metadata=X-DConf=comm/org/gnome/
+  # Allow system tray icons
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Allow autostart
+  - --filesystem=~/.config/autostart:create
+  # Allow Tauri to create temporary tray icon files
+  - --filesystem=xdg-run/tray-icon:create
+
+build-options:
+  env:
+    # Ensure pkg-config and linker find modules in both lib and lib64
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/lib64/pkgconfig
+    LDFLAGS: -L/app/lib64 -L/app/lib
+    LIBRARY_PATH: /app/lib64:/app/lib
+    LD_LIBRARY_PATH: /app/lib64:/app/lib
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: minute-of-silence
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+    build-commands:
+      # Use Rust and Node.js extensions
+      - /usr/lib/sdk/node20/enable.sh
+      - /usr/lib/sdk/rust-stable/enable.sh
+
+      # Build the application
+      - npm install
+      - npm run tauri build -- --no-bundle
+
+      # Create all required directories
+      - mkdir -p /app/bin/audio
+      - mkdir -p /app/share/applications
+      - mkdir -p /app/share/metainfo
+      - mkdir -p /app/share/icons/hicolor/32x32/apps
+      - mkdir -p /app/share/icons/hicolor/128x128/apps
+      - mkdir -p /app/share/icons/hicolor/512x512/apps
+
+      # Install binary and resources
+      - cp src-tauri/target/release/MinuteOfSilence /app/bin/MinuteOfSilence
+      - cp src-tauri/audio/*.ogg /app/bin/audio/
+
+      # Install metadata
+      - cp flatpak/ua.pp.khvylyna.MinuteOfSilence.desktop /app/share/applications/
+      - cp flatpak/ua.pp.khvylyna.MinuteOfSilence.metainfo.xml /app/share/metainfo/
+
+      # Install icons (must match App ID to be exported correctly)
+      - cp src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/ua.pp.khvylyna.MinuteOfSilence.png
+      - cp src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/ua.pp.khvylyna.MinuteOfSilence.png
+      - cp src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/ua.pp.khvylyna.MinuteOfSilence.png
+    sources:
+      - type: git
+        url: https://github.com/ChernegaSergiy/minute-of-silence.git
+        tag: v0.7.8
