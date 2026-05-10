@@ -1,0 +1,75 @@
+app-id: com.savvyworker.lifecounter
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+command: savvy-mtg-life-counter
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+
+modules:
+  - name: savvy-mtg-life-counter
+    buildsystem: simple
+    build-commands:
+      # Extract the AppImage (works on x86_64 Linux — Flathub's build environment)
+      - chmod +x savvy-mtg-life-counter.AppImage
+      - ./savvy-mtg-life-counter.AppImage --appimage-extract
+
+      # Install the Electron runtime + app bundle to /app/lib/
+      # electron-builder AppImages put the binary and .so files at squashfs-root/
+      # alongside usr/share/ for icons and desktop files.
+      - mkdir -p /app/lib/savvy-mtg-life-counter
+      - cp -ra squashfs-root/. /app/lib/savvy-mtg-life-counter/
+      # Remove AppImage-specific files that are not needed inside Flatpak
+      - rm -f /app/lib/savvy-mtg-life-counter/AppRun
+      - rm -f /app/lib/savvy-mtg-life-counter/.DirIcon
+
+      # Install zypak wrapper script — required for Electron inside Flatpak sandbox
+      - install -Dm755 savvy-mtg-life-counter.sh /app/bin/savvy-mtg-life-counter
+
+      # Install icons (renamed to app-ID)
+      - install -Dm644
+        squashfs-root/usr/share/icons/hicolor/512x512/apps/savvy-mtg-life-counter.png
+        /app/share/icons/hicolor/512x512/apps/com.savvyworker.lifecounter.png
+
+      # Install desktop entry (renamed to app-ID)
+      - install -Dm644 com.savvyworker.lifecounter.desktop
+        /app/share/applications/com.savvyworker.lifecounter.desktop
+
+      # Install AppStream metainfo
+      - install -Dm644 com.savvyworker.lifecounter.metainfo.xml
+        /app/share/metainfo/com.savvyworker.lifecounter.metainfo.xml
+
+    sources:
+      # AppImage — downloaded as extra-data at install time (proprietary, not bundled)
+      - type: extra-data
+        filename: savvy-mtg-life-counter.AppImage
+        url: https://github.com/mufniarz/savvy-mtg-life-counter-releases/releases/download/v4.6.0/Savvy-MTG-Life-Counter-v4.6.0-x86_64.AppImage
+        sha256: a8b89b8f7d68ea3a6c7c4557f352f7fe3898c1ab6dd7c09fe5215a5273d88695
+        size: 172891842
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/mufniarz/savvy-mtg-life-counter-releases/releases/latest
+          version-query: .tag_name | ltrimstr("v")
+          url-query: .assets[] | select(.name | endswith("x86_64.AppImage")) | .browser_download_url
+
+      # Wrapper script: uses zypak to run Electron inside the Flatpak sandbox
+      - type: script
+        dest-filename: savvy-mtg-life-counter.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper "/app/lib/savvy-mtg-life-counter/savvy-mtg-life-counter" "$@"
+
+      # Local files included in the submission PR
+      - type: file
+        path: com.savvyworker.lifecounter.desktop
+
+      - type: file
+        path: com.savvyworker.lifecounter.metainfo.xml
