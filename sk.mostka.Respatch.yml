@@ -1,0 +1,81 @@
+app-id: sk.mostka.Respatch
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: respatch
+separate-locales: false
+finish-args:
+    - --share=network
+    - --share=ipc
+    - --socket=fallback-x11
+    - --socket=wayland
+    - --device=dri
+    - --talk-name=org.freedesktop.Notifications
+    - --metadata=X-D-Bus-Python-Terminology-Warning=n/a
+    - --filesystem=xdg-data/respatch:create
+    - --talk-name=org.freedesktop.portal.Desktop
+modules:
+  # 1. Blueprint Compiler
+  - name: blueprint-compiler
+    buildsystem: meson
+    post-install:
+      - install -Dm0644 /run/build/blueprint-compiler/COPYING $FLATPAK_DEST/share/licenses/sk.mostka.Respatch/blueprint-compiler/COPYING
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+        tag: v0.20.4
+        commit: 31b62c24a72c1670d2d93dcdf2d130f1ae12778e
+
+  # 2. esbuild (built from Go source)
+  - name: esbuild
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOROOT: /usr/lib/sdk/golang
+        GOFLAGS: -trimpath
+        GONOSUMDB: '*'
+        GONOSUMCHECK: '*'
+    sources:
+      - type: archive
+        url: https://github.com/evanw/esbuild/archive/refs/tags/v0.21.1.tar.gz
+        sha256: 9999be880afbb0921c9f7947f875f66a32ce8e5f8f1d058a3403719c8d70233f
+      - type: file
+        url: https://proxy.golang.org/golang.org/x/sys/@v/v0.0.0-20220715151400-c0bba94af5f8.zip
+        sha256: 3b180937216e93559f16b6076d09baf54a5707378f11b867b6eb914c56b09b91
+        dest-filename: golang.org-x-sys.zip
+      - type: file
+        url: https://proxy.golang.org/golang.org/x/sys/@v/v0.0.0-20220715151400-c0bba94af5f8.mod
+        sha256: f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024
+        dest-filename: golang.org-x-sys.mod
+    build-commands:
+      - mkdir -p vendor/golang.org/x/sys
+      - unzip -q golang.org-x-sys.zip -d vendor/golang.org/x/sys.tmp
+      - mv vendor/golang.org/x/sys.tmp/golang.org/x/sys@v0.0.0-20220715151400-c0bba94af5f8/* vendor/golang.org/x/sys/
+      - rm -rf vendor/golang.org/x/sys.tmp
+      - cp golang.org-x-sys.mod vendor/golang.org/x/sys/go.mod
+      - printf '# golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8\n## explicit; go 1.17\ngolang.org/x/sys/unix\n' > vendor/modules.txt
+      - go build -mod=vendor -o esbuild ./cmd/esbuild
+      - install -Dm0755 esbuild /app/bin/esbuild
+      - install -Dm0644 LICENSE.md $FLATPAK_DEST/share/licenses/sk.mostka.Respatch/esbuild/LICENSE.md
+
+  # 3. Samotná aplikácia
+  - name: respatch
+    buildsystem: meson
+    build-options:
+      env:
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/respatch/flatpak-node/npm-cache
+    sources:
+      - type: git
+        url: https://github.com/mostka-sk/respatch-gnome.git
+        tag: v1.0.1
+        commit: acef7ea5a2bbf8e8f9f391f52c0ee53f3f727c58
+      - generated-sources.json
+cleanup:
+  - /bin/esbuild
+  - /bin/blueprint-compiler
+  - /share/licenses/sk.mostka.Respatch/esbuild
+  - /share/licenses/sk.mostka.Respatch/blueprint-compiler
