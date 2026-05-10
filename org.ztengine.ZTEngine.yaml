@@ -1,0 +1,93 @@
+app-id: org.ztengine.ZTEngine
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: 02engine-desktop
+separate-locales: false
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # For webcam and microphone access.
+  - --device=all
+  # For importing costumes, sounds, sprites, or list contents using drag and drop.
+  # Can remove when https://github.com/electron/electron/issues/30650 fixed.
+  # Need read-write access as users can also store projects in these places.
+  # We don't want to use --filesystem=home so instead we're listing the most likely
+  # places for people to drop files from.
+  - --filesystem=xdg-download
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-music
+  # For Discord Rich Presence.
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+modules:
+  - name: 02Engine
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/02Engine/desktop.git
+        commit: 4c44c50cfb4896d2073b358658b562acce674816
+      - type: file
+        dest-filename: 02engine-desktop.sh
+        path: 02engine-desktop.sh
+      - electron-sources.json
+      - node-sources.json
+      - library-sources.json
+      - packager-sources.json
+      - microbit-sources.json
+      - extensions-sources.json
+    build-commands:
+      # Finish setting up Node.js dependencies.
+      - ./flatpak-node/finish.sh
+      # Compress library files
+      - |
+        brotli -v flatpak-uncompressed-library-files/*
+        mkdir -pv dist-library-files
+        mv -v flatpak-uncompressed-library-files/*.br dist-library-files
+      # Extract microbit
+      - |
+        cd microbit
+        unzip hex.zip
+        mkdir -pv ../node_modules/scratch-gui/static
+        mv -v *.hex ../node_modules/scratch-gui/static/microbit.hex
+        mkdir -pv ../node_modules/scratch-gui/src/generated
+        echo "module.exports = require('./../../static/microbit.hex');" | tee ../node_modules/scratch-gui/src/generated/microbit-hex-url.cjs
+      # Build extensions
+      - node scripts/prepare-extensions.mjs
+      # Build editor
+      - NODE_ENV=production node node_modules/webpack/bin/webpack.js
+      # Package Electron
+      - |
+        echo "FLATPAK_ARCH: $FLATPAK_ARCH"
+        if [[ "$FLATPAK_ARCH" == "x86_64" ]]; then
+          ARCH_ARGS=--x64
+        elif [[ "$FLATPAK_ARCH" == "aarch64" ]]; then
+          ARCH_ARGS=--arm64
+        else
+          echo "Unknown arch."
+          exit 1
+        fi
+        export ELECTRON_CACHE=flatpak-electron
+        node node_modules/electron-builder/cli.js $ARCH_ARGS --linux --dir --publish never --config.extraMetadata.tw_dist="prod-flathub-$FLATPAK_ARCH"
+      # Copy app files
+      # On x64 the output is linux-unpacked
+      # On aarch64 the output is linux-arm64-unpacked
+      - cp -av dist/linux*unpacked /app/02engine
+      # Copy start script
+      - install -Dm755 02engine-desktop.sh /app/bin/02engine-desktop
+      # Copy metadata
+      - |
+        install -Dm644 art/icon.png /app/share/icons/hicolor/512x512/apps/org.ztengine.ZTEngine.png
+        install -Dm644 linux-files/org.ztengine.ZTEngine.desktop /app/share/applications/org.ztengine.ZTEngine.desktop
+        desktop-file-edit --set-key=Exec --set-value="02engine-desktop %U" /app/share/applications/org.ztengine.ZTEngine.desktop
+        install -Dm644 linux-files/org.ztengine.ZTEngine.mime.xml /app/share/mime/packages/org.ztengine.ZTEngine.mime.xml
+        install -Dm644 linux-files/org.ztengine.ZTEngine.metainfo.xml /app/share/metainfo/org.ztengine.ZTEngine.metainfo.xml
