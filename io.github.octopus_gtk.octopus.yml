@@ -8,6 +8,10 @@ sdk-extensions:
 
 command: octopus
 
+cleanup:
+  - /include
+  - /lib/*.a
+
 finish-args:
   - --share=network
   - --share=ipc
@@ -28,6 +32,8 @@ build-options:
     CARGO_HOME: /run/build/octopus/cargo
     LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
     BINDGEN_EXTRA_CLANG_ARGS: '-I/usr/lib/sdk/llvm21/lib/clang/21/include'
+    CMAKE_INCLUDE_PATH: /app/include
+    CMAKE_LIBRARY_PATH: /app/lib
     GGML_NATIVE: 'ON'
     ORT_SKIP_DOWNLOAD: 'true'
     RUST_BACKTRACE: '1'
@@ -35,17 +41,31 @@ build-options:
 
 modules:
 
-  - name: blueprint-compiler
-    buildsystem: meson
-    cleanup:
-      - '*'
+  - name: sonic
+    buildsystem: simple
+    build-commands:
+      - cc $CFLAGS -fPIC -c sonic.c -o sonic.o
+      - ar rcs libsonic.a sonic.o
+      - install -Dm644 libsonic.a /app/lib/libsonic.a
+      - install -Dm644 sonic.h /app/include/sonic.h
     sources:
       - type: git
-        url: https://gitlab.gnome.org/jwestman/blueprint-compiler.git
-        tag: v0.16.0
-        commit: be7beddc5201b1f5a5af517077dbc7c5390ecce1
+        url: https://github.com/waywardgeek/sonic.git
+        commit: fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104
 
-  - espeak-ng.yml
+  - name: espeak-ng-data
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=OFF
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=YES
+    cleanup:
+      - /bin
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz
+        sha256: bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23
 
   - name: onnxruntime
     buildsystem: simple
@@ -162,10 +182,3 @@ modules:
         url: https://github.com/octopus-gtk/octopus.git
         commit: 47575d12ba6b0346597b0ea215ec7f004f185700
       - cargo-sources.json
-      - type: git
-        url: https://github.com/waywardgeek/sonic.git
-        commit: fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104
-        dest: cargo/vendor/espeak-rs-sys-0.1.9/espeak-ng/sonic
-      - type: patch
-        path: espeak-ng-use-local-sonic.patch
-        dest: cargo/vendor/espeak-rs-sys-0.1.9/espeak-ng
