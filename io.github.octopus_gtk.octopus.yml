@@ -1,0 +1,184 @@
+app-id: io.github.octopus_gtk.octopus
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm21
+
+command: octopus
+
+cleanup:
+  - /include
+  - /lib/*.a
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-download:ro
+  - --filesystem=xdg-documents:ro
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --env=ORT_DYLIB_PATH=/app/lib/libonnxruntime.so
+
+# ── Build options ─────────────────────────────────────────────────────────────
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm21/bin
+  env:
+    CARGO_HOME: /run/build/octopus/cargo
+    LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+    BINDGEN_EXTRA_CLANG_ARGS: '-I/usr/lib/sdk/llvm21/lib/clang/21/include'
+    CMAKE_INCLUDE_PATH: /app/include
+    CMAKE_LIBRARY_PATH: /app/lib
+    GGML_NATIVE: 'ON'
+    ORT_SKIP_DOWNLOAD: 'true'
+    RUST_BACKTRACE: '1'
+    SQLX_OFFLINE: 'true'
+
+modules:
+
+  - name: sonic
+    buildsystem: simple
+    build-commands:
+      - cc $CFLAGS -fPIC -c sonic.c -o sonic.o
+      - ar rcs libsonic.a sonic.o
+      - install -Dm644 libsonic.a /app/lib/libsonic.a
+      - install -Dm644 sonic.h /app/include/sonic.h
+    sources:
+      - type: git
+        url: https://github.com/waywardgeek/sonic.git
+        commit: fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104
+
+  - name: espeak-ng-data
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=OFF
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=YES
+    cleanup:
+      - /bin
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz
+        sha256: bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23
+
+  - name: onnxruntime
+    buildsystem: simple
+    build-commands:
+      - >-
+        ./build.sh
+        --config Release
+        --build_shared_lib
+        --parallel ${FLATPAK_BUILDER_N_JOBS}
+        --skip_tests
+        --skip_submodule_sync
+        --compile_no_warning_as_error
+        --allow_running_as_root
+        --cmake_extra_defines
+        FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
+        onnxruntime_CMAKE_DEPS_MIRROR_DIR=/run/build/onnxruntime/cmake/deps-mirror
+        onnxruntime_USE_KLEIDIAI=OFF
+        onnxruntime_USE_SVE=OFF
+      - mkdir -p /app/lib
+      - cp -a build/Linux/Release/libonnxruntime.so* /app/lib/
+      - chmod 755 /app/lib/libonnxruntime.so*
+      - test -e /app/lib/libonnxruntime.so || ln -sf libonnxruntime.so.1.24.2 /app/lib/libonnxruntime.so
+      - install -Dm644 LICENSE /app/share/licenses/onnxruntime/LICENSE
+      - install -Dm644 ThirdPartyNotices.txt /app/share/licenses/onnxruntime/ThirdPartyNotices.txt
+    sources:
+      - type: git
+        url: https://github.com/microsoft/onnxruntime.git
+        tag: v1.24.2
+        commit: 058787ceead760166e3c50a0a4cba8a833a6f53f
+        disable-submodules: false
+      - type: file
+        url: https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip
+        sha256: b2bdcf6682d8cb53df365bcc5d6c318a22e55821d9978a10fdb61404c026daff
+        dest: cmake/deps-mirror/github.com/abseil/abseil-cpp/archive/refs/tags
+        dest-filename: 20250814.0.zip
+      - type: file
+        url: https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip
+        sha256: f4300b96f7a304d4ef9bf6e0fa3ded72159f7f2d0f605bdde3e030a0dba7cf9f
+        dest: cmake/deps-mirror/github.com/HowardHinnant/date/archive/refs/tags
+        dest-filename: v3.0.1.zip
+      - type: file
+        url: https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip
+        sha256: 14e8b3f03ab7461f56b3fa7ffd4acfb6e6a65f895dc4b50548cab259229afcbd
+        dest: cmake/deps-mirror/github.com/dmlc/dlpack/archive
+        dest-filename: 5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip
+      - type: file
+        url: https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+        sha256: 6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0
+        dest: cmake/deps-mirror/github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33
+        dest-filename: eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+      - type: file
+        url: https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip
+        sha256: 57bd580c0772fd1a726c34ab8bf05325293bc5f9c165060a898afa1feeeb95e1
+        dest: cmake/deps-mirror/github.com/google/flatbuffers/archive/refs/tags
+        dest-filename: v23.5.26.zip
+      - type: file
+        url: https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+        sha256: 40d4ec942217dcc84a9ebe2a68584ada7d4a33a8ee958755763278ea1c5e18ff
+        dest: cmake/deps-mirror/github.com/google/googletest/archive/refs/tags
+        dest-filename: v1.17.0.zip
+      - type: file
+        url: https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.zip
+        sha256: 04022b05d806eb5ff73023c280b68697d12b93e1b7267a0b22a1a39ec7578069
+        dest: cmake/deps-mirror/github.com/nlohmann/json/archive/refs/tags
+        dest-filename: v3.11.3.zip
+      - type: file
+        url: https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip
+        sha256: eb91fcb10a6aa5ccb1d224e07a56c8ecffe9a1bb601fa1848276ec46a2200bfb
+        dest: cmake/deps-mirror/github.com/microsoft/GSL/archive/refs/tags
+        dest-filename: v4.0.0.zip
+      - type: file
+        url: https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip
+        sha256: 81431bdc44c439a324e02c07ed067f8f556419fd86f2d8b486ff568df6aac899
+        dest: cmake/deps-mirror/github.com/boostorg/mp11/archive/refs/tags
+        dest-filename: boost-1.82.0.zip
+      - type: file
+        url: https://github.com/onnx/onnx/archive/refs/tags/v1.20.1.zip
+        sha256: a003e1f628406382c61900db668aa86c27afa8570dde7b9aced159579a443ab7
+        dest: cmake/deps-mirror/github.com/onnx/onnx/archive/refs/tags
+        dest-filename: v1.20.1.zip
+      - type: file
+        url: https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip
+        sha256: 6a31b662deaeb0ac35e6287bda2f3369b19836e6c9f8828d4da444346f420298
+        dest: cmake/deps-mirror/github.com/protocolbuffers/protobuf/archive/refs/tags
+        dest-filename: v21.12.zip
+      - type: file
+        url: https://github.com/pytorch/cpuinfo/archive/403d652dca4c1046e8145950b1c0997a9f748b57.zip
+        sha256: 357d9824b8d3f4c05f0b2287e45b4e0d982422c27b67b968eb23a643dc52b5e2
+        dest: cmake/deps-mirror/github.com/pytorch/cpuinfo/archive
+        dest-filename: 403d652dca4c1046e8145950b1c0997a9f748b57.zip
+      - type: file
+        url: https://github.com/google/re2/archive/refs/tags/2024-07-02.zip
+        sha256: a835fe55fbdcd8e80f38584ab22d0840662c67f2feb36bd679402da9641dc71e
+        dest: cmake/deps-mirror/github.com/google/re2/archive/refs/tags
+        dest-filename: 2024-07-02.zip
+      - type: file
+        url: https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip
+        sha256: 3ffbd9a2fdff45da77da3e7269e9aa512ea43bed5c38ce8fd8f3d1068a032c3f
+        dest: cmake/deps-mirror/github.com/dcleblanc/SafeInt/archive/refs/tags
+        dest-filename: 3.0.28.zip
+
+  - name: octopus
+    buildsystem: meson
+    config-opts:
+      - -Dprofile=
+      - -Dflatpak=true
+    build-options:
+      env:
+        SQLX_OFFLINE: 'true'
+        GGML_NATIVE: 'ON'
+        ORT_SKIP_DOWNLOAD: 'true'
+    sources:
+      - type: git
+        url: https://github.com/octopus-gtk/octopus.git
+        commit: 47575d12ba6b0346597b0ea215ec7f004f185700
+      - cargo-sources.json
