@@ -33,13 +33,10 @@ finish-args:
 
 build-options:
   env:
-    # Ensure pkg-config and linker find modules in both lib and lib64
     PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/lib64/pkgconfig
     LDFLAGS: -L/app/lib64 -L/app/lib
     LIBRARY_PATH: /app/lib64:/app/lib
     LD_LIBRARY_PATH: /app/lib64:/app/lib
-    # Cargo offline build setup
-    CARGO_HOME: /run/build/minute-of-silence/cargo
 
 modules:
   - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
@@ -48,12 +45,14 @@ modules:
     buildsystem: simple
     build-options:
       append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/minute-of-silence/cargo
     build-commands:
       # Use Rust and Node.js extensions
       - /usr/lib/sdk/node20/enable.sh
       - /usr/lib/sdk/rust-stable/enable.sh
 
-      # 1. Setup Rust dependencies offline
+      # 1. Setup Rust dependencies offline using cargo-sources.json
       - python3 cargo-sources.json src-tauri/vendor
       - |
         mkdir -p src-tauri/.cargo
@@ -65,9 +64,11 @@ modules:
         directory = "vendor"
         EOC
 
-      # 2. Build the application
-      # Note: npm install still uses network for now as node-sources.json integration is pending
-      - npm install
+      # 2. Setup Node.js dependencies offline using node-sources.json
+      - python3 node-sources.json
+      - npm install --offline
+
+      # 3. Build the application (binary only)
       - npm run tauri build -- --no-bundle
 
       # Create required directories
