@@ -1,0 +1,315 @@
+app-id: me.proton.Meet
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-proton-meet
+
+# Make Node 22 binaries (node, npm, corepack) available during the build phase.
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+
+finish-args:
+  # Camera and microphone (device nodes under /dev)
+  - --device=all
+  # Shared memory (IPC socket for X11 MIT-SHM)
+  - --share=ipc
+  # Internet access — the whole app talks to meet.proton.me
+  - --share=network
+  # Prefer Wayland; fall back to X11/XWayland when Wayland is unavailable
+  - --socket=fallback-x11
+  - --socket=wayland
+  # libsecret / GNOME Keyring for credential storage
+  - --talk-name=org.freedesktop.secrets
+  # Cursor theming on HiDPI Wayland displays
+  - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
+  # Keep Electron on X11/XWayland until native Wayland is stable (mirrors me.proton.Mail)
+  # https://github.com/flathub/me.proton.Mail/issues/17
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=x11
+
+modules:
+  - name: proton-meet-desktop
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        # XDG cache — flatpak-node-generator populates flatpak-node/ under here
+        XDG_CACHE_HOME: /run/build/proton-meet-desktop/flatpak-node/cache
+        # Yarn 4 global folder — the convertToZip plugin reads pre-downloaded
+        # .tgz packages from $YARN_GLOBAL_FOLDER/cache/locator/ and writes the
+        # converted .zip packages back to $YARN_GLOBAL_FOLDER/cache/.
+        YARN_GLOBAL_FOLDER: /run/build/proton-meet-desktop/flatpak-node/yarn-berry
+        # Yarn Berry offline / telemetry flags
+        YARN_ENABLE_INLINE_BUILDS: "1"
+        YARN_ENABLE_TELEMETRY: "0"
+        YARN_ENABLE_NETWORK: "0"
+        YARN_ENABLE_GLOBAL_CACHE: "0"
+        # Tells webpack (used internally by electron-forge) to build for production
+        NODE_ENV: production
+        # Causes `is-ci` (used in the root postinstall script) to return true,
+        # which short-circuits "is-ci || (husky; yarn run config-app)" and
+        # skips the git-hook installation and config-app steps that fail in a
+        # network-isolated sandbox.
+        CI: "1"
+        # @sentry/cli postinstall tries to download a pre-built sentry-cli
+        # binary from downloads.sentry-cdn.com.  Skip that in the offline
+        # sandbox; the binary is only used for uploading source maps in CI
+        # and is not needed for the desktop app itself.
+        SENTRY_CLI_SKIP_DOWNLOAD: "1"
+        # Yarn 4 auto-enables --immutable when CI=1, which would fail because
+        # our package.json patches (step 1b) change the dep graph relative to
+        # the committed lockfile.  Explicitly disable it.
+        YARN_ENABLE_IMMUTABLE_INSTALLS: "0"
+
+    build-commands:
+      # ── 1. Patch .yarnrc.yml and remove constraints file ─────────────────
+      # Strip private-registry references and the postinstall plugin hook
+      # (which may attempt network access) from the upstream config.  We keep
+      # only the settings that are safe for an offline Flatpak build:
+      #   nodeLinker, yarnPath, compressionLevel.
+      # Also remove yarn.config.cjs: it is the Yarn constraints file that
+      # requires @yarnpkg/types (a root-only dev dep not installed by
+      # `workspaces focus proton-meet-desktop`) and runs automatically as
+      # a post-install validation step.
+      - |
+        python3 -c "
+        import re, pathlib
+        text = pathlib.Path('.yarnrc.yml').read_text()
+        for pat in [
+          r'^httpProxy:.*\n',
+          r'^httpsProxy:.*\n',
+          r'^npmPublishRegistry:.*\n',
+          r'^npmScopes:\n([ \t]+.*\n)*',
+          r'^npmPreapprovedPackages:\n([ \t]+.*\n)*',
+          r'^npmAuditIgnoreAdvisories:\n([ \t]+.*\n)*',
+          r'^npmMinimalAgeGate:.*\n',
+          r'^plugins:\n([ \t]+.*\n)*',
+        ]:
+          text = re.sub(pat, '', text, flags=re.MULTILINE)
+        pathlib.Path('.yarnrc.yml').write_text(text)
+        "
+        rm -f yarn.config.cjs
+        # Remove the root postinstall script ("is-ci || (husky; yarn run config-app)")
+        # which installs git hooks and runs a config fetcher — both fail in the
+        # network-isolated Flatpak sandbox regardless of the CI env var.
+        node -e "
+        const fs = require('fs');
+        const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+        if (pkg.scripts && pkg.scripts.postinstall) {
+          delete pkg.scripts.postinstall;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 4) + '\\n');
+          console.log('Removed postinstall from root package.json');
+        }
+        "
+
+      # ── 1b. Remove unresolvable dependencies from all workspace package.jsons ──
+      # Two categories of deps break `yarn install` in an offline sandbox:
+      #
+      #  (A) Private npm packages not in our offline cache:
+      #        @proton-meet/proton-meet-core  (applications/meet)
+      #        @proton/proton-foundation-search  (applications/drive, lumo)
+      #
+      #  (B) Phantom workspace packages declared as workspace:^ but absent from
+      #      the git tree (vendor/* not committed, wallet wasm submodule, etc.):
+      #        @rowsncolumns/*  (applications/docs-editor)
+      #        @proton/andromeda  (applications/wallet, packages/wallet)
+      #        @proton/collect-metrics  (packages/pack)
+      #        proton-pass-web  (applications/pass-desktop)
+      #
+      # The script below auto-discovers both categories and patches them out.
+      - |
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+        const glob = (dir, results=[]) => {
+          for (const f of fs.readdirSync(dir, {withFileTypes:true})) {
+            const full = path.join(dir, f.name);
+            if (f.isDirectory() && f.name !== 'node_modules' && f.name !== '.git') glob(full, results);
+            else if (f.name === 'package.json') results.push(full);
+          }
+          return results;
+        };
+        const cwd = process.cwd();
+        // Collect all actual workspace package names present in the tree.
+        const wsNames = new Set();
+        for (const p of glob(cwd)) {
+          try { const d = JSON.parse(fs.readFileSync(p,'utf8')); if (d.name) wsNames.add(d.name); } catch {}
+        }
+        // Private npm packages to always strip (not in offline cache).
+        const privateRe = /^(@proton-meet\/|@tpe\/)|^@proton\/proton-foundation-search\$/;
+        let totalRemoved = 0;
+        for (const p of glob(cwd)) {
+          try {
+            const pkg = JSON.parse(fs.readFileSync(p,'utf8'));
+            let changed = false;
+            for (const sec of ['dependencies','devDependencies','peerDependencies']) {
+              for (const dep of Object.keys(pkg[sec] || {})) {
+                const ver = pkg[sec][dep];
+                const isPhantomWs = ver.includes('workspace:') && !wsNames.has(dep);
+                const isPrivateNpm = privateRe.test(dep);
+                if (isPhantomWs || isPrivateNpm) {
+                  const rel = path.relative(cwd, p);
+                  console.log('Removing [' + (isPhantomWs?'phantom ws':'private npm') + '] ' + dep + ' from ' + rel);
+                  delete pkg[sec][dep];
+                  changed = true;
+                  totalRemoved++;
+                }
+              }
+            }
+            if (changed) fs.writeFileSync(p, JSON.stringify(pkg, null, 4) + '\\n');
+          } catch(e) { /* skip unreadable */ }
+        }
+        console.log('Done: removed ' + totalRemoved + ' unresolvable dep(s).');
+        "
+
+      # ── 2. Import flatpak offline-cache plugin ────────────────────────────
+      # The plugin (emitted by flatpak-node-generator) adds a `convertToZip`
+      # subcommand that converts pre-downloaded .tgz packages into the .zip
+      # format that Yarn 4 Berry expects in its cache.
+      - node .yarn/releases/yarn-4.13.0.cjs plugin import $FLATPAK_BUILDER_BUILDDIR/flatpak-node/flatpak-yarn.js
+
+      # ── 3. Convert pre-downloaded tarballs to Yarn 4 cache format ─────────
+      # The second argument is the path to the Yarn binary; the plugin uses it
+      # as `yarnPath` when re-packing any git-sourced packages.
+      - node .yarn/releases/yarn-4.13.0.cjs convertToZip $FLATPAK_BUILDER_BUILDDIR/.yarn/releases/yarn-4.13.0.cjs
+
+      # ── 4. Install all dependencies (offline, full monorepo install) ────────
+      # We use a full `yarn install` rather than `workspaces focus` because
+      # @proton/shared and other packages in the monorepo import from many
+      # sibling workspace packages without declaring them in package.json
+      # (undeclared implicit monorepo dependencies).  A full install resolves
+      # all workspace packages as symlinks regardless of declarations.
+      # Private-registry packages were removed from the workspace package.jsons
+      # in step 1b, so Yarn will not attempt to fetch them.
+      #
+      # --mode=skip-build suppresses all postinstall/prepare lifecycle scripts.
+      # Several packages in the monorepo (canvas, sharp, @sentry/cli, netlify-cli)
+      # have postinstall scripts that try to download pre-built binaries from the
+      # internet and fail in the network-isolated sandbox.  None of those
+      # packages are needed at webpack-compile time for meet-desktop; the
+      # electron-forge build in step 5 is an explicit command, not a lifecycle
+      # script, so it is unaffected by --mode=skip-build.
+      - node .yarn/releases/yarn-4.13.0.cjs install --mode=skip-build
+
+      # ── 4b. Patch @electron/get to skip SHASUMS network verification ──────────
+      # Even when the Electron binary is found in the XDG cache, @electron/get
+      # v2/v3 downloads SHASUMS256.txt fresh over the network (cacheMode:Bypass)
+      # to verify the binary.  This fails in the offline Flatpak sandbox.
+      # Flatpak already verified every source file's SHA256 when downloading,
+      # so skipping this redundant network check is safe.
+      # Replacing !artifactDetails.unsafelyDisableChecksums with false makes the
+      # "if (... && semver.gte(...))" block always false, skipping the check.
+      - |
+        find node_modules -path '*/@electron/get/dist/cjs/index.js' -print0 | \
+        xargs -0 -I{} python3 -c "
+        import sys
+        f = sys.argv[1]
+        src = open(f).read()
+        if 'FLATPAK_PATCHED' not in src:
+            src = src.replace(
+                '!artifactDetails.unsafelyDisableChecksums',
+                'false /* FLATPAK_PATCHED: skip SHASUMS network fetch */'
+            )
+            open(f, 'w').write(src)
+            print('Patched:', f)
+        else:
+            print('Already patched:', f)
+        " {}
+
+      # ── 5. Build ─────────────────────────────────────────────────────
+      # `yarn package` in the meet-desktop workspace calls electron-forge
+      # package, which runs Webpack (TypeScript compilation) and then packages
+      # the result into out/*-linux-{x64,arm64}/ using the pre-cached Electron
+      # binary from the XDG cache ($XDG_CACHE_HOME/electron/).
+      - cd applications/meet-desktop && node ../../.yarn/releases/yarn-4.13.0.cjs package
+
+      # ── 6. Install packaged app ───────────────────────────────────────────
+      - install -dm755 ${FLATPAK_DEST}/lib/proton-meet
+      # The glob matches both *-linux-x64 and *-linux-arm64.
+      # Trailing /. copies directory contents rather than the directory itself.
+      - cp -ra applications/meet-desktop/out/*-linux-*/. ${FLATPAK_DEST}/lib/proton-meet/
+
+      # ── 7. Rename binary ─────────────────────────────────────────────────
+      # electron-forge uses executableName: getName() which produces
+      # "Proton Meet" (with a space).  Rename it to a shell-friendly name;
+      # the launcher wrapper references this renamed binary.
+      - mv "${FLATPAK_DEST}/lib/proton-meet/Proton Meet" ${FLATPAK_DEST}/lib/proton-meet/proton-meet
+
+      # ── 8. Locale symlinks ────────────────────────────────────────────────
+      # Move each <lang>.pak file into share/runtime/locale/<lang>/ so that
+      # Flatpak's separate-locale infrastructure can install them on demand,
+      # then leave a symlink in the original location so Electron still finds
+      # them.  Pattern mirrors me.proton.Mail and Mozilla Firefox.
+      - |
+        for lang in ${FLATPAK_DEST}/lib/proton-meet/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" \
+                 "${FLATPAK_DEST}/lib/proton-meet/locales/$(basename $lang)"
+        done
+
+      # ── 9. Icons ─────────────────────────────────────────────────────────
+      - install -Dm644 applications/meet-desktop/assets/linux/icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/me.proton.Meet.png
+      - install -Dm644 applications/meet-desktop/assets/linux/icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/me.proton.Meet.svg
+
+      # ── 10. Desktop entry ─────────────────────────────────────────────────
+      - install -Dm644 me.proton.Meet.desktop ${FLATPAK_DEST}/share/applications/me.proton.Meet.desktop
+
+      # ── 11. AppStream metadata ─────────────────────────────────────────────
+      - install -Dm644 me.proton.Meet.metainfo.xml ${FLATPAK_DEST}/share/metainfo/me.proton.Meet.metainfo.xml
+
+      # ── 12. License ───────────────────────────────────────────────────────
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/me.proton.Meet/LICENSE
+
+      # ── 13. Launcher wrapper ──────────────────────────────────────────────
+      - install -Dm755 start-proton-meet.sh ${FLATPAK_DEST}/bin/start-proton-meet
+
+    sources:
+      # ── Upstream source ───────────────────────────────────────────────────
+      - type: git
+        url: https://github.com/ProtonMail/WebClients
+        tag: proton-meet@0.4.16.0
+        commit: 022bb2a38d393a8ec1deaa34a80ee4887776b557
+        x-checker-data:
+          type: git
+          tag-pattern: ^proton-meet@([\d.]+)$
+
+      # ── Node/Yarn offline package cache ───────────────────────────────────
+      # Generated with:
+      #   # 1. Check out the WebClients repo at the tagged commit above.
+      #   # 2. Strip private-registry stanzas from yarn.lock (these packages
+      #   #    are only needed by other workspaces, not by meet-desktop):
+      #   python3 strip-private-registry-stanzas.py yarn.lock yarn-public.lock
+      #   # 3. Generate sources:
+      #   flatpak-node-generator yarn yarn-public.lock \
+      #       --max-parallel 16 \
+      #       -o generated-sources.json
+      #
+      # Private stanzas removed from the lockfile before generation:
+      #   @proton-meet/proton-meet-core  (only used by applications/meet)
+      #   @proton/proton-foundation-search  (only used by applications/drive, lumo)
+      #   @tpe/*  (only used by tests/)
+      - generated-sources.json
+
+      # ── Local ancillary files
+      # NOTE: Electron binaries (v39.8.6 + v40.8.5 used by update-electron-app)
+      # are included in generated-sources.json at flatpak-node/cache/electron/
+      # with the XDG hash-based symlinks that @electron/get v2 expects.
+      # XDG_CACHE_HOME points to that directory, so no separate file sources
+      # or ELECTRON_CACHE override are needed. ─────────────────────────────────────────────
+      - type: file
+        path: me.proton.Meet.desktop
+
+      - type: file
+        path: me.proton.Meet.metainfo.xml
+
+      # Thin zypak launcher wrapper (installed to /app/bin/start-proton-meet)
+      - type: script
+        dest-filename: start-proton-meet.sh
+        commands:
+          - exec zypak-wrapper "/app/lib/proton-meet/proton-meet" "$@"
