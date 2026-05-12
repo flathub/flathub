@@ -1,0 +1,96 @@
+app-id: al.raffi.raffi
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.golang
+command: raffi
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-download:ro
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: raffi
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        BUN_INSTALL_CACHE_DIR: /run/build/raffi/bun_cache
+        ELECTRON_CACHE: /run/build/raffi/electron-cache
+        FFMPEG_BIN: /run/build/raffi/ffmpeg-static/ffmpeg
+        GOTOOLCHAIN: local
+        XDG_CACHE_HOME: /run/build/raffi/cache
+        electron_config_cache: /run/build/raffi/electron-cache
+        npm_config_nodedir: /run/build/raffi/electron-headers
+        npm_config_offline: 'true'
+    build-commands:
+      - |
+        set -eu
+        export PATH="/run/build/raffi/bun/bun-linux-x64:/usr/lib/sdk/node24/bin:${PATH}"
+        . /usr/lib/sdk/golang/enable.sh
+
+        mkdir -p /run/build/raffi/ffmpeg-static
+        gzip -dc ffmpeg-linux-x64.gz > "${FFMPEG_BIN}"
+        chmod 755 "${FFMPEG_BIN}"
+        find /run/build/raffi/bun_cache -name package.tgz -exec sh -c '
+          for package do
+            package_dir="$(dirname "$package")"
+            tar --delay-directory-restore --strip-components=1 -xzf "$package" -C "$package_dir"
+            chmod -R u+rwX,go+rX "$package_dir"
+            rm "$package"
+          done
+        ' sh {} +
+        electron_zip="$(find "${ELECTRON_CACHE}" -mindepth 2 -maxdepth 2 -name 'electron-v*-linux-*.zip' -print -quit)"
+        if [ -n "${electron_zip}" ]; then
+          cp "${electron_zip}" "${ELECTRON_CACHE}/$(basename "${electron_zip}")"
+        fi
+
+        cd raffi-desktop
+        bun install --frozen-lockfile --offline
+        bun run server:build
+        bun run build
+        node_modules/.bin/electron-builder --linux --dir
+
+        install -dm755 /app/main
+        cp -a release/linux-unpacked/. /app/main/
+
+        install -Dm755 ../run.sh /app/bin/raffi
+        install -Dm644 ../al.raffi.raffi.desktop /app/share/applications/al.raffi.raffi.desktop
+        install -Dm644 ../al.raffi.raffi.metainfo.xml /app/share/metainfo/al.raffi.raffi.metainfo.xml
+        install -Dm644 build/icons/128x128.png /app/share/icons/hicolor/128x128/apps/al.raffi.raffi.png
+        install -Dm644 build/icons/512x512.png /app/share/icons/hicolor/512x512/apps/al.raffi.raffi.png
+        install -Dm644 LICENSE /app/share/licenses/al.raffi.raffi/raffi/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/kaleidal/raffi.git
+        tag: v0.9.2
+        commit: 789f39549593a8bd4331173520d784fb745d0385
+      - type: file
+        path: run.sh
+      - type: file
+        path: al.raffi.raffi.desktop
+      - type: file
+        path: al.raffi.raffi.metainfo.xml
+      - type: archive
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip
+        sha256: 79c0771fa8b92c33aae41e15a0e0d307ea99d0e2f00317c71c6c53237a78e25a
+        dest: bun
+        strip-components: 0
+      - type: file
+        url: https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz
+        sha256: bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa
+        dest-filename: ffmpeg-linux-x64.gz
+      - bun-sources.json
+      - go-sources.json
