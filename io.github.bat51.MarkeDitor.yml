@@ -1,0 +1,79 @@
+# Flathub manifest for MarkeDitor.
+#
+# Differences from the sideload-friendly manifest in ../ :
+# - builds from source via org.freedesktop.Sdk.Extension.dotnet8 instead of
+#   unpacking a prebuilt release tarball (Flathub policy);
+# - resolves NuGet packages from an offline mirror produced by
+#   flatpak-dotnet-generator.py (nuget-sources.json);
+# - pins the source commit so the build is reproducible.
+
+app-id: io.github.bat51.MarkeDitor
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+command: markeditor
+
+finish-args:
+  - --share=ipc
+  - --share=network            # update check against github.com
+  - --socket=x11               # Avalonia 11.0 has no native Wayland backend; XWayland is fine
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home          # users routinely keep notes anywhere under $HOME
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-pictures
+
+build-options:
+  append-path: /usr/lib/sdk/dotnet8/bin
+  prepend-ld-library-path: /usr/lib/sdk/dotnet8/lib
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    DOTNET_NOLOGO: "1"
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+    NUGET_PACKAGES: /run/build/markeditor/nuget-packages
+
+modules:
+  - name: markeditor
+    buildsystem: simple
+    build-commands:
+      # Hydrate the offline NuGet cache that ./nuget-sources.json populated.
+      - mkdir -p "$NUGET_PACKAGES"
+      - dotnet restore MarkeDitor/MarkeDitor.csproj
+          --source ./nuget-sources
+          --runtime linux-x64
+      # Self-contained: .NET runtime is bundled because the Freedesktop
+      # runtime does not provide one. This is the standard approach for
+      # .NET apps on Flathub.
+      - dotnet publish MarkeDitor/MarkeDitor.csproj
+          -c Release -r linux-x64
+          --no-restore
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:DebugType=embedded
+          -o publish-out
+      # Drop the binaries in /app/share, expose a launcher in /app/bin.
+      - mkdir -p /app/share/markeditor
+      - cp -a publish-out/. /app/share/markeditor/
+      - chmod +x /app/share/markeditor/MarkeDitor
+      - install -Dm755 markeditor.sh /app/bin/markeditor
+      # Icon, .desktop entry, AppStream metainfo.
+      - install -Dm644 MarkeDitor/Assets/app.png
+          /app/share/icons/hicolor/256x256/apps/io.github.bat51.MarkeDitor.png
+      - install -Dm644 io.github.bat51.MarkeDitor.desktop
+          /app/share/applications/io.github.bat51.MarkeDitor.desktop
+      - install -Dm644 io.github.bat51.MarkeDitor.metainfo.xml
+          /app/share/metainfo/io.github.bat51.MarkeDitor.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Bat51/MarkeDitor.git
+        tag: v1.1.0
+        commit: ed622f5630d87ed71dbc299f7447d263df519b48
+      - nuget-sources.json
+      - type: file
+        path: markeditor.sh
+      - type: file
+        path: io.github.bat51.MarkeDitor.desktop
+      - type: file
+        path: io.github.bat51.MarkeDitor.metainfo.xml
