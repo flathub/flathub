@@ -1,0 +1,88 @@
+app-id: com.aburasha.synsman
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: syns-man
+separate-locales: false
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU acceleration (Electron / chromium)
+  - --device=dri
+  # Network: SSH/SFTP connections + GitHub update check
+  - --share=network
+  # Home directory: read SSH keys from ~/.ssh, app data
+  - --filesystem=home
+  # System notifications (update banner)
+  - --talk-name=org.freedesktop.Notifications
+  # System tray (optional)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Allow opening URLs in the default browser
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  - name: syns-man
+    buildsystem: simple
+
+    build-commands:
+      # Make AppImage executable and extract it
+      - chmod +x SYNS.Man-1.0.23.AppImage
+      - ./SYNS.Man-1.0.23.AppImage --appimage-extract
+
+      # Install extracted app
+      - mkdir -p /app/lib/syns-man
+      - cp -r squashfs-root/. /app/lib/syns-man/
+      - chmod -R u+w /app/lib/syns-man
+
+      # Remove bundled Electron (base app provides it)
+      - rm -f /app/lib/syns-man/electron
+      - rm -f /app/lib/syns-man/libEGL.so
+      - rm -f /app/lib/syns-man/libGLESv2.so
+      - rm -f /app/lib/syns-man/libffmpeg.so
+      - rm -f /app/lib/syns-man/libvk_swiftshader.so
+      - rm -f /app/lib/syns-man/libvulkan.so.1
+      - rm -f /app/lib/syns-man/chrome-sandbox
+      - rm -f /app/lib/syns-man/chrome_crashpad_handler
+
+      # Install launcher wrapper
+      - install -Dm755 syns-man.sh /app/bin/syns-man
+
+      # Desktop entry
+      - install -Dm644 com.aburasha.synsman.desktop
+          /app/share/applications/com.aburasha.synsman.desktop
+
+      # AppStream metainfo
+      - install -Dm644 com.aburasha.synsman.metainfo.xml
+          /app/share/metainfo/com.aburasha.synsman.metainfo.xml
+
+      # Icon (512x512 from extracted AppImage)
+      - install -Dm644 squashfs-root/resources/app/renderer/assets/icon.png
+          /app/share/icons/hicolor/512x512/apps/com.aburasha.synsman.png
+
+    sources:
+      # Pre-built AppImage from GitHub Releases
+      # After each new release, update the URL and sha256:
+      #   wget -O SYNS.Man-X.Y.Z.AppImage "https://github.com/aljailane/syns-man/releases/download/vX.Y.Z/SYNS.Man-X.Y.Z.AppImage"
+      #   sha256sum SYNS.Man-X.Y.Z.AppImage
+      - type: file
+        url: https://github.com/aljailane/syns-man/releases/download/v1.0.23/SYNS.Man-1.0.23.AppImage
+        sha256: 8a9655c78767458de08ad036e3646d087ee3f01daad21549a23e62e4d35c8e72
+        dest-filename: SYNS.Man-1.0.23.AppImage
+
+      # Launcher script: runs the app through the base-app Electron binary
+      - type: script
+        dest-filename: syns-man.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/lib/syns-man/resources/app.asar --no-sandbox "$@"
+
+      - type: file
+        path: com.aburasha.synsman.desktop
+
+      - type: file
+        path: com.aburasha.synsman.metainfo.xml
