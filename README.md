@@ -4,14 +4,6 @@ This directory contains Raffi's Flatpak packaging.
 
 `al.raffi.raffi.yml` is the source-built Flathub submission manifest. It declares the app source, Bun/npm dependencies, Go modules, Electron downloads, Bun, and ffmpeg as Flatpak sources so the build can run without network access.
 
-`al.raffi.raffi.local.yml` is only for local smoke testing from `release/linux-unpacked`.
-
-```sh
-cd raffi-desktop
-flatpak/build-local.sh
-flatpak run al.raffi.raffi
-```
-
 Regenerate dependency source manifests after changing `bun.lock`, `go.mod`, or `go.sum`:
 
 ```sh
