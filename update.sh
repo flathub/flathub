@@ -3,9 +3,6 @@
 # Update to a new Grist version
 #
 
-# pyodide versions we are using (may be different from upstream, for packaging reasons)
-PYODIDE_VERSION=0.28.1
-
 # Command-line arguments
 DESKTOP_VERSION="$1"
 CORE_VERSION="$2"
@@ -43,7 +40,13 @@ fi
 
 # Update
 DESKTOP_ARCHIVE_URL="https://github.com/gristlabs/grist-desktop/archive/refs/tags/${DESKTOP_VERSION}.tar.gz"
-CORE_ARCHIVE_URL="https://github.com/gristlabs/grist-core/archive/refs/tags/${CORE_VERSION}.tar.gz"
+if [ `echo "${CORE_VERSION}" | head -c1` = "v" ]; then
+  # version tag
+  CORE_ARCHIVE_URL="https://github.com/gristlabs/grist-core/archive/refs/tags/${CORE_VERSION}.tar.gz"
+else
+  # commit hash
+  CORE_ARCHIVE_URL="https://github.com/gristlabs/grist-core/archive/${CORE_VERSION}.tar.gz"
+fi
 
 echo "** Downloading source archives" 2>&1
 curl -L -s "${DESKTOP_ARCHIVE_URL}" >_grist-desktop.tar.gz
@@ -58,24 +61,17 @@ tar -x -z -f _grist-core.tar.gz --wildcards 'grist-core-*/yarn.lock' -O >_grist-
 flatpak-node-generator yarn -o generated-sources-core.json _grist-core-yarn.lock
 
 echo "** Updating worker yarn sources" 2>&1
-mkdir _worker
-tar -x -z -f _grist-core.tar.gz --strip-components 3 -C _worker --wildcards 'grist-core-*/sandbox/pyodide'
-jq '.dependencies = {}' <pyodide-worker-package.json >_worker/package.json
-(cd _worker && ./setup.sh)
-(cd _worker/_build/worker && cat package.json | jq ".dependencies.pyodide |= \"${PYODIDE_VERSION}\"" > package.json.new && mv package.json.new package.json)
-yarn install --cwd _worker/_build/worker
-cp _worker/_build/worker/package.json pyodide-worker-package.json
-cp _worker/_build/worker/yarn.lock pyodide-worker-yarn.lock
-flatpak-node-generator yarn -o generated-sources-worker.json pyodide-worker-yarn.lock
+tar -x -z -f _grist-core.tar.gz --wildcards 'grist-core-*/sandbox/pyodide/worker/yarn.lock' -O >_pyodide-worker-yarn.lock
+flatpak-node-generator yarn -o generated-sources-worker.json _pyodide-worker-yarn.lock
 
 # update manifest
 echo "** Updating manifest" 2>&1
 DESKTOP_ARCHIVE_HASH=`openssl sha256 _grist-desktop.tar.gz | sed 's/^.*=\\s*//'`
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/archive/")) | .[].url) |= "'"${DESKTOP_ARCHIVE_URL}"'"' com.getgrist.grist.yml
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/archive/")) | .[].sha256) |= "'"${DESKTOP_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/")) | .[].url) |= "'"${DESKTOP_ARCHIVE_URL}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-desktop/")) | .[].sha256) |= "'"${DESKTOP_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
 CORE_ARCHIVE_HASH=`openssl sha256 _grist-core.tar.gz | sed 's/^.*=\\s*//'`
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/archive/")) | .[].url) |= "'"${CORE_ARCHIVE_URL}"'"' com.getgrist.grist.yml
-yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/archive/")) | .[].sha256) |= "'"${CORE_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/")) | .[].url) |= "'"${CORE_ARCHIVE_URL}"'"' com.getgrist.grist.yml
+yq -i '(.modules | filter(.name == "grist") | .[].sources | filter(.url | contains("gristlabs/grist-core/")) | .[].sha256) |= "'"${CORE_ARCHIVE_HASH}"'"' com.getgrist.grist.yml
 
 # pyodide packages build step
 # note dependencies are pip-compiled, so have their version specified with ==
@@ -91,5 +87,4 @@ flatpak_pip_generator packaging setuptools_scm flit_core -o generated-sources-py
 
 # cleanup intermediate files
 echo "** Cleaning up" 2>&1
-rm -Rf _worker
-rm -f _grist-desktop.tar.gz _grist-core.tar.gz _grist-desktop-yarn.lock _grist-core-yarn.lock _pyodide-packages.jsonl _requirements.txt
+rm -f _grist-desktop.tar.gz _grist-core.tar.gz _grist-desktop-yarn.lock _grist-core-yarn.lock _pyodide-packages.jsonl _requirements.txt _pyodide-worker-yarn.lock

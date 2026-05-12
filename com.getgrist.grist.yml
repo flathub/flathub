@@ -11,7 +11,8 @@ separate-locales: false
 finish-args:
   - --share=ipc
   - --device=dri
-  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
   - --socket=pulseaudio
   - --share=network
   - --filesystem=~/.grist
@@ -37,11 +38,11 @@ modules:
       - yarn install --offline
       # Prepare build environment
       - mkdir -p core/python/bin && ln -s `which python3` core/python/bin/ # use system Python
-      - | # use supplied yarn.lock to install deno and pyodide offline
-        cd core/sandbox/pyodide/_build/worker
+      - |
+        cd core/sandbox/pyodide/worker
         HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
         yarn install --offline
-      - PATH=$PATH:$PWD/core/sandbox/pyodide/_build/worker scripts/setup.sh
+      - scripts/setup.sh
       # Build the app
       - yarn build
       - |
@@ -52,50 +53,25 @@ modules:
       # Install app wrapper
       - install -Dm755 -t /app/bin/ ../grist-desktop
       # Install AppStream metadata
-      - install -Dm644 com.getgrist.grist.metainfo.xml /app/share/metainfo/com.getgrist.grist.metainfo.xml
+      - install -Dm644 metadata/com.getgrist.grist.metainfo.xml /app/share/metainfo/com.getgrist.grist.metainfo.xml
       # Install desktop file and icon
-      - install -Dm644 com.getgrist.grist.desktop /app/share/applications/com.getgrist.grist.desktop
+      - install -Dm644 metadata/com.getgrist.grist.desktop /app/share/applications/com.getgrist.grist.desktop
       - install -Dm644 core/static/icons/grist.svg /app/share/icons/hicolor/scalable/apps/com.getgrist.grist.svg
-      - install -Dm644 com.getgrist.grist-mime.xml /app/share/mime/packages/com.getgrist.grist.xml
+      - install -Dm644 metadata/com.getgrist.grist-mime.xml /app/share/mime/packages/com.getgrist.grist.xml
     subdir: main
     sources:
       # grist
       - type: archive
-        url: https://github.com/gristlabs/grist-desktop/archive/refs/tags/v0.3.11.tar.gz
-        sha256: "dbbe7dba2945eb85972a8a3e53cc0376fb4387da0a19b17df3b42264e10c1e43"
+        url: https://github.com/gristlabs/grist-desktop/archive/refs/tags/v0.3.12.tar.gz
+        sha256: "4b73fe46d413363a6d0ed95256cd3570385b997f9750a6a51b3a62c528f2f7d9"
         dest: main
       - type: archive
-        url: https://github.com/gristlabs/grist-core/archive/refs/tags/v1.7.12.tar.gz
-        sha256: "690875fe9187906b37dcffd16f64511fe0399f3b4b7fb27ac5c1b0d52abeb86d"
+        url: https://github.com/gristlabs/grist-core/archive/7992c47b6b78b7b96d2fcf90ae8882cbccaf7249.tar.gz
+        sha256: "789e7c00324c9256abfa2bb926d76b5207b4e1bf5c99013f45bfce494724a329"
         dest: main/core
-      # use lockfile instead of 'yarn install' for one part in the setting up the build environment
-      - type: file
-        path: pyodide-worker-package.json
-        dest: main/core/sandbox/pyodide/_build/worker/
-        dest-filename: package.json
-      - type: file
-        path: pyodide-worker-yarn.lock
-        dest: main/core/sandbox/pyodide/_build/worker/
-        dest-filename: yarn.lock
       # skip pyodide packages, as they are installed in another build setp
       - type: patch
         path: patches/skip-fetch-pyodide-packages.patch
-      # allow disabling update menu item (has been merged upstream, but not yet in this release)
-      - type: patch
-        path: patches/disable-update.patch
-      # metadata (will be part of source tarball in next release)
-      - type: file
-        url: https://github.com/gristlabs/grist-desktop/raw/refs/heads/main/metadata/com.getgrist.grist.desktop
-        sha256: d9868b0435e9edffa62ee1811dc49cb1a6b73bbd9a7f4383a89e03142a11fc22
-        dest: main
-      - type: file
-        url: https://github.com/gristlabs/grist-desktop/raw/refs/heads/main/metadata/com.getgrist.grist.metainfo.xml
-        sha256: 685ec6283b15028b3b2b374ce1cf19ec6d52d481e5deee08171fa5f866ce9af3
-        dest: main
-      - type: file
-        url: https://github.com/gristlabs/grist-desktop/raw/refs/heads/main/metadata/com.getgrist.grist-mime.xml
-        sha256: ff7b7f442655e33df9536252b0e0ec9abb2deec5909704a547244dff4b17476a
-        dest: main
       # yarn packages
       - generated-sources-worker.json
       - generated-sources-desktop.json
@@ -105,7 +81,7 @@ modules:
         dest-filename: grist-desktop
         commands:
           - zypak-wrapper.sh /app/main/grist-desktop "$@"
-  # Python packages for when running with GRIST_SANDBOX_FLAVOR=nosandbox
+  # Python packages for when running with GRIST_SANDBOX_FLAVOR=unsandboxed
   # needs to happen before pyodide-packages to avoid Python dependency / cleanup issues
   - name: nosandbox-packages
     buildsystem: simple
