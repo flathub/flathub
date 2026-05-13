@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Inversée - Reverse Polish Notation calculator
+# Copyright (C) 2026 Benjamin Bellamy <benjamin@castopod.org>
+
+app-id: fr.benjaminbellamy.Inversee
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.vala
+command: inversee
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # No --share=network: Inversée must work fully offline.
+
+build-options:
+  append-path: /usr/lib/sdk/vala/bin
+  prepend-ld-library-path: /usr/lib/sdk/vala/lib
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/aclocal
+  - /share/info
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: gmp
+    build-options:
+      # GCC 15 (the default in freedesktop SDK 25.08) interprets a
+      # function declared with an empty parameter list "g()" as
+      # taking zero arguments, per C23. GMP 6.3.0's autoconf test
+      # program uses K&R-style empty parameter lists and calls them
+      # with arguments, so the "long long reliability test 1" probe
+      # never compiles. Pin the C standard to gnu17 for this module
+      # so the older interpretation ("unspecified arguments") is
+      # restored. We append rather than replace, so the SDK's
+      # hardening CFLAGS still apply.
+      cflags: -std=gnu17
+      cxxflags: -std=gnu++17
+    config-opts:
+      - --enable-cxx
+      - --disable-static
+      - --with-pic
+    sources:
+      - type: archive
+        url: https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+        mirror-urls:
+          - https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+        sha256: a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898
+
+  - name: mpfr
+    build-options:
+      # Same C23 vs K&R issue as gmp above. MPFR 4.2.1 predates the
+      # change in GCC 15 defaults, so pin gnu17 here too.
+      cflags: -std=gnu17
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.xz
+        sha256: 277807353a6726978996945af13e52829e3abd7a9a5b7fb2793894e18f1fcbb2
+
+  - name: inversee
+    buildsystem: meson
+    config-opts:
+      - -Dtests=true
+      - -Dprofile=default
+    sources:
+      - type: git
+        url: https://github.com/benjaminbellamy/inversee.git
+        tag: '1.0.2'
+        commit: b16a6f8835e295166d0d258c6ee0a55cf01ace9d
