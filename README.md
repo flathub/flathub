@@ -1,7 +1,7 @@
 id: org.nolimitconnect.NoLimitConnect
 
 runtime: org.kde.Platform
-runtime-version: '6.9'
+runtime-version: '6.10'
 sdk: org.kde.Sdk
 
 command: nolimitconnect
@@ -19,23 +19,11 @@ finish-args:
   - --share=network
   - --share=ipc
 
-  # Files (user-controlled)
-  - --filesystem=xdg-download
-  - --filesystem=xdg-pictures
-  - --filesystem=xdg-videos
-
 cleanup:
   - '*.a'
   - '*.o'
 
 modules:
-    ########################
-    # GLU 
-    ########################
-    # built in project instead of as submodule - shared-modules/glu/glu-9.json
-    ########################
-    # No Limit Connect
-    ########################  
   - name: nolimitconnect
     buildsystem: cmake-ninja
     config-opts:
@@ -46,7 +34,7 @@ modules:
       # v1.1.1 release source for Flathub submission
       - type: archive
         url: https://github.com/nolimitconnect/NoLimitConnect/archive/88d20b46b6051c094f6219a0a2ae91b7d0e18eb6.tar.gz
-        sha256: A96C4EE3D9EE01F61EE7D9960DE05A701DECF07C0CC189C798CA45540AE2AE38
+        sha256: a96c4ee3d9ee01f61ee7d9960de05a701decf07c0cc189c798ca45540ae2ae38
 
 
 
