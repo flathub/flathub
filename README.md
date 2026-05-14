@@ -1,40 +1,13 @@
-id: org.nolimitconnect.NoLimitConnect
+Find out more at the website nolimitconnect.org
+source code available at https://github.com/nolimitconnect/NoLimitConnect
 
-runtime: org.kde.Platform
-runtime-version: '6.10'
-sdk: org.kde.Sdk
+NoLimitConnect is a social app built around real connection: chat, media sharing, voice, and video, without the noise and lock-in of mainstream platforms.
 
-command: nolimitconnect
+User-Controlled Infrastructure: Lets anyone host their own social network, group, or chat room.
+Hybrid P2P/Relay Architecture: Uses user-hosted nodes to list communities and act as relays for users behind restrictive firewalls (no port-forwarding required).
+Privacy First: Designed for security, zero spam, and no data collection.
 
-finish-args:
-  # Display
-  - --socket=wayland
-  - --socket=fallback-x11
 
-  # Audio / Video
-  - --socket=pulseaudio
-  - --device=dri
-
-  # Network & IPC
-  - --share=network
-  - --share=ipc
-
-cleanup:
-  - '*.a'
-  - '*.o'
-
-modules:
-  - name: nolimitconnect
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DFLATPAKBUILD=ON
-
-    sources:
-      # v1.1.1 release source for Flathub submission
-      - type: archive
-        url: https://github.com/nolimitconnect/NoLimitConnect/archive/88d20b46b6051c094f6219a0a2ae91b7d0e18eb6.tar.gz
-        sha256: a96c4ee3d9ee01f61ee7d9960de05a701decf07c0cc189c798ca45540ae2ae38
 
 
 
