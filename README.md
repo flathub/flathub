@@ -1,8 +1,8 @@
 # org.freedesktop.Sdk.Extension.podman
 
-This extension adds Podman support to Flatpak.
+This extension adds Podman support for Flatpak applications.
 
-For example, to opt-in for Podman (`podman-remote`) support, set the following environment variable:
+To opt-in for Podman (`podman-remote`) support, set the following environment variable per application:
 
 ```bash
 FLATPAK_ENABLE_SDK_EXT=podman
@@ -22,6 +22,8 @@ To use with [VSCode](https://github.com/flathub/com.visualstudio.code), run comm
 "dev.containers.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote",
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
 ```
+
+Restart the editor to apply changes.
 
 ## Build
 
