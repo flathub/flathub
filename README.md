@@ -8,7 +8,7 @@ To use the Podman SDK, set the following environment variable per application:
 FLATPAK_ENABLE_SDK_EXT=podman
 ```
 
-Make sure to enable the podman.socket and grant access when needed:
+For applications that require Podman socket support:
 
 ```bash
 systemctl --user enable podman.socket --now
