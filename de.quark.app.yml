@@ -1,0 +1,70 @@
+app-id: de.quark.app
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: quark
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/quark/cargo
+    CARGO_NET_OFFLINE: 'true'
+    npm_config_cache: /run/build/quark/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+
+modules:
+  - name: quark
+    buildsystem: simple
+    build-options:
+      env: {}
+    build-commands:
+      - . /usr/lib/sdk/rust-stable/enable.sh
+      - . /usr/lib/sdk/node20/enable.sh
+
+      # Frontend bauen
+      - cd src/frontend && npm ci --offline
+      - cd src/frontend && npm run build
+
+      # Tauri / Rust-Binary bauen
+      - cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      # Binary installieren
+      - install -Dm755 src-tauri/target/release/quark /app/bin/quark
+
+      # Desktop-Integration
+      - install -Dm644 de.quark.app.desktop /app/share/applications/de.quark.app.desktop
+      - install -Dm644 src-tauri/icons/128x128.png
+          /app/share/icons/hicolor/128x128/apps/de.quark.app.png
+      - install -Dm644 src-tauri/icons/256x256.png
+          /app/share/icons/hicolor/256x256/apps/de.quark.app.png
+      - install -Dm644 src-tauri/icons/quark-icon.svg
+          /app/share/icons/hicolor/scalable/apps/de.quark.app.svg
+      - install -Dm644 de.quark.app.metainfo.xml
+          /app/share/metainfo/de.quark.app.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/nicolettas-muggelbude/quark
+        tag: v1.0.1
+        commit: 9469471c0246ed1f9a4c35c76dbc2339b759ff6f
+
+      - type: file
+        path: de.quark.app.desktop
+
+      - type: file
+        path: de.quark.app.metainfo.xml
+
+      - node-sources-frontend.json
+      - cargo-sources.json
