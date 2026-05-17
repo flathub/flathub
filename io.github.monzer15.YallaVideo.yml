@@ -1,0 +1,91 @@
+app-id: io.github.monzer15.YallaVideo
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: yalla-video
+separate-locales: false
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    npm_config_nodedir: /usr/lib/sdk/node22
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-music
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: yalla-video
+    buildsystem: simple
+    build-options:
+      env:
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/yalla-video/flatpak-node/npm-cache
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        ELECTRON_BUILDER_OFFLINE: '1'
+    build-commands:
+      # Drop config keys that reference files not present in the source mirror.
+      - jq 'del(.build.afterSign, .build.extraResources)' package.json > package.json.tmp && mv package.json.tmp package.json
+      # Install npm deps from the pre-fetched offline cache.
+      - HOME=$PWD npm ci --offline --no-fund --no-audit
+      # Place the Electron prebuilt binary where Electron expects it.
+      # The wildcard matches whichever arch zip was fetched.
+      - mkdir -p node_modules/electron/dist
+      - unzip -q electron-v35.7.5-linux-*.zip -d node_modules/electron/dist/
+      - echo 'v35.7.5' > node_modules/electron/dist/version
+      - touch node_modules/electron/path.txt
+      # Build renderer + main process.
+      - npm run build
+      # Package an unpacked Linux build, using the pre-placed Electron dist
+      # so electron-builder doesn't try to fetch it from GitHub.
+      - HOME=$PWD npx electron-builder --linux dir
+          --config.npmRebuild=false
+          --config.electronDist=node_modules/electron/dist
+          --config.electronVersion=35.7.5
+      # Copy the unpacked app into /app/yalla-video.
+      - install -d "${FLATPAK_DEST}/yalla-video"
+      - cp -a release/linux-unpacked/. "${FLATPAK_DEST}/yalla-video/"
+      - rm -f "${FLATPAK_DEST}/yalla-video/chrome-sandbox"
+      # Wrapper script that launches Electron under zypak.
+      - install -Dm755 yalla-video.sh "${FLATPAK_DEST}/bin/yalla-video"
+      # Desktop integration from upstream metadata.
+      - install -Dm644 flatpak/io.github.monzer15.YallaVideo.desktop "${FLATPAK_DEST}/share/applications/io.github.monzer15.YallaVideo.desktop"
+      - install -Dm644 flatpak/io.github.monzer15.YallaVideo.metainfo.xml "${FLATPAK_DEST}/share/metainfo/io.github.monzer15.YallaVideo.metainfo.xml"
+      - install -Dm644 flatpak/io.github.monzer15.YallaVideo.png "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.monzer15.YallaVideo.png"
+      - install -Dm644 flatpak/io.github.monzer15.YallaVideo-512.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.monzer15.YallaVideo.png"
+      - install -Dm644 LICENSE "${FLATPAK_DEST}/share/licenses/io.github.monzer15.YallaVideo/LICENSE"
+    sources:
+      - type: git
+        url: https://github.com/monzer15/YallaVideo.git
+        commit: 4c6023df18a85d12c8ebdd790d0dca7e55215125
+
+      - generated-sources.json
+
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v35.7.5/electron-v35.7.5-linux-x64.zip
+        sha256: 368d155a2189e1056d111d334b712779e77066fce1f5ab935b22c4ef544eaa29
+        only-arches:
+          - x86_64
+
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v35.7.5/electron-v35.7.5-linux-arm64.zip
+        sha256: 35c4c30aed2639a38fafa6bd1a6a97b3af89a681afbd5c7a0f40673859040ea3
+        only-arches:
+          - aarch64
+
+      - type: script
+        dest-filename: yalla-video.sh
+        commands:
+          - exec zypak-wrapper "/app/yalla-video/yalla-video" --ozone-platform-hint=auto "$@"
