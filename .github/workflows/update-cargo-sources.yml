@@ -1,0 +1,121 @@
+name: Update cargo sources on version bump
+
+# Fires automatically when Flathub's external-data-checker pushes a
+# version-bump commit that touches the manifest (tag + dist URL change).
+# Also available as a manual workflow_dispatch for re-runs and debugging.
+on:
+  push:
+    branches-ignore:
+      - master
+    paths:
+      - me.proton.Authenticator.yml
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to regenerate sources on (defaults to current branch)
+        required: false
+
+# Serialise runs per branch so two rapid pushes don't both try to commit.
+# A newer push supersedes an older in-progress run.
+concurrency:
+  group: update-cargo-sources-${{ inputs.branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 2
+
+      - name: Check whether regeneration is needed
+        id: need-regen
+        run: |
+          NEW_TAG=$(grep -oP '(?<=tag: )proton-authenticator@[\d.]+' me.proton.Authenticator.yml || true)
+          PREV_TAG=$(git show HEAD~1:me.proton.Authenticator.yml 2>/dev/null \
+            | grep -oP '(?<=tag: )proton-authenticator@[\d.]+' || true)
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          if [ -z "$NEW_TAG" ]; then
+            echo "No tag found in manifest — skipping." >&2
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif [ "$NEW_TAG" = "$PREV_TAG" ] && [ "${{ github.event_name }}" = "push" ]; then
+            echo "Tag unchanged ($NEW_TAG) — skipping." >&2
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag changed: $PREV_TAG -> $NEW_TAG — regenerating." >&2
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sparse-clone WebClients at new tag
+        if: steps.need-regen.outputs.needed == 'true'
+        run: |
+          TAG="${{ steps.need-regen.outputs.new_tag }}"
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/ProtonMail/WebClients.git _webclient
+          cd _webclient
+          git sparse-checkout set --no-cone \
+            /applications/authenticator/src-tauri/Cargo.lock
+          git checkout "$TAG"
+
+      - name: Install flatpak-cargo-generator
+        if: steps.need-regen.outputs.needed == 'true'
+        run: |
+          pip install --quiet aiohttp==3.13.5 tomlkit==0.15.0
+          mkdir -p _tools
+          wget -q -O _tools/flatpak-cargo-generator.py \
+            https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/f03a673abe6ce189cea1c2857e2b44af2dd79d1f/cargo/flatpak-cargo-generator.py
+          echo 'b373c8ab1a05378ec5d8ed0645c7b127bcec7d2f7a1798694fbc627d570d856c  _tools/flatpak-cargo-generator.py' | sha256sum -c
+
+      - name: Regenerate cargo-sources.json
+        if: steps.need-regen.outputs.needed == 'true'
+        run: |
+          python3 _tools/flatpak-cargo-generator.py \
+            _webclient/applications/authenticator/src-tauri/Cargo.lock \
+            -o cargo-sources.json
+
+      - name: Add release entry to metainfo
+        if: steps.need-regen.outputs.needed == 'true'
+        run: |
+          TAG="${{ steps.need-regen.outputs.new_tag }}"
+          VERSION="${TAG#proton-authenticator@}"
+          DATE=$(cd _webclient && git log -1 --format=%cs "$TAG")
+          # Skip if this version is already present
+          if grep -q "version=\"$VERSION\"" me.proton.Authenticator.metainfo.xml; then
+            echo "Release $VERSION already in metainfo — skipping."
+            exit 0
+          fi
+          # Insert new <release> entry after the opening <releases> tag
+          NEW_ENTRY="    <release version=\"$VERSION\" date=\"$DATE\">\n\
+              <url type=\"details\">https://github.com/ProtonMail/WebClients/blob/main/applications/authenticator/CHANGELOG.md</url>\n\
+              <description>\n\
+                <p>Bug fixes and stability improvements.</p>\n\
+              </description>\n\
+            </release>"
+          sed -i "s|  <releases>|  <releases>\n$NEW_ENTRY|" \
+            me.proton.Authenticator.metainfo.xml
+
+      - name: Commit and push
+        if: steps.need-regen.outputs.needed == 'true'
+        run: |
+          TAG="${{ steps.need-regen.outputs.new_tag }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cargo-sources.json me.proton.Authenticator.metainfo.xml
+          if git diff --cached --quiet; then
+            echo "Nothing changed — nothing to commit."
+          else
+            git commit -m "ci: regenerate cargo sources for $TAG"
+            # Rebase onto any commits that landed while we were generating
+            # (e.g. a second external-data-checker push) before pushing,
+            # so we never hit a non-fast-forward rejection.
+            git fetch origin
+            git rebase origin/$(git rev-parse --abbrev-ref HEAD)
+            git push
+          fi
