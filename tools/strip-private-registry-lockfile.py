@@ -27,6 +27,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 # ---------------------------------------------------------------------------
 # Heuristics for "private" resolution URLs
@@ -47,8 +48,6 @@ def _is_private_resolution(resolution_line: str) -> bool:
     if match:
         raw = match.group(1)
         # URL-decode the % sequences for the host check
-        from urllib.parse import unquote
-
         decoded = unquote(raw)
         for host in PUBLIC_REGISTRIES:
             if host in decoded:
@@ -112,7 +111,8 @@ def parse_blocks(text: str) -> list[tuple[int, int, str]]:
                     break
             blocks.append((block_start, i, header))
         else:
-            # lone blank or comment line outside a block – attach to next
+            # lone blank or comment line outside a block — preserve as passthrough
+            blocks.append((i, i + 1, ""))
             i += 1
 
     return blocks
