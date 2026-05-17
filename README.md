@@ -1,30 +1,29 @@
-# Anura — Flathub Submission
+# Anura — Flatpak manifest for Flathub
 
-This repository contains the Flatpak manifest for [Anura](https://github.com/D3M-Sudo/Anura),
-an intuitive OCR text extraction tool for the GNOME desktop.
+Flatpak manifest for [Anura](https://github.com/D3M-Sudo/Anura), a screen OCR tool for Linux.
 
-## About Anura
+## Why this exists
 
-Anura lets you grab text from any source on your screen — videos, PDFs, images, or
-protected web pages — using high-accuracy OCR powered by Tesseract.
+[Frog](https://github.com/TenderOwl/Frog) is a simple OCR app I used and liked, but development
+stopped and it was no longer maintained. I forked it as a side project to learn Python and GTK
+by working on something real and small enough to actually finish.
 
-**Key features:**
-- High-accuracy OCR via Tesseract
-- Built-in QR code decoding and link following
-- Support for multiple languages with on-demand model download
-- Privacy-focused: no telemetry, no anonymous data collection
-- Modern GTK4 / Libadwaita interface following GNOME HIG
+Along the way I removed the telemetry, updated the UI to use Libadwaita, added QR code decoding,
+and rewrote how screenshots are taken to go through XDG Desktop Portal. It is still a work in
+progress but it works well for daily use.
 
-**Homepage:** https://github.com/D3M-Sudo/Anura  
-**App ID:** `com.github.d3msudo.anura`  
-**License:** MIT
-
-## Installing from Flathub
+## Installing
 
 ```bash
 flatpak install flathub com.github.d3msudo.anura
-flatpak run com.github.d3msudo.anura
 ```
+
+## Basic usage
+
+Open the app, click **Take a screenshot**, draw a selection around the text you want, and it
+lands in your clipboard. There is also a QR tab if you need to decode a QR code from the screen.
+
+You can drag and drop an image into the window too.
 
 ## Building locally
 
@@ -32,7 +31,7 @@ flatpak run com.github.d3msudo.anura
 flatpak-builder --install --user builddir com.github.d3msudo.anura.json
 ```
 
-## Reporting issues
+## Issues
 
-- **App bugs:** https://github.com/D3M-Sudo/Anura/issues
-- **Packaging issues:** open an issue in this repository
+- Packaging problems: open an issue here
+- App bugs: [github.com/D3M-Sudo/Anura/issues](https://github.com/D3M-Sudo/Anura/issues)
