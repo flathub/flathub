@@ -1,0 +1,57 @@
+app-id: com.proton.drive
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: proton-drive
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=home
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --system-talk-name=org.freedesktop.NetworkManager
+modules:
+  - name: proton-drive
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/DonnieDice/protondrive-linux.git
+        tag: v1.4.3
+      - type: file
+        path: com.proton.drive.metainfo.xml
+    build-commands:
+      # Build the application
+      # NOTE: This requires network access for npm/cargo which is normally restricted on Flathub.
+      # This manifest is intended as an initial submission for review.
+      - ./scripts/build-webclients.sh
+      - npm install
+      - cd src-tauri && cargo build --release
+
+      # Install binary and wrapper
+      - install -Dm755 src-tauri/target/release/proton-drive /app/bin/proton-drive-bin
+      - |
+        cat > /app/bin/proton-drive << 'EOF'
+        #!/bin/bash
+        export WEBKIT_DISABLE_DMABUF_RENDERER=1
+        exec /app/bin/proton-drive-bin "$@"
+        EOF
+        chmod +x /app/bin/proton-drive
+
+      # Install desktop file
+      - install -Dm644 src-tauri/linux/proton-drive.desktop /app/share/applications/com.proton.drive.desktop
+      - sed -i 's/Exec=proton-drive/Exec=proton-drive/' /app/share/applications/com.proton.drive.desktop
+      - sed -i 's/Icon=proton-drive/Icon=com.proton.drive/' /app/share/applications/com.proton.drive.desktop
+
+      # Install AppStream metadata
+      - install -Dm644 com.proton.drive.metainfo.xml /app/share/metainfo/com.proton.drive.metainfo.xml
+
+      # Install icons
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.proton.drive.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.proton.drive.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.proton.drive.png
+      - install -Dm644 src-tauri/icons/proton-drive.svg /app/share/icons/hicolor/scalable/apps/com.proton.drive.svg
