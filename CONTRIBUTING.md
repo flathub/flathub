@@ -10,14 +10,14 @@ https://github.com/D3M-Sudo/Anura/issues
 
 To update a dependency version:
 1. Fork this repository
-2. Update the relevant `url`, `tag`, `commit`, or `sha256` fields in `com.github.d3msudo.anura.json`
-3. Open a pull request against the `master` branch
+2. Update the relevant `url`, `tag`, `commit`, or `sha256` fields in `io.github.d3msudo.anura.json`
+3. Open a pull request against the `flathub-testing` branch
 
 To update the Anura version itself, update the `anura` module source with the new tag and commit hash.
 
 ### Building locally
 
 ```bash
-flatpak-builder --install --user builddir com.github.d3msudo.anura.json
-flatpak run com.github.d3msudo.anura
+flatpak-builder --install --user builddir io.github.d3msudo.anura.json
+flatpak run io.github.d3msudo.anura
 ```
