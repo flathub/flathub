@@ -15,7 +15,7 @@ progress but it works well for daily use.
 ## Installing
 
 ```bash
-flatpak install flathub com.github.d3msudo.anura
+flatpak install flathub io.github.d3msudo.anura
 ```
 
 ## Basic usage
@@ -28,7 +28,7 @@ You can drag and drop an image into the window too.
 ## Building locally
 
 ```bash
-flatpak-builder --install --user builddir com.github.d3msudo.anura.json
+flatpak-builder --install --user builddir io.github.d3msudo.anura.json
 ```
 
 ## Issues
