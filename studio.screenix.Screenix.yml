@@ -1,0 +1,219 @@
+app-id: studio.screenix.Screenix
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+
+command: screenix-gui
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+
+  # Audio (PipeWire PulseAudio compat layer)
+  - --socket=pulseaudio
+
+  # Network — license validation, auth, wallpaper fetch
+  - --share=network
+
+  # GPU — VAAPI/NVENC encoding, DMA-BUF zero-copy PipeWire frames, wgpu
+  - --device=dri
+
+  # Input devices — evdev zoom-key hotkey listener
+  - --device=all
+  - --filesystem=/sys/class/video4linux:ro
+
+  # File system — recordings saved to user-selected directory
+  - --filesystem=home
+
+  # GNOME extension install to user-local path (~/.local/share/gnome-shell)
+  - --filesystem=xdg-data/gnome-shell:create
+
+  # PipeWire native client access for Wayland portal capture.
+  - --filesystem=xdg-run/pipewire-0
+
+  # XDG desktop portal — Wayland screencast (PipeWire node negotiation)
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.ScreenCast
+
+  # GNOME monitor detection via Mutter D-Bus
+  - --talk-name=org.gnome.Mutter.DisplayConfig
+
+  # Screenix GNOME cursor bridge D-Bus service
+  - --talk-name=studio.screenix.CursorBridge
+
+modules:
+
+  # ── wf-recorder ────────────────────────────────────────────────────────────
+  # Optional: used for Wayland capture on wlroots compositors (Sway, Hyprland).
+  # If the user is on GNOME/KDE the XDG portal path is used instead.
+  - name: wf-recorder
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/ammen99/wf-recorder.git
+        tag: v0.6.0
+        commit: ca103be2473db0983baf74e17b291385c3c79d79
+
+  # ── grim ───────────────────────────────────────────────────────────────────
+  # Wayland screenshot tool — used for screen previews/wallpaper capture.
+  - name: grim
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/emersion/grim.git
+        tag: v1.4.1
+
+  # ── wlr-randr ──────────────────────────────────────────────────────────────
+  # Monitor detection on wlroots compositors.
+  - name: wlr-randr
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/emersion/wlr-randr.git
+        tag: v0.5.0
+
+  # ── xinput ────────────────────────────────────────────────────────────────
+  # Used by the X11 cursor tracker for click detection.
+  - name: xinput
+    buildsystem: autotools
+    cleanup:
+      - /share/man
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/app/xinput.git
+        tag: xinput-1.6.4
+        commit: b6092488058da39754ece13475aab53616397af7
+
+  # ── AppIndicator tray support ──────────────────────────────────────────────
+  - name: intltool
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        mirror-urls:
+          - https://sources.suse.com/SUSE:SLE-15-SP7:Update:BCI/000product/ca527df4d03bf96a67854a8ed2f0c64b/INCLUDED/SUSE:SLE-15-SP6:GA::intltool::45f77273c3f2ef792fa697b444183beb/intltool-0.51.0.tar.gz
+          - https://mirror-hk.koddos.net/lfs/lfs-packages/12.0/intltool-0.51.0.tar.gz
+          - https://gstreamer.freedesktop.org/src/mirror/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+      - type: patch
+        path: patches/intltool-perl5.26-regex-fixes.patch
+
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+    cleanup:
+      - '*.la'
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share/doc
+      - /share/gtk-doc
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        mirror-urls:
+          - https://sources.suse.com/SUSE:SLFO:Main:Build/libdbusmenu/a5b3e4717f09f90f9cd5568a5f933e8d/libdbusmenu-16.04.0.tar.gz
+          - https://mirror.math.princeton.edu/pub/frugalware/frugalware-2.1/source/xlib/libdbusmenu/libdbusmenu-16.04.0.tar.gz
+          - https://ftp.fr.openbsd.org/pub/OpenBSD/distfiles/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+      - type: patch
+        path: patches/libdbusmenu-fix-have-valgrind.patch
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: 0.10.4
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+      - type: patch
+        path: patches/ayatana-ido-make-introspection-configurable.patch
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: 0.9.4
+        commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.94
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+
+  # ── screenix ───────────────────────────────────────────────────────────────
+  - name: screenix
+    buildsystem: simple
+
+    build-commands:
+      - install -Dm644 studio.screenix.Screenix.desktop
+          /app/share/applications/studio.screenix.Screenix.desktop
+      - install -Dm644 studio.screenix.Screenix.metainfo.xml
+          /app/share/metainfo/studio.screenix.Screenix.metainfo.xml
+      - install -Dm644 icon-128.png
+          /app/share/icons/hicolor/128x128/apps/studio.screenix.Screenix.png
+      - install -Dm644 icon-32.png
+          /app/share/icons/hicolor/32x32/apps/studio.screenix.Screenix.png
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - ln -s /app/extra/usr/bin/screenix-gui /app/bin/screenix-gui
+
+    sources:
+      - type: file
+        path: studio.screenix.Screenix.desktop
+      - type: file
+        path: studio.screenix.Screenix.metainfo.xml
+      - type: file
+        path: icons/128x128.png
+        dest-filename: icon-128.png
+      - type: file
+        path: icons/32x32.png
+        dest-filename: icon-32.png
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - bsdtar --to-stdout -xf Screenix_1.0.0_amd64.deb 'data.tar.*' | bsdtar -xf -
+          - rm Screenix_1.0.0_amd64.deb
+      - type: extra-data
+        filename: Screenix_1.0.0_amd64.deb
+        only-arches:
+          - x86_64
+        url: https://github.com/mathisdev7/screenix-releases/releases/download/v1.0.0/Screenix_1.0.0_amd64.deb
+        sha256: 15ec66d8af26178e280b996ab83deafe88e50fbaeb4e05003b632065bc9764ce
+        size: 19010738
