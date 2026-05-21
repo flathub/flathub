@@ -1,0 +1,262 @@
+app-id: org.tahoma2d.Tahoma2D
+runtime: org.kde.Platform
+runtime-version: '5.15-25.08'
+sdk: org.kde.Sdk
+command: tahoma2d
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=host
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib/tahoma2d
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/intltool/intltool-0.51.json
+  - shared-modules/libusb/libusb.json
+
+  - name: freeglut
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    build-options: # https://wiki.gentoo.org/wiki/Gcc_10_porting_notes/fno_common
+      cflags: -fcommon -fpermissive
+      cxxflags: -fcommon
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/freeglut/freeglut/3.2.2/freeglut-3.2.2.tar.gz
+        sha256: c5944a082df0bba96b5756dddb1f75d0cd72ce27b5395c6c1dde85c2ff297a50
+      - type: patch
+        path: patches/freeglut-egl-proto.patch
+
+  - name: superlu
+    buildsystem: cmake # ninja broken
+    builddir: true
+    build-options:
+      cflags: -fpermissive
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=True
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/xiaoyeli/superlu/archive/v5.2.1.tar.gz
+        sha256: 77582501dedef295eb74e4dc9433e2816d2d8be211eae307379c13d93c65bc71
+      - type: patch
+        paths:
+          - patches/superlu-proto.patch
+          - patches/superlu-proto2.patch
+
+  - name: OpenBLAS
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: archive
+        url: https://github.com/xianyi/OpenBLAS/archive/v0.3.29.tar.gz
+        sha256: 38240eee1b29e2bde47ebb5d61160207dc68668a54cac62c076bb5032013b1eb
+
+  - name: libdeflate
+    buildsystem: simple
+    build-commands:
+      - cmake -B build -DCMAKE_INSTALL_PREFIX=/app
+      - cmake --build build
+      - cmake --install build
+    sources:
+      - type: archive
+        url: https://github.com/ebiggers/libdeflate/archive/refs/tags/v1.25.tar.gz
+        sha256: d11473c1ad4c57d874695e8026865e38b47116bbcb872bfc622ec8f37a86017d
+
+  - name: json-c
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/json-c/json-c/archive/json-c-0.17-20230812.tar.gz
+        sha256: 024d302a3aadcbf9f78735320a6d5aedf8b77876c8ac8bbb95081ca55054c7eb
+
+  - name: libmypaint
+    config-opts:
+      - --disable-gegl
+      - --disable-introspection
+    sources:
+      - type: archive
+        url: https://github.com/mypaint/libmypaint/releases/download/v1.5.1/libmypaint-1.5.1.tar.xz
+        sha256: aef8150a0c84ce2ff6fb24de8d5ffc564845d006f8bad7ed84ee32ed1dd90c2b
+
+  - name: libgphoto2
+    config-opts:
+      - --disable-introspection
+      - --disable-docs
+    cleanup:
+      - /bin
+      - /lib/udev
+      - /share/doc
+      - /share/libgphoto2*
+      - /lib/libgphoto2*/*/*.la
+      - /doc
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/gphoto/libgphoto/2.5.31/libgphoto2-2.5.31.tar.bz2
+        sha256: 4f81c34c0b812bee67afd5f144940fbcbe01a2055586a6a1fa2d0626024a545b
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --without-libraries=python
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.74.0/source/boost_1_74_0.tar.bz2
+        sha256: 83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1
+ 
+  - name: rhubarb
+    buildsystem: simple
+    build-commands:
+      - cmake . -DBOOST_ROOT=/app/include -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - make rhubarb
+      - cp -R extras rhubarb/res rhubarb/rhubarb /app/bin
+      - mkdir /app/share/licenses/rhubarb
+      - cp -R CHANGELOG.md LICENSE.md  README.adoc /app/share/licenses/rhubarb
+    sources:
+      # Branch: tahoma2d-version
+      - type: archive
+        url: https://github.com/tahoma2d/rhubarb-lip-sync/archive/fa3177f9aaa5bbcbcfe820023372faf6bf597330.tar.gz
+        sha256: bb949e031c8523f191b24765f8a04cd5773d4edae1d9d1cb600956b2450ba75c
+
+  - name: openH264
+    buildsystem: simple
+    build-commands:
+      - mv Makefile Makefile.orig
+      - sed -e"s/usr.local/app/" Makefile.orig > Makefile
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/cisco/openh264/archive/v2.4.0.tar.gz
+        sha256: a44d1ccc348a790f9a272bba2d1c2eb9a9bbd0302e4e9b655d709e1c32f92691
+
+  - name: ffmpeg
+    config-opts:
+      - --enable-pthreads
+      - --enable-version3
+      - --enable-avresample
+      - --enable-gnutls
+#      - --enable-libbluray
+      - --enable-libmp3lame
+      - --enable-libopus
+#      - --enable-libsnappy
+      - --enable-libtheora
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-libwebp
+      - --enable-libxml2
+      - --enable-lzma
+      - --enable-libfreetype
+#      - --enable-libass
+#      - --enable-libopencore-amrnb
+#      - --enable-libopencore-amrwb
+      - --enable-libopenjpeg
+      - --enable-libspeex
+#      - --enable-libsoxr
+      - --enable-libopenh264
+      - --enable-shared
+      - --disable-static
+      - --disable-libjack
+      - --disable-indev=jack
+      - --disable-doc
+      - --disable-ffplay
+    cleanup:
+      - /share/ffmpeg/examples
+    sources:
+      - type: archive
+        url: https://www.ffmpeg.org/releases/ffmpeg-4.3.1.tar.xz
+        sha256: ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb
+      - type: patch
+        path: patches/ffmpeg-as-fix.patch
+
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_JASPER=OFF
+      - -DBUILD_JPEG=OFF
+      - -DBUILD_OPENEXR=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_PNG=OFF
+      - -DBUILD_PROTOBUF=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_TIFF=OFF
+      - -DBUILD_WEBP=OFF
+      - -DBUILD_ZLIB=OFF
+      - -DBUILD_opencv_hdf=OFF
+      - -DBUILD_opencv_java=OFF
+      - -DBUILD_opencv_text=ON
+      - -DOPENCV_ENABLE_NONFREE=ON
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+      - -DPROTOBUF_UPDATE_FILES=ON
+      - -DWITH_1394=OFF
+      - -DWITH_CUDA=OFF
+      - -DWITH_EIGEN=ON
+      - -DWITH_FFMPEG=ON
+      - -DWITH_GPHOTO2=OFF
+      - -DWITH_GSTREAMER=ON
+      - -DWITH_JASPER=OFF
+      - -DWITH_OPENEXR=ON
+      - -DWITH_OPENGL=OFF
+      - -DWITH_QT=OFF
+      - -DWITH_TBB=ON
+      - -DWITH_VTK=ON
+#      - -DBUILD_opencv_python2=OFF
+      - -DBUILD_opencv_python3=ON
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/4.2.0.tar.gz
+        sha256: 9ccb2192d7e8c03c58fee07051364d94ed7599363f3b0dce1c5e6cc11c1bb0ec
+      - type: patch
+        path: patches/opencv-cmake.patch
+
+  - name: tahoma2d
+    buildsystem: cmake
+    builddir: true
+    subdir: toonz/sources
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DWITH_GPHOTO2:BOOL=ON
+      - -DWITH_SYSTEM_SUPERLU=ON
+      - -DWITH_TRANSLATION=OFF
+      - -DBOOST_ROOT=/app/include/boost
+    sources:
+      - type: git
+        url: https://github.com/tahoma2d/tahoma2d
+#        branch: v1.6.1
+        # Using commit since current version tag points to wrong branch
+        commit: 2e2119355802b3404e655af38520a1555217628c
+        disable-lfs: true
+      - type: patch
+        path: patches/tahoma2d-del-appdata.patch
+      - type: shell
+        commands:
+          - cd thirdparty/tiff-4.2.0 &&
+            cp -p /usr/share/automake-*/config.{sub,guess} config &&
+            ./configure --with-pic --disable-jbig --disable-webp &&
+            make -j $FLATPAK_BUILDER_N_JOBS
+
