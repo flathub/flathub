@@ -1,0 +1,78 @@
+app-id: io.github.s4solutionsllc.Nexis
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: nexis
+
+# Rename the installed assets to match the Flatpak app-id convention.
+# flatpak-builder also updates the <launchable> reference in the metainfo.
+rename-icon: nexis
+rename-desktop-file: nexis.desktop
+
+finish-args:
+  # ── Display ──────────────────────────────────────────────────────────────
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+
+  # ── Broad filesystem access ───────────────────────────────────────────────
+  # Nexis is a system monitor and optimiser. It reads /proc, /sys, /dev,
+  # /run, and arbitrary user directories to collect CPU, memory, swap, disk
+  # I/O, GPU, temperature, fan, and network metrics in real time; it also
+  # manages APT sources in /etc/apt, clean up files across the full home
+  # tree, and invokes host tools (systemctl, apt, pkexec, smartctl, etc.)
+  # via QProcess. --filesystem=host is the minimal permission that covers all
+  # of these without requiring code changes to use individual D-Bus portals.
+  # See docs/flatpak-reviewer-justification.md for the full write-up.
+  - --filesystem=host
+
+  # ── Hardware device access ────────────────────────────────────────────────
+  # GPU utilisation and VRAM readings via nvidia-smi, amdgpu sysfs nodes,
+  # and /dev/dri; temperature and fan speed via hwmon; disk device handles
+  # for S.M.A.R.T. queries.
+  - --device=all
+
+  # ── Network ──────────────────────────────────────────────────────────────
+  # Network diagnostics (ping, traceroute, open-ports scan, Wake-on-LAN).
+  - --share=network
+
+  # ── System D-Bus names ───────────────────────────────────────────────────
+  # PolicyKit — privilege escalation for APT, disk, CPU tuning, firewall ops.
+  - --system-talk-name=org.freedesktop.PolicyKit1
+  # systemd — Services page: start/stop/enable/disable units.
+  - --system-talk-name=org.freedesktop.systemd1
+  # UDisks2 — Disk Tools page: S.M.A.R.T. health, partition info, benchmark.
+  - --system-talk-name=org.freedesktop.UDisks2
+  # hostname1/login1 — System Info: hostname, machine-id, session details.
+  - --system-talk-name=org.freedesktop.hostname1
+  - --system-talk-name=org.freedesktop.login1
+  # NetworkManager — Network Usage page: interface listing and stats.
+  - --system-talk-name=org.freedesktop.NetworkManager
+
+  # ── Session D-Bus names ──────────────────────────────────────────────────
+  - --talk-name=org.freedesktop.Notifications
+
+  # ── PATH ─────────────────────────────────────────────────────────────────
+  # With --filesystem=host the host's /usr/bin, /usr/sbin, etc. are
+  # accessible, but the sandbox PATH only contains Flatpak directories.
+  # Override PATH so QProcess invocations of systemctl, apt, pkexec, etc.
+  # resolve without the app needing to hard-code absolute paths.
+  - --env=PATH=/app/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+modules:
+  - name: nexis
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: git
+        url: https://github.com/s4solutionsllc/Nexis.git
+        tag: v2.3.7
+        commit: da814255d56c8db4235fae33a02ee2a465a1772d
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/s4solutionsllc/Nexis/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name | ltrimstr("v")
+          timestamp-query: .published_at
