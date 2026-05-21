@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: "Run Supervisor Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Bats
+        uses: bats-core/bats-action@3.0.0
+
+      - name: Run Tests
+        run: bats tests/supervisor/
+
+  flatpak-build:
+    name: "Verify Flatpak Build"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # Mirror Flathub's own review checks. flathub-exceptions.json carries the
+      # one accepted exception (HuggingFace cache reuse) until it lands in
+      # Flathub's central exceptions list.
+      - name: Lint Manifest
+        run: flatpak-builder-lint --exceptions --user-exceptions flathub-exceptions.json --gha-format manifest ai.lemonade_server.Lemonade.yaml
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: ai.lemonade_server.Lemonade.yaml
+          cache-key: flatpak-builder-${{ github.ref_name }}
+          repository-name: flathub
+          repo-dir: repo
+          mirror-screenshots-url: https://dl.flathub.org/media
+
+      # The build step mirrors screenshots/icons into the repo (the action adds
+      # --compose-url-policy=full when mirror-screenshots-url is set), so the
+      # appstream media checks pass here. A transient mirror/network failure
+      # surfaces as appstream-*-not-mirrored — re-run the build if so.
+      - name: Lint Repository
+        run: flatpak-builder-lint --exceptions --user-exceptions flathub-exceptions.json --gha-format repo repo

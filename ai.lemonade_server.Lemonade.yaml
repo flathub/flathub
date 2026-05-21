@@ -1,0 +1,136 @@
+app-id: ai.lemonade_server.Lemonade
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+separate-locales: false
+command: lemonade-supervisor
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # tauri-plugin-single-instance owns <identifier>.SingleInstance to forward
+  # argv from a second instance (single-instance + deep-link). Patch 0003 sets
+  # the Tauri identifier to the Flatpak app-id, so this is a sub-name of the
+  # app-id, which the sandbox grants by default — no --own-name is needed.
+  - --filesystem=xdg-cache/huggingface:rw
+  - --filesystem=xdg-run/lemonade:rw
+  # WebKitGTK's DMABUF renderer misbehaves in the sandbox; disabling it is a
+  # standard, widely-used WebKitGTK-on-Flatpak compatibility workaround.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  - --env=LEMONADE_DISABLE_SYSTEMD_JOURNAL=1
+
+# Strip development cruft from the bundled C/C++ dependencies (nlohmann-json,
+# cli11, cpp-httplib, libwebsockets, libayatana) — none of it is needed at
+# runtime and it only bloats the export.
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - modules/nlohmann-json.json
+  - modules/cli11.json
+  - modules/cpp-httplib.json
+  - modules/libwebsockets.json
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: lemonade-cpp
+    buildsystem: cmake-ninja
+    builddir: true
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DREQUIRE_LINUX_TRAY=ON
+      - -DBUILD_ELECTRON_APP=OFF
+      - -DBUILD_TAURI_APP=OFF
+      - -DUSE_SYSTEM_NODEJS_MODULES=OFF
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+    post-install:
+      # cmake --install is disabled (no-make-install) because upstream's
+      # install(CODE) blocks unconditionally write to /usr/bin and
+      # /usr/lib/systemd/system — both read-only in the sandbox.
+      # post-install runs with the cmake build dir as CWD.
+      - install -Dm755 lemond      /app/bin/lemond
+      - install -Dm755 lemonade    /app/bin/lemonade
+      - install -Dm755 lemonade-tray /app/bin/lemonade-tray
+      - install -d /app/share/lemonade-server/resources
+      - cp -r resources/. /app/share/lemonade-server/resources/
+      - install -Dm644 resources/defaults.json /app/share/lemonade/defaults.json
+      # lemond's resource search checks <exe_dir>/resources then hardcoded
+      # /usr*/share/lemonade-server; /app isn't in that list, so symlink.
+      - ln -sf ../share/lemonade-server/resources /app/bin/resources
+    sources:
+      - &lemonade-source
+        type: git
+        url: https://github.com/lemonade-sdk/lemonade.git
+        tag: v10.5.1
+        commit: c5ff980454f5391ba1e893787532030483471064
+        disable-lfs: true
+      - type: patch
+        path: 0001-fix-server-config-port-discovery-early-return.patch
+      - type: patch
+        path: 0002-fix-app-store-settings-under-user-config-dir.patch
+
+  - name: lemonade-app
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        HOME: /run/build/lemonade-app
+        XDG_CACHE_HOME: /run/build/lemonade-app/flatpak-node/cache
+        NPM_CONFIG_CACHE: /run/build/lemonade-app/flatpak-node/npm-cache
+        NPM_CONFIG_OFFLINE: "true"
+        NPM_CONFIG_NODEDIR: /usr/lib/sdk/node24
+    build-commands:
+      - cd src/app && npm install --offline
+      - cd src/app && npm run build:renderer:prod
+      - mkdir -p .cargo
+      - printf "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n[source.vendored-sources]\ndirectory = \"/run/build/lemonade-app/cargo/vendor\"\n" > .cargo/config.toml
+      # tauri/custom-protocol is required for a production build; without it
+      # the webview loads devUrl (http://localhost:9123) and shows a blank page.
+      - cd src/app/src-tauri && cargo build --release --offline --features tauri/custom-protocol
+      - install -Dm755 src/app/src-tauri/target/release/lemonade-app /app/bin/lemonade-app
+    sources:
+      - *lemonade-source
+      - type: patch
+        path: 0001-fix-server-config-port-discovery-early-return.patch
+      - type: patch
+        path: 0002-fix-app-store-settings-under-user-config-dir.patch
+      - type: patch
+        path: 0003-flatpak-tauri-identifier-matches-flatpak-app-id.patch
+      - generated-node-sources.json
+      - generated-cargo-sources.json
+
+  - name: lemonade-supervisor
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 lemonade-supervisor.sh /app/bin/lemonade-supervisor
+    sources:
+      - type: file
+        path: lemonade-supervisor.sh
+
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 ai.lemonade_server.Lemonade.appdata.xml /app/share/metainfo/ai.lemonade_server.Lemonade.metainfo.xml
+      - install -Dm644 data/lemonade-app.desktop /app/share/applications/ai.lemonade_server.Lemonade.desktop
+      - desktop-file-edit --set-name="Lemonade" --set-icon=ai.lemonade_server.Lemonade --set-key=Exec --set-value="lemonade-supervisor %u" --add-mime-type=x-scheme-handler/lemonade /app/share/applications/ai.lemonade_server.Lemonade.desktop
+      - install -Dm644 src/app/assets/logo.svg /app/share/icons/hicolor/scalable/apps/ai.lemonade_server.Lemonade.svg
+      - install -Dm644 src/app/src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/ai.lemonade_server.Lemonade.png
+      - install -Dm644 src/app/src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/ai.lemonade_server.Lemonade.png
+    sources:
+      - type: file
+        path: ai.lemonade_server.Lemonade.appdata.xml
+      - *lemonade-source
