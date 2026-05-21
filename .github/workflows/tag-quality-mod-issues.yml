@@ -1,0 +1,53 @@
+name: Label and tag quality guidelines issues
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+
+jobs:
+  label:
+    if: startsWith(github.event.issue.title, 'Quality guideline problems for') && github.event.issue.state != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add quality-guidelines label
+        if: github.event.action == 'opened'
+        run: |
+          if [[ "$ISSUE_TITLE" == "Quality guideline problems for <app name>" ]]; then
+            echo "Default title, likely invalid issue. Skipping labelling"
+            exit 0
+          fi
+
+          has_label=$(gh issue view "$ISSUE_NUM" --json labels -q '.labels | any(.name == "quality-guidelines")')
+          if [[ "$has_label" != "true" ]]; then
+              gh issue edit "$ISSUE_NUM" --add-label "quality-guidelines"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+
+  tag:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'quality-guidelines' && github.event.issue.state != 'closed'
+    steps:
+      - name: Find Comment
+        # 3.1.0
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e
+        id: fc
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          comment-author: 'flathubbot'
+          body-regex: '^Thank you for opening this issue! cc @flathub\/quality-moderation$'
+
+      - name: Add comment tagging the team
+        # 4.0.0
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043
+        with:
+          token: ${{ secrets.FLATHUBBOT_TOKEN }}
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Thank you for opening this issue! cc @flathub/quality-moderation
+          edit-mode: replace
