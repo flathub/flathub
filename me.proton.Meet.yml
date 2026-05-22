@@ -1,0 +1,92 @@
+app-id: me.proton.Meet
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version "25.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+command: start-proton-meet
+finish-args:
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # DBus-based secrets storage for Proton credentials
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Prevent screen blanking and sleep during active calls
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --env=XCURSOR_PATH=~/.icons:/app/share/icons:/icons:/run/host/user-share/icons:/run/host/share/icons
+modules:
+  - name: dbus-run-session
+    buildsystem: cmake
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/dbus/dbus/-/archive/dbus-1.16.2/dbus-dbus-1.16.2.tar.gz
+        sha256: d77cc71acd93e85f2bd2a6fe3a40e5bd023519e3e9fa9b5361e7109f42b74060
+        x-checker-data:
+          type: anitya
+          project-id: 5356
+          url-template: https://gitlab.freedesktop.org/dbus/dbus/-/archive/dbus-$version/dbus-dbus-$version.tar.gz
+
+  - name: proton-meet
+    buildsystem: simple
+    build-commands:
+      # Extract the internal data archive from the deb package
+      - bsdtar -Oxf ProtonMeet.deb data.tar.xz | bsdtar -xf -
+      - mv "usr/lib/proton-meet" ${FLATPAK_DEST}/proton-meet
+
+      # Handle locales and map them into the Flatpak environment runtime structure
+      - |
+        for lang in ${FLATPAK_DEST}/proton-meet/locales/*.pak
+        do
+          locale="$(basename -s .pak $lang)"
+          install -Dm644 -t "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/" "$lang"
+          ln -sf "${FLATPAK_DEST}/share/runtime/locale/${locale%%-*}/$(basename $lang)" "${FLATPAK_DEST}/proton-meet/locales/$(basename $lang)"
+        done
+
+      # Desktop, Icon and AppStream integration
+      - install -Dm644 icon.svg "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg"
+      - install -Dm644 usr/share/applications/proton-meet.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      
+      # Edit desktop file to point to the wrapper command, correct icon ID, and set a non-misleading comment
+      - desktop-file-edit --set-key=Exec --set-value='start-proton-meet %U' --set-icon=${FLATPAK_ID} --set-key=Comment --set-value='Secure video conferencing client for Proton Meet' "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      
+      # Patch Electron binary to correctly use the Flatpak Desktop ID
+      - patch-electron-desktop-filename "${FLATPAK_DEST}/proton-meet/resources/app.asar"
+
+      # Install the wrapper launcher script
+      - install -Dm 755 start-proton-meet.sh /app/bin/start-proton-meet
+
+      # Install the AppStream metainfo metadata
+      - install -Dm644 me.proton.Meet.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        dest-filename: ProtonMeet.deb
+        only-arches: [x86_64]
+        # Download URLs and Checksums
+        # Placeholder format:
+        # url: https://proton.me/download/meet/linux/<VERSION>/ProtonMeet-desktop.deb
+        # sha256: <SHA256_CHECKSUM>
+        url: https://proton.me/download/meet/linux/1.0.9/ProtonMeet-desktop.deb
+        sha256: 7834521ce3332692f0a547ee779e6105b5639403c99f68e8a6a683b517a68a0c
+        x-checker-data:
+          type: json
+          url: https://proton.me/download/meet/linux/version.json
+          version-query: .Releases | map(select(.CategoryName == "Stable")) | .[0].Version
+          url-query: .Releases | map(select(.CategoryName == "Stable")) | .[0].File | map(select(.Identifier == ".deb (Ubuntu/Debian)")) | .[0].Url
+
+      - type: file
+        path: icon.svg
+
+      - type: file
+        path: start-proton-meet.sh
+
+      - type: file
+        path: me.proton.Meet.metainfo.xml
