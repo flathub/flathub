@@ -1,28 +1,16 @@
 app-id: space.shollmann.astroshelf
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.python312
 command: astroshelf
 
-build-options:
-  append-path: /usr/lib/sdk/python312/bin
-  env:
-    PYTHON: /usr/lib/sdk/python312/bin/python3
-    PIP_DISABLE_PIP_VERSION_CHECK: "1"
-
 finish-args:
-  # Display
   - --share=ipc
   - --socket=x11
   - --device=dri
-  # Filesystem: workspace/archive are user-chosen directories, picked at runtime
-  # via a directory dialog - they can live anywhere in the user's home tree.
-  # Flathub exception requested: app cannot use XDG portals because it needs
-  # persistent access to two arbitrary user-chosen directories across sessions.
+  # tkinter.filedialog does not support XDG portals
   - --filesystem=home
-  # Removable media: archive and workspace can live on external drives
+  # Removable media: archive/workspace can live on external drives
   - --filesystem=/media
   - --filesystem=/run/media
   - --filesystem=/mnt
@@ -30,39 +18,67 @@ finish-args:
   - --system-talk-name=org.freedesktop.UDisks2
 
 modules:
+  - name: tkinter
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone
+        commit: 8e78e38ef0cceb44a3a0062e1c314a4ff3f981db
+    modules:
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - find /app/lib -name "libtcl*.so*" -exec chmod 755 {} +
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.3-src.tar.gz
+            sha256: 2537ba0c86112c8c953f7c09d33f134dd45c0fb3a71f2d7f7691fd301d2c33a6
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - find /app/lib -name "libtk*.so*" -exec chmod 755 {} +
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.3-src.tar.gz
+            sha256: bf344efadb618babb7933f69275620f72454d1c8220130da93e3f7feb0efbf9b
+
   - python3-deps.json
 
   - name: astroshelf
     buildsystem: simple
     build-commands:
-      # Install app source
       - install -d /app/share/astroshelf
       - cp -r core ui locales assets settings.py paths.py main.py catalog.txt
           /app/share/astroshelf/
-      # Launcher wrapper
-      - |
-        install -Dm755 /dev/stdin /app/bin/astroshelf << 'EOF'
-        #!/bin/bash
-        if [ -z "$DISPLAY" ]; then
-            for sock in /tmp/.X11-unix/X*; do
-                [ -S "$sock" ] && export DISPLAY=":${sock##*X}" && break
-            done
-        fi
-        cd /app/share/astroshelf
-        exec /usr/lib/sdk/python312/bin/python3 /app/share/astroshelf/main.py "$@"
-        EOF
-      # Desktop integration
+      - install -Dm755 astroshelf.sh /app/bin/astroshelf
       - install -Dm644 build/linux/space.shollmann.astroshelf.desktop
           /app/share/applications/space.shollmann.astroshelf.desktop
       - install -Dm644 build/linux/space.shollmann.astroshelf.metainfo.xml
           /app/share/metainfo/space.shollmann.astroshelf.metainfo.xml
       - install -Dm644 assets/icon.png
           /app/share/icons/hicolor/256x256/apps/space.shollmann.astroshelf.png
-      # License
       - install -Dm644 LICENSE
           /app/share/licenses/space.shollmann.astroshelf/LICENSE
     sources:
       - type: git
         url: https://gitlab.com/santiago.hollmann/astroshelf
-        tag: v1.0.0
-        commit: d27636ac52dd60de2794c377eefc243a8074577f
+        tag: v1.0.1
+        commit: 2f5c11041103cff0049bb19bbaf43bf2f52f1310
+      - type: file
+        path: astroshelf.sh
