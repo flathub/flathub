@@ -1,0 +1,69 @@
+app-id: io.github.eval_exec.neomacs
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: neomacs
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=host
+  - --share=network
+  - --env=NEOMACS_RUNTIME_ROOT=/app/share/neomacs
+
+cleanup:
+  - /bin/neomacs-temacs
+  - /bin/bootstrap-neomacs
+  - /bin/mock-display
+
+modules:
+  - name: neomacs
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/neomacs/.cargo
+        RUST_BACKTRACE: '1'
+    build-commands:
+      - |
+        set -euo pipefail
+
+        # Install Rust toolchain via rustup (needs exact version from rust-toolchain.toml)
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --default-toolchain 1.95.0 --profile minimal
+        . "$HOME/.cargo/env"
+
+        # Build Neomacs (cargo xtask fresh-build compiles Rust + bootstraps Lisp)
+        cargo xtask fresh-build --release
+
+        # Install main binary and pdump
+        install -Dm755 target/release/neomacs ${FLATPAK_DEST}/bin/neomacs
+        install -Dm644 target/release/neomacs.pdump ${FLATPAK_DEST}/bin/neomacs.pdump
+
+        # Install runtime data (lisp, etc, leim, info)
+        mkdir -p ${FLATPAK_DEST}/share/neomacs
+        cp -a lisp ${FLATPAK_DEST}/share/neomacs/
+        cp -a etc ${FLATPAK_DEST}/share/neomacs/
+        cp -a leim ${FLATPAK_DEST}/share/neomacs/
+        cp -a info ${FLATPAK_DEST}/share/neomacs/ 2>/dev/null || true
+
+        # Install desktop integration
+        install -Dm644 packaging/flatpak/io.github.eval_exec.neomacs.desktop \
+          ${FLATPAK_DEST}/share/applications/io.github.eval_exec.neomacs.desktop
+        install -Dm644 assets/logo-128.png \
+          ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/io.github.eval_exec.neomacs.png
+        install -Dm644 packaging/flatpak/io.github.eval_exec.neomacs.metainfo.xml \
+          ${FLATPAK_DEST}/share/metainfo/io.github.eval_exec.neomacs.metainfo.xml
+
+        # Install docs
+        install -Dm644 README.md ${FLATPAK_DEST}/share/doc/neomacs/README.md
+        install -Dm644 COPYING ${FLATPAK_DEST}/share/doc/neomacs/COPYING
+    sources:
+      - type: git
+        url: https://github.com/eval-exec/neomacs
+        tag: v0.0.3
