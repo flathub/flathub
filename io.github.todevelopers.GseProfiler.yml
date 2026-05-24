@@ -1,0 +1,62 @@
+app-id: io.github.todevelopers.GseProfiler
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: gse-profiler
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --talk-name=org.gnome.Shell
+  - --talk-name=org.gnome.Shell.Extensions
+  # Read systemd journal directly (replaces flatpak-spawn --host journalctl).
+  # This app is a GNOME Shell extension debugger/profiler whose core purpose is
+  # to show extension logs to the developer. Read-only access to both the
+  # volatile (/run/log/journal) and persistent (/var/log/journal) journal
+  # locations is required: on systems with persistent journaling enabled
+  # (the default on Fedora, Arch, and most GNOME distros) current-boot logs
+  # live exclusively under /var/log/journal — /run/log/journal alone is empty
+  # and the log viewer shows nothing. Access is strictly :ro and limited to
+  # the journal subtree; no other parts of /var or /run are exposed. Same
+  # pattern is used by GNOME Logs and other journal-viewer applications.
+  - --filesystem=/run/log/journal:ro
+  - --filesystem=/var/log/journal:ro
+  # Bridge extension install path
+  - --filesystem=~/.local/share/gnome-shell/extensions:create
+  # Unix socket shared with the bridge extension running in gnome-shell.
+  # :create bind-mounts the whole directory so files created inside are
+  # visible on the host (bind-mounting a single non-existent file is unreliable).
+  - --filesystem=xdg-run/gse-profiler:create
+
+modules:
+  - name: python3-systemd
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index
+          --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+          --no-build-isolation .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/10/9e/ab4458e00367223bda2dd7ccf0849a72235ee3e29b36dce732685d9b7ad9/systemd-python-235.tar.gz
+        sha256: 4e57f39797fd5d9e2d22b8806a252d7c0106c936039d1e71c8c6b8008e695c0a
+
+  - name: gse-profiler
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/gse-profiler
+      - cp -r app bridge-extension /app/share/gse-profiler/
+      - install -Dm755 scripts/restart-shell.sh
+          /app/share/gse-profiler/scripts/restart-shell.sh
+      - install -Dm755 build-aux/gse-profiler.sh /app/bin/gse-profiler
+      - install -Dm644 data/io.github.todevelopers.GseProfiler.desktop
+          /app/share/applications/io.github.todevelopers.GseProfiler.desktop
+      - install -Dm644 data/io.github.todevelopers.GseProfiler.metainfo.xml
+          /app/share/metainfo/io.github.todevelopers.GseProfiler.metainfo.xml
+      - install -Dm644
+          app/data/icons/hicolor/scalable/apps/io.github.todevelopers.GseProfiler.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.todevelopers.GseProfiler.svg
+    sources:
+      - type: archive
+        url: https://github.com/todevelopers/gseprofiler/releases/download/v1.0.1/gseprofiler-1.0.1.tar.gz
+        sha256: 7ebe264d4c75d061273da5dc44a2c80f228223664efe51af5f6630d8dd141675
