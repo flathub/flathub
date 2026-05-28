@@ -1,0 +1,81 @@
+# Flathub submission manifest for GameVox.
+#
+# Submission target: https://github.com/flathub/flathub (new-pr branch).
+# After approval, this becomes the source for github.com/flathub/com.gamevox.GameVox
+# and updates flow upstream via flatpak-external-data-checker (FEDC).
+#
+# Flathub builders have no network access at build time; the client binary is
+# downloaded on the USER's machine via `type: extra-data`. FEDC polls our
+# release manifest JSON and opens a PR bumping url+sha256+size+metainfo
+# release entry whenever we publish a new version.
+#
+# When permissions, runtime, or build-commands change here, sync to the
+# flathub/com.gamevox.GameVox repo via a manual PR (FEDC only edits the
+# extra-data source fields).
+
+app-id: com.gamevox.GameVox
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: gamevox
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  # XDG Portals (FileChooser, OpenURI, Desktop) are talk-allowed implicitly;
+  # do not list them here.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: gamevox
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 gamevox.sh /app/bin/gamevox
+      - install -Dm644 com.gamevox.GameVox.desktop /app/share/applications/com.gamevox.GameVox.desktop
+      - install -Dm644 gamevox.png /app/share/icons/hicolor/256x256/apps/com.gamevox.GameVox.png
+      - install -Dm644 com.gamevox.GameVox.metainfo.xml /app/share/metainfo/com.gamevox.GameVox.metainfo.xml
+    sources:
+      - type: extra-data
+        filename: gamevox.deb
+        # FEDC overwrites url/sha256/size on each release.
+        url: https://gamevox-release-prod.s3.amazonaws.com/releases/linux/gamevox-client-0.1.846-amd64.deb
+        sha256: 4b2e21188319f2592fa81cf43e1a41e1c71b720d63f8b35b0ebe361a7210b2eb
+        size: 46207968
+        x-checker-data:
+          type: json
+          url: https://gamevox-release-prod.s3.amazonaws.com/manifest/linux-amd64.json
+          version-query: '$.version'
+          url-query: '$.downloads[?(@.format == "deb")].url'
+          is-main-source: true
+
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          # bsdtar (libarchive) handles both ar (.deb) and zstd-compressed
+          # tar in one tool. ar/dpkg-deb are not in the GNOME Platform runtime.
+          - bsdtar -xf gamevox.deb
+          - bsdtar -xf data.tar.*
+          - if [ -f usr/bin/gamevox ]; then mv usr/bin/gamevox gamevox-bin; fi
+          - if [ -f usr/lib/libdeepfilter.so ]; then mv usr/lib/libdeepfilter.so libdeepfilter.so; fi
+          - rm -rf gamevox.deb control.tar.* data.tar.* debian-binary usr
+
+      - type: script
+        dest-filename: gamevox.sh
+        commands:
+          - export LD_LIBRARY_PATH="/app/extra:${LD_LIBRARY_PATH}"
+          - exec /app/extra/gamevox-bin "$@"
+
+      - type: file
+        path: com.gamevox.GameVox.desktop
+      - type: file
+        path: gamevox.png
+      - type: file
+        path: com.gamevox.GameVox.metainfo.xml
