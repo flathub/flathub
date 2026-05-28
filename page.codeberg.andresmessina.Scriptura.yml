@@ -1,0 +1,143 @@
+app-id: page.codeberg.andresmessina.Scriptura
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: page.codeberg.andresmessina.Scriptura
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --persist=.sword
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - /share/sword-utils
+  - '*.la'
+  - '*.a'
+
+modules:
+  # libcurl is bundled because SWORD's CMake does not pick up the
+  # runtime's curl cleanly, causing link failures on undefined curl_easy_*.
+  - name: libcurl
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --with-openssl
+      - --without-libpsl
+      - --disable-docs
+      - --disable-manual
+    cleanup:
+      - /bin
+      - /share/man
+      - /share/aclocal
+    sources:
+      - type: archive
+        url: https://curl.se/download/curl-8.10.0.tar.gz
+        sha256: 58c9dcf73493ae9d181fd334b3b3987ff73124621565187ade237bff1064a716
+
+  - name: libsword
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DLIBSWORD_LIBRARY_TYPE=Shared
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DSWORD_BUILD_TESTS=No
+      - -DSWORD_BUILD_UTILS=No
+      - -DCMAKE_SHARED_LINKER_FLAGS=-lcurl
+      - -DCMAKE_EXE_LINKER_FLAGS=-lcurl
+      - -DCMAKE_MODULE_LINKER_FLAGS=-lcurl
+    cleanup:
+      - /bin
+      - /lib/libsword.la
+      - /include
+    sources:
+      - type: archive
+        url: https://crosswire.org/ftpmirror/pub/sword/source/v1.9/sword-1.9.0.tar.gz
+        sha256: 42409cf3de2faf1108523e2c5ac0745d21f9ed2a5c78ed878ee9dcc303426b8a
+
+  # Greg Hellings' standalone Python bindings (ships pre-generated SWIG output).
+  - name: python-libsword
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: archive
+        url: https://github.com/greg-hellings/python-libsword/archive/refs/tags/1.9.0.post1.tar.gz
+        sha256: 37abd873b3418e4c30c5dac8c0d0609e3981480520d8304868b62be382a8958c
+
+  - name: python3-whoosh
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}"
+                     --prefix=${FLATPAK_DEST} --no-build-isolation whoosh
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/25/2b/6beed2107b148edc1321da0d489afc4617b9ed317ef7b72d4993cad9b684/Whoosh-2.7.4.tar.gz
+        sha256: 7ca5633dbfa9e0e0fa400d3151a8a0c4bec53bd2ecedc0a67705b17565c31a83
+
+  - name: scriptura
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 flatpak/scriptura.sh /app/bin/page.codeberg.andresmessina.Scriptura
+      - mkdir -p /app/share/scriptura
+      - install -Dm644 main.py /app/share/scriptura/main.py
+      - install -Dm644 _version.py /app/share/scriptura/_version.py
+      - install -Dm644 paths.py /app/share/scriptura/paths.py
+      - install -Dm644 styles.py /app/share/scriptura/styles.py
+      - install -Dm644 window.py /app/share/scriptura/window.py
+      - install -Dm644 pane.py /app/share/scriptura/pane.py
+      - install -Dm644 genbook_reader.py /app/share/scriptura/genbook_reader.py
+      - install -Dm644 sword_bridge.py /app/share/scriptura/sword_bridge.py
+      - install -Dm644 ebible_bridge.py /app/share/scriptura/ebible_bridge.py
+      - install -Dm644 annotations.py /app/share/scriptura/annotations.py
+      - install -Dm644 bookmarks.py /app/share/scriptura/bookmarks.py
+      - install -Dm644 settings.py /app/share/scriptura/settings.py
+      - install -Dm644 module_positions.py /app/share/scriptura/module_positions.py
+      - install -Dm644 reading_plans.py /app/share/scriptura/reading_plans.py
+      - install -Dm644 open_data.py /app/share/scriptura/open_data.py
+      - install -Dm644 search_panel.py /app/share/scriptura/search_panel.py
+      - install -Dm644 pane_search.py /app/share/scriptura/pane_search.py
+      - install -Dm644 study_journal.py /app/share/scriptura/study_journal.py
+      - install -Dm644 crossref_panel.py /app/share/scriptura/crossref_panel.py
+      - install -Dm644 module_manager.py /app/share/scriptura/module_manager.py
+      - install -Dm644 annotation_dialogs.py /app/share/scriptura/annotation_dialogs.py
+      - install -Dm644 lexicon_panel.py /app/share/scriptura/lexicon_panel.py
+      - install -Dm644 devotional.py /app/share/scriptura/devotional.py
+      - install -Dm644 welcome.py /app/share/scriptura/welcome.py
+      - install -Dm644 data/style.css /app/share/scriptura/data/style.css
+      - python3 -m compileall -q /app/share/scriptura/
+      - install -Dm644 data/page.codeberg.andresmessina.Scriptura.desktop
+                       /app/share/applications/page.codeberg.andresmessina.Scriptura.desktop
+      - install -Dm644 data/page.codeberg.andresmessina.Scriptura.metainfo.xml
+                       /app/share/metainfo/page.codeberg.andresmessina.Scriptura.metainfo.xml
+      - install -Dm644 LICENSE
+                       /app/share/licenses/page.codeberg.andresmessina.Scriptura/LICENSE
+      - mkdir -p /app/share/icons/hicolor/256x256/apps
+      - mkdir -p /app/share/icons/hicolor/128x128/apps
+      - mkdir -p /app/share/icons/hicolor/64x64/apps
+      - mkdir -p /app/share/icons/hicolor/48x48/apps
+      - rsvg-convert -w 256 -h 256
+                     data/icons/hicolor/scalable/apps/page.codeberg.andresmessina.Scriptura.svg
+                     -o /app/share/icons/hicolor/256x256/apps/page.codeberg.andresmessina.Scriptura.png
+      - rsvg-convert -w 128 -h 128
+                     data/icons/hicolor/scalable/apps/page.codeberg.andresmessina.Scriptura.svg
+                     -o /app/share/icons/hicolor/128x128/apps/page.codeberg.andresmessina.Scriptura.png
+      - rsvg-convert -w 64 -h 64
+                     data/icons/hicolor/scalable/apps/page.codeberg.andresmessina.Scriptura.svg
+                     -o /app/share/icons/hicolor/64x64/apps/page.codeberg.andresmessina.Scriptura.png
+      - rsvg-convert -w 48 -h 48
+                     data/icons/hicolor/scalable/apps/page.codeberg.andresmessina.Scriptura.svg
+                     -o /app/share/icons/hicolor/48x48/apps/page.codeberg.andresmessina.Scriptura.png
+    sources:
+      - type: git
+        url: https://codeberg.org/andresmessina/scriptura.git
+        tag: v1.0.0
+        commit: 45a56284bf52daf8935d721b9cb71c6d3e5a1962
