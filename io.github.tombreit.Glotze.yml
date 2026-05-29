@@ -1,0 +1,50 @@
+app-id: io.github.tombreit.Glotze
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: glotze
+# Branch built into the OSTree repo. Flathub convention is `stable` for
+# releases; `flatpak build-bundle … stable` then matches.
+default-branch: stable
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Only ~/Videos/Glotze is writable — Glotze can't see the rest of ~/Videos
+  # or $HOME. `:create` makes the folder (and ~/Videos itself) when the user
+  # has no Videos directory configured, so download.rs can always write here.
+  - --filesystem=xdg-videos/Glotze:create
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/glotze/cargo
+    # Vendored sources are placed at $CARGO_HOME/vendor by cargo-sources.json,
+    # and the embedded config.toml redirects crates-io there. Refuse to reach
+    # the network — both as a safety net locally and a hard requirement on
+    # Flathub.
+    CARGO_NET_OFFLINE: "true"
+
+modules:
+  - name: glotze
+    buildsystem: meson
+    # cargo is driven from meson's custom_target (see the top-level meson.build);
+    # meson installs the binary to /app/bin and every data file under /app/share
+    # — including the channel logos at /app/share/glotze/channels (see ui/logo.rs).
+    # Build the optimized profile explicitly: flatpak-builder otherwise passes
+    # --buildtype=plain, and we must not ship an unoptimized binary.
+    config-opts:
+      - --buildtype=release
+    sources:
+      # Flathub builds from a pinned release tag (no working tree).
+      # Regenerate with scripts/gen-flathub-manifest.sh on each release.
+      - type: git
+        url: https://github.com/tombreit/Glotze.git
+        tag: v0.0.14
+        commit: 96e9898333ee43a5ad841919dcf49bb1f5ae0e98
+      - cargo-sources.json
