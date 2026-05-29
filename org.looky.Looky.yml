@@ -1,0 +1,68 @@
+app-id: org.looky.Looky
+# https://github.com/jaro17/looky
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+
+# Rust and Node.js toolchains are not part of the GNOME SDK — pull them in
+# via Freedesktop SDK extensions.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: looky
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # File access — read-only, user home only (file previewer, never writes)
+  - --filesystem=home:ro
+  # System tray (optional, kept minimal)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.Notifications
+  # Workaround: WebKitGTK DMA-BUF renderer can crash in Flatpak sandbox
+  # on some drivers; disabling it falls back to the software compositing path.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+build-options:
+  # Make the SDK-extension toolchains available during build
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/looky/cargo
+    CARGO_NET_OFFLINE: 'true'
+    # flatpak-node-generator places the npm cache under flatpak-node/npm-cache/
+    npm_config_cache: /run/build/looky/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+
+modules:
+  # Tray icon support — using official Flathub shared-modules
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: looky
+    buildsystem: simple
+    build-commands:
+      # 1. Install npm dependencies from offline mirror
+      - npm ci --offline
+      # 2. Build the Vue/Vite frontend → dist/
+      - npm run build
+      # 3. Build the Tauri/Rust binary (embeds dist/ at compile time)
+      - cargo build --release --manifest-path src-tauri/Cargo.toml
+      # 4. Install artifacts
+      - install -Dm755 src-tauri/target/release/tauri-app /app/bin/looky
+      - install -Dm644 assets/looky.svg /app/share/icons/hicolor/scalable/apps/org.looky.Looky.svg
+      - install -Dm644 org.looky.Looky.metainfo.xml /app/share/metainfo/org.looky.Looky.metainfo.xml
+      - install -Dm644 org.looky.Looky.desktop /app/share/applications/org.looky.Looky.desktop
+    sources:
+      # Project source tree
+      - type: dir
+        path: .
+      # Offline mirrors for Cargo and npm dependencies (generated from lock files).
+      # Regenerate after updating dependencies:
+      #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o cargo-sources.json
+      #   flatpak-node-generator npm package-lock.json -o node-sources.json
+      - cargo-sources.json
+      - node-sources.json
