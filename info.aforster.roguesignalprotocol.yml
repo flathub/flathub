@@ -1,0 +1,63 @@
+# Rogue Signal Protocol - Coffee break cyberspace stealth roguelike
+# https://github.com/Dragynrain/RogueSignalProtocol
+#
+# Built entirely from source (Flathub requirement). Python deps are compiled from sdists
+# vendored via flatpak-pip-generator (python3-build-deps.json + python3-modules.json). The
+# game itself is pure Python (tcod for rendering/input, miniaudio for sound) installed from
+# the v1.0.1 source tag. No PyInstaller, no prebuilt binaries.
+#
+# Build env notes (see PLAN_FLATHUB.md for the full derivation):
+#   PYTHONPATH lets numpy/tcod find their build backends (meson-python, cffi) under --no-build-isolation.
+#   PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 makes pkg-config emit -I/usr/include so tcod finds SDL3 headers.
+#   CFLAGS -Wno-* downgrade GCC 14 default-error warnings so libtcod's older C compiles.
+
+app-id: info.aforster.roguesignalprotocol
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: rogue-signal-protocol
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --device=all    # GPU + gamepad/controllers. (--device=input is more granular but
+                    # isn't supported on Flatpak 1.14.x, so the Flathub linter requires a
+                    # --require-version pin or an exception; --device=all is backwards-compatible.)
+
+build-options:
+  env:
+    PYTHONPATH: /app/lib/python3.13/site-packages
+    PKG_CONFIG_ALLOW_SYSTEM_CFLAGS: '1'
+    CFLAGS: '-Wno-implicit-function-declaration -Wno-int-conversion -Wno-implicit-int'
+
+modules:
+  # Build backends (meson-python for numpy; setuptools_scm for tcod/freetype versions; cffi,
+  # pcpp, requests, attrs for tcod's build) installed first so the compiled deps can find them.
+  - python3-build-deps.json
+
+  # Runtime Python deps, all compiled from sdist: tcod (+ _libtcod/SDL3), numpy, pillow,
+  # platformdirs, miniaudio, freetype-py.
+  - python3-modules.json
+
+  - name: rogue-signal-protocol
+    buildsystem: simple
+    build-commands:
+      - install -dm755 /app/lib/rogue-signal-protocol
+      - cp -r src graphics sound music /app/lib/rogue-signal-protocol/
+      - install -Dm644 RogueSignalProtocol.py game_content.json game_rules.json graphics_tiles.json narrative_content.json default_bindings.json KreativeSquare.ttf -t /app/lib/rogue-signal-protocol/
+      - install -Dm755 packaging/linux/rogue-signal-protocol /app/bin/rogue-signal-protocol
+      - install -Dm644 packaging/linux/info.aforster.roguesignalprotocol.desktop -t /app/share/applications/
+      - install -Dm644 packaging/linux/logo-256.png /app/share/icons/hicolor/256x256/apps/info.aforster.roguesignalprotocol.png
+      - install -Dm644 packaging/linux/info.aforster.roguesignalprotocol.metainfo.xml -t /app/share/metainfo/
+      - install -dm755 /app/share/licenses/info.aforster.roguesignalprotocol
+      - install -Dm644 LICENSE /app/share/licenses/info.aforster.roguesignalprotocol/
+    sources:
+      # SUBMISSION: source archive of the v1.0.1 tag. The sha256 must be filled in AFTER the
+      # tag is pushed (git tag v1.0.1 && git push --tags), e.g.:
+      #   curl -sL https://github.com/Dragynrain/RogueSignalProtocol/archive/refs/tags/v1.0.1.tar.gz | sha256sum
+      # strip-components default (1) drops the GitHub-added top-level RogueSignalProtocol-1.0.1/ dir.
+      - type: archive
+        url: https://github.com/Dragynrain/RogueSignalProtocol/archive/refs/tags/v1.0.1.tar.gz
+        sha256: cfaa00d76bdcb8f6bc636f57508a9671bead1172a3c78f61ea3557b125fcdd99
