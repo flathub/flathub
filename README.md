@@ -12,8 +12,16 @@ For applications that require Podman socket support:
 
 ```bash
 systemctl --user enable podman.socket --now
-flatpak override --user --filesystem=xdg-run/podman:ro com.visualstudio.code
+flatpak override --user --filesystem=xdg-run/podman:ro app-id
 ```
+
+The socket path should be available inside the Flatpak application:
+
+```bash
+/run/user/$USER_ID/podman/podman.sock
+```
+
+> Note: replace `$USER_ID` with the current user-id (`id -u`) and make sure the path exists on the host.
 
 ## Usage
 
@@ -21,17 +29,52 @@ flatpak override --user --filesystem=xdg-run/podman:ro com.visualstudio.code
 
 To use with [PhpStorm](https://github.com/flathub/com.jetbrains.PhpStorm), make sure to set the connection type to 'Podman'.
 
-### Visual Studio Code
+You may also need to set the podman socket path to allow full container integration.
 
-To use with [VSCode](https://github.com/flathub/com.visualstudio.code), run command `Open User Settings (JSON)` and append:
+### Visual Studio Code / VSCodium
+
+To use with [VSCode](https://github.com/flathub/com.visualstudio.code), allow access to the Podman socket:
+
+```bash
+flatpak override --user --filesystem=xdg-run/podman:ro com.visualstudio.code
+```
+
+Open VSCode, run command `Open User Settings (JSON)` and append:
 
 ```json
 "dev.containers.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote",
-"dev.containers.dockerSocketPath": "/run/user/1000/podman/podman.sock",
+"dev.containers.dockerSocketPath": "/run/user/$USER_ID/podman/podman.sock",
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
 ```
 
 Restart the editor to apply changes.
+
+### Devcontainers
+
+Include the following in the project `devcontainer.json` file:
+
+```json
+{
+  "runArgs": ["--userns=keep-id", "--init"]
+}
+```
+
+Other useful `runArgs` may be `--network=systemd-networkname` to allow network integration, and `--security-opt=label=disable` for SELinux to prevent setting labels.
+
+It may be required for certain devcontainers to force the Docker format:
+
+```json
+{
+  "runArgs": ["--userns=keep-id", "--init"],
+  "build": {
+    "options": ["--format=docker"]
+    // "args": {
+    //     "UID": "1000", // Replace with your desired UID (id -u)
+    //     "GID": "1000" // Replace with your desired GID (id -g)
+    // }
+  }
+}
+```
 
 ## Build
 
