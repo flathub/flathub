@@ -43,7 +43,7 @@ Open VSCode, run command `Open User Settings (JSON)` and append:
 
 ```json
 "containers.composeCommand": "/usr/lib/sdk/podman/bin/podman-compose",
-"dev.containers.dockerComposePath": "/usr/lib/sdk/podman/bin/podman-remote",
+"dev.containers.dockerComposePath": "/usr/lib/sdk/podman/bin/podman-compose",
 "dev.containers.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote",
 "dev.containers.dockerSocketPath": "/run/user/$UID/podman/podman.sock",
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
