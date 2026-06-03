@@ -18,10 +18,8 @@ flatpak override --user --filesystem=xdg-run/podman:ro app-id
 The socket path should be available inside the Flatpak application:
 
 ```bash
-/run/user/$UID/podman/podman.sock
+/run/user/<UID>/podman/podman.sock
 ```
-
-> Note: replace `$UID` with the current user-id (`id -u`) and make sure the path exists on the host.
 
 ## Usage
 
@@ -45,7 +43,7 @@ Open VSCode, run command `Open User Settings (JSON)` and append:
 "containers.composeCommand": "/usr/lib/sdk/podman/bin/podman-compose",
 "dev.containers.dockerComposePath": "/usr/lib/sdk/podman/bin/podman-compose",
 "dev.containers.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote",
-"dev.containers.dockerSocketPath": "/run/user/$UID/podman/podman.sock",
+"dev.containers.dockerSocketPath": "/run/user/<UID>/podman/podman.sock",
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
 ```
 
