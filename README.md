@@ -27,7 +27,7 @@ $XDG_RUNTIME_DIR/podman/podman.sock
 
 To use with [PhpStorm](https://github.com/flathub/com.jetbrains.PhpStorm), make sure to set the connection type to 'Podman'.
 
-You may also need to set the podman socket path to allow full container integration.
+You may also need to set the podman socket path to allow full container integration (`$XDG_RUNTIME_DIR/podman/podman.sock`).
 
 ### Visual Studio Code / VSCodium
 
@@ -47,13 +47,13 @@ Open VSCode, run command `Open User Settings (JSON)` and append:
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
 ```
 
-Note: Replace <UID> with the user-id that runs the socket.
+> Note: Replace <UID> with the user-id that runs the socket.
 
 Restart the editor to apply changes.
 
 ### Devcontainers
 
-Include the following in the project `devcontainer.json` file:
+Update the project `devcontainer.json` file with `runArgs` that apply to Podman:
 
 ```json
 {
@@ -61,9 +61,9 @@ Include the following in the project `devcontainer.json` file:
 }
 ```
 
-Other useful `runArgs` may be `--network=systemd-networkname` to allow network integration, and `--security-opt=label=disable` for SELinux to prevent setting labels.
+One may also want to append `--network=systemd-networkname` to allow network communication, and `--security-opt=label=disable` to prevent SELinux from setting filesystem labels.
 
-It may be required for certain devcontainers to force the Docker format:
+It may be required for certain devcontainer images to force the Docker format when building:
 
 ```json
 {
