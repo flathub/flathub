@@ -47,6 +47,8 @@ Open VSCode, run command `Open User Settings (JSON)` and append:
 "docker.dockerPath": "/usr/lib/sdk/podman/bin/podman-remote"
 ```
 
+Note: Replace <UID> with the user-id that runs the socket.
+
 Restart the editor to apply changes.
 
 ### Devcontainers
