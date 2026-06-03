@@ -1,17 +1,3 @@
-# Flatpak manifest for Hut Hut (Flutter UI + Rust `mp` backend, media_kit/libmpv).
-#
-# Runtime: org.freedesktop.Platform 25.08 — confirmed to ship GTK-3 (Flutter's
-# Linux embedder needs it) and a base ffmpeg (enough for libmpv). Same runtime
-# the sibling app (This Note) ships on.
-#
-# libmpv is NOT in the runtime, so it's built from source here (mpv + libass +
-# libplacebo + uchardet). This module chain is the proven one used by other
-# media_kit Flutter apps on Flathub (e.g. MusicPod).
-#
-# The app itself is shipped as a pre-built Flutter Linux bundle (the same
-# release-tarball pattern as This Note): the tarball carries the Flutter exe,
-# its lib/ + data/, the `mp` backend, and the desktop/icon/metainfo/LICENSE,
-# all installed below from the GitHub release.
 app-id: com.bolwarratechnologies.HutHut
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
@@ -22,24 +8,25 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  - --device=dri
-  # Audio output (PulseAudio / PipeWire).
   - --socket=pulseaudio
-  # Read-only access to the usual media locations. Flathub disallows broad
-  # host access; folders outside these can still be opened per-session through
-  # the file-chooser portal.
+  - --device=dri
   - --filesystem=xdg-music:ro
   - --filesystem=xdg-videos:ro
   - --filesystem=xdg-download:ro
   - --filesystem=xdg-documents:ro
   - --filesystem=xdg-pictures:ro
-  # "Reveal in file manager" uses the FileManager1 D-Bus interface.
   - --talk-name=org.freedesktop.FileManager1
-  # NOTE: deliberately NO --share=network. Hut Hut is fully offline; this is a
-  # listing selling point and is asserted in the metainfo.
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
 
 modules:
-  # ── libmpv (+ libass, libplacebo, uchardet) ───────────────────────────────
   - name: libmpv
     buildsystem: meson
     config-opts:
@@ -89,31 +76,18 @@ modules:
             url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
             sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
 
-  # ── Hut Hut (pre-built Flutter bundle + Rust backend) ──────────────────────
   - name: hut_hut
     buildsystem: simple
     build-commands:
-      # App layout under /app/lib/huthut: the Flutter exe, its data/ and lib/,
-      # and the `mp` backend right next to the exe (backend_client.dart finds it
-      # via Platform.resolvedExecutable's parent dir).
       - install -Dm755 hut_hut /app/lib/huthut/hut_hut
-      - cp -ra data /app/lib/huthut/data
       - cp -ra lib /app/lib/huthut/lib
+      - cp -ra data /app/lib/huthut/data
       - install -Dm755 mp /app/lib/huthut/mp
-      # /app/bin launcher (the desktop Exec + manifest command point here).
       - install -Dm755 huthut_wrapper.sh /app/bin/hut_hut
-      # Desktop entry, icon, metainfo and license all ship INSIDE the release
-      # tarball (upstream) and are installed from it here — they are not carried
-      # as separate files in this repo.
       - install -Dm644 ${FLATPAK_ID}.desktop -t /app/share/applications/
       - install -Dm644 ${FLATPAK_ID}.png -t /app/share/icons/hicolor/512x512/apps/
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
-      - install -Dm644 LICENSE -t /app/share/licenses/${FLATPAK_ID}/hut_hut/
     sources:
-      # Pre-built Flutter bundle + the `mp` backend + the desktop/icon/metainfo/
-      # LICENSE, all from the GitHub release tarball. To cut a new version:
-      # rebuild the bundle (Prod_Deploy/build_bundle.sh), upload it as a new
-      # release on Perszus/huthut-linux, and update the url + sha256 here.
       - type: archive
         url: https://github.com/Perszus/huthut-linux/releases/download/v1.0.0/hut_hut_linux_v1.0.0.tar.xz
         sha256: 9977aaba00d76ef738e7c5d0981e2c74ad540d36f9a8269aceda99596e0b8aa2
