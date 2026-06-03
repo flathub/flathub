@@ -18,7 +18,7 @@ flatpak override --user --filesystem=xdg-run/podman:ro app-id
 The socket path should be available inside the Flatpak application:
 
 ```bash
-/run/user/<UID>/podman/podman.sock
+$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
 ## Usage
