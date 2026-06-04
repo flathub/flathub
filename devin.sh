@@ -4,6 +4,8 @@ set -e
 shopt -s nullglob
 
 FIRST_RUN="${XDG_CONFIG_HOME}/flatpak-devin-first-run"
+VSCODE_CONFIG_DIR="${XDG_CONFIG_HOME}/Code/User"
+VSCODE_SETTINGS_FILE="${VSCODE_CONFIG_DIR}/settings.json"
 
 function msg() {
   echo "flatpak-devin: $*" >&2
@@ -12,6 +14,13 @@ function msg() {
 if [ ! -f ${FIRST_RUN} ]; then
   WARNING_FILE="/app/share/devin/flatpak-warning.txt"
   touch ${FIRST_RUN}
+  
+  # Copy VS Code terminal configuration on first run
+  if [ ! -f ${VSCODE_SETTINGS_FILE} ]; then
+    mkdir -p "${VSCODE_CONFIG_DIR}"
+    cp /app/share/devin/vscode-settings.json "${VSCODE_SETTINGS_FILE}"
+    msg "VS Code terminal configuration installed"
+  fi
 fi
 
 if [ "$FLATPAK_ENABLE_SDK_EXT" = "*" ]; then
