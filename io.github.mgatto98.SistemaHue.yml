@@ -1,0 +1,85 @@
+app-id: io.github.mgatto98.SistemaHue
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: sistema-hue
+
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=ipc
+  - --filesystem=home
+
+modules:
+
+  # Compatibilidad: flatpak-builder 1.2.x busca appstream-compose pero SDK 47+ lo removio
+  - name: appstream-compose-compat
+    buildsystem: simple
+    build-commands:
+      - |
+        mkdir -p /app/bin
+        printf '#!/bin/sh\n# appstream-compose fue removido en SDK 47+; el metainfo ya esta instalado\nexit 0\n' > /app/bin/appstream-compose
+        chmod +x /app/bin/appstream-compose
+
+  # Librería C mbedtls necesaria para compilar python-mbedtls desde fuente
+  - name: mbedtls
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTING=OFF
+      - -DENABLE_PROGRAMS=OFF
+      - -DUSE_SHARED_MBEDTLS_LIBRARY=ON
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/Mbed-TLS/mbedtls/releases/download/v2.28.8/mbedtls-2.28.8.tar.bz2
+        sha256: 241c68402cef653e586be3ce28d57da24598eb0df13fcdea9d99bfce58717132
+
+  # Librería de audio que necesita sounddevice
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
+
+  # Dependencias Python (requests, sounddevice, numpy, cffi)
+  - python3-deps.json
+
+  # python-mbedtls desde fuente: no hay wheel cp313; append-cflags agrega /app/include
+  - name: python3-python-mbedtls
+    buildsystem: simple
+    build-options:
+      append-cflags: -I/app/include
+      append-ldflags: -L/app/lib -L/app/lib64
+    build-commands:
+      - pip3 install --no-build-isolation --no-index --find-links="file://${PWD}" --prefix=/app typing_extensions-4.15.0-py3-none-any.whl
+      - pip3 install --no-build-isolation --no-deps --prefix=/app python-mbedtls-2.10.1.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl
+        sha256: f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+      - type: file
+        url: https://files.pythonhosted.org/packages/13/93/6ab1d8abcf21d3f3041974130110b1af0c5803302c56131932ee8300a5ed/python-mbedtls-2.10.1.tar.gz
+        sha256: a1f8ac8a6e810f80d3e8d26561e787d04047c2d098e9ce21b9266174f124e00c
+
+  # La aplicación
+  - name: sistema-hue
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 sistema_hue.py /app/bin/sistema-hue
+      - install -Dm644 io.github.mgatto98.SistemaHue.desktop
+          /app/share/applications/io.github.mgatto98.SistemaHue.desktop
+      - install -Dm644 io.github.mgatto98.SistemaHue.png
+          /app/share/icons/hicolor/256x256/apps/io.github.mgatto98.SistemaHue.png
+      - install -Dm644 io.github.mgatto98.SistemaHue.metainfo.xml
+          /app/share/metainfo/io.github.mgatto98.SistemaHue.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/mgatto98/hue-controller.git
+        commit: caaf1d2d42e6d349eb42ffcad3c80550262e5bc5
