@@ -1,0 +1,88 @@
+id: app.risuko.Risuko
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: risuko
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=xdg-download
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - '*.a'
+modules:
+  - name: risuko
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/risuko/cargo
+        CARGO_NET_OFFLINE: 'true'
+        npm_config_offline: 'true'
+        npm_config_audit: 'false'
+        npm_config_fund: 'false'
+        HUSKY: '0'
+    build-commands:
+      - |
+        set -eu
+
+        case "$FLATPAK_ARCH" in
+          x86_64)
+            TAURI_CONFIG=src-tauri/tauri.linux.x64.conf.json
+            ;;
+          aarch64)
+            TAURI_CONFIG=src-tauri/tauri.linux.arm64.conf.json
+            ;;
+          arm)
+            TAURI_CONFIG=src-tauri/tauri.linux.armv7l.conf.json
+            ;;
+          *)
+            echo "Unsupported Flatpak architecture: $FLATPAK_ARCH" >&2
+            exit 1
+            ;;
+        esac
+
+        mkdir -p .flatpak-bin
+        cat > .flatpak-bin/pnpm <<EOF
+        #!/bin/sh
+        exec node "$PWD/flatpak-pnpm/bin/pnpm.cjs" "\$@"
+        EOF
+        chmod +x .flatpak-bin/pnpm
+        export PATH="$PWD/.flatpak-bin:$PATH"
+
+        pnpm install --offline --frozen-lockfile --ignore-scripts --trust-lockfile
+        pnpm exec tauri build --no-bundle --config "$TAURI_CONFIG"
+
+        install -Dm755 src-tauri/target/release/risuko /app/bin/risuko
+        install -Dm644 src-tauri/linux/app.risuko.Risuko.desktop /app/share/applications/app.risuko.Risuko.desktop
+        install -Dm644 src-tauri/linux/app.risuko.Risuko.metainfo.xml /app/share/metainfo/app.risuko.Risuko.metainfo.xml
+        install -Dm644 src-tauri/icons/icon.svg /app/share/icons/hicolor/scalable/apps/app.risuko.Risuko.svg
+        install -Dm644 static/512x512.png /app/share/icons/hicolor/512x512/apps/app.risuko.Risuko.png
+        install -Dm644 LICENSE /app/share/licenses/app.risuko.Risuko/LICENSE
+    sources:
+      - type: archive
+        url: https://github.com/YueMiyuki/Risuko/archive/refs/tags/v0.4.1.tar.gz
+        sha256: c8ea00b2eac21462b6c540bafb98cc5a52123e072d878ac2fbe3be6b0e662df2
+        strip-components: 1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/YueMiyuki/Risuko/releases/latest
+          version-query: '.tag_name | sub("^v"; "")'
+          url-query: '"https://github.com/YueMiyuki/Risuko/archive/refs/tags/v" + $version + ".tar.gz"'
+          is-main-source: true
+          release-url-template: https://github.com/YueMiyuki/Risuko/releases/tag/v$version
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-11.3.0.tgz
+        sha256: 5ade1ef51cf36441f4a00931eaf9003654689eba3684939f70d7576b2dfb8474
+        dest: flatpak-pnpm
+      - generated-sources.json
+      - cargo-sources.json
