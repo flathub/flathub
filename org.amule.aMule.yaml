@@ -1,0 +1,268 @@
+# Flathub-strict aMule manifest.
+#
+# This file is the staging copy of what gets submitted to
+# github.com/flathub/flathub once the listing is approved, the dedicated
+# github.com/flathub/org.amule.aMule repo becomes the canonical home and
+# this file is kept in sync with it.
+#
+# Differences from packaging/linux/flatpak/org.amule.aMule.yaml.in:
+#  - Concrete version pins (no ${...} template variables — Flathub CI
+#    doesn't run envsubst).
+#  - amule source: tag + commit instead of branch (Flathub forbids
+#    mutable refs).
+#  - cryptopp source: commit added next to the tag.
+#  - All other modules identical (they were already archive + sha256
+#    pinned).
+#
+# To refresh after a new aMule release tag:
+#   1. Resolve the tag's commit SHA:
+#        gh api repos/amule-org/amule/git/refs/tags/<tag> --jq '.object.sha'
+#   2. Update the amule source block's `tag:` and `commit:`.
+#   3. PR to github.com/flathub/org.amule.aMule (once that repo exists).
+
+app-id: org.amule.aMule
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: amule
+
+# Ship all translation .mo files inside the main app instead of
+# splitting them into a sibling <app-id>.Locale extension. Default
+# flatpak-builder behaviour (`separate-locales: true`) extracts them
+# into the extension, but the resulting layout
+# (<lang>/share/<sub-lang>/LC_MESSAGES/amule.mo) doesn't match the
+# standard libintl lookup pattern, so wxLocale can't find the
+# catalogs even when the .Locale extension is installed — the UI
+# silently runs in English regardless of LANG.
+#
+# Keeping locales in the main app at the canonical
+# share/locale/<lang>/LC_MESSAGES/amule.mo path makes translations
+# load reliably on every distribution channel.
+#
+# Cost: ~8 MB added to the bundle (~30 .mo files).
+separate-locales: false
+
+build-options:
+  env:
+    MAKEFLAGS: "-j2"
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Full home access. aMule is a P2P client where users mark arbitrary
+  # folders as shared (uploads) and pick arbitrary destinations for
+  # Incoming / Temp / completed-files dirs (downloads). Restricting to
+  # xdg-download alone makes the most common config — "share my Music
+  # folder, save downloads to ~/Movies" — silently fail. This matches
+  # qBittorrent / Transmission on Flathub for the same reason.
+  - --filesystem=home
+  - --talk-name=org.freedesktop.PowerManagement.Inhibit
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.Notifications
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  - name: cryptopp
+    buildsystem: simple
+    build-commands:
+      - make -j2 shared
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/weidai11/cryptopp.git
+        tag: CRYPTOPP_8_9_0
+        commit: 041cf66ed64f28d89cc50b762cde0353cf85657c
+        x-checker-data:
+          type: git
+          tag-pattern: ^CRYPTOPP_(\d+)_(\d+)_(\d+)$
+
+  - name: libupnp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DUPNP_BUILD_SAMPLES=OFF
+      - -DUPNP_BUILD_TESTS=OFF
+      - -Dreuseaddr=ON
+      - -Dipv6=ON
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/pupnp/pupnp/archive/refs/tags/release-1.14.21.tar.gz
+        sha256: d176a6028b02ab36e9d334372dd64780d9a8e577a2d8d4c1d70ef8ced15d7d19
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=system
+      - ./b2 -j2 install --prefix=/app
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2
+        sha256: af57be25cb4c4f4b413ed692fe378affb4352ea50fbe294a11ef548f4d527d89
+
+  - name: libgd
+    buildsystem: autotools
+    config-opts:
+      - --without-x
+      - --with-png=/usr
+      - --with-zlib=/usr
+      - --without-tiff
+      - --without-webp
+      - --without-xpm
+      - --without-fontconfig
+    sources:
+      - type: archive
+        url: https://github.com/libgd/libgd/releases/download/gd-2.3.3/libgd-2.3.3.tar.xz
+        sha256: 3fe822ece20796060af63b7c60acb151e5844204d289da0ce08f8fdf131e5a61
+
+  - name: intltool
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        mirror-urls:
+          - https://archive.ubuntu.com/ubuntu/pool/main/i/intltool/intltool_0.51.0.orig.tar.gz
+          - https://snapshot.debian.org/archive/debian/20180815T211456Z/pool/main/i/intltool/intltool_0.51.0.orig.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libdbusmenu
+    buildsystem: autotools
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-introspection
+      - --disable-vala
+      - --disable-gtk-doc
+    build-options:
+      env:
+        HAVE_VALGRIND_FALSE: '#'
+        HAVE_VALGRIND_TRUE: ''
+        MAKEFLAGS: '-j1'
+    make-args:
+      - 'CFLAGS=-Wall -O2 -g -fPIC -Wno-error'
+      - 'CXXFLAGS=-Wall -O2 -g -fPIC -Wno-error'
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=OFF
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_TESTS=OFF
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
+        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=OFF
+      - -DENABLE_BINDINGS_VALA=OFF
+      - -DENABLE_TESTS=OFF
+      - -DFLAVOUR_GTK3=ON
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_GTKDOC=OFF
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.94.tar.gz
+        sha256: 884a6bc77994c0b58c961613ca4c4b974dc91aa0f804e70e92f38a542d0d0f90
+
+  - name: libmaxminddb
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-tests
+    sources:
+      - type: archive
+        url: https://github.com/maxmind/libmaxminddb/releases/download/1.13.3/libmaxminddb-1.13.3.tar.gz
+        sha256: a66502ea76eadbe17f2cd6fd708946777253972d2ae8157dee1b23a2fb528171
+
+  - name: wxwidgets
+    buildsystem: autotools
+    config-opts:
+      - --with-gtk=3
+      - --enable-unicode
+      - --disable-debug
+      - --disable-shared
+      - --disable-mediactrl
+      - --disable-webview
+      - --disable-richtext
+      - --disable-aui
+      - --disable-html
+      - --without-libtiff
+      - --without-libjbig
+      - --without-libmspack
+      - --without-opengl
+      - --with-libcurl
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.6/wxWidgets-3.2.6.tar.bz2
+        sha256: 939e5b77ddc5b6092d1d7d29491fe67010a2433cf9b9c0d841ee4d04acb9dce7
+
+  - name: amule
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_MONOLITHIC=YES
+      - -DBUILD_REMOTEGUI=YES
+      - -DBUILD_DAEMON=YES
+      - -DBUILD_AMULECMD=YES
+      - -DBUILD_ED2K=YES
+      - -DBUILD_WEBSERVER=YES
+      - -DBUILD_CAS=YES
+      - -DBUILD_WXCAS=YES
+      - -DBUILD_ALC=YES
+      - -DBUILD_ALCC=YES
+      - -DENABLE_NLS=YES
+      - -DENABLE_UPNP=YES
+      - -DENABLE_IP2COUNTRY=YES
+      # GNOME 49 SDK ships libbfd at build time, the runtime doesn't,
+      # so the installed flatpak aborts at startup with
+      # "libbfd-2.46.so: cannot open shared object file" unless we
+      # opt out of the libbfd path. MuleDebug.cpp's !HAVE_BFD fallback
+      # keeps backtraces working via backtrace_symbols() + addr2line.
+      - -DENABLE_BFD=NO
+    sources:
+      - type: git
+        url: https://github.com/amule-org/amule.git
+        # Pinned to a master tip newer than the 3.0.0 tag to ship
+        # post-release fixes. Flatpak still self-identifies as 3.0.0
+        # (source version macro unchanged). Tag is intentionally
+        # omitted: flatpak-builder requires that any tag specified
+        # alongside a commit must resolve to that exact commit, so a
+        # tip-of-master pin past the release tag can only be commit-
+        # only. The x-checker-data block below still drives auto-
+        # update PRs against new aMule release tags.
+        commit: 843bd1206ba552dd79221ac4fcd3e0763fbeec21
+        disable-shallow-clone: true
+        x-checker-data:
+          type: git
+          tag-pattern: ^v?([\d.]+)$
