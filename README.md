@@ -70,10 +70,6 @@ It may be required for certain devcontainer images to force the Docker format wh
   "runArgs": ["--userns=keep-id", "--init"],
   "build": {
     "options": ["--format=docker"]
-    // "args": {
-    //     "UID": "1000", // Replace with your desired UID (id -u)
-    //     "GID": "1000" // Replace with your desired GID (id -g)
-    // }
   }
 }
 ```
