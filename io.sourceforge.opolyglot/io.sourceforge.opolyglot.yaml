@@ -1,0 +1,162 @@
+app-id: io.sourceforge.opolyglot
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+appstream-compose: true 
+command: opolyglot
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --env=DOWNLOAD_XML=/app/share/opolyglot/download.xml
+  - --env=CACERT_PEM=/app/share/opolyglot/cacert.pem
+  - --persist=.opolyglot
+  - --env=LD_LIBRARY_PATH=/app/lib:/app/lib64
+cleanup:
+  - /include
+  - /lib/libtesseract.a
+  - /lib/libleptonica.a
+  - /lib/libpcre2-8.a
+  - /lib/libpcre2-posix.a
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /lib/wx
+  - /bin/convertfilestopdf
+  - /bin/convertsegfilestops
+  - /bin/convertformat
+  - /bin/convertfilestops
+  - /bin/convertsegfilestopdf
+  - /bin/converttopdf
+  - /bin/converttops
+  - /bin/fileinfo
+  - /bin/imagetops
+  - /bin/pcre2-config
+  - /bin/pcre2grep
+  - /bin/pcre2test
+  - /bin/tesseract
+  - /bin/wxrc-3.2
+  - /bin/xtractprotos
+  - /bin/wx-config
+  - /bin/wxrc
+  - /share/doc/pcre2
+modules:
+  - name: leptonica
+    buildsystem: autotools
+    only-arches: [x86_64]
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz
+        sha256: c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7
+  - name: tesseract
+    buildsystem: autotools
+    only-arches: [x86_64]
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.2.tar.gz
+        sha256: 6235ea0dae45ea137f59c09320406f5888383741924d98855bd2ce0d16b54f21
+  - name: openblas
+    buildsystem: cmake
+    only-arches: [x86_64]
+    build-options:
+      cflags: "-Wno-unused-variable -Wno-maybe-uninitialized"
+      cxxflags: "-Wno-unused-variable -Wno-maybe-uninitialized"
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DDYNAMIC_ARCH=1
+      - -DBINARY=64
+      - -DUSE_THREAD=1
+      - -DNO_AFFINITY=1
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF 
+      - -DNOFORTRAN=0
+      - "-DCMAKE_SHARED_LINKER_FLAGS=-L/usr/lib/x86_64-linux-gnu/ -lgfortran"
+      - "-DCMAKE_EXE_LINKER_FLAGS=-L/usr/lib/x86_64-linux-gnu/ -lgfortran"
+    sources:
+      - type: archive
+        url: https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.32/OpenBLAS-0.3.32.tar.gz
+        sha256: f8a1138e01fddca9e4c29f9684fd570ba39dedc9ca76055e1425d5d4b1a4a766
+  - name: bergamot
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-commands:
+      - ls /app/lib
+      - cp -r ./inference/ /app/include/
+      - cmake -DLAPACK_LIBRARIES=/app/lib/libopenblas.so -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/lib/x86_64-linux-gnu/ -lgfortran" -DCMAKE_EXE_LINKER_FLAGS="-L/usr/lib/x86_64-linux-gnu/ -lgfortran" -DCOMPILE_LIBRARY_ONLY=ON -DCMAKE_BUILD_TYPE=Release ./
+      - make -j4
+      - cp libmarian.so /app/lib
+      - cp ./inference/src/translator/libbergamot-translator-source.so /app/lib
+    sources:
+      - type: git
+        url: https://github.com/mozilla/translations/
+        commit: c458f2fcb6dd6f890d92ff8272b548a35d1e5c64
+      - type: patch
+        path: opolyglot-fix.patch
+  - name: wxWidgets
+    buildsystem: cmake
+    only-arches: [x86_64]
+    config-opts:
+      - -DwxBUILD_TOOLKIT=gtk3 
+      - -DCMAKE_CXX_STANDARD=17
+      - -DwxUSE_LIBICONV=ON
+      - -DwxBUILD_MONOLITHIC=OFF
+      - -DwxUSE_MEDIACTRL=OFF
+      - -DwxUSE_HTML=ON
+      - -DwxUSE_RICHTEXT=OFF
+      - -DwxUSE_WEBVIEW=OFF
+      - -DwxUSE_POSTSCRIPT=ON
+    sources:
+      - type: archive
+        url: https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.10/wxWidgets-3.2.10.tar.bz2
+        sha256: d66e929569947a4a5920699539089a9bda83a93e5f4917fb313a61f0c344b896
+  - name: libportal
+    buildsystem: meson
+    only-arches: [x86_64]
+    config-opts:
+      - --libdir=lib
+      - -Dvapi=false
+      - -Ddocs=false
+      - -Dbackend-gtk3=enabled
+      - -Dbackend-gtk4=disabled
+      - -Dbackend-qt5=disabled
+      - -Dbackend-qt6=disabled
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://github.com/flatpak/libportal/releases/download/0.9.1/libportal-0.9.1.tar.xz
+        sha256: de801ee349ed3c255a9af3c01b1a401fab5b3fc1c35eb2fd7dfb35d4b8194d7f
+  - name: OPolyglot
+    buildsystem: simple
+    only-arches: [x86_64]
+    build-options:                                       
+      env:  
+        CFLAGS: "-g -O0"
+        CXXFLAGS: "-g -O0"
+#PKG_CONFIG_PATH: /app/lib/pkgconfig
+    build-commands:
+      - ls /app/lib
+      - ls /app/lib/pkgconfig
+      - make -f Makefile FLATPAK=1 clean
+      - make -f Makefile FLATPAK=1 CXXFLAGS="-g -O0" CFLAGS="-g -O0" build
+      - make -f Makefile FLATPAK=1 compile-po 
+      - cp ./bin/opolyglot /app/bin
+      - mkdir -p /app/share/opolyglot
+      - cp ./res/download.xml /app/share/opolyglot
+      - cp ./res/cacert.pem /app/share/opolyglot
+      - cp ./doc/LICENSES.flatpak.txt /app/share/opolyglot/LICENSES.txt
+      - cp README.md /app/share/opolyglot
+      - cp -r ./bin/locale /app
+    sources:
+      - type: git
+        url: https://github.com/fenenko/OPolyglot
+        branch: alpha_centauri
+        disable-shallow-clone: true
+#url: https://github.com/fenenko/OPolyglot
+#branch: alpha_centauri 
+    post-install:
+      - install -Dm644 ./res/icon256.png /app/share/icons/hicolor/256x256/apps/io.sourceforge.opolyglot.png
+      - install -Dm644 ./res/icon64.png /app/share/icons/hicolor/64x64/apps/io.sourceforge.opolyglot.png
+      - install -Dm644 ./flatpak/io.sourceforge.opolyglot.desktop /app/share/applications/io.sourceforge.opolyglot.desktop
+      - install -Dm644 ./flatpak/io.sourceforge.opolyglot.metainfo.xml /app/share/metainfo/io.sourceforge.opolyglot.metainfo.xml
+
