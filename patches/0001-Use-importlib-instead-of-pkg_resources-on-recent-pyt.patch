@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Tresor Batchi <tbatchi@emi.u-bordeaux.fr>
+Date: Mon, 9 Mar 2026 11:38:48 +0100
+Subject: [PATCH] Use importlib instead of pkg_resources on recent python
+
+---
+ src_py/pkgdata.py  | 46 +++++++++++++++++++++++++++++++++-------------
+ test/image_test.py |  4 ++--
+ 2 files changed, 35 insertions(+), 15 deletions(-)
+
+diff --git a/src_py/pkgdata.py b/src_py/pkgdata.py
+index 767cbdf76..870079dec 100644
+--- a/src_py/pkgdata.py
++++ b/src_py/pkgdata.py
+@@ -21,25 +21,45 @@ __all__ = ["getResource"]
+ import sys
+ import os
+ 
+-try:
+-    from pkg_resources import resource_stream, resource_exists
+-except ImportError:
++if sys.version_info >= (3, 9):
++    import importlib.resources as importlib_resources
+ 
+-    def resource_exists(_package_or_requirement, _resource_name):
++    def resource_exists(package_or_requirement, resource_name):
+         """
+-        A stub for when we fail to import this function.
+-
+-        :return: Always returns False
++        Check if a resource exists within a package using importlib.resources.
++        Available for Python 3.9+.
++        :return: True if the resource exists, False otherwise
+         """
+-        return False
++        return     importlib_resources.files(package_or_requirement).joinpath(resource_name).is_file()
+ 
+-    def resource_stream(_package_of_requirement, _resource_name):
++    def resource_stream(package_or_requirement, resource_name):
+         """
+-        A stub for when we fail to import this function.
+-
+-        Always raises a NotImplementedError when called.
++        Return a readable file-like object (opened in binary mode) for the
++        given resource, using importlib.resources.
++        Available for Python 3.9+.
+         """
+-        raise NotImplementedError
++        ref = importlib_resources.files(package_or_requirement).joinpath(resource_name)
++        return ref.open('rb')
++
++else:
++    # Python < 3.9 : keep pkg_resources for compatibility
++    try:
++        from pkg_resources import resource_stream, resource_exists
++    except ImportError:
++        def resource_exists(_package_or_requirement, _resource_name):
++            """
++            A stub for when we fail to import this function.
++            :return: Always returns False
++            """
++            return False
++
++        def resource_stream(_package_or_requirement, _resource_name):
++            """
++            A stub for when we fail to import this function.
++            Always raises a NotImplementedError when called.
++            """
++            raise NotImplementedError
++
+ 
+ 
+ def getResource(identifier, pkgname=__name__):
+diff --git a/test/image_test.py b/test/image_test.py
+index 77dff793f..a83ab53b4 100644
+--- a/test/image_test.py
++++ b/test/image_test.py
+@@ -32,7 +32,7 @@ def test_magic(f, magic_hexes):
+ class ImageModuleTest(unittest.TestCase):
+     def testLoadIcon(self):
+         """see if we can load the pygame icon."""
+-        f = pygame.pkgdata.getResource("pygame_icon.bmp")
++        f = pygame.pkgdata.getResource("pygame_icon.bmp", "pygame")
+         self.assertEqual(f.mode, "rb")
+ 
+         surf = pygame.image.load_basic(f)
+@@ -1162,7 +1162,7 @@ class ImageModuleTest(unittest.TestCase):
+         self.assertEqual(s.get_at((0, 0)), (255, 255, 255, 255))
+ 
+         # test loading from io.BufferedReader
+-        f = pygame.pkgdata.getResource("pygame_icon.bmp")
++        f = pygame.pkgdata.getResource("pygame_icon.bmp", "pygame")
+         self.assertEqual(f.mode, "rb")
+ 
+         surf = pygame.image.load_basic(f)
+-- 
+2.53.0
+

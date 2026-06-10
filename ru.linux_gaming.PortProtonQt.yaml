@@ -1,0 +1,326 @@
+app-id: ru.linux_gaming.PortProtonQt
+sdk: org.kde.Sdk
+runtime: org.kde.Platform
+runtime-version: '6.10'
+command: portprotonqt
+base: org.winehq.Wine
+base-version: stable-25.08
+separate-locales: false
+build-options:
+  append-path: /usr/lib/sdk/llvm21/bin
+  append-ld-library-path: /usr/lib/sdk/llvm21/lib
+  env:
+    PYGAME_EXTRA_BASE: /app
+    ORIGLIBDIRS: /lib:/lib64:/lib/x86_64-linux-gnu
+    LLVM_INSTALL_DIR: /usr/lib/sdk/llvm21
+
+cleanup-commands:
+  - /app/pyside_cleanup.sh
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  # --fallback-x11 forces Wine to run in native Wayland mode it is still too unstable for this behavior
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --allow=multiarch
+  - --allow=bluetooth
+  # For Wine crash handling
+  - --allow=devel
+  # For wine mono and gecko work
+  - --allow=per-app-dev-shm
+  # Wine uses UDisks2 to enumerate disk drives
+  - --system-talk-name=org.freedesktop.UDisks2
+  # HDR10 support through gamescope
+  - --filesystem=xdg-run/gamescope-0:ro
+  - --filesystem=home
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --device=all
+  # Mangohud, OBSVkCapture and GameScope
+  - --env=PATH=/app/bin:/usr/bin:/app/utils/bin:/usr/lib/extensions/vulkan/MangoHud/bin/:/usr/lib/extensions/vulkan/gamescope/bin:/usr/lib/extensions/vulkan/OBSVkCapture/bin
+  # For Steam Deck HDR support
+  - --env=LD_LIBRARY_PATH=/usr/lib/extensions/vulkan/gamescope/lib
+  - --env=GST_PLUGIN_SYSTEM_PATH=/app/lib/gstreamer-1.0:/app/lib32/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/codecs-extra/lib/gstreamer-1.0:/usr/lib/i386-linux-gnu/codecs-extra/lib/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0:/usr/lib/i386-linux-gnu/gstreamer-1.0
+  # These are for tray icons
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib*/pkgconfig
+  - /lib/python3.*/*/*/docs
+  - /lib/python3.*/*/*/examples
+  - /lib/python3.*/*/*/tests
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - /share/help
+  - /share/vala
+  - '*.la'
+  - '*.a'
+  - '*.pod'
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm21
+
+inherit-extensions:
+  - org.freedesktop.Platform.GL32
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '25.08'
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '25.08'
+    no-autodownload: true
+
+  org.freedesktop.Platform.codecs_extra.i386:
+    directory: lib/i386-linux-gnu/codecs-extra
+    version: 25.08-extra
+    autodelete: false
+    add-ld-path: lib
+
+modules:
+  - ru.linux_gaming.PortProtonQt.pypi-deps.yaml
+
+  - name: pyside-setup
+    buildsystem: simple
+    build-commands:
+      - python3 setup.py build --qtpaths=/usr/bin/qtpaths --ignore-git --parallel=8
+        --log-level=verbose --flatpak --no-qt-tools
+      - python3 create_wheels.py --build-dir ./build/qfp-*-release
+      - rm -rf ./dist/PySide6*Examples*.whl
+      - pip install ./dist/*.whl --prefix=${FLATPAK_DEST}
+      - install -Dm755 /usr/lib/sdk/llvm21/lib/libLLVM.so.21.1 ${FLATPAK_DEST}/lib/
+      - install -Dm755 /usr/lib/sdk/llvm21/lib/libclang-cpp.so.21.1 ${FLATPAK_DEST}/lib/
+      - install -Dm755 /usr/lib/sdk/llvm21/lib/libclang.so.21.1 ${FLATPAK_DEST}/lib/
+      - ln -s libLLVM.so.21.1 ${FLATPAK_DEST}/lib/libLLVM.so.21
+      - ln -s libLLVM.so.21.1 ${FLATPAK_DEST}/lib/libLLVM.so
+      - ln -s libclang-cpp.so.21.1 ${FLATPAK_DEST}/lib/libclang-cpp.so.21
+      - ln -s libclang-cpp.so.21.1 ${FLATPAK_DEST}/lib/libclang-cpp.so
+      - ln -s libclang.so.21.1 ${FLATPAK_DEST}/lib/libclang.so.21
+      - ln -s libclang.so.21.1 ${FLATPAK_DEST}/lib/libclang.so
+      - rm -rf ${FLATPAK_DEST}/lib/python*/site-packages/PySide6/examples
+      - rm -rf ${FLATPAK_DEST}/lib/python*/site-packages/pyside6_examples-*.dist-info
+    sources:
+      - type: git
+        url: "https://code.qt.io/pyside/pyside-setup.git"
+        tag: "v6.10.3"
+        commit: "863e6b6e6269fbd401db06e2066119b9014fcf0d"
+
+  - name: pygame
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --no-build-isolation .
+    sources:
+      - type: git
+        url: https://github.com/pygame/pygame
+        tag: 2.6.1
+        commit: b92c0da9d1b5eba6c813138790fc1ab6cea0252c
+      - type: patch
+        path: patches/0001-Use-importlib-instead-of-pkg_resources-on-recent-pyt.patch
+
+  - shared-modules/lzo/lzo.json
+  - shared-modules/squashfs-tools/squashfs-tools.json
+  - shared-modules/glu/glu-9.json
+  - shared-modules/glew/glew.json
+
+  # Taken from https://github.com/flathub/fr.romainvigier.MetadataCleaner/blob/74c261effe8536e33c2669b75acb340ecfff3142/fr.romainvigier.MetadataCleaner.yaml#L73
+  - name: exiftool
+    buildsystem: simple
+    build-commands:
+      - perl Makefile.PL
+      - make install
+    cleanup:
+      - '*.pod'
+    sources:
+      - type: git
+        url: https://github.com/exiftool/exiftool.git
+        tag: '13.56'
+        commit: e2e11c5992fcbaa80503d9448a6932a14ce2ba31
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d+\.\d+[02468])$
+    modules:
+      - name: perl
+        buildsystem: simple
+        build-commands:
+          - ./Configure -des -Dprefix=$FLATPAK_DEST -Dman1dir=none -Dman3dir=none
+          - make
+          - make install
+        post-install:
+          # Fix wrong permissions
+          - chmod -R u+w $FLATPAK_DEST/lib/perl5
+        cleanup:
+          - /bin/corelist
+          - /bin/cpan
+          - /bin/enc2xs
+          - /bin/encguess
+          - /bin/h2ph
+          - /bin/h2xs
+          - /bin/instmodsh
+          - /bin/json_pp
+          - /bin/libnetcfg
+          - /bin/perl5*
+          - /bin/perlbug
+          - /bin/perldoc
+          - /bin/perlivp
+          - /bin/perlthanks
+          - /bin/piconv
+          - /bin/pl2pm
+          - /bin/pod2html
+          - /bin/pod2man
+          - /bin/pod2text
+          - /bin/pod2usage
+          - /bin/podchecker
+          - /bin/prove
+          - /bin/ptar
+          - /bin/ptardiff
+          - /bin/ptargrep
+          - /bin/shasum
+          - /bin/splain
+          - /bin/streamzip
+          - /bin/xsubpp
+          - /bin/zipdetails
+          - '*.pod'
+        sources:
+          - type: git
+            url: https://github.com/Perl/perl5.git
+            tag: v5.38.2
+            commit: 55dd2f792ffc8cefe614350a411f785374281b24
+            disable-fsckobjects: true
+
+  - name: cabextract
+    sources:
+      - type: archive
+        url: https://www.cabextract.org.uk/cabextract-1.11.tar.gz
+        sha256: b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6
+
+  - name: vulkan-headers
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/Vulkan-Headers.git
+        tag: sdk-1.3.261.1
+        commit: 85c2334e92e215cce34e8e0ed8b2dce4700f4a50
+        x-checker-data:
+          type: git
+          tag-pattern: ^sdk-([\d.]+)$
+
+  - name: glxinfo
+    buildsystem: meson
+    config-opts:
+      - --bindir=/app/mesa-demos
+      - -Degl=disabled
+      - -Dglut=disabled
+      - -Dosmesa=disabled
+      - -Dvulkan=disabled
+      - -Dwayland=disabled
+    post-install:
+      - mv -v /app/mesa-demos/glxinfo /app/bin
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/demos/mesa-demos-9.0.0.tar.xz
+        sha256: 3046a3d26a7b051af7ebdd257a5f23bfeb160cad6ed952329cdff1e9f1ed496b
+        x-checker-data:
+          type: anitya
+          project-id: 16781
+          stable-only: true
+          url-template: https://archive.mesa3d.org/demos/mesa-demos-$version.tar.xz
+    cleanup:
+      - /include
+      - /mesa-demos
+      - /share
+
+  - name: libNVCtrl
+    no-autogen: true
+    no-make-install: true
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/lib
+      - cp -a libXNVCtrl.so* ${FLATPAK_DEST}/lib/
+      - install -D *.h -t ${FLATPAK_DEST}/include/NVCtrl
+    subdir: src/libXNVCtrl
+    sources:
+      - type: archive
+        archive-type: tar
+        url: https://api.github.com/repos/NVIDIA/nvidia-settings/tarball/refs/tags/470.63.01
+        sha256: 0ede63515851d85ac0d1ed5f00e355f539968e6d1fd226120a27b2c66c3575de
+      - type: patch
+        path: patches/libxnvctrl_so_0.patch
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/NVIDIA/nvidia-settings/tags
+          url-query: .[0].tarball_url
+          version-query: .[0].name
+
+  - name: hwdata
+    config-opts:
+      - --datarootdir=/app/share
+    sources:
+      - type: git
+        url: https://github.com/vcrhonek/hwdata
+        tag: v0.406
+        commit: 9ae3b9da5cbb93eed30f812aa7edb4b9ad3e3868
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/vcrhonek/hwdata/releases/latest
+          tag-query: .tag_name
+
+  - name: usbutils
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/gregkh/usbutils
+        commit: d0c76b601b4b3ab9b2ab2647d604a8e3cce6d666
+        tag: v019
+        x-checker-data:
+          type: anitya
+          project-id: 5061
+          stable-only: true
+          tag-template: v$version
+
+  - name: platform-bootstrap
+    buildsystem: simple
+    build-commands:
+      - |
+        set -e
+        mkdir -p /app/bin
+        mkdir -p /app/utils
+        mkdir -p /app/lib/i386-linux-gnu
+        mkdir -p /app/lib/i386-linux-gnu/GL
+        mkdir -p /app/lib/debug/lib/i386-linux-gnu
+        mkdir -p /app/lib/debug/lib/i386-linux-gnu/GL
+        mkdir -p /app/lib/i386-linux-gnu/dri/intel-vaapi-driver
+        mkdir -p /app/i386/nvidia-vaapi-driver
+        mkdir -p /app/lib/i386-linux-gnu/codecs-extra
+        mkdir -p /app/share/vulkan/implicit_layer.d/
+        install -Dm644 -t /app/etc ld.so.conf
+        install -Dm755 pyside_cleanup.sh ${FLATPAK_DEST}/pyside_cleanup.sh
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+      - type: file
+        path: pyside_cleanup.sh
+
+  - name: PortProtonQt
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://git.linux-gaming.ru/Linux-Gaming/PortProtonQt.git
+        tag: 'v1.2.0'
+        commit: 4d6f6c1b82de86199636ec0fc74e64f703e3373e
+        x-checker-data:
+          type: git
+          is-main-source: true
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+      - type: patch
+        path: patches/0001-feat-implement-XDG-Desktop-Portal-notification-fallb.patch

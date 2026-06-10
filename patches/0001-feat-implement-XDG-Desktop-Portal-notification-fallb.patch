@@ -1,0 +1,150 @@
+From bb629e40632c6697ac8f95ce8cffc47a7f62614e Mon Sep 17 00:00:00 2001
+From: Boris Yumankulov <boria138@altlinux.org>
+Date: Wed, 10 Jun 2026 17:30:23 +0500
+Subject: [PATCH 1/1] feat: implement XDG Desktop Portal notification fallback
+
+Signed-off-by: Boris Yumankulov <boria138@altlinux.org>
+---
+ .../share/portproton/scripts/functions_helper |  2 +-
+ build-aux/share/portproton/scripts/start.sh   |  2 +
+ portprotonqt/scripts_utils/dbus_tools.py      | 67 +++++++++++++++++--
+ 3 files changed, 65 insertions(+), 6 deletions(-)
+
+diff --git a/build-aux/share/portproton/scripts/functions_helper b/build-aux/share/portproton/scripts/functions_helper
+index 444a572..3c32d7f 100755
+--- a/build-aux/share/portproton/scripts/functions_helper
++++ b/build-aux/share/portproton/scripts/functions_helper
+@@ -546,7 +546,7 @@ var_ld_library_path_update () {
+ # GUI NOTIFY SEND
+ pw_notify_send () {
+     local icon title body app timeout OPTIND
+-    app="PortProtonQt"
++    app="ru.linux_gaming.PortProtonQt"
+     timeout="5000"
+     OPTIND="1"
+     while getopts a:i:t: opt ; do
+diff --git a/build-aux/share/portproton/scripts/start.sh b/build-aux/share/portproton/scripts/start.sh
+index 7c96b5f..9379fdd 100755
+--- a/build-aux/share/portproton/scripts/start.sh
++++ b/build-aux/share/portproton/scripts/start.sh
+@@ -190,6 +190,8 @@ if [[ -n "${STEAM_COMPAT_DATA_PATH:-}" ]]; then
+ fi
+ unset WINEPREFIX
+ 
++fatal "33333333"
++
+ # choose mirror
+ if [[ -z "$MIRROR" ]] \
+ && [[ "$FULL_LN" == "russian" ]]
+diff --git a/portprotonqt/scripts_utils/dbus_tools.py b/portprotonqt/scripts_utils/dbus_tools.py
+index 623e513..e738d7c 100644
+--- a/portprotonqt/scripts_utils/dbus_tools.py
++++ b/portprotonqt/scripts_utils/dbus_tools.py
+@@ -3,6 +3,7 @@ import argparse
+ import asyncio
+ import contextlib
+ import sys
++import time
+ from collections.abc import Awaitable
+ from dataclasses import dataclass
+ from typing import Any, cast
+@@ -25,6 +26,7 @@ SCREENSAVER_BUS_PATH = "/org/freedesktop/ScreenSaver"
+ PORTAL_BUS_NAME = "org.freedesktop.portal.Desktop"
+ PORTAL_BUS_PATH = "/org/freedesktop/portal/desktop"
+ PORTAL_INTERFACE = "org.freedesktop.portal.Inhibit"
++PORTAL_NOTIFICATION_INTERFACE = "org.freedesktop.portal.Notification"
+ PORTAL_REQUEST_INTERFACE = "org.freedesktop.portal.Request"
+ PORTAL_IDLE_FLAG = 8
+ PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+@@ -74,8 +76,31 @@ async def _session_call(message: Message) -> bool:
+ 
+ 
+ async def send_notification(request: NotificationRequest) -> bool:
+-    """Send desktop notification."""
+-    return await _session_call(
++    """Send desktop notification with Portal fallback."""
++    bus = await dbus_call(MessageBus(bus_type=BusType.SESSION).connect())
++    try:
++        try:
++            if await _send_standard_notification(bus, request):
++                return True
++        except Exception as error:
++            logger.warning("Standard notification failed: %s", error)
++
++        try:
++            return await _send_portal_notification(bus, request)
++        except Exception as error:
++            logger.warning("Portal notification failed: %s", error)
++            return False
++    finally:
++        bus.disconnect()
++
++
++async def _send_standard_notification(bus: MessageBus, request: NotificationRequest) -> bool:
++    hints = {}
++    if request.app == "ru.linux_gaming.PortProtonQt":
++        hints["desktop-entry"] = Variant("s", "ru.linux_gaming.PortProtonQt")
++
++    body = await _bus_call(
++        bus,
+         Message(
+             destination=NOTIFICATIONS_BUS_NAME,
+             path=NOTIFICATIONS_BUS_PATH,
+@@ -89,11 +114,43 @@ async def send_notification(request: NotificationRequest) -> bool:
+                 request.title,
+                 request.body,
+                 [],
+-                {},
++                hints,
+                 request.timeout,
+             ],
+-        )
++        ),
++    )
++    return body is not None
++
++
++def _serialize_icon(icon: str) -> Variant:
++    """Serialize icon to (sv) tuple for Portal notifications."""
++    if "/" in icon or "." in icon:
++        # File path
++        return Variant("(sv)", ["file", Variant("s", icon)])
++    # Themed icon name
++    return Variant("(sv)", ["themed", Variant("as", [icon])])
++
++
++async def _send_portal_notification(bus: MessageBus, request: NotificationRequest) -> bool:
++    notification = {
++        "title": Variant("s", request.title),
++        "body": Variant("s", request.body),
++    }
++    if request.icon:
++        notification["icon"] = _serialize_icon(request.icon)
++
++    body = await _bus_call(
++        bus,
++        Message(
++            destination=PORTAL_BUS_NAME,
++            path=PORTAL_BUS_PATH,
++            interface=PORTAL_NOTIFICATION_INTERFACE,
++            member="AddNotification",
++            signature="sa{sv}",
++            body=[f"portproton_{int(time.time() * 1000)}", notification],
++        ),
+     )
++    return body is not None
+ 
+ 
+ async def request_deepin_wm_switch() -> bool:
+@@ -276,7 +333,7 @@ def parse_args() -> argparse.Namespace:
+     subparsers = parser.add_subparsers(dest="command", required=True)
+ 
+     notify_parser = subparsers.add_parser("notify", help="Send notification")
+-    notify_parser.add_argument("-a", "--app", default="PortProtonQt")
++    notify_parser.add_argument("-a", "--app", default="ru.linux_gaming.PortProtonQt")
+     notify_parser.add_argument("-i", "--icon", default="")
+     notify_parser.add_argument("-t", "--timeout", type=int, default=5000)
+     notify_parser.add_argument("title")
+-- 
+2.50.1
+
