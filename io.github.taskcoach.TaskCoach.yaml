@@ -1,0 +1,190 @@
+# Flatpak manifest for Task Coach.
+#
+# wxPython is built FROM SOURCE (the sdist) rather than from a binary wheel
+# that may not match the runtime GTK. We let wxPython compile its OWN bundled
+# wxWidgets (shipped in the sdist) rather than using --use_syswx against a
+# separate wxWidgets module: wxPython 4.2.5's pre-generated bindings expect the
+# exact wxWidgets snapshot it bundles, so building against a different version
+# (e.g. 3.2.6) fails with 'wxWARN_UNUSED was not declared'. See docs/FLATPAK.md.
+#
+# This manifest builds OFFLINE, the way Flathub builds: no --share=network in
+# any module. Every Python dependency is a pinned source. The pure-Python and
+# binary deps come from two generated sub-manifests (build.in/flatpak/
+# generate-pip-sources.sh): python3-sources.json (runtime deps) and
+# python3-build-deps.json (wxPython's build backends). wxPython itself
+# is a pinned sdist built with --no-build-isolation. Run the generator before
+# building (CI and scripts/build-flatpak.sh do this for you). See docs/FLATPAK.md.
+#
+# Runtime is GNOME (not freedesktop) because it provides GTK3 + PyGObject +
+# gobject-introspection as one consistent set, which wxPython (gtk3) and the
+# PyGObject tray backend (taskcoachlib/gui/appindicator.py) both need.
+
+app-id: io.github.taskcoach.TaskCoach
+runtime: org.gnome.Platform
+# Use the current stable GNOME runtime and bump it as runtimes reach EOL
+# (48 went EOL 2026-03-24). Keep this in sync with the CI container image tag
+# in .github/workflows/build-flatpak.yml and RUNTIME_VERSION in
+# scripts/build-flatpak.sh.
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: taskcoach
+
+finish-args:
+  # Windowing. Task Coach is an X11 app on Flatpak: wxPython's AUI docking is
+  # unusable on native Wayland (its docking hints need the global screen
+  # coordinates Wayland withholds; see docs/AUI_WAYLAND_ISSUES.md), so we do not
+  # advertise native Wayland support. Per Flathub, an app that does not support
+  # native Wayland uses --socket=x11 - it runs directly on X11, or via XWayland
+  # on a Wayland session (shipped by all mainstream compositors). We deliberately
+  # do NOT also grant --socket=wayland: that combo is a Flathub lint error
+  # (finish-args-contains-both-x11-and-wayland), and it could not give us X11 on
+  # Wayland anyway. GDK_BACKEND=x11 pins the GTK backend for good measure.
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --env=GDK_BACKEND=x11
+  # Read and write task (.tsk) files anywhere the user keeps them. wx uses its
+  # own file dialogs rather than the portal, so a broad home grant is needed.
+  # Flathub reviewers may ask to narrow this; revisit if portal dialogs land.
+  - --filesystem=home
+  # Note: Task Coach renders its own in-app reminder/idle popups (wx) and does
+  # not call org.freedesktop.Notifications, so no notification talk-name is
+  # granted. If host notifications are added later, use the freedesktop
+  # notification portal (no talk-name required) rather than a direct grant.
+  # System tray (StatusNotifierItem). Lets the PyGObject AppIndicator backend
+  # publish the tray icon; the desktop still needs an SNI host (e.g. the GNOME
+  # AppIndicator extension) for it to appear.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Idle-time detection (optional feature, off by default; see docs/IDLE.md).
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  # keyring storage.
+  - --talk-name=org.freedesktop.secrets
+
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  # GLU (libGLU/glu.h). The GNOME SDK ships libGL but not the legacy GLU, which
+  # wxWidgets needs for its OpenGL (glcanvas) support.
+  - name: glu
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/glu/glu-9.0.3.tar.xz
+        sha256: bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.a'
+
+  # System-tray support via Flathub's maintained shared-modules - the robust,
+  # CI-tested way rather than a hand-rolled chain. This one module file bundles
+  # the whole intltool -> dbus-glib -> libdbusmenu -> libappindicator chain, and
+  # Flathub keeps it building against current and oldstable SDKs. The
+  # -introspection- variant ships the AppIndicator3-0.1 typelib, which the
+  # PyGObject backend in taskcoachlib/gui/appindicator.py picks up via its
+  # AppIndicator3 fallback (flatpak puts /app/lib/girepository-1.0 on the GI
+  # path). shared-modules is a git submodule at build.in/flatpak/shared-modules;
+  # CI checks it out with submodules and scripts/build-flatpak.sh inits it.
+  - shared-modules/libappindicator/libappindicator-gtk3-introspection-12.10.json
+
+  # Python build backends for the modules built from sdists (wxPython:
+  # setuptools/cython/sip/requests; dbus-python: meson-python), pinned so the
+  # offline build does not fetch them from PyPI. Generated by
+  # build.in/flatpak/generate-pip-sources.sh. Installed BEFORE those modules,
+  # which then build with --no-build-isolation and find them in place.
+  - python3-build-deps.json
+
+  # wxPython, built from the sdist. We let wxPython compile its OWN bundled
+  # wxWidgets (shipped in the sdist) instead of using --use_syswx against a
+  # separately built wxWidgets: wxPython 4.2.5's pre-generated bindings expect
+  # the exact wxWidgets snapshot it bundles, and building them against
+  # wxWidgets 3.2.6 fails (e.g. 'wxWARN_UNUSED was not declared'). Building the
+  # bundled wxWidgets guarantees the versions match. This is the slow step, so
+  # CI relies on flatpak-builder's module cache to compile it only once (see
+  # .github/workflows/build-flatpak.yml). --no-build-isolation makes pip use the
+  # pinned build backends above instead of reaching for PyPI.
+  - name: python3-wxpython
+    buildsystem: simple
+    build-options:
+      env:
+        WXPYTHON_BUILD_ARGS: '--nodoc'
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=${FLATPAK_DEST}
+        --verbose wxpython-4.2.5.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/22/43/81657a6b126ffc19163500a8184d683cec08eb4e1d06905cd0c371c702d0/wxpython-4.2.5.tar.gz
+        sha256: 44e836d1bccd99c38790bb034b6ecf70d9060f6734320560f7c4b0d006144793
+
+  # The remaining Python dependencies (the AppImage set plus dbus-python, which
+  # enables the optional idle-time detection feature - its D-Bus backend does
+  # `import dbus`, and the org.freedesktop.ScreenSaver / org.gnome.Mutter
+  # talk-name grants are already in finish-args). Pinned for the offline build
+  # by generate-pip-sources.sh, which passes --ignore-installed: the build runs
+  # against org.gnome.Sdk, which ships some of these (e.g. python3-lxml), and
+  # without it pip sees them "already satisfied" and skips installing them into
+  # /app, so they are MISSING at runtime against org.gnome.Platform.
+  - python3-sources.json
+
+  # Task Coach itself.
+  - name: taskcoach
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/taskcoach
+      - cp -r taskcoachlib /app/share/taskcoach/
+      - cp taskcoach.py /app/share/taskcoach/
+      # Default "Welcome" document. settings.pathToSystemWelcomeFile() finds it
+      # via dirname(sys.argv[0])/Welcome.tsk and, on first run, copies it into
+      # the user's Documents folder and opens it.
+      - cp Welcome.tsk /app/share/taskcoach/
+      # Desktop + tray icons. Installs the app icon (io.github.taskcoach.TaskCoach)
+      # and the two tray state icons (.clock/.timer) at all native Nuvola sizes
+      # (16-128), a generated 256, and scalable SVGs, under the app-id namespace.
+      # Flatpak exports /app/share/icons to the host icon theme, so the SNI host
+      # (which runs outside the sandbox) resolves the tray icons by name rather
+      # than via an in-sandbox theme path. See build.in/flatpak/icons/SOURCES.md.
+      # The previous single 48x48 PNG in the 256 slot rendered blurry/upscaled.
+      # Copy the CONTENTS into an explicit hicolor dir. `cp -r src/hicolor dest/`
+      # is not order-independent: if /app/share/icons does not already exist, cp
+      # renames hicolor to icons and the theme level is lost (icons end up at
+      # /app/share/icons/<size>/ instead of /app/share/icons/hicolor/<size>/),
+      # so the host icon theme cannot resolve them by name and flatpak warns the
+      # desktop Icon is "not exported". Creating the target first avoids that.
+      - install -d /app/share/icons/hicolor
+      - cp -a build.in/flatpak/icons/hicolor/. /app/share/icons/hicolor/
+      - install -Dm644 build.in/flatpak/io.github.taskcoach.TaskCoach.desktop
+        /app/share/applications/io.github.taskcoach.TaskCoach.desktop
+      # MIME definition so the desktop's MimeType=application/x-taskcoach is a
+      # real association (double-click a .tsk file opens Task Coach).
+      # flatpak-builder rebuilds the mime cache at export.
+      - install -Dm644 build.in/flatpak/io.github.taskcoach.TaskCoach.mime.xml
+        /app/share/mime/packages/io.github.taskcoach.TaskCoach.xml
+      - install -Dm644 build.in/flatpak/io.github.taskcoach.TaskCoach.metainfo.xml
+        /app/share/metainfo/io.github.taskcoach.TaskCoach.metainfo.xml
+      - |
+        cat > /app/bin/taskcoach <<'LAUNCH'
+        #!/bin/bash
+        export PYTHONPATH="/app/share/taskcoach:${PYTHONPATH}"
+        exec python3 /app/share/taskcoach/taskcoach.py "$@"
+        LAUNCH
+        chmod +x /app/bin/taskcoach
+    sources:
+      # Pinned app source for Flathub (offline, reproducible). Fill in `commit`
+      # with the exact SHA the tag points to: git rev-parse v2.0.2.18
+      - type: git
+        url: https://github.com/taskcoach/taskcoach
+        tag: v2.0.2.18
+        commit: 98e395379e435fe5748a965f90e4baaf10c85534
+        # Auto-update: once on Flathub, flatpak-external-data-checker (run hourly
+        # by Flathub) watches for newer v* tags here and flathubbot opens an
+        # update PR in the Flathub repo. Pushing a new vX.Y.Z tag in this repo is
+        # then all that is needed; merge the bot's PR to publish.
+        x-checker-data:
+          type: git
+          tag-pattern: '^v([\d.]+)$'
