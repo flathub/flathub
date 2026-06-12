@@ -1,0 +1,69 @@
+# Flathub manifest for WCPOS.
+#
+# WCPOS cannot be built from source on Flathub's buildbot: it bundles the
+# proprietary, license-key-gated `rxdb-premium`, and the renderer is produced by a
+# separate private monorepo. The accepted pattern for such apps is `extra-data`,
+# which downloads the prebuilt .deb we already publish to GitHub releases and
+# unpacks it on the user's machine at install time.
+#
+# This file is the submission artifact for the `flathub/flathub` repo, NOT built by
+# Electron Forge. See flathub/README.md for how to finalise and submit it.
+app-id: com.wcpos.main
+runtime: org.freedesktop.Platform
+runtime-version: '25.08' # latest Freedesktop runtime branch (verified 2026-06: BaseApp branch/25.08 exists)
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08' # must match runtime-version
+command: wcpos
+separate-locales: false
+
+# Keep in sync with `finishArgs` of MakerFlatpak in forge.config.ts.
+finish-args:
+  - --share=ipc
+  - --share=network # TCP / ESC-POS network printers + sync
+  # No plain --socket=x11: flatpak-builder-lint rejects x11 combined with
+  # wayland/fallback-x11; fallback-x11 grants X11 only when Wayland is absent.
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --device=all # raw USB receipt printers / cash drawers (the `usb` native module)
+  - --talk-name=org.freedesktop.Notifications
+  - --env=ELECTRON_TRASH=gio
+
+modules:
+  - name: woocommerce-pos
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm755 wcpos.sh /app/bin/wcpos
+      - install -Dm644 com.wcpos.main.desktop /app/share/applications/com.wcpos.main.desktop
+      - install -Dm644 com.wcpos.main.metainfo.xml /app/share/metainfo/com.wcpos.main.metainfo.xml
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/com.wcpos.main.png
+    sources:
+      # The prebuilt .deb (package name is woocommerce-pos), downloaded on the user's
+      # machine at install time. sha256/size are regenerated against the real
+      # published artifact on every release — flatpak-external-data-checker
+      # (x-checker-data) automates this per release.
+      - type: extra-data
+        filename: woocommerce-pos.deb
+        url: https://github.com/wcpos/electron/releases/download/v1.9.4/woocommerce-pos_1.9.4_amd64.deb
+        sha256: 2b1c74dbb760a85dc9838f47657c36b74136aa5125f4cf8a093b0c45f8024b01
+        size: 95721396
+        x-checker-data:
+          type: html
+          url: https://github.com/wcpos/electron/releases/latest
+          version-pattern: woocommerce-pos_([\d.]+)_amd64\.deb
+          url-template: https://github.com/wcpos/electron/releases/download/v$version/woocommerce-pos_${version}_amd64.deb
+      # Runs at install time to unpack the .deb into /app/extra.
+      - type: file
+        path: apply_extra.sh
+      # Launcher: runs the unpacked Electron binary through zypak's sandbox wrapper.
+      - type: file
+        path: wcpos.sh
+      - type: file
+        path: com.wcpos.main.desktop
+      - type: file
+        path: com.wcpos.main.metainfo.xml
+      - type: file
+        path: icon-256.png
