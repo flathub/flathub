@@ -1,0 +1,125 @@
+# Flathub submission manifest for OpenCIE.
+#
+# Strategy: the app ships as the official Flutter release bundle (Flathub's
+# accepted pattern for Flutter apps, which cannot build on the offline
+# buildbot). That tarball already contains lib/libopencie-pkcs11.so. Against
+# the Freedesktop 24.08 runtime the prebuilt library needs only two libraries
+# the runtime does not provide, and those are built from source here:
+#   - libcrypto++.so.8  (Crypto++, Debian soname)
+#   - libpcsclite.so.1  (PC/SC Lite client; talks to the host pcscd)
+# Everything else it links (libcrypto.so.3, libxml2.so.2, libcurl.so.4,
+# libopenjp2, libpng16, fontconfig, freetype, libz) is in the runtime.
+app-id: io.github.m0rf30.opencie
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: opencie
+runtime-version: '25.08'
+finish-args:
+  # GUI
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # OCSP/CRL/TSA validation, OIDC flows, desktop<->phone signing handoff
+  - --share=network
+  # Smart card reader access (the client lib connects to the host pcscd)
+  - --socket=pcsc
+  # Open files to sign and write the signed output beside them. Picking goes
+  # through the XDG portal; these scoped dirs cover the sibling-write + drag
+  # and drop the app does, without granting all of $HOME.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-desktop
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/cryptopp
+  - /bin/pcsc-spy
+  - '*.a'
+  - '*.la'
+
+modules:
+  # --- Crypto++ -> provides libcrypto++.so.8 -----------------------------
+  - name: cryptopp
+    buildsystem: simple
+    build-commands:
+      # The prebuilt libopencie-pkcs11.so records the Debian soname
+      # libcrypto++.so.8. Build cryptopp's shared object with that soname
+      # (overriding SOLIB_FLAGS) so ldconfig caches it under the name the
+      # prebuilt library asks for — a plain filename symlink would not work,
+      # because ldconfig keys the cache on the embedded SONAME.
+      - make -f GNUmakefile -j ${FLATPAK_BUILDER_N_JOBS} SOLIB_FLAGS='-Wl,-soname,libcrypto++.so.8' shared
+      - make -f GNUmakefile SOLIB_FLAGS='-Wl,-soname,libcrypto++.so.8' install PREFIX=/app
+      - ln -sf libcryptopp.so.8.9.0 /app/lib/libcrypto++.so.8
+    sources:
+      - type: archive
+        url: https://github.com/weidai11/cryptopp/releases/download/CRYPTOPP_8_9_0/cryptopp890.zip
+        sha256: 4cc0ccc324625b80b695fcd3dee63a66f1a460d3e51b71640cdbfc4cd1a3779c
+        # the zip has files at the root, not inside a folder
+        strip-components: 0
+
+  # --- PC/SC Lite -> provides libpcsclite.so.1 ---------------------------
+  # ipcdir stays the default /run/pcscd so the client finds the host daemon
+  # bridged in by --socket=pcsc. USB/serial/udev/systemd/polkit are daemon
+  # concerns we don't ship, so they are disabled to keep the build minimal.
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      - -Dlibsystemd=false
+      - -Dlibudev=false
+      - -Dpolkit=false
+      - -Dusb=false
+      - -Dserial=false
+    sources:
+      - type: git
+        url: https://github.com/LudovicRousseau/PCSC.git
+        tag: '2.5.1'
+        commit: 09138d7f7d02c714b004d9850f28727fbcc48a97
+
+  # --- libxml2 (soname libxml2.so.2) ------------------------------------
+  # The runtime shipped libxml2.so.2 up to 24.08; 25.08 carries the 2.14+
+  # soname libxml2.so.16, while the prebuilt libopencie-pkcs11.so links
+  # libxml2.so.2. Provide it from the last 2.13.x series. --without-icu
+  # keeps ICU out of the sandbox.
+  - name: libxml2
+    buildsystem: autotools
+    config-opts:
+      - --without-python
+      - --without-icu
+      - --without-lzma
+    cleanup:
+      - /bin/xmllint
+      - /bin/xmlcatalog
+      - /bin/xml2-config
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.9.tar.xz
+        sha256: a2c9ae7b770da34860050c309f903221c67830c86e4a7e760692b803df95143a
+
+  # --- OpenCIE app (Flutter release bundle, includes libopencie-pkcs11.so) -
+  - name: opencie
+    buildsystem: simple
+    build-commands:
+      - install -d /app/opencie /app/bin
+      - cp -r bundle/. /app/opencie/
+      - chmod 0755 /app/opencie/opencie
+      - ln -s /app/opencie/opencie /app/bin/opencie
+      - install -Dm644 io.github.m0rf30.opencie.desktop -t /app/share/applications
+      - install -Dm644 io.github.m0rf30.opencie.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 io.github.m0rf30.opencie.png /app/share/icons/hicolor/512x512/apps/io.github.m0rf30.opencie.png
+    sources:
+      - type: archive
+        url: https://github.com/M0Rf30/opencie/releases/download/v0.1.0/opencie-v0.1.0-linux-x86_64.tar.gz
+        sha256: 679b5150418d2934b2222d09dd2c7e7e7de823220be9b8dda867293858b7b95a
+        dest: bundle
+        strip-components: 0
+      - type: file
+        path: io.github.m0rf30.opencie.desktop
+      - type: file
+        path: io.github.m0rf30.opencie.metainfo.xml
+      - type: file
+        path: io.github.m0rf30.opencie.png
