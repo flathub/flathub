@@ -1,0 +1,48 @@
+app-id: com.tobe.app
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: tobe
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --socket=pulseaudio
+
+modules:
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+        sha256: e5d57466682cfa9d61e9cf7c8a4f09b00f4a62af37d3bbdc4bcffdf63615feac
+
+  - name: tobe
+    buildsystem: simple
+    build-commands:
+      - sh rust/install.sh --prefix=/app --without=rust-docs,rust-docs-json-preview,clippy-preview,rustfmt-preview,rls-preview,llvm-tools-preview,rust-analysis-x86_64-unknown-linux-gnu,llvm-bitcode-linker-preview
+      - export PATH=/app/bin:$PATH LD_LIBRARY_PATH=/app/lib:/app/rustc/lib && mkdir -p .cargo && echo '[source.crates-io]' > .cargo/config.toml && echo 'replace-with = "vendored-sources"' >> .cargo/config.toml && echo '[source.vendored-sources]' >> .cargo/config.toml && echo 'directory = "cargo/vendor"' >> .cargo/config.toml
+      - export PATH=/app/bin:$PATH LD_LIBRARY_PATH=/app/lib:/app/rustc/lib && cargo build --release --manifest-path src-tauri/Cargo.toml --frozen
+      - cp src-tauri/target/release/tobe .
+      - install -Dm755 tobe /app/bin/tobe
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.tobe.app.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.tobe.app.png
+      - install -Dm644 flathub/com.tobe.app.desktop /app/share/applications/com.tobe.app.desktop
+      - install -Dm644 flathub/com.tobe.app.appdata.xml /app/share/metainfo/com.tobe.app.appdata.xml
+    sources:
+      - type: archive
+        url: https://static.rust-lang.org/dist/rust-1.90.0-x86_64-unknown-linux-gnu.tar.gz
+        sha256: e453bae1c68d02fe2eae065c5452d5731308164cd154154c6ee442d2fa590685
+        dest: rust
+      - type: dir
+        path: ..
+      - cargo-sources.json
+    cleanup:
+      - /cargo
+      - /lib/.build-id
