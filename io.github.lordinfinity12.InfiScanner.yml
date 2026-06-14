@@ -1,0 +1,102 @@
+app-id: io.github.lordinfinity12.InfiScanner
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: infiniscanner
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # USB scanners (no fine-grained USB portal is stable yet)
+  - --device=all
+  # network / eSCL / WSD scanners and saned servers
+  - --share=network
+  # mDNS discovery through the host Avahi daemon (sane-airscan)
+  - --system-talk-name=org.freedesktop.Avahi
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - /share/gtk-doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # --- sane-airscan dependencies the runtime lacks ---
+  - name: libxml2
+    buildsystem: autotools
+    config-opts:
+      - --without-python
+      - --without-debug
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.10.tar.xz
+        sha256: c3d8c0c34aa39098f66576fe51969db12a5100b956233dc56506f7a8679be995
+
+  - name: avahi
+    # only the client/glib libraries are needed; the daemon comes from the host
+    buildsystem: autotools
+    config-opts:
+      - --with-distro=none
+      - --disable-libdaemon
+      - --disable-libevent
+      - --disable-gdbm
+      - --disable-mono
+      - --disable-monodoc
+      - --disable-python
+      - --disable-qt5
+      - --disable-gtk3
+      - --disable-manpages
+      - --with-systemdsystemunitdir=no
+    cleanup:
+      - /bin
+      - /share/locale
+    sources:
+      - type: archive
+        url: https://github.com/avahi/avahi/releases/download/v0.8/avahi-0.8.tar.gz
+        sha256: 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda
+
+  # --- SANE ---
+  - name: sane-backends
+    buildsystem: autotools
+    config-opts:
+      - --disable-locking
+      - --with-usb
+      - --docdir=/app/share/doc/sane-backends
+    cleanup:
+      - /bin/gamma4scanimage
+      - /share/locale
+    post-install:
+      # curated backend list: every dll.conf entry is probed on discovery, so
+      # keep it to scanners people actually use (no v4l webcams, no oddballs);
+      # `test` stays available by uncommenting. airscan is added by the
+      # sane-airscan module below.
+      - |
+        printf '%s\n' net escl genesys fujitsu avision canon canon_dr epson2 \
+            epsonds pixma plustek xerox_mfp '#test' > /app/etc/sane.d/dll.conf
+    sources:
+      - type: archive
+        url: https://gitlab.com/-/project/429008/uploads/843c156420e211859e974f78f64c3ea3/sane-backends-1.4.0.tar.gz
+        sha256: f99205c903dfe2fb8990f0c531232c9a00ec9c2c66ac7cb0ce50b4af9f407a72
+
+  - name: sane-airscan
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/alexpevzner/sane-airscan/archive/refs/tags/0.99.36.tar.gz
+        sha256: 43d3436c0199496ee18aca4f875fe3926a40a0fae781bc280cdb96f7b5068ac0
+
+  # --- the app ---
+  - name: infiniscanner
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: git
+        url: https://github.com/LORDINFINITY12/InfiScanner.git
+        tag: v0.1.0
+        commit: 56266f25ef4ba6bad45d69a5e02b5bd2c3689748
