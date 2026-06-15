@@ -1,0 +1,288 @@
+# Flatpak manifest for LinuxPop.
+#
+# Build locally with:
+#     flatpak-builder --user --install --force-clean build-dir \
+#         packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml
+#
+# Then run:
+#     flatpak run io.github.GaimsDevSoftware.LinuxPop
+#
+# Notes:
+#   - LinuxPop runs on X11 and on KDE Plasma 6 / Wayland. The sandbox
+#     needs both sockets, keyboard simulation, system tray, notifications,
+#     and (on KDE) talk access to KWin + KGlobalAccel.
+#   - xdotool / xclip / wmctrl are not in any freedesktop runtime. They
+#     are built as Flatpak modules below from upstream source.
+#   - X11 global hotkey grabs work via the forwarded X11 socket.
+#
+#   Wayland/KDE tools (bundled below, like the X11 ones):
+#     - wl-clipboard (wl-copy/wl-paste): selection + clipboard on Wayland,
+#       the way the X11 backend uses xclip. Works over the shared Wayland
+#       socket inside the sandbox.
+#     - gtk-layer-shell: positions the popup as a layer-shell surface
+#       (a plain GTK window can't be placed on Wayland). Built with
+#       introspection so the GtkLayerShell-0.1 typelib is loadable by gi.
+#     Neither ships in GNOME Platform 46, so both are built from source
+#     below with real upstream URL + sha256.
+#
+#   NOT bundled — ydotool (key injection / paste chords):
+#     ydotool needs /dev/uinput + the ydotoold daemon, which a Flatpak
+#     sandbox cannot provide, so the binary would be inert here. wtype is
+#     also dead on KWin (no zwp_virtual_keyboard_v1). In-sandbox paste
+#     therefore needs the libei / XDG RemoteDesktop portal route (future
+#     work); until then the Wayland paste path degrades to "copy + press
+#     Ctrl+V yourself". Outside Flatpak the host's ydotool is used.
+#
+#   RUNTIME VERSION: org.gnome.Platform//49 (GNOME 46 is EOL). 49 was
+#     verified to ship GTK3, the Handy-1 typelib, and python3-gi on Python
+#     3.13 — the bundled Python wheels are cp313 to match. Re-check the
+#     latest supported GNOME runtime at submission time.
+
+app-id: io.github.GaimsDevSoftware.LinuxPop
+runtime: org.gnome.Platform
+# GNOME 46 went EOL (2025-04); 49 is current and verified to still ship
+# GTK3 (libgtk-3 + Gtk-3.0 typelib), the Handy-1 typelib, and python3-gi
+# (Python 3.13). The bundled Python wheels below must match cp313.
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: linuxpop
+
+finish-args:
+  - --share=ipc
+  # Dual X11/Wayland: the Flathub-recommended combo is wayland + fallback-x11
+  # (NOT a plain x11 socket alongside them). fallback-x11 grants X11 only when
+  # there's no Wayland session, so the X11 backend still works under XWayland.
+  - --socket=wayland              # KDE Plasma 6 Wayland backend
+  - --socket=fallback-x11         # X11 / XWayland backend
+  - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
+  # No filesystem perms: the app's ~/.config/linuxpop + ~/.cache/linuxpop
+  # resolve to the sandbox's private per-app XDG dirs automatically (the
+  # linter flags explicit grants for these as unnecessary). xdg-open of
+  # selected paths/URLs goes through the OpenURI portal.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher    # system tray
+  # KDE-specific buses needed for the native Wayland backend (cursor position
+  # + active window via KWin scripting, global hotkeys via KGlobalAccel).
+  # These trip the Flathub linter and need an exception request in the
+  # submission PR - there is no portal equivalent for KWin scripting / global
+  # shortcuts that LinuxPop relies on.
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.kde.kglobalaccel
+  # Shared /tmp so host-side KWin can read the tiny cursor-position script
+  # the Wayland backend writes (KWin's loadScript takes a file PATH, and a
+  # sandbox-private /tmp gives KWin a path it can't open -> popup lands at
+  # 0,0). The script is short-lived and unloaded immediately. This needs a
+  # Flathub exception alongside the KWin talk-name (no portal exposes the
+  # global cursor position).
+  - --filesystem=/tmp
+  - --device=dri                  # GTK rendering
+
+cleanup:
+  - /include
+  - /share/man
+  - /share/doc
+  - /lib/pkgconfig
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  # ----- libhandy 1 -----
+  # GNOME's adaptive widget toolkit. LinuxPop uses Hdy.PreferencesWindow
+  # and Hdy.ActionRow.
+  - name: libhandy
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dtests=false
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libhandy/1.8/libhandy-1.8.3.tar.xz
+        sha256: 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087
+
+  # ----- libayatana-appindicator (via Flathub shared-modules) -----
+  # System tray support. This pulls in libdbusmenu, ayatana-ido,
+  # libayatana-indicator, intltool, and libayatana-appindicator itself,
+  # all configured the way Flathub's reviewers know works. Trying to
+  # hand-roll this fights two layers of missing pkgconfig deps that
+  # aren't in GNOME 46 Platform.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  # ----- xdotool -----
+  # Keyboard simulation. Used by AI plugins for paste mode and by
+  # clipboard-picker's "paste at cursor" feature.
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3fdd345f9ada
+
+  # ----- libXmu -----
+  # xclip's configure script needs X11/Xmu/Atoms.h, which isn't in the
+  # GNOME 46 SDK. libXmu is a small X.org library; build it here so
+  # xclip below finds the header.
+  - name: libXmu
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.x.org/releases/individual/lib/libXmu-1.3.1.tar.xz
+        sha256: 81a99e94c4501e81c427cbaa4a11748b584933e94b7a156830c3621256857bc4
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - "*.la"
+
+  # ----- xclip -----
+  # X11 clipboard. LinuxPop reads PRIMARY/CLIPBOARD via this.
+  - name: xclip
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/astrand/xclip/archive/refs/tags/0.13.tar.gz
+        sha256: ca5b8804e3c910a66423a882d79bf3c9450b875ac8528791fb60ec9de667f758
+
+  # ----- wmctrl -----
+  # Window listing/activation for the AI paste flow. The dvdhrm/wmctrl
+  # GitHub mirror went 404, and the original Tomas Styblo SourceForge
+  # project's download URLs are also broken now. Debian's source pool
+  # is the most reliable upstream that's still available.
+  - name: wmctrl
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://deb.debian.org/debian/pool/main/w/wmctrl/wmctrl_1.07.orig.tar.gz
+        sha256: d78a1efdb62f18674298ad039c5cbdb1edb6e8e149bb3a8e3a01a4750aa3cca9
+
+  # ----- python-xlib -----
+  # Pure-Python Xlib bindings. Used for XFixes selection events + the
+  # raw keysym/keycode dance in hotkey.py.
+  #
+  # Use the pre-built wheel from PyPI rather than the sdist. The sdist's
+  # setup.py declares setup_requires=['setuptools-scm'] which causes
+  # setuptools to phone home for that build-time dep -- and Flatpak's
+  # build sandbox has no network, so it fails.
+  - name: python3-xlib
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          python_xlib-0.33-py2.py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/b8/ff33610932e0ee81ae7f1269c890f697d56ff74b9f5b2ee5d9b7fa2c5355/python_xlib-0.33-py2.py3-none-any.whl
+        sha256: c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
+
+  # ----- pillow (for QR code plugin) -----
+  # Use the manylinux wheel rather than the sdist. Pillow's sdist
+  # requires a full C toolchain + JPEG/PNG/freetype/etc. headers; the
+  # manylinux wheel is self-contained and pip-installable as-is.
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          pillow-12.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/a8/68/b93e09e5e8549019e61acf49f65b1a8530765a7f812c77a7461bca7e4494/pillow-12.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: 03f6fab9219220f041c74aeaa2939ff0062bd5c364ba9ce037197f4c6d498cd9
+
+  # ----- gtk-layer-shell -----
+  # Positions the popup as a Wayland layer-shell surface — the Wayland/KDE
+  # backend can't place a plain GTK window. introspection=true so the
+  # GtkLayerShell-0.1 typelib is available to PyGObject; vapi off to avoid
+  # a vala/vapigen build dep. Builds against the runtime's GTK3.
+  - name: gtk-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Ddocs=false
+      - -Dtests=false
+      - -Dvapi=false
+      - -Dintrospection=true
+    sources:
+      - type: archive
+        url: https://github.com/wmww/gtk-layer-shell/archive/refs/tags/v0.10.1.tar.gz
+        sha256: 88c3a3e0a5300532f3d368d5df64838a87f1fb85273f22d41df0a6b8d0ec59c6
+
+  # ----- wl-clipboard -----
+  # wl-copy / wl-paste — selection + clipboard capture on Wayland, the way
+  # the X11 backend uses xclip. Pure meson, only needs wayland-client +
+  # wayland-protocols from the SDK.
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      # Shell completions auto-detect absolute /usr paths (fish in
+      # particular), which fail to install into the /app prefix in the
+      # build sandbox. The app only needs the wl-copy/wl-paste binaries.
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz
+        sha256: b4dc560973f0cd74e02f817ffa2fd44ba645a4f1ea94b7b9614dacc9f895f402
+
+  # ----- python3-dbus (dbus-python) -----
+  # The Wayland/KDE backend uses dbus-python for KGlobalAccel (global
+  # hotkeys) and KWin scripting over D-Bus; it is NOT in the GNOME runtime,
+  # so without it global hotkeys + KWin cursor/active-window queries fail in
+  # the sandbox ("No module named 'dbus'"). dbus-gmain is vendored in the
+  # tarball, so the meson build needs no network.
+  - name: python3-dbus
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-1.3.2.tar.gz
+        sha256: ad67819308618b5069537be237f8e68ca1c7fcc95ee4a121fe6845b1418248f8
+
+  # ----- PySide6 (Qt6) for the system-tray subprocess -----
+  # tray_qt.py uses QSystemTrayIcon (StatusNotifierItem + DBusMenu) and
+  # QtSvg to recolour the tray glyph. The GNOME runtime has no Qt, so bundle
+  # PySide6-Essentials (Core/Gui/Widgets/DBus/Svg + platform plugins) and
+  # its shiboken6 runtime. abi3 wheels -> run on the runtime's Python 3.13.
+  # Without this the tray subprocess dies ("could not connect") in-sandbox.
+  - name: python3-pyside6
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+          pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/c7/9b/e0355d8897b5c150770f1d95718aad17d432fcc9c035c04f3f58427d4693/shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+        sha256: 9a8bccfafc8805254cabcfa1edfaf55cd52889f4998c91ad0d9a4433fb1bcdbe
+      - type: file
+        url: https://files.pythonhosted.org/packages/5c/49/0e1237c4400bec7e335d2c4eeb49bc40d9fd88a9ac44ca9083ce1abdc308/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+        sha256: e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60
+
+  # ----- LinuxPop itself -----
+  - name: linuxpop
+    buildsystem: simple
+    build-commands:
+      # 1. Copy the Python sources into the runtime
+      - mkdir -p /app/share/linuxpop
+      # NB: platform_backend/ is a package dir (X11 + Wayland/KDE backends)
+      # — `*.py` alone misses it and the app dies with ModuleNotFoundError.
+      # No `|| true` here: a missing source should fail the build loudly.
+      - cp -r *.py platform_backend icons plugins_repo /app/share/linuxpop/
+
+      # 2. Wrapper script on PATH
+      - install -Dm755 packaging/flatpak/linuxpop.wrapper /app/bin/linuxpop
+
+      # 3. Desktop entry + AppStream metadata
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.desktop
+          /app/share/applications/io.github.GaimsDevSoftware.LinuxPop.desktop
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+          /app/share/metainfo/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+
+      # 4. App icon at the canonical Flatpak path
+      - install -Dm644 icons/linuxpop.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.GaimsDevSoftware.LinuxPop.svg
+    sources:
+      - type: git
+        url: https://github.com/GaimsDevSoftware/linuxpop.git
+        tag: v0.9.0
+        commit: e1f1a6af4ecbf764691404e811eef9533d76c3e0
