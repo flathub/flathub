@@ -1,0 +1,64 @@
+# Flatpak manifest for Glyph.
+#
+# This installs the released Debian package into the GNOME runtime rather than
+# recompiling from source, matching the AUR/PPA pattern already used in
+# `.github/workflows/release.yml`. flatpak-builder understands `.deb` archives
+# and unpacks the embedded data tarball, so `usr/...` paths below come straight
+# from the Tauri-generated package.
+#
+# The `url` versions and `sha256` checksums below are placeholders. They are
+# filled in per release (the SHA256s are the same ones computed by the
+# `publish-aur` / `publish-debian` jobs). Validate this manifest in a Linux
+# environment with:
+#   flatpak-builder --user --install --force-clean build-dir flatpak/com.hamidfzm.glyph.yml
+#
+# See the Tauri Flatpak guide: https://v2.tauri.app/distribute/flatpak/
+id: com.hamidfzm.glyph
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: glyph
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Network access is needed for the optional AI features (Claude/OpenAI/Ollama).
+  - --share=network
+  # Read/write access to the user's documents so markdown files can be opened.
+  - --filesystem=home
+  # Desktop notifications.
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: glyph
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 usr/bin/glyph /app/bin/glyph
+      - install -Dm644 com.hamidfzm.glyph.desktop /app/share/applications/com.hamidfzm.glyph.desktop
+      - install -Dm644 com.hamidfzm.glyph.metainfo.xml /app/share/metainfo/com.hamidfzm.glyph.metainfo.xml
+      # Re-home every Tauri-generated PNG icon under the Flatpak app-id,
+      # preserving its hicolor size directory (the .deb ships 32x32, 128x128,
+      # and 256x256@2). Iterating over whatever exists avoids hardcoding the
+      # exact set of sizes the bundler emits.
+      - |
+        for src in $(find usr/share/icons -name glyph.png); do
+          dest="/app/${src#usr/}"
+          install -Dm644 "$src" "${dest%/glyph.png}/com.hamidfzm.glyph.png"
+        done
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/hamidfzm/glyph/releases/download/v0.10.0/Glyph_0.10.0_amd64.deb
+        sha256: 93e5d40ba44ee78563bc27e717ee954c714bbe6e63337d361a801c6c8cb53e4d
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/hamidfzm/glyph/releases/download/v0.10.0/Glyph_0.10.0_arm64.deb
+        sha256: 86dbc1e9b0f29e8c20464b7e2aaa33daead86f270d65a3b0f8ebed7f204c8dcb
+      - type: file
+        path: com.hamidfzm.glyph.desktop
+      - type: file
+        path: com.hamidfzm.glyph.metainfo.xml
