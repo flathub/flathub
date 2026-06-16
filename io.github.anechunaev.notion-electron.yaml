@@ -1,0 +1,58 @@
+id: io.github.anechunaev.notion-electron
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+command: notion-electron
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --own-name=io.github.anechunaev.NotionElectron
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+
+modules:
+  - name: notion-electron
+    buildsystem: simple
+    subdir: main
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/notion-electron/flatpak-node/cache
+        npm_config_cache: /run/build/notion-electron/flatpak-node/npm-cache
+        npm_config_offline: "true"
+    build-commands:
+      - npm install --offline
+      - ../flatpak-node/electron-builder-arch-args.sh
+      - jq '.build.linux.target="dir" | .build.electronDist="/run/build/notion-electron/flatpak-node/cache/electron"' <<<$(<package.json) > package.json
+      - npm run pack -- --dir
+      - cp -a dist/linux*unpacked /app/main
+
+      - install -Dm755 ../run.sh /app/bin/notion-electron
+      - install -Dm644 ./dev/flatpak/io.github.anechunaev.notion-electron.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 ./dev/flatpak/io.github.anechunaev.notion-electron.desktop -t /app/share/applications/
+
+      - install -Dm644 ./dev/flatpak/io.github.anechunaev.notion-electron.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 ./dev/flatpak/io.github.anechunaev.notion-electron.png -t /app/share/icons/hicolor/128x128/apps/
+      - install -Dm644 ./dev/flatpak/io.github.anechunaev.notion-electron.png -t /app/share/icons/hicolor/512x512/apps/
+    sources:
+      - type: git
+        url: https://github.com/anechunaev/notion-electron.git
+        tag: 'v2.2.3'
+        commit: 2f2e93becaf6a741ae38ac80a3939f27c33dfa09
+        dest: main
+      - generated-sources.json
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/notion-electron --disable-update-functionality "$@"
