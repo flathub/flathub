@@ -1,0 +1,94 @@
+id: io.github.tabularisdb.Tabularis
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: tabularis
+
+finish-args:
+  # Windowing / rendering
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Network: database connections, AI providers, plugin registry, MCP server
+  - --share=network
+  # SSH tunneling via the user's ssh-agent
+  - --socket=ssh-auth
+  # System keychain for credential storage (libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # Open SQLite files and import/export SQL dumps from the user's home
+  - --filesystem=home
+  # Avoid a black window with the WebKit DMABUF renderer on some GPUs/drivers
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+cleanup:
+  - '*.a'
+  - '*.h'
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+
+modules:
+  - name: tabularis
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        # cargo reads cargo/config (vendored-sources) from CARGO_HOME
+        CARGO_HOME: /run/build/tabularis/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # node-gyp headers are symlinked here by setup_sdk_node_headers.sh
+        XDG_CACHE_HOME: /run/build/tabularis/flatpak-node/cache
+    build-commands:
+      # 1. Install JS deps from the vendored pnpm store (fully offline)
+      - node pnpm/bin/pnpm.cjs install --offline --frozen-lockfile --ignore-scripts=false
+      # 2. Build the React frontend into ../dist (embedded by tauri-build)
+      - node pnpm/bin/pnpm.cjs run build
+      # 3. Compile the Rust binary against the vendored crate registry.
+      #    `tauri/custom-protocol` is required for production builds: without it
+      #    the app runs in dev mode and tries to load the dev server on
+      #    localhost (blank window). `tauri build` sets this automatically;
+      #    a raw `cargo build` must pass it explicitly.
+      - cargo build --offline --release --features tauri/custom-protocol
+        --manifest-path src-tauri/Cargo.toml
+      # 4. Install binary, desktop entry, AppStream metadata and icons
+      - install -Dm755 src-tauri/target/release/tabularis /app/bin/tabularis
+      - install -Dm644 io.github.tabularisdb.Tabularis.desktop
+        /app/share/applications/io.github.tabularisdb.Tabularis.desktop
+      - install -Dm644 io.github.tabularisdb.Tabularis.metainfo.xml
+        /app/share/metainfo/io.github.tabularisdb.Tabularis.metainfo.xml
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.tabularisdb.Tabularis.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png
+        /app/share/icons/hicolor/256x256/apps/io.github.tabularisdb.Tabularis.png
+      - install -Dm644 src-tauri/icons/icon.png
+        /app/share/icons/hicolor/512x512/apps/io.github.tabularisdb.Tabularis.png
+    sources:
+      # Application source — pinned to a tag + commit at release time.
+      # The flathub.yml workflow rewrites `tag` and `commit` on every release.
+      - type: git
+        url: https://github.com/TabularisDB/tabularis.git
+        tag: v0.13.1
+        commit: 1b2bf231e3da0d1bb157fb52bfd658e9920b4919
+
+      # Desktop entry + AppStream metadata (installed by build-commands)
+      - type: file
+        path: io.github.tabularisdb.Tabularis.desktop
+      - type: file
+        path: io.github.tabularisdb.Tabularis.metainfo.xml
+
+      # pnpm itself (not shipped by the node SDK extension). Downloaded by
+      # flatpak-builder before the offline build; extracted to ./pnpm.
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-10.30.3.tgz
+        sha256: ff0a72140f6a6d66c0b284f6c9560aff605518e28c29aeac25fb262b74331588
+        dest: pnpm
+
+      # Vendored Rust crates (generated from src-tauri/Cargo.lock)
+      - cargo-sources.json
+
+      # Vendored npm packages + pnpm store (generated from pnpm-lock.yaml)
+      - node-sources.json
