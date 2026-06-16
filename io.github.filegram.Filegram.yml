@@ -1,0 +1,63 @@
+# Flatpak manifest for Filegram, built from source for Flathub.
+#
+# Flathub builds run offline, so every Cargo dependency is vendored into
+# cargo-sources.json (regenerate with ./generate-cargo-sources.sh on a bump).
+# The metainfo and the app-id-named desktop file are carried here rather than
+# pulled from the tagged source tree, so a release tag needs no Flatpak-aware
+# changes to be packageable.
+id: io.github.filegram.Filegram
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: filegram
+
+finish-args:
+  # GPU-accelerated rendering (iced/wgpu) on Wayland with an X11 fallback.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # A disk-usage analyzer must read the whole tree it is pointed at, and
+  # moving files to the trash needs to write there too. Same scope as Baobab.
+  - --filesystem=host
+  # "Reveal in file manager" (opener) and "open" of files/URLs go through the
+  # portal-backed file manager interface.
+  - --talk-name=org.freedesktop.FileManager1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/filegram/cargo
+  build-args:
+    - --share=network=false
+
+modules:
+  - name: filegram
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/filegram /app/bin/filegram
+      # App-id-named desktop entry + AppStream metainfo (carried in this repo).
+      - install -Dm644 io.github.filegram.Filegram.desktop
+        /app/share/applications/io.github.filegram.Filegram.desktop
+      - install -Dm644 io.github.filegram.Filegram.metainfo.xml
+        /app/share/metainfo/io.github.filegram.Filegram.metainfo.xml
+      # Icons, renamed to the app id at every packaged size.
+      - install -Dm644 assets/icon/icon.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.filegram.Filegram.svg
+      - for s in 16 32 48 64 128 256 512; do
+          install -Dm644 "assets/icon/icon-$s.png"
+          "/app/share/icons/hicolor/${s}x${s}/apps/io.github.filegram.Filegram.png";
+        done
+    sources:
+      - type: git
+        url: https://github.com/filegram/filegram-desktop.git
+        tag: v0.2.5
+        commit: 2a2b971eec3f5e1f11d852c549fc3dba7f75729d
+      - cargo-sources.json
+      - type: file
+        path: io.github.filegram.Filegram.desktop
+      - type: file
+        path: io.github.filegram.Filegram.metainfo.xml
