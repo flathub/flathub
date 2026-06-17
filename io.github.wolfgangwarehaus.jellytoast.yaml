@@ -1,0 +1,113 @@
+# Flatpak manifest — the primary Ubuntu-family (and any-distro) install
+# path once submitted to Flathub. Strategy per
+# docs/research/flatpak_manifest_2026-06-11.md:
+#
+#   • org.kde.Platform runtime + io.qt.PySide.BaseApp — ready-made Qt +
+#     PySide6, nothing to compile.
+#   • libmpv built as ordinary modules (libass → libplacebo → mpv) —
+#     same recipe Flathub's Celluloid / jellyfin-mpv-shim use. ffmpeg
+#     comes from the runtime's ffmpeg-full extension.
+#   • Python deps vendored with pinned hashes in
+#     python3-requirements.json — regenerate after any dependency change
+#     with the in-repo generator (pip's own cross-env resolver, no
+#     external tooling):
+#
+#       python3 packaging/flatpak/generate_requirements.py
+#
+# Local build + run:
+#   flatpak-builder --user --install --force-clean build-dir \
+#     packaging/flatpak/io.github.wolfgangwarehaus.jellytoast.yaml
+#   flatpak run io.github.wolfgangwarehaus.jellytoast
+
+app-id: io.github.wolfgangwarehaus.jellytoast
+runtime: org.kde.Platform
+runtime-version: "6.8"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.8"
+command: jellytoast
+
+finish-args:
+  # Wayland first, X11 fallback.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Audio (PipeWire/Pulse) — playback is the whole point.
+  - --socket=pulseaudio
+  # Server streaming + cast discovery (mDNS/SSDP need real LAN access).
+  - --share=network
+  # MPRIS (we own the bus name) + notifications.
+  - --own-name=org.mpris.MediaPlayer2.jellytoast
+  - --talk-name=org.freedesktop.Notifications
+  # Keyring via the Secret Service portal.
+  - --talk-name=org.freedesktop.secrets
+  # KDE niceties: KWin window rules (mini-player keep-above) + the
+  # drag-repaint scripted effect install into the user's KWin data dir.
+  - --talk-name=org.kde.KWin
+  - --filesystem=xdg-data/kwin
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.a"
+  - "*.la"
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz
+        sha256: a886b3b80867f437bc55cff3280a652bfa0d37b43d2aff39ddf3c4f288b8c5a8
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Ddemos=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.351.0
+        commit: 3188549fba13bbdf3a5a98de2a38c2e71f04e21e
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+      - -Dlua=disabled
+      - -Ddebug=false
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.40.0.tar.gz
+        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
+
+  # Generated — do not edit by hand (see header for the regenerate command).
+  - python3-requirements.json
+
+  - name: jellytoast
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=/app .
+      - install -Dm644 packaging/io.github.wolfgangwarehaus.jellytoast.desktop
+        /app/share/applications/io.github.wolfgangwarehaus.jellytoast.desktop
+      - install -Dm644 packaging/io.github.wolfgangwarehaus.jellytoast.metainfo.xml
+        /app/share/metainfo/io.github.wolfgangwarehaus.jellytoast.metainfo.xml
+      - install -Dm644 packaging/icons/jellytoast.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.wolfgangwarehaus.jellytoast.svg
+      - install -Dm644 packaging/icons/hicolor/256x256/apps/io.github.wolfgangwarehaus.jellytoast.png
+        /app/share/icons/hicolor/256x256/apps/io.github.wolfgangwarehaus.jellytoast.png
+    sources:
+      # Flathub requires a pinned, reproducible source (no local dir). For a
+      # local build, swap this back to `- type: dir / path: ../..`.
+      - type: git
+        url: https://github.com/wolfgangwarehaus/jellytoast.git
+        tag: v0.1.0
+        commit: 8955f957dcad19cb335c496f95a3e74c852d23a1
