@@ -13,8 +13,6 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
-  # Notifications go through the portal first; this is the fallback path for
-  # compositors whose portal backend has no Notification frontend (wlroots).
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=com.canonical.AppMenu.Registrar
   - --talk-name=org.kde.StatusNotifierWatcher
@@ -22,6 +20,7 @@ finish-args:
 cleanup:
   - /include
   - /lib/pkgconfig
+  - /lib/cmake
   - /share/man
   - /share/aclocal
 
@@ -63,7 +62,6 @@ modules:
   - name: ydotool
     buildsystem: cmake-ninja
     config-opts:
-      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     sources:
       - type: archive
@@ -72,11 +70,8 @@ modules:
       - type: patch
         path: packaging/flatpak/ydotool-drop-manpage-daemon.patch
 
-  # SPIRV-Headers cmake config - required by whisper.cpp >= v1.8.5 Vulkan backend
   - name: spirv-headers
     buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
         url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.4.321.0.tar.gz
@@ -87,11 +82,6 @@ modules:
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_SHARED_LIBS=ON
-      - -DCMAKE_PREFIX_PATH=/app
-      - -DCMAKE_INSTALL_LIBDIR=lib/dabri
-      - -DCMAKE_INSTALL_INCLUDEDIR=include/dabri
-      - -DCMAKE_INSTALL_RPATH=/app/lib/dabri
-      - -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
       - -DWHISPER_BUILD_EXAMPLES=OFF
       - -DWHISPER_BUILD_TESTS=OFF
       - -DGGML_NATIVE=OFF
@@ -105,9 +95,6 @@ modules:
             - -DGGML_FMA=ON
             - -DGGML_F16C=ON
             - -DGGML_AVX512=OFF
-    cleanup:
-      - /lib/dabri/pkgconfig
-      - /lib/dabri/cmake
     sources:
       - type: archive
         url: https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.8.6.tar.gz
@@ -119,11 +106,10 @@ modules:
       append-path: /usr/lib/sdk/golang/bin
       env:
         CGO_ENABLED: "1"
-        CGO_CFLAGS: -I/app/include/dabri
-        CGO_LDFLAGS: -L/app/lib/dabri -lwhisper -lggml -lggml-cpu -lggml-vulkan
-        LD_LIBRARY_PATH: /app/lib/dabri
+        CGO_CFLAGS: -I/app/include
+        CGO_LDFLAGS: -L/app/lib -lwhisper -lggml -lggml-cpu -lggml-vulkan
     build-commands:
-      - APP_VERSION="$(python3 -c 'import xml.etree.ElementTree as ET; print(ET.parse("io.github.ashbuk.dabri.appdata.xml").getroot().find("releases/release").attrib["version"])')" && go build -mod=vendor -tags systray,gtk -trimpath -ldflags "-s -w -X github.com/AshBuk/dabri/v2/internal/version.Version=${APP_VERSION} -linkmode=external -extldflags '-Wl,-rpath,/app/lib/dabri'" -o dabri ./cmd/dabri
+      - go build -mod=vendor -tags systray,gtk -trimpath -ldflags "-s -w -linkmode=external" -o dabri ./cmd/dabri
       - install -Dm755 dabri /app/bin/dabri
       - install -Dm755 packaging/flatpak/arecord /app/bin/arecord
       - install -Dm755 packaging/flatpak/notify-send /app/bin/notify-send
@@ -134,6 +120,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/AshBuk/dabri.git
-        tag: v2.1.3
-        commit: cf989852f6a0362ac484632a3c0ecb22fccea6b8
+        tag: v2.1.4
+        commit: a587509f96dbbd66207944f34a7366b2c2637a9d
       - packaging/flatpak/go.mod.yml
