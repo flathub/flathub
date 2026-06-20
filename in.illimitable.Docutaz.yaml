@@ -1,0 +1,144 @@
+# Flatpak manifest for Docutaz.
+#
+# Build & test locally (needs flatpak-builder + the KDE 6.8 runtime/SDK):
+#   flatpak install flathub org.kde.Platform//6.8 org.kde.Sdk//6.8
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       packaging/flatpak/in.illimitable.Docutaz.yaml
+#   flatpak run in.illimitable.Docutaz
+#
+# To build from your local checkout instead of the published tag, change the
+# `docutaz` module's source to `{ type: dir, path: ../.. }` (see comment there).
+#
+# NOTE: this manifest has NOT been verified with a flatpak-builder run in this
+# environment (no flatpak-builder here). The source URLs and sha256 sums are all
+# real and verified; the per-module *build recipes* — especially `qscintilla`,
+# which has no first-class CMake/Flatpak story — are the most likely to need a
+# tweak on the first real build. Treat that module as the iteration point.
+id: in.illimitable.Docutaz
+
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: docutaz
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Reach MongoDB servers (and SSH-tunnel hosts) over the network.
+  - --share=network
+  # Open/save .js scripts and write exported JSON/CSV/XLSX. Narrow this to
+  # specific dirs if you prefer; --filesystem=home keeps the open/save dialogs
+  # working out of the box.
+  - --filesystem=home
+
+# Trim build-only and dev artifacts from the final tree.
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /mkspecs
+  - '*.a'
+  - '*.la'
+
+modules:
+  # ── libssh2 (SSH tunnelling) — not in the runtime ───────────────────────────
+  - name: libssh2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://www.libssh2.org/download/libssh2-1.11.1.tar.gz
+        sha256: d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
+
+  # ── MongoDB C driver (dependency of the C++ driver) ─────────────────────────
+  # Same version/flags as the CI Linux build (build.yml: MONGOC_VERSION).
+  - name: mongo-c-driver
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF
+      - -DENABLE_TESTS=OFF
+      - -DENABLE_EXAMPLES=OFF
+      - -DENABLE_STATIC=OFF
+    sources:
+      - type: archive
+        url: https://github.com/mongodb/mongo-c-driver/releases/download/2.3.0/mongo-c-driver-2.3.0.tar.gz
+        sha256: 0ef2c33345482d444ef766ebf3f066b4596bd6867a24ab6889b76dd51cb23878
+
+  # ── MongoDB C++ driver ──────────────────────────────────────────────────────
+  # MONGOCXX_OVERRIDE_DEFAULT_INSTALL_PREFIX=OFF is required, otherwise the
+  # driver ignores CMAKE_INSTALL_PREFIX (/app) and installs to /usr/local.
+  - name: mongo-cxx-driver
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DMONGOCXX_OVERRIDE_DEFAULT_INSTALL_PREFIX=OFF
+      - -DBUILD_SHARED_AND_STATIC_LIBS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/mongodb/mongo-cxx-driver/releases/download/r4.3.1/mongo-cxx-driver-r4.3.1.tar.gz
+        sha256: 39cbb5010b27eb00b4e947ad5e7d368acd966cd773834a10923d4f008f85b0a2
+
+  # ── QScintilla (Qt6 edition) — not in the runtime ───────────────────────────
+  # Riverbank ships only a qmake .pro that installs under the runtime's Qt prefix
+  # (/app/usr/lib/<triplet> via INSTALL_ROOT). We FLATTEN the lib into /app/lib —
+  # which the app's rpath ($ORIGIN/../lib) and the default Flatpak ld path both
+  # cover — and move the headers into /app/include. (A plain copy that kept the
+  # multiarch subdir links at build time but is unfindable at runtime, since that
+  # subdir is not on the library path.) CMake consumers don't need the qmake
+  # mkspecs feature, so it is dropped.
+  - name: qscintilla
+    buildsystem: qmake
+    subdir: src
+    make-install-args:
+      - INSTALL_ROOT=/app
+    post-install:
+      - "find /app/usr/lib -name 'libqscintilla2_qt6.so*' -exec cp -a {} /app/lib/ \\;"
+      - 'cp -a /app/usr/include/. /app/include/ 2>/dev/null || true'
+      - 'rm -rf /app/usr'
+    sources:
+      - type: archive
+        url: https://www.riverbankcomputing.com/static/Downloads/QScintilla/2.14.1/QScintilla_src-2.14.1.tar.gz
+        sha256: dfe13c6acc9d85dfcba76ccc8061e71a223957a6c02f3c343b30a9d43a4cdd4d
+
+  # ── mongosh (bundled; Apache-2.0) ───────────────────────────────────────────
+  # A sandboxed app can't exec the host's mongosh, so we ship MongoDB's official
+  # prebuilt shell. findMongosh() picks it up at /app/bin/mongosh.
+  - name: mongosh
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/mongosh /app/bin/mongosh
+      - 'if [ -f bin/mongosh_crypt_v1.so ]; then install -Dm755 bin/mongosh_crypt_v1.so /app/bin/mongosh_crypt_v1.so; fi'
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://downloads.mongodb.com/compass/mongosh-2.8.3-linux-x64.tgz
+        sha256: f3d994c05c889f3c9f72f43cf6b574bc178a2a35f0be9322ab7f7b1aa66efd55
+      - type: archive
+        only-arches: [aarch64]
+        url: https://downloads.mongodb.com/compass/mongosh-2.8.3-linux-arm64.tgz
+        sha256: 68b4894acac60bf49902d6342d5ef91782473490e55100b4dc5db2ce1ff01fb2
+
+  # ── Docutaz itself ──────────────────────────────────────────────────────────
+  - name: docutaz
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DDOCUTAZ_FLATPAK=ON
+      - -DDOCUTAZ_BUILD_TESTS=OFF
+    sources:
+      # Published release. For a local test build, replace this whole source
+      # block with:   - type: dir
+      #                 path: ../..
+      - type: git
+        url: https://github.com/Illimitable-Consulting-Private-Limited/docutaz.git
+        tag: v2.4.0
+        commit: f84ef8db63210350ea8643db9d19b0cc39cea524
