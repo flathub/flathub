@@ -1,0 +1,143 @@
+# ============================================================================
+# Flathub submission manifest — WISCO RADIO CW Trainer
+# ============================================================================
+# This file is NOT used by electron-builder. It is the manifest submitted to
+# the flathub/flathub repository via a pull request on the `new-pr` branch.
+#
+# Submission flow (see packaging/flathub/RUNBOOK.md for the exact commands):
+#   1. Fork https://github.com/flathub/flathub
+#   2. Clone your fork with --branch=new-pr, then create a feature branch
+#      FROM new-pr (NOT master).
+#   3. Add this file at the repo root as:
+#        io.github.wiscoradio_k9mte.CWTrainer.yml
+#   4. Open a PR with base branch = new-pr (NOT master).
+#
+# Flathub's buildbot builds this manifest in a clean, NETWORK-ISOLATED sandbox.
+# The app binary is fetched (before the sandbox seals) from the GitHub Release
+# as a pre-built Electron archive. The url + sha256 below MUST point at the
+# published v1.0.1 release artifact.
+#
+# Packaging strategy: this ships the electron-builder pre-built linux-unpacked
+# tree as a release archive, run under Flatpak via zypak (the Electron sandbox
+# shim from org.electronjs.Electron2.BaseApp). This mirrors the official
+# Flatpak Electron guide. (A from-source build with vendored npm deps is the
+# alternative if Flathub review pushes back — see the status report.)
+#
+# Runtime/SDK notes:
+#   - freedesktop 25.08 is current as of June 2026 (24.08 reached EOL).
+#   - org.electronjs.Electron2.BaseApp//25.08 bundles the Electron runtime
+#     deps (Chromium libs, zypak) for the current freedesktop SDK.
+#   - Re-check https://docs.flathub.org before any future release and raise
+#     BOTH runtime-version and base-version together when the SDK bumps.
+# ============================================================================
+
+app-id: io.github.wiscoradio_k9mte.CWTrainer
+
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+
+# The command is the zypak wrapper script (installed to /app/bin), NOT the raw
+# Electron binary — Electron's sandbox does not work under Flatpak without it.
+command: run.sh
+
+# Minimal finish-args — offline app, no network, no home access.
+# Matches the security posture in electron-builder.yml (reviewed READY).
+# --share=ipc        : X11 shared memory (MIT-SHM) and Wayland IPC
+# --socket=wayland   : Wayland display
+# --socket=fallback-x11 : X11 fallback when Wayland is unavailable
+# --socket=pulseaudio : audio output (PulseAudio / PipeWire-pulse)
+# --device=dri       : GPU / DRI access for hardware-accelerated rendering
+# NO --share=network : the trainer is fully offline
+# NO --filesystem=home : not needed; app state is localStorage only
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+
+modules:
+  - name: wr-cw-trainer
+    buildsystem: simple
+    build-commands:
+      # Place the pre-built Electron app tree under /app/main.
+      # The `app-bin` archive source is auto-extracted by flatpak-builder.
+      - mkdir -p /app/main
+      - cp -a app-bin/. /app/main/
+
+      # zypak launcher (the manifest `command`)
+      - install -Dm755 run.sh /app/bin/run.sh
+
+      # Desktop entry
+      - install -Dm644 io.github.wiscoradio_k9mte.CWTrainer.desktop
+          /app/share/applications/io.github.wiscoradio_k9mte.CWTrainer.desktop
+
+      # Icon (512x512 hicolor; source PNG scales cleanly to smaller sizes)
+      - install -Dm644 icon.png
+          /app/share/icons/hicolor/512x512/apps/io.github.wiscoradio_k9mte.CWTrainer.png
+
+      # Metainfo
+      - install -Dm644 io.github.wiscoradio_k9mte.CWTrainer.metainfo.xml
+          /app/share/metainfo/io.github.wiscoradio_k9mte.CWTrainer.metainfo.xml
+
+    sources:
+      # -----------------------------------------------------------------------
+      # Pre-built Electron app: a zip of electron-builder's linux-unpacked dir,
+      # attached to the v1.0.1 GitHub Release. Auto-extracted into ./app-bin.
+      # Regenerate the hash if the artifact is rebuilt: sha256sum the zip.
+      #
+      # strip-components: 0 is REQUIRED. flatpak-builder 1.4.x strips directory
+      # structure from zip archives by default (junk-paths behavior), which
+      # collapses the locales/ and resources/ subdirectories to the dest root.
+      # Electron requires resources/app.asar (not app.asar at root) to load the
+      # app, and requires locales/ for locale pak files. Without this flag the
+      # app builds but fails to launch — app code is never loaded.
+      # -----------------------------------------------------------------------
+      - type: archive
+        url: https://github.com/wiscoradio-k9mte/CW-Trainer/releases/download/v1.0.1/wr-cw-trainer-linux.zip
+        sha256: 48cd397b315d9ee42b4ff63e08feb9ac55aafddabcb6568db00b0f5e08195fc1
+        dest: app-bin
+        strip-components: 0
+
+      # zypak launcher script — runs the bundled Electron binary sandboxed.
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper /app/main/wr-cw-trainer "$@"
+
+      # Desktop entry (inline — no separate file to track)
+      - type: inline
+        dest-filename: io.github.wiscoradio_k9mte.CWTrainer.desktop
+        contents: |
+          [Desktop Entry]
+          Name=Wisco Radio CW Trainer
+          GenericName=Morse Code Trainer
+          Comment=Learn Morse code the Koch way
+          Exec=run.sh
+          Icon=io.github.wiscoradio_k9mte.CWTrainer
+          Terminal=false
+          Type=Application
+          Categories=Education;HamRadio;
+          Keywords=morse;cw;ham;radio;koch;telegraph;amateur;qso;pota;sota;
+          StartupWMClass=wr-cw-trainer
+
+      # Icon — fetched from main. Uses build/icon-512.png (512x512, the Flatpak-
+      # required maximum). build/icon.png is 1254x1254 (electron-builder + Snap
+      # source) and must NOT be used here — flatpak-builder rejects it at export.
+      # Regenerate sha256 only if the icon artwork changes:
+      #   sha256sum build/icon-512.png
+      - type: file
+        url: https://raw.githubusercontent.com/wiscoradio-k9mte/CW-Trainer/main/build/icon-512.png
+        sha256: 629fb2472a23a29743b5c0c93fd4fdfc6c9508fb9ccaf2d067155cd2610348f4
+        dest-filename: icon.png
+
+      # Metainfo — fetched from main. sha256 of build/...metainfo.xml at the
+      # release commit; re-verify if metainfo.xml changes.
+      - type: file
+        url: https://raw.githubusercontent.com/wiscoradio-k9mte/CW-Trainer/main/build/io.github.wiscoradio_k9mte.CWTrainer.metainfo.xml
+        sha256: c5503a8811f4b8cfa7caceb4a9fb0332504e7e8a113c30b476aa29a2e104500f
+        dest-filename: io.github.wiscoradio_k9mte.CWTrainer.metainfo.xml
