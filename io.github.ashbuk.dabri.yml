@@ -1,0 +1,124 @@
+app-id: io.github.ashbuk.dabri
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: dabri
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/aclocal
+
+modules:
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make -j${FLATPAK_BUILDER_N_JOBS} PREFIX=/app LDCONFIG=:
+      - make PREFIX=/app LDCONFIG=: INSTALLMAN=/app/share/man install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/archive/refs/tags/v3.20211022.1.tar.gz
+        sha256: 82b15a944a5e82fee15e0f6116bd9f642bc3d0bb6989fc0ca5ad9dfe35de0847
+
+  - name: xsel
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/kfish/xsel/archive/refs/tags/1.2.1.tar.gz
+        sha256: 18487761f5ca626a036d65ef2db8ad9923bf61685e06e7533676c56d7d60eb14
+
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dzshcompletiondir=no
+      - -Dfishcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+
+  - name: wtype
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/atx/wtype/archive/refs/tags/v0.4.tar.gz
+        sha256: da91786d828b6a6e29b884bc510473939eda052658ebef87d7bdeafa6a8746f9
+
+  - name: ydotool
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/ReimuNotMoe/ydotool/archive/refs/tags/v1.0.4.tar.gz
+        sha256: ba075a43aa6ead51940e892ecffa4d0b8b40c241e4e2bc4bd9bd26b61fde23bd
+      - type: patch
+        path: packaging/flatpak/ydotool-drop-manpage-daemon.patch
+
+  - name: spirv-headers
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.4.321.0.tar.gz
+        sha256: 5bbea925663d4cd2bab23efad53874f2718248a73dcaf9dd21dff8cb48e602fc
+
+  - name: whisper-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWHISPER_BUILD_EXAMPLES=OFF
+      - -DWHISPER_BUILD_TESTS=OFF
+      - -DGGML_NATIVE=OFF
+      - -DGGML_VULKAN=ON
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - -DGGML_AVX=ON
+            - -DGGML_AVX2=ON
+            - -DGGML_FMA=ON
+            - -DGGML_F16C=ON
+            - -DGGML_AVX512=OFF
+    sources:
+      - type: archive
+        url: https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.8.6.tar.gz
+        sha256: f8e632016ceae556f3132a16c7f704be1e7715595041f474fa81a2b64c1abf7c
+
+  - name: dabri
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        CGO_ENABLED: "1"
+        CGO_CFLAGS: -I/app/include
+        CGO_LDFLAGS: -L/app/lib -lwhisper -lggml -lggml-cpu -lggml-vulkan
+    build-commands:
+      - go build -mod=vendor -tags systray,gtk -trimpath -ldflags "-s -w -linkmode=external" -o dabri ./cmd/dabri
+      - install -Dm755 dabri /app/bin/dabri
+      - install -Dm755 packaging/flatpak/arecord /app/bin/arecord
+      - install -Dm755 packaging/flatpak/notify-send /app/bin/notify-send
+      - install -Dm644 io.github.ashbuk.dabri.desktop /app/share/applications/io.github.ashbuk.dabri.desktop
+      - install -Dm644 io.github.ashbuk.dabri.appdata.xml /app/share/metainfo/io.github.ashbuk.dabri.metainfo.xml
+      - install -Dm644 icons/io.github.ashbuk.dabri.png /app/share/icons/hicolor/128x128/apps/io.github.ashbuk.dabri.png
+      - install -Dm644 icons/io.github.ashbuk.dabri.svg /app/share/icons/hicolor/scalable/apps/io.github.ashbuk.dabri.svg
+    sources:
+      - type: git
+        url: https://github.com/AshBuk/dabri.git
+        tag: v2.1.4
+        commit: ffd696c04c57cdc754e70ff300de482d0cef4a88
+      - packaging/flatpak/go.mod.yml
