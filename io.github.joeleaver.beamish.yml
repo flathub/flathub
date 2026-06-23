@@ -1,0 +1,137 @@
+id: io.github.joeleaver.beamish
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: beamish
+
+finish-args:
+  # mDNS discovery + the Wi-Fi data-transfer leg of Quick Share.
+  - --share=network
+  - --share=ipc
+  # GPU-accelerated rendering (wgpu) on Wayland, falling back to X11.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Bluetooth LE / L2CAP: raw AF_BLUETOOTH sockets + BlueZ over the system bus.
+  - --allow=bluetooth
+  - --system-talk-name=org.bluez
+  # System-tray icon (StatusNotifierItem) + desktop notifications.
+  # ksni owns the well-known name org.kde.StatusNotifierItem-<pid>-<id>; in the
+  # flatpak sandbox the app is PID 2 and it creates one tray (id 1), so the name
+  # is deterministically -2-1. (Proper fix upstream: have rinch call ksni's
+  # disable_dbus_name(true) so it registers by unique name and needs no own-name.)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  - --talk-name=org.freedesktop.Notifications
+  # Received files land in the user's Downloads. Sending uses the file-chooser
+  # portal, so no broad filesystem access is needed for picking files.
+  - --filesystem=xdg-download
+  # Wayland app-id must match the flatpak id so the window groups under our icon.
+  - --env=BEAMISH_APP_ID=io.github.joeleaver.beamish
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.a'
+  - '*.la'
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/beamish/cargo
+
+modules:
+  # ---------------------------------------------------------------------------
+  # libxdo (xdotool): pulled in transitively by `muda` (the menu library behind
+  # the tray menu). It is hard-linked (-lxdo) so the .so must exist at both build
+  # and run time; the GNOME runtime does not ship it.
+  # ---------------------------------------------------------------------------
+  - name: libxdo
+    buildsystem: simple
+    build-commands:
+      - make CC=cc libxdo.so
+      # Install under the real soname (libxdo.so.N) + a -lxdo dev symlink.
+      - |
+        soname=$(readelf -d libxdo.so | sed -n 's/.*SONAME.*\[\(.*\)\]/\1/p')
+        install -Dm755 libxdo.so "/app/lib/${soname}"
+        ln -sf "${soname}" /app/lib/libxdo.so
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/archive/refs/tags/v4.20260303.1.tar.gz
+        sha256: c1f971a384da588eb99ca0755fc4300316d49c1e612537e3f1de52215e104fa3
+
+  # ---------------------------------------------------------------------------
+  # protoc: build-time only. rqs_lib's build.rs runs prost-build, which shells
+  # out to `protoc`. Removed from the final image via PROTOC pointing at it and
+  # `cleanup`. The protos import no well-known types, so no include dir is needed.
+  # ---------------------------------------------------------------------------
+  - name: protoc
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/protoc /app/bin/protoc
+    cleanup:
+      - /bin/protoc
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v28.3/protoc-28.3-linux-x86_64.zip
+        sha256: 0ad949f04a6a174da83cdcbdb36dee0a4925272a5b6d83f79a6bf9852076d53f
+        # The zip has no wrapping directory (bin/, include/ at the root).
+        strip-components: 0
+
+  # ---------------------------------------------------------------------------
+  # Beamish itself. Built fully offline from vendored cargo sources.
+  # ---------------------------------------------------------------------------
+  - name: beamish
+    buildsystem: simple
+    build-options:
+      env:
+        PROTOC: /app/bin/protoc
+        # rustc links via rust-lld with -nodefaultlibs, so /app/lib isn't on the
+        # default search path; add it so the bundled libxdo (-lxdo) is found.
+        RUSTFLAGS: -L /app/lib
+    build-commands:
+      # rinch-tabler-icons' build.rs downloads the Tabler icon JSON from unpkg at
+      # build time, which can't work in the offline sandbox. Feed it the pinned
+      # JSON (vendored as sources below) and patch the vendored build script to
+      # read them locally instead of fetching. The vendored crate's checksum file
+      # has an empty file map (git dep), so editing it is safe.
+      - cp tabler-nodes-outline.json tabler-nodes-filled.json icons.json cargo/vendor/rinch-tabler-icons/
+      - |
+        sed -i \
+          -e 's#download(OUTLINE_URL)#std::fs::read_to_string("tabler-nodes-outline.json")#' \
+          -e 's#download(FILLED_URL)#std::fs::read_to_string("tabler-nodes-filled.json")#' \
+          -e 's#download(ICONS_JSON_URL)#std::fs::read_to_string("icons.json")#' \
+          cargo/vendor/rinch-tabler-icons/build.rs
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/beamish /app/bin/beamish
+      - install -Dm644 io.github.joeleaver.beamish.desktop /app/share/applications/io.github.joeleaver.beamish.desktop
+      - install -Dm644 io.github.joeleaver.beamish.metainfo.xml /app/share/metainfo/io.github.joeleaver.beamish.metainfo.xml
+      - install -Dm644 assets/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.joeleaver.beamish.svg
+      - |
+        for s in 16 32 48 64 128 256 512; do
+          install -Dm644 "assets/icons/icon_${s}.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/io.github.joeleaver.beamish.png"
+        done
+    sources:
+      - type: git
+        url: https://github.com/joeleaver/beamish.git
+        tag: v0.2.2
+        commit: 7a5ba7cbc040b81ea75beee79ecf241af2a0324c
+        disable-shallow-clone: true
+      - cargo-sources.json
+      - type: file
+        path: io.github.joeleaver.beamish.desktop
+      - type: file
+        path: io.github.joeleaver.beamish.metainfo.xml
+      # Pinned Tabler Icons data for rinch-tabler-icons' offline build (see above).
+      - type: file
+        url: https://unpkg.com/@tabler/icons@3.36.1/tabler-nodes-outline.json
+        sha256: e7ccb0b97010208592fab115b755bbe3d33b93d5ec89de4d3cdceeba49604296
+      - type: file
+        url: https://unpkg.com/@tabler/icons@3.36.1/tabler-nodes-filled.json
+        sha256: 77ba7742b9ff4dd9048a8796a4bae279aba449eb1b3dad6cb8fdde47d07a8f85
+      - type: file
+        url: https://unpkg.com/@tabler/icons@3.36.1/icons.json
+        sha256: 6826c4cd030e4a5d039a6927e8c0bb57fbddda67c4f24951e6641feac722c024
