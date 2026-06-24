@@ -1,0 +1,81 @@
+app-id: build.electron.webpack.ElectronWebpackQuickStart
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+# Use the Electron 2 BaseApp, which adds several common libraries we'll need.
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+separate-locales: false
+# Add the Node SDK extension.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: start-electron-webpack-quick-start
+finish-args:
+  # These three lines add the permissions needed for graphics.
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  # Sound access.
+  #  --socket=pulseaudio
+  # Network access.
+  # - --share=network
+  # If you need to access the filesystem, also add:
+  # - --filesystem=home
+modules:
+  # With electron-webpack and electron-builder we don't install Node to /app/node,
+  # because electron-builder will bundle everything for us in one piece.
+  # Instead we jump straight to the quick start module.
+
+  - name: electron-webpack-quick-start
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        # Set the cache directory, used to find Electron and some other helper
+        # tools.
+        # (The directory format is: /run/build/MODULE_NAME/flatpak-node/cache)
+        XDG_CACHE_HOME: /run/build/electron-webpack-quick-start/flatpak-node/cache
+        # ⚠️  ONLY used as the webpack example project is outdated ⚠️ 
+        NODE_OPTIONS: "--openssl-legacy-provider"
+    build-commands:
+      # Have Yarn use the offline mirror.
+      - HOME=$PWD yarn config --offline set yarn-offline-mirror $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      # Download the packages.
+      - yarn --offline
+      # If you were using npm with electron-webpack/electron-builder, then the above two commands
+      # would look more like the npm commands in the vanilla-quick-start manifest, just without
+      # the --prefix.
+
+      # Run electron-builder, passing the architecture arguments to it.
+      # Note that the -- is important; without that, the argument will be passed to
+      # yarn instead of electron-builder.
+      - . flatpak-node/electron-builder-arch-args.sh; yarn run --offline dist:dir -- $ELECTRON_BUILDER_ARCH_ARGS
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - cp -r dist/linux*unpacked /app/electron-webpack-quick-start
+      # If you passed --electron-non-patented-ffmpeg, you could install it like this:
+      # - 'install -Dm 755 flatpak-node/libffmpeg.so -t /app/electron-webpack-quick-start'
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-electron-webpack-quick-start.sh /app/bin/start-electron-webpack-quick-start
+    sources:
+      - type: git
+        url: https://github.com/electron-userland/electron-webpack-quick-start
+        commit: 1109cf958575312cbe589b7eaf70e7a724e69940
+      # TEMPORARY HACK: The quickstart has a bug that results in crashes on
+      # recent Vue versions:
+      # https://github.com/electron-userland/electron-webpack-quick-start/issues/115
+      # Do some quick patches to the source code to fix it to Vue 2.
+      - type: shell
+        commands:
+          - sed -i 's,\(https://unpkg.com/vue\),\1@2,' src/renderer/index.js
+      # Add the flatpak-node-generator generated sources.
+      - generated-sources.json
+      # Our runner script.
+      - type: script
+        dest-filename: start-electron-webpack-quick-start.sh
+        commands:
+          # We need to wrap the main binary with Zypak in order for sandboxing
+          # to work. Without this, we'll get errors about the "SUID sandbox
+          # helper binary".
+          - zypak-wrapper /app/electron-webpack-quick-start/electron-webpack-quick-start

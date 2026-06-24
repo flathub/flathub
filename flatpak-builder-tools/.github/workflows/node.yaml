@@ -1,0 +1,101 @@
+name: Node CI
+
+on:
+  push:
+    branches: master
+    paths:
+      - node/**
+  pull_request:
+    branches: master
+    paths:
+      - node/**
+
+defaults:
+  run:
+    working-directory: node
+
+jobs:
+  node:
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - '3.12'
+          - '3.13'
+          - '3.14'
+    runs-on: ubuntu-latest
+    steps:
+        # 4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+        # 5.6.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          sudo ln -s /github/home/.local/bin/poetry /usr/bin/poetry
+
+      - name: Install OS dependencies
+        run: sudo apt-get update && sudo apt-get install -y flatpak-builder
+
+      - name: Cache flatpak-builder sources
+        # 5.0.5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            cache/.flatpak-builder/downloads
+            cache/.flatpak-builder/git
+          key: ci-node-flatpak-builder-cache-${{ github.repository }}-${{ github.ref_name }}
+          restore-keys: |
+            ci-node-flatpak-builder-cache-${{ github.repository }}-
+            ci-node-flatpak-builder-cache-
+
+      - name: Cache Poetry dependencies
+        # 5.0.5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-${{ matrix.python-version }}-
+            poetry-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: poetry install --with=dev
+
+      - name: Run checks
+        run: poetry run poe check
+
+      - name: Run integration tests
+        run: poetry run poe check-integration
+
+      - name: Save Poetry dependencies cache
+        # 5.0.5
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        if: github.repository == 'flatpak/flatpak-builder-tools' && github.ref == 'refs/heads/master'
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Save flatpak-builder sources cache
+        # 5.0.5
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        if: github.repository == 'flatpak/flatpak-builder-tools' && github.ref == 'refs/heads/master'
+        with:
+          path: |
+            cache/.flatpak-builder/downloads
+            cache/.flatpak-builder/git
+          key: ci-node-flatpak-builder-cache-${{ github.repository }}-${{ github.ref_name }}

@@ -1,0 +1,81 @@
+app-id: org.electronjs.ElectronQuickStart
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+# Use the Electron 2 BaseApp, which adds several common libraries we'll need.
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+separate-locales: false
+# Add the Node SDK extension.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: start-electron-quick-start
+finish-args:
+  # These three lines add the permissions needed for graphics.
+  - --device=dri
+  - --share=ipc
+  - --socket=x11
+  # Sound access.
+  # - --socket=pulseaudio
+  # Network access.
+  # - --share=network
+  # If you need to access the filesystem, also add:
+  # - --filesystem=home
+modules:
+  # First step is to install Node to /app/node, that way it can be accessible outside of the sdk
+  # environment. install-sdk.sh is used because install.sh omits npm.
+  # (This does not need to be done for electron-builder, see
+  # electron-webpack-quick-start's build.electron.webpack.ElectronWebpackQuickStart.yaml for an
+  # explanation.)
+  - name: node
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/node24/install-sdk.sh
+
+  # Now is the quickstart module.
+  - name: electron-quick-start
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory.
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        # Set the cache directory, used to find Electron and some other helper
+        # tools.
+        # (The directory format is: /run/build/MODULE_NAME/flatpak-node/cache)
+        XDG_CACHE_HOME: /run/build/electron-quick-start/flatpak-node/cache
+        # Set the npm cache directory, used by npm to find its package metadata.
+        npm_config_cache: /run/build/electron-quick-start/flatpak-node/npm-cache
+    build-commands:
+      # Install the packages from our offline cache.
+      # --prefix= is the path to our subdirectory (see the electron-quick-start source below).
+      # If you were using Yarn here, you'd use the yarn config and yarn --offline commands
+      # as shown in the webpack-quick-start demo. The need for --prefix= is dependent on how
+      # this project is run, not on the package manager.
+      - npm install --prefix=electron-quick-start --offline
+
+      # This quick start is designed for running directly from the source directory, so we
+      # copy it resulting directory to /app/electron-quick-start. (This isn't npm-specific.)
+      - cp -r electron-quick-start /app
+      # Install the wrapper script to start it.
+      - install -Dm 755 start-electron-quick-start.sh /app/bin/start-electron-quick-start
+    sources:
+      - type: git
+        url: https://github.com/electron/electron-quick-start
+        # branch: 33-x-y
+        commit: 27ba774d361875442c0ac6877996700434c156bd
+        # Checkout into a subdirectory so we can copy the whole thing to /app.
+        dest: electron-quick-start
+      # Add the flatpak-node-generator generated sources.
+      - generated-sources.json
+      # Our runner script.
+      - type: script
+        dest-filename: start-electron-quick-start.sh
+        commands:
+          - export PATH=$PATH:/app/node/bin
+          # We need to wrap the main binary with Zypak in order for sandboxing
+          # to work. Without this, we'll get errors about the "SUID sandbox
+          # helper binary".
+          - |
+            zypak-wrapper \
+              /app/electron-quick-start/node_modules/electron/dist/electron \
+              /app/electron-quick-start
