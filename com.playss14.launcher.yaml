@@ -1,0 +1,88 @@
+app-id: com.playss14.launcher
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet10/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet10/lib"
+  env:
+    PKG_CONFIG_PATH: "/app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet10/lib/pkgconfig"
+
+command: wrapper.sh
+
+finish-args:
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  # TODO: Replace this with wayland and fallback-x11 once Wayland support
+  #       becomes available:
+  #       <https://github.com/AvaloniaUI/Avalonia/pull/8003>
+  #       <https://github.com/space-wizards/RobustToolbox/issues/2468>
+  # UPDATE: Engine supports Wayland soon:tm:, Launcher does not yet.
+  - --socket=x11
+  # Allow access to the Music directory for MIDI files
+  - --filesystem=xdg-music
+  # Allow access to Discord rich presence.
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/dotnet10/bin/install.sh
+
+  - name: space-station-14-launcher
+    buildsystem: simple
+    build-commands:
+      - dotnet publish SS14.Launcher/SS14.Launcher.csproj /p:FullRelease=True -c Release -r $(./rid.sh) --no-self-contained --source ./nuget-sources
+      - dotnet publish SS14.Loader/SS14.Loader.csproj -c Release -r $(./rid.sh) --no-self-contained --source ./nuget-sources
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/SS14.Launcher/bin/Release/net10.0/$(./rid.sh)/publish/* ${FLATPAK_DEST}/bin
+      - mkdir -p ${FLATPAK_DEST}/bin/loader
+      - cp -r ${FLATPAK_BUILDER_BUILDDIR}/SS14.Loader/bin/Release/net10.0/$(./rid.sh)/publish/* ${FLATPAK_DEST}/bin/loader
+    sources:
+      - type: git
+        url: https://github.com/Space-Wizards-Federation/SS14.Launcher
+        tag: v0.38.1.0
+        commit: 25be5c1bf6a571d7afcf515e519da671bf496738
+      - type: file
+        path: sources/space-station-14-launcher-nuget-sources.json
+      - type: file
+        path: sources/space-station-14-loader-nuget-sources.json
+      - type: file
+        path: rid.sh
+
+    # The SS14.Launcher project does not include an SVG icon file, but one is
+    # available in the asset-dump repository.
+  - name: icon-file
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 icon-new.svg /app/share/icons/hicolor/scalable/apps/com.spacestation14.Launcher.svg
+    sources:
+      - type: git
+        url: https://github.com/space-wizards/asset-dump.git
+        commit: 5ffb49a2f4f3e6805a0b7bef31247eedebfe1043
+
+  - name: extra-data
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 com.spacestation14.Launcher.desktop -t /app/share/applications
+      - install -Dm644 com.spacestation14.Launcher.appdata.xml -t /app/share/metainfo
+      - install -Dm755 wrapper.sh -t ${FLATPAK_DEST}/bin
+    sources:
+      # The upstream project does not include a desktop file. Instead, we
+      # write one from scratch.
+      - type: file
+        path: data/com.spacestation14.Launcher.desktop
+      # The upstream project does not include an appdata.xml file. Instead, we
+      # write one from scratch.
+      - type: file
+        path: data/com.spacestation14.Launcher.appdata.xml
+      # A wrapper for actually launching the game, to ensure discord RPC works.
+      - type: file
+        path: data/wrapper.sh
