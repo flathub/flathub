@@ -6,13 +6,15 @@ This is the flatpak for [Legcord](https://github.com/Legcord/Legcord).
 
 ## Wayland
 
-Legcord will run through X11 / XWayland by default, as this is the most compatible option.
+Legcord will run through Wayland by default with fallback to x11, as this is the most compatible option.
 Everything should work out of the box, including screen sharing and hardware acceleration.
 
-If you wish to run it natively on Wayland instead, you can do so by removing the `--socket=x11` permission with [Flatseal](https://flathub.org/apps/com.github.tchx84.Flatseal) or by running the following command:
+If you wish to run it through XWayland on Wayland instead, you can do so by adding the `--socket=x11` permission and removing the `--socket=wayland` and `--socket=x11-fallback` permissions with [Flatseal](https://flathub.org/apps/com.github.tchx84.Flatseal) or by running the following commands:
 
 ```sh
-flatpak override --nosocket=x11 app.legcord.Legcord
+flatpak override --nosocket=wayland app.legcord.Legcord
+flatpak override --nosocket=x11-fallback app.legcord.Legcord
+flatpak override --socket=x11 app.legcord.Legcord
 ```
 
 ## File access
