@@ -1,8 +1,12 @@
+# yaml-language-server: $schema: https://raw.githubusercontent.com/flatpak/flatpak-builder/main/data/flatpak-manifest.schema.json
+
 app-id: app.legcord.Legcord
 
 runtime: org.freedesktop.Platform
 runtime-version: &runtime-version "25.08"
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+    - org.freedesktop.Sdk.Extension.node26
 
 base: org.electronjs.Electron2.BaseApp
 base-version: *runtime-version
@@ -27,10 +31,31 @@ finish-args:
     - --filesystem=~/.steam # Needed for SteamOS integration, as the XDG OpenURL portal doesn't work properly in Game Mode. We only need ~/.steam/steam.pipe but Flatpak can't correctly mount just that: 'File "/home/deck/.steam/steam.pipe" has unsupported type 0o10000'
     - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
 
+build-options:
+    strip: true
+    append-path: /usr/lib/sdk/node26/bin
+
 modules:
     - name: Legcord
       buildsystem: simple
+      build-options:
+          strip: true
+          prepend-path: /run/build/Legcord-1.2.4/pnpm/bin
+          env:
+              NPM_CONFIG_LOGLEVEL: info
+              XDG_CACHE_HOME: /run/build/Legcord-1.2.4/flatpak-node/cache
+              ELECTRON_SKIP_BINARY_DOWNLOAD: "true"
+              npm_config_nodedir: /usr/lib/sdk/node26
+              npm_config_store_dir: /run/build/Legcord-1.2.4/flatpak-node/pnpm-store
+              npm_config_offline: "true"
       build-commands:
+          - pnpm install --frozen-lockfile --offline
+          - pnpm build
+          # We build to appimage as it automatically generates .desktop and icons. Plus i've already written
+          # the stuff for the appimage, and I know it works.
+          - . flatpak-node/electron-builder-arch-args.sh; pnpm electron-builder -l --appimage $ELECTRON_BUILDER_ARCH_ARGS
+          - mv dist/Legcord-*.AppImage Legcord.AppImage
+
           - chmod +x Legcord.AppImage
           - ./Legcord.AppImage --appimage-extract
           - desktop-file-edit --set-key="Exec" --set-value="startlegcord %U" --set-icon=$FLATPAK_ID
@@ -48,6 +73,8 @@ modules:
       sources:
           - type: file
             path: startlegcord
+            # Directly copied locally, hopefully next release a better system. Probably a github action or something.
+          - generated-sources.json
 
           - type: file
             url: https://github.com/Legcord/Legcord/releases/download/v1.2.4/app.legcord.Legcord.metainfo.xml
@@ -60,20 +87,20 @@ modules:
                     .assets[] | select(.name == "app.legcord.Legcord.metainfo.xml")
                     | .browser_download_url
 
-          - type: file
-            url: https://github.com/Legcord/Legcord/releases/latest/download/Legcord-1.2.4-linux-x86_64.AppImage
-            dest-filename: Legcord.AppImage
-            sha512: 6364f6301467c1bc09117759c275cbcfef95f8023775788989beaebc808f7bbe9b50161fbc9abb23d24cef229c97218429dcd3aa3ab658dc34a3c14b5a04e187
-            only-arches: [x86_64]
+          # maybe change to type: git ?
+          - type: archive
+            url: https://github.com/Legcord/Legcord/archive/v1.2.4.tar.gz
+            # i wonder if the version will change as well... if it doesnt, it's prob not that big of an issue anyway lol
+            dest-filename: Legcord-1.2.4.tar.gz
+            sha512: 579a1a6c78aab8c723ba3c751c658e6291c8359e72760402b486e8ffad7ceb574398f392bbd05c79e9dd9eceb57f1022857680cc25314d6eb543a128ce14b693
             x-checker-data:
-                type: electron-updater
-                url: https://github.com/Legcord/Legcord/releases/latest/download/latest-linux.yml
+                type: json
+                url: https://api.github.com/repos/Legcord/Legcord/releases/latest
+                version-query: .tag_name | sub("v"; "")
+                url-query: .tarball_url
+                is-main-source: true
 
-          - type: file
-            url: https://github.com/Legcord/Legcord/releases/latest/download/Legcord-1.2.4-linux-arm64.AppImage
-            dest-filename: Legcord.AppImage
-            sha512: 4075d80441a96cac73b4508fd7f09232c18cb57af3f0fb383f703c35160d56dc0a8d73dfd25a6632119cfcc9c4dbdfed7aa93b5ecd6f04c8b2bb2197c9909eed
-            only-arches: [aarch64]
-            x-checker-data:
-                type: electron-updater
-                url: https://github.com/Legcord/Legcord/releases/latest/download/latest-linux-arm64.yml
+          - type: archive
+            url: https://registry.npmjs.org/pnpm/-/pnpm-10.11.0.tgz
+            sha512: 6540583f41cc5f628eb3d9773ecee802f4f9ef9923cc45b69890fb47991d4b092964694ec3a4f738a420c918a333062c8b925d312f42e4f0c263eb603551f977
+            dest: pnpm
