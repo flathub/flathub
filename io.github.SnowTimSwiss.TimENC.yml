@@ -1,0 +1,61 @@
+app-id: io.github.SnowTimSwiss.TimENC
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+# Rust toolchain is provided by an SDK extension rather than the build host,
+# so the build is fully reproducible inside the Flatpak sandbox.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: timenc
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # File encryption operates on the user's own files: reading the input,
+  # writing the .timenc output beside it, and securely deleting the original.
+  # These sibling-file operations go beyond what the file-chooser portal
+  # grants, so broad home access is required.
+  - --filesystem=home
+
+build-options:
+  # rust-stable extension lands its toolchain here.
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    # Cargo's vendored registry (populated by cargo-sources.json) lives under
+    # the module build directory; the offline build resolves all crates here.
+    CARGO_HOME: /run/build/timenc/cargo
+
+modules:
+  - name: timenc
+    buildsystem: simple
+    build-commands:
+      # Build the Tauri binary from source, fully offline against vendored crates.
+      # The static HTML frontend is embedded by tauri-build, so no Node step.
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+      # Real binary -> /app/bin/timenc-bin; the wrapper is launched as `timenc`
+      # so the WebKitGTK DMABUF workaround env var is always set.
+      - install -Dm755 src-tauri/target/release/timenc-tauri /app/bin/timenc-bin
+      - install -Dm755 flatpak/timenc-wrapper.sh /app/bin/timenc
+      # Desktop entry + AppStream metadata (named after the app-id, as Flatpak requires)
+      - install -Dm644 flatpak/io.github.SnowTimSwiss.TimENC.desktop /app/share/applications/io.github.SnowTimSwiss.TimENC.desktop
+      - install -Dm644 flatpak/io.github.SnowTimSwiss.TimENC.metainfo.xml /app/share/metainfo/io.github.SnowTimSwiss.TimENC.metainfo.xml
+      # Icons into the hicolor theme, renamed to the app-id
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.SnowTimSwiss.TimENC.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.SnowTimSwiss.TimENC.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.SnowTimSwiss.TimENC.png
+    sources:
+      # Pinned source for Flathub: the tag is human-readable, the commit pins it
+      # securely. Bump both (and regenerate cargo-sources.json if deps changed)
+      # for each new release.
+      - type: git
+        url: https://github.com/SnowTimSwiss/TimENC.git
+        tag: v2.2.1
+        commit: 346af8efabcde06a980fd293195a1f52a4b289b3
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      # Vendored Cargo registry generated from src-tauri/Cargo.lock.
+      - cargo-sources.json
