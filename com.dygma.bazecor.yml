@@ -1,0 +1,81 @@
+app-id: com.dygma.bazecor
+base-version: "25.08"
+base: org.electronjs.Electron2.BaseApp
+runtime-version: "25.08"
+runtime: org.freedesktop.Platform
+sdk: org.freedesktop.Sdk
+command: Bazecor
+separate-locales: false
+tags:
+  - floss
+finish-args:
+  # Display servers
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # This is to allow device access for your Dygma Raise or Defy keyboard
+  - --device=all
+  # Add this to allow reading USB device metadata
+  - --filesystem=/run/udev:ro
+  # The default still appears to be 'x11'. Switch to 'auto' to allow Wayland to be used when available.
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+  # Read/write access to the user's Documents directory (for backups, etc.)
+  # Originally, this was set to 'home', but that is too broad and frowned upon. Instead, we only allow access
+  # to the user's Documents directory to have a safe place for Bazecor to store backups, etc. This is a
+  # compromise between security and usability.
+  - --filesystem=xdg-documents
+  # For discovering and downloading the latest firmware
+  - --share=network
+  # For preventing Chromium/Electron shared memory crashes on some Wayland compositors
+  - --allow=per-app-dev-shm
+modules:
+  # Install /app/bin/unsquashfs
+  - shared-modules/squashfs-tools/squashfs-tools.json
+  # Install /app/bin/udevadm (by borrowing it from gentoo's eudev)
+  - name: eudev
+    buildsystem: autotools
+    config-opts:
+      - --disable-manpages
+      - --disable-hwdb
+      - --disable-rules
+    sources:
+      - type: archive
+        url: https://github.com/gentoo/eudev/archive/refs/tags/v3.2.14.tar.gz
+        sha256: c340e6c51dfc5531ac0c0fa84a34b72162acf525f9023eb9cf4931b782c8f177
+    cleanup:
+      - /share
+  - name: com.dygma.bazecor
+    buildsystem: simple
+    sources:
+      # Install the Bazecor AppImage as an extra-data file. This means that the AppImage won't be packaged
+      # into the Flatpak, but will instead be downloaded (and extracted) during the user installation. The
+      # AppImage will be downloaded and stored in /app/extra/usr/bin/Bazecor, and then the 'apply_extra'
+      # script below will extract it, and create a wrapper script at /app/bin/Bazecor that runs Bazecor
+      # with the correct arguments inside the Flatpak sandbox.
+      - type: extra-data
+        only-arches: [x86_64]
+        # WARNING: this line is updated by update.sh, so do not edit it manually. Instead, run update.sh to update.
+        url: https://github.com/Dygmalab/Bazecor/releases/download/v1.9.0/Bazecor-1.9.0-x64.AppImage
+        # WARNING: this line is updated by update.sh, so do not edit it manually. Instead, run update.sh to update.
+        sha256: 3d2cdc522ac7a1426d351487c3fe777fe7862bb22053526745c2ee02b31927ec
+        # WARNING: this line is updated by update.sh, so do not edit it manually. Instead, run update.sh to update.
+        size: 138848760
+        filename: Bazecor.AppImage
+      - type: script
+        dest-filename: Bazecor
+        commands:
+          - exec zypak-wrapper /app/extra/usr/bin/Bazecor "$@"
+      - type: file
+        path: bin/apply_extra
+      - type: file
+        path: share/applications/com.dygma.bazecor.desktop
+      - type: file
+        path: share/icons/hicolor/512x512/apps/com.dygma.bazecor.png
+      - type: file
+        path: share/metainfo/com.dygma.bazecor.metainfo.xml
+    build-commands:
+      - install -Dm755 Bazecor "${FLATPAK_DEST}/bin/Bazecor"
+      - install -Dm755 apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install -Dm644 com.dygma.bazecor.desktop /app/share/applications/com.dygma.bazecor.desktop
+      - install -Dm644 com.dygma.bazecor.metainfo.xml /app/share/metainfo/com.dygma.bazecor.metainfo.xml
+      - install -Dm644 com.dygma.bazecor.png /app/share/icons/hicolor/512x512/apps/com.dygma.bazecor.png

@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Get the offset of the squashfs filesystem in the AppImage.
+OFFSET=$(grep -aob -- 'hsqs' Bazecor.AppImage | tail -n1 | cut -d: -f1)
+
+# Extract the squashfs filesystem from the AppImage.
+/app/bin/unsquashfs -offset $OFFSET -d . -f Bazecor.AppImage
+
+# Clean up the AppImage file after extraction.
+rm Bazecor.AppImage
+
+echo "Successfully extracted Bazecor.AppImage to the current directory."
+
+# Bazecor checks for /etc/udev/rules.d/60-dygma.rules to show a setup prompt.
+# Flatpak sandboxes cannot see the host's /etc directory, so this check always fails.
+#
+# Since the upstream JS is minified (single line), we perform a targeted string replacement.
+
+JS_FILE="usr/lib/bazecor/resources/app/.webpack/main/index.js"
+
+if [ ! -f "$JS_FILE" ]; then
+    echo "ERROR: Could not find $JS_FILE to patch."
+    exit 1
+fi
+
+# Replace the checkUdev function to make it always return true (!0)
+# We use single quotes for the sed expression so we don't have to escape the "utf-8" double quotes.
+# We use '|' as the delimiter so we don't have to escape the '/' slashes.
+sed -i 's|t.checkUdev=()=>{try{if(l.default.existsSync(h))return l.default.readFileSync(h,"utf-8").trim()===f.trim()}catch(e){d.default.error(e)}return!1}|t.checkUdev=()=>{return!0}|g' "$JS_FILE"
+echo "Successfully patched checkUdev() function to always return true."
+
+
+# Replace the default backup folder from $HOME/Dygma/Backups to $HOME/Documents/Dygma/Backups, which is more 
+# permissive since --filesystem=xdg-documents is allowed in the Flatpak manifest, 
+# while --filesystem=home is usually frowned upon and will most certainly lead to a Flatpak review rejection.
+sed -i 's|const t=i.default.join(s.app.getPath("home"),"Dygma","Backups");|const t=i.default.join(s.app.getPath("home"),"Documents","Dygma","Backups");|g' "$JS_FILE"
+echo "Successfully patched default backup folder to use Documents directory instead of home directory."
