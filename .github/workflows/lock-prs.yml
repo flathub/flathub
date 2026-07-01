@@ -22,6 +22,19 @@ jobs:
 
           for num in $list; do
             if [ "$(gh api repos/"$GH_REPO"/issues/"$num" --jq '.locked')" = "false" ]; then
+              closed_by=$(
+                gh api \
+                  -H "Accept: application/vnd.github+json" \
+                  repos/"$GH_REPO"/issues/"$num"/timeline \
+                  --jq '[.[] | select(.event=="closed")][-1].actor.login' \
+                  2>/dev/null || echo ""
+              )
+
+              if [ "$closed_by" = "github-actions[bot]" ]; then
+                echo "Skipping locking PR $num closed by github-actions"
+                continue
+              fi
+
               if ! gh pr view --json labels -q '.labels[].name' "$num"|grep -qE "^(Stale|stale-blocked|leave-open)$"; then
                 echo "Locking pull request $num"
                 gh pr lock --reason "resolved" "$num"
