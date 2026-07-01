@@ -1,0 +1,73 @@
+app-id: io.github.dizzle_hd.doodlecraft_launcher
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+# Basis liefert zypak (Sandbox-Wrapper für Chromium/Electron).
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+command: doodlecraft-launcher
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # Launcher lädt Java/Minecraft/Mods nach -> Netzwerk nötig.
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    # Electron-Binary nicht per postinstall ziehen – wir liefern es als Quelle.
+    ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    # Offline-Install aus dem von flatpak-node-generator erzeugten Cache.
+    npm_config_offline: 'true'
+    npm_config_cache: /run/build/doodlecraft-launcher/flatpak-node/npm-cache
+
+modules:
+  - name: doodlecraft-launcher
+    buildsystem: simple
+    build-commands:
+      # 1) Abhängigkeiten offline installieren, App bauen (electron-vite -> out/),
+      #    danach Dev-Abhängigkeiten entfernen (electron, vite, … nicht zur Laufzeit).
+      - npm ci --offline --no-audit --no-fund
+      - npm run build
+      - npm prune --omit=dev --offline
+      # 2) Electron-Laufzeit nach /app/main (Binary, chrome-sandbox, *.pak, locales …).
+      - mkdir -p /app/main
+      - cp -a electron-dist/* /app/main/
+      # 3) App ins Standard-Electron-Layout: /app/main/resources/app (wird beim
+      #    Start automatisch geladen – kein App-Verzeichnis als Argument nötig,
+      #    sonst beendet sich Electron unter zypak sofort). resources/ MUSS mit,
+      #    sonst findet window.ts das Fenster-Icon nicht.
+      - mkdir -p /app/main/resources/app
+      - cp -a out package.json node_modules resources /app/main/resources/app/
+      # 4) Launcher + Desktop-Integration.
+      - install -Dm755 flathub/launcher.sh /app/bin/doodlecraft-launcher
+      - install -Dm644 flathub/${FLATPAK_ID}.desktop
+          /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flathub/${FLATPAK_ID}.metainfo.xml
+          /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 resources/icons/${s}x${s}.png
+            /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png;
+        done
+    sources:
+      # --- App-Quellcode: auf einen stabilen Release-Tag/Commit setzen! ---
+      - type: git
+        url: https://github.com/dizzle-hd/doodlecraft-launcher.git
+        tag: v0.1.0
+        commit: f4c10ff64d2aef8d3fd545fa46f6c986b81bf909
+      # --- npm-Abhängigkeiten offline (via flatpak-node-generator erzeugen) ---
+      - generated-sources.json # TODO: erzeugen, siehe README
+      # --- Electron-Binary (passend zur electron-Version in package.json: 33.4.11) ---
+      - type: archive
+        url: https://github.com/electron/electron/releases/download/v33.4.11/electron-v33.4.11-linux-x64.zip
+        sha256: 212d431c7c916292311c797cd91f84467c5abd6e6983cf24b162efff64cee8a9
+        dest: electron-dist
+        only-arches:
+          - x86_64
