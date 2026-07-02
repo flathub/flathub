@@ -1,0 +1,169 @@
+app-id: io.github.mattyws.HorizonXILauncher
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Compat.i386
+  - org.freedesktop.Sdk.Extension.toolchain-i386
+command: horizonxi-launcher
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --device=all
+  - --allow=per-app-dev-shm
+  - --allow=devel
+  - --allow=multiarch
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=xdg-data/Steam/compatibilitytools.d:create
+  - --filesystem=xdg-data/umu:create
+  - --filesystem=~/.local/bin:create
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # Helps UMU / pressure-vessel / Proton see Flatpak GL + runtime data correctly.
+  # These mirror the important runtime environment pieces used by Heroic.
+  - --filesystem=/run/udev:ro
+  - --env=FLATPAK_ID=io.github.mattyws.HorizonXILauncher
+  - --env=DBUS_FATAL_WARNINGS=0
+  - --env=PROTON_DEBUG_DIR=/var/tmp
+  # Explicit Mesa/GL driver lookup paths for Proton/Wine/pressure-vessel.
+  # Without these, 32-bit Wine can fail with:
+  #   libGL error: No driver found / swrast_dri.so missing / X_GLXCreateContext
+  - --env=TZ=
+  - --unset-env=TZ
+  - --env=STEAM_RUNTIME=
+  - --unset-env=STEAM_RUNTIME
+  - --env=STEAM_RUNTIME_PREFER_HOST_LIBRARIES=
+  - --unset-env=STEAM_RUNTIME_PREFER_HOST_LIBRARIES
+  - --env=SDL_VIDEODRIVER=
+  - --unset-env=SDL_VIDEODRIVER
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '24.08'
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '24.08'
+    no-autodownload: true
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: '24.08;1.4'
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /share/man
+  - /share/gtk-doc
+  - /share/doc
+
+modules:
+  - name: platform-bootstrap
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu /app/lib/i386-linux-gnu/GL /app/lib/debug/lib/i386-linux-gnu /app/etc
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+
+  - name: graphene
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dinstalled_tests=false
+      - -Dintrospection=enabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz
+        sha256: a37bb0e78a419dcbeaa9c7027bcff52f5ec2367c25ec859da31dfde2928f279a
+
+  - name: gtk4
+    buildsystem: meson
+    config-opts:
+      - -Dbuild-tests=false
+      - -Dbuild-examples=false
+      - -Dintrospection=enabled
+      - -Ddemos=false
+      - -Dmedia-gstreamer=disabled
+      - -Dprint-cups=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk/4.14/gtk-4.14.5.tar.xz
+        sha256: 5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d
+
+  - name: libadwaita
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dexamples=false
+      - -Dintrospection=enabled
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libadwaita/1.5/libadwaita-1.5.5.tar.xz
+        sha256: 2322c49333b22a3bb2e0c8edc4b2d214a11abd3bfad2234f0685553bf9d2c427
+
+  - name: python3-pycairo
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/pygobject/pycairo/releases/download/v1.27.0/pycairo-1.27.0.tar.gz
+        sha256: 5cb21e7a00a2afcafea7f14390235be33497a2cce53a98a19389492a60628430
+
+  - name: python3-pygobject
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/pygobject/3.48/pygobject-3.48.2.tar.xz
+        sha256: 0794aeb4a9be31a092ac20621b5f54ec280f9185943d328b105cdae6298ad1a7
+
+  - name: aria2
+    buildsystem: autotools
+    config-opts:
+      - --disable-nls
+      - --without-libxml2
+      - --without-sqlite3
+      - --without-libssh2
+      - --with-gnutls
+      - --without-openssl
+    sources:
+      - type: archive
+        url: https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz
+        sha256: 60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b
+
+  - name: horizonxi-launcher
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/horizonxi-launcher
+      - cp -a src /app/share/horizonxi-launcher/src
+      - cp -a bin /app/share/horizonxi-launcher/bin
+      - chmod +x /app/share/horizonxi-launcher/bin/umu-run || true
+      - install -Dm755 bin/umu-run /app/bin/umu-run
+      - install -Dm755 flatpak/horizonxi-launcher-wrapper /app/bin/horizonxi-launcher
+      - install -Dm644 data/io.github.mattyws.HorizonXILauncher.desktop /app/share/applications/io.github.mattyws.HorizonXILauncher.desktop
+      - install -Dm644 data/io.github.mattyws.HorizonXILauncher.metainfo.xml /app/share/metainfo/io.github.mattyws.HorizonXILauncher.metainfo.xml
+      - install -Dm644 data/io.github.mattyws.HorizonXILauncher.svg /app/share/icons/hicolor/scalable/apps/io.github.mattyws.HorizonXILauncher.svg
+    sources:
+      - type: archive
+        url: https://github.com/MattyGWS/HorizonXI-Launcher/archive/refs/tags/v0.3.0.tar.gz
+        sha256: 6aee515c69332dd51ee8e9dd6500506845f56ed82fa4b761be3b17abe909959c
