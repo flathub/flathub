@@ -1,0 +1,109 @@
+app-id: io.wizread.WizRead
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: wizread
+separate-locales: false
+
+finish-args:
+  # Graphical access (X11 & Wayland)
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # Audio support
+  - --socket=pulseaudio
+  # Network (necessary for sync / APIs)
+  - --share=network
+  - --share=ipc
+  # Filesystem access to open EPUB/PDFs
+  - --filesystem=host
+
+modules:
+  - name: wizread
+    buildsystem: simple
+    build-commands:
+      # 1. Extract the .deb file contents
+      - ar x wizread_1.0.14_amd64.deb
+      - tar -xf data.tar.xz
+      
+      # 2. Copy the app files into /app
+      - mkdir -p /app/lib /app/bin
+      - cp -R opt/WizRead /app/lib/WizRead
+      
+      # 3. Install the wrapper script to disable Chromium SUID sandbox inside Flatpak
+      - install -Dm755 wizread-wrapper.sh /app/bin/wizread
+      
+      # 4. Install desktop shortcut, metainfo, and app icon
+      - install -Dm644 io.wizread.WizRead.desktop /app/share/applications/io.wizread.WizRead.desktop
+      - install -Dm644 io.wizread.WizRead.metainfo.xml /app/share/metainfo/io.wizread.WizRead.metainfo.xml
+      - install -Dm644 icon_256.png /app/share/icons/hicolor/256x256/apps/io.wizread.WizRead.png
+
+    sources:
+      # --- PRODUCTION FLATHUB SOURCE ---
+      - type: file
+        url: https://github.com/wizread/wizread-releases/releases/download/v1.0.14/wizread_1.0.14_amd64.deb
+        sha256: 5d7b9998ee5a5734f4aa92902c48d3ba7f9f77c6def8d72dad2c65f1ca6bff12
+        x-checker-data:
+          type: github
+          project-id: wizread/wizread-releases
+          stable-only: true
+          tag-template: v$version
+          url-template: https://github.com/wizread/wizread-releases/releases/download/v$version/wizread_${version}_amd64.deb
+
+      # --- INLINE METADATA FILES ---
+      # This allows submitting the package as a single self-contained YAML manifest
+      - type: inline
+        dest-filename: wizread-wrapper.sh
+        contents: |
+          #!/bin/sh
+          exec /app/lib/WizRead/wizread --no-sandbox "$@"
+
+      - type: inline
+        dest-filename: io.wizread.WizRead.desktop
+        contents: |
+          [Desktop Entry]
+          Name=WizRead
+          Comment=A beautiful ebook and PDF reader
+          Exec=wizread %U
+          Terminal=false
+          Type=Application
+          Icon=io.wizread.WizRead
+          StartupWMClass=WizRead
+          Categories=Office;Viewer;Education;
+          MimeType=application/pdf;application/epub+zip;
+
+      - type: inline
+        dest-filename: io.wizread.WizRead.metainfo.xml
+        contents: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <component type="desktop-application">
+            <id>io.wizread.WizRead</id>
+            <metadata_license>CC0-1.0</metadata_license>
+            <project_license>Proprietary</project_license>
+            <name>WizRead</name>
+            <summary>A beautiful ebook and PDF reader</summary>
+            <description>
+              <p>
+                WizRead is a fast, clean, and feature-rich reader designed for EPUB books and PDF files.
+              </p>
+            </description>
+            <launchable type="desktop-id">io.wizread.WizRead.desktop</launchable>
+            <url type="homepage">https://wizread.io</url>
+            <screenshots>
+              <screenshot type="default">
+                <caption>Main Library Screen</caption>
+                <image>https://raw.githubusercontent.com/wizread/wizread-desktop/main/resources/screenshot.png</image>
+              </screenshot>
+            </screenshots>
+            <releases>
+              <release version="1.0.14" date="2026-07-04" />
+            </releases>
+          </component>
+
+      # Downloads the icon from your main repository
+      - type: file
+        url: https://raw.githubusercontent.com/wizread/wizread-desktop/main/build/icon.png
+        sha256: 7b949758ae49b99f25c53d577eeee453a39c14b449227fc7da277e720fa46a5c 
+        dest-filename: icon_256.png
