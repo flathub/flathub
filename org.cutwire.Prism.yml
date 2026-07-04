@@ -1,0 +1,178 @@
+app-id: org.cutwire.Prism
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: Prism
+rename-icon: org.cutwire.Prism
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-run/pipewire-0
+  - --device=all
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download:ro
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+
+add-extensions:
+  org.freedesktop.Platform.GStreamer:
+    version: '25.08'
+    directory: lib/extensions/gstreamer-1.0
+    subdirectories: true
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/aclocal
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: re2
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DRE2_BUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://github.com/google/re2/releases/download/2024-07-02/re2-2024-07-02.tar.gz
+        sha256: eb2df807c781601c14a260a507a5bb4509be1ee626024cb45acbd57cb9d4032b
+
+  - name: kissfft
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DKISSFFT_DATATYPE=float
+      - -DKISSFFT_STATIC=ON
+      - -DKISSFFT_TEST=OFF
+      - -DKISSFFT_TOOLS=OFF
+      - -DKISSFFT_OPENMP=OFF
+    sources:
+      - type: archive
+        url: https://github.com/mborgerding/kissfft/archive/131.1.0.tar.gz
+        sha256: 76c1aac87ddb7258f34b08a13f0eebf9e53afa299857568346aa5c82bcafaf1a
+
+  - name: libzip
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_SHARED_LIBS=ON
+      - -DENABLE_BZIP2=OFF
+      - -DENABLE_LZMA=OFF
+      - -DENABLE_ZSTD=OFF
+      - -DENABLE_OPENSSL=OFF
+      - -DBUILD_TOOLS=OFF
+      - -DBUILD_REGRESS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_DOC=OFF
+    sources:
+      - type: archive
+        url: https://libzip.org/download/libzip-1.11.4.tar.gz
+        sha256: 82e9f2f2421f9d7c2466bbc3173cd09595a88ea37db0d559a9d0a2dc60dc722e
+
+  - name: lua
+    buildsystem: simple
+    build-commands:
+      - make posix MYCFLAGS="-fPIC" -j${FLATPAK_BUILDER_N_JOBS}
+      - make install INSTALL_TOP=/app
+      - install -d /app/lib/pkgconfig
+      - |
+        printf 'prefix=/app\nexec_prefix=${prefix}\nlibdir=${exec_prefix}/lib\nincludedir=${prefix}/include\n\nName: Lua\nDescription: An Extensible Extension Language\nVersion: 5.4.8\nLibs: -L${libdir} -llua -lm -ldl\nCflags: -I${includedir}\n' > /app/lib/pkgconfig/lua5.4.pc
+    sources:
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.4.8.tar.gz
+        sha256: 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
+
+  - name: onnxruntime
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/include ${FLATPAK_DEST}/lib
+      - cp -a include/. ${FLATPAK_DEST}/include/
+      - cp -a lib/. ${FLATPAK_DEST}/lib/
+    sources:
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.27.0/onnxruntime-linux-x64-1.27.0.tgz
+        sha256: 547e40a48f1fe73e3f812d7c88a948612c23f896b91e4e2ee1e232d7b468246f
+        strip-components: 1
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.27.0/onnxruntime-linux-aarch64-1.27.0.tgz
+        sha256: 3e4d83ac06924a32a07b6d7f91ce6f852876153fc0bbdf931bf517a140bfbe48
+        strip-components: 1
+        only-arches:
+          - aarch64
+
+  - name: Prism
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DPRISM_WITH_NDI=OFF
+      - -DPRISM_WITH_LUA=ON
+      - -DPRISM_WITH_WEBRTC=ON
+      - -DPRISM_WITH_SEGMENTATION=ON
+      - -DONNXRUNTIME_ROOT=/app
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_SOL2=/run/build/Prism/vendor/sol2
+      - -DFETCHCONTENT_SOURCE_DIR_LIBDATACHANNEL=/run/build/Prism/vendor/libdatachannel
+    build-options:
+      prepend-pkg-config-path: /app/lib/pkgconfig
+    post-install:
+      - install -Dm644 ../flatpak/org.cutwire.Prism.desktop /app/share/applications/org.cutwire.Prism.desktop
+      - install -Dm644 ../flatpak/org.cutwire.Prism.metainfo.xml /app/share/metainfo/org.cutwire.Prism.metainfo.xml
+      - |
+        for s in 64 128 256 512; do
+          install -Dm644 "../flatpak/share/icons/hicolor/${s}x${s}/apps/org.cutwire.Prism.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/org.cutwire.Prism.png"
+        done
+    sources:
+      - type: git
+        url: https://github.com/CutWire-Studios/Prism.git
+        tag: v0.1.0
+        commit: 334ab674a6dbaeccb1849c771114f6e864472a0f
+
+      - type: archive
+        url: https://github.com/ThePhD/sol2/archive/refs/tags/v3.5.0.tar.gz
+        sha256: 86c0f6d2836b184a250fc2907091c076bf53c9603dd291eaebade36cc342e13c
+        dest: vendor/sol2
+
+      - type: archive
+        url: https://github.com/paullouisageneau/libdatachannel/archive/refs/tags/v0.24.5.tar.gz
+        sha256: 454537c3cd526bed935d847bb2dff4046f266eef84d43b2a5f2f2f293c0026f4
+        dest: vendor/libdatachannel
+      - type: archive
+        url: https://github.com/SergiusTheBest/plog/archive/94899e0b926ac1b0f4750bfbd495167b4a6ae9ef.tar.gz
+        sha256: 92a08bce559b5f28aa88d3fd9071567414b9f43a83fe2a05a6dd14f1da536072
+        dest: vendor/libdatachannel/deps/plog
+      - type: archive
+        url: https://github.com/paullouisageneau/usrsctp/archive/fec583d54493f879d2ae44a743423bf8a04371ab.tar.gz
+        sha256: e5c114afe73c9a0ec419fab5f5b3f63f3ce57b09b90d06ea85e63dca8aed3e7c
+        dest: vendor/libdatachannel/deps/usrsctp
+      - type: archive
+        url: https://github.com/cisco/libsrtp/archive/24b3bf8f19b6f5ab4cd2bcceb4f4064efca86fd5.tar.gz
+        sha256: 063478e368d7cd13d04a908d152a46f90bfa728c4b324be6d413b0b92728207c
+        dest: vendor/libdatachannel/deps/libsrtp
+      - type: archive
+        url: https://github.com/paullouisageneau/libjuice/archive/3c40a3545b6b1b62c7adee7f8f2bd58aa290afd6.tar.gz
+        sha256: a6b1d55338ea12adc0177eaafd9521ac0101b6a8716c71024a668f4896fd6b7c
+        dest: vendor/libdatachannel/deps/libjuice
+      - type: archive
+        url: https://github.com/nlohmann/json/archive/55f93686c01528224f448c19128836e7df245f72.tar.gz
+        sha256: 67f4cdd9ca930c9c1e130af4a437c7fc98fab77a2846fc2d2a14b4943831f8ef
+        dest: vendor/libdatachannel/deps/json
