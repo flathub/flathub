@@ -1,0 +1,67 @@
+app-id: io.github.sudomastery.STube
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: stube
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  # where downloads land
+  - --filesystem=xdg-videos:create
+  # read-only access to browser profiles for cookie import (yt-dlp)
+  - --filesystem=~/.config/BraveSoftware:ro
+  - --filesystem=~/.config/google-chrome:ro
+  - --filesystem=~/.config/chromium:ro
+  - --filesystem=~/.config/microsoft-edge:ro
+  - --filesystem=~/.mozilla:ro
+  # decrypting Chromium-based browser cookies needs the keyring
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: python3-yt-dlp
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation --no-deps yt-dlp mutagen
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/f3/ee/188a3dadf9dfdac713243521f919feca1cd091d4358c9ea7e8ebb710a7cc/yt_dlp-2026.6.9-py3-none-any.whl
+        sha256: 442ba4c75724b9496144c8434b617962ee08d0ee7c26ec663848fe9b78d5a3e4
+      - type: file
+        url: https://files.pythonhosted.org/packages/47/d8/a29e4e3991765e7ce4ed1f7e4074fe1ba9da03e0048639734de60f9cadb9/mutagen-1.48.1-py3-none-any.whl
+        sha256: 4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7
+
+  # JavaScript runtime required by yt-dlp to solve YouTube's player challenges
+  - name: deno
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 deno ${FLATPAK_DEST}/bin/deno
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/denoland/deno/releases/download/v2.9.1/deno-x86_64-unknown-linux-gnu.zip
+        sha256: 710c54d63477d1100844ef4818f19507ce0dbf40510903b1d883f19e394446a2
+        strip-components: 0
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/denoland/deno/releases/download/v2.9.1/deno-aarch64-unknown-linux-gnu.zip
+        sha256: 0a60d079fa79635a59803074dbbfe86ccc35746dc2c4f8d73f2e50338b3283a9
+        strip-components: 0
+
+  - name: stube
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 stube.py ${FLATPAK_DEST}/bin/stube
+      - install -Dm644 io.github.sudomastery.STube.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 io.github.sudomastery.STube.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - for s in 32 64 128 256 512; do install -Dm644 icons/stube-${s}.png
+        ${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/io.github.sudomastery.STube.png; done
+    sources:
+      - type: git
+        url: https://github.com/sudomastery/stube.git
+        tag: v1.0.0
+        commit: 5155b35dcebb65dd10e60d49712bc7246fb2f391
