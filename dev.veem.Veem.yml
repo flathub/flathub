@@ -1,0 +1,54 @@
+# Flatpak manifest for Veem — used for the Flathub submission.
+#
+# Local test build (both tools are already installed):
+#   python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+#   flatpak install flathub org.gnome.Sdk//50 org.gnome.Platform//50 \
+#       org.freedesktop.Sdk.Extension.rust-stable//25.08
+#   flatpak-builder --user --install --force-clean build-dir dev.veem.Veem.yml
+#   flatpak run dev.veem.Veem
+id: dev.veem.Veem
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: veem
+
+finish-args:
+  - --share=ipc
+  - --share=network                              # IMAP/SMTP, OAuth loopback, Gravatar
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri                                 # WebKit rendering
+  - --talk-name=org.freedesktop.secrets          # keyring: passwords + OAuth tokens
+  - --talk-name=org.gnome.OnlineAccounts          # import GNOME Online Accounts
+  - --talk-name=org.gnome.Settings                 # "Open Online Accounts" button
+  - --talk-name=org.gnome.evolution.dataserver.*  # GNOME Contacts (Evolution Data Server)
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/veem/cargo
+    # No Google OAuth client is bundled — Google sign-in goes through GNOME Online
+    # Accounts (the account editor guides users there). Microsoft's client ID is
+    # built into the source and works out of the box.
+
+modules:
+  - name: veem
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/veem /app/bin/veem
+      - install -Dm644 data/dev.veem.Veem.desktop /app/share/applications/dev.veem.Veem.desktop
+      - install -Dm644 data/icons/hicolor/256x256/apps/dev.veem.Veem.png /app/share/icons/hicolor/256x256/apps/dev.veem.Veem.png
+      - install -Dm644 data/icons/hicolor/512x512/apps/dev.veem.Veem.png /app/share/icons/hicolor/512x512/apps/dev.veem.Veem.png
+      - install -Dm644 data/dev.veem.Veem.metainfo.xml /app/share/metainfo/dev.veem.Veem.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/hyprlab/veem.git
+        tag: v1.0.4
+        commit: eb170abd6f372fc3dd93c193c56b9865ad54326a
+      # Vendored crate sources for the offline Flathub build. Generate with:
+      #   flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+      - cargo-sources.json
