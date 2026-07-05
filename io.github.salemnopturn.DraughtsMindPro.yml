@@ -1,0 +1,82 @@
+app-id: io.github.salemnopturn.DraughtsMindPro
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+command: draughtsmind-pro
+
+finish-args:
+  - --socket=session-bus
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: draughtsmind-pro
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin
+      env:
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/draughtsmind-pro/flatpak-node/npm-cache
+        XDG_CACHE_HOME: /run/build/draughtsmind-pro/flatpak-node/cache
+    sources:
+      # NOTA: troque "tag: v1.0.3" pela tag real depois de publicar no GitHub
+      - type: git
+        url: https://github.com/salemnopturn/DraughtsMind-Pro.git
+        tag: v1.0.3
+      # generated-sources.json é gerado a partir de flatpak/electron-package-lock.json
+      # (um package-lock.json MÍNIMO, só com "electron" como dependência normal — não é
+      # o package-lock.json da raiz do projeto, que tem electron em devDependencies e por
+      # isso não serve para instalar offline em modo --production dentro do Flatpak).
+      # Gerar localmente (precisa de internet completa, inclusive GitHub Releases) com:
+      #   pipx install "git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node"
+      #   cd flatpak && flatpak-node-generator npm electron-package-lock.json -o generated-sources.json
+      - generated-sources.json
+    build-commands:
+      # O electron precisa ficar em devDependencies no package.json real (exigência do
+      # electron-builder para os builds Windows/macOS/Linux). Para o Flatpak, em vez de
+      # mexer no package.json do projeto, usamos um manifesto npm PARALELO e mínimo
+      # (flatpak/electron-package.json + electron-package-lock.json) que só declara o
+      # electron como dependência normal. Isso deixa "npm install --production" instalar
+      # exclusivamente o electron (sem o electron-builder inteiro, que não roda dentro do
+      # Flatpak final) e evita totalmente o erro de "electron só pode estar em devDependencies".
+      - cp package.json app-package.json.bak
+      - cp flatpak/electron-package.json package.json
+      - cp flatpak/electron-package-lock.json package-lock.json
+      - npm ci --omit=dev --offline
+      - mkdir -p /app/lib/draughtsmind-pro
+      - cp -r main preload renderer engine rules assets node_modules /app/lib/draughtsmind-pro/
+      - cp app-package.json.bak /app/lib/draughtsmind-pro/package.json
+      - chmod +x /app/lib/draughtsmind-pro/node_modules/electron/dist/electron
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/draughtsmind-pro << "WRAPEOF"
+        #!/bin/sh
+        if command -v zypak-wrapper >/dev/null 2>&1; then
+          exec zypak-wrapper /app/lib/draughtsmind-pro/node_modules/electron/dist/electron /app/lib/draughtsmind-pro "$@"
+        else
+          exec /app/lib/draughtsmind-pro/node_modules/electron/dist/electron /app/lib/draughtsmind-pro --no-sandbox "$@"
+        fi
+        WRAPEOF
+      - chmod +x /app/bin/draughtsmind-pro
+      - mkdir -p /app/share/icons/hicolor/32x32/apps
+      - mkdir -p /app/share/icons/hicolor/64x64/apps
+      - mkdir -p /app/share/icons/hicolor/128x128/apps
+      - mkdir -p /app/share/icons/hicolor/256x256/apps
+      - mkdir -p /app/share/icons/hicolor/512x512/apps
+      - cp icons/hicolor/32x32/apps/io.github.salemnopturn.DraughtsMindPro.png /app/share/icons/hicolor/32x32/apps/
+      - cp icons/hicolor/64x64/apps/io.github.salemnopturn.DraughtsMindPro.png /app/share/icons/hicolor/64x64/apps/
+      - cp icons/hicolor/128x128/apps/io.github.salemnopturn.DraughtsMindPro.png /app/share/icons/hicolor/128x128/apps/
+      - cp icons/hicolor/256x256/apps/io.github.salemnopturn.DraughtsMindPro.png /app/share/icons/hicolor/256x256/apps/
+      - cp icons/hicolor/512x512/apps/io.github.salemnopturn.DraughtsMindPro.png /app/share/icons/hicolor/512x512/apps/
+      - mkdir -p /app/share/applications
+      - cp io.github.salemnopturn.DraughtsMindPro.desktop /app/share/applications/
+      - mkdir -p /app/share/metainfo
+      - cp io.github.salemnopturn.DraughtsMindPro.appdata.xml /app/share/metainfo/
