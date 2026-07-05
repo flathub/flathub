@@ -1,0 +1,71 @@
+app-id: org.linuxctrl.grabr
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: grabr-desktop
+finish-args:
+  # Network access for downloading files & YouTube streaming URLs
+  - --share=network
+  # GPU acceleration for egui's native window rendering
+  - --device=dri
+  # Display server access (X11 & Wayland)
+  - --socket=fallback-x11
+  - --socket=wayland
+  # System notifications via DBus (notify-rust)
+  - --talk-name=org.freedesktop.Notifications
+  # Permission to save downloads directly to the Downloads folder
+  - --filesystem=xdg-download
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/grabr-desktop/cargo
+    LIBRARY_PATH: /app/lib
+    LD_LIBRARY_PATH: /app/lib
+    PKG_CONFIG_PATH: /app/lib/pkgconfig
+modules:
+  - name: libxdo
+    buildsystem: simple
+    build-commands:
+      - make libxdo.so
+      - install -Dm755 libxdo.so /app/lib/libxdo.so.3
+      - ln -s libxdo.so.3 /app/lib/libxdo.so
+      - install -Dm644 xdo.h /app/include/xdo.h
+      - mkdir -p /app/lib/pkgconfig
+      - |
+        cat <<EOF > /app/lib/pkgconfig/libxdo.pc
+        prefix=/app
+        exec_prefix=\${prefix}
+        libdir=\${exec_prefix}/lib
+        includedir=\${prefix}/include
+
+        Name: libxdo
+        Description: Library for fake keyboard/mouse input, window management, etc.
+        Version: 3.20211022.1
+        Libs: -L\${libdir} -lxdo
+        Cflags: -I\${includedir}
+        EOF
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/archive/refs/tags/v3.20211022.1.tar.gz
+        sha256: 82b15a944a5e82fee15e0f6116bd9f642bc3d0bb6989fc0ca5ad9dfe35de0847
+
+  - name: grabr-desktop
+    buildsystem: simple
+    build-commands:
+      # Build in release mode using pre-vendored cargo sources
+      - cd grabr-desktop && cargo --offline build --release --verbose
+      # Install executable to target location
+      - install -Dm755 grabr-desktop/target/release/grabr-desktop /app/bin/grabr-desktop
+      # Install desktop file and icon
+      - install -Dm644 flatpak/org.linuxctrl.grabr.desktop /app/share/applications/org.linuxctrl.grabr.desktop
+      - install -Dm644 flatpak/org.linuxctrl.grabr.png /app/share/icons/hicolor/256x256/apps/org.linuxctrl.grabr.png
+      - install -Dm644 flatpak/org.linuxctrl.grabr.metainfo.xml /app/share/metainfo/org.linuxctrl.grabr.metainfo.xml
+    sources:
+      # Path to the source code (in Flathub, this will be your git repo URL)
+      - type: git
+        url: https://github.com/LinuxCTRL/grabr.git
+        tag: v1.0.0
+      # The generated offline cargo dependencies file
+      - cargo-sources.json
