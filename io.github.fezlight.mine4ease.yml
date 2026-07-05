@@ -1,0 +1,71 @@
+app-id: io.github.fezlight.mine4ease
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: mine4ease
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --socket=pulseaudio
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: mine4ease
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        XDG_CACHE_HOME: /run/build/mine4ease/flatpak-node/cache
+    build-commands:
+      # 1. Offline dependency install (mirror comes from generated-sources.json).
+      - |
+        export YARN_OFFLINE_MIRROR="$PWD/flatpak-node/yarn-mirror"
+        yarn config --offline set yarn-offline-mirror "$YARN_OFFLINE_MIRROR"
+        yarn install --offline --frozen-lockfile --ignore-scripts
+      # Force a plain unpacked "dir" build, and disable electron-builder's
+      # checksum verification. @electron/get re-fetches SHASUMS256.txt with
+      # cacheMode=Bypass even on a cache hit, which needs the network we don't
+      # have here; isVerifyChecksum=false skips that so the pre-cached electron
+      # zip (from generated-sources.json) is used as-is.
+      - jq '.linux.target="dir" | .electronDownload.isVerifyChecksum=false' <<<$(<electron-builder.json5) > electron-builder.json5
+      # 2. Build the renderer + main + preload bundles.
+      - ". flatpak-node/electron-builder-arch-args.sh; yarn run build -- $ELECTRON_BUILDER_ARCH_ARGS"
+      # 3. Lay the app out under /app/main.
+      - mkdir -p /app/main
+      - cp -a dist/linux*unpacked/** /app/main
+      # 4. Launcher: run the app's electron through zypak so the sandbox works.
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/mine4ease <<'EOF'
+        #!/bin/sh
+        exec zypak-wrapper /app/main/mine4ease "$@"
+        EOF
+        chmod +x /app/bin/mine4ease
+      # 5. Desktop entry, icon, and AppStream metadata.
+      #    The .desktop and .metainfo.xml are supplied as `file` sources below
+      #    (they live next to this manifest), so they land at the build root
+      #    regardless of what the app's source tag contains.
+      - install -Dm644 flatpak/io.github.fezlight.mine4ease.desktop
+          /app/share/applications/io.github.fezlight.mine4ease.desktop
+      - install -Dm644 build/icon.png
+          /app/share/icons/hicolor/512x512/apps/io.github.fezlight.mine4ease.png
+      - install -Dm644 flatpak/io.github.fezlight.mine4ease.metainfo.xml
+          /app/share/metainfo/io.github.fezlight.mine4ease.metainfo.xml
+    sources:
+      # Pin to the released tag when submitting; use a branch/commit while testing.
+      - type: git
+        url: https://github.com/FezLight/mine4ease.git
+        tag: v0.9.0
+      # Generated offline dependency sources — see flatpak/README.md to (re)create.
+      - generated-sources.json
