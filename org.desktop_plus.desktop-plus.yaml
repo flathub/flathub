@@ -1,0 +1,106 @@
+app-id: org.desktop_plus.desktop-plus
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: start-desktop-plus
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=ssh-auth
+  - --socket=gpg-agent
+  - --share=network
+  - --device=all
+  - --filesystem=host
+  - --filesystem=/var/lib/flatpak/app:ro
+  - --filesystem=xdg-run/keyring
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gtk.vfs.*
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --env=FLATPAK_HOST=1
+  - --env=ELECTRON_TRASH=gio
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+modules:
+  - name: node-gyp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755  node-gyp /app/bin
+    cleanup:
+      - "*"
+    sources:
+      - type: script
+        dest-filename: node-gyp
+        commands:
+          - node /usr/lib/sdk/node24/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js
+            "$@"
+  - name: desktop-plus
+    buildsystem: simple
+    build-options:
+      # Add the node bin directory & yarn directory.
+      append-path: /app/bin:/usr/lib/sdk/node24/bin:/run/build/desktop-plus/flatpak-node/chromedriver:/usr/lib/sdk/node24/lib/node_modules/npm/node_modules/node-gyp/bin
+      env:
+        # Sets the directory where Node is located so way npm won't download the headers.
+        npm_config_nodedir: /usr/lib/sdk/node24
+        # Set the Electron cache directory.
+        ELECTRON_CACHE: /run/build/desktop-plus/flatpak-node/electron-cache
+        # Skip Electron related downloads
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        OFFLINE: "1"
+        CHROMEDRIVER_SKIP_DOWNLOAD: "true"
+        # Use predownloaded dugite-native
+        TMPDIR: /run/build/desktop-plus/flatpak-node/tmp
+        XDG_CACHE_HOME: /run/build/desktop-plus/flatpak-node/cache
+        APP_VERSION: 3.6.3.0
+    build-commands:
+      # Symlink libcurl-gnutls
+      - mkdir -p /app/lib
+      - |
+        if [ "$FLATPAK_ARCH" = "aarch64" ]; then
+          ln -s /usr/lib/aarch64-linux-gnu/libcurl.so.4 /app/lib/libcurl-gnutls.so.4
+        else
+          ln -s /usr/lib/x86_64-linux-gnu/libcurl.so.4 /app/lib/libcurl-gnutls.so.4
+        fi
+
+      - HOME=$PWD node ./vendor/yarn-1.21.1.js config --offline set yarn-offline-mirror
+        $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
+      - node ./vendor/yarn-1.21.1.js --offline
+      # Run electron-builder, passing the architecture arguments to it.
+      - . ./credentials.sh && . flatpak-node/electron-builder-arch-args.sh && node ./vendor/yarn-1.21.1.js
+        run --offline build:prod $ELECTRON_BUILDER_ARCH_ARGS
+      # Copy the resulting, unpacked directory to /app.
+      # (A glob is used because the directory name may contain the current arch.)
+      - cp -r dist/desktop-plus-linux-* /app/desktop-plus
+      # Install the wrapper script to start it.
+      - install -Dm755 start-desktop-plus.sh /app/bin/start-desktop-plus
+    post-install:
+      - install -D publish/flatpak/org.desktop_plus.desktop-plus.desktop -t  /app/share/applications/
+      # Populate [VERSION] and [DATE] placeholders
+      - sed -i 's/\[VERSION\]/'"$APP_VERSION"'/g; s/\[DATE\]/'$(date +%Y-%m-%d)'/g' publish/flatpak/org.desktop_plus.desktop-plus.metainfo.xml
+      - install -D publish/flatpak/org.desktop_plus.desktop-plus.metainfo.xml -t  /app/share/metainfo/
+      - install -Dm644 publish/flatpak/logos/32x32.png  /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 publish/flatpak/logos/64x64.png  /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 publish/flatpak/logos/128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 publish/flatpak/logos/256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 publish/flatpak/logos/512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/desktop-plus/desktop-plus.git
+        tag: v3.6.3.0
+        commit: a49f58e667ce47226e433002b691c010f576d212
+      - type: patch
+        path: node_options.patch
+      - type: file
+        path: credentials.sh
+      - generated-sources.json
+      - type: script
+        dest-filename: start-desktop-plus.sh
+        commands:
+          - export TMPDIR=$XDG_RUNTIME_DIR/app/$FLATPAK_ID
+          - exec zypak-wrapper /app/desktop-plus/desktop-plus "$@"

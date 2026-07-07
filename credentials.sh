@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# These can be extracted trivially from the app, so there is no point in trying to hide them.
+export DESKTOP_OAUTH_CLIENT_ID="de0e3c7e9973e1c4dd77"
+export DESKTOP_OAUTH_CLIENT_SECRET="1273305a5fc2737c2ca2911948ba24a9d961e2a3"
+export DESKTOP_OAUTH_CLIENT_ID_BITBUCKET="vXcP3RJpRMfYpzPy33"
+export DESKTOP_OAUTH_CLIENT_SECRET_BITBUCKET="YtNZwHxEuFQgzM2fKNjLDwqgm7LgDnBv"
+export DESKTOP_OAUTH_CLIENT_ID_GITLAB="5895cd9b830cf9bd829d5c9c7ff200c62f882fbc88fa0fccf16cd7ee1ee6a47a"
+export DESKTOP_OAUTH_CLIENT_SECRET_GITLAB="gloas-32fb8aba666ee6f23b776c84c620c6c18cc1a6c0ab5b92b1a896c144adc801d2"
