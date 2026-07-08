@@ -1,0 +1,191 @@
+app-id: org.virtualbox.VirtualBox
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: VirtualBox
+rename-icon: virtualbox
+rename-desktop-file: virtualbox.desktop
+finish-args:
+  # Default path that VirtualBox places files at
+  - --device=all
+  - --persist=VirtualBox VMs
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/pkgconfig
+  - /share/applications/mimeinfo.cache
+  - /share/bash-completion
+  - /share/icons/hicolor/icon-theme.cache
+  - /share/man
+  - /share/pkgconfig
+modules:
+  - name: virtualbox
+    buildsystem: simple
+    build-options:
+      env:
+        # Makes it so virtualbox'es build system can find `XMU` from `/app/lib`
+        LIBRARY_PATH: /app/lib/X11:/app/lib
+    build-commands:
+      - echo "VBOX_GCC_OPT=$CXXFLAGS" | tee -a LocalConfig.kmk
+      - patch -p1 -N -i ./virtualbox-kvm/patches/*.patch
+      # Hardening is disabled because it requires privilege escalation/EUID manipulation.
+      - ./configure --disable-docs --disable-extpack --disable-hardening --disable-java
+        --disable-kmods --disable-vmmraw --enable-vde --ose --with-kvm --with-makeself=/usr/bin/echo
+      - source ./env.sh ; kmk
+      - install -Dm0644 -t "/app/share/licenses/${FLATPAK_ID}/" COPYING*
+      - install -Dm0644 -t "${FLATPAK_DEST}/share/metainfo/" org.virtualbox.VirtualBox.metainfo.xml
+      - |
+        cd out/linux.*/release/bin
+        sed -i "s@\/usr@/app@g ; /PATH\=/d" VBox.sh
+        for i in vbox-img vboximg-mount; do ln -s ../lib/virtualbox/"${i}" "${FLATPAK_DEST}/bin/${i}" ; done
+        pushd icons
+          for i in *; do
+            install -Dpm0644 -t "${FLATPAK_DEST}/share/icons/hicolor/${i}/mimetypes" "${i}/"*
+            install -Dpm0644 -t "${FLATPAK_DEST}/share/icons/hicolor/${i}/apps" "${i}/"*
+          done
+        popd
+        install -Dm0644 -t "${FLATPAK_DEST}/lib/virtualbox/" *.r0 VBoxEFI*.fd *.so
+        install -Dm0644 -t "${FLATPAK_DEST}/share/applications/" virtualbox.desktop
+        install -Dm0644 -t "${FLATPAK_DEST}/share/mime/packages/" virtualbox.xml
+        install -Dm0644 -t "${FLATPAK_DEST}/share/pixmaps/" VBox.png
+        install -Dm0755 -t "${FLATPAK_DEST}/bin/" VBox.sh
+        install -Dm0755 -t "${FLATPAK_DEST}/lib/virtualbox/components/" components/*
+        install -Dm0755 -t "${FLATPAK_DEST}/lib/virtualbox/nls/" nls/*.qm
+        install -Dm0755 -t "${FLATPAK_DEST}/lib/virtualbox/" VBoxCreateUSBNode.sh VBoxSysInfo.sh
+        install -Dm0755 -t "${FLATPAK_DEST}/lib/virtualbox/" Virtual* VBox* vbox* webtest
+        mv 'UnattendedTemplates' "${FLATPAK_DEST}/lib/virtualbox/"
+        ln -s VBox.sh ${FLATPAK_DEST}/bin/VBox
+        for BINARY in VBoxAutostart VBoxBalloonCtrl VBoxBugReport VBoxHeadless VBoxManage VBoxSDL VirtualBox VirtualBoxVM vboxwebsrv; do \
+            ln -sf VBox "${FLATPAK_DEST}/bin/${BINARY}" ; \
+            ln -sf VBox "${FLATPAK_DEST}/bin/${BINARY,,}" ; \
+        done
+    sources:
+      - type: archive
+        url: https://download.virtualbox.org/virtualbox/7.2.8/VirtualBox-7.2.8.tar.bz2
+        sha256: 0642ed4a12b7204cd30c0abbc2c10c1cc7ad55ce1756a01e86a16d4b6b066592
+        x-checker-data:
+          type: anitya
+          project-id: 14449
+          stable-only: true
+          url-template: https://download.virtualbox.org/virtualbox/$version/VirtualBox-$version.tar.bz2
+      - type: git
+        url: https://github.com/cyberus-technology/virtualbox-kvm.git
+        tag: dev-20260201
+        dest: virtualbox-kvm
+        x-checker-data:
+          type: git
+          tag-pattern: ^dev-([\d]*)$
+        commit: d6acb7e6dd2e8cb4b1294b34cfe8e0d6667dfd72
+      - type: file
+        path: LocalConfig.kmk
+      - type: file
+        path: org.virtualbox.VirtualBox.metainfo.xml
+    modules:
+      - shared-modules/SDL/SDL-1.2.15.json
+      - shared-modules/glu/glu-9.json
+      - name: pam
+        config-opts:
+          - -Dvendordir=/app/share/pam
+        buildsystem: meson
+        cleanup:
+          - /app/share/pam
+          - /bin
+          - /sbin
+          - /share/doc
+          - /lib/systemd
+          - /etc
+        sources:
+          - type: archive
+            url: https://github.com/linux-pam/linux-pam/archive/refs/tags/v1.7.2.tar.gz
+            sha256: d7ce5cb6e07ee8603d8af41a672bcb515b9d27079ee309fb3f729a8020166694
+            x-checker-data:
+              type: anitya
+              stable-only: true
+              project-id: 12244
+              url-template: https://github.com/linux-pam/linux-pam/archive/refs/tags/v$version.tar.gz
+      - name: gsoap
+        cleanup:
+          - /bin
+        build-options:
+          make-args:
+            # Necessary because dependency resolution is not declared properly upstream
+            # FIXME: remove as this makes builds slower
+            - -j1
+          env:
+            SOAPCPP2_IMPORTPATH: -DSOAPCPP2_IMPORT_PATH="${FLATPAK_DEST}/share/gsoap/import:${FLATPAK_DEST}/share/gsoap"
+        config-opts:
+          - --disable-static
+          - --enable-ipv6
+          - --enable-samples
+        sources:
+          - type: archive
+            url: https://downloads.sourceforge.net/gsoap2/gsoap_2.8.142.zip
+            sha256: 6d7196bd6591ec2977474c681e351b4a33eb5c2d64c9e2e6727b004f330b3752
+            x-checker-data:
+              type: anitya
+              stable-only: true
+              project-id: 1260
+              url-template: https://downloads.sourceforge.net/gsoap2/gsoap_$version.zip
+      - name: yasm
+        cleanup:
+          - '*'
+        sources:
+          - type: archive
+            url: https://www.tortall.net/projects/yasm/releases/yasm-1.3.0.tar.gz
+            sha256: 3dce6601b495f5b3d45b59f7d2492a340ee7e84b5beca17e48f862502bd5603f
+            x-checker-data:
+              type: anitya
+              project-id: 5286
+              url-template: https://www.tortall.net/projects/yasm/releases/yasm-$version.tar.gz
+          - type: patch
+            paths:
+              - 0000-yasm-gcc-15.patch
+      - name: xmu
+        buildsystem: autotools
+        cleanup:
+          - /share/doc
+        sources:
+          - type: archive
+            url: https://xorg.freedesktop.org/releases/individual/lib/libXmu-1.3.1.tar.xz
+            sha256: 81a99e94c4501e81c427cbaa4a11748b584933e94b7a156830c3621256857bc4
+            x-checker-data:
+              type: anitya
+              project-id: 1785
+              stable-only: true
+              url-template: https://xorg.freedesktop.org/releases/individual/lib/libXmu-$version.tar.xz
+      - name: lvm2
+        cleanup:
+          - /bin
+          - /sbin
+          - /libexec
+        buildsystem: autotools
+        # Prevents strip permission issues
+        post-install:
+          - chmod 755 "${FLATPAK_DEST}/bin"/* "${FLATPAK_DEST}/sbin"/*
+        sources:
+          - type: git
+            url: https://gitlab.com/lvmteam/lvm2.git
+            tag: v2_03_41
+            x-checker-data:
+              type: git
+              tag-pattern: ^v([\d_]+)$
+            commit: 539014d16099ee8d46318b49e9014332e2dc7ef3
+        modules:
+          - name: libaio
+            no-autogen: true
+            make-install-args:
+              - prefix=${FLATPAK_DEST}
+            sources:
+              - type: archive
+                url: https://releases.pagure.org/libaio/libaio-0.3.113.tar.gz
+                sha256: 2c44d1c5fd0d43752287c9ae1eb9c023f04ef848ea8d4aafa46e9aedb678200b
+                x-checker-data:
+                  type: anitya
+                  project-id: 1557
+                  stable-only: true
+                  url-template: https://releases.pagure.org/libaio/libaio-$version.tar.gz
