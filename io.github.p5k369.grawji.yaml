@@ -1,0 +1,130 @@
+# Flatpak manifest for grawji.
+#
+# Build and install locally:
+#   flatpak-builder --user --install --force-clean build flatpak/io.github.p5k369.grawji.yaml
+# Run:
+#   flatpak run io.github.p5k369.grawji
+#
+# The GNOME runtime supplies GTK4, libadwaita and PyGObject. The USB stack
+# (libusb + pyusb), the EXIF stack (exiv2 + gexiv2, absent from the runtime),
+# rawji and grawji are built here.
+
+id: io.github.p5k369.grawji
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: grawji
+# No translations shipped yet, so skip the .Locale extension split.
+separate-locales: false
+
+finish-args:
+  # The usb device type needs flatpak 1.16.
+  - --require-version=1.16.0
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # The camera talks PTP over raw USB (usb), the UI wants the GPU (dri).
+  - --device=dri
+  - --device=usb
+  # Read RAFs from anywhere (cards under /run/media, external drives,
+  # network mounts, arbitrary photo-library layouts). grawji ships its own
+  # folder-tree browser, so portal-scoped access does not fit. Strictly
+  # read-only: exported JPEGs are written through the file-chooser portal,
+  # which grants write access to just the chosen file/folder.
+  # Linter exception requested for finish-args-host-ro-filesystem-access.
+  - --filesystem=host:ro
+
+modules:
+  - name: libusb
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2
+        sha256: fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf
+
+  - name: python3-pyusb
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --prefix=${FLATPAK_DEST} pyusb-1.3.1-py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/28/b8/27e6312e86408a44fe16bd28ee12dd98608b39f7e7e57884a24e8f29b573/pyusb-1.3.1-py3-none-any.whl
+        sha256: bf9b754557af4717fe80c2b07cc2b923a9151f5c08d17bdb5345dac09d6a0430
+
+  - name: exiv2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DEXIV2_ENABLE_NLS=OFF
+      - -DEXIV2_BUILD_SAMPLES=OFF
+      - -DEXIV2_BUILD_UNIT_TESTS=OFF
+      - -DEXIV2_ENABLE_BMFF=OFF
+    sources:
+      - type: archive
+        url: https://github.com/Exiv2/exiv2/releases/download/v0.27.7/exiv2-0.27.7-Source.tar.gz
+        sha256: 70629dc27e3d4dd5c3fa91afbea93166d338b1de284e6a4c44bbf9dcfe7bbc6d
+
+  - name: gexiv2
+    buildsystem: meson
+    config-opts:
+      - -Dpython3=false
+      - -Dvapi=false
+      - -Dtools=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gexiv2/0.14/gexiv2-0.14.3.tar.xz
+        sha256: 21e64d2c56e9b333d44fef3f2a4b25653d922c419acd972fa96fab695217e2c8
+
+  - name: rawji
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation
+        --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: git
+        url: https://github.com/pinpox/rawji.git
+        commit: 11eec8baf48be356c3693c42b5fc966157b7f84a
+
+  - name: python3-hatchling
+    buildsystem: simple
+    cleanup:
+      - '*'
+    build-commands:
+      - pip3 install --no-deps --prefix=${FLATPAK_DEST} *.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/56/49/2797ec0ef88008a653a8867bb8d1e5c223cd2df8e40390dd5c6a0279cbc5/hatchling-1.30.1-py3-none-any.whl
+        sha256: 161eacafb3c6f91526e92116d21426369f2c36e98c36a864f11a96345ad4ee31
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl
+        sha256: 5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+      - type: file
+        url: https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl
+        sha256: a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+      - type: file
+        url: https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl
+        sha256: e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+      - type: file
+        url: https://files.pythonhosted.org/packages/7c/a4/81502f486f01db95bc8320646a8a12511f5e556cb63d5e224d91816605c4/trove_classifiers-2026.6.1.19-py3-none-any.whl
+        sha256: ab4c4ec93cc4a4e7815fa759906e05e6bb3f2fbd92ea0f897288c6a43efd15b3
+
+  - name: grawji
+    buildsystem: simple
+    build-options:
+      env:
+        PYTHONPATH: /app/lib/python3.13/site-packages
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation
+        --prefix=${FLATPAK_DEST} .
+      - install -Dm644 data/io.github.p5k369.grawji.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.p5k369.grawji.desktop
+      - install -Dm644 data/io.github.p5k369.grawji.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.p5k369.grawji.metainfo.xml
+      - install -Dm644 data/io.github.p5k369.grawji.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.p5k369.grawji.svg
+      - install -Dm644 LICENSE
+        ${FLATPAK_DEST}/share/licenses/io.github.p5k369.grawji/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/p5k369/grawji.git
+        tag: v0.2.0
+        commit: 3bcd3e3604688e5731fc337bbb790aeb7ae209d6
