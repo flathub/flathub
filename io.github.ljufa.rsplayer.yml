@@ -1,0 +1,75 @@
+# Flatpak manifest for the RSPlayer desktop app (Tauri wrapper around the
+# embedded server). This file is the source of truth for the Flathub
+# submission — after acceptance it lives in the flathub/io.github.ljufa.rsplayer
+# repo and this copy should be kept in sync.
+#
+# See PKGS/flatpak/README.md for how to regenerate cargo-sources.json and
+# build/test locally.
+app-id: io.github.ljufa.rsplayer
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: rsplayer-desktop
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Regular playback through the PipeWire/PulseAudio socket.
+  - --socket=pulseaudio
+  # Direct ALSA (hw:) access for bit-perfect / exclusive output to USB DACs.
+  # Same approach as other hi-fi players on Flathub (SONE, QBZ).
+  - --device=all
+  # The webview talks to the embedded server on localhost; network is also
+  # needed for internet radio, streaming metadata and multiroom (QUIC + LAN
+  # discovery).
+  - --share=network
+  # Media keys / MPRIS integration via souvlaki. Must match the dbus_name
+  # configured in crates/desktop/src/main.rs.
+  - --own-name=org.mpris.MediaPlayer2.rsplayer
+  # Default music library location. Users with libraries elsewhere can grant
+  # more paths with Flatseal or `flatpak override`. Note: symlinks under
+  # ~/Music only resolve if their target is also granted.
+  - --filesystem=xdg-music:ro
+  # Music libraries commonly live on external/removable drives or host mounts.
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/mnt:ro
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/rsplayer/cargo
+
+modules:
+  - name: rsplayer
+    buildsystem: simple
+    build-commands:
+      # The Tauri window first loads loading.html from the frontend dist.
+      - cp crates/desktop/loading.html dist/web-ui/loading.html
+      # No `cargo fetch` warm-up: it would also resolve dev-dependencies of
+      # path dependencies (e.g. cpal's examples), which are not vendored.
+      - cargo --offline build --release --package rsplayer-desktop --features custom-protocol
+      - install -Dm755 target/release/rsplayer-desktop /app/bin/rsplayer-desktop
+      - install -Dm644 PKGS/flatpak/io.github.ljufa.rsplayer.desktop /app/share/applications/io.github.ljufa.rsplayer.desktop
+      - install -Dm644 PKGS/flatpak/io.github.ljufa.rsplayer.metainfo.xml /app/share/metainfo/io.github.ljufa.rsplayer.metainfo.xml
+      - install -Dm644 crates/desktop/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.ljufa.rsplayer.png
+      - install -Dm644 'crates/desktop/icons/128x128@2x.png' /app/share/icons/hicolor/256x256/apps/io.github.ljufa.rsplayer.png
+      - install -Dm644 crates/desktop/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.ljufa.rsplayer.png
+    sources:
+      - type: git
+        url: https://github.com/ljufa/rsplayer.git
+        tag: '4.5.1'
+        commit: 47f8b330d914cc776bcbcd7041e6ae187e092dc2
+      # Vendored crate sources for the offline build. Regenerate on every
+      # Cargo.lock change — see PKGS/flatpak/README.md.
+      - cargo-sources.json
+      # Pre-built web UI (Dioxus/WASM), embedded into the server binary via
+      # RustEmbed at compile time. Published by the "Full release" workflow.
+      - type: archive
+        url: https://github.com/ljufa/rsplayer/releases/download/4.5.1/web-ui-dist-4.5.1.tar.gz
+        sha256: 5d6f63fb06cc2704effa468ca1b54dfa17e734103b8fc673e40de147e1860f77
+        dest: dist/web-ui
