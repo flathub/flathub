@@ -1,0 +1,95 @@
+# Flatpak manifest for Sarala — for submission to Flathub.
+#
+# The Flathub build environment has NO network access, so every dependency must
+# be pre-fetched into a "sources" list:
+#   * Rust crates  -> cargo-sources.json  (from src-tauri/Cargo.lock)
+#   * Node modules -> node-sources.json    (from flatpak/package-lock.json)
+# Regenerate both with ./flatpak/gen-sources.sh whenever a lockfile changes.
+#
+# The frontend is built with npm here (not pnpm) because npm ships in the Flatpak
+# node SDK extension and vendors cleanly offline; Vite is package-manager-agnostic,
+# so this produces the same dist/ the pnpm dev build does. See flatpak/README.md.
+
+id: io.github.solancer.Sarala
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: sarala
+
+finish-args:
+  # Windowing + GPU rendering for the WebKitGTK view.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Auto-updater check (the gist manifest) and remote images in previews.
+  - --share=network
+  # Open and save Markdown files. The native picker runs through the xdg-desktop
+  # portal, but the app reopens recently used files on launch, which needs
+  # persistent read/write to the user's documents — mirror the Snap's `home` plug.
+  - --filesystem=home
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  build-args:
+    # Belt-and-suspenders: the offline caches below already remove any need for
+    # the network, but keep it explicit so a stray fetch fails loudly.
+    - --share=network=false
+  env:
+    # Suppress the in-app auto-updater: Flathub manages updates, and the Flatpak
+    # binary is read-only so it can't self-replace. Baked in by Vite's `define`.
+    SARALA_FLATPAK: '1'
+    CARGO_HOME: /run/build/sarala/cargo
+    # npm reads its cache + offline flag from these; populated by node-sources.json.
+    XDG_CACHE_HOME: /run/build/sarala/flatpak-node/cache
+    npm_config_cache: /run/build/sarala/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+
+modules:
+  - name: sarala
+    buildsystem: simple
+    sources:
+      # The application itself. For a Flathub submission this must be a fixed,
+      # published revision that already contains the flatpak/ directory — bump
+      # `tag`/`commit` to the release you are packaging (see flatpak/README.md).
+      # For local testing you can swap this for:  - type: dir\n    path: ..
+      - type: git
+        url: https://github.com/solancer/sarala.git
+        # v0.4.3 release code plus AppStream screenshot metadata added on top.
+        commit: 586a93fec7397755acc5b84983f7c0d1064b6919
+      # Vendored dependency sets (generated — see ./gen-sources.sh).
+      - cargo-sources.json
+      - node-sources.json
+    build-commands:
+      # 0. The repo's committed lockfile is pnpm's; the npm lockfile used to
+      #    vendor node-sources.json lives under flatpak/. Put it where npm ci
+      #    expects it (next to package.json at the source root).
+      - cp flatpak/package-lock.json package-lock.json
+      # 1. Install the frontend toolchain + libraries from the offline npm cache.
+      #    --ignore-scripts skips postinstall steps that would fetch binaries
+      #    (e.g. Playwright browsers); none are needed to build the frontend.
+      - npm ci --offline --ignore-scripts
+      # 2. Build the web assets that Tauri embeds into the binary (-> dist/).
+      - npm run build
+      # 3. Compile the Rust app against the vendored crate registry. This reads
+      #    dist/ (frontendDist) and produces the `sarala` binary.
+      - cargo build --release --offline --manifest-path src-tauri/Cargo.toml
+      # 4. Install the binary, desktop entry, AppStream metainfo and icons.
+      - install -Dm755 src-tauri/target/release/sarala /app/bin/sarala
+      - install -Dm644 flatpak/io.github.solancer.Sarala.desktop
+        /app/share/applications/io.github.solancer.Sarala.desktop
+      - install -Dm644 flatpak/io.github.solancer.Sarala.metainfo.xml
+        /app/share/metainfo/io.github.solancer.Sarala.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/io.github.solancer.Sarala.png
+      - install -Dm644 src-tauri/icons/64x64.png
+        /app/share/icons/hicolor/64x64/apps/io.github.solancer.Sarala.png
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.solancer.Sarala.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png
+        /app/share/icons/hicolor/256x256/apps/io.github.solancer.Sarala.png
+      - install -Dm644 src-tauri/icons/icon.png
+        /app/share/icons/hicolor/512x512/apps/io.github.solancer.Sarala.png
