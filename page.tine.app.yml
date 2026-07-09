@@ -1,0 +1,105 @@
+# Flatpak manifest for Tine — Flathub OFFLINE (no-network sandbox) build.
+#
+# Tine is a Tauri v2 app: SolidJS/Vite frontend + Rust backend, WebKitGTK
+# (webkit2gtk-4.1) on Linux. Because Flathub builds have NO network access, every
+# Cargo crate and every npm package is pre-materialized as manifest `sources`:
+#   flatpak/cargo-sources.json  <- flatpak-cargo-generator.py  (from Cargo.lock)
+#   flatpak/node-sources.json   <- flatpak-node-generator npm   (from package-lock.json)
+# See subagent-tasks/notes/flathub-offline-build.md for how these were generated,
+# the authoritative sources, and the REMAINING build-test + submission steps.
+#
+# Runtime: org.gnome.Platform//48 — a Tauri Linux app needs webkit2gtk-4.1, which
+# ships in the GNOME runtime (not the bare freedesktop runtime). GNOME 48 is the
+# current stable branch and is built on the freedesktop 24.08 base, so the SDK
+# extensions are pinned to //24.08.
+
+id: page.tine.app
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: tine
+
+finish-args:
+  # Display + input.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc            # X11 / WebKit shared memory
+  - --device=dri           # GPU access for WebKit compositing
+  # Tine plays audio (the media/audio overlay) via WebKitGTK.
+  - --socket=pulseaudio
+  # Tine reads AND writes the user's real Logseq graph, which can live anywhere
+  # the user points the file picker. --filesystem=home is broad and WILL draw
+  # Flathub reviewer questions; consider narrowing to a portal / a configured
+  # graph dir (see notes §"finish-args"). Kept broad here to match current UX.
+  - --filesystem=home
+  # Network: the in-app updater checks GitHub, and external links open a browser.
+  # Flathub discourages self-updaters (Flathub ships updates), so ALSO consider
+  # disabling tauri-plugin-updater for the Flathub build (see notes). Runtime
+  # network access itself is allowed.
+  - --share=network
+  # Desktop notifications (if used at runtime).
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  # Put the SDK-extension toolchains (cargo/rustc, node/npm) on PATH.
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+
+modules:
+  - name: tine
+    buildsystem: simple
+    build-options:
+      env:
+        # ---- offline cargo ----
+        # cargo-sources.json extracts the vendor dir to <builddir>/cargo/vendor and
+        # writes the redirect config to <builddir>/cargo/config. builddir is
+        # /run/build/tine, so CARGO_HOME points there and cargo --offline resolves
+        # every crate (incl. the lsdoc git dep) from the vendored sources.
+        CARGO_HOME: /run/build/tine/cargo
+        CARGO_NET_OFFLINE: "true"
+        # ---- offline npm ----
+        # node-sources.json populates the flatpak-node offline cache (XDG layout).
+        XDG_CACHE_HOME: /run/build/tine/flatpak-node/cache
+        npm_config_cache: /run/build/tine/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        # playwright / webdriverio are dev-only e2e deps; their browser binaries are
+        # NOT vendored (stripped from node-sources.json). Make sure npm ci does not
+        # try to fetch them.
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        PLAYWRIGHT_BROWSERS_PATH: "0"
+        LC_ALL: C.UTF-8
+    build-commands:
+      # 1. Install node deps from the offline cache (devDeps included — Vite, the
+      #    Tauri CLI and TypeScript are devDependencies needed at build time).
+      - npm ci --offline
+      # 2. Build the frontend bundle (dist/). `npm run build` runs the wasm-pin
+      #    guard then `vite build`; it does no network I/O.
+      - npm run build
+      # 3. Build the Tauri release binary. custom-protocol is REQUIRED for a release
+      #    build (else the app tries to connect to the Vite dev server); tauri-build
+      #    embeds dist/ into the binary. Workspace target dir is the repo-root
+      #    target/, so the binary lands at target/release/tine.
+      - cargo build --release --offline --features custom-protocol -p tine
+      # 4. Install artefacts into /app.
+      - install -Dm755 target/release/tine /app/bin/tine
+      - install -Dm644 flatpak/page.tine.app.desktop /app/share/applications/page.tine.app.desktop
+      - install -Dm644 flatpak/page.tine.app.metainfo.xml /app/share/metainfo/page.tine.app.metainfo.xml
+      - install -Dm644 src-tauri/icons/icon.png       /app/share/icons/hicolor/512x512/apps/page.tine.app.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/page.tine.app.png
+      - install -Dm644 src-tauri/icons/128x128.png    /app/share/icons/hicolor/128x128/apps/page.tine.app.png
+      - install -Dm644 src-tauri/icons/64x64.png      /app/share/icons/hicolor/64x64/apps/page.tine.app.png
+      - install -Dm644 src-tauri/icons/32x32.png      /app/share/icons/hicolor/32x32/apps/page.tine.app.png
+    sources:
+      # The app source, pinned to an exact commit (Flathub requires a pinned
+      # commit, not a moving tag/branch). v0.5.0 is the first release carrying the
+      # page.tine.app identifier.
+      - type: git
+        url: https://github.com/martinkoutecky/tine.git
+        tag: v0.5.0
+        commit: ef5c0ab7ea5e5a8eac3c28f6f5275b2d1b667dc9
+      # Vendored dependency sources (generated — do not hand-edit).
+      - cargo-sources.json
+      - node-sources.json
