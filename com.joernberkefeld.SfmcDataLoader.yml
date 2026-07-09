@@ -1,0 +1,75 @@
+# Flatpak manifest for SFMC Data Loader.
+#
+# This repackages the released Linux .deb into a Flatpak sandbox rather than
+# building Electron from source. That keeps parity with the other channels
+# (all fed from the same GitHub Release) and is accepted for Flathub as long as
+# the app is otherwise open source and the deb is an official release artifact.
+#
+# Build locally:
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/flatpak/com.joernberkefeld.SfmcDataLoader.yml
+#
+# For each release, update the `url` and `sha256` under the deb source (or use
+# the flatpak-external-data-checker with the x-checker-data block below).
+app-id: com.joernberkefeld.SfmcDataLoader
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: sfmc-data-loader
+separate-locales: false
+
+finish-args:
+    - --share=ipc
+    - --socket=x11
+    - --socket=wayland
+    - --device=dri
+    - --share=network
+    # The app reads/writes an mcdev project folder chosen by the user.
+    - --filesystem=home
+    - --talk-name=org.freedesktop.Notifications
+
+modules:
+    - name: sfmc-data-loader
+      buildsystem: simple
+      build-commands:
+          # Unpack the official .deb and relocate it under /app.
+          - ar x sfmc-dataloader-app.deb
+          - tar -xf data.tar.* -C .
+          - cp -a opt/SFMC\ Data\ Loader /app/sfmc-data-loader
+          - install -Dm755 packaging/launcher.sh /app/bin/sfmc-data-loader
+          - install -Dm644 usr/share/applications/*.desktop /app/share/applications/com.joernberkefeld.SfmcDataLoader.desktop
+          # electron sets Icon=sfmc-data-loader, but the icons above are renamed to
+          # the app-id, so the desktop entry must point at the app-id icon too.
+          - desktop-file-edit --set-icon=com.joernberkefeld.SfmcDataLoader /app/share/applications/com.joernberkefeld.SfmcDataLoader.desktop
+          # AppStream metadata so Flathub can render name/summary/screenshots.
+          - install -Dm644 com.joernberkefeld.SfmcDataLoader.metainfo.xml /app/share/metainfo/com.joernberkefeld.SfmcDataLoader.metainfo.xml
+          - |
+              for size in 16 32 48 64 128 256 512; do
+                  icon="usr/share/icons/hicolor/${size}x${size}/apps/sfmc-data-loader.png"
+                  if [ -f "$icon" ]; then
+                      install -Dm644 "$icon" "/app/share/icons/hicolor/${size}x${size}/apps/com.joernberkefeld.SfmcDataLoader.png"
+                  fi
+              done
+      sources:
+          - type: file
+            path: launcher.sh
+            dest: packaging
+          - type: file
+            path: com.joernberkefeld.SfmcDataLoader.metainfo.xml
+          - type: file
+            # Maintained automatically by scripts/update-packaging-manifests.mjs on
+            # each release. electron-builder names the Debian package with the
+            # dpkg arch (amd64), not x64 — the url and x-checker query below must
+            # match that.
+            url: https://github.com/JoernBerkefeld/sfmc-dataloader-app/releases/download/v0.4.0/sfmc-dataloader-app-0.4.0-linux-amd64.deb
+            sha256: 'f91b749ef44141cf5d55d944f23bb72364d87c57ecb31402d5b71b2e709e34a3'
+            dest-filename: sfmc-dataloader-app.deb
+            x-checker-data:
+                type: json
+                url: https://api.github.com/repos/JoernBerkefeld/sfmc-dataloader-app/releases/latest
+                version-query: .tag_name | sub("^v"; "")
+                url-query: >-
+                    .assets[] | select(.name | test("linux-amd64\\.deb$")) |
+                    .browser_download_url
