@@ -12,7 +12,7 @@
 
 id: io.github.solancer.Sarala
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -25,19 +25,24 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # WebKitGTK's DMABUF renderer fails ("Failed to create GBM buffer") on a range
+  # of GPU/driver/VM combos inside the sandboxed runtime, leaving a blank window.
+  # The native (deb/AppImage) build uses the host WebKitGTK and is unaffected, so
+  # this is scoped to the Flatpak only. Software/GL fallback is plenty for an
+  # editor and renders reliably everywhere.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
   # Auto-updater check (the gist manifest) and remote images in previews.
   - --share=network
-  # Open and save Markdown files. The native picker runs through the xdg-desktop
-  # portal, but the app reopens recently used files on launch, which needs
-  # persistent read/write to the user's documents — mirror the Snap's `home` plug.
-  - --filesystem=home
+  # Opening/saving anywhere works through the xdg-desktop portal (native picker)
+  # with no static filesystem access. This narrower grant only adds persistent
+  # read/write to ~/Documents so the "reopen recent files on launch" feature works
+  # there without re-prompting. Flathub flags broader --filesystem=home.
+  - --filesystem=xdg-documents:rw
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
-  build-args:
-    # Belt-and-suspenders: the offline caches below already remove any need for
-    # the network, but keep it explicit so a stray fetch fails loudly.
-    - --share=network=false
+  # No build-args: build steps have NO network by default (that is what the
+  # vendored cargo-/node-sources are for), so a stray fetch fails loudly on its own.
   env:
     # Suppress the in-app auto-updater: Flathub manages updates, and the Flatpak
     # binary is read-only so it can't self-replace. Baked in by Vite's `define`.
@@ -58,8 +63,10 @@ modules:
       # For local testing you can swap this for:  - type: dir\n    path: ..
       - type: git
         url: https://github.com/solancer/sarala.git
-        # v0.4.3 release code plus AppStream screenshot metadata added on top.
-        commit: 586a93fec7397755acc5b84983f7c0d1064b6919
+        # v0.4.3 app code plus the Flatpak packaging fixes (production build flag,
+        # GNOME 50 runtime, DMABUF workaround, narrowed filesystem access).
+        # Binary is identical to v0.4.3.
+        commit: 74da59e6815c93f77d68f02a9ffca033c45832da
       # Vendored dependency sets (generated — see ./gen-sources.sh).
       - cargo-sources.json
       - node-sources.json
@@ -76,7 +83,12 @@ modules:
       - npm run build
       # 3. Compile the Rust app against the vendored crate registry. This reads
       #    dist/ (frontendDist) and produces the `sarala` binary.
+      #    --features tauri/custom-protocol is REQUIRED: without it Tauri builds a
+      #    "dev" binary that loads devUrl (http://localhost:1420) instead of
+      #    embedding dist/. The Tauri CLI sets this for `tauri build`; a raw cargo
+      #    build must pass it explicitly (see tauri build.rs: dev = !custom_protocol).
       - cargo build --release --offline --manifest-path src-tauri/Cargo.toml
+        --features tauri/custom-protocol
       # 4. Install the binary, desktop entry, AppStream metainfo and icons.
       - install -Dm755 src-tauri/target/release/sarala /app/bin/sarala
       - install -Dm644 flatpak/io.github.solancer.Sarala.desktop
