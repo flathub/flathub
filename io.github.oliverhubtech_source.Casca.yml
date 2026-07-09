@@ -1,0 +1,54 @@
+app-id: io.github.oliverhubtech_source.Casca
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: casca
+
+finish-args:
+  # Interface gráfica (Wayland nativo, X11 como fallback), áudio e aceleração de vídeo
+  # pra WebKit (a janela própria de cada web app criado usa WebKitGTK).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=ipc
+  # O WebKitGTK tem seu próprio sandbox interno pros processos de conteúdo web, que
+  # não aninha bem dentro do sandbox do Flatpak — desabilitar evita crash do processo web.
+  - --env=WEBKIT_FORCE_SANDBOX=0
+  # Buscar favicon/ícone dos sites e o catálogo remoto opcional da Loja
+  - --share=network
+  # Cria o atalho .desktop de cada web app/pacote no menu de aplicativos e na área de trabalho
+  - --filesystem=xdg-data/applications:create
+  - --filesystem=xdg-desktop:create
+  # Guarda o registro de apps/pacotes, ícones baixados e perfis (sessão) isolados de cada site
+  - --filesystem=~/.local/share/casca:create
+  - --filesystem=~/.local/share/icons/casca:create
+  # Sem --talk-name=org.freedesktop.Flatpak de propósito: essa permissão dá acesso a
+  # rodar qualquer comando no host (flatpak-spawn --host) e é fortemente escrutinada no
+  # review do Flathub. Sandboxado, o Casca só oferece a "janela própria" (WebKitGTK) —
+  # não detecta nem oferece navegadores externos (isso continua funcional na instalação
+  # local via install.sh, fora do Flatpak). Reabrir a própria janela do Casca a partir de
+  # um .desktop criado usa `flatpak run`, que roda no HOST (GNOME Shell), não precisando
+  # dessa permissão.
+
+modules:
+  - python3-requirements.yaml
+
+  - name: casca
+    buildsystem: simple
+    build-commands:
+      # site.getsitepackages() usa sys.prefix do próprio python3 do runtime (/usr,
+      # somente leitura) — precisa forçar o "base" pra /app via sysconfig, senão o
+      # cp falha com "Read-only file system".
+      - site_packages="$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib', vars=dict(base='/app')))")"
+        && mkdir -p "$site_packages" && cp -r casca "$site_packages/"
+      - install -Dm755 run.py /app/bin/casca
+      - install -Dm755 run_webview.py /app/bin/casca-webview
+      - install -Dm755 run_package.py /app/bin/casca-package
+      - install -Dm644 casca/data/io.github.oliverhubtech_source.Casca.desktop /app/share/applications/io.github.oliverhubtech_source.Casca.desktop
+      - install -Dm644 casca/data/io.github.oliverhubtech_source.Casca.metainfo.xml /app/share/metainfo/io.github.oliverhubtech_source.Casca.metainfo.xml
+      - install -Dm644 casca/data/icons/io.github.oliverhubtech_source.Casca.png /app/share/icons/hicolor/256x256/apps/io.github.oliverhubtech_source.Casca.png
+    sources:
+      - type: git
+        url: https://github.com/oliverhubtech-source/casca.git
+        commit: 2037e16187aa87c3647cc23326b99e192418aa52
