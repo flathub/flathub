@@ -1,0 +1,75 @@
+# TabTube Flatpak manifest.
+#
+# Mirrors upstream FreeTube's own accepted Flathub manifest
+# (github.com/flathub/io.freetubeapp.FreeTube): it repackages the prebuilt Linux
+# release artifact onto the Electron base app rather than building from source.
+# This is the approach Flathub accepts for FreeTube (an AGPL Electron app), so it
+# is the proven, low-friction route for this fork. If a reviewer asks for a source
+# build, switch to offline pnpm sources via flatpak-node-generator.
+app-id: io.github.mangofillet.TabTube
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: run.sh
+separate-locales: false
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  - --own-name=org.mpris.MediaPlayer2.tabtube
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.SettingsDaemon
+
+modules:
+  - name: tabtube
+    buildsystem: simple
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/mangofillet/TabTube/releases/download/v0.1.0/TabTube-0.1.0.AppImage
+        sha256: 5ac1fb1881cc3beb4e2a2528902b14e6384d77fd3648cfe87d8538ed2a919aef
+        dest-filename: TabTube.AppImage
+        # Lets Flathub's update bot open a PR (new url + sha256) on each release.
+        x-checker-data:
+          is-main-source: true
+          type: json
+          url: https://api.github.com/repos/mangofillet/TabTube/releases?per_page=1
+          version-query: .[0].tag_name
+          url-query: .[0].assets[] | select(.name | endswith(".AppImage"))
+            | .browser_download_url
+          timestamp-query: .[0].published_at
+          release-url-template: https://github.com/mangofillet/TabTube/releases/tag/$version
+      - type: file
+        path: run.sh
+      - type: file
+        path: io.github.mangofillet.TabTube.desktop
+      - type: file
+        path: io.github.mangofillet.TabTube.metainfo.xml
+      - type: file
+        path: icon-512.png
+    build-commands:
+      # Extract the prebuilt Electron app from the released AppImage and bundle it.
+      # (The downloaded file is not executable; --appimage-extract needs to run it.)
+      - chmod +x TabTube.AppImage
+      - ./TabTube.AppImage --appimage-extract
+      - cp -a squashfs-root "${FLATPAK_DEST}/tabtube"
+      # Launch wrapper (zypak sandbox + writable TMPDIR).
+      - install -Dm755 run.sh "${FLATPAK_DEST}/bin/run.sh"
+      # Desktop entry, AppStream metadata and icon.
+      - install -Dm644 io.github.mangofillet.TabTube.desktop -t "${FLATPAK_DEST}/share/applications/"
+      - install -Dm644 io.github.mangofillet.TabTube.metainfo.xml -t "${FLATPAK_DEST}/share/metainfo/"
+      - install -Dm644 icon-512.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.mangofillet.TabTube.png"
+      # Make Electron report the Flatpak desktop-file id (window grouping / MPRIS).
+      # (On the 24.08 base app this helper is `patch-desktop-filename`; it was renamed
+      # to `patch-electron-desktop-filename` in 25.08.)
+      - patch-desktop-filename "${FLATPAK_DEST}/tabtube/resources/app.asar"
