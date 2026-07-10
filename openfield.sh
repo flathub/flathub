@@ -7,7 +7,7 @@
 # app's writable cache dir, chmod there, then run it with
 # --appimage-extract-and-run (works without FUSE, which the sandbox lacks).
 set -e
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/dev.openfield.Openfield"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.NatanBack77.Openfield-Releases"
 SRC="/app/extra/openfield.AppImage"
 DST="$CACHE_DIR/openfield.AppImage"
 
