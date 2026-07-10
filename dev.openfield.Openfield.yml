@@ -16,8 +16,9 @@ finish-args:
   - --device=dri
   # Loopback traffic (orchestrator HTTP API between agent terminals) does
   # NOT require this — it's unsandboxed within the same network namespace.
-  # This grants network access for: update checks against GitHub, and any
-  # spawned agent CLI (claude/aider/etc) that needs internet.
+  # This grants network access for: fetching the app binary itself on
+  # first run/update (see extra-data source below), and any spawned agent
+  # CLI (claude/aider/etc) that needs internet.
   - --share=network
   # Openfield spawns PTYs in arbitrary user-chosen CWDs (SpawnTerminal's
   # cwd param) — --filesystem=home is the idiomatic Flatpak default (same
@@ -30,39 +31,39 @@ modules:
   - name: openfield
     buildsystem: simple
     build-commands:
-      - install -Dm755 openfield /app/bin/openfield
-      # Flatpak's export step only ships desktop files/icons whose filename
-      # matches the app-id exactly — "openfield.png"/"Icon=openfield" (fine
-      # for .deb/.rpm, matched loosely by any desktop environment) gets
-      # silently dropped here ("non-allowed export filename"), leaving the
-      # installed app with no icon anywhere (launcher, alt-tab, dock). Rename
-      # to the app-id and rewrite Icon= to match, only for this module —
-      # build/linux/openfield.desktop itself stays untouched for .deb/.rpm.
-      - sed 's/^Icon=openfield$/Icon=dev.openfield.Openfield/' dev.openfield.Openfield.desktop > dev.openfield.Openfield.desktop.flatpak
-      - install -Dm644 dev.openfield.Openfield.desktop.flatpak /app/share/applications/dev.openfield.Openfield.desktop
-      # openfield.png here is the pre-resized 512x512 copy (see sources
-      # below) — installing build/appicon.png's real 1024x1024 straight into
-      # a 512x512 hicolor dir fails flatpak's export validation ("Image too
-      # large"), and 1024x1024 as a dir name instead breaks appstreamcli
-      # compose ("icon-not-found", it only recognizes standard sizes up to
-      # 512). Resizing must happen outside the build sandbox (no imagemagick
-      # inside org.gnome.Sdk) — see docs/DISTRIBUTION.md.
-      - install -Dm644 openfield.png /app/share/icons/hicolor/512x512/apps/dev.openfield.Openfield.png
+      - install -Dm755 openfield.sh /app/bin/openfield
+      - install -Dm644 dev.openfield.Openfield.desktop /app/share/applications/dev.openfield.Openfield.desktop
+      - install -Dm644 openfield-512.png /app/share/icons/hicolor/512x512/apps/dev.openfield.Openfield.png
       - install -Dm644 dev.openfield.Openfield.metainfo.xml /app/share/metainfo/dev.openfield.Openfield.metainfo.xml
     sources:
-      # Prebuilt binary from the same CI job that produces the AppImage —
-      # not recompiled inside the sandbox.
+      # Openfield is closed-source (see LICENSE in the main repo) — Flathub
+      # can't compile it in-sandbox from source like a normal module, so the
+      # already-built AppImage is fetched as `extra-data`: flatpak's client
+      # (not flatpak-builder) downloads this file post-build, at install/
+      # update time, straight from the public releases repo, and verifies
+      # it against the pinned sha256/size below. Same pattern Spotify/Slack/
+      # Discord use for their proprietary Flatpaks. Lands read-only at
+      # /app/extra/openfield.AppImage; openfield.sh (below) copies it to a
+      # writable cache dir, chmods it there, and runs it with
+      # --appimage-extract-and-run (no FUSE needed, sandbox has none).
+      #
+      # MAINTENANCE: bump url/sha256/size (and the <release> in the
+      # metainfo) on every new tag meant to reach Flathub users — this
+      # channel has no auto-update (see docs/DISTRIBUTION.md's channel
+      # table), so stale pins just mean Flathub users stay on an old
+      # version, not a broken build.
+      - type: extra-data
+        filename: openfield.AppImage
+        url: https://github.com/NatanBack77/openfield-releases/releases/download/v0.1.11/openfield-x86_64.AppImage
+        sha256: 0a4c5f804d65d188f96eb720979fae186fc3e09376cb5e7fcbbaaf379d53748f
+        size: 34605560
+        only-arches:
+          - x86_64
       - type: file
-        path: ../../../build/bin/openfield
-        dest-filename: openfield
+        path: openfield.sh
       - type: file
-        path: ../../../build/linux/openfield.desktop
-        dest-filename: dev.openfield.Openfield.desktop
-      # Pre-resized to 512x512 (real appicon.png is 1024x1024, too large for
-      # flatpak's icon export) — generate with:
-      #   convert build/appicon.png -resize 512x512 dist/linux/flatpak/openfield-512.png
+        path: dev.openfield.Openfield.desktop
       - type: file
         path: openfield-512.png
-        dest-filename: openfield.png
       - type: file
         path: dev.openfield.Openfield.metainfo.xml
