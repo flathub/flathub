@@ -1,0 +1,170 @@
+# Flatpak manifest for dopeIPTV - Flathub-ready (fully offline build).
+#
+# Strategy: build libmpv (+ libplacebo + libass) from source on the
+# freedesktop runtime, then pip-install the app and its Python deps from
+# vendored wheels declared as sources (no network at build time - Flathub
+# requirement). Runtime network (--share=network in finish-args) is kept: the
+# app streams IPTV, which needs it.
+#
+# The Python wheels below are pinned to Python 3.12 / manylinux, matching the
+# 24.08 runtime. Regenerate them by re-running the pip download used to
+# produce this list when bumping deps (see the CONTRIBUTING/flatpak notes).
+#
+# The libmpv/libplacebo/libass recipe mirrors Celluloid's known-good Flathub
+# manifest, so the fiddly media stack builds reliably.
+app-id: io.github.slimture.dopeIPTV
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: dopeiptv
+
+finish-args:
+  # Runtime network: the app streams IPTV.
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # GPU access for mpv's OpenGL render path.
+  - --device=dri
+  # Recordings + playlists live under the user's home; the app writes files
+  # directly (not only via the portal), so it needs home access.
+  - --filesystem=home
+  # Inhibit the screensaver / suspend while a video plays.
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.login1
+  - --system-talk-name=org.freedesktop.login1
+  - --env=LC_NUMERIC=C
+
+# Full ffmpeg from the runtime extension (mpv links the SDK's ffmpeg at build
+# time; this provides the complete codec set at runtime).
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+    autodelete: false
+
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
+
+modules:
+  # --- libass (subtitle rendering for mpv) ---
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz
+        sha256: 2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc
+
+  # --- libplacebo (required by mpv's GPU/GL render path) ---
+  - name: libplacebo
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  # --- libmpv ---
+  - name: mpv
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+      - /share/bash-completion
+      - /share/zsh
+      - /share/doc
+      - /share/applications
+      - /share/icons
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+
+  # --- the dopeIPTV app + its Python deps, all from vendored wheels ---
+  - name: dopeiptv
+    buildsystem: simple
+    build-commands:
+      # Offline: install the runtime deps and build/install the app from the
+      # wheels fetched into the build dir as sources (no --share=network).
+      - pip3 install --no-index --find-links="${PWD}" --prefix=${FLATPAK_DEST}
+        PyQt6 requests python-mpv pychromecast .
+      - install -Dm644 packaging/io.github.slimture.dopeIPTV.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.slimture.dopeIPTV.desktop
+      - install -Dm644 packaging/io.github.slimture.dopeIPTV.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.slimture.dopeIPTV.metainfo.xml
+      - install -Dm644 packaging/io.github.slimture.dopeIPTV.png
+        ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.slimture.dopeIPTV.png
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl
+        sha256: 5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+      - type: file
+        url: https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl
+        sha256: 29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
+      - type: file
+        url: https://files.pythonhosted.org/packages/87/1b/9e33c09813d65e248f7f773119148a612516a4bea93e9c6f545f78455b7c/wheel-0.47.0-py3-none-any.whl
+        sha256: 212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced
+      - type: file
+        url: https://files.pythonhosted.org/packages/0a/d2/0f5006892e07ea342d57dbeda46027e99a097ffb6218bee1e37f9776ed95/casttube-0.2.1-py3-none-any.whl
+        sha256: 36f118007f9eead3959cf30de03c1640b53a263569ff2a3971c0521826c835b2
+      - type: file
+        url: https://files.pythonhosted.org/packages/ef/2f/c5464532e965badff2f4c4c1a3a83f5697f0d7c407ed0cda44aaa99bb451/certifi-2026.6.17-py3-none-any.whl
+        sha256: 2227dcbaafe0d2f59279d1762ddddc37783ed4354594f194ffc31d20f41fc3db
+      - type: file
+        url: https://files.pythonhosted.org/packages/01/c4/4fa4c8b3097a11f3c5f09a35b72ed6855fb1d332469504962ab7bafcc702/charset_normalizer-3.4.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: 5e226f6218febc71f6c1fc2fafb91c226f75bdc1d8fb12d66823716e891608fd
+      - type: file
+        url: https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl
+        sha256: 7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2
+      - type: file
+        url: https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl
+        sha256: 085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748
+      - type: file
+        url: https://files.pythonhosted.org/packages/e4/be/5b3cfe508bfab6761414ff944e3366eb13be4fd71efcd69450f89ba39f43/protobuf-7.35.1-cp310-abi3-manylinux2014_x86_64.whl
+        sha256: 74758715c53d7158fb76caf4f0cfdacc5329a4b1bb994f865d6cf302d413a1c4
+      - type: file
+        url: https://files.pythonhosted.org/packages/1f/61/f0f176622e2b4df06318a3abb2a27cc4c2fee8d40d7a0db8d60034785c09/pychromecast-14.0.10-py2.py3-none-any.whl
+        sha256: f5ea52b1db0edc3019ec72c9f5354c7e77c2564ecd44f809a6d2f4f518a02e67
+      - type: file
+        url: https://files.pythonhosted.org/packages/d5/78/92f3c46440a83ebe22ae614bd6792e7b052bcb58ff128f677f5662015184/pyqt6-6.9.1-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 37884df27f774e2e1c0c96fa41e817a222329b80ffc6241725b0dc8c110acb35
+      - type: file
+        url: https://files.pythonhosted.org/packages/a8/07/21f7dc188e35b46631707f3b40ace5643a0e03a8e1e446854826d08a04ae/pyqt6_qt6-6.9.2-py3-none-manylinux_2_28_x86_64.whl
+        sha256: 9abfc0ee4a8293a6442128ae3f87f68e82e2a949d7b9caabd98c86ba5679ab48
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/cb/116f9b328636765f3bce97d9e10ec041c54bbe92beb0617edb86c2b615c1/pyqt6_sip-13.11.1-cp312-cp312-manylinux1_x86_64.manylinux_2_5_x86_64.whl
+        sha256: 0df15849946cea969d3ff2b24b76149262b6044aea2c5403e4f70c24c973a4c8
+      - type: file
+        url: https://files.pythonhosted.org/packages/22/f3/4c632eaacebfc62ab9414586137aecf6c0ea2a1e99708cf5a4c0dec13ae0/python_mpv-1.0.8-py3-none-any.whl
+        sha256: b5296403e990fb7348df4ca2211937a030f524bf638657bda7e45a00bc2df0cd
+      - type: file
+        url: https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl
+        sha256: 2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0
+      - type: file
+        url: https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl
+        sha256: 9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897
+      - type: file
+        url: https://files.pythonhosted.org/packages/37/41/32b19f3bd7a615f67d0157cef6cfbeb432ea3a16a42d8fbf104706677567/zeroconf-0.150.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: e50a7b3d5922ac9bb53129c4dbc381b0af2f49067670f35eb9c9b4ad341bde28
+      - type: git
+        url: https://github.com/slimture/dopeIPTV.git
+        tag: v0.6.3
+        commit: 431b65eabc0a74c7e6f566269389358afa3ec4ff
