@@ -1,0 +1,59 @@
+# Flathub manifest for NexoraAI.
+#
+# NOTE ON APPROACH: NexoraAI is an Electron app that, by design, downloads its
+# heavy inference binaries (llama-server / sd-server) and GGUF models at RUNTIME.
+# This manifest installs the app from the project's own MIT-licensed, CI-built
+# .deb (published on GitHub Releases) and runs the bundled Electron under zypak.
+# The runtime downloads require network + home access (declared below).
+app-id: io.github.mutlukurt.NexoraAIEnvironment
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: nexora-ai
+separate-locales: false
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Model / binary downloads and the opt-in API mode
+  - --share=network
+  # Projects live under the user's home; the app also opens arbitrary project folders
+  - --filesystem=home
+  # Desktop notifications when a long generation finishes
+  - --talk-name=org.freedesktop.Notifications
+  - --env=ELECTRON_TRASH=gio
+
+modules:
+  - name: nexora-ai
+    buildsystem: simple
+    build-commands:
+      # Extract the Debian package (offline: ar + tar only)
+      - ar x nexora-ai.deb
+      - mkdir -p data && tar -C data -xf data.tar.*
+      # Install the app payload
+      - cp -a data/opt/NexoraAI /app/NexoraAI
+      # Launcher: run the bundled Electron under zypak (handles the chrome sandbox)
+      - install -Dm755 nexora-ai.sh /app/bin/nexora-ai
+      # Desktop entry, AppStream metadata and icon (renamed to the app-id)
+      - install -Dm644 io.github.mutlukurt.NexoraAIEnvironment.desktop /app/share/applications/io.github.mutlukurt.NexoraAIEnvironment.desktop
+      - install -Dm644 io.github.mutlukurt.NexoraAIEnvironment.metainfo.xml /app/share/metainfo/io.github.mutlukurt.NexoraAIEnvironment.metainfo.xml
+      - install -Dm644 data/usr/share/icons/hicolor/512x512/apps/nexora-ai.png /app/share/icons/hicolor/512x512/apps/io.github.mutlukurt.NexoraAIEnvironment.png
+      - install -Dm644 data/usr/share/icons/hicolor/256x256/apps/nexora-ai.png /app/share/icons/hicolor/256x256/apps/io.github.mutlukurt.NexoraAIEnvironment.png || true
+    sources:
+      - type: file
+        url: https://github.com/mutlukurt/NexoraAIEnvironment/releases/download/v0.20.1/nexora-ai_0.20.1_amd64.deb
+        sha256: 2d4323e149bcbaf6c9f0291a3755561d090dc80a65bf596c5f186fe0a257d5c1
+        dest-filename: nexora-ai.deb
+      - type: script
+        dest-filename: nexora-ai.sh
+        commands:
+          - exec zypak-wrapper /app/NexoraAI/nexora-ai "$@"
+      - type: file
+        path: io.github.mutlukurt.NexoraAIEnvironment.desktop
+      - type: file
+        path: io.github.mutlukurt.NexoraAIEnvironment.metainfo.xml
