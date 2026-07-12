@@ -1,0 +1,82 @@
+app-id: com.jobinpy.TheoCYB
+runtime: org.freedesktop.Platform
+runtime-version: '25.08' # Use the same GNOME version you used in the LVNAuth flatpak
+sdk: org.freedesktop.Sdk
+command: theocyb
+
+# Permissions (Similar to Snap's plugs)
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=home
+
+modules:
+  # 1. Include your LVNAuth Python dependencies here!
+  - dependencies.json
+  - python3-tkinter.json
+
+  # 2. The main visual novel payload
+  - name: theocyb
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/theocyb
+      
+      # FIX: Since everything is in the root folder, copy all repo contents directly
+      - cp -r * /app/share/theocyb/
+      
+      # Copy the story file into the player directory
+      - cp release.lvna /app/share/theocyb/src/player/
+      
+      # Install system shortcuts and icons
+      - install -Dm644 theocyb_icon_r.png /app/share/icons/hicolor/128x128/apps/com.jobinpy.TheoCYB.png
+      - install -Dm644 theocyb.desktop /app/share/applications/com.jobinpy.TheoCYB.desktop
+      
+# [PART 2]: Take the file from the workspace and install it cleanly to the standard AppStream directory
+      - install -Dm644 com.jobinpy.TheoCYB.metainfo.xml /app/share/metainfo/com.jobinpy.TheoCYB.metainfo.xml
+
+      # Launcher script
+      - mkdir -p /app/bin
+      - |
+        cat << 'EOF' > /app/bin/theocyb
+        #!/bin/sh
+        export PYTHONPATH="/app/share/theocyb/src:/app/share/theocyb/src/player:$PYTHONPATH"
+        cd /app/share/theocyb/src
+        exec python3 player/main.py --show-launch --file player/release.lvna "$@"
+        EOF
+      
+      # FIX: Copy BOTH hardcoded Flatpak icons to their expected locations
+      - mkdir -p /app/bin/player
+      - cp /app/share/theocyb/src/player/app_icon_small.png /app/bin/player/
+      - cp /app/share/theocyb/src/player/app_icon.png /app/bin/ || cp /app/share/theocyb/src/app_icon.png /app/bin/
+      
+      - chmod +x /app/bin/theocyb
+
+    sources:
+      # Pull LVNAuth directly from GitHub (Removed 'dest' so it populates the root folder)
+      - type: git
+        url: https://github.com/jrezai/lvnauth.git
+        branch: main
+
+# [PART 1]: Tell flatpak-builder that this local file belongs in the compilation workspace
+      - type: file
+        path: com.jobinpy.TheoCYB.metainfo.xml
+      
+      # Remote download for the story release payload
+      - type: file
+        url: https://jobinpy.com/download/theocyb/ep1/release.lvna
+        dest-filename: release.lvna
+        sha256: b75ee5f8709e1350f95b19da3ec8e2f7eb808be180730925671009ab8f92f8e7
+        
+      # Remote download for the desktop launcher shortcut icon
+      - type: file
+        url: https://jobinpy.com/download/theocyb/theocyb_icon_r.png
+        dest-filename: theocyb_icon_r.png
+        sha256: 5113875805890a16e12465894e07dc3b4f0ef5e04954e910d94f03a02b0d3070
+
+      # Keep your desktop entry file as a local path
+      - type: file
+        path: theocyb.desktop
