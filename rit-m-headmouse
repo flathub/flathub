@@ -1,0 +1,31 @@
+#!/bin/sh
+# Flathub entrypoint. App files come from extra-data, extracted into /app/extra
+# at install time by apply_extra. No systemd inside the sandbox — start the
+# helpers, the IMU relay and the local UI directly as child processes.
+set -eu
+
+APP=/app/extra/lib/rit-m-headmouse
+NODE="$APP/bin/node"
+export XREAL_UI_ROOT=/app/extra/share/rit-m-headmouse/ui
+URL="http://127.0.0.1:52778/"
+
+pids=""
+cleanup() { [ -n "$pids" ] && kill $pids 2>/dev/null || true; }
+trap cleanup INT TERM EXIT
+
+"$APP/bin/ritmby-mouse" &   pids="$pids $!"
+"$APP/bin/ritmby-abs" &     pids="$pids $!"
+"$NODE" "$APP/relay-run.cjs" &   pids="$pids $!"
+"$NODE" "$APP/static-server.js" & pids="$pids $!"
+
+i=0
+while [ "$i" -lt 50 ]; do
+  if curl -fsS "$URL" >/dev/null 2>&1; then
+    xdg-open "$URL" >/dev/null 2>&1 || true
+    break
+  fi
+  i=$((i + 1))
+  sleep 0.1
+done
+
+wait
