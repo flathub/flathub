@@ -1,0 +1,88 @@
+app-id: io.github.arrifat346afs.TuxScale
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+separate-locales: false
+command: tuxscale-run
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+modules:
+  - name: upscayl-ncnn
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: src
+    no-make-install: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    post-install:
+       - install -Dm755 upscayl-bin /app/bin/upscayl-bin 
+
+    sources:
+      - type: git
+        # Using fork because the upstream repo does not build on Flathub builder.
+        url: https://github.com/arrifat346afs/upscayl-ncnn.git
+        commit: b7309ea96861d942bc24215abff7f33f948649f6
+        tag: 20260705-175814
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/arrifat346afs/upscayl-ncnn/releases/latest
+          tag-query: .tag_name
+          version-query: $tag
+          timestamp-query: .published_at
+
+  - name: tuxscale
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        XDG_CACHE_HOME: /run/build/tuxscale/flatpak-node/cache
+        npm_config_cache: /run/build/tuxscale/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    buildsystem: simple
+    subdir: main
+    build-commands:
+      - mkdir -p resources/linux/bin
+      - cp /app/bin/upscayl-bin resources/linux/bin/upscayl-bin
+      - rm -f .npmrc
+      - npm install --offline
+      - node node_modules/electron/install.js
+      - npm run build
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npx electron-builder \
+          --config electron-builder-flatpak.yml \
+          --dir \
+          --linux \
+          $ELECTRON_BUILDER_ARCH_ARGS \
+          -c.electronDist=node_modules/electron/dist
+      - cp -a dist/linux*unpacked /app/tuxscale
+      - install -Dm755 ../tuxscale-run /app/bin/
+      - install -Dm644 resources/icons/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.arrifat346afs.TuxScale.png
+      - install -Dm644 resources/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.arrifat346afs.TuxScale.png
+      - install -Dm644 io.github.arrifat346afs.TuxScale.metainfo.xml /app/share/metainfo/io.github.arrifat346afs.TuxScale.metainfo.xml
+      - install -Dm644 io.github.arrifat346afs.TuxScale.desktop /app/share/applications/io.github.arrifat346afs.TuxScale.desktop
+    sources:
+      - type: git
+        url: https://github.com/arrifat346afs/TuxScale
+        tag: v1.2.1
+        commit: f431d0b1a6c74519f56947aba0cae2ed13114511
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/arrifat346afs/TuxScale/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v"; "")
+          timestamp-query: .published_at
+        dest: main
+      - generated-sources.json
+      - type: script
+        dest-filename: tuxscale-run
+        commands:
+          - zypak-wrapper.sh /app/tuxscale/tuxscale "$@"
