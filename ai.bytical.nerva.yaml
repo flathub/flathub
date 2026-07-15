@@ -1,0 +1,126 @@
+# Flatpak manifest for Nerva.
+#
+# App id (`ai.bytical.nerva`) matches the Tauri `identifier` in
+# src-tauri/tauri.conf.json, so the Flathub install shares the same
+# DBus name, settings dir, and notification source as the native .deb /
+# .rpm builds — users moving between them see the same data layout.
+#
+# Strategy: repack the upstream signed .deb instead of rebuilding from
+# source. This keeps the binary on Flathub bit-for-bit identical to the
+# one on GitHub releases (same Bytical code signature for tray-icon
+# DBus name continuity), and avoids dragging the full Rust/Tauri/Node
+# toolchain into the Flathub build pipeline. The .deb is a normal
+# build-time source (Nerva is Apache-2.0, freely redistributable), so
+# flatpak-builder downloads and sha256-verifies it up front.
+#
+# Submission flow (one-time): fork github.com/flathub/flathub, create
+# a `new-pr/ai.bytical.nerva` branch, copy this manifest + the
+# accompanying .metainfo.xml + .desktop, open a PR. Flathub reviewers
+# run quality checks (appstream-cli validate, OARS rating, screenshots
+# present, finish-args minimal). On merge a new submission PR is opened
+# against flathub/ai.bytical.nerva and that is the repo we update for
+# every subsequent Nerva release.
+#
+# Update on every release: bump `tag` + `commit` (we use the git tag
+# from piyushptiwari1/nerva), bump the .deb URL + sha256 in the
+# extra-data source, regenerate metainfo.xml releases block.
+
+app-id: ai.bytical.nerva
+# GNOME runtime: ships webkit2gtk-4.1, which the Tauri binary links against
+# (the freedesktop runtime does not — the app would fail to start).
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: nerva
+
+finish-args:
+  # Display server access (Wayland preferred, X11 fallback)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Networking: settings/about panel link-outs, future AI/LLM calls
+  - --share=network
+
+  # Audio: the focus timer plays end-of-session chimes
+  - --socket=pulseaudio
+
+  # Files: notes export, task attachments, theme imports — confined to
+  # the user's $HOME by default; users can extend with Flatseal.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+  # Notifications + tray icon (AppIndicator / StatusNotifier)
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+
+  # GSettings access for theme / window decorations
+  - --filesystem=xdg-config/dconf
+  - --filesystem=xdg-run/dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+
+modules:
+  # Shared libs the bundled .deb depends on that aren't in the
+  # freedesktop runtime: webkit2gtk-4.1, ayatana-appindicator,
+  # libnotify. We don't build these from source here either —
+  # Flathub's shared-modules repository ships canonical recipes;
+  # add via `- shared-modules/libsecret/libsecret.json` etc. when
+  # the submission lands.
+  #
+  # Placeholder list below documents intent. Real list will be
+  # finalised against the Flathub validator output.
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=OFF
+      - -DENABLE_BINDINGS_VALA=OFF
+      - -DENABLE_TESTS=OFF
+      - -DENABLE_GTKDOC=OFF
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.92.tar.gz
+        sha256: 83d0fdd24baeca16ce21d8c0a6c50efbb47b6c2fdc73ea4a6d4b8aab1f9a3b6f
+        x-checker-data:
+          type: anitya
+          project-id: 17812
+          url-template: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/$version.tar.gz
+
+  # The Nerva binary, repacked from the signed upstream .deb.
+  # Nerva is Apache-2.0 (fully redistributable), so the .deb is a normal
+  # build-time source — flatpak-builder downloads + verifies it before the
+  # sandboxed build starts (extra-data is only for non-redistributable
+  # payloads and is NOT available during build-commands).
+  - name: nerva
+    buildsystem: simple
+    build-commands:
+      # .deb = ar archive: control.tar.*, data.tar.*. binutils' ar + tar are
+      # both in the SDK; dpkg-deb is not, so unpack manually.
+      - ar x nerva.deb
+      - mkdir -p nerva-root && tar -xf data.tar.* -C nerva-root
+      - install -Dm755 nerva-root/usr/bin/nerva /app/bin/nerva
+      - mkdir -p /app/share/icons
+      - cp -r nerva-root/usr/share/icons/* /app/share/icons/
+      - install -Dm644 nerva-root/usr/share/applications/Nerva.desktop /app/share/applications/ai.bytical.nerva.desktop
+      # Patch the .desktop so Icon= resolves to the Flatpak app id
+      - sed -i 's/^Icon=.*/Icon=ai.bytical.nerva/' /app/share/applications/ai.bytical.nerva.desktop
+      # Rename icon files to the app id per the freedesktop spec
+      - |
+        for sz in 32x32 128x128 256x256; do
+          src="/app/share/icons/hicolor/$sz/apps/nerva.png"
+          dst="/app/share/icons/hicolor/$sz/apps/ai.bytical.nerva.png"
+          [ -f "$src" ] && mv "$src" "$dst" || true
+        done
+      - install -Dm644 ai.bytical.nerva.metainfo.xml /app/share/metainfo/ai.bytical.nerva.metainfo.xml
+    sources:
+      - type: file
+        dest-filename: nerva.deb
+        url: https://github.com/piyushptiwari1/nerva/releases/download/v0.1.11/Nerva_0.1.11_amd64.deb
+        sha256: 542180d5e916f2c4e5cb92e2b0817778de46aac6899efb8d42bc86a84f176610
+        only-arches: [x86_64]
+      - type: file
+        path: ai.bytical.nerva.metainfo.xml
