@@ -78,7 +78,7 @@ For Debian-Based
 
 ```bash
 sudo apt update
-sudo apt install curl flatpak-builder git jq
+sudo apt install -y curl flatpak-builder git jq
 ```
 
 For Redhat-Based
@@ -123,6 +123,6 @@ pipx install git+https://github.com/flatpak/flatpak-builder-tools.git#subdirecto
 
 More information available here: [https://github.com/flatpak/flatpak-builder-tools/tree/master/node#usage](https://github.com/flatpak/flatpak-builder-tools/tree/master/node#usage)
 
-### How to I test new release version?
+### How to I test my release locally?
 
-after running `./update.sh`, you can run `./local-test-build.sh` to verify that everything is in good shape before committing your changes and opening a PR.
+after running `./update.sh`, you can run `./local-test-build.sh` to verify that everything is in good shape before committing your changes and opening a PR to flathub.
