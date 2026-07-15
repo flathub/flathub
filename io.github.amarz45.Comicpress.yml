@@ -1,0 +1,147 @@
+id: io.github.amarz45.Comicpress
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+command: comicpress
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Keeps the default output location writable without the user having to
+  # browse for a folder first.
+  - --filesystem=xdg-documents/Comicpress:create
+
+modules:
+  # Adapted from
+  # https://github.com/flathub/com.yacreader.YACReader/blob/master/com.yacreader.YACReader.yml.
+  - name: pdfium
+    buildsystem: simple
+    build-commands:
+      # https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=libpdfium-nojs
+
+      # Patch abseil build to be static
+      - sed -i -e 's/component(/static_library(/' -e 's/is_component_build(/false/' pdfium/third_party/abseil-cpp/BUILD.gn
+      # Use system provided icu library (unbundling)
+      - mkdir -p pdfium/third_party/icu
+      - ln -sf ../../build/linux/unbundle/icu.gn pdfium/third_party/icu/BUILD.gn
+      # Decode shim header script needed to unbundle icu (gittiles is weird)
+      - mkdir -p pdfium/tools/generate_shim_headers
+      - base64 --decode generate_shim_headers.py > pdfium/tools/generate_shim_headers/generate_shim_headers.py
+      # Create fake gclient_args.gni file to satisfy include list for build/config/compiler/compiler.gni
+      - touch pdfium/build/config/gclient_args.gni
+      # Exclude test fonts from build
+      - sed -i '/"\/\/third_party\/test_fonts",/s/^/#/g' pdfium/testing/BUILD.gn
+      # Remove cross-compile-toolchain-prefix for gcc (needed for aarch64 build)
+      - sed -i 's/"aarch64-linux-gnu-"/""/g' pdfium/build/toolchain/linux/BUILD.gn
+      # Use correct no-outline for gcc (needed for aarch64)
+      - sed -i 's/"-mno-outline"/"-mno-outline-atomics"/g' pdfium/build/config/compiler/BUILD.gn
+      # Build
+      - gn --root=pdfium gen pdfium/out/Release --args="is_clang=false use_sysroot=false is_debug=false symbol_level=0 pdf_enable_v8=false pdf_enable_xfa=false treat_warnings_as_errors=false use_system_libjpeg=true use_system_zlib=true pdf_bundle_freetype=false use_system_freetype=true use_system_lcms2=true use_system_libpng=true use_custom_libcxx=false pdf_is_standalone=true use_system_libopenjpeg2=true is_component_build=true pdf_use_partition_alloc=false"
+      - ninja -C pdfium/out/Release pdfium
+      # TODO: use a variable for version
+      - sed -e 's/@VERSION@/6167/g' -e 's#^\s*prefix\s*=.*$#prefix='"$FLATPAK_DEST"'#' -i libpdfium.pc
+      - mv libpdfium.pc pdfium.pc
+      # Install
+      - install -D -m644 pdfium/LICENSE "$FLATPAK_DEST/share/licenses/pdfium/LICENSE"
+      - install -D pdfium/public/*.h --target-directory="$FLATPAK_DEST/include/pdfium"
+      - install -D pdfium/public/cpp/* --target-directory="$FLATPAK_DEST/include/pdfium/cpp"
+      - install -D pdfium/docs/* --target-directory="$FLATPAK_DEST/share/doc/pdfium"
+      - install -Dm755 pdfium/out/Release/libpdfium.so --target-directory="$FLATPAK_DEST/lib"
+      - install -Dm644 pdfium.pc --target-directory="$FLATPAK_DEST/lib/pkgconfig"
+    sources:
+      - type: git
+        url: https://pdfium.googlesource.com/pdfium
+        # curl https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions/all/releases | grep 'version' | head -1 | cut -d'.' -f 3
+        # branch: chromium/6834
+        # TODO: Using commit instead of branch is suboptimal, but linting enforces it
+        commit: 84a8011ec69d0e2de271c05be7d62979608040d9
+        dest: pdfium
+      - type: git
+        url: https://chromium.googlesource.com/chromium/src/build.git
+        # awk '/build_revision/ {print substr($2,2,40)}' pdfium/DEPS
+        commit: 9b11bd3a6a523134ac35bcc9d1f59d04cc6f5821
+        dest: pdfium/build
+      - type: git
+        url: https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
+        # awk '/abseil_revision/ {print substr($2,2,40)}' pdfium/DEPS
+        commit: d2ea9f0eb1a31f0e5a0ab11837ed19333700ab4c
+        dest: pdfium/third_party/abseil-cpp
+      - type: file
+        url: https://chromium.googlesource.com/chromium/src/+/959f41a7f58755d4644f98a14197b5b89c0d7542/tools/generate_shim_headers/generate_shim_headers.py?format=TEXT
+        dest-filename: generate_shim_headers.py
+        sha256: c405eb998cc9c27d724c945f3db8a7b9d2be62ac38049301f4f52929f734b5a9
+      - type: file
+        url: https://aur.archlinux.org/cgit/aur.git/plain/libpdfium.pc?h=libpdfium-nojs
+        dest-filename: libpdfium.pc
+        sha256: 4e8cf32c09568ae4c59244f0a221eee8f87ea4a31ddb31f796a1d818c967d477
+      - type: git
+        url: https://github.com/fastfloat/fast_float
+        tag: v7.0.0
+        commit: cb1d42aaa1e14b09e1452cfdef373d051b8c02a4
+        dest: pdfium/third_party/fast_float/src
+    modules:
+      - name: gn
+        buildsystem: simple
+        build-options:
+          env:
+            # Set CC and CXX to override default (llvm) build settings
+            CC: gcc
+            CXX: g++
+        build-commands:
+          - ./build/gen.py
+          - ninja -C out gn
+          - install -Dm755 out/gn "$FLATPAK_DEST/bin/gn"
+        sources:
+          - type: git
+            url: https://gn.googlesource.com/gn
+            commit: 95b0f8fe31a992a33c040bbe3867901335c12762
+            disable-shallow-clone: true
+
+  # Required for image quantization via libvips.
+  - name: libimagequant
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make shared
+      - make install PREFIX=/app
+      - install -Dm644 COPYRIGHT "$FLATPAK_DEST/share/licenses/libimagequant/COPYRIGHT"
+    sources:
+      - type: git
+        url: https://github.com/ImageOptim/libimagequant.git
+        # Last pre-Rust-rewrite release, to avoid a complex Rust/cargo-c
+        # toolchain. Pinned to a commit (Flathub disallows moving refs).
+        tag: "2.17.0"
+        commit: a6cc4ade66710ec799ca41297f6d2c2b4070d0ff
+
+  - name: libvips
+    buildsystem: meson
+    config-opts:
+      - --libdir=lib
+      - -Ddeprecated=false
+      - -Dexamples=false
+      - -Dheif=enabled
+      - -Djpeg-xl=enabled
+      - -Dwebp=enabled
+      - -Dpng=enabled
+      - -Djpeg=enabled
+    post-install:
+      # meson runs post-install from the out-of-source build dir, so the
+      # source-root LICENSE is one level up.
+      - install -Dm644 ../LICENSE "$FLATPAK_DEST/share/licenses/libvips/LICENSE"
+    sources:
+      - type: git
+        url: https://github.com/libvips/libvips.git
+        # Check https://github.com/libvips/libvips/releases for newer releases.
+        tag: v8.17.2
+        commit: 0b9ea3a62477f670421868337dfaf13e8aa9d754
+
+  - name: comicpress
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+    sources:
+      - type: git
+        url: https://github.com/amarz45/comicpress.git
+        tag: v1.0.0
+        commit: ead62f18c3aa97741a0d40f9ffc8aa886a781d79
