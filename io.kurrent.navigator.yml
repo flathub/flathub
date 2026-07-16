@@ -1,0 +1,76 @@
+id: io.kurrent.navigator
+
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "24.08"
+
+command: kurrent-navigator
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Connects to KurrentDB clusters and OAuth identity providers.
+  - --share=network
+  # Credential storage: Electron safeStorage -> libsecret -> Secret Service.
+  - --talk-name=org.freedesktop.secrets
+  # Desktop notifications (libnotify).
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: kurrent-navigator
+    buildsystem: simple
+    build-commands:
+      - ar x kurrent-navigator.*.deb
+      - tar -xf data.tar.*
+      # Copy to /app, drop the space in the install dir.
+      - mkdir -p /app/kurrent-navigator
+      - cp -a "opt/Kurrent Navigator/." /app/kurrent-navigator/
+      # zypak launch wrapper on PATH
+      - install -Dm755 kurrent-navigator.sh /app/bin/kurrent-navigator
+      # Desktop file.
+      - install -Dm644 usr/share/applications/kurrent-navigator.desktop
+        /app/share/applications/io.kurrent.navigator.desktop
+      - desktop-file-edit
+        --set-key=Exec --set-value="kurrent-navigator %U"
+        --set-icon=io.kurrent.navigator
+        /app/share/applications/io.kurrent.navigator.desktop
+      # Icons renamed to the app id at each installed size.
+      # flatpak rejects icons larger than 512x512.
+      - |
+        for png in usr/share/icons/hicolor/*/apps/kurrent-navigator.png; do
+          size=$(printf '%s' "$png" | sed -E 's#.*/hicolor/([^/]+)/apps/.*#\1#')
+          [ "${size%%x*}" -gt 512 ] 2>/dev/null && continue
+          install -Dm644 "$png" "/app/share/icons/hicolor/$size/apps/io.kurrent.navigator.png"
+        done
+      # Metainfo will be inside the .deb from 0.1.2, but here for now.
+      - install -Dm644 io.kurrent.navigator.metainfo.xml
+        /app/share/metainfo/io.kurrent.navigator.metainfo.xml
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://downloads.navigator.kurrent.io/0.1.1/kurrent-navigator.amd64.deb
+        sha256: df3301687f1a97a32ee6627933916a9ef4e52bb0501c22e119e350a56c1600e9
+        x-checker-data:
+          type: rotating-url
+          url: https://downloads.navigator.kurrent.io/latest/kurrent-navigator.amd64.deb
+      - type: file
+        only-arches: [aarch64]
+        url: https://downloads.navigator.kurrent.io/0.1.1/kurrent-navigator.arm64.deb
+        sha256: b5c587bedecb96f82e560a64e723c7637cdc51b2f262164b572cc1b03669539d
+        x-checker-data:
+          type: rotating-url
+          url: https://downloads.navigator.kurrent.io/latest/kurrent-navigator.arm64.deb
+      - type: script
+        dest-filename: kurrent-navigator.sh
+        commands:
+          - exec zypak-wrapper /app/kurrent-navigator/kurrent-navigator "$@"
+      - type: file
+        path: io.kurrent.navigator.metainfo.xml
+      - type: file
+        dest-filename: LICENSE.txt
+        url: https://assets.navigator.kurrent.io/LICENSE.txt
+        sha256: 2fd3635f8bfdac7ebdd6170f16407e526595d36cca0f96ddf43637fdf3ba1827
