@@ -109,9 +109,9 @@ update_flatpak_manifest() {
 	tag_name="$tag_name" commit_sha="$commit_sha" yq eval -i '(.modules[] | select(type == "!!map" and .name == "com.dygma.bazecor") | .sources[] | select(type == "!!map" and .type == "git")) 
 		|= (
 			.tag = strenv(tag_name) |
-			.tag line_comment = "CODE-GENERATED: Do not manually change. Use ./update.sh instead" |
+			.tag line_comment = "DO NOT MANUALLY CHANGE! Use ./update.sh instead" |
 			.commit = strenv(commit_sha) |
-			.commit line_comment = "CODE-GENERATED: Do not manually change. Use ./update.sh instead"
+			.commit line_comment = "DO NOT MANUALLY CHANGE! Use ./update.sh instead"
 		)' "$MANIFEST_FILE" && success || die "Failed to update $MANIFEST_FILE using yq."
 }
 
