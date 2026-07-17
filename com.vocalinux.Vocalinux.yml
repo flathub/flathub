@@ -1,0 +1,138 @@
+app-id: com.vocalinux.Vocalinux
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: vocalinux
+
+build-options:
+  env:
+    NO_REPAIR: "1"
+    PYWHISPERCPP_VERSION: "1.4.1"
+
+finish-args:
+  # Download speech-recognition models on first run.
+  - --share=network
+  # Shared memory for X11 / XWayland.
+  - --share=ipc
+  # X11 for xdotool fallback; Wayland for wl-copy (instant paste into native apps).
+  # Injection itself uses ydotool/uinput (not the Wayland virtual-keyboard protocol).
+  - --socket=x11
+  - --socket=wayland
+  # Microphone capture (works against PulseAudio and PipeWire-pulse).
+  - --socket=pulseaudio
+  # GPU render node for the Vulkan-accelerated whisper.cpp build.
+  - --device=dri
+  # /dev/input for global hotkeys (evdev) and /dev/uinput for ydotool (Ctrl+V /
+  # type). Flatpak has no narrower flag than "all" for uinput.
+  - --device=all
+  # IBus Unicode injection backend.
+  - --talk-name=org.freedesktop.IBus
+  # Desktop notifications.
+  - --talk-name=org.freedesktop.Notifications
+  # System tray / status-notifier icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.gnome.Shell
+  # Find the bundled AppIndicator typelib under /app (searched before the runtime).
+  - --env=GI_TYPELIB_PATH=/app/lib/girepository-1.0
+
+modules:
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - "*.a"
+      - "*.la"
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
+
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: xsel
+    buildsystem: simple
+    build-commands:
+      - autoreconf -fi
+      - ./configure --prefix=/app
+      - make
+      - make install
+    cleanup:
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/kfish/xsel/archive/refs/tags/1.2.1.tar.gz
+        sha256: 18487761f5ca626a036d65ef2db8ad9923bf61685e06e7533676c56d7d60eb14
+
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install PREFIX=/app
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/archive/refs/tags/v3.20211022.1.tar.gz
+        sha256: 82b15a944a5e82fee15e0f6116bd9f642bc3d0bb6989fc0ca5ad9dfe35de0847
+
+  # Wayland clipboard for bulk paste (wl-copy + ydotool Ctrl+V).
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
+    cleanup:
+      - /share/man
+      - /share/bash-completion
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+
+  # uinput-based typing / paste chords for native Wayland clients.
+  # Pinned to v1.0.4 (keycode:value key API). Distro 0.1.x uses "ctrl+v" instead;
+  # vocalinux detects the installed CLI at runtime (see TextInjector).
+  - name: ydotool
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # CMake 4.x in GNOME SDK rejects projects declaring min < 3.5.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/ReimuNotMoe/ydotool/archive/refs/tags/v1.0.4.tar.gz
+        sha256: ba075a43aa6ead51940e892ecffa4d0b8b40c241e4e2bc4bd9bd26b61fde23bd
+        x-checker-data:
+          type: anitya
+          project-id: 138160
+          stable-only: true
+          url-template: https://github.com/ReimuNotMoe/ydotool/archive/refs/tags/v$version.tar.gz
+      - type: shell
+        commands:
+          # scdoc is not in the SDK; man pages are not needed in the sandbox.
+          - sed -i '/add_subdirectory(manpage)/d' CMakeLists.txt
+          - sed -i 's/project(ydotool C)/project(ydotool C)\nadd_definitions(-DVERSION=\\"1.0.4\\")/' CMakeLists.txt
+
+  - python3-build-dependencies.yaml
+  - python3-dependencies.yaml
+
+  - name: vocalinux
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=/app .
+      - install -Dm644 packaging/flatpak/com.vocalinux.Vocalinux.desktop -t /app/share/applications/
+      - install -Dm644 resources/icons/scalable/vocalinux.svg /app/share/icons/hicolor/scalable/apps/com.vocalinux.Vocalinux.svg
+      - install -Dm644 resources/icons/scalable/vocalinux-microphone-off.svg /app/share/icons/hicolor/scalable/apps/com.vocalinux.Vocalinux-microphone-off.svg
+      - install -Dm644 resources/icons/scalable/vocalinux-microphone.svg /app/share/icons/hicolor/scalable/apps/com.vocalinux.Vocalinux-microphone.svg
+      - install -Dm644 resources/icons/scalable/vocalinux-microphone-process.svg /app/share/icons/hicolor/scalable/apps/com.vocalinux.Vocalinux-microphone-process.svg
+      - install -Dm644 packaging/flatpak/com.vocalinux.Vocalinux.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/jatinkrmalik/vocalinux.git
+        tag: v0.14.1-beta
+        commit: 853c1504b2d73c0f8f24985d699e3330b29e6094
