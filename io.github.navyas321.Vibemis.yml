@@ -1,0 +1,239 @@
+# Flatpak manifest for Vibemis — Flathub app-id io.github.navyas321.Vibemis
+#
+# STATUS: authored, NOT yet submitted to Flathub. Submission is deferred and
+# maintainer-gated (see docs/FLATHUB.md) on the public repo split + security
+# audit. This file lives in the Vibemis repo as the canonical source; at
+# submission time it (and the sibling files in packaging/flatpak/) are copied
+# into a fork of flathub/flathub. This is packaging only — it makes no changes
+# to app/ source.
+#
+# Adapted near-verbatim from the upstream Moonlight-Qt Flathub manifest
+# (flathub/com.moonlight_stream.Moonlight, master @ 2026-07) whose module chain
+# builds the same Qt6 codebase lineage. Only the final `vibemis` module, the
+# app-id, command, and the shipped desktop/metainfo differ. Keep the shared
+# modules (libplacebo … gamescope-wsi) in sync with upstream on each rebase.
+
+app-id: io.github.navyas321.Vibemis
+runtime: org.kde.Platform
+runtime-version: "6.10"
+sdk: org.kde.Sdk
+command: vibemis
+rename-icon: vibemis
+
+# Sandbox permissions a streaming client needs. Mirrors upstream Moonlight.
+finish-args:
+  # Networking: host discovery (mDNS) + the stream itself.
+  - --share=network
+  - --share=ipc
+  # Display: Wayland-first with an X11 fallback (works in Gamescope Game Mode).
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio out.
+  - --socket=pulseaudio
+  # GPU (dri), gamepads/joysticks, and other input devices. `device=all` is what
+  # upstream Moonlight ships; a streaming client needs raw gamepad + /dev/dri
+  # access and Flathub accepts this for the Moonlight family.
+  - --device=all
+  # Let the client inhibit the screensaver while streaming.
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Renderer / decode environment (mirrors upstream Moonlight's known-good set).
+  - --env=IGNORE_RFI_LATENCY_BUG=1
+  - --env=QT_QUICK_CONTROLS_STYLE=Material
+  - --env=LIBVA_DRIVER_NAME=
+  - --unset-env=LIBVA_DRIVER_NAME
+  - --env=LIBVA_DRIVERS_PATH=
+  - --unset-env=LIBVA_DRIVERS_PATH
+  # SteamOS Game Mode: composite through the gamescope Wayland socket, and read
+  # host GPU drivers (VAAPI) that live on the host OS.
+  - --filesystem=xdg-run/gamescope-0
+  - --filesystem=host-os:ro
+
+cleanup:
+  - /include
+  - "*.a"
+  - /share/ffmpeg
+
+modules:
+  # ---- Shared dependency chain (verbatim from upstream Moonlight) -----------
+  - name: libplacebo
+    buildsystem: meson
+    build-options:
+      config-opts:
+        - -Ddemos=false
+        - -Dvulkan=enabled
+        - -Dopengl=disabled
+        - -Dshaderc=enabled
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        commit: d4624cbfb37fdef337a7da5794b66202671a89cd
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+
+  - name: libdecor
+    buildsystem: meson
+    build-options:
+      config-opts:
+        - -Ddemo=false
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/libdecor/libdecor.git
+        tag: 0.2.2
+        commit: 7807ae3480f5c6a37c5e8505d94af1e764aaf704
+
+  - name: SDL3
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      config-opts:
+        - -DSDL_ALSA=OFF
+        - -DSDL_RPATH=OFF
+        - -DSDL_KMSDRM=OFF
+        - -DSDL_INSTALL_DOCS=OFF
+        - -DSDL_TEST_LIBRARY=OFF
+        - -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.4.12
+        commit: f87239e71e42da91ca317a12eefb82cfbf3393eb
+
+  - name: SDL2-compat
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      config-opts:
+        - -DSDL2COMPAT_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/sdl2-compat.git
+        tag: release-2.32.70
+        commit: a53b6ad90ecd2d0ccfe01d5cfd2059793acf8c12
+
+  - name: SDL2_ttf
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      config-opts:
+        - -DSDL2TTF_VENDORED=ON
+        - -DSDL2TTF_SAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_ttf.git
+        # branch: SDL2
+        commit: a883e490e30fb44a5336ea3dcb990c6982c5216f
+
+  - name: dav1d
+    buildsystem: meson
+    config-opts:
+      - -Denable_tools=false
+      - -Denable_tests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/dav1d.git
+        tag: 1.5.3
+        commit: b546257f770768b2c88258c533da38b91a06f737
+
+  - name: ffmpeg
+    build-options:
+      config-opts:
+        - --fatal-warnings
+        - --disable-stripping
+        - --enable-pic
+        - --enable-lto
+        - --enable-shared
+        - --disable-static
+        - --disable-all
+        - --enable-avcodec
+        - --enable-avformat
+        - --enable-swscale
+        - --enable-decoder=h264
+        - --enable-decoder=hevc
+        - --enable-decoder=av1
+        - --enable-hwaccel=h264_vaapi
+        - --enable-hwaccel=hevc_vaapi
+        - --enable-hwaccel=av1_vaapi
+        - --enable-hwaccel=h264_vdpau
+        - --enable-hwaccel=hevc_vdpau
+        - --enable-hwaccel=av1_vdpau
+        - --enable-libdrm
+        - --enable-hwaccel=h264_vulkan
+        - --enable-hwaccel=hevc_vulkan
+        - --enable-hwaccel=av1_vulkan
+        - --enable-decoder=h264_v4l2m2m
+        - --enable-decoder=hevc_v4l2m2m
+        - --enable-libdav1d
+        - --enable-decoder=libdav1d
+        - --enable-v4l2-request
+        - --enable-hwaccel=h264_v4l2request
+        - --enable-hwaccel=hevc_v4l2request
+        - --enable-hwaccel=av1_v4l2request
+    sources:
+      - type: git
+        url: https://github.com/cgutman/FFmpeg.git
+        # branch: moonlight_8.1.1_r1
+        commit: f116128cafb244bc0f809d0285932ced0471268d
+
+  # Gamescope WSI Vulkan layer (SteamOS Game Mode). The layer JSON is shipped
+  # alongside this manifest; the matching .so lives on the host and is reached
+  # via --filesystem=host-os:ro above.
+  - name: gamescope-wsi
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 VkLayer_FROG_gamescope_wsi.x86_64.json /app/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json
+    only-arches:
+      - x86_64
+    sources:
+      - type: file
+        path: VkLayer_FROG_gamescope_wsi.x86_64.json
+
+  # ---- Vibemis itself ------------------------------------------------------
+  # Built from the top-level subdirs project (vibemis.pro → moonlight-common-c,
+  # qmdnsengine, app, h264bitstream). flatpak-builder's qmake buildsystem runs
+  # `qmake PREFIX=/app`, then make, then make install.
+  #
+  # The in-tree `make install` writes the OLD com.vibemis.Vibemis desktop +
+  # appdata (whose <id> is com.vibemis.Vibemis). Because Flathub requires the
+  # metainfo <id> to equal the app-id — and we deliberately make NO app/ source
+  # changes here — the post-install step replaces those two files with the
+  # io.github.navyas321.Vibemis desktop + metainfo shipped beside this manifest.
+  # The icon has no internal id, so `rename-icon: vibemis` (top level) handles
+  # renaming vibemis.png → io.github.navyas321.Vibemis.png.
+  - name: vibemis
+    buildsystem: qmake
+    config-opts:
+      - QMAKE_RPATHDIR=/app/lib
+    build-options:
+      config-opts:
+        # Mirrors upstream Moonlight; harmless no-ops if a flag is unused by the
+        # Vibemis .pro (qmake ignores unrecognised CONFIG values).
+        - CONFIG+=disable-cuda
+      arch:
+        x86_64:
+          config-opts:
+            - CONFIG+=disable-libdrm
+    post-install:
+      - rm -f /app/share/applications/com.vibemis.Vibemis.desktop
+      - rm -f /app/share/metainfo/com.vibemis.Vibemis.appdata.xml /app/share/metainfo/com.vibemis.Vibemis.metainfo.xml
+      - install -Dm644 io.github.navyas321.Vibemis.desktop /app/share/applications/io.github.navyas321.Vibemis.desktop
+      - install -Dm644 io.github.navyas321.Vibemis.metainfo.xml /app/share/metainfo/io.github.navyas321.Vibemis.metainfo.xml
+    sources:
+      # TODO(submission): re-pin tag+commit to the public repo's stable release
+      # at submission time (the repo may be split into a public repo first).
+      # Currently pinned to the first stable, 0.1.0.
+      - type: git
+        url: https://github.com/navyas321/vibemis.git
+        tag: "0.2.0"
+        commit: 611b2ece494cc4d61e45472cc95b7fd5ec0828c6
+        # Full clone so the submodules (ClassicOldSong moonlight-common-c,
+        # qmdnsengine, h264bitstream, SDL_GameControllerDB) resolve.
+        disable-shallow-clone: true
+        # Auto-update PRs in the flathub repo when a new bare stable tag lands.
+        x-checker-data:
+          type: git
+          tag-pattern: ^([0-9]+\.[0-9]+\.[0-9]+)$
+      - type: file
+        path: io.github.navyas321.Vibemis.desktop
+      - type: file
+        path: io.github.navyas321.Vibemis.metainfo.xml
