@@ -1,0 +1,69 @@
+# Flathub manifest for AskOnChat — repackages a PREBUILT binary (proprietary-app path).
+#
+# AskOnChat's source is closed, so Flathub cannot build it from source (that would need
+# a public repo). Instead, like Slack/Zoom, this manifest downloads the prebuilt Linux
+# app-image that CI already publishes to a public URL, and wraps it in a Flatpak.
+# No Gradle, no source, no network at build time beyond fetching the checksummed tarball.
+#
+# The tarball is the jpackage app-image (bundled JRE) published to Spaces as
+#   desktop/<version>/AskOnChat-<version>-linux-x64.tar.gz
+# with its sha256 recorded in desktop/<version>/manifest.json (linux-x64-tarball).
+#
+# Releasing a new version = bump the url version + sha256 below (x-checker-data can
+# automate this on Flathub).
+app-id: com.askonchat.AskOnChat
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: AskOnChat
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  # JDK 17 AWT/Skiko has no Wayland toolkit — x11 only (Gitnuro#241).
+  - --socket=x11
+  - --device=dri
+  # Flathub rejects --filesystem=home; these cover the AWT FileDialog pickers.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+modules:
+  - name: askonchat
+    buildsystem: simple
+    build-commands:
+      # The app-image is self-contained; keep it whole under /app/lib and expose only
+      # the launcher. jpackage's launcher resolves its own path via /proc/self/exe, so
+      # the symlink still resolves APPDIR.
+      - mkdir -p /app/lib/askonchat
+      - cp -a app-image/. /app/lib/askonchat/
+      - mkdir -p /app/bin
+      - ln -s /app/lib/askonchat/bin/AskOnChat /app/bin/AskOnChat
+      - install -Dm644 com.askonchat.AskOnChat.desktop /app/share/applications/com.askonchat.AskOnChat.desktop
+      - install -Dm644 com.askonchat.AskOnChat.metainfo.xml /app/share/metainfo/com.askonchat.AskOnChat.metainfo.xml
+      - |
+        for s in 48 64 128 256 512; do
+          install -Dm644 "icons/$s/com.askonchat.AskOnChat.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/com.askonchat.AskOnChat.png"
+        done
+    sources:
+      # Prebuilt app-image. strip-components peels the AskOnChat/ top dir so bin/ and
+      # lib/ land directly under app-image/.
+      - type: archive
+        url: https://askonchat-desktop.nyc3.cdn.digitaloceanspaces.com/desktop/1.0.25/AskOnChat-1.0.25-linux-x64.tar.gz
+        sha256: 1d38e517800bd214bfbd1129323e59bc823d1f15ebd6db59622393ed1b0ee183
+        dest: app-image
+        strip-components: 1
+        x-checker-data:
+          type: json
+          url: https://askonchat-desktop.nyc3.cdn.digitaloceanspaces.com/desktop/latest/manifest.json
+          version-query: .version
+          url-query: '"https://askonchat-desktop.nyc3.cdn.digitaloceanspaces.com/desktop/" + .version + "/AskOnChat-" + .version + "-linux-x64.tar.gz"'
+
+      # Store-listing + desktop integration — siblings of this manifest in the Flathub repo.
+      - type: file
+        path: com.askonchat.AskOnChat.desktop
+      - type: file
+        path: com.askonchat.AskOnChat.metainfo.xml
+      - type: dir
+        path: icons
+        dest: icons
