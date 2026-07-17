@@ -1,0 +1,196 @@
+# Flathub variant of the GLaSSIST manifest — builds from a tagged release
+# instead of the local working copy. This file (plus python3-modules.json)
+# is what goes into the flathub/io.github.SmolinskiP.GLaSSIST repo.
+# Keep it in sync with ../io.github.SmolinskiP.GLaSSIST.yml — the ONLY
+# intended difference is the `sources` of the final `glasssist` module.
+#
+# Tray: the ayatana AppIndicator stack below is built WITH introspection —
+# pystray imports the AyatanaAppIndicator3 typelib for StatusNotifier tray icons.
+# The host desktop still needs an SNI tray (built-in on KDE/XFCE; GNOME needs the
+# AppIndicator shell extension, preinstalled on Ubuntu).
+app-id: io.github.SmolinskiP.GLaSSIST
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: glasssist
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.la'
+
+modules:
+  - name: portaudio
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+        sha256: 47efbf42c77c19a05d22e627d42873e991ec0c1357219c0d74ce6a2948cb2def
+
+  - name: libass
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+
+  - name: ffmpeg
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-programs
+      - --disable-doc
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz
+        sha256: 3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38
+
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.36.0.tar.gz
+        sha256: 29abc44f8ebee013bb2f9fe14d80b30db19b534c679056e4851ceadf5a5e8bf6
+
+  # --- StatusNotifier tray stack (pystray AppIndicator backend) --------------
+  # Do not reuse flathub shared-modules here: its libappindicator JSON disables
+  # introspection, and pystray needs the typelibs.
+
+  # Build-time only: the GNOME SDK does not ship intltool, libdbusmenu needs it.
+  - name: intltool
+    cleanup: ['*']
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libdbusmenu-gtk3
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_TRUE: '#'
+        HAVE_VALGRIND_FALSE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-static
+      - --disable-dumper
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection
+      - --disable-vala
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+    cleanup:
+      - /libexec
+      - /share/doc
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.5.tar.gz
+        sha256: 73d71c908b803f12e4a5ecd8392511b58afbdd0c82ad7909611a17bb7847c5c8
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_BINDINGS_MONO=OFF
+      - -DENABLE_BINDINGS_VALA=OFF
+      - -DENABLE_GTKDOC=OFF
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.94.tar.gz
+        sha256: 884a6bc77994c0b58c961613ca4c4b974dc91aa0f804e70e92f38a542d0d0f90
+
+  - python3-modules.json
+
+  # No Linux wheels on PyPI — built from sdist (needs only setuptools + portaudio).
+  - name: python3-pyaudio
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation PyAudio
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/26/1d/8878c7752febb0f6716a7e1a52cb92ac98871c5aa522cba181878091607c/PyAudio-0.2.14.tar.gz
+        sha256: 78dfff3879b4994d1f4fc6485646a57755c6ee3c19647a491f790a0895bd2f87
+
+  # Installed --no-deps: openwakeword declares tflite-runtime on Linux (no py3.12
+  # wheels), but GLaSSIST uses the ONNX framework. Its real dependencies
+  # (onnxruntime, scipy, scikit-learn, tqdm, requests) are pinned in
+  # requirements-linux.txt and installed by python3-modules.json above.
+  - name: python3-openwakeword
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation openwakeword
+      # The wheel ships no models; normally download_models() fetches these into
+      # site-packages at first run, which is read-only inside the sandbox.
+      - install -Dm644 -t ${FLATPAK_DEST}/lib/python3.13/site-packages/openwakeword/resources/models
+        melspectrogram.onnx embedding_model.onnx silero_vad.onnx
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/8a/33/dafd6822bebe463a9098951d06a0d88fb4f8c946ce087025bc4fa132e533/openwakeword-0.6.0-py3-none-any.whl
+        sha256: 6f423a4e3ae9dd0e3cd12b50ff8abf69679f687b4ab349d7c82c021c0e2abc9d
+      - type: file
+        url: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx
+        sha256: ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f
+      - type: file
+        url: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx
+        sha256: 70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f
+      - type: file
+        url: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/silero_vad.onnx
+        sha256: a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28
+
+  - name: glasssist
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/glasssist
+      - cp *.py /app/share/glasssist/
+      - cp -r frontend sound models img /app/share/glasssist/
+      - cp .env.example /app/share/glasssist/
+      - install -Dm755 packaging/flatpak/glasssist.sh /app/bin/glasssist
+      - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.desktop /app/share/applications/io.github.SmolinskiP.GLaSSIST.desktop
+      - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.metainfo.xml /app/share/metainfo/io.github.SmolinskiP.GLaSSIST.metainfo.xml
+      - install -Dm644 img/icon.png /app/share/icons/hicolor/256x256/apps/io.github.SmolinskiP.GLaSSIST.png
+    sources:
+      # Update tag + commit for each release (or let external-data-checker
+      # open the PR automatically once the app is on Flathub).
+      - type: git
+        url: https://github.com/SmolinskiP/GLaSSIST.git
+        tag: 3.5.0   # first release with the Linux/Flatpak fixes
+        x-checker-data:
+          type: git
+          tag-pattern: '^([\d.]+)$'
