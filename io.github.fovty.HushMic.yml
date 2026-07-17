@@ -1,0 +1,345 @@
+# Flatpak manifest for HushMic.
+#
+# Build from a repo checkout (the hushmic module below uses the working
+# tree; see packaging/flatpak/README.md for the full local build + install
+# flow and for what would still change for a Flathub submission):
+#
+#   flatpak-builder --user --install-deps-from=flathub --force-clean \
+#     build-dir packaging/flatpak/io.github.fovty.HushMic.yml
+#
+# Architecture inside the sandbox: identical to a native install. The tray
+# spawns `pipewire -c <generated conf>` as a child that hosts
+# module-filter-chain (LADSPA plugin + bundled ONNX Runtime, dlopen'd by
+# absolute /app paths) and connects to the HOST session daemon over the
+# shared pipewire-0 socket, where WirePlumber links the pinned mic and
+# exposes hushmic_source to every app. The freedesktop runtime ships the
+# pw-* CLI tools but deliberately strips the `pipewire` daemon binary and
+# module-filter-chain — that is what the pipewire module here restores.
+app-id: io.github.fovty.HushMic
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: hushmic
+rename-desktop-file: hushmic.desktop
+rename-icon: hushmic
+
+finish-args:
+  # The egui A/B window (glow/OpenGL, wayland + fallback-x11; X11 requires
+  # the ipc share or MIT-SHM breaks).
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The host session daemon's native socket: the filter-chain child, source
+  # enumeration, metadata and the mic-test recorders all speak through it.
+  # `:ro` is the established form (EasyEffects et al.) — unix connect() is
+  # exempt from read-only-mount checks, only filesystem writes are blocked.
+  - --filesystem=xdg-run/pipewire-0:ro
+  # ksni tray (StatusNotifierItem). Autostart needs no arg (Background
+  # portal) and neither does realtime scheduling (Realtime portal, used by
+  # the child's module-rt automatically).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # notify.rs talks to the notification daemon directly over zbus.
+  - --talk-name=org.freedesktop.Notifications
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - /share/gir-1.0
+  - /share/cmake
+  # Build-time tools the ORT dependency modules install (cleanup runs after
+  # every module has built, so removing them cannot break the ORT build).
+  - /bin/protoc*
+  - /bin/flatc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # The PipeWire daemon + module-filter-chain + ALL pw-* tools. Bundling the
+  # tools (not using the runtime's) matters twice: only /app copies read
+  # /app/share/pipewire/client.conf.d (the Manager drop-in below), and only
+  # /app copies get the old-server compat patch — libpipewire since 0.3.74
+  # cannot run capture graphs against pre-0.3.72 session daemons
+  # (use_buffers -ENOENT, adapter/graph start -EINVAL,
+  # node start -EINVAL; reproduced on Debian 12's 0.3.65 host), which the
+  # patch restores by re-adding the removed on-demand mix creation. Option
+  # set derived from io.github.dimtpap.coppwr's proven 25.08 build, minus
+  # everything HushMic's child daemon does not load: no device backends
+  # (alsa/bluez/udev — device I/O happens in the HOST daemon), no jack, no
+  # gstreamer, no raop/echo-cancel.
+  - name: pipewire
+    buildsystem: meson
+    config-opts:
+      # The SDK's meson defaults to lib64 on x86_64; everything else in the
+      # flatpak (and LD_LIBRARY_PATH) uses /app/lib.
+      - --libdir=lib
+      - -Dsession-managers=[]
+      - -Dexamples=disabled
+      - -Dtests=disabled
+      - -Ddocs=disabled
+      - -Dman=disabled
+      - -Dsystemd=disabled
+      - -Dudev=disabled
+      - -Dudevrulesdir=/app/lib/udev/rules.d
+      - -Dalsa=disabled
+      - -Dpipewire-alsa=disabled
+      - -Djack=disabled
+      - -Dpipewire-jack=disabled
+      - -Dbluez5=disabled
+      - -Dgstreamer=disabled
+      - -Dgstreamer-device-provider=disabled
+      - -Dlibcamera=disabled
+      - -Dvulkan=disabled
+      - -Dlibcanberra=disabled
+      - -Dlibpulse=disabled
+      - -Dsndfile=enabled
+      - -Dpw-cat=enabled
+      - -Draop=disabled
+      - -Decho-cancel-webrtc=disabled
+      - -Dlibmysofa=disabled
+      - -Dselinux=disabled
+      - -Dreadline=disabled
+      - -Dcompress-offload=disabled
+      - -Dvolume=disabled
+      - -Daudiotestsrc=disabled
+      - -Dvideotestsrc=disabled
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.9/pipewire-1.4.9.tar.gz
+        sha256: 8066a7b220069e4c6e3b02bd2b6ea303bba66df255023c07c99323449ba8fe3c
+      # Restores streaming against pre-0.3.72 session daemons (verified on
+      # Debian 12's 0.3.65; 0.3.48 remains below the host floor — see the
+      # README): ensure_mix() on demand in use_buffers/set_io, late
+      # set_mix_info adopts the peer.
+      - type: patch
+        path: pipewire-remote-node-old-server-compat.patch
+
+  # --- ONNX Runtime 1.27.0, BUILT FROM SOURCE (Flathub requires it) -------
+  # Recipe follows io.github.mmp.Vice's proven pattern: pre-install the
+  # dependencies ORT needs into /app as ordinary modules, then build ORT
+  # with -Donnxruntime_USE_VCPKG=ON so its cmake resolves them via
+  # find_package instead of FetchContent (which is disconnected). Versions
+  # come from ORT 1.27.0's own cmake/deps.txt pins; only the CPU execution
+  # provider is built (XNNPACK/mimalloc/tests off by default), so the
+  # fp16/pthreadpool/xnnpack family is not needed.
+  - name: abseil-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DCMAKE_CXX_STANDARD=17
+    sources:
+      - type: archive
+        url: https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip
+        sha256: b2bdcf6682d8cb53df365bcc5d6c318a22e55821d9978a10fdb61404c026daff
+  - name: re2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DRE2_BUILD_TESTING=OFF
+    sources:
+      - type: git
+        url: https://github.com/google/re2.git
+        tag: 2024-07-02
+        commit: 6dcd83d60f7944926bfd308cc13979fc53dd69ca
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -Dprotobuf_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        tag: v21.12
+        commit: f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c
+  - name: date
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/HowardHinnant/date.git
+        tag: v3.0.1
+        commit: 6e921e1b1d21e84a5c82416ba7ecd98e33a436d0
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST}
+      - ./b2 headers
+      - cp -r boost /app/include
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.bz2
+        sha256: a6e1ab9b0860e6a2881dd7b21fe9f737a095e5f33a3a874afc6a345228597ee6
+  - name: nlohmann_json
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DJSON_BuildTests=OFF
+    sources:
+      - type: git
+        url: https://github.com/nlohmann/json.git
+        tag: v3.11.3
+        commit: 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03
+  - name: cpuinfo
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DCPUINFO_BUILD_TOOLS=OFF
+      - -DCPUINFO_BUILD_UNIT_TESTS=OFF
+      - -DCPUINFO_BUILD_MOCK_TESTS=OFF
+      - -DCPUINFO_BUILD_BENCHMARKS=OFF
+    sources:
+      - type: git
+        url: https://github.com/pytorch/cpuinfo.git
+        commit: 403d652dca4c1046e8145950b1c0997a9f748b57
+  - name: gsl
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DGSL_TEST=OFF
+    sources:
+      - type: archive
+        url: https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip
+        sha256: c9291d95f5f6e5c561990d06a589b01d89e553d0f366f0ce723dd1788e7a6076
+  - name: safeint
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 SafeInt.hpp /app/include/SafeInt.hpp
+      - install -Dm644 safe_math.h /app/include/safe_math.h
+      - install -Dm644 safe_math_impl.h /app/include/safe_math_impl.h
+    sources:
+      - type: git
+        url: https://github.com/dcleblanc/SafeInt.git
+        tag: 3.0.28
+        commit: 4cafc9196c4da9c817992b20f5253ef967685bf8
+  - name: flatbuffers
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DFLATBUFFERS_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/google/flatbuffers.git
+        tag: v23.5.26
+        commit: 0100f6a5779831fa7a651e4b67ef389a8752bd9b
+  - name: onnx
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DONNX_BUILD_TESTS=OFF
+      # What upstream ORT sets on its own vendored onnx (external onnx skips
+      # it): schemas otherwise register TWICE inside libonnxruntime — once
+      # by onnx's static initializers, once by ORT's explicit registration
+      # at environment init — printing a "Schema error: ... already
+      # registered" wall on stderr at every chain start (harmless, the
+      # duplicates are identical, but noisy).
+      - -DONNX_DISABLE_STATIC_REGISTRATION=ON
+    sources:
+      - type: archive
+        url: https://github.com/onnx/onnx/archive/refs/tags/v1.21.0.zip
+        sha256: b8b56570d94ecce49fee94e6380db456bb42035722b967015c9dd6459359433e
+  - name: eigen3
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DEIGEN_BUILD_BLAS=OFF
+      - -DEIGEN_BUILD_LAPACK=OFF
+    sources:
+      # The exact commit ORT 1.27.0's deps.txt pins (3.4.0 + build fixes,
+      # via the GitHub mirror it also switched to).
+      - type: archive
+        url: https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+        sha256: 6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0
+  - name: onnxruntime
+    buildsystem: cmake-ninja
+    subdir: cmake
+    build-options:
+      # The header-only deps (Microsoft GSL, SafeInt) land in /app/include;
+      # not every ORT target carries the find_package include interface, so
+      # put it on the compiler path directly (appended to flatpak's flags).
+      # free-nonheap-object: GCC 15.2 false positive in std::vector inlining
+      # that trips ORT's -Werror.
+      cxxflags: -isystem /app/include -Wno-error=free-nonheap-object
+    config-opts:
+      # The SDK's cmake defaults to lib64; the post-install symlink chain
+      # (and everything else in this flatpak) expects /app/lib.
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -Donnxruntime_BUILD_UNIT_TESTS=OFF
+      - -Donnxruntime_BUILD_SHARED_LIB=ON
+      - -Donnxruntime_USE_VCPKG=ON
+    post-install:
+      # The layout Paths::resolve()/the plugin dlopen: same symlink chain
+      # as every other HushMic package, pointing at the /app/lib build.
+      - install -d /app/lib/hushmic
+      - ln -s ../libonnxruntime.so.1.27.0 /app/lib/hushmic/libonnxruntime.so.1.27.0
+      - ln -s libonnxruntime.so.1.27.0 /app/lib/hushmic/libonnxruntime.so.1
+      - ln -s libonnxruntime.so.1 /app/lib/hushmic/libonnxruntime.so
+    sources:
+      - type: git
+        url: https://github.com/microsoft/onnxruntime.git
+        tag: v1.27.0
+        commit: 8f0278c77bf44b0cc83c098c6c722b92a36ac4b5
+
+  # The DPDFNet models, straight from the upstream Hugging Face repo at a
+  # pinned revision; the sha256 pins are byte-identical to the ones
+  # scripts/setup-assets.sh enforces for every other artifact.
+  - name: dpdfnet-models
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 dpdfnet8_48khz_hr.onnx /app/share/hushmic/models/dpdfnet8_48khz_hr.onnx
+      - install -Dm644 dpdfnet2_48khz_hr.onnx /app/share/hushmic/models/dpdfnet2_48khz_hr.onnx
+    sources:
+      - type: file
+        url: https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet8_48khz_hr.onnx
+        sha256: 7b3afbb260a08fe9af3d16e3bda992971be1e7e951d1dee7c2d235f5c43f5631
+      - type: file
+        url: https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet2_48khz_hr.onnx
+        sha256: 7f0575a5cec0ba4ffd8f8bd657e06d007e4ccdd955d76faab922b9d3291dc14b
+
+  - name: hushmic
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/hushmic/cargo
+        # Compile-time default paths baked into the plugin, matching where
+        # this manifest installs the assets (runtime env still wins — the
+        # controller sets HUSHMIC_MODEL_PATH/ORT_DYLIB_PATH on the child).
+        HUSHMIC_BUILD_MODEL: /app/share/hushmic/models/dpdfnet8_48khz_hr.onnx
+        HUSHMIC_BUILD_DYLIB: /app/lib/hushmic/libonnxruntime.so
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - cargo --offline build --release
+      - install -Dm755 target/release/hushmic /app/bin/hushmic
+      - install -Dm644 target/release/libdpdfnet_ladspa.so /app/lib/ladspa/libdpdfnet_ladspa.so
+      - install -Dm644 packaging/hushmic.desktop /app/share/applications/hushmic.desktop
+      - install -Dm644 packaging/hushmic-256.png /app/share/icons/hicolor/256x256/apps/hushmic.png
+      # Tray status ladder under app-ID-prefixed names: flatpak only exports
+      # icons named ${FLATPAK_ID}[-.]* to the host theme, and the host's SNI
+      # tray resolves icon names against the HOST theme — tray.rs requests
+      # exactly these names when sandboxed.
+      - |
+        set -e
+        for size in 16x16 22x22 24x24 32x32 48x48 64x64 128x128 256x256; do
+          for name in hushmic-tray hushmic-tray-off hushmic-tray-error; do
+            install -Dm644 "packaging/tray/hicolor/$size/status/$name.png" \
+              "/app/share/icons/hicolor/$size/status/io.github.fovty.HushMic${name#hushmic}.png"
+          done
+        done
+      # Manager access for the bundled pw-* tools (see the drop-in's own
+      # comments; pipewire::can_set_default gates on this exact path).
+      - install -Dm644 packaging/flatpak/50-hushmic-manager.conf /app/share/pipewire/client.conf.d/50-hushmic-manager.conf
+      - install -Dm644 packaging/flatpak/io.github.fovty.HushMic.metainfo.xml /app/share/metainfo/io.github.fovty.HushMic.metainfo.xml
+    sources:
+      # Pinned to the release tag. For local development against the working
+      # tree, swap this for:  - type: dir
+      #                         path: ../..
+      - type: git
+        url: https://github.com/Fovty/hushmic.git
+        tag: v0.3.0
+        commit: 5f7d3180d07e5636d694ca6d4e2a1d1dfe3d42b7
+      - cargo-sources.json

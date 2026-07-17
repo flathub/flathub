@@ -1,0 +1,138 @@
+
+--- a/spa/plugins/audioconvert/audioconvert.c	2025-10-09 09:14:51.000000000 +0000
++++ b/spa/plugins/audioconvert/audioconvert.c	2026-07-16 18:12:27.480712276 +0000
+@@ -2237,10 +2237,21 @@
+ 	if (this->io_position != NULL) {
+ 		rate = this->io_position->clock.target_rate.denom;
+ 		duration = this->io_position->clock.target_duration;
++		/* drivers on pre-0.3.7x servers fill only clock.rate/duration;
++		 * the target_* fields read back zero, and a zero rate fails the
++		 * validation below even though both formats are negotiated */
++		if (rate == 0)
++			rate = this->io_position->clock.rate.denom;
++		if (duration == 0)
++			duration = this->io_position->clock.duration;
+ 	} else {
++		rate = 0;
++		duration = 0;
++	}
++	if (rate == 0)
+ 		rate = DEFAULT_RATE;
++	if (duration == 0)
+ 		duration = this->quantum_limit;
+-	}
+ 
+ 	/* in DSP mode we always convert to the DSP rate */
+ 	if (in->mode == SPA_PARAM_PORT_CONFIG_MODE_dsp)
+@@ -2425,6 +2436,11 @@
+ 			struct spa_pod_frame f[1];
+ 			uint32_t rate = this->io_position ?
+ 				this->io_position->clock.target_rate.denom : DEFAULT_RATE;
++			/* pre-0.3.7x drivers leave target_rate zero */
++			if (rate == 0 && this->io_position != NULL)
++				rate = this->io_position->clock.rate.denom;
++			if (rate == 0)
++				rate = DEFAULT_RATE;
+ 
+ 			spa_pod_builder_push_object(builder, &f[0],
+ 					SPA_TYPE_OBJECT_Format, SPA_PARAM_EnumFormat);
+@@ -2557,10 +2573,16 @@
+ 			/* collect the other port rate. This is the output of the resampler
+ 			 * and is usually one quantum. */
+ 			dir = &this->dir[SPA_DIRECTION_REVERSE(direction)];
+-			if (dir->mode == SPA_PARAM_PORT_CONFIG_MODE_dsp)
++			if (dir->mode == SPA_PARAM_PORT_CONFIG_MODE_dsp) {
+ 				orate = this->io_position ? this->io_position->clock.target_rate.denom : DEFAULT_RATE;
+-			else
++				/* pre-0.3.7x drivers leave target_rate zero */
++				if (orate == 0 && this->io_position != NULL)
++					orate = this->io_position->clock.rate.denom;
++				if (orate == 0)
++					orate = DEFAULT_RATE;
++			} else {
+ 				orate = dir->format.info.raw.rate;
++			}
+ 
+ 			/* scale the buffer size when we can. Only do this when we downsample because
+ 			 * then we need to ask more input data for one quantum. */
+
+--- a/src/modules/module-client-node/remote-node.c	2025-10-09 09:14:51.000000000 +0000
++++ b/src/modules/module-client-node/remote-node.c	2026-07-16 18:12:27.481712326 +0000
+@@ -178,6 +178,26 @@
+ 	return mix;
+ }
+ 
++/* Servers older than 0.3.72 only announce a port mix via port_set_mix_info
++ * from their set_io path, which arrives AFTER port_use_buffers/port_set_io;
++ * newer clients dropped the on-demand mix creation older clients had, so
++ * every stream against such a server fails with use_buffers() -ENOENT and
++ * the node never starts. Restore the old tolerance: create the mix on
++ * demand (peer unknown until the server tells us). */
++static struct mix *ensure_mix(struct node_data *data,
++		enum spa_direction direction, uint32_t port_id, uint32_t mix_id)
++{
++	struct mix *mix;
++	struct pw_impl_port *port;
++
++	if ((mix = find_mix(data, direction, port_id, mix_id)))
++		return mix;
++	port = pw_impl_node_find_port(data->node, direction, port_id);
++	if (port == NULL)
++		return NULL;
++	return create_mix(data, port, mix_id, SPA_ID_INVALID);
++}
++
+ static int client_node_transport(void *_data,
+ 			int readfd, int writefd, uint32_t mem_id, uint32_t offset, uint32_t size)
+ {
+@@ -596,7 +616,7 @@
+ 	struct mix *mix;
+ 	int res, prot;
+ 
+-	mix = find_mix(data, direction, port_id, mix_id);
++	mix = ensure_mix(data, direction, port_id, mix_id);
+ 	if (mix == NULL) {
+ 		res = -ENOENT;
+ 		goto error_exit;
+@@ -751,7 +771,7 @@
+ 	int res = 0;
+ 	uint32_t tag[5] = { data->remote_id, direction, port_id, mix_id, id };
+ 
+-	mix = find_mix(data, direction, port_id, mix_id);
++	mix = ensure_mix(data, direction, port_id, mix_id);
+ 	if (mix == NULL) {
+ 		res = -ENOENT;
+ 		goto exit;
+@@ -909,8 +929,13 @@
+ 		clear_mix(data, mix);
+ 	} else {
+ 		struct pw_impl_port *port;
+-		if (mix != NULL)
+-			return -EEXIST;
++		if (mix != NULL) {
++			/* created on demand (old server): adopt the peer */
++			if (mix->mix.peer_id != SPA_ID_INVALID)
++				return -EEXIST;
++			mix->mix.peer_id = peer_id;
++			return 0;
++		}
+ 		port = pw_impl_node_find_port(data->node, direction, port_id);
+ 		if (port == NULL)
+ 			return -ENOENT;
+
+--- a/src/modules/module-filter-chain.c	2025-10-09 09:14:51.000000000 +0000
++++ b/src/modules/module-filter-chain.c	2026-07-16 18:12:27.481712326 +0000
+@@ -1147,6 +1147,13 @@
+ 		if (target == 0)
+ 			target = impl->position ?
+ 				impl->position->clock.target_rate.denom : DEFAULT_RATE;
++		/* pre-0.3.7x drivers leave target_rate zero (and the DSP-mode
++		 * format negotiated against such servers carries rate 0 too);
++		 * fall back to the current clock rate before failing */
++		if (target == 0 && impl->position != NULL)
++			target = impl->position->clock.rate.denom;
++		if (target == 0)
++			target = DEFAULT_RATE;
+ 		if (target == 0) {
+ 			res = -EINVAL;
+ 			goto error;
