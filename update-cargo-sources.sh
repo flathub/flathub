@@ -5,7 +5,7 @@
 # Dependencies: jq, git, python3, python3-toml and python3-aiohttp.
 
 # The manifest file.
-MANIFEST="dev.bragefuglseth.Keypunch.json"
+MANIFEST="no.bragefuglseth.Keypunch.json"
 # The names of the modules to update.
 MODULES=("keypunch")
 # The directory where the sources are located.
@@ -69,3 +69,4 @@ for MODULE_NAME in "${MODULES[@]}"; do
     echo "Module $MODULE_NAME successfully updated!"
     echo ""
 done
+
