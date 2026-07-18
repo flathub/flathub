@@ -1,0 +1,150 @@
+# Flathub submission manifest for RSync UI.
+# Unlike ../flatpak/io.github.addlayerio.rsyncui.yml (which packages a locally
+# built .deb during CI), this one is fully self-contained: every source is a
+# URL with a checksum, as required by Flathub's network-isolated builders.
+app-id: io.github.addlayerio.rsyncui
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: rsync-ui
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --filesystem=host
+  - --socket=ssh-auth
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # ---- Build-time helper: intltool ----
+  - name: intltool
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://src.fedoraproject.org/repo/pkgs/rpms/intltool/intltool-0.51.0.tar.gz/12e517cac2b57a0121cda351570f1e63/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  # ---- System-tray stack (libayatana-appindicator) ----
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: "-Wno-error -Wno-deprecated-declarations"
+      cxxflags: "-Wno-error -Wno-deprecated-declarations"
+      env:
+        HAVE_VALGRIND_TRUE: "#"
+        HAVE_VALGRIND_FALSE: ""
+    config-opts:
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --disable-vala
+      - --disable-dumper
+      - --enable-introspection=no
+      - --with-gtk=3
+    sources:
+      - type: archive
+        url: https://src.fedoraproject.org/repo/pkgs/rpms/libdbusmenu/libdbusmenu-16.04.0.tar.gz/sha512/ee9654ac4ed94bdebc94a6db83b126784273a417a645b2881b2ba676a5f67d7fc95dd2bb37bfb0890aa47299ed73cb21ed7de8b75f3fed6b69bfd39065062241/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+      - "*.la"
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: "0.10.4"
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: "0.9.5"
+        commit: 0db7877be8c61953b50540183d5932ab159181f1
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+      - "/libexec"
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: "0.5.94"
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+    cleanup:
+      - "/include"
+      - "/lib/pkgconfig"
+
+  # ---- rsync + ssh ----
+  - name: rsync
+    buildsystem: autotools
+    config-opts:
+      - --with-included-popt
+      - --disable-md2man
+      - --disable-xxhash
+      - --disable-zstd
+      - --disable-lz4
+    sources:
+      - type: archive
+        url: https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz
+        sha256: 2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52
+    cleanup:
+      - "/share/man"
+
+  - name: openssh
+    buildsystem: autotools
+    config-opts:
+      - --without-pam
+      - --with-ssl-dir=/usr
+      - --sysconfdir=/app/etc/ssh
+    make-install-args:
+      - install-nokeys
+    sources:
+      - type: archive
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.9p2.tar.gz
+        sha256: 91aadb603e08cc285eddf965e1199d02585fa94d994d6cae5b41e1721e215673
+    cleanup:
+      - "/etc"
+      - "/sbin"
+      - "/share/man"
+      - "/libexec"
+
+  # ---- The application (prebuilt .deb from the GitHub release) ----
+  - name: rsync-ui
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/addlayerio/rsync-ui/releases/download/v0.2.0/RSync.UI_0.2.0_amd64.deb
+        sha256: 72336172fd56c6f478f3750a2700d3854ea19b78cf1cd8ab6f78eaebcc221f20
+        dest-filename: rsync-ui.deb
+      - type: file
+        path: io.github.addlayerio.rsyncui.metainfo.xml
+    build-commands:
+      - ar x rsync-ui.deb
+      - for t in data.tar.*; do tar -xf "$t"; done
+      - install -Dm755 usr/bin/rsync-ui /app/bin/rsync-ui
+      - install -Dm644 usr/share/applications/*.desktop /app/share/applications/io.github.addlayerio.rsyncui.desktop
+      - desktop-file-edit --set-key=Icon --set-value=io.github.addlayerio.rsyncui /app/share/applications/io.github.addlayerio.rsyncui.desktop
+      - |
+        for f in usr/share/icons/hicolor/*/apps/*.png; do
+          size=$(basename "$(dirname "$(dirname "$f")")")
+          install -Dm644 "$f" "/app/share/icons/hicolor/$size/apps/io.github.addlayerio.rsyncui.png"
+        done
+      - install -Dm644 io.github.addlayerio.rsyncui.metainfo.xml /app/share/metainfo/io.github.addlayerio.rsyncui.metainfo.xml
