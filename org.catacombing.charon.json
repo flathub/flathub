@@ -1,0 +1,138 @@
+{
+    "id": "org.catacombing.charon",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "25.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.llvm22"
+    ],
+    "command": "charon",
+    "finish-args": [
+        "--socket=wayland",
+        "--share=network",
+        "--device=dri",
+        "--filesystem=xdg-download"
+    ],
+    "build-options": {
+        "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib",
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
+        "env": {
+            "MODRANA_DATA_PATH": "modrana_countries_provided.json",
+            "TILE_METADATA_PATH": "tile_metadata.json",
+            "SKIA_SOURCE_DIR": "/run/build/charon/skia",
+            "SKIA_USE_SYSTEM_LIBRARIES": "1",
+            "SKIA_GN_COMMAND": "/app/bin/gn",
+            "SKIA_GN_ARGS": "skia_use_wuffs=false skia_use_vulkan=false"
+        }
+    },
+    "modules": [
+        {
+            "name": "boost",
+            "buildsystem": "simple",
+            "build-commands": [
+                "./bootstrap.sh",
+                "./b2 install --prefix=${FLATPAK_DEST}"
+            ],
+            "sources": [{
+                "type": "archive",
+                "url": "https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz",
+                "sha256": "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463"
+            }],
+            "cleanup": ["*"]
+        },
+        {
+            "name": "marisa",
+            "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_SHARED_LIBS=ON"
+            ],
+            "sources": [{
+                "type": "archive",
+                "url": "https://github.com/s-yata/marisa-trie/archive/refs/tags/v0.3.1.tar.gz",
+                "sha256": "986ed5e2967435e3a3932a8c95980993ae5a196111e377721f0849cad4e807f3"
+            }],
+            "cleanup": ["*"]
+        },
+        {
+            "name": "kyotocabinet",
+            "no-autogen": true,
+            "sources": [{
+                "type": "archive",
+                "url": "https://dbmx.net/kyotocabinet/pkg/kyotocabinet-1.2.80.tar.gz",
+                "sha256": "4c85d736668d82920bfdbdb92ac3d66b7db1108f09581a769dd9160a02def349"
+            }],
+            "cleanup": ["*"]
+        },
+        {
+            "name": "protobuf",
+            "buildsystem": "cmake-ninja",
+            "config-opts": ["-Dprotobuf_BUILD_TESTS=OFF"],
+            "sources": [{
+                "type": "archive",
+                "url": "https://github.com/protocolbuffers/protobuf/releases/download/v35.1/protobuf-35.1.tar.gz",
+                "sha256": "f0b6838e7522a8da96126d487068c959bc624926368f3024ac8fd03abd0a1ac4"
+            }],
+            "cleanup": ["*"]
+        },
+        {
+            "name": "gn",
+            "buildsystem": "simple",
+            "build-commands": [
+                "./build/gen.py --no-last-commit-position",
+                "install -Dm644 last_commit_position.h out/last_commit_position.h",
+                "ninja -C out",
+                "install -Dm755 out/gn /app/bin/gn"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gn.googlesource.com/gn",
+                    "commit": "9ece3f5254c273cb46606a6571963f931c3b012d"
+                },
+                {
+                    "type": "file",
+                    "path": "last_commit_position.h"
+                }
+            ],
+            "cleanup": ["*"]
+        },
+        {
+            "name": "charon",
+            "buildsystem": "simple",
+            "build-commands": [
+                "sed -i 's/all-linux/wayland/' Cargo.toml",
+                "cargo --offline fetch",
+                "cargo --offline build --release",
+                "install -Dm 755 ./target/release/charon /app/bin/charon",
+                "install -Dm 644 ./logo.svg /app/share/icons/hicolor/scalable/apps/org.catacombing.charon.svg",
+                "desktop-file-edit --set-icon=org.catacombing.charon charon.desktop",
+                "install -Dm 644 ./charon.desktop /app/share/applications/org.catacombing.charon.desktop",
+                "install -Dm 644 ./org.catacombing.charon.metainfo.xml -t /app/share/metainfo/"
+            ],
+            "sources": [
+                "./cargo-sources.json",
+                {
+                    "type": "archive",
+                    "url": "https://github.com/rust-skia/skia/archive/refs/tags/m148-0.95.2.tar.gz",
+                    "sha256": "1c84444b104e6126bf155c5947abf7feb6a6c4682f54cf8c7cf9a3548dcef3dc",
+                    "dest": "skia"
+                },
+                {
+                    "type": "file",
+		    "path": "./modrana_countries_provided.json"
+                },
+                {
+                    "type": "file",
+		    "path": "./tile_metadata.json"
+                },
+                {
+                    "type": "git",
+                    "url": "https://git.sr.ht/~undeadleech/charon",
+                    "commit": "cb27c2c2d413a94e1da9b046736da8d539ce581f"
+                }
+            ]
+        }
+    ]
+}
