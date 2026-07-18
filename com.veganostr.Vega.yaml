@@ -1,0 +1,78 @@
+id: com.veganostr.Vega
+
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: vega
+
+finish-args:
+  - --socket=wayland                                   # show the window (Wayland)
+  - --socket=fallback-x11                              # show the window (X11 fallback)
+  - --share=ipc                                        # required alongside X11
+  - --device=dri                                       # GPU / OpenGL for WebKit
+  - --socket=pulseaudio                                # audio: podcasts & media
+  - --share=network                                    # Nostr relays over WebSocket (runtime only)
+  - --talk-name=org.freedesktop.Notifications          # mentions/zaps notifications
+  - --talk-name=org.freedesktop.secrets                # keyring crate → Secret Service (nsec storage)
+  - --talk-name=org.kde.StatusNotifierWatcher          # system tray
+
+# Note: extra codecs (AAC/MP3/H.264) for podcast/media playback are provided by
+# org.freedesktop.Platform.codecs-extra on the GNOME 50 runtime. Added as a
+# follow-up once the base build is confirmed.
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    # Speed up and pin the offline caches inside the build dir.
+    CARGO_HOME: /run/build/vega/cargo
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: vega
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/hoornet/vega.git
+        tag: v0.14.2
+        commit: 382a9389ad3394ae622f6193ffdb1964f48fae5c
+
+      # flatpak-node-generator npm -o node-sources.json package-lock.json
+      - node-sources.json
+
+      # flatpak-cargo-generator.py -d ./src-tauri/Cargo.lock -o cargo-sources.json
+      - cargo-sources.json
+
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/vega/flatpak-node/cache
+        npm_config_cache: /run/build/vega/flatpak-node/npm-cache
+        npm_config_offline: "true"
+
+    build-commands:
+      # Install vendored npm packages (offline)
+      - npm ci --offline
+      # Pre-fetch vendored crates (offline)
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      # Build frontend (vite) + the Rust binary, without producing an installer bundle
+      - npm run --offline tauri build -- --no-bundle
+
+      # Binary
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/vega
+
+      # Desktop entry + AppStream metainfo
+      - install -Dm644 -t /app/share/applications/ flatpak/com.veganostr.Vega.desktop
+      - install -Dm644 -t /app/share/metainfo/ flatpak/com.veganostr.Vega.metainfo.xml
+
+      # Icons (hicolor)
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.veganostr.Vega.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.veganostr.Vega.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.veganostr.Vega.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.veganostr.Vega.png
+
+    post-install:
+      - install -Dm644 LICENSE /app/share/licenses/com.veganostr.Vega/LICENSE
