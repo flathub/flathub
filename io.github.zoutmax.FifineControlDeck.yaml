@@ -1,0 +1,76 @@
+# Flatpak / Flathub manifest for fifine Control Deck.
+#
+# Local test build:
+#   flatpak-builder --user --install --force-clean build-dir \
+#       flatpak/io.github.zoutmax.FifineControlDeck.yaml
+#
+# PyQt6 comes prebuilt from the PyQt BaseApp (both arches); the remaining
+# python dependencies are pinned, offline sdist sources in python3-deps.json
+# (regenerate with flatpak-pip-generator Pillow psutil pyudev).
+#
+id: io.github.zoutmax.FifineControlDeck
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.11'
+command: fifine-control-deck
+
+build-options:
+  env:
+    - BASEAPP_REMOVE_WEBENGINE=1
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio               # volume / media actions
+  - --share=network                   # open-url action
+  # The deck is driven over /dev/hidraw (vendor HID protocol); there is no
+  # narrower device permission that covers hidraw nodes.
+  - --device=all
+  # Host helper tools (hotkeys via ydotool/xdotool, playerctl, wpctl,
+  # xdg-open) are launched via flatpak-spawn --host:
+  - --talk-name=org.freedesktop.Flatpak
+  # "Type password" action stores secrets in the keyring:
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  # Pillow, psutil, pyudev as pinned offline sdists (PyQt6 is in the BaseApp).
+  # (path is relative to this manifest file)
+  - python3-deps.json
+
+  - name: fifine-control-deck
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/lib/fifine-control-deck
+      - cp -r fifine_deck assets ${FLATPAK_DEST}/lib/fifine-control-deck/
+      # drop non-Linux transport binaries from the vendored SDK
+      - find ${FLATPAK_DEST}/lib/fifine-control-deck -type f \( -name '*.dll' -o -name '*.dylib' \) -delete
+      # launcher ships next to this manifest (file source below), so launcher
+      # fixes don't require retagging the app
+      - install -Dm755 fifine-control-deck.launcher ${FLATPAK_DEST}/bin/fifine-control-deck
+      - install -Dm644 flatpak/io.github.zoutmax.FifineControlDeck.desktop
+          ${FLATPAK_DEST}/share/applications/io.github.zoutmax.FifineControlDeck.desktop
+      - install -Dm644 flatpak/io.github.zoutmax.FifineControlDeck.metainfo.xml
+          ${FLATPAK_DEST}/share/metainfo/io.github.zoutmax.FifineControlDeck.metainfo.xml
+      - install -Dm644 assets/app/fifine-deck.png
+          ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.zoutmax.FifineControlDeck.png
+      - install -Dm644 assets/app/fifine-deck-256.png
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.zoutmax.FifineControlDeck.png
+    sources:
+      - type: git
+        url: https://github.com/ZoutMax/fifine-control-deck-linux.git
+        tag: v0.6.0
+        commit: 93203ccabf558c0c2c751138d9d2ed00d9b14383
+      # Two post-v0.6.0 upstream fixes needed inside the sandbox (drop with
+      # the next tag): honor XDG_CONFIG_HOME so the config persists, and add
+      # the runtime's font paths so key text doesn't fall back to Pillow's
+      # tiny bitmap font.
+      - type: patch
+        path: flatpak-fixes.patch
+      - type: file
+        path: fifine-control-deck.launcher
