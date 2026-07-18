@@ -1,0 +1,84 @@
+# Flathub manifest for Quran Everywhere — proprietary app, `extra-data` model.
+#
+# This manifest is the ONLY public artifact of the Flathub/Linux channel; it
+# contains no source code. Exactly like VS Code (flathub/com.visualstudio.code),
+# the proprietary binary is NOT built here — it is downloaded from a public URL
+# at install time and unpacked into the sandbox by apply_extra. The app source
+# stays in the private repo. See docs/flathub.md.
+#
+# On each release, CD (the deploy-flatpak job in .github/workflows/cd.yml)
+# rewrites the extra-data url/sha256/size below and the <release> entry in the
+# metainfo, then opens a PR against the flathub app repo. The url/sha256/size
+# committed here are placeholders — the first real values are filled in by that
+# job (or by hand for the initial submission).
+app-id: com.quraneverywhere.QuranEverywhere
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: quran-everywhere
+separate-locales: false
+
+finish-args:
+  # Audio streaming + offline download, analytics, and crash reporting.
+  - --share=network
+  # Rendering: Wayland with an X11 fallback (--share=ipc is required by X11).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Recitation audio playback.
+  - --socket=pulseaudio
+
+modules:
+  - name: quran-everywhere
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 quran-everywhere.sh /app/bin/quran-everywhere
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm644 com.quraneverywhere.QuranEverywhere.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 com.quraneverywhere.QuranEverywhere.desktop -t /app/share/applications/
+      - install -Dm644 64.png  /app/share/icons/hicolor/64x64/apps/com.quraneverywhere.QuranEverywhere.png
+      - install -Dm644 128.png /app/share/icons/hicolor/128x128/apps/com.quraneverywhere.QuranEverywhere.png
+      - install -Dm644 256.png /app/share/icons/hicolor/256x256/apps/com.quraneverywhere.QuranEverywhere.png
+    sources:
+      # The proprietary bundle, downloaded per-user at install time (Flathub
+      # never stores or redistributes it). x86_64 only — see flathub.json — so a
+      # single entry; CD produces the tarball and fills in url/sha256/size.
+      - type: extra-data
+        filename: quran-everywhere.tar.gz
+        url: https://github.com/TN19N/quran-everywhere-linux/releases/download/v1.0.0+27/quran-everywhere-1.0.0+27-x86_64.tar.gz
+        sha256: 9b34a8b8af5a90b4d6cfd7ab734d1b72a1e1f9d5113473eef3dfce3e05a5a502
+        size: 111713344
+
+      # Runs once on the user's machine after the extra-data download, with the
+      # working directory set to the app's extra dir. Unpacks the bundle there;
+      # at runtime it is mounted read-only at /app/extra.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar xf quran-everywhere.tar.gz
+          - rm quran-everywhere.tar.gz
+
+      # Launcher. media_kit dlopen()s libmpv by bare name, which resolves only
+      # against LD_LIBRARY_PATH — so point it at the bundled lib/ (same reason
+      # the snap sets LD_LIBRARY_PATH; see snap/snapcraft.yaml).
+      - type: script
+        dest-filename: quran-everywhere.sh
+        commands:
+          - export LD_LIBRARY_PATH="/app/extra/lib:${LD_LIBRARY_PATH}"
+          - exec /app/extra/quran_everywhere "$@"
+
+      # AppStream metadata, desktop entry and icons. CD copies these from the
+      # private repo's linux/ dir into the flathub app repo next to this
+      # manifest (see tool/prepare_flathub.sh); the initial submission commits
+      # them by hand.
+      - type: file
+        path: com.quraneverywhere.QuranEverywhere.metainfo.xml
+      - type: file
+        path: com.quraneverywhere.QuranEverywhere.desktop
+      - type: file
+        path: 64.png
+      - type: file
+        path: 128.png
+      - type: file
+        path: 256.png
