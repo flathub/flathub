@@ -1,0 +1,108 @@
+app-id: com.dygma.bazecor
+base-version: "25.08"
+base: org.electronjs.Electron2.BaseApp
+runtime-version: "25.08"
+runtime: org.freedesktop.Platform
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: Bazecor
+separate-locales: false
+finish-args:
+  - --device=all
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --filesystem=/run/udev:ro
+  - --filesystem=host-etc:ro # This flag requires explicit permission to be granted by flathub.
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  # The org.freedesktop.Sdk flatpak is missing a necessary udevadm binary required by Bazecor. Without it, it
+  # fails to perform a system-wide scan to discover every Dygma devices that are currently connected via USB
+  # or bluetooth. Until org.freedesktop.Sdk provides a udevadm binary, we will keep using this fallback
+  # solution for now.
+  - name: eudev
+    config-opts:
+      - --disable-hwdb
+      - --disable-logging
+      - --disable-gudev
+      - --disable-introspection
+      - --disable-keymap
+      - --disable-mtd_probe
+    cleanup:
+      - /include
+      - /etc
+      - /libexec
+      - /sbin
+      - /lib/pkgconfig
+      - /man
+      - /share/aclocal
+      - /share/doc
+      - /share/gtk-doc
+      - /share/man
+      - /share/pkgconfig
+      - "*.la"
+      - "*.a"
+    sources:
+      - type: git
+        url: "https://github.com/eudev-project/eudev"
+        tag: "v3.2.14"
+        commit: 9e7c4e744b9e7813af9acee64b5e8549ea1fbaa3
+  - name: com.dygma.bazecor
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/com.dygma.bazecor/flatpak-node/cache
+        npm_config_cache: /run/build/com.dygma.bazecor/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        npm_config_nodedir: /run/build/com.dygma.bazecor/flatpak-node/cache/node-gyp/34.2.0
+        npm_config_runtime: electron
+        npm_config_target: "34.2.0"
+    sources:
+      - type: git
+        url: "https://github.com/Dygmalab/Bazecor"
+        tag: v1.9.0 # DO NOT MANUALLY CHANGE! Use ./update.sh instead
+        commit: "e6b51b607f25627492fb30d2a64c68c8eca6d27f" # DO NOT MANUALLY CHANGE! Use ./update.sh instead
+      - type: patch
+        path: forge.config.ts.patch
+      - type: script
+        dest-filename: Bazecor
+        commands:
+          - exec zypak-wrapper /app/lib/com.dygma.bazecor/Bazecor "$@"
+          # The documentation for building an electron app for flatpak gives us the instructions on how to
+          # create an offline npm repository (also known as an offline-mirror). It is generally done by
+          # setting a new environment variable `npm_config_offline` to `"true"`, and by instructing `npm` to
+          # work in offline mode using the `--offline`.
+          # https://docs.flatpak.org/en/latest/electron.html#the-application-module
+          # https://docs.flatpak.org/en/latest/electron.html#build-commands
+          # Unfortunately, Bazecor uses yarn and not npm: the instructions from flatpak.org won't work.
+          # I have followed these instructions here to create the equivalent offline mirror for yarn:
+          # https://www.w3resource.com/yarn/configuring-an-offline-mirror.php
+      - type: file
+        path: .yarnrc
+        # This file is used for bundling NPM packages, described here:
+        # https://docs.flatpak.org/en/latest/electron.html#bundling-npm-packages
+        # The file was generated using the following command, and is used to create the offline npm mirror.
+        #
+        #    flatpak-node-generator --electron-node-headers yarn "path/to/Bazecor/yarn.lock"
+        #
+        # The reason why I added `--electron-node-headers` is because Bazecor compiles a few native modules
+        # and node-gyp needs access the electron headers to compile their C/C++ source code. Also, this file
+        # is automatically re-generated using the matching yarn.lock of the user selected release when running
+        # ./update.sh script.
+      - generated-sources.json
+    build-commands:
+      - yarn install --frozen-lockfile --offline
+      - yarn electron-forge package --platform=linux
+      - mkdir -p ${FLATPAK_DEST}/lib/com.dygma.bazecor
+      - cp -r out/Bazecor-linux-x64/* ${FLATPAK_DEST}/lib/com.dygma.bazecor/
+      - install -Dm755 Bazecor "${FLATPAK_DEST}/bin/Bazecor"
+      - install -Dm644 build/com.dygma.bazecor.desktop "${FLATPAK_DEST}/share/applications/com.dygma.bazecor.desktop"
+      - install -Dm644 build/com.dygma.bazecor.metainfo.xml "${FLATPAK_DEST}/share/metainfo/com.dygma.bazecor.metainfo.xml"
+      - install -Dm644 build/logo.png "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/com.dygma.bazecor.png"
