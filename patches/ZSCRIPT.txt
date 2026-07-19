@@ -1,0 +1,149 @@
+version "3.8"
+
+// ============================================================================
+// Native declarations for compatibility with the mapset's DECORATE file.
+// Keep these intact to avoid the crash "Replaced type not found".
+// ============================================================================
+class Tracer : Actor {}
+class SmartTracer : Actor {}
+class SmartgunTracer2 : Actor {}
+class SmartgunTracer : Actor {}
+class ShotgunTracer : Actor {}
+class HeavyTracer : Actor {}
+
+// ============================================================================
+// Global utility class
+// ============================================================================
+class Util
+{
+	play static void setupFlashlight (int playerID, int flashID)
+	{
+		// --- NATIVE BLOCKING LOGIC (HISTORICAL PROJECT) ---
+		// The debug log demonstrated that when the flashlight is legitimate, playerID is 900.
+		// When you try to re-enable it abusively after the MAP02 failure, ACS
+		// sends a playerID equal to 0. We intercept the event and block the spawn!
+		if (playerID == 0)
+		{
+			return;
+		}
+
+		PlayerInfo ply = players[ConsolePlayer];
+		if (ply && ply.mo)
+		{
+			ActorHeadLight light = ActorHeadLight(Actor.Spawn("ActorHeadLight", ply.mo.pos));
+			if (light)
+			{
+				light.ChangeTid(flashID);
+				light.toFollow = ply.mo;
+				light.Activate(null);
+			}
+		}
+	}
+	
+	static int round (double num)
+	{
+		int result = (num - floor(num) > 0.5) ? ceil(num) : floor(num);
+		return result;
+	}
+}
+
+// ============================================================================
+// Optimized flashlight entity for recent UZDoom
+// ============================================================================
+class ActorHeadLight : SpotLight
+{
+	PlayerPawn toFollow;
+	Vector3 offset;
+	Vector3 finalOffset;
+	double zBump;
+	bool ready;
+	bool on;
+
+	override void Activate(Actor activator)
+	{
+		on = true;
+
+		String colorStr = "White";
+		let cv_color = CVar.FindCVar("flashlight_color");
+		if (cv_color)
+		{
+			colorStr = cv_color.GetString();
+		}
+
+		Color c = colorStr;
+
+		// Strict syntax for the native light array indices in recent UZDoom
+		self.args[0] = c.r;
+		self.args[1] = c.g;
+		self.args[2] = c.b;
+
+		// [MAXIMUM OPTIMIZATION] Fixed limit of 180 to eliminate 50% FPS drop
+		self.args[3] = 180;
+		self.args[4] = 0;
+
+		float innerAng = 20.0;
+		let cv_in = CVar.FindCVar("flashlight_inner");
+		if (cv_in)
+		{
+			innerAng = cv_in.GetFloat();
+		}
+		self.SpotInnerAngle = innerAng * 0.8;
+
+		float outerAng = 45.0;
+		let cv_out = CVar.FindCVar("flashlight_outer");
+		if (cv_out)
+		{
+			outerAng = cv_out.GetFloat();
+		}
+		self.SpotOuterAngle = outerAng * 0.8;
+
+		super.Activate(activator);
+	}
+
+	override void DeActivate(Actor activator)
+	{
+		on = false;
+		self.args[3] = 0;
+		super.DeActivate(activator);
+	}
+
+	override void Tick()
+	{
+		if (!toFollow)
+		{
+			Destroy();
+			return;
+		}
+
+		if (ready && on)
+		{
+			int location = 0;
+			let cv_loc = CVar.FindCVar("flashlight_location");
+			if (cv_loc)
+			{
+				location = cv_loc.GetInt();
+			}
+
+			if (location == 3)
+			{
+				offset = (0, 0, toFollow.ViewHeight);
+			}
+			else
+			{
+				offset = (0, 0, toFollow.player.viewheight);
+			}
+
+			A_SetAngle(toFollow.angle, 0);
+			Vector2 finalOffset2D = RotateVector ((offset.x, offset.y), toFollow.angle - 90.0);
+			finalOffset = (finalOffset2D.x, finalOffset2D.y, offset.z);
+
+			A_SetPitch(toFollow.pitch, SPF_INTERPOLATE);
+			SetOrigin(toFollow.pos + finalOffset, false);
+		}
+		else if (on)
+		{
+			ready = true;
+		}
+		Super.Tick();
+	}
+}
