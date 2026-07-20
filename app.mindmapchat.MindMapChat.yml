@@ -1,0 +1,91 @@
+# Flatpak manifest for Flathub.
+#
+# Rendered by Update-PackageManifests from packaging/identity.json + the published
+# release, then submitted to github.com/flathub/<app-id>. Only THIS manifest is
+# public — Flathub accepts proprietary apps, and because we are the upstream author
+# redistribution permission is implicit, so it can point straight at our own .deb
+# without the `extra-data` mechanism.
+#
+# The source is the *flathub-flavoured* .deb, NOT the one we serve from the CDN:
+# that build has the self-updater compiled out (Flatpak owns updates, and a
+# self-updating Flatpak is rejected) and Ollama auto-provisioning disabled (the
+# sandbox may not spawn host processes). Its launcher is rooted at /app.
+#
+# Repackaging the .deb rather than rebuilding from source deliberately reuses the
+# deb staging we already trust — the bundled ONNX Runtime and the bundled GSettings
+# schemas in particular.
+app-id: app.mindmapchat.MindMapChat
+runtime: org.freedesktop.Platform
+# Substituted from $script:FLATPAK_RUNTIME_VERSION, which the prerequisites menu also
+# installs — so the runtime on the build machine cannot drift from the one declared here.
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: mindmap_chat
+
+finish-args:
+  # Reaches a *host* Ollama on localhost:11434. The app cannot install Ollama itself
+  # inside the sandbox, so it tells the user to install it on the host instead.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU acceleration for the Flutter GTK embedder.
+  - --device=dri
+  # The user picks where maps/notes live, and imports Freeplane/XMind files from
+  # anywhere, so a narrower filesystem grant would break the core flow.
+  - --filesystem=home
+  # libsecret talks to the host's Secret Service (keyring) over D-Bus. Without this
+  # the bundled libsecret loads but every credential read/write fails.
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  # libsecret is NOT in the freedesktop runtime (checked: neither 23.08 nor 24.08),
+  # but the app links against it for secure storage — without it the binary dies at
+  # startup with "libsecret-1.so.0 => not found". The .deb gets it from the distro;
+  # a Flatpak has to bring its own.
+  - name: libsecret
+    buildsystem: meson
+    # Only what the app actually needs: the C library. Docs, GIR, VAPI and the man
+    # pages just add build deps (gi-docgen, valac) and bloat.
+    config-opts:
+      # meson defaults libdir to lib64 on x86_64, which is NOT on the loader's search
+      # path in a Flatpak — the library builds fine and is then never found. Force /app/lib.
+      - --libdir=lib
+      - -Dmanpage=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dvapi=false
+      # Transport encryption for the D-Bus Secret Service session. 'disabled' would
+      # send secrets to the keyring unencrypted over the bus; gnutls is in the
+      # freedesktop runtime, libgcrypt is not — so use gnutls.
+      - -Dcrypto=gnutls
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
+        sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/gtk-doc
+
+  - name: mindmap-chat
+    buildsystem: simple
+    build-commands:
+      # Unpack the .deb (ar archive containing data.tar.{xz,zst,gz}).
+      - ar x mindmap-chat-linux-flathub.deb
+      - tar -xf data.tar.*
+      # The payload keeps its internal layout; only the prefix moves /usr -> /app,
+      # which is exactly what the launcher was rendered for.
+      - mkdir -p /app/share
+      - cp -a usr/share/mindmap_chat /app/share/mindmap_chat
+      # The launcher from the .deb is the /app-rooted one (this flavour was built
+      # that way), and it exports LD_LIBRARY_PATH — the ONLY mechanism that resolves
+      # libonnxruntime.so here, since a Flatpak has no ldconfig / ld.so.conf.d.
+      - install -Dm755 usr/bin/mindmap_chat /app/bin/mindmap_chat
+      - install -Dm644 usr/share/applications/app.mindmapchat.MindMapChat.desktop /app/share/applications/app.mindmapchat.MindMapChat.desktop
+      - install -Dm644 usr/share/icons/hicolor/512x512/apps/app.mindmapchat.MindMapChat.png /app/share/icons/hicolor/512x512/apps/app.mindmapchat.MindMapChat.png
+      - install -Dm644 usr/share/metainfo/app.mindmapchat.MindMapChat.metainfo.xml /app/share/metainfo/app.mindmapchat.MindMapChat.metainfo.xml
+    sources:
+      - type: file
+        url: https://dl.mindmapchat.app/1.17.16/mindmap-chat-linux-flathub.deb
+        sha256: 2b017c61f153428f3356e92ae49eea78629fc3985b2716f865fd80df16fe92fc
