@@ -1,0 +1,214 @@
+# Flatpak manifest for Fresco.
+#
+# Build & test locally:
+#   flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 \
+#       org.freedesktop.Sdk.Extension.rust-stable//24.08 \
+#       org.freedesktop.Platform.ffmpeg-full//24.08
+#   # generate offline cargo sources (Flathub builds with no network):
+#   python3 flatpak/flatpak-cargo-generator.py Cargo.lock -o flatpak/cargo-sources.json
+#   flatpak-builder --user --install --force-clean build-dir \
+#       flatpak/io.github.dibbayajyotiroy.Fresco.yaml
+#   flatpak run io.github.dibbayajyotiroy.Fresco
+#
+# NOTE: the libmpv / ffmpegthumbnailer modules below are the part most likely to
+# need iteration on first local build — see docs/FLATHUB.md.
+
+app-id: io.github.dibbayajyotiroy.Fresco
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: fresco
+
+# ffmpeg is provided by the runtime extension rather than rebuilt from scratch.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: "24.08"
+    add-ld-path: .
+    no-autodownload: false
+    autodelete: false
+
+finish-args:
+  # X11 for the embedded-mpv backend (desktop-level window we restack); Wayland
+  # for the layer-shell backend (bundled mpvpaper). Fresco picks the right one
+  # per session at runtime.
+  - --socket=x11
+  - --share=ipc
+  # REVIEWER NOTE — why there is no --socket=wayland and why the wayland
+  # sockets are exposed via --filesystem instead (details: docs/FLATHUB.md,
+  # "Wayland security context & layer-shell"):
+  #   With --socket=wayland, flatpak >= 1.16 routes the app through a
+  #   wp_security_context_manager_v1 proxy socket. Compositors that filter
+  #   privileged globals for security-context clients — COSMIC's cosmic-comp
+  #   confirmed in testing (only trusted clients get privileged globals);
+  #   sway/wlroots ship the same mechanism — then hide zwlr_layer_shell_v1,
+  #   which the wallpaper backend (bundled mpvpaper) requires; without it
+  #   mpvpaper crashes (SIGSEGV) and Fresco can only show static frames.
+  #   There is no wallpaper/layer-shell portal, so the only way for a
+  #   sandboxed wallpaper app to work on these compositors is to connect to
+  #   the host's real socket. The socket name is machine-dependent;
+  #   wayland-0 + wayland-1 cover practically all sessions. flatpak scrubs
+  #   WAYLAND_DISPLAY when the wayland socket permission is absent, so a
+  #   wrapper script (fresco-wrapper.sh) restores it at launch.
+  - --filesystem=xdg-run/wayland-0
+  - --filesystem=xdg-run/wayland-1
+  # GPU for mpv vo=gpu + hardware decode.
+  - --device=dri
+  # Read the user's media files wherever they live (the daemon opens stored
+  # paths long after the file chooser closes, so the document portal alone is
+  # not enough). See docs/FLATHUB.md for the Flathub reviewer note.
+  - --filesystem=host:ro
+  # Write the XDG autostart entry on the host so the wallpaper restores on login.
+  - --filesystem=xdg-config/autostart:create
+  # Set the GNOME desktop background (overview/lock-screen fallback) via dconf.
+  - --talk-name=ca.desrt.dconf
+  - --filesystem=xdg-run/dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  # Allow launching the daemon as a separate instance for autostart.
+  - --talk-name=org.freedesktop.Flatpak
+  # Reach Supabase for anonymous feedback + the event-driven notification
+  # websocket (Realtime) and update prompts.
+  - --share=network
+  # Raise native desktop notifications (admin announcements + update prompts).
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  prepend-ld-library-path: /app/lib/ffmpeg
+  env:
+    CARGO_HOME: /run/build/fresco/cargo
+
+modules:
+  # libplacebo + libass + libmpv. ffmpeg comes from the runtime extension.
+  - name: libass
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Ddemos=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v6.338.2
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplugins=disabled
+      - -Dmanpage-build=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
+        sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+
+  # Bundled so users never install it themselves — Fresco supervises mpvpaper on
+  # Wayland (layer-shell) sessions and steers it over its mpv IPC socket. Built
+  # after mpv so it links the libmpv bundled above.
+  - name: mpvpaper
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/GhostNaN/mpvpaper.git
+        # TODO(flathub): pin to a verified release tag + commit before submission
+        # (Flathub requires a commit alongside the tag for reproducibility).
+        tag: "1.4"
+        commit: "8678234c163d0b0b616ec9ff6e5e0e1c87e0e6f4"
+
+  # Fresco shells out to the `ffmpeg` CLI (still frames in the daemon overview,
+  # rotated thumbnails in the library, browser-bridge poster) and to `ffprobe`
+  # (media probing in the library). The org.freedesktop.Platform.ffmpeg-full
+  # extension ships libraries only — no CLI binaries — so inside the sandbox
+  # those features would silently degrade. We build the CLI tools ourselves,
+  # statically against ffmpeg's own internal libs, so they don't conflict with
+  # the runtime/extension shared libav* that libmpv links against.
+  - name: ffmpeg-cli
+    buildsystem: autotools
+    config-opts:
+      - --disable-doc
+      - --disable-ffplay
+      - --disable-debug
+      # ffprobe stays enabled — Fresco's library probe_media uses it.
+      # Default (LGPL) feature set otherwise so common codecs work; the app is
+      # GPL-3.0 so licensing is unproblematic either way.
+    cleanup:
+      # Only the binaries are wanted; drop the static libs/headers the build
+      # installs alongside them (libmpv links the runtime's shared ffmpeg).
+      - /include
+      - /lib/libav*
+      - /lib/libsw*
+      - /lib/pkgconfig
+      - /share/ffmpeg
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
+        sha256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+
+  - name: ffmpegthumbnailer
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_GIO=ON
+      - -DENABLE_THUMBNAILER=OFF
+      # The bundled unit tests don't compile against the runtime's newer
+      # ffmpeg (deprecated side-data API); we only need the library + CLI.
+      - -DENABLE_TESTS=OFF
+    sources:
+      # The 2.2.2 release still calls avcodec_decode_video2(), which was
+      # removed in the ffmpeg 7 shipped by the GNOME 48 runtime, so it no
+      # longer compiles. Upstream master switched to the send/receive decode
+      # API after 2.2.2 — pin to a master commit (post-2.3.0) instead of the
+      # release tarball until a fixed release is tagged.
+      - type: git
+        url: https://github.com/dirkvdb/ffmpegthumbnailer.git
+        commit: 43ca9e37d1ee4f0787ae78a63f49a12c072299d1
+
+  - name: fresco
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      # The ffmpeg-full extension mounts here; the directory must exist in
+      # the app or bwrap fails to set up the sandbox at all.
+      - mkdir -p /app/lib/ffmpeg
+      - cargo --offline build --release --all-features
+      # Real binaries get a -real suffix; fresco-wrapper.sh (see its header:
+      # Wayland security-context workaround) is installed under both public
+      # names and restores WAYLAND_DISPLAY before exec'ing them.
+      - install -Dm755 target/release/fresco /app/bin/fresco-real
+      - install -Dm755 target/release/frescod /app/bin/frescod-real
+      - install -Dm755 flatpak/fresco-wrapper.sh /app/bin/fresco
+      - install -Dm755 flatpak/fresco-wrapper.sh /app/bin/frescod
+      - install -Dm644 data/io.github.dibbayajyotiroy.Fresco.desktop
+          /app/share/applications/io.github.dibbayajyotiroy.Fresco.desktop
+      - install -Dm644 data/io.github.dibbayajyotiroy.Fresco.metainfo.xml
+          /app/share/metainfo/io.github.dibbayajyotiroy.Fresco.metainfo.xml
+      - install -Dm644 data/icons/io.github.dibbayajyotiroy.Fresco.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.dibbayajyotiroy.Fresco.svg
+    sources:
+      # Submission form: build from a published tag (Flathub requires `commit`
+      # pinned alongside `tag` for reproducibility). x-checker-data lets the
+      # Flathub bot auto-open update PRs when a new vX.Y.Z tag is pushed.
+      #
+      # For LOCAL testing of un-tagged changes, temporarily replace this block
+      # with:  - type: dir
+      #          path: ..
+      - type: git
+        url: https://github.com/DibbayajyotiRoy/Fresco.git
+        tag: v1.1.2
+        commit: 83468c155a78f4bb2e934e340c0f1ef01186d3d5
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+      # Offline cargo dependency sources, generated from Cargo.lock — see header.
+      - cargo-sources.json
