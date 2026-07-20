@@ -1,0 +1,94 @@
+app-id: io.github.iutinfoaix_s201.VigieChiro
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk
+command: vigiechiro-runner
+rename-desktop-file: VigieChiro.desktop
+
+finish-args:
+  # Affichage. Wayland en premier, X11 en repli : le parc des naturalistes est hétérogène.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Lecture audio des séquences (écoute et validation des cris).
+  - --socket=pulseaudio
+
+  # API Vigie-Chiro (dépôt, résultats Tadarida) et consultation des versions publiées.
+  - --share=network
+
+  # Espace de travail, et RIEN d'autre du dossier personnel. `Workspace.parDefaut()` code ce
+  # chemin en dur, on peut donc n'accorder que lui : ni le reste de Documents, ni le home.
+  # `:create` laisse l'application créer le dossier au premier lancement.
+  - --filesystem=~/Documents/VigieChiro-Companion:create
+
+  # LE point qui décide de l'utilité du paquet : les cartes SD. udisks2 les monte sous
+  # /run/media/<utilisateur>/<étiquette> (Ubuntu, Fedora récents) ou /media/<utilisateur>/…
+  # (Debian, dérivées plus anciennes). Sans ces deux accès, l'application s'ouvre mais ne peut
+  # RIEN importer - c'est-à-dire qu'elle ne sert à rien.
+  - --filesystem=/run/media
+  - --filesystem=/media
+
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk/install.sh
+
+  - name: vigiechiro
+    buildsystem: simple
+    build-commands:
+      # On extrait le .deb PUBLIÉ plutôt que de construire depuis les sources : les builds Flathub
+      # sont hors ligne, et une résolution Maven y est impossible sans déclarer chaque dépendance
+      # transitive en source vérifiée. Même choix que Gluon Scene Builder, pour la même raison.
+      - mkdir -p paquet
+      - ar p vigiechiro.deb data.tar.zst | tar --use-compress-program=unzstd -xf - -C paquet
+      # Le fat-jar embarque déjà JavaFX et ses natifs Linux : contrairement à Scene Builder, aucun
+      # SDK JavaFX séparé n'est nécessaire.
+      - install -Dm644 paquet/opt/vigiechiro/lib/app/vigiechiro-*-shaded.jar /app/lib/vigiechiro.jar
+      - install -Dm644 paquet/opt/vigiechiro/lib/VigieChiro.png
+        /app/share/icons/hicolor/256x256/apps/io.github.iutinfoaix_s201.VigieChiro.png
+      - install -Dm755 vigiechiro-runner /app/bin/vigiechiro-runner
+      - install -Dm644 io.github.iutinfoaix_s201.VigieChiro.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 paquet/opt/vigiechiro/lib/vigiechiro-VigieChiro.desktop /app/lib/VigieChiro.desktop
+      # `Categories` d'abord : jpackage écrit `Categories=Unknown`, valeur INVALIDE que
+      # desktop-file-edit refuse - il valide le fichier à chaque appel, donc toute autre édition
+      # échouerait avant d'y arriver. (Défaut présent aussi dans le .deb installé normalement.)
+      - desktop-file-edit --remove-key=Categories /app/lib/VigieChiro.desktop
+      - desktop-file-edit --set-key=Categories --set-value='Science;Biology;' /app/lib/VigieChiro.desktop
+      - desktop-file-edit --remove-key=Comment /app/lib/VigieChiro.desktop
+      - desktop-file-edit --set-key=Comment --set-value='Préparer et déposer les nuits de chiroptères'
+        /app/lib/VigieChiro.desktop
+      - desktop-file-edit --set-key=Exec --set-value='vigiechiro-runner' /app/lib/VigieChiro.desktop
+      - desktop-file-edit --set-icon=io.github.iutinfoaix_s201.VigieChiro /app/lib/VigieChiro.desktop
+      - desktop-file-install /app/lib/VigieChiro.desktop --dir=/app/share/applications
+
+    sources:
+      - type: file
+        dest-filename: vigiechiro.deb
+        url: https://github.com/IUTInfoAix-S201/vigiechiro-pr-companion/releases/download/v2.26.0/vigiechiro_2.26.0_amd64-x64.deb
+        sha256: 391595b095d82fa825eaa8bbf6c3c59666a081970a2b480a376e75402a8e32ab
+        # Le robot de Flathub détecte les nouvelles versions et ouvre la mise à jour tout seul :
+        # c'est ce qui rend la maintenance quasi nulle une fois le paquet accepté.
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/IUTInfoAix-S201/vigiechiro-pr-companion/releases/latest
+          version-query: .tag_name | ltrimstr("v")
+          timestamp-query: .published_at
+          url-query: .assets[] | select(.name=="vigiechiro_" + $version + "_amd64-x64.deb")
+            | .browser_download_url
+
+      - type: file
+        path: io.github.iutinfoaix_s201.VigieChiro.metainfo.xml
+
+      - type: script
+        dest-filename: vigiechiro-runner
+        commands:
+          # `--enable-native-access` et `--sun-misc-unsafe-memory-access` : mêmes options que
+          # l'installeur jpackage (JNI SQLite, natifs JavaFX, Unsafe de Guice/Guava).
+          - exec /app/jre/bin/java --enable-native-access=ALL-UNNAMED
+            --sun-misc-unsafe-memory-access=allow -cp /app/lib/vigiechiro.jar
+            fr.univ_amu.iut.Launcher "$@"
