@@ -1,0 +1,75 @@
+# Manifiesto FLATHUB de IngePresupuestos.
+#
+# ⚠ EDICIÓN SEPARADA — NO comparte config con la edición Flatpak de R2/GitHub
+# (installer/flatpak/). Diferencias obligadas por las reglas de Flathub:
+#   · SIN `--talk-name=org.freedesktop.Flatpak` (Flathub prohíbe salir del sandbox
+#     a ejecutar programas del host) → los reportes ODT/ODS (que dependen de
+#     LibreOffice del sistema) quedan deshabilitados en esta edición; PDF/Word/Excel
+#     siguen funcionando. La importación .prs se conserva empaquetando mdbtools.
+#   · Dependencias Python OFFLINE con hashes (python3-requirements.yaml), SIN PySide6
+#     (lo aporta el base-app io.qt.PySide.BaseApp).
+#   · Fuente desde el tag público v2.8.4 (archive + sha256), no una carpeta local.
+app-id: com.ingepresupuestos.IngePresupuestos
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+command: ingepresupuestos
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri                 # OpenGL: mapa (QtLocation) y Qt Quick
+  - --share=network              # tiles OSM, asistentes IA, índices INEI
+  # Sin --filesystem=home: abrir/guardar/importar/exportar usan el PORTAL de
+  # archivos (QFileDialog bajo Flatpak lo usa solo → acceso solo al archivo
+  # elegido). La BD propia vive en el dir sandbox (XDG_DATA_HOME). Verificar en
+  # el build que import/export por portal funciona; si algún flujo escribe a una
+  # ruta fija, añadir --filesystem=xdg-download o justificar --filesystem=home.
+  # NOTA: sin --talk-name=org.freedesktop.Flatpak → sin acceso al host (regla Flathub)
+
+cleanup:
+  - /include
+  - /share/man
+  - /share/gtk-doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # mdbtools: permite importar PowerCost .prs DENTRO del sandbox (sin host).
+  - name: mdbtools
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/mdbtools/mdbtools/releases/download/v1.0.1/mdbtools-1.0.1.tar.gz
+        sha256: ff9c425a88bc20bf9318a332eec50b17e77896eef65a0e69415ccb4e396d1812
+    cleanup:
+      - /include
+      - /share
+      - '*.la'
+
+  # Dependencias Python congeladas (offline, con sha256), SIN PySide6.
+  - python3-requirements.yaml
+
+  # La aplicación (código + datos), desde el tag público v2.8.4.
+  - name: ingepresupuestos
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/ingepresupuestos
+      - cp -a core models utils views widgets worker resources main.py presupuestos_seed.db ${FLATPAK_DEST}/ingepresupuestos/
+      - install -Dm755 flathub-launcher.sh ${FLATPAK_DEST}/bin/ingepresupuestos
+      - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 resources/icons/elementary/24/ingepresupuestos.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/ingelibre/ingepresupuestos/archive/refs/tags/v2.8.4.tar.gz
+        sha256: 505c3d1d2c2df0e2b58ccf2f17cf7fd298881a16fd87c6f087931b4e1f0cd313
+      - type: file
+        path: flathub-launcher.sh
+      - type: file
+        path: com.ingepresupuestos.IngePresupuestos.desktop
+      - type: file
+        path: com.ingepresupuestos.IngePresupuestos.metainfo.xml
