@@ -1,0 +1,67 @@
+# Flatpak manifest for Local AI Hub.
+#
+# Local AI Hub is a *host service manager*: it starts/stops/queries the user's
+# systemd --user services (Ollama, Open WebUI, ComfyUI) and, outside the sandbox,
+# reads their logs. Under Flatpak it can't shell out to systemctl/journalctl, so
+# the app talks to the host user systemd manager over D-Bus (org.freedesktop.
+# systemd1) — see hub/services/_systemd_dbus.py. finish-args below are the
+# minimum for that; each is justified in flatpak/PACKAGING-NOTES.md.
+#
+# PySide6 (with QtWebEngine + QtDBus) comes from the official Flathub PySide
+# BaseApp on top of the KDE runtime, so no second copy of Qt is bundled.
+
+app-id: io.github.kamsiob.LocalAIHub
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+command: local-ai-hub
+
+finish-args:
+  # --- GUI (QtWebEngine desktop app) ---
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # --- Talk to the host user systemd manager to start/stop/query the services
+  #     this app exists to manage. Scoped to that one well-known name — not a
+  #     broad session-bus grant, not org.freedesktop.Flatpak (host escape). ---
+  - --talk-name=org.freedesktop.systemd1
+
+  # --- User-initiated model work: Ollama's local REST API (127.0.0.1:11434) and
+  #     model downloads/updates the user explicitly clicks. No telemetry. ---
+  - --share=network
+
+  # --- Read/write the ComfyUI model folders (scan installed models, download
+  #     updates into place). Restricted to the ComfyUI tree, not all of $HOME. ---
+  - --filesystem=~/ComfyUI
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  - name: local-ai-hub
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/share/local-ai-hub
+      - cp -r app.py hub web ${FLATPAK_DEST}/share/local-ai-hub/
+      - |
+        cat > ${FLATPAK_DEST}/bin/local-ai-hub <<'EOF'
+        #!/bin/sh
+        # PySide6 (from the BaseApp) looks for the WebEngine helper under its own
+        # package dir / /usr; in this layout it lives at the /app prefix, so point
+        # QtWebEngine at it explicitly.
+        export QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+        exec python3 /app/share/local-ai-hub/app.py "$@"
+        EOF
+        chmod +x ${FLATPAK_DEST}/bin/local-ai-hub
+      - install -Dm644 flatpak/io.github.kamsiob.LocalAIHub.desktop ${FLATPAK_DEST}/share/applications/io.github.kamsiob.LocalAIHub.desktop
+      - install -Dm644 flatpak/io.github.kamsiob.LocalAIHub.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.kamsiob.LocalAIHub.metainfo.xml
+      - install -Dm644 packaging/local-ai-hub-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.kamsiob.LocalAIHub.png
+    sources:
+      - type: git
+        url: https://github.com/kamsiob/LocalAIHub.git
+        tag: v1.0.0
+        commit: 67f71f1798c6466a0401bd552fdb85b2cfe2492c
