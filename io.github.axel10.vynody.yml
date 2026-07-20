@@ -1,0 +1,77 @@
+id: io.github.axel10.vynody
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: vynody
+rename-icon: io.github.axel10.vynody
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-music
+  - --talk-name=org.mpris.MediaPlayer2.Player
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: rust-env
+    buildsystem: simple
+    build-commands:
+      - echo "Setting up Rust build environment"
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+
+  - flutter-sdk-3.44.6.json
+  - name: vynody
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/vynody/cargo
+        CARGO_NET_OFFLINE: 'true'
+        PUB_CACHE: /run/build/vynody/pub-cache
+    build-commands:
+      # Prepare FFmpeg binaries (extracted into build directory to prevent download script from running)
+      - mkdir -p audio_core/build/ffmpeg-linux/install
+      - tar -xzf ffmpeg_lib_linux.tar.gz -C audio_core/build/ffmpeg-linux/install
+      
+      # Run codegen (freezed, drift, json_serializable)
+      - dart run build_runner build --delete-conflicting-outputs
+      
+      # Build flutter linux bundle offline
+      - flutter build linux --release --offline
+      
+      # Copy final build bundle to Flatpak app directory
+      - mkdir -p /app/bin /app/lib /app/share/applications /app/share/metainfo /app/share/icons/hicolor/512x512/apps
+      - cp -r build/linux/x64/release/bundle/* /app/
+      
+      # Install integration files
+      - cp io.github.axel10.vynody.desktop /app/share/applications/io.github.axel10.vynody.desktop
+      - cp io.github.axel10.vynody.metainfo.xml /app/share/metainfo/io.github.axel10.vynody.metainfo.xml
+      - cp io.github.axel10.vynody.png /app/share/icons/hicolor/512x512/apps/io.github.axel10.vynody.png
+
+    sources:
+      - type: git
+        url: https://github.com/axel10/vynody.git
+        tag: 1.8.4
+        commit: 5a77d67c1b5f624d053ec48682c288afc122073d
+      - type: file
+        url: https://github.com/axel10/audio_core/releases/download/0.6/ffmpeg_lib_linux.tar.gz
+        sha256: 256593a6acaf54b6e0252aae96051246a0d400bc673cf02e32fafd2d24880d6c
+        dest-filename: ffmpeg_lib_linux.tar.gz
+      - type: file
+        path: io.github.axel10.vynody.desktop
+      - type: file
+        path: io.github.axel10.vynody.metainfo.xml
+      - type: file
+        path: io.github.axel10.vynody.png
+      
+      # Include pub-sources.json and cargo-sources.json generated via the helper script
+      - cargo-sources.json
+      - pub-sources.json
+      - pubspec-sources.json
