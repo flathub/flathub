@@ -1,0 +1,401 @@
+id: io.github.silkepilon.OpenGaussian
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: opengaussian
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/opengaussian/cargo
+    # rustc overflows the default 8 MiB thread stack while type-checking the
+    # burn tensor graph in og-train.
+    RUST_MIN_STACK: '33554432'
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # The splat trainer and the viewport both run on the GPU through Vulkan.
+  - --device=dri
+  # Downloading a video from a URL, and COLMAP fetching its vocabulary trees.
+  - --share=network
+  # Everything else — project folders, imports, exports — goes through the
+  # file-chooser portal.
+
+modules:
+  - name: eigen
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+        sha256: 8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+
+  - name: openblas
+    buildsystem: simple
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS DYNAMIC_ARCH=1 TARGET=CORE2 USE_OPENMP=1
+        NO_STATIC=1 NUM_THREADS=64
+      - make PREFIX=/app NO_STATIC=1 install
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/OpenMathLib/OpenBLAS/archive/refs/tags/v0.3.34.tar.gz
+        sha256: cd7e129868320cc2d033afa920e31202dfe0b8066a5b66661900ccc0f197dfed
+
+  - name: gklib
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      # GKlib and METIS still ask for CMake 2.8, which CMake 4 refuses.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/KarypisLab/GKlib/archive/8bd6bad750b2b0d90800c632cf18e8ee93ad72d7.tar.gz
+        sha256: e1d59de12336731e6dde8465f05de7b907fae5d72c921cffcde217a89eaab654
+
+  - name: metis
+    buildsystem: simple
+    build-options:
+      env:
+        # The Makefile calls cmake with a fixed argument list, so the policy
+        # floor for METIS's own CMake 2.8 request has to come from the
+        # environment.
+        CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+    # METIS 5.2.1 generates build/xinclude/metis.h from its own Makefile
+    # wrapper; configuring the CMake project directly fails without it.
+    build-commands:
+      - make config shared=1 prefix=/app gklib_path=/app cflags="-D_POSIX_C_SOURCE=200809L"
+      - make -j$FLATPAK_BUILDER_N_JOBS install
+    cleanup:
+      - /bin
+      - /include
+    sources:
+      - type: archive
+        url: https://github.com/KarypisLab/METIS/archive/refs/tags/v5.2.1.tar.gz
+        sha256: 1a4665b2cd07edc2f734e30d7460afb19c1217c2547c2ac7bf6e1848d50aff7a
+
+  - name: suitesparse
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: .
+    config-opts:
+      - -DSUITESPARSE_ENABLE_PROJECTS=suitesparse_config;amd;camd;ccolamd;colamd;cholmod
+      - -DBUILD_STATIC_LIBS=OFF
+      - -DSUITESPARSE_USE_OPENMP=ON
+      - -DSUITESPARSE_USE_CUDA=OFF
+      - -DCHOLMOD_GPL=ON
+      - -DBLA_VENDOR=OpenBLAS
+    cleanup:
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/refs/tags/v7.12.2.tar.gz
+        sha256: 679412daa5f69af96d6976595c1ac64f252287a56e98cc4a8155d09cc7fd69e8
+
+  - name: gflags
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      # gflags 2.2.2 still asks for CMake 2.8.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/gflags/gflags/archive/refs/tags/v2.2.2.tar.gz
+        sha256: 34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf
+
+  - name: glog
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DWITH_GTEST=OFF
+    cleanup:
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/google/glog/archive/refs/tags/v0.7.1.tar.gz
+        sha256: 00e4a87e87b7e7612f519a41e491f16623b12423620006f59f5688bfd8d13b08
+
+  - name: ceres-solver
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_BENCHMARKS=OFF
+      - -DMINIGLOG=OFF
+      - -DGFLAGS=ON
+      - -DSUITESPARSE=ON
+      - -DCUDA=OFF
+      - -DLAPACK=ON
+    cleanup:
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/ceres-solver/ceres-solver/archive/refs/tags/2.2.0.tar.gz
+        sha256: 12efacfadbfdc1bbfa203c236e96f4d3c210bed96994288b3ff0c8e7c6f350d4
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=program_options,graph,system,filesystem,thread
+      - ./b2 -j$FLATPAK_BUILDER_N_JOBS install variant=release link=shared threading=multi
+    cleanup:
+      - /include
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-b2-nodocs.tar.gz
+        sha256: aa25e7b9c227c21abb8a681efd4fe6e54823815ffc12394c9339de998eb503fb
+
+  - name: imath
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DIMATH_INSTALL_PKG_CONFIG=ON
+    cleanup:
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/Imath/archive/refs/tags/v3.2.2.tar.gz
+        sha256: b4275d83fb95521510e389b8d13af10298ed5bed1c8e13efd961d91b1105e462
+
+  - name: openexr
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DOPENEXR_BUILD_TOOLS=OFF
+      - -DOPENEXR_INSTALL_EXAMPLES=OFF
+    cleanup:
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.4.13.tar.gz
+        sha256: 1ed0cee48ac8c77da235c8ca8ab85d031d43cd790eda36af87fed4cf316cf2df
+
+  - name: robin-map
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      # robin-map 1.3.0 still asks for CMake 2.8.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/Tessil/robin-map/archive/refs/tags/v1.3.0.tar.gz
+        sha256: a8424ad3b0affd4c57ed26f0f3d8a29604f0e1f2ef2089f497f614b1c94c7236
+
+  # OpenImageIO 3.1 requires OpenColorIO, which in turn needs three small
+  # libraries the SDK does not ship. The build has no network, so each one is
+  # a module of its own instead of an OCIO-internal download.
+  - name: yaml-cpp
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DYAML_CPP_BUILD_TESTS=OFF
+      - -DYAML_CPP_BUILD_TOOLS=OFF
+      # yaml-cpp 0.8.0 still asks for CMake 3.4.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      # …and it uses uint16_t without including <cstdint>, which GCC 15 no
+      # longer pulls in transitively.
+      - -DCMAKE_CXX_FLAGS=-include cstdint
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz
+        sha256: fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16
+
+  - name: pystring
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      # pystring 1.1.4 still asks for CMake 3.2.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    # Upstream installs the library but not the header, and OpenColorIO's find
+    # module needs both.
+    post-install:
+      - install -Dm644 /run/build/pystring/pystring.h /app/include/pystring/pystring.h
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/imageworks/pystring/archive/refs/tags/v1.1.4.tar.gz
+        sha256: 49da0fe2a049340d3c45cce530df63a2278af936003642330287b68cefd788fb
+
+  - name: minizip-ng
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DMZ_COMPAT=OFF
+      - -DMZ_BZIP2=OFF
+      - -DMZ_LZMA=OFF
+      - -DMZ_ZSTD=OFF
+      - -DMZ_OPENSSL=OFF
+      - -DMZ_LIBBSD=OFF
+      - -DMZ_SIGNING=OFF
+      - -DMZ_BUILD_TESTS=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/zlib-ng/minizip-ng/archive/refs/tags/4.0.10.tar.gz
+        sha256: c362e35ee973fa7be58cc5e38a4a6c23cc8f7e652555daf4f115a9eb2d3a6be7
+
+  - name: opencolorio
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DOCIO_BUILD_APPS=OFF
+      - -DOCIO_BUILD_TESTS=OFF
+      - -DOCIO_BUILD_GPU_TESTS=OFF
+      - -DOCIO_BUILD_PYTHON=OFF
+      - -DOCIO_BUILD_DOCS=OFF
+      # Nothing may be fetched at build time; every dependency is a module.
+      - -DOCIO_INSTALL_EXT_PACKAGES=NONE
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.4.2.tar.gz
+        sha256: 2d8f2c47c40476d6e8cea9d878f6601d04f6d5642b47018eaafa9e9f833f3690
+
+  - name: openimageio
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DOIIO_BUILD_TESTS=OFF
+      - -DOIIO_BUILD_TOOLS=OFF
+      - -DUSE_PYTHON=OFF
+      - -DUSE_QT=OFF
+      - -DUSE_OPENCV=OFF
+      - -DUSE_FREETYPE=OFF
+      - -DBUILD_MISSING_DEPS=OFF
+      - -DINTERNALIZE_FMT=OFF
+    cleanup:
+      - /lib/cmake
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://github.com/AcademySoftwareFoundation/OpenImageIO/archive/refs/tags/v3.1.15.0.tar.gz
+        sha256: 7837a2058638dd9caa352d6936677dba7883105c6db6caf6fb58ba40fa2c12c8
+
+  - name: glew
+    buildsystem: simple
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS SYSTEM=linux-egl GLEW_PREFIX=/app GLEW_DEST=/app
+        LIBDIR=/app/lib
+      - make SYSTEM=linux-egl GLEW_PREFIX=/app GLEW_DEST=/app LIBDIR=/app/lib install.all
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /bin
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/glew/glew/2.2.0/glew-2.2.0.tgz
+        sha256: d4fc82893cfb00109578d0a1a2337fb8ca335b3ceccf97b97e5cc7f08e4353e1
+
+  - name: yt-dlp
+    buildsystem: simple
+    # The sdist needs hatchling, which the build has no way of fetching; the
+    # published wheel is pure Python, so it is installed as-is.
+    build-commands:
+      - pip3 install --no-index --no-deps --prefix=/app yt_dlp-2026.7.4-py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/f9/8a/cd4c9b02c10c563adfe78118310129641900e1cd6de888cfae2452072696/yt_dlp-2026.7.4-py3-none-any.whl
+        sha256: f11f2b11d5a8ac4059f9bdf29fa4407dc7c6bb00c5097e95ca22a7a9db518266
+
+  - name: colmap
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DGUI_ENABLED=OFF
+      - -DCUDA_ENABLED=OFF
+      - -DONNX_ENABLED=OFF
+      - -DCGAL_ENABLED=OFF
+      - -DMVS_ENABLED=OFF
+      - -DTESTS_ENABLED=OFF
+      - -DCCACHE_ENABLED=OFF
+      - -DIPO_ENABLED=OFF
+      # No network during the build, so PoseLib and faiss are unpacked beside
+      # the source and FetchContent is pointed straight at them.
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_POSELIB=/run/build/colmap/_deps/poselib
+      - -DFETCHCONTENT_SOURCE_DIR_FAISS=/run/build/colmap/_deps/faiss
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /share/colmap
+    sources:
+      - type: archive
+        url: https://github.com/colmap/colmap/archive/refs/tags/4.1.1.tar.gz
+        sha256: 0cadd938756d7046055751ca35bcf0d35911403fcb65b91d022ddc418dc110a5
+      - type: archive
+        url: https://github.com/PoseLib/PoseLib/archive/fa7280fee27f97aff31ae7f98bab7f583fac7d08.zip
+        sha256: 5408d4ae8ce367cb2f076bc6c5f0f6f78abd3573d2c015304b04e46f23455f5b
+        dest: _deps/poselib
+      - type: archive
+        url: https://github.com/facebookresearch/faiss/archive/refs/tags/v1.14.1.zip
+        sha256: 4b1ae7e7a0a46385b4084f0e3945623a15fcf99d793bf44d82aae8e24f11e5f5
+        dest: _deps/faiss
+
+  - name: opengaussian
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked -p opengaussian
+      - install -Dm755 target/release/opengaussian /app/bin/opengaussian
+      - install -Dm644 packaging/$FLATPAK_ID.desktop /app/share/applications/$FLATPAK_ID.desktop
+      - install -Dm644 packaging/$FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+      - install -Dm644 packaging/icons/$FLATPAK_ID.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 packaging/icons/$FLATPAK_ID-symbolic.svg /app/share/icons/hicolor/symbolic/apps/$FLATPAK_ID-symbolic.svg
+      - install -Dm644 LICENSE /app/share/licenses/$FLATPAK_ID/LICENSE
+    sources:
+      - type: archive
+        url: https://github.com/SilkePilon/OpenGaussian/archive/refs/tags/v0.1.2.tar.gz
+        sha256: df25e30c4997a789d0b92a42b0244b737c08a9cbb1c10eb23361aa907108e554
+      # Every crate in Cargo.lock, plus the cargo config that redirects the
+      # git and crates.io sources at the vendored copies.
+      - cargo-sources.json
