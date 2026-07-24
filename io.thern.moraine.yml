@@ -1,0 +1,100 @@
+# Flatpak manifest for Moraine (GTK desktop app).
+#
+# Moraine shells out to rsync, ssh and rclone at runtime, so they are bundled
+# into the sandbox as modules below — the app is otherwise self-contained.
+#
+# Requires moraine >= 0.1.19 (portable XDG_DATA_DIRS asset resolution). Build:
+#   flatpak install flathub org.gnome.Sdk//49 org.gnome.Platform//49 \
+#       org.freedesktop.Sdk.Extension.rust-stable//25.08
+#   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.thern.moraine.yml
+app-id: io.thern.moraine
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: moraine-gui
+
+finish-args:
+  - --share=network                 # ssh / rclone / ftp transports
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=host               # a backup tool reads/writes arbitrary paths
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/moraine/cargo
+
+modules:
+  # ── rsync (the SSH/rsync backend) ──
+  - name: rsync
+    buildsystem: autotools
+    config-opts:
+      - --disable-md2man
+      - --disable-zstd
+      - --disable-lz4
+      - --disable-xxhash
+      - --disable-openssl
+      - --with-included-popt
+    sources:
+      - type: archive
+        url: https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz
+        sha256: 2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52
+
+  # ── openssh client only (ssh, ssh-keygen) ──
+  - name: openssh
+    buildsystem: autotools
+    config-opts:
+      - --with-privsep-path=/app/var/empty
+    make-args:
+      - ssh
+      - ssh-keygen
+    no-make-install: true
+    post-install:
+      - install -Dm755 ssh /app/bin/ssh
+      - install -Dm755 ssh-keygen /app/bin/ssh-keygen
+    sources:
+      - type: archive
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz
+        sha256: dd8bd002a379b5d499dfb050dd1fa9af8029e80461f4bb6c523c49973f5a39f3
+
+  # ── rclone (cloud / object-storage / FTP backends) — official static binary ──
+  - name: rclone
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rclone /app/bin/rclone
+    sources:
+      - type: archive
+        url: https://downloads.rclone.org/v1.67.0/rclone-v1.67.0-linux-amd64.zip
+        sha256: 07c23d21a94d70113d949253478e13261c54d14d72023bb14d96a8da5f3e7722
+        strip-components: 1
+
+  # ── Moraine itself ──
+  - name: moraine
+    buildsystem: simple
+    build-commands:
+      # Offline build against the crates vendored in cargo-sources.json
+      # (regenerate with flatpak-cargo-generator when Cargo.lock changes).
+      - cargo --offline build --release --locked --features gui --bin moraine --bin moraine-gui
+      - install -Dm755 target/release/moraine     /app/bin/moraine
+      - install -Dm755 target/release/moraine-gui /app/bin/moraine-gui
+      # runtime assets the GUI loads from $XDG_DATA_DIRS/moraine/assets
+      - install -Dm644 assets/hero-bg.png    /app/share/moraine/assets/hero-bg.png
+      - install -Dm644 assets/moraine-64.png /app/share/moraine/assets/moraine-64.png
+      - install -Dm644 assets/moraine-256.png /app/share/moraine/assets/moraine-256.png
+      # desktop entry + icons + appstream, renamed to the app-id
+      - install -Dm644 assets/moraine-gui.desktop /app/share/applications/io.thern.moraine.desktop
+      - desktop-file-edit --set-icon=io.thern.moraine /app/share/applications/io.thern.moraine.desktop
+      - install -Dm644 assets/moraine.svg /app/share/icons/hicolor/scalable/apps/io.thern.moraine.svg
+      - install -Dm644 assets/moraine-256.png /app/share/icons/hicolor/256x256/apps/io.thern.moraine.png
+      - install -Dm644 assets/moraine-128.png /app/share/icons/hicolor/128x128/apps/io.thern.moraine.png
+      - install -Dm644 packaging/flatpak/io.thern.moraine.metainfo.xml /app/share/metainfo/io.thern.moraine.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/TheJonaz/moraine-backup.git
+        tag: v0.2.2
+        commit: 833e2fc84c364106f70bee6711729c4ab7dc9b47
+      - cargo-sources.json
