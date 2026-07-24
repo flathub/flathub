@@ -1,0 +1,52 @@
+id: io.github.anvilnu.imago
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+command: imago
+
+finish-args:
+  - --share=ipc
+  - --share=network            # descarga de modelos de IA bajo demanda
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=cups              # impresión
+  - --device=dri               # aceleración gráfica
+  # La apertura/guardado de archivos usa el portal del escritorio (QFileDialog),
+  # así que NO se pide acceso amplio al sistema de archivos.
+
+cleanup:
+  - '*.pyc'
+  - '*.pyo'
+
+modules:
+  # Dependencias Python (wheels) generadas con flatpak-pip-generator.
+  # PySide6/shiboken NO van aquí: los aporta io.qt.PySide.BaseApp.
+  - python3-modules.yaml
+
+  - name: imago
+    buildsystem: simple
+    build-commands:
+      # Código de la aplicación.
+      - install -d ${FLATPAK_DEST}/imago
+      - cp -r *.py ai models plugins tools ventana widgets ${FLATPAK_DEST}/imago/
+      # Lanzador en el PATH (el .desktop usa Exec=imago).
+      - install -Dm755 imago ${FLATPAK_DEST}/bin/imago
+      # Integración de escritorio.
+      - install -Dm644 packaging/linux/io.github.anvilnu.imago.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.anvilnu.imago.desktop
+      - install -Dm644 icons/imago.png
+        ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.anvilnu.imago.png
+      # Metainfo AppStream (se sustituye la versión del token @APP_VERSION@).
+      - install -d ${FLATPAK_DEST}/share/metainfo
+      - sed 's/@APP_VERSION@/1.0.2/g' packaging/linux/io.github.anvilnu.imago.metainfo.xml
+        > ${FLATPAK_DEST}/share/metainfo/io.github.anvilnu.imago.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/anvilnu/Imago.git
+        commit: 05bdf14e424cc203e2c5adb8c0a127223fcdb43f
+      - type: script
+        dest-filename: imago
+        commands:
+          - exec python3 /app/imago/main.py "$@"
