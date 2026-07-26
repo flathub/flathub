@@ -1,0 +1,143 @@
+# Flatpak manifest for CamView.
+#
+# Build:  cd packaging/flatpak && ./build.sh
+# See README.md in this directory for the full procedure.
+#
+# The hard part of packaging this app is libVLC: the runtime has no VLC,
+# and libvlc without its plugins cannot play RTSP at all. So VLC is built
+# here as a module, cut down to what a live-view client actually needs —
+# no interface, no Lua, no recording — with live555 (the RTSP transport)
+# built first because VLC has to find it at configure time.
+#
+# PySide6 is not pip-installed here: Flathub publishes it as a base
+# application (io.qt.PySide.BaseApp), which is both the supported way and
+# far smaller than bundling a second copy of Qt. That base is built on
+# the KDE runtime, which is where the Qt6 libraries come from.
+app-id: io.github.henr1quess30.CamView
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.9'
+command: camview
+
+# The base runtime ships ffmpeg with a reduced codec set; H.265 — which
+# every camera here streams — lives in the ffmpeg-full extension. Without
+# this the app would connect and then fail to decode.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: '24.08'
+    autodownload: true
+    autodelete: false
+
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
+  # Drops the PySide modules this app never imports (WebEngine, Charts,
+  # 3D and friends), which is most of the base's weight.
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  # RTSP to the cameras and HTTP (ISAPI) to the recorders.
+  - --share=network
+  # libVLC 3.x can only embed video into an X11 window, so the app runs
+  # through XWayland even on a Wayland session — see camview/__main__.py.
+  - --socket=x11
+  - --share=ipc
+  # Video output.
+  - --device=dri
+  # Passwords live in the system keyring, reached through the portal.
+  - --talk-name=org.freedesktop.secrets
+  # Nothing else: no home access, no filesystem, no audio. The app's own
+  # database and logs land in ~/.var/app/io.github.henr1quess30.CamView.
+
+modules:
+  # --- RTSP transport -----------------------------------------------
+  # Without live555, libVLC falls back to satip/realrtsp and every
+  # camera connection fails. This is not optional for this app.
+  - name: live555
+    buildsystem: simple
+    build-commands:
+      # -DNO_OPENSSL=1, exactly as VLC's own contrib builds it: recent
+      # live555 pulls in OpenSSL for RTSPS, and without it the plugin
+      # fails to link on EVP_MD_CTX_free. Plain RTSP needs none of it.
+      - sed -i 's|^COMPILE_OPTS =\(.*\)|COMPILE_OPTS =\1 -DNO_OPENSSL=1|' config.linux-64bit
+      - ./genMakefiles linux-64bit
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install PREFIX=/app
+    sources:
+      - type: archive
+        # VideoLAN's mirror, not live555.com: upstream serves only the
+        # newest tarball and replaces it in place, which breaks checksums.
+        url: https://downloads.videolan.org/pub/contrib/live555/live.2026.06.24.tar.gz
+        sha256: b22182db20fe554be886f74c453f6b900e471de9585a401b0b60228aebc27ef7
+    cleanup:
+      - /include
+      - '*.a'
+
+  # --- libVLC --------------------------------------------------------
+  - name: vlc
+    build-options:
+      env:
+        # VLC's configure hunts for a compiler literally named c99/c11 to
+        # build its own host-side tools; the SDK only ships gcc.
+        BUILDCC: gcc
+      # live555 installs its headers one directory per library, and VLC's
+      # check is a preprocessor include of <liveMedia_version.hh> — it
+      # fails on the path, not on the version.
+      cppflags: -I/app/include/liveMedia -I/app/include/groupsock
+        -I/app/include/BasicUsageEnvironment -I/app/include/UsageEnvironment
+    config-opts:
+      - --disable-lua
+      - --disable-qt
+      - --disable-skins2
+      - --disable-ncurses
+      - --disable-vlc          # the player binary; we only need the library
+      - --disable-sout         # no streaming out
+      - --disable-vlm
+      - --enable-live555       # RTSP
+      - --enable-avcodec       # H.264/H.265
+      - --enable-xcb           # the xcb_x11 video output this app asks for
+      - --disable-a52
+      - --disable-dbus
+    sources:
+      - type: archive
+        # 3.0.23 is what this app was developed and validated against.
+        url: https://download.videolan.org/vlc/3.0.23/vlc-3.0.23.tar.xz
+        sha256: e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0
+    cleanup:
+      - /bin
+      - /include
+      - /share/man
+      - '*.la'
+
+  # --- Python dependencies -------------------------------------------
+  # Generated, not hand-written: flatpak-builder builds offline, so every
+  # wheel has to be declared with its checksum. build.sh regenerates this
+  # file with flatpak-pip-generator whenever requirements.txt changes.
+  - python3-requirements.json
+
+  # --- CamView itself -------------------------------------------------
+  - name: camview
+    buildsystem: simple
+    build-commands:
+      # Copied rather than pip-installed. CamView is a pure-Python
+      # src-layout package, so pip adds nothing except a dependency on
+      # its build backend — which it would have to fetch from a network
+      # the sandbox does not have.
+      - PYVER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        && install -d "/app/lib/python${PYVER}/site-packages"
+        && cp -r src/camview "/app/lib/python${PYVER}/site-packages/"
+      - install -Dm755 packaging/flatpak/camview-launcher /app/bin/camview
+      - install -Dm644 packaging/flatpak/io.github.henr1quess30.CamView.desktop
+        /app/share/applications/io.github.henr1quess30.CamView.desktop
+      - install -Dm644 packaging/flatpak/io.github.henr1quess30.CamView.metainfo.xml
+        /app/share/metainfo/io.github.henr1quess30.CamView.metainfo.xml
+      - install -Dm644 packaging/flatpak/io.github.henr1quess30.CamView.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.henr1quess30.CamView.svg
+    sources:
+      - type: git
+        url: https://github.com/henr1quess30/camview.git
+        tag: v0.3.0
+        commit: 456d85a66aae9782101ac25651bba9a936b436ff
