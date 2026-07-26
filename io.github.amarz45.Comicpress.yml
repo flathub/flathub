@@ -16,10 +16,6 @@ modules:
   - name: pdfium
     buildsystem: simple
     build-commands:
-      # https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=libpdfium-nojs
-
-      # Patch abseil build to be static
-      - sed -i -e 's/component(/static_library(/' -e 's/is_component_build(/false/' pdfium/third_party/abseil-cpp/BUILD.gn
       # Use system provided icu library (unbundling)
       - mkdir -p pdfium/third_party/icu
       - ln -sf ../../build/linux/unbundle/icu.gn pdfium/third_party/icu/BUILD.gn
@@ -28,18 +24,9 @@ modules:
       - base64 --decode generate_shim_headers.py > pdfium/tools/generate_shim_headers/generate_shim_headers.py
       # Create fake gclient_args.gni file to satisfy include list for build/config/compiler/compiler.gni
       - touch pdfium/build/config/gclient_args.gni
-      # Exclude test fonts from build
-      - sed -i '/"\/\/third_party\/test_fonts",/s/^/#/g' pdfium/testing/BUILD.gn
-      # Remove cross-compile-toolchain-prefix for gcc (needed for aarch64 build)
-      - sed -i 's/"aarch64-linux-gnu-"/""/g' pdfium/build/toolchain/linux/BUILD.gn
-      # Use correct no-outline for gcc (needed for aarch64)
-      - sed -i 's/"-mno-outline"/"-mno-outline-atomics"/g' pdfium/build/config/compiler/BUILD.gn
       # Build
       - gn --root=pdfium gen pdfium/out/Release --args="is_clang=false use_sysroot=false is_debug=false symbol_level=0 pdf_enable_v8=false pdf_enable_xfa=false treat_warnings_as_errors=false use_system_libjpeg=true use_system_zlib=true pdf_bundle_freetype=false use_system_freetype=true use_system_lcms2=true use_system_libpng=true use_custom_libcxx=false pdf_is_standalone=true use_system_libopenjpeg2=true is_component_build=true pdf_use_partition_alloc=false"
       - ninja -C pdfium/out/Release pdfium
-      # TODO: use a variable for version
-      - sed -e 's/@VERSION@/6167/g' -e 's#^\s*prefix\s*=.*$#prefix='"$FLATPAK_DEST"'#' -i libpdfium.pc
-      - mv libpdfium.pc pdfium.pc
       # Install
       - install -D -m644 pdfium/LICENSE "$FLATPAK_DEST/share/licenses/pdfium/LICENSE"
       - install -D pdfium/public/*.h --target-directory="$FLATPAK_DEST/include/pdfium"
@@ -55,24 +42,43 @@ modules:
         # TODO: Using commit instead of branch is suboptimal, but linting enforces it
         commit: 84a8011ec69d0e2de271c05be7d62979608040d9
         dest: pdfium
+      # Exclude test fonts from build
+      - type: patch
+        path: patches/pdfium_exclude_test_fonts.diff
+        dest: pdfium
+
       - type: git
         url: https://chromium.googlesource.com/chromium/src/build.git
         # awk '/build_revision/ {print substr($2,2,40)}' pdfium/DEPS
         commit: 9b11bd3a6a523134ac35bcc9d1f59d04cc6f5821
         dest: pdfium/build
+      # Remove cross-compile toolchain prefix for gcc (needed for aarch64)
+      - type: patch
+        path: patches/chromium_build_arm64_remove_toolchain_prefix.diff
+        dest: pdfium/build
+      # Use correct no-outline flag for gcc (needed for aarch64)
+      - type: patch
+        path: patches/chromium_build_use_correct_no-outline_for_gcc.diff
+        dest: pdfium/build
+
       - type: git
         url: https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
         # awk '/abseil_revision/ {print substr($2,2,40)}' pdfium/DEPS
         commit: d2ea9f0eb1a31f0e5a0ab11837ed19333700ab4c
         dest: pdfium/third_party/abseil-cpp
+      # Make abseil-cpp a static library
+      - type: patch
+        path: patches/abseil-cpp_make_library_static.diff
+        dest: pdfium/third_party/abseil-cpp
+
       - type: file
         url: https://chromium.googlesource.com/chromium/src/+/959f41a7f58755d4644f98a14197b5b89c0d7542/tools/generate_shim_headers/generate_shim_headers.py?format=TEXT
         dest-filename: generate_shim_headers.py
         sha256: c405eb998cc9c27d724c945f3db8a7b9d2be62ac38049301f4f52929f734b5a9
+
       - type: file
-        url: https://aur.archlinux.org/cgit/aur.git/plain/libpdfium.pc?h=libpdfium-nojs
-        dest-filename: libpdfium.pc
-        sha256: 4e8cf32c09568ae4c59244f0a221eee8f87ea4a31ddb31f796a1d818c967d477
+        path: pdfium.pc
+
       - type: git
         url: https://github.com/fastfloat/fast_float
         tag: v7.0.0
