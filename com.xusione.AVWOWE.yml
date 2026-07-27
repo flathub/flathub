@@ -1,0 +1,196 @@
+app-id: com.xusione.AVWOWE
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: run.sh
+
+# Video/audio codecs for GStreamer (MP4/H.264/MP3 etc.).
+# The base runtime only ships gst-plugins-base, so a media player needs this.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: .
+    no-autodownload: false
+    autodelete: false
+
+finish-args:
+  # Display & GPU
+  # run.sh forces the X11 backend (GDK_BACKEND/GLFW_PLATFORM=x11), so we request
+  # the real X11 socket rather than wayland+fallback-x11 -- under fallback-x11
+  # the X socket is withheld in a Wayland session, which would break startup.
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  # Audio
+  - --socket=pulseaudio
+  # Network (live tickers / remote config pull arbitrary URLs)
+  - --share=network
+  # Filesystem: standard media dirs by default (writable, for PNG export).
+  # Kiosk deployments pointing at custom paths should grant them per-install:
+  #   flatpak override com.xusione.AVWOWE --filesystem=/path/to/media
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-music
+  # The app keeps its settings, presets and remote-config caches in ~/.avwowe.
+  # --persist maps that into the app's private per-install directory so the
+  # writes succeed and survive restarts and updates.
+  - --persist=.avwowe
+
+# Required so the ffmpeg-full extension has a mount point.
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
+
+modules:
+  - name: glfw
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_SHARED_LIBS=ON
+      - -DGLFW_BUILD_EXAMPLES=OFF
+      - -DGLFW_BUILD_TESTS=OFF
+      - -DGLFW_BUILD_DOCS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
+        sha256: c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01
+
+  - name: glew
+    no-autogen: true
+    make-args:
+      - GLEW_PREFIX=${FLATPAK_DEST}
+      - GLEW_DEST=${FLATPAK_DEST}
+      - LIBDIR=${FLATPAK_DEST}/lib
+      - CFLAGS.EXTRA=-fPIC
+    make-install-args:
+      - GLEW_PREFIX=${FLATPAK_DEST}
+      - GLEW_DEST=${FLATPAK_DEST}
+      - LIBDIR=${FLATPAK_DEST}/lib
+    sources:
+      - type: archive
+        url: https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.tgz
+        sha256: d4fc82893cfb00109578d0a1a2337fb8ca335b3ceccf97b97e5cc7f08e4353e1
+
+  - name: openal-soft
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DALSOFT_EXAMPLES=OFF
+      - -DALSOFT_UTILS=OFF
+      - -DALSOFT_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/kcat/openal-soft/archive/refs/tags/1.23.1.tar.gz
+        sha256: dfddf3a1f61059853c625b7bb03de8433b455f2f79f89548cbcbd5edca3d4a4a
+
+  - name: pugixml
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/zeux/pugixml/releases/download/v1.14/pugixml-1.14.tar.gz
+        sha256: 2f10e276870c64b1db6809050a75e11a897a8d7456c4be5c6b2e35a11168a015
+
+  - name: uriparser
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DURIPARSER_BUILD_DOCS=OFF
+      - -DURIPARSER_BUILD_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/uriparser/uriparser/releases/download/uriparser-0.9.8/uriparser-0.9.8.tar.gz
+        sha256: 4cd0e4f93b477272fabceeb0202f269169fe6ec3044e10fac6acbcdf354bb080
+
+  # Confirm these two are actually missing in the sandbox before keeping them:
+  #   flatpak run --command=sh com.xusione.AVWOWE \
+  #     -c 'LD_LIBRARY_PATH=/app/lib ldd /app/bin/AVWOWE | grep "not found"'
+  - name: mpg123
+    config-opts:
+      - --with-default-audio=dummy
+      - --enable-modules=no
+    sources:
+      - type: archive
+        url: https://www.mpg123.de/download/mpg123-1.32.6.tar.bz2
+        sha256: ccdd1d0abc31d73d8b435fc658c79049d0a905b30669b6a42a03ad169dc609e6
+
+  - name: libsndfile
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_TESTING=OFF
+      - -DBUILD_PROGRAMS=OFF
+      - -DBUILD_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz
+        sha256: 3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e
+
+  # FreeImage 3.18 predates GCC 13 (in the 24.08 SDK) and often needs source
+  # patches to compile. If the build fails, apply the Debian patch series via
+  # additional `type: patch` sources. Produces a self-contained libfreeimage.so.3
+  # (bundles LibRaw/OpenEXR/jxr/openjpeg), so no extra runtime deps.
+  - name: freeimage
+    no-autogen: true
+    buildsystem: simple
+    build-commands:
+      # Inject flags via CC/CXX (not build-options): Makefile.gnu folds its -I
+      # include paths into CFLAGS, so overriding CFLAGS/CXXFLAGS would drop them.
+      # Modern GCC makes implicit-function-declaration a hard error; the bundled
+      # ZLib/LibRaw/OpenEXR/JXR predate that, so downgrade it and relax C++.
+      - make -f Makefile.gnu -j$(nproc) CC="gcc -fPIC -fcommon -Wno-implicit-function-declaration -Wno-error=implicit-function-declaration" CXX="g++ -fPIC -fcommon -std=c++14 -fpermissive -w" libfreeimage-3.18.0.so
+      - install -Dm644 libfreeimage-3.18.0.so /app/lib/libfreeimage.so.3.18.0
+      - ln -sf libfreeimage.so.3.18.0 /app/lib/libfreeimage.so.3
+      - ln -sf libfreeimage.so.3 /app/lib/libfreeimage.so
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/freeimage/FreeImage3180.zip
+        sha256: f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd
+
+  # Needed only to build xset, which links the small libXmuu part of this
+  # package. libXmu itself is not used by the app at runtime.
+  - name: libXmu
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.x.org/releases/individual/lib/libXmu-1.2.1.tar.xz
+        sha256: fcb27793248a39e5fcc5b9c4aec40cc0734b3ca76aac3d7d1c264e7f7e14e8b2
+
+  # The app shells out to `xset` to stop the display blanking or sleeping during
+  # playback, which matters for unattended kiosk installations. xset is not part
+  # of the Freedesktop runtime, so it is built here.
+  - name: xset
+    config-opts:
+      - --without-xf86misc
+      - --without-fontcache
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.x.org/releases/individual/app/xset-1.2.6.tar.xz
+        sha256: 623837349ea887bc003f01ee2e4b6b8ddd9c2774f632c6d70eead1b56306b695
+
+  - name: avwowe
+    buildsystem: simple
+    build-commands:
+      - install -D -m 755 run.sh /app/bin/run.sh
+      - install -D -m 755 bin/AVWOWE /app/bin/AVWOWE
+      - cp -r data /app/bin/data
+      - install -D -m 644 com.xusione.AVWOWE.desktop /app/share/applications/com.xusione.AVWOWE.desktop
+      - install -D -m 644 com.xusione.AVWOWE.metainfo.xml /app/share/metainfo/com.xusione.AVWOWE.metainfo.xml
+      - install -D -m 644 com.xusione.AVWOWE.png /app/share/icons/hicolor/512x512/apps/com.xusione.AVWOWE.png
+    sources:
+      # Release tarball of the packaging repo, which contains the binary
+      # (bin/AVWOWE), data/, run.sh, desktop file, metainfo, and icon.
+      - type: archive
+        url: https://github.com/xusione/io.github.xusione.AVWOWE/archive/refs/tags/v1.0.0.tar.gz
+        sha256: 0bb60c20ff23e89b63ff0b63799b480933005b9267765ecb44b8e3eeaa8a489c
