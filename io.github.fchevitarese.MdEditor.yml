@@ -1,0 +1,82 @@
+---
+id: io.github.fchevitarese.MdEditor
+
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: md-editor
+rename-icon: md-editor
+separate-locales: false
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Markdown files and project folders live anywhere under $HOME. The file
+  # chooser goes through the XDG portal, but the folder sidebar reads the
+  # tree directly, which the document portal does not cover.
+  - --filesystem=home
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: md-editor
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node20
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/md-editor/flatpak-node/npm-cache
+        XDG_CACHE_HOME: /run/build/md-editor/flatpak-node/cache
+        CARGO_HOME: /run/build/md-editor/cargo
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+        LC_ALL: C.utf8
+
+    sources:
+      # Flathub requires a pinned, reproducible source. For a local test
+      # build, swap this block for:  - type: dir / path: ..
+      - type: git
+        url: https://github.com/fchevitarese/md-editor.git
+        tag: v0.3.1
+        commit: 1070d2ca714ba7800df80a993968355c1a677776
+
+      # Generated with flatpak-builder-tools, regenerate on every dependency bump:
+      #   flatpak-node-generator npm package-lock.json -o flatpak/node-sources.json
+      #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o flatpak/cargo-sources.json
+      - node-sources.json
+      - cargo-sources.json
+
+    build-commands:
+      - npm ci --offline
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run --offline tauri build -- --bundles deb
+
+      - |
+        DEB_DATA=$(find src-tauri/target/release/bundle/deb -name data -type d | head -1)
+        install -Dm755 "$DEB_DATA/usr/bin/md-editor" /app/bin/md-editor
+
+      - |
+        DEB_DATA=$(find src-tauri/target/release/bundle/deb -name data -type d | head -1)
+        mkdir -p /app/share/icons/hicolor
+        cp -r "$DEB_DATA/usr/share/icons/hicolor/"* /app/share/icons/hicolor/
+        if [ -d /app/share/icons/hicolor/256x256@2 ]; then
+          mv /app/share/icons/hicolor/256x256@2 /app/share/icons/hicolor/256x256
+        fi
+
+      - install -Dm644 flatpak/io.github.fchevitarese.MdEditor.desktop
+        /app/share/applications/io.github.fchevitarese.MdEditor.desktop
+      - install -Dm644 flatpak/io.github.fchevitarese.MdEditor.metainfo.xml
+        /app/share/metainfo/io.github.fchevitarese.MdEditor.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.fchevitarese.MdEditor/LICENSE
