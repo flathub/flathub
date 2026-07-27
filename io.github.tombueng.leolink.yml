@@ -1,0 +1,125 @@
+# Flatpak manifest as submitted to Flathub.
+#
+# Identical to packaging/flatpak/ except that leolink itself comes from a
+# tagged, checksummed release instead of the working tree — Flathub builds from
+# the manifest alone and has no working tree to point at.
+#
+#   flatpak-builder --user --install --force-clean build io.github.tombueng.leolink.yml
+#
+# The KDE runtime is used rather than Freedesktop because it already carries
+# Qt 6, which is most of what leolink needs.
+app-id: io.github.tombueng.leolink
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: leolink
+
+finish-args:
+  # Display. Wayland is listed first, but leolink asks Qt for xcb when it finds
+  # a Wayland session, because libmpv renders into a native window handle.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Audio: camera microphones, and the alert sound.
+  - --socket=pulseaudio
+
+  # Cameras live on the local network, and P2P access needs the internet.
+  - --share=network
+
+  # Recordings and snapshots. Videos and Pictures only — leolink has no reason
+  # to see the rest of a home directory.
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-pictures
+
+  # Tray icon and desktop notifications.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+  # A password command (`pass`, `secret-tool`) reads from the keyring.
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  # mpv's own renderer sits on libplacebo, which the KDE runtime does not ship.
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Ddemos=false
+      - -Dvulkan=disabled       # leolink renders through OpenGL
+      - -Dshaderc=disabled
+      # Also off, and it has to be said explicitly: the KDE SDK ships a
+      # glslang that libplacebo finds by itself and then cannot link against
+      # ("undefined reference to glslang::TProgram"). Nothing here needs it —
+      # it exists to compile shaders to SPIR-V, which is a Vulkan concern.
+      - -Dglslang=disabled
+    sources:
+      # Must be a git source, not a tarball: libplacebo carries glad as a
+      # submodule and its meson build refuses to configure without it
+      # ("glad (required: >= 2.0, found: none)").
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.349.0
+        commit: 1fd3c7bde7b943fe8985c893310b5269a09b46c5
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+
+  # mpv requires libass; it is not an optional feature, so it has to be here
+  # even though leolink never renders a subtitle.
+  - name: libass
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
+        sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+
+  - name: libmpv
+    # Not in the KDE runtime, so it is built here. Note that mpv moved from
+    # waf to Meson in 0.36 — an older manifest copied from the web will fail
+    # with "Run from a folder containing a 'wscript' file".
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false          # only the library is needed
+      - -Dmanpage-build=disabled
+      - -Dbuild-date=false       # keeps the build reproducible
+      # Build the LGPL configuration so the bundled libmpv does not impose
+      # GPL terms on the binary — leolink's own source is MIT, and this keeps
+      # the Flatpak consistent with that.
+      - -Dgpl=false
+      # A desktop player's conveniences are dead weight for a camera viewer,
+      # and each would drag in another dependency the runtime lacks.
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dlcms2=disabled
+      - -Duchardet=disabled
+      - -Drubberband=disabled
+      - -Dzimg=disabled
+      - -Dsdl2=disabled
+      - -Dvapoursynth=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
+        sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+
+  - name: leolink
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      # A fixed, checksummed release rather than the working tree: Flathub
+      # builds must be reproducible from the manifest alone, and a directory
+      # source is only good for building on the machine it was written on.
+      - type: archive
+        url: https://github.com/tombueng/leolink/archive/refs/tags/v0.1.1.tar.gz
+        sha256: e1bfeb34fb7b9afc3101dfe0bb1d514a2f85b886d3f6f5139abbd631fbc9df0e
