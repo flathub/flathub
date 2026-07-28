@@ -1,0 +1,78 @@
+app-id: net.krafting.Lovaflow
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin
+
+command: run.sh
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --socket=system-bus
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+build-options:
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: verbose
+
+modules:
+  - name: Lovaflow
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/Lovaflow/flatpak-node/cache
+        npm_config_cache: /run/build/Lovaflow/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node24
+        npm_config_offline: 'true'
+
+    build-commands:
+      # Install npm dependencies
+      - npm install --offline
+      # Build the app; in this example the `dist` script
+      # in package.json runs electron-builder
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        npm run dist -- $ELECTRON_BUILDER_ARCH_ARGS  --linux --dir
+      # Bundle app and dependencies
+      - cp -a dist/linux*unpacked /app/main
+      # Install app wrapper
+      - install -Dm755 -t /app/bin/ ../run.sh
+      # Copy the code to the main
+      - cp -ar ../www /app/main/www/
+
+      # Install required metadata
+      - install -Dm 0644 ../net.krafting.Lovaflow.desktop  /app/share/applications/net.krafting.Lovaflow.desktop
+      - install -Dm 0644 ../net.krafting.Lovaflow.metainfo.xml  /app/share/metainfo/net.krafting.Lovaflow.metainfo.xml
+      - install -Dm 0644 ../assets/net.krafting.Lovaflow.svg /app/share/icons/hicolor/scalable/apps/net.krafting.Lovaflow.svg
+
+    subdir: electron
+
+    sources:
+      # The run.sh wrapper script
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/net.krafting.lovaflow "$@"
+
+      - generated-sources.json
+
+      # When building from source :
+      - type: git
+        branch: main
+        url: https://gitlab.com/Krafting/lovaflow-app
+        tag: 1.3.1
+        commit: 773c6a35f2a2266fe07ef39903ea31b23a531077
+        x-checker-data: {type: git, tag-pattern: '^([\d.]+)$'}
