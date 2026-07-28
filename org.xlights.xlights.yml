@@ -1,0 +1,407 @@
+app-id: org.xlights.xLights
+# GTK3 (wxWidgets --with-gtk=3), freetype/harfbuzz/fontconfig/pango and a
+# baseline GStreamer all come from the GNOME runtime -- org.freedesktop.Platform
+# alone does not ship a toolkit at all, which is why the previous attempt's
+# wxWidgets module could never find gtk+-3.0 to configure against.
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: xLights
+
+# x86_64 only for now: the ISPC compiler and KLightMapper prebuilt library
+# (both required, see the xLights module below) are only staged for x86_64
+# here. Add aarch64 archive sources (upstream publishes both) to extend this.
+
+finish-args:
+  - --share=network       # sACN/ArtNet/DDP controller discovery+upload
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all          # USB DMX dongles, serial adapters, GPU
+  - --filesystem=home     # show directory, media files
+  - --filesystem=/media   # external drives with show directories
+  - --filesystem=/run/udev:ro   # device enumeration for controller discovery
+
+add-extensions:
+  org.freedesktop.Platform.GStreamer.gstreamer-full:
+    directory: lib/gstreamer-1.0
+    version: '24.08'
+    add-ld-path: lib
+    no-autodownload: false
+    autodelete: false
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/aclocal
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  - name: zstd
+    buildsystem: cmake-ninja
+    subdir: build/cmake
+    # CMAKE_INSTALL_LIBDIR: this GNOME SDK's cmake toolchain defaults every
+    # cmake-based module here to /app/lib64 (confirmed for zstd, freeglut,
+    # libwebp, shaderc, and the in-tree glslang build below), but xLights'
+    # own build expects plain /app/lib -- it links some of these via bare
+    # `-lfoo` (relying on the default linker search path, which only
+    # reliably covers /app/lib) and others via hardcoded relative paths like
+    # `../dependencies/glslang-build/install/lib/libglslang.a`. Force lib
+    # everywhere rather than special-case which ones happen to work by luck
+    # of link-line ordering.
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DZSTD_BUILD_PROGRAMS=OFF
+      - -DZSTD_BUILD_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz
+        sha256: 8c29e06cf42aacc1eafc4077ae2ec6c6fcb96a626157e0593d5e82a34fd403c1
+
+  # xLights.cbp links against `pkg-config lua53` (matching Ubuntu's
+  # liblua5.3-dev, which is what the native/snap Linux build actually uses --
+  # NOT the vendored dependencies/lua submodule fork, which is Windows/macOS
+  # only). Build real Lua 5.3 and name the pkgconfig file to match; the
+  # previous attempt built Lua 5.4 with no lua53.pc at all, so `pkg-config
+  # lua53` would fail and silently produce empty cflags/libs everywhere it's
+  # used rather than an obvious error.
+  - name: lua5.3
+    buildsystem: simple
+    build-commands:
+      - make linux MYCFLAGS="-fPIC" -j${FLATPAK_BUILDER_N_JOBS}
+      - make install INSTALL_TOP=/app
+      - install -d /app/lib/pkgconfig
+      - |
+        cat > /app/lib/pkgconfig/lua53.pc <<'EOF'
+        prefix=/app
+        libdir=${prefix}/lib
+        includedir=${prefix}/include
+
+        Name: Lua
+        Description: Lua language engine
+        Version: 5.3.6
+        Libs: -L${libdir} -llua -lm -ldl
+        Cflags: -I${includedir}
+        EOF
+    sources:
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.3.6.tar.gz
+        sha256: fc5fd69bb8736323f026672b1b7235da613d7177e72558893a0bdcd320466d60
+
+  # Converts xLights.cbp -> xLights/xLights.cbp.mak. Upstream's own Linux
+  # README documents building this exact git mirror (no Debian/Ubuntu
+  # `cbp2make` package exists on the GNOME runtime); the previous attempt
+  # used sourceforge svn:// which is commonly firewalled off in CI sandboxes,
+  # and even had it fetched, installed from the wrong output path (the git
+  # mirror's Makefile puts the binary at bin/Release/cbp2make, not ./cbp2make).
+  # The plain `release` target (as opposed to default_all) skips a `doxygen`
+  # docs step that isn't needed here and isn't available on this runtime --
+  # verified locally: default_all fails on a missing `doxygen` binary even
+  # though the compiled tool it needed is already sitting in bin/Release/.
+  - name: cbp2make
+    buildsystem: simple
+    build-commands:
+      - make -f cbp2make.cbp.mak.unix release
+      - install -Dm755 bin/Release/cbp2make /app/bin/cbp2make
+    sources:
+      - type: git
+        url: https://github.com/mirai-computing/cbp2make.git
+        commit: d40e6de50a5142f57576d0f2e8e433b7f510270a
+
+  # -lGLU (and freeglut's own CMake requires glu.h to configure at all): Mesa
+  # GLU headers/lib, not provided by the GNOME runtime's GL stack.
+  #
+  # No -Dlibdir=lib config-opt here (unlike the CMAKE_INSTALL_LIBDIR=lib
+  # forced on every cmake-ninja module below): flatpak-builder's meson
+  # buildsystem support already passes --libdir=/app/lib itself by default.
+  # Adding -Dlibdir=lib on top of that produced "Got argument libdir as both
+  # -Dlibdir and --libdir. Pick one." on the flathub-infra CI container's
+  # (newer) flatpak-builder, even though it was harmless on the older
+  # flatpak-builder used to verify this manifest locally -- confirmed by
+  # that exact failure in a real CI run.
+  - name: glu
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://archive.mesa3d.org/glu/glu-9.0.3.tar.xz
+        sha256: bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f
+
+  # -lglut: freeglut3-dev in the native build-packages list, not provided by
+  # the GNOME runtime.
+  - name: freeglut
+    buildsystem: cmake-ninja
+    # freeglut 3.6.0's X11 backend forward-declares fgPlatformDestroyContext()
+    # with an empty (K&R-style, "unspecified args") parameter list, which the
+    # GNOME 50 SDK's GCC (defaulting to gnu23) now treats as `(void)` and
+    # rejects as a conflicting redeclaration against the real 2-arg
+    # implementation -- a hard error, not a promoted warning. Building under
+    # gnu17 restores the old, lenient semantics this code was written against.
+    build-options:
+      cflags: -std=gnu17
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DFREEGLUT_BUILD_DEMOS=OFF
+      - -DFREEGLUT_BUILD_STATIC_LIBS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/freeglut/freeglut/releases/download/v3.6.0/freeglut-3.6.0.tar.gz
+        sha256: 9c3d4d6516fbfa0280edc93c77698fb7303e443c1aaaf37d269e3288a6c3ea52
+
+  # -lwebp -lwebpdemux: also not provided by the GNOME runtime, and missing
+  # entirely from the previous attempt.
+  - name: libwebp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWEBP_BUILD_ANIM_UTILS=OFF
+      - -DWEBP_BUILD_CWEBP=OFF
+      - -DWEBP_BUILD_DWEBP=OFF
+      - -DWEBP_BUILD_GIF2WEBP=OFF
+      - -DWEBP_BUILD_IMG2WEBP=OFF
+      - -DWEBP_BUILD_VWEBP=OFF
+      - -DWEBP_BUILD_WEBPINFO=OFF
+      - -DWEBP_BUILD_WEBPMUX=ON
+      - -DWEBP_BUILD_EXTRAS=OFF
+    sources:
+      - type: git
+        url: https://chromium.googlesource.com/webm/libwebp
+        tag: v1.4.0
+        commit: 845d5476a866141ba35ac133f856fa62f0b7445f
+
+  # xLights only decodes/demuxes/scales media (audio waveform analysis + video
+  # effect playback) -- it never encodes H.264/H.265/MP3 -- and the proven
+  # native Linux build (snapcraft.yaml stages libavcodec60 et al straight from
+  # plain Ubuntu universe) is built the same lean way, with no --enable-gpl or
+  # patent-encumbered encoders. Matching that here drops three whole modules
+  # (x264/x265/lame) the previous attempt carried for no benefit xLights uses.
+  #
+  # Version pinned to 6.1.x (NOT the latest 7.x) because the prebuilt
+  # KLightMapper library (see the xLights module below) was linked against
+  # FFmpeg's 6.x SONAMEs -- libavcodec.so.60, libavformat.so.60,
+  # libavutil.so.58, libswscale.so.7 -- exactly matching Ubuntu 24.04's
+  # ffmpeg packages (libavcodec60 et al, per snapcraft.yaml). FFmpeg 7.x bumps
+  # every one of those SONAMEs, so building 7.1 here produced "undefined
+  # reference to avcodec_open2@LIBAVCODEC_60" and friends at the final link --
+  # confirmed by actually hitting that error in this build, not a guess.
+  - name: ffmpeg
+    config-opts:
+      - --prefix=/app
+      - --disable-static
+      - --enable-shared
+      - --disable-doc
+      - --disable-programs
+      - --disable-debug
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-6.1.6.tar.xz
+        sha256: d4fcb164028dd3beee5d92c0ac72e46aac6973c75ea12dc14de07bf8f407370a
+    cleanup:
+      - /share/ffmpeg
+
+  - name: SDL2
+    config-opts:
+      - --prefix=/app
+      - --disable-arts
+      - --disable-esd
+      - --disable-nas
+      - --enable-alsa
+      - --enable-pulseaudio
+      # SDL2 2.30.10's pipewire backend was written against an older
+      # libpipewire API (pw_node_enum_params took struct pw_node*); the
+      # GNOME 50 SDK's newer libpipewire-0.3-dev changed that to struct
+      # pw_proxy*, so it fails to compile. ALSA + PulseAudio already cover
+      # audio playback (matching the native/snap build, which doesn't
+      # depend on pipewire either), so just disable it instead of patching.
+      - --disable-pipewire
+      - --enable-video-wayland
+      - --enable-video-x11
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-2.30.10/SDL2-2.30.10.tar.gz
+        sha256: f59adf36a0fcf4c94198e7d3d776c1b3824211ab7aeebeb31fe19836661196aa
+
+  # glslc: the standalone GLSL->SPIR-V compiler build_scripts/compile_vulkan_shaders.sh
+  # requires, to precompile src-core/{effects,graphics}/vulkan/shaders/*.{comp,vert,frag}
+  # into the SPIR-V headers generated at build time. This is completely
+  # missing from the previous attempt (along with the whole Vulkan shader
+  # compile step), and is distinct from `glslang` the *library*, which
+  # xLights vendors as a git submodule and links directly for its runtime
+  # GLSL Shader effect (built in-tree by the xLights module below, mirroring
+  # the top-level Makefile's own `glslang` target -- no separate flatpak
+  # module needed for that half).
+  # Sources/commits below are pinned from shaderc v2026.3's own DEPS file, so
+  # the third_party/ layout its CMake expects is satisfied without running
+  # its network-fetching utils/git-sync-deps script during the build.
+  - name: shaderc
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSHADERC_SKIP_TESTS=ON
+      - -DSHADERC_SKIP_EXAMPLES=ON
+      - -DSHADERC_SKIP_COPYRIGHT_CHECK=ON
+    sources:
+      - type: git
+        url: https://github.com/google/shaderc.git
+        tag: v2026.3
+        commit: 2c8cae778eec0283b44acbe7ed1a386865d78799
+      - type: git
+        url: https://github.com/KhronosGroup/glslang.git
+        commit: 168d452a4f460d24b588fed08477a81c44ee27a1
+        dest: third_party/glslang
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Headers.git
+        commit: 29981f65241605e08b0ede4cfeb999fe3b723c6a
+        dest: third_party/spirv-headers
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Tools.git
+        commit: b707790a898e44038547df54580022fc1cf89c3d
+        dest: third_party/spirv-tools
+    cleanup:
+      - /bin/glslc_test
+
+  # Configure flags copied verbatim from this project's own top-level
+  # Makefile (`wxwidgets33` target) -- the proven-working recipe for this
+  # custom fork -- rather than a generic wxWidgets flatpak module's flags.
+  # --enable-monolithic, --enable-std_containers, and
+  # --enable-std_string_conv_in_wxstring are load-bearing: xLights' C++
+  # relies on implicit wxString<->std::string conversions and STL-typed wx
+  # containers throughout src-core/src-ui-wx, so a wx built without them
+  # fails to *compile* against this codebase, not just link differently.
+  # The previous attempt's flags omitted all three and also passed
+  # --with-libtiff=sys, contradicting the Makefile's --without-libtiff.
+  # Tag is pinned to match the Makefile's WXWIDGETS_TAG for the xLights
+  # revision this manifest tracks below -- bump both together.
+  - name: wxWidgets
+    rm-configure: true
+    config-opts:
+      - --prefix=/app
+      - --enable-cxx11
+      - --with-cxx=17
+      - --enable-std_containers
+      - --enable-std_string_conv_in_wxstring
+      - --enable-backtrace
+      - --enable-exceptions
+      - --enable-mediactrl
+      - --enable-graphics_ctx
+      - --enable-monolithic
+      - --disable-sdltest
+      - --with-gtk=3
+      - --enable-glcanvasegl
+      - --disable-pcx
+      - --disable-iff
+      - --without-libtiff
+      - --enable-utf8
+      - --enable-utf8only
+    cleanup:
+      - /share/bakefile
+    sources:
+      - type: git
+        url: https://github.com/xLightsSequencer/wxWidgets.git
+        tag: xlights_2026.13
+
+  - name: xLights
+    buildsystem: simple
+    build-options:
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+    build-commands:
+      # --- ISPC: build_scripts/linux/ispc.mak invokes a literal `../ispc`
+      # relative to the xLights/ build dir -- i.e. a file named `ispc` at the
+      # repo root -- NOT `ispc` on $PATH. Stage the prebuilt compiler there;
+      # version must track the Makefile's ISPC_VERSION. NOTE: flatpak-builder
+      # archive sources default to strip-components:1, so the tarball's own
+      # ispc-v1.31.0-linux/ wrapper directory is already gone -- bin/ispc
+      # lands directly at the build root, not ispc-v1.31.0-linux/bin/ispc.
+      - ln -sf bin/ispc ispc
+      # --- KLightMapper: build_scripts/linux/klightmapper.mak adds
+      # `-lklightmapper` UNCONDITIONALLY to the Linux link flags -- it is a
+      # required, not optional, dependency of the Makefile-driven Linux
+      # build (unlike the CMake/Windows paths, where it's best-effort and
+      # silently disables the camera-scan feature if absent). Stage it
+      # exactly where ci_scripts/fetch_klightmapper.sh would have put it.
+      # NOTE: flatpak-builder's zip extraction flattens the archive's klm/
+      # subdirectory -- api.h/scan_api.h land directly in klightmapper-src/,
+      # not klightmapper-src/klm/ (unlike a plain `unzip`).
+      - mkdir -p lib/linux include/klightmapper/klm
+      - cp klightmapper-src/libklightmapper.so lib/linux/libklightmapper.so
+      - cp klightmapper-src/*.h include/klightmapper/klm/
+      # --- liquidfun: lib/linux/libliquidfun.a.<arch> is already committed
+      # in the xLights repo (prebuilt, not built from source on Linux) --
+      # replicate the Makefile's `linkliquid` target rather than rebuilding
+      # Box2D from scratch.
+      - ln -sf libliquidfun.a.$(uname -m) lib/linux/libliquidfun.a
+      # --- libxlsxwriter: compiled from the vendored git submodule in place,
+      # matching the Makefile's own `libxlsxwriter` target (not a system
+      # library -- the previous attempt's separate libxlsxwriter/nanosvg
+      # modules installing into /app were unused by this build).
+      - make -C dependencies/libxlsxwriter -s -j${FLATPAK_BUILDER_N_JOBS}
+      # --- glslang (the library, for the runtime GLSL Shader effect) --
+      # same cmake invocation as the Makefile's `glslang` target.
+      - >
+        cmake -S dependencies/glslang -B dependencies/glslang-build
+        -DCMAKE_BUILD_TYPE=Release -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF
+        -DENABLE_GLSLANG_BINARIES=OFF -DBUILD_SHARED_LIBS=OFF -DBUILD_EXTERNAL=OFF
+        -DSPIRV-Headers_SOURCE_DIR=$PWD/dependencies/SPIRV-Headers
+        -DCMAKE_INSTALL_PREFIX=$PWD/dependencies/glslang-build/install
+        -DCMAKE_INSTALL_LIBDIR=lib
+      - cmake --build dependencies/glslang-build -j${FLATPAK_BUILDER_N_JOBS}
+      - cmake --install dependencies/glslang-build
+      # --- Vulkan compute/graphics shaders -> SPIR-V headers (glslc from the
+      # shaderc module above).
+      - ./build_scripts/compile_vulkan_shaders.sh
+      # --- Generate xLights/xLights.cbp.mak from the .cbp (cbp2make module).
+      - make makefile
+      # -lstdc++fs is a pre-GCC9 relic (std::filesystem used to ship in a
+      # separate library); GCC 9+ folds it into libstdc++ itself and this
+      # SDK's GCC doesn't provide a standalone libstdc++fs.so/.a at all, so
+      # the flag is just dead weight here -- strip it rather than patch the
+      # upstream .cbp for a case that doesn't affect any currently-supported
+      # native toolchain.
+      - sed -i 's/-lstdc++fs//g' xLights/xLights.cbp.mak
+      # --- Compile. -j is added explicitly here: the top-level Makefile's
+      # own `subdirs` target invokes the generated makefile without -j (its
+      # `.NOTPARALLEL:` only governs the outer Makefile's own targets, but
+      # nothing hands parallelism to the actual few-thousand-file compile
+      # either way), so building via plain `make subdirs` here would compile
+      # the entire codebase single-threaded.
+      - make -C xLights -f xLights.cbp.mak OBJDIR_LINUX_DEBUG=".objs_debug" linux_release -j${FLATPAK_BUILDER_N_JOBS}
+      - install -Dm755 bin/xLights /app/bin/xLights
+      # klightmapper.mak bakes an $ORIGIN-relative rpath into the binary
+      # (../lib/linux and ../lib relative to wherever it's installed) rather
+      # than an absolute path, so libklightmapper.so has to actually be
+      # installed here too, not just present in the build tree for linking --
+      # confirmed by `flatpak run` actually failing with "cannot open shared
+      # object file" without this.
+      - install -Dm755 lib/linux/libklightmapper.so /app/lib/linux/libklightmapper.so
+      - install -Dm644 bin/xlights.desktop /app/share/applications/org.xlights.xLights.desktop
+      - install -Dm644 resources/images/xLightsIcons/256x256.png /app/share/icons/hicolor/256x256/apps/org.xlights.xLights.png
+      - install -Dm644 resources/images/xLightsIcons/128x128.png /app/share/icons/hicolor/128x128/apps/org.xlights.xLights.png
+      - install -Dm644 resources/images/xLightsIcons/64x64.png /app/share/icons/hicolor/64x64/apps/org.xlights.xLights.png
+      - install -Dm644 org.xlights.xLights.metainfo.xml /app/share/metainfo/org.xlights.xLights.metainfo.xml
+      - install -d /app/share/xLights
+      - cp -r resources/dictionaries resources/colorcurves resources/controllers resources/meshobjects resources/valuecurves resources/effectmetadata resources/mhpresets resources/palettes resources/scripts resources/prompts resources/html /app/share/xLights/
+    sources:
+      - type: git
+        url: https://github.com/xLightsSequencer/xLights.git
+        tag: '2026.14'
+        commit: ed31c39f4f477e466550658e06aebe49b14eb2c7
+      - type: archive
+        url: https://github.com/ispc/ispc/releases/download/v1.31.0/ispc-v1.31.0-linux.tar.gz
+        sha256: d74089c835e10fd7e2c4b9225ced38b87d1fb53d35c7ceabd48cdf035da11b11
+      - type: archive
+        url: https://github.com/KulpLights/KLightMapper/releases/download/v1.3.0/klightmapper-linux-x64.zip
+        sha256: 6d2bda1bada92fb79e450118fa1e4818a88bc1451a3d9998463e3caf0858877e
+        dest: klightmapper-src
+      - type: file
+        path: org.xlights.xLights.metainfo.xml
