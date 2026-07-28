@@ -1,0 +1,68 @@
+id: io.github.justlinuxnoob.ArchiveFree
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: archivefree
+
+# The GNOME runtime already provides Python 3, PyGObject, GTK 4 and libadwaita,
+# so the only thing we have to bundle is 7-Zip — which is what makes the
+# Flatpak support 7z, RAR, ISO and encrypted ZIP with nothing else installed.
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # An archive manager is only useful if it can reach the user's files, and
+  # people keep archives everywhere. This matches what other archive tools do.
+  - --filesystem=host
+  # Archives opened from a mounted phone, network share or USB stick.
+  - --filesystem=xdg-run/gvfs
+  # Lets the app become the default archive handler on the host.
+  - --talk-name=org.freedesktop.FileManager1
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: sevenzip
+    buildsystem: simple
+    build-commands:
+      - make -j "${FLATPAK_BUILDER_N_JOBS:-1}" -C CPP/7zip/Bundles/Alone2
+        -f ../../cmpl_gcc.mak
+      - install -Dm755 CPP/7zip/Bundles/Alone2/b/g/7zz /app/bin/7zz
+      # ArchiveFree probes for 7zz, 7z, 7za and 7zr in that order; the alias
+      # keeps anything that looks for the traditional name working too.
+      - ln -s 7zz /app/bin/7z
+    sources:
+      - type: archive
+        url: https://7-zip.org/a/7z2501-src.tar.xz
+        sha256: ed087f83ee789c1ea5f39c464c55a5c9d4008deb0efe900814f2df262b82c36e
+        strip-components: 0
+    cleanup:
+      - /share/doc
+
+  - name: archivefree
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/archivefree/integration
+      - cp -r archivefree /app/share/archivefree/
+      - install -Dm644 data/integration/archivefree-extension.py
+        /app/share/archivefree/integration/archivefree-extension.py
+      - install -Dm755 packaging/flatpak/archivefree-launcher /app/bin/archivefree
+      - install -Dm644 data/io.github.justlinuxnoob.ArchiveFree.desktop
+        /app/share/applications/io.github.justlinuxnoob.ArchiveFree.desktop
+      - install -Dm644 data/io.github.justlinuxnoob.ArchiveFree.metainfo.xml
+        /app/share/metainfo/io.github.justlinuxnoob.ArchiveFree.metainfo.xml
+      - install -Dm644
+        data/icons/hicolor/scalable/apps/io.github.justlinuxnoob.ArchiveFree.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.justlinuxnoob.ArchiveFree.svg
+    sources:
+      - type: git
+        url: https://github.com/justlinuxnoob/archivefree.git
+        tag: v0.5.1
+        commit: abee20eef18cae9f589a1adf0ffeb21d87c997f1
