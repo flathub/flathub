@@ -1,0 +1,116 @@
+# =============================================================================
+# LibreDB Studio Flatpak manifest template (issue #232).
+#
+# Rendered by scripts/render-flatpak-manifest.mjs, which fills the version and
+# the per-architecture sha256 placeholders below from the checksums of the
+# AppImage assets release CI publishes. The rendered file is what lives in the
+# flathub/org.libredb.Studio repository; Flathub's External Data Checker keeps
+# the url/sha256 pairs current through the x-checker-data blocks below.
+#
+# Why repack the AppImage instead of building from source: the AppImage is our
+# own MIT-licensed release artifact, already built and smoke-tested by release
+# CI for every version, so Flathub ships the exact bytes users get from every
+# other channel and there is one build pipeline to keep working. Same pattern as
+# Beekeeper Studio's Flathub manifest.
+#
+# Runtime: org.gnome.Platform, not org.freedesktop.Platform - the desktop shell
+# is a Tauri (WebKitGTK) app and only the GNOME runtime ships webkit2gtk-4.1.
+# =============================================================================
+app-id: org.libredb.Studio
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: libredb-studio
+
+finish-args:
+  # A webview plus a local HTTP server: window system, GPU and the loopback
+  # sockets the shell uses to talk to its own sidecar.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Outbound TCP to the databases the user configures (and to an AI provider if
+  # they enable one). Also covers 127.0.0.1, so a database running on the host
+  # is reachable over TCP without any filesystem permission.
+  - --share=network
+  # Deliberately absent: --filesystem=*. Opening local SQLite files or reaching
+  # a database over a Unix socket is opt-in per user, documented in
+  # docs/DISTRIBUTION.md as a `flatpak override` command.
+
+modules:
+  - name: libredb-studio
+    buildsystem: simple
+    # Everything installed here is a prebuilt release artifact, so there is no
+    # debug information to extract - and running strip over it is actively
+    # harmful: it turned the duplicated better-sqlite3 native addon into an
+    # unloadable file ("object file has no loadable segments"), which took the
+    # server's SQLite storage down while the rest of the app looked healthy.
+    build-options:
+      strip: false
+      no-debuginfo: true
+    build-commands:
+      - chmod +x libredb-studio.AppImage
+      - ./libredb-studio.AppImage --appimage-extract
+      - rm libredb-studio.AppImage
+
+      # Icons come out of the AppImage named after the binary; Flathub requires
+      # them named after the app id. Scale-suffixed directories (256x256@2) are
+      # skipped: the plain sizes plus 512x512 satisfy the icon requirement.
+      - |
+        for icon in squashfs-root/usr/share/icons/hicolor/*/apps/*.png; do
+          size="$(basename "$(dirname "$(dirname "$icon")")")"
+          case "$size" in *@*) continue ;; esac
+          install -Dm644 "$icon" "${FLATPAK_DEST}/share/icons/hicolor/${size}/apps/${FLATPAK_ID}.png"
+        done
+
+      # Install exactly three things out of the AppImage, and nothing else: the
+      # shell binary, the pinned Node sidecar and the server payload. The rest of
+      # the AppDir is the GTK/WebKitGTK stack that linuxdeploy copied from the
+      # build machine - inside the sandbox those must come from the runtime
+      # instead, and mixing a bundled libwebkit2gtk with the runtime's helper
+      # processes (or the reverse) crashes the webview.
+      #
+      # The relative layout is load-bearing: Tauri resolves its resource
+      # directory as <exe dir>/../lib/<product name>, hence usr/bin next to
+      # usr/lib/libredb-studio-desktop.
+      - install -Dm755 squashfs-root/usr/bin/libredb-studio-desktop ${FLATPAK_DEST}/libredb-studio/usr/bin/libredb-studio-desktop
+      - install -Dm755 squashfs-root/usr/bin/node ${FLATPAK_DEST}/libredb-studio/usr/bin/node
+      - install -d ${FLATPAK_DEST}/libredb-studio/usr/lib
+      - cp -r squashfs-root/usr/lib/libredb-studio-desktop ${FLATPAK_DEST}/libredb-studio/usr/lib/libredb-studio-desktop
+
+      - install -Dm755 libredb-studio.sh ${FLATPAK_DEST}/bin/libredb-studio
+      - install -Dm644 org.libredb.Studio.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 org.libredb.Studio.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+
+    sources:
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://github.com/libredb/libredb-studio/releases/download/0.9.60/libredb-studio-desktop-0.9.60-linux-x64.AppImage
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        dest-filename: libredb-studio.AppImage
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/libredb/libredb-studio/releases/latest
+          # Release tags in this repo are bare semver, so there is no "v" to strip.
+          version-query: .tag_name
+          url-query: .assets[] | select(.name == "libredb-studio-desktop-" + $version + "-linux-x64.AppImage") | .browser_download_url
+
+      - type: file
+        only-arches:
+          - aarch64
+        url: https://github.com/libredb/libredb-studio/releases/download/0.9.60/libredb-studio-desktop-0.9.60-linux-arm64.AppImage
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        dest-filename: libredb-studio.AppImage
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/libredb/libredb-studio/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name == "libredb-studio-desktop-" + $version + "-linux-arm64.AppImage") | .browser_download_url
+
+      - type: file
+        path: libredb-studio.sh
+      - type: file
+        path: org.libredb.Studio.desktop
+      - type: file
+        path: org.libredb.Studio.metainfo.xml
