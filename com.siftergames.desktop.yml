@@ -1,0 +1,88 @@
+# Flatpak manifest for the Sifter desktop app — repackages the released,
+# versioned .deb (the same binary every other Linux user runs) rather than
+# building from source, since the source repo is private. This is the
+# standard Flathub pattern for proprietary apps (Discord, Slack, etc.).
+#
+# The url + sha256 below are ONE FACT — bump them together, never apart.
+# Both come from the Desktop release workflow: the versioned artifact it
+# uploads to desktop/releases/<version>/, and the checksum it prints on the
+# "== sha256 for packaging/flatpak ==" line. Currently pinned to 0.3.2,
+# verified 2026-07-28 by downloading the published file and re-hashing it.
+#
+# Validation: run the "Validate Flatpak" GitHub workflow (it also fires on
+# any PR touching this directory). It builds, installs, and headlessly boots
+# the sandboxed app on an Ubuntu runner — no local Linux machine needed.
+# See README.md here for the submission walkthrough and honest limits.
+#
+# Runtime note: Tauri v2 needs GTK3 + webkit2gtk-4.1. The GNOME runtime has
+# historically shipped both; if Flathub's builder reports webkit2gtk-4.1
+# missing from this runtime version, the fallback is building webkitgtk as a
+# module or pinning an older runtime — resolve at submission time against
+# Flathub's current guidance for Tauri apps.
+
+app-id: com.siftergames.desktop
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: sifter-desktop
+
+finish-args:
+  # The webview + launcher UI.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Loads the live site; launches hand off via portal-opened URLs.
+  - --share=network
+  # Read-only visibility into the install records the library scanner reads
+  # (see desktop/src-tauri/library-scan): Steam (native/Flatpak/Snap),
+  # Heroic (native/Flatpak), Lutris (native/Flatpak). Read-only on purpose —
+  # Sifter never writes into another launcher's data.
+  - --filesystem=~/.local/share/Steam:ro
+  - --filesystem=~/.steam:ro
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam:ro
+  - --filesystem=~/snap/steam/common/.local/share/Steam:ro
+  - --filesystem=~/.config/heroic:ro
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config/heroic:ro
+  - --filesystem=~/.config/lutris/games:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris/config/lutris/games:ro
+
+modules:
+  - name: sifter-desktop
+    buildsystem: simple
+    build-commands:
+      # Unpack the released .deb (data tarball compression varies by
+      # bundler version — match any).
+      - ar x Sifter-linux.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/sifter-desktop /app/bin/sifter-desktop
+      # Desktop entry + icons must be renamed to the Flatpak app-id.
+      - |
+        desktop_file=$(ls usr/share/applications/*.desktop | head -1)
+        sed -i 's/^Icon=.*/Icon=com.siftergames.desktop/' "$desktop_file"
+        # AppStream compose hard-requires a valid XDG category, and older
+        # Sifter .debs (pre-0.3.2) shipped a desktop file without one.
+        if grep -q '^Categories=' "$desktop_file"; then
+          sed -i 's/^Categories=.*/Categories=Game;/' "$desktop_file"
+        else
+          printf 'Categories=Game;\n' >> "$desktop_file"
+        fi
+        install -Dm644 "$desktop_file" /app/share/applications/com.siftergames.desktop.desktop
+      - |
+        for dir in usr/share/icons/hicolor/*/apps; do
+          size=$(basename "$(dirname "$dir")")
+          icon=$(ls "$dir"/*.png 2>/dev/null | head -1) || continue
+          [ -n "$icon" ] && install -Dm644 "$icon" "/app/share/icons/hicolor/$size/apps/com.siftergames.desktop.png"
+        done
+      - install -Dm644 com.siftergames.desktop.metainfo.xml -t /app/share/metainfo
+    sources:
+      - type: file
+        # Immutable per-version artifact published by the Desktop release
+        # workflow (desktop/releases/<version>/ — never overwritten, unlike
+        # desktop/latest/). Bump the version in this URL AND the sha256
+        # together; they are one fact.
+        url: https://vqwhap5sw1u1nujs.public.blob.vercel-storage.com/desktop/releases/0.3.2/Sifter-linux.deb
+        sha256: 4cf6477ab6546a5dee828fdafd79e2ca3069c512402a8654be8e489cddcb32a0
+        dest-filename: Sifter-linux.deb
+      - type: file
+        path: com.siftergames.desktop.metainfo.xml
