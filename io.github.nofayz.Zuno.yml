@@ -1,0 +1,109 @@
+# Flatpak manifest for Zuno.
+#
+# Built from source, which is what Flathub expects of an open-source app — `extra-data`
+# repackaging of the .deb is reserved for things that cannot be built, and would be sent back
+# at review.
+#
+# Flatpak builds run with no network, so every crate and npm package has to be listed up
+# front. `cargo-sources.json` and `node-sources.json` are generated (see the README here) and
+# must be committed alongside this file; they are not written by hand.
+app-id: io.github.nofayz.Zuno
+
+# 47, not 46, because of Rust rather than WebKit: the SDK extensions track the freedesktop
+# base, 46 sits on 23.08, and that carries Cargo 1.81 — too old for the `edition2024` several
+# transitive crates now require. 47 sits on 24.08. The 47 runtime still provides
+# webkit2gtk-4.1 alongside webkitgtk-6.0, so Tauri links as before.
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: zuno
+
+finish-args:
+  # Windowing. --socket=fallback-x11 rather than --socket=x11 so the app prefers Wayland and
+  # only reaches for X11 where there is no Wayland socket.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Audio, and the network the whole app exists to reach.
+  - --socket=pulseaudio
+  - --share=network
+
+  # Media keys, MPRIS and the notifications the player publishes.
+  - --talk-name=org.freedesktop.Notifications
+  - --own-name=org.mpris.MediaPlayer2.zuno
+
+  # The tray icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+  # Discord Rich Presence talks over a socket in the runtime dir; Discord itself is sandboxed
+  # separately, so the path has to be shared explicitly for presence to connect at all.
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+
+  # Where downloads and local audio come from. Read-only: Zuno reads local files and writes
+  # its own downloads inside its data directory.
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download:ro
+
+modules:
+  - name: zuno
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+      env:
+        # Matches where flatpak-cargo-generator writes its config; the sandbox has no
+        # writable $HOME for cargo's default location.
+        CARGO_HOME: /run/build/zuno/cargo
+        # Vendored sources only — a network fetch here fails the build rather than silently
+        # pulling something that is not in the manifest.
+        CARGO_NET_OFFLINE: "true"
+
+    sources:
+      - type: git
+        url: https://github.com/noFAYZ/zuno.git
+        tag: v1.2.1
+        # Pinned so the build is reproducible even if the tag were ever moved.
+        commit: 168eae956555a07e7be6e185cb82f1079a861c7d
+
+      # Generated. See packaging/flatpak/README.md.
+      - cargo-sources.json
+      - node-sources.json
+
+      - type: file
+        path: io.github.nofayz.Zuno.desktop
+      - type: file
+        path: io.github.nofayz.Zuno.metainfo.xml
+
+    build-commands:
+      # The cache path is not optional: flatpak-node-generator unpacks every tarball into
+      # flatpak-node/npm-cache, and npm looks in its own default unless told otherwise —
+      # which fails as ENOTCACHED with the packages sitting right there.
+      - npm ci --offline --no-audit --no-fund --cache=flatpak-node/npm-cache
+      - npm run build
+      - cargo build --release --offline --manifest-path src-tauri/Cargo.toml
+
+      - install -Dm755 src-tauri/target/release/zuno /app/bin/zuno
+      - install -Dm644 io.github.nofayz.Zuno.desktop
+        /app/share/applications/io.github.nofayz.Zuno.desktop
+      - install -Dm644 io.github.nofayz.Zuno.metainfo.xml
+        /app/share/metainfo/io.github.nofayz.Zuno.metainfo.xml
+
+      # The icon has to be installed under the app id, not the binary name, or the desktop
+      # entry's Icon= finds nothing inside the sandbox.
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.nofayz.Zuno.png
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/io.github.nofayz.Zuno.png
+      - install -Dm644 "src-tauri/icons/128x128@2x.png"
+        /app/share/icons/hicolor/256x256/apps/io.github.nofayz.Zuno.png
+      # 256 is Flathub's stated minimum; 512 is what makes it look right in the store listing
+      # and on HiDPI. There is no SVG in the project, so this is the best available.
+      - install -Dm644 src-tauri/icons/icon.png
+        /app/share/icons/hicolor/512x512/apps/io.github.nofayz.Zuno.png
