@@ -1,0 +1,94 @@
+# Flathub manifest for Dayly.
+#
+# This repackages the published .deb rather than building from source. Flathub builds
+# with no network access, so a source build would mean vendoring every npm dependency
+# into the manifest via flatpak-node-generator and regenerating it on each release. The
+# .deb is already the artifact CI produces and publishes, so repackaging it keeps one
+# build path instead of two that can disagree.
+#
+# The submission copy lives at the root of a branch named after the app id in a fork of
+# github.com/flathub/flathub. This copy is the one that is maintained.
+#
+# The id matches `appId` in electron-builder.yml exactly, lower case included, so that
+# every platform identifies Dayly by the same string.
+app-id: me.faizraza.dayly
+
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+
+# Supplies zypak, which lets Chromium's sandbox work inside the Flatpak sandbox without
+# the setuid helper. The branch has to match runtime-version above.
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+
+command: dayly
+
+# Dayly ships a single locale, so the split would produce an empty extension.
+separate-locales: false
+
+finish-args:
+  # Display. fallback-x11 rather than x11 so an X socket is only requested when there
+  # is no Wayland session to use.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # The tray is the entire UI surface: without a StatusNotifierItem host Dayly has no
+  # icon to click. This is the one permission the app genuinely cannot work without.
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+  # End-of-day reminders.
+  - --talk-name=org.freedesktop.Notifications
+
+  # Deliberately no --share=network. Dayly opens no sockets, and the update check is
+  # already gated off in a Flatpak build (LinuxPlatform keys `supportsAutoUpdate` on
+  # $APPIMAGE, which is unset here), so the store is the only updater. Opening the
+  # Releases page goes through the portal and needs no socket of our own.
+
+modules:
+  - name: dayly
+    buildsystem: simple
+    build-commands:
+      # The .deb is an ar archive holding a tarball; neither needs a package manager.
+      - ar x dayly.deb
+      - tar -xf data.tar.xz
+
+      - mkdir -p /app/dayly
+      - cp -a opt/Dayly/. /app/dayly/
+
+      # zypak replaces the setuid sandbox helper, and shipping an unused setuid binary
+      # trips the Flathub linter.
+      - rm -f /app/dayly/chrome-sandbox
+      # electron-updater's feed descriptor. The updater never runs in this build, so the
+      # file would only ever mislead someone reading the package.
+      - rm -f /app/dayly/resources/app-update.yml
+
+      # Launches through zypak rather than exec'ing the binary directly.
+      - install -Dm755 dayly.sh /app/bin/dayly
+
+      # Everything user-visible is renamed to the app id, which Flathub requires.
+      - install -Dm644 me.faizraza.dayly.desktop /app/share/applications/me.faizraza.dayly.desktop
+      - install -Dm644 me.faizraza.dayly.metainfo.xml /app/share/metainfo/me.faizraza.dayly.metainfo.xml
+      # Installed at its true size: electron-builder emits only the 1024x1024 icon, and
+      # declaring it as any other size would be a lie the linter catches.
+      - install -Dm644 usr/share/icons/hicolor/1024x1024/apps/dayly.png
+        /app/share/icons/hicolor/1024x1024/apps/me.faizraza.dayly.png
+
+    sources:
+      - type: file
+        url: https://github.com/faizrazadec/dayly/releases/download/v0.1.0/dayly_0.1.0_amd64.deb
+        sha256: 4c77c469f60fa35b0451d33d983a7dc167c5daba36c4a195dc7d6e239ab21e92
+        dest-filename: dayly.deb
+
+      - type: script
+        dest-filename: dayly.sh
+        commands:
+          - exec zypak-wrapper.sh /app/dayly/dayly "$@"
+
+      - type: file
+        path: me.faizraza.dayly.desktop
+
+      - type: file
+        path: me.faizraza.dayly.metainfo.xml
