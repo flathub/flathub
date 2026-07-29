@@ -1,0 +1,71 @@
+# Flatpak manifest for PeekCam — Flathub submission (app source pinned to v0.1.1).
+#
+# This folder is the ready-to-submit bundle for https://github.com/flathub/flathub:
+#   - io.github.sebszwolin777.PeekCam.yaml   (this file)
+#   - python3-modules.json                   (pinned blur ML wheels; committed alongside)
+#
+# The desktop file, metainfo, icons, and app code come from the pinned git source below;
+# regenerate python3-modules.json with ../flatpak/gen-python-deps.sh if the runtime Python
+# changes (KDE 6.9 -> freedesktop 24.08 -> Python 3.12).
+app-id: io.github.sebszwolin777.PeekCam
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.9'
+command: peekcam
+
+finish-args:
+  # Always-on-top / free positioning / click-through need an X11 client (XWayland).
+  # We force the xcb platform below; --socket=wayland is required by Flathub alongside
+  # fallback-x11 (it's granted but unused since the app runs on XWayland).
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --env=QT_QPA_PLATFORM=xcb
+  - --share=ipc
+  # Cameras (/dev/video*) + GPU (/dev/dri). We use v4l2src and v4l2-ctl directly, which
+  # need raw device access rather than the camera portal.
+  - --device=all
+  # Snapshots and recordings.
+  - --filesystem=xdg-pictures:create
+  - --filesystem=xdg-videos:create
+  # System-tray icon + desktop notifications.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+# Recording uses openh264enc (from the runtime's auto-pulled openh264 extension), so no
+# ffmpeg-full extension is needed. gst-libav deliberately omits avenc_h264 anyway.
+
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  # 1) Background-blur ML stack (mediapipe + opencv + numpy + deps), pinned wheels.
+  - python3-modules.json
+
+  # 2) The app itself + bundled model + desktop integration.
+  - name: peekcam
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 assets/peekcam.png ${FLATPAK_DEST}/share/peekcam/assets/peekcam.png
+      - install -Dm644 selfie_segmenter.tflite ${FLATPAK_DEST}/share/peekcam/models/selfie_segmenter.tflite
+      - install -Dm644 assets/peekcam-48.png  ${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/${FLATPAK_ID}.png
+      - install -Dm644 assets/peekcam-64.png  ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm644 assets/peekcam-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 assets/peekcam-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/sebszwolin777/peekcam.git
+        tag: v0.1.1
+        commit: 06872a6f48cfbd394483932a719b198f1c8eaeeb
+      - type: file
+        url: https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite
+        sha256: 191ac9529ae506ee0beefa6b2c945a172dab9d07d1e802a290a4e4038226658b
+        dest-filename: selfie_segmenter.tflite
