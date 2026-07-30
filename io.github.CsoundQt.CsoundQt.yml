@@ -1,0 +1,329 @@
+app-id: io.github.CsoundQt.CsoundQt
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: CsoundQt-d-cs7
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network    # OSC networking needed
+  - --device=all       # MIDI/audio devices 
+  - --filesystem=home  # required to access user's audiofiles, samples, projects, etc 
+  - --filesystem=xdg-run/pipewire-0
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=NO_AT_BRIDGE=1
+  - --env=LD_LIBRARY_PATH=/app/lib
+  - --env=AT_SPI_BUS_ADDRESS=disabled
+  # - --env=QT_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/qt6/plugins
+
+modules:
+  - name: libogg
+    buildsystem: cmake-ninja
+    license-files:
+      - COPYING
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DINSTALL_DOCS=OFF
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz
+        sha256: 0eb4b4b9420a0f51db142ba3f9c64b333f826532dc0f48c6410ae51f4799b664
+        
+  - name: libvorbis
+    buildsystem: cmake-ninja
+    license-files:
+      - COPYING
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.gz
+        sha256: 0e982409a9c3fc82ee06e08205b1355e5c6aa4c36bca58146ef399621b0ce5ab
+        
+  - name: libopus
+    buildsystem: cmake-ninja
+    license-files:
+      - COPYING
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5    
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DOPUS_BUILD_PROGRAMS=OFF
+      - -DOPUS_BUILD_TESTING=OFF
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz
+        sha256: c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f
+        
+  - name: libFLAC
+    buildsystem: cmake-ninja
+    license-files:
+      - COPYING.GPL
+      - COPYING.LGPL
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5    
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DWITH_OGG=ON
+      - -DBUILD_DOCS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_TESTING=OFF
+      - -DINSTALL_MANPAGES=OFF
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/flac/flac-1.4.3.tar.xz
+        sha256: 6c58e69cd22348f441b861092b825e591d0b822e106de6eb0ee4d05d27205b70
+        
+  - name: libsndfile
+    buildsystem: simple
+    license-files:
+      - COPYING
+    build-commands:
+      - cmake -B build -S .
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5   
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/app
+          -DCMAKE_INSTALL_LIBDIR=lib
+          -DCMAKE_PREFIX_PATH=/app
+          -DBUILD_SHARED_LIBS=OFF
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          -DBUILD_PROGRAMS=OFF
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_TESTING=OFF
+          -DENABLE_EXTERNAL_LIBS=ON
+          -DENABLE_MPEG=OFF
+      - cmake --build build -j$(nproc)
+      - cmake --install build
+
+      - find /app -name 'libsndfile.a'
+      - find /app -name 'libFLAC.a'
+      # Merge all codec archives into libsndfile.a so Csound only needs to link one archive
+      - |
+        D=/app/lib
+        printf 'CREATE %s/libsndfile_merged.a\nADDLIB %s/libsndfile.a\nADDLIB %s/libFLAC.a\nADDLIB %s/libvorbisenc.a\nADDLIB %s/libvorbis.a\nADDLIB %s/libogg.a\nADDLIB %s/libopus.a\nSAVE\nEND\n' \
+          "$D" "$D" "$D" "$D" "$D" "$D" "$D" > /tmp/merge.mri
+        ar -M < /tmp/merge.mri
+        mv /app/lib/libsndfile_merged.a /app/lib/libsndfile.a
+    # NOTE: /include and /lib/*.a are cleaned up later, in the csound-plugins
+    # module, because its sndmeta plugin needs sndfile.h and libsndfile.a
+    cleanup:
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz
+        sha256: 3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e
+        
+  - name: liblo
+    buildsystem: autotools
+    license-files:
+      - COPYING
+    config-opts:
+      - --enable-static
+      - --disable-shared
+      - --disable-examples
+      - --disable-tools
+      - --disable-doc
+    build-options:
+      cflags: -fPIC -O2
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://github.com/radarsat1/liblo/releases/download/0.35/liblo-0.35.tar.gz
+        sha256: 9acc4f7e5a24f33472e9acd7e409b7bd6810a46f0a1f3cfeecea22d60f3aae13
+        
+  - name: csound
+    buildsystem: cmake-ninja
+    license-files:
+      - COPYING
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5    
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_PLUGINS=ON
+      - -DUSE_LIBLO=ON
+      - -DUSE_ALSA=ON
+      - -DUSE_PORTMIDI=ON
+      - -DUSE_PORTAUDIO=OFF
+      - -DUSE_PULSEAUDIO=OFF
+      - -DUSE_PIPEWIRE=OFF
+      - -DBUILD_OSC_OPCODES=ON
+      - -DUSE_FLTK=OFF
+      - -DBUILD_VIRTUAL_KEYBOARD=OFF
+      - -DBUILD_JAVA_INTERFACE=OFF
+      - -DBUILD_PYTHON_INTERFACE=OFF
+      - -DINSTALL_PYTHON_INTERFACE=OFF
+      - -DBUILD_LUA_INTERFACE=OFF
+      - -DBUILD_CSBEATS=OFF
+      - -DBUILD_STATIC_LIBRARY=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_INSTALLER=OFF
+      - -DBUILD_UTILITIES=OFF
+      - -DUSE_JACK=ON
+      # - -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++
+      # - -DUSE_JACK=ON
+            
+    sources:
+      - type: git
+        url: https://github.com/csound/csound
+        # branch: develop
+        disable-shallow-clone: true
+        commit: 75537cb944a925bd1545a39e84f2e269fda8c1b6
+
+  # External Csound plugins (https://github.com/csound-plugins/csound-plugins)
+  # Built against the csound installed above (headers in /app/include/csound),
+  # so the bundled csound submodule is not needed. Only the jsusfx submodule
+  # (used by the jsfx plugin) is fetched, as a separate source below.
+  # -DPORTABLE=ON avoids the php-cli + nasm generated assembly in jsusfx.
+  - name: csound-plugins
+    license-files:
+      - LICENSE
+    buildsystem: simple
+    build-commands:
+      - cmake -B build -S . -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH=/app
+          -DAPIVERSION=7.0
+          -DPORTABLE=ON
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          -DCMAKE_C_FLAGS=-I/app/include/csound
+          -DCMAKE_CXX_FLAGS=-I/app/include/csound
+      - cmake --build build --parallel
+      # PLUGIN_INSTALL_DIR is hardcoded in the repo to $HOME/.local/... and
+      # cannot be overridden from the command line, but all plugin libraries
+      # are written flat into the build dir, so install them manually next to
+      # csound's own plugins.
+      - install -Dm755 build/*.so -t /app/lib/csound/plugins64-7.0/
+      - install -Dm644 src/jsfx/jsusfx/LICENSE \
+          /app/share/licenses/$FLATPAK_ID/csound-plugins/jsusfx-LICENSE
+    # deferred from the libsndfile module (sndmeta needs sndfile.h/libsndfile.a)
+    cleanup:
+      - /include
+      - /lib/*.a
+    sources:
+      - type: git
+        url: https://github.com/csound-plugins/csound-plugins
+        commit: e4e6145c03380521c9f29634976eac2af20705ed
+        disable-submodules: true
+      - type: git
+        url: https://github.com/asb2m10/jsusfx
+        commit: bcc9cd7b910ee7bba5b4cd2649448ade2ec15712
+        dest: src/jsfx/jsusfx
+
+  - name: metainfo
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 io.github.CsoundQt.CsoundQt.metainfo.xml
+          /app/share/metainfo/io.github.CsoundQt.CsoundQt.metainfo.xml
+    sources:
+      - type: file
+        path: io.github.CsoundQt.CsoundQt.metainfo.xml
+
+  - name: icon
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 csoundqt.png /app/share/icons/hicolor/256x256/apps/io.github.CsoundQt.CsoundQt.png
+    sources:
+      - type: file
+        path: csoundqt.png
+        # url: https://raw.githubusercontent.com/CsoundQt/CsoundQt/csoundqt7/src/images/csoundqt.png
+        # dest-filename: csoundqt.png
+
+  - name: desktop-file
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 io.github.CsoundQt.CsoundQt.desktop
+          /app/share/applications/io.github.CsoundQt.CsoundQt.desktop
+    sources:
+      - type: file
+        path: io.github.CsoundQt.CsoundQt.desktop
+  
+  - name: CsoundQt
+    buildsystem: simple
+    license-files:
+      - COPYING
+    sources:
+      - type: git
+        url: https://github.com/CsoundQt/CsoundQt.git
+        commit: 810a7c4bf87649e497398fb2de20baa485a0adcd
+        
+    build-commands:
+      - which qmake
+      - qmake --version  
+      # - git submodule update --init --recursive
+      - export QMAKEPATH=/app &&
+              /usr/bin/qmake6 CONFIG+=rtmidi CONFIG+=release CONFIG+=build64 
+                DEFINES+=FLATPAK_BUILD
+                qcs.pro                           
+                CSOUND_API_INCLUDE_DIR=/app/include/csound
+                CSOUND_LIBRARY_DIR=/app/lib
+                INSTALL_DIR=/app
+                SHARE_DIR=/app/share
+      - make -j$(nproc)
+      - make install 
+
+  # Offline Csound manual, installed to /app/share/manual.
+  - name: csound-manual
+    buildsystem: simple
+    build-commands:
+      - rm -rf extracted
+      - mkdir extracted
+      - unzip -q csound7-manual-offline.zip -d extracted
+      - echo "=== Manual archive contents ==="
+      - find extracted -maxdepth 3 -type f | head -50
+      - echo "=== Installing manual ==="
+      - mkdir -p /app/share/manual
+      - cp -a extracted/csound7-manual-offline/. /app/share/manual/
+      - echo "=== Installed manual ==="
+      - find /app/share/manual -maxdepth 3 -type f | head -50
+      - install -Dm644 COPYING \
+                /app/share/licenses/$FLATPAK_ID/csound-manual/COPYING
+
+    sources:
+      - type: file
+        url: https://github.com/csound/manual/releases/download/latest/csound7-manual-offline.zip
+        sha256: a1eb732942a651635ae838e142f339cde5c3822e33236ffea7c9afca613e932d
+        dest-filename: csound7-manual-offline.zip
+        x-checker-data:
+          type: html
+          url: https://github.com/csound/manual/releases/tag/latest
+          pattern: 'csound7-manual-offline\.zip'
+
+      - type: file
+        url: https://github.com/csound/csound/raw/75537cb944a925bd1545a39e84f2e269fda8c1b6/COPYING
+        sha256: 277175daefabde6cff3f6dd8ad7a21a2a346b29d3a7d3762367e4354da2ed77d
+        dest-filename: COPYING
+
+      
