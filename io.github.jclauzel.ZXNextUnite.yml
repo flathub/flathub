@@ -1,0 +1,64 @@
+# Flatpak manifest for ZX Next Unite (Flathub submission).
+#
+# Upstream manifest + desktop entry + metainfo + icons live in the app repo
+# under flatpak/: https://github.com/jclauzel/ZX-Next-Unite/tree/main/flatpak
+app-id: io.github.jclauzel.ZXNextUnite
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.8'
+command: zx-next-unite
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Catalogue browsing, NextSync/HTTP-bridge servers (inbound TCP 2048
+  # included) and the hdfmonkey/emulator downloads.
+  - --share=network
+  # SD images, sync roots and drag-and-drop live anywhere in the user's
+  # home; hdfmonkey (a child process) needs direct path access, so the
+  # per-file document portal is not enough.
+  - --filesystem=home
+  # Route hdfg.cfg + downloads/ to the XDG data dir instead of the
+  # (read-only) install dir — same switch the PyPI entry point flips.
+  - --env=ZX_NEXT_UNITE_MODE=installed
+
+cleanup-commands:
+  # The PySide BaseApp ships a trim script; tolerate its absence so a
+  # BaseApp layout change cannot break the build.
+  - sh -c '[ -x /app/cleanup-BaseApp.sh ] && /app/cleanup-BaseApp.sh || true'
+
+modules:
+  - name: zx-next-unite
+    buildsystem: simple
+    build-commands:
+      # Plain file layout (no pip): the app runs fine from a directory of
+      # modules, and this keeps the build independent of the SDK's
+      # setuptools vintage. ZX_NEXT_UNITE_MODE=installed (finish-args)
+      # keeps all writable state out of the read-only /app tree.
+      - mkdir -p /app/lib/zx-next-unite
+      - cp *.py /app/lib/zx-next-unite/
+      - cp *.png /app/lib/zx-next-unite/
+      - cp REQUIREMENTS.txt LICENSE THIRD-PARTY-NOTICES.md /app/lib/zx-next-unite/
+      # The NextSync dot-command builds (pushable to the Next from the
+      # Remote Explorer) and the .sync client sources.
+      - cp -r nextsync /app/lib/zx-next-unite/nextsync
+      - install -d /app/bin
+      - |
+        cat > /app/bin/zx-next-unite <<'LAUNCH'
+        #!/bin/sh
+        exec python3 /app/lib/zx-next-unite/zx-next-unite.py "$@"
+        LAUNCH
+      - chmod 755 /app/bin/zx-next-unite
+      - install -Dm644 flatpak/io.github.jclauzel.ZXNextUnite.desktop -t /app/share/applications
+      - install -Dm644 flatpak/io.github.jclauzel.ZXNextUnite.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 flatpak/icons/io.github.jclauzel.ZXNextUnite-256.png /app/share/icons/hicolor/256x256/apps/io.github.jclauzel.ZXNextUnite.png
+      - install -Dm644 flatpak/icons/io.github.jclauzel.ZXNextUnite-128.png /app/share/icons/hicolor/128x128/apps/io.github.jclauzel.ZXNextUnite.png
+    sources:
+      - type: git
+        url: https://github.com/jclauzel/ZX-Next-Unite.git
+        tag: v9.4.3
+        commit: 8cc6cc24ce12dd9e61409bb1ac906bc4b7178cb9
