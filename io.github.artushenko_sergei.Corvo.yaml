@@ -1,0 +1,66 @@
+# Corvo - desktop client for WhatsApp Web.
+#
+# The KDE runtime provides Qt 6.11 but not QtWebEngine, so WebEngine comes from
+# io.qt.qtwebengine.BaseApp; its version has to match the runtime.
+app-id: io.github.artushenko_sergei.Corvo
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: "6.11"
+command: Corvo
+
+finish-args:
+  # Window and rendering
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # WhatsApp Web itself
+  - --share=network
+  # Voice and video calls: audio plus /dev/video* for the camera. Flatpak has no
+  # camera-only device permission, hence --device=all.
+  - --socket=pulseaudio
+  - --device=all
+  # Notifications and the tray icon
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  # Attachments: send from and save to the usual user folders
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-documents
+  # No access to ~/.config/autostart: in a sandbox autostart belongs to the
+  # org.freedesktop.portal.Background portal. Until that is implemented, the
+  # autostart switch is disabled in Flatpak builds.
+  # QtWebEngine lives in /app (from the BaseApp), so its helper process and
+  # spell-check dictionaries are looked up there.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=QTWEBENGINE_DICTIONARIES_PATH=/app/qtwebengine_dictionaries
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - "*.a"
+  - "*.la"
+
+modules:
+  - name: corvo
+    buildsystem: cmake-ninja
+    config-opts:
+      # Qt comes from the BaseApp in /app, not from the home-directory
+      # installation the project defaults to.
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_PREFIX_PATH=/app;/usr
+    sources:
+      - type: git
+        url: https://github.com/Artushenko-Sergei/Corvo.git
+        tag: v2.0.4
+        commit: b6e05e8337b6eb36e75e898be3458ce1c1573aeb
+    post-install:
+      - install -Dm644 packaging/io.github.artushenko_sergei.Corvo.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
