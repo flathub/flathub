@@ -1,0 +1,69 @@
+app-id: com.velumvpn.app
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: velumvpn-wrapper
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --system-talk-name=org.freedesktop.PolicyKit1
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: velumvpn
+    buildsystem: simple
+    build-commands:
+      # Распаковываем pacman-пакет
+      - bsdtar -xf velumvpn.pkg.tar.xz opt usr
+
+      # Копируем приложение
+      - mkdir -p /app/lib/velumvpn
+      - cp -r opt/VelumVPN/. /app/lib/velumvpn/
+
+      # Иконки
+      - |
+        for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
+          src="opt/VelumVPN/resources/icons/${size}.png"
+          if [ -f "$src" ]; then
+            install -Dm644 "$src" "/app/share/icons/hicolor/${size}/apps/com.velumvpn.app.png"
+          fi
+        done
+
+      # Desktop-файл (переименовываем в com.velumvpn.app)
+      - install -Dm644 usr/share/applications/velumvpn.desktop /app/share/applications/com.velumvpn.app.desktop
+      - desktop-file-edit --set-key=Icon --set-value=com.velumvpn.app /app/share/applications/com.velumvpn.app.desktop
+
+      # AppStream метаданные
+      - install -Dm644 com.velumvpn.app.metainfo.xml /app/share/metainfo/com.velumvpn.app.metainfo.xml
+
+      # Права на ядро mihomo
+      - chmod +sx /app/lib/velumvpn/resources/sidecar/mihomo || true
+
+      # Скрипт-обёртка
+      - install -Dm755 velumvpn-wrapper.sh /app/bin/velumvpn-wrapper
+
+    sources:
+      - type: file
+        url: https://github.com/Jidos86/VelumVPN/releases/download/1.1.18/VelumVPN_x64.pkg.tar.xz
+        sha256: 0de3a467a3421ef28cbdb841945799ff61cec7f3242bea869b2f532f903ffcb4
+        dest-filename: velumvpn.pkg.tar.xz
+
+      - type: file
+        path: com.velumvpn.app.metainfo.xml
+
+      - type: script
+        dest-filename: velumvpn-wrapper.sh
+        commands:
+          - exec /app/lib/velumvpn/velumvpn "$@"
