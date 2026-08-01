@@ -1,0 +1,82 @@
+# Flathub submission manifest for TrayAuth.
+#
+# Identical to ../io.github.KlowdfurrRad.TrayAuth.yml except the app source: Flathub builds
+# from a tagged commit, not a working directory. Keep the two in step when either changes.
+
+app-id: io.github.KlowdfurrRad.TrayAuth
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+
+command: trayauth
+
+build-options:
+  append-path: /usr/lib/sdk/dotnet8/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet8/lib
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+finish-args:
+  # Avalonia's Linux backend is X11 (runs under XWayland on GNOME).
+  - --socket=x11
+  # The bundled wl-copy needs the real Wayland socket: it is how a background app is allowed
+  # to take the clipboard at all on Wayland.
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  # The tray icon: StatusNotifierItem over DBus, drawn by the shell.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # The vault key lives in the keyring (Secret Service API).
+  - --talk-name=org.freedesktop.secrets
+  # Deliberately NO --filesystem: file dialogs go through the portal, exports land wherever
+  # the user picks, and the vault lives in the app's own XDG_CONFIG_HOME.
+
+modules:
+  # Clipboard for a background app on Wayland; the host's copy is invisible to the sandbox.
+  - name: wl-clipboard
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.2.1
+        commit: 3eb912c274042cd5deed6b478b39908a12f37498
+
+  # Provides secret-tool, which the app shells out to for keyring storage of the vault key.
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      - -Dmanpage=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dvapi=false
+      - -Dcrypto=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
+        sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
+
+  - name: trayauth
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin /app/lib/trayauth
+      # Offline restore: every package comes from ./nuget-sources.
+      # Self-contained because the dotnet8 extension exists only at build time.
+      - dotnet publish src/TrayAuth.Desktop/TrayAuth.Desktop.csproj -c Release -r linux-x64
+        --self-contained true -p:PublishSingleFile=false -p:DebugType=none
+        --source ./nuget-sources -o /app/lib/trayauth
+      - ln -s /app/lib/trayauth/trayauth /app/bin/trayauth
+      - install -Dm644 packaging/flatpak/io.github.KlowdfurrRad.TrayAuth.desktop
+        -t /app/share/applications
+      - install -Dm644 packaging/linux/trayauth.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.KlowdfurrRad.TrayAuth.svg
+      - install -Dm644 packaging/flatpak/io.github.KlowdfurrRad.TrayAuth.metainfo.xml
+        -t /app/share/metainfo
+    sources:
+      - type: git
+        url: https://github.com/KlowdfurrRad/TrayAuth.git
+        tag: desktop-v0.2.0-alpha-1
+        commit: 150da1a31ff24b9583d353e4d63c1334e5bf6421
+      - nuget-sources.json
