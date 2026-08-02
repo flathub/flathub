@@ -1,0 +1,212 @@
+# Flatpak manifest for Permaplans (Flutter Linux desktop app)
+# ============================================================================
+# OPTION B: extra-data distribution (recommended for a PROPRIETARY Flathub app)
+# ============================================================================
+#
+# Difference vs com.permaplans.Permaplans.yaml (the "simple"/bundled
+# manifest)
+# ---------------------------------------------------------------------------
+# * The bundled manifest copies the pre-built Flutter bundle INTO the Flatpak
+#   at build time, so the whole binary ends up committed into the flathub OSTree
+#   repo. Flathub discourages that for large closed-source binaries.
+# * This manifest ships NO app binary. It only ships a tiny launcher + the
+#   .desktop/icon/metainfo. The actual app tarball is DOWNLOADED FROM A URL YOU
+#   HOST at *install time* via an `extra-data` source, then unpacked inside the
+#   sandbox by an `apply_extra` script. This is the pattern Flathub prefers for
+#   proprietary apps (Spotify, Zoom, Discord, ... all use it).
+#
+# Flathub facts this manifest relies on (verified against docs.flathub.org and
+# flathub-infra/flatpak-external-data-checker, 2025/2026):
+#   * Non-redistributable / proprietary binaries MUST use `type: extra-data`
+#     (the requirement is only waived if upstream themselves open the PR — which
+#     is your case here, but extra-data is still the recommended route).
+#   * extra-data checksums are SHA-256 (source-code archives use sha512;
+#     extra-data uses sha256 ONLY).
+#   * The url/sha256/size must match the hosted file EXACTLY, byte-for-byte. A
+#     wrong size or checksum makes `flatpak install` fail with
+#     "apply_extra script failed" / hash mismatch.
+#   * The download URL must be a STABLE, VERSIONED, publicly-accessible HTTPS
+#     URL. A broken or moved link breaks installation for every future user, so
+#     never overwrite an old version's tarball in place — publish a new path per
+#     version (see make-tarball.sh and README "Option B").
+#   * apply_extra runs in a tight sandbox with NO network, NO D-Bus, NO host
+#     access, with CWD = /app/extra. It may only unpack what was downloaded.
+#   * Proprietary + extra-data apps go through EXTRA Flathub review (a human
+#     verifies you are the real vendor and that the URL/permissions are sane).
+
+app-id: com.permaplans.Permaplans
+
+# Same runtime baseline as the bundled manifest. 24.08 is a well-tested baseline
+# for GTK3 Flutter apps. If the host toolchain links a newer glibc than 24.08
+# provides, bump both runtime-version and sdk to 25.08 (a newer runtime only
+# ever raises available glibc, which is safe for a host-compiled bundle).
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+# The launcher wrapper installed at /app/bin/Permaplans (see below). It is the
+# `command`, NOT the raw binary, because the raw binary only exists under
+# /app/extra AFTER install-time extraction.
+command: Permaplans
+
+finish-args:
+  # --- Display / rendering --- (identical to the bundled manifest)
+  # Native Wayland display when the compositor supports it.
+  - --socket=wayland
+  # X11 fallback for non-Wayland sessions (uses Xwayland under Wayland).
+  - --socket=fallback-x11
+  # Shared-memory transport that X11/Xwayland needs for efficient rendering.
+  - --share=ipc
+  # GPU access for hardware-accelerated Flutter/Skia rendering.
+  - --device=dri
+
+  # --- Audio ---
+  # Microphone capture for the audio-recording (`record`) and speech-to-text
+  # (`speech_to_text`) features. PulseAudio socket also serves PipeWire setups.
+  - --socket=pulseaudio
+
+  # --- Network ---
+  # HTTPS to the Supabase backend (auth/DB/storage/realtime), plant-image
+  # downloads, and map tile fetching. Core to the app; it is offline-first but
+  # sync + community features require the network.
+  - --share=network
+  # connectivity_plus queries NetworkManager over the SYSTEM bus to detect
+  # online/offline. Without this the query fails inside the sandbox, the plugin
+  # reports "none", and the app wrongly believes it is offline and refuses to
+  # load — even though --share=network already grants real connectivity.
+  - --system-talk-name=org.freedesktop.NetworkManager
+
+  # --- Filesystem (kept minimal; portals cover most interactive I/O) ---
+  # Read/write the user's Documents folder for import/export of plans, CSV and
+  # generated PDFs (file_picker, printing, share_plus, open_filex).
+  - --filesystem=xdg-documents
+  # Downloads folder as the default export/share target for generated files.
+  - --filesystem=xdg-download
+
+  # NOTE: no --filesystem=host. The app's SQLite DB (Drift) and cached plant
+  # images live in the per-app data dir (~/.var/app/<id>/) which is always
+  # writable without extra permissions. url_launcher, the file-open dialog and
+  # printing go through xdg-desktop-portal, available to every sandboxed app by
+  # default and needing no --talk-name.
+  #
+  # OPTIONAL extras — enable ONLY if the corresponding desktop feature is
+  # actually wired up, otherwise leave commented so reviewers see minimal perms:
+  #   - --talk-name=org.freedesktop.Notifications   # local notifications
+  #   - --system-talk-name=org.freedesktop.GeoClue2 # desktop geolocation
+
+modules:
+  - name: permaplans
+    buildsystem: simple
+    build-commands:
+      # 1. Install the install-time extractor. Flatpak runs /app/bin/apply_extra
+      #    once, at install time, inside the sandbox with CWD=/app/extra, right
+      #    after it has downloaded the extra-data tarball into /app/extra.
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      # 2. Install the runtime launcher on PATH. It execs the real binary that
+      #    apply_extra unpacked under /app/extra (where lib/ and data/ sit next
+      #    to it, so Flutter's $ORIGIN/lib RPATH and /proc/self/exe data lookup
+      #    both resolve correctly).
+      - install -Dm755 Permaplans.sh /app/bin/Permaplans
+      # 3. Desktop entry, AppStream metainfo and icon (same as bundled manifest).
+      - install -Dm644 com.permaplans.Permaplans.desktop
+        /app/share/applications/com.permaplans.Permaplans.desktop
+      - install -Dm644 com.permaplans.Permaplans.metainfo.xml
+        /app/share/metainfo/com.permaplans.Permaplans.metainfo.xml
+      - install -Dm644 com.permaplans.Permaplans.png
+        /app/share/icons/hicolor/256x256/apps/com.permaplans.Permaplans.png
+
+    sources:
+      # ----------------------------------------------------------------------
+      # The proprietary app payload, downloaded at INSTALL time (not build time).
+      #
+      # The tarball MUST contain the *contents* of the Flutter bundle at its top
+      # level: the `Permaplans` executable, `lib/` and `data/`. make-tarball.sh
+      # in this directory produces exactly that layout and prints the sha256 and
+      # size to paste below.
+      #
+      # === REPLACE the three REPLACE_ME_* values before this manifest works ===
+      # ----------------------------------------------------------------------
+      - type: extra-data
+        # Name the tarball is saved as inside /app/extra at install time. Keep it
+        # in sync with the filename produced by make-tarball.sh.
+        filename: Permaplans-1.9.4-99-x86_64.tar.gz
+
+        # REPLACE_ME_URL:
+        #   A STABLE, VERSIONED, public HTTPS URL to the tarball you host.
+        #   The HOST does not matter — Supabase Storage is perfectly fine and
+        #   needs no new infrastructure. permaplans.com works too. Examples:
+        #     - Supabase PUBLIC bucket:
+        #       https://thexpfuzvmqumwwnvqws.supabase.co/storage/v1/object/public/releases/linux/permaplans-1.9.3-x86_64.tar.gz
+        #     - Own site:
+        #       https://www.permaplans.com/downloads/permaplans-1.9.3-x86_64.tar.gz
+        #   Rules (these — not the host — are what matters):
+        #     - PUBLIC bucket / world-readable. A Supabase *signed* URL does NOT
+        #       work here: it expires, and the path changes each time. Use the
+        #       /object/public/ URL of a public bucket, not a signed one.
+        #     - IMMUTABLE per version: never overwrite this exact file when you
+        #       ship 1.9.4 — upload a new .../permaplans-1.9.4-... object and
+        #       point a new manifest at it. Old installs re-fetch THIS exact URL,
+        #       so the bytes behind it must never change (the sha256 is pinned).
+        #     - This is independent of any "latest" download you may already
+        #       overwrite for your website button — keep that as-is; just add a
+        #       versioned, never-overwritten copy for Flatpak.
+        url: https://thexpfuzvmqumwwnvqws.supabase.co/storage/v1/object/public/app-releases/linux/Permaplans-1.9.4-99-x86_64.tar.gz
+
+        # REPLACE_ME_SHA256:
+        #   The SHA-256 of the EXACT tarball at the URL above. extra-data uses
+        #   sha256 (not sha512). Get it from `make-tarball.sh` output, or:
+        #     sha256sum permaplans-1.9.3-x86_64.tar.gz
+        #   Must match byte-for-byte or install fails with a hash mismatch.
+        sha256: dd6de89ac0d291c9a8359cfdd9ed73d0b18244a36591cad70c666f19440ea0c9
+
+        # REPLACE_ME_SIZE_BYTES:
+        #   The tarball size in BYTES (an integer, no quotes, no units). From
+        #   `make-tarball.sh` output, or: stat -c%s permaplans-1.9.3-x86_64.tar.gz
+        #   A wrong size also fails the install.
+        size: 116692281
+
+        # OPTIONAL but recommended: let flatpak-external-data-checker watch the
+        # download so a maintainer bot can bump url/sha256/size automatically on
+        # new releases. Uncomment and adapt once you have a predictable URL/tag
+        # scheme (see https://github.com/flathub-infra/flatpak-external-data-checker):
+        # x-checker-data:
+        #   type: rotating-url
+        #   url: https://www.permaplans.com/downloads/permaplans-latest-x86_64.tar.gz
+
+      # ----------------------------------------------------------------------
+      # Install-time extractor. Runs as /app/bin/apply_extra with CWD=/app/extra,
+      # NO network / NO D-Bus / NO host access. It just unpacks the tarball that
+      # was downloaded next to it and removes the archive to save space.
+      # ----------------------------------------------------------------------
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          # Version-agnostic on purpose: at install time /app/extra holds exactly
+          # the one downloaded tarball (named per the extra-data `filename:`),
+          # so the glob always resolves to it. This avoids a filename mismatch
+          # every time the release bumps the version.
+          - tar --no-same-owner -xf ./*.tar.gz
+          - rm -f ./*.tar.gz
+
+      # ----------------------------------------------------------------------
+      # Runtime launcher placed on PATH as /app/bin/Permaplans. exec keeps the
+      # process tree clean; "$@" forwards any args/URIs. The real binary lives in
+      # /app/extra after install-time extraction, with its lib/ and data/ beside
+      # it, so no LD_LIBRARY_PATH juggling is needed.
+      # ----------------------------------------------------------------------
+      - type: script
+        dest-filename: Permaplans.sh
+        commands:
+          - exec /app/extra/Permaplans "$@"
+
+      # ----------------------------------------------------------------------
+      # Static assets committed into the repo (small, redistributable). Same as
+      # the bundled manifest.
+      # ----------------------------------------------------------------------
+      - type: file
+        path: com.permaplans.Permaplans.desktop
+      - type: file
+        path: com.permaplans.Permaplans.metainfo.xml
+      # 256x256 PNG icon. build.sh generates this from assets/logos/App_logo2.png.
+      - type: file
+        path: com.permaplans.Permaplans.png
