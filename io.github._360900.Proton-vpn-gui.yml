@@ -1,0 +1,274 @@
+# SPDX-License-Identifier: MIT
+# Flatpak manifest for Proton VPN GUI.
+#
+# The GUI bundles a self-contained `protonvpn` CLI so it no longer shells out to
+# the host. The CLI's NetworkManager backend (python-proton-vpn-api-core) talks
+# through `gi.repository.NM`, so the sandbox ships:
+#   - libnm + the NetworkManager-1.0.typelib, built from source (there is no
+#     client-library-only build; the daemon binary is a harmless byproduct and
+#     is never launched),
+#   - Python 3 bindings (PyGObject) built from source (KDE runtime has no wheel),
+#   - the CLI python dependencies as prebuilt PyPI wheels (cryptography/bcrypt/
+#     PyNaCl ship abi3 wheels, so no Rust SDK is needed),
+#   - the proton-vpn-local-agent Rust extension from Proton's official .deb.
+#
+# The actual VPN connections are created on the HOST NetworkManager daemon,
+# reached through the shared system bus (--system-talk-name). This mirrors how
+# the official com.protonvpn.www app works and keeps this manifest small.
+#
+# Reference: https://github.com/flathub/com.protonvpn.www
+
+app-id: io.github._360900.Proton-vpn-gui
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: proton_vpn_gui
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Network access (ProtonVPN account/status queries, update checks)
+  - --share=network
+  # System tray icon (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Desktop notifications for connect/disconnect events
+  - --talk-name=org.freedesktop.Notifications
+  # Credentials are stored in the desktop keyring (Secret Service) by the CLI.
+  - --talk-name=org.freedesktop.secrets
+  # The VPN connections are created on the HOST NetworkManager daemon over the
+  # shared system bus (same permission as the official com.protonvpn.www).
+  - --system-talk-name=org.freedesktop.NetworkManager
+  # "Launch on Startup" is handled through the XDG autostart portal
+  # (org.freedesktop.portal.Background), so no host config filesystem access
+  # is needed here.
+
+modules:
+  # --- libnm build dependency: IPv6 ND protocol support ---
+  - name: libndp
+    buildsystem: autotools
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/jpirko/libndp/archive/v1.9.tar.gz
+        sha256: e564f5914a6b1b799c3afa64c258824a801c1b79a29e2fe6525b682249c65261
+
+  # --- NM build dependency: polkit policy (libs only) ---
+  # https://github.com/flathub/com.anydesk.Anydesk/blob/f06549a3749ecbcc99cbbfd7753bfa884746b404/com.anydesk.Anydesk.json#L84-L115
+  - name: polkit
+    buildsystem: meson
+    config-opts:
+      - -Dlibs-only=true
+      - -Dman=false
+      - -Dintrospection=false
+      - -Dexamples=false
+      - -Dgtk_doc=false
+      - -Dauthfw=shadow
+    cleanup:
+      - /bin/*
+      - /etc/pam.d
+      - /etc/dbus-1
+      - /share/dbus-1/system-services/*
+      - /share/polkit-1
+      - /share/polkit-1/actions/*
+      - /lib/polkit-1
+      - /include
+    sources:
+      - type: archive
+        url: >-
+          https://github.com/polkit-org/polkit/archive/refs/tags/127.tar.gz
+        sha256: 9b7bc16f086479dcc626c575976568ba4a85d34297a750d8ab3d2e57f6d8b988
+
+  # --- NetworkManager client library + introspected typelib ---
+  # Builds the whole module (as upstream does; there is no client-only toggle)
+  # to produce libnm + NetworkManager-1.0.typelib. The daemon binary is a
+  # byproduct and is never launched: libnm talks to the HOST daemon over D-Bus.
+  - name: NetworkManager
+    buildsystem: meson
+    build-options:
+      cflags: -ltinfo
+      cxxflags: -ltinfo
+    config-opts:
+      - -Dsystemdsystemunitdir=no
+      - -Ddbus_conf_dir=/app/etc/dbus-1/system.d
+      - -Diptables=/usr/bin/true
+      - -Ddnsmasq=/usr/bin/true
+      - -Dsession_tracking=no
+      - -Dselinux=false
+      - -Dsystemd_journal=false
+      - -Dlibaudit=no
+      - -Dwext=false
+      - -Dwifi=false
+      - -Dppp=false
+      - -Dmodem_manager=false
+      - -Dovs=false
+      - -Dnmcli=false
+      - -Dnmtui=false
+      # We need introspection (produces NetworkManager-1.0.typelib)
+      - -Dintrospection=true
+      - -Dvapi=false
+      - -Ddocs=false
+      - -Dtests=no
+      - -Dfirewalld_zone=false
+      - -Dlibpsl=false
+      - -Dqt=false
+    cleanup:
+      - /sbin
+      - /etc
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /var
+      - /share/bash-completion
+      - /share/doc
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/NetworkManager/NetworkManager.git
+        tag: 1.40.18
+        commit: 2db3748ec8162ce948ba52f71b42a258ff8d64ba
+      - type: patch
+        path: flatpak/patches/NetworkManager/disable-ownership-check-for-plugins.patch
+
+  # --- Python GUI/GTK bindings needed by the CLI (source builds) ---
+  # The KDE runtime ships Python 3.13, cairo and gobject-introspection but no
+  # python `gi` package, so we build PyGObject (and its pycairo dependency)
+  # from source. Meson, g-ir-compiler and cairo headers are in the KDE SDK.
+  - name: python3-pycairo
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/40/d9/412da520de9052b7e80bfc810ec10f5cb3dbfa4aa3e23c2820dc61cdb3d0/pycairo-1.28.0.tar.gz
+        sha256: 26ec5c6126781eb167089a123919f87baa2740da2cca9098be8b3a6b91cc5fbc
+
+  - name: python3-pygobject
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/a2/80/09247a2be28af2c2240132a0af6c1005a2b1d089242b13a2cd782d2de8d7/pygobject-3.56.2.tar.gz
+        sha256: b816098969544081de9eecedb94ad6ac59c77e4d571fe7051f18bebcec074313
+
+  # --- Python dependencies for the CLI stack (all prebuilt wheels) ---
+  # Generated with:
+  #   flatpak-pip-generator --yaml --runtime org.gnome.Sdk//50 --prefer-wheels \
+  #     aiohttp,multidict,frozenlist,yarl,propcache,dbus-fast,PyNaCl,charset-normalizer,\
+  #     cryptography,cffi,markupsafe,bcrypt,pyopenssl \
+  #     --ignore-installed cryptography bcrypt pyopenssl click dbus-fast tabulate \
+  #     expandvars requests python-gnupg aiohttp pyxdg keyring fido2 distro sentry-sdk \
+  #     PyNaCl jinja2 proton-vpn-local-agent -o pip-resources.proton-cli
+  - flatpak/pip-resources.proton-cli.yaml
+
+  # --- Proton python packages from git (same pins as the official manifest) ---
+  - name: python-proton-core
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/ProtonVPN/python-proton-core
+        tag: v0.7.0
+        commit: f7a178a99c3adc0e88c7f91d4db5371a052c4985
+
+  - name: python-proton-keyring-linux
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/ProtonVPN/python-proton-keyring-linux
+        tag: v0.2.1
+        commit: 1534c2f09d73ad18a073c09dd314e11c9da895e0
+
+  - name: python-proton-vpn-api-core
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/ProtonVPN/python-proton-vpn-api-core
+        tag: v5.2.4
+        commit: c31b15947adcc71210453a4ded7f3cbcdfa19e5f
+        disable-submodules: true
+      - type: patch
+        path: flatpak/patches/python-proton-vpn-api-core/fix-ip-path.patch
+
+  # The local-agent comes as a prebuilt .deb from Proton (contains the Rust
+  # local_agent.abi3.so). We extract just that file; the pip wheel of
+  # proton-vpn-local-agent provides the Python wrapper that imports it.
+  - name: python-proton-vpn-local-agent
+    buildsystem: simple
+    build-commands:
+      - bsdtar -Oxf python-proton-vpn-local-agent.deb data.tar.xz | bsdtar -xf -
+      - |
+        PYTHON_VERSION=$(python3 -c 'import sys; print("{}.{}".format(*sys.version_info))');
+        install -Dm755 usr/lib/python3/dist-packages/proton/vpn/local_agent.abi3.so "${FLATPAK_DEST}/lib/python${PYTHON_VERSION}/site-packages/proton/vpn/local_agent.abi3.so"
+    sources:
+      - type: file
+        dest-filename: python-proton-vpn-local-agent.deb
+        only-arches: [x86_64]
+        url: https://repo.protonvpn.com/debian/dists/stable/main/binary-amd64/python3-proton-vpn-local-agent_1.6.3_amd64.deb
+        sha256: dab3a51bf8fe97116a284ba2f143ac5a904a0305ace8e319c051800244129bb5
+      - type: file
+        dest-filename: python-proton-vpn-local-agent.deb
+        only-arches: [aarch64]
+        url: https://repo.protonvpn.com/debian/dists/stable/main/binary-arm64/python3-proton-vpn-local-agent_1.6.3_arm64.deb
+        sha256: 9d682c6bc302b848d92ea45d876a5a5445e89a673986b489430bc28471822b69
+
+  - name: proton-vpn-cli
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "." --no-build-isolation
+    sources:
+      - type: git
+        url: https://github.com/ProtonVPN/proton-vpn-cli.git
+        # v1.0.0 is pinned by the official manifest but imports
+        # proton.vpn.core.connection which api-core v5.2.4 no longer ships;
+        # v1.0.1 (imports core.vpnconnector) is the correct pairing.
+        tag: v1.0.1
+        commit: 7b7725eba22231287bb7adce8b817eeadc61a2c6
+        disable-submodules: true
+
+  # --- The GUI itself ---
+  # Provides /app/bin/ip, used by the CLI's kill-switch/route diagnostics
+  # (see fix-ip-path.patch).
+  - name: iproute2
+    buildsystem: autotools
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+      - SBINDIR=${FLATPAK_DEST}/bin
+      - CONFDIR=${FLATPAK_DEST}/etc/iproute2
+    sources:
+      - type: archive
+        url: https://github.com/iproute2/iproute2/archive/refs/tags/v6.17.0.tar.gz
+        sha256: fcf83a51254fc3de6afe7a110c7a91e10e723898283ff232f319bbc90c9f0666
+
+  - name: proton_vpn_gui
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    subdir: src
+    post-install:
+      - mv /app/share/icons/hicolor/scalable/apps/proton-vpn-gui.svg
+          /app/share/icons/hicolor/scalable/apps/io.github._360900.Proton-vpn-gui.svg
+      - sed -i 's/^Icon=.*/Icon=io.github._360900.Proton-vpn-gui/'
+          /app/share/applications/proton-vpn-gui.desktop
+      - sed -i 's/^Exec=.*/Exec=proton_vpn_gui/'
+          /app/share/applications/proton-vpn-gui.desktop
+      - mv /app/share/applications/proton-vpn-gui.desktop
+          /app/share/applications/io.github._360900.Proton-vpn-gui.desktop
+
+    sources:
+      - type: git
+        url: https://github.com/360900/proton-vpn-gui.git
+        tag: v2.0.4
+        commit: e844e4f02447f1f8d046e3dcf6fea7797831ea6c
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
