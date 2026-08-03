@@ -1,0 +1,212 @@
+app-id: net.qcde.QCDE
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+runtime-version: '5.15-25.08'
+command: qcde_mp.sh
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+
+  # Based on GZDoom
+  # Now for something confusing: Doomseeker honours XDG standards
+  # But Zandronum doesn't. Both persist for consistency.
+  - --env=DOOMWADDIR=/app/share/games/doom
+  - --persist=.config/zandronum
+  - --persist=.config/doomseeker
+
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/pkgconfig
+
+modules:
+  - shared-modules/glew/glew.json
+  - shared-modules/gtk2/gtk2.json
+  - shared-modules/SDL/sdl12-compat.json
+
+  - name: fluidsynth1
+    buildsystem: cmake-ninja
+    disabled: false
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DLIB_SUFFIX=
+      - -DCMAKE_EXE_LINKER_FLAGS=-lncurses
+      - -DCMAKE_SHARED_LINKER_FLAGS=-lncurses
+      - -Denable-jack=OFF
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v1.1.11.tar.gz
+        sha256: da8878ff374d12392eecf87e96bad8711b8e76a154c25a571dd8614d1af80de8
+
+  - name: gme
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/libgme/game-music-emu/releases/download/0.6.4/libgme-0.6.4-src.tar.gz
+        sha256: 6f94eac735d86bca998a7ce1170d007995191ef6d4388345a0dc5ffa1de0bafa
+
+  - name: bzip2
+    buildsystem: simple
+    build-commands:
+      - make -f Makefile-libbz2_so
+      - install -D libbz2.so.1.0.8 /app/lib/libbz2.so.1.0.8
+      - ln -s /app/lib/libbz2.so.1.0.8 /app/lib/libbz2.so.1.0
+    sources:
+      - type: archive
+        url: https://github.com/opencor/bzip2/archive/refs/tags/bzip2-1.0.8.tar.gz
+        sha256: db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df
+        x-checker-data:
+          type: anitya
+          project-id: 237
+          url-template: https://github.com/opencor/bzip2/archive/refs/tags/bzip2-$version.tar.gz
+
+  - name: doomseeker
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_SKIP_RPATH=true
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    sources:
+      - type: git
+        url: https://github.com/DoomseekerTeam/Doomseeker.git
+        commit: 59617ba689a66a319ab98b543e8188cf474f7640
+      - type: shell
+        commands:
+          # Package requires HG_ details for version numbers
+          # Used to be based on Mercurial so that explains the naming
+          - sed -i 's/HG_REVISION_HASH_STRING/"Flatpak Edition"/g' ./src/core/version.cpp
+          - sed -i 's/HG_REVISION_NUMBER/'$(date +%s)'/g' ./src/core/version.cpp
+          - sed -i 's/HG_TIME/"'$(date --iso-8601=seconds)'"/g' ./src/core/version.cpp
+          # Skip irrelevant plugins
+          - sed -i 's/add_opt_subdirectory(chocolate-doom)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(zandronum)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(odamex)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(srb2)//g' ./src/plugins/CMakeLists.txt
+          - sed -i 's/add_opt_subdirectory(turok2ex)//g' ./src/plugins/CMakeLists.txt
+
+  # Zandronum is such a work of art, that it's better for all of us to just
+  # take the upstream package and call it a day.
+  - name: q-zandronum
+    buildsystem: simple
+    build-commands:
+      - tar -xf Q-Zandronum_*_Linux_amd64.tar.gz
+      - install -D q-zandronum /app/bin/q-zandronum
+      - install -D q-zandronum-server /app/bin/q-zandronum-server
+      - install -D q-zandronum.pk3 /app/share/games/doom/q-zandronum.pk3
+      - install -D libfmodex64-4.44.64.so /app/lib/libfmodex64-4.44.64.so
+      - install -D gm.sf2 /app/share/sounds/sf2/gm.sf2
+    sources:
+      - type: file
+        url: https://github.com/IgeNiaI/Q-Zandronum/releases/download/1.4.22/Q-Zandronum_1.4.22_Linux_amd64.tar.gz
+        sha256: 470c41bc6022bd8ec471de71b15b94589068abddd4e4276906c241da08e057a9
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/IgeNiaI/Q-Zandronum/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.browser_download_url | contains("Linux_amd64.tar.gz"))
+            | .browser_download_url
+
+  - name: qcde
+    buildsystem: simple
+    build-commands:
+      - tar -xzf qcde_current.tar.gz
+      # copy game files
+      - install -D Q-Zandronum/freedoom2.wad /app/share/games/doom/freedoom2.wad
+      - install -D Q-Zandronum/wads/QCDE_Launcher.pk3 /app/share/games/doom/QCDE_Launcher.pk3
+      - install -D Q-Zandronum/wads/QCDEmaps3.0.pk3 /app/share/games/doom/QCDEmaps3.0.pk3
+      - install -D Q-Zandronum/wads/QCDEmus3.0.pk3 /app/share/games/doom/QCDEmus3.0.pk3
+      - install -D Q-Zandronum/wads/QCDEmus_UT_v3.1_beta_1.pk3 /app/share/games/doom/QCDEmus_UT_v3.1_beta_1.pk3
+      - install -D Q-Zandronum/wads/QCDE_PvPvisibility.pk3 /app/share/games/doom/QCDE_PvPvisibility.pk3
+      - install -D Q-Zandronum/wads/QCDE_UT_Movement_v3.1_beta_2.pk3 /app/share/games/doom/QCDE_UT_Movement_v3.1_beta_2.pk3
+      - install -D Q-Zandronum/wads/QCDE_UT_Weapons_v3.1_beta_1.pk3 /app/share/games/doom/QCDE_UT_Weapons_v3.1_beta_1.pk3
+      - install -D Q-Zandronum/wads/QCDEv3.1_beta_2.pk3 /app/share/games/doom/QCDEv3.1_beta_2.pk3
+      # save default config
+      - install -D Q-Zandronum/zandronum.ini /app/share/games/qcde/default_configs/q-zandronum/zandronum.ini
+      # black magic to make the single player launcher work
+      - ln -s . /app/share/games/doom/wads
+    sources:
+      - type: file
+        dest-filename: qcde_current.tar.gz
+        url: https://qzandronum.com/builds/download/qcde/Linux%20amd64/
+        sha256: 92b8f3a777fba827ccf26ee2ba5b49ba331061089a6606294c6b93a6ba535b4a
+
+  - name: launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm 744 qcde_mp.sh /app/bin/qcde_mp.sh
+      - install -Dm 744 qcde_sp.sh /app/bin/qcde_sp.sh
+      - install -Dm 644 gzdoom.sf2 /app/share/sounds/sf2/gzdoom.sf2
+      - install -Dm 644 net.qcde.QCDE.desktop -t /app/share/applications
+      - install -Dm 644 net.qcde.QCDE.SP.desktop -t /app/share/applications
+      - install -Dm 644 net.qcde.QCDE.appdata.xml -t /app/share/metainfo
+      - install -Dm 644 net.qcde.QCDE.128.png /app/share/icons/hicolor/128x128/apps/net.qcde.QCDE.png
+      - install -Dm 644 LICENSE.txt -t ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/q-zandronum/
+      # save default Doomseeker configs
+      - install -Dm 644 doomseeker.ini /app/share/games/qcde/default_configs/doomseeker/doomseeker.ini
+      - install -Dm 644 tmpserver.ini /app/share/games/qcde/default_configs/doomseeker/tmpserver.ini
+    sources:
+      - type: file
+        path: net.qcde.QCDE.desktop
+      - type: file
+        path: net.qcde.QCDE.SP.desktop
+      - type: file
+        path: net.qcde.QCDE.appdata.xml
+      - type: file
+        path: net.qcde.QCDE.128.png
+      - type: file
+        path: doomseeker_settings/doomseeker.ini
+      - type: file
+        path: doomseeker_settings/tmpserver.ini
+      - type: file
+        url: https://github.com/coelckers/gzdoom/raw/g4.13.2/soundfont/gzdoom.sf2
+        sha256: a9058609b07c1f0e0c1f420e76c2e80ba78136e6173e836caab51ffb13e552f1
+      - type: file
+        url: https://raw.githubusercontent.com/IgeNiaI/Q-Zandronum/refs/heads/master/LICENSE.txt
+        sha256: 87083bc46a835899eed1ccfdebce3b279be47dcae48b4b8b7c9a045c0c9a853f
+      - type: script
+        dest-filename: qcde_mp.sh
+        commands:
+          # Insert preconfigured ini on first run
+          - if [ ! -f ~/.config/zandronum/zandronum.ini ]; then
+          - mkdir -p ~/.config/zandronum/
+          - cp /app/share/games/qcde/default_configs/q-zandronum/zandronum.ini ~/.config/zandronum/zandronum.ini
+          - /app/bin/q-zandronum -nosound -norun
+          # Neccessery evil to ensure that Zandronum doesn't crash because of the outdated
+          # FMOD library: https://zandronum.com/forum/viewtopic.php?t=9885
+          - sed -i 's|\(snd_output=\)\(.*\)|\1SDL|g' ~/.config/zandronum/zandronum.ini
+          # Set the soundfont for FluidSynth and make it the default MIDI device
+          - sed -i 's|\(snd_mididevice=\)\(.*\)|\1-5|g' ~/.config/zandronum/zandronum.ini
+          - sed -i 's|\(fluid_patchset=\)\(.*\)|\1/app/share/sounds/sf2/gm.sf2|g' ~/.config/zandronum/zandronum.ini
+          - fi
+          -
+          - if [ ! -f $XDG_CONFIG_HOME/doomseeker/doomseeker.ini ]; then
+          - mkdir -p $XDG_CONFIG_HOME/doomseeker/
+          - cp /app/share/games/qcde/default_configs/doomseeker/doomseeker.ini $XDG_CONFIG_HOME/doomseeker/doomseeker.ini
+          - cp /app/share/games/qcde/default_configs/doomseeker/tmpserver.ini $XDG_CONFIG_HOME/doomseeker/tmpserver.ini
+          - fi
+          - 
+          - /app/bin/doomseeker
+      - type: script
+        dest-filename: qcde_sp.sh
+        commands:
+          # Insert preconfigured ini on first run
+          - if [ ! -f ~/.config/zandronum/zandronum.ini ]; then
+          - mkdir -p ~/.config/zandronum/
+          - cp /app/share/games/qcde/default_configs/q-zandronum/zandronum.ini ~/.config/zandronum/zandronum.ini
+          - /app/bin/q-zandronum -nosound -norun
+          # Neccessery evil to ensure that Zandronum doesn't crash because of the outdated
+          # FMOD library: https://zandronum.com/forum/viewtopic.php?t=9885
+          - sed -i 's|\(snd_output=\)\(.*\)|\1SDL|g' ~/.config/zandronum/zandronum.ini
+          # Set the soundfont for FluidSynth and make it the default MIDI device
+          - sed -i 's|\(snd_mididevice=\)\(.*\)|\1-5|g' ~/.config/zandronum/zandronum.ini
+          - sed -i 's|\(fluid_patchset=\)\(.*\)|\1/app/share/sounds/sf2/gm.sf2|g' ~/.config/zandronum/zandronum.ini
+          - fi
+          - 
+          - /app/bin/q-zandronum -iwad freedoom2.wad -file QCDE_Launcher.pk3
+
