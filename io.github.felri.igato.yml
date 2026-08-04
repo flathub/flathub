@@ -1,0 +1,81 @@
+# Flathub submission manifest for IGATO.
+#
+# This variant is what gets pushed to the flathub/io.github.felri.igato
+# repository at submission time: the app source is fetched from the upstream
+# GitHub repo (pinned to a tag) instead of the local checkout, and file access
+# goes through the XDG desktop portal instead of blanket --filesystem=home
+# (Flathub policy). The repo-local manifest (packaging/io.github.felri.igato.yml)
+# keeps --filesystem=home for CLI-arg workflows and is what GitHub Actions
+# builds for releases.
+#
+# CLI args still work in the sandbox with:
+#   flatpak run --file-forwarding io.github.felri.igato @@ video.mp4 @@
+# On desktop distros the in-app Open dialog (rfd) uses the file portal.
+
+id: io.github.felri.igato
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  # libclang for ffmpeg-sys-next's bindgen.
+  - org.freedesktop.Sdk.Extension.llvm18
+command: igato
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU for EGL rendering.
+  - --device=all
+  - --share=ipc
+  # File open goes through the XDG desktop portal (rfd dialog; portal access
+  # is granted to all flatpak apps by default — no talk-name needed).
+modules:
+  # FFmpeg 8.1.2, LGPL build (no external libs). The freedesktop SDK ships no
+  # ffmpeg dev headers, so we build it here and the app links it from /app.
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-static
+          --disable-programs --disable-doc --disable-avdevice --disable-avfilter
+          --disable-network
+      - make -j"$FLATPAK_BUILDER_N_JOBS"
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz
+        sha256: 464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c
+
+  - name: igato
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /usr/lib/sdk/rust-stable/bin:/usr/bin:/bin
+        PKG_CONFIG_PATH: /app/lib/pkgconfig:/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+        LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+        # libclang cannot locate its builtin headers (limits.h/stddef.h) in the
+        # sandbox; pin the resource dir explicitly for bindgen.
+        BINDGEN_EXTRA_CLANG_ARGS: -resource-dir /usr/lib/sdk/llvm18/lib/clang/18
+    build-commands:
+      # Point cargo at the vendored crates from generated-sources.json.
+      - mkdir -p .cargo
+      - |
+        printf '[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "cargo/vendor"\n' > .cargo/config.toml
+      - cargo build --release --offline --locked
+      - install -Dm755 target/release/igato -t /app/bin
+      - install -Dm644 io.github.felri.igato.desktop /app/share/applications/io.github.felri.igato.desktop
+      - install -Dm644 io.github.felri.igato.metainfo.xml /app/share/metainfo/io.github.felri.igato.metainfo.xml
+      - install -Dm644 io.github.felri.igato.svg /app/share/icons/hicolor/scalable/apps/io.github.felri.igato.svg
+    sources:
+      # Upstream code, pinned to the v1.0.0 release commit (bump on every
+      # release). Pinning the commit satisfies the linter's reproducibility
+      # check.
+      - type: git
+        url: https://github.com/felri/igato.git
+        commit: 49b070ba5c1b1db2f71aa81235909b04111244e4
+      - type: file
+        path: io.github.felri.igato.desktop
+      - type: file
+        path: io.github.felri.igato.metainfo.xml
+      - type: file
+        path: io.github.felri.igato.svg
+      - generated-sources.json
