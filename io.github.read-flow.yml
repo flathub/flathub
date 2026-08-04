@@ -1,0 +1,114 @@
+# Flathub submission manifest for Read Flow.
+#
+# This repo (read-flow/io.github.read-flow) is the standalone submission Flathub's
+# build infrastructure builds from — it can't run our main repo's CI, so
+# cargo-sources.json and node-sources.json are committed here as static files
+# rather than generated on demand (contrast with flatpak/io.github.read-flow.yml
+# in the main repo, which regenerates them fresh every CI run).
+#
+# Verified against the same manifest content that built successfully in CI
+# (main repo, v0.1.1, run 29185080376) — only the `sources:` entry for the
+# app itself changed, from a local `type: dir` checkout to this `type: git`
+# pin.
+#
+# Maintenance, per release:
+#   1. Bump `tag`/`commit` below to the new release tag/commit.
+#   2. Regenerate cargo-sources.json / node-sources.json from the main repo's
+#      Cargo.lock / pwa/package-lock.json (see the main repo's
+#      .github/workflows/release.yml `build-flatpak` job for the exact
+#      generator invocations).
+#   3. Bump the rust-dist archive's version/sha256 below if cargo's MSRV
+#      requirements have moved past it (see Cargo.toml `rust-version` in the
+#      main repo for the floor; this should stay comfortably above it).
+
+app-id: io.github.read-flow
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  # mupdf-sys uses bindgen (runtime libclang loading) to generate FFI
+  # bindings; the base SDK doesn't expose libclang.so on the loader path.
+  - org.freedesktop.Sdk.Extension.llvm18
+command: read-flow
+
+finish-args:
+  # GUI: Wayland-first (libcosmic), with X11 fallback.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GPU acceleration (wgpu backend).
+  - --device=dri
+  # Remote sources (FilesClient), OPDS catalog search/download, online-library
+  # import all need outbound network access.
+  - --share=network
+  # Read Flow scans user-configured directories for documents; broad home
+  # access is the pragmatic first-submission choice over portal-based
+  # per-folder grants (which would need ashpd integration + UI changes — see
+  # RELEASING.md in the main repo). Revisit if Flathub reviewers push back.
+  - --filesystem=home:rw
+
+build-options:
+  # /run/build/read-flow/rust-toolchain/bin is created by the "1. Install a
+  # current Rust toolchain" build-command below, before it's needed — the
+  # SDK's rust-stable extension is too old for this dependency tree (see
+  # that step's comment). Listed first so it's found ahead of any system
+  # rustc.
+  append-path: /run/build/read-flow/rust-toolchain/bin:/usr/lib/sdk/node22/bin:/usr/lib/sdk/llvm18/bin
+  env:
+    CARGO_HOME: /run/build/read-flow/cargo
+    # bindgen (mupdf-sys) needs libclang.so at build time; provided by the
+    # llvm18 SDK extension above, not the base SDK.
+    LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+    # npm's offline cache location, populated by flatpak-node-generator's
+    # sources during the (networked) source-fetch phase, before the
+    # sandboxed (offline) build-commands run.
+    XDG_CACHE_HOME: /run/build/read-flow/flatpak-node/cache
+    npm_config_cache: /run/build/read-flow/flatpak-node/npm-cache
+
+modules:
+  - name: read-flow
+    buildsystem: simple
+    build-commands:
+      # 1. Install a current Rust toolchain. org.freedesktop.Sdk.Extension.rust-stable
+      #    on the 24.08 runtime provides rustc 1.89, which is too old for this
+      #    dependency tree (libcosmic needs 1.93, sqlx needs 1.94, wgpu/iced
+      #    need 1.92). Install the official standalone tarball instead. The
+      #    `type: archive` source below has dest: rust-dist -- flatpak-builder
+      #    strips the archive's single top-level wrapper directory when a
+      #    dest is given, so install.sh lands directly at rust-dist/install.sh.
+      #    Installed into this module's own build dir — never copied into
+      #    /app, so it doesn't bloat the shipped app.
+      - ./rust-dist/install.sh --prefix="$(pwd)/rust-toolchain" --without=rust-docs
+
+      # 2. Build the PWA (embedded into the binary via the `embed-pwa`
+      #    feature). flatpak-node-generator's sources populate the offline
+      #    npm cache at $npm_config_cache (see build-options.env above) —
+      #    npm resolves it from there automatically.
+      - cd pwa && npm install --offline && npm run build
+
+      # 3. Build read-flow with the embedded PWA. cargo-sources.json (added
+      #    to `sources` below) makes flatpak-builder vendor every crate —
+      #    including git dependencies (libcosmic and friends) — and wires up
+      #    offline resolution automatically.
+      - cargo --offline build --release --features embed-pwa -p read-flow
+
+      # 4. Install.
+      - install -Dm755 target/release/read-flow /app/bin/read-flow
+      - install -Dm644 cosmic/resources/io.github.read-flow.desktop
+        /app/share/applications/io.github.read-flow.desktop
+      - install -Dm644 cosmic/resources/io.github.read-flow.metainfo.xml
+        /app/share/metainfo/io.github.read-flow.metainfo.xml
+      - install -Dm644 cosmic/resources/icons/hicolor/scalable/apps/icon.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.read-flow.svg
+    sources:
+      - type: git
+        url: https://github.com/read-flow/read-flow.git
+        tag: v0.4.0
+        commit: 358821f235e73186af98227555f7721b0d4f9f70
+      - cargo-sources.json
+      - node-sources.json
+      - type: archive
+        url: https://static.rust-lang.org/dist/rust-1.97.0-x86_64-unknown-linux-gnu.tar.xz
+        sha256: 1cf17e4905b841d4c8e3f76467ac148d55fb3f54bf213c86f0d287a36471d904
+        dest: rust-dist
