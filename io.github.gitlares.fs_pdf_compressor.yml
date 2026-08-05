@@ -1,0 +1,171 @@
+app-id: io.github.gitlares.fs_pdf_compressor
+
+# 1. IDENTIDAD
+# ---------------------------------------------------------------------------
+# Runtime KDE/Qt6 actual en Flathub (no 5.15 ni ramas EOL como 6.6/6.7/6.8).
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+
+# Comando propio: NO apunta al binario/AppImage original, sino a un
+# wrapper instalado por nosotros que decide cómo lanzar la app dentro
+# del sandbox (ver sección "Instalación" y bin/fs-pdf-compressor).
+command: fs-pdf-compressor
+
+# ---------------------------------------------------------------------------
+# 2. PERMISOS MÍNIMOS
+# ---------------------------------------------------------------------------
+finish-args:
+  # Pantalla: Wayland nativo con fallback a X11 (no --socket=x11 solo).
+  - --socket=wayland
+  - --socket=fallback-x11
+
+  # IPC necesario para que Qt/PySide funcione correctamente (DBus de sesión
+  # para notificaciones, portales, temas, etc. lo aporta talk-name abajo).
+  - --socket=ipc
+
+  # SIN RED: la app procesa PDFs localmente y debe seguir así.
+  # (deliberadamente NO se incluye --share=network)
+
+  # DBus de sesión limitado a los portales que realmente usamos:
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.portal.Notification
+
+  # Archivos: por defecto NO se declara --filesystem=home.
+  # El selector de archivos y el guardado usan el portal XDG
+  # (org.freedesktop.portal.FileChooser), que funciona en sandbox sin
+  # permisos adicionales porque PySide6/Qt6 en este runtime ya integra
+  # el backend de portales (QT_QPA_PLATFORMTHEME=xdgdesktopportal via
+  # el módulo Qt de KDE runtime).
+  #
+  # ÚNICA excepción, y SOLO si se confirma que "arrastrar y soltar" o
+  # "reemplazar archivo en el mismo lugar" no funciona vía portal:
+  # usar el permiso MÁS ANGOSTO posible, nunca --filesystem=home:
+  #   - --filesystem=xdg-download:rw      (si el flujo es via Descargas)
+  # Deja esto comentado hasta demostrar en pruebas reales que el
+  # drag&drop desde el gestor de archivos falla sin él:
+  # - --filesystem=xdg-download:rw
+
+  # Icono de bandeja / Drop Zone en el escritorio (si aplica) vía portal:
+  - --talk-name=org.freedesktop.portal.Background
+
+# ---------------------------------------------------------------------------
+# 3. MÓDULOS DE COMPILACIÓN
+# ---------------------------------------------------------------------------
+modules:
+
+  # --- Ghostscript, compilado desde su propio código fuente -----------------
+  - name: ghostscript
+    buildsystem: autotools
+    config-opts:
+      - --disable-cups
+      - --disable-gtk
+      - --with-drivers=PDF,PS,PXL
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/ghostscript-10.07.1.tar.gz
+        # ⚠️ Verifica este hash con `sha256sum` sobre el archivo real antes
+        # de publicar: los manifiestos de Flathub rechazan el build si no
+        # coincide exactamente, así que un valor incorrecto simplemente
+        # falla de forma segura, nunca se instala sin verificar.
+        sha256: REPLACE_WITH_VERIFIED_SHA256
+    post-install:
+      # Instala la licencia AGPL de Ghostscript junto con la nuestra.
+      - install -Dm644 LICENSE
+          /app/share/licenses/io.github.gitlares.fs_pdf_compressor/LICENSE.ghostscript
+
+  # --- Python: se usa el intérprete que ya trae org.kde.Platform -----------
+  # (basado en freedesktop-sdk, incluye python3; no se agrega runtime propio).
+
+  # --- shiboken6 + PySide6, compilados desde el repositorio fuente ---------
+  # IMPORTANTE: los paquetes "PySide6"/"shiboken6" en PyPI son SOLO wheels
+  # binarios (no publican sdist), así que un `pip install PySide6` violaría
+  # la regla de "no binarios precompilados". Por eso se compilan aquí desde
+  # el árbol fuente oficial pyside-setup, enlazando contra el Qt6 que ya
+  # trae org.kde.Sdk (no se recompila Qt, solo los bindings).
+  - name: llvm-for-shiboken
+    # shiboken6 necesita libclang para su generador de bindings.
+    # Usa la extensión de LLVM/Clang admitida por freedesktop-sdk en vez
+    # de un binario suelto:
+    sources: []
+    buildsystem: simple
+    build-commands:
+      - "true # provisto por org.freedesktop.Sdk.Extension.llvm18 (ver sdk-extensions)"
+
+  - name: shiboken6-and-pyside6
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: git
+        url: https://code.qt.io/pyside/pyside-setup.git
+        tag: v6.9.1
+        commit: REPLACE_WITH_COMMIT_FOR_TAG_v6.9.1
+        # Se fija a la serie 6.9.x para que coincida con el Qt6 que trae
+        # el runtime org.kde.Platform//6.9.
+    build-options:
+      env:
+        - CLANG_INSTALL_DIR=/usr/lib/sdk/llvm18
+
+  # --- Dependencias Python puras del proyecto (declaradas, no descargadas
+  #     en build-time): generadas con flatpak-pip-generator a partir del
+  #     requirements.txt de la app y añadidas aquí como fuentes "file" con
+  #     su url y sha256, para instalarlas con --no-index --find-links.
+  - name: fs-pdf-compressor-pydeps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=/app
+          -r requirements.txt
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/PLACEHOLDER
+        sha256: REPLACE_WITH_VERIFIED_SHA256
+        # Repite un bloque "type: file" por cada dependencia real de
+        # requirements.txt (obtén url+sha256 con flatpak-pip-generator
+        # o desde la página de PyPI de cada paquete).
+      - type: file
+        path: requirements.txt
+
+  # --- La aplicación en sí, en la tag estable v1.0.9 ------------------------
+  - name: fs-pdf-compressor
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/gitlares/fs-pdf-compressor.git
+        tag: v1.0.9
+        commit: REPLACE_WITH_COMMIT_FOR_TAG_v1.0.9
+      - type: file
+        path: io.github.gitlares.fs_pdf_compressor.desktop
+      - type: file
+        path: io.github.gitlares.fs_pdf_compressor.metainfo.xml
+      - type: file
+        path: bin/fs-pdf-compressor
+    build-commands:
+      # 4. INSTALACIÓN
+      # -----------------------------------------------------------------
+      # App Python instalada dentro de /app (sin pip con red: build local).
+      - pip3 install --no-index --prefix=/app --no-build-isolation .
+
+      # Icono, .desktop y MetaInfo con el ID correcto:
+      - install -Dm644 io.github.gitlares.fs_pdf_compressor.desktop
+          /app/share/applications/io.github.gitlares.fs_pdf_compressor.desktop
+      - install -Dm644 io.github.gitlares.fs_pdf_compressor.metainfo.xml
+          /app/share/metainfo/io.github.gitlares.fs_pdf_compressor.metainfo.xml
+      - install -Dm644 packaging/icons/fs-pdf-compressor.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.gitlares.fs_pdf_compressor.svg
+
+      # Licencia propia y avisos de terceros:
+      - install -Dm644 LICENSE
+          /app/share/licenses/io.github.gitlares.fs_pdf_compressor/LICENSE
+      - install -Dm644 THIRD_PARTY_NOTICES.md
+          /app/share/licenses/io.github.gitlares.fs_pdf_compressor/THIRD_PARTY_NOTICES.md
+
+      # Lanzador propio (no el ejecutable de la AppImage). Ver contenido
+      # de bin/fs-pdf-compressor: detecta FLATPAK_ID y desactiva
+      # "Check for Updates" cuando corre empaquetado.
+      - install -Dm755 bin/fs-pdf-compressor /app/bin/fs-pdf-compressor
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm18
