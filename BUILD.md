@@ -27,7 +27,8 @@ Wayland socket exists, and aborts if it finds one it cannot use.
       As long as `generateUpdatesFilesForAllChannels: true` publishes release
       candidates to the `latest` channel, the update bot will pull them into
       Flathub stable. Release candidates need to land in `beta-*.yml` only.
-- [ ] **Request the `login1` linter exception** — see below.
+- [ ] **Request both linter exceptions** — `finish-args-home-filesystem-access` and
+      `finish-args-login1-system-talk-name`. See below.
 
 ## Permission rationale
 
@@ -51,25 +52,52 @@ Every other file interaction — import, export, attachments, restore-from-backu
 goes through `dialog.showOpenDialog` / `showSaveDialog`, which Electron routes to the
 file chooser portal inside a sandbox and which needs no static permission.
 
-### Linter exception needed for `login1`
+### Linter exceptions needed
 
-`finish-args-login1-system-talk-name` is an **error** in `flatpak-builder-lint`, not a
-warning, so the CI check on the submission PR fails until Flathub grants an exception.
-Request one in the PR with the justification above; 55 published apps hold this exception
-today, including Slack, Bitwarden and ProtonVPN. Once granted it is stored as:
+Two of the arguments above are **errors** in `flatpak-builder-lint`, not warnings, so the
+CI check on the submission PR fails until Flathub grants an exception for each:
+
+| Check | Held by | Notes |
+| --- | --- | --- |
+| `finish-args-home-filesystem-access` | 505 apps | Routine, but the one reviewers push back on hardest. |
+| `finish-args-login1-system-talk-name` | 48 apps | Includes Slack, Signal, Bitwarden, KeePassXC, VS Code. |
+
+Counts are from the linter's bundled `staticfiles/exceptions.json`. Worth knowing before
+writing the PR: only three published apps hold **both** (`com.anydesk.Anydesk`,
+`io.github.zaps166.QMPlay2`, `org.opencpn.OpenCPN`), so asking for the pair invites more
+scrutiny than either alone. The `login1` justification is the stronger of the two and
+degrades cleanly; `--filesystem=home` is the one to have an answer ready for.
+
+Once granted they are stored keyed by branch:
 
 ```json
 {
   "app.inkdrop.Inkdrop": {
     "stable": {
+      "finish-args-home-filesystem-access": "backup directory is a hand-typed path, so the file chooser portal cannot serve it",
       "finish-args-login1-system-talk-name": "powerMonitor resume events, so sync reconnects after suspend"
     }
   }
 }
 ```
 
-To lint locally before the exception exists, pass the same JSON via
-`--user-exceptions`.
+`--user-exceptions` does **not** take that shape. It wants the checks flat against the
+app ID, with no branch key, and it is inert unless `--exceptions` is also passed — on its
+own it silently changes nothing and the lint still fails:
+
+```sh
+cat > /tmp/inkdrop-exceptions.json <<'EOF'
+{
+  "app.inkdrop.Inkdrop": {
+    "finish-args-home-filesystem-access": "hand-typed backup path",
+    "finish-args-login1-system-talk-name": "powerMonitor resume events"
+  }
+}
+EOF
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+  --exceptions --user-exceptions /tmp/inkdrop-exceptions.json \
+  manifest app.inkdrop.Inkdrop.yml
+```
 
 Without `login1` the only loss is the resume-from-suspend nudge —
 reconnect-on-network-change is driven by the renderer's `online` event and PouchDB live

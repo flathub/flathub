@@ -45,17 +45,41 @@ The date cannot be in the future, and releases must be ordered newest first.
 
 ```sh
 flatpak install -y flathub org.flatpak.Builder
-flatpak run org.flatpak.Builder --force-clean --install --user \
-  builddir app.inkdrop.Inkdrop.yml
+flatpak run org.flatpak.Builder --force-clean --repo=repo builddir app.inkdrop.Inkdrop.yml
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest app.inkdrop.Inkdrop.yml
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+flatpak remote-add --user --if-not-exists --no-gpg-verify inkdrop-local repo
+flatpak install --user -y --reinstall inkdrop-local app.inkdrop.Inkdrop
 flatpak run app.inkdrop.Inkdrop
 ```
 
-Until Flathub grants the exception, the lint step reports
-`finish-args-login1-system-talk-name` — see
-[BUILD.md](BUILD.md#linter-exception-needed-for-login1) for the local
-`--user-exceptions` workaround.
+Export to a repo and install from it — **not** `--install --user`. `org.flatpak.Builder`
+is itself a flatpak, so it already holds a user namespace, and installing an
+`extra-data` app means running `apply_extra` under a second, nested one. bwrap cannot
+create it from in there and the install dies with:
+
+```
+bwrap: No permissions to create a new namespace, likely because the kernel does not
+allow non-privileged user namespaces.
+```
+
+which is misleading — the host setting it names is almost certainly already correct, and
+plain `bwrap` works fine outside the sandbox. Going through a repo puts the install back
+in the hands of the host's flatpak, where the namespace is a fresh one. The `remote-add`
+is a one-off; after that a rebuild is just the `--repo` line plus `install --reinstall`,
+which picks up the new commit.
+
+Two side effects worth knowing. The lint step above needs `repo/` to exist, so it only
+ever worked in this order. And ostree refuses to write into a repo when the filesystem
+is under `min-free-space-percent`, 3% by default — on a large and nearly full disk that
+reserve is gigabytes, and the export fails with `min-free-space-percent '3%' would be
+exceeded, at least 4.1 kB requested` while df still shows free space. Free some, or
+set `ostree --repo=repo config set core.min-free-space-percent 0` on this throwaway repo.
+
+Until Flathub grants the exceptions, the manifest lint fails with
+`finish-args-home-filesystem-access` and `finish-args-login1-system-talk-name` — see
+[BUILD.md](BUILD.md#linter-exceptions-needed) for the local `--exceptions
+--user-exceptions` workaround and the justification for each.
 
 Confirm the window actually **renders**, not just that the process starts. A window that
 opens and paints nothing is the failure mode this package has hit before, and the main
