@@ -1,0 +1,69 @@
+app-id: com.a_chacon.chaski
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: chaski
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/chaski/cargo
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+modules:
+  - name: chaski
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/a-chacon/chaski-app/archive/refs/tags/app-v0.6.3.tar.gz
+        sha256: 88685353a3b6011c6cd31668ee6230b740c62e9f70c4f0f5a407d1616ac9a3ee
+      - type: file
+        path: com.a_chacon.chaski.desktop
+      - type: file
+        path: com.a_chacon.chaski.metainfo.xml
+      - yarn-sources.json
+      - cargo-sources.json
+
+    build-commands:
+      - |
+        cat > .yarnrc << 'EOF'
+        yarn-offline-mirror "./flatpak-node/yarn-mirror"
+        yarn-offline-mirror-pruning false
+        EOF
+      - test -f flatpak-node/yarn-mirror/@heroui-listbox-2.3.10.tgz
+      - yarn install --offline --frozen-lockfile
+      - yarn build
+
+      - mkdir -p .cargo
+      - |
+        cat > .cargo/config.toml << 'EOF'
+        [source.crates-io]
+        replace-with = "vendored-sources"
+
+        [source.vendored-sources]
+        directory = "cargo/vendor"
+        EOF
+      - cargo build --offline --locked --release --features custom-protocol
+        --manifest-path src-tauri/Cargo.toml
+
+      - install -Dm755 src-tauri/target/release/chaski /app/bin/chaski
+      - install -Dm644 com.a_chacon.chaski.desktop
+        /app/share/applications/com.a_chacon.chaski.desktop
+      - install -Dm644 com.a_chacon.chaski.metainfo.xml
+        /app/share/metainfo/com.a_chacon.chaski.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/com.a_chacon.chaski.png
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/com.a_chacon.chaski.png
+      - install -Dm644 src-tauri/icons/512x512.png
+        /app/share/icons/hicolor/512x512/apps/com.a_chacon.chaski.png
