@@ -1,0 +1,86 @@
+# ProtonShift — FLATHUB manifest (offline, no network during build).
+#
+# Unlike the local manifest (flatpak/io.github.i4ctime.protonshift.yml, which
+# pip-installs PySide6 with network access), Flathub forbids build-time network.
+# The Flathub-blessed way to ship PySide6 is the io.qt.PySide.BaseApp — it
+# provides PySide6/shiboken6 built against org.kde.Platform, so we do NOT vendor
+# the (huge) PySide6 wheel. We only vendor `vdf` (pure-Python, tiny) and install
+# our own package with --no-index.
+#
+# Regenerate the vendored module after a dependency bump:
+#   flatpak/flathub/gen-vendor.sh
+#
+# Build + install locally to test the offline path:
+#   flatpak install -y flathub org.kde.Sdk//6.11 org.kde.Platform//6.11 io.qt.PySide.BaseApp//6.11
+#   flatpak run org.flatpak.Builder --user --install --force-clean \
+#     build-dir flatpak/flathub/io.github.i4ctime.protonshift.yml
+app-id: io.github.i4ctime.protonshift
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.11"
+command: protonshift
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # game controllers (gamepad tester)
+  - --device=input
+  # ProtonShift reads game libraries (read-only home) and writes only the
+  # specific config dirs below. `home` rw + org.freedesktop.Flatpak talk-name
+  # is a Flathub-rejected combination (it is a sandbox escape); restoring a
+  # save backup to an arbitrary native path now requires the file portal.
+  - --filesystem=home:ro
+  - --filesystem=~/.config/protonshift:create
+  - --filesystem=~/.config/scopebuddy:create
+  - --filesystem=~/.config/MangoHud:create
+  - --filesystem=~/.config/environment.d:create
+  # default target dir for save-backup restores
+  - --filesystem=~/ProtonShift Restores:create
+  - --filesystem=~/.steam
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --filesystem=~/.config/heroic
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl
+  # so detected host tools (gamescope, mangohud, protontricks) can be run
+  - --talk-name=org.freedesktop.Flatpak
+
+# The PySide BaseApp stages PySide6 under /app/lib; keep it on the path.
+build-options:
+  env:
+    PYTHONPATH: /app/lib/python3/dist-packages
+
+cleanup-commands:
+  # BaseApp ships the whole Qt binding; drop the dev bits we don't ship.
+  - rm -rf /app/lib/python3/dist-packages/PySide6/examples || true
+
+modules:
+  # vdf — pure-Python, vendored as a pinned wheel (see gen-vendor.sh).
+  - python3-vdf.yaml
+
+  - name: protonshift
+    buildsystem: simple
+    build-commands:
+      # Deps already present (PySide6 from the BaseApp, vdf vendored above);
+      # install just our package, no index, no build isolation.
+      - pip3 install --prefix=${FLATPAK_DEST} --no-index --no-build-isolation
+          --no-warn-script-location .
+      - install -Dm644 flatpak/io.github.i4ctime.protonshift.desktop
+          ${FLATPAK_DEST}/share/applications/io.github.i4ctime.protonshift.desktop
+      - install -Dm644 flatpak/io.github.i4ctime.protonshift.metainfo.xml
+          ${FLATPAK_DEST}/share/metainfo/io.github.i4ctime.protonshift.metainfo.xml
+      - install -Dm644 flatpak/icons/io.github.i4ctime.protonshift-256.png
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.i4ctime.protonshift.png
+      - install -Dm644 flatpak/icons/io.github.i4ctime.protonshift-128.png
+          ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/io.github.i4ctime.protonshift.png
+      - install -Dm644 flatpak/icons/io.github.i4ctime.protonshift-64.png
+          ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/io.github.i4ctime.protonshift.png
+    sources:
+      # Pinned to the packaging-prep commit on main (v1.1.0 + flathub metadata).
+      # Bump `commit:` to the release commit before each flathub update PR.
+      - type: git
+        url: https://github.com/I4cTime/protonshift.git
+        commit: 5adedcf5ab40b0be3a13da0d9b095411eb3d4af0
