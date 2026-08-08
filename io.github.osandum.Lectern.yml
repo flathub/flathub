@@ -1,0 +1,112 @@
+id: io.github.osandum.Lectern
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: lectern
+
+# PyGObject, GTK4, libadwaita, libsoup3 and librsvg all come from the GNOME
+# runtime, so only the four pure-Python dependencies need building.
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # A read-only view of the home directory. The document portal grants
+  # access to the single file the user opened, which is not enough for a
+  # Markdown viewer: images and links are written relative to the
+  # document, so `![](images/x.png)` and a link to a sibling .md file both
+  # need the document's *directory*, which no portal can hand over.
+  #
+  # home rather than host, deliberately: it covers essentially all real
+  # documents while being far narrower than the whole filesystem. The
+  # tradeoff is that a document opened from outside home (/usr/share/doc,
+  # a mounted volume) still renders, but its local images and sibling
+  # links do not resolve. Read-only, because nothing here ever writes.
+  - --filesystem=home:ro
+
+  # Remote images. Never fetched on open -- the reader has to press Load on
+  # a banner first -- but the capability has to exist for that button to
+  # work at all. Without this line remote images simply stay unloaded,
+  # which is a coherent (if reduced) way to run the app.
+  - --share=network
+
+  # Deliberately NOT granted:
+  #   --socket=cups   GTK4 routes printing through the print portal when
+  #                   sandboxed, so direct CUPS access should be
+  #                   unnecessary. UNVERIFIED in an actual sandbox; if
+  #                   printing turns out not to work, this is the first
+  #                   thing to add.
+  #   --filesystem=home:rw   nothing is ever written.
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  # Pinned wheels, because a Flatpak build has no network. All four are
+  # pure Python (py3-none-any), so nothing is compiled here. To refresh:
+  # bump the version, URL and sha256 together from PyPI.
+  #
+  # --ignore-installed is load-bearing, not belt-and-braces. The build
+  # runs against org.gnome.Sdk and the result runs against
+  # org.gnome.Platform, and the Sdk is a superset: it ships Pygments,
+  # the Platform does not. Without this flag pip reports "Requirement
+  # already satisfied: pygments" at build time and installs nothing, and
+  # the app then crashes with ModuleNotFoundError the first time it
+  # renders a fenced code block. Verified the hard way.
+  - name: python3-deps
+    buildsystem: simple
+    build-commands:
+      - >-
+        pip3 install --no-index --no-build-isolation --ignore-installed
+        --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        mdurl markdown-it-py mdit-py-plugins pygments
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
+        sha256: 84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
+      - type: file
+        url: https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl
+        sha256: 9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
+      - type: file
+        url: https://files.pythonhosted.org/packages/a5/69/6da5581c6a7fede7dc261bf4e67d6adca4196f176b43288b55b3db395b6e/mdit_py_plugins-0.6.1-py3-none-any.whl
+        sha256: 214c82fb2ac524472ab6a5bcab1de80f73b50443e187f401bfd77efbc7c6481d
+      - type: file
+        url: https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl
+        sha256: 81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
+
+  - name: lectern
+    buildsystem: simple
+    build-commands:
+      # --no-deps: PyGObject comes from the runtime and the rest is already
+      # installed above, so pip must not go looking for any of it.
+      - pip3 install --no-index --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+      # pyproject.toml ships only the Python package, so the data files are
+      # installed explicitly here.
+      - install -Dm644 data/io.github.osandum.Lectern.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.osandum.Lectern.desktop
+      - install -Dm644 data/io.github.osandum.Lectern.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.osandum.Lectern.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.osandum.Lectern.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.osandum.Lectern.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/io.github.osandum.Lectern-symbolic.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/symbolic/apps/io.github.osandum.Lectern-symbolic.svg
+    sources:
+      # Pinned to a tag AND its commit, which is what Flathub requires: a
+      # tag alone can be moved, the commit cannot. Both are given so the
+      # build is reproducible and a retagging is caught rather than
+      # silently followed.
+      #
+      # Bumping a release means: tag, then update BOTH lines below.
+      #
+      # To build the working tree instead of the release -- which is what
+      # you want while developing -- swap this block for:
+      #   - type: dir
+      #     path: ..
+      - type: git
+        url: https://github.com/osandum/lectern.git
+        tag: v0.1.1
+        commit: dec4b7e123289e2ca32f1be8559998c749a9c083
