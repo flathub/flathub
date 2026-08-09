@@ -50,5 +50,11 @@ lint-manifest:
 clean:
     rm -rf .flatpak-builder build-dir repo
 
+uninstall:
+    flatpak uninstall io.github.idescriptor.iDescriptor
+
+run:
+    flatpak run io.github.idescriptor.iDescriptor
+
 push:
     git push --set-upstream origin HEAD
