@@ -1,0 +1,63 @@
+app-id: com.irealpro.irealpro
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: irealpro
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --env=ELECTRON_TRASH=gio  # Required for Electron trash handling
+
+modules:
+  - name: irealpro
+    buildsystem: simple
+    build-commands:
+      # 1. Install Desktop file, Icon and AppStream MetaInfo from module sources.
+      #    These must exist before apply_extra runs so appstream-compose can
+      #    generate catalogue data at install time (extra-data is downloaded
+      #    on install, not at build time).
+      - install -Dm644 com.irealpro.irealpro.desktop /app/share/applications/com.irealpro.irealpro.desktop
+      - install -Dm644 irealpro.png /app/share/icons/hicolor/512x512/apps/com.irealpro.irealpro.png
+      - install -Dm644 com.irealpro.irealpro.metainfo.xml /app/share/metainfo/com.irealpro.irealpro.metainfo.xml
+
+      # 2. Install the apply_extra script that unpacks the RPM at install time.
+      - install -Dm755 apply_extra /app/bin/apply_extra
+
+      # 3. Create a wrapper script for the main executable in /app/bin
+      - mkdir -p /app/bin
+      - |
+        cat << 'EOF' > /app/bin/irealpro
+        #!/bin/sh
+        # Automatically select native Wayland if available, falling back to X11 seamlessly
+        # apply_extra runs inside /app/extra, so that's where the RPM payload lands.
+        exec /app/extra/iRealPro/irealpro --no-sandbox --ozone-platform-hint=auto "$@"
+        EOF
+      - chmod +x /app/bin/irealpro
+
+    sources:
+      # Non-redistributable proprietary RPM: fetched at install time (not
+      # bundled at build time) per Flathub's licensing requirements.
+      - type: extra-data
+        filename: irealpro.rpm
+        only-arches: [x86_64]
+        url: https://linux.irealpro.com/irealpro-latest.x86_64.rpm
+        sha256: PLACEHOLDER_SHA256
+        size: PLACEHOLDER_SIZE
+      - type: file
+        path: com.irealpro.irealpro.desktop
+      - type: file
+        path: irealpro.png
+      - type: file
+        path: com.irealpro.irealpro.metainfo.xml
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          # bsdtar reads the RPM's cpio payload directly, no rpm2cpio needed.
+          - bsdtar -xf irealpro.rpm ./opt/iRealPro
+          - mv opt/iRealPro iRealPro
+          - rm -rf opt irealpro.rpm
