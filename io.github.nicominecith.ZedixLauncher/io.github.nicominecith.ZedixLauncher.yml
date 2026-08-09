@@ -1,0 +1,71 @@
+app-id: io.github.nicominecith.ZedixLauncher
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: zypak-wrapper.sh
+
+# --- Sandbox permissions ---
+# Keep this as narrow as you can get away with. Flathub reviewers WILL
+# push back on overly broad permissions (e.g. --filesystem=home).
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network                 # needed to download Minecraft/mods
+  - --socket=pulseaudio             # game/launcher audio
+  # Filesystem access for game files, java, saved instances.
+  # Narrow this to a real subfolder if your app doesn't need all of ~/
+  - --filesystem=~/.minecraft:create
+  - --filesystem=~/.local/share/zedix-launcher:create
+  # keytar (credential storage) talks to the Secret Service over D-Bus
+  - --talk-name=org.freedesktop.secrets
+  # Desktop notifications, if the app uses them
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: zedix-launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 zedix-launcher /app/zedix-launcher/zedix-launcher
+      - cp -r resources /app/zedix-launcher/resources
+      - cp -r locales /app/zedix-launcher/locales
+      - cp -r usr/lib/* /app/lib/ || true
+      - install -Dm644 chrome_100_percent.pak /app/zedix-launcher/chrome_100_percent.pak
+      - install -Dm644 chrome_200_percent.pak /app/zedix-launcher/chrome_200_percent.pak
+      - install -Dm755 chrome_crashpad_handler /app/zedix-launcher/chrome_crashpad_handler
+      - install -Dm644 icudtl.dat /app/zedix-launcher/icudtl.dat
+      - install -Dm755 libEGL.so /app/zedix-launcher/libEGL.so
+      - install -Dm755 libGLESv2.so /app/zedix-launcher/libGLESv2.so
+      - install -Dm755 libffmpeg.so /app/zedix-launcher/libffmpeg.so
+      - install -Dm755 libvk_swiftshader.so /app/zedix-launcher/libvk_swiftshader.so
+      - install -Dm755 libvulkan.so.1 /app/zedix-launcher/libvulkan.so.1
+      - install -Dm644 resources.pak /app/zedix-launcher/resources.pak
+      - install -Dm644 snapshot_blob.bin /app/zedix-launcher/snapshot_blob.bin
+      - install -Dm644 v8_context_snapshot.bin /app/zedix-launcher/v8_context_snapshot.bin
+      - install -Dm644 vk_swiftshader_icd.json /app/zedix-launcher/vk_swiftshader_icd.json
+      # Wrapper script so `command:` above can launch the app via zypak
+      - |
+        cat > /app/bin/zedix-launcher-wrapped <<'EOF'
+        #!/bin/sh
+        exec /app/zedix-launcher/zedix-launcher --no-sandbox "$@"
+        EOF
+      - chmod +x /app/bin/zedix-launcher-wrapped
+      - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      # TODO: replace with the real GitHub Release URL once you've uploaded
+      # zedix-launcher-1.5.0-linux-x64.tar.gz to a public release, and
+      # replace the sha256 with the value `sha256sum` gives you for that file.
+      - type: archive
+        url: https://github.com/Nicominecith/Zedix-Launcher/releases/download/1.5.0/zedix-launcher-1.5.0-linux-x64.tar.gz
+        sha256: 916f196a818a7bb00b6f2bc8f05d81a49a6cb0c7ebc42abf621107e87572d526
+      - type: file
+        path: io.github.nicominecith.ZedixLauncher.desktop
+      - type: file
+        path: io.github.nicominecith.ZedixLauncher.png
+      - type: file
+        path: io.github.nicominecith.ZedixLauncher.metainfo.xml
