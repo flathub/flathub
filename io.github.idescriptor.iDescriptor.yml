@@ -1,0 +1,151 @@
+app-id: io.github.idescriptor.iDescriptor
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: "24.08"
+    directory: lib/ffmpeg
+    add-ld-path: .
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm20
+
+command: iDescriptor
+
+finish-args:
+  # we absolutely need x11, GstGLQt6VideoItem doesn't work with wayland (used in AirPlay)
+  - --socket=x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  # ifuse requires /dev/fuse, for which Flatpak has no narrower device grant
+  - --device=all
+  - --filesystem=/run/usbmuxd
+  # required for wireless device connections
+  # we need to be able to see what pairing files are available
+  # usbmuxd doesn't provide pairing record enumeration directly
+  - --filesystem=/var/lib/lockdown:ro
+  # required for fusermount3 wrapper
+  - --talk-name=org.freedesktop.Flatpak
+  # required for mDNS discovery and AirPlay
+  - --system-talk-name=org.freedesktop.Avahi
+  # wrapper for fusermount3 which calls fusermount3 using flatpak-spawn
+  # used in ifuse (Rust crate)
+  # https://github.com/iDescriptor/iDescriptor/blob/main/packaging/linux/flatpak/idescriptor-fusermount3
+  - --env=FUSERMOUNT_PATH=/app/bin/idescriptor-fusermount3
+  - --env=QT_MEDIA_BACKEND=ffmpeg
+  - --env=AVAHI_COMPAT_NOWARN=1
+
+modules:
+  - name: libplist
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/libimobiledevice/libplist.git
+        tag: 2.7.0
+        commit: cf5897a71ea412ea2aeb1e2f6b5ea74d4fabfd8c
+
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-mono
+      - --disable-python
+      - --disable-qt5
+      - --disable-gtk
+      - --disable-gtk3
+      - --with-distro=none
+      - --disable-manpages
+      - --disable-dbus-bus-activation
+      - --enable-compat-libdns_sd
+      - --disable-libdaemon
+      - --disable-libevent
+    sources:
+      - type: git
+        url: https://github.com/avahi/avahi.git
+        tag: v0.8
+        commit: f060abee2807c943821d88839c013ce15db17b58
+
+  - name: libde265
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/strukturag/libde265.git
+        tag: v1.0.19
+        commit: 824b4138ecd51611d7073f1b50d5d6f982609b06
+
+  - name: libheif
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DENABLE_PLUGIN_LOADING=OFF
+      - -DWITH_LIBDE265=ON
+      - -DWITH_X265=OFF
+      - -DWITH_OpenH264_DECODER=OFF
+      - -DWITH_AOM_DECODER=OFF
+      - -DWITH_AOM_ENCODER=OFF
+      - -DWITH_X264=OFF
+      - -DWITH_LIBSHARPYUV=OFF
+      - -DWITH_EXAMPLES=OFF
+      - -DWITH_GDK_PIXBUF=OFF
+      - -DBUILD_DOCUMENTATION=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/strukturag/libheif.git
+        tag: v1.23.1
+        commit: 2c4bbb54c2738d4a5efbbe3e5fa1d5d76bb88eb0
+
+  # qml6glsink is required for GstGLQt6VideoItem, which is not available in the KDE runtime
+  - name: qml6glsink
+    buildsystem: meson
+    config-opts:
+      - --auto-features=disabled
+      - -Dqt6=enabled
+      - -Dqt5=disabled
+      - -Dqt-x11=enabled
+      - -Dtests=disabled
+      - -Dexamples=disabled
+      - -Dnls=disabled
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.24.13.tar.xz
+        sha256: 574ac6f9fd84b32eb04e80572391d6762df6f9802a47bc0386cd6cc48c14d08b
+
+  - name: iDescriptor
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+      env:
+        CARGO_HOME: /run/build/iDescriptor/cargo
+        CARGO_NET_OFFLINE: "true"
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
+        RUST_BACKTRACE: "1"
+    build-commands:
+      - cargo build --offline --locked --release --features flatpak
+      - install -Dm0755 target/release/idescriptor ${FLATPAK_DEST}/bin/iDescriptor
+      - install -Dm0755 packaging/linux/flatpak/idescriptor-fusermount3 ${FLATPAK_DEST}/bin/idescriptor-fusermount3
+      - install -Dm0644 io.github.idescriptor.iDescriptor.desktop ${FLATPAK_DEST}/share/applications/io.github.idescriptor.iDescriptor.desktop
+      - install -Dm0644 io.github.idescriptor.iDescriptor.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.idescriptor.iDescriptor.metainfo.xml
+      - install -Dm0644 packaging/shared/resources/app-icon/icon-16.png ${FLATPAK_DEST}/share/icons/hicolor/16x16/apps/io.github.idescriptor.iDescriptor.png
+      - install -Dm0644 packaging/shared/resources/app-icon/icon-32.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/io.github.idescriptor.iDescriptor.png
+      - install -Dm0644 packaging/shared/resources/app-icon/icon-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.idescriptor.iDescriptor.png
+      - install -Dm0644 packaging/shared/resources/app-icon/icon-512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.idescriptor.iDescriptor.png
+    sources:
+      - type: git
+        url: https://github.com/iDescriptor/iDescriptor.git
+        commit: 45a64cf01a0ea2ce310160a963eab68038388325
+
+      - cargo-sources.json
