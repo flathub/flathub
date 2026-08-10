@@ -17,10 +17,10 @@ trial.
 | Access                    | What it is for                                                         |
 | ------------------------- | ---------------------------------------------------------------------- |
 | Network                   | Syncing, installing plugins, AI providers, and the built-in MCP server |
-| Home directory            | The local backup directory, which is a path you type rather than pick  |
+| Home directory            | Writing the local backup, continuously and in the background           |
 | Keyring                   | Storing your account access key, via the Secret Service                |
 | Tray icon                 | The "keep Inkdrop running in the background" preference                |
-| Suspend and resume events | Reconnecting sync after the machine wakes up                           |
+| Suspend and resume events | Reconnecting live sync after the machine wakes up                      |
 | GPU                       | Hardware-accelerated rendering                                         |
 
 Opening, importing and exporting notes and attachments goes through the system file
