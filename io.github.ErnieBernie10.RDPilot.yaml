@@ -10,42 +10,18 @@ sdk-extensions:
 command: rdpilot
 
 build-options:
-  # Must be prepend, not append. The dotnet module's install.sh creates /app/bin/dotnet,
-  # which is the runtime-only copy with no sdk/ directory. With append, /app/bin wins on
-  # PATH and `dotnet publish` fails with "No .NET SDKs were found".
   prepend-path: /usr/lib/sdk/dotnet10/bin
   append-ld-library-path: /usr/lib/sdk/dotnet10/lib
   prepend-pkg-config-path: /usr/lib/sdk/dotnet10/lib/pkgconfig
 
 finish-args:
-  # Avalonia/Skia need a GPU device and a display socket.
   - --device=dri
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # RDP sessions and optional RDP gateway.
   - --share=network
-  # SecretStore stores connection passwords through secret-tool.
   - --talk-name=org.freedesktop.secrets
-  # Framework-dependent publish; the runtime is installed by the dotnet module below.
   - --env=DOTNET_ROOT=/app/lib/dotnet
-
-# No add-extensions block for codecs here on purpose. org.freedesktop.Platform ships ffmpeg
-# built with --disable-decoder="h264,hevc,vc1,vvc", so H.264 RDPGFX only decodes when the
-# extra codec extension is installed -- but the Platform already declares that extension
-# point itself:
-#
-#   Extension org.freedesktop.Platform.codecs-extra:
-#     directory: '%{lib}/codecs-extra'
-#     version: "%{branch-extra}"
-#     add-ld-path: lib
-#
-# so the app does not declare one. Users install it with:
-#
-#   flatpak install flathub org.freedesktop.Platform.codecs-extra//25.08-extra
-#
-# Note the branch is 25.08-extra, not 25.08. In freedesktop-sdk 24.08 and earlier this
-# extension was called org.freedesktop.Platform.ffmpeg-full; it was renamed in 25.08.
 
 cleanup:
   - /include
@@ -57,20 +33,13 @@ cleanup:
   - '*.la'
 
 modules:
-  # ---------------------------------------------------------------- .NET runtime
   - name: dotnet
     buildsystem: simple
     build-commands:
       - /usr/lib/sdk/dotnet10/bin/install.sh
 
-  # ---------------------------------------------------------------- secret-tool
-  # RDPilot.Client/Services/SecretStore.cs shells out to secret-tool on Linux and refuses to
-  # fall back to plaintext, so the binary has to exist inside the sandbox.
   - name: libsecret
     buildsystem: meson
-    # Option names are from libsecret 0.21.7 meson.options. There is no `tests` option, and
-    # the crypto backend option is `crypto` (default libgcrypt, which the SDK provides), not
-    # `gcrypt`. `gtk_doc` and `manpage` are off to avoid needing gi-docgen and xsltproc.
     config-opts:
       - -Dintrospection=false
       - -Dvapi=false
@@ -86,19 +55,14 @@ modules:
       - /share/gir-1.0
       - /share/vala
 
-  # ---------------------------------------------------------------- FreeRDP 3
   - name: cjson
     buildsystem: cmake-ninja
-    # flatpak-builder configures cmake modules in-source unless this is set.
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_LIBDIR=lib
       - -DENABLE_CJSON_TEST=OFF
       - -DBUILD_SHARED_AND_STATIC_LIBS=OFF
-      # cJSON still declares cmake_minimum_required(VERSION 3.0) and the SDK ships CMake 4,
-      # which removed compatibility below 3.5. FreeRDP (3.13) and RDPilot.Wrapper (3.15) are
-      # unaffected.
       - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     sources:
       - type: git
@@ -106,11 +70,8 @@ modules:
         tag: v1.7.19
         commit: c859b25da02955fef659d658b8f324b5cde87be3
 
-  # Only the libraries RDPilot.Wrapper links against: libfreerdp3, libfreerdp-client3 and
-  # libwinpr3. No SDL/X11 client, no server, no smartcard/kerberos stack.
   - name: freerdp
     buildsystem: cmake-ninja
-    # FreeRDP's cmake/PreventInSourceBuilds.cmake aborts without this.
     builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
@@ -129,7 +90,6 @@ modules:
       - -DWITH_PROXY=OFF
       - -DWITH_MANPAGES=OFF
       - -DWITH_WINPR_TOOLS=OFF
-      # Enables WITH_GFX_H264; the decoder itself comes from the codecs-extra extension.
       - -DWITH_FFMPEG=ON
       - -DWITH_SWSCALE=ON
       - -DWITH_PULSE=OFF
@@ -140,11 +100,6 @@ modules:
       - -DWITH_AAD=OFF
       - -DWITH_WEBVIEW=OFF
       - -DWITH_URIPARSER=OFF
-      # Options below default to a computed variable rather than a literal, so they switch
-      # themselves on and then hard-require a dependency. WITH_FUSE is the one that matters:
-      # it defaults ON everywhere except Apple/Windows/Android and does
-      # `pkg_check_modules(FUSE3 REQUIRED ... fuse3)`. It only powers remote-to-local
-      # clipboard file paste, which RDPilot does not implement.
       - -DWITH_FUSE=OFF
       - -DWITH_OPUS=OFF
       - -DWITH_PKCS11=OFF
@@ -159,7 +114,6 @@ modules:
     cleanup:
       - /bin
 
-  # ---------------------------------------------------------------- RDPilot
   - name: rdpilot
     buildsystem: simple
     build-options:
@@ -168,39 +122,14 @@ modules:
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
         DOTNET_NOLOGO: '1'
     build-commands:
-      # The checked-in NuGet.config points at nuget.org and the Avalonia feed; neither is
-      # reachable during a Flatpak build. Everything is restored from ./nuget-sources.
-      - rm -f NuGet.config
-      - |
-        dotnet publish RDPilot.Client/RDPilot.Client.csproj \
-          -c Release \
-          -r linux-x64 \
-          --self-contained false \
-          --source ./nuget-sources \
-          --source /usr/lib/sdk/dotnet10/nuget/packages \
-          -p:Version=1.3.0 \
-          -p:AssemblyVersion=1.3.0.0 \
-          -p:FileVersion=1.3.0.0 \
-          -p:InformationalVersion=1.3.0 \
-          -p:NativeWrapperUseVcpkg=false
-      # RDPilot.Client.csproj (CopyNativeWrapperToPublish) already dropped
-      # libfreerdp_wrapper.so into the publish directory next to the managed assembly.
-      - install -d ${FLATPAK_DEST}/lib/rdpilot
-      - cp -a RDPilot.Client/bin/Release/net10.0/linux-x64/publish/. ${FLATPAK_DEST}/lib/rdpilot/
-      - install -Dm755 rdpilot.sh ${FLATPAK_DEST}/bin/rdpilot
-
-      - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
-      - install -Dm644 RDPilot.Client/Assets/rdpilot-app-icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      - install -Dm644 RDPilot.Client/Assets/rdpilot-app-icon-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
-      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENSE
+      - sh build.sh
     sources:
-      # Keep tag, commit, the -p:Version above, and the newest <release> in the metainfo in
-      # sync. See "Releasing" in packaging/flatpak/README.md.
       - type: git
         url: https://github.com/ErnieBernie10/RDPilot.git
         tag: v1.3.0
         commit: 4f751c41a681488dc1a44c8589d62bad08f25573
+      - type: file
+        path: build.sh
       - type: file
         path: rdpilot.sh
       - type: file
