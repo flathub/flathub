@@ -1,0 +1,93 @@
+# Flatpak manifest for GitBox — the file Flathub builds from.
+#
+# The app id is NOT the electron-builder appId (com.gitbox.app). Flathub only
+# accepts an id under a domain or code-hosting account you control, and the
+# project lives at github.com/gitgusilva/gitbox, so the Flatpak is published as
+# io.github.gitgusilva.gitbox. The deb/rpm/pacman/Windows packages keep their
+# own id; nothing outside this directory refers to it.
+#
+# GitBox is repackaged from the .deb that .github/workflows/build-linux.yml
+# already publishes to the GitHub Release, rather than compiled here. Building
+# from source inside flatpak-builder would mean vendoring three npm trees plus
+# the libgit2/mbedTLS/OpenSSL/libssh2 tarballs that core/addon/vendor/
+# build-libgit2.sh fetches, all offline — for a bit-for-bit identical binary.
+app-id: io.github.gitgusilva.gitbox
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+
+# Supplies zypak, which lets Chromium's sandbox work inside the Flatpak sandbox,
+# plus the shared libraries an Electron binary expects but the bare Platform
+# does not carry.
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+
+command: gitbox
+
+# Electron ships its own translations inside the app bundle; letting
+# flatpak-builder split them into a .Locale extension only hides them.
+separate-locales: false
+
+finish-args:
+  # Wayland first, XWayland only when there is no Wayland compositor. The
+  # wrapper passes --ozone-platform-hint=auto to match: without it Electron
+  # would default to X11 and find no socket at all under a Wayland session.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # clone/fetch/pull/push, the update check, and the OAuth sign-in flows.
+  - --share=network
+
+  # git over SSH. The addon links libssh2 and authenticates through the agent,
+  # so the agent socket is what makes key-based remotes work; the keys
+  # themselves are read from ~/.ssh via the home filesystem below.
+  - --socket=ssh-auth
+
+  # Repositories live wherever the user keeps them, and GitBox has to read and
+  # write working trees, ~/.gitconfig and ~/.ssh. Narrower than --filesystem=host:
+  # /etc, /usr and other apps' data stay out of reach.
+  - --filesystem=home
+  # Repos on external drives or secondary mounts.
+  - --filesystem=/run/media
+  - --filesystem=/media
+
+modules:
+  - name: gitbox
+    buildsystem: simple
+    build-commands:
+      # flatpak-builder has no deb extractor; unpack it by hand.
+      - ar x GitBox-*-amd64.deb
+      - tar -xf data.tar.xz
+
+      - mkdir -p /app/gitbox
+      - cp -a opt/GitBox/. /app/gitbox/
+      # The setuid Chromium sandbox helper cannot work inside Flatpak (no setuid
+      # bit survives, and zypak replaces it). Left in place it only trips the
+      # "you must run as root" bailout.
+      - rm -f /app/gitbox/chrome-sandbox
+
+      - install -Dm755 gitbox.sh /app/bin/gitbox
+      - install -Dm644 io.github.gitgusilva.gitbox.desktop /app/share/applications/io.github.gitgusilva.gitbox.desktop
+      - install -Dm644 io.github.gitgusilva.gitbox.metainfo.xml /app/share/metainfo/io.github.gitgusilva.gitbox.metainfo.xml
+      - install -Dm644 usr/share/icons/hicolor/512x512/apps/gitbox.png /app/share/icons/hicolor/512x512/apps/io.github.gitgusilva.gitbox.png
+
+    sources:
+      - type: file
+        url: https://github.com/gitgusilva/gitbox/releases/download/v1.3.1/GitBox-1.3.1-amd64.deb
+        sha256: 24e792eceaab1e2dfb4419d599ffecc109702f86705e1c78ca06648b67e75e68
+        # Lets Flathub's external-data-checker open the version-bump PR on this
+        # manifest by itself whenever a new GitHub Release appears.
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/gitgusilva/gitbox/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name == "GitBox-" + $version + "-amd64.deb") | .browser_download_url
+
+      - type: file
+        path: gitbox.sh
+      - type: file
+        path: io.github.gitgusilva.gitbox.desktop
+      - type: file
+        path: io.github.gitgusilva.gitbox.metainfo.xml
