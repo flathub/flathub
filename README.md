@@ -14,14 +14,14 @@ trial.
 
 ## What the app can access
 
-| Access | What it is for |
-| --- | --- |
-| Network | Syncing, installing plugins, AI providers, and the built-in MCP server |
-| Home directory | The local backup directory, which is a path you type rather than pick |
-| Keyring | Storing your account access key, via the Secret Service |
-| Tray icon | The "keep Inkdrop running in the background" preference |
-| Suspend and resume events | Reconnecting sync after the machine wakes up |
-| GPU | Hardware-accelerated rendering |
+| Access                    | What it is for                                                         |
+| ------------------------- | ---------------------------------------------------------------------- |
+| Network                   | Syncing, installing plugins, AI providers, and the built-in MCP server |
+| Home directory            | The local backup directory, which is a path you type rather than pick  |
+| Keyring                   | Storing your account access key, via the Secret Service                |
+| Tray icon                 | The "keep Inkdrop running in the background" preference                |
+| Suspend and resume events | Reconnecting sync after the machine wakes up                           |
+| GPU                       | Hardware-accelerated rendering                                         |
 
 Opening, importing and exporting notes and attachments goes through the system file
 chooser, so those files are reachable without granting anything up front.
@@ -41,9 +41,3 @@ it) as usual.
 - Problems with **this Flatpak** — packaging, permissions, the app not starting:
   [open an issue here](https://github.com/flathub/app.inkdrop.Inkdrop/issues).
 - Problems with **Inkdrop itself**: [the Inkdrop forum](https://forum.inkdrop.app/).
-
-## For maintainers
-
-- [UPDATE.md](UPDATE.md) — bumping to a new upstream release, building and linting
-- [BUILD.md](BUILD.md) — how the package is assembled, permission rationale,
-  outstanding work before submission
