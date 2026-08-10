@@ -1,0 +1,59 @@
+app-id: com.danielvartan.logopak
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: NetLogo
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk17
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  # NetLogo is a Swing application and the JVM has no Wayland backend, so it
+  # needs X11 (through XWayland on a Wayland session). Requesting
+  # fallback-x11 instead would leave it with a Wayland socket it cannot use
+  # and it would exit with a HeadlessException.
+  - --socket=x11
+  # NetLogo plays sound through the JVM, both from the sound extension and
+  # from the models that use it.
+  - --socket=pulseaudio
+  # HubNet runs a server that classroom clients connect to, and the extension
+  # manager downloads extensions from the NetLogo extension registry.
+  - --share=network
+  # NetLogo is a Swing application: its file choosers are not portal backed,
+  # and models routinely read and write data files next to themselves, load
+  # local extensions, and are opened from arbitrary places in the home
+  # directory.
+  - --filesystem=home
+  # The shell launchers shipped by NetLogo (netlogo-headless.sh,
+  # netlogo-gui.sh, behaviorsearch_headless.sh) look for a JDK in JAVA_HOME.
+  # The runtime default points to a JDK that is not part of
+  # org.freedesktop.Platform, so point it at NetLogo's own runtime.
+  - --env=JAVA_HOME=/app/opt/netlogo/lib/runtime
+
+modules:
+  - name: netlogo
+    buildsystem: simple
+    build-commands:
+      - sh flatpak/build.sh
+    sources:
+      # Packaging files: build script, launcher, desktop files, icons, MIME
+      # definitions, metadata and licenses. They are kept in the LogoPak
+      # repository so that there is a single copy of them.
+      - type: git
+        url: https://github.com/danielvartan/logopak.git
+        tag: v1.0.0
+        commit: 87a5d19d3fbb26a4dbc0a5ce6dbc82772b245f8f
+        x-checker-data:
+          type: git
+          tag-pattern: '^v([\d.]+)$'
+      - type: archive
+        url: https://downloads.netlogo.org/7.0.4/NetLogo-7.0.4-64.tgz
+        sha256: 75636b8469ea4995ec051cfbc91e525f171be84b8f959b86bc080fbff702dfbc
+        dest: netlogo
+        x-checker-data:
+          type: html
+          url: https://downloads.netlogo.org/
+          version-pattern: 'href="([\d.]+)/"'
+          url-template: https://downloads.netlogo.org/$version/NetLogo-$version-64.tgz
