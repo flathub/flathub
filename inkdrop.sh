@@ -1,8 +1,6 @@
 #!/bin/sh
 set -eu
 
-export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
-
 WL_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 if [ -e "${XDG_RUNTIME_DIR}/${WL_DISPLAY}" ] || [ -e "/${WL_DISPLAY}" ]; then
   set -- --ozone-platform-hint=auto \
