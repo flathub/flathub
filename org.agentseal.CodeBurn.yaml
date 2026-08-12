@@ -1,0 +1,56 @@
+# Flathub manifest for CodeBurn Desktop. Repacks the published Linux deb from
+# GitHub Releases (the same artifact shipped everywhere else) with the Electron
+# baseapp + zypak. Update the url/sha256 pair on each desktop release.
+app-id: org.agentseal.CodeBurn
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: codeburn-run
+separate-locales: false
+
+finish-args:
+  # CodeBurn reads local session logs written by AI coding tools into
+  # dot-directories across the home dir (~/.claude, ~/.codex, ~/.cursor, ...).
+  # Everything is parsed locally; nothing is uploaded.
+  - --filesystem=home
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # Release check against GitHub and opening PR/session links in the browser.
+  - --share=network
+  - --talk-name=org.freedesktop.portal.Desktop
+
+modules:
+  - name: codeburn
+    buildsystem: simple
+    build-commands:
+      - ar x codeburn-desktop.deb
+      - tar -xf data.tar.*
+      - cp -r opt/CodeBurn /app/codeburn
+      - install -Dm755 codeburn-run /app/bin/codeburn-run
+      - install -Dm644 org.agentseal.CodeBurn.desktop /app/share/applications/org.agentseal.CodeBurn.desktop
+      - install -Dm644 org.agentseal.CodeBurn.metainfo.xml /app/share/metainfo/org.agentseal.CodeBurn.metainfo.xml
+      - |
+        for size in 16 32 48 64 128 256 512; do
+          icon=usr/share/icons/hicolor/${size}x${size}/apps/codeburn.png
+          if [ -f "$icon" ]; then
+            install -Dm644 "$icon" /app/share/icons/hicolor/${size}x${size}/apps/org.agentseal.CodeBurn.png
+          fi
+        done
+    sources:
+      - type: file
+        url: https://github.com/getagentseal/codeburn/releases/download/desktop-v0.9.20/codeburn-desktop_0.9.20_amd64.deb
+        sha256: bf875a11aef90853bee3891ece965b98a7ddcc5331d98dfd113b72c80e8598ca
+        dest-filename: codeburn-desktop.deb
+        only-arches: [x86_64]
+      - type: script
+        dest-filename: codeburn-run
+        commands:
+          - exec zypak-wrapper /app/codeburn/codeburn "$@"
+      - type: file
+        path: org.agentseal.CodeBurn.desktop
+      - type: file
+        path: org.agentseal.CodeBurn.metainfo.xml
