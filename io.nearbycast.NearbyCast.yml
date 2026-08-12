@@ -1,0 +1,57 @@
+app-id: io.nearbycast.NearbyCast
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: nearby-cast
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --share=ipc
+  - --socket=session-bus
+  - --filesystem=xdg-run/pipewire-0
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.ScreenCast
+  - --talk-name=org.freedesktop.portal.Notification
+  - --talk-name=org.freedesktop.portal.Background
+  - --talk-name=org.kde.StatusNotifierWatcher
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/nearby-cast/cargo
+modules:
+  - name: wf-recorder
+    buildsystem: meson
+    config-opts:
+      - -Ddefault_library=shared
+    sources:
+      - type: git
+        url: https://github.com/ammen99/wf-recorder
+        tag: v0.3.1
+  
+  - name: nearby-cast
+    buildsystem: simple
+    build-commands:
+      - npm ci
+      - npm run build
+      - cargo build --release --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/nearby-cast /app/share/nearby-cast/nearby-cast-bin
+      - install -Dm755 cast_launcher.py /app/share/nearby-cast/cast_launcher.py
+      - mkdir -p /app/bin
+      - |
+        cat << 'EOF' > /app/bin/nearby-cast
+        #!/bin/sh
+        export CAST_LAUNCHER="/app/share/nearby-cast/cast_launcher.py"
+        exec /app/share/nearby-cast/nearby-cast-bin "$@"
+        EOF
+      - chmod +x /app/bin/nearby-cast
+      - install -Dm644 flatpak/io.nearbycast.NearbyCast.desktop /app/share/applications/io.nearbycast.NearbyCast.desktop
+      - install -Dm644 flatpak/io.nearbycast.NearbyCast.metainfo.xml /app/share/metainfo/io.nearbycast.NearbyCast.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/kenan-karimli/nearby-cast/archive/refs/tags/v0.1.0.tar.gz
+        sha256: 8db751afbf575867f7f595eab8c3afe5b0e8835ab44d5e20eca4b8f4a286bc65
