@@ -1,0 +1,83 @@
+# Copyright (C) 2026 SkapaCraft <https://skapacraft.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The manifest as Flathub receives it.
+#
+# It differs from ../com.skapacraft.nostos.yml in exactly one respect, and the
+# difference is the point of having two files. That one builds the working
+# tree, which is what a build on every commit has to do. This one builds a
+# tagged commit pinned by its hash, so the package Flathub distributes can be
+# rebuilt byte for byte by anyone, months from now, without trusting that a
+# branch still holds what it held on the day.
+#
+# It is not used by our own CI. It is copied into the Flathub repository,
+# alongside the two generated source lists, and submitted from there. See
+# README.md in this directory.
+id: com.skapacraft.nostos
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: nostos
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+
+# Neither network nor filesystem. The file dialog goes through the XDG portal,
+# so the user picks a folder and the portal grants access to that folder alone.
+# Asking for the home directory would be simpler and would also be the thing
+# this application spends its interface telling people not to accept.
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/nostos/cargo
+    npm_config_offline: 'true'
+    npm_config_cache: /run/build/nostos/flatpak-node/npm-cache
+    XDG_CACHE_HOME: /run/build/nostos/flatpak-node/cache
+
+modules:
+  - name: nostos
+    buildsystem: simple
+
+    build-commands:
+      # The interface first: cargo embeds the built assets into the binary.
+      - npm ci --no-audit --no-fund
+      - npm run build
+
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+        --no-default-features --features dialog-portal
+      - install -Dm755 src-tauri/target/release/nostos /app/bin/nostos
+
+      - install -Dm644 src-tauri/packaging/com.skapacraft.nostos.desktop
+        /app/share/applications/com.skapacraft.nostos.desktop
+      - install -Dm644 src-tauri/packaging/com.skapacraft.nostos.metainfo.xml
+        /app/share/metainfo/com.skapacraft.nostos.metainfo.xml
+
+      - install -Dm644 src-tauri/icons/icon.png
+        /app/share/icons/hicolor/512x512/apps/com.skapacraft.nostos.png
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/com.skapacraft.nostos.png
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/com.skapacraft.nostos.png
+
+      - install -Dm644 LICENSE /app/share/licenses/com.skapacraft.nostos/LICENSE
+
+    sources:
+      # Both the tag and the commit: the tag says which release this is, the
+      # commit is what actually gets fetched. A tag can be moved, a hash cannot.
+      - type: git
+        url: https://github.com/skapacraft/nostos.git
+        tag: v1.1.1
+        commit: c8af808d57f0ba3fe4bd9202cb1e8add45296b01
+
+      # Generated from the lock files. They belong in the Flathub repository
+      # next to this manifest, because a build with no network needs every
+      # dependency declared with a URL and a checksum before it starts.
+      - cargo-sources.json
+      - node-sources.json
