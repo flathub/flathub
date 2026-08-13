@@ -2,8 +2,10 @@ id: io.github.chnapy.pkvault
 runtime: org.gnome.Platform
 runtime-version: "50"
 sdk: org.gnome.Sdk
-command: launcher
-tags: [pokemon, storage, pokedex, pkhex, save-editor]
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+  - org.freedesktop.Sdk.Extension.node22
+command: PKVault
 finish-args:
   - --share=ipc
   - --socket=fallback-x11
@@ -17,38 +19,48 @@ finish-args:
   # The app should check if this old version is installed, and copy its data
   - --filesystem=~/.var/app/org.chnapy.pkvault:ro
 
+build-options:
+  append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/node22/bin
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    DOTNET_NOLOGO: "1"
+    DOTNET_ROOT: /usr/lib/sdk/dotnet10
+    XDG_CACHE_HOME: /run/build/build/.cache
+    npm_config_cache: /run/build/build/flatpak-node/npm-cache
+
 modules:
   - name: build
     buildsystem: simple
     build-commands:
-      - desktop-file-validate io.github.chnapy.pkvault.desktop
-      - appstreamcli validate --no-net io.github.chnapy.pkvault.metainfo.xml
-      - install -Dm644 LICENSE -t $FLATPAK_DEST/share/licenses/$FLATPAK_ID/build
-      - install -Dm755 launcher /app/bin/launcher
-      - install -Dm755 PKVault /app/bin/PKVault
-      - install -Dm644 io.github.chnapy.pkvault.desktop /app/share/applications/io.github.chnapy.pkvault.desktop
-      - install -Dm644 io.github.chnapy.pkvault.metainfo.xml /app/share/metainfo/io.github.chnapy.pkvault.metainfo.xml
-      - install -Dm644 pkvault_128x128.png /app/share/icons/hicolor/128x128/apps/io.github.chnapy.pkvault.png
-      - install -Dm644 pkvault_256x256.png /app/share/icons/hicolor/256x256/apps/io.github.chnapy.pkvault.png
-      - install -Dm644 pkvault_scalable.svg /app/share/icons/hicolor/scalable/apps/io.github.chnapy.pkvault.svg
+      - desktop-file-validate PKVault.Desktop/publishers/flatpak/io.github.chnapy.pkvault.desktop
+      - appstreamcli validate --no-net PKVault.Desktop/publishers/flatpak/io.github.chnapy.pkvault.metainfo.xml
+
+      - npm install --prefix frontend --offline
+
+      # Frontend code generation
+      - npm run --prefix frontend gen:routes
+      - VITE_OPENAPI_PATH=../PKVault.Backend/swagger.json npm run --prefix frontend gen:sdk:basic
+      - npm run --prefix frontend gen:css:dts
+      - DOCS_PATH=../docs/functional npm run --prefix frontend gen:docs
+
+      # Frontend build
+      - npm run --prefix frontend build -- --outDir ../PKVault.Desktop/Resources/wwwroot
+
+      # Desktop app build
+      - dotnet publish PKVault.Desktop/PKVault.Desktop.csproj --source nuget-sources -c Release -o output
+
+      - install -Dm755 output/PKVault /app/bin/PKVault
+      - install -Dm644 LICENSE -t /app/share/licenses/$FLATPAK_ID/build
+      - install -Dm644 PKVault.Desktop/publishers/flatpak/io.github.chnapy.pkvault.desktop /app/share/applications/io.github.chnapy.pkvault.desktop
+      - install -Dm644 PKVault.Desktop/publishers/flatpak/io.github.chnapy.pkvault.metainfo.xml /app/share/metainfo/io.github.chnapy.pkvault.metainfo.xml
+      - install -Dm644 PKVault.Desktop/publishers/common/icons/pkvault_128x128.png /app/share/icons/hicolor/128x128/apps/io.github.chnapy.pkvault.png
+      - install -Dm644 PKVault.Desktop/publishers/common/icons/pkvault_256x256.png /app/share/icons/hicolor/256x256/apps/io.github.chnapy.pkvault.png
+      - install -Dm644 PKVault.Desktop/publishers/common/icons/pkvault_scalable.svg /app/share/icons/hicolor/scalable/apps/io.github.chnapy.pkvault.svg
+
     sources:
-      - type: file
-        url: https://github.com/Chnapy/PKVault/releases/download/v2.1.0/pkvault-2.1.0.linux
-        sha256: a012ac51735486ba2f4794308712ba2d3dbfef46abba57ea3efe958b79e6ceb8
-        dest-filename: PKVault
-      - type: script
-        dest-filename: launcher
-        commands:
-          - exec /app/bin/PKVault PROVIDER=flathub "$@"
-      - type: file
-        path: LICENSE
-      - type: file
-        path: io.github.chnapy.pkvault.metainfo.xml
-      - type: file
-        path: io.github.chnapy.pkvault.desktop
-      - type: file
-        path: icons/pkvault_128x128.png
-      - type: file
-        path: icons/pkvault_256x256.png
-      - type: file
-        path: icons/pkvault_scalable.svg
+      - type: git
+        url: https://github.com/Chnapy/PKVault
+        disable-submodules: true
+        branch: feat/adapt-for-flathub-2
+      - desktop-nuget-sources.json
+      - frontend-npm-sources.json
