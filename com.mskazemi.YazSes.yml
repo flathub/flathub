@@ -1,0 +1,119 @@
+# Flatpak manifest for YazSes.
+#
+# App ID: com.mskazemi.YazSes — chosen because mskazemi.com is a domain the maintainer
+# controls, which is what Flathub requires. It is PERMANENT: an app ID cannot be changed
+# after publication without shipping a whole new app and orphaning every install.
+#
+# Why Flatpak at all, when a Snap already exists: the Snap cannot do hold-to-talk under
+# strict confinement (issue #44 — raw keyboard capture denied, no raw-input plug on the
+# store build). Flatpak can grant device access to /dev/input, which is the single
+# capability that decides whether this package is usable or decorative.
+#
+# Build:
+#   flatpak-builder --user --install --force-clean build com.mskazemi.YazSes.yml
+#
+# The python3-* module list is generated, not hand-written — regenerate it by running
+# the Flatpak workflow with 'regenerate' checked and committing the artifact it uploads.
+# It uses req2flatpak, pinned to Python 3.11 / x86_64-manylinux2014 to match this runtime.
+# flatpak-pip-generator cannot be used: it reads platform tags by running
+# `from packaging import tags` inside org.kde.Sdk, whose Python has no `packaging` module.
+
+app-id: com.mskazemi.YazSes
+# KDE runtime rather than GNOME: it carries Qt 6, which PySide6 (the voice-activity
+# overlay and the tray icon) needs. Pulling PySide6 through pip against the GNOME runtime
+# means building Qt in the sandbox, which is enormous and fragile.
+runtime: org.kde.Platform
+runtime-version: '6.7'
+sdk: org.kde.Sdk
+command: yazses
+
+# Make the setuptools installed into /app win over the SDK's own.
+#
+# pip builds an sdist's metadata in an in-process hook run by /usr/bin/python,
+# which imports setuptools from the SDK's /usr/lib/python3.11/site-packages.
+# Installing a newer one into ${FLATPAK_DEST} therefore changed nothing on its
+# own — the first attempt failed with the identical error. PYTHONPATH is
+# searched before system site-packages, so this is what actually makes the
+# newer setuptools the one that parses evdev's PEP 639 licence field.
+build-options:
+  env:
+    PYTHONPATH: /app/lib/python3.11/site-packages
+
+finish-args:
+  # --- Microphone. Without this there is no audio at all. -----------------------------
+  - --socket=pulseaudio
+
+  # --- Hold-to-talk. THE make-or-break permission. ------------------------------------
+  # evdev reads key events from /dev/input/event*. There is no portal for global
+  # hold-to-talk: the whole interaction is "notice a key being held while another
+  # application has focus", which is by definition outside the sandbox's own window.
+  # This is what the Snap could not get, and why that package cannot dictate.
+  - --device=input
+
+  # --- Text injection into the focused window. The contested one. ---------------------
+  # ydotool/xdotool synthesise input into applications outside the sandbox. Reviewers are
+  # right to look hard at this: it is precisely what sandboxing exists to prevent, and a
+  # granted --socket=x11 plus device access is close to full input control of the session.
+  #
+  # If Flathub declines these, the package still works: set
+  #   [injection] backend = "clipboard"
+  # in config.toml and the transcript is placed on the clipboard for the user to paste.
+  # That is a real degradation and it must be documented in the app description rather
+  # than discovered by users. Do not quietly ship a build that cannot type and call it
+  # the same product.
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+
+  # --- Model download on first run, and nothing else. ---------------------------------
+  # Network is needed once, to fetch the speech model from Hugging Face. Inference never
+  # uses it. This is the one place the "nothing leaves your machine" claim needs its
+  # caveat stated out loud.
+  - --share=network
+
+  # --- Where the model cache and the user's config live. ------------------------------
+  - --filesystem=xdg-config/yazses:create
+  - --filesystem=xdg-cache/yazses:create
+  - --filesystem=xdg-data/yazses:create
+  # Reading recordings the user asks to transcribe. host-os/home is deliberately NOT
+  # requested: `yazses transcribe` takes a path the user chose, so the portal is enough
+  # for the GUI case and this covers the common CLI case without opening the home dir.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+modules:
+  - name: portaudio
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+        sha256: 47efbf42c77c19a05d22e627d42873e991ec0c1357219c0d74ce6a2948cb2def
+
+  # Modern setuptools, installed BEFORE the dependency modules.
+  #
+  # The SDK ships a setuptools too old to parse a PEP 639 SPDX `license` string,
+  # and `evdev` uses one. It publishes no wheels — only an sdist — so pip must
+  # build its metadata with whatever setuptools is present, and the old one dies
+  # with "invalid pyproject.toml config: `project.license`". evdev is not
+  # optional: it is how hold-to-talk reads the key while another app has focus.
+  - name: python3-setuptools
+    buildsystem: simple
+    build-commands:
+      # --ignore-installed matters: without it pip tries to uninstall the SDK's
+      # setuptools first, and that lives in read-only /usr, so the whole module
+      # dies with Errno 30 before installing anything — even though --prefix
+      # points at /app.
+      - pip3 install --no-index --find-links="file://${PWD}"
+          --prefix=${FLATPAK_DEST} --ignore-installed setuptools
+      # Proves PYTHONPATH actually put the new one first. Without this a failure
+      # surfaces later, inside evdev, where it is far harder to read.
+      - python3 -c "import setuptools; print('setuptools', setuptools.__version__,
+          setuptools.__file__); assert int(setuptools.__version__.split('.')[0]) >= 77" 
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl
+        sha256: 51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+
+  # Generated by req2flatpak — see the header. Kept in a separate file so a
+  # dependency bump is a regenerated file rather than a hand-edited diff nobody can review.
+  - python3-yazses.json
