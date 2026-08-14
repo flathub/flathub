@@ -1,0 +1,70 @@
+app-id: org.cloudy.af
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: arcticfox-config
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --device=all
+  - --filesystem=xdg-documents
+  - --persist=.config/arcticfox-config
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.Flatpak
+  - --env=PATH=/app/bin:/usr/bin
+  - --env=WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+  - --env=GDK_BACKEND=x11
+
+modules:
+  - name: arcticfox-config
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/arcticfox-config/cargo
+        CARGO_BUILD_JOBS: "1"
+    sources:
+      - type: git
+        url: https://github.com/VernaUpon74/cloudy-af.git
+        tag: v1.14.0
+        commit: 79b06961a373f1a5e689ef580a24d04186860138
+        dest: source
+    build-commands:
+      - |
+        cd source
+        rm -rf node_modules src-tauri/target dist sidecar/node_modules
+        npm ci
+        cd sidecar
+        npm ci
+        cd ..
+        npm run tauri:build -- --no-bundle
+        install -Dm755 src-tauri/target/release/arcticfox-config /app/bin/arcticfox-config
+        install -Dm644 flatpak/org.cloudy.af.desktop /app/share/applications/org.cloudy.af.desktop
+        install -Dm644 flatpak/org.cloudy.af.appdata.xml /app/share/metainfo/org.cloudy.af.metainfo.xml
+        install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/org.cloudy.af.png
+        mkdir -p /app/lib/arcticfox-config/resources
+        cp -r sidecar /app/lib/arcticfox-config/resources/
+        cp -r public/i18n /app/lib/arcticfox-config/resources/
+        cp public/default.afc.json /app/lib/arcticfox-config/resources/
+        cp "public/Tux&Foxx.png" /app/lib/arcticfox-config/resources/
+        cd /app/lib/arcticfox-config/resources/sidecar
+        npm prune --production
+        rm -rf node_modules/put
+        cp -r put-replacement node_modules/put
+        rm -rf patches node_modules/patch-package
+        rm -rf node_modules/node-hid/prebuilds/darwin-x64 \
+               node_modules/node-hid/prebuilds/darwin-arm64 \
+               node_modules/node-hid/prebuilds/win32-x64 \
+               node_modules/node-hid/prebuilds/win32-ia32 \
+               node_modules/node-hid/prebuilds/linux-arm
+        rm -rf node_modules/*/{README*,readme*,examples,example,tests,test,docs,doc,.github,*.md}
+        rm -f node_modules/arcticfox/{test.json,vtcmini.afc.json}
+        install -Dm755 /usr/lib/sdk/node22/bin/node /app/bin/node
