@@ -1,0 +1,172 @@
+# Flatpak manifest for the Outpost desktop client.
+#
+# Flathub builds with NO network access. Every npm dependency therefore has
+# to be declared up front, generated from electron/package-lock.json — see
+# generated-sources.json, and flatpak/README.md in the app repo. `npm install`
+# reaching the network is the single most common reason an Electron
+# submission fails to build on Flathub's infrastructure but works locally.
+#
+# VERSIONS: runtime-version / base-version / the node SDK extension all
+# rotate, and a stale runtime is an automatic review rejection. These were
+# verified against `flatpak remote-ls flathub` on 2026-08-12: Platform, Sdk,
+# Electron2.BaseApp and Sdk.Extension.node22 all publish a 25.08 branch.
+# Re-check before submitting if that date is no longer recent.
+app-id: io.github.blindrun.OutpostChat
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: outpost
+separate-locales: false
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+finish-args:
+  # Display. Both, because Bazzite is Wayland-first but X11 sessions exist.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Talking to whichever Outpost server the user adds — there is no fixed
+  # host to narrow this to, since the whole point is that they choose it.
+  - --share=network
+
+  # Voice. --socket=pulseaudio covers playback and microphone capture on
+  # both PulseAudio and PipeWire's pulse shim.
+  - --socket=pulseaudio
+
+  # Screen sharing goes through the xdg-desktop-portal ScreenCast portal,
+  # which hands back a PipeWire stream — the app needs to reach the PipeWire
+  # socket to consume it. This is the part most likely to need adjusting
+  # after real testing on Wayland; see task notes.
+  - --filesystem=xdg-run/pipewire-0:ro
+
+  # Desktop notifications and a tray icon.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+  # Saving an attachment, and picking one to upload. Downloads only —
+  # deliberately not --filesystem=home, since file *picking* goes through
+  # the portal and doesn't need blanket access.
+  - --filesystem=xdg-download
+
+modules:
+  - name: outpost
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        # Belt and braces: fail loudly at build time if something still
+        # tries to fetch, rather than silently producing a broken bundle.
+        NPM_CONFIG_OFFLINE: 'true'
+        NPM_CONFIG_AUDIT: 'false'
+        NPM_CONFIG_FUND: 'false'
+        # Without this, offline mode is pointed at npm's DEFAULT cache, which
+        # is empty in the build sandbox, and every package fails ENOTCACHED
+        # even though generated-sources.json laid the real cache down here.
+        # Path is <module build dir>/flatpak-node/npm-cache, and the module
+        # is named `outpost`, hence /run/build/outpost.
+        NPM_CONFIG_CACHE: /run/build/outpost/flatpak-node/npm-cache
+        # node-gyp headers for any package with a native component; the
+        # generator's setup_sdk_node_headers.sh stages them to match.
+        NPM_CONFIG_NODEDIR: /usr/lib/sdk/node22
+        # NOTE: org.electronjs.Electron2.BaseApp does NOT ship an Electron
+        # runtime. It supplies zypak, which is the wrapper that makes
+        # Chromium's sandbox work inside Flatpak, plus a few helpers. The
+        # Electron binary itself still has to come from the npm `electron`
+        # devDependency, whose linux-x64 zip flatpak-node-generator cached
+        # under flatpak-node/cache/electron. So the download must NOT be
+        # skipped -- it just has to resolve offline, which is what pointing
+        # ELECTRON_CACHE at that directory does.
+        ELECTRON_CACHE: /run/build/outpost/flatpak-node/cache/electron
+    build-commands:
+      # The web client is built first and bundled into the Electron app —
+      # same as scripts/build-web.js does for the normal desktop build.
+      - npm ci --offline --prefix web
+      - npm run build --prefix web
+      - npm ci --offline --prefix electron
+      - npm run build-web --prefix electron
+
+      # electron-builder is not used here. Flathub wants the app tree laid
+      # out directly, with a launcher wrapper, rather than a self-contained
+      # installer.
+      - mkdir -p /app/lib/outpost
+
+      # The Electron runtime. npm does not run the electron package's
+      # postinstall in this sandbox -- after `npm ci` there is no dist/ and no
+      # path.txt -- so rather than depend on that hook firing, unzip the
+      # archive flatpak-node-generator already cached. Offline and
+      # deterministic by construction. The glob picks whichever arch's zip was
+      # fetched; the generator guards each one with only-arches, so exactly
+      # one is present per build.
+      - mkdir -p /app/lib/outpost/electron
+      - unzip -q flatpak-node/cache/electron/electron-v*-linux-*.zip -d /app/lib/outpost/electron
+      - chmod +x /app/lib/outpost/electron/electron
+      # chrome-sandbox must be REMOVED, not just stripped of its setuid bit.
+      # Flatpak will not export a setuid binary, but if the helper is merely
+      # present-and-not-setuid Electron finds it, decides it is misconfigured
+      # and aborts outright:
+      #   "The SUID sandbox helper binary was found, but is not configured
+      #    correctly ... I'm aborting now"
+      # zypak provides the sandbox inside Flatpak, so the helper is redundant.
+      - rm -f /app/lib/outpost/electron/chrome-sandbox
+
+      # main.js does `require("electron-updater")` at runtime, so production
+      # dependencies have to ship. Pruning dev dependencies first keeps
+      # electron-builder and the Electron package itself out of the image --
+      # the runtime was already copied out above.
+      - npm prune --omit=dev --prefix electron
+      - cp -r electron/node_modules /app/lib/outpost/node_modules
+
+      # package.json is what makes Electron resolve `main` and pick up the
+      # app name and version; preload.js and build/icon.png are both
+      # referenced by main.js via __dirname and were previously missing, so
+      # the preload IPC bridge (used by desktop SSO) had nothing to load.
+      - install -Dm644 -t /app/lib/outpost electron/main.js electron/preload.js electron/package.json
+      - install -Dm644 electron/build/icon.png /app/lib/outpost/build/icon.png
+      - cp -r electron/web-dist /app/lib/outpost/
+      - install -Dm755 outpost.sh /app/bin/outpost
+      - install -Dm644 io.github.blindrun.OutpostChat.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 io.github.blindrun.OutpostChat.desktop -t /app/share/applications/
+      # The repo ships a single 1024x1024 icon, and flatpak's icon validator
+      # rejects anything above 512x512 at export time. gdk-pixbuf-thumbnailer
+      # is part of the freedesktop SDK, so this needs no extra tooling and no
+      # pre-resized binary checked in beside the manifest.
+      - gdk-pixbuf-thumbnailer -s 512 electron/build/icon.png icon-512.png
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/io.github.blindrun.OutpostChat.png
+    sources:
+      - type: git
+        url: https://github.com/blindrun/outpost-chat.git
+        tag: v0.6.2
+        # Flathub requires a pinned commit alongside the tag, so a moved tag
+        # can't silently change what gets built.
+        commit: a33ffb3f4be520aa2209411675ea0dcf02ed2ecf
+
+      # Generated by flatpak-node-generator from electron/package-lock.json
+      # and web/package-lock.json. Regenerate on every release — a stale
+      # file means the build fetches nothing and fails offline.
+      - generated-sources.json
+
+      - type: script
+        dest-filename: outpost.sh
+        commands:
+          # zypak makes Chromium's own sandbox work inside Flatpak; without it
+          # Electron either refuses to start or runs unsandboxed. It has to be
+          # handed the Electron BINARY, not a .js file -- and Electron is then
+          # given the app DIRECTORY, so it reads package.json for `main`, the
+          # app name and the version, and resolves node_modules beside it.
+          - exec zypak-wrapper /app/lib/outpost/electron/electron /app/lib/outpost "$@"
+
+      # Both of these are copied in from alongside this manifest rather than
+      # taken from the git checkout. The checkout does contain a flatpak/
+      # directory, but it is whatever was committed at the tag, which goes
+      # stale the moment either file is edited here — and on Flathub these
+      # live in the manifest repo anyway, not in the app repo.
+      - type: file
+        path: io.github.blindrun.OutpostChat.desktop
+
+      - type: file
+        path: io.github.blindrun.OutpostChat.metainfo.xml
