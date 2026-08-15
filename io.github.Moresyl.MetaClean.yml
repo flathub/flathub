@@ -1,0 +1,122 @@
+app-id: io.github.Moresyl.MetaClean
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: metaclean
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+modules:
+  - name: intltool
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libdbusmenu
+    buildsystem: simple
+    build-commands:
+      - sed -i '/AC_OUTPUT/i AM_CONDITIONAL([HAVE_VALGRIND], [test "x1" = "x0"])' configure.ac
+      - autoreconf -vfi
+      - ./configure --prefix=/app --disable-dumper --disable-tests --with-gtk=3 --disable-nls --disable-introspection --disable-vala CFLAGS="-Wno-error"
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: ayatana-ido
+    buildsystem: simple
+    build-commands:
+      - sed -i '/find_package.*Vala/s/^/#/' src/CMakeLists.txt
+      - sed -i '/find_package.*GObjectIntrospection/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*gir/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*typelib/s/^/#/' src/CMakeLists.txt
+      - cmake . -DCMAKE_INSTALL_PREFIX=/app -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: simple
+    build-commands:
+      - sed -i '/find_package.*Vala/s/^/#/' src/CMakeLists.txt
+      - sed -i '/find_package.*GObjectIntrospection/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*gir/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*typelib/s/^/#/' src/CMakeLists.txt
+      - cmake . -DCMAKE_INSTALL_PREFIX=/app -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_BINDINGS_MONO=OFF
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/0.9.4.tar.gz
+        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+
+  - name: libayatana-appindicator
+    buildsystem: simple
+    build-commands:
+      - sed -i '/find_package.*Vala/s/^/#/' src/CMakeLists.txt
+      - sed -i '/find_package.*GObjectIntrospection/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*gir/s/^/#/' src/CMakeLists.txt
+      - sed -i '/install.*typelib/s/^/#/' src/CMakeLists.txt
+      - sed -i '/add_custom_target(src ALL DEPENDS/s/^/#/' src/CMakeLists.txt
+      - cmake . -DCMAKE_INSTALL_PREFIX=/app -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_BINDINGS_MONO=OFF -DENABLE_BINDINGS_PYTHON=OFF -DENABLE_BINDINGS_VALA=OFF -DENABLE_GTKDOC=OFF
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/0.5.93.tar.gz
+        sha256: cbefed7a918a227bf71286246e237fcd3a9c8499b3eaac4897811a869409edf0
+
+  - name: metaclean
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin:/run/build/metaclean/pnpm/bin
+      env:
+        CARGO_HOME: /run/build/metaclean/cargo
+        PNPM_CONFIG_OFFLINE: 'true'
+    sources:
+      - type: archive
+        url: https://github.com/Moresyl/metaclean/archive/refs/tags/v0.1.0.tar.gz
+        sha256: d683d0719fa4f53829ccb3cc887b0d29c600226f2930da6e0843b3ccec8082a8
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-10.32.1.tgz
+        sha256: 9b943b94bc8f55efb993aad8e44b538e6b091e60a9e4a944dcde869855f233e3
+        dest: pnpm
+        strip-components: 1
+      - node-sources.json
+      - cargo-sources.json
+      - type: file
+        path: io.github.Moresyl.MetaClean.desktop
+      - type: file
+        path: io.github.Moresyl.MetaClean.metainfo.xml
+    build-commands:
+      - mv pnpm/bin/pnpm.cjs pnpm/bin/pnpm
+      - chmod +x pnpm/bin/pnpm
+      - pnpm install --offline --frozen-lockfile
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - pnpm exec tauri build --no-bundle
+      - install -Dm755 src-tauri/target/release/metaclean /app/bin/metaclean
+      - install -Dm644 io.github.Moresyl.MetaClean.desktop /app/share/applications/io.github.Moresyl.MetaClean.desktop
+      - install -Dm644 io.github.Moresyl.MetaClean.metainfo.xml /app/share/metainfo/io.github.Moresyl.MetaClean.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.Moresyl.MetaClean.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.Moresyl.MetaClean.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.Moresyl.MetaClean.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.Moresyl.MetaClean.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.Moresyl.MetaClean.png
