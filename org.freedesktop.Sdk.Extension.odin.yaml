@@ -1,0 +1,105 @@
+# Flatpak SDK extension for the Odin compiler.
+#
+# Build:  flatpak-builder --user --install --force-clean build-dir org.freedesktop.Sdk.Extension.odin.yaml
+# Use:    add to an app manifest —
+#           sdk-extensions:
+#             - org.freedesktop.Sdk.Extension.odin
+#           build-options:
+#             append-path: /usr/lib/sdk/odin
+#         then `. /usr/lib/sdk/odin/enable.sh` in a build command, or set the
+#         paths yourself. See README.md.
+id: org.freedesktop.Sdk.Extension.odin
+branch: '25.08'
+runtime: org.freedesktop.Sdk
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+build-extension: true
+separate-locales: false
+
+# Needed to build the compiler, not to use it. The extension ships the libLLVM it
+# was linked against, so a consumer needs only this extension.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm22
+
+build-options:
+  prefix: /usr/lib/sdk/odin
+  append-path: /usr/lib/sdk/llvm22/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm22/lib
+
+# The compiler is useless without core/base/vendor, and Odin refuses to start if
+# ODIN_ROOT lacks the vendor collection — so only cross-platform dead weight goes.
+cleanup:
+  - '*.a'
+  - '*.dll'
+  - '*.lib'
+  - '*.dylib'
+
+modules:
+  - name: odin
+    buildsystem: simple
+    build-commands:
+      - ./build_odin.sh release
+      # Flat layout: build_odin.sh links with -Wl,-rpath=$ORIGIN, so libLLVM has
+      # to sit beside the binary rather than in a lib/ directory.
+      - install -d /usr/lib/sdk/odin
+      - cp -r odin core base vendor /usr/lib/sdk/odin/
+      # build_odin.sh does not strip, and flatpak-builder does not strip an
+      # extension's binaries either: the compiler otherwise ships 8.5 MiB of
+      # DWARF for a build nobody can debug (12 MiB -> 3.5 MiB). libLLVM is
+      # upstream's artifact and carries no strippable debug info — leave it.
+      - strip --strip-debug /usr/lib/sdk/odin/odin
+      # Two globs, and neither may be widened: the compiler links libLLVM-22.so
+      # while the real file is libLLVM.so.22.1, and `libLLVM*.so*` would also drag
+      # in libLLVMTableGen, a build-time generator with no runtime use.
+      - cp -P /usr/lib/sdk/llvm22/lib/libLLVM.so* /usr/lib/sdk/llvm22/lib/libLLVM-*.so*
+        /usr/lib/sdk/odin/
+      - ls -l /usr/lib/sdk/odin/libLLVM*
+      # Prove the shipped compiler runs against the libraries shipped beside it,
+      # rather than against whatever the build environment still has loaded.
+      - ODIN_ROOT=/usr/lib/sdk/odin /usr/lib/sdk/odin/odin version
+    sources:
+      # Our fork, carrying one patch: guard the per-target LLVM init calls on
+      # `llvm-config --targets-built`, so Odin builds against an LLVM configured
+      # for a subset of targets. The llvm22 extension provides X86, AMDGPU, ARM,
+      # NVPTX and WebAssembly — no AArch64, no RISCV — and upstream Odin names
+      # those symbols directly, so it will not link here without the patch.
+      #
+      # Temporary. This returns to odin-lang/Odin at a release tag once the patch
+      # is upstream; see MoSCoW.md.
+      - type: git
+        url: https://github.com/Hyperquader-Coders/Odin.git
+        commit: 65474ee23a8aee1877cc37dccc8ba64fcbc2b8ad
+
+  - name: scripts
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 enable.sh /usr/lib/sdk/odin/enable.sh
+    sources:
+      - type: script
+        dest-filename: enable.sh
+        commands:
+          # ODIN_ROOT is how the compiler finds core/base/vendor; without it only
+          # a program importing nothing would build.
+          - export ODIN_ROOT=/usr/lib/sdk/odin
+          - export PATH=$PATH:/usr/lib/sdk/odin
+          # Odin links through clang, always: src/linker.cpp calls it by name so
+          # it can query the compiler driver's specs for libgcc_s, ld-linux and
+          # unwind, whose locations vary by distribution. `-linker:` chooses what
+          # runs behind that frontend, not the frontend itself. The freedesktop
+          # SDK ships gcc but no clang, so the llvm extension has to be on PATH
+          # too or `odin build` compiles and then dies at the link step.
+          - 'if [ -d /usr/lib/sdk/llvm22/bin ]; then'
+          - '  export PATH=$PATH:/usr/lib/sdk/llvm22/bin'
+          - 'else'
+          - '  echo "odin-sdk-extension: org.freedesktop.Sdk.Extension.llvm22 is not mounted." >&2'
+          - '  echo "odin needs clang to link. Add it to sdk-extensions alongside this one." >&2'
+          - 'fi'
+
+  - name: metainfo
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 org.freedesktop.Sdk.Extension.odin.metainfo.xml
+        -t /usr/lib/sdk/odin/share/metainfo
+    sources:
+      - type: file
+        path: org.freedesktop.Sdk.Extension.odin.metainfo.xml
