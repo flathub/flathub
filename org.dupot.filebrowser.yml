@@ -1,0 +1,66 @@
+app-id: org.dupot.filebrowser
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+command: dupot_file_browser
+
+finish-args:
+  # Full host filesystem access — the Miller-column browser navigates
+  # from filesystem root down (see path_page.py's _ancestor_chain) and
+  # the up-button stays enabled until "/", so this isn't a home-only
+  # browser: it needs to see other mounts too (/mnt, /media,
+  # /run/media/<user>, other partitions), not just $HOME.
+  - --filesystem=host
+  # Needed for the "open file with default app" action (goes through the
+  # portal in infrastructure/api/system_api.py, not a raw exec).
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.OpenURI
+  # flatpak-spawn --host, used by SystemApi._cmd to run "cp" on the host
+  # for paste jobs (see infrastructure/ui/app_window.py's paste queue).
+  - --talk-name=org.freedesktop.Flatpak
+  # gvfsd-metadata, so set_folder_color()/get_folder_color() can read
+  # and write "metadata::custom-icon" — the same GVFS per-filesystem
+  # metadata store Nemo's "Folder Color" uses, for cross-app compat.
+  - --talk-name=org.gtk.vfs.Metadata
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+modules:
+  - name: dupot-file-browser
+    buildsystem: simple
+    build-commands:
+      - install -D src/main.py /app/lib/dupot_file_browser/main.py
+      - cp -r src/domain /app/lib/dupot_file_browser/domain
+      - cp -r src/infrastructure /app/lib/dupot_file_browser/infrastructure
+      # assets/ must stay a sibling of dupot_file_browser/ (which replaces
+      # src/) — domain/conf/path_conf.py resolves it as ../../../assets
+      # relative to itself, same depth in the source tree and here.
+      - install -D assets/logos/512x512.png /app/lib/assets/logos/512x512.png
+      - install -D assets/logos/logodupot.svg /app/lib/assets/logos/logodupot.svg
+      # File-type row icons — baked PNGs (see file_icons.py), not looked
+      # up by name in the host's icon theme.
+      - cp -r assets/icons /app/lib/assets/icons
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/dupot_file_browser <<'EOF'
+        #!/bin/sh
+        exec python3 /app/lib/dupot_file_browser/main.py "$@"
+        EOF
+      - chmod +x /app/bin/dupot_file_browser
+      - install -D export/flatpak/org.dupot.filebrowser.desktop /app/share/applications/org.dupot.filebrowser.desktop
+      - install -D export/flatpak/org.dupot.filebrowser.appdata.xml /app/share/metainfo/org.dupot.filebrowser.appdata.xml
+      - install -D export/flatpak/16x16.png /app/share/icons/hicolor/16x16/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/24x24.png /app/share/icons/hicolor/24x24/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/32x32.png /app/share/icons/hicolor/32x32/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/48x48.png /app/share/icons/hicolor/48x48/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/64x64.png /app/share/icons/hicolor/64x64/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/128x128.png /app/share/icons/hicolor/128x128/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/256x256.png /app/share/icons/hicolor/256x256/apps/org.dupot.filebrowser.png
+      - install -D export/flatpak/512x512.png /app/share/icons/hicolor/512x512/apps/org.dupot.filebrowser.png
+    sources:
+      - type: git
+        url: https://github.com/imikado/dupotFileBrowser.git
+        tag: 1.0.14
+        commit: 811dc18c74518075cdef2eaf62030a0670648bb7
