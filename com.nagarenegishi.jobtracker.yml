@@ -1,0 +1,59 @@
+# Flathub/flatpak-builder manifest for the Job Application Tracker desktop app.
+#
+# Closed Source pattern (see Tauri's Flatpak guide): downloads a pre-built .deb via
+# a type: file source and extracts it, instead of building from source. The .deb is
+# built by this repo's CI and published to job-tracker-desktop-releases.
+# Details: docs/plans/desktop-app/flathub-submission-checklist.md
+
+id: com.nagarenegishi.jobtracker
+
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+
+command: app
+finish-args:
+  - --socket=wayland # show the window
+  - --socket=fallback-x11 # show the window on non-Wayland
+  - --device=dri # OpenGL (WebView2/WebKitGTK rendering)
+  - --share=ipc
+  # Secret Service access for the Step 6 keychain plugin (src-tauri's `keyring` crate,
+  # async-secret-service backend). Exact lowercase casing required — flatpak-builder-lint
+  # and past Flathub reviews reject "Secrets". Precedent: flathub/com.mojang.Minecraft#132.
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: jobtracker
+    buildsystem: simple
+    sources:
+      - type: file
+        path: com.nagarenegishi.jobtracker.metainfo.xml
+      - type: file
+        path: com.nagarenegishi.jobtracker.desktop
+      - type: file
+        path: ../LICENSE.md
+      - type: file
+        url: https://github.com/NagareNegishi/job-tracker-desktop-releases/releases/download/v0.1.0/Job.Application.Tracker_0.1.0_amd64.deb
+        sha256: 7ce0d84696a5b05e0b6652782cc5a9becfb034203708755f3b95e945ff27a74d
+        only-arches: [x86_64]
+
+    build-commands:
+      - mkdir deb-extract
+      - ar -x *.deb --output deb-extract
+      - tar -C deb-extract -xf deb-extract/data.tar.gz
+
+      # Main binary — Cargo package name (see src-tauri/Cargo.toml's [package].name),
+      # confirmed via Tauri's own config reference, not by inspecting a built package.
+      - install -Dm755 deb-extract/usr/bin/app /app/bin/app
+
+      # Sidecar — no target-triple suffix in the bundled .deb (confirmed by
+      # inspecting a real build, 2026-08-19).
+      - install -Dm755 deb-extract/usr/bin/jobtrackerapi /app/bin/jobtrackerapi
+
+      - install -Dm644 com.nagarenegishi.jobtracker.desktop /app/share/applications/com.nagarenegishi.jobtracker.desktop
+      - install -Dm644 com.nagarenegishi.jobtracker.metainfo.xml /app/share/metainfo/com.nagarenegishi.jobtracker.metainfo.xml
+      - install -Dm644 LICENSE.md /app/share/licenses/com.nagarenegishi.jobtracker/LICENSE.md
+
+      - install -Dm644 "deb-extract/usr/share/icons/hicolor/128x128/apps/app.png" /app/share/icons/hicolor/128x128/apps/com.nagarenegishi.jobtracker.png
+      - install -Dm644 "deb-extract/usr/share/icons/hicolor/32x32/apps/app.png" /app/share/icons/hicolor/32x32/apps/com.nagarenegishi.jobtracker.png
+      - install -Dm644 "deb-extract/usr/share/icons/hicolor/256x256@2/apps/app.png" /app/share/icons/hicolor/256x256/apps/com.nagarenegishi.jobtracker.png
