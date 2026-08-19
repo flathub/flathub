@@ -1,0 +1,198 @@
+app-id: io.github.ronb1964.TalkType
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: talktype-launcher
+
+finish-args:
+  - --socket=wayland
+  # x11, NOT fallback-x11: the recording indicator positions itself with
+  # gtk_window_move(), which only XWayland honours, and the service runs with
+  # GDK_BACKEND=x11,wayland to use it. fallback-x11 hands out the X socket ONLY
+  # when there's no Wayland, so on a Wayland session (GNOME/KDE) the indicator
+  # got native Wayland instead — uncentered, unmovable, and mis-rendering styles.
+  # Plain x11 always exposes XWayland, matching the AppImage/.deb/.rpm.
+  - --socket=x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --device=dri
+  # RUNTIME network is required, not a convenience: on first run TalkType
+  # downloads the selected faster-whisper model from Hugging Face, optionally
+  # downloads the CUDA runtime for GPU users, and checks GitHub for updates.
+  # No models are bundled (they are hundreds of MB and user-selectable). The
+  # BUILD, however, is fully offline — every Python dep is a pinned wheel/sdist.
+  - --share=network
+  # Tray icon (StatusNotifier/AppIndicator), its menu, and notifications. The
+  # sandbox D-Bus proxy blocks these host services unless named, so without them
+  # the AppIndicator never registers and the tray icon is silently invisible.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=xdg-run/tray-icon:create
+  # Query GNOME Shell (org.gnome.Shell.Extensions.GetExtensionInfo) to detect
+  # whether the TalkType extension is enabled. Inside the sandbox the
+  # gnome-extensions CLI and org.gnome.shell gsettings schema are both absent, so
+  # this D-Bus call is the only way to know — without it the GTK tray shows
+  # alongside the extension's indicator (a duplicate tray icon on GNOME).
+  - --talk-name=org.gnome.Shell
+
+modules:
+  # PortAudio — sounddevice dlopens libportaudio.so.2 at import; not in the runtime.
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DPA_BUILD_SHARED=ON
+      - -DPA_BUILD_STATIC=OFF
+      # PortAudio 19.7's CMakeLists predates CMake 4.x's minimum-policy floor;
+      # the GNOME 50 SDK ships CMake 4.x, which refuses cmake_minimum_required < 3.5.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: git
+        url: https://github.com/PortAudio/portaudio.git
+        tag: v19.7.0
+        commit: 147dd722548358763a8b649b3e4b41dfffbcfbb6
+
+  # Tray icon library: libayatana-appindicator (flathub shared-modules) — provides
+  # the AyatanaAppIndicator3 typelib the runtime lacks (also builds
+  # libdbusmenu/ayatana-ido/libayatana-indicator/intltool). This is exactly what
+  # tray.py requires unguarded, matching the AppImage/.deb/.rpm dependency.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  # dbus-python: the `dbus` module used by dbus_service.py (tray <-> service <->
+  # GNOME extension). Built from source with meson (its 1.4.0 build backend),
+  # using the SDK's native meson/ninja + libdbus/glib dev — this sidesteps pip's
+  # PEP 517 meson-python backend, which is not shipped in the GNOME 50 SDK.
+  - name: python3-dbus-python
+    buildsystem: meson
+    sources:
+        - type: archive
+          url: https://files.pythonhosted.org/packages/ff/24/63118050c7dd7be04b1ccd60eab53fef00abe844442e1b6dec92dae505d6/dbus-python-1.4.0.tar.gz
+          sha256: 991666e498f60dbf3e49b8b7678f5559b8a65034fdf61aae62cdecdb7d89c770
+
+  # Python ML/audio stack for the runtime's Python 3.13. Fully OFFLINE install:
+  # every wheel is pinned by URL + sha256 below and installed with --no-index,
+  # so the build never touches the network (a Flathub requirement). evdev is the
+  # only sdist here; it builds against the SDK's setuptools via
+  # --no-build-isolation. dbus-python is handled by the meson module above.
+  - name: python3-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}"
+          --prefix=${FLATPAK_DEST} --no-build-isolation --no-warn-script-location
+          faster-whisper sounddevice pyperclip toml evdev
+    sources:
+        - type: file
+          url: https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl
+          sha256: 9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494
+        - type: file
+          url: https://files.pythonhosted.org/packages/27/3a/204dbfc3e08eb4cdc6e6ff57be02150bc44523ebdb50182d10025792ebd9/av-18.1.0-cp311-abi3-manylinux_2_28_x86_64.whl
+          sha256: 8a032e8d8ebc73dec079364b9b4a6837638a2d106e8472314e685ffbf163e700
+        - type: file
+          url: https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl
+          sha256: 62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775
+        - type: file
+          url: https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+          sha256: a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2
+        - type: file
+          url: https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl
+          sha256: e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
+        - type: file
+          url: https://files.pythonhosted.org/packages/99/4a/21f325a9d0925d8ad24b04249adf29bf9909442967603634f7f6d4acbb79/ctranslate2-4.8.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+          sha256: 4242a7f8e285f922525f4cffd5b1fb43cbacc61d0611cf54832e9c447d030840
+        - type: file
+          url: https://files.pythonhosted.org/packages/05/99/49ee85903dee060d9f08297b4a342e5e0bcfca2f027a07b4ee0a38ab13f9/faster_whisper-1.2.1-py3-none-any.whl
+          sha256: 79a66ad50688c0b794dd501dc340a736992a6342f7f95e5811be60b5224a26a7
+        - type: file
+          url: https://files.pythonhosted.org/packages/a7/8e/50f46a9c0ce8d2861a394c1347caae037ea0431d2f67d7feb151cbc4649a/filelock-3.32.3-py3-none-any.whl
+          sha256: 7f0ca4bcc0e181c60dbbd8aa9ab5b120ebb99e4e064e83636340056f833a1f09
+        - type: file
+          url: https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl
+          sha256: 7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
+        - type: file
+          url: https://files.pythonhosted.org/packages/fd/3c/6a2bf344106328fd04963664a60b9bb6496fc25df8e962fcdc1367285fb9/fsspec-2026.7.0-py3-none-any.whl
+          sha256: b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279
+        - type: file
+          url: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
+          sha256: 63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
+        - type: file
+          url: https://files.pythonhosted.org/packages/67/4e/a28359bf1c1ecf11eba22123168c138698f7cb576ac678f5a2e16cd5da08/hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+          sha256: d62671bb130879cef0ee4c9ebe47a14af6c66ec53e6d84dc15936e5ffdfac82f
+        - type: file
+          url: https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl
+          sha256: 2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55
+        - type: file
+          url: https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl
+          sha256: d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+        - type: file
+          url: https://files.pythonhosted.org/packages/51/0e/eafef18f1a75e125e68395db21131db0cf868a128ecd2fce69b4df6c584b/huggingface_hub-1.28.0-py3-none-any.whl
+          sha256: 58a8bacb03072edfc38067065e9dc24bbb34805410fcd36a1632de0b329660bb
+        - type: file
+          url: https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl
+          sha256: 815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4
+        - type: file
+          url: https://files.pythonhosted.org/packages/7b/44/59a1eb68e773c4098d107ef34a0dbdeca501d72ffcfbff9a7707343921ce/numpy-2.5.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+          sha256: 29b86ff8a6cc556b47ec6b64b194815cc80e6bf5eedcc6cddfd65318cb0b4eee
+        - type: file
+          url: https://files.pythonhosted.org/packages/83/2c/d8eb945d2a372149df9705a8d5c8d7c6c46c987c5446dbcea9e1ea7f6556/onnxruntime-1.29.0-cp313-cp313-manylinux_2_28_x86_64.whl
+          sha256: e2128f31f449e922c62dbe5d8b6b7b079f0bcaf2d56a102fa203cb6e5bb5ab19
+        - type: file
+          url: https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl
+          sha256: d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+        - type: file
+          url: https://files.pythonhosted.org/packages/e4/be/5b3cfe508bfab6761414ff944e3366eb13be4fd71efcd69450f89ba39f43/protobuf-7.35.1-cp310-abi3-manylinux2014_x86_64.whl
+          sha256: 74758715c53d7158fb76caf4f0cfdacc5329a4b1bb994f865d6cf302d413a1c4
+        - type: file
+          url: https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl
+          sha256: b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+        - type: file
+          url: https://files.pythonhosted.org/packages/df/80/fc9d01d5ed37ba4c42ca2b55b4339ae6e200b456be3a1aaddf4a9fa99b8c/pyperclip-1.11.0-py3-none-any.whl
+          sha256: 299403e9ff44581cb9ba2ffeed69c7aa96a008622ad0c46cb575ca75b5b84273
+        - type: file
+          url: https://files.pythonhosted.org/packages/74/27/e5b8f34d02d9995b80abcef563ea1f8b56d20134d8f4e5e81733b1feceb2/pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+          sha256: 0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6
+        - type: file
+          url: https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl
+          sha256: 51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+        - type: file
+          url: https://files.pythonhosted.org/packages/72/1f/62eef605172bddc1017508469a12f75bc7c4194ece35c734f822795f53b1/sounddevice-0.5.6-py3-none-any.whl
+          sha256: de099612311ad81e55d31ccbd83f43ea6bf4d87b48f9b6ea55a1fbcde0eee4e0
+        - type: file
+          url: https://files.pythonhosted.org/packages/0d/d5/1353e5f677ec27c2494fb6a6725e82d56c985f53e90ec511369e7e4f02c6/tokenizers-0.23.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+          sha256: 5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4
+        - type: file
+          url: https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl
+          sha256: 806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b
+        - type: file
+          url: https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl
+          sha256: 7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953
+        - type: file
+          url: https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl
+          sha256: 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+        - type: file
+          url: https://files.pythonhosted.org/packages/a5/f5/397b61091120a9ca5001041dd7bf76c385b3bfd67a0e5bcb74b852bd22a4/evdev-1.9.3.tar.gz
+          sha256: 2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9
+
+  # The app itself: source + launcher + AppStream metadata + icon + desktop file.
+  # Sourced from the tagged git commit (Flathub forbids local paths).
+  - name: talktype
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 packaging/flatpak/talktype-launcher /app/bin/talktype-launcher
+      - mkdir -p /app/lib && cp -r src/talktype /app/lib/talktype
+      - install -Dm644 io.github.ronb1964.TalkType.appdata.xml
+          /app/share/metainfo/io.github.ronb1964.TalkType.appdata.xml
+      # App icon (square SVG copy; Flatpak rejects non-square icons on export).
+      - install -Dm644 packaging/flatpak/io.github.ronb1964.TalkType.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.ronb1964.TalkType.svg
+      - install -Dm644 io.github.ronb1964.TalkType.desktop
+          /app/share/applications/io.github.ronb1964.TalkType.desktop
+      - sed -i 's|^Exec=.*|Exec=talktype-launcher|'
+          /app/share/applications/io.github.ronb1964.TalkType.desktop
+    sources:
+      - type: git
+        url: https://github.com/ronb1964/TalkType.git
+        # Pinned commit that carries the 0.7.2 <release> in the appdata (a child
+        # of the v0.7.2 tag, which predates the appdata entry). Flathub requires a
+        # pinned commit, not a floating branch.
+        commit: 76e6cbe3e48407487c89aac8109b2a37d834f9cd
