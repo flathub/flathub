@@ -1,0 +1,86 @@
+id: moe.nomm.Nomm
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: nomm
+finish-args:
+  - --share=network # Network access for downloading game art and mods
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=session-bus
+  - --device=dri
+  - --own-name=moe.nomm.Nomm
+  # Heroic
+  - --filesystem=~/.config/heroic:ro # Standard
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config/heroic:ro # Flatpak
+  # Steam
+  - --filesystem=~/.local/share/Steam:rw # Standard
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:rw # Flatpak
+  - --filesystem=~/.steam/debian-installation:rw # Debian
+  # Switch support
+  - --filesystem=~/.var/app/io.github.ryubing.Ryujinx/config/Ryujinx:rw # Ryubing flatpak
+  - --filesystem=~/.local/share/eden/load:rw # Eden AppImage
+  - --filesystem=~/.local/share/citron/load:rw # Citron AppImage
+
+modules:
+  # Python dependencies (generated via flatpak-pip-generator)
+  - python3-modules.json
+  # bundling unrar because otherwise the default version in flatpak doesn't work as expected
+  - name: unrar
+    buildsystem: simple
+    build-commands:
+      - make -f makefile
+      - install -Dm755 unrar /app/bin/unrar
+    sources:
+      - type: archive
+        url: https://www.rarlab.com/rar/unrarsrc-6.2.10.tar.gz
+        sha256: 55fe6ebd5e48d6655bfda3fd19b55438ca05e13c7e69772420caad9fdb68ef42
+
+  # bundling p7zip because py7zr messed with dependencies
+  - name: p7zip
+    buildsystem: simple
+    build-commands:
+      # 7za is the standalone binary with the main codecs built-in
+      - make 7za
+      - install -Dm755 bin/7za /app/bin/7z
+    sources:
+      - type: archive
+        url: https://github.com/p7zip-project/p7zip/archive/refs/tags/v17.05.tar.gz
+        sha256: d2788f892571058c08d27095c22154579dfefb807ebe357d145ab2ddddefb1a6
+
+  - name: NOMM
+    buildsystem: simple
+    build-commands:
+      # Install entry point from the src folder to /app/bin
+      - install -D src/main.py /app/bin/nomm
+      # Install desktop file
+      - install -D build/flatpak/moe.nomm.Nomm.desktop /app/share/applications/moe.nomm.Nomm.desktop
+      # Install metainfo
+      - install -D build/flatpak/moe.nomm.Nomm.metainfo.xml /app/share/metainfo/moe.nomm.Nomm.metainfo.xml
+      # Install logo
+      - install -D assets/icons/nomm-logo.svg /app/share/icons/hicolor/64x64/apps/moe.nomm.Nomm.svg
+      # Copy all other python files
+      - cp -r src/core /app/bin/core
+      - cp -r src/gui /app/bin/gui
+      - cp -r src/styles /app/bin/styles
+      - cp -r src/queries /app/bin/queries
+      - cp -r src/platforms /app/bin/platforms
+      # Other files (shenanigans)
+      - cp src/*.yaml /app/bin/
+      # Copy non-code folders
+      - cp -r assets /app/bin/assets
+      - cp -r default_game_configs /app/bin/default_game_configs
+      # Localisation
+      - install -d /app/share/locale/fr/LC_MESSAGES
+      - msgfmt locale/fr.po -o /app/share/locale/fr/LC_MESSAGES/moe.nomm.Nomm.mo
+
+    sources:
+      - type: archive
+        url: https://github.com/Allexio/nomm/archive/refs/tags/0.12.2.tar.gz
+        sha256: a182a29e68806eeec8c08024b39ae6c6ca80226b349cf280561214918e78d294
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Allexio/nomm/releases/latest
+          version-query: .tag_name
+          url-query: .tarball_url
