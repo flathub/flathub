@@ -4,46 +4,105 @@ runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.openjdk17
+  - org.freedesktop.Sdk.Extension.node20
 command: ontocode-desktop
+separate-locales: false
 
 finish-args:
   - --share=network
   - --share=ipc
   - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --device=dri
 
 modules:
   - name: ontocode-desktop
     buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/openjdk21/bin:/usr/lib/sdk/node20/bin
+      env:
+        JAVA21_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
+        JAVA17_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+        JAVA_HOME: /usr/lib/sdk/openjdk21/jvm/openjdk-21
+        XDG_CACHE_HOME: /run/build/ontocode-desktop/flatpak-node/cache
+        npm_config_cache: /run/build/ontocode-desktop/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node20
+        npm_config_offline: 'true'
     build-commands:
+      - >-
+        export JAVA_HOME="$JAVA21_HOME" &&
+        export PATH="$JAVA_HOME/bin:$PATH" &&
+        M2="$PWD/m2-offline" &&
+        mvn install -N -DskipTests -q -o -Dmaven.repo.local="$M2" &&
+        mvn install -pl shared/common-models,shared/common-utils -DskipTests -q -o -Dmaven.repo.local="$M2" &&
+        mvn install -pl ontology-auth,ontology-editor -DskipTests -q -o -Dmaven.repo.local="$M2" &&
+        (cd ontology-plugin-service && mvn install -DskipTests -q -o -Dmaven.repo.local="$M2") &&
+        (cd ontology-desktop && mvn package -DskipTests -q -o -Dmaven.repo.local="$M2")
+      - >-
+        export JAVA_HOME="$JAVA17_HOME" &&
+        export PATH="$JAVA_HOME/bin:$PATH" &&
+        mvn package -pl ontology-swrl -DskipTests -q -o -Dmaven.repo.local="$PWD/m2-offline"
+      - mkdir -p electron-app/resources/backend/jars
+      - cp ontology-desktop/target/ontology-desktop-1.0.0.jar electron-app/resources/backend/jars/desktop.jar
+      - cp ontology-swrl/target/ontology-swrl-1.0.0.jar electron-app/resources/backend/jars/swrl.jar
+      - mkdir -p fuseki-docker
+      - cp fuseki-src/fuseki-server.jar fuseki-docker/fuseki-server.jar
+      - >-
+        mkdir -p data/mongodb/bin/linux-x64 data/mongodb/bin/linux-arm64 &&
+        if [ -d mongo-src-x64 ]; then
+          f=$(find mongo-src-x64 -name mongod -type f | head -1) &&
+          cp "$f" data/mongodb/bin/linux-x64/mongod &&
+          chmod +x data/mongodb/bin/linux-x64/mongod;
+        fi &&
+        if [ -d mongo-src-arm64 ]; then
+          f=$(find mongo-src-arm64 -name mongod -type f | head -1) &&
+          cp "$f" data/mongodb/bin/linux-arm64/mongod &&
+          chmod +x data/mongodb/bin/linux-arm64/mongod;
+        fi
+      - npm --prefix ontology-vscode-extension/webview-src install --offline
+      - npm --prefix ontology-vscode-extension/webview-src run build:electron
+      - npm --prefix electron-app install --offline
+      - npm --prefix electron-app run prepare-resources
+      - (cd electron-app && ./node_modules/.bin/electron-builder --linux --dir -c.npmRebuild=false -c.electronDist=/run/build/ontocode-desktop/flatpak-node/cache/electron/electron-v43.4.0-linux-x64.zip)
       - mkdir -p /app/ontocode-desktop
-      - cp -r ./* /app/ontocode-desktop/
+      - cp -r electron-app/dist-electron/linux-unpacked/* /app/ontocode-desktop/
       - chmod +x /app/ontocode-desktop/ontocode-desktop
       - install -Dm755 ontocode-desktop-wrapper.sh /app/bin/ontocode-desktop
-      - install -Dm644 org.selfresearch.OntoCode.desktop /app/share/applications/org.selfresearch.OntoCode.desktop
-      - install -Dm644 org.selfresearch.OntoCode.metainfo.xml /app/share/metainfo/org.selfresearch.OntoCode.metainfo.xml
-      - install -Dm644 org.selfresearch.OntoCode.png /app/share/icons/hicolor/512x512/apps/org.selfresearch.OntoCode.png
+      - install -Dm644 packaging/linux/org.selfresearch.OntoCode.desktop /app/share/applications/org.selfresearch.OntoCode.desktop
+      - install -Dm644 packaging/linux/org.selfresearch.OntoCode.metainfo.xml /app/share/metainfo/org.selfresearch.OntoCode.metainfo.xml
+      - install -Dm644 packaging/linux/org.selfresearch.OntoCode.png /app/share/icons/hicolor/512x512/apps/org.selfresearch.OntoCode.png
     sources:
-      # Tarball of electron-builder's `linux-unpacked` output (built via the
-      # full EC2 pipeline with bundled JRE/Mongo/Fuseki, not the thin plain
-      # `electron-builder --linux` GitHub Actions workflow). Pinned to a
-      # GitHub Release asset — cannot point at /api/downloads/linux-deb
-      # since that endpoint is overwritten on every upload. Verified live
-      # and confirmed matching sha256 via local flatpak-builder test build.
+      - type: git
+        url: https://github.com/The-Self-Research-Institute/ontocode.git
+        commit: a4ee64406caf432795aee3f694d454e0fc43f7b4
+
       - type: archive
-        url: https://github.com/The-Self-Research-Institute/ontocode/releases/download/desktop-v1.1.0-beta.19/ontocode-desktop-linux-x64-v1.1.0-beta.19.tar.gz
-        sha256: 6d79c2a533f1e3f8a3d5c55463a2348ca3c0bb16b1505e9b859164645d6f1fbf
-        strip-components: 1
-      - type: file
-        url: https://raw.githubusercontent.com/The-Self-Research-Institute/ontocode/f20c0c60bfc7d61ca8b2b52463ae46b92e89e7f1/packaging/linux/org.selfresearch.OntoCode.desktop
-        sha256: 53035375c80b5deabee299e695bd704447aa8b95df9c055ddcf84ab6b086d469
-      - type: file
-        url: https://raw.githubusercontent.com/The-Self-Research-Institute/ontocode/f20c0c60bfc7d61ca8b2b52463ae46b92e89e7f1/packaging/linux/org.selfresearch.OntoCode.metainfo.xml
-        sha256: 8063a1e79acb04daa62ac18981f3113343cbe7be54ec0b967f3b56a35898ae7c
-      - type: file
-        url: https://raw.githubusercontent.com/The-Self-Research-Institute/ontocode/f20c0c60bfc7d61ca8b2b52463ae46b92e89e7f1/packaging/linux/org.selfresearch.OntoCode.png
-        sha256: e6947e01116292a59f04e1122559cb7abbf2ec725a810817ffdf1fc0d22716c0
+        url: https://archive.apache.org/dist/jena/binaries/apache-jena-fuseki-6.1.0.tar.gz
+        sha512: 75457f45d14397876a41ed51abe7ae5d2f1e708dfe1315765f858158bc5c6813bc036ec1539ddc4dffd26201f5cc31fadec299ca5c3dc2548b723513ed31d326
+        dest: fuseki-src
+
+      - type: archive
+        url: https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2204-6.0.29.tgz
+        sha256: 46de5a28be8066e0c44b60e9919e5edd00c28f55fc187f8e0c60ab38dedc9054
+        dest: mongo-src-x64
+        only-arches:
+          - x86_64
+
+      - type: archive
+        url: https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2204-6.0.29.tgz
+        sha256: 81003080fd01a95dc7bbc08a5e62c80d22b55df0ce5df6b674c2ec915a4b825b
+        dest: mongo-src-arm64
+        only-arches:
+          - aarch64
+
+      - generated/generated-sources-electron-app.json
+      - generated/generated-sources-webview-src.json
+      - generated/generated-maven-sources.json
+      - generated/generated-maven-metadata.json
+
       - type: script
         dest-filename: ontocode-desktop-wrapper.sh
         commands:
