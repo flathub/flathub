@@ -1,0 +1,92 @@
+# Flatpak manifest for the Justice Client Minecraft launcher.
+#
+# The launcher itself ships as a prebuilt AppImage (GitHub Release asset), so
+# this manifest downloads it via `extra-data` at install time and unpacks it
+# with `apply_extra` — no source code is needed to build this flatpak.
+#
+# app-id must match the Tauri identifier (org.justiceclient.launcher).
+app-id: org.justiceclient.launcher
+
+# GNOME runtime: ships webkit2gtk-4.1, gtk3, libsoup3, openssl — everything a
+# Tauri v2 app links against at runtime.
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+# The prebuilt payload (extra-data) currently only exists for x86_64.
+only-arches: [x86_64]
+
+command: justice
+
+# Sandbox permissions:
+#  - share=ipc + x11/wayland sockets: the Tauri window needs a display
+#  - device=dri: GPU access for WebKitGTK rendering (skin viewer uses WebGL)
+#  - share=network: the launcher downloads JDKs, assets, mods, etc.
+#  - filesystem=home: game state lives in ~/.justice-launcher and instances
+#    are managed under the user's home (java must also be executable from there)
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  # Let ld.so find the soname shims in /app/lib before the runtime dirs.
+  - --env=LD_LIBRARY_PATH=/app/lib
+
+modules:
+  # ---------------------------------------------------------------------------
+  # The app payload. At BUILD time we only create a symlink from /app/bin into
+  # /app/extra (the extra-data dir is populated at INSTALL time by flatpak,
+  # which downloads the AppImage, verifies its sha256, and runs apply_extra).
+  # ---------------------------------------------------------------------------
+  - name: justiceclient
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+      - ln -s /app/extra/usr/bin/justice /app/bin/justice
+      # flatpak runs the unpacker from /app/bin/apply_extra at INSTALL time
+      # (with cwd=/app/extra), so it must live there — NOT in /app/extra,
+      # which flatpak wipes and re-creates during extra-data deployment.
+      - install -Dm755 apply_extra /app/bin/apply_extra
+    sources:
+      - type: file
+        path: apply_extra
+      - type: extra-data
+        filename: justice.tar.gz
+        url: https://github.com/kapaisu/justiceclientlinuxaur/releases/download/v3.0.4/Justice-Client-3.0.4-x86_64.tar.gz
+        sha256: 2a1c4cdeac0910f15c603fb1b279bf2841ff9ae7c1ee4e917e6461cd79aa5986
+        size: 21188374
+        apply_extra: apply_extra
+
+  # ---------------------------------------------------------------------------
+  # Desktop entry, icon and AppStream metadata. These must exist at BUILD time
+  # (flatpak exports them from /app/share), so they ship as plain files in this
+  # repo rather than coming out of the AppImage.
+  # ---------------------------------------------------------------------------
+  - name: desktop-entry
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 org.justiceclient.launcher.desktop /app/share/applications/org.justiceclient.launcher.desktop
+      - install -Dm644 org.justiceclient.launcher.png /app/share/icons/hicolor/128x128/apps/org.justiceclient.launcher.png
+      - install -Dm644 org.justiceclient.launcher.metainfo.xml /app/share/metainfo/org.justiceclient.launcher.metainfo.xml
+    sources:
+      - type: file
+        path: org.justiceclient.launcher.desktop
+      - type: file
+        path: org.justiceclient.launcher.png
+      - type: file
+        path: org.justiceclient.launcher.metainfo.xml
+
+  # ---------------------------------------------------------------------------
+  # Soname shims. The launcher is built on Arch Linux, whose libbz2 carries the
+  # SONAME `libbz2.so.1.0`; the GNOME runtime (Debian-based) only provides the
+  # `libbz2.so.1` alias to the same 1.0.x library. Point ld.so at the runtime's
+  # own file under the name the binary asks for.
+  # ---------------------------------------------------------------------------
+  - name: compat-libs
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib
+      - ln -s /usr/lib/x86_64-linux-gnu/libbz2.so.1.0.8 /app/lib/libbz2.so.1.0
