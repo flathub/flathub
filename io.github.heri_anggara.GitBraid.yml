@@ -1,0 +1,148 @@
+# Flatpak manifest for Flathub.
+#
+#   flatpak-builder --user --install --force-clean build io.github.heri_anggara.GitBraid.yml
+#   flatpak run io.github.heri_anggara.GitBraid
+#
+# Three things about this application shape the manifest, and each is written
+# out below where it applies: it drives the real git command line, it carries no
+# runtime dependencies of its own, and it needs a windowing backend chosen on
+# the command line rather than in JavaScript.
+app-id: io.github.heri_anggara.GitBraid
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+# Carries the shared libraries Chromium expects and nothing else does.
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: gitbraid
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  # X11 outright rather than the usual wayland + fallback-x11 pair, and the
+  # launcher forces the X11 backend to match. Measured here, on Electron 43
+  # inside this sandbox: the Wayland backend dies with SIGSEGV before a window
+  # appears, every time, exactly as it does outside one. fallback-x11 grants
+  # nothing while a Wayland socket is also granted, so the pair leaves the
+  # application with no working backend at all — `DISPLAY` comes through empty
+  # and Chromium exits with "Missing X server". Under XWayland it runs.
+  - --socket=x11
+  - --device=dri
+  # Fetch, pull and push.
+  - --share=network
+  # A git client is pointed at repositories the reader chooses, and there is no
+  # portal for "open a folder and keep reading it for the length of a session".
+  - --filesystem=home
+  # SSH remotes, through the agent the desktop already runs.
+  - --socket=ssh-auth
+  # git credential helpers that keep HTTPS passwords in the keyring.
+  - --talk-name=org.freedesktop.secrets
+  # Opening a file in the reader's editor and a folder in their file manager
+  # need nothing here: XDG portals are reachable from every sandbox already, and
+  # asking for them by name is what flatpak-builder-lint calls
+  # finish-args-portal-talk-name.
+
+modules:
+  # ── git itself ───────────────────────────────────────────────────
+  # The freedesktop runtime does not ship git — measured, not assumed:
+  # `flatpak run --command=sh org.freedesktop.Platform//25.08 -c 'command -v git'`
+  # finds nothing, though it does find ssh. Everything GitBraid does is a git
+  # command, so git has to be in the sandbox with it.
+  #
+  # Built without perl, tcl/tk and gettext. Those cover git's interactive
+  # porcelain — `add -i`, `add -p`, gitk, git-gui — none of which this
+  # application calls: it stages hunks by handing its own patch to
+  # `git apply --cached`. Leaving them out keeps the sandbox from depending on
+  # interpreters the Platform runtime does not have either.
+  #
+  # NO_RUST because 2.55 builds a Rust libgitcore by default and the SDK carries
+  # no cargo — the build stops at `cargo: command not found`. The Makefile calls
+  # Rust optional for now and compiles the same subsystems from C instead, which
+  # is what every git before 2.53 shipped. Git 3.0 makes Rust mandatory, and
+  # this line becomes an org.freedesktop.Sdk.Extension.rust-stable then.
+  - name: git
+    make-args:
+      - NO_RUST=1
+      - NO_PERL=1
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+      - NO_PYTHON=1
+      - INSTALL_SYMLINKS=1
+      - prefix=/app
+    make-install-args:
+      - NO_RUST=1
+      - NO_PERL=1
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+      - NO_PYTHON=1
+      - INSTALL_SYMLINKS=1
+      - prefix=/app
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
+        sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
+    cleanup:
+      - /share/git-core/templates/hooks
+      - /libexec/git-core/git-daemon
+      - /libexec/git-core/git-http-backend
+      - /libexec/git-core/git-imap-send
+      - /libexec/git-core/git-send-email
+
+  # ── Electron ─────────────────────────────────────────────────────
+  # The official prebuilt binary, pinned by hash. 43 rather than the 37 the deb
+  # and the AppImage carry.
+  #
+  # Electron 38 and up choose the native Wayland backend by default, and it
+  # crashes before a window appears. That is why the deb and the AppImage stay
+  # on 37, the last release that picks X11 on its own: forcing the backend from
+  # a desktop launcher means every way of starting the application has to
+  # remember an argument, and one that forgets it crashes.
+  #
+  # A Flatpak has exactly one way in — gitbraid.sh, a file in this repository —
+  # so the argument cannot be forgotten, and the sandbox is told to grant X11
+  # rather than Wayland. That is the whole reason a newer Chromium is safe here
+  # and not there. It does not make Wayland work; it makes X11 unavoidable.
+  - name: electron
+    buildsystem: simple
+    build-commands:
+      - install -d /app/gitbraid/electron
+      - cp -a . /app/gitbraid/electron/
+      - chmod +x /app/gitbraid/electron/electron
+      # Removed rather than left lying about: it can never be setuid root here,
+      # and zypak stands in for it. Shipping a helper that cannot work only
+      # invites something to find it and try.
+      - rm -f /app/gitbraid/electron/chrome-sandbox
+    sources:
+      - type: archive
+        strip-components: 0
+        url: https://github.com/electron/electron/releases/download/v43.4.1/electron-v43.4.1-linux-x64.zip
+        sha256: 79d4efd69f0ccf1fc11891ea5075329c7b3faddad79a08d9fb395bbd63169acf
+
+  # ── the application ──────────────────────────────────────────────
+  # No npm install, no vendored lockfile, no offline mirror. GitBraid has no
+  # runtime dependencies at all — electron and electron-builder are build tools
+  # and neither is needed here — so the whole application is the files it is
+  # written in.
+  - name: gitbraid
+    buildsystem: simple
+    build-commands:
+      - install -d /app/gitbraid/app
+      - cp -a main.js preload.js src package.json LICENSE /app/gitbraid/app/
+      - install -Dm755 flatpak/gitbraid.sh /app/bin/gitbraid
+      - install -Dm644 build/linux/io.github.heri_anggara.GitBraid.desktop
+        /app/share/applications/io.github.heri_anggara.GitBraid.desktop
+      - install -Dm644 build/linux/io.github.heri_anggara.GitBraid.metainfo.xml
+        /app/share/metainfo/io.github.heri_anggara.GitBraid.metainfo.xml
+      - for s in 16 24 32 48 64 128 256 512; do
+        install -Dm644 "build/icons/${s}x${s}.png"
+        "/app/share/icons/hicolor/${s}x${s}/apps/io.github.heri_anggara.GitBraid.png";
+        done
+    sources:
+      # The tag, pinned to its commit, because this file is also the one
+      # Flathub builds from and their farm has no working tree to reach into.
+      # To build the working tree instead, swap these three lines for
+      # `- type: dir` and `  path: ..`.
+      - type: git
+        url: https://github.com/heri-anggara/gitbraid.git
+        tag: v0.8.0
+        commit: 49cf9514aa499bd4110029dc9bd93871f775ffe9
