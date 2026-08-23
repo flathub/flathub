@@ -1,0 +1,88 @@
+app-id: io.github.yelanxin.OxiTide
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: oxitide
+separate-locales: false
+
+# OxiTide is proprietary freeware. The binary is not built here: the
+# native Ubuntu 24.04 .deb published on the release hub is downloaded
+# at install time (extra-data) and unpacked into /app/extra.
+#
+# Output drivers are ALSA direct / ALSA mmap (bit-perfect hw:CARD,DEV
+# access — there is no PulseAudio/PipeWire backend) and USB Rawlink
+# (direct USB passthrough to the DAC via libusb). Both need device
+# nodes — /dev/snd and /dev/bus/usb — hence `--device=all` (Flatpak has
+# no narrower device class for sound cards).
+#
+# USB Rawlink additionally needs the seat user to be allowed to open the
+# DAC's USB node. The native packages install a udev `uaccess` rule for
+# that; the Flatpak can't, so on the first EACCES the app shows the
+# one-line command to install the same rule on the host (with a copy
+# button) and retries once the user has done so.
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Audio output: ALSA direct / mmap (/dev/snd) and USB Rawlink
+  # (/dev/bus/usb). The app has no PulseAudio/PipeWire backend, so a
+  # socket is not enough.
+  - --device=all
+  # TIDAL streaming + sign-in
+  - --share=network
+  # MPRIS / media keys
+  - --own-name=org.mpris.MediaPlayer2.oxitide
+  # System tray (StatusNotifier)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Inhibit suspend while playing
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.SessionManager
+
+modules:
+  - name: oxitide
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 oxitide.sh /app/bin/oxitide
+      - install -Dm755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm644 io.github.yelanxin.OxiTide.desktop /app/share/applications/io.github.yelanxin.OxiTide.desktop
+      - install -Dm644 io.github.yelanxin.OxiTide.metainfo.xml /app/share/metainfo/io.github.yelanxin.OxiTide.metainfo.xml
+      - install -Dm644 io.github.yelanxin.OxiTide.svg /app/share/icons/hicolor/scalable/apps/io.github.yelanxin.OxiTide.svg
+      - install -Dm644 io.github.yelanxin.OxiTide.png /app/share/icons/hicolor/128x128/apps/io.github.yelanxin.OxiTide.png
+      # Bundled pixel font + licenses live in the extra-data tree; link
+      # them where fontconfig / the metadata expect them (resolved after
+      # apply_extra has run).
+      - mkdir -p /app/share/fonts /app/share/licenses
+      - ln -s /app/extra/usr/share/fonts/truetype/oxitide /app/share/fonts/oxitide
+      - ln -s /app/extra/usr/share/licenses/oxitide /app/share/licenses/oxitide
+    sources:
+      - type: file
+        path: oxitide.sh
+      - type: file
+        path: apply_extra.sh
+      - type: file
+        path: io.github.yelanxin.OxiTide.desktop
+      - type: file
+        path: io.github.yelanxin.OxiTide.metainfo.xml
+      - type: file
+        path: io.github.yelanxin.OxiTide.svg
+      - type: file
+        path: io.github.yelanxin.OxiTide.png
+      # Bump url / sha256 / size on every release (see README.md).
+      - type: extra-data
+        filename: oxitide.deb
+        only-arches: [x86_64]
+        url: https://github.com/yelanxin/OxiTide/releases/download/v0.1.1/oxitide_0.1.1_amd64_ubuntu2404.deb
+        sha256: 7cc91f05f703ead5857d76e947a9badee22a7d20bbc3466a6491b8e2767183b2
+        size: 11310068
+        # flatpak-external-data-checker: follow the latest GitHub release
+        # and rewrite url / sha256 / size (+ metainfo release entry).
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yelanxin/OxiTide/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name | test("_amd64_ubuntu2404\\.deb$")) | .browser_download_url
+          timestamp-query: .published_at
+          is-main-source: true
