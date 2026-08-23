@@ -1,0 +1,147 @@
+# Flathub submission manifest for Simson Desk.
+#
+# The difference from com.simsononline.SimsonDesk.yml, which is the local build:
+# this one takes nothing from the working tree. Flathub's builders have no access
+# to this repository and never will — the source is proprietary and unpublished —
+# so the application arrives as `extra-data`: a published tarball that each user's
+# own machine downloads at install time and unpacks locally.
+#
+# That is the route Flathub provides for proprietary applications, and it is what
+# Spotify, Zoom and the rest use. Nothing about it is a workaround: Flathub hosts
+# the metadata and the sandbox definition, which are public here, and never a byte
+# of the application itself.
+#
+# BEFORE SUBMITTING, three things have to be true and only one of them is code:
+#
+#   1. The tarball is published at the `url` below and stays there, unchanged,
+#      for as long as this version is on Flathub. Flathub re-downloads it to
+#      verify, and a URL that moves breaks every future install of that version.
+#      Produce it with:  backend/packaging/linux/build-flatpak.sh --tarball
+#      which prints the sha256 and the size to paste in here.
+#   2. `simsondesk.com` and `simsononline.com` are demonstrably yours. Flathub
+#      requires the app id to be a domain the submitter controls, and this id and
+#      the homepage are different domains — both Simson's, which is answerable,
+#      but expect the question.
+#   3. The runtime version below matches the one the tarball was stripped
+#      against. The tarball omits every library the runtime provides, so it is
+#      tied to that runtime — see build-flatpak.sh and docs/linux-stores.md.
+app-id: com.simsononline.SimsonDesk
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: simson-desk
+separate-locales: false
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Mail is useless without it, and sign-in goes to login.microsoftonline.com.
+  - --share=network
+  # Tokens live in the OS keyring through libsecret. Without this the app has
+  # nowhere to keep them and every launch asks the user to sign in again.
+  - --talk-name=org.freedesktop.secrets
+  # Opening a link or an attachment hands the URL to the host through the
+  # portal rather than executing anything itself.
+  - --talk-name=org.freedesktop.portal.OpenURI
+  - --talk-name=org.freedesktop.Notifications
+  # Saving an attachment goes through the file chooser portal, so there is no
+  # blanket filesystem permission: the app only ever sees a path the user picked
+  # in the portal's own dialog.
+  - --talk-name=org.freedesktop.portal.FileChooser
+
+modules:
+  # poppler, for `pdftoppm` — 30 lines of manifest that replace a bug.
+  #
+  # The app renders PDF previews through poppler because WebKitGTK's own viewer
+  # lays a document with no embedded fonts on top of itself, which is what users
+  # reported as "view PDF distorted". The .deb declares poppler-utils as a real
+  # Depends and takes it from the host. A Flatpak has no host to take it from and
+  # the GNOME runtime carries no poppler at all, so without this the preview
+  # falls back to exactly the viewer that was wrong.
+  #
+  # Only the command-line tools are wanted, so everything else is off: no Qt, no
+  # GLib bindings, no cpp wrapper, and the data files are a separate package this
+  # does not need for rendering.
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # Without this cmake installs the library to /app/lib64, which is not on
+      # the loader path — pdftoppm then builds, installs, and refuses to start:
+      #   error while loading shared libraries: libpoppler.so.163
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_QT5=OFF
+      - -DENABLE_QT6=OFF
+      - -DENABLE_GLIB=OFF
+      - -DENABLE_CPP=OFF
+      - -DENABLE_BOOST=OFF
+      - -DBUILD_GTK_TESTS=OFF
+      - -DBUILD_MANUAL_TESTS=OFF
+      - -DENABLE_LIBCURL=OFF
+      - -DENABLE_NSS3=OFF
+      - -DENABLE_GPGME=OFF
+      - -DENABLE_UTILS=ON
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-26.08.0.tar.xz
+        sha256: dc906e68cea698109706ac6aa3d2c9d4512fcfcac42d90b8afcda486d1b9abd0
+
+  - name: simson-desk
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 simson-desk-wrapper /app/bin/simson-desk
+      - install -Dm644 com.simsononline.SimsonDesk.metainfo.xml
+          /app/share/metainfo/com.simsononline.SimsonDesk.metainfo.xml
+      # Point the launchable at the app-id desktop file, in this copy only. The
+      # metainfo is shared with the .deb and the snap, which install
+      # simson-desk.desktop and are correct as committed. Flatpak requires the
+      # desktop file to be named for the app id, and without this rewrite
+      # `appstreamcli compose` cannot link the component to its icon and fails
+      # the build with `filters-but-no-output` — which names neither the desktop
+      # file nor the icon, and cost a build to work out.
+      - sed -i 's|<launchable type="desktop-id">simson-desk.desktop</launchable>|<launchable
+          type="desktop-id">com.simsononline.SimsonDesk.desktop</launchable>|'
+          /app/share/metainfo/com.simsononline.SimsonDesk.metainfo.xml
+      - install -Dm644 com.simsononline.SimsonDesk.desktop
+          /app/share/applications/com.simsononline.SimsonDesk.desktop
+      # The icons ride in with the application tarball, so they are installed by
+      # apply_extra on the user's machine rather than staged here. One is needed
+      # at build time for the store listing, and that one is committed beside
+      # this manifest.
+      - install -Dm644 icon-256.png
+          /app/share/icons/hicolor/256x256/apps/com.simsononline.SimsonDesk.png
+    sources:
+      # Downloaded on the user's machine at install time, never by Flathub's
+      # builder. sha256 and size are checked before it is unpacked, so a
+      # substituted tarball fails the install rather than running.
+      - type: extra-data
+        filename: simson-desk.tar.gz
+        url: https://simsondesk.com/releases/simson-desk-0.9.8-x86_64.tar.gz
+        sha256: 459534c39483498080f0a0b4df069d8b4f6797f9c7eaff7ebaebda389294876b
+        size: 55216857
+      # Unpacks the tarball into /app/extra on the user's machine.
+      - type: file
+        path: icon-256.png
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar -xzf simson-desk.tar.gz
+          - rm -f simson-desk.tar.gz
+      # PyInstaller resolves _internal relative to the executable's real
+      # directory, so the binary cannot be symlinked onto PATH — exec it where
+      # it was unpacked.
+      - type: script
+        dest-filename: simson-desk-wrapper
+        commands:
+          - exec /app/extra/simson-desk/simson-desk "$@"
+      # Inline, not path: — Flathub's builder checks out this repository and
+      # nothing else, so anything the build needs has to be in it. The metainfo
+      # and desktop file are here beside the manifest; the icons come out of the
+      # tarball, which already carries the set the app ships with.
+      - type: file
+        path: com.simsononline.SimsonDesk.metainfo.xml
+      - type: file
+        path: com.simsononline.SimsonDesk.desktop
