@@ -1,0 +1,372 @@
+id: io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+runtime-commit: 96b4841ce2b8c1acc3ede1d19a5cc802d633d21d56e95682bd7fd1b32fb0b506
+sdk: org.freedesktop.Sdk
+sdk-commit: 31507d1bfc6a5bd5835aeb3cb07e7b7aeea69332502ecce1c671cea96ed3ebc2
+command: ply
+modules:
+- name: tcl
+  subdir: unix
+  buildsystem: autotools
+  config-opts:
+  - --enable-shared
+  - --disable-symbols
+  sources:
+  - url: https://prdownloads.sourceforge.net/tcl/tcl8.6.13-src.tar.gz
+    sha256: 43a1fae7412f61ff11de2cfd05d28cfc3a73762f354a417c62370a54e2caf066
+    type: archive
+  cleanup:
+  - /bin
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  post-install:
+  - chmod 755 /app/lib/libtcl*.so
+- name: tk
+  subdir: unix
+  buildsystem: autotools
+  config-opts:
+  - --enable-shared
+  - --with-tcl=/app/lib
+  sources:
+  - url: https://prdownloads.sourceforge.net/tcl/tk8.6.13-src.tar.gz
+    sha256: 2e65fa069a23365440a3c56c556b8673b5e32a283800d8d9b257e3f584ce0675
+    type: archive
+  cleanup:
+  - /bin
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  post-install:
+  - chmod 755 /app/lib/libtk*.so
+- name: python3
+  buildsystem: autotools
+  config-opts:
+  - --enable-shared
+  - --with-ensurepip=upgrade
+  - --enable-optimizations
+  sources:
+  - url: https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tar.xz
+    sha256: 9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87
+    type: archive
+  cleanup:
+  - /lib/pkgconfig
+  - /share/man
+  post-install:
+  - chmod +x /app/bin/python3
+- name: python3-pycairo
+  buildsystem: meson
+  config-opts:
+  - -Dtests=false
+  sources:
+  - url: https://files.pythonhosted.org/packages/source/p/pycairo/pycairo-1.25.1.tar.gz
+    sha256: 7e2be4fbc3b4536f16db7a11982cbf713e75069a4d73d44fe5a49b68423f5c0c
+    type: archive
+- name: python3-pygobject
+  buildsystem: meson
+  config-opts:
+  - -Dtests=false
+  sources:
+  - url: https://files.pythonhosted.org/packages/source/p/pygobject/pygobject-3.48.2.tar.gz
+    sha256: c3c0a7afbe5b2c1c64dc0530109b4dd571085153dbedfbccb8ec7c5ad233f977
+    type: archive
+- name: intltool
+  buildsystem: autotools
+  sources:
+  - url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+    sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+    type: archive
+- name: libdbusmenu
+  buildsystem: simple
+  sources:
+  - url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+    sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+    mirror-urls:
+    - https://sources.suse.com/SUSE:SLFO:Main:Build/libdbusmenu/a5b3e4717f09f90f9cd5568a5f933e8d/libdbusmenu-16.04.0.tar.gz
+    - https://mirror.math.princeton.edu/pub/frugalware/frugalware-2.1/source/xlib/libdbusmenu/libdbusmenu-16.04.0.tar.gz
+    - https://ftp.fr.openbsd.org/pub/OpenBSD/distfiles/libdbusmenu-16.04.0.tar.gz
+    type: archive
+  build-options:
+    env:
+      CFLAGS: -Wno-error
+      HAVE_VALGRIND_TRUE: '#'
+      HAVE_VALGRIND_FALSE: ''
+      HAVE_VALAC: 'no'
+      PYTHONPATH: /usr/lib/x86_64-linux-gnu/gobject-introspection
+  cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/gtk-doc
+  build-commands:
+  - 'mkdir -p /app/bin
+
+    cat > /app/bin/g-ir-scanner <<''EOF''
+
+    #!/bin/sh
+
+    export PYTHONPATH=/usr/lib/x86_64-linux-gnu/gobject-introspection${PYTHONPATH:+:$PYTHONPATH}
+
+    exec /usr/bin/python3 /usr/bin/g-ir-scanner "$@"
+
+    EOF
+
+    chmod +x /app/bin/g-ir-scanner
+
+    '
+  - 'mkdir -p /app/lib/pkgconfig
+
+    cp /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc /app/lib/pkgconfig/
+
+    sed -i ''s|^g_ir_scanner=.*|g_ir_scanner=/app/bin/g-ir-scanner|'' /app/lib/pkgconfig/gobject-introspection-1.0.pc
+
+    '
+  - 'export PKG_CONFIG_PATH=/app/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+
+    export PYTHONPATH=/usr/lib/x86_64-linux-gnu/gobject-introspection
+
+
+    echo "Scanner:"
+
+    pkg-config --variable=g_ir_scanner gobject-introspection-1.0
+
+
+    echo "Testing gobject-introspection:"
+
+    /app/bin/python3 -c "
+
+    import giscanner
+
+    from giscanner._giscanner import SourceScanner
+
+    print(''giscanner Python 3.11: OK'')
+
+    print(SourceScanner)
+
+    "
+
+
+    echo "Testing g-ir-scanner:"
+
+    /app/bin/g-ir-scanner --version
+
+    '
+  - "export PKG_CONFIG_PATH=/app/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}\n\
+    export PYTHONPATH=/usr/lib/x86_64-linux-gnu/gobject-introspection\n\n./configure\
+    \ \\\n  --prefix=/app \\\n  --libdir=/app/lib \\\n  --with-gtk=3 \\\n  --disable-dumper\
+    \ \\\n  --disable-tests \\\n  --disable-gtk-doc \\\n  --disable-scrollkeeper \\\
+    \n  --disable-valgrind \\\n  --disable-nls \\\n  --disable-vala\n"
+  - 'export PKG_CONFIG_PATH=/app/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+
+    export PYTHONPATH=/usr/lib/x86_64-linux-gnu/gobject-introspection
+
+
+    make -j$FLATPAK_BUILDER_N_JOBS
+
+    '
+  - "find . -type f \\( -name 'Makefile' -o -name 'Makefile.in' \\) -exec \\\n  sed\
+    \ -i \\\n  's|/usr/lib/x86_64-linux-gnu/girepository-1.0|/app/lib/girepository-1.0|g'\
+    \ {} +\n"
+  - 'mkdir -p /app/lib/girepository-1.0
+
+    make install
+
+    '
+- name: vala
+  buildsystem: autotools
+  config-opts:
+  - --prefix=/app
+  - --libdir=/app/lib
+  - --disable-unversioned
+  - --disable-valadoc
+  sources:
+  - url: https://download.gnome.org/sources/vala/0.56/vala-0.56.17.tar.xz
+    sha256: 26100c4e4ef0049c619275f140d97cf565883d00c7543c82bcce5a426934ed6a
+    type: archive
+  build-commands:
+  - make -j$FLATPAK_BUILDER_N_JOBS
+  - make install
+  - "echo \"=== Checking Vala installation ===\"\n\necho \"--- Installed Vala tools\
+    \ ---\"\nfind /app -type f \\( -name 'valac' -o -name 'vapigen' \\) -ls || true\n\
+    \necho \"--- Build tools ---\"\nls -lh ./compiler/valac || true\nls -lh ./vapigen/vapigen\
+    \ || true\n\necho \"--- /app/bin ---\"\nls -lah /app/bin || true\n\nif [ ! -x\
+    \ /app/bin/valac ]; then\n  echo \"valac was not installed by make install; installing\
+    \ manually...\"\n  mkdir -p /app/bin\n  cp ./compiler/valac /app/bin/valac\n \
+    \ chmod +x /app/bin/valac\nfi\n\nif [ ! -x /app/bin/vapigen ]; then\n  echo \"\
+    vapigen was not installed by make install; installing manually...\"\n  mkdir -p\
+    \ /app/bin\n  cp ./vapigen/vapigen /app/bin/vapigen\n  chmod +x /app/bin/vapigen\n\
+    fi\n\necho \"--- Creating vapigen wrapper ---\"\n\nmv /app/bin/vapigen /app/bin/vapigen-real\n\
+    \ncat > /app/bin/vapigen <<'EOF'\n#!/bin/sh\nset -e\n\nGIR=\"\"\n\nfor arg in\
+    \ \"$@\"; do\n  case \"$arg\" in\n    *.gir)\n      GIR=\"$arg\"\n      ;;\n \
+    \ esac\ndone\n\nif [ -n \"$GIR\" ] && [ -f \"$GIR\" ]; then\n  echo \"Cleaning\
+    \ unsupported doc:format from $GIR\"\n  sed -i '/<doc:format name=\"unknown\"\\\
+    />/d' \"$GIR\"\nfi\n\nexec /app/bin/vapigen-real \"$@\"\nEOF\n\nchmod +x /app/bin/vapigen\n\
+    \necho \"--- Final tools ---\"\nls -lh /app/bin/valac\nls -lh /app/bin/vapigen\n\
+    ls -lh /app/bin/vapigen-real\n\necho \"--- Versions ---\"\n/app/bin/valac --version\n\
+    /app/bin/vapigen --version\n/app/bin/vapigen-real --version\n"
+- name: ayatana-ido
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DCMAKE_INSTALL_PREFIX=/app
+  - -DCMAKE_INSTALL_LIBDIR=lib
+  - -DENABLE_TESTS=OFF
+  - -DENABLE_DOCUMENTATION=OFF
+  - -DVAPI_GEN=/app/bin/vapigen
+  sources:
+  - url: https://github.com/AyatanaIndicators/ayatana-ido.git
+    tag: 0.10.4
+    type: git
+  build-options:
+    append-path: /app/bin
+- name: libayatana-indicator
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DENABLE_TESTS=OFF
+  - -DENABLE_DOCUMENTATION=OFF
+  - -DENABLE_GTK2=OFF
+  - -DENABLE_GTK3=ON
+  sources:
+  - url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/0.9.4/libayatana-indicator-0.9.4.tar.gz
+    sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+    type: archive
+- name: libayatana-appindicator
+  buildsystem: cmake-ninja
+  config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  - -DCMAKE_INSTALL_PREFIX=/app
+  - -DCMAKE_INSTALL_LIBDIR=lib
+  - -DENABLE_TESTS=OFF
+  - -DENABLE_GTKDOC=OFF
+  - -DENABLE_BINDINGS_MONO=OFF
+  - -DENABLE_BINDINGS_VALA=OFF
+  - -DFLAVOUR_GTK3=ON
+  sources:
+  - url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/0.5.93/libayatana-appindicator-0.5.93.tar.gz
+    sha256: cbefed7a918a227bf71286246e237fcd3a9c8499b3eaac4897811a869409edf0
+    type: archive
+  build-options:
+    append-path: /app/bin
+    append-ld-library-path: /app/lib
+  cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/vala
+- name: python3-build-tools
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/source/w/wheel/wheel-0.47.0.tar.gz
+    sha256: cc72bd1009ba0cf63922e28f94d9d83b920aa2bb28f798a31d0691b02fa3c9b3
+    type: file
+  - url: https://files.pythonhosted.org/packages/source/p/packaging/packaging-26.2.tar.gz
+    sha256: ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661
+    type: file
+  - url: https://files.pythonhosted.org/packages/source/f/flit-core/flit_core-3.12.0.tar.gz
+    sha256: 18f63100d6f94385c6ed57a72073443e1a71a4acb4339491615d0f16d6ff01b2
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app flit_core-3.12.0.tar.gz
+  - pip3 install --no-build-isolation --no-deps --prefix=/app wheel-0.47.0.tar.gz
+  - pip3 install --no-build-isolation --no-deps --prefix=/app packaging-26.2.tar.gz
+- name: python3-markdown-it-py
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz
+    sha256: 04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app markdown_it_py-4.2.0.tar.gz
+- name: python3-mdurl
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz
+    sha256: bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app mdurl-0.1.2.tar.gz
+- name: python3-Pygments
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl
+    sha256: a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+    type: file
+  - url: https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl
+    sha256: e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+    type: file
+  - url: https://files.pythonhosted.org/packages/7c/a4/81502f486f01db95bc8320646a8a12511f5e556cb63d5e224d91816605c4/trove_classifiers-2026.6.1.19-py3-none-any.whl
+    sha256: ab4c4ec93cc4a4e7815fa759906e05e6bb3f2fbd92ea0f897288c6a43efd15b3
+    type: file
+  - url: https://files.pythonhosted.org/packages/64/e2/2c0af0a52d16be74a4f194564fcdc417521ed863e9b65e4bc9052dacba6f/hatchling-1.31.0-py3-none-any.whl
+    sha256: aac80bec8b6fe35e8480f1c335be8910fa210a0e6f735a139be205dadcacb544
+    type: file
+  - url: https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz
+    sha256: 6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app pathspec-1.1.1-py3-none-any.whl
+  - pip3 install --no-build-isolation --no-deps --prefix=/app pluggy-1.6.0-py3-none-any.whl
+  - pip3 install --no-build-isolation --no-deps --prefix=/app trove_classifiers-2026.6.1.19-py3-none-any.whl
+  - pip3 install --no-build-isolation --no-deps --prefix=/app hatchling-1.31.0-py3-none-any.whl
+  - pip3 install --no-build-isolation --no-deps --prefix=/app pygments-2.20.0.tar.gz
+- name: python3-rich
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/py3/p/poetry-core/poetry_core-2.4.1-py3-none-any.whl
+    sha256: acf06f9537cd2625bdaec926d95d90b557ba15353bc71d27a3a8a441042b5316
+    type: file
+  - url: https://files.pythonhosted.org/packages/py3/p/poetry/poetry-2.4.1-py3-none-any.whl
+    sha256: a91f13279a3c9add0d12c5ca5c7cb173622930a5c8272fee68c751cb5c72f951
+    type: file
+  - url: https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz
+    sha256: edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app poetry_core-2.4.1-py3-none-any.whl
+  - pip3 install --no-build-isolation --no-deps --prefix=/app poetry-2.4.1-py3-none-any.whl
+  - pip3 install --no-build-isolation --prefix=/app rich-15.0.0.tar.gz
+- name: python3-Pillow
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/ba/e5/8c68ff608a4203085158cff5cc2a3c534ec384536d9438c405ed6370d080/pillow-10.4.0-cp311-cp311-manylinux_2_28_x86_64.whl
+    sha256: 76a911dfe51a36041f2e756b00f96ed84677cdeb75d25c767f296c1c1eda1319
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app pillow-10.4.0-cp311-cp311-manylinux_2_28_x86_64.whl
+- name: python3-mutagen
+  buildsystem: simple
+  sources:
+  - url: https://files.pythonhosted.org/packages/source/m/mutagen/mutagen-1.47.0.tar.gz
+    sha256: 719fadef0a978c31b4cf3c956261b3c58b6948b32023078a2117b1de09f0fc99
+    type: file
+  build-commands:
+  - pip3 install --no-build-isolation --no-deps --prefix=/app mutagen-1.47.0.tar.gz
+- name: ply
+  buildsystem: simple
+  sources:
+  - path: ..
+    type: dir
+  build-commands:
+  - pip3 install --no-build-isolation --prefix=/app .
+  - install -Dm644 flatpak/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.desktop
+    /app/share/applications/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.desktop
+  - install -Dm644 flatpak/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.metainfo.xml
+    /app/share/metainfo/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.metainfo.xml
+  - install -Dm644 assets/music.png /app/share/icons/hicolor/128x128/apps/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.png
+  - mkdir -p /app/share/icons/hicolor/256x256/apps /app/share/icons/hicolor/512x512/apps
+  - python3 -c "from PIL import Image; s=Image.open('assets/music.png').convert('RGBA');
+    s.resize((256,256),Image.Resampling.LANCZOS).save('/app/share/icons/hicolor/256x256/apps/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.png');
+    s.resize((512,512),Image.Resampling.LANCZOS).save('/app/share/icons/hicolor/512x512/apps/io.github.ahmedrapi79123_cyber.PLY-MUSIC-PLAYER.png')"
+  - mkdir -p /app/share/ply/assets
+  - cp -r assets/* /app/share/ply/assets/
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --own-name=org.mpris.MediaPlayer2.ply
+  - --filesystem=xdg-music:ro
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+source-date-epoch: 1787262040
