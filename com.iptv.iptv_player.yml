@@ -1,0 +1,56 @@
+app-id: com.iptv.iptv_player
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: hermestv
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/wayland-0
+
+modules:
+  - name: flutter-sdk
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/flutter-sdk
+      - cp -r ./* /app/flutter-sdk/
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
+        sha256: c5390d1e461094047f8e41f89c985de79a3dfba50e8d2a05a47d187a078a3826
+
+  - name: hermestv
+    buildsystem: simple
+    build-options:
+      env:
+        FLUTTER_HOME: /app/flutter-sdk
+        PATH: /app/flutter-sdk/bin:/usr/bin
+    build-commands:
+      - flutter pub get
+      - flutter build linux --release
+      - mkdir -p /app/bin /app/lib /app/data
+      - cp build/linux/x64/release/bundle/hermestv /app/hermestv
+      - cp -r build/linux/x64/release/bundle/lib/* /app/lib/
+      - cp -r build/linux/x64/release/bundle/data/* /app/data/
+      - |
+        cat > /app/bin/hermestv << 'ENDOFSCRIPT'
+        #!/bin/sh
+        export LD_LIBRARY_PATH="/app/lib:$LD_LIBRARY_PATH"
+        if [ -n "$WAYLAND_DISPLAY" ]; then
+          export GDK_BACKEND=wayland
+        fi
+        exec /app/hermestv "$@"
+        ENDOFSCRIPT
+      - chmod +x /app/bin/hermestv
+      - install -Dm644 flatpak/com.iptv.iptv_player.desktop /app/share/applications/com.iptv.iptv_player.desktop
+      - install -Dm644 flatpak/com.iptv.iptv_player.metainfo.xml /app/share/metainfo/com.iptv.iptv_player.metainfo.xml
+      - install -Dm644 flatpak/com.iptv.iptv_player.png /app/share/icons/hicolor/256x256/apps/com.iptv.iptv_player.png
+    sources:
+      - type: git
+        url: https://github.com/Behranus/hermestv.git
+        branch: main
