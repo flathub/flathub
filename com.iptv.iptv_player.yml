@@ -1,0 +1,68 @@
+app-id: com.iptv.iptv_player
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: hermestv-launcher
+
+finish-args:
+  # Network — IPTV akışları için
+  - --share=network
+  - --share=ipc
+  # GPU hızlandırma
+  - --device=dri
+  # Ekran
+  - --socket=wayland
+  - --socket=x11
+  - --socket=fallback-x11
+  # Ses — PulseAudio / PipeWire
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
+  # Wayland
+  - --filesystem=xdg-run/wayland-0
+
+modules:
+  - name: flutter-sdk
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/flutter-sdk
+      - cp -r ./* /app/flutter-sdk/
+      - cd /app/flutter-sdk && git init && git config user.email "build@flatpak" && git config user.name "Build" && git add -A && git commit -m "init" --allow-empty
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
+        sha256: a7c82f551a9eae018e078f6bb186171e5a77920d35a3d75a61d9a593d0a9e4ae
+
+  - name: hermestv
+    buildsystem: simple
+    build-options:
+      env:
+        FLUTTER_HOME: /app/flutter-sdk
+        PATH: /app/flutter-sdk/bin:/usr/bin
+    build-commands:
+      - flutter pub get
+      - flutter build linux --release
+      - mkdir -p /app/bin /app/lib /app/data /app/share/applications /app/share/icons/hicolor/256x256/apps
+      - cp build/linux/x64/release/bundle/hermestv /app/bin/hermestv
+      - cp -r build/linux/x64/release/bundle/lib/* /app/lib/
+      - cp -r build/linux/x64/release/bundle/data/* /app/data/
+      # Launcher script — PulseAudio + LD_LIBRARY_PATH doğru ayarla
+      - |
+        cat > /app/bin/hermestv-launcher << 'ENDOFSCRIPT'
+        #!/bin/sh
+        export LD_LIBRARY_PATH="/app/lib:${LD_LIBRARY_PATH}"
+        export PULSE_SERVER="unix:${XDG_RUNTIME_DIR}/pulse/native"
+        export PULSE_COOKIE_PATH="${XDG_RUNTIME_DIR}/pulse/cookie"
+        if [ -n "$WAYLAND_DISPLAY" ]; then
+          export GDK_BACKEND=wayland
+        fi
+        exec /app/bin/hermestv "$@"
+        ENDOFSCRIPT
+      - chmod +x /app/bin/hermestv-launcher
+      - cp flatpak/com.iptv.iptv_player.desktop /app/share/applications/com.iptv.iptv_player.desktop
+      - cp flatpak/com.iptv.iptv_player.metainfo.xml /app/share/applications/com.iptv.iptv_player.metainfo.xml
+      - cp flatpak/com.iptv.iptv_player.png /app/share/icons/hicolor/256x256/apps/com.iptv.iptv_player.png
+      - desktop-file-edit --set-key=Exec --set-value="hermestv-launcher" /app/share/applications/com.iptv.iptv_player.desktop
+    sources:
+      - type: git
+        url: https://github.com/Behranus/hermestv.git
+        branch: main
