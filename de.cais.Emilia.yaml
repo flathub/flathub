@@ -1,0 +1,152 @@
+# Emilia — a GTK4/libadwaita music player, library manager and audio recorder.
+#
+# Upstream: https://github.com/misc-de/emilia
+# Built offline from vendored crates (generated-sources.json, next to this file).
+id: de.cais.Emilia
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: emilia
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio playback (PipeWire via the runtime's PulseAudio compatibility).
+  - --socket=pulseaudio
+  # Online metadata (MusicBrainz/Deezer/Cover Art Archive/iTunes), podcast and
+  # radio streams, and LAN device sync (HTTPS server/client). The sync server
+  # only listens while the app window is open — no background service, no
+  # autostart.
+  - --share=network
+  # GPU for the GTK4 render pipeline. Camera access for the QR pairing scan goes
+  # exclusively through the XDG camera portal (PipeWire fd via `pipewiresrc`),
+  # so there is no raw access to /dev/video* and no `--device=all`. QR decoding
+  # happens in-process (rqrr crate), no `zxing` plugin; `gtk4paintablesink`
+  # (live preview) is optional and degrades cleanly.
+  - --device=dri
+  # Music library: default access is the XDG music directory only. Additional
+  # folders are picked through the portal file dialog. Write access inside the
+  # music directory is needed for stream recordings and files received via sync.
+  - --filesystem=xdg-music
+  # MPRIS (lock screen / media keys); the suffix is per running instance.
+  - --own-name=org.mpris.MediaPlayer2.Emilia.*
+  # Credentials (Nextcloud username/app password, API keys such as AcoustID or
+  # fanart.tv) are stored in the Secret Service via libsecret instead of the
+  # local SQLite database whenever it is available.
+  - --talk-name=org.freedesktop.secrets
+  # Optional tray icon (StatusNotifierItem) — registration with the tray host.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Translation catalogs live privately under /app rather than in the locale
+  # extension (which only installs the languages configured on the device).
+  # Emilia has a built-in language selector, so every catalog must always be
+  # present, independent of the system locale. Must match the install path in
+  # the emilia module below (see src/i18n.rs).
+  - --env=EMILIA_LOCALEDIR=/app/share/emilia/translations
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  # No network during the build: cargo uses the vendored crates only.
+  env:
+    CARGO_HOME: /run/build/emilia/cargo
+
+modules:
+  # AcoustID fingerprinting (fpcalc) so track identification via Chromaprint
+  # also works inside the sandbox (the runtime does not ship fpcalc). Built with
+  # Chromaprint's bundled KissFFT (no external FFT dependency) and libswresample
+  # from the runtime for decoding; installs libchromaprint + fpcalc into /app.
+  # See src/core/fingerprint.rs. 1.6.0, not 1.5.1: the latter uses the old
+  # FFmpeg channel-layout API and no longer compiles against the runtime FFmpeg.
+  - name: chromaprint
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_TOOLS=ON
+      - -DBUILD_TESTS=OFF
+      - -DFFT_LIB=kissfft
+      - -DAUDIO_PROCESSOR_LIB=swresample
+    sources:
+      - type: archive
+        url: https://github.com/acoustid/chromaprint/releases/download/v1.6.0/chromaprint-1.6.0.tar.gz
+        sha256: 9d33482e56a1389a37a0d6742c376139fa43e3b8a63d29003222b93db2cb40da
+  # Ship yt-dlp as a pinned, sha256-verified release of the official Python
+  # zipapp (executed by python3 from the runtime) instead of downloading it
+  # unverified at runtime. `x-checker-data` lets flatpak-external-data-checker
+  # keep the pin current automatically. The app can additionally fetch a newer
+  # copy into its data directory, which then takes precedence over this
+  # baseline (see src/core/youtube.rs).
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp
+        sha256: 1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name == "yt-dlp") | .browser_download_url
+  - name: emilia
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --offline
+      - install -Dm755 target/release/emilia /app/bin/emilia
+      # Build the translation catalogs (.po -> .mo) for every language in
+      # po/LINGUAS. Deliberately NOT into /app/share/locale: flatpak-builder
+      # would move those into the locale extension (de.cais.Emilia.Locale),
+      # which only installs the languages configured on the device — on an
+      # en-only system the German catalog would then be missing entirely.
+      # Emilia has its own language selector, so all catalogs must always be
+      # present: private path + EMILIA_LOCALEDIR (see finish-args, src/i18n.rs).
+      - |
+        for lang in $(grep -v '^#' po/LINGUAS); do
+          install -d /app/share/emilia/translations/$lang/LC_MESSAGES
+          msgfmt --check po/$lang.po -o /app/share/emilia/translations/$lang/LC_MESSAGES/emilia.mo
+        done
+      - install -Dm644 data/de.cais.Emilia.desktop
+        /app/share/applications/de.cais.Emilia.desktop
+      - install -Dm644 data/de.cais.Emilia.metainfo.xml
+        /app/share/metainfo/de.cais.Emilia.metainfo.xml
+      - install -Dm644 data/icons/hicolor/256x256/apps/de.cais.Emilia.png
+        /app/share/icons/hicolor/256x256/apps/de.cais.Emilia.png
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-concert-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-concert-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/list-high-priority-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/list-high-priority-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-favorite-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-favorite-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-audiobook-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-audiobook-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-stats-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-stats-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-share-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-share-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-sleep-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-sleep-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/emilia-filter-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/emilia-filter-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/im-youtube-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/im-youtube-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/ticket-special-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/ticket-special-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/xsi-view-more-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/xsi-view-more-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/podcast-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/podcast-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/internet-radio-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/internet-radio-symbolic.svg
+      - install -Dm644 data/icons/hicolor/scalable/actions/multimedia-equalizer-symbolic.svg
+        /app/share/icons/hicolor/scalable/actions/multimedia-equalizer-symbolic.svg
+    sources:
+      # App source from the tagged git state.
+      - type: git
+        url: https://github.com/misc-de/emilia.git
+        tag: v0.8.19
+        commit: 34d53174c7162f964b7f36ea6dc2fbe5440ecf45
+      # Vendored cargo dependencies for the offline build.
+      - generated-sources.json
