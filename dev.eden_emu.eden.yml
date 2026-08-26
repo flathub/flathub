@@ -1,0 +1,57 @@
+app-id: dev.eden_emu.eden
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: eden-emu-wrapper
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --env=QT_QPA_PLATFORMTHEME=xdgdesktopportal
+
+modules:
+  - name: eden
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://stable.eden-emu.dev/v0.2.1/Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage
+        sha256: 7a28bf988b0648831989722bdbaa90ab31371b403808199813e0ea7c8b25ba6d
+        dest-filename: Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage
+        only-arches:
+          - x86_64
+
+      - type: file
+        url: https://stable.eden-emu.dev/v0.2.1/Eden-Linux-v0.2.1-aarch64-clang-pgo.AppImage
+        sha256: b64f926cbf74fd870a39b144971084323d895d51919b91e906328e7f81bea087
+        dest-filename: Eden-Linux-v0.2.1-aarch64-clang-pgo.AppImage
+        only-arches:
+          - aarch64
+
+      - type: file
+        path: dev.eden_emu.eden.appdata.xml
+
+      - type: script
+        commands:
+          - |
+            #!/bin/sh
+            for i in $(seq 0 9); do
+              test -S $XDG_RUNTIME_DIR/discord-ipc-$i ||
+                ln -sf {app/com.discordapp.Discord,$XDG_RUNTIME_DIR}/discord-ipc-$i;
+            done
+            exec eden "$@"
+        dest-filename: eden-emu-wrapper
+
+    build-commands:
+      - chmod +x Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage
+      - ./Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage --appimage-extract
+      - cp -a squashfs-root/* "${FLATPAK_DEST}/"
+      - install -Dm755 eden-emu-wrapper "${FLATPAK_DEST}/bin/eden-emu-wrapper"
+      - install -Dm0644 "squashfs-root/dev.eden_emu.eden.svg" "${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/dev.eden_emu.eden.svg"
+      - install -Dm0644 "squashfs-root/dev.eden_emu.eden.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - install -Dm644 dev.eden_emu.eden.appdata.xml "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.appdata.xml"
+      - desktop-file-edit --set-key=Exec --set-value="eden-emu-wrapper %f" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
