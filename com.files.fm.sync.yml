@@ -1,0 +1,104 @@
+id: com.files.fm.sync
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+# org.kde.Platform never bundles Qt WebEngine (which src/CMakeLists.txt
+# requires unless BUILD_WITH_WEBENGINE=OFF) -- it has to be layered in via
+# Flathub's io.qt.qtwebengine.BaseApp. Its supported version pairings are
+# 6.8, 6.10, 6.11 (or 5.15-25.08); there is no 6.9, hence runtime-version
+# above being 6.10 rather than matching CMakeLists.txt's REQUIRED_QT_VERSION
+# floor of 6.8.0 exactly.
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: files_fm_sync
+rename-icon: files_fm_sync
+
+# The KDE 6.10 runtime (+ qtwebengine BaseApp) already ships Qt6 (incl.
+# WebEngine), KDE Frameworks 6 (incl. KArchive/KGuiAddons) and the usual
+# build tooling, so only the two libraries the client links against that
+# are *not* part of that runtime need to be built from source below:
+# QtKeychain and libp11 (opensc-libp11, used for hardware-token /
+# smartcard client certificates).
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Required by the qtwebengine BaseApp so the sandboxed renderer process
+  # can find its own executable.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  # A sync client needs to be able to read/write folders anywhere the user
+  # picks them, not just $HOME, and needs to be able to reveal files in the
+  # host file manager.
+  - --filesystem=host
+  - --filesystem=xdg-run/gvfs
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.FileManager1
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  # Flatpak's export step rejects any hicolor apps/ icon over 512x512;
+  # the project's own icon set includes a 1024x1024 variant, so strip it
+  # here rather than the 512x512-and-under sizes actually usable by
+  # desktop environments.
+  - /share/icons/hicolor/1024x1024
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: libp11
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      # libp11 detects the OpenSSL engines/providers directories from the
+      # *system* OpenSSL's compiled-in paths (/usr/lib/.../engines-3,
+      # ossl-modules), not from --prefix. In the Flatpak sandbox /usr is
+      # read-only during the build -- only /app is writable -- so those
+      # need to be redirected into /app explicitly.
+      - --with-enginesdir=/app/lib/engines-3
+      - --with-modulesdir=/app/lib/ossl-modules
+    sources:
+      - type: archive
+        url: https://github.com/OpenSC/libp11/releases/download/libp11-0.4.20/libp11-0.4.20.tar.gz
+        sha256: a125e0310ff10c189fc1b32a9652101486ea94a6b07c677a30e90e3638d2db48
+
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_WITH_QT5=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+      - -DBUILD_TRANSLATIONS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.17.0.tar.gz
+        sha256: 3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504
+
+  - name: files-fm-sync
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DBUILD_SHELL_INTEGRATION=OFF
+      - -DBUILD_UPDATER=OFF
+      - -DMIRALL_VERSION_SUFFIX=
+    sources:
+      # Flathub's build service clones the source fresh rather than reusing
+      # a local checkout, so (unlike the repo's own com.files.fm.sync.yml,
+      # used by release.yml against an already-checked-out worktree) this
+      # has to be a git source pinned to a real tag, not `type: dir`.
+      - type: git
+        url: https://github.com/filesfm/Sync.git
+        tag: v3.16.7
+        commit: 2467547fb2b04257025b5ea44d8a23ec4653fbd7
+    post-install:
+      - install -Dm644 com.files.fm.sync.metainfo.xml
+        /app/share/metainfo/com.files.fm.sync.metainfo.xml
