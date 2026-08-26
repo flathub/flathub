@@ -1,63 +1,152 @@
 app-id: io.github.xfuentes.smart-video-processor
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
-sdk: org.freedesktop.Sdk
+sdk: org.kde.Sdk//6.10
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '25.08'
+    directory: lib/ffmpeg
+    add-ld-path: lib
 base: org.electronjs.Electron2.BaseApp
 base-version: '25.08'
 separate-locales: false
 command: io.github.xfuentes.smart-video-processor
 finish-args:
   - --share=ipc
-  - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --socket=pulseaudio
   - --device=dri
   - --share=network
-  - --filesystem=xdg-videos
-  - --filesystem=xdg-download
+  - --filesystem=xdg-run/app
+  - --env=ELECTRON_TRASH=gio
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 modules:
-  - name: smart-video-processor-x86_64
-    only-arches:
-      - x86_64
+  - name: boost
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/lib/smart-video-processor
-      - cp -r * /app/lib/smart-video-processor/
-      - cd /app/lib/smart-video-processor/resources/bin && ./mkvmerge --appimage-extract && rm mkvmerge && mkdir -p /app/lib/mkvmerge-libs && cp -P squashfs-root/usr/lib/* /app/lib/mkvmerge-libs/ && cp squashfs-root/usr/bin/mkvmerge mkvmerge.real && rm -rf squashfs-root && echo -e '#!/bin/sh\nexport LD_LIBRARY_PATH=/app/lib/mkvmerge-libs:$LD_LIBRARY_PATH\nexec /app/lib/smart-video-processor/resources/bin/mkvmerge.real "$@"' > mkvmerge && chmod +x mkvmerge mkvmerge.real
+      - ./bootstrap.sh --prefix=/app --with-libraries=filesystem,system
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
     sources:
       - type: archive
-        url: https://github.com/xfuentes/smart-video-processor/releases/download/v1.9.1/smart-video-processor-1.9.1-x64.tar.gz
-        sha256: 57b5cb9f11a8ccca443c446d9d1160981e6e0c05477714d736f432cd8bdc5afc
+        url: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2
+        sha256: 1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b
 
-  - name: smart-video-processor-aarch64
-    only-arches:
-      - aarch64
-    buildsystem: simple
-    build-commands:
-      - mkdir -p /app/lib/smart-video-processor
-      - cp -r * /app/lib/smart-video-processor/
-      - cd /app/lib/smart-video-processor/resources/bin && ./mkvmerge --appimage-extract && rm mkvmerge && mkdir -p /app/lib/mkvmerge-libs && cp -P squashfs-root/usr/lib/* /app/lib/mkvmerge-libs/ && cp squashfs-root/usr/bin/mkvmerge mkvmerge.real && rm -rf squashfs-root && echo -e '#!/bin/sh\nexport LD_LIBRARY_PATH=/app/lib/mkvmerge-libs:$LD_LIBRARY_PATH\nexec /app/lib/smart-video-processor/resources/bin/mkvmerge.real "$@"' > mkvmerge && chmod +x mkvmerge mkvmerge.real
+  - name: cmark
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMARK_STATIC=OFF
+    cleanup:
+      - /bin
     sources:
       - type: archive
-        url: https://github.com/xfuentes/smart-video-processor/releases/download/v1.9.1/smart-video-processor-1.9.1-arm64.tar.gz
-        sha256: 6c090ed78c580b61e88fd13f36a9007a7679a91b81c6d423e2fe2b983f8a0021
+        url: https://github.com/commonmark/cmark/archive/refs/tags/0.31.1.tar.gz
+        sha256: 3da93db5469c30588cfeb283d9d62edfc6ded9eb0edc10a4f5bbfb7d722ea802
 
-  - name: smart-video-processor-metadata
+  - name: libdvdcss
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/libdvdcss/1.4.3/libdvdcss-1.4.3.tar.bz2
+        sha256: 233cc92f5dc01c5d3a96f5b3582be7d5cee5a35a52d3a08158745d3d86070079
+
+  - name: libdvdread
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/videolan/libdvdread/6.1.3/libdvdread-6.1.3.tar.bz2
+        sha256: ce35454997a208cbe50e91232f0e73fb1ac3471965813a13b8730a8f18a15369
+
+  - name: mkvtoolnix
     buildsystem: simple
     build-commands:
+      - ./configure
+        --enable-optimization
+        --disable-gui
+        --prefix=/app
+        --with-boost=/app
+        --with-qmake6=/usr/bin/qmake6
+        --with-docbook-xsl-root=/usr/share/xml/docbook/xml/xsl-stylesheets
+        --disable-update-check
+      - ./drake -j $FLATPAK_BUILDER_N_JOBS
+      - ./drake install
+      - |
+        set -e
+        mkdir -p /app/lib
+        for lib in $(LD_LIBRARY_PATH=/app/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu ldd /app/bin/mkvmerge | awk '/=> \/ {print $3}' | sort -u); do
+          case "$lib" in
+            /app/*|*linux-vdso*|*ld-linux*|*libc.so*|*libm.so*|*libpthread.so*|*libdl.so*|*librt.so*|*libgcc_s.so*|*libstdc++.so*) ;;
+            *) cp -L "$lib" /app/lib/ 2>/dev/null || true ;;
+          esac
+        done
+      - mkdir -p /app/share/doc/mkvtoolnix
+      - install -m0644 -t/app/share/doc/mkvtoolnix AUTHORS CODE_OF_CONDUCT.md COPYING README.md
+    sources:
+      - type: archive
+        url: https://mkvtoolnix.download/sources/mkvtoolnix-101.0.tar.xz
+        sha256: f638b299e49cdd4efc4ab3c68dbb593ed6a61bd01bf8862da74ef7fb4d181ce8
+    modules:
+      - name: ruby
+        sources:
+          - type: archive
+            url: https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.7.tar.gz
+            sha256: 23815a6d095696f7919090fdc3e2f9459b2c83d57224b2e446ce1f5f7333ef36
+        cleanup:
+          - '*'
+
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - |
+        case "$FLATPAK_ARCH" in
+          x86_64) ARCHIVE=node-v22.12.0-linux-x64.tar.xz ;;
+          aarch64) ARCHIVE=node-v22.12.0-linux-arm64.tar.xz ;;
+        esac
+        mkdir -p /app/lib/node
+        tar -xf "$ARCHIVE" -C /app/lib/node --strip-components=1
+    sources:
+      - type: file
+        url: https://nodejs.org/download/release/v22.12.0/node-v22.12.0-linux-x64.tar.xz
+        sha256: 22982235e1b71fa8850f82edd09cdae7e3f32df1764a9ec298c72d25ef2c164f
+      - type: file
+        url: https://nodejs.org/download/release/v22.12.0/node-v22.12.0-linux-arm64.tar.xz
+        sha256: 8cfd5a8b9afae5a2e0bd86b0148ca31d2589c0ea669c2d0b11c132e35d90ed68
+
+  - name: smart-video-processor
+    buildsystem: simple
+    build-options:
+      append-path: /app/lib/node/bin
+      env:
+        XDG_CACHE_HOME: /run/build/smart-video-processor/flatpak-node/cache
+        npm_config_cache: /run/build/smart-video-processor/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        npm_config_nodedir: /app/lib/node
+        ELECTRON_CACHE: /run/build/smart-video-processor/flatpak-node/cache/electron
+
+    build-commands:
+      - mkdir -p native/uwp-activation/build/Release
+      - sed -i "s/'dir', 'AppImage', 'tar.gz'/'dir'/g" electron-builder.ts
+      - npm ci --offline --no-audit --no-fund
+      - npm run build
+      - . flatpak-node/electron-builder-arch-args.sh
+      - npx electron-builder --linux $ELECTRON_BUILDER_ARCH_ARGS --dir --publish never
+      - rm -f dist/linux*unpacked/resources/bin/ffmpeg
+      - rm -f dist/linux*unpacked/resources/bin/ffprobe
+      - rm -f dist/linux*unpacked/resources/bin/mkvmerge
+      - install -d /app/lib/smart-video-processor
+      - cp -r dist/linux*unpacked/* /app/lib/smart-video-processor/
+      - node tools/configure.js ./flatpak
+      - install -Dm644 flatpak/io.github.xfuentes.smart-video-processor.desktop /app/share/applications/io.github.xfuentes.smart-video-processor.desktop
+      - install -Dm644 flatpak/io.github.xfuentes.smart-video-processor.metainfo.xml /app/share/metainfo/io.github.xfuentes.smart-video-processor.metainfo.xml
+      - install -Dm644 resources/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.xfuentes.smart-video-processor.svg
       - install -Dm755 run.sh /app/bin/io.github.xfuentes.smart-video-processor
-      - install -Dm644 io.github.xfuentes.smart-video-processor.desktop /app/share/applications/io.github.xfuentes.smart-video-processor.desktop
-      - install -Dm644 io.github.xfuentes.smart-video-processor.metainfo.xml /app/share/metainfo/io.github.xfuentes.smart-video-processor.metainfo.xml
-      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/io.github.xfuentes.smart-video-processor.svg
     sources:
-      - type: file
-        path: io.github.xfuentes.smart-video-processor.desktop
-      - type: file
-        path: io.github.xfuentes.smart-video-processor.metainfo.xml
-      - type: file
-        path: icon.svg
-        dest-filename: icon.svg
+      - type: git
+        url: https://github.com/xfuentes/smart-video-processor.git
+        branch: main
+      - generated-sources.json
       - type: script
         dest-filename: run.sh
         commands:
-          - zypak-wrapper.sh /app/lib/smart-video-processor/smart-video-processor "$@"
+          - export PATH="/app/bin:/usr/bin:/app/lib/ffmpeg/bin:$PATH"
+          - export LD_LIBRARY_PATH="/app/lib:/app/lib/ffmpeg/lib:$LD_LIBRARY_PATH"
+          - exec zypak-wrapper /app/lib/smart-video-processor/smart-video-processor "$@"
