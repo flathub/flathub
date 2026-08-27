@@ -1,0 +1,80 @@
+# Flatpak manifest.
+#
+# Build and run locally:
+#   packaging/flatpak/build.sh
+#
+# For a Flathub submission the `sources` entry at the bottom must become a
+# git source pinned to a tag and commit - Flathub builds from a tagged
+# revision, never from a working directory. The `type: dir` used here is for
+# local iteration only, and there is a comment marking it.
+#
+# Rust needs every crate present before the build starts, because
+# flatpak-builder builds with no network. cargo-sources.json carries them;
+# build.sh regenerates it from Cargo.lock.
+
+app-id: org.nanotorrent.NanoTorrent
+runtime: org.freedesktop.Platform
+# 25.08, not 24.08: the rust-stable extension for 24.08 ships rustc 1.89 and
+# Slint 1.17 needs 1.92, so the build fails late with a wall of "requires
+# rustc 1.92". 25.08 carries 1.98.
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: nanotorrent
+
+finish-args:
+  # Peers, trackers, DHT, and the optional web interface.
+  - --share=network
+
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Slint renders through OpenGL where it can.
+  - --device=dri
+
+  # Downloads only, NOT --filesystem=home. A torrent client asking for the
+  # whole home directory is exactly what Flathub reviewers push back on, and
+  # anywhere else the user picks is reached through the file portal instead.
+  - --filesystem=xdg-download
+
+  # The notification-area icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # "Open in file manager" on a finished torrent.
+  - --talk-name=org.freedesktop.FileManager1
+
+modules:
+  - name: nanotorrent
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # Inside the build sandbox, so the vendored crates below are found and
+        # nothing is written outside the build directory.
+        CARGO_HOME: /run/build/nanotorrent/cargo
+
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 target/release/nanotorrent /app/bin/nanotorrent
+      # All three must be named by the app id, or the desktop connects none of
+      # them to the running window.
+      - install -Dm644 packaging/linux/org.nanotorrent.NanoTorrent.desktop
+        /app/share/applications/org.nanotorrent.NanoTorrent.desktop
+      - install -Dm644 packaging/linux/org.nanotorrent.NanoTorrent.metainfo.xml
+        /app/share/metainfo/org.nanotorrent.NanoTorrent.metainfo.xml
+      - install -Dm644 res/app.png
+        /app/share/icons/hicolor/256x256/apps/org.nanotorrent.NanoTorrent.png
+
+    sources:
+      # Flathub builds from a tagged revision, never a working directory.
+      # Both tag and commit are given: the tag says which release this is, the
+      # commit is what actually gets checked out, so a moved tag cannot change
+      # what was reviewed.
+      - type: git
+        url: https://github.com/Power2All/nanotorrent.git
+        tag: v0.2.2
+        commit: a8fb99d7381fc651667313312661783f2480d1bd
+
+      - cargo-sources.json
