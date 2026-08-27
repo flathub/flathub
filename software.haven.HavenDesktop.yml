@@ -6,6 +6,7 @@ base: org.electronjs.Electron2.BaseApp
 base-version: '25.08'
 command: haven-desktop
 separate-locales: false
+sdk-extensions: [org.freedesktop.Sdk.Extension.node24]
 
 finish-args:
   - --socket=fallback-x11
@@ -17,7 +18,6 @@ finish-args:
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.ScreenSaver
   - --filesystem=xdg-run/keyring
-  - --filesystem=xdg-run/pipewire-0
   - --talk-name=org.freedesktop.secrets
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
   - --talk-name=com.canonical.Unity
@@ -25,33 +25,47 @@ finish-args:
 modules:
   - name: haven-desktop
     buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/run/build/haven-desktop/pnpm-cli/bin
+      env:
+        XDG_CACHE_HOME: /run/build/haven-desktop/flatpak-node/cache
+        PNPM_HOME: /run/build/haven-desktop/flatpak-node/pnpm-home
+        HOME: /run/build/haven-desktop
+        COREPACK_ENABLE_STRICT: '0'
+        PNPM_CONFIG_PM_ON_FAIL: ignore
+        npm_config_pm_on_fail: ignore
+        NX_NO_CLOUD: 'true'
+        NX_SKIP_NX_CACHE: 'true'
+        NX_DAEMON: 'false'
     build-commands:
-      # Haven: unpacks a real release .deb (an `ar` archive containing control.tar.xz +
-      # data.tar.xz) - dpkg-deb isn't guaranteed present in the SDK image, so `ar`/`tar` (both in
-      # org.freedesktop.Sdk) do the extraction instead. Mirrors im.riot.Riot's own manifest in
-      # spirit (fetch a real release artifact rather than building from source). matrix-seshat is
-      # included as of the 0.7.0 .deb (see the source's own doc below) - the 0.6.5 release this
-      # comment used to reference did not have it.
-      - ar x haven-desktop.deb
-      - mkdir -p deb-data
-      - tar -xJf data.tar.xz -C deb-data
+      - mkdir -p pnpm-cli && tar -xzf pnpm-11.22.0.tgz -C pnpm-cli
+      - mkdir -p pnpm-cli/bin
+      - "printf '#!/bin/sh\\nexec node %s/pnpm-cli/package/bin/pnpm.mjs \"$@\"\\n' \"$PWD\" > pnpm-cli/bin/pnpm"
+      - chmod +x pnpm-cli/bin/pnpm
+      - "sed -i 's/minimumReleaseAgeStrict: true/minimumReleaseAgeStrict: false/' element-web/pnpm-workspace.yaml"
+      - "sed -i '/^trustLockfile:/d' element-web/pnpm-workspace.yaml"
+      - "echo 'trustLockfile: true' >> element-web/pnpm-workspace.yaml"
+      - python3 flatpak-node/populate_pnpm_store.py flatpak-node/pnpm-manifest.json flatpak-node/pnpm-tarballs flatpak-node/pnpm-store
+      - "sed -i '/^storeDir:/d' element-web/pnpm-workspace.yaml"
+      - "echo 'storeDir: '$PWD'/flatpak-node/pnpm-store' >> element-web/pnpm-workspace.yaml"
+      - cd element-web && pnpm install --offline --frozen-lockfile=false --config.strictStorePkgContentCheck=false && cd ..
+      - cd element-web/apps/web && pnpm build && cd ../../..
+      - cp element-web/apps/web/config.sample.json element-web/apps/web/webapp/config.json
+      - cd element-web/apps/desktop && pnpm exec asar pack ../web/webapp webapp.asar && cd ../../..
+      - "sed -i 's#export default config;#config.publish = null; config.electronDist = \"/run/build/haven-desktop/flatpak-node/cache/electron\"; config.linux = config.linux || {}; config.linux.target = [\"dir\"]; export default config;#' element-web/apps/desktop/electron-builder.ts"
+      - "cd element-web/apps/desktop && VERSION=0.7.0 pnpm build -- --linux dir --publish=never && cd ../../.."
       - mkdir -p /app/Haven
-      - cp -r deb-data/opt/Haven/* /app/Haven/
-      - install -Dm644 deb-data/usr/share/icons/hicolor/512x512/apps/haven-desktop.png /app/share/icons/hicolor/512x512/apps/software.haven.HavenDesktop.png
+      - cp -r element-web/apps/desktop/dist/linux-unpacked/* /app/Haven/
+      - install -Dm644 logo_512.png /app/share/icons/hicolor/512x512/apps/software.haven.HavenDesktop.png
       - install -Dm644 software.haven.HavenDesktop.svg /app/share/icons/hicolor/scalable/apps/software.haven.HavenDesktop.svg
       - install -Dm755 haven-desktop.sh /app/bin/haven-desktop
       - install -Dm644 software.haven.HavenDesktop.desktop /app/share/applications/software.haven.HavenDesktop.desktop
       - install -Dm644 software.haven.HavenDesktop.metainfo.xml /app/share/metainfo/software.haven.HavenDesktop.metainfo.xml
     sources:
-      - type: file
-        url: https://github.com/Haven-Organization/haven-desktop/releases/download/haven-v0.7.0/haven-desktop_0.7.0_amd64.deb
-        sha256: 78d6fe3c26c59f6ef714e03dcb4870979722e44fb47aa6f06341ef336d4a39da
-        dest-filename: haven-desktop.deb
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/Haven-Organization/haven-desktop/releases/latest
-          version-query: .tag_name | sub("^haven-v"; "")
-          url-query: .assets[] | select(.name | test("_amd64\\.deb$")) | .browser_download_url
+      - type: git
+        url: https://github.com/Haven-Organization/haven-desktop
+        tag: haven-v0.7.0
+      - generated-sources.json
       - type: file
         url: https://raw.githubusercontent.com/Haven-Organization/haven-desktop/7f866bce30e47edb814585a85279676f13482f66/flatpak/haven-desktop.sh
         sha256: 26d72998b07d88eb303498ef5589e2e6a14afc22a3d2172ba1a30467b4d2d712
@@ -68,3 +82,11 @@ modules:
         url: https://raw.githubusercontent.com/Haven-Organization/haven-desktop/7f866bce30e47edb814585a85279676f13482f66/flatpak/software.haven.HavenDesktop.svg
         sha256: d122094cb1e287ab42ce97560a5fb0ad4c87c96f44f82ba31e2b4a1002dff0db
         dest-filename: software.haven.HavenDesktop.svg
+      - type: file
+        url: https://raw.githubusercontent.com/Haven-Organization/haven-desktop/95f00b7ccb67cccb7cbede36265de2bc58505fae/assets/logo_512.png
+        sha256: 43b4f9109d571f83060a979731c1749e0f6e39349764a7221fb95341919384dd
+        dest-filename: logo_512.png
+      - type: file
+        url: https://registry.npmjs.org/pnpm/-/pnpm-11.22.0.tgz
+        sha256: 57a97e6f23a3faffc03153a4ef8c770a0552612b8640aebe39bfdd5754d0ebdc
+        dest-filename: pnpm-11.22.0.tgz
