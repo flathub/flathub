@@ -1,0 +1,154 @@
+# Source of truth for the Flathub manifest. The Flathub repository
+# (flathub/com.soft_ventures.Recrest) is a downstream copy of this file plus the
+# two generated source lists — see README.md in this directory.
+
+id: com.soft_ventures.Recrest
+
+# GNOME 47 rather than a newer runtime: Tauri v2 links webkit2gtk-4.1 (GTK 3),
+# and that is the newest org.gnome.Platform that still carries it. Bumping the
+# runtime is not a cosmetic change — verify webkit2gtk-4.1 is present first, or
+# the build fails at link time.
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+# `env` belongs here, NOT on the module. flatpak-builder has no `env` property on
+# a module and only warns about it ("Unknown property env for type
+# BuilderModule") — the variables are silently dropped, and the offline install
+# then looks for the vendored caches in the wrong place. Verified with
+# flatpak-builder 1.4.6.
+build-options:
+  append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    HOME: /run/build/recrest
+    CARGO_HOME: /run/build/recrest/cargo
+    XDG_CACHE_HOME: /run/build/recrest/flatpak-node/cache
+    YARN_CACHE_FOLDER: /run/build/recrest/flatpak-node/yarn-cache
+
+command: recrest-launcher
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+
+  # Recrest scans arbitrary filesystem roots for git repositories
+  # (`git/scanner.rs`) — the user picks the roots, and they are routinely
+  # outside $HOME (/mnt, /srv, an external drive). A narrower
+  # `--filesystem=home` would silently return "no repositories found" for those.
+  - --filesystem=host
+
+  # `flatpak-spawn --host`, used by `platform/host_command.rs` to run the user's
+  # own `git`, IDE and terminal emulator. None of those exist inside the
+  # runtime; without this the app reports "git is not installed" and "no IDE
+  # detected" on a machine that has both. This is the permission Flathub reviews
+  # most closely — the justification belongs in the submission PR.
+  - --talk-name=org.freedesktop.Flatpak
+
+  # Provider tokens live in the OS keyring (`auth/token.rs` via the `keyring`
+  # crate), which talks to the Secret Service over D-Bus. Without this every
+  # sign-in fails to persist.
+  - --talk-name=org.freedesktop.secrets
+
+  # System tray icon (`TrayIconBuilder` in lib.rs).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+
+modules:
+  - name: recrest
+    buildsystem: simple
+
+    # Flathub builds without network access, so both dependency trees have to be
+    # vendored ahead of time. `cargo-sources.json` and `node-sources.json` are
+    # generated — see README.md. They must be regenerated whenever `yarn.lock`
+    # or `app/src-tauri/Cargo.lock` changes, which is what the `flatpak.yml`
+    # workflow guards.
+    sources:
+      # A real release tag at last. Both fields: Flathub wants the tag for
+      # provenance, `commit:` is what flatpak-builder actually checks out, so a
+      # moved tag cannot change what was reviewed.
+      #
+      # v0.12.1 was the first tag carrying the com.soft_ventures.Recrest app id.
+      # Earlier tags still ship the metainfo under the old filename, and the
+      # build installs it as its very last step — pinning one of those dies with
+      # "cannot stat …/com.soft_ventures.Recrest.metainfo.xml" after a full
+      # 8-minute Rust compile.
+      #
+      # If this ever has to point at a commit again, prefer one a long-lived
+      # branch or a tag keeps reachable. A PR-branch commit does keep working
+      # after a squash merge — GitHub keeps `refs/pull/N/head` forever — but
+      # that reachability lives in a ref `git log` never shows and a mirror does
+      # not carry.
+      #
+      # Whatever this points at, it is coupled to cargo-sources.json and
+      # node-sources.json: those describe the dependency graph of THIS commit's
+      # lockfiles and nothing else. Moving the ref without regenerating them
+      # fails deep inside the offline build with "Can't make a request in offline
+      # mode (….tgz)", which reads like a missing package and is really a
+      # mismatched commit. generate-sources.sh reads `commit:` back out of this
+      # file precisely so the two cannot drift apart.
+      - type: git
+        url: https://github.com/SoftVentures/Recrest.git
+        tag: v0.13.0
+        commit: 79b2536ac4a1c0660dd118ed9f17ab82440b97bf
+      - cargo-sources.json
+      - node-sources.json
+
+    build-commands:
+      # Point yarn at the vendored offline mirror. This REPLACES the repo's own
+      # .yarnrc, which also carries `engine-strict true`.
+      - >-
+        printf 'yarn-offline-mirror "/run/build/recrest/flatpak-node/yarn-mirror"\nyarn-offline-mirror-pruning
+        true\n' > .yarnrc
+
+      - mkdir -p app/src-tauri/.cargo
+      - >-
+        printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory
+        = "/run/build/recrest/cargo/vendor"\n' > app/src-tauri/.cargo/config.toml
+
+      # `--ignore-engines` is required even though the .yarnrc above was
+      # replaced: package.json pins `engines.node` to an exact patch version
+      # (22.22.3) and the node22 SDK extension ships a different one (22.23.1 as
+      # of freedesktop 24.08), which yarn rejects outright — verified, the build
+      # dies with "The engine node is incompatible with this module". The AUR
+      # PKGBUILDs pass the same flag for the same reason.
+      #
+      # `--ignore-scripts` skips `check-node.cjs` (hard-fails on that same
+      # mismatch) and `husky` (wants a .git dir the build does not keep). The one
+      # postinstall step that matters is building @recrest/shared, which
+      # `app/tsconfig.app.json` references as a TS project — so it runs
+      # explicitly, exactly as the PKGBUILDs do.
+      - yarn install --offline --frozen-lockfile --ignore-engines --ignore-scripts --non-interactive
+      - yarn workspace @recrest/shared build
+
+      # `--no-bundle` stops after linking. The bundler's own .deb/.rpm output is
+      # not wanted here, and running it would demand a TAURI_SIGNING_PRIVATE_KEY
+      # because `createUpdaterArtifacts` is enabled upstream.
+      - yarn workspace @recrest/app tauri build --no-bundle
+
+      # The `[[bin]]` name is capitalised for the macOS Dock label, so cargo
+      # emits `Recrest`. Installed lowercase, like the AUR packages.
+      - install -Dm755 app/src-tauri/target/release/Recrest /app/bin/recrest
+      - install -Dm755 app/src-tauri/resources/recrest-launcher.sh /app/bin/recrest-launcher
+
+      # Flathub requires the desktop file, the icon and the metainfo to be named
+      # after the app id. The repo's own copies are named for the other channels
+      # (`recrest.desktop` on Arch, `Recrest.desktop` from the Tauri bundler),
+      # so they are renamed on the way in and the AppStream `<launchable>` is
+      # repointed to match — a mismatch there leaves GNOME Software with a
+      # launcher it cannot find.
+      - install -Dm644 app/src-tauri/resources/recrest.desktop /app/share/applications/com.soft_ventures.Recrest.desktop
+      - sed -i 's/^Icon=.*/Icon=com.soft_ventures.Recrest/' /app/share/applications/com.soft_ventures.Recrest.desktop
+      - install -Dm644 app/src-tauri/resources/com.soft_ventures.Recrest.metainfo.xml /app/share/metainfo/com.soft_ventures.Recrest.metainfo.xml
+      - >-
+        sed -i 's|<launchable type="desktop-id">.*</launchable>|<launchable
+        type="desktop-id">com.soft_ventures.Recrest.desktop</launchable>|'
+        /app/share/metainfo/com.soft_ventures.Recrest.metainfo.xml
+
+      - for s in 32 64 128 256 512; do install -Dm644 "app/src-tauri/icons/linux/${s}x${s}.png" "/app/share/icons/hicolor/${s}x${s}/apps/com.soft_ventures.Recrest.png"; done
