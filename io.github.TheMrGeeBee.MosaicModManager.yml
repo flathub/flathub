@@ -1,0 +1,229 @@
+# Flathub submission copy of flatpak/io.github.TheMrGeeBee.MosaicModManager.yml.
+#
+# Deliberately a SEPARATE file, not an in-place edit of the original: this
+# repo's own manifest is built by CI (build.yml, manifest-path:
+# flatpak/io.github.TheMrGeeBee.MosaicModManager.yml) and by the local
+# flatpak/build.sh dev-convenience wrapper, both of which need `sources:
+# type: dir, path: ..` to build the actual checked-out working tree —
+# pinning that to a tag in-place would make every future CI build and
+# local test build silently re-fetch v1.0.4 forever instead of testing
+# real changes. Flathub's linter requires the opposite: `type: dir` is a
+# hard, non-waivable blocker there, a pinned `type: git` tag is required.
+# This file is what actually gets submitted to flathub/flathub — bump its
+# `tag:` to whatever the latest release is before submitting, and again on
+# every subsequent version-bump PR against the Flathub-hosted copy.
+#
+# Everything below this point is otherwise identical to the source-of-truth
+# manifest as of the v1.0.4 release — re-copy the whole file (not just the
+# sources: block) if the two have drifted before actually submitting.
+#
+# pypi-dependencies.yaml (external module reference below) is resolved
+# relative to THIS file's own directory, not the git-cloned source tree —
+# copied here alongside this manifest for the same reason. Re-sync it from
+# flatpak/pypi-dependencies.yaml if it's regenerated before submitting.
+
+app-id: io.github.TheMrGeeBee.MosaicModManager
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+# PySide6 comes prebuilt from the PySide BaseApp (Flathub-standard for
+# PySide apps); Qt itself is shared from the KDE runtime.
+base: io.qt.PySide.BaseApp
+base-version: "6.9"
+
+# 32-bit support for running Proton's bundled `wine` binary (ELF i386) during
+# Synthesis prefix setup. Without these, exec'ing wine fails with ENOENT — the
+# kernel reports the missing 32-bit ld-linux.so.2 interpreter as the error.
+# NOTE: version 24.08 matches KDE 6.9's freedesktop base (was 25.08 on GNOME 50).
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '24.08'
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 24.08;1.4
+    subdirectories: true
+    no-autodownload: false
+    autodelete: false
+    add-ld-path: lib
+
+command: mosaic-mod-manager
+
+build-options:
+  env:
+    # cleanup-BaseApp.sh knobs — the app only uses QtCore/QtGui/QtWidgets,
+    # so strip the QtWebEngine stack the BaseApp inherits.
+    BASEAPP_REMOVE_WEBENGINE: 'true'
+    BASEAPP_DISABLE_NUMPY: 'true'
+
+# Sandbox permissions
+# - network: Nexus API send/receive, version checks, downloads
+# - x11 + wayland sockets: Qt picks Wayland natively when the session offers
+#   it and falls back to X11 otherwise.
+# - dri: GPU rendering
+# - home: mod staging (user-configurable path, e.g. anywhere in ~/), game paths, Steam libraries.
+#   NOTE: app config does NOT live in ~/.config here — flatpak redirects
+#   XDG_CONFIG_HOME, so it lands in ~/.var/app/<app-id>/config/MosaicModManager
+#   (separate from a native/AppImage install's ~/.config/MosaicModManager).
+# - run/media, media, mnt: Steam libraries on SD cards and removable drives (Steam Deck, etc.)
+# - ~/.var/app/com.valvesoftware.Steam: Steam Flatpak data (home excludes ~/.var/app)
+# - ~/.var/app/com.heroicgameslauncher.hgl: Heroic Flatpak
+# - ~/.var/app/net.lutris.Lutris: Lutris Flatpak (pga.db, game configs, wine runners)
+# - talk-name=org.freedesktop.secrets: keyring (Nexus API key storage and retrieval)
+finish-args:
+  - --share=network
+  # fallback-x11 (not x11) + wayland: Flathub's linter only grants an
+  # exception for declaring both sockets outright "if the app crashes or
+  # is unusable without both and the issue cannot be solved" — ours isn't
+  # (Qt already prefers Wayland natively and falls back to X11 on its
+  # own), so fallback-x11 is both correct and avoids that finding.
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
+  # :ro — only ever need to discover/read these launchers' game libraries,
+  # never write into their sandboxed data folders.
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:ro
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris:ro
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
+  # Wine (Synthesis prefix setup) installs its own seccomp filter and runs
+  # 32-bit binaries; the default sandbox blocks both, killing wine with SIGSYS.
+  - --allow=multiarch
+
+tags:
+  - modmanager
+  - games
+  - modding
+
+cleanup-commands:
+  # BaseApp housekeeping (WebEngine strip per build-options env above).
+  - /app/cleanup-BaseApp.sh
+  # Mount points for the 32-bit compat extensions declared above.
+  - mkdir -p /app/lib/i386-linux-gnu/GL
+
+modules:
+  # Python Dependencies (PySide6 excluded — provided by the BaseApp)
+  - pypi-dependencies.yaml
+
+  - name: sevenzip
+    buildsystem: simple
+    build-commands:
+      - make -C CPP/7zip/Bundles/Alone2 -f makefile.gcc
+      - install -Dm755 CPP/7zip/Bundles/Alone2/_o/7zz /app/bin/7zz
+    sources:
+      - type: archive
+        url: https://github.com/ip7z/7zip/releases/download/25.01/7z2501-src.tar.xz
+        mirror-urls:
+          - https://www.7-zip.org/a/7z2501-src.tar.xz
+        sha256: ed087f83ee789c1ea5f39c464c55a5c9d4008deb0efe900814f2df262b82c36e
+        strip-components: 0
+  - name: unrar
+    buildsystem: simple
+    build-commands:
+      - make -f makefile
+      - install -Dm755 unrar /app/bin/unrar
+    sources:
+      - type: archive
+        url: https://www.rarlab.com/rar/unrarsrc-7.1.9.tar.gz
+        sha256: cbb5c7b65b720e59ffa47b2d00b8d1022a961da7ae1db27b6986c43671719483
+
+  # cabextract is needed by winetricks (vcredist/d3dcompiler installs).
+  # Bundling it means Utils/protontricks.py finds it on PATH and never falls
+  # back to downloading a rolling Arch binary that may not match our glibc.
+  - name: cabextract
+    buildsystem: autotools
+    sources:
+      # cabextract.org.uk 403s CI runners; Debian ships the byte-identical
+      # upstream tarball (same sha256), so pull from their pool instead.
+      - type: archive
+        url: http://deb.debian.org/debian/pool/main/c/cabextract/cabextract_1.11.orig.tar.gz
+        mirror-urls:
+          - https://www.cabextract.org.uk/cabextract-1.11.tar.gz
+        sha256: b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6
+
+  - name: mosaic-mod-manager
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/mosaic-mod-manager
+      - cp -a src/run_qt.py src/cli.py src/app_bootstrap.py src/version.py src/gui_qt
+        src/wizards_qt src/Utils src/Games src/LOOT src/Nexus src/icons src/wrappers
+        /app/share/mosaic-mod-manager/
+      - cp Changelog.txt /app/share/mosaic-mod-manager/
+
+      # Fail the build if src/LOOT lacks a loot.cpython-3XX .so matching the
+      # runtime's Python ABI — otherwise LOOT sorting silently disables at
+      # runtime. Rebuild with src/LOOT/rebuild_libloot.sh using the runtime's
+      # Python version (3.12 on org.kde.Platform 6.9).
+      - cd /app/share/mosaic-mod-manager && python3 -c 'import LOOT.loot'
+
+      - install -d /app/bin
+      - |
+        printf '%s\n' '#!/bin/sh' \
+          'export MOD_MANAGER_GAMES="/app/share/mosaic-mod-manager/Games"' \
+          'export XDG_DATA_DIRS=/app/share:/usr/share' \
+          ': "${QT_QPA_PLATFORM:=xcb}"' \
+          'export QT_QPA_PLATFORM' \
+          'cd /app/share/mosaic-mod-manager' \
+          'exec python3 run_qt.py "$@"' > /app/bin/mosaic-mod-manager
+      - chmod +x /app/bin/mosaic-mod-manager
+      - |
+        printf '%s\n' '#!/bin/sh' \
+          'export MOD_MANAGER_GAMES="/app/share/mosaic-mod-manager/Games"' \
+          'export XDG_DATA_DIRS=/app/share:/usr/share' \
+          'cd /app/share/mosaic-mod-manager' \
+          'exec python3 cli.py "$@"' > /app/bin/mosaic-mod-manager-cli
+      - chmod +x /app/bin/mosaic-mod-manager-cli
+      - install -d /app/share/applications
+      - install -m 644 flatpak/io.github.TheMrGeeBee.MosaicModManager.desktop /app/share/applications/
+
+      # AppStream metainfo — gives Discover / GNOME Software / Warehouse the
+      # app's version + release info ("No version information found" without it).
+      # Stamp @VERSION@ from src/version.py and @DATE@ from git (fallback:
+      # build date) so the <release> entry matches the build, no hand-editing.
+      - install -d /app/share/metainfo
+      - |
+        VER=$(python3 -c "import re,pathlib; \
+          print(re.search(r'\"([^\"]+)\"', \
+          pathlib.Path('src/version.py').read_text()).group(1))")
+        DATE=$(git -C . log -1 --format=%cd --date=short 2>/dev/null \
+               || date +%Y-%m-%d)
+        sed -e "s/@VERSION@/${VER}/" -e "s/@DATE@/${DATE}/" \
+          flatpak/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml \
+          > /app/share/metainfo/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
+      # Validate so a malformed metainfo fails the build. The only remaining
+      # note is pedantic-severity (cid-contains-uppercase-letter) — the
+      # app-id must match the flatpak id, which is case-preserved to match
+      # the GitHub owner name (TheMrGeeBee), so that one is expected and
+      # non-blocking. <developer id="..."> is a *separate* field with no
+      # such exception — it failed validation (developer-id-invalid,
+      # warning severity) until lowercased.
+      - appstreamcli validate --no-net
+        /app/share/metainfo/io.github.TheMrGeeBee.MosaicModManager.metainfo.xml
+      - install -d /app/share/icons/hicolor/16x16/apps /app/share/icons/hicolor/32x32/apps /app/share/icons/hicolor/64x64/apps /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/256x256/apps /app/share/icons/hicolor/scalable/apps
+      - install -m 644 src/appimage/mod-manager-16.png /app/share/icons/hicolor/16x16/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-32.png /app/share/icons/hicolor/32x32/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-64.png /app/share/icons/hicolor/64x64/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager-128.png /app/share/icons/hicolor/128x128/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      - install -m 644 src/appimage/mod-manager.png /app/share/icons/hicolor/256x256/apps/io.github.TheMrGeeBee.MosaicModManager.png
+      # SVG (scalable) — Flathub/AppStream guidelines prefer this over a
+      # capped-resolution PNG. Note: this file is a base64-embedded PNG
+      # wrapped in an SVG container, not hand-drawn vector paths, so it
+      # doesn't get infinite crispness at extreme sizes — but it's a valid
+      # SVG and satisfies the "has a scalable icon" guideline either way.
+      - install -m 644 src/icons/mosaic_mod_manager.svg /app/share/icons/hicolor/scalable/apps/io.github.TheMrGeeBee.MosaicModManager.svg
+    sources:
+      # Flathub's linter treats a local `type: dir` source as a hard,
+      # non-waivable blocker — this is the one required difference from
+      # the source-of-truth manifest. Bump the tag on every future release
+      # before submitting a version-bump PR.
+      - type: git
+        url: https://github.com/TheMrGeeBee/Mosaic-Mod-Manager
+        tag: v1.0.4
+        commit: 8bba88c795bde2e6b3caca5cd7ccca16cd6a5ba1
