@@ -1,0 +1,61 @@
+# pywhispercpp bundles the complete whisper.cpp and pybind11 trees, so this
+# builds with no network access.
+#
+# Its setup.py turns EVERY environment variable into a -D CMake define
+# (setup.py:159), which is the documented way GGML_VULKAN is passed, and it
+# also honours CMAKE_ARGS (setup.py:91). Hence:
+#   PYWHISPERCPP_VERSION      version.txt is absent from the sdist
+#   CMAKE_POLICY_VERSION_MINIMUM  its CMakeLists declares 3.4...3.18, which
+#                             the SDK's CMake 4.x refuses
+#   GGML_NATIVE=OFF           defaults ON and would bake in -march=native
+#   CMAKE_INSTALL_RPATH       libwhisper/libggml land beside the extension
+#                             module, and the RPATH is only set automatically
+#                             for editable installs
+name: pywhispercpp
+buildsystem: simple
+build-commands:
+  # The sdist declares [tool.setuptools_scm], so its version comes from git
+  # metadata that a release tarball does not carry -- it builds as 0.0.0 and
+  # pip then rejects it as inconsistent. setup() has no version= of its own,
+  # so drop the scm section and wire in the version function the package
+  # already ships.
+  - sed -i '/^\[tool\.setuptools_scm\]/,$d' pyproject.toml
+  - sed -i 's/^    name="pywhispercpp",/    name="pywhispercpp",\n    version=get_version(),/' setup.py
+  - |
+    set -eu
+    # setup.py turns every environment variable into a -D CMake define
+    # (setup.py:159); that is the documented route for GGML_VULKAN.
+    export PYWHISPERCPP_VERSION=1.5.1
+    export CMAKE_POLICY_VERSION_MINIMUM=3.5   # its CMakeLists declares 3.4...3.18
+    export CMAKE_GENERATOR=Ninja
+    export GGML_VULKAN=1
+    export GGML_NATIVE=OFF                    # defaults ON; would bake in -march=native
+    # AVX2/FMA/F16C are baked in deliberately. There is no runtime CPU dispatch
+    # in this build, so these emit vfmadd/ymm unconditionally and the CPU
+    # fallback SIGILLs on x86_64 without AVX2 -- pre-2013 hardware, which we
+    # have chosen not to support. Building without them is correct everywhere
+    # but far slower, and not only on the CPU path: whisper runs part of the
+    # graph on the CPU backend even when Vulkan is active, so on an 11.5 s clip
+    # dropping these cost 0.21 s -> 4.56 s on the GPU and 18.7 s -> 237 s on the
+    # CPU. They gate GPU performance too, which is not obvious.
+    # The clean fix is GGML_CPU_ALL_VARIANTS + GGML_BACKEND_DL, which builds one
+    # backend per instruction-set tier and picks at load time.
+    export GGML_AVX=ON
+    export GGML_AVX2=ON
+    export GGML_F16C=ON
+    export GGML_FMA=ON
+    # libwhisper/libggml land beside the extension module, and the RPATH is
+    # only set automatically for editable installs.
+    export CMAKE_ARGS="-DCMAKE_INSTALL_RPATH=\$ORIGIN -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON"
+    pip3 install --no-index --no-build-isolation --no-deps \
+        --prefix="${FLATPAK_DEST}" --verbose .
+  # Belt and braces, in case the RPATH above did not take.
+  - |
+    set -eu
+    site="$(find "${FLATPAK_DEST}/lib" -maxdepth 2 -type d -name site-packages | head -n1)"
+    find "${site}" -maxdepth 2 \( -name 'libggml*.so*' -o -name 'libwhisper*.so*' \) \
+      -exec ln -sfn {} "${FLATPAK_DEST}/lib/" \;
+sources:
+  - type: archive
+    url: https://files.pythonhosted.org/packages/9f/35/610787a277e177e6b7983277a35a2969c0876b46c0d889bc6a0c4b4ac4a7/pywhispercpp-1.5.1.tar.gz
+    sha256: 5df897e5dd9d9f16804fc937bd85b9f5880a0b29a55f8843585e0e03d76195e5

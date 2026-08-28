@@ -1,0 +1,74 @@
+# Flathub submission manifest. This file and the module files beside it are
+# what goes to the flathub/flathub PR -- the filename has to match the app id
+# exactly or flatpak-builder-lint fails with appid-filename-mismatch, which is
+# why the development manifest is the oddly-named one (scribe-dev.yaml).
+#
+# It differs from scribe-dev.yaml ONLY below the shared modules: the source is
+# a pinned git commit rather than the working tree, and the portal spikes are
+# not shipped. finish-args and cleanup are identical in both.
+#
+# Test it the way Flathub builds it -- fetch first, then build with the network
+# off, so anything not declared as a source fails loudly:
+#
+#   flatpak-builder --download-only --state-dir=.fb-offline  x build-aux/io.github.tduarte.Scribe.yaml
+#   flatpak-builder --sandbox --disable-download --state-dir=.fb-offline --force-clean \
+#       build-dir build-aux/io.github.tduarte.Scribe.yaml
+app-id: io.github.tduarte.Scribe
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: scribe
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU: Vulkan compute for whisper.cpp, and GTK4 rendering.
+  - --device=dri
+  # Microphone. Flatpak has no capture-only audio permission and no microphone
+  # portal exists, so this is the only available mechanism.
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
+  # Downloading speech models on first run.
+  - --share=network
+  #
+  # Deliberately absent:
+  #   --device=all      would be needed for ydotool/uinput; rejected by
+  #                     flatpak-builder-lint and unnecessary given the
+  #                     RemoteDesktop portal.
+  #   --filesystem=*    models live in the app's own data directory.
+  #   --talk-name=...   every portal is reachable from any sandbox by default.
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+  # Console scripts from numpy, requests, tqdm and pywhispercpp's own demo
+  # entry points. Only /app/bin/scribe belongs on a user's PATH.
+  - /bin/f2py
+  - /bin/idna
+  - /bin/normalizer
+  - /bin/numpy-config
+  - /bin/tqdm
+  - /bin/pwcpp
+  - /bin/pwcpp-*
+
+modules:
+  - spirv-headers.yaml
+  # numpy, requests, tqdm, platformdirs -- pywhispercpp's install_requires.
+  - python3-deps.yaml
+  - pywhispercpp.yaml
+  - silero-vad-model.yaml
+
+  - name: scribe
+    buildsystem: meson
+    config-opts:
+      - -Dbuildtype=release
+    sources:
+      - type: git
+        url: https://github.com/tduarte/Scribe.git
+        tag: v0.1.2
+        commit: 48d64bf1bfd549240e00e6d2ee4f95d57815a6da
