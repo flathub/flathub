@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.var/app/io.github.theoninesixy.HMCL/data}"
+APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.var/app/io.github.theoninesixy.hmcl/data}"
 HMCL_DIR="$APP_DATA_DIR"
 WORK_DIR="$APP_DATA_DIR"
 EXEC_PATH="/app/share/hmcl/HMCL.jar"
