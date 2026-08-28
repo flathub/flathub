@@ -1,0 +1,151 @@
+name: Update app
+
+on:
+  workflow_dispatch:
+  schedule:
+    # weekly at 7:02 (random time to avoid spikes in GitHub Actions usage)
+    - cron: "2 7 * * 1"
+
+# The usual Flathub updater, flatpak-external-data-checker, is not enough here.
+# It would bump the pinned commit in the manifest, but org.openpatch.classi.yml
+# and everything under generated/ are produced by flatpak-flutter from the app's
+# pubspec.lock. Bumping the commit without regenerating leaves the pinned pub
+# dependencies describing the *previous* release, which either fails the build
+# or, worse, silently builds the new app against old dependency sources.
+#
+# So this workflow does the whole job: find the newest upstream release, repin
+# it, regenerate, and open a PR with all of it together.
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Pinned rather than tracking main: this runs unattended, and a change in
+  # flatpak-flutter's output should be adopted deliberately.
+  FLATPAK_FLUTTER_VERSION: "0.15.0"
+  UPSTREAM_REPO: openpatch/classi
+
+jobs:
+  update:
+    name: Update to the latest Classi release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find the newest upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG=$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq .tag_name)
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::error::Could not determine the latest release of ${UPSTREAM_REPO}"
+            exit 1
+          fi
+
+          # An annotated tag needs the dereferenced ref to reach the commit; a
+          # lightweight one only has the plain ref. Prefer the former.
+          REFS=$(git ls-remote "https://github.com/${UPSTREAM_REPO}.git" \
+            "refs/tags/${TAG}^{}" "refs/tags/${TAG}")
+          SHA=$(echo "$REFS" | grep '\^{}$' | cut -f1 || true)
+          if [ -z "$SHA" ]; then
+            SHA=$(echo "$REFS" | head -1 | cut -f1)
+          fi
+          if [ -z "$SHA" ]; then
+            echo "::error::Could not resolve ${TAG} to a commit"
+            exit 1
+          fi
+
+          CURRENT=$(grep -oP '^\s*commit:\s*\K[0-9a-f]{40}' flatpak-flutter.yml | head -1)
+
+          echo "tag=$TAG" >>"$GITHUB_OUTPUT"
+          echo "sha=$SHA" >>"$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >>"$GITHUB_OUTPUT"
+
+          if [ "$SHA" = "$CURRENT" ]; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "Already on ${TAG} (${SHA}); nothing to do."
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+            echo "Updating ${CURRENT} -> ${SHA} (${TAG})"
+          fi
+
+      - name: Repin the app source
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          # The manifest carries exactly one `commit:` (the Flutter SDK source
+          # is pinned by tag). Assert that, so this can never repin the wrong
+          # source if the manifest gains another git dependency.
+          COUNT=$(grep -c '^\s*commit:' flatpak-flutter.yml)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one 'commit:' in flatpak-flutter.yml, found ${COUNT}"
+            exit 1
+          fi
+
+          sed -i "s|^\(\s*commit:\s*\)[0-9a-f]\{40\}|\1${{ steps.upstream.outputs.sha }}|" \
+            flatpak-flutter.yml
+          grep -n 'commit:' flatpak-flutter.yml
+
+      - name: Set up Python
+        if: steps.upstream.outputs.changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate the offline manifest
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git clone --depth 1 --branch "${FLATPAK_FLUTTER_VERSION}" \
+            https://github.com/TheAppgineer/flatpak-flutter.git /tmp/flatpak-flutter
+          pip install --quiet -r /tmp/flatpak-flutter/requirements.txt
+
+          /tmp/flatpak-flutter/flatpak-flutter.py flatpak-flutter.yml
+
+      - name: Verify the regenerated manifest
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.upstream.outputs.sha }}"
+
+          # Guard against a silently stale regeneration — the exact failure this
+          # workflow exists to prevent.
+          if ! grep -q "$SHA" org.openpatch.classi.yml; then
+            echo "::error::org.openpatch.classi.yml does not reference ${SHA}; regeneration did not take."
+            exit 1
+          fi
+          if [ ! -s generated/sources/pubspec.json ]; then
+            echo "::error::generated/sources/pubspec.json is missing or empty"
+            exit 1
+          fi
+          echo "Regenerated manifest points at ${SHA}"
+
+      - name: Open a pull request
+        if: steps.upstream.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: update/${{ steps.upstream.outputs.tag }}
+          delete-branch: true
+          title: "Update to ${{ steps.upstream.outputs.tag }}"
+          commit-message: "Update to ${{ steps.upstream.outputs.tag }}"
+          body: |
+            Updates Classi to
+            [${{ steps.upstream.outputs.tag }}](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/${{ steps.upstream.outputs.tag }}).
+
+            - `${{ steps.upstream.outputs.current }}`
+            - `${{ steps.upstream.outputs.sha }}`
+
+            The offline manifest and the pinned pub dependencies under
+            `generated/` were regenerated with flatpak-flutter
+            `${{ env.FLATPAK_FLUTTER_VERSION }}`, so they match this release
+            rather than the previous one.
+
+            Opened automatically by `.github/workflows/update-app.yml`.
