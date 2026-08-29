@@ -1,0 +1,119 @@
+id: com.applabhub.formato
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+base: org.libreoffice.LibreOffice
+base-version: stable
+command: formato
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --share=network # Resolve for download ONNX,bin-models( piper, whisper ) from network
+  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=1
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  - --env=ESPEAK_DATA_PATH=/app/share/espeak-ng-data
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm20
+
+build-options:
+  append-path: /usr/lib/sdk/llvm/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  # ============================================================
+  # Piper  TTS
+  # ============================================================
+  - name: piper-binary
+    buildsystem: simple
+    sources:
+
+      - type: archive
+        url: https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
+        sha256: a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992
+        only-arches:
+          - x86_64
+
+      - type: archive
+        url: https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz
+        sha256: 4f4f3fb03681591f86b7ed83f360761e0bb4f2c0bf7123aa12d7c57edfb2193b
+        only-arches:
+          - aarch64
+
+
+      - type: archive
+        url: https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_armv7l.tar.gz
+        sha256: 18efcf07b8b7ed67ff0fa0194c5011f0c29f654b0365bf0bf29f3eb8132ca8bf
+        only-arches:
+          - arm
+          - armv7l
+
+    build-commands:
+      - mkdir -p /app/bin /app/lib /app/share/espeak-ng-data
+
+      - install -Dm755 piper /app/bin/piper
+      - install -Dm755 piper_phonemize /app/bin/piper_phonemize
+
+      - cp -P *.so* /app/lib/
+
+      - cp -r espeak-ng-data/* /app/share/espeak-ng-data/
+
+    build-options:
+      env:
+        - LD_LIBRARY_PATH: /app/lib
+
+  # ============================================================
+  # Main
+  # ============================================================
+  - name: formato
+    buildsystem: simple
+    build-options:
+      env:
+        HOME: /run/build/formato
+        CARGO_HOME: /run/build/formato/src-tauri
+        XDG_CACHE_HOME: /run/build/formato/flatpak-node/cache
+        npm_config_cache: /run/build/formato/flatpak-node/npm-cache
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
+        BINDGEN_EXTRA_CLANG_ARGS: "-idirafter /usr/lib/sdk/llvm20/lib/clang/20/include"
+    sources:
+      - type: git
+        url: https://github.com/App-Lab-Hub/formato.git
+        tag: 1.0.0
+        commit: e0c4edc27e9faf33cfc3f340c2565e1f413dd136
+      - cargo-sources.json
+      - node-sources.json
+    build-commands:
+
+      - mkdir -p src-tauri/.cargo
+      - echo -e '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/formato/cargo/vendor"' > src-tauri/.cargo/config.toml
+
+      - npm install --offline --no-audit --no-fund
+
+      - RUSTFLAGS="--cfg flatpak" npm run tauri build -- -b deb
+#      - RUSTFLAGS="--cfg flatpak" npm run tauri build -- --debug -b deb
+
+      - ar -x src-tauri/target/release/bundle/deb/*.deb
+#      - ar -x src-tauri/target/debug/bundle/deb/*.deb
+
+      - tar -xf data.tar.gz
+
+      - sed -i 's/Icon=formato/Icon=com.applabhub.formato/g' usr/share/applications/Formato.desktop
+
+      - install -Dm755 usr/bin/formato /app/bin/formato
+      - install -Dm644 usr/share/applications/Formato.desktop /app/share/applications/com.applabhub.formato.desktop
+
+      - mkdir -p /app/share/icons/hicolor/32x32/apps
+      - mkdir -p /app/share/icons/hicolor/128x128/apps
+      - mkdir -p /app/share/icons/hicolor/256x256@2/apps
+      - install -m644 usr/share/icons/hicolor/32x32/apps/formato.png /app/share/icons/hicolor/32x32/apps/com.applabhub.formato.png
+      - install -m644 usr/share/icons/hicolor/128x128/apps/formato.png /app/share/icons/hicolor/128x128/apps/com.applabhub.formato.png
+      - install -m644 usr/share/icons/hicolor/256x256@2/apps/formato.png /app/share/icons/hicolor/256x256@2/apps/com.applabhub.formato.png
+
+      - install -Dm644 usr/share/metainfo/com.applabhub.formato.metainfo.xml /app/share/metainfo/com.applabhub.formato.metainfo.xml
+
+      # Link the existing libreoffice binary to soffice for the Rust backend
+      - ln -sf /app/bin/libreoffice /app/bin/soffice
+
