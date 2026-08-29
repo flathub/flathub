@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+name=electron42
+electron_binary="${LIBELECTRON_ELECTRON_BINARY:-/app/opt/libelectron-electron-meta/node_modules/electron/dist/electron}"
+flags_file="${XDG_CONFIG_HOME:-$HOME/.config}/${name}-flags.conf"
+fallback_file="${XDG_CONFIG_HOME:-$HOME/.config}/electron-flags.conf"
+
+if [[ ! -x "${electron_binary}" ]]; then
+    printf 'libelectronmeta: Electron binary not found: %s\n' "${electron_binary}" >&2
+    exit 127
+fi
+
+lines=()
+if [[ -f "${flags_file}" ]]; then
+    mapfile -t lines < "${flags_file}"
+elif [[ -f "${fallback_file}" ]]; then
+    mapfile -t lines < "${fallback_file}"
+fi
+
+flags=()
+
+for line in "${lines[@]}"; do
+    if [[ ! "${line}" =~ ^[[:space:]]*#.* ]] && [[ "${line}" =~ [^[:space:]] ]]; then
+        flags+=("${line}")
+    fi
+done
+
+: "${ELECTRON_IS_DEV:=0}"
+export ELECTRON_IS_DEV
+: "${ELECTRON_FORCE_IS_PACKAGED:=true}"
+export ELECTRON_FORCE_IS_PACKAGED
+
+if command -v zypak-wrapper >/dev/null 2>&1; then
+    exec zypak-wrapper "${electron_binary}" . "${flags[@]}" "$@"
+fi
+
+exec "${electron_binary}" . "${flags[@]}" "$@"

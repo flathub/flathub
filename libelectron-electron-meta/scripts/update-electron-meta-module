@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+versions_file="${repo_dir}/versions/electron.env"
+module_template="${repo_dir}/modules/libelectron-electron-meta.yml.in"
+module_output="${repo_dir}/modules/libelectron-electron-meta.yml"
+wrapper_template="${repo_dir}/scripts/libelectronmeta.in"
+wrapper_output="${repo_dir}/scripts/libelectronmeta"
+
+source "${versions_file}"
+
+required_vars=(
+    ELECTRON_MAJOR_VERSION
+    ELECTRON_VERSION
+    ELECTRON_X64_SHA256
+    ELECTRON_ARM64_SHA256
+)
+
+for var in "${required_vars[@]}"; do
+    if [[ -z "${!var:-}" ]]; then
+        printf 'Missing required variable: %s\n' "${var}" >&2
+        exit 1
+    fi
+done
+
+render() {
+    local input="$1"
+    local output="$2"
+    local content
+
+    content="$(< "${input}")"
+    for var in "${required_vars[@]}"; do
+        content="${content//@${var}@/${!var}}"
+    done
+    printf '%s\n' "${content}" > "${output}"
+}
+
+render "${module_template}" "${module_output}"
+render "${wrapper_template}" "${wrapper_output}"
+chmod +x "${wrapper_output}"
+
+printf 'Updated Electron meta module for Electron %s\n' "${ELECTRON_VERSION}"
+printf 'Regenerated %s\n' "${module_output}"
+printf 'Regenerated %s\n' "${wrapper_output}"

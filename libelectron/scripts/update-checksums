@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+versions_file="${repo_dir}/versions/libelectron.env"
+update_module="${repo_dir}/scripts/update-libelectron-module"
+tmp_dir="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "${tmp_dir}"
+}
+trap cleanup EXIT
+
+source "${versions_file}"
+
+required_vars=(
+    LIBELECTRON_VERSION
+    LIBSPLASH_VERSION
+    LIBADBLOCK_VERSION
+    LIBUSERAGENT_VERSION
+)
+
+for var in "${required_vars[@]}"; do
+    if [[ -z "${!var:-}" ]]; then
+        printf 'Missing required variable: %s\n' "${var}" >&2
+        exit 1
+    fi
+done
+
+download() {
+    local url="$1"
+    local output="$2"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --location --silent --show-error --output "${output}" "${url}"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --quiet --output-document="${output}" "${url}"
+    else
+        printf 'Either curl or wget is required.\n' >&2
+        exit 1
+    fi
+}
+
+checksum() {
+    local var="$1"
+    local url="$2"
+    local output="${tmp_dir}/${var}.tar.bz2"
+
+    printf 'Downloading %s\n' "${url}" >&2
+    download "${url}" "${output}"
+    sha256sum "${output}" | cut -d ' ' -f 1
+}
+
+replace_value() {
+    local key="$1"
+    local value="$2"
+    local temp_file="${tmp_dir}/libelectron.env"
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        case "${line}" in
+            "${key}="*)
+                printf '%s=%s\n' "${key}" "${value}"
+                ;;
+            *)
+                printf '%s\n' "${line}"
+                ;;
+        esac
+    done < "${versions_file}" > "${temp_file}"
+
+    mv "${temp_file}" "${versions_file}"
+}
+
+base_url="https://gitlab.com/linuxbombay/libelectron"
+
+libelectron_url="${base_url}/libelectron/-/archive/${LIBELECTRON_VERSION}/libelectron-${LIBELECTRON_VERSION}.tar.bz2"
+libsplash_url="${base_url}/libsplash/-/archive/${LIBSPLASH_VERSION}/libsplash-${LIBSPLASH_VERSION}.tar.bz2"
+libadblock_url="${base_url}/libadblock/libadblock/-/archive/${LIBADBLOCK_VERSION}/libadblock-${LIBADBLOCK_VERSION}.tar.bz2"
+libuseragent_url="${base_url}/libuseragent/-/archive/${LIBUSERAGENT_VERSION}/libuseragent-${LIBUSERAGENT_VERSION}.tar.bz2"
+
+replace_value LIBELECTRON_SHA256 "$(checksum LIBELECTRON "${libelectron_url}")"
+replace_value LIBSPLASH_SHA256 "$(checksum LIBSPLASH "${libsplash_url}")"
+replace_value LIBADBLOCK_SHA256 "$(checksum LIBADBLOCK "${libadblock_url}")"
+replace_value LIBUSERAGENT_SHA256 "$(checksum LIBUSERAGENT "${libuseragent_url}")"
+
+"${update_module}"
+
+printf 'Updated checksums in %s\n' "${versions_file}"
+printf 'Regenerated %s\n' "${repo_dir}/modules/libelectron.yml"
