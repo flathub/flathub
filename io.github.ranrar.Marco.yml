@@ -1,0 +1,177 @@
+# Flathub submission manifest for Marco, the editor.
+#
+# REFERENCE COPY. This file is not tracked in git and nothing in this repository
+# builds it. The manifest that matters is the one in the Flathub repository --
+# first a fork of flathub/flathub, later flathub/io.github.ranrar.Marco. Keep
+# this copy in step with that one by hand; it exists so there is a record here
+# of what was actually submitted.
+#
+# It is SELF-CONTAINED on purpose: the desktop file, metainfo, icon and D-Bus
+# service file travel with the manifest as `type: file` sources rather than
+# being copied out of the checked-out source tree. That is what lets
+# build/linux/flatpak/ stay untracked. What Flathub builds out of this
+# repository is the Rust code and LICENSE, nothing else.
+#
+# The local build manifest, io.github.ranrar.Marco.yml, is the opposite: it
+# builds a `dir` source and installs those four files by path. The two differ
+# there, and in three ways forced by Flathub's rules:
+#
+#   1. No `--share=network` in build-args. Flathub builders have no network;
+#      the docs state the flag "will not function". Dependencies come from
+#      cargo-sources.json instead.
+#   2. The source is a tagged git commit, not a local `dir`. Sources must be
+#      remote and checksummed.
+#   3. cargo runs `--offline` against the vendored crates.
+#
+# SUBMIT THIS ONE FIRST. Polo's submission (../polo/) uses a five-component app
+# ID that points at this same repository, and that is an easier conversation to
+# have once the editor is already accepted.
+#
+# SUBMITTING
+#   Fork github.com/flathub/flathub WITHOUT "copy the master branch only",
+#   branch off `new-pr` named after the app ID, and add these SEVEN files at the
+#   repository root:
+#
+#       io.github.ranrar.Marco.yml            <- this file, renamed
+#       cargo-sources.json
+#       io.github.ranrar.Marco.desktop
+#       io.github.ranrar.Marco.metainfo.xml
+#       io.github.ranrar.Marco.service
+#       io.github.ranrar.Marco.png            <- from icons/, flattened
+#
+#   Open a pull request against `new-pr` titled "Add io.github.ranrar.Marco",
+#   then comment `bot, build` to trigger a test build.
+#
+# BEFORE SUBMITTING
+#   - Tag the release and set `tag` + `commit` below to real values.
+#   - Generate cargo-sources.json from the LOCKFILE AT THAT TAG, not from the
+#     working tree -- an offline build against a mismatched vendor directory
+#     fails to resolve:
+#       python flatpak-cargo-generator.py ./Cargo.lock -o cargo-sources.json
+#   - The `--filesystem=home` grant needs an exception request; the
+#     justification is in ../README.md under "Filesystem".
+
+app-id: io.github.ranrar.Marco
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: markdowncomposer
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # No --talk-name for Polo: the traffic goes the other way. Polo's manifest
+  # carries that grant; Marco only has to be reachable, which owning its own
+  # app ID already allows.
+
+  # The WebView loads remote images and links, and the mention dialog checks
+  # profile URLs over HTTPS. This is RUNTIME network access, unrelated to the
+  # build-time network ban.
+  - --share=network
+
+  # Document-relative links and images resolve against the opened file's
+  # directory, reading sibling files the file-chooser portal never granted.
+  # The portal grants per file, never per directory. flatpak-builder-lint
+  # reports this as `finish-args-home-filesystem-access`; it needs an
+  # exception, not a fix.
+  - --filesystem=home
+
+  # No font grants: Flatpak exposes host fonts automatically, and the linter
+  # rejects xdg-config/fontconfig and xdg-data/fonts as unnecessary.
+
+cleanup:
+  - /lib/pkgconfig
+  - /share/gir-1.0
+  - /share/gtk-doc
+
+modules:
+  - name: marco
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # cargo-sources.json writes its vendor config to <builddir>/cargo/config,
+        # so CARGO_HOME must point at that directory.
+        CARGO_HOME: /run/build/marco/cargo
+        CARGO_NET_OFFLINE: 'true'
+
+    build-commands:
+      # The SDK ships a fixed rustc and cannot run rustup offline. The repo pin
+      # (1.94.1) is a floor, not a ceiling, so drop it and use the SDK's.
+      - rm -f rust-toolchain.toml
+
+      # Only the editor -- Polo is a separate Flatpak with its own manifest.
+      - cargo --offline build --release -p marco
+
+      # Installed name matches the Debian package; see
+      # marco-shared/src/paths/mod.rs. Upstream the binary is `marco`, but that
+      # collides with the MATE window manager on Debian, and the path constants
+      # follow the renamed form.
+      - install -Dm755 target/release/marco /app/bin/markdowncomposer
+
+      # is_valid_asset_root() requires icons/, themes/ AND language/ together;
+      # a partial copy is silently rejected and the app exits at startup. These
+      # come from the git source -- they are application assets, not packaging.
+      - install -d /app/share/markdowncomposer
+      - cp -r marco-shared/src/assets/icons    /app/share/markdowncomposer/
+      - cp -r marco-shared/src/assets/themes   /app/share/markdowncomposer/
+      - cp -r marco-shared/src/assets/language /app/share/markdowncomposer/
+
+      # The four files below are `type: file` sources, so they sit in the build
+      # root by basename -- no path into the checked-out tree. That is the whole
+      # reason build/linux/flatpak/ does not have to be tracked upstream.
+      #
+      # The desktop file's basename must equal the app_id of the window it
+      # represents; GNOME Shell matches windows to apps by desktop FILENAME.
+      - install -Dm644 io.github.ranrar.Marco.desktop
+          /app/share/applications/io.github.ranrar.Marco.desktop
+      - install -Dm644 io.github.ranrar.Marco.metainfo.xml
+          /app/share/metainfo/io.github.ranrar.Marco.metainfo.xml
+
+      # Makes Marco D-Bus activatable, so Polo -- a separate Flatpak -- can hand
+      # a document over with org.freedesktop.Application.Open instead of
+      # spawning a binary it no longer has. Flatpak does not generate this from
+      # DBusActivatable=true, but `build-export` validates the pair: with that
+      # key set, a missing service file is a hard error and Name= must equal the
+      # app ID.
+      - install -Dm644 io.github.ranrar.Marco.service
+          /app/share/dbus-1/services/io.github.ranrar.Marco.service
+
+      # Pre-generated at exactly 256x256; ImageMagick is not in the SDK.
+      - install -Dm644 io.github.ranrar.Marco.png
+          /app/share/icons/hicolor/256x256/apps/io.github.ranrar.Marco.png
+
+      # Required by Flathub: the licence must land in
+      # $FLATPAK_DEST/share/licenses/$FLATPAK_ID. This one DOES come from the
+      # git source -- LICENSE is tracked at the repository root. The metainfo
+      # declares MIT to match.
+      - install -Dm644 LICENSE
+          /app/share/licenses/io.github.ranrar.Marco/LICENSE
+
+    sources:
+      - type: git
+        url: https://github.com/Ranrar/Marco.git
+        # PLACEHOLDER -- set both to the real release before opening the PR;
+        # Flathub will not build a branch or an untagged snapshot, and
+        # cargo-sources.json must be generated from this commit's Cargo.lock.
+        tag: v0.25.0
+        commit: '05559a92dcbbd72539632cda9b9a42c14a94f27b'
+
+      - cargo-sources.json
+
+      # Packaging data, carried by the Flathub repository rather than by the
+      # application's own tree. Kept beside the manifest, flat.
+      - type: file
+        path: io.github.ranrar.Marco.desktop
+      - type: file
+        path: io.github.ranrar.Marco.metainfo.xml
+      - type: file
+        path: io.github.ranrar.Marco.service
+      - type: file
+        path: io.github.ranrar.Marco.png

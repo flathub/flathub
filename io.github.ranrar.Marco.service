@@ -1,0 +1,36 @@
+# D-Bus service file for Marco, so the session bus can start it on demand.
+#
+# WHY THIS EXISTS
+#   Polo's "open in Marco" hands the document over with
+#   org.freedesktop.Application.Open rather than spawning a binary, because
+#   after the Flatpak split there is no Marco binary inside Polo's sandbox.
+#   GApplication exports that interface itself, so there is no code behind it --
+#   but the bus can only *start* a name it has a service file for, and Flatpak
+#   does not generate one from the desktop file's DBusActivatable=true. Without
+#   this file, the handover works only while Marco is already running, and
+#   marco_link::availability() reports an installed Marco as missing, because it
+#   asks the bus for ListActivatableNames.
+#
+# TWO SEPARATE PHASES TOUCH THIS FILE -- do not confuse them
+#   BUILD-EXPORT validates but does not modify. `validate_exports` reads the
+#   desktop file, and if it says DBusActivatable=true then a missing
+#   share/dbus-1/services/<app-id>.service is a HARD ERROR ("Desktop file D-Bus
+#   activatable, but service file not exported"). Name= must equal the app ID
+#   ("Name in service file ... does not match app id"), and a missing Exec
+#   binary is a warning. So the pair below is checked at build time.
+#
+#   INSTALL rewrites. `flatpak_rewrite_export_dir`, called from
+#   `flatpak_dir_deploy`, turns the Exec line into
+#   `flatpak run --command=/app/bin/markdowncomposer io.github.ranrar.Marco
+#   --gapplication-service` in the installation's exports directory. The copy
+#   committed to the OSTree repo is still verbatim -- so reading the repo is not
+#   a way to check the rewrite; only an installed build shows it.
+#
+#   --gapplication-service puts GApplication into service mode: it registers on
+#   the bus and waits, rather than activating a window immediately. GLib adds
+#   this option automatically for any app that is not already flagged
+#   IS_SERVICE or IS_LAUNCHER, which Marco is not.
+
+[D-BUS Service]
+Name=io.github.ranrar.Marco
+Exec=/app/bin/markdowncomposer --gapplication-service
