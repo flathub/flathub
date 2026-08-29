@@ -1,7 +1,9 @@
 app-id: io.github.xfuentes.smart-video-processor
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
-sdk: org.kde.Sdk//6.10
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
 add-extensions:
   org.freedesktop.Platform.ffmpeg-full:
     version: '25.08'
@@ -17,116 +19,234 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
   - --share=network
-  - --filesystem=xdg-run/app
   - --socket=wayland
-  - --env=LD_LIBRARY_PATH=/app/lib
   - --env=ELECTRON_TRASH=gio
-  - --env=FLATHUB=true
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 modules:
-  - name: boost
+  - name: mkvmerge-x86_64
+    only-arches:
+      - x86_64
     buildsystem: simple
     build-commands:
-      - ./bootstrap.sh --prefix=/app --with-libraries=filesystem,system
-      - ./b2 -j $FLATPAK_BUILDER_N_JOBS install
-    sources:
-      - type: archive
-        url: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2
-        sha256: 1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b
-
-  - name: cmark
-    buildsystem: cmake-ninja
-    builddir: true
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
-      - -DCMARK_STATIC=OFF
-    cleanup:
-      - /bin
-    sources:
-      - type: archive
-        url: https://github.com/commonmark/cmark/archive/refs/tags/0.31.1.tar.gz
-        sha256: 3da93db5469c30588cfeb283d9d62edfc6ded9eb0edc10a4f5bbfb7d722ea802
-
-  - name: libdvdcss
-    sources:
-      - type: archive
-        url: https://download.videolan.org/pub/libdvdcss/1.4.3/libdvdcss-1.4.3.tar.bz2
-        sha256: 233cc92f5dc01c5d3a96f5b3582be7d5cee5a35a52d3a08158745d3d86070079
-
-  - name: libdvdread
-    sources:
-      - type: archive
-        url: https://download.videolan.org/pub/videolan/libdvdread/6.1.3/libdvdread-6.1.3.tar.bz2
-        sha256: ce35454997a208cbe50e91232f0e73fb1ac3471965813a13b8730a8f18a15369
-
-  - name: mkvtoolnix
-    buildsystem: simple
-    build-commands:
-      - ./configure
-        --enable-optimization
-        --disable-gui
-        --prefix=/app
-        --with-boost=/app
-        --with-qmake6=/usr/bin/qmake6
-        --with-docbook-xsl-root=/usr/share/xml/docbook/xml/xsl-stylesheets
-        --disable-update-check
-      - ./drake -j $FLATPAK_BUILDER_N_JOBS
-      - ./drake install
       - |
         set -e
-        mkdir -p /app/lib
-        QT_LIB_DIR=$(qmake6 -query QT_INSTALL_LIBS 2>/dev/null || echo /usr/lib)
-        for lib in $(find "$QT_LIB_DIR" -maxdepth 1 -name 'libQt6*.so*'); do
-          cp -L "$lib" /app/lib/
+        mkdir -p deb
+        for deb in *.deb; do
+          b=$(basename "$deb" .deb)
+          mkdir -p "deb/$b"
+          (cd "deb/$b" && ar x "../../$deb" && tar -xf data.tar.*)
         done
-        for lib in $(LD_LIBRARY_PATH=/app/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu ldd /app/bin/mkvmerge | awk '/=> \/ {print $3}' | sort -u); do
-          case "$lib" in
-            /app/*|*linux-vdso*|*ld-linux*|*libc.so*|*libm.so*|*libpthread.so*|*libdl.so*|*librt.so*|*libgcc_s.so*|*libstdc++.so*) ;;
-            *) cp -L "$lib" /app/lib/ 2>/dev/null || true ;;
-          esac
+        mkdir -p /app/bin /app/lib
+        MKVMERGE=$(find "$PWD/deb" -type f -name mkvmerge | head -1)
+        install -Dm755 "$MKVMERGE" /app/bin/mkvmerge
+        # Collect all libraries required by the prebuilt binary and copy only
+        # those to /app/lib, ignoring base runtime libraries.
+        DEB_LIB_DIR=$(find "$PWD/deb" -type d -name 'x86_64-linux-gnu' | tr '\n' ':')
+        SKIP_RE="linux-vdso|ld-linux|libc\.so|libm\.so|libpthread\.so|libdl\.so|librt\.so|libgcc_s\.so|libstdc\+\+\.so|libmvec\.so|libglib-2\.0|libgobject-2\.0|libgio-2\.0|libgmodule-2\.0|libgthread-2\.0|libpcre2-.*\.so"
+        export LD_LIBRARY_PATH="$DEB_LIB_DIR"
+        ldd /app/bin/mkvmerge 2>/dev/null | grep -oE '/[^ ]+\.so\.[^ ]+' > /tmp/mkvmerge.0
+        for i in 1 2 3 4 5; do
+          while IFS= read -r lib; do
+            ldd "$lib" 2>/dev/null | grep -oE '/[^ ]+\.so\.[^ ]+'
+          done < /tmp/mkvmerge.$((i-1)) | sort -u > /tmp/mkvmerge.$i
         done
-      - mkdir -p /app/share/doc/mkvtoolnix
-      - install -m0644 -t/app/share/doc/mkvtoolnix AUTHORS CODE_OF_CONDUCT.md COPYING README.md
+        sort -u /tmp/mkvmerge.* | while IFS= read -r lib; do
+          [ -z "$lib" ] && continue
+          base=$(basename "$lib")
+          echo "$base" | grep -Eq "$SKIP_RE" && continue
+          [ -f "/app/lib/$base" ] && continue
+          [ -f "$lib" ] && cp -L "$lib" "/app/lib/$base"
+        done
     sources:
-      - type: archive
-        url: https://mkvtoolnix.download/sources/mkvtoolnix-101.0.tar.xz
-        sha256: f638b299e49cdd4efc4ab3c68dbb593ed6a61bd01bf8862da74ef7fb4d181ce8
-    modules:
-      - name: ruby
-        sources:
-          - type: archive
-            url: https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.7.tar.gz
-            sha256: 23815a6d095696f7919090fdc3e2f9459b2c83d57224b2e446ce1f5f7333ef36
-        cleanup:
-          - '*'
-
-  - name: nodejs
+      - type: file
+        url: https://mkvtoolnix.download/debian/pool/bookworm/main/m/mkvtoolnix/mkvtoolnix_101.0-0~debian12bunkus01_amd64.deb
+        dest-filename: mkvtoolnix_101.0-0~debian12bunkus01_amd64.deb
+        sha256: ecffa3205c09e6a005228f9994dce121c01c17a953f8b358f1ee71eb3e94b43d
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/b/boost1.74/libboost-filesystem1.74.0_1.74.0%2bds1-21_amd64.deb
+        dest-filename: libboost-filesystem1.74.0_1.74.0+ds1-21_amd64.deb
+        sha256: 3e80caec26a4ee663dc2e4fdaf10b0f03308284f7e44248290b8dd18de4ca237
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/f/flac/libflac12_1.4.2%2bds-2_amd64.deb
+        dest-filename: libflac12_1.4.2+ds-2_amd64.deb
+        sha256: 4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/f/fmtlib/libfmt9_9.1.0%2bds1-2_amd64.deb
+        dest-filename: libfmt9_9.1.0+ds1-2_amd64.deb
+        sha256: c3d405b6eabb1a521b60a57509826707f0e6f92b41cdfaae06bf1d7c37da2166
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/gmp/libgmp10_6.2.1%2bdfsg1-1.1_amd64.deb
+        dest-filename: libgmp10_2%3a6.2.1+dfsg1-1.1_amd64.deb
+        sha256: 187aedef2ed763f425c1e523753b9719677633c7eede660401739e9c893482bd
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/i/icu/libicu72_72.1-3%2bdeb12u1_amd64.deb
+        dest-filename: libicu72_72.1-3+deb12u1_amd64.deb
+        sha256: f7f6f99c6d7b025914df2447fc93e11d22c44c0c8bdd8b6f36691c9e7ddcef88
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libb/libb2/libb2-1_0.98.1-1.1_amd64.deb
+        dest-filename: libb2-1_0.98.1-1.1_amd64.deb
+        sha256: 322be801ee9051f34cc4f09512222bac1f0918e32da3a2bd12eddc51cd2df653
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libd/libdvdread/libdvdread8_6.1.3-1_amd64.deb
+        dest-filename: libdvdread8_6.1.3-1_amd64.deb
+        sha256: 7d06effc2a930cc8d737adcb56486cc8315ac216f917f5550360bcb2396aa738
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_amd64.deb
+        dest-filename: libvorbis0a_1.3.7-1_amd64.deb
+        sha256: 01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libo/libogg/libogg0_1.3.5-3_amd64.deb
+        dest-filename: libogg0_1.3.5-3_amd64.deb
+        sha256: f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/q/qt6-base/libqt6core6_6.4.2%2bdfsg-10_amd64.deb
+        dest-filename: libqt6core6_6.4.2+dfsg-10_amd64.deb
+        sha256: 2849e8e686c3f7a1b60ad30373b64d6be33003f4b80953eacf331901c20beeb7
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/d/double-conversion/libdouble-conversion3_3.2.1-1_amd64.deb
+        dest-filename: libdouble-conversion3_3.2.1-1_amd64.deb
+        sha256: 802b880ed900e4a8d54bab77b7551a7f3408b04891c3e5650fdc2368cc1fbc0a
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/glib2.0/libglib2.0-0_2.74.6-2%2bdeb12u9_amd64.deb
+        dest-filename: libglib2.0-0_2.74.6-2+deb12u9_amd64.deb
+        sha256: 7ff85197685d89e150e342b29a59aab1beee400050ba7da73de81cd999ffee5a
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-16-0_10.42-1_amd64.deb
+        dest-filename: libpcre2-16-0_10.42-1_amd64.deb
+        sha256: 53892097cf102ecd8f133ccd3f1f6be6f288c6ffeeeacf6ce081dfee15292675
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-8-0_10.42-1_amd64.deb
+        dest-filename: libpcre2-8-0_10.42-1_amd64.deb
+        sha256: 030db54f4d76cdfe2bf0e8eb5f9efea0233ab3c7aa942d672c7b63b52dbaf935
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libz/libzstd/libzstd1_1.5.4%2bdfsg2-5_amd64.deb
+        dest-filename: libzstd1_1.5.4+dfsg2-5_amd64.deb
+        sha256: 6315b5ac38b724a710fb96bf1042019398cb656718b1522279a5185ed39318fa
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14%2bdeb12u1_amd64.deb
+        dest-filename: libgomp1_12.2.0-14+deb12u1_amd64.deb
+        sha256: 48fec46bda7f5b1638b9e959889bfbc20491247d402d120bb152687eb48143d7
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/z/zlib/zlib1g_1.2.13.dfsg-1_amd64.deb
+        dest-filename: zlib1g_1%3a1.2.13.dfsg-1_amd64.deb
+        sha256: d7dd1d1411fedf27f5e27650a6eff20ef294077b568f4c8c5e51466dc7c08ce4
+  - name: mkvmerge-aarch64
+    only-arches:
+      - aarch64
     buildsystem: simple
     build-commands:
       - |
-        case "$FLATPAK_ARCH" in
-          x86_64) ARCHIVE=node-v22.12.0-linux-x64.tar.xz ;;
-          aarch64) ARCHIVE=node-v22.12.0-linux-arm64.tar.xz ;;
-        esac
-        mkdir -p /app/lib/node
-        tar -xf "$ARCHIVE" -C /app/lib/node --strip-components=1
+        set -e
+        mkdir -p deb
+        for deb in *.deb; do
+          b=$(basename "$deb" .deb)
+          mkdir -p "deb/$b"
+          (cd "deb/$b" && ar x "../../$deb" && tar -xf data.tar.*)
+        done
+        mkdir -p /app/bin /app/lib
+        MKVMERGE=$(find "$PWD/deb" -type f -name mkvmerge | head -1)
+        install -Dm755 "$MKVMERGE" /app/bin/mkvmerge
+        # Collect all libraries required by the prebuilt binary and copy only
+        # those to /app/lib, ignoring base runtime libraries.
+        DEB_LIB_DIR=$(find "$PWD/deb" -type d -name 'aarch64-linux-gnu' | tr '\n' ':')
+        SKIP_RE="linux-vdso|ld-linux|libc\.so|libm\.so|libpthread\.so|libdl\.so|librt\.so|libgcc_s\.so|libstdc\+\+\.so|libmvec\.so|libglib-2\.0|libgobject-2\.0|libgio-2\.0|libgmodule-2\.0|libgthread-2\.0|libpcre2-.*\.so"
+        export LD_LIBRARY_PATH="$DEB_LIB_DIR"
+        ldd /app/bin/mkvmerge 2>/dev/null | grep -oE '/[^ ]+\.so\.[^ ]+' > /tmp/mkvmerge.0
+        for i in 1 2 3 4 5; do
+          while IFS= read -r lib; do
+            ldd "$lib" 2>/dev/null | grep -oE '/[^ ]+\.so\.[^ ]+'
+          done < /tmp/mkvmerge.$((i-1)) | sort -u > /tmp/mkvmerge.$i
+        done
+        sort -u /tmp/mkvmerge.* | while IFS= read -r lib; do
+          [ -z "$lib" ] && continue
+          base=$(basename "$lib")
+          echo "$base" | grep -Eq "$SKIP_RE" && continue
+          [ -f "/app/lib/$base" ] && continue
+          [ -f "$lib" ] && cp -L "$lib" "/app/lib/$base"
+        done
     sources:
       - type: file
-        url: https://nodejs.org/download/release/v22.12.0/node-v22.12.0-linux-x64.tar.xz
-        sha256: 22982235e1b71fa8850f82edd09cdae7e3f32df1764a9ec298c72d25ef2c164f
+        url: https://mkvtoolnix.download/debian/pool/bookworm/main/m/mkvtoolnix/mkvtoolnix_101.0-0~debian12bunkus01_arm64.deb
+        dest-filename: mkvtoolnix_101.0-0~debian12bunkus01_arm64.deb
+        sha256: a39376b19794d0f9d1474d481115f934caeca8714f09617fa72beac666fac84c
       - type: file
-        url: https://nodejs.org/download/release/v22.12.0/node-v22.12.0-linux-arm64.tar.xz
-        sha256: 8cfd5a8b9afae5a2e0bd86b0148ca31d2589c0ea669c2d0b11c132e35d90ed68
+        url: http://deb.debian.org/debian/pool/main/b/boost1.74/libboost-filesystem1.74.0_1.74.0%2bds1-21_arm64.deb
+        dest-filename: libboost-filesystem1.74.0_1.74.0+ds1-21_arm64.deb
+        sha256: 486dd6442b5562ac197efd05d1f067d175e4c361212d1df757755f50a9c93fe0
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/f/flac/libflac12_1.4.2%2bds-2_arm64.deb
+        dest-filename: libflac12_1.4.2+ds-2_arm64.deb
+        sha256: 338f78e2a140ed4ffca36d4240a7fc6f7867999bea000762a0c1b3924245a868
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/f/fmtlib/libfmt9_9.1.0%2bds1-2_arm64.deb
+        dest-filename: libfmt9_9.1.0+ds1-2_arm64.deb
+        sha256: 7d4f191b968e33c491b252bae91b5f67737c01b8946bda98d1a13d4bac65a0f2
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/gmp/libgmp10_6.2.1%2bdfsg1-1.1_arm64.deb
+        dest-filename: libgmp10_2%3a6.2.1+dfsg1-1.1_arm64.deb
+        sha256: 9906387c1dd806518c915bd8616d072c741061d7fa26b222e52763456060b31a
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/i/icu/libicu72_72.1-3%2bdeb12u1_arm64.deb
+        dest-filename: libicu72_72.1-3+deb12u1_arm64.deb
+        sha256: 4f5d892fd81110435e45ed0a5f1b12899d7ff989d51db283cbc043f5631646d8
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libb/libb2/libb2-1_0.98.1-1.1_arm64.deb
+        dest-filename: libb2-1_0.98.1-1.1_arm64.deb
+        sha256: 7e81c630e6e5835ac36ec915a46c2c60407be3ad12378ea1c466fff7b8ca1bb6
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libd/libdvdread/libdvdread8_6.1.3-1_arm64.deb
+        dest-filename: libdvdread8_6.1.3-1_arm64.deb
+        sha256: f863417b3cf98127e0ab210fb0173c46de0aba56e6df20f8fe9851bda784db9f
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_arm64.deb
+        dest-filename: libvorbis0a_1.3.7-1_arm64.deb
+        sha256: 2f902ae456bcada7b0d494d7bd7c994feb81c4158209d8a12c0b2d9e255edda7
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libo/libogg/libogg0_1.3.5-3_arm64.deb
+        dest-filename: libogg0_1.3.5-3_arm64.deb
+        sha256: 1a3e6c2a934a4099dcd982785d1563212fc6ad20f021a6f06aa0d6e6582416d3
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/q/qt6-base/libqt6core6_6.4.2%2bdfsg-10_arm64.deb
+        dest-filename: libqt6core6_6.4.2+dfsg-10_arm64.deb
+        sha256: 3447d2ba935f8b4b826f338baf6349d9ec6aeba2b98c8507d59e8c15b809588c
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/d/double-conversion/libdouble-conversion3_3.2.1-1_arm64.deb
+        dest-filename: libdouble-conversion3_3.2.1-1_arm64.deb
+        sha256: 84ce970692c83dcad802d5250dec44056b92d4f0ad5a8d40c5e41906f61100af
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/glib2.0/libglib2.0-0_2.74.6-2%2bdeb12u9_arm64.deb
+        dest-filename: libglib2.0-0_2.74.6-2+deb12u9_arm64.deb
+        sha256: 61d92fffada7e27fc0ed9d23e047b45bca3b2e3bfe1a918f4ec16559282859f4
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-16-0_10.42-1_arm64.deb
+        dest-filename: libpcre2-16-0_10.42-1_arm64.deb
+        sha256: f4f08df15ba9faa2e74028212a0a7f5c6dc723d3ef3a71a923917a70aae0f3fe
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-8-0_10.42-1_arm64.deb
+        dest-filename: libpcre2-8-0_10.42-1_arm64.deb
+        sha256: b2448d0a8a3db7fbeac231e7ef93811346c1fb5f96ccf6f631701d8a4eb39206
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/libz/libzstd/libzstd1_1.5.4%2bdfsg2-5_arm64.deb
+        dest-filename: libzstd1_1.5.4+dfsg2-5_arm64.deb
+        sha256: 95e173c9538f96ede4fc275ec7863f395a97dd0ea62454be9bc914efa1b9be93
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14%2bdeb12u1_arm64.deb
+        dest-filename: libgomp1_12.2.0-14+deb12u1_arm64.deb
+        sha256: a48b70dd1a95585466b40bd94564bce56ebcb2566e49ccdb6441e996aaab2098
+      - type: file
+        url: http://deb.debian.org/debian/pool/main/z/zlib/zlib1g_1.2.13.dfsg-1_arm64.deb
+        dest-filename: zlib1g_1%3a1.2.13.dfsg-1_arm64.deb
+        sha256: 52b8b8a145bbe1956bba82034f77022cbef0c3d0885c9e32d9817a7932fe1913
 
   - name: smart-video-processor
     buildsystem: simple
     build-options:
-      append-path: /app/lib/node/bin
+      append-path: /usr/lib/sdk/node22/bin
       env:
         XDG_CACHE_HOME: /run/build/smart-video-processor/flatpak-node/cache
         npm_config_cache: /run/build/smart-video-processor/flatpak-node/npm-cache
         npm_config_offline: 'true'
-        npm_config_nodedir: /app/lib/node
+        npm_config_nodedir: /usr/lib/sdk/node22
         ELECTRON_CACHE: /run/build/smart-video-processor/flatpak-node/cache/electron
 
     build-commands:
@@ -156,6 +276,6 @@ modules:
       - type: script
         dest-filename: run.sh
         commands:
-          - export PATH="/app/bin:/usr/bin:/app/lib/ffmpeg/bin:$PATH"
-          - export LD_LIBRARY_PATH="/app/lib:/app/lib/ffmpeg/lib:$LD_LIBRARY_PATH"
+          - export PATH="/app/lib/ffmpeg/bin:$PATH"
+          - export FLATHUB=true
           - exec zypak-wrapper /app/lib/smart-video-processor/smart-video-processor "$@"
