@@ -1,0 +1,224 @@
+# Claude Desktop as a Flatpak.
+#
+# The application itself is proprietary, so it is NOT redistributed here.
+# The manifest uses an `extra-data` source: Flatpak downloads Anthropic's
+# official .deb on the user's machine at install time, then runs the
+# `apply_extra` script to unpack it into /app/extra. This is the same shape
+# Flathub already uses for Slack, Spotify and Discord.
+#
+# Reference: gordonmessmer's com.anthropic.Claude manifest
+# (https://github.com/gordonmessmer/com.anthropic.Claude). That one bundles
+# the .deb payload at build time, which is fine for a local build but cannot
+# be hosted on Flathub. The finish-args list and the zypak launcher shape
+# below follow his work.
+app-id: io.github.dewzor.ClaudeDesktop
+
+# The Electron base app supplies zypak, which lets Chromium sandbox itself
+# inside the Flatpak sandbox without a setuid helper.
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: claude-desktop
+
+# Go, to build host-spawn from source. Build time only: the extension is not
+# part of the finished app.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+# The payload arrives at install time, so there are no locale directories to
+# split out at build time.
+separate-locales: false
+
+finish-args:
+  # Wayland first, X11 as the fallback. Chromium needs shared memory over IPC
+  # when it runs on X11.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+
+  # GPU acceleration. Without this Chromium falls back to software rendering
+  # and the window is visibly slow.
+  - --device=dri
+
+  # Claude Desktop is a client for claude.ai. Without network it does nothing.
+  - --share=network
+
+  # Voice input and notification sounds.
+  - --socket=pulseaudio
+
+  # Login tokens are stored in the system keyring. gnome-keyring answers on
+  # org.freedesktop.secrets; KWallet needs its own name.
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+
+  # Tray icon and desktop notifications.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+  # Claude Code runs long tasks. The app asks the session to hold off on
+  # sleep and screen lock while one is running.
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.SessionManager
+
+  # Claude Code and Cowork read and write the user's own project files, and
+  # the user picks any directory on the fly. A portal file chooser cannot
+  # express that, because the agent opens files the user never clicked.
+  # This is the one broad permission in the manifest and it is what makes the
+  # Code tab useful at all.
+  - --filesystem=home
+
+  # Cowork can run its work in a full VM. That needs /dev/kvm. Omitting this
+  # only disables the VM sandbox; the rest of Cowork still runs.
+  - --device=kvm
+
+  # Claude Code is a coding agent. Its sessions need the user's real toolchain:
+  # git first of all, then node, python, and whatever else a project builds
+  # with. None of that is in the runtime, and bundling git would not help: it
+  # would silence the app's git check while every command still ran against a
+  # sandbox holding none of the user's tools and none of the hooks in their
+  # repositories. This portal name lets the app run those commands on the host.
+  # It is the same permission the VS Code, VSCodium and JetBrains Flatpaks carry
+  # on Flathub, for the same reason. It applies to the Claude Code terminal, to
+  # the agent's own shell commands, and to git; the rest of the app stays inside
+  # the sandbox.
+  - --talk-name=org.freedesktop.Flatpak
+
+  # Use the host cursor theme instead of the runtime's default.
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  # host-spawn runs a command on the host through the org.freedesktop.Flatpak
+  # portal above. It is used instead of flatpak-spawn because it allocates a
+  # pseudo-terminal for the host process and forwards window-size changes and
+  # signals, which the Claude Code terminal needs and flatpak-spawn does not do.
+  #
+  # Go, MIT licensed, three dependencies. They are vendored from pinned release
+  # tarballs so the build stays offline.
+  - name: host-spawn
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOFLAGS: -mod=vendor
+        GOTOOLCHAIN: local
+    build-commands:
+      - go build -ldflags "-s -w -X main.Version=1.6.2" -o "${FLATPAK_DEST}/bin/host-spawn" .
+    sources:
+      - type: archive
+        url: https://github.com/1player/host-spawn/archive/refs/tags/v1.6.2.tar.gz
+        sha256: 77be74180d3c14cdf6199e2f5d77ad5a732b5902beecfdb81a3760038862af43
+        x-checker-data:
+          type: git
+          url: https://github.com/1player/host-spawn.git
+          tag-pattern: "^v([\\d.]+)$"
+
+      - type: archive
+        url: https://github.com/godbus/dbus/archive/refs/tags/v5.1.0.tar.gz
+        sha256: 2f4939ab13a20178584ef534293abc5b6744bb5b6232432050c5a3ab2ab85fd7
+        dest: vendor/github.com/godbus/dbus/v5
+
+      - type: archive
+        url: https://github.com/pkg/term/archive/refs/tags/v1.1.0.tar.gz
+        sha256: dc7e94b88b5d494264d28923a58a73732ed066897a916ab36568fac2b32a91d5
+        dest: vendor/github.com/pkg/term
+
+      - type: archive
+        url: https://github.com/golang/sys/archive/refs/tags/v0.15.0.tar.gz
+        sha256: b0bc04c5a1d1ae7c5962e66f19def881b5ab2191cc08cce5021fe7e952ed5484
+        dest: vendor/golang.org/x/sys
+
+      # Written by `go mod vendor` against the three tags above. Go refuses to
+      # build with -mod=vendor unless this matches go.mod.
+      - type: inline
+        dest: vendor
+        dest-filename: modules.txt
+        contents: |
+          # github.com/godbus/dbus/v5 v5.1.0
+          ## explicit; go 1.12
+          github.com/godbus/dbus/v5
+          # github.com/pkg/term v1.1.0
+          ## explicit; go 1.14
+          github.com/pkg/term/termios
+          # golang.org/x/sys v0.15.0
+          ## explicit; go 1.18
+          golang.org/x/sys/unix
+
+  - name: claude-desktop
+    buildsystem: simple
+    build-commands:
+      # Everything here runs at BUILD time, without the payload. The .desktop
+      # file, the icons and the metainfo have to exist now, because Flatpak
+      # exports them when the app is committed, not when extra-data lands.
+      - install -Dm755 apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install -Dm755 claude-desktop.sh "${FLATPAK_DEST}/bin/claude-desktop"
+      - install -Dm755 host-shell.sh "${FLATPAK_DEST}/bin/host-shell"
+      - install -Dm755 host-exec.sh "${FLATPAK_DEST}/bin/host-exec"
+      - install -Dm755 host-git.sh "${FLATPAK_DEST}/bin/host-git"
+      # /app/bin is on the search path the app builds for git, and it is the
+      # only entry on that path that has a git at all inside the sandbox.
+      - ln -sf host-git "${FLATPAK_DEST}/bin/git"
+      - ln -sf host-git "${FLATPAK_DEST}/bin/git-lfs"
+      - install -Dm644 "${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - install -Dm644 "${FLATPAK_ID}.desktop" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - |
+        for size in 16 32 48 128 256; do
+          install -Dm644 "icons/claude-desktop-${size}.png" \
+            "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png"
+        done
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - desktop-file-edit --set-key=X-Flatpak-RenamedFrom --set-value="com.anthropic.Claude.desktop;"
+        "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+    sources:
+      # Anthropic's official Linux build. The URL is version-pinned, so the
+      # sha256 and size stay valid. x-checker-data lets Flathub's
+      # external-data-checker follow the "latest" redirect and open a pull
+      # request when a new build ships.
+      - type: extra-data
+        filename: claude-desktop.deb
+        only-arches:
+          - x86_64
+        url: https://downloads.claude.ai/releases/linux/x64/1.40609.0/Claude-f65e386db0db64c8f8b39950e25adb11f5f5e3f3.deb
+        sha256: a96e96ff8eb4d4d7ffa785aba7fc23f8684b12ac83ed2ef4060f0f09f4177a98
+        size: 166561632
+        x-checker-data:
+          type: rotating-url
+          url: https://claude.ai/api/desktop/linux/x64/deb/latest/redirect
+
+      - type: file
+        path: claude-desktop.sh
+      - type: file
+        path: host-shell.sh
+      - type: file
+        path: host-exec.sh
+      - type: file
+        path: host-git.sh
+      - type: file
+        path: io.github.dewzor.ClaudeDesktop.desktop
+      - type: file
+        path: io.github.dewzor.ClaudeDesktop.metainfo.xml
+      - type: dir
+        path: icons
+        dest: icons
+
+      # Runs on the user's machine after the .deb is downloaded, with the
+      # extra directory as the working directory. Only the runtime and /app
+      # are available: no network, no SDK. bsdtar is in the freedesktop
+      # runtime and reads both the ar container and the inner tar.xz, so
+      # neither binutils nor dpkg is needed.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - bsdtar -xOf claude-desktop.deb data.tar.xz | bsdtar -xf - ./usr/lib/claude-desktop
+          - mv usr/lib/claude-desktop/* .
+          - rm -rf usr claude-desktop.deb
+          # Tell Electron which .desktop file it belongs to, so the Wayland
+          # app_id matches and the window groups under our entry.
+          - patch-electron-desktop-filename --desktop-filename io.github.dewzor.ClaudeDesktop
+            --skip-integrity-check resources/app.asar
+          # Chromium's setuid helper cannot work inside a Flatpak sandbox and
+          # the launcher never calls it. Drop it so nothing tries.
+          - rm -f chrome-sandbox
