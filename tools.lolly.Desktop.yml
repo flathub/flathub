@@ -1,0 +1,280 @@
+# Flathub manifest for Lolly - builds ENTIRELY FROM SOURCE, offline.
+#
+# This is NOT the manifest in the parent directory. Two manifests exist because they
+# answer to different masters:
+#
+#   ../tools.lolly.Desktop.yml  unpacks a prebuilt .deb. Fast, and fine for the
+#                               bundles we hand out ourselves, but Flathub forbids
+#                               prebuilt binaries outright.
+#   this one                    compiles everything inside the offline build sandbox,
+#                               which is what Flathub requires.
+#
+# Keep them in agreement on: app id, runtime version, command, finish-args, and the
+# freedesktop metadata they install. Only the build strategy differs.
+#
+# THE OFFLINE PROBLEM, AND HOW EACH PART IS SOLVED
+#
+#   ~600 cargo crates   -> cargo-sources.json, from flatpak-cargo-generator.py
+#   ~700 npm packages   -> node-sources.json, from flatpak-node-generator over BOTH
+#                          lockfiles (the root workspace and the desktop shell, which
+#                          is deliberately not a workspace member and has its own).
+#                          They merge with zero conflicts; see ./README.md.
+#   ONNX Runtime        -> ort-sys DOWNLOADS this from its own build.rs via ureq, which
+#                          fails during the build rather than at resolution time.
+#                          Declaring it as a source and pointing ORT_LIB_LOCATION at it
+#                          makes ort-sys skip the download and link statically. The URL
+#                          and sha256 are the crate's own, read out of the vendored
+#                          ort-sys dist.txt, so they cannot drift from the pin.
+#   Rust + Node         -> SDK extensions. The GNOME SDK ships neither, but it DOES
+#                          ship webkit2gtk-4.1, GTK3, libsoup3 and OpenSSL, so no
+#                          native dependency needs building here.
+#
+# SUBMODULES ARE DECLARED ONE BY ONE, AND THAT IS DELIBERATE.
+# flatpak-builder fetches every submodule named in .gitmodules and does NOT honour
+# `update = none` - so letting it recurse makes it try to clone brands/suse, the
+# PRIVATE SUSE pack, and the build dies on a credential prompt (it did, before this
+# was written). A Flathub builder would fail identically, and must never reach that
+# repo anyway. So the top-level source sets disable-submodules and each submodule the
+# build genuinely needs is its own pinned source below.
+#
+# Omitted on purpose: brands/suse (private - its absence is what makes the build
+# resolve to the public lolly-start profile), shells/chrome-extension and
+# shells/tauri-mobile (neither is an npm workspace member nor used by this build).
+id: tools.lolly.Desktop
+
+# Was tools.lolly.desktop until 2026-08-28. flatpak-builder-lint rejects an app id
+# whose last component is a lowercase "desktop" (appid-ends-with-lowercase-desktop),
+# and the Flathub docs say that exception "is never granted". Renaming also moves the
+# app data directory, which is why it had to happen before 1.0.0 rather than after.
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+
+# rust-stable 1.98 and node24 24.20.0 on the 25.08 branch that GNOME 49 is built on.
+# The dependency tree needs Rust >= 1.88 (darling 0.23, icu_collections 2.2,
+# headless_chrome 1.0), and .nvmrc pins Node 24 - both are satisfied.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+
+command: lolly-desktop
+
+finish-args:
+  # Rendering: Wayland first, X11 fallback, GPU access for the webview compositor.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Network: catalog/asset sync and the tauri-plugin-http net bridge. Renders happen
+  # on-device; this is not telemetry.
+  - --share=network
+  # Somewhere to save exports. App state lives in the per-app dir Flatpak grants
+  # automatically, so no broader filesystem access is needed.
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # The DMABUF renderer shows a blank window under the sandbox on some GPU/driver
+  # combinations. Drop once that is no longer true of the runtime.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+modules:
+  - name: lolly
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+      env:
+        # Cargo: the generated sources drop the registry and a config here. The path
+        # must match the module name ("lolly"), which is where flatpak-builder puts it.
+        CARGO_HOME: /run/build/lolly/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # ONNX Runtime: the directory ABOVE lib/, which is the layout ort-sys's
+        # prepare_libort_dir() expects. ORT_SKIP_DOWNLOAD is belt and braces - if
+        # ORT_LIB_LOCATION were ever ignored, this fails the build instead of hanging
+        # on a network call the sandbox will refuse.
+        ORT_LIB_LOCATION: /run/build/lolly/onnxruntime
+        ORT_SKIP_DOWNLOAD: '1'
+        # npm: install from the generated offline cache, never the network.
+        npm_config_cache: /run/build/lolly/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        npm_config_audit: 'false'
+        npm_config_fund: 'false'
+        # The frontend reads this for its model download base; the models themselves
+        # are NOT bundled (vite.config.js prunes dist/models - embedding ~1.8 GB tips
+        # the crate's rlib past the 32-bit ar archive-offset limit).
+        #
+        # NOTE: this value does NOT decide the model host. package.json's
+        # build:frontend runs `VITE_MODELS_BASE=... vite build` with an inline shell
+        # assignment, which overrides anything inherited from here. The real setting
+        # lives there (and vite.config.js carries the same value as its default).
+        # Kept in step with them so the two never appear to disagree, but change
+        # package.json if you want to actually move the host.
+        VITE_MODELS_BASE: https://lolli.li
+
+    build-commands:
+      # 1) Workspace deps.
+      #
+      #    --ignore-scripts is REQUIRED, not tidiness: onnxruntime-node's install
+      #    script reaches api.nuget.org for a native binary, which an offline sandbox
+      #    refuses (EAI_AGAIN) and the whole install fails. It is a root devDependency
+      #    used by tests and the CLI, never by this build, so skipping its script costs
+      #    nothing. No dependency here needs a lifecycle script to be usable: the
+      #    platform packages (@esbuild/linux-x64, @rollup/*, @tauri-apps/cli-linux-*)
+      #    ship their binaries in the package rather than fetching them.
+      #
+      #    That also skips the root's OWN preinstall and postinstall, so the one that
+      #    matters is run explicitly on the next line. (The skipped preinstall,
+      #    scripts/check-bootstrap.ts, only guards against a half-cloned checkout - the
+      #    manifest pins every submodule it needs, so there is nothing for it to catch.)
+      - npm ci --offline --ignore-scripts
+
+      # 2) The root postinstall, run by hand because of the above. It builds the
+      #    repo-root tools/ and catalog/ profile VIEWS.
+      #
+      #    lolly-start is named EXPLICITLY rather than using --auto. profiles.json's
+      #    `default` is "suse" - the PRIVATE pack - and --auto only lands on
+      #    lolly-start because brands/suse happens to be absent here. Naming the
+      #    profile makes shipping public content a stated intent rather than a
+      #    side-effect of a missing directory, and fails loudly if that ever changes.
+      - node scripts/use-profile.ts lolly-start
+
+      # 3) The desktop shell has its OWN lockfile (not a workspace member).
+      - cd shells/tauri-desktop && npm ci --offline --ignore-scripts
+
+      # 4) Frontend. build:frontend also runs build:info, which generates the /info
+      #    docs HTML - without it every in-app #/docs route 404s and the footer
+      #    "What?" button goes nowhere. Vite copies tools/ and catalog/ into dist/,
+      #    and tauri-build embeds the whole of dist/ into the binary.
+      #
+      #    LOLLY_EMBED_CATALOG=profile embeds the active tools/ + catalog/ views
+      #    INCLUDING catalog/previews/ - the per-tool gallery thumbnails. The shells
+      #    default to 'neutral', which deliberately carries no previews and no og
+      #    cards (plans/131 WP-A), on the reasoning that brand content arrives from a
+      #    connected instance or a .lolly pack. The visible cost of that is a gallery
+      #    where every tile has to render itself on first load. On lolly-start the
+      #    embedded content IS the public blank brand, so shipping it is safe - which
+      #    is exactly why step 2 pins that profile rather than trusting a fallback.
+      - cd shells/tauri-desktop && LOLLY_EMBED_CATALOG=profile npm run build:frontend
+
+      # 5) The Rust side.
+      #
+      #    --features tauri/custom-protocol is NOT optional. It is what the Tauri CLI
+      #    normally adds for you, and tauri's own is_dev() is literally
+      #    `!cfg!(feature = "custom-protocol")` (tauri/src/lib.rs:309) - so a plain
+      #    `cargo build` produces a DEVELOPMENT binary that ignores the embedded
+      #    frontendDist and tries to load devUrl instead. The app then starts, shows a
+      #    window, and fails with "Could not connect to localhost: Connection refused",
+      #    while the binary comes out ~43 MB instead of ~112 MB because the frontend
+      #    was never embedded. Nothing in the build log warns about it.
+      #
+      #    --locked so the lockfile we generated cargo sources from is the one built.
+      - cd shells/tauri-desktop/src-tauri && cargo build --release --offline --locked --features tauri/custom-protocol
+
+      # 6) Install. The binary is the Cargo package name; everything else is the app id.
+      - install -Dm755 shells/tauri-desktop/src-tauri/target/release/lolly-desktop /app/bin/lolly-desktop
+      - install -Dm644 shells/tauri-desktop/flatpak/tools.lolly.Desktop.desktop /app/share/applications/tools.lolly.Desktop.desktop
+      - install -Dm644 shells/tauri-desktop/flatpak/tools.lolly.Desktop.metainfo.xml /app/share/metainfo/tools.lolly.Desktop.metainfo.xml
+      - install -Dm644 shells/tauri-desktop/flatpak/icon-32.png  /app/share/icons/hicolor/32x32/apps/tools.lolly.Desktop.png
+      - install -Dm644 shells/tauri-desktop/flatpak/icon-64.png  /app/share/icons/hicolor/64x64/apps/tools.lolly.Desktop.png
+      - install -Dm644 shells/tauri-desktop/flatpak/icon-128.png /app/share/icons/hicolor/128x128/apps/tools.lolly.Desktop.png
+      - install -Dm644 shells/tauri-desktop/flatpak/icon-256.png /app/share/icons/hicolor/256x256/apps/tools.lolly.Desktop.png
+      - install -Dm644 shells/tauri-desktop/flatpak/icon-512.png /app/share/icons/hicolor/512x512/apps/tools.lolly.Desktop.png
+      # Freedesktop INTEGRATION, single-sourced from shells/tauri-desktop/linux/ (see
+      # its README). The RPM spec and the deb-based manifest both install these; this
+      # manifest did not, which would have made Flathub - likely the highest-volume
+      # channel - the ONLY one without double-click .lolly, file-manager thumbnails or
+      # GNOME Shell search. linux/README.md already claimed "both packagings" install
+      # them, so the docs described the intent and only this file was missing.
+      #
+      # Installed straight from the git checkout rather than staged flat beside the
+      # manifest (as the deb-based one does), so there are no extra sources to keep in
+      # step and these cannot drift from linux/.
+      #
+      # mime/packages, gnome-shell/search-providers and dbus-1/services are on
+      # Flatpak's export whitelist, so the host sees them. share/thumbnailers is NOT
+      # exported - installed anyway for forward-compatibility; the RPM/deb is what
+      # thumbnails on the host today. The KDE service menu is deliberately absent:
+      # Flatpak never exports kio/servicemenus.
+      - install -Dm644 shells/tauri-desktop/linux/mime/tools.lolly.Desktop.xml /app/share/mime/packages/tools.lolly.Desktop.xml
+      - install -Dm644 shells/tauri-desktop/linux/search/tools.lolly.Desktop.search-provider.ini /app/share/gnome-shell/search-providers/tools.lolly.Desktop.search-provider.ini
+      - install -Dm644 shells/tauri-desktop/linux/search/tools.lolly.Desktop.SearchProvider.service /app/share/dbus-1/services/tools.lolly.Desktop.SearchProvider.service
+      - install -Dm644 shells/tauri-desktop/linux/search/org.lolly.Desktop1.service /app/share/dbus-1/services/org.lolly.Desktop1.service
+      - install -Dm755 shells/tauri-desktop/linux/thumbnailer/lolly-thumbnail /app/bin/lolly-thumbnail
+      - install -Dm644 shells/tauri-desktop/linux/thumbnailer/lolly.thumbnailer /app/share/thumbnailers/lolly.thumbnailer
+      # Filetype icon for application/vnd.lolly+zip, so a .lolly has a face in Files.
+      - install -Dm644 shells/tauri-desktop/linux/icons/32x32/application-vnd.lolly+zip.png /app/share/icons/hicolor/32x32/mimetypes/application-vnd.lolly+zip.png
+      - install -Dm644 shells/tauri-desktop/linux/icons/48x48/application-vnd.lolly+zip.png /app/share/icons/hicolor/48x48/mimetypes/application-vnd.lolly+zip.png
+      - install -Dm644 shells/tauri-desktop/linux/icons/64x64/application-vnd.lolly+zip.png /app/share/icons/hicolor/64x64/mimetypes/application-vnd.lolly+zip.png
+      - install -Dm644 shells/tauri-desktop/linux/icons/128x128/application-vnd.lolly+zip.png /app/share/icons/hicolor/128x128/mimetypes/application-vnd.lolly+zip.png
+      - install -Dm644 shells/tauri-desktop/linux/icons/256x256/application-vnd.lolly+zip.png /app/share/icons/hicolor/256x256/mimetypes/application-vnd.lolly+zip.png
+
+      # Flathub requires the licence be installed under the app id.
+      - install -Dm644 LICENSE /app/share/licenses/tools.lolly.Desktop/LICENSE
+
+    sources:
+      # The umbrella repo: engine/, schemas/, scripts/, profiles.json, the
+      # brands/lolly-start pack, and the packages/* workspaces.
+      - type: git
+        url: https://github.com/lolly-tools/lolly.git
+        commit: fe269e7c869cf0e61dd21d7dab2d4b53c4d22c10
+        disable-submodules: true
+
+      # The submodules this build needs, pinned to what the umbrella commit above
+      # points at. The first five are npm WORKSPACE members - `npm ci` reads every
+      # workspace package.json and fails if one is missing, so they are required even
+      # though the desktop app does not run them.
+      - type: git
+        url: https://github.com/lolly-tools/lolly-web.git
+        commit: c79dd45f10accf7712d164df7d56aeef2b8a65af
+        dest: shells/web
+      - type: git
+        url: https://github.com/lolly-tools/lolly-cli.git
+        commit: 880feaa2cc23cbe22a1fa44f2e2ef8e00a669fe1
+        dest: shells/cli
+      - type: git
+        url: https://github.com/lolly-tools/lolly-tui.git
+        commit: db9229d024e219435677f3277fc2c1d852667f93
+        dest: shells/tui
+      - type: git
+        url: https://github.com/lolly-tools/lolly-ca.git
+        commit: 6ea87b830fdd5b09e8b139b851014a159d86b7f2
+        dest: services/ca
+      - type: git
+        url: https://github.com/lolly-tools/lolly-mcp-server.git
+        commit: 1ba78efa15d00b244601759ee41e34c218fa27fb
+        dest: services/mcp
+      # Not workspaces, but the build reads them: community/ is the public tool set
+      # that scripts/use-profile.ts builds the tools/ view from, and docs/ is what
+      # build:info turns into the /info pages the in-app #/docs reader fetches.
+      - type: git
+        url: https://github.com/lolly-tools/lolly-tools.git
+        commit: c6b266e82d8bbac8d3ced56783157ca5aecb21bc
+        dest: community
+      - type: git
+        url: https://github.com/lolly-tools/lolly-docs.git
+        commit: 91f450485f91526dd91b5f89e709fe0e003aef86
+        dest: docs
+      # The shell being built.
+      - type: git
+        url: https://github.com/lolly-tools/lolly-desktop.git
+        commit: 6b00fbaeb56f5059fe4fdd13de21841693cd84d0
+        dest: shells/tauri-desktop
+
+      # ONNX Runtime, byte-identical to what ort-sys would have fetched. Extracts to
+      # onnxruntime/lib/libonnxruntime.a - a static archive, so the finished app has
+      # no libonnxruntime runtime dependency at all.
+      - type: archive
+        url: https://cdn.pyke.io/0/pyke:ort-rs/ms@1.22.0/x86_64-unknown-linux-gnu.tgz
+        sha256: ed1716de95974bf47ab0223ca33734a0b5a5d09a181225d0e8ed62d070aea893
+        dest: onnxruntime
+        strip-components: 1
+        only-arches: [x86_64]
+      - type: archive
+        url: https://cdn.pyke.io/0/pyke:ort-rs/ms@1.22.0/aarch64-unknown-linux-gnu.tgz
+        sha256: 24e4760207136fc50b854bb5012ab81de6189039cf6d4fd3f5b8d3db7e929f1e
+        dest: onnxruntime
+        strip-components: 1
+        only-arches: [aarch64]
+
+      # Generated - do not hand-edit. See ./README.md for the regeneration commands.
+      - cargo-sources.json
+      - node-sources.json
