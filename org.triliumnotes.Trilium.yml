@@ -44,14 +44,8 @@ modules:
       - ln -s pnpm.cjs flatpak-node/pnpm/bin/pnpm      
       - pnpm install --offline --frozen-lockfile --reporter=append-only
 
-      # Stamp the About dialog's build info from the built commit. The repo's
-      # update-build-info script writes the wall-clock time instead, which would
-      # differ on every rebuild of the same source.
-      - |
-        printf 'export default {\n    buildDate: "%s",\n    buildRevision: "%s"\n};\n' \
-            "$(TZ=UTC0 git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" \
-            "$(git rev-parse HEAD)" \
-            > packages/trilium-core/src/services/build.ts
+      # Stamp the About dialog's build info from the built commit.
+      - node --experimental-strip-types stamp-build-info.mts
 
       # Produces apps/desktop/dist: the main/preload bundles, the client, assets
       # and a trimmed better-sqlite3.
@@ -68,16 +62,7 @@ modules:
       - rm /app/lib/electron/chrome-sandbox
 
       # Drop the Chromium UI locales Trilium does not expose (~38 MB).
-      - |
-        node --experimental-strip-types --input-type=module -e '
-        import { LOCALES } from "./packages/commons/src/lib/i18n.ts";
-        import { readdirSync, unlinkSync } from "node:fs";
-        const keep = new Set(LOCALES.filter((l) => !l.contentOnly && l.electronLocale)
-            .map((l) => `${l.electronLocale.replace("_", "-")}.pak`));
-        keep.add("en-US.pak"); // Electron names English en-US.pak; the list has "en".
-        for (const f of readdirSync("/app/lib/electron/locales")) {
-            if (!keep.has(f)) unlinkSync(`/app/lib/electron/locales/${f}`);
-        }'
+      - node --experimental-strip-types trim-locales.mts
 
       - install -Dm755 trilium.sh /app/bin/trilium
       - install -Dm644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
@@ -95,6 +80,10 @@ modules:
         dest: flatpak-node/pnpm
       - type: file
         path: org.triliumnotes.Trilium.desktop
+      - type: file
+        path: stamp-build-info.mts
+      - type: file
+        path: trim-locales.mts
       # The launcher; zypak maps Chromium's sandbox onto flatpak sub-sandboxes.
       - type: script
         dest-filename: trilium.sh
