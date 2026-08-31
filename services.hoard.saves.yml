@@ -1,0 +1,92 @@
+# Flatpak manifest for Hoard, built with the "closed source" / binary-extraction
+# recipe from the official Tauri docs (https://v2.tauri.app/distribute/flatpak/):
+# build the app's own .deb the normal way, then unpack it into /app instead of
+# re-building Rust + the frontend inside the sandbox. Driven by
+# scripts/build-flatpak.sh, which builds the .deb and then runs flatpak-builder
+# against this file.
+#
+# The Flatpak id (services.hoard.saves) is intentionally its own reverse-DNS name,
+# distinct from the Tauri `identifier` in tauri.conf.json (dev.hoard.desktop),
+# which stays as-is since it's load-bearing for deep links (`hoard://`) and
+# the updater — only the Flatpak wrapper needs the services.hoard.saves name.
+id: services.hoard.saves
+
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+
+command: hoard-desktop
+
+finish-args:
+  - --socket=wayland # show the window on Wayland
+  - --socket=fallback-x11 # show the window under X11 / XWayland
+  - --device=dri # GPU accel for the webview
+  - --share=ipc # webkit shared-memory requirement
+  - --share=network # cloud sync (self-hosted or Hoard Cloud)
+  # Tray icon (tauri-plugin global tray + the community/Pro overlay toggle).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+  # The daemon keeps the cloud token in the OS credential store, which on Linux
+  # is libsecret over the session bus (see the `keyring` features in
+  # crates/hoard-agent/Cargo.toml). Without this name the store is simply
+  # absent, credentials.rs falls back to a 0600 file inside the sandbox, and
+  # nothing says out loud that the token stopped being encrypted at rest.
+  - --talk-name=org.freedesktop.secrets
+  # Hoard's whole job is finding and backing up game saves wherever they live:
+  # Steam libraries on other drives, Proton/Wine prefixes, emulator save
+  # folders, self-chosen paths. See crates/hoard-agent/src/{steam,roots,
+  # wine_prefixes}.rs. That's arbitrary host paths, not just $HOME, so this
+  # needs the broad grant rather than a handful of --filesystem entries that
+  # would silently miss whichever drive a game happens to be installed on.
+  - --filesystem=host
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: hoard-desktop
+    buildsystem: simple
+
+    sources:
+      - type: file
+        url: https://github.com/rleeon/hoard/releases/download/v1.1.5/Hoard_1.1.5_amd64.deb
+        sha256: 8b8b755de5bf320f3f45dba8d4184eb0e4c19112b1960a1babae2887de7576cf
+        dest-filename: hoard.deb
+      - type: file
+        path: services.hoard.saves.metainfo.xml
+
+    build-commands:
+      - set -e
+
+      # Unpack the .deb (ar container + a data.tar.* with whatever compression
+      # the local dpkg-deb used).
+      - mkdir -p deb-extract
+      - ar -x hoard.deb --output deb-extract
+      - tar -C deb-extract -xf deb-extract/data.tar.*
+
+      # Main binary plus every externalBin sidecar (hoardd, hoard-screen, hoard
+      # CLI) the bundler drops next to it — hoardd::client::own_daemon_binary
+      # and the screen sidecar both resolve as a bare-named sibling of
+      # current_exe, so they all need to land in the same /app/bin.
+      - |
+        for bin in deb-extract/usr/bin/*; do
+          install -Dm755 "$bin" "/app/bin/$(basename "$bin")"
+        done
+
+      # Desktop entry, repointed at the icon name we install below. Left
+      # otherwise untouched so the MimeType=x-scheme-handler/hoard; line the
+      # deep-link plugin adds at bundle time survives into the sandbox.
+      - |
+        desktop_src="$(ls deb-extract/usr/share/applications/*.desktop | head -n1)"
+        sed 's/^Icon=.*/Icon=services.hoard.saves/' "$desktop_src" > services.hoard.saves.desktop
+        install -Dm644 services.hoard.saves.desktop /app/share/applications/services.hoard.saves.desktop
+
+      # Icons, renamed to the flatpak id so the icon theme resolves them.
+      - |
+        for dir in deb-extract/usr/share/icons/hicolor/*/apps; do
+          size="$(basename "$(dirname "$dir")")"
+          src="$(ls "$dir"/* | head -n1)"
+          ext="${src##*.}"
+          install -Dm644 "$src" "/app/share/icons/hicolor/$size/apps/services.hoard.saves.$ext"
+        done
+
+      - install -Dm644 services.hoard.saves.metainfo.xml /app/share/metainfo/services.hoard.saves.metainfo.xml
