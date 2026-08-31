@@ -1,0 +1,96 @@
+# Flatpak manifest for TuxVoice.
+#
+# Built against the GNOME runtime, which already carries GTK4, libadwaita and —
+# importantly — the ffmpeg and ffprobe binaries the decoder shells out to, so
+# no codec module of our own is needed.
+#
+# Built from a tagged commit of
+# https://github.com/Behruzbek34/tuxvoice
+#
+# cargo-sources.json is generated from that tag's Cargo.lock with
+# flatpak-builder-tools/cargo/flatpak-cargo-generator.py, and is what lets the
+# build run with no network access.
+
+id: io.github.Behruzbek34.TuxVoice
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  # pipewire-sys generates its bindings with bindgen, which loads libclang at
+  # build time. The GNOME SDK does not carry one.
+  - org.freedesktop.Sdk.Extension.llvm20
+command: tuxvoice
+
+finish-args:
+  # --device=input is only understood from Flatpak 1.16. On anything older it
+  # would silently widen to --device=all, which is a great deal more than
+  # reading the keyboard, so the build refuses to run there instead.
+  - --require-version=1.16.0
+
+  # The window.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # The whole point: TuxVoice adds virtual nodes to the PipeWire graph and
+  # links them, so it needs the socket itself rather than the PulseAudio
+  # shim, which only hands out playback and capture streams.
+  - --filesystem=xdg-run/pipewire-0
+
+  # Moving another application's audio to the shared sink is done through
+  # pactl, which speaks the PulseAudio protocol rather than PipeWire's own.
+  - --socket=pulseaudio
+
+  # The clip catalogue and the community shelf are fetched over the network.
+  - --share=network
+
+  # Global shortcuts are read from the kernel. Wayland gives no way to catch a
+  # key while a game has focus, and firing a clip mid-game is what the
+  # shortcuts exist for, so the input devices are read directly.
+  - --device=input
+
+  # Clips people add from disk. The file chooser itself goes through the
+  # portal; these are the places a sound collection normally lives.
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download:ro
+
+modules:
+  - name: tuxvoice
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
+      env:
+        CARGO_HOME: /run/build/tuxvoice/cargo
+        # Sharing a clip goes through a relay that holds the archive.org key,
+        # so no credential is compiled into anything that ships. Without this
+        # the build still browses and downloads the community shelf; only the
+        # Share button is absent.
+        TUXVOICE_UPLOAD_RELAY: https://tuxvoice-relay-behruz80s-projects.vercel.app/api
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
+        # The crates are vendored by cargo-sources.json, so the build must
+        # never reach for the network — if it tries, that is a bug in the
+        # generated sources rather than something to paper over.
+        CARGO_NET_OFFLINE: 'true'
+
+    build-commands:
+      - cargo --offline build --release --locked
+
+      - install -Dm755 target/release/tuxvoice /app/bin/tuxvoice
+
+      - install -Dm644 data/io.github.Behruzbek34.TuxVoice.desktop
+        /app/share/applications/io.github.Behruzbek34.TuxVoice.desktop
+      - install -Dm644 data/io.github.Behruzbek34.TuxVoice.metainfo.xml
+        /app/share/metainfo/io.github.Behruzbek34.TuxVoice.metainfo.xml
+      - install -Dm644 data/icons/io.github.Behruzbek34.TuxVoice.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.Behruzbek34.TuxVoice.svg
+
+    sources:
+      - type: git
+        url: https://github.com/Behruzbek34/tuxvoice.git
+        tag: v0.1.1
+        commit: 3bd5558dc337001055c87f6a95e9dbc3a468759b
+      - cargo-sources.json
