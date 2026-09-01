@@ -1,0 +1,58 @@
+# Flathub manifest. This file and cargo-sources.json are what go in the
+# flathub/flathub pull request (against the new-pr branch); everything else it
+# installs is fetched from the game's own git tag below.
+id: org.mammothpublishing.LetterFriends
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: letter-friends
+
+finish-args:
+  # miniquad 0.4 has no Wayland backend — there are no wayland crates in
+  # Cargo.lock at all — so this is X11 or nothing, and a Wayland desktop runs it
+  # through Xwayland. --socket=fallback-x11 would be wrong: there is nothing to
+  # fall back from.
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  # quad-snd opens ALSA directly; the runtime's alsa-plugins bridge it onto
+  # PulseAudio/PipeWire.
+  - --socket=pulseaudio
+  # Deliberately absent: --share=network and every --filesystem. The game talks
+  # to nothing and writes only its own settings file, which lands in
+  # ~/.var/app/$FLATPAK_ID/config/letter-friends/. See PRIVACY.md.
+
+modules:
+  - name: letter-friends
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/letter-friends/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      # asset_root() looks in the working directory and then beside the
+      # executable, so the binary and assets/ have to stay together and /app/bin
+      # gets a wrapper instead. licenses/ rides along beside them too, because
+      # the credits screen tells the player to look there.
+      - install -Dm755 target/release/letter-friends -t /app/share/letter-friends/
+      - cp -r assets licenses /app/share/letter-friends/
+      - install -Dm755 flatpak/letter-friends.sh /app/bin/letter-friends
+      - install -Dm644 flatpak/$FLATPAK_ID.desktop -t /app/share/applications/
+      - install -Dm644 flatpak/$FLATPAK_ID.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 icon/letter-friends.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      # Flathub asks for each module's licence text under share/licenses.
+      - install -Dm644 LICENSE -t /app/share/licenses/$FLATPAK_ID/
+      - install -Dm644 licenses/THIRD-PARTY.txt licenses/ASSETS.md -t /app/share/licenses/$FLATPAK_ID/
+    sources:
+      - type: git
+        url: https://github.com/mammothpublishing/letter-friends.git
+        tag: v1
+        # Flathub requires the commit alongside the tag, so a moved tag cannot
+        # change what gets built. Re-read it after any re-tag:
+        #   git rev-parse v1^{commit}
+        commit: 76b3a10220e7329e08da27c6b539edde6a11d737
+      - cargo-sources.json
