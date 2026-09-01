@@ -1,0 +1,50 @@
+# The Flathub manifest. packaging/channels.sh rewrites the tag and the
+# checksum at each release and regenerates cargo-sources.json from
+# Cargo.lock with Flathub's flatpak-cargo-generator.py, so the build
+# runs offline as Flathub requires.
+app-id: com.steerania.Oryx
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: oryx
+finish-args:
+  # A window drawn on the CPU, on Wayland with X11 as the fallback.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Remote images in markdown files.
+  - --share=network
+  # The sidebar browses the user's folders and opens the files in them.
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/oryx/cargo
+modules:
+  - name: oryx
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - mkdir stage
+      - cp target/release/oryx stage/
+      - cp -r themes examples LICENSE stage/
+      - sh packaging/stage-linux.sh stage /app
+    sources:
+      - type: archive
+        url: https://github.com/wmahfoudh/oryx/archive/refs/tags/v1.0.0.tar.gz
+        sha256: "e773745c4c933a7682934c692a5242cee68c6762202413d1feebede15ef3f2b5"
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/wmahfoudh/oryx/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '"https://github.com/wmahfoudh/oryx/archive/refs/tags/" + .tag_name + ".tar.gz"'
+      - cargo-sources.json
+      # The tagged metainfo points at the release screenshots; the listing
+      # uses the Flathub-sized set added to main after the tag. The patch
+      # stops applying once a release carries the new metainfo, and is
+      # removed then.
+      - type: patch
+        path: metainfo-screenshots.patch
