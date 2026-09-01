@@ -13,7 +13,8 @@ This repository is the official Flathub build recipe for Trilium Notes. To repor
 * Build info is stamped from the commit date, to make the build process idempotent.
 * The package manager is pnpm and the sources are generated via `flatpak-node-generator` with a post-processing step of removing the Playwright sources which are not needed during the offline build process.
 * The official Trilium packages (.deb, .rpm, even .flatpak which we ship separately) are packaged with ASAR. For the Flathub build we've decided to go with plain files instead, for simplifying the build process and also because there is no actual benefit (tamper-sealing is already handled by the content-addressed OSTree deployment). The only downside is that the package is 11 MB bigger (probably due to the file headers).
-* We request `--filesystem=home` permissions because the data resides in `~/.local/share/trilium-data` (or a legacy path in `~/trilium-data`). It is possible to restrict it to only these paths, but the drag & drop functionality would be broken and it's a core UX aspect in Trilium (dragging from downloads or other places in the home directory into the tree to import).
+* The data directory lives in the app sandbox (`~/.var/app/org.triliumnotes.Trilium/data/trilium-data`), set via `TRILIUM_DATA_DIR` in the launch wrapper, so no filesystem permission is needed for it. A `TRILIUM_DATA_DIR` set through `flatpak override`/Flatseal takes precedence, and existing host data at `~/.local/share/trilium-data` is used if there is a user override.
+* Read-only access to the common XDG directories (downloads, documents, pictures, videos) is requested because dragging a file into the note tree cannot be read ([electron#30650](https://github.com/electron/electron/issues/30650)); without the grant, drag & drop import fails.
 * There is currently no automatic update of the Flatpak manifest in place, but it is planned for the near future.
 
 ## 🖥️ Local development
