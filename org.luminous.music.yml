@@ -1,0 +1,145 @@
+id: org.luminous.music
+
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: LuminousMusicPlayer
+
+# Luminous is local-first (no streaming/cloud), but it does make a handful of
+# outbound calls for optional metadata enrichment — see src-tauri/src/lyrics.rs
+# (LRCLIB, lyrics.ovh), src-tauri/src/covermanager.rs (iTunes cover art
+# fallback), and src-tauri/src/tageditor.rs (AcoustID fingerprint lookup).
+# --share=network is required for those; there is no way to scope Flatpak
+# network access to individual hosts.
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio # cpal audio output
+  - --device=dri # WebKitGTK/OpenGL rendering
+  - --share=ipc
+  - --share=network # LRCLIB / lyrics.ovh / iTunes / AcoustID lookups (all optional, user-triggered)
+  # No --filesystem=home: flatpak-builder-lint hard-errors on blanket home
+  # access (finish-args-home-filesystem-access) and Flathub review won't
+  # grant an exception for a music player. tauri-plugin-dialog's folder
+  # picker (dialog:default in capabilities/default.json) already goes
+  # through xdg-desktop-portal's FileChooser automatically once sandboxed
+  # (GTK detects /.flatpak-info and switches file-chooser backends with no
+  # app-code change needed); the portal persists access to whatever folder
+  # the user picks as a watched library folder, which is what library
+  # scanning actually needs on an ongoing basis.
+  - --talk-name=org.freedesktop.Notifications # tauri-plugin-notification
+  - --talk-name=org.kde.StatusNotifierWatcher # tray icon (tray-icon crate / libayatana-appindicator)
+  - --own-name=org.mpris.MediaPlayer2.com.luminous.player # souvlaki MPRIS "Now Playing" integration (media_session.rs)
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: luminous
+    buildsystem: simple
+    sources:
+      # Swapped for a `type: git` (tag + commit) source pointing at a tagged
+      # release by scripts/submit-flathub.ts when preparing a submission to
+      # flathub/flathub; `type: dir` lets this manifest build the current
+      # checkout directly for local iteration and CI (.github/workflows/flatpak.yml).
+      - type: git
+        url: https://github.com/esoltys/luminous.git
+        tag: v1.5.0
+        commit: 2b0f039817d4c3de6f1ebaf2b17b29695e39f81a
+
+      # bun is required at build time: package.json's own "build"/"prepare"
+      # scripts (and scripts/sync-docs.ts) are written to run under `bun`,
+      # not just any Node-compatible runtime. Vendored as a pinned static
+      # binary since neither the GNOME runtime nor freedesktop-sdk ship a
+      # bun extension.
+      - type: archive
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
+        sha256: 8611ba935af886f05a6f38740a15160326c15e5d5d07adef966130b4493607ed
+        dest: bun-dist
+
+      # Generated with:
+      #   flatpak-node-generator npm flatpak/package-lock.json -o flatpak/node-sources.json
+      # flatpak/package.json + flatpak/package-lock.json are an npm-shaped
+      # snapshot of the real package.json kept solely so flatpak-node-generator
+      # (which doesn't understand bun.lock) can vendor JS deps for an offline
+      # build; both deliberately drop the `playwright` devDependency
+      # (browser-driven tests aren't run as part of building the app) to
+      # avoid the generator trying to vendor a Chromium download — `npm ci`
+      # needs package.json and package-lock.json to actually agree, so both
+      # files have to be swapped in together, not just the lockfile.
+      # bun.lock + the real package.json remain authoritative for day-to-day
+      # development. Regenerate all three whenever package.json's dependency
+      # ranges change.
+      - node-sources.json
+
+      # Generated with:
+      #   flatpak-cargo-generator.py Cargo.lock -o flatpak/cargo-sources.json
+      # This is a Cargo workspace (root Cargo.toml, members = ["src-tauri"]),
+      # so the root Cargo.lock is the one Cargo actually resolves against —
+      # not src-tauri/Cargo.lock, which is a stale, untracked-by-Cargo
+      # leftover file that happens to also be checked into git. Regenerate
+      # from the root Cargo.lock whenever it changes.
+      - cargo-sources.json
+
+    build-options:
+      append-path: /run/build/luminous/bun-dist/bun-linux-x64
+      env:
+        CARGO_HOME: /run/build/luminous/cargo
+        XDG_CACHE_HOME: /run/build/luminous/flatpak-node/cache
+        npm_config_cache: /run/build/luminous/flatpak-node/npm-cache
+        npm_config_offline: "true"
+
+    # `type: dir` sources land nested under the source directory's own
+    # basename (flatpak-builder's dir-copy is effectively `cp -a src dest/`,
+    # and the module's build root already exists by the time it runs) —
+    # confirmed empirically in CI: repo contents end up at ./luminous/...,
+    # not directly at the build root. Since our checkout is always named
+    # "luminous" (the GitHub repo name), every command below `cd luminous`
+    # first. This quirk is specific to `type: dir`; scripts/submit-flathub.ts
+    # swaps this source for `type: git` for the real submission, which does
+    # NOT nest this way — it also needs to drop these `cd luminous &&`
+    # prefixes when doing that swap.
+    build-commands:
+      # JS dependencies (offline, from node-sources.json)
+      - cp flatpak/package.json package.json && cp flatpak/package-lock.json package-lock.json && npm ci --offline --legacy-peer-deps
+
+      # Rust dependencies (offline, from cargo-sources.json)
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+
+      # Build the frontend + Rust backend without Tauri's own bundler —
+      # this module's install step below does the Flatpak-specific install
+      # instead of a .deb/.rpm/AppImage bundle. Exporting PATH inline (rather
+      # than relying on this build-options block's `append-path`, which
+      # didn't make bun visible to Tauri's own `beforeBuildCommand`
+      # subprocess) since every build-command line is its own shell
+      # invocation — an `export` earlier in the list wouldn't carry over.
+      # Locating the extracted `bun` binary with `find` rather than a
+      # hardcoded bun-dist/bun-linux-x64 subpath: that hardcoded path still
+      # produced "bun: command not found" even with PATH exported inline,
+      # meaning the archive didn't land where the local `unzip -l` listing
+      # suggested it would inside the sandboxed build — find it dynamically
+      # instead of guessing again.
+      - "export PATH=\"$(dirname \"$(find /run/build/luminous/bun-dist -type f -name bun)\"):$PATH\" && NO_STRIP=true bun run tauri build --no-bundle"
+
+      # This is a Cargo workspace (root Cargo.toml, members = ["src-tauri"]),
+      # so the compiled binary lands in the workspace-root target/ dir, not
+      # src-tauri/target/ — confirmed via the build log's own "Built
+      # application at:" line.
+      - install -Dm755 target/release/LuminousMusicPlayer /app/bin/LuminousMusicPlayer
+      - install -Dm644 -t /app/share/metainfo/ src-tauri/icons/org.luminous.music.metainfo.xml
+      - install -Dm644 -t /app/share/applications/ flatpak/org.luminous.music.desktop
+
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/org.luminous.music.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/org.luminous.music.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/org.luminous.music.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/org.luminous.music.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/org.luminous.music.png
+
+    post-install:
+      - install -Dm644 LICENSE /app/share/licenses/org.luminous.music/LICENSE
