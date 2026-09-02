@@ -1,0 +1,191 @@
+# OneKeePass Flatpak manifest.
+#
+# Generated from com.onekeepass.OneKeePass.yml in the app repo by
+# linux/make-flathub-manifest.py. Edit it there, not here.
+#
+# The application, proxy and ClojureScript frontend are built from source offline.
+#
+# The four linux/*-sources.json lists live in THIS repo, not in the app repo, because
+# a source list is read relative to the manifest's own repo. Regenerate them there
+# whenever a lockfile changes and copy them across.
+
+id: com.onekeepass.OneKeePass
+
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.node20
+
+command: OneKeePass
+
+# The compiled ClojureScript is handed from the frontend module to the Rust module
+# through /app (see onekeepass-cljs below); strip it from the finished app.
+cleanup:
+  - /share/onekeepass-build
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Remote storage (SFTP/WebDAV) and favicon fetch
+  - --share=network
+
+  # Takes a logind delay inhibitor and listens for PrepareForSleep so open databases
+  # are encrypted before the memory image can reach a hibernation file. This uses the
+  # SYSTEM bus, which the sandbox does not have by default, and there is no portal
+  # equivalent: the Inhibit portal can block a suspend but gives no notification that
+  # one is starting. Without it the feature is silently off.
+  - --system-talk-name=org.freedesktop.login1
+
+  # No --filesystem grant on purpose. Database files come through the XDG document
+  # portal; opening, saving and the recent-databases list all work through it, because
+  # the document id stays stable across restarts.
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    # botan is vendored via onekeepass-core
+    BOTAN_CONFIGURE_EXTRA_CXXFLAGS: '-fPIC'
+
+modules:
+
+  - name: onekeepass-proxy
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/onekeepass-proxy/cargo
+    sources:
+      - type: git
+        url: https://github.com/OneKeePass/desktop.git
+        tag: v0.25.2
+        commit: 1fd8275f1c254f99ecd0c7b1d4a3d118f7bb357a
+      # Vendored crates plus the cargo config that redirects crates.io to them.
+      # Generated from onekeepass-proxy/Cargo.lock.
+      - linux/proxy-cargo-sources.json
+    build-commands:
+      - cd onekeepass-proxy && cargo build --release --locked
+      - install -Dm755 onekeepass-proxy/target/release/onekeepass-proxy
+        /app/bin/onekeepass-proxy
+
+  # Build the ClojureScript frontend from published source.
+  - name: onekeepass-cljs
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/openjdk21/bin:/usr/lib/sdk/node20/bin
+      env:
+        # Yarn requires a writable home and cache during the build.
+        HOME: /run/build/onekeepass-cljs
+        npm_config_cache: /run/build/onekeepass-cljs/npm-cache
+        # flatpak-node-generator's node-headers source expects the node-gyp cache here
+        XDG_CACHE_HOME: /run/build/onekeepass-cljs/flatpak-node/cache
+    sources:
+      - type: git
+        url: https://github.com/OneKeePass/desktop.git
+        tag: v0.25.2
+        commit: 1fd8275f1c254f99ecd0c7b1d4a3d118f7bb357a
+      # Yarn is not included in the Node SDK extension, so provide it as a pinned source.
+      - type: archive
+        url: https://registry.npmjs.org/yarn/-/yarn-1.22.22.tgz
+        sha256: c17d3797fb9a9115bf375e31bfd30058cac6bc9c3b8807a3d8cb2094794b51ca
+        dest: yarn
+      # Offline Yarn and Maven dependencies generated from their lock/configuration files.
+      - linux/node-sources.json
+      - linux/maven-sources.json
+    build-commands:
+      - node yarn/bin/yarn.js config --offline set yarn-offline-mirror
+        $FLATPAK_BUILDER_BUILDDIR/flatpak-node/yarn-mirror
+      - node yarn/bin/yarn.js install --offline --frozen-lockfile --non-interactive
+
+      # Tell shadow-cljs where the vendored Maven repository is. This cannot be done
+      # with HOME: shadow-cljs resolves through pomegranate/Aether, which takes the
+      # default repository path from the JVM's user.home, and the JVM reads that from
+      # the OS rather than the environment. Setting HOME alone leaves the resolver
+      # looking somewhere else entirely and it would try to reach the network.
+      # :local-repo is read from the config map, so prepending it to the map is enough.
+      - 'sed -i "1s|^{|{:maven {:local-repo \"$FLATPAK_BUILDER_BUILDDIR/.m2/repository\"} |" src-cljs/shadow-cljs.edn'
+
+      # The rm matters: if a previously built cljs-out arrived with the resources
+      # source, a skipped or failed compile would otherwise ship it silently.
+      - rm -rf resources/public/cljs-out
+      - cd src-cljs && ../node_modules/.bin/shadow-cljs release app
+
+      # cljs-out is a build INPUT to the onekeepass module (embedded by
+      # generate_context!), not a runtime file, and each module gets a fresh build dir.
+      # Hand it over through /app; the top-level cleanup: strips it from the final app.
+      - mkdir -p /app/share/onekeepass-build
+      - cp -r resources/public/cljs-out /app/share/onekeepass-build/cljs-out
+
+  - name: onekeepass
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/onekeepass/cargo
+    # tauri.conf.json's frontendDist and externalBin are both given relative to
+    # src-tauri, so the trees must stay siblings.
+    sources:
+      - type: git
+        url: https://github.com/OneKeePass/desktop.git
+        tag: v0.25.2
+        commit: 1fd8275f1c254f99ecd0c7b1d4a3d118f7bb357a
+      # Vendored crates plus the cargo config that redirects crates.io — and the
+      # onekeepass-core git dependency — to them. Generated from src-tauri/Cargo.lock.
+      - linux/cargo-sources.json
+    build-commands:
+      # Take the ClojureScript built by the onekeepass-cljs module. Without this the
+      # binary would embed whatever cljs-out the resources source happened to carry.
+      - rm -rf resources/public/cljs-out
+      - cp -r /app/share/onekeepass-build/cljs-out resources/public/cljs-out
+
+      # tauri-build resolves externalBin during the app build, so the sidecar must
+      # already sit at its target-triple path. Take it from /app, which the previous
+      # module has already populated.
+      - install -Dm755 /app/bin/onekeepass-proxy
+        onekeepass-proxy/binaries/onekeepass-proxy-x86_64-unknown-linux-gnu
+
+      # Deliberately `cargo build`, not `cargo tauri build`: we want the binary, not
+      # deb/rpm/AppImage bundles. The frontend (resources/public, including the cljs-out
+      # copied in above) is embedded by tauri::generate_context! at compile time.
+      - cd src-tauri && cargo build --release --locked
+
+      # The cargo package is `onekeepass-frontend` with no [[bin]] override, so the
+      # built binary carries that name. tauri.conf.json's mainBinaryName "OneKeePass"
+      # is applied by `cargo tauri build` during bundling, which we skip — so rename
+      # here, keeping `command:` and the .desktop Exec aligned.
+      - install -Dm755 src-tauri/target/release/onekeepass-frontend /app/bin/OneKeePass
+
+  - name: onekeepass-data
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/OneKeePass/desktop.git
+        tag: v0.25.2
+        commit: 1fd8275f1c254f99ecd0c7b1d4a3d118f7bb357a
+    build-commands:
+      # tauri.conf.json bundle.resources are given as "../resources/public/<x>",
+      # relative to src-tauri. Tauri resolves the resource root at
+      # <exe_dir>/../lib/<productName> and encodes each leading ".." as "_up_", so the
+      # runtime paths are
+      #   /app/lib/OneKeePass/_up_/resources/public/{icons,translations,wordlists}
+      # Flattening these into /app/lib/OneKeePass/ builds fine and then fails silently
+      # at runtime as untranslated UI.
+      - mkdir -p /app/lib/OneKeePass/_up_/resources/public
+      - cp -r resources/public/icons resources/public/translations resources/public/wordlists
+        /app/lib/OneKeePass/_up_/resources/public/
+
+      - install -Dm644 linux/com.onekeepass.OneKeePass.desktop
+        /app/share/applications/com.onekeepass.OneKeePass.desktop
+      - install -Dm644 linux/com.onekeepass.OneKeePass.metainfo.xml
+        /app/share/metainfo/com.onekeepass.OneKeePass.metainfo.xml
+      - install -Dm644 linux/icons/hicolor/256x256/apps/com.onekeepass.OneKeePass.png
+        /app/share/icons/hicolor/256x256/apps/com.onekeepass.OneKeePass.png
+      - install -Dm644 linux/icons/hicolor/512x512/apps/com.onekeepass.OneKeePass.png
+        /app/share/icons/hicolor/512x512/apps/com.onekeepass.OneKeePass.png
+
+      - install -Dm644 LICENSE
+        /app/share/licenses/com.onekeepass.OneKeePass/LICENSE
