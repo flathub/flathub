@@ -1,0 +1,170 @@
+app-id: io.github.augustligh.LLauncher
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: llauncher
+
+finish-args:
+  # Game download / launcher content / DWProton releases
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # GPU access for the game, gamepads, and /dev/ntsync for Wine sync primitives
+  - --device=all
+  # Wine: 32-bit components and ptrace-based exception handling
+  - --allow=multiarch
+  - --allow=devel
+  # One /dev/shm shared by every instance of the app. By default each
+  # instance gets a private tmpfs, so a wineserver that outlives the session
+  # keeps its fsync shared memory in a /dev/shm the next instance cannot see
+  # and the next launch dies before wine loads anything. Same setting the
+  # Steam/Bottles/Twintail flatpaks use for exactly this reason.
+  - --allow=per-app-dev-shm
+  # The game install location is user-chosen (defaults under $HOME); external
+  # drives are a common place for a 50 GB install
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Discord Rich Presence (native and flatpak Discord sockets)
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+
+add-extensions:
+  # 32-bit glibc & friends for Wine, same pattern as Bottles/Lutris
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '25.08'
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 25.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;egl/egl_external_platform.d;OpenCL/vendors;lib/dri;lib/d3d;lib/gbm;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.la
+  - /lib/*.a
+  - /share/gtk-doc
+  - /share/gir-1.0
+  - /share/vala
+  - /share/doc
+  - /share/man
+
+modules:
+  - name: platform-bootstrap
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu /app/lib/i386-linux-gnu/GL
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib32
+          /app/lib/i386-linux-gnu
+
+  # ─── Tray icon stack (libayatana-appindicator, not shipped by the runtime) ───
+
+  - name: intltool
+    cleanup: ['*']
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libdbusmenu-gtk3
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_FALSE: '#'
+        HAVE_VALGRIND_TRUE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-debug
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    cleanup:
+      - /libexec
+      - /share/libdbusmenu
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.5.tar.gz
+        sha256: 73d71c908b803f12e4a5ecd8392511b58afbdd0c82ad7909611a17bb7847c5c8
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.6.0.tar.gz
+        sha256: 23be92ad8eb9625ce93b23b14f82f3cf88a4970c31d48581945ddfbac0441d06
+
+  # ─── The launcher itself ───
+
+  - name: llauncher
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/llauncher/cargo
+    build-commands:
+      - echo 'yarn-offline-mirror "/run/build/llauncher/flatpak-node/yarn-mirror"' > .yarnrc
+      - yarn install --offline --frozen-lockfile
+      - yarn --offline build
+      - cargo --offline build --release --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/llauncher /app/bin/llauncher
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.augustligh.LLauncher.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.augustligh.LLauncher.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.augustligh.LLauncher.png
+      - install -Dm644 'src-tauri/icons/128x128@2x.png' /app/share/icons/hicolor/256x256/apps/io.github.augustligh.LLauncher.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.augustligh.LLauncher.png
+      - install -Dm644 io.github.augustligh.LLauncher.desktop /app/share/applications/io.github.augustligh.LLauncher.desktop
+      - install -Dm644 io.github.augustligh.LLauncher.metainfo.xml /app/share/metainfo/io.github.augustligh.LLauncher.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/AugustLigh/LLauncher.git
+        tag: 0.3.2
+        commit: cd607350a9059d0ec4acddab6469faf6a58f3b2c
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: io.github.augustligh.LLauncher.desktop
+      - type: file
+        path: io.github.augustligh.LLauncher.metainfo.xml
