@@ -1,0 +1,163 @@
+# SecureBit Chat, as Flathub builds it.
+#
+# WHY THIS MANIFEST LOOKS LIKE THIS
+# ---------------------------------
+# Flathub builds every app on its own machines, from a manifest that lives in a
+# PUBLIC repository (github.com/flathub/chat.securebit.SecureBit). This file is
+# that manifest. It contains no source code — the desktop client's source stays
+# private — only the address of a release artifact, its checksum, and the
+# instructions for unpacking it.
+#
+# The artifact is the .deb that Tauri already builds. Nothing Linux-specific is
+# compiled here: the binary that ships to Flathub users is byte for byte the one
+# our own CI produced and signed off, which is the point — one build, verified
+# once.
+#
+# WHY THE ID IS NOT chat.securebit.desktop
+# ----------------------------------------
+# That is the identifier the macOS and Windows bundles use, and it stays as it
+# is there. Flathub refuses an ID whose last component is a generic word —
+# `.desktop`, `.app`, `.linux` — because AppStream treats an ID ending in
+# `.desktop` as a legacy special case and the two spellings of the same app then
+# disagree. So the Flatpak is `chat.securebit.SecureBit`, and the manifest below
+# renames the desktop entry, the icon and the metainfo to match it. The reverse
+# domain is still securebit.chat, which is the domain Flathub checks we control.
+
+id: chat.securebit.SecureBit
+
+# The GNOME runtime carries WebKitGTK (webkit2gtk-4.1), GTK 3, libsoup 3 and the
+# rest of what a Tauri app links against, at the versions Tauri expects. Nothing
+# else has to be built.
+#
+# The version has to be one that is still supported: Flathub refuses a
+# submission on an end-of-life runtime, and flatpak will not even install one —
+# it prints an "end-of-life" note, skips it, and the builder then fails with the
+# far less helpful "Unable to find sdk". GNOME runtimes get roughly a year, so
+# this line has an expiry date and CI is what enforces it: the flatpak job
+# installs exactly what is named here and fails if it is gone.
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+# Tauri names the executable after the Cargo package, not after productName.
+command: tauri-webrtc-chat
+
+finish-args:
+  # Display. Wayland where there is one, X11 where there is not.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # The whole application is a peer-to-peer connection: without the network
+  # there is nothing to sandbox. Chat, file transfer and calls all ride one
+  # WebRTC connection made directly to the other person.
+  - --share=network
+
+  # Calls. Audio through PulseAudio (PipeWire's server is compatible), the
+  # camera through the device node.
+  #
+  # `--device=all` rather than a narrower permission because there is no
+  # narrower one for a camera: Flatpak has no `--device=camera`, and WebKitGTK's
+  # getUserMedia reads /dev/video* directly rather than through the camera
+  # portal. A video-calling application cannot make a video call without it.
+  - --socket=pulseaudio
+  - --device=all
+
+  # Received files are written where the user asked for them, and "show in
+  # folder" hands the path to whichever file manager is running.
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.FileManager1
+
+  # Message notifications.
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: securebit-chat
+    buildsystem: simple
+
+    sources:
+      - type: file
+        path: chat.securebit.SecureBit.metainfo.xml
+
+      - type: file
+        path: LICENSE
+
+      # The release artifact. `url`, `sha256` and `size` are rewritten by
+      # scripts/flatpak-release.mjs from the published release, so that the
+      # three of them can never drift apart by hand.
+      #
+      # It is a plain `file` source rather than `extra-data`: we are the authors,
+      # so Flathub may redistribute the binary, and a baked-in binary means the
+      # user installs from Flathub's own mirrors rather than from us — offline
+      # installs work, and our download endpoint is not in the install path.
+      # If a reviewer would rather Flathub did not host the bits, this becomes
+      # `type: extra-data` with the same three fields plus an `apply_extra`
+      # script that runs the same unpacking on the user's machine.
+      - type: file
+        url: https://github.com/SecureBitChat/securebit-desktop/releases/download/v1.0.0/SecureBit.Chat_1.0.0_amd64.deb
+        # Quoted, always. A checksum of only digits — the all-zero placeholder
+        # this carries until a release exists — is read by YAML as a NUMBER, and
+        # flatpak-builder-lint then rejects the whole source: "Failed to
+        # deserialize sha256 property of type gchararray".
+        sha256: '74825135ab902f3c82ebeb728ecf3be082bc7fda5aa86bcbe81419667111b6c1'
+        only-arches: [x86_64]
+        # Lets Flathub's update bot notice a new release and open the PR itself.
+        #
+        # `is-main-source` marks this as the source the application's VERSION
+        # comes from. Without it the bot can still bump the URL and the
+        # checksum, but the release it writes into the metainfo is not tied to
+        # this artifact — and the metainfo's <releases> is what the store shows.
+        x-checker-data:
+          type: json
+          is-main-source: true
+          url: https://api.github.com/repos/SecureBitChat/securebit-desktop/releases/latest
+          # Quoted: both are jq programs full of characters YAML would
+          # otherwise have opinions about — a leading dot, brackets, pipes.
+          version-query: '.tag_name | sub("^v"; "")'
+          url-query: '.assets[] | select(.name | endswith("_amd64.deb")) | .browser_download_url'
+
+    build-commands:
+      # A .deb is an `ar` archive holding a tarball. Both tools are in the SDK.
+      - ar -x *.deb
+      - tar -xf data.tar.gz
+
+      # Fail LOUDLY if Tauri renames the binary. Without this the install below
+      # would quietly produce a package whose `command` points at nothing, and
+      # the first sign of it would be a user reporting that the app does not
+      # start.
+      - test -x usr/bin/tauri-webrtc-chat
+
+      - install -Dm755 usr/bin/tauri-webrtc-chat /app/bin/tauri-webrtc-chat
+
+      # Tauri names the desktop entry after productName ("SecureBit Chat"), and
+      # Flathub requires it to be named after the app ID. Renaming it is not
+      # enough on its own: the window's WM_CLASS still comes from the binary, so
+      # without StartupWMClass the running window is not matched to this desktop
+      # entry and appears with a blank icon in the dock.
+      - install -Dm644 usr/share/applications/*.desktop
+          /app/share/applications/chat.securebit.SecureBit.desktop
+      - desktop-file-edit
+          --set-key=Icon --set-value=chat.securebit.SecureBit
+          --set-key=StartupWMClass --set-value=tauri-webrtc-chat
+          --set-key=Categories --set-value="Network;InstantMessaging;AudioVideo;"
+          --set-key=Keywords --set-value="chat;messenger;encrypted;p2p;webrtc;privacy;"
+          /app/share/applications/chat.securebit.SecureBit.desktop
+
+      # Every size Tauri ships, renamed to the app ID.
+      - |
+        for size in 32x32 128x128 256x256@2 512x512; do
+          src="usr/share/icons/hicolor/$size/apps"
+          [ -d "$src" ] || continue
+          install -Dm644 "$src"/*.png \
+            "/app/share/icons/hicolor/${size%@2}/apps/chat.securebit.SecureBit.png"
+        done
+
+      - install -Dm644 chat.securebit.SecureBit.metainfo.xml
+          /app/share/metainfo/chat.securebit.SecureBit.metainfo.xml
+
+      # Flathub asks that each module install its licence where the store can
+      # find it. Tauri's .deb carries no copyright file, so the licence travels
+      # with the manifest — the same text the project publishes, not a summary
+      # of it written here.
+      - install -Dm644 LICENSE /app/share/licenses/chat.securebit.SecureBit/LICENSE
