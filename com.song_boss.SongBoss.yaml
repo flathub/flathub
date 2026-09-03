@@ -1,0 +1,237 @@
+id: com.song_boss.SongBoss
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: songboss
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  - --share=ipc
+  # libVLC embeds its video output into a QWidget via XEmbed; main.py forces the
+  # xcb platform plugin, so X11 (native or XWayland) is required.
+  # libVLC is planned for Wayland support in the next major release
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Outbound HTTPS to the karaoke request server configured in Settings.
+  - --share=network
+  # No static filesystem access. The user adds karaoke folders through the
+  # xdg-desktop-portal directory chooser ("Load" in the Library tab); the
+  # document portal keeps that grant across sessions, so the stored paths keep
+  # working without a blanket mount. CSV export goes through the portal
+  # "save as" dialog the same way.
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - /share/gtk-doc
+  - '*.a'
+  - '*.la'
+  # stray icons/desktop files that come from the libVLC build (unused here)
+  - /share/icons/hicolor/*/apps/vlc*
+  - /share/applications/vlc.desktop
+  - /share/metainfo/vlc.appdata.xml
+
+modules:
+  # ---------------------------------------------------------------------------
+  # Audio pitch-shifting: rubberband library + a GPL FFmpeg that exposes it as
+  # the "rubberband" audio filter (used by SongBoss for per-song key changes).
+  # ---------------------------------------------------------------------------
+  - name: rubberband
+    buildsystem: meson
+    config-opts:
+      - -Ddefault_library=shared
+      - -Dfft=builtin
+      - -Dresampler=builtin
+    sources:
+      - type: archive
+        url: https://breakfastquay.com/files/releases/rubberband-3.3.0.tar.bz2
+        sha256: d9ef89e2b8ef9f85b13ac3c2faec30e20acf2c9f3a9c8c45ce637f2bc95e576c
+        x-checker-data:
+          type: anitya
+          project-id: 4059
+          url-template: https://breakfastquay.com/files/releases/rubberband-$version.tar.bz2
+
+  - name: lame
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-frontend
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+        sha256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+        x-checker-data:
+          type: anitya
+          project-id: 4735
+          url-template: https://downloads.sourceforge.net/project/lame/lame/$version/lame-$version.tar.gz
+      # config.guess/config.sub predate aarch64; refresh them when possible.
+      - type: shell
+        commands:
+          - cp -f /usr/share/automake-*/config.sub /usr/share/automake-*/config.guess . || true
+
+  - name: ffmpeg
+    config-opts:
+      - --disable-static
+      - --enable-shared
+      - --disable-doc
+      - --disable-ffplay
+      - --enable-ffmpeg
+      - --enable-ffprobe
+      - --enable-gpl
+      - --enable-version3
+      - --enable-librubberband
+      - --enable-libmp3lame
+      - --enable-libvorbis
+      - --enable-libopus
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz
+        sha256: 3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38
+        x-checker-data:
+          type: anitya
+          project-id: 5405
+          versions:
+            '>=': '6'
+            <: '7'
+          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+
+  # ---------------------------------------------------------------------------
+  # libVLC (playback engine used through python-vlc). Only the library and its
+  # plugins are built - not the vlc binary or its Qt interface.
+  # ---------------------------------------------------------------------------
+  - name: libvlc
+    config-opts:
+      - BUILDCC=/usr/bin/gcc -std=gnu99
+      - --disable-vlc
+      - --disable-nls
+      - --disable-update-check
+      - --disable-lua
+      - --disable-a52
+      - --disable-qt
+      - --disable-skins2
+      - --disable-ncurses
+      - --disable-macosx
+      - --disable-sparkle
+      - --disable-vcd
+      - --disable-libcddb
+      - --disable-dvdread
+      - --disable-dvdnav
+      - --disable-bluray
+      - --disable-mtp
+      - --disable-udev
+      # VLC 3.0.x's taglib meta-engine does not build against taglib 2.x
+      # (removed ByteVector::null / String::isNull / MP4::Tag::itemListMap).
+      # SongBoss reads tags itself via mutagen/tinytag, so this is unused.
+      - --disable-taglib
+      - --disable-v4l2
+      - --disable-libv4l2
+      - --disable-dc1394
+      - --disable-dv1394
+      - --disable-linsys
+      - --disable-dvbpsi
+      - --disable-screen
+      - --disable-vnc
+      - --disable-freerdp
+      - --disable-realrtsp
+      - --disable-smbclient
+      - --disable-sftp
+      - --disable-nfs
+      - --disable-secret
+      - --disable-kwallet
+      - --disable-libplacebo
+      - --disable-srt
+      - --disable-chromecast
+      - --disable-vpx
+      - --disable-matroska
+      - --disable-mod
+      - --disable-mpc
+      - --disable-shine
+      - --disable-goom
+      - --disable-projectm
+      - --disable-vsxu
+      - --disable-avahi
+      - --disable-mmal
+      - --disable-jack
+      - --disable-opensles
+      - --disable-aa
+      - --disable-caca
+      - --disable-fluidsynth
+      - --disable-fluidlite
+      - --disable-notify
+      - --disable-telx
+      - --disable-libtar
+      - --enable-avcodec
+      - --enable-avformat
+      - --enable-swscale
+      - --enable-freetype
+      - --enable-fribidi
+      - --enable-harfbuzz
+      - --enable-xcb
+      - --enable-xvideo
+      - --enable-gl
+      - --enable-glx
+      - --enable-egl
+      - --enable-alsa
+      - --enable-pulse
+      - --enable-dbus
+    build-options:
+      env:
+        # VLC 3.0.x autoconf uses the pre-C99 implicit-int/implicit-function
+        # style in a few probes that GCC 14 now rejects by default.
+        CFLAGS: '-Wno-implicit-function-declaration -Wno-implicit-int -Wno-incompatible-pointer-types'
+    post-install:
+      # Pre-generate the plugin cache (plugins.dat) so libVLC does not rescan
+      # every plugin on each start. VLC 3.0.x takes the path as a bare argument.
+      - /app/lib/vlc/vlc-cache-gen /app/lib/vlc/plugins
+    sources:
+      - type: archive
+        url: https://download.videolan.org/pub/videolan/vlc/3.0.21/vlc-3.0.21.tar.xz
+        sha256: 24dbbe1d7dfaeea0994d5def0bbde200177347136dbfe573f5b6a4cee25afbb0
+        x-checker-data:
+          type: anitya
+          project-id: 6504
+          versions:
+            '>=': '3'
+            <: '4'
+          url-template: https://download.videolan.org/pub/videolan/vlc/$version/vlc-$version.tar.xz
+
+  # ---------------------------------------------------------------------------
+  # Python dependencies (python-vlc, mutagen, tinytag, requests, qrcode[pil]).
+  # Regenerate with:
+  #   flatpak-pip-generator --runtime=org.kde.Sdk//6.11 --checker-data \
+  #     --prefer-wheels pillow \
+  #     python-vlc mutagen tinytag requests 'qrcode[pil]' -o python3-modules
+  # ---------------------------------------------------------------------------
+  - python3-modules.json
+
+  # ---------------------------------------------------------------------------
+  # SongBoss itself.
+  # ---------------------------------------------------------------------------
+  - name: songboss
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 packaging/flatpak/songboss.sh /app/bin/songboss
+      - mkdir -p /app/share/songboss
+      - cp -r src /app/share/songboss/src
+      - install -Dm644 packaging/flatpak/com.song_boss.SongBoss.desktop
+        /app/share/applications/com.song_boss.SongBoss.desktop
+      - install -Dm644 packaging/flatpak/com.song_boss.SongBoss.metainfo.xml
+        /app/share/metainfo/com.song_boss.SongBoss.metainfo.xml
+      - install -Dm644 packaging/flatpak/com.song_boss.SongBoss.svg
+        /app/share/icons/hicolor/scalable/apps/com.song_boss.SongBoss.svg
+    sources:
+      - type: git
+        url: https://gitlab.com/tuxta/songboss.git
+        tag: '1.3.9'
+        commit: 6dfb86a0761deb433f1edd577cee0ba7c9f6a9ee
+        x-checker-data:
+          type: git
+          tag-pattern: '^([\d.]+)$'
