@@ -1,0 +1,157 @@
+# Flatpak manifest for AVD Feed + Connect (Linux).
+#
+# Bundles a purpose-built SDL3 FreeRDP client so the app connects end-to-end on
+# any machine, with two things a stock FreeRDP lacks:
+#   * the pulse hot-unplug + rdpsnd busy-loop fixes (fork commit below) — WITHOUT
+#     these an audio-device change mid Teams call FREEZES the whole session
+#     (FreeRDP PR #13334); shipping plain upstream would crash for users.
+#   * the camera-redirection channel (-DCHANNEL_RDPECAM_CLIENT=ON).
+#
+# Builds and runs on GNOME 49; every source is pinned to a commit for
+# reproducibility.
+app-id: io.github.shakeelosmani.avd_feed_connect
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: avd-feed-connect
+
+finish-args:
+  - --share=network                 # feed discovery, AAD sign-in, RDP gateway
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio             # RDP audio playback + microphone redirect
+  - --device=dri                    # GPU for the RDP graphics pipeline
+  - --device=all                    # webcam (camera redirection) + input
+  - --talk-name=org.kde.StatusNotifierWatcher   # tray icon
+  - --talk-name=org.freedesktop.Notifications
+  - --env=LD_LIBRARY_PATH=/app/lib
+
+# NOTE on ffmpeg: FreeRDP is built WITH_FFMPEG against the runtime's own ffmpeg
+# (the GNOME 49 / freedesktop 25.08 base ships libav*). The org.freedesktop
+# .Platform.ffmpeg-full extension is intentionally NOT used because it is not yet
+# published for the 25.08 base. If the audin microphone path needs the AAC
+# encoder and the base ffmpeg lacks it, add a bundled ffmpeg module here.
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # ---- SDL3 + SDL3_ttf (not in the GNOME runtime) ------------------------
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_STATIC=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.2.30
+        commit: f5e5f6588921eed3d7d048ce43d9eb1ff0da0ffc
+
+  - name: sdl3-ttf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # Use the runtime's freetype; skip vendored harfbuzz (its in-source CMake
+      # guard breaks the build) and plutosvg — the FreeRDP SDL UI is plain text.
+      - -DSDLTTF_VENDORED=OFF
+      - -DSDLTTF_HARFBUZZ=OFF
+      - -DSDLTTF_PLUTOSVG=OFF
+      - -DSDLTTF_SAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_ttf.git
+        tag: release-3.2.2
+        commit: a1ce3670aec736ecbf0936c43f2f0cc53aa61e5b
+
+  # ---- small FreeRDP deps not guaranteed in the runtime ------------------
+  - name: cjson
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_CJSON_TEST=OFF
+      - -DBUILD_SHARED_AND_STATIC_LIBS=OFF
+      # cJSON's cmake_minimum_required predates CMake 3.5, which the GNOME 49
+      # SDK's CMake refuses; allow it to configure anyway.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: git
+        url: https://github.com/DaveGamble/cJSON.git
+        tag: v1.7.18
+        commit: acc76239bee01d8e9c858ae2cab296704e52d916
+
+  # libusb-1.0 — required by the rdpecam V4L camera subsystem (UVC H.264).
+  # (The V4L HAL itself only needs <linux/videodev2.h>, which the SDK ships, so
+  # no libv4l package is required.)
+  - name: libusb
+    buildsystem: autotools
+    config-opts:
+      - --disable-udev
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+
+  # ---- the FreeRDP SDL3 client, our -cam tree with the pulse fixes -------
+  - name: freerdp
+    buildsystem: cmake-ninja
+    builddir: true    # FreeRDP forbids in-source builds
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DWITH_CLIENT_SDL=ON
+      - -DWITH_CLIENT_SDL3=ON
+      - -DWITH_CLIENT_SDL2=OFF
+      - -DWITH_SERVER=OFF
+      - -DWITH_SAMPLE=OFF
+      - -DWITH_AAD=ON            # connection-time AAD popup (uses runtime WebKitGTK)
+      - -DWITH_WEBVIEW=ON
+      - -DWITH_PULSE=ON
+      - -DWITH_FFMPEG=ON
+      - -DWITH_SWSCALE=ON
+      - -DWITH_X11=ON
+      - -DWITH_KRB5=OFF          # AVD gateway uses AAD, not kerberos — keeps deps lean
+      - -DWITH_FUSE=OFF          # FUSE clipboard file-copy; not needed, avoids fuse3 dep
+      - -DWITH_MANPAGES=OFF
+      - -DCHANNEL_RDPECAM_CLIENT=ON
+      - -DWINPR_UTILS_IMAGE_PNG=ON
+      - -DWINPR_UTILS_IMAGE_JPEG=ON
+      - -DWINPR_UTILS_IMAGE_WEBP=ON
+      - -DWINPR_UTILS_IMAGE_DIBv5=ON
+    sources:
+      - type: git
+        url: https://github.com/shakeelosmani/FreeRDP.git
+        # branch fix-pulse-device-hotunplug — pulse hot-unplug + rdpsnd busy-loop
+        # fixes (PR #13334) on top of upstream master f91da7305.
+        commit: 8a5076cb423f66c93d815a96fd69f7aab73cdf74
+      # WITH_WEBVIEW normally git-clones this at configure time (fails in the
+      # offline Flatpak build). Placed at external/webview, FreeRDP's CMake uses
+      # it directly instead of fetching. (WebKitGTK comes from the runtime.)
+      - type: git
+        url: https://github.com/akallabeth/webview
+        commit: 2a0a1303c5e8c9c5b73fa9e461739042ebdabe6f  # branch navigation-listener
+        dest: external/webview
+
+  # ---- the app itself ----------------------------------------------------
+  - name: avd-feed-connect
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 src/avdfeed.py       /app/share/avd-feed-connect/avdfeed.py
+      - install -Dm755 src/avd_feed_gui.py  /app/share/avd-feed-connect/avd_feed_gui.py
+      - install -Dm755 avd-feed-connect     /app/bin/avd-feed-connect
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.desktop
+        /app/share/applications/io.github.shakeelosmani.avd_feed_connect.desktop
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.metainfo.xml
+        /app/share/metainfo/io.github.shakeelosmani.avd_feed_connect.metainfo.xml
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.shakeelosmani.avd_feed_connect.svg
+    sources:
+      - type: git
+        url: https://github.com/shakeelosmani/avd_feed_connect.git
+        commit: ddf6aa33b9fe09df5c25ff47f9e26c5613165070
