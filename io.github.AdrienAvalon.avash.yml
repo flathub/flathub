@@ -1,0 +1,109 @@
+# Manifeste Flathub d'Avash : la construction depuis les sources dans le bac à
+# sable de flatpak-builder, sans réseau. Les dépendances cargo et npm sont
+# figées dans les trois fichiers JSON voisins, régénérés à chaque version par
+# scripts/flathub-sources.sh (flatpak-cargo-generator et
+# flatpak-node-generator, de flatpak-builder-tools). Éprouvé en local :
+#
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#     packaging/flathub/io.github.AdrienAvalon.avash.yml
+#   flatpak run io.github.AdrienAvalon.avash
+#
+# Le runtime GNOME 49 apporte WebKitGTK 4.1 et GTK 3, ceux que Tauri lie sous
+# Linux ; les extensions du SDK fournissent Rust stable et Node 22. La
+# soumission à Flathub reprend ce fichier tel quel (dépôt flathub/flathub,
+# branche new-pr), avec les JSON.
+# L'identifiant Flathub suit le dépôt GitHub (io.github.<compte>.<dépôt>),
+# vérifiable sans posséder de domaine ; celui de Tauri (dev.avash.app,
+# tauri.conf.json) reste l'identifiant GTK de la fenêtre et le nom D-Bus que
+# l'application enregistre au démarrage, d'où --own-name et StartupWMClass.
+id: io.github.AdrienAvalon.avash
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: avash-ui
+finish-args:
+  # Fenêtre GTK : Wayland d'abord, X11 sinon, rendu accéléré pour le bureau
+  # distant.
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Le cœur du métier : joindre des serveurs SSH, RDP et VNC.
+  - --share=network
+  # L'agent SSH du poste : clés chargées, et prêt le temps d'une copie directe.
+  - --socket=ssh-auth
+  # Les mots de passe vont dans le trousseau du système (Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # GTK enregistre l'application sous l'identifiant de tauri.conf.json ; sans
+  # ce droit, le bac à sable refuse le nom et tao s'arrête avant la fenêtre.
+  - --own-name=dev.avash.app
+  # ~/.ssh/config, les clés, known_hosts, et les fichiers que l'on transfère
+  # par SFTP ou par le presse-papiers RDP dans les deux sens : l'application
+  # est un client de fichiers autant qu'un terminal, le portail de sélection
+  # ne suffit pas (dossiers déposés, glisser-déposer vers le bureau distant).
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/avash/cargo
+    CARGO_NET_OFFLINE: 'true'
+    XDG_CACHE_HOME: /run/build/avash/flatpak-node/cache
+    npm_config_cache: /run/build/avash/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+modules:
+  - name: avash
+    buildsystem: simple
+    build-commands:
+      # Le front d'abord : avash-ui embarque web/dist à la compilation.
+      - cd web && npm ci --offline --no-audit --no-fund && npx vite build
+      # Le processus RDP ensuite : avash-ui le déclare en ressource embarquée
+      # (externalBin) et son binaire doit exister, sous le nom du triplet de
+      # la cible, avant de compiler l'application. Le triplet vient de rustc :
+      # Flathub construit aussi en aarch64.
+      - cargo --offline build --release --frozen --manifest-path rdp-sidecar/Cargo.toml
+      - >-
+        install -Dm755 rdp-sidecar/target/release/avash-rdp
+        "crates/avash-ui/binaries/avash-rdp-$(rustc -vV | sed -n 's/host: //p')"
+      - cargo --offline build --release --frozen -p avash-ui -p avash
+      - install -Dm755 target/release/avash-ui /app/bin/avash-ui
+      - install -Dm755 target/release/avash /app/bin/avash
+      # À côté de l'exe, là où Tauri le cherche.
+      - install -Dm755 rdp-sidecar/target/release/avash-rdp /app/bin/avash-rdp
+      - >-
+        for s in 32 64 128; do
+        install -Dm644 "crates/avash-ui/icons/${s}x${s}.png"
+        "/app/share/icons/hicolor/${s}x${s}/apps/io.github.AdrienAvalon.avash.png";
+        done
+      - >-
+        install -Dm644 crates/avash-ui/icons/128x128@2x.png
+        /app/share/icons/hicolor/256x256/apps/io.github.AdrienAvalon.avash.png
+      - >-
+        install -Dm644 crates/avash-ui/icons/logo.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.AdrienAvalon.avash.svg
+      - >-
+        install -Dm644 packaging/flathub/io.github.AdrienAvalon.avash.desktop
+        /app/share/applications/io.github.AdrienAvalon.avash.desktop
+      # Les métadonnées AppStream sont partagées avec l'AUR (identifiant
+      # dev.avash.app, lanceur avash.desktop) ; ici elles portent
+      # l'identifiant Flathub.
+      - >-
+        sed -e 's|<id>dev.avash.app</id>|<id>io.github.AdrienAvalon.avash</id>|'
+        -e 's|>avash.desktop<|>io.github.AdrienAvalon.avash.desktop<|'
+        packaging/dev.avash.app.metainfo.xml > io.github.AdrienAvalon.avash.metainfo.xml
+      - >-
+        install -Dm644 io.github.AdrienAvalon.avash.metainfo.xml
+        /app/share/metainfo/io.github.AdrienAvalon.avash.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.AdrienAvalon.avash/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/AdrienAvalon/avash.git
+        tag: v0.8.0
+        # Le commit du tag, posé à la publication (RELEASE.md, section 8) ;
+        # entre guillemets, sinon YAML peut le lire comme un nombre.
+        commit: "69b8e4f4052e4f977630e205a6e9243acc241842"
+      - cargo-sources.json
+      - cargo-sources-rdp.json
+      - node-sources.json
