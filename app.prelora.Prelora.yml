@@ -1,0 +1,83 @@
+# Prelora desktop — Flathub / Flatpak manifest (T71.4 / T71.12)
+#
+# App ID: app.prelora.Prelora  (owned domain prelora.app — not com.prelora.* / *.desktop)
+# Binary source: public archive on https://prelora.app/downloads/ (type: archive).
+# Update url + sha256 on every release (see docs/dev/linux-downloads.md).
+#
+# Local build (build dir must share filesystem with .flatpak-builder):
+#   flatpak run --command=flatpak-builder org.flatpak.Builder \
+#     --user --force-clean --install "$HOME/prelora-fp-build" packaging/flatpak/app.prelora.Prelora.yml
+# Archive has usr/ at root — keep strip-components: 0.
+#
+# Note: the Wails binary links against WebKitGTK/GTK from the build host (Ubuntu).
+# Reviewers may require bundling shared libraries or rebuilding against the GNOME SDK.
+
+id: app.prelora.Prelora
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: prelora-desktop
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # App data uses $XDG_DATA_HOME/prelora (Flatpak-isolated). No --filesystem=home.
+  # Do not add --talk-name=org.freedesktop.portal.* (linter finish-args-portal-talk-name).
+
+modules:
+  - name: prelora-desktop
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 usr/bin/prelora-desktop /app/bin/prelora-desktop
+      - install -Dm644 app.prelora.Prelora.metainfo.xml /app/share/metainfo/app.prelora.Prelora.metainfo.xml
+      # Archive / AppDir may still ship legacy com.prelora.desktop.* names — install under Flathub ID.
+      - |
+        set -e
+        LEGACY=com.prelora.desktop
+        ID=app.prelora.Prelora
+        src_desktop="usr/share/applications/${LEGACY}.desktop"
+        if [ ! -f "$src_desktop" ]; then
+          src_desktop="usr/share/applications/${ID}.desktop"
+        fi
+        sed -e "s/^Icon=.*/Icon=${ID}/" \
+            -e "s/^StartupWMClass=.*/StartupWMClass=${ID}/" \
+            "$src_desktop" > /tmp/${ID}.desktop
+        install -Dm644 /tmp/${ID}.desktop /app/share/applications/${ID}.desktop
+      - |
+        set -e
+        LEGACY=com.prelora.desktop
+        ID=app.prelora.Prelora
+        for size in 16 22 24 32 48 64 128 256 512; do
+          for src in \
+            "usr/share/icons/hicolor/${size}x${size}/apps/${ID}.png" \
+            "usr/share/icons/hicolor/${size}x${size}/apps/${LEGACY}.png"; do
+            if [ -f "$src" ]; then
+              install -Dm644 "$src" "/app/share/icons/hicolor/${size}x${size}/apps/${ID}.png"
+              break
+            fi
+          done
+        done
+        for src in \
+          "usr/share/icons/hicolor/symbolic/apps/${ID}-symbolic.svg" \
+          "usr/share/icons/hicolor/symbolic/apps/${LEGACY}-symbolic.svg"; do
+          if [ -f "$src" ]; then
+            install -Dm644 "$src" "/app/share/icons/hicolor/symbolic/apps/${ID}-symbolic.svg"
+            break
+          fi
+        done
+    sources:
+      # Stable latest URL — replace sha256 after each R2 upload (required by Flatpak).
+      # Value: files.flatpak_archive.sha256 from https://prelora.app/downloads/latest.json
+      - type: archive
+        url: https://prelora.app/downloads/latest/prelora-desktop-x86_64.tar.gz
+        sha256: "f3d9cc20ad578ac906f7bfb86ad1a6731aa6b01b2b4944e7581ef73b7b78984a"
+        # Archive root is usr/… — do not strip that single top-level dir.
+        strip-components: 0
+      - type: file
+        path: app.prelora.Prelora.metainfo.xml
