@@ -2,8 +2,12 @@
 import os
 import pwd
 import sys
+import shutil
+import warnings
 from urllib.parse import unquote, urlparse
 import gi
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -121,7 +125,7 @@ class TerminWindow(Adw.ApplicationWindow):
             self.terminal.set_margin_end(char_width)
 
     def on_window_title_changed(self, terminal):
-        title = terminal.get_window_title()
+        title = terminal.get_window_title() if hasattr(terminal, "get_window_title") else None
         if title:
             self.set_title(title)
         else:
@@ -319,11 +323,11 @@ class TerminWindow(Adw.ApplicationWindow):
         if not self.is_flatpak:
             return None
         try:
-            success, stdout, _ = GLib.spawn_command_line_sync(
+            res = GLib.spawn_command_line_sync(
                 "flatpak-spawn --host gsettings get org.gnome.desktop.interface monospace-font-name"
             )
-            if success and stdout:
-                val = stdout.decode("utf-8", errors="ignore").strip().strip("'").strip('"')
+            if res and res[0] and res[1]:
+                val = res[1].decode("utf-8", errors="ignore").strip().strip("'").strip('"')
                 if val:
                     return val
         except Exception:
@@ -365,12 +369,20 @@ class TerminWindow(Adw.ApplicationWindow):
         if self.is_flatpak:
             try:
                 user = GLib.get_user_name()
-                if os.path.exists("/run/host/etc/passwd"):
-                    with open("/run/host/etc/passwd", "r", encoding="utf-8", errors="ignore") as f:
-                        for line in f:
-                            entry = line.strip().split(":")
-                            if entry and entry[0] == user and len(entry) >= 7 and entry[6]:
-                                return entry[6]
+                res = GLib.spawn_command_line_sync(f"flatpak-spawn --host getent passwd {user}")
+                if res and res[0] and res[1]:
+                    entry = res[1].decode("utf-8", errors="ignore").strip().split(":")
+                    if len(entry) >= 7 and entry[6] and os.path.isabs(entry[6]):
+                        return entry[6]
+            except Exception:
+                pass
+
+            try:
+                res = GLib.spawn_command_line_sync("flatpak-spawn --host printenv SHELL")
+                if res and res[0] and res[1]:
+                    shell = res[1].decode("utf-8", errors="ignore").strip()
+                    if shell and os.path.isabs(shell):
+                        return shell
             except Exception:
                 pass
 
@@ -383,19 +395,15 @@ class TerminWindow(Adw.ApplicationWindow):
         shell_path = self.detect_shell()
         raw_name = os.path.basename(shell_path)
         self.shell_name = raw_name.capitalize() if raw_name else "Shell"
-        if not self.terminal.get_window_title():
-            self.set_title(self.shell_name)
+        self.set_title(self.shell_name)
 
         working_dir = GLib.get_home_dir()
 
         if self.is_flatpak:
-            pty_flags = Vte.PtyFlags.NO_CTTY | Vte.PtyFlags.NO_SESSION
+            pty_flags = Vte.PtyFlags.DEFAULT
+            host_spawn_bin = "/app/bin/host-spawn" if os.path.exists("/app/bin/host-spawn") else "host-spawn"
             argv = [
-                "flatpak-spawn",
-                "--host",
-                "--env=TERM=xterm-256color",
-                "--env=COLORTERM=truecolor",
-                "--env=TERM_PROGRAM=Termin",
+                host_spawn_bin,
                 shell_path,
             ]
             envv = GLib.get_environ()
