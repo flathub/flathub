@@ -1,0 +1,146 @@
+app-id: com.snekstudio.Snekstudio
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+command: snekstudio-runner
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=all
+  - --share=network
+add-extensions:
+  com.snekstudio.Snekstudio.Mod:
+    directory: user-mods
+    merge-dirs: user-mods
+    add-ld-path: lib
+    subdirectories: false
+    no-autodownload: true
+    autodelete: true
+modules:
+  - name: scons
+    buildsystem: simple
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        sha256: 4210d1a80a62e986029208117991b6347ccaaaab37b67463a3ff31ee065dc487
+        url: https://downloads.sourceforge.net/project/scons/scons/4.11.1/SCons-4.11.1.tar.gz
+        x-checker-data:
+          type: anitya
+          project-id: 4770
+          url-template: https://downloads.sourceforge.net/project/scons/scons/$version/SCons-$version.tar.gz
+
+    build-commands:
+      - pip3 install --no-index --no-build-isolation --prefix=/app .
+  # this is taken partitally from the flatpak for the editor, and the baseapp
+  - name: godot
+    buildsystem: simple
+    build-options:
+      arch:
+        x86_64:
+          env:
+            SCONS_FLAGS_EXTRA: use_lto=yes
+      env:
+        SCONS_FLAGS: >
+          platform=linuxbsd
+          CCFLAGS=-I/app/include
+          prefix=/app
+          unix_global_settings_path=/app
+          disable_path_overrides=no
+          progress=no
+          builtin_freetype=no
+          builtin_libogg=no
+          builtin_libpng=no
+          builtin_libtheora=no
+          builtin_libvorbis=no
+          builtin_libwebp=no
+          builtin_openssl=no
+          builtin_libvpx=no
+          builtin_zlib=no
+          builtin_graphite=no
+          builtin_sdl=no
+
+    build-commands:
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA target=editor -j "$FLATPAK_BUILDER_N_JOBS"
+      - install -D -m755 bin/godot.linuxbsd.editor.* /app/bin/godot
+      - python3 /app/bin/scons $SCONS_FLAGS $SCONS_FLAGS_EXTRA target=template_release tools=no -j "$FLATPAK_BUILDER_N_JOBS"
+      - |
+        if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+          install -Dm755 bin/godot.linuxbsd.template_release.* /app/share/godot/export_templates/4.6.3.stable/linux_release.x86_64
+        else 
+          install -Dm755 bin/godot.linuxbsd.template_release.* /app/share/godot/export_templates/4.6.3.stable/linux_release.arm64
+        fi
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        url: https://github.com/godotengine/godot/releases/download/4.6.3-stable/godot-4.6.3-stable.tar.xz
+        sha256: 2261028c0dfc10e0cf4800a5b2e5a57ea241f72965162327f5764d536a69a46a
+  - name: snekstudio
+    buildsystem: "simple"
+    build-options:
+      append-path: /app/bin
+      # we need to do this, since godot only supports export templates in XDG_DATA_HOME & ~/.local/share
+      env:
+        XDG_DATA_HOME: /app/share/
+    build-commands:
+      - cp Mods/MediaPipe/_tracker/Project/requirements.txt addons/KiriPythonRPCWrapper/Wheels
+      - godot --disable-render-loop --no-header --headless --script Build/WriteBuildVars.gd
+      - . Build/build_vars.sh godot --headless --path . --import
+      - |
+        . Build/build_vars.sh godot
+        if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+          godot --headless --path . --export-release "Linux-x86_64" Build/Builds/snekstudio
+        else
+          godot --headless --path . --export-release "Linux-arm64" Build/Builds/snekstudio
+        fi
+      - |
+        install -Dm755 snekstudio-runner.sh ${FLATPAK_DEST}/bin/snekstudio-runner
+        cd Build/Builds/
+        install -Dm755 snekstudio -t ${FLATPAK_DEST}/bin/
+        install -Dm644 snekstudio.pck -t ${FLATPAK_DEST}/bin/
+        mkdir -p ${FLATPAK_DEST}/share/SnekStudio
+        cp -r Mods ${FLATPAK_DEST}/share/SnekStudio
+        cp -r SampleModels ${FLATPAK_DEST}/share/SnekStudio
+        rm -r ${FLATPAK_DEST}/share/SnekStudio/{logs,objectdb_snapshots}
+    post-install:
+      - mkdir -p ${FLATPAK_DEST}/user-mods
+      - install -D flatpak/com.snekstudio.Snekstudio.desktop -t  /app/share/applications/
+      - desktop-file-edit --set-key=Exec --set-value="snekstudio-runner %U" /app/share/applications/com.snekstudio.Snekstudio.desktop
+      - install -D flatpak/com.snekstudio.Snekstudio.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 Core/UI/Images/icons/32x32.png  /app/share/icons/hicolor/32x32/apps/$FLATPAK_ID.png
+      - install -Dm644 Core/UI/Images/icons/64x64.png  /app/share/icons/hicolor/64x64/apps/$FLATPAK_ID.png
+      - install -Dm644 Core/UI/Images/icons/128x128.png  /app/share/icons/hicolor/128x128/apps/$FLATPAK_ID.png
+      - install -Dm644 Core/UI/Images/icons/256x256.png  /app/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 Core/UI/Images/icons/512x512.png  /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+      - type: git
+        url: https://github.com/ExpiredPopsicle/SnekStudio.git
+        tag: v0.1.7
+        commit: aec36285d3417ac63ac6b3019ffa0075e694c714
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ExpiredPopsicle/SnekStudio/releases/latest
+          tag-query: ".tag_name"
+      - ./python3-requirements.json
+      - type: file
+        url: "https://github.com/indygreg/python-build-standalone/releases/download/20240814/cpython-3.12.5%2B20240814-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+        sha256: 10680b593b5e31833218fd83104dee74af970a3463403a22bae613b952a34e8d
+        only-arches:
+          - x86_64
+        dest: addons/KiriPythonRPCWrapper/StandalonePythonBuilds/
+        dest-filename: cpython-3.12.5+20240814-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+      - type: file
+        url: "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7%2B20241016-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
+        sha256: c8f5ed70ee3c19da72d117f7b306adc6ca1eaf26afcbe1cc1be57d1e18df184c
+        only-arches:
+          - aarch64
+        dest: addons/KiriPythonRPCWrapper/StandalonePythonBuilds/
+        dest-filename: cpython-3.12.7+20241016-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz
+      - type: script
+        dest-filename: snekstudio-runner.sh
+        commands: # I could put these as --env, however these *will* break snekstudio if removed so i'm force setting them in a script
+          - export SNEKSTUDIO_CONFIG_PATH=${XDG_CONFIG_HOME}/SnekStudio
+          - export SNEKSTUDIO_CACHE_PATH=${XDG_CACHE_HOME}/SnekStudio
+          - export SNEKSTUDIO_MODS_PATHS="/app/share/SnekStudio/Mods:/app/user-mods:${XDG_CONFIG_HOME}/SnekStudio/Mods"
+          - export SNEKSTUDIO_SAMPLE_PATH="/app/share/SnekStudio/SampleModels"
+          - mkdir -p ${XDG_CONFIG_HOME}/SnekStudio/Mods && /app/bin/snekstudio "$@"
