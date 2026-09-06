@@ -1,6 +1,6 @@
 app-id: io.github.antwny.aura
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -9,10 +9,12 @@ base-version: stable
 command: aura
 
 finish-args:
-  # Display & Wayland Layer-Shell
-  - --socket=wayland
-  - --socket=fallback-x11
+  # Display & Direct Wayland Layer-Shell access
+  - --socket=x11
   - --share=ipc
+  - --filesystem=xdg-run/wayland-0
+  - --filesystem=xdg-run/wayland-1
+  - --filesystem=xdg-run/wayland-2
   # Hardware GPU Acceleration (wgpu / Vulkan / OpenGL)
   - --device=dri
   # Online wallpaper catalogs (Bing UHD & Wallhaven)
@@ -20,19 +22,83 @@ finish-args:
   # File system access for wallpapers and user library
   - --filesystem=xdg-pictures:rw
   - --filesystem=xdg-videos:rw
-  - --filesystem=xdg-data/aura:create
-  - --filesystem=xdg-config/cosmic:rw
+  - --filesystem=xdg-download:rw
   # COSMIC Desktop auto-theming integration
   - --talk-name=com.system76.CosmicSettingsDaemon
   - --talk-name=com.system76.CosmicSettingsDaemon.*
   # Desktop Notifications & Tray indicator
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --own-name=org.kde.StatusNotifierItem.*
   # File Manager integration
   - --talk-name=org.freedesktop.FileManager1
 
 modules:
+  - name: jinja2
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links . --prefix=${FLATPAK_DEST} jinja2
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
+        sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+
+  - name: libplacebo
+    buildsystem: meson
+    build-options:
+      env:
+        PYTHONPATH: /app/lib/python3.13/site-packages
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+      - -Dopengl=disabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /bin
+    sources:
+      - type: archive
+        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.360.1.tar.gz
+        sha256: d05fdf90bea2f629eaa2d115e909fd356388ac639e54f77b87a018a6d76224bd
+
+  - name: libass
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
+        sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dwayland=enabled
+      - -Dpipewire=enabled
+      - -Dpulse=enabled
+      - -Dalsa=enabled
+      - -Dvulkan=enabled
+      - -Dvaapi=enabled
+      - -Dgl=enabled
+      - -Degl-wayland=enabled
+      - -Dwerror=false
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+
+  - name: mpvpaper
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/GhostNaN/mpvpaper/archive/refs/tags/1.9.tar.gz
+        sha256: 6de941b54941cfd5d00bac62d10ef47c1338f237dac4c78a7185d0f8d30cd4d1
+
   - name: aura
     buildsystem: simple
     build-options:
@@ -51,5 +117,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/antwny/aura.git
-        tag: v1.0.0
+        tag: v1.0.1
+        commit: 2a62f1a83317be3ed8624a7d24271b90736cf7be
       - cargo-sources.json
