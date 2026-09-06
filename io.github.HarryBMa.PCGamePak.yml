@@ -1,0 +1,105 @@
+# PC GamePak, as a Flatpak.
+#
+# The app ID is not the Tauri identifier (com.pc-gamepak.launcher). Flathub
+# requires an ID under a domain the author demonstrably controls, and
+# pc-gamepak.com is not one — io.github.<user>.<project> is the form Flathub
+# asks for when the project lives on GitHub.
+#
+# Why this is possible at all: the product used to need a udev rule, which no
+# sandbox can install. It does not any more. The watcher blocks in poll() on
+# /proc/self/mountinfo, and mount propagation carries host mounts into the
+# sandbox — measured, not assumed, with a real cartridge:
+#
+#   [1..4]   sees mount        (mounted before the sandbox started)
+#   [5..11]  --                (host unmounted it)
+#   [12..30] sees mount        (host mounted it again, after sandbox start)
+#
+# and the watcher binary itself, run inside bubblewrap with a private mount
+# namespace, logged both events and started the launcher. See
+# docs/PUBLISHING.md.
+
+app-id: io.github.HarryBMa.PCGamePak
+# webkit2gtk lives in the GNOME runtime, which is what a Tauri app needs
+# whatever desktop it ends up on.
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pc-gamepak-launch
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # The whole point. udisks mounts removable media under /run/media/$USER, and
+  # a cartridge is unreadable without this. /media and /mnt are the same idea on
+  # desktops and distributions that put it elsewhere.
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
+
+  # Play hands a steam:// (or heroic://, gog://…) URI to the host through the
+  # OpenURI portal. Nothing is executed inside the sandbox.
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+  # So the watcher can ask to be started at login without a systemd user unit,
+  # which a Flatpak does not get.
+  - --talk-name=org.freedesktop.portal.Background
+
+  # Cover art from SteamGridDB in the wizard. The launcher itself needs no
+  # network — art is already on the cartridge by then.
+  - --share=network
+
+modules:
+  - name: pc-gamepak
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/pc-gamepak/cargo
+        # ring ships hand-written assembly that LTO cannot see through; the same
+        # thing that needs options=(!lto) in the PKGBUILD.
+        CARGO_PROFILE_RELEASE_LTO: 'false'
+    build-commands:
+      # The frontend is static files, so cargo is the whole build — no npm.
+      - cargo build --release --locked --offline --manifest-path tauri-ui/src-tauri/Cargo.toml
+      - cargo build --release --locked --offline --manifest-path watcher/Cargo.toml
+      - cargo build --release --locked --offline --manifest-path core/Cargo.toml --bins
+
+      - install -Dm755 tauri-ui/src-tauri/target/release/pc-gamepak /app/bin/pc-gamepak
+      - install -Dm755 watcher/target/release/pc-gamepak-watcher /app/bin/pc-gamepak-watcher
+      - install -Dm755 core/target/release/verify-cart /app/bin/pc-gamepak-verify
+      - install -Dm755 core/target/release/build-cart /app/bin/pc-gamepak-build
+      - install -Dm755 packaging/flatpak/pc-gamepak-launch /app/bin/pc-gamepak-launch
+
+      - install -Dm644 packaging/flatpak/io.github.HarryBMa.PCGamePak.desktop
+          /app/share/applications/io.github.HarryBMa.PCGamePak.desktop
+      - install -Dm644 packaging/flatpak/io.github.HarryBMa.PCGamePak.metainfo.xml
+          /app/share/metainfo/io.github.HarryBMa.PCGamePak.metainfo.xml
+      - install -Dm644 tauri-ui/src-tauri/icons/128x128.png
+          /app/share/icons/hicolor/128x128/apps/io.github.HarryBMa.PCGamePak.png
+      - install -Dm644 tauri-ui/src-tauri/icons/32x32.png
+          /app/share/icons/hicolor/32x32/apps/io.github.HarryBMa.PCGamePak.png
+      - install -Dm644 LICENSE /app/share/licenses/pc-gamepak/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/HarryBMa/pc-gamepak.git
+        # v1.0.0 predates packaging/flatpak/, so a build from it fails on the
+        # first `install` line below. The tag Flathub builds has to be one that
+        # contains this directory.
+        tag: v1.0.1
+        commit: 7a313a17b249002583ee9bd48bd37a00b7dc2d35
+
+      # Flathub builds with no network, so every crate has to be here as a
+      # source. Regenerate with flatpak-cargo-generator.py against each of the
+      # three Cargo.lock files:
+      #
+      #   python3 flatpak-cargo-generator.py core/Cargo.lock -o cargo-sources.json
+      #
+      # (from github.com/flatpak/flatpak-builder-tools). Until that file exists,
+      # a local build needs --share=network in build-options and the --offline
+      # flags above removed.
+      - cargo-sources.json
