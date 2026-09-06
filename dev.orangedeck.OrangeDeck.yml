@@ -1,0 +1,89 @@
+# Flatpak-Bauplan.
+#
+# **Das hier ist der Bauplan zum Ausliefern.** Er zieht aus dem oeffentlichen
+# Repo und ist auf einen Commit festgenagelt -- **Flathub nimmt nur so einen**,
+# und in einem CI-Lauf gibt es kein Arbeitsverzeichnis, aus dem man bauen
+# koennte.
+#
+# Daneben liegt der Bauplan zum Arbeiten, `...dev.yml`. Der baut aus
+# dem Arbeitsverzeichnis, damit man eine Aenderung sofort sieht, ohne sie
+# vorher zu pushen. **Wer eines von beiden aendert, muss das andere
+# mitziehen.**
+#
+# Beim Veroeffentlichen den `commit` unten auf den Stand setzen, der
+# ausgeliefert werden soll -- ein Zweigname waere hier falsch: dann baut
+# jeder Lauf etwas anderes, und niemand kann sagen, was in einem Paket
+# steckt.
+#
+#   flatpak-builder --user --install --force-clean \
+#       build-flatpak packaging/flatpak/dev.orangedeck.OrangeDeck.yml
+#
+# Laufzeit ist die KDE-Plattform, weil sie Qt 6 samt QML schon mitbringt --
+# die Anwendung braucht nur Core, Gui, Qml und Quick. Python fuer den Daemon
+# ist dort ebenfalls vorhanden (3.12), er kommt mit der Standardbibliothek aus.
+id: dev.orangedeck.OrangeDeck
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: orangedeck-launch
+
+finish-args:
+  # Die einzige Verbindung nach draussen: mempool.space und die eigene
+  # Loopback-Schnittstelle. `--share=network` heisst hier auch, dass 127.0.0.1
+  # dieselbe ist wie ausserhalb -- ein schon laufender Benutzerdienst wird
+  # mitbenutzt.
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  # **Gehoert zu `fallback-x11`.** Ohne `--share=ipc` faellt unter X11 der
+  # gemeinsame Speicher (MIT-SHM) weg: jedes Bild wandert dann einzeln durch
+  # den Sockel statt durch ein geteiltes Segment. Bei einer Flaeche, die
+  # dreissig Mal je Sekunde neu gezeichnet wird, ist das nicht wenig -- und
+  # der Flathub-Pruefer bemaengelt es ohnehin.
+  - --share=ipc
+  - --device=dri
+  # Kein --filesystem: die Einstellungen landen in ~/.var/app/dev.orangedeck.OrangeDeck,
+  # sonst wird nichts vom Rechner angefasst.
+
+modules:
+  # Layer-Shell steckt nicht in der KDE-Laufzeit -- ohne dieses Modul faellt
+  # `--layer` weg und das Flatpak kann keine Widgets auf den Desktop legen.
+  #
+  # **Nicht** die neueste Fassung: 6.7.4 (wie im System) verlangt Qt 6.10 und
+  # ECM 6.26, die Laufzeit 6.9 hat Qt 6.9.3 und ECM 6.22. 6.5.5 ist die
+  # letzte, die dazu passt -- Qt 6.9, ECM 6.18. Die Schnittstelle, die hier
+  # gebraucht wird (Ebene, Kanten, Raender, Groesse), ist in beiden dieselbe.
+  - name: layer-shell-qt
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://download.kde.org/stable/plasma/6.5.5/layer-shell-qt-6.5.5.tar.xz
+        sha256: 6844fee55b8b7cbc320cd8308b51595ef830d5a99b4d355b0fd59f88feab2c11
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /mkspecs
+
+  - name: orangedeck
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B build-fp -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app
+      - cmake --build build-fp
+      - cmake --install build-fp
+      # Der Daemon ist ein einzelnes Python-Skript ohne Fremdpakete
+      - install -Dm755 daemon/orangedeck /app/bin/orangedeck
+      - install -Dm755 packaging/flatpak/orangedeck-launch /app/bin/orangedeck-launch
+      # Im Sandkasten startet der Starter erst den Daemon, dann die Anwendung
+      - sed -i 's|^Exec=orangedeck-app$|Exec=orangedeck-launch|' /app/share/applications/dev.orangedeck.OrangeDeck.desktop
+      - install -Dm644 app/icons/dev.orangedeck.OrangeDeck.svg
+        /app/share/icons/hicolor/scalable/apps/dev.orangedeck.OrangeDeck.svg
+      - install -Dm644 packaging/flatpak/dev.orangedeck.OrangeDeck.metainfo.xml
+        /app/share/metainfo/dev.orangedeck.OrangeDeck.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/21Rebel/orangedeck.git
+        commit: 18ce1661eac358fcd597de4cf0ee2e39d648dadc
