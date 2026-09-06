@@ -1,0 +1,95 @@
+app-id: io.github.killown.flux
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/flux/cargo
+    RUST_BACKTRACE: "1"
+    LIBRARY_PATH: /app/lib:/app/lib64
+    LD_LIBRARY_PATH: /app/lib:/app/lib64
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/lib64/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+
+command: flux-fm
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Full filesystem access - required for a file manager
+  - --filesystem=host
+  - --filesystem=xdg-run/gvfs
+  # D-Bus for GVfs mounts (network shares, MTP, trash)
+  - --talk-name=org.gtk.vfs.*
+  - --talk-name=org.freedesktop.FileManager1
+  # Device access for mount operations
+  - --device=all
+
+modules:
+  # ── poppler (PDF thumbnails) ────────────────────────────────────────────────
+  - name: poppler
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_BOOST=OFF
+      - -DENABLE_CPP=OFF
+      - -DENABLE_GLIB=ON
+      - -DENABLE_GOBJECT_INTROSPECTION=OFF
+      - -DENABLE_LIBOPENJPEG=none
+      - -DENABLE_QT5=OFF
+      - -DENABLE_QT6=OFF
+      - -DENABLE_UNSTABLE_API_ABI_HEADERS=ON
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
+        sha256: 97453fbddf0c9a9eafa0ea45ac710d3d49bcf23a62e864585385d3c0b4403174
+
+  # ── vte (embedded terminal) ─────────────────────────────────────────────────
+  - name: vte
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=false
+      - -Dvapi=false
+      - -D_systemd=false
+    sources:
+      - type: archive
+        url: https://gitlab.gnome.org/GNOME/vte/-/archive/0.76.3/vte-0.76.3.tar.gz
+        sha256: eb6d80b879914b89c22811743a5d779fa0e9c57acfa925873b521d054b809746
+
+  # ── flux ────────────────────────────────────────────────────────────────────
+  - name: flux
+    buildsystem: simple
+    build-commands:
+      - cargo fetch --manifest-path Cargo.toml
+      - cargo build --release --manifest-path Cargo.toml
+      - install -Dm755 target/release/flux-fm ${FLATPAK_DEST}/bin/flux-fm
+      - install -Dm644 io.github.killown.flux.desktop ${FLATPAK_DEST}/share/applications/io.github.killown.flux.desktop
+      - install -Dm644 flux.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.killown.flux.svg
+      - install -Dm644 io.github.killown.flux.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.killown.flux.metainfo.xml
+      # Menus (required for Ctrl + Right-Click secondary menus)
+      - install -d ${FLATPAK_DEST}/share/flux/menus
+      - cp -r menus/* ${FLATPAK_DEST}/share/flux/menus/
+      # Themes and default stylesheet
+      - install -d ${FLATPAK_DEST}/share/flux/themes
+      - cp -r themes/* ${FLATPAK_DEST}/share/flux/themes/
+      - cp themes/default.css ${FLATPAK_DEST}/share/flux/style.css
+      # Utility scripts
+      - install -d ${FLATPAK_DEST}/share/flux/scripts
+      - install -m755 scripts/*.py ${FLATPAK_DEST}/share/flux/scripts/
+      # Translations
+      - install -d ${FLATPAK_DEST}/share/locale/pt_BR/LC_MESSAGES
+      - msgfmt -o ${FLATPAK_DEST}/share/locale/pt_BR/LC_MESSAGES/flux.mo po/pt_BR.po
+    sources:
+      - type: git
+        url: https://github.com/killown/flux.git
+        tag: v0.1.0
+        commit: 1df084a5492fbcd01f4d9af1084ade350919de069bbc9974d6dfdb04f47ab60f
+      - cargo-sources.json
+      - type: file
+        path: io.github.killown.flux.desktop
+      - type: file
+        path: io.github.killown.flux.metainfo.xml
