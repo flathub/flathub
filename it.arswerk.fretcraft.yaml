@@ -1,0 +1,112 @@
+# Flathub manifest for Fretcraft — DRAFT for review, not yet submitted.
+#
+# Differences from flatpak/com.smrtkraft.fretcraft.yml in the app repo:
+#
+#   * App ID is it.arswerk.fretcraft. Flathub verifies the app-id domain and
+#     smrtkraft.com does not exist; arswerk.it does, and Arswerk controls it.
+#     The Tauri bundle identifier is unchanged, so no user's data directory moves.
+#
+#   * The .deb is an extra-data source: Flathub hosts only this manifest, the
+#     package is downloaded from arswerk.it on the user's machine at install time
+#     and verified against sha256 + size. This is how every proprietary app on
+#     Flathub works (VS Code, Spotify, Zoom). So the desktop file and icons can
+#     no longer be lifted out of the .deb at build time — they are vendored here.
+#
+#   * The launcher is a wrapper: the binary lives under /app/extra after the
+#     install-time unpack, and /app/bin/fretcraft execs it.
+#
+# Pinned to 1.3.3: the first release without the camera prompt, and the one
+# whose .rpm was run on a real Fedora 44 machine. The AppImage is not offered
+# anywhere; this manifest uses the .deb against the GNOME runtime's WebKit,
+# which is the configuration seen working.
+
+id: it.arswerk.fretcraft
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: fretcraft
+
+finish-args:
+  # Display: Wayland natively, X11 as fallback, DRI for WebKit's compositing.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Audio, both directions. The native cpal engines (the modelled guitar, the
+  # low-latency metronome, the duplex recorder) open ALSA; the runtime's
+  # ALSA->PulseAudio plugin routes that onto this socket. The tuner and the
+  # recorder capture through the same socket. No portal covers a low-latency
+  # duplex audio stream, so this cannot be replaced by one.
+  - --socket=pulseaudio
+  # Licence activation and the update-entitlement check talk to arswerk.it.
+  # Nothing else uses the network; the app works offline once activated.
+  - --share=network
+
+modules:
+  - name: fretcraft
+    buildsystem: simple
+    build-commands:
+      # The install-time unpack. Runs on the user's machine, sandboxed, no
+      # network; its working directory becomes /app/extra.
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      # The launcher.
+      - install -Dm755 fretcraft.sh /app/bin/fretcraft
+      # Desktop entry + icons, vendored (the .deb is not present at build time).
+      - install -Dm644 it.arswerk.fretcraft.desktop /app/share/applications/it.arswerk.fretcraft.desktop
+      - install -Dm644 icon-32.png  /app/share/icons/hicolor/32x32/apps/it.arswerk.fretcraft.png
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/it.arswerk.fretcraft.png
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/it.arswerk.fretcraft.png
+      # AppStream metadata — the whole of what a software centre shows.
+      - install -Dm644 it.arswerk.fretcraft.metainfo.xml /app/share/metainfo/it.arswerk.fretcraft.metainfo.xml
+      # Licence text, as Flathub requires for every module.
+      - install -Dm644 LICENSE.txt /app/share/licenses/it.arswerk.fretcraft/LICENSE.txt
+
+    sources:
+      - type: extra-data
+        filename: fretcraft.deb
+        only-arches: [x86_64]
+        # Version-pinned and public. The unpinned route always serves the
+        # newest release, which would break every install the day the next
+        # version ships and the sha256 stops matching.
+        url: https://arswerk.it/api/download/fretcraft/v/v1.3.3/Fretcraft_1.3.3_amd64.deb
+        sha256: 880a8e58c3534270ac55ddbaf9e0e985c2a9ecb711f20ed061fe0309b4fdca42
+        size: 8214262
+        x-checker-data:
+          # api.github.com is 404 for this private repo, so the site publishes
+          # the same facts itself. The bot opens the update PR on its own.
+          type: json
+          url: https://arswerk.it/api/download/fretcraft/latest.json
+          version-query: .version
+          timestamp-query: .published_at
+          url-query: '"https://arswerk.it/api/download/fretcraft/v/v" + $version + "/Fretcraft_" + $version + "_amd64.deb"'
+          is-main-source: true
+
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - ar x fretcraft.deb
+          - |
+            case $(ls data.tar.*) in
+              *.gz)  tar -xzf data.tar.gz  ;;
+              *.xz)  tar -xJf data.tar.xz  ;;
+              *.zst) tar --zstd -xf data.tar.zst ;;
+            esac
+          - rm -f fretcraft.deb control.tar.* data.tar.* debian-binary
+
+      - type: script
+        dest-filename: fretcraft.sh
+        commands:
+          - exec /app/extra/usr/bin/fretcraft "$@"
+
+      - type: file
+        path: it.arswerk.fretcraft.desktop
+      - type: file
+        path: it.arswerk.fretcraft.metainfo.xml
+      - type: file
+        path: icon-32.png
+      - type: file
+        path: icon-128.png
+      - type: file
+        path: icon-256.png
+      - type: file
+        path: LICENSE.txt
