@@ -1,0 +1,54 @@
+# The Flathub manifest (ADR-0061). Submission draft: Flathub's review
+# will pin the runtime/webkit pair and may ask for vendored build inputs
+# (Flathub builds without network). After acceptance this file lives in
+# github.com/flathub/com.epher.Desktop and the release workflow's
+# store-bumps job commits version bumps here — direct pushes trigger
+# Flathub's bot builds. This in-repo copy is the source of truth.
+app-id: com.epher.Desktop
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: epher
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  # ~/.epher (settings, history, scripts) and user-chosen files.
+  - --filesystem=home
+  - --talk-name=org.a11y.Bus
+modules:
+  # WebKitGTK from Flathub's shared modules: the same webview the deb
+  # and rpm get from the distro. Keep the pair (runtime-version, this
+  # module) aligned with what Flathub's GNOME runtime supports.
+  - "https://github.com/flathub/shared-modules/raw/master/webkitgtk/webkitgtk-2.44.json"
+  - name: epher
+    buildsystem: simple
+    build-commands:
+      # The web dist the desktop shell embeds (the release workflow's
+      # own gate verifies the content hash made it into the binary).
+      - cd crates/web && trunk build --release
+      - cargo build --release --manifest-path crates/tauri-app/src-tauri/Cargo.toml --bin epher
+      - install -Dm755 target/release/epher /app/bin/epher
+      # ADR-0053/0058: the guide and the script collection ride along.
+      # /app/usr is /usr inside the sandbox — exactly where the guide
+      # loader looks (its system data-dir candidates), and the script
+      # collection's in-sandbox path documented in the guide.
+      - install -d /app/usr/share/epher
+      - cp -r crates/web/dist/guide /app/usr/share/epher/guide
+      - cp -r "epher scripts" /app/usr/share/epher/scripts
+      - install -Dm644 packaging/flatpak/com.epher.Desktop.desktop /app/usr/share/applications/com.epher.Desktop.desktop
+      - install -Dm644 site/icon.svg /app/share/icons/hicolor/scalable/apps/com.epher.Desktop.svg
+    sources:
+      - type: git
+        url: https://github.com/upyesp/epher.git
+        tag: v0.0.0
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: file
+        path: com.epher.Desktop.desktop
+      - type: file
+        path: com.epher.Desktop.svg
