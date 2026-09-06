@@ -1,0 +1,95 @@
+app-id: io.github.muhaideennausar.Glyph
+runtime: org.gnome.Platform
+runtime-version: "49"
+sdk: org.gnome.Sdk
+command: glyph
+
+finish-args:
+  # Display servers (Wayland native + X11 fallback)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Portal screenshot access (some compositors write snapshots to ~/Pictures)
+  - --filesystem=xdg-pictures:ro
+  # System notifications
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  env:
+    TESSDATA_PREFIX: /app/share/tessdata
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - "*.la"
+  - "*.a"
+
+modules:
+  - name: leptonica
+    cleanup:
+      - /bin
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.84.1/leptonica-1.84.1.tar.gz
+        sha256: 2b3e1254b1cca381e77c819b59ca99774ff43530209b9aeb511e1d46588a64f6
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DENABLE_LSTMTRAINING=OFF
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DBUILD_TESTS=OFF
+      - -DTESSDATA_PREFIX=/app/share/tessdata
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.4.1.tar.gz
+        sha256: c4bc2a81c12a472f445b7c2fb4705a08bd643ef467f51ec84f0e148bd368051b
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+        dest: tessdata
+        dest-filename: eng.traineddata
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/main/osd.traineddata
+        sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+        dest: tessdata
+        dest-filename: osd.traineddata
+    post-install:
+      - install -Dm644 tessdata/eng.traineddata /app/share/tessdata/eng.traineddata
+      - install -Dm644 tessdata/osd.traineddata /app/share/tessdata/osd.traineddata
+
+  - name: wl-clipboard
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/p/pillow/pillow-10.4.0.tar.gz
+        sha256: 166c1cd4d24309b30d61f79f4a9114b7b2313d7450912277855ff5dfd7cd4a06
+
+  - name: glyph
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+      - install -Dm644 data/io.github.muhaideennausar.Glyph.desktop ${FLATPAK_DEST}/share/applications/io.github.muhaideennausar.Glyph.desktop
+      - install -Dm644 data/io.github.muhaideennausar.Glyph.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.muhaideennausar.Glyph.metainfo.xml
+      - install -Dm644 assets/icons/scalable/io.github.muhaideennausar.Glyph.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.muhaideennausar.Glyph.svg
+      - install -Dm644 assets/icons/scalable/io.github.muhaideennausar.Glyph-symbolic.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.muhaideennausar.Glyph-symbolic.svg
+      - for size in 48x48 64x64 128x128 256x256 512x512; do install -Dm644 assets/icons/hicolor/${size}/apps/io.github.muhaideennausar.Glyph.png ${FLATPAK_DEST}/share/icons/hicolor/${size}/apps/io.github.muhaideennausar.Glyph.png; done
+    sources:
+      # Official release source for Flathub production builds:
+      - type: git
+        url: https://github.com/muhaideennausar/glyph-text-extractor.git
+        tag: v0.2.4
+        commit: 22532957b8a6ffd5bc0ec6f34c52ec648fc02d9f
+      # (Note for local testing: switch to type: dir, path: .)
