@@ -1,0 +1,151 @@
+app-id: buzz.armada.app
+
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '25.08'
+sdk: org.freedesktop.Sdk
+
+separate-locales: false
+command: armada
+
+# zypak sandboxes Electron's setuid sandbox helper; armada-wrapper execs it.
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+
+# node: offline npm install + vite build. rust: the wasm transport. golang: the
+# HEVC publisher. llvm: clang for the transport's `ring` C (rust-stable ships none).
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.llvm21
+
+finish-args:
+  # User-configured Nostr relays, voice brokers and media hosts over wss/https.
+  - --share=network
+  - --share=ipc
+  # fallback-x11 + wayland: Wayland when offered, X11 otherwise (bare x11 is
+  # rejected by the linter alongside wayland).
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Voice calls and screen-share audio.
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # GPU for video accel/rendering.
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures:ro
+  - --filesystem=xdg-videos:ro
+  # nsec in the OS keyring via libsecret.
+  - --talk-name=org.freedesktop.secrets
+  # Tray icon + app menu.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/golang/bin
+  env:
+    npm_config_offline: 'true'
+    npm_config_cache: /run/build/armada/flatpak-node/npm-cache
+    XDG_CACHE_HOME: /run/build/armada/flatpak-node/cache
+    npm_config_nodedir: /usr/lib/sdk/node22
+    # playwright's browser downloads are dropped from the offline cache, so its
+    # postinstall must skip or `npm ci --offline` fails reaching for them.
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    CARGO_HOME: /run/build/armada/cargo
+    CPM_SOURCE_CACHE: /run/build/armada/electron/vendor-cpm
+    GOFLAGS: -mod=vendor
+    GOTOOLCHAIN: local
+
+modules:
+  - name: armada
+    buildsystem: simple
+    build-commands:
+      # 1. H.265 screen-share publisher (Go), from the vendored module tree.
+      - |
+        set -eu
+        export PATH="/usr/lib/sdk/golang/bin:$PATH"
+        cd electron/hevc-publisher
+        git apply --ignore-space-change ../flatpak/server-sdk-primary-codec.patch
+        go test -mod=vendor ./...
+        GOOS=linux go build -mod=vendor -trimpath -buildvcs=false \
+          -ldflags='-s -w' -o /app/bin/armada-hevc-publisher .
+
+      # 2. Web client deps (root package-lock). Runs no prebuild hook.
+      - npm ci --offline
+
+      # 3. iroh-gossip wasm transport without wasm-pack, into src/wasm/webxdc-rt.
+      #    The prebuild hook then finds the output present and no-ops.
+      - sh packaging/flathub/build-wasm-flatpak.sh
+
+      # 4. Web bundle.
+      - npm run build
+
+      # 5. Electron shell deps (electron/package-lock).
+      - npm --prefix electron ci --offline
+
+      # 6. Rebuild the two native addons from source instead of shipping their
+      #    prebuilds. Each package's own tool is invoked directly: `npm rebuild`
+      #    routes uiohook-napi through node-gyp and silently produces nothing.
+      #    Then keep only the loadable .node; the rest of the CMake/gyp tree is
+      #    dead weight and CMakeCache.txt records absolute host paths.
+      - rm -rf electron/node_modules/@vencord/venmic/prebuilds
+          electron/node_modules/uiohook-napi/prebuilds
+      - |
+        set -eu
+        cd electron/node_modules/@vencord/venmic
+        ../../.bin/cmake-js compile --CDvenmic_addon=ON
+        test -f build/Release/venmic-addon.node
+        find build -mindepth 1 -maxdepth 1 ! -name Release -exec rm -rf {} +
+        find build/Release -mindepth 1 ! -name 'venmic-addon.node' -exec rm -rf {} +
+      - |
+        set -eu
+        cd electron/node_modules/uiohook-napi
+        ../.bin/node-gyp-build
+        test -f build/Release/uiohook_napi.node
+        find build -mindepth 1 -maxdepth 1 ! -name Release -exec rm -rf {} +
+        find build/Release -mindepth 1 ! -name 'uiohook_napi.node' -exec rm -rf {} +
+
+      # 7. Bundled store + update feed (db.cjs, updateFeed.cjs), then stage the
+      #    web bundle into electron/dist.
+      - npm run build:electron
+      - node electron/scripts/stage-web.mjs
+
+      # 8. Assemble the Electron app dir into /app/armada with @electron/packager
+      #    against the cached Electron zip (no electron-builder, no network).
+      - sh packaging/flathub/assemble-electron.sh
+
+      # 9. Launcher, desktop entry, metainfo, scalable + raster icons.
+      - install -Dm755 packaging/flathub/armada-wrapper /app/bin/armada
+      - install -Dm644 packaging/flathub/buzz.armada.app.desktop
+          /app/share/applications/buzz.armada.app.desktop
+      - install -Dm644 packaging/flathub/buzz.armada.app.metainfo.xml
+          /app/share/metainfo/buzz.armada.app.metainfo.xml
+      - install -Dm644 public/logo.svg
+          /app/share/icons/hicolor/scalable/apps/buzz.armada.app.svg
+      - install -Dm644 electron/build/linux-icon.png
+          /app/share/icons/hicolor/512x512/apps/buzz.armada.app.png
+
+      # 10. The app's AGPL-3.0-only license text (Flathub requires each module's
+      #     license under share/licenses/$FLATPAK_ID); read from the checkout root.
+      - install -Dm644 LICENSE
+          /app/share/licenses/buzz.armada.app/LICENSE
+
+      # 11. Marker that disables the app's own updater (read by electron/main.js).
+      - install -Dm644 packaging/flathub/ARMADA_FLATHUB_BUILD
+          /app/armada/resources/ARMADA_FLATHUB_BUILD
+
+    sources:
+      # The url is the repo's https git-http mirror, since
+      # flatpak-builder can't clone the canonical nostr:// remote.
+      - type: git
+        url: https://git.shakespeare.diy/npub10qdp2fc9ta6vraczxrcs8prqnv69fru2k6s2dj48gqjcylulmtjsg9arpj/armada.git
+        tag: v0.59.12
+        commit: 78b55f376ac688e030f4d28f6d7a153f03ad8661
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - generated-sources.npm.json
+      - generated-sources.cargo.json
+      - generated-sources.hevc.json
+      - generated-sources.venmic-cpm.json
