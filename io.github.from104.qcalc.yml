@@ -1,0 +1,64 @@
+# Flathub 제출용 매니페스트 — 소스에서 오프라인으로 빌드한다.
+# 의존성 목록은 flatpak-builder-tools 로 생성:
+#   flatpak-node-generator yarn yarn.lock -o node-sources.json
+#   flatpak-cargo-generator src-tauri/Cargo.lock -o cargo-sources.json
+id: io.github.from104.qcalc
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: qcalc
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # 환율 계산기가 시세를 받아 온다.
+  - --share=network
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/qcalc/src-tauri/cargo
+    XDG_CACHE_HOME: /run/build/qcalc/flatpak-node/cache
+    npm_config_nodedir: /usr/lib/sdk/node22
+    YARN_ENABLE_INLINE_BUILDS: '1'
+    YARN_ENABLE_TELEMETRY: '0'
+    YARN_ENABLE_NETWORK: '0'
+    YARN_ENABLE_GLOBAL_CACHE: '0'
+    YARN_GLOBAL_FOLDER: /run/build/qcalc/flatpak-node/yarn-berry
+modules:
+  - name: qcalc
+    buildsystem: simple
+    build-commands:
+      # 저장소는 corepack(packageManager 필드)으로 Yarn 4 를 받지만 샌드박스엔 네트워크가 없다.
+      # SDK 의 Yarn 1.22 는 packageManager 를 보면 corepack 을 요구하며 멈추므로, 소스로 넣은
+      # Yarn 4 릴리스 파일을 node 로 직접 실행한다. convertToZip 의 인자는 Yarn 1 경로(패킹용).
+      - node .yarn/releases/yarn-4.10.3.cjs plugin import $FLATPAK_BUILDER_BUILDDIR/flatpak-node/flatpak-yarn.js
+      - node .yarn/releases/yarn-4.10.3.cjs convertToZip /usr/lib/sdk/node22/bin/yarn
+      - node .yarn/releases/yarn-4.10.3.cjs install --immutable
+      - node .yarn/releases/yarn-4.10.3.cjs quasar build
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+      # Cargo 패키지 이름은 app 이고 qcalc 로 바꿔 다는 건 tauri CLI 의 일이라 직접 설치한다.
+      - install -Dm755 src-tauri/target/release/app /app/bin/qcalc
+      - install -Dm644 flatpak/io.github.from104.qcalc.desktop /app/share/applications/io.github.from104.qcalc.desktop
+      - install -Dm644 flatpak/io.github.from104.qcalc.metainfo.xml /app/share/metainfo/io.github.from104.qcalc.metainfo.xml
+      # flatpak/icons 는 빌드 스크립트가 만드는 산출물이라 저장소에 없다. Tauri 아이콘을 쓴다.
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.from104.qcalc.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.from104.qcalc.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.from104.qcalc.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.from104.qcalc.png
+    sources:
+      - type: git
+        url: https://github.com/from104/qcalc.git
+        tag: v0.13.3
+        commit: 5866321f1c8a6ba2c6182a20717720d379772d5f
+      - type: file
+        url: https://repo.yarnpkg.com/4.10.3/packages/yarnpkg-cli/bin/yarn.js
+        sha256: cd71753d68307301d21034efaf20bd8eee81f9450af75f068477bf9011bb9ad4
+        dest: .yarn/releases
+        dest-filename: yarn-4.10.3.cjs
+      - cargo-sources.json
+      - node-sources.json
