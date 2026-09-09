@@ -1,0 +1,114 @@
+# Flathub manifest — not yet submitted there. app-id is io.github.dchau360.*
+# rather than org.frozenbubble.* because Flathub requires proving domain
+# ownership for a reverse-DNS id, and this project doesn't control
+# frozenbubble.org (that's the original, unaffiliated Perl project); the
+# io.github.<username> namespace verifies automatically via GitHub login
+# instead. Verified with a real
+# `flatpak-builder --user --install --force-clean` build + `flatpak run`
+# smoke test (aarch64, Ubuntu 24.04): all 5 modules build, the desktop/
+# icon/metainfo files export correctly, and the installed binary starts,
+# resolves its assets to /app/share/frozen-bubble, and runs its main loop
+# (SDL_VIDEODRIVER=dummy — no GUI on the box this was tested on, so actual
+# rendering has not been eyeballed). Not yet tried on x86_64.
+#
+# runtime-version: bump to whatever is current stable at submission time
+# (docs/for-app-authors/runtimes on docs.flathub.org).
+app-id: io.github.dchau360.FrozenBubble
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: frozen-bubble-sdl3
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Online multiplayer talks to fb-server over plain TCP.
+  - --share=network
+
+# The freedesktop runtime doesn't carry SDL3 (it's too new/minimal for that),
+# so build it and its three companion libs from source first, at the same
+# tags CI builds against (.github/workflows/build.yml) so this gets the same
+# combination that's actually tested.
+modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDL_TEST_LIBRARY=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.4.4
+        disable-submodules: true
+
+  - name: sdl3_image
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDLIMAGE_SAMPLES=OFF
+      - -DSDLIMAGE_VENDORED=OFF
+      - -DSDLIMAGE_AVIF=OFF
+      - -DSDLIMAGE_JPG=OFF
+      - -DSDLIMAGE_TIF=OFF
+      - -DSDLIMAGE_WEBP=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_image.git
+        tag: release-3.4.2
+        # Skip vendored-dependency submodules (aom, libjxl, etc.) — every
+        # format they'd back is turned OFF above anyway, and they're huge.
+        disable-submodules: true
+
+  - name: sdl3_mixer
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDLMIXER_TESTS=OFF
+      - -DSDLMIXER_EXAMPLES=OFF
+      - -DSDLMIXER_MP3=OFF
+      - -DSDLMIXER_FLAC=OFF
+      - -DSDLMIXER_OPUS=OFF
+      - -DSDLMIXER_GME=OFF
+      - -DSDLMIXER_MOD=OFF
+      - -DSDLMIXER_MIDI=OFF
+      - -DSDLMIXER_VENDORED=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_mixer.git
+        tag: release-3.2.0
+        disable-submodules: true
+
+  - name: sdl3_ttf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDLTTF_SAMPLES=OFF
+      - -DSDLTTF_VENDORED=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_ttf.git
+        tag: release-3.2.2
+        disable-submodules: true
+
+  - name: frozen-bubble-sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: git
+        url: https://github.com/dchau360/frozen-bubble-sdl3.git
+        tag: v2.4.98
+        # The only submodules in this repo are SDL3-for-Android under
+        # android/app/jni/ (see CLAUDE.md) — irrelevant to a desktop build.
+        disable-submodules: true
+      - type: file
+        path: io.github.dchau360.FrozenBubble.desktop
+      - type: file
+        path: io.github.dchau360.FrozenBubble.metainfo.xml
+    build-commands:
+      - install -Dm644 io.github.dchau360.FrozenBubble.desktop
+        /app/share/applications/io.github.dchau360.FrozenBubble.desktop
+      - install -Dm644 io.github.dchau360.FrozenBubble.metainfo.xml
+        /app/share/metainfo/io.github.dchau360.FrozenBubble.metainfo.xml
+      - install -Dm644 share/icons/frozen-bubble-icon-512x512.png
+        /app/share/icons/hicolor/512x512/apps/io.github.dchau360.FrozenBubble.png
+      - install -Dm644 share/icons/frozen-bubble-icon-64x64.png
+        /app/share/icons/hicolor/64x64/apps/io.github.dchau360.FrozenBubble.png
