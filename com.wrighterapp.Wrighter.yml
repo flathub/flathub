@@ -1,0 +1,110 @@
+# THE FLATPAK MANIFEST. Submitted to Flathub as a pull request against flathub/flathub.
+#
+# extra-data, NOT a build from source. Wrighter is proprietary, and this is the route Flathub
+# provides for that: the .deb we already ship is downloaded at INSTALL time on the user's machine
+# and unpacked there. Flathub never redistributes the binary itself, and there is one artefact to
+# keep current rather than three.
+#
+# THE CHECKSUM AND SIZE BELOW ARE THE CONTRACT. If the .deb on dl.wrighterapp.com changes by a
+# single byte without this file changing with it, every install fails - loudly, which is right.
+# Both come from dist/BUILD, written by the same build that made the ISO.
+app-id: com.wrighterapp.Wrighter
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: wrighter
+
+# EVERY LINE HERE IS A PERMISSION SOMEBODY GRANTS BY INSTALLING. Flathub's linter rejected the
+# first version of this and it was right to.
+finish-args:
+  # The app draws with Skiko on OpenGL. Wayland first, X11 as the fallback, and dri for the GPU.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 fallback needs shared memory or the app falls back to a slow path and the linter fails the
+  # build (finish-args-x11-without-ipc).
+  - --share=ipc
+  - --device=dri
+  # Sync talks to Cloudflare, and the browser opens the paywall.
+  - --share=network
+  # The sprint chime.
+  - --socket=pulseaudio
+  # THE LIBRARY NEEDS NO PERMISSION AT ALL. A flatpak gets its own writable
+  # ~/.var/app/com.wrighterapp.Wrighter, and the SQLite database lives there.
+  #
+  # What DOES need the user's own disk is the Markdown option and export, so this asks for the two
+  # directories those actually land in. --filesystem=home would cover every case and Flathub flags it
+  # (finish-args-home-filesystem-access): an app that can read every file in your home is a big ask
+  # for a writing app, and reviewers make you argue for it. If these two prove too narrow in
+  # practice, widening is a conversation with Flathub rather than something to assume now.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  # NO --talk-name FOR PORTALS. Opening the paywall in the user's browser goes through the OpenURI
+  # portal, which every flatpak can reach without being granted it. Asking for it explicitly is what
+  # finish-args-portal-talk-name objects to.
+
+modules:
+  - name: wrighter
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 wrighter /app/bin/wrighter
+      - install -Dm644 com.wrighterapp.Wrighter.metainfo.xml /app/share/metainfo/com.wrighterapp.Wrighter.metainfo.xml
+      - install -Dm644 com.wrighterapp.Wrighter.desktop /app/share/applications/com.wrighterapp.Wrighter.desktop
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.wrighterapp.Wrighter.png
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/com.wrighterapp.Wrighter.png
+    sources:
+      - type: extra-data
+        filename: wrighter.deb
+        url: https://dl.wrighterapp.com/wrighterlinux_7.1.3_amd64.deb
+        sha256: 051e396633769b75321fea5fe556b01bb8598c408ae619ee1c5afe9305467e6d
+        size: 107948764
+        x-checker-data:
+          type: html
+          url: https://wrighterapp.com/novel-writing-software-for-linux
+          version-pattern: wrighterlinux_([0-9.]+)_amd64\.deb
+          url-template: https://dl.wrighterapp.com/wrighterlinux_$version_amd64.deb
+
+      # UNPACKS THE .deb ON THE USER'S MACHINE AT INSTALL TIME, and this runs in the PLATFORM
+      # runtime, not the SDK. That distinction cost an install: the first version used `ar x`, which
+      # is binutils and exists only at build time. flatpak-builder was happy, the Flathub linter was
+      # happy, and `flatpak install` died with "ar: command not found" and exit 32512. A manifest can
+      # build and lint perfectly and still fail on every machine that installs it.
+      #
+      # bsdtar is in the Platform runtime and libarchive reads `ar` archives natively, so it opens a
+      # .deb directly. Verified by installing the built flatpak, not by reading the runtime manifest.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -e
+          - bsdtar -xf wrighter.deb
+          - bsdtar -xf data.tar.xz
+          - rm -f wrighter.deb debian-binary control.tar.* data.tar.*
+          # jpackage lays the app out under /opt. Flatpak's /app is the root here, so move it up.
+          - mv opt/wrighterlinux .
+          - rm -rf opt usr
+
+      # A launcher that goes STRAIGHT TO THE BINARY, not through the .deb's own wrapper.
+      #
+      # tools/package-deb.sh wraps jpackage's launcher in a shell script that sets FONTCONFIG_FILE
+      # and then execs /opt/wrighterlinux/bin/WrighterLinux.bin by ABSOLUTE PATH. That is correct for
+      # a .deb, which installs into /opt. Inside a flatpak the app lives at /app/extra/wrighterlinux
+      # and there is no /opt, so calling that wrapper execs a file that does not exist.
+      #
+      # So this does the same job against the flatpak's own paths. The fontconfig file matters: it
+      # names the faces the UI was fitted against, and without it Debian's DejaVu is wider, the word
+      # count column clips and every wrap point in the prose moves.
+      - type: script
+        dest-filename: wrighter
+        commands:
+          - 'FC=/app/extra/wrighterlinux/lib/fontconfig.conf'
+          - '[ -r "$FC" ] && [ -z "$WRIGHTER_SYSTEM_FONTS" ] && export FONTCONFIG_FILE="$FC"'
+          - 'exec /app/extra/wrighterlinux/bin/WrighterLinux.bin "$@"'
+
+      - type: file
+        path: com.wrighterapp.Wrighter.metainfo.xml
+      - type: file
+        path: com.wrighterapp.Wrighter.desktop
+      - type: file
+        path: icon-512.png
+      - type: file
+        path: icon-128.png
