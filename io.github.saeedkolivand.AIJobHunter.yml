@@ -1,0 +1,144 @@
+# Flathub manifest for AI Job Hunter.
+#
+# Unlike the Snap manifest (which reuses the already-built .deb), Flathub
+# builds run fully OFFLINE/sandboxed — every crate and pnpm package has to be
+# pre-vendored, so this one genuinely rebuilds from source inside the
+# sandbox, per Tauri's own official Flatpak guide
+# (github.com/tauri-apps/tauri-docs, distribute/flatpak.mdx).
+#
+# `cargo-sources.json` and `node-sources.json` (both committed alongside this
+# file, regenerated per-release by the `update-flathub` CI job) were produced
+# by, respectively:
+#   flatpak-cargo-generator.py apps/desktop/src-tauri/Cargo.lock -o cargo-sources.json
+#   flatpak-node-generator pnpm pnpm-lock.yaml -o node-sources.json
+# (the pnpm-capable generator lives at github.com/flatpak/flatpak-builder-tools —
+# PyPI's published `flatpak-node-generator` package predates pnpm support, so
+# CI installs straight from that repo's `node/` subdirectory instead.)
+#
+# ponytail: node-sources.json includes Playwright's e2e test browser download
+# (a devDependency, not needed to build or run the app) because
+# flatpak-node-generator's `--no-devel` flag would also strip the actual
+# build-tool devDependencies (vite, typescript, turbo) this build needs —
+# there's no per-package filter finer than that. One extra vendored archive,
+# not worth a custom lockfile-pruning step; revisit only if a Flathub
+# reviewer specifically flags it.
+app-id: io.github.saeedkolivand.AIJobHunter
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+# No `//branch` suffix here — org.gnome.Sdk//49 declares a wildcard
+# `[Extension org.freedesktop.Sdk.Extension]` extension point pinning every
+# org.freedesktop.Sdk.Extension.* to branch 25.08 automatically (confirmed via
+# `flatpak info org.gnome.Sdk//49 --show-metadata`; a `//25.08` suffix here is
+# invalid syntax and fails with "Unknown extension ... in runtime"). GNOME 47
+# (Tauri's own doc example) is EOL as of 2025-10-15 — verified this whole
+# pairing with a real local flatpak-builder run in WSL, not just literature.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: ajh-tauri
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri # WebView2-equivalent GL rendering
+  - --share=ipc
+  - --share=network # core egress: AI provider calls + job-board scraping
+  - --talk-name=org.kde.StatusNotifierWatcher # tray icon
+  - --talk-name=org.freedesktop.portal.Background # launch-at-login, via the portal — see docs/DEPLOYMENT.md § Flathub
+  - --filesystem=xdg-download # résumé/cover-letter export target
+
+build-options:
+  # npm-global/bin comes first: it's where the `npm install -g` step below
+  # puts pnpm itself, which the node22 extension does NOT ship (it bundles
+  # Node + npm only) — discovered via a real local flatpak-builder run
+  # ("pnpm: command not found"), not assumed.
+  append-path: /run/build/ai-job-hunter/npm-global/bin:/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/ai-job-hunter/cargo
+    # pnpm's offline store, populated by flatpak-node-generator's fetched
+    # sources before `pnpm install --offline` runs below.
+    PNPM_HOME: /run/build/ai-job-hunter/flatpak-node/pnpm-store
+    npm_config_prefix: /run/build/ai-job-hunter/npm-global
+
+modules:
+  - name: ai-job-hunter
+    buildsystem: simple
+    sources:
+      # Swapped for a pinned `tag:` by update-flathub on every release — see
+      # its own comment in release.yml. Never a local `type: dir` here: that
+      # would make this manifest untestable the same way Flathub's own
+      # buildbot builds it. Use a local checkout only for a throwaway test
+      # copy of this file, never commit one.
+      - type: git
+        url: https://github.com/saeedkolivand/ai-job-hunter-app.git
+        commit: 22b21751377c9f20b9ec59c2a19d1a7078794fd6
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: io.github.saeedkolivand.AIJobHunter.desktop
+      - type: file
+        path: io.github.saeedkolivand.AIJobHunter.metainfo.xml
+      - type: file
+        path: icon.png
+      # The node22 SDK extension bundles Node + npm only, not pnpm — this
+      # repo's pinned pnpm (package.json's "packageManager") is vendored
+      # explicitly and installed via `npm install -g` below, fully offline.
+      # Version/sha256 here must track package.json's packageManager field;
+      # update-flathub does not do this automatically (bump both by hand on
+      # a pnpm version bump — rare enough not to script).
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-11.10.0.tgz
+        sha256: 620b6605ea4f62fc56a6d0a98733f479071d0321e03e486b522c7e9a74617431
+        dest: pnpm-pkg
+    build-commands:
+      # Cargo: point crates.io at the vendored sources flatpak-cargo-generator
+      # staged under cargo/vendor (its own inline `.cargo/config.toml`
+      # fragment source, listed in cargo-sources.json, lands at $CARGO_HOME).
+      - mkdir -p $CARGO_HOME
+      - cat cargo/config >> $CARGO_HOME/config.toml || true
+
+      - npm install --global ./pnpm-pkg
+
+      # pnpm: install from the store flatpak-node-generator populated, no
+      # registry reachable (network is sandboxed off for this module).
+      #
+      # `minimum-release-age 0` matters here: pnpm 11's supply-chain default
+      # (minimumReleaseAge, 24h) needs registry metadata/attestations to
+      # verify each package's publish timestamp during frozen-lockfile
+      # verification, which `--offline` does NOT skip (a real pnpm gap —
+      # github.com/pnpm/pnpm/issues/11801, filed against this exact
+      # Flatpak-builder use case). Without this, install stalls retrying
+      # thousands of registry.npmjs.org/-/npm/v1/attestations/ requests in a
+      # sandbox with no network. Found via a real local flatpak-builder run.
+      - pnpm config set store-dir $PNPM_HOME
+      - pnpm config set minimum-release-age 0
+      # Even with --offline --frozen-lockfile, pnpm still attempts a
+      # packument metadata fetch per package during resolution (a real gap —
+      # full trust-the-local-store behavior appears tied to populating the
+      # store via `pnpm fetch` specifically, which this manifest's
+      # generator-based population doesn't do). `fetch-retries 0` is meant to
+      # make each attempt fail immediately instead of retrying with a
+      # 10s/60s backoff per package, but did NOT visibly take effect in a
+      # real local WSL flatpak-builder test (retries still ran) — left in
+      # since it's harmless and may still help. KNOWN OPEN RISK, not fully
+      # resolved: in that same WSL test the retries were slow (EAI_AGAIN —
+      # WSL's DNS resolver times out slowly) but did NOT block the install,
+      # which completed successfully despite the noise; a real Flathub
+      # sandbox has no network namespace for this module at all, so lookups
+      # should fail instantly (ENETUNREACH) rather than retry-timeout, likely
+      # making this a non-issue there — but that is inferred, not verified
+      # against Flathub's actual buildbot. Re-check the first real Flathub
+      # submission build log for this before treating it as closed.
+      - pnpm config set fetch-retries 0
+      - pnpm install --offline --frozen-lockfile
+
+      - pnpm build:packages
+      - pnpm --filter @ajh/desktop build
+
+      - cd apps/desktop/src-tauri && cargo build --release --offline --locked
+
+      - install -Dm755 apps/desktop/src-tauri/target/release/ajh-tauri /app/bin/ajh-tauri
+      - install -Dm644 io.github.saeedkolivand.AIJobHunter.desktop /app/share/applications/io.github.saeedkolivand.AIJobHunter.desktop
+      - install -Dm644 io.github.saeedkolivand.AIJobHunter.metainfo.xml /app/share/metainfo/io.github.saeedkolivand.AIJobHunter.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.saeedkolivand.AIJobHunter.png
