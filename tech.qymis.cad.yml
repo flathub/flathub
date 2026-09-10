@@ -1,0 +1,103 @@
+# The Flatpak manifest for QymCAD, written to Flathub's conditions.
+#
+# THE TWO CONDITIONS THAT SHAPE EVERYTHING HERE: it must be built entirely from source, and THERE IS NO
+# NETWORK DURING THE BUILD. So the kernel is a module of its own built from its own tarball, and every Rust
+# crate has to arrive as a declared source - which is what `cargo-sources.json` is for. Nothing may be
+# fetched while building; a manifest that tries simply fails, and fails late.
+id: tech.qymis.cad
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: qymcad
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/qymcad/cargo
+
+finish-args:
+  # A CAD is a window with a 3D viewport, and that is the whole list of what it needs.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # THE DOCUMENTS A PERSON OPENS AND SAVES. A CAD without access to files is a program that can draw and
+  # not keep anything; `home` is the narrowest permission that still lets a project be opened from wherever
+  # it lies.
+  - --filesystem=home
+
+modules:
+  # --- the kernel, from source ---
+  #
+  # 7.8.1, and only the modelling modules: Draw and Visualization are off, the drawing here is our own in
+  # egui and wgpu. The same version and the same module set as the Linux, Windows and macOS builds - one
+  # kernel for every system beats four different ones.
+  - name: occt
+    buildsystem: cmake-ninja
+    config-opts:
+      # THE KERNEL DECLARES AN OLD MINIMUM. CMake 4 removed compatibility with anything below 3.5, and
+      # OCCT 7.8.1 still says `cmake_minimum_required(VERSION 3.1)`. Measured on the first build against
+      # the 25.08 SDK: "Compatibility with CMake < 3.5 has been removed from CMake" and the module stopped
+      # before configuring. This is CMake's own way out, and it belongs to the kernel's age rather than to
+      # anything of ours - it goes when OCCT is updated.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_LIBRARY_TYPE=Shared
+      - -DBUILD_MODULE_Draw=OFF
+      - -DBUILD_MODULE_Visualization=OFF
+      - -DBUILD_DOC_Overview=OFF
+      - -DUSE_FREETYPE=OFF
+      - -DUSE_TK=OFF
+      - -DUSE_FREEIMAGE=OFF
+      - -DUSE_RAPIDJSON=OFF
+      - -DUSE_DRACO=OFF
+      - -DUSE_OPENGL=OFF
+      - -DUSE_GLES2=OFF
+    sources:
+      - type: archive
+        url: https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_8_1.tar.gz
+        sha256: 7321af48c34dc253bf8aae3f0430e8cb10976961d534d8509e72516978aa82f5
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/opencascade
+      # THE KERNEL BRINGS COMMAND-LINE TOOLS AND SHELL SCRIPTS OF ITS OWN. Measured on the first successful
+      # build: /app/bin held ExpToCasExe, custom.sh, custom_gcc_64.sh and env.sh beside our binary. None of
+      # them is ours to ship, and a store checks what a package puts on the path.
+      - /bin
+
+  # --- the application ---
+  - name: qymcad
+    buildsystem: simple
+    build-options:
+      env:
+        OCCT_INCLUDE_DIR: /app/include/opencascade
+        OCCT_LIB_DIR: /app/lib
+    build-commands:
+      # `--offline` is not a precaution here but the only way this can work: the sandbox has no network,
+      # and the crates were placed by cargo-sources.json.
+      - cargo build --release --offline --locked --bin qymcad
+      - install -Dm755 target/release/qymcad /app/bin/qymcad
+      - install -Dm644 packaging/flatpak/tech.qymis.cad.desktop /app/share/applications/tech.qymis.cad.desktop
+      - install -Dm644 packaging/flatpak/tech.qymis.cad.metainfo.xml /app/share/metainfo/tech.qymis.cad.metainfo.xml
+      # THE ICON IS NAMED BY THE APPLICATION ID, in every size we have: that is the name the desktop entry
+      # points at and the one a software centre looks for.
+      - for s in 16 32 48 64 128 256 512; do install -Dm644 "assets/icons/linux/${s}x${s}.png" "/app/share/icons/hicolor/${s}x${s}/apps/tech.qymis.cad.png"; done
+      # Flathub asks for the licence to be installed under the application id.
+      - install -Dm644 LICENSE /app/share/licenses/tech.qymis.cad/LICENSE
+      - install -Dm644 THIRD-PARTY-NOTICES.md /app/share/licenses/tech.qymis.cad/THIRD-PARTY-NOTICES.md
+    sources:
+      # A COMMIT AND NOTHING ELSE. Flathub asks for a commit because a tag can be moved, and then a build
+      # that "reproduced a release" would reproduce something else. It is not paired with a tag here:
+      # flatpak-builder stops when a tag and a commit disagree, and they disagree whenever a packaging fix
+      # lands after the tag was cut - which is how this manifest got its first working picture addresses,
+      # the tagged tree still holding the unfilled ones. Updated by packaging/flatpak/update-manifest.sh.
+      - type: git
+        url: https://github.com/QymIs-Tech/QymCAD.git
+        commit: 2a3201e3a8a3be44b5daa6991f170b27a9bccd05
+      # Generated, never written by hand - see packaging/flatpak/README.md. It lists every crate of the
+      # lock file as its own source, because the build cannot reach crates.io.
+      - cargo-sources.json
