@@ -1,0 +1,58 @@
+# LetsGo — local-first planner. https://github.com/rubix-coder/LetsGoApp
+#
+# LetsGo is an Electron app: the React UI is rendered by Chromium, which the
+# app depends on for service-worker notifications, Web Audio, WebCrypto and
+# the encrypted vault. The archive below is the upstream release build
+# (electron-builder --linux dir), produced by packaging/flatpak/build-flatpak.sh
+# in the source repo and published on the GitHub release.
+
+id: io.github.rubix_coder.LetsGoApp
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: letsgo
+separate-locales: false
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Alert sounds when a timer finishes (Web Audio)
+  - --socket=pulseaudio
+  # Timer, reminder and status-nudge banners
+  - --talk-name=org.freedesktop.Notifications
+  # Optional and entirely user-configured: WebDAV sync to a server the user
+  # hosts, Google Calendar sync with the user's own OAuth client, and book
+  # metadata lookups (Open Library / Google Books). With none configured the
+  # app makes no network calls and is fully usable offline.
+  - --share=network
+  # Vault export writes a file via the browser download path.
+  - --filesystem=xdg-download
+
+modules:
+  - name: letsgo
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/letsgo
+      - cp -a linux-unpacked/. /app/letsgo/
+      # chrome-sandbox is unusable inside the Flatpak sandbox — zypak (from the
+      # Electron base app) replaces it. Strip SUID so it cannot be attempted.
+      - chmod 0755 /app/letsgo/chrome-sandbox || true
+      # Launcher hands the real binary to zypak-wrapper.
+      - install -Dm755 letsgo-launcher /app/bin/letsgo
+      - install -Dm644 io.github.rubix_coder.LetsGoApp.desktop /app/share/applications/io.github.rubix_coder.LetsGoApp.desktop
+      - install -Dm644 io.github.rubix_coder.LetsGoApp.metainfo.xml /app/share/metainfo/io.github.rubix_coder.LetsGoApp.metainfo.xml
+      - |
+        for px in 16 32 48 64 128 256 512; do
+          install -Dm644 "icons/${px}.png" \
+            "/app/share/icons/hicolor/${px}x${px}/apps/io.github.rubix_coder.LetsGoApp.png"
+        done
+    sources:
+      - type: archive
+        url: https://github.com/rubix-coder/LetsGoApp/releases/download/v0.60.1/letsgo-linux-x64-0.60.1.tar.gz
+        sha256: 7a8869e79a98eab679c594fbde1dc233034b0fe25c16c2170ff07ccd13a777db
+        strip-components: 0
