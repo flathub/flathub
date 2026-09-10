@@ -23,10 +23,8 @@ finish-args:
   - --filesystem=/run/docker.sock
   # Home directory access for Docker config
   - --filesystem=home/.docker:create
-  # NOTE: rocker-secrets is currently an in-memory stub (real keyring/
-  # secret-service backend is planned for a later phase). When that lands,
-  # add --talk-name=org.freedesktop.secrets here (not a blanket session-bus
-  # socket) so the manifest only requests what's actually used.
+  # System-tray icon (StatusNotifierItem host on the session bus).
+  - --talk-name=org.kde.StatusNotifierWatcher
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
@@ -35,18 +33,100 @@ build-options:
     CARGO_INCREMENTAL: '0'
 
 modules:
+  - name: intltool
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+      - type: patch
+        paths:
+          - intltool-perl5.26-regex-fixes.patch
+
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+    cleanup:
+      - "*.la"
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share/doc
+      - /share/gtk-doc
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+      - type: patch
+        paths:
+          - 0001-Fix-HAVE_VALGRIND-AM_CONDITIONAL.patch
+
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: "0.10.4"
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+      - type: patch
+        paths:
+          - 0001-Make-introspection-configurable.patch
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /libexec
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: "0.9.4"
+        commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: "0.5.94"
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+
   - name: rocker
     buildsystem: simple
     build-commands:
-      - cargo --offline build --release -p rocker --target-dir=target
+      - cargo --offline build --release -p rocker --features tray --target-dir=target
       - install -Dm755 target/release/rocker /app/bin/rocker
       - install -Dm644 packaging/linux/io.github.makis_san.Rocker.desktop /app/share/applications/io.github.makis_san.Rocker.desktop
-      - install -Dm644 packaging/linux/io.github.makis_san.Rocker.appdata.xml /app/share/metainfo/io.github.makis_san.Rocker.appdata.xml
+      - install -Dm644 packaging/linux/io.github.makis_san.Rocker.metainfo.xml /app/share/metainfo/io.github.makis_san.Rocker.metainfo.xml
       - install -Dm644 assets/icon-512.png /app/share/icons/hicolor/512x512/apps/io.github.makis_san.Rocker.png
       - install -Dm644 LICENSE-MIT /app/share/licenses/io.github.makis_san.Rocker/LICENSE-MIT
       - install -Dm644 LICENSE-APACHE /app/share/licenses/io.github.makis_san.Rocker/LICENSE-APACHE
     sources:
       - type: git
         url: https://github.com/makis-san/rocker.git
-        tag: v0.1.1
+        tag: v0.1.3
+        commit: 34be830a760061edc5a33bc42b24b3b3aabafb9a
       - cargo-sources.json
