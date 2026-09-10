@@ -1,0 +1,59 @@
+app-id: io.github.aradar46.Dictator
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: dictator
+
+finish-args:
+  # Wayland only: the shortcut needs a Wayland surface handle to bind through
+  # the portal, and the app refuses to run elsewhere, so no X11 fallback.
+  - --socket=wayland
+  # GPU rendering for the GTK4 window.
+  - --device=dri
+  # Microphone capture (this is the PipeWire socket on modern systems).
+  - --socket=pulseaudio
+  # Whisper models are downloaded from huggingface.co on first use.
+  - --share=network
+  # Tray icon (org.kde.StatusNotifierItem); absent on desktops without a watcher.
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: whisper-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWHISPER_BUILD_TESTS=OFF
+      - -DWHISPER_BUILD_EXAMPLES=ON
+      - -DGGML_CUDA=OFF
+      - -DGGML_VULKAN=OFF 
+      # Without these, ggml falls back to baseline x86-64 and is ~6x slower.
+      - -DGGML_NATIVE=OFF
+      - -DGGML_BACKEND_DL=ON
+      - -DGGML_CPU_ALL_VARIANTS=ON
+    build-commands:
+      - install -Dm755 bin/whisper-cli /app/bin/whisper-cli
+    sources:
+      - type: archive
+        url: https://codeload.github.com/ggml-org/whisper.cpp/tar.gz/306c88f4d1286aec1bf96e544632897886af5501
+        sha256: f3585ebf64df3e41b26c45d93bdb38b423ca1de0bf40cc4b6d320254867a75df
+        archive-type: tar-gzip
+
+  - name: dictator
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 src/dictator/dictator.py /app/bin/dictator
+      - install -Dm644 -t /app/bin src/dictator/transcriber.py src/dictator/shortcuts.py
+        src/dictator/recorder.py src/dictator/session.py src/dictator/background.py
+        src/dictator/tray.py
+      - install -Dm644 io.github.aradar46.Dictator.desktop
+        /app/share/applications/io.github.aradar46.Dictator.desktop
+      - install -Dm644 io.github.aradar46.Dictator.metainfo.xml
+        /app/share/metainfo/io.github.aradar46.Dictator.metainfo.xml
+      - install -Dm644 icon_transparent.png
+        /app/share/icons/hicolor/512x512/apps/io.github.aradar46.Dictator.png
+    sources:
+      - type: git
+        url: https://github.com/aradar46/dictator.git
+        tag: v0.1.0
+        commit: 5616f9b68de6654dc18b109e236a597dcd9b4e26
