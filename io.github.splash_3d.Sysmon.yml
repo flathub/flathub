@@ -1,0 +1,83 @@
+# Manifiesto Flatpak de Sysmon.
+#
+# La aplicación es propietaria, así que no se construye desde el código: se
+# empaqueta el AppImage ya publicado con una fuente `extra-data`, que es la vía
+# que Flathub acepta para fuentes no redistribuibles. El AppImage trae dentro
+# su propio Python y Qt, de modo que aquí solo hay que desempaquetarlo.
+#
+# Los permisos son los de un monitor de sistema, comparables a los de otros que
+# ya están publicados en Flathub:
+#   --talk-name=org.freedesktop.Flatpak  salir del sandbox para leer los
+#       procesos del anfitrión y mandarles señales. Sin esto la lista de
+#       procesos solo se vería a sí misma, porque el sandbox tiene su propio
+#       espacio de nombres de procesos.
+#   --system-talk-name=org.freedesktop.systemd1  estado de los servicios.
+#   --device=all  sensores de temperatura.
+# Flathub marcará la ficha como "no protegida por el sandbox"; es inevitable
+# para esta clase de programa.
+app-id: io.github.splash_3d.Sysmon
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: sysmon-gui
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all
+  - --talk-name=org.freedesktop.Flatpak
+  - --system-talk-name=org.freedesktop.systemd1
+  - --filesystem=host:ro
+
+modules:
+  - name: sysmon
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 sysmon-gui /app/bin/sysmon-gui
+      - install -Dm644 io.github.splash_3d.Sysmon.metainfo.xml
+        /app/share/metainfo/io.github.splash_3d.Sysmon.metainfo.xml
+      - install -Dm644 io.github.splash_3d.Sysmon.desktop
+        /app/share/applications/io.github.splash_3d.Sysmon.desktop
+      - install -Dm644 sysmon.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.splash_3d.Sysmon.svg
+    sources:
+      # El binario NO se descarga al construir: `extra-data` lo baja en el
+      # equipo del usuario al instalar, que es lo que permite distribuir algo
+      # propietario sin que Flathub lo redistribuya.
+      # Tarball, no AppImage: dentro del sandbox donde corre apply_extra no
+      # existe /proc/self/exe, así que un AppImage NO puede autoextraerse ahí
+      # ("Failed to get fs offset for /proc/self/exe"). El tarball lleva el
+      # mismo contenido ya desempaquetado.
+      - type: extra-data
+        filename: sysmon.tar.gz
+        url: https://github.com/Splash-3d/sysmon-dist/releases/download/v0.1.0/sysmon-0.1.0-x86_64.tar.gz
+        sha256: c1ae74be009b9347721ed3201a741f68e39296a52e6ab0b9e3f105d3d20b1c60
+        size: 139345139
+        x-checker-data:
+          type: json
+          url: https://raw.githubusercontent.com/Splash-3d/sysmon-dist/main/version.json
+          version-query: .version
+          url-query: '"https://github.com/Splash-3d/sysmon-dist/releases/download/v" + $version + "/sysmon-" + $version + "-x86_64.tar.gz"'
+
+      # Se ejecuta en el equipo del usuario tras descargar el extra-data.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tar -xzf sysmon.tar.gz
+          - rm sysmon.tar.gz
+
+      - type: script
+        dest-filename: sysmon-gui
+        commands:
+          - export APPDIR=/app/extra/sysmon
+          - exec /app/extra/sysmon/AppRun "$@"
+
+      - type: file
+        path: io.github.splash_3d.Sysmon.metainfo.xml
+      - type: file
+        path: io.github.splash_3d.Sysmon.desktop
+      - type: file
+        path: sysmon.svg
