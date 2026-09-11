@@ -1,0 +1,145 @@
+id: io.github.captiencelovesarch.tide
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: tide
+rename-desktop-file: tide.desktop
+rename-icon: tide
+build-options:
+  env:
+    # tide has no web view; the oauth one died upstream.
+    BASEAPP_REMOVE_WEBENGINE: '1'
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  # playback goes out through pipewire; the visualizer and the bass pulse
+  # record the sink monitor with parec, which rides the pulse shim.
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # keep the screen awake while music plays in fullscreen
+  - --talk-name=org.freedesktop.ScreenSaver
+  # the local files source: ~/Music out of the box, other folders through
+  # the folder picker (portal)
+  - --filesystem=xdg-music:ro
+  # discord rich presence, off by default: the ipc socket of a native or
+  # a flatpak discord
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  # libmpv and what it needs that the runtime lacks (ffmpeg is in the runtime)
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz
+        sha256: 2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc
+        x-checker-data:
+          type: anitya
+          project-id: 1560
+          url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Ddefault_library=shared
+      - -Dvulkan=disabled
+      - -Dopengl=disabled
+      - -Dd3d11=disabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Dlcms=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.360.1
+        commit: 719cc95244a1f1d648dd72459822e026e6530f22
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dtests=false
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dlibarchive=disabled
+      - -Dlibbluray=disabled
+      - -Dcdda=disabled
+      - -Ddvdnav=disabled
+      - -Ddvbin=disabled
+      - -Duchardet=disabled
+      - -Drubberband=disabled
+      - -Dlcms2=disabled
+      - -Dvapoursynth=disabled
+      - -Dzimg=disabled
+      - -Djpeg=disabled
+      - -Dlibavdevice=disabled
+      - -Dsdl2-audio=disabled
+      - -Dsdl2-video=disabled
+      - -Dsdl2-gamepad=disabled
+      - -Djack=disabled
+      - -Dopenal=disabled
+      - -Dpipewire=enabled
+      - -Dpulse=enabled
+      - -Dalsa=enabled
+      - -Dx11=disabled
+      - -Dwayland=disabled
+      - -Ddrm=disabled
+      - -Dgbm=disabled
+      - -Degl=disabled
+      - -Dgl=disabled
+      - -Dvulkan=disabled
+      - -Dvaapi=disabled
+      - -Dvdpau=disabled
+      - -Dcaca=disabled
+      - -Dsixel=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          url-template: https://github.com/mpv-player/mpv/archive/refs/tags/v$version.tar.gz
+
+  # tide's python side. numpy and PySide6 come with the base app.
+  - python3-hatchling.yaml
+  - python3-deps.yaml
+
+  - name: tide
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 flatpak/io.github.captiencelovesarch.tide.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+    sources:
+      - type: git
+        url: https://github.com/captiencelovesarch/tide.git
+        tag: v2.1.1
+        commit: 30821885dea746e7263b5c22a008f5b14c7540d9
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
