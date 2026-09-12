@@ -1,0 +1,89 @@
+app-id: io.github.parasite6.GeminiHarness
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+separate-locales: false
+command: geminiharness
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Talk to the host StatusNotifier watcher so Electron 43.2.0 can register
+  # a tray item (GNOME AppIndicator / KDE SNI). own-name is not used: Flathub
+  # forbids StatusNotifierItem wildcards, and 43.2.0 registers via a unique
+  # bus name plus this talk-name (same pattern as Element Desktop).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+build-options:
+  append-path: /usr/lib/sdk/node22/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: geminiharness
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/geminiharness/flatpak-node/cache
+        ELECTRON_CACHE: /run/build/geminiharness/flatpak-node/cache/electron
+        electron_config_cache: /run/build/geminiharness/flatpak-node/cache/electron
+        npm_config_cache: /run/build/geminiharness/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        npm_config_nodedir: /usr/lib/sdk/node22
+    build-commands:
+      - npm ci --offline
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        # v1.1.1's linux target is rpm; Flatpak has no rpm-build toolchain.
+        sed -i 's/- rpm/- dir/' electron-builder.yml
+        python3 - <<'PY'
+        import zipfile
+        from pathlib import Path
+        src = Path('../flatpak-node/cache/electron/electron-v43.2.0-linux-x64.zip')
+        dest = Path('../electron-dist')
+        dest.mkdir(exist_ok=True)
+        with zipfile.ZipFile(src) as zf:
+            for info in zf.infolist():
+                extracted = Path(zf.extract(info, dest))
+                mode = (info.external_attr >> 16) & 0o777
+                if mode and extracted.is_file():
+                    extracted.chmod(mode)
+        PY
+        chmod a+x ../electron-dist/electron ../electron-dist/chrome_crashpad_handler
+        npx electron-builder --linux dir --publish never $ELECTRON_BUILDER_ARCH_ARGS \
+          --config.electronDist=../electron-dist \
+          --config.electronVersion=43.2.0
+      - cp -a dist/linux*unpacked /app/main
+      - chmod a+x /app/main/geminiharness /app/main/chrome_crashpad_handler
+      - patch-electron-desktop-filename /app/main/resources/app.asar
+      - install -Dm755 ../run.sh /app/bin/geminiharness
+      - install -Dm644 io.github.parasite6.GeminiHarness.desktop /app/share/applications/io.github.parasite6.GeminiHarness.desktop
+      - install -Dm644 io.github.parasite6.GeminiHarness.metainfo.xml /app/share/metainfo/io.github.parasite6.GeminiHarness.metainfo.xml
+      - install -Dm644 build/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.parasite6.GeminiHarness.svg
+      - install -Dm644 LICENSE -t /app/share/licenses/io.github.parasite6.GeminiHarness/
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/parasite6/GeminiHarness.git
+        tag: v1.1.1
+        commit: 85f95540f9b9bb749c2ec0860b7eca358754dd4a
+        dest: main
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - generated-sources.json
+      - type: file
+        path: io.github.parasite6.GeminiHarness.desktop
+        dest: main
+      - type: file
+        path: io.github.parasite6.GeminiHarness.metainfo.xml
+        dest: main
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - exec zypak-wrapper.sh /app/main/geminiharness --ozone-platform=x11 "$@"
