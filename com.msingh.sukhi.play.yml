@@ -1,0 +1,86 @@
+app-id: com.msingh.sukhi.play
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: sukhi-play
+separate-locales: false
+
+# Sukhi Play is a kiosk for a small child. It needs to draw on screen, play
+# sound, and reach the sites a parent approved. It does not need the home
+# directory, the filesystem, or any device beyond the GPU.
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  # The kiosk covers the screen and the grown-up gate is the only way out, so
+  # the window manager must let it go fullscreen and stay on top.
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # Electron is pulled in as the upstream prebuilt archive rather than built
+  # from source. The app has zero runtime npm dependencies (only electron and
+  # electron-builder, both dev-only), so there is no dependency tree to vendor
+  # and the whole build runs offline from two pinned archives.
+  - name: sukhi-play
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/sukhi-play
+      - cp -a electron/. /app/lib/sukhi-play/
+
+      # The application itself: main process, preload, renderer and the two
+      # bundled JSON catalogues. Nothing else from the repo is needed at
+      # runtime -- no node_modules, no build tooling, no tests.
+      - install -d /app/lib/sukhi-play/resources/app
+      - cp -a src config package.json /app/lib/sukhi-play/resources/app/
+
+      # zypak lets Electron's sandbox work inside the flatpak sandbox, which is
+      # required: the bundled chrome-sandbox helper cannot be setuid here.
+      - install -Dm755 sukhi-play.sh /app/bin/sukhi-play
+
+      # Committed rather than generated: scripts/make-metainfo.js needs node,
+      # and the freedesktop SDK has none. `npm run flathub:sync` refreshes it
+      # and CI fails if it is stale.
+      - install -Dm644 com.msingh.sukhi.play.metainfo.xml
+          /app/share/metainfo/com.msingh.sukhi.play.metainfo.xml
+      - install -Dm644 com.msingh.sukhi.play.desktop
+          /app/share/applications/com.msingh.sukhi.play.desktop
+      # The repo ships a full hicolor set; a single large icon leaves GNOME
+      # showing a generic cog, which it did until v1.0.1.
+      - |
+        for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 "build/icons/${s}x${s}.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/com.msingh.sukhi.play.png"
+        done
+
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/electron/electron/releases/download/v44.3.0/electron-v44.3.0-linux-x64.zip
+        sha256: 8b49b9efdd73c0f467edc3c1cd5678392c384ccf224f34ff54179f736e2f384b
+        strip-components: 0
+        dest: electron
+
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/electron/electron/releases/download/v44.3.0/electron-v44.3.0-linux-arm64.zip
+        sha256: c11fde221c08e9bffdb3336579f09bd934a009862f509af5033616876741be24
+        strip-components: 0
+        dest: electron
+
+      - type: git
+        url: https://github.com/meSingh/sukhi-play.git
+        tag: v1.0.5
+
+      - type: file
+        path: sukhi-play.sh
+
+      - type: file
+        path: com.msingh.sukhi.play.desktop
+
+      - type: file
+        path: com.msingh.sukhi.play.metainfo.xml
