@@ -1,0 +1,52 @@
+name: Update
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+env:
+  FLATPAK_ID: dev.creeperkatze.full-steam-ahead
+
+jobs:
+  auto-update:
+    name: Check for a new release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        name: Check for an update
+        with:
+          args: --edit-only ${{ env.FLATPAK_ID }}.yml
+
+      - name: Check updated
+        id: is-updated
+        run: |
+          git status -s -uno
+          [ -z "$(git status -s -uno)" ] || echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.is-updated.outputs.updated
+        with:
+          python-version: "3.13"
+
+      - name: Regenerate vendored sources
+        if: steps.is-updated.outputs.updated
+        run: ./update-sources.sh
+
+      - name: Reset
+        run: git checkout -- ${{ env.FLATPAK_ID }}.yml *.xml
+
+      - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        name: Recheck and open PR
+        env:
+          GIT_AUTHOR_NAME: Flatpak External Data Checker
+          GIT_COMMITTER_NAME: Flatpak External Data Checker
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --update --never-fork ${{ env.FLATPAK_ID }}.yml
