@@ -1,0 +1,42 @@
+Inside Flatpak, leave updates to the software centre.
+
+/app is read-only in the sandbox, so the built-in updater cannot replace
+the application; the startup check is skipped and a manual check explains
+where updates come from.
+
+--- a/src/app/DecodiumUpdater.cpp
++++ b/src/app/DecodiumUpdater.cpp
+@@ -79,6 +79,13 @@
+ #endif
+ }
+ 
++// Inside a Flatpak sandbox the application is updated by the software centre
++// (Flathub); /app is read-only and downloading an AppImage would be useless.
++bool runningInsideFlatpak()
++{
++    return QFile::exists(QStringLiteral("/.flatpak-info"));
++}
++
+ QFileDevice::Permissions executableAppImagePermissions()
+ {
+     return QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
+@@ -159,7 +166,7 @@
+ 
+ void DecodiumUpdater::checkOnStartupIfDue()
+ {
+-    if (m_offlineMode || !m_checkOnStartup)
++    if (m_offlineMode || !m_checkOnStartup || runningInsideFlatpak())
+         return;
+     // Non tempestare GitHub (e l'utente) a ogni avvio: al massimo una volta al
+     // giorno. Chi vuole puo' sempre forzare il controllo dal menu.
+@@ -173,6 +180,10 @@
+ {
+     if (m_offlineMode) {
+         setStatus(tr("Offline: update checks disabled"));
++        return;
++    }
++    if (runningInsideFlatpak()) {
++        setStatus(tr("Updates are provided by your software centre (Flatpak)."));
+         return;
+     }
+     if (m_busy)

@@ -1,0 +1,142 @@
+app-id: io.github.iu8lmc.Decodium
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: decodium
+
+finish-args:
+  - --share=ipc
+  # Frameless and detachable windows are positioned by the application, which
+  # Wayland does not allow: run through XWayland.
+  - --socket=x11
+  - --socket=pulseaudio
+  # PSK Reporter, DX Cluster, live map, time checks and network rig control.
+  - --share=network
+  # Serial CAT/PTT interfaces and USB RTL-SDR receivers.
+  - --device=all
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - /share/info
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: fftw3f
+    config-opts:
+      - --enable-float
+      - --enable-threads
+      - --enable-shared
+      - --disable-static
+      - --disable-fortran
+      - --disable-doc
+    build-options:
+      arch:
+        x86_64:
+          config-opts:
+            - --enable-sse2
+            - --enable-avx
+            - --enable-avx2
+        aarch64:
+          config-opts:
+            - --enable-neon
+    cleanup:
+      - /bin
+    sources:
+      - type: archive
+        url: https://www.fftw.org/fftw-3.3.10.tar.gz
+        sha256: 56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467
+        x-checker-data:
+          type: anitya
+          project-id: 803
+          url-template: https://www.fftw.org/fftw-$version.tar.gz
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=$FLATPAK_DEST --with-libraries=atomic,chrono,container,date_time,filesystem,log,regex,system,thread
+      - ./b2 -j $FLATPAK_BUILDER_N_JOBS link=shared variant=release install
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.bz2
+        sha256: 49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://archives.boost.io/release/$version/source/boost_${major}_${minor}_$patch.tar.bz2
+
+  - name: hamlib
+    config-opts:
+      - --disable-static
+      - --without-perl-binding
+      - --without-python-binding
+      - --without-tcl-binding
+      - --without-lua-binding
+    cleanup:
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://github.com/Hamlib/Hamlib/releases/download/4.7.1/hamlib-4.7.1.tar.gz
+        sha256: d197a08a3d5d936d7571ae573f745bbba619e88998742c8267e3fcb0fb3d5974
+        x-checker-data:
+          type: anitya
+          project-id: 1292
+          url-template: https://github.com/Hamlib/Hamlib/releases/download/$version/hamlib-$version.tar.gz
+
+  - name: librtlsdr
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      - -DINSTALL_UDEV_RULES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/steve-m/librtlsdr/archive/refs/tags/v2.0.2.tar.gz
+        sha256: f407de0b6dce19e81694814e363e8890b6ab2c287c8d64c27a03023e5702fb42
+
+  - name: decodium
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=$FLATPAK_DEST
+          -DQT_MAJOR_VERSION=6
+          -DENABLE_OMNIRIG=OFF
+          -DDECODIUM_ENABLE_SSTV=ON
+          -DDECODIUM_ENABLE_HAMDRM=ON
+          -DDECODIUM_REQUIRE_RTLSDR=ON
+          -DRIGCTL_EXE=$FLATPAK_DEST/bin/rigctl
+          -DRIGCTLD_EXE=$FLATPAK_DEST/bin/rigctld
+          -DRIGCTLCOM_EXE=$FLATPAK_DEST/bin/rigctlcom
+          -DWSJT_GENERATE_DOCS=OFF
+          -DWSJT_SKIP_MANPAGES=ON
+          -DWSJT_BUILD_UTILS=OFF
+          -DBUILD_TESTING=OFF
+      - cmake --build build --parallel $FLATPAK_BUILDER_N_JOBS --target wsjtx decodium_app wsprd udp_daemon message_aggregator wsjtx_app_version
+      - cmake --install build
+      # The classic launchers point to other executables: the store entry is
+      # the Decodium 4 interface only.
+      - rm -f $FLATPAK_DEST/share/applications/wsjtx.desktop $FLATPAK_DEST/share/applications/message_aggregator.desktop
+      - install -Dm644 io.github.iu8lmc.Decodium.desktop $FLATPAK_DEST/share/applications/io.github.iu8lmc.Decodium.desktop
+      - install -Dm644 io.github.iu8lmc.Decodium.metainfo.xml $FLATPAK_DEST/share/metainfo/io.github.iu8lmc.Decodium.metainfo.xml
+      - install -Dm644 icons/Unix/decodium_icon.png $FLATPAK_DEST/share/icons/hicolor/256x256/apps/io.github.iu8lmc.Decodium.png
+    sources:
+      - type: archive
+        url: https://github.com/iu8lmc/Decodium-4.0-Core-Shannon/archive/refs/tags/v1.0.629.tar.gz
+        sha256: 64d08c60de0493488be5e61f6f0b0341e6aef11dce71421ce6170b28852a0285
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/iu8lmc/Decodium-4.0-Core-Shannon/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '"https://github.com/iu8lmc/Decodium-4.0-Core-Shannon/archive/refs/tags/" + .tag_name + ".tar.gz"'
+      - type: patch
+        path: flatpak-updates-from-software-centre.patch
+      - type: file
+        path: io.github.iu8lmc.Decodium.desktop
+      - type: file
+        path: io.github.iu8lmc.Decodium.metainfo.xml
