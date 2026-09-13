@@ -1,0 +1,93 @@
+app-id: io.github.Ahmad10Raza.rootChat
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+
+build-options:
+  env:
+    - BASEAPP_REMOVE_WEBENGINE=1
+    - BASEAPP_DISABLE_NUMPY=1
+
+command: rootChat
+
+finish-args:
+  # Display and hardware acceleration
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Audio playback
+  - --socket=pulseaudio
+
+  # Network (required to connect to Ollama at localhost:11434 or remote LAN servers)
+  - --share=network
+
+  # Desktop notifications and system tray
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+  # Document access for Knowledge Base (RAG)
+  - --filesystem=xdg-documents:ro
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+cleanup:
+  - '*.a'
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  - python3-dependencies.json
+
+  - name: rootChat
+    buildsystem: simple
+    build-commands:
+      # Compile Python bytecode
+      - python3 -m compileall .
+
+      # Install application files
+      - install -dm755 /app/share/rootChat
+      - cp -r * /app/share/rootChat/
+
+      # Install launcher
+      - install -Dm755 rootChat.sh /app/bin/rootChat
+
+      # Install desktop entry
+      - install -Dm644 io.github.Ahmad10Raza.rootChat.desktop /app/share/applications/io.github.Ahmad10Raza.rootChat.desktop
+
+      # Install AppStream metainfo
+      - install -Dm644 io.github.Ahmad10Raza.rootChat.metainfo.xml /app/share/metainfo/io.github.Ahmad10Raza.rootChat.metainfo.xml
+
+      # Install scalable SVG icon
+      - install -Dm644 resources/icons/rootChat.svg /app/share/icons/hicolor/scalable/apps/io.github.Ahmad10Raza.rootChat.svg
+
+      # Install raster PNG icons
+      - |
+        for size in 16 24 32 48 64 128 256 512; do
+            if [ -f "resources/icons/rootChat_${size}.png" ]; then
+                install -Dm644 "resources/icons/rootChat_${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/io.github.Ahmad10Raza.rootChat.png"
+            fi
+        done
+
+    sources:
+      - type: archive
+        url: https://github.com/Ahmad10Raza/rootChat/archive/refs/tags/v0.7.1.tar.gz
+        sha256: 0ef6bebf9775af18ddb519e85af420449b03d3ba01efdd051d5eed1ac50bd68a
+
+      - type: script
+        commands:
+          - export PYTHONPATH="/app/lib/python3.12/site-packages:/app/share/rootChat:$PYTHONPATH"
+          - exec python3 /app/share/rootChat/app.py "$@"
+        dest-filename: rootChat.sh
+
+      - type: file
+        path: io.github.Ahmad10Raza.rootChat.desktop
+
+      - type: file
+        path: io.github.Ahmad10Raza.rootChat.metainfo.xml
