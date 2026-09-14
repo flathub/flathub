@@ -1,0 +1,69 @@
+# Flatpak manifest for FATE — the Flathub submission and the CI build test share this file.
+#
+# TEMPLATE: 1.13.2 and 12961650bf629eb722c3aec239189374e69301602e010d69ef83efe651bfff99 are filled in by the Build Linux workflow (rendered copy
+# in flatpak/rendered/, built and linted on every tag). The Flathub repository holds a rendered
+# copy; flatpak-external-data-checker (x-checker-data below) bumps it automatically when a new
+# GitHub release appears, and flathub.json lets those bot PRs merge on their own.
+#
+# It repackages the released .deb rather than building Electron from source: the .deb is the
+# exact binary every other Linux channel ships, and Electron's BaseApp + zypak give it the same
+# sandbox behaviour Flathub expects from Electron apps.
+#
+# Permissions: FATE is a file editor. It opens files handed to it on the command line and via
+# "Open with", edits them in place and watches them for external changes, which needs real paths
+# rather than portal documents — hence --filesystem=home (and removable media). It makes no
+# network requests; electron-updater stays off inside Flatpak (FLATPAK_ID is set, see
+# electron/main.cjs). The discord-ipc socket is for Discord Rich Presence, which is generic
+# ("Editing a document") and never carries file names.
+app-id: com.vaguedustin.fate
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: fate
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  - --filesystem=xdg-run/discord-ipc-0
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: fate
+    buildsystem: simple
+    build-commands:
+      - ar x fate.deb data.tar.xz
+      - tar -xf data.tar.xz
+      - mkdir -p /app/fate /app/bin
+      - cp -a "opt/FATE - Formatted Article & Text Editor/." /app/fate/
+      - install -Dm755 fate.sh /app/bin/fate
+      # Desktop entry, icons and AppStream metadata, renamed to the app id as Flathub requires.
+      - install -Dm644 usr/share/applications/FATE.desktop /app/share/applications/com.vaguedustin.fate.desktop
+      - sed -i 's|^Exec=.*|Exec=fate %U|; s|^Icon=.*|Icon=com.vaguedustin.fate|' /app/share/applications/com.vaguedustin.fate.desktop
+      - for s in 16 22 24 32 48 64 128 256 512; do install -Dm644 usr/share/icons/hicolor/${s}x${s}/apps/FATE.png /app/share/icons/hicolor/${s}x${s}/apps/com.vaguedustin.fate.png; done
+      - install -Dm644 usr/share/metainfo/com.vaguedustin.fate.metainfo.xml /app/share/metainfo/com.vaguedustin.fate.metainfo.xml
+      - sed -i 's|FATE.desktop|com.vaguedustin.fate.desktop|' /app/share/metainfo/com.vaguedustin.fate.metainfo.xml
+      - install -Dm644 usr/share/mime/packages/FATE.xml /app/share/mime/packages/com.vaguedustin.fate.xml
+    sources:
+      - type: file
+        url: https://github.com/VagueDustin/FATE/releases/download/v1.13.2/FATE-1.13.2-amd64.deb
+        sha256: '12961650bf629eb722c3aec239189374e69301602e010d69ef83efe651bfff99'
+        dest-filename: fate.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/VagueDustin/FATE/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name | endswith("-amd64.deb")) | .browser_download_url
+          is-main-source: true
+      - type: script
+        dest-filename: fate.sh
+        commands:
+          - exec zypak-wrapper /app/fate/FATE "$@"
