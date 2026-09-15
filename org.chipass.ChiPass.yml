@@ -1,0 +1,141 @@
+id: org.chipass.ChiPass
+runtime-version: '6.11'
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+command: ChiPass-wrapper
+finish-args:
+  # Wayland display
+  - --socket=wayland
+  # X11 display
+  - --share=ipc
+  - --socket=fallback-x11
+  # Status icon and notifications
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Screen lock listener
+  - --system-talk-name=org.freedesktop.login1
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.ScreenSaver
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.SessionManager.Presence
+  - --talk-name=com.canonical.Unity.Session
+  # Favicon downloader, HIBP checker
+  - --share=network
+  # YubiKey HSM and Smartcard unlock methods
+  - --device-if=all:!has-usb-device
+  - --device=usb
+  - --socket=pcsc
+  # SSH Agent provider
+  - --socket=ssh-auth
+  - --env=SSH_AUTH_SOCK=$SSH_AUTH_SOCK
+  # Browser native messaging access
+  # (keep in sync with `src/browser/NativeMessageInstaller.cpp`)
+  # (unfortunately, restricting the access to just the `.../NativeMessagingHosts/` subdirectory is
+  # not possible as it is not created by the browser)
+  - --filesystem=~/.config/google-chrome/
+  - --filesystem=~/.config/chromium/
+  - --filesystem=~/.config/vivaldi/
+  - --filesystem=~/.config/BraveSoftware/Brave-Browser/
+  - --filesystem=~/.config/microsoft-edge/
+  - --filesystem=~/.mozilla/
+  - --filesystem=~/.local/share/torbrowser/tbb/x86_64/tor-browser_en-US/Browser/TorBrowser/Data/Browser/.mozilla/
+cleanup:
+  - '*.a'
+  - '*.h'
+  - '*.la'
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+modules:
+  - name: ChiPass
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCHIPASS_DIST_TYPE=Flatpak
+      - -DCHIPASS_WITH_UPDATE_CHECK=OFF
+      - -DCHIPASS_WITH_MANUAL=OFF
+      - -DCHIPASS_WITH_TESTS=OFF
+      - -DCHIPASS_WITH_FDOSECRETS=OFF
+    sources:
+      - type: git
+        url: 'https://codeberg.org/ChiPass/ChiPass'
+        tag: 'v2026.09.0'
+        commit: 4d535b477301931c7f8c90d33d0a341c3792914e
+    post-install:
+      - install -Dm755 wrapper.sh /app/bin/ChiPass-wrapper
+      - |
+        for f in COPYING LICENSE*; do
+          install -Dm644 $f /app/share/licenses/org.chipass.ChiPass/$f
+        done
+    cleanup:
+      - /share/man
+
+    modules:
+      - name: minizip
+        subdir: contrib/minizip
+        sources:
+          - type: git
+            url: 'https://github.com/madler/zlib'
+            # tag: 'v1.3.2'
+            # needs this commit to work around an issue with `ints.h`
+            commit: cb14dc9ade3759352417a300e6c2ed73268f1d97
+          - type: script
+            dest: contrib/minizip/
+            dest-filename: autogen.sh
+            commands:
+              - autoreconf -ifv
+
+      - name: libargon2
+        no-autogen: true
+        make-args:
+          - PREFIX=/app
+          - OPTTARGET=none
+          - LIBRARY_REL=lib
+        make-install-args:
+          - PREFIX=/app
+          - OPTTARGET=none
+          - LIBRARY_REL=lib
+        sources:
+          - type: git
+            url: 'https://github.com/P-H-C/phc-winner-argon2.git'
+            tag: '20190702'
+            commit: 62358ba2123abd17fccf2a108a301d4b52c01a7c
+        post-install:
+          - install -Dm644 -t /app/share/licenses/libargon2 LICENSE
+        cleanup:
+          - /bin
+
+      - name: botan
+        buildsystem: simple
+        build-commands:
+          - "python3 ./configure.py \
+              --disable-cc-tests \
+              --disable-static-library \
+              --prefix=/app \
+              --with-zlib \
+              --without-documentation"
+          - make -j${FLATPAK_BUILDER_N_JOBS}
+          - make install
+        sources:
+          - type: git
+            url: https://github.com/randombit/botan.git
+            tag: 3.13.0
+            commit: 2a81eef56c96c237e590c27f9a75e60317c9c700
+        post-install:
+          - install -Dm644 -t /app/share/licenses/botan license.txt
+
+      - name: pcsclite
+        buildsystem: meson
+        config-opts:
+          - -Dpolkit=false
+          - -Dlibsystemd=false
+        sources:
+          - type: git
+            url: https://github.com/LudovicRousseau/PCSC
+            tag: 2.5.1
+            commit: 09138d7f7d02c714b004d9850f28727fbcc48a97
+        cleanup:
+          - /bin
+        post-install:
+          - install -Dm644 -t /app/share/licenses/pcsclite ../COPYING
