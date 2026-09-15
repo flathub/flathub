@@ -1,0 +1,85 @@
+app-id: io.github.vrcx_team.VRCX
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.dotnet9
+command: vrcx
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam/config:ro
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/438100
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam/userdata
+
+build-options:
+  append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/dotnet9/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet9/lib
+  prepend-pkg-config-path: /usr/lib/sdk/dotnet9/lib/pkgconfig
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    DOTNET_NOLOGO: 'true'
+    NPM_CONFIG_LOGLEVEL: info
+
+modules:
+  - name: vrcx
+    buildsystem: simple
+    subdir: VRCX
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/vrcx/flatpak-node/cache
+        NUGET_PACKAGES: /run/build/vrcx/nuget-packages
+        npm_config_cache: /run/build/vrcx/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - /usr/lib/sdk/dotnet9/bin/install.sh
+      # install.sh adds the runtime-only /app/bin/dotnet. Use the SDK path
+      # explicitly so it cannot shadow the build-time dotnet executable.
+      - /usr/lib/sdk/dotnet9/bin/dotnet restore Dotnet/VRCX-Electron.csproj --arch x64 --source ../nuget-sources --source /usr/lib/sdk/dotnet9/nuget/packages
+      - /usr/lib/sdk/dotnet9/bin/dotnet build Dotnet/VRCX-Electron.csproj --configuration Release --no-restore --arch x64 -p:Platform=x64 -p:PlatformTarget=x64 -p:WarningLevel=0
+      # The upstream lock omits registry metadata. The Flatpak-only copy keeps
+      # identical package versions while making npm ci fully offline.
+      - cp ../package-lock.flatpak.json package-lock.json
+      - npm ci --offline
+      - npm run prod-linux
+      - touch .no-updater
+      - node src-electron/patch-package-version.js
+      - ./node_modules/.bin/electron-builder --linux dir --x64 --publish never
+      - node src-electron/patch-node-api-dotnet.js --arch=x64
+      # The package is x86_64-only; discard native SQLite payloads for other
+      # operating systems and CPU architectures before installation.
+      - if test -d build/linux-unpacked/resources/app.asar.unpacked/build/Electron/runtimes; then find build/linux-unpacked/resources/app.asar.unpacked/build/Electron/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 -exec rm -rf '{}' +; fi
+      - cp -a build/linux-unpacked /app/vrcx
+      - install -Dm755 ../packaging/vrcx.sh /app/bin/vrcx
+      - install -Dm644 ../packaging/io.github.vrcx_team.VRCX.desktop /app/share/applications/io.github.vrcx_team.VRCX.desktop
+      - install -Dm644 ../packaging/io.github.vrcx_team.VRCX.metainfo.xml /app/share/metainfo/io.github.vrcx_team.VRCX.metainfo.xml
+      - install -Dm644 images/VRCX.png /app/share/icons/hicolor/512x512/apps/io.github.vrcx_team.VRCX.png
+    sources:
+      - type: git
+        url: https://github.com/vrcx-team/VRCX.git
+        tag: v2026.07.18
+        commit: eafcccb20ed5828d99bd1b0f4b53a384a52a1d47
+        dest: VRCX
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: patch
+        path: patches/0001-linux-use-detected-steam-userdata-path.patch
+        dest: VRCX
+      - type: dir
+        path: packaging
+        dest: packaging
+      - type: file
+        path: package-lock.flatpak.json
+      # Generated from VRCX/package-lock.json at the pinned tag.
+      - npm-sources.json
+      # Generated from Dotnet/VRCX-Electron.csproj at the pinned tag.
+      - nuget-sources.json
