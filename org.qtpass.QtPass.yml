@@ -1,0 +1,149 @@
+# SPDX-FileCopyrightText: 2026 Anne Jan Brouwer
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# QtPass on the KDE 6 runtime, with git, pass, pwgen and qrencode bundled.
+#
+# GnuPG comes from the runtime. The sandboxed gpg keeps its own keyring
+# (persisted under ~/.var/app/org.qtpass.QtPass/.gnupg) but talks to the HOST
+# gpg-agent through the read-only exposed socket directory, so private keys,
+# pinentry and smartcards stay on the host. Import your public key once:
+#
+#   gpg --export --armor you@example.org | \
+#     flatpak run --command=gpg2 org.qtpass.QtPass --import
+#
+# or use Users -> Import key -> From clipboard inside QtPass.
+id: org.qtpass.QtPass
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+command: qtpass
+rename-desktop-file: qtpass.desktop
+rename-icon: qtpass-icon
+rename-appdata-file: qtpass.appdata.xml
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # git pull/push to remotes (https; add ssh-auth via Flatseal if you need ssh)
+  - --share=network
+  # the pass default store location; pick another one through the file dialog
+  - --filesystem=~/.password-store:create
+  # host gpg-agent socket (connect works through a read-only bind mount)
+  - --filesystem=xdg-run/gnupg:ro
+  # persistent keyring for the sandboxed gpg, at its default homedir
+  - --persist=.gnupg
+  # tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.la
+  - /lib/*.a
+  - /lib/cmake
+  - /share/aclocal
+  - /share/info
+  - /share/man
+  - /share/doc
+  - /bin/*-config
+
+modules:
+  - name: git
+    buildsystem: autotools
+    config-opts:
+      - --without-tcltk
+    make-args: &git-args
+      - NO_RUST=1
+      - NO_TCLTK=1
+      - NO_PERL=1
+      - NO_PYTHON=1
+      - NO_GETTEXT=1
+      - NO_INSTALL_HARDLINKS=1
+      - INSTALL_SYMLINKS=1
+    make-install-args: *git-args
+    cleanup:
+      - /share/gitweb
+      - /share/git-gui
+      - /share/gitk
+      - /share/bash-completion
+      - /libexec/git-core/git-daemon
+      - /libexec/git-core/git-http-push
+      - /libexec/git-core/git-imap-send
+      - /libexec/git-core/git-cvsserver
+      - /libexec/git-core/git-shell
+      - /libexec/git-core/scalar
+      - /bin/git-cvsserver
+      - /bin/git-shell
+      - /bin/scalar
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
+        sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          stable-only: true
+          url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: pwgen
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/pwgen/pwgen/2.08/pwgen-2.08.tar.gz
+        sha256: dab03dd30ad5a58e578c5581241a6e87e184a18eb2c3b2e0fffa8a9cf105c97b
+        x-checker-data:
+          type: anitya
+          project-id: 3963
+          stable-only: true
+          url-template: https://downloads.sourceforge.net/project/pwgen/pwgen/$version/pwgen-$version.tar.gz
+
+  - name: qrencode
+    buildsystem: cmake-ninja
+    config-opts:
+      # 4.1.1 still says cmake_minimum_required(2.8); CMake 4 refuses that
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DWITH_TOOLS=YES
+      - -DWITH_TESTS=NO
+      - -DBUILD_SHARED_LIBS=NO
+    sources:
+      - type: archive
+        url: https://github.com/fukuchi/libqrencode/archive/refs/tags/v4.1.1.tar.gz
+        sha256: 5385bc1b8c2f20f3b91d258bf8ccc8cf62023935df2d2676b5b67049f31a049c
+        x-checker-data:
+          type: anitya
+          project-id: 12675
+          stable-only: true
+          url-template: https://github.com/fukuchi/libqrencode/archive/refs/tags/v$version.tar.gz
+
+  - name: pass
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app WITH_ALLCOMP=no install
+    sources:
+      # cgit snapshot tarballs are not checksum-stable; pin the tag's commit
+      - type: git
+        url: https://git.zx2c4.com/password-store
+        tag: "1.7.4"
+        commit: 1078f2514d579178d5df7042c6a790e9c9b731ad
+
+  - name: qtpass
+    buildsystem: simple
+    build-commands:
+      # the KDE SDK ships Qt 6 qmake as plain "qmake"
+      - qmake PREFIX=/app CONFIG+=release qtpass.pro
+      - make -j$FLATPAK_BUILDER_N_JOBS sub-src sub-main
+      # installs bin/qtpass, the desktop file, the metainfo and the hicolor
+      # icons under the upstream names; rename-desktop-file / rename-icon /
+      # rename-appdata-file rewrite them to the app id
+      - make -C main install
+      # QtPassSettings::initExecutables() (and pass) look for "gpg2"; the runtime
+      # ships "gpg". The wrapper also scrubs sandbox-only env before the host
+      # gpg-agent sees it — see the comments in flatpak/gpg2.
+      - install -Dm755 flatpak/gpg2 /app/bin/gpg2
+    sources:
+      - type: git
+        url: https://github.com/IJHack/QtPass.git
+        tag: v1.8.1
+        commit: 1a389718013586bf21e3b6d603d437f57a055c88
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
