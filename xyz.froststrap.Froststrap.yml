@@ -1,0 +1,117 @@
+app-id: xyz.froststrap.Froststrap
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: Froststrap
+finish-args:
+  # Display: X11 only, ipc is required alongside x11.
+  - --share=ipc
+  - --socket=x11
+  # Sound for notifications and game audio.
+  - --socket=pulseaudio
+  # Downloads Roblox client updates, mods and version checks, Discord Rich Presence.
+  - --share=network
+  # GPU rendering for the Avalonia UI.
+  - --device=dri
+  # Core function: launch and manage the Sober Flatpak on the host via flatpak-spawn
+  - --talk-name=org.freedesktop.Flatpak
+  # Discord Rich Presence IPC sockets
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+cleanup:
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+modules:
+  - name: Froststrap
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        DOTNET_ROOT: /usr/lib/sdk/dotnet10
+        NUGET_PACKAGES: /run/build/Froststrap/nuget-sources/
+        CARGO_HOME: /run/build/Froststrap/cargo-home
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - |
+        # Configure cargo to use the vendored crates (offline).
+        mkdir -p .cargo cargo-home
+        printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/Froststrap/cargo/vendor"\n' > .cargo/config.toml
+
+        # Restore dependencies offline from vendored NuGet cache.
+        # Disable SourceLink / source-control queries: they require network and a
+        # valid remote URL, neither of which exists inside the Flatpak sandbox.
+        dotnet restore Froststrap/Froststrap.csproj \
+          --locked-mode \
+          --source "$NUGET_PACKAGES" \
+          -p:EnableSourceLink=false \
+          -p:EnableSourceControlManagerQueries=false
+
+        # Publish the application
+        dotnet publish Froststrap/Froststrap.csproj \
+          -r linux-x64 \
+          -c Release \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          --source "$NUGET_PACKAGES" \
+          -p:EnableSourceLink=false \
+          -p:EnableSourceControlManagerQueries=false \
+          --output /app/froststrap-bin
+
+        # Install binary
+        install -Dm755 /app/froststrap-bin/Froststrap /app/bin/Froststrap
+
+        # Install shared libraries and .NET files
+        cp -r /app/froststrap-bin/* /app/bin/
+
+        # Install desktop entry
+        install -Dm644 xyz.froststrap.Froststrap.desktop /app/share/applications/xyz.froststrap.Froststrap.desktop
+
+        # Install icon (512x512, downscaled from upstream Froststrap/Froststrap.png)
+        install -Dm644 xyz.froststrap.Froststrap.png /app/share/icons/hicolor/512x512/apps/xyz.froststrap.Froststrap.png
+
+        # Install metainfo
+        install -Dm644 xyz.froststrap.Froststrap.metainfo.xml /app/share/metainfo/xyz.froststrap.Froststrap.metainfo.xml
+
+        # Install license files (REUSE layout: LICENSES/ + LICENSE.txt)
+        install -Dm644 LICENSES/AGPL-3.0-only.txt /app/share/licenses/xyz.froststrap.Froststrap/Froststrap-AGPL-3.0
+        install -Dm644 LICENSES/MIT.txt /app/share/licenses/xyz.froststrap.Froststrap/Froststrap-MIT
+        install -Dm644 LICENSES/MPL-2.0.txt /app/share/licenses/xyz.froststrap.Froststrap/Froststrap-MPL
+        install -Dm644 LICENSES/Unlicense.txt /app/share/licenses/xyz.froststrap.Froststrap/Froststrap-UNLICENSE
+
+        # Install flatpak-spawn wrapper so Froststrap can invoke flatpak on the host
+        printf '#!/bin/sh\nexec flatpak-spawn --host flatpak "$@"\n' > /app/bin/flatpak
+        chmod +x /app/bin/flatpak
+
+        # Clean up temp
+        rm -rf /app/froststrap-bin
+    sources:
+      - type: git
+        url: https://github.com/Froststrap/Froststrap.git
+        tag: v2.0.0-rc.2
+        commit: d028e4d6588c22bde86fa196e725f13a1623c4d8
+        disable-shallow-clone: true
+      # The following files live alongside this manifest (not in upstream).
+      # They are provided as local sources so the manifest remains buildable without
+      # requiring the upstream project to ship them.
+      - type: file
+        path: xyz.froststrap.Froststrap.desktop
+      - type: file
+        path: xyz.froststrap.Froststrap.metainfo.xml
+      - type: file
+        path: xyz.froststrap.Froststrap.png
+      # Vendored NuGet packages, generated with:
+      #   python3 flatpak-builder-tools/dotnet/flatpak-dotnet-generator.py \
+      #     --runtime=linux-x64 --freedesktop=25.08 --dotnet=10 \
+      #     nuget-sources.json Froststrap/Froststrap.csproj
+      # Re-generate and commit before each release that adds/updates NuGet deps.
+      - nuget-sources.json
+      # Vendored Rust crates, generated with:
+      #   python3 flatpak-builder-tools/cargo/flatpak-cargo-generator.py \
+      #     Cargo.lock -o cargo-sources.json
+      # Re-generate before each release that updates Cargo.lock.
+      - cargo-sources.json
