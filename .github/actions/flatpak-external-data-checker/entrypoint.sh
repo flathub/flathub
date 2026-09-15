@@ -14,12 +14,32 @@ cd flathub || exit
 gh repo list flathub --visibility public -L 8000 --json url --json isArchived --jq '.[] | select(.isArchived == false)|.url' | parallel "git clone --depth 1 {}"
 
 echo "==> Deleting inactive repos"
-base_url="https://raw.githubusercontent.com/flathub-infra/flathub-inactive-repo-list/refs/heads/main/"
-for file in inactive.txt manual_inactive.txt; do
-  curl -s "${base_url}${file}" | while read folder; do
-    test -d "$folder" && echo "==> Deleting $folder" && rm -rf "$folder" || true
-  done
-done
+inactive_repos_url="https://builds.flathub.org/api/inactive-repos.txt"
+inactive_repos_file=$(mktemp) || exit 1
+
+if ! curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 60 \
+    --output "$inactive_repos_file" "$inactive_repos_url"; then
+    rm -f -- "$inactive_repos_file"
+    exit 1
+fi
+
+while IFS= read -r folder || [[ -n "$folder" ]]; do
+    if [[ -z "$folder" || ! "$folder" =~ ^[A-Za-z0-9._-]+$ || "$folder" == "." || "$folder" == ".." ]]; then
+        echo "Invalid inactive repository name" >&2
+        rm -f -- "$inactive_repos_file"
+        exit 1
+    fi
+done < "$inactive_repos_file"
+
+while IFS= read -r folder; do
+    if [[ -d "./$folder" ]]; then
+        echo "==> Deleting $folder"
+        rm -rf -- "./$folder"
+    fi
+done < "$inactive_repos_file"
+
+rm -f -- "$inactive_repos_file"
 
 mapfile -t checker_apps < <( grep -rl -E 'extra-data|x-checker-data|\.AppImage' | cut -d/ -f1 | sort -u | shuf )
 
