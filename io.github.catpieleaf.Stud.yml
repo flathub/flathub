@@ -1,0 +1,170 @@
+app-id: io.github.catpieleaf.Stud
+# QtWebEngine, which org.kde.Platform does not ship. Needed for the login
+# and the in-app web panels.
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.11'
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: stud
+separate-locales: false
+
+finish-args:
+  # Rendering. Stud runs the GPU driver in its own process and still needs the device.
+  - --device=dri
+  # The engine expects a shared IPC namespace for X11 shared memory.
+  - --share=ipc
+  # Roblox is an online game and the login is a real HTTPS session.
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Audio out, and microphone in for voice chat.
+  - --socket=pulseaudio
+  # Game controllers, read from the evdev nodes directly.
+  - --device=input
+  # --device=input is only understood from 1.15.6; the linter asks for 1.16.0.
+  - --require-version=1.16.0
+  # Discord rich presence, tried in order until one answers.
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/discord-ipc-1
+  - --filesystem=xdg-run/discord-ipc-2
+  - --filesystem=xdg-run/discord-ipc-3
+  - --filesystem=xdg-run/discord-ipc-4
+  - --filesystem=xdg-run/discord-ipc-5
+  - --filesystem=xdg-run/discord-ipc-6
+  - --filesystem=xdg-run/discord-ipc-7
+  - --filesystem=xdg-run/discord-ipc-8
+  - --filesystem=xdg-run/discord-ipc-9
+  # The key the stored login is encrypted with. The login itself never leaves
+  # Stud's own data directory.
+  - --talk-name=org.freedesktop.secrets
+  # QtWebEngine comes from the base app under /app, and the runtime's Qt only
+  # looks beside its own prefix.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=QTWEBENGINE_RESOURCES_PATH=/app/resources
+  - --env=QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales
+  # Tray icon, and the notification on joining a game.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # No filesystem access: the APK is picked through the file chooser portal.
+
+modules:
+  # Stud launches its engine process inside bwrap. The runtime has none.
+  - name: bubblewrap
+    buildsystem: meson
+    config-opts:
+      - -Dprogram_prefix=
+      - -Dman=disabled
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://github.com/containers/bubblewrap/releases/download/v0.11.0/bubblewrap-0.11.0.tar.xz
+        sha256: 988fd6b232dafa04b8b8198723efeaccdb3c6aa9c1c7936219d5791a8b7a8646
+    cleanup:
+      - /share/bash-completion
+      - /share/zsh
+
+  # wl-copy, for copying a server link from the tray menu.
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      # Its fish and zsh completions install outside the prefix.
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+    cleanup:
+      - /share/man
+      - /share/bash-completion
+
+  # Loaded by name at runtime, so nothing links against it.
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      # 19.7.0 asks for CMake 2.8 and CMake 4 dropped anything below 3.5.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DPA_BUILD_SHARED_LIBS=ON
+      - -DPA_BUILD_TESTS=OFF
+      - -DPA_BUILD_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
+    post-install:
+      # Upstream's soname is libportaudio.so, everyone else ships .so.2, and
+      # /app/lib is not on the loader path here.
+      - ln -sf libportaudio.so /app/lib/libportaudio.so.2
+      - install -d /app/lib/stud/audio
+      - ln -sf ../../libportaudio.so /app/lib/stud/audio/libportaudio.so.2
+    cleanup:
+      - /lib/libportaudio.a
+
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_WITH_QT6=ON
+      - -DQTKEYCHAIN_STATIC=OFF
+      - -DBUILD_TRANSLATIONS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.14.3.tar.gz
+        sha256: a22c708f351431d8736a0ac5c562414f2b7bb919a6292cbca1ff7ac0849cb0a7
+
+  # ANGLE, the Android runtime libraries and the two non-Qt helper processes,
+  # from the release built by this project's CI for the tag below. ANGLE is
+  # compiled from source there because its build fetches dependencies as it
+  # runs, which a Flathub build cannot do.
+  - name: stud-prebuilt
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/stud /app/libexec/stud
+      - cp -a usr/lib/stud/. /app/lib/stud/
+      - cp -a usr/libexec/stud/lib64 /app/libexec/stud/lib64
+      - install -Dm755 usr/libexec/stud/stud-render-host -t /app/libexec/stud/
+      - install -Dm755 usr/libexec/stud/stud-runtime-bionic -t /app/libexec/stud/
+      # A distribution package looks in share/licenses/<package>; Flathub
+      # asks for share/licenses/<app id>. The archive is built for the
+      # former, so the licences move on the way in.
+      - mkdir -p /app/share/licenses/io.github.catpieleaf.Stud
+      - cp -a usr/share/licenses/stud/. /app/share/licenses/io.github.catpieleaf.Stud/
+    sources:
+      - type: archive
+        url: https://github.com/CatPieLeaf/Stud/releases/download/1.1.1/stud-1.1.1-x86_64.tar.zst
+        sha256: 052ae69bdbe2519f77f2be6eb743980bdd20b44c4aa7fe224506fe290019fa49
+        # The archive is the install tree, rooted at usr/.
+        strip-components: 0
+        only-arches:
+          - x86_64
+
+  # The Qt half, built here against the runtime's own Qt.
+  - name: stud
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DSTUD_BUILD_QT_ONLY=ON
+      - -DSTUD_BUILD_TESTS=OFF
+      - -DSTUD_VERSION=1.1.1
+      # No network during the build, so these are supplied as sources.
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_MINIZ=/run/build/stud/deps/miniz
+      - -DFETCHCONTENT_SOURCE_DIR_LIBJNIVM=/run/build/stud/deps/libjnivm
+      - -DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/run/build/stud/deps/json
+    sources:
+      - type: archive
+        url: https://github.com/CatPieLeaf/Stud/archive/refs/tags/1.1.1.tar.gz
+        sha256: 5edc5ebb87dc70618fe56858e9fa67a026959d21110056263533d8cd910863ce
+      - type: archive
+        url: https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz
+        sha256: 98468f8924934b723276680f85238b6c78bf1f8b49b4459cc9b7214a20e2e9fb
+        dest: deps/miniz
+      - type: archive
+        url: https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+        sha256: 0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
+        dest: deps/json
+      - type: git
+        url: https://github.com/ChristopherHX/libjnivm.git
+        # Upstream declares GIT_TAG main, which a package cannot follow.
+        commit: f24b98c198fcc5c59a68d1efadd3f5791eb01c2e
+        dest: deps/libjnivm
