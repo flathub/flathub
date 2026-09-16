@@ -1,0 +1,64 @@
+app-id: io.github.aradar46.Dictator
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: dictator
+
+finish-args:
+  - --socket=wayland
+  - --device=dri
+  # Microphone capture (the PipeWire socket on current systems).
+  - --socket=pulseaudio
+  # Models are downloaded to the app cache on first run.
+  - --share=network
+
+modules:
+  # sounddevice needs libportaudio, which the GNOME runtime does not ship.
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # 19.7.0 declares a cmake_minimum_required below what CMake 4 accepts.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_SHARED_LIBS=ON
+      - -DPA_BUILD_TESTS=OFF
+      - -DPA_BUILD_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
+
+  # The Gdk clipboard loses the selection when the app exits.
+  - name: wl-clipboard
+    buildsystem: meson
+    # Completions install to absolute /usr paths, outside the build prefix.
+    config-opts:
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+
+  - python3-modules.yaml
+
+  - name: dictator
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t /app/share/dictator desktop_app.py shortcuts.py background.py config.py groq_client.py recorder.py
+      - install -Dm755 flatpak-launcher.sh /app/bin/dictator
+      - install -Dm644 io.github.aradar46.Dictator.desktop
+        /app/share/applications/io.github.aradar46.Dictator.desktop
+      - install -Dm644 io.github.aradar46.Dictator.metainfo.xml
+        /app/share/metainfo/io.github.aradar46.Dictator.metainfo.xml
+      # The repo copy points at a checkout path; here it is on PATH.
+      - sed -i 's|^Exec=.*|Exec=dictator|'
+        /app/share/applications/io.github.aradar46.Dictator.desktop
+      - install -Dm644 LICENSE /app/share/licenses/dictator/LICENSE
+      - install -Dm644 icon.png
+        /app/share/icons/hicolor/512x512/apps/io.github.aradar46.Dictator.png
+    sources:
+      - type: git
+        url: https://github.com/aradar46/dictator.git
+        tag: v0.3.0
+        commit: 5cd1577da46b37465902567279c5944dc2073b71
