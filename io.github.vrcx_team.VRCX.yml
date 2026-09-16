@@ -41,11 +41,24 @@ modules:
         NUGET_PACKAGES: /run/build/vrcx/nuget-packages
         npm_config_cache: /run/build/vrcx/flatpak-node/npm-cache
         npm_config_offline: 'true'
+      arch:
+        x86_64:
+          env:
+            VRCX_DOTNET_ARCH: x64
+            VRCX_DOTNET_PLATFORM: x64
+            VRCX_DOTNET_PROJECT: Dotnet/VRCX-Electron.csproj
+            VRCX_ELECTRON_OUTPUT: build/linux-unpacked
+        aarch64:
+          env:
+            VRCX_DOTNET_ARCH: arm64
+            VRCX_DOTNET_PLATFORM: ARM64
+            VRCX_DOTNET_PROJECT: Dotnet/VRCX-Electron-arm64.csproj
+            VRCX_ELECTRON_OUTPUT: build/linux-arm64-unpacked
     license-files:
       - VRCX/LICENSE
     build-commands:
-      - dotnet restore Dotnet/VRCX-Electron.csproj --arch x64 --source ../nuget-sources --source /usr/lib/sdk/dotnet9/nuget/packages
-      - dotnet build Dotnet/VRCX-Electron.csproj --configuration Release --no-restore --arch x64 -p:Platform=x64 -p:PlatformTarget=x64 -p:WarningLevel=0
+      - dotnet restore "$VRCX_DOTNET_PROJECT" --arch "$VRCX_DOTNET_ARCH" --source ../nuget-sources --source /usr/lib/sdk/dotnet9/nuget/packages
+      - dotnet build "$VRCX_DOTNET_PROJECT" --configuration Release --no-restore --arch "$VRCX_DOTNET_ARCH" -p:Platform="$VRCX_DOTNET_PLATFORM" -p:PlatformTarget="$VRCX_DOTNET_PLATFORM" -p:WarningLevel=0
       # The upstream lock omits registry metadata. The Flatpak-only copy keeps
       # identical package versions while making npm ci fully offline.
       - cp ../package-lock.flatpak.json package-lock.json
@@ -53,12 +66,16 @@ modules:
       - npm run prod-linux
       - touch .no-updater
       - node src-electron/patch-package-version.js
-      - ./node_modules/.bin/electron-builder --linux dir --x64 --publish never
-      - node src-electron/patch-node-api-dotnet.js --arch=x64
-      # The package is x86_64-only; discard native SQLite payloads for other
-      # operating systems and CPU architectures before installation.
-      - if test -d build/linux-unpacked/resources/app.asar.unpacked/build/Electron/runtimes; then find build/linux-unpacked/resources/app.asar.unpacked/build/Electron/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 -exec rm -rf '{}' +; fi
-      - cp -a build/linux-unpacked /app/vrcx
+      - ./node_modules/.bin/electron-builder --linux dir --"$VRCX_DOTNET_ARCH" --publish never
+      - node src-electron/patch-node-api-dotnet.js --arch="$VRCX_DOTNET_ARCH"
+      # Discard native SQLite payloads for other operating systems and CPU
+      # architectures before installation.
+      - if test -d "$VRCX_ELECTRON_OUTPUT/resources/app.asar.unpacked/build/Electron/runtimes"; then find "$VRCX_ELECTRON_OUTPUT/resources/app.asar.unpacked/build/Electron/runtimes" -mindepth 1 -maxdepth 1 ! -name "linux-$VRCX_DOTNET_ARCH" -exec rm -rf '{}' +; fi
+      # Upstream's bundled OpenVR libraries are x86-64. The overlay cannot work
+      # across the Flatpak Steam sandbox, so omit those incompatible files from
+      # the aarch64 build while keeping the rest of VRCX functional.
+      - if test "$FLATPAK_ARCH" = aarch64; then find "$VRCX_ELECTRON_OUTPUT/resources" -type f \( -name openvr_api.dll -o -name openvr_api.so -o -name libopenvr_api.so \) -delete; fi
+      - cp -a "$VRCX_ELECTRON_OUTPUT" /app/vrcx
       - install -Dm755 ../packaging/vrcx.sh /app/bin/vrcx
       - install -Dm644 ../packaging/io.github.vrcx_team.VRCX.desktop /app/share/applications/io.github.vrcx_team.VRCX.desktop
       - install -Dm644 ../packaging/io.github.vrcx_team.VRCX.metainfo.xml /app/share/metainfo/io.github.vrcx_team.VRCX.metainfo.xml
@@ -90,6 +107,8 @@ modules:
       - npm-sources.json
       # Generated from Dotnet/VRCX-Electron.csproj at the pinned tag.
       - nuget-sources.json
+      # Generated from Dotnet/VRCX-Electron-arm64.csproj at the pinned tag.
+      - nuget-sources-aarch64.json
 
   - name: dotnet-runtime
     buildsystem: simple
