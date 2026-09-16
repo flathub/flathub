@@ -1,0 +1,62 @@
+# Flatpak manifest. For Flathub, copy this file and cargo-sources.json into
+# the submission repository; for a local build:
+#
+#   flatpak install flathub org.freedesktop.Sdk//25.08 \
+#       org.freedesktop.Sdk.Extension.rust-stable//25.08
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/flatpak/io.github.frdcmp.Auriscope.yml
+#
+# After tagging a release, set `tag` and `commit` below and regenerate
+# cargo-sources.json from the tagged Cargo.lock:
+#
+#   python3 packaging/flatpak/gen-cargo-sources.py Cargo.lock \
+#       -o packaging/flatpak/cargo-sources.json
+
+id: io.github.frdcmp.Auriscope
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: auriscope
+
+finish-args:
+  # Wayland first, X11 as a fallback.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # wgpu renders through Vulkan or GL.
+  - --device=dri
+  # cpal opens ALSA; the runtime routes it to PulseAudio or PipeWire.
+  - --socket=pulseaudio
+  # Files arrive through the file-chooser portal (the `portal` cargo
+  # feature), drag and drop, or the command line via the document portal.
+  # No filesystem permission is needed.
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/auriscope/cargo
+    # The build is offline; make sure no toolchain file is consulted.
+    RUSTUP_TOOLCHAIN: stable
+
+modules:
+  - name: auriscope
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --no-default-features --features portal
+      - install -Dm755 target/release/auriscope /app/bin/auriscope
+      - install -Dm644 assets/io.github.frdcmp.Auriscope.desktop
+        /app/share/applications/io.github.frdcmp.Auriscope.desktop
+      - install -Dm644 assets/io.github.frdcmp.Auriscope.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.frdcmp.Auriscope.svg
+      - install -Dm644 assets/io.github.frdcmp.Auriscope.metainfo.xml
+        /app/share/metainfo/io.github.frdcmp.Auriscope.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/frdcmp/auriscope.git
+        tag: v0.1.0
+        # `git rev-parse v0.1.0`
+        commit: f888d394b1529820ad653696a0d8fa352ab379eb
+      - cargo-sources.json
