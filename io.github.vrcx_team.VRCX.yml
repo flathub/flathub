@@ -6,7 +6,7 @@ base: org.electronjs.Electron2.BaseApp
 base-version: '25.08'
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node24
-  - org.freedesktop.Sdk.Extension.dotnet9
+  - org.freedesktop.Sdk.Extension.dotnet10
 command: vrcx
 separate-locales: false
 
@@ -40,14 +40,15 @@ modules:
     buildsystem: simple
     subdir: VRCX
     build-options:
-      append-path: /usr/lib/sdk/dotnet9/bin
-      append-ld-library-path: /usr/lib/sdk/dotnet9/lib
-      prepend-pkg-config-path: /usr/lib/sdk/dotnet9/lib/pkgconfig
+      append-path: /usr/lib/sdk/dotnet10/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      prepend-pkg-config-path: /usr/lib/sdk/dotnet10/lib/pkgconfig
       env:
         XDG_CACHE_HOME: /run/build/vrcx/flatpak-node/cache
         NUGET_PACKAGES: /run/build/vrcx/nuget-packages
         npm_config_cache: /run/build/vrcx/flatpak-node/npm-cache
         npm_config_offline: 'true'
+        ELECTRON_BUILDER_ICONS_TOOLSET_DIR: /run/build/vrcx/electron-builder-icons
       arch:
         x86_64:
           env:
@@ -64,17 +65,19 @@ modules:
     license-files:
       - VRCX/LICENSE
     build-commands:
-      - dotnet restore "$VRCX_DOTNET_PROJECT" --arch "$VRCX_DOTNET_ARCH" --source ../nuget-sources --source /usr/lib/sdk/dotnet9/nuget/packages
-      - dotnet build "$VRCX_DOTNET_PROJECT" --configuration Release --no-restore --arch "$VRCX_DOTNET_ARCH" -p:Platform="$VRCX_DOTNET_PLATFORM" -p:PlatformTarget="$VRCX_DOTNET_PLATFORM" -p:WarningLevel=0
+      # git apply tolerates the mixed CRLF/LF history in upstream's C# file.
+      - git apply ../patches/0001-linux-use-detected-steam-userdata-path.patch
+      - dotnet restore "$VRCX_DOTNET_PROJECT" --runtime "linux-$VRCX_DOTNET_ARCH" -p:RuntimeIdentifiers="linux-$VRCX_DOTNET_ARCH" --source ../nuget-sources --source /usr/lib/sdk/dotnet10/nuget/packages
+      - dotnet build "$VRCX_DOTNET_PROJECT" --configuration Release --no-restore --runtime "linux-$VRCX_DOTNET_ARCH" -p:RuntimeIdentifiers="linux-$VRCX_DOTNET_ARCH" -p:Platform="$VRCX_DOTNET_PLATFORM" -p:PlatformTarget="$VRCX_DOTNET_PLATFORM" -p:WarningLevel=0
       # The upstream lock omits registry metadata. The Flatpak-only copy keeps
       # identical package versions while making npm ci fully offline.
       - cp ../package-lock.flatpak.json package-lock.json
       - npm ci --offline
-      - npm run prod-linux
+      - npm run prod
       - touch .no-updater
-      - node src-electron/patch-package-version.js
-      - ./node_modules/.bin/electron-builder --linux dir --"$VRCX_DOTNET_ARCH" --publish never
-      - node src-electron/patch-node-api-dotnet.js --arch="$VRCX_DOTNET_ARCH"
+      - node build-scripts/patch-package-version.js
+      - ./node_modules/.bin/electron-builder --config electron-builder.config.js --config.electronDist=node_modules/electron/dist --linux dir --"$VRCX_DOTNET_ARCH" --publish never
+      - node build-scripts/patch-node-api-dotnet.js --arch="$VRCX_DOTNET_ARCH"
       # Discard native SQLite payloads for other operating systems and CPU
       # architectures before installation.
       - if test -d "$VRCX_ELECTRON_OUTPUT/resources/app.asar.unpacked/build/Electron/runtimes"; then find "$VRCX_ELECTRON_OUTPUT/resources/app.asar.unpacked/build/Electron/runtimes" -mindepth 1 -maxdepth 1 ! -name "linux-$VRCX_DOTNET_ARCH" -exec rm -rf '{}' +; fi
@@ -90,15 +93,15 @@ modules:
     sources:
       - type: git
         url: https://github.com/vrcx-team/VRCX.git
-        tag: v2026.07.18
-        commit: eafcccb20ed5828d99bd1b0f4b53a384a52a1d47
+        tag: v2026.09.16
+        commit: 1bf052f84c670b96bfe44156e097eb668ae78de7
         dest: VRCX
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
-      - type: patch
+      - type: file
         path: patches/0001-linux-use-detected-steam-userdata-path.patch
-        dest: VRCX
+        dest: patches
       - type: file
         path: packaging/vrcx.sh
         dest: packaging
@@ -110,6 +113,11 @@ modules:
         dest: packaging
       - type: file
         path: package-lock.flatpak.json
+      # electron-builder 26 uses this toolset to process Linux icons.
+      - type: archive
+        url: https://github.com/electron-userland/electron-builder-binaries/releases/download/icons%401.2.1/icons-bundle.tar.gz
+        sha256: 193241afc7c81ab165fa0af15ef0af88f796eb69e8e5bb4249a49310d8be242a
+        dest: electron-builder-icons
       # Generated from VRCX/package-lock.json at the pinned tag.
       - npm-sources.json
       # Generated from Dotnet/VRCX-Electron.csproj at the pinned tag.
@@ -120,4 +128,4 @@ modules:
   - name: dotnet-runtime
     buildsystem: simple
     build-commands:
-      - /usr/lib/sdk/dotnet9/bin/install.sh
+      - /usr/lib/sdk/dotnet10/bin/install.sh
