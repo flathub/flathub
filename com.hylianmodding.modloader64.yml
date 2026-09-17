@@ -1,0 +1,205 @@
+app-id: com.hylianmodding.modloader64
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+command: com.hylianmodding.modloader64
+
+finish-args:
+  # Display & Graphics
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  # Audio
+  - --socket=pulseaudio
+  # Networking (ModLoader multiplayer & updates)
+  - --share=network
+  # Game controllers & input devices
+  - --device=all
+  # Discord Rich Presence IPC
+  - --filesystem=xdg-run/discord-ipc-0
+  # Common user ROM directories access
+  - --filesystem=xdg-documents:ro
+  - --filesystem=xdg-download:ro
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin
+  env:
+    CMAKE_PREFIX_PATH: /app
+
+modules:
+  - name: node-setup
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/node20/install-sdk.sh
+
+  - name: glu
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://mesa.freedesktop.org/archive/glu/glu-9.0.3.tar.xz
+        sha256: bd43fe12f374b1192eb15fe20e45ff456b9bc26ab57f0eee919f96ca0f8a330f
+
+  - name: glew
+    buildsystem: simple
+    build-commands:
+      - make -j $FLATPAK_BUILDER_N_JOBS GLEW_DEST=/app LIBDIR=/app/lib
+      - make install GLEW_DEST=/app LIBDIR=/app/lib
+    sources:
+      - type: archive
+        url: https://github.com/nigels-com/glew/releases/download/glew-2.1.0/glew-2.1.0.tgz
+        sha256: 04de91e7e6763039bc11940095cd9c7f880baba82196a7765f727ac05a993c95
+
+  - name: sfml
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DSFML_BUILD_AUDIO=TRUE
+      - -DSFML_BUILD_GRAPHICS=TRUE
+      - -DSFML_BUILD_WINDOW=TRUE
+      - -DSFML_BUILD_NETWORK=FALSE
+      - -DSFML_BUILD_EXAMPLES=FALSE
+    sources:
+      - type: git
+        url: https://github.com/SFML/SFML.git
+        tag: 2.5.1
+        commit: 2f11710abc5aa478503a7ff3f9e654bd2078ebab
+
+  - name: mupen64plus-plugins
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/modloader64/emulator
+      - make -C mupen64plus-audio-sdl/projects/unix all -j $FLATPAK_BUILDER_N_JOBS APIDIR="$PWD/mupen64plus-core/src/api" PREFIX=/app
+      - cp mupen64plus-audio-sdl/projects/unix/mupen64plus-audio-sdl.so /app/lib/modloader64/emulator/
+      - make -C mupen64plus-input-sdl/projects/unix all -j $FLATPAK_BUILDER_N_JOBS APIDIR="$PWD/mupen64plus-core/src/api" PREFIX=/app
+      - cp mupen64plus-input-sdl/projects/unix/mupen64plus-input-sdl.so /app/lib/modloader64/emulator/
+      - make -C mupen64plus-rsp-hle/projects/unix all -j $FLATPAK_BUILDER_N_JOBS APIDIR="$PWD/mupen64plus-core/src/api" PREFIX=/app
+      - cp mupen64plus-rsp-hle/projects/unix/mupen64plus-rsp-hle.so /app/lib/modloader64/emulator/
+    sources:
+      - type: git
+        url: https://github.com/hylian-modding/mupen64plus-plugins.git
+        commit: 77d13d6d6f5f99312191f6249b6a178ed0f12445
+
+  - name: gliden64
+    buildsystem: cmake-ninja
+    subdir: src
+    config-opts:
+      # VEC4_OPT/CRC_OPT are upstream Android-only optimizations flagged as
+      # "can cause additional bugs"; they broke geometry rendering here.
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DMUPENPLUSAPI=ON
+      - -DCMAKE_INSTALL_PREFIX=/app
+    post-install:
+      - mkdir -p /app/lib/modloader64/emulator
+      - cp /app/lib/mupen64plus/mupen64plus-video-GLideN64.so /app/lib/modloader64/emulator/ || cp /app/lib/modloader64-video-GLideN64.so /app/lib/modloader64/emulator/ || true
+    sources:
+      - type: git
+        url: https://github.com/gonetz/GLideN64.git
+        tag: github-actions
+        commit: 41c7ba273a6c9afb43c0574cf3cf5d139182d070
+
+  - name: modloader64-core
+    buildsystem: simple
+    build-options:
+      env:
+        HOME: /run/build/modloader64-core
+        XDG_CACHE_HOME: /run/build/modloader64-core/flatpak-node/cache
+        npm_config_cache: /run/build/modloader64-core/flatpak-node/npm-cache
+    build-commands:
+      - chmod +x build-modloader64-core.sh
+      - ./build-modloader64-core.sh
+    sources:
+      - type: git
+        url: https://github.com/hylian-modding/ModLoader64.git
+        commit: 04fbf71e77be7dcebff4b8adfd696fa47621f9f1
+      - type: file
+        path: build-modloader64-core.sh
+      # Generated offline vendor sources via flatpak-node-generator
+      - node-sources/modloader64-core.json
+
+  # modloader64-core's emulator.pak ships prebuilt Mupen64Plus plugins; overlay the
+  # ones actually compiled by this manifest so the shipped template matches them.
+  - name: emulator-plugin-integration
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 /app/lib/modloader64/emulator/mupen64plus-audio-sdl.so /app/lib/modloader64/ModLoader-template/emulator/mupen64plus-audio-sdl.so
+      - install -Dm755 /app/lib/modloader64/emulator/mupen64plus-input-sdl.so /app/lib/modloader64/ModLoader-template/emulator/mupen64plus-input-sdl.so
+      - install -Dm755 /app/lib/modloader64/emulator/mupen64plus-rsp-hle.so /app/lib/modloader64/ModLoader-template/emulator/mupen64plus-rsp-hle.so
+      - install -Dm755 /app/lib/modloader64/emulator/mupen64plus-video-GLideN64.so /app/lib/modloader64/ModLoader-template/emulator/mupen64plus-video-gliden64.so
+
+  - name: node-addon-sfml-audio
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin
+      env:
+        CXXFLAGS: -I/app/include
+        LDFLAGS: -L/app/lib -Wl,-rpath,/app/lib
+    build-commands:
+      - mkdir -p node_modules/node-addon-api
+      - tar -xf node-addon-api.tgz --strip-components=1 -C node_modules/node-addon-api
+      - /usr/lib/sdk/node20/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --nodedir=/usr/lib/sdk/node20
+      - install -Dm755 build/Release/sfml_audio.node /app/lib/modloader64/ModLoader-template/emulator/sfml_audio.node
+    sources:
+      - type: git
+        url: https://github.com/hylian-modding/node-addon-sfml-audio.git
+        commit: 2bcde05a20979e8fc53bc62de41fd8b982f386a4
+      - type: file
+        url: https://registry.npmjs.org/node-addon-api/-/node-addon-api-3.0.0.tgz
+        sha512: b121c28167c9f8bba2feefb49ac177a320a0bdd921c436e4092e90f2e889aaecce8a690906f5fa865e5a49203b0d1d576cca5d33cafba618dc17adec178ae42a
+        dest-filename: node-addon-api.tgz
+
+  - name: modloader64-gui
+    buildsystem: simple
+    build-options:
+      env:
+        HOME: /run/build/modloader64-gui
+        XDG_CACHE_HOME: /run/build/modloader64-gui/flatpak-node/cache
+        npm_config_cache: /run/build/modloader64-gui/flatpak-node/npm-cache
+    build-commands:
+      - mkdir -p /app/lib/modloader64/gui
+      - npm ci --offline --ignore-scripts --omit=peer
+      - npx patch-package
+      # Extract electron prebuilt binary into node_modules/electron/dist
+      - mkdir -p node_modules/electron/dist
+      - unzip -qo flatpak-node/cache/electron/electron-v8.2.4-linux-*.zip -d node_modules/electron/dist
+      - chmod +x node_modules/electron/dist/electron
+      - npm run build
+      - cp -a . /app/lib/modloader64/gui/
+    sources:
+      - type: git
+        url: https://github.com/hylian-modding/modloader64-gui.git
+        commit: 342e5dd81f5c2fd62abf0f5b5b215a13ffd6d3d4
+      # Generated offline vendor sources via flatpak-node-generator
+      - node-sources/modloader64-gui.json
+
+  - name: app-integration
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 start-modloader64 /app/bin/com.hylianmodding.modloader64
+      - install -Dm644 com.hylianmodding.modloader64.desktop /app/share/applications/com.hylianmodding.modloader64.desktop
+      - install -Dm644 com.hylianmodding.modloader64.metainfo.xml /app/share/metainfo/com.hylianmodding.modloader64.metainfo.xml
+      - install -d /app/share/icons/hicolor/512x512/apps
+      - ffmpeg -y -i icon.png -vf scale=512:512 /app/share/icons/hicolor/512x512/apps/com.hylianmodding.modloader64.png
+      - install -Dm644 LICENSE /app/share/licenses/com.hylianmodding.modloader64/LICENSE
+    sources:
+      - type: file
+        path: start-modloader64
+      - type: file
+        path: com.hylianmodding.modloader64.desktop
+      - type: file
+        path: com.hylianmodding.modloader64.metainfo.xml
+      # Fetched from the pinned modloader64-gui commit; a Flathub submission repo
+      # cannot reference sibling checkouts outside this directory.
+      - type: file
+        url: https://raw.githubusercontent.com/hylian-modding/modloader64-gui/342e5dd81f5c2fd62abf0f5b5b215a13ffd6d3d4/resources/ml64.png
+        sha256: 91b44e590023c2563d75a12fbd3d513f9ae411037c77ddead36e663f204a1520
+        dest-filename: icon.png
+      # Fetched from the pinned modloader64-core commit; see note above.
+      - type: file
+        url: https://raw.githubusercontent.com/hylian-modding/ModLoader64/04fbf71e77be7dcebff4b8adfd696fa47621f9f1/LICENSE
+        sha256: 3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986
+        dest-filename: LICENSE
