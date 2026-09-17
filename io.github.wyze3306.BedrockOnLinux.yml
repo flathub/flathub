@@ -1,0 +1,176 @@
+# Flathub manifest for BedrockOnLinux.
+#
+# Two things make this more than a plain Python app:
+#   1. The GUI is PySide6 (Qt for Python), which the GNOME runtime does not
+#      ship, so it is installed from the upstream wheels below. Qt's xcb and
+#      wayland platform plugins both come inside the wheel.
+#   2. The game runs through umu-launcher → pressure-vessel, which builds its
+#      container as a Flatpak sub-sandbox through the org.freedesktop.portal.Flatpak
+#      portal — hence --allow=per-app-dev-shm, --allow=devel and
+#      --allow=multiarch (the Heroic/Bottles recipe).
+#
+# Local test build: scripts/build-flatpak.sh (swaps the app source for the
+# working tree); add --release to build this manifest as published.
+app-id: io.github.wyze3306.BedrockOnLinux
+# The GNOME runtime is used for one reason: it ships libwebkit2gtk-4.1, and
+# org.freedesktop.Platform ships no WebKitGTK at all. Minecraft is downloaded
+# from the Microsoft Store, xodus-cli opens that sign-in in a WebKitGTK
+# webview, and no Flathub extension provides one — so on the freedesktop
+# runtime the Flatpak could not install the game.
+#
+# GNOME's runtime is built on the same freedesktop base and declares the same
+# org.freedesktop.Platform.GL extension point, so the GPU path is unchanged.
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: bedrock-on-linux
+
+finish-args:
+  - --share=ipc
+  # engine/game downloads, Microsoft sign-in, multiplayer
+  - --share=network
+  # The launcher window is native Wayland when the session offers it, but
+  # Minecraft itself runs through Wine's X11 driver (winewayland is opt-in via
+  # BOL_INPUT=wayland), so a Wayland session still needs XWayland for the game.
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # GPU (Vulkan) + game controllers (the launcher reads hidraw/evdev pads)
+  - --device=all
+  # Wine needs ptrace (devel) and 32-bit code (multiarch). The game's container
+  # is a sub-sandbox of this app that pressure-vessel requests from the
+  # org.freedesktop.portal.Flatpak portal, which needs no permission (it used
+  # to be granted --talk-name=org.freedesktop.Flatpak, which nothing uses).
+  # Without per-app-dev-shm that sub-sandbox gets a /dev/shm of its own and
+  # pressure-vessel warns about flatpak#4214.
+  - --allow=devel
+  - --allow=multiarch
+  - --allow=per-app-dev-shm
+  # Read-only access to the pre-XDG location for one-time migration. Using the
+  # xdg-data alias here would shadow the private XDG destination read-only.
+  - --filesystem=~/.local/share/bedrock-on-linux:ro
+  # Discord Rich Presence: the client listens on a socket in the *host* runtime
+  # directory, and the sandbox is given a runtime directory of its own, so
+  # without these two paths a play session is simply never announced. One
+  # socket each -- the host build and the Flatpak build of Discord -- and
+  # nothing else; :create is deliberately absent, since it would put a
+  # directory where Discord wants to make its socket. Flatpak binds them at
+  # startup, so inside the sandbox Discord has to be running before the
+  # launcher is (elsewhere the session picks it up whenever it appears).
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord/discord-ipc-0
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  # Self-contained CPython 3.12, first on PATH. The GNOME 51 runtime's Python
+  # is 3.14, and PySide6 6.9 -- the Qt binding the AppImage, the .deb and CI
+  # all run the launcher with -- declares Requires-Python <3.14.
+  - name: python3
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --without-static-libpython
+      - --with-ensurepip=install
+    build-options:
+      env:
+        LDFLAGS: -Wl,-rpath,/app/lib
+    post-install:
+      - /app/bin/python3 -c "import sys; print(sys.version)"
+    cleanup:
+      - /bin/idle3*
+      - /bin/pip3*
+      - /lib/python3.12/test
+      - /lib/python3.12/idlelib
+      - /lib/python3.12/turtledemo
+      - /lib/python3.12/tkinter
+      - /lib/python3.12/site-packages/pip
+      - /lib/python3.12/site-packages/pip-*.dist-info
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.12.14/Python-3.12.14.tar.xz
+        sha256: 5c8462af5790baf43a321a1559dbe0db06d1be4300fb85fb53c40060668e548a
+
+  # Python dependencies, installed offline by pip. cffi builds from source
+  # (setuptools is only its build backend); pycparser, packaging, python-xlib
+  # and six are pure-Python wheels; cryptography (Rust) and PySide6/shiboken6
+  # (Qt) are the upstream manylinux wheels. Keep the versions in step with
+  # third_party/requirements-appimage.txt and requirements-deb.txt.
+  #   - cryptography signs the Xbox Live device/request tokens; without it the
+  #     Microsoft sign-in fails with a connection reset (0x80072746).
+  #   - PySide6-Essentials only, not the PySide6 meta-package, which also pulls
+  #     PySide6-Addons (~167 MB of Qt modules this app never uses).
+  #   - packaging parses versions for the update and version pickers.
+  #   - python-xlib reads monitor geometry from RandR (bol.x11); optional.
+  - name: python3-dependencies
+    buildsystem: simple
+    build-commands:
+      - /app/bin/python3 -m pip install --verbose --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} setuptools
+      - /app/bin/python3 -m pip install --verbose --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation cryptography PySide6-Essentials
+        packaging python-xlib
+      - /app/bin/python3 -c "import cryptography, PySide6.QtWidgets, packaging, Xlib"
+    cleanup:
+      - /lib/python3.12/site-packages/_distutils_hack
+      - /lib/python3.12/site-packages/distutils-precedence.pth
+      - /lib/python3.12/site-packages/setuptools
+      - /lib/python3.12/site-packages/setuptools-*.dist-info
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl
+        sha256: 51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+      - type: file
+        url: https://files.pythonhosted.org/packages/eb/56/b1ba7935a17738ae8453301356628e8147c79dbb825bcbc73dc7401f9846/cffi-2.0.0.tar.gz
+        sha256: 44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529
+      - type: file
+        url: https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl
+        sha256: b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+      - type: file
+        url: https://files.pythonhosted.org/packages/a0/84/84fe36f19caf857d61cb7fc9c63035a47ffabd84ea12d1d393148efa3615/cryptography-49.0.0-cp39-abi3-manylinux_2_34_x86_64.whl
+        sha256: 2400ef9c9e2299a25614eb1dea3db54a69b1349efd043bfac9c67630d136df36
+      - type: file
+        url: https://files.pythonhosted.org/packages/be/82/c1c6932f9849bc5e75c93c38a29419505a6e3e0037261e28f3e7ecbf2751/shiboken6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: f3f5337a3a8fc660ba1462265bd9a2bdda9588f8d90fbc3d5ac4ce3134c11e59
+      - type: file
+        url: https://files.pythonhosted.org/packages/85/e8/9396cf11a60f80175bb3c5c1d498d84e87b7af653ab4ea001acf821a3981/pyside6_essentials-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: c70d5544e892b201a677b615156fab6a0fef865e7fc287f55a0eae00a682e83f
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl
+        sha256: 5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/b8/ff33610932e0ee81ae7f1269c890f697d56ff74b9f5b2ee5d9b7fa2c5355/python_xlib-0.33-py2.py3-none-any.whl
+        sha256: c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
+      - type: file
+        url: https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl
+        sha256: 4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+
+  - name: bedrock-on-linux
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bedrock-on-linux /app/bin/bedrock-on-linux
+      # the implementation lives in the bol/ package next to <prefix>/lib
+      - mkdir -p /app/lib/bedrock-on-linux
+      - cp -r bol /app/lib/bedrock-on-linux/bol
+      - find /app/lib/bedrock-on-linux/bol -type d -name __pycache__ -prune -exec rm -rf '{}' +
+      - find /app/lib/bedrock-on-linux/bol -type f -name '*.pyc' -delete
+      - install -Dm644 LICENSE /app/share/licenses/io.github.wyze3306.BedrockOnLinux/bedrock-on-linux/LICENSE
+      - install -Dm644 data/icon.png /app/share/icons/hicolor/256x256/apps/io.github.wyze3306.BedrockOnLinux.png
+      - install -Dm644 flatpak/io.github.wyze3306.BedrockOnLinux.desktop /app/share/applications/io.github.wyze3306.BedrockOnLinux.desktop
+      - install -Dm644 flatpak/io.github.wyze3306.BedrockOnLinux.metainfo.xml /app/share/metainfo/io.github.wyze3306.BedrockOnLinux.metainfo.xml
+    sources:
+      # Pinned release. Bump tag+commit each release:
+      #   git rev-parse vX.Y.Z^{commit}
+      - type: git
+        url: https://github.com/Wyze3306/BedrockOnLinux.git
+        tag: v2.2.7
+        commit: d27d7b25b702939146b1e96cf2a0d1795d41b87d
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
