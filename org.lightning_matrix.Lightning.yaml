@@ -1,0 +1,216 @@
+# Flathub manifest for Lightning.
+#
+# This file is the SUBMISSION artifact and is deliberately literal and
+# self-contained: no templating, no secrets, no build-time network. It is NOT
+# the manifest this project's own CI uses — that one still lives at
+# packaging-ci/packaging/flatpak/org.lightning_matrix.Lightning.yaml.in, builds
+# from a local checkout with network access, and is unaffected by this file.
+#
+# The two files it needs beside it are cargo-sources.json (the vendored crate
+# graph, regenerated whenever rust/Cargo.lock changes — see the comment on the
+# sources list) and flathub.json. All three sit at the repository root so the
+# Flathub submission repository is a straight copy of them.
+#
+# SOURCE PIN: the app is built from the GitHub mirror at the v0.9.8 release
+# tag, with the tag's commit pinned alongside it. Re-pin BOTH fields to
+# whatever release is actually cut for the submission before submitting, and
+# read the note above the `type: git` source first — moving this pin has
+# three consequences that are not obvious from the two lines it changes.
+app-id: org.lightning_matrix.Lightning
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+
+# Rust comes from the SDK extension, never from a downloaded rustup. Both
+# org.kde.Sdk 6.10 and 6.11 are built on freedesktop 25.08, so the matching
+# extension branch is 25.08 for either; it ships rustc 1.98.1, comfortably
+# above the 1.93 that matrix-sdk 0.18 requires.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: lightning-matrix
+
+# The source installs plain "lightning"-named desktop, icon and metainfo files
+# because the deb and rpm packages want them that way. flatpak-builder renames
+# all three to the app id and fixes up the references itself: rename-icon also
+# rewrites Icon= in the desktop file, and rename-appdata-file rewrites <id> and
+# <launchable> and records the old id under <provides>. That replaces the post
+# install sed the CI template still needs.
+rename-desktop-file: lightning.desktop
+rename-appdata-file: lightning.metainfo.xml
+rename-icon: lightning
+
+finish-args:
+  # Matrix networking.
+  - --share=network
+  - --share=ipc
+  # Native Wayland with X11 fallback, GPU rendering, notification sounds.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # libsecret token storage (Secret Service) and desktop notifications.
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  # QSystemTrayIcon talks StatusNotifierItem over D-Bus and has to register
+  # with the watcher; without this the tray icon silently never appears and
+  # "keep running in the tray" becomes a dead setting.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Screen sharing. The user picks the window or monitor in the portal's own
+  # dialog — xdg-desktop-portal is reachable from a sandbox without any
+  # permission here — but the PipeWire node the portal hands back cannot be
+  # opened without this socket. Deliberately the narrow xdg-run path and not
+  # --filesystem=host: the portal, not the manifest, decides what may be
+  # captured, and the app never sees anything the user did not choose.
+  - --filesystem=xdg-run/pipewire-0
+  # NOT GRANTED, deliberately: --device=all. The camera needs a PipeWire node
+  # from org.freedesktop.portal.Camera rather than a raw /dev/video* device,
+  # and handing the sandbox every device on the machine to get one webcam is
+  # not an acceptable trade. Audio calls and screen sharing are unaffected.
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    # The vendored crate graph from cargo-sources.json unpacks into
+    # <module build dir>/cargo, and the config it writes there replaces
+    # crates.io with that directory. The module is named "lightning", so its
+    # build dir is /run/build/lightning.
+    CARGO_HOME: /run/build/lightning/cargo
+    CARGO_NET_OFFLINE: "true"
+
+modules:
+  - name: lightning
+    # An explicit command list rather than the cmake-ninja buildsystem: the
+    # build has to assert two things about itself afterwards (see the guards at
+    # the end), and BUILD_TESTING is off because the bundle ships the
+    # application, not the test suite.
+    buildsystem: simple
+    build-commands:
+      # LIGHTNING_ARTIFACT_KIND=release is load-bearing, not cosmetic: the
+      # source default is "source", which would make a published Flatpak report
+      # artifact_kind: source in --build-info and would auto-enable ccache.
+      #
+      # LIGHTNING_REQUIRE_GIF_KEYS is OFF because Flathub has no GIF provider
+      # keys to embed. The GIF picker reports itself unconfigured at runtime,
+      # which is the honest outcome; nothing else is affected.
+      #
+      # LIGHTNING_UPDATE_PUBKEY_2026A is the PUBLIC half of the update-manifest
+      # signing key. It is not a secret — it ships inside every published deb,
+      # rpm and AppImage — and it is what lets the in-app update check verify
+      # the release metadata it reads. A Flatpak install never downloads or
+      # installs an update itself: the updater detects FLATPAK_ID, refuses to
+      # install, and points the user at `flatpak update`. Omitting the key
+      # would not make that safer, it would only make the check fail with a
+      # "key this build does not trust" error instead of the correct message.
+      - cmake -S . -B build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_INSTALL_PREFIX=/app
+        -DBUILD_TESTING=OFF
+        -DENABLE_RUST_SDK_BACKEND=ON
+        -DLIGHTNING_RUST_ONLY=ON
+        -DLIGHTNING_INSTALL_TYPE=linux-flatpak
+        -DLIGHTNING_ARTIFACT_KIND=release
+        -DLIGHTNING_ENABLE_WEBRTC=ON
+        -DLIGHTNING_REQUIRE_WEBRTC=ON
+        -DLIGHTNING_REQUIRE_GIF_KEYS=OFF
+        -DLIGHTNING_UPDATE_PUBKEY_2026A=pnNX0yQfhr66fpbMJ89MCNWkHVtfAr+WwI9c4OHzz50=
+      # flatpak-builder's own job count rather than a hard-coded number, so
+      # the build scales to whatever machine it runs on. The fallback keeps a
+      # bare `-j` from meaning "unlimited" if the variable is ever absent.
+      - cmake --build build -j ${FLATPAK_BUILDER_N_JOBS:-$(nproc)}
+      - cmake --install build
+
+      # Flathub requires the licence to be installed under the app id. CMake
+      # installs the binary, the desktop entry and the icons but not this.
+      - install -Dm0644 LICENSE
+        /app/share/licenses/org.lightning_matrix.Lightning/LICENSE
+
+      # CMake installs no AppStream data at all, so the metainfo is installed
+      # here from the copy the deb and rpm packages share. It goes in under the
+      # plain name on purpose: rename-appdata-file above turns it into
+      # org.lightning_matrix.Lightning.metainfo.xml and fixes its launchable.
+      # If that file is ever renamed or installed by CMake upstream, this line
+      # and rename-appdata-file both have to follow it.
+      - install -Dm0644 packaging-ci/packaging/common/lightning.metainfo.xml
+        /app/share/metainfo/lightning.metainfo.xml
+
+      # GUARD 1 — the call media engine. LIGHTNING_REQUIRE_WEBRTC above fails
+      # at configure time, before a full Rust build, but only when the source
+      # knows the option; this holds regardless. The engine is compiled in only
+      # when a pkg-config probe finds all six GStreamer WebRTC modules, and an
+      # SDK bump could take them away with nothing louder than one CMake STATUS
+      # line. Every Linux 0.8.0 package shipped exactly that way.
+      - /app/bin/lightning-matrix --call-media-status > call-media-status.txt 2>&1 || true
+      - cat call-media-status.txt
+      - grep -qx 'call media engine built in: yes' call-media-status.txt
+
+      # GUARD 2 — libsecret. HAVE_LIBSECRET is an auto pkg-config probe that
+      # only prints a STATUS line: if libsecret-1.pc ever leaves the SDK, the
+      # build would quietly fall back to storing access tokens in plaintext
+      # QSettings. That must fail the build, not ship, so the compiled binary
+      # is asked which backend it actually has.
+      - /app/bin/lightning-matrix --build-info > build-info.txt 2>&1 || true
+      - cat build-info.txt
+      - grep -qx 'secret_store: libsecret' build-info.txt
+    sources:
+      # Pinned to a published release tag AND to the commit that tag resolves
+      # to, so the build is reproducible even if the tag were ever moved.
+      # x-checker-data lets Flathub's bot open version-bump pull requests.
+      #
+      # MOVED v0.9.4 -> v0.9.6 (2026-09-15/16) -> v0.9.7 (2026-09-16 night)
+      # -> v0.9.8 (2026-09-17, within the hour after the tag was published).
+      #
+      # The v0.9.4 pin FAILED review, measured on the laptop rig rather than
+      # argued: `flatpak-builder-lint repo` returned
+      # `metainfo-missing-screenshots` and `appstream-failed-validation`,
+      # which Flathub documents as errors whose "exception is never granted".
+      # Three separate causes, all of them real at bcea599 — a 669-byte
+      # metainfo stub with no <releases> and no <screenshots>; four screenshot
+      # URLs pointing at a directory that does not exist at that tag; and
+      # CameraPortal plus the FLATPAK_ID/setDesktopFileName fix both landing
+      # AFTER 0.9.4, so a build from it shipped the very camera blocker the
+      # Flatpak work was done to remove. (The dead screenshot URLs were NOT
+      # Flathub-only: every published 0.9.5 package carries them too.
+      # packaging-ci/tests/test-metainfo-consistency.py catches that offline
+      # now, with git ls-tree, because the three package validators run
+      # `appstreamcli validate --no-net` and the network check is the only
+      # part that can see a dead URL.)
+      #
+      # All three are satisfied at v0.9.8, and the pin is there because that
+      # is the latest PUBLISHED release: its metainfo carries a 0.9.8 <release>
+      # entry dated 2026-09-17 and four screenshot URLs that resolve at the
+      # v0.9.8 tag. Checked by a real fetch on 2026-09-17 after the tag
+      # mirrored, not inherited from the previous pin -- all four
+      # raw.githubusercontent.com URLs answered 200 at v0.9.8.
+      #
+      # THE PROSE HERE ONCE DESCRIBED A DIFFERENT TAG FROM THE ONE BELOW IT.
+      # When this moved v0.9.6 -> v0.9.7 the data changed and these paragraphs
+      # did not, so a verification performed at v0.9.6 sat two lines above a
+      # v0.9.7 pin and read as evidence for it. If you move the pin, re-fetch
+      # the four URLs and re-read every paragraph in this block. Both ways,
+      # deliberately: `git cat-file -e` against the tree (which is what the
+      # offline test does, and what works before a tag exists), and a real
+      # fetch of all four raw.githubusercontent.com URLs once the tag was
+      # mirrored — 200 on every one at v0.9.8. The 0.9.4 pin failed on exactly
+      # this and an offline check alone is what let 0.9.5 ship four 404s.
+      #
+      # Regenerate cargo-sources.json in the same change whenever the pin
+      # moves — but it did NOT need regenerating for this move either, and the
+      # check is worth stating exactly: the ONLY line of rust/Cargo.lock that
+      # differs between v0.9.7 and v0.9.8 is the workspace crate's own
+      # `version = "0.9.7"` -> `"0.9.8"` (verified with `git diff v0.9.7 v0.9.8
+      # -- rust/Cargo.lock` after fetching tags), and the local crate is never a
+      # vendored source. No dependency moved. The same held for the previous
+      # move, v0.9.6 -> v0.9.7.
+      - type: git
+        url: https://github.com/Mizerd/lightning.git
+        tag: v0.9.8
+        commit: c04ea54f5cae39612b1713ada3050ec78dbba182
+        x-checker-data:
+          type: git
+          tag-pattern: '^v([\d.]+)$'
+      # The vendored crate graph: 470 crates, every one from crates.io, no git
+      # dependencies. Regenerate whenever rust/Cargo.lock changes, with
+      # flatpak-builder-tools' cargo/flatpak-cargo-generator.py:
+      #   python3 flatpak-cargo-generator.py rust/Cargo.lock -o cargo-sources.json
+      - cargo-sources.json
