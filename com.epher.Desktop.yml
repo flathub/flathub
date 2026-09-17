@@ -1,0 +1,144 @@
+# The Flathub manifest (ADR-0061, rewritten for the 2026 submission).
+# The build is fully offline and fully from source: every crate comes from
+# the generated cargo-sources.json files (flatpak-cargo-generator.py over
+# the committed lockfiles), the wasm32 standard library is a pinned archive
+# matched to the Sdk extension's rustc, and trunk plus wasm-bindgen-cli are
+# built in-sandbox from their own vendored sources. The GNOME Sdk ships
+# WebKitGTK 4.1, so no webkit shared module is needed. After acceptance
+# this file lives in github.com/flathub/com.epher.Desktop and Flathub's
+# External Data Checker opens the version-bump PRs (x-checker-data on the
+# git tag below); this in-repo copy is the source of truth.
+app-id: com.epher.Desktop
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: epher
+separate-locales: false
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  # ~/.epher (settings, history, scripts) and user-chosen files.
+  - --filesystem=home
+  - --talk-name=org.a11y.Bus
+cleanup:
+  - /app/trunk
+  - /app/wasm-bindgen
+  - /app/binaryen
+  - /app/dev-sysroot
+  - /app/wasm-std-manifest.json
+modules:
+  # The wasm32 standard library, pinned to exactly the rustc version the
+  # Sdk extension carries (1.98.1 at time of writing). When the extension
+  # bumps rustc, bump this archive in the same commit. The host rustlib is
+  # symlinked in so build scripts and proc macros keep working under the
+  # sysroot the epher module selects with RUSTFLAGS.
+  - name: rust-std-wasm32
+    buildsystem: simple
+    build-commands:
+      - install -d /app/dev-sysroot/lib/rustlib
+      - cp -r rust-std-wasm32-unknown-unknown/lib/rustlib/wasm32-unknown-unknown /app/dev-sysroot/lib/rustlib/
+      - ln -s /usr/lib/sdk/rust-stable/lib/rustlib/${FLATPAK_ARCH}-unknown-linux-gnu /app/dev-sysroot/lib/rustlib/${FLATPAK_ARCH}-unknown-linux-gnu
+      - 'printf ''{"rustc":"1.98.1"}'' > /app/dev-sysroot/version.json'
+    sources:
+      - type: archive
+        url: https://static.rust-lang.org/dist/rust-std-1.98.1-wasm32-unknown-unknown.tar.xz
+        sha256: cf1fcf68880d8b2b90128cede7416cfb82ad3584357ce9fb668f2b6244c26e55
+  # wasm-bindgen-cli, built offline from the same 0.2.127 release our
+  # wasm-bindgen crate pins. The upstream repo commits no lockfile, so the
+  # resolved lock travels with the manifest (wasm-bindgen-Cargo.lock).
+  - name: wasm-bindgen-cli
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/wasm-bindgen-cli/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo --offline install --locked --path crates/cli --root /app/wasm-bindgen
+    sources:
+      - type: git
+        url: https://github.com/rustwasm/wasm-bindgen.git
+        tag: "0.2.127"
+        commit: a579ee62b631fd1fa96c7740b52a2952b07c0219
+      - type: file
+        path: wasm-bindgen-Cargo.lock
+        dest-filename: Cargo.lock
+      - wasm-bindgen-cargo-sources.json
+  # trunk 0.21.14, the same version every other frontend builds with.
+  - name: trunk
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/trunk/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo --offline install --locked --path . --root /app/trunk
+    sources:
+      - type: git
+        url: https://github.com/thedodd/trunk.git
+        tag: v0.21.14
+        commit: 8ec159c52dcaf661e6950bb71d7f62ab24558164
+      - trunk-cargo-sources.json
+  # wasm-opt at the version Trunk.toml pins; trunk would otherwise try to
+  # download binaryen at build time, and the sandbox has no network.
+  - name: binaryen
+    buildsystem: simple
+    build-commands:
+      - install -d /app/binaryen/bin
+      - install -m755 bin/wasm-opt /app/binaryen/bin/wasm-opt
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz
+        sha256: 195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-arm64-linux.tar.gz
+        sha256: 0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
+  - name: epher
+    buildsystem: simple
+    build-options:
+      append-path: /app/trunk/bin:/app/wasm-bindgen/bin:/app/binaryen/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/epher/cargo
+        CARGO_NET_OFFLINE: "true"
+        RUSTFLAGS: --sysroot=/app/dev-sysroot
+    build-commands:
+      # The web dist the desktop shell embeds (frontendDist), built the
+      # same way the release workflow builds it.
+      - cd crates/web && trunk build --release
+      - cargo --offline build --release --manifest-path crates/tauri-app/src-tauri/Cargo.toml --bin epher
+      - install -Dm755 target/release/epher /app/bin/epher
+      # ADR-0053/0058: the guide and the script collection ride along.
+      # /app/usr is /usr inside the sandbox, exactly where the guide
+      # loader looks (its system data-dir candidates), and the script
+      # collection's in-sandbox path documented in the guide.
+      - install -d /app/usr/share/epher
+      - cp -r crates/web/dist/guide /app/usr/share/epher/guide
+      - cp -r "epher scripts" /app/usr/share/epher/scripts
+      - install -Dm644 packaging/flatpak/com.epher.Desktop.desktop /app/usr/share/applications/com.epher.Desktop.desktop
+      - install -Dm644 packaging/flatpak/com.epher.Desktop.metainfo.xml /app/usr/share/metainfo/com.epher.Desktop.metainfo.xml
+      - install -Dm644 site/icon.svg /app/share/icons/hicolor/scalable/apps/com.epher.Desktop.svg
+    sources:
+      - type: git
+        url: https://github.com/upyesp/epher.git
+        tag: v0.5.42
+        commit: 110c139ef0cea389d15dc2a697bb58f82940121a
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - cargo-sources.json
+      - type: file
+        path: com.epher.Desktop.desktop
+      - type: file
+        path: com.epher.Desktop.metainfo.xml
+      - type: file
+        path: ../../site/icon.svg
