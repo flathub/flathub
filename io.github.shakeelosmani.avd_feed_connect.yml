@@ -1,0 +1,170 @@
+# Flathub submission manifest for AVD Feed + Connect (Linux).
+#
+# This is the copy tailored for Flathub review; it differs from the manifest in
+# the app repo root only in ways Flathub requires:
+#   * a single graphics socket (--socket=x11), not x11 + wayland together
+#     (Flathub forbids that combo); the app already forces its RDP client onto
+#     X11/XWayland, and the launcher runs via XWayland on Wayland desktops.
+#   * the app module is pinned to a released git TAG (v0.3.7) with its commit,
+#     and carries x-checker-data so Flathub's bot can propose future updates.
+#
+# Bundles a purpose-built SDL3 FreeRDP client (camera redirection + the merged
+# PulseAudio hot-unplug fixes, FreeRDP PR #13334). Every source is pinned for a
+# reproducible, offline build.
+app-id: io.github.shakeelosmani.avd_feed_connect
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: avd-feed-connect
+
+finish-args:
+  - --share=network                 # feed discovery, Entra sign-in, RDP gateway
+  - --share=ipc
+  # Real X11 socket (not fallback-x11): the bundled FreeRDP SDL client is
+  # unstable on native Wayland, so connections are forced onto X11/XWayland and
+  # the socket must exist even on a Wayland host. The launcher GUI also renders
+  # via XWayland there. (Flathub disallows shipping both x11 and wayland.)
+  - --socket=x11
+  - --socket=pulseaudio             # RDP audio playback + microphone redirect
+  - --device=dri                    # GPU for the RDP graphics pipeline
+  - --device=all                    # webcam for camera redirection into the session
+  - --talk-name=org.kde.StatusNotifierWatcher   # tray icon
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets         # login keyring (libsecret) for the refresh token
+  - --env=LD_LIBRARY_PATH=/app/lib
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # ---- SDL3 + SDL3_ttf (not in the GNOME runtime) ------------------------
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_STATIC=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.2.30
+        commit: f5e5f6588921eed3d7d048ce43d9eb1ff0da0ffc
+        x-checker-data:
+          type: git
+          tag-pattern: "^release-([\\d.]+)$"
+
+  - name: sdl3-ttf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # Use the runtime's freetype; skip vendored harfbuzz (its in-source CMake
+      # guard breaks the build) and plutosvg — the FreeRDP SDL UI is plain text.
+      - -DSDLTTF_VENDORED=OFF
+      - -DSDLTTF_HARFBUZZ=OFF
+      - -DSDLTTF_PLUTOSVG=OFF
+      - -DSDLTTF_SAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL_ttf.git
+        tag: release-3.2.2
+        commit: a1ce3670aec736ecbf0936c43f2f0cc53aa61e5b
+        x-checker-data:
+          type: git
+          tag-pattern: "^release-([\\d.]+)$"
+
+  # ---- small FreeRDP deps not guaranteed in the runtime ------------------
+  - name: cjson
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_CJSON_TEST=OFF
+      - -DBUILD_SHARED_AND_STATIC_LIBS=OFF
+      # cJSON's cmake_minimum_required predates CMake 3.5, which the GNOME
+      # SDK's CMake refuses; allow it to configure anyway.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: git
+        url: https://github.com/DaveGamble/cJSON.git
+        tag: v1.7.18
+        commit: acc76239bee01d8e9c858ae2cab296704e52d916
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
+
+  # libusb-1.0 — required by the rdpecam V4L camera subsystem (UVC H.264).
+  - name: libusb
+    buildsystem: autotools
+    config-opts:
+      - --disable-udev
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+        x-checker-data:
+          type: anitya
+          project-id: 1749
+          stable-only: true
+          url-template: https://github.com/libusb/libusb/releases/download/v$version/libusb-$version.tar.bz2
+
+  # ---- the bundled FreeRDP SDL3 client -----------------------------------
+  - name: freerdp
+    buildsystem: cmake-ninja
+    builddir: true    # FreeRDP forbids in-source builds
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DWITH_CLIENT_SDL=ON
+      - -DWITH_CLIENT_SDL3=ON
+      - -DWITH_CLIENT_SDL2=OFF
+      - -DWITH_SERVER=OFF
+      - -DWITH_SAMPLE=OFF
+      - -DWITH_AAD=ON            # connection-time Entra token acquisition
+      # No FreeRDP-side WebView: WITH_WEBVIEW=OFF makes /sec:aad print
+      # "Browse to: <url>" and read the redirect URL from stdin, which the app
+      # services in-process (no second embedded browser).
+      - -DWITH_WEBVIEW=OFF
+      - -DWITH_PULSE=ON
+      - -DWITH_FFMPEG=ON
+      - -DWITH_SWSCALE=ON
+      - -DWITH_X11=ON
+      - -DWITH_KRB5=OFF          # AVD gateway uses Entra (AAD), not kerberos
+      - -DWITH_FUSE=OFF          # avoids a fuse3 dependency; clipboard file-copy not needed
+      - -DWITH_MANPAGES=OFF
+      - -DCHANNEL_RDPECAM_CLIENT=ON
+      - -DWINPR_UTILS_IMAGE_PNG=ON
+      - -DWINPR_UTILS_IMAGE_JPEG=ON
+      - -DWINPR_UTILS_IMAGE_WEBP=ON
+      - -DWINPR_UTILS_IMAGE_DIBv5=ON
+    sources:
+      - type: git
+        url: https://github.com/FreeRDP/FreeRDP.git
+        # Pinned to an upstream master commit that carries the merged PulseAudio
+        # hot-unplug + rdpsnd busy-loop fixes (PR #13334); this can move to the
+        # next tagged FreeRDP 3.x release once one is cut past that merge.
+        commit: 023c2a6d44264fa3a74d7607755279d3ac575637
+
+  # ---- the app itself (released tag) -------------------------------------
+  - name: avd-feed-connect
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 src/avdfeed.py       /app/share/avd-feed-connect/avdfeed.py
+      - install -Dm755 src/avd_feed_gui.py  /app/share/avd-feed-connect/avd_feed_gui.py
+      - install -Dm755 avd-feed-connect     /app/bin/avd-feed-connect
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.desktop
+        /app/share/applications/io.github.shakeelosmani.avd_feed_connect.desktop
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.metainfo.xml
+        /app/share/metainfo/io.github.shakeelosmani.avd_feed_connect.metainfo.xml
+      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.shakeelosmani.avd_feed_connect.svg
+    sources:
+      - type: git
+        url: https://github.com/shakeelosmani/avd_feed_connect.git
+        tag: v0.3.8
+        commit: b4c3efced756d5363e80c79a1c7d7234dda21f62
+        x-checker-data:
+          type: git
+          tag-pattern: "^v([\\d.]+)$"
