@@ -1,0 +1,214 @@
+# simplmusik as a flatpak - the build that doesn't care which distro you run.
+#
+# The GNOME runtime already carries most of what this app needs: GTK 3, the
+# WebKit 4.1 the window asks for by name, Python 3.13, and ffmpeg and ffprobe,
+# which is what writes the mp3s. Three things it has no answer for, so they
+# are added here: mpv, which is the whole player, mutagen, which reads the
+# titles and cover art off your files, and numpy, which fingerprints a
+# TikTok's sound for Shazam.
+#
+# mpv is built audio-only. It is driven over a socket and started --no-video,
+# so every video output, and the GPU and windowing stacks under them, are
+# switched off - what is left compiles in a couple of minutes rather than
+# pulling in a display server's worth of dependencies. libplacebo and libass
+# are here only because mpv refuses to configure without them, and they are
+# cut down to match.
+#
+# Every file that goes into the app is listed below with where it comes from:
+# the app's own files from this repository, and everything downloaded - yt-dlp
+# included - by URL and checksum. That is what lets Flathub build it on its
+# own servers, where there is no network once the build starts and none of
+# the scripts in this folder are run. `./build-flatpak --fresh` moves yt-dlp
+# to its newest release.
+
+app-id: io.github.JJM8.simplmusik
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: simplmusik-ui
+
+finish-args:
+  # The window, and the machine's screen and GPU under it.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # mpv has to reach the sound server, and yt-dlp the network.
+  - --socket=pulseaudio
+  - --share=network
+  # Your Music folder, and nothing else of your home. Settings and state live
+  # in the app's own folder under ~/.var/app, where the XDG_* variables flatpak
+  # sets point them. Music anywhere else - another disk, a USB stick - is a
+  # folder you pick in the desktop's own dialog, which the file chooser portal
+  # then opens to the app, that one folder and for good.
+  - --filesystem=xdg-music
+  # The keyboard's play, next and previous keys, and the desktop's sound menu:
+  # both reach a player by this name on the session bus.
+  - --own-name=org.mpris.MediaPlayer2.simplmusik
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # Required by mpv's build whether or not anything draws. Every GPU backend
+  # is off, which leaves the colour and frame handling mpv links against.
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dopengl=disabled
+      - -Dd3d11=disabled
+      - -Dglslang=disabled
+      - -Dshaderc=disabled
+      - -Dlcms=disabled
+      - -Ddovi=disabled
+      - -Dlibdovi=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  # Subtitle rendering, which an audio player never asks for - but mpv will
+  # not configure without it. The runtime already has the fonts underneath.
+  - name: libass
+    buildsystem: meson
+    config-opts:
+      - -Dfontconfig=enabled
+      - -Dlibunibreak=disabled
+      - -Dtest=disabled
+      - -Dcompare=disabled
+      - -Dprofile=disabled
+      - -Dfuzz=disabled
+      - -Dcheckasm=disabled
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.gz
+        sha256: caab4b993dd7be6187c55623b789ed75dddefea6e65938af134637c732fe094a
+
+  # The player. Audio outputs on, everything that draws a pixel off.
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=false
+      - -Dcplayer=true
+      - -Dbuild-date=false
+      - -Dtests=false
+      - -Dpulse=enabled
+      - -Dpipewire=enabled
+      - -Dalsa=enabled
+      - -Dzlib=enabled
+      - -Diconv=enabled
+      - -Dgl=disabled
+      - -Dplain-gl=disabled
+      - -Degl=disabled
+      - -Dgbm=disabled
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Dspirv-cross=disabled
+      - -Dd3d11=disabled
+      - -Dx11=disabled
+      - -Dxv=disabled
+      - -Dwayland=disabled
+      - -Ddmabuf-wayland=disabled
+      - -Ddrm=disabled
+      - -Dvaapi=disabled
+      - -Dvdpau=disabled
+      - -Dsdl2-video=disabled
+      - -Dsdl2-gamepad=disabled
+      - -Dcaca=disabled
+      - -Dsixel=disabled
+      - -Djpeg=disabled
+      - -Dlcms2=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dlibarchive=disabled
+      - -Dlibbluray=disabled
+      - -Dlibavdevice=disabled
+      - -Dcdda=disabled
+      - -Ddvbin=disabled
+      - -Ddvdnav=disabled
+      - -Duchardet=disabled
+      - -Dvapoursynth=disabled
+      - -Drubberband=disabled
+      - -Dzimg=disabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dpdf-build=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+
+  # Titles, artists and cover art. Pure Python, so this is a copy, not a build.
+  - name: python-mutagen
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/m/mutagen/mutagen-1.48.1.tar.gz
+        sha256: 8f95637ab9f6f305cec6bd1294e197debe207998e3e068596563c74f86b0a173
+
+  # The fingerprint `identify` sends to Shazam, which is arithmetic over
+  # spectra. A wheel rather than a build: numpy from source wants a Fortran
+  # toolchain and a BLAS, all for a sum done once per TikTok shared.
+  - name: python-numpy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation numpy-*.whl
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://files.pythonhosted.org/packages/3a/1b/3b16a9bc514a440a7a0883684111dcb1ef1aee960af2ca95da8fc775f124/numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: a5fa86b80fd24bcd1aff83ad23be44ea323de3f787be8f8b15d4a65621e25321
+      - type: file
+        only-arches: [aarch64]
+        url: https://files.pythonhosted.org/packages/73/85/735720d04ec197c5dcfacdfc9922667c7f1f5f496a279b7ba4d7c74c4cc7/numpy-2.5.3-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl
+        sha256: c76d5dde9f445058f83d0c02af00557a4db91de9a9a57c0df87d1535001d654b
+
+  # The app itself. One folder holding the lot, and two symlinks on the PATH -
+  # the same layout the .deb uses, because the scripts find each other and
+  # their web assets relative to where they really sit.
+  - name: simplmusik
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/lib/simplmusik simplmusik server.py simplmusik-ui
+      - install -Dm755 yt-dlp /app/lib/simplmusik/yt-dlp
+      - cp -r web /app/lib/simplmusik/web
+      - install -d /app/bin
+      - ln -s ../lib/simplmusik/simplmusik /app/bin/simplmusik
+      - ln -s ../lib/simplmusik/simplmusik-ui /app/bin/simplmusik-ui
+      - install -Dm644 -t /app/share/applications io.github.JJM8.simplmusik.desktop
+      - install -Dm644 -t /app/share/metainfo io.github.JJM8.simplmusik.metainfo.xml
+      - install -Dm644 -t /app/share/licenses/io.github.JJM8.simplmusik LICENSE
+      - for s in 32 48 64 128 256; do install -Dm644 icons/simplmusik-$s.png
+        /app/share/icons/hicolor/${s}x${s}/apps/io.github.JJM8.simplmusik.png; done
+    sources:
+      - type: git
+        url: https://github.com/JJM8/simplmusik.git
+        tag: v0.3.0
+        commit: cdd6dfb397161c9fde4f25ac3fbdda6a98b9f396
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      # yt-dlp, which is pure Python in one file. YouTube changes how it hands
+      # out audio every few weeks, so keep this on the newest release; the
+      # x-checker-data tells Flathub's bot to open that update for you.
+      - type: file
+        dest-filename: yt-dlp
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp
+        sha256: 1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest
+          version-query: .tag_name
+          url-query: .assets[] | select(.name=="yt-dlp") | .browser_download_url
