@@ -89,7 +89,7 @@ for repo in "${!candidates[@]}"; do
     fi
     active=$(gh api "repos/flathub/$repo" --jq '.archived == false and .private == false') || exit 1
     [[ "$active" == true ]] || continue
-    git clone --depth 1 "https://github.com/flathub/$repo.git" || exit 1
+    git clone --depth 1 "https://github.com/flathub/$repo" || exit 1
     checker_apps+=("$repo")
 done
 
