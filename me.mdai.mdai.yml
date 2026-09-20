@@ -1,0 +1,134 @@
+# Flatpak manifest — mdai
+#
+# DOKAZANO 08.08.2026 (#116): renderuje na Fedori 44 / Mesa 26.1.6 (A69 mašina)
+# i kao fresh-install iz .flatpak bundla. Runtime nosi svoj webkit2gtk-4.1 +
+# Mesa, pa je imun na glibc pod I na A69.
+#
+# ⚠️ KRITIČNO: source `mdai` je SIROV `cargo tauri build` binar
+# (src-tauri/target/release/mdai), NE linuxdeploy-mangled iz AppImage-a —
+# mangled binar ima RUNPATH=$ORIGIN/../lib i pada na _start unutar Flatpaka.
+# Vidi flatpak/README.md za pun recept.
+id: me.mdai.mdai
+runtime: org.gnome.Platform
+# ⭐ `51` `[ODLUKA Goran 20.09.2026]` — Flathub zahtjevi traže runtime koji je
+# najnoviji u času prijave, a linter je na `50` vraćao
+# `runtime-update-available-to-org.gnome.Platform-51`. Jedan manifest hrani oba
+# kanala, pa i `dl.mdai.me` ide na `51` od sljedeće gradnje.
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: mdai
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  # ⭐ STROG REŽIM [ODLUKA Goran 15.09.2026] — JEDAN manifest za OBA kanala
+  # (Flathub i `dl.mdai.me`). Flathub requirements, doslovno: "When a suitable XDG
+  # portal exists, is supported across the ecosystem, and covers the application's
+  # use case ... using the portal becomes mandatory instead of static permissions."
+  # ⇒ `--filesystem=home` ⛔ NIJE branjiv obrazloženjem — portal je USLOV.
+  #
+  # ⛔ CIJENA, unaprijed poznata: postojećem 🐧 kupcu `lastVaultPath` pokazuje na
+  # pravi $HOME koji sandbox više ⛔ NE VIDI — trezor bira IZNOVA, jednom, kroz
+  # dijalog. ⚠️ Mora u napomene izdanja.
+  #
+  # ⭐ IZMJERENO 15.09.2026 (macfedora, `--log-session-bus` uz `--nosocket=session-bus
+  # --nofilesystem=home`, 318 redova): jedini servis VAN portala koji app zove je
+  # `org.gtk.vfs.Daemon`. Zato JEDAN `--talk-name=` mijenja cio `--socket=session-bus`.
+  - --talk-name=org.gtk.vfs.Daemon
+  # GVFS pokuša peer-to-peer vezu ka `/run/user/1000/gvfsd`; bez ovoga ne uspije,
+  # padne na session bus (radi, ali sporije) i na svako pokretanje ispiše 10
+  # `GVFS-WARNING` redova. Nativni Open dijalog ide kroz GTK → GVFS.
+  - --filesystem=xdg-run/gvfsd
+  # ⭐⭐ `A330` — ova dozvola SAMA ⛔ NE UTIŠA GVFS `[IZMJERENO 20.09.2026]`. Okidač
+  # ⛔ nije trezor nego **monitori uređaja**: `IsSupported()` ka
+  # `org.gtk.vfs.{UDisks2,Afc,Goa,GPhoto2,MTP}VolumeMonitor` padne sa
+  # `ServiceUnknown` *(tih pet imena ⛔ ne propuštamo)*, GVFS onda padne na p2p i
+  # vrti `NameHasNoOwner` **svakih `5 s`** dok app radi *(ritam je GVFS-ov, ⛔ ne
+  # naš — `grep 5000` nad `src/` i `src-tauri/src/` daje NULU)*.
+  # ⛔ Odbačeno je pet novih `--talk-name=`: širi sandbox pred recenziju, a mdai
+  # ⛔ ne nudi izbor uređaja. Ovaj red kaže GIO-u da te monitore i ⛔ ne probava.
+  # ⭐ MJERENO NA TRAJANJU, ⛔ ne na utisku: bez reda `38 s` ⇒ `17` upozorenja
+  # *(12 × `ServiceUnknown` + 5 × p2p)*; sa redom `2 min 06 s` ⇒ **`0`**.
+  - --env=GIO_USE_VOLUME_MONITOR=unix
+modules:
+  - name: mdai
+    buildsystem: simple
+    sources:
+      # ⭐ `url` + `sha256`, ⛔ ne `path` [ODLUKA Goran 15.09.2026, Flathub korak 6].
+      # Flathub gradi manifest na SVOJIM mašinama — lokalne putanje tamo ⛔ ne postoje.
+      # Binar je SIROV `cargo tauri build` izlaz iz `scripts/fp-binbuild.sh`
+      # (podman `ubuntu:24.04`), iz commita `1473a3d` = ista gradnja koju nosi
+      # `mdai_1.2.1_amd64.flatpak`. ⛔ NE linuxdeploy-mangled iz AppImage-a.
+      # ⭐ IZMJERENO 19.09.2026, sa Živog URL-a `curl` + `shasum -a 256`:
+      #   HTTP 200, 33 082 496 B, sha256 `2fc459fe…` se poklopio sa fajlom na
+      #   `macfedora`; marker IZ TOG fajla, `grep -a` sa Živog URL-a:
+      #   `mdai-build-id:1.2.1:1473a3d…`.
+      # ⚠️⚠️ DRUGA pregradnja istog dana, i razlog je DRUGI od prve.
+      #   Prva: popravka `A325` (`27e5750`) pomjerila `HEAD` ⇒ `889957e` gradnja
+      #   postala zastarjela po `USLOV 5`.
+      #   Druga: `USLOV 6b` (TVRDA BRAVA, `[ODLUKA Goran 07.09.2026]`) traži da
+      #   SVA TRI artefakta izdanja budu iz ISTOG commita. 🍎 i 🪟 su građeni iz
+      #   `1473a3d`, a 🐧 iz `2232705` ⇒ `izdanje.sh` je pao sa `5b`+`6b`.
+      #   ⛔ Registar se ⛔ ne laže — marker se mjeri IZ binara, pa se razlika
+      #   mogla skloniti SAMO pregradnjom. 🐧 je bio jeftiniji (jedna gradnja i
+      #   jedan SMOKE) od pregradnje 🍎+🪟 (dvije gradnje, dva SMOKE-a, potpis).
+      #   ⭐ Krug se zatvara: kod je između `2232705` i `1473a3d` BAJT-ISTI
+      #   (jedina razlika je ovaj `sha256` + komentari), pa nov binar mijenja
+      #   samo marker ⇒ nov `sha256` ⇒ ovaj commit. Commit koji SLIJEDI gradnju
+      #   je dozvoljen jer `USLOV 5` izuzima `url:`/`sha256:` u `flatpak/*.yml`
+      #   (`izdanje.sh:613-642`, `d9b7369`) — inače bi heš binara morao da sadrži
+      #   sam sebe.
+      # ⚠️ CIJENA: pri svakom NOVOM izdanju ovdje se mijenjaju TRI stvari — `url`,
+      # `sha256` i `<release>` u metainfo. Zaboravljen `sha256` obara gradnju
+      # GLASNO (dobro), zaboravljen `url` tiho pakuje STARI binar (⛔ loše).
+      # ⛔⛔ IZMJERENO 19.09.2026, faza `SI` korak 2 — ta zamka je STVARNO PALA:
+      # `url` je stajao na `1.2.0`, oba koraka gradnje dala `EXIT 0`, a paket
+      # `mdai-1.2.1.flatpak` nosio je binar `mdai-build-id:1.2.0:2c34f3f…`
+      # (`22 750 760 B`, strip-ovan, star šest dana). ⛔ Nijedna kapija nije
+      # pisnula; uhvatio je SAMO marker čitan iz instaliranog paketa
+      # (`flatpak info -l`), pa je 🐧 gradnja bačena i commit izdanja pomjeren.
+      # ⇒ `url` se mijenja PRVI, prije `sha256`.
+      - type: file
+        url: https://dl.mdai.me/flathub/mdai-1.2.1-x86_64
+        sha256: 2fc459fe26614c8d1ef57f567e9d3f50830041889a0c1aebaf3f8d516705a2ad
+        dest-filename: mdai
+      # ⭐ SVI izvori ispod stoje UZ manifest i idu u isti repo prijave
+      # `[ODLUKA Goran 20.09.2026]`. Do 20.09. su tri od njih pokazivala VAN
+      # foldera (`../src-tauri/…`, `../docs/…`), pa bi gradnja na Flathubu — gdje
+      # postoji samo repo prijave — pala na „no such file".
+      # ⛔ Odbačena je varijanta „tri `wrangler r2 object put` pa `url:`+`sha256:`":
+      # traži produkcijski upis i vezuje gradnju za `dl.mdai.me`, a mjereno je da
+      # Flathub repo proprietarne app drži ikone i metapodatke UZ manifest
+      # *(`flathub/com.spotify.Client`: `.svg`, `.desktop`, `.appdata.xml`)*.
+      # Kopije su bajt-identične izvoru — hash-evi izmjereni 15.09., potvrđeni 20.09.:
+      #   icon-128.png  ← ../src-tauri/icons/128x128.png
+      #                   ad1a22e8c50e2735da4117f0523408604e4cbc84efd36a751b8922a3770c578e
+      #   icon-256.png  ← ../src-tauri/icons/128x128@2x.png
+      #                   f8e2d1b49027cf169304ba731b02bc483a75474f49c3655b7266facfc5f189b0
+      #   EULA.md       ← ../docs/legal/EULA.md
+      #                   9fc4e4955ebeaff00dd71603c171bed355afaa03c6c80441c232ffefb0555719
+      # ⚠️ Cijena kopija: razilaženje se ⛔ ne mjeri ⛔ nijednom kapijom — ⛔ nema
+      # čuvara ni za `site/src/pages/eula.astro` *(grep nad `scripts/` i `tests/`)*.
+      - type: file
+        path: me.mdai.mdai.desktop
+      - type: file
+        path: me.mdai.mdai.metainfo.xml
+      - type: file
+        path: icon-128.png
+      - type: file
+        path: icon-256.png
+      # Flathub requirements, doslovno: "license files for each module in the Flatpak
+      # manifest is installed to $FLATPAK_DEST/share/licenses/$FLATPAK_ID".
+      # ⛔ NE ide korijenski LICENSE — on je licenca IZVORNOG KODA za saradnike.
+      # Kupac dobija app pod EULA-om, pa se pakuje ona (isti tekst kao mdai.me/eula).
+      - type: file
+        path: EULA.md
+    build-commands:
+      - install -Dm755 mdai /app/bin/mdai
+      - install -Dm644 me.mdai.mdai.desktop /app/share/applications/me.mdai.mdai.desktop
+      - install -Dm644 me.mdai.mdai.metainfo.xml /app/share/metainfo/me.mdai.mdai.metainfo.xml
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/me.mdai.mdai.png
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/me.mdai.mdai.png
+      - install -Dm644 EULA.md /app/share/licenses/me.mdai.mdai/EULA.md
