@@ -1,0 +1,82 @@
+# The Flatpak of Rust DICOM Station: docs/flatpak.md explains the choices
+# made here, how to build it and how it reaches Flathub.
+#
+# This file is the manifest Flathub builds. The copy in the Flathub
+# repository must stay in step with this one; two things change for every
+# release: the tag and commit of the source below, and cargo-sources.json
+# (regenerate it with flatpak/update-cargo-sources.sh).
+#
+#   flatpak run org.flatpak.Builder --user --force-clean --install-deps-from=flathub \
+#     --install build flatpak/io.github.alexprotom.rust-dicom-station.yml
+#   flatpak run io.github.alexprotom.rust-dicom-station
+
+id: io.github.alexprotom.rust-dicom-station
+runtime: org.freedesktop.Platform
+# Bumping this means bumping the SDK extension and the CI workflow with it.
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: rust-dicom-station
+
+finish-args:
+  # The window: Wayland, and X11 where there is no Wayland session.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # The GPU: Vulkan for the views and for the inference engines.
+  - --device=dri
+  # Model weights are downloaded from Hugging Face on first use.
+  - --share=network
+  # No filesystem permission, on purpose. Flathub's linter rejects blanket
+  # home access (finish-args-home-filesystem-access), and the file dialogs
+  # are the desktop's own portal, so a folder picked there is readable
+  # wherever it lives. Settings, models, templates and the patient archive
+  # live in the application's own folder, which is always writable. What
+  # the portal cannot cover (a folder named on the command line, the MCP
+  # server's roots) is one `flatpak override --filesystem=...` away; see
+  # docs/flatpak.md.
+
+modules:
+  - name: rust-dicom-station
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # Where cargo-sources.json puts the vendored crates. The path has
+        # to carry this module's name.
+        CARGO_HOME: /run/build/rust-dicom-station/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # The release profile carries no debug info of its own; this drops
+        # the standard library's. Symbols stay, so a backtrace still names
+        # its frames.
+        CARGO_PROFILE_RELEASE_STRIP: debuginfo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      # `mcp` adds the second executable, rds-mcp; the default `gpu`
+      # feature stays on.
+      - cargo --offline build --release --features mcp
+      - install -Dm755 target/release/rust-dicom-station ${FLATPAK_DEST}/bin/rust-dicom-station
+      - install -Dm755 target/release/rds-mcp ${FLATPAK_DEST}/bin/rds-mcp
+      - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 assets/rust-dicom-station.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/alexprotom/rust-dicom-station.git
+        tag: v0.9.2
+        commit: 977183256878b544f0816b9b3ebd7217caa0d0b2
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      # The desktop entry and the metainfo travel with this manifest, not
+      # with the tagged source: they are packaging, they change without a
+      # release, and a release older than they are (v0.9.2 is) has to stay
+      # buildable. flatpak-builder copies them next to the checkout, which
+      # is why the install commands above name them without a folder.
+      - type: file
+        path: io.github.alexprotom.rust-dicom-station.desktop
+      - type: file
+        path: io.github.alexprotom.rust-dicom-station.metainfo.xml
+      - cargo-sources.json
