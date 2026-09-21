@@ -1,0 +1,83 @@
+id: com.nousresearch.hermes
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node26
+  - org.freedesktop.Sdk.Extension.rust-stable
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+command: run.sh
+rename-desktop-file: hermes.desktop
+rename-icon: hermes
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --persist=.hermes
+
+modules:
+  - name: git
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+    cleanup:
+      - /share
+    make-args:
+      - NO_PERL=1
+      - NO_TCLTK=1
+    make-install-args:
+      - INSTALL_SYMLINKS=1
+      - NO_PERL=1
+      - NO_TCLTK=1
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.gz
+        sha256: 0842dc384a23ac33ba3e570c4f3a8ded85963ee4713b1cd21153c3db41813d1e
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.gz
+
+  - python3-PyYAML.json
+
+  - python3-pillow.json
+
+  - name: hermes
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node26/bin
+      env:
+        XDG_CACHE_HOME: /run/build/hermes/flatpak-node/cache
+        npm_config_cache: /run/build/hermes/flatpak-node/npm-cache
+    build-commands:
+      - |
+        ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
+        npm install --offline
+      - npm run pack --workspace apps/desktop
+      - mv apps/desktop/release/linux*-unpacked /app/main
+      - XDG_DATA_HOME=/app/share python3 install_desktop_entry.py
+      - desktop-file-edit --set-key Exec --set-value "run.sh %U" /app/share/applications/hermes.desktop
+      - install -Dm755 -t /app/bin run.sh
+    sources:
+      - type: git
+        url: https://github.com/NousResearch/hermes-agent.git
+        tag: v2026.9.14
+        commit: 345cd2b057a452236de401d3534b8502a7465e8d
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/NousResearch/hermes-agent/releases/latest
+          tag-query: .tag_name
+      - generated-sources.json
+      - type: script
+        dest-filename: run.sh
+        commands:
+          - zypak-wrapper.sh /app/main/Hermes "$@"
+      - type: inline
+        dest-filename: install_desktop_entry.py
+        contents: |
+          from pathlib import Path
+          from hermes_cli.linux_desktop_entry import install_desktop_entry
+          install_desktop_entry(Path("/run/build/hermes"))
