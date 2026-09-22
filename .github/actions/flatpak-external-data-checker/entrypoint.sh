@@ -45,8 +45,7 @@ if [[ -n "${APP_ID:-}" ]]; then
     fi
     candidates["$APP_ID"]=1
 else
-    hour=$(date -u +%H)
-    shard=$((10#$hour / 4))
+    shard=$(((GITHUB_RUN_NUMBER - 1) % 6))
     echo "==> Discovering apps for shard $shard/6"
     for marker in extra-data x-checker-data .AppImage; do
         for extension in json yaml yml; do
