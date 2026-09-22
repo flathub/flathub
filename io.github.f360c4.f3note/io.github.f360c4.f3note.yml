@@ -1,0 +1,102 @@
+# Flatpak build for f3note.
+#
+# This is the route onto the distributions that cannot run f3note any other
+# way — Ubuntu 22.04, Debian 12, RHEL 9 — because the GNOME runtime supplies
+# GTK and GtkSourceView regardless of what the host has. Neither a native
+# build nor the AppImage can do that: both need the host's libraries to be
+# new enough, and on those systems they are not.
+app-id: io.github.f360c4.f3note
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+
+# Rust is not in the runtime; it comes from an SDK extension used only at
+# build time.
+#
+# The runtime version is not a free choice. f3note needs Rust 1.92 — the
+# gtk-rs crates require it — and each GNOME runtime pins a freedesktop base
+# whose rust-stable extension carries a fixed Rust. GNOME 47 pairs with
+# base 24.08, which has 1.89, and the build simply fails there. GNOME 51
+# pairs with 26.08 and 1.98. Checked, not assumed:
+#
+#   flatpak run --command=sh --devel org.gnome.Sdk//51 \
+#     -c '/usr/lib/sdk/rust-stable/bin/rustc --version'
+#
+# That runtime also carries GTK 4.24 and GtkSourceView 5.21, comfortably past
+# the 4.12 and 5.10 this needs.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: f3note
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/f3note/cargo
+
+finish-args:
+  # Wayland, with X11 as a fallback so the sandbox does not simply fail on a
+  # session that has no Wayland.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # A text editor's whole job is other people's files. The portal alone is not
+  # enough: f3note is opened from a terminal with a path argument, and a
+  # sandbox that can only see what a file chooser handed it cannot do that.
+  - --filesystem=host
+
+  # No network. f3note does not make a single request, and saying so here
+  # means it cannot start.
+
+  # The theme cascade reads the palette of the theme currently selected. This
+  # is the only path f3note needs that --filesystem=host does not obviously
+  # imply, and it is kept separate so that it survives host access being
+  # narrowed.
+  - --filesystem=~/.local/state/omarchy:ro
+
+  # Nothing is asked for fonts, fontconfig or the host's GTK settings. Flatpak
+  # already provides all three, and flatpak-builder-lint rejects asking again:
+  #   finish-args-unnecessary-xdg-config-fontconfig-ro-access
+  #   finish-args-unnecessary-xdg-config-gtk-4.0-ro-access
+  # xdg-data/omarchy was asked for too, and nothing ever read it — the theme
+  # comes from the state directory above, and data_dir() is f3note's own.
+
+modules:
+  - name: f3note
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      # --offline against the vendored crates: the build has no network, and
+      # the checksums come from the committed Cargo.lock.
+      - cargo --offline build --release --bin f3note
+      - install -Dm755 target/release/f3note /app/bin/f3note
+      - install -Dm644 packaging/io.github.f360c4.f3note.desktop
+        /app/share/applications/io.github.f360c4.f3note.desktop
+      # PNGs rather than the SVG, and the reason is worth recording because
+      # the failure is confusing. Flatpak validates every exported icon
+      # through gdk-pixbuf, and librsvg has dropped its gdk-pixbuf loader —
+      # so on a machine without it an SVG is rejected with "Format not
+      # recognized" at the very last step of the build, long after everything
+      # has compiled. GTK4 renders the same file perfectly well, because it
+      # uses librsvg directly rather than through gdk-pixbuf, which is why
+      # the SVG is still what a native install ships.
+      - install -Dm644 packaging/f3note-128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.f360c4.f3note.png
+      - install -Dm644 packaging/f3note-256.png
+        /app/share/icons/hicolor/256x256/apps/io.github.f360c4.f3note.png
+      - install -Dm644 packaging/f3note-512.png
+        /app/share/icons/hicolor/512x512/apps/io.github.f360c4.f3note.png
+      - install -Dm644 packaging/flatpak/io.github.f360c4.f3note.metainfo.xml
+        /app/share/metainfo/io.github.f360c4.f3note.metainfo.xml
+    sources:
+      # The published release, not this working tree. The checksum is over an
+      # uploaded asset rather than GitHub's generated /archive/<ref>.tar.gz:
+      # those are produced on demand and have changed before.
+      - type: archive
+        url: https://github.com/f360c4/f3note/releases/download/v1.0.2/f3note-1.0.2.tar.gz
+        sha256: 6403b28fe5af9bad61d90b8f8bd4f8b5dc40deecc135cd3617f8fbc359a864a1
+      - cargo-sources.json
