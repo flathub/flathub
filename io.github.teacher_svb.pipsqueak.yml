@@ -1,0 +1,59 @@
+app-id: io.github.teacher_svb.pipsqueak
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm22
+command: pipsqueak
+
+# Wayland windowing + drag/resize; fallback-x11 for XWayland compositors.
+# No PipeWire/portal socket permissions needed - the ScreenCast portal
+# hands back a scoped fd over D-Bus, which is exactly the sandboxed-safe
+# path it exists for (see the display-capture tasks under .devtool/features/
+# done/). Standard portal (org.freedesktop.portal.Desktop) access is always
+# available to sandboxed apps without extra finish-args.
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+modules:
+  - name: pipsqueak
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin
+      env:
+        CARGO_HOME: /run/build/pipsqueak/cargo
+        # Offline build using the vendored crate sources below - required
+        # for Flathub (no network access during the actual build phase,
+        # only during the earlier source-download phase these are fetched
+        # in).
+        CARGO_NET_OFFLINE: 'true'
+        # pipewire-sys/libspa-sys use bindgen at build time, which needs
+        # libclang - not in the base SDK, hence the llvm22 extension above.
+        # BINDGEN_EXTRA_CLANG_ARGS points bindgen at clang's own builtin
+        # headers (stdbool.h etc.) explicitly, since its resource-dir
+        # auto-detection doesn't reliably find a non-default clang install.
+        LIBCLANG_PATH: /usr/lib/sdk/llvm22/lib
+        BINDGEN_EXTRA_CLANG_ARGS: -resource-dir=/usr/lib/sdk/llvm22/lib/clang/22
+    build-commands:
+      - cargo build --offline --release
+      - install -Dm0755 target/release/pipsqueak ${FLATPAK_DEST}/bin/pipsqueak
+      - install -Dm0644 data/icons/${FLATPAK_ID}.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm0644 data/${FLATPAK_ID}.desktop
+        ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm0644 data/${FLATPAK_ID}.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/teacher-svb/pipsqueak.git
+        tag: v0.1.0
+        commit: aa8af49e9a612448ff0b37f8896e65a74e6ad550
+      # A bare string here is flatpak-builder's supported shorthand for
+      # "splice this file's own JSON/YAML array of sources in at this
+      # point" - not a literal file source. This is the standard way
+      # flatpak-cargo-generator's output gets consumed.
+      - cargo-sources.json
