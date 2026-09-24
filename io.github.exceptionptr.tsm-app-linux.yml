@@ -1,0 +1,75 @@
+# Flatpak manifest for the TSM Desktop App.
+#
+# The KDE runtime is used rather than the freedesktop one because it is built to
+# run Qt 6 applications, so the X11 libraries Qt needs at runtime are all
+# present. PySide6 comes from its wheel, which carries its own copy of Qt.
+#
+# Build it locally with:
+#   flatpak install -y flathub org.kde.Sdk//6.11 org.kde.Platform//6.11
+#   flatpak-builder --force-clean --user --install build \
+#     packaging/flatpak/io.github.exceptionptr.tsm-app-linux.yml
+#
+# The wheel lists in python3-deps.yaml carry wheels for several Python
+# versions, so pip can pick a matching one whichever Python the runtime ships.
+# After changing dependencies in pyproject.toml, regenerate them with
+# scripts/flatpak_gen_deps.py.
+id: io.github.exceptionptr.tsm-app-linux
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: tsm-app
+
+finish-args:
+  # Talks to the TSM API and the Wowhead icon CDN.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Credentials live in the system keyring, never in a config file.
+  - --talk-name=org.freedesktop.secrets
+  # Tray icon and the notifications it raises.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # The whole point of the app is writing Lua into World of Warcraft installs,
+  # and those live wherever the user keeps games: a Wine prefix under $HOME, a
+  # Lutris or Steam library, or a separate drive such as /mnt/games. It also
+  # reads Lutris and Faugus launcher configs to find them. Narrower filesystem
+  # permissions cannot express "wherever the user installed the game".
+  - --filesystem=host
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - python3-deps.yaml
+  - python3-build-backend.yaml
+
+  - name: tsm-app
+    buildsystem: simple
+    build-commands:
+      # hatch-vcs reads the version from git tags, which are not available to an
+      # offline build, so it is passed in instead.
+      # --no-deps because python3-deps already installed everything, and
+      # pyproject.toml asks for PySide6 while what is installed is
+      # PySide6-Essentials. Those are different distributions, so without this
+      # pip goes looking for PySide6 and fails with no index to search.
+      - SETUPTOOLS_SCM_PRETEND_VERSION=1.1.16 pip3 install --no-index --no-deps
+        --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/flatpak/io.github.exceptionptr.tsm-app-linux.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.exceptionptr.tsm-app-linux.desktop
+      - install -Dm644 packaging/flatpak/io.github.exceptionptr.tsm-app-linux.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.exceptionptr.tsm-app-linux.metainfo.xml
+      - for size in 16 32 48 128 256; do
+        install -Dm644 "tsm/ui/assets/tsm_${size}.png"
+        "${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/io.github.exceptionptr.tsm-app-linux.png";
+        done
+    sources:
+      - type: git
+        url: https://github.com/exceptionptr/tsm-app-linux.git
+        tag: v1.1.16
+        commit: d2d0bcaab2b7968d71c6ef08acc738acbcea56b8
