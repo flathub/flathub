@@ -4,11 +4,13 @@ This directory contains the files required to build, test, and distribute ModLoa
 
 ## Structure
 
-- `com.hylianmodding.ModLoader64.yml`: Main Flatpak builder manifest.
-- `com.hylianmodding.ModLoader64.desktop`: XDG Desktop entry.
-- `com.hylianmodding.ModLoader64.metainfo.xml`: AppStream metadata file.
-- `start-modloader64`: Launcher wrapper script handling template initialization and zypak Electron execution.
+- `com.hylianmodding.modloader64.yml`: Main Flatpak builder manifest.
 - `node-sources/`: Offline npm/yarn dependency manifests generated via `flatpak-node-generator`.
+- `shared-modules/`: `flathub/shared-modules` submodule (glu, glew).
+
+The desktop entry, AppStream metainfo, and `start-modloader64` launcher wrapper are not
+stored in this repo; they are fetched at build time (pinned by commit + sha256) from the
+upstream https://github.com/hylian-modding/ModLoader64-flatpak repo.
 
 ## Generating Offline Node Sources
 
@@ -29,6 +31,9 @@ This Flatpak bundles the single emulator used by ModLoader64: Mupen64Plus, inclu
 ## Building and Installing Locally
 
 ```bash
+# Clone the flathub/shared-modules submodule (glu, glew) first
+git submodule update --init
+
 # Using flatpak-builder directly or via the Flatpak Builder flatpak
-flatpak run org.flatpak.Builder --user --install --force-clean build-dir com.hylianmodding.ModLoader64.yml
+flatpak run org.flatpak.Builder --user --install --force-clean build-dir com.hylianmodding.modloader64.yml
 ```
