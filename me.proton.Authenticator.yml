@@ -3,6 +3,7 @@ runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
   - org.freedesktop.Sdk.Extension.rust-stable
 command: proton-authenticator
 finish-args:
@@ -17,15 +18,35 @@ modules:
   - name: proton-authenticator
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
+      append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
       env:
+        XDG_CACHE_HOME: /run/build/proton-authenticator/flatpak-node/cache
+        YARN_GLOBAL_FOLDER: /run/build/proton-authenticator/flatpak-node/yarn-berry
+        YARN_ENABLE_GLOBAL_CACHE: '0'
+        YARN_ENABLE_NETWORK: '0'
+        YARN_ENABLE_TELEMETRY: '0'
+        YARN_ENABLE_IMMUTABLE_INSTALLS: '0'
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        SENTRYCLI_SKIP_DOWNLOAD: '1'
+        NODE_OPTIONS: --max-old-space-size=6144
         CARGO_HOME: /run/build/proton-authenticator/cargo
         CARGO_NET_OFFLINE: 'true'
         # Updates are handled by Flatpak, disable the built-in AppImage updater
         TAURI_CONFIG: '{"plugins":{"updater":{"endpoints":[]}}}'
     build-commands:
-      # The prebuilt frontend is extracted to applications/authenticator/dist,
-      # which tauri-build embeds via tauri.conf.json's frontendDist.
+      # Private Proton packages aren't needed by the authenticator and can't be
+      # fetched, drop them from the lockfile and yarn config
+      - python3 strip-private-registry-lockfile.py yarn.lock yarn.lock.public
+      - mv yarn.lock.public yarn.lock
+      - python3 clean-yarnrc.py
+      - |
+        set -e
+        yarn() { node .yarn/releases/yarn-*.cjs "$@"; }
+        yarn plugin import ./flatpak-node/flatpak-yarn.js
+        yarn convertToZip unused
+        yarn workspaces focus proton-authenticator
+        yarn workspace proton-authenticator build:web
+      # tauri-build embeds applications/authenticator/dist into the binary
       - cargo build --release --features tauri/custom-protocol --manifest-path
         applications/authenticator/src-tauri/Cargo.toml
       - install -Dm755 applications/authenticator/src-tauri/target/release/proton-authenticator
@@ -49,23 +70,15 @@ modules:
         tag: proton-authenticator@1.1.7
         commit: '0000000000000000000000000000000000000000'
         x-checker-data:
-          type: json
-          url: https://api.github.com/repos/ProtonMail/WebClients/releases
-          version-query: '[.[] | select(.prerelease == false) | select(.tag_name | startswith("proton-authenticator@"))][0].tag_name
-            | ltrimstr("proton-authenticator@")'
-          tag-query: '[.[] | select(.prerelease == false) | select(.tag_name | startswith("proton-authenticator@"))][0].tag_name'
+          type: git
+          tag-pattern: ^proton-authenticator@([\d.]+)$
 
-      - type: archive
-        url: https://github.com/ProtonMail/WebClients/releases/download/proton-authenticator%401.1.7/proton-authenticator-dist-1.1.7.tar.gz
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
-        strip-components: 0
-        dest: applications/authenticator
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/ProtonMail/WebClients/releases
-          version-query: '[.[] | select(.prerelease == false) | select(.tag_name | startswith("proton-authenticator@"))][0].tag_name
-            | ltrimstr("proton-authenticator@")'
-          url-query: '[.[] | select(.prerelease == false) | select(.tag_name | startswith("proton-authenticator@"))][0].assets[]
-            | select(.name | startswith("proton-authenticator-dist-")) | .browser_download_url'
+      - node-sources.json
 
       - cargo-sources.json
+
+      - type: file
+        path: tools/strip-private-registry-lockfile.py
+
+      - type: file
+        path: tools/clean-yarnrc.py

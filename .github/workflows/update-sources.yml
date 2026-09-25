@@ -1,4 +1,4 @@
-name: Update cargo sources on version bump
+name: Update generated sources on version bump
 
 # Fires automatically when Flathub's external-data-checker pushes a
 # version-bump commit that touches the manifest (tag + dist URL change).
@@ -18,7 +18,7 @@ on:
 # Serialise runs per branch so two rapid pushes don't both try to commit.
 # A newer push supersedes an older in-progress run.
 concurrency:
-  group: update-cargo-sources-${{ inputs.branch || github.ref }}
+  group: update-sources-${{ inputs.branch || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -53,32 +53,29 @@ jobs:
             echo "needed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Sparse-clone WebClients at new tag
+      - name: Set up Node
         if: steps.need-regen.outputs.needed == 'true'
-        run: |
-          TAG="${{ steps.need-regen.outputs.new_tag }}"
-          git clone --filter=blob:none --no-checkout \
-            https://github.com/ProtonMail/WebClients.git _webclient
-          cd _webclient
-          git sparse-checkout set --no-cone \
-            /applications/authenticator/src-tauri/Cargo.lock
-          git checkout "$TAG"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
-      - name: Install flatpak-cargo-generator
+      - name: Install generators
         if: steps.need-regen.outputs.needed == 'true'
         run: |
-          pip install --quiet aiohttp==3.13.5 tomlkit==0.15.0
+          pip install --quiet aiohttp==3.13.5 tomlkit==0.15.0 \
+            'flatpak_node_generator @ git+https://github.com/flatpak/flatpak-builder-tools@41c20aa10819cdb2a4f3ca171758a96d1955c018#subdirectory=node'
           mkdir -p _tools
           wget -q -O _tools/flatpak-cargo-generator.py \
             https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/f03a673abe6ce189cea1c2857e2b44af2dd79d1f/cargo/flatpak-cargo-generator.py
           echo 'b373c8ab1a05378ec5d8ed0645c7b127bcec7d2f7a1798694fbc627d570d856c  _tools/flatpak-cargo-generator.py' | sha256sum -c
 
-      - name: Regenerate cargo-sources.json
+      - name: Regenerate cargo and node sources
         if: steps.need-regen.outputs.needed == 'true'
+        env:
+          FLATPAK_CARGO_GENERATOR: _tools/flatpak-cargo-generator.py
         run: |
-          python3 _tools/flatpak-cargo-generator.py \
-            _webclient/applications/authenticator/src-tauri/Cargo.lock \
-            -o cargo-sources.json
+          export FLATPAK_CARGO_GENERATOR="$PWD/$FLATPAK_CARGO_GENERATOR"
+          tools/update-sources.sh "${{ steps.need-regen.outputs.new_tag }}"
 
       - name: Commit and push
         if: steps.need-regen.outputs.needed == 'true'
@@ -86,11 +83,11 @@ jobs:
           TAG="${{ steps.need-regen.outputs.new_tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cargo-sources.json
+          git add cargo-sources.json node-sources.json
           if git diff --cached --quiet; then
             echo "Nothing changed — nothing to commit."
           else
-            git commit -m "ci: regenerate cargo sources for $TAG"
+            git commit -m "ci: regenerate cargo and node sources for $TAG"
             # Rebase onto any commits that landed while we were generating
             # (e.g. a second external-data-checker push) before pushing,
             # so we never hit a non-fast-forward rejection.
