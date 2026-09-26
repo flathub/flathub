@@ -37,58 +37,78 @@ done < "$inactive_repos_file"
 
 rm -f -- "$inactive_repos_file"
 
-declare -A candidates=()
+valid_repo_name() {
+    [[ "$1" =~ ^[A-Za-z0-9._-]+$ && "$1" != "." && "$1" != ".." ]]
+}
+
+repos=()
 if [[ -n "${APP_ID:-}" ]]; then
-    if [[ ! "$APP_ID" =~ ^[A-Za-z0-9._-]+$ || "$APP_ID" == "." || "$APP_ID" == ".." ]]; then
+    if ! valid_repo_name "$APP_ID"; then
         echo "Invalid application ID" >&2
         exit 1
     fi
-    candidates["$APP_ID"]=1
+    if [[ -z "${inactive_repos[$APP_ID]:-}" ]]; then
+        active=$(gh api "repos/flathub/$APP_ID" --jq '.archived == false and .private == false') || exit 1
+        [[ "$active" == true ]] && repos+=("$APP_ID")
+    fi
 else
     shard=$(((GITHUB_RUN_NUMBER - 1) % 6))
-    echo "==> Discovering apps for shard $shard/6"
-    for marker in extra-data x-checker-data .AppImage; do
-        for extension in json yaml yml; do
-            query="\"$marker\" org:flathub in:file extension:$extension"
-            page=1
-            while :; do
-                sleep 6.1
-                result=$(gh api --method GET search/code \
-                    -f q="$query" -F per_page=100 -F page="$page") || exit 1
-                if ! jq -e '.incomplete_results == false and .total_count < 1000' \
-                    <<< "$result" > /dev/null; then
-                    echo "Incomplete search or 1000-result ceiling reached: $query (page $page)" >&2
-                    exit 1
-                fi
-                repos=$(jq -r '.items[].repository | select(.private == false) | .name' \
-                    <<< "$result") || exit 1
-                while IFS= read -r repo; do
-                    [[ -n "$repo" ]] || continue
-                    if [[ "$marker" == extra-data ]]; then
-                        candidates["$repo"]=1
-                    elif [[ -z "${candidates[$repo]:-}" ]]; then
-                        candidates["$repo"]=0
-                    fi
-                done <<< "$repos"
-                total=$(jq -r '.total_count' <<< "$result") || exit 1
-                ((page * 100 < total)) || break
-                ((page++))
-            done
+
+    # Code search is only used to check extra-data apps on every run. Its
+    # index is incomplete, so every repo is also covered by its shard below.
+    echo "==> Searching for extra-data apps"
+    declare -A extra_data_repos=()
+    for extension in json yaml yml; do
+        query="\"extra-data\" org:flathub in:file extension:$extension"
+        page=1
+        while :; do
+            sleep 6.1
+            if ! result=$(gh api --method GET search/code \
+                -f q="$query" -F per_page=100 -F page="$page"); then
+                echo "Code search failed: $query (page $page)" >&2
+                break
+            fi
+            if ! jq -e '.incomplete_results == false and .total_count < 1000' \
+                <<< "$result" > /dev/null; then
+                echo "Incomplete search or 1000-result ceiling reached: $query (page $page)" >&2
+            fi
+            while IFS= read -r repo; do
+                [[ -n "$repo" ]] && extra_data_repos["$repo"]=1
+            done < <(jq -r '.items[].repository | select(.private == false) | .name' <<< "$result")
+            total=$(jq -r '.total_count' <<< "$result") || break
+            ((page * 100 < total)) || break
+            ((page++))
         done
     done
+
+    echo "==> Listing repos for shard $shard/6"
+    org_repos=$(gh api --paginate "orgs/flathub/repos?type=public&per_page=100" \
+        --jq '.[] | select(.archived == false and .private == false) | .name') || exit 1
+    while IFS= read -r repo; do
+        valid_repo_name "$repo" || continue
+        [[ -z "${inactive_repos[$repo]:-}" ]] || continue
+        if [[ -z "${extra_data_repos[$repo]:-}" ]]; then
+            checksum=$(printf '%s' "$repo" | cksum)
+            checksum=${checksum%% *}
+            ((checksum % 6 == shard)) || continue
+        fi
+        repos+=("$repo")
+    done <<< "$org_repos"
+fi
+
+echo "==> Cloning ${#repos[@]} repos"
+if ((${#repos[@]})); then
+    printf '%s\n' "${repos[@]}" | \
+        parallel -j8 "git clone --quiet --depth 1 https://github.com/flathub/{}"
 fi
 
 checker_apps=()
-for repo in "${!candidates[@]}"; do
-    [[ -z "${inactive_repos[$repo]:-}" ]] || continue
-    if [[ "${candidates[$repo]}" == 0 ]]; then
-        checksum=$(printf '%s' "$repo" | cksum)
-        checksum=${checksum%% *}
-        ((checksum % 6 == shard)) || continue
+for repo in "${repos[@]}"; do
+    if [[ ! -d "$repo" ]]; then
+        echo "Failed to clone $repo" >&2
+        continue
     fi
-    active=$(gh api "repos/flathub/$repo" --jq '.archived == false and .private == false') || exit 1
-    [[ "$active" == true ]] || continue
-    git clone --depth 1 "https://github.com/flathub/$repo" || exit 1
+    grep -rqE --exclude-dir=.git 'extra-data|x-checker-data|\.AppImage' "$repo" || continue
     checker_apps+=("$repo")
 done
 
