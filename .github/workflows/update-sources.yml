@@ -1,12 +1,8 @@
 name: Update generated sources on version bump
 
-# Fires automatically when Flathub's external-data-checker pushes a
-# version-bump commit that touches the manifest (tag + dist URL change).
-# Also available as a manual workflow_dispatch for re-runs and debugging.
+# Runs on external-data-checker PRs that bump the manifest, or manually.
 on:
-  push:
-    branches-ignore:
-      - master
+  pull_request:
     paths:
       - me.proton.Authenticator.yml
   workflow_dispatch:
@@ -18,7 +14,7 @@ on:
 # Serialise runs per branch so two rapid pushes don't both try to commit.
 # A newer push supersedes an older in-progress run.
 concurrency:
-  group: update-sources-${{ inputs.branch || github.ref }}
+  group: update-sources-${{ inputs.branch || github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,21 +27,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch || github.ref }}
-          fetch-depth: 2
+          ref: ${{ inputs.branch || github.head_ref || github.ref }}
+
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
 
       - name: Check whether regeneration is needed
         id: need-regen
         run: |
           NEW_TAG=$(grep -oP '(?<=tag: )proton-authenticator@[\d.]+' me.proton.Authenticator.yml || true)
-          PREV_TAG=$(git show HEAD~1:me.proton.Authenticator.yml 2>/dev/null \
+          PREV_TAG=$(git show "origin/${{ github.base_ref }}:me.proton.Authenticator.yml" 2>/dev/null \
             | grep -oP '(?<=tag: )proton-authenticator@[\d.]+' || true)
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
           if [ -z "$NEW_TAG" ]; then
             echo "No tag found in manifest — skipping." >&2
             echo "needed=false" >> "$GITHUB_OUTPUT"
-          elif [ "$NEW_TAG" = "$PREV_TAG" ] && [ "${{ github.event_name }}" = "push" ]; then
+          elif [ "$NEW_TAG" = "$PREV_TAG" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "Tag unchanged ($NEW_TAG) — skipping." >&2
             echo "needed=false" >> "$GITHUB_OUTPUT"
           else
@@ -92,6 +91,6 @@ jobs:
             # (e.g. a second external-data-checker push) before pushing,
             # so we never hit a non-fast-forward rejection.
             git fetch origin
-            git rebase origin/$(git rev-parse --abbrev-ref HEAD)
+            git rebase "origin/$(git rev-parse --abbrev-ref HEAD)"
             git push
           fi
