@@ -1,0 +1,93 @@
+# Penzene for Flathub. Upstream: https://github.com/JamesOBrien2/penzene
+# (packaging/flatpak holds the same manifest, built from the checkout by its CI).
+id: io.github.jamesobrien2.penzene
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: penzene
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Only when the user asks: PubChem name lookups and Help > Check for Updates.
+  - --share=network
+cleanup:
+  - /include
+  - /lib/cmake
+  - /share/eigen3
+  - '*.a'
+modules:
+  - name: boost  # headers plus CMake configs (RDKit's find_package(Boost CONFIG)); plus the system and locale libs (the ChemDraw library converts text with Boost.Locale on Linux)
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=system,locale
+      - ./b2 install -j${FLATPAK_BUILDER_N_JOBS} --prefix=/app link=shared variant=release
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2
+        sha256: af57be25cb4c4f4b413ed692fe378affb4352ea50fbe294a11ef548f4d527d89
+
+  - name: eigen
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DEIGEN_BUILD_DOC=OFF
+    sources:
+      - type: archive
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+        sha256: 8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+
+  - name: rdkit
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DRDK_INSTALL_INTREE=OFF
+      - -DRDK_BUILD_PYTHON_WRAPPERS=OFF
+      - -DRDK_BUILD_CPP_TESTS=OFF
+      - -DRDK_BUILD_CONTRIB=OFF
+      - -DRDK_BUILD_INCHI_SUPPORT=ON
+      - -DRDK_BUILD_CHEMDRAW_SUPPORT=OFF  # Penzene reads and writes CDX with its own copy
+      - -DRDK_BUILD_COORDGEN_SUPPORT=OFF
+      - -DRDK_BUILD_MAEPARSER_SUPPORT=OFF
+      - -DRDK_BUILD_FREETYPE_SUPPORT=OFF
+      - -DRDK_BUILD_CAIRO_SUPPORT=OFF
+      - -DRDK_BUILD_YAEHMOP_SUPPORT=OFF
+      - -DRDK_BUILD_FREESASA_SUPPORT=OFF
+      - -DRDK_BUILD_AVALON_SUPPORT=OFF
+      - -DRDK_BUILD_PUBCHEMSHAPE_SUPPORT=OFF
+      - -DRDK_USE_BOOST_SERIALIZATION=OFF
+      - -DRDK_USE_BOOST_IOSTREAMS=OFF
+      - -DFETCHCONTENT_SOURCE_DIR_BETTER_ENUMS=/run/build/rdkit/better-enums
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+    sources:
+      - type: archive
+        url: https://github.com/rdkit/rdkit/archive/refs/tags/Release_2026_03_6.tar.gz
+        sha256: d4d20b3b140237084694518aab34fdba6929d44bd7f720bce69329516abef663
+      - type: archive
+        url: https://github.com/IUPAC-InChI/InChI/releases/download/v1.07.3/INCHI-1-SRC.zip
+        sha256: b42d828b5d645bd60bc43df7e0516215808d92e5a46c28e12b1f4f75dfaae333
+        dest: External/INCHI-API/src
+      - type: archive
+        url: https://github.com/rareylab/RingDecomposerLib/archive/v1.1.3_rdkit.tar.gz
+        sha256: 944b5816712a48bbf88aa25d4300ce11871ddf6e971218eac08f90ed2192f715
+        dest: External/RingFamilies/RingDecomposerLib
+      - type: archive
+        url: https://github.com/aantron/better-enums/archive/c35576bed0295689540b39873126129adfa0b4c8.tar.gz
+        sha256: 9b78dcef7f88d1345b6f25335bfbcba5f024b08990c7d6dc605b833f4128b8dd
+        dest: better-enums
+
+  - name: penzene
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DPENZENE_TESTS=OFF
+      - -DPENZENE_PYTHON=OFF
+    sources:
+      - type: git
+        url: https://github.com/JamesOBrien2/penzene.git
+        tag: v0.9.0
+        commit: c855a074dde0c6a7bd9ac33389f7905d60f3cbdf
