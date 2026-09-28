@@ -1,0 +1,47 @@
+app-id: com.fathforce.caterm
+runtime: org.gnome.Platform
+runtime-version: '44'
+sdk: org.gnome.Sdk
+
+# We require the Rust and Node extensions for building
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: caterm
+
+finish-args:
+  # Network access
+  - --share=network
+  # IPC/Wayland/X11 for Tauri WebKit GUI
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # SQLite Vault Storage (Zero-Knowledge) & SFTP Sync
+  - --filesystem=home
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/caterm/cargo
+    NPM_CONFIG_CACHE: /run/build/caterm/npm-cache
+
+modules:
+  - name: caterm
+    buildsystem: simple
+    build-commands:
+      # 1. Build frontend
+      - cd frontend && npm install && npm run build
+      # 2. Build Tauri app
+      - cd crates/caterm-app && npm install -g @tauri-apps/cli && npx tauri build --bundles app
+      # 3. Install binary
+      - install -D crates/caterm-app/target/release/caterm /app/bin/caterm
+      # 4. Install launcher and icon
+      - install -D crates/caterm-app/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.fathforce.caterm.png
+    sources:
+      - type: dir
+        path: ..
+      # CATATAN: 
+      # Untuk build offline Flathub, Anda perlu meng-generate 'cargo-sources.json' 
+      # via flatpak-cargo-generator.py dan 'npm-sources.json' via flatpak-node-generator
+      # lalu me-load-nya ke bagian sources ini (wajib untuk submit ke Flathub repo resmi).
