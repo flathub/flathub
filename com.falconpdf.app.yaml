@@ -1,0 +1,56 @@
+app-id: com.falconpdf.app
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+# Prebuilt, proprietary app: we do not build from source on Flathub's builders.
+# Instead we extract the released .deb (produced by the Nucleus/Compose Desktop
+# packaging pipeline and published to GitHub Releases) and install its payload.
+command: falconpdf
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=home
+  - --share=network
+
+modules:
+  - name: falconpdf
+    buildsystem: simple
+    build-commands:
+      # Unpack the Debian package and lay its contents into the Flatpak prefix.
+      - ar x falconpdf.deb
+      - tar -xf data.tar.* -C .
+      # App payload: the DEB installs the runtime image under /opt/FalconPDF.
+      - mkdir -p ${FLATPAK_DEST}/opt
+      - cp -r opt/FalconPDF ${FLATPAK_DEST}/opt/FalconPDF
+      # Launcher on PATH inside the sandbox.
+      - install -Dm755 launcher.sh ${FLATPAK_DEST}/bin/falconpdf
+      # Desktop entry + icons, renamed to the Flathub app-id.
+      - install -Dm644 com.falconpdf.app.desktop ${FLATPAK_DEST}/share/applications/com.falconpdf.app.desktop
+      - install -Dm644 com.falconpdf.app.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.falconpdf.app.metainfo.xml
+      - |
+        for px in 16 32 48 64 128 256 512; do
+          if [ -f "usr/share/icons/hicolor/${px}x${px}/apps/falconpdf.png" ]; then
+            install -Dm644 "usr/share/icons/hicolor/${px}x${px}/apps/falconpdf.png" \
+              "${FLATPAK_DEST}/share/icons/hicolor/${px}x${px}/apps/com.falconpdf.app.png"
+          fi
+        done
+    sources:
+      - type: file
+        url: https://github.com/avrapps/falcon-pdf-app/releases/download/2026.09/falconpdf-2026.9.0-linux-amd64.deb
+        sha256: f9d49c516ee3307a8f7da54a5a4baa0abb5d4182a47bfa0c39387c36f537a7e8
+        dest-filename: falconpdf.deb
+      - type: script
+        dest-filename: launcher.sh
+        commands:
+          - exec /app/opt/FalconPDF/falconpdf "$@"
+      # Desktop entry + AppStream metainfo, committed alongside this manifest in the
+      # submission (Flathub requires both to be named after the app-id).
+      - type: file
+        path: com.falconpdf.app.desktop
+      - type: file
+        path: com.falconpdf.app.metainfo.xml
