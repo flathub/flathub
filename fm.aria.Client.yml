@@ -1,0 +1,148 @@
+# aria.fm — Flatpak manifest.
+#
+# Like packaging/rpm/aria-fm.spec and packaging/aur/PKGBUILD, this repacks the
+# published Linux release tarball rather than building from source: the tarball
+# already contains the Electron shell, its Chromium runtime, and the Go sidecar
+# with the librespot cdylib go:embed'ed into it.
+#
+# The sizeable difference from the AUR/RPM packages is the sandbox. Those two
+# ship chrome-sandbox setuid root; a flatpak cannot (setuid bits are stripped
+# from the deployed tree, and the app is already inside a sandbox). The
+# supported answer is zypak, which comes from org.electronjs.Electron2.BaseApp
+# and redirects Chromium's sandbox calls onto the flatpak sandbox. Hence the
+# base:/base-version: pair and the zypak-wrapper in the launcher below.
+
+app-id: fm.aria.Client
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: aria
+
+finish-args:
+  # Chromium's own multi-process architecture.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Required, and for two distinct reasons that both have to hold:
+  #   1. Spotify's APIs and the librespot audio transport.
+  #   2. The OAuth sign-in flow. The sidecar binds a callback listener on
+  #      127.0.0.1:8888 (internal/auth/defaults.go) and then opens the user's
+  #      browser via xdg-open, which the portal routes to a browser on the
+  #      HOST. That browser has to be able to reach the listener. --share=network
+  #      puts the sandbox in the host network namespace, so host loopback and
+  #      sandbox loopback are the same 127.0.0.1 and the redirect lands.
+  #      Without it, sign-in fails at the callback with connection refused —
+  #      after the user has already entered their credentials.
+  - --share=network
+
+  # Audio. The Go sidecar is cgo-free and dlopens libasound.so.2 through purego
+  # (internal/audio/backend_alsa_linux.go), opening PCM "default" — it does NOT
+  # speak PulseAudio or PipeWire natively. That works here because the
+  # freedesktop runtime ships libasound_module_conf_pulse.so and
+  # libasound_module_pcm_pulse.so, so ALSA's "default" device resolves through
+  # the pulse plugin onto whatever this socket is wired to (PipeWire's
+  # pulse shim on a current Fedora). Verified present in org.freedesktop.Platform
+  # 25.08; if a future runtime drops the alsa-plugins, audio breaks with a
+  # snd_pcm_open failure and this is the first place to look.
+  - --socket=pulseaudio
+
+  # Desktop notifications (Electron's Notification, via libnotify).
+  - --talk-name=org.freedesktop.Notifications
+
+  # The OAuth token is persisted in the OS keyring via github.com/zalando/
+  # go-keyring (internal/auth/store.go), which on Linux is the Secret Service
+  # D-Bus API — gnome-keyring, kwallet, or similar.
+  #
+  # This is NOT optional and NOT a sign-in-only convenience: internal/auth's
+  # store.load() maps only keyring.ErrNotFound to ErrNotSignedIn and propagates
+  # every other error, so an unreachable secret service fails auth.New, which
+  # fails sidecar startup outright. Without this line the app dies at launch
+  # with
+  #     aria-server: auth.New: auth: load persisted token:
+  #     org.freedesktop.DBus.Error.ServiceUnknown
+  # and, because the sidecar never binds its port, the window never loads and
+  # MPRIS never appears. It reads like a broken build rather than a missing
+  # permission. Confirmed by observing exactly that in a sandboxed run.
+  - --talk-name=org.freedesktop.secrets
+
+  # MPRIS is the Linux Now Playing surface. app/app.go publishes
+  # org.mpris.MediaPlayer2.aria on the session bus; internal/mpris falls back to
+  # <name>.instance<pid> when the primary name is already owned, so both
+  # patterns need owning. This is also what makes hardware media keys work —
+  # the desktop environment drives them over MPRIS, and nothing else in the app
+  # registers a global shortcut.
+  - --own-name=org.mpris.MediaPlayer2.aria
+  - --own-name=org.mpris.MediaPlayer2.aria.*
+
+# Nothing here needs the SDK's compilers — this is an unpack-and-place build —
+# but stripping must still be off, exactly as in the RPM spec and the AUR
+# package: the Electron binaries do not survive it.
+build-options:
+  no-debuginfo: true
+  strip: false
+
+modules:
+  - name: aria-fm
+    buildsystem: simple
+    build-commands:
+      # The whole Electron app: shell binary, Chromium runtime, and the
+      # aria-server sidecar under resources/. The internal layout is preserved
+      # because electron/main.js resolves the sidecar relative to
+      # process.resourcesPath.
+      #
+      # Copied from aria-app/ rather than from `.` — the archive sources below
+      # unpack into that subdirectory precisely so the tarball's contents stay
+      # separable from the other staged sources (the launcher script, the
+      # desktop entry, the metainfo). A plain `cp -a .` here also copies those
+      # three into /app/aria.fm, shipping stray duplicates of files that belong
+      # under /app/bin and /app/share.
+      - mkdir -p /app/aria.fm
+      - cp -a aria-app/. /app/aria.fm/
+      # Installed under proper freedesktop paths below; don't double-ship.
+      - rm -f /app/aria.fm/aria.desktop /app/aria.fm/aria.png /app/aria.fm/LICENSE
+      # chrome-sandbox is dead weight under zypak and cannot be made setuid in a
+      # flatpak anyway. Removing it is tidier than shipping a binary that would
+      # only ever fail if something did exec it.
+      - rm -f /app/aria.fm/chrome-sandbox
+
+      - install -Dm755 aria-launcher /app/bin/aria
+      - install -Dm644 fm.aria.Client.desktop /app/share/applications/fm.aria.Client.desktop
+      - install -Dm644 aria-app/aria.png /app/share/icons/hicolor/512x512/apps/fm.aria.Client.png
+      - install -Dm644 fm.aria.Client.metainfo.xml /app/share/metainfo/fm.aria.Client.metainfo.xml
+      - install -Dm644 aria-app/LICENSE /app/share/licenses/fm.aria.Client/LICENSE
+
+    sources:
+      # Per-arch release tarballs. only-arches keeps flatpak-builder from
+      # fetching the wrong one; the arch token in the asset name is the same
+      # spelling flatpak uses (x86_64 / aarch64), so the two line up directly.
+      # Both sha256s are taken from the PUBLISHED tarballs, not from a local
+      # build: these are the bytes users actually fetch, and the two differ —
+      # the release build is not byte-reproducible against a local one.
+      - type: archive
+        dest: aria-app
+        only-arches: [x86_64]
+        url: https://gitlab.com/api/v4/projects/cmdly%2Faria.fm/packages/generic/aria-fm/v0.8.0/aria-fm-v0.8.0-linux-x86_64.tar.gz
+        sha256: cadc57a313798bb25046c8604f1c4a56fce23f030093a326ef4cb1e7a11aba0e
+
+      - type: archive
+        dest: aria-app
+        only-arches: [aarch64]
+        url: https://gitlab.com/api/v4/projects/cmdly%2Faria.fm/packages/generic/aria-fm/v0.8.0/aria-fm-v0.8.0-linux-aarch64.tar.gz
+        sha256: b3070f13b82c41374f9d535059f759ec5fbe52c331e32a8eef2bb15c10da5efa
+
+      - type: file
+        path: fm.aria.Client.desktop
+      - type: file
+        path: fm.aria.Client.metainfo.xml
+
+      # zypak-wrapper is what makes Chromium's sandbox work without a setuid
+      # helper. Invoking aria-shell directly here would either fail outright or
+      # need --no-sandbox, which trades away Chromium's renderer isolation.
+      - type: script
+        dest-filename: aria-launcher
+        commands:
+          - exec zypak-wrapper /app/aria.fm/aria-shell "$@"
