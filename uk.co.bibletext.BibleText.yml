@@ -1,0 +1,61 @@
+app-id: uk.co.bibletext.BibleText
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: bibletext
+
+finish-args:
+  - --share=ipc               # Share IPC namespace with the host (necessary for X11).
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri              # OpenGL rendering support.
+  - --filesystem=xdg-download # Save share cards as images
+
+
+build-options:
+  append-path: /usr/lib/sdk/golang/bin
+  env:
+    GOROOT: /usr/lib/sdk/golang
+    GOFLAGS: -mod=vendor -trimpath -buildvcs=false
+    GOPROXY: 'off'
+    GOTOOLCHAIN: local
+    CGO_ENABLED: '1'
+
+modules:
+  - name: bibletext
+    buildsystem: simple
+    build-commands:
+
+      # Patches
+      - chmod -R u+w vendor/fyne.io/fyne/v2
+      - for p in patches/fyne-2.7.4-*.patch; do patch -p1 -d vendor/fyne.io/fyne/v2 < "$p"; done
+      - cp patches/NotoColorEmoji.ttf vendor/fyne.io/fyne/v2/theme/font/NotoColorEmoji.ttf
+      - rm -f vendor/fyne.io/fyne/v2/theme/font/EmojiOneColor.otf
+
+      # Build
+      - go build -tags flatpak -ldflags '-s -w' -o bibletext ./cmd/bibletext
+      - install -Dm755 bibletext $FLATPAK_DEST/bin/bibletext
+      - install -Dm644 linux/$FLATPAK_ID.desktop $FLATPAK_DEST/share/applications/$FLATPAK_ID.desktop
+      - install -Dm644 linux/flathub/$FLATPAK_ID.metainfo.xml $FLATPAK_DEST/share/metainfo/$FLATPAK_ID.metainfo.xml
+      - install -Dm644 linux/icons/hicolor/256x256/apps/$FLATPAK_ID.png $FLATPAK_DEST/share/icons/hicolor/256x256/apps/$FLATPAK_ID.png
+      - install -Dm644 linux/icons/hicolor/512x512/apps/$FLATPAK_ID.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+      - install -Dm644 LICENSE $FLATPAK_DEST/share/licenses/$FLATPAK_ID/LICENSE
+      - install -Dm644 NOTICE $FLATPAK_DEST/share/licenses/$FLATPAK_ID/NOTICE
+      - install -Dm644 assets/fonts/atkinson/OFL.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/OFL-Atkinson-Hyperlegible.txt
+      - install -Dm644 assets/fonts/reading/Junicode-OFL.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/OFL-Junicode.txt
+      - install -Dm644 assets/fonts/reading/EzraSIL-Licenses.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/EzraSIL-Licenses.txt
+      - install -Dm644 assets/fonts/share/OFL-LICENSES.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/OFL-share-card-fonts.txt
+      - install -Dm644 patches/NotoColorEmoji-LICENSE-OFL.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/OFL-NotoColorEmoji.txt
+    sources:
+      - type: git
+        url: "https://github.com/cubancorona/bibletext.git"
+        tag: v1.2.17
+        commit: 0df739273ffdf92e9d156d0032ef21f135b5c709
+        x-checker-data:
+          type: git
+          tag-pattern: '^v([\d.]+)$'
+
+      - go.mod.yml
