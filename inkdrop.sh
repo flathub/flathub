@@ -12,4 +12,4 @@ else
   set -- --ozone-platform=x11 "$@"
 fi
 
-exec zypak-wrapper /app/extra/inkdrop "$@"
+exec zypak-wrapper /app/inkdrop/inkdrop "$@"
