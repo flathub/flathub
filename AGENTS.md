@@ -4,7 +4,7 @@
 > **CRITICAL DIRECTIVE FOR AI AGENTS**:
 > Never submit pull requests to Flathub (`flathub/flathub`) without verifying **EVERY SINGLE RULE** in this document. 
 > Flathub employs automated bots (`flathub-submission-checker`, `vorarbeiter`) and strict linters (`flatpak-builder-lint`, `appstreamcli`). 
-> Over 85% of rejected Flathub submissions stem from minor syntax, formatting, or branch misconfigurations detailed below.
+> Over 85% of rejected Flathub submissions stem from line-ending mismatches, word-wrapped checklists, and minor syntax violations detailed below.
 
 ---
 
@@ -45,11 +45,11 @@ flowchart TD
 
 ---
 
-## 2. The 7 Pillars of Zero-Error Submissions
+## 2. The 8 Pillars of Zero-Error Submissions
 
 ### Rule 1: The Base Branch MUST be `new-pr`
 - **Target**: `flathub/flathub:new-pr` (NOT `master`!).
-- Flathub deprecated `master` for submissions. Opening against `master` results in immediate bot rejection.
+- Flathub deprecated `master` for submissions. Opening against `master` triggers `.github/workflows/close-master-prs.yml` which automatically closes the PR within seconds.
 - **Git Setup**:
   ```bash
   git remote add upstream https://github.com/flathub/flathub.git
@@ -78,9 +78,27 @@ re.match(r"^Add\s+([A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+)$", title)
 
 ---
 
-### Rule 3: Single-Line Checklist in PR Body
-The Flathub bot checks every item with strict line-by-line regex: `^[ \t]*[-+*][ \t]+\[([ xX])\][ \t]*(.+?)\s*$`.
-**Do not allow auto-formatters or word-wrap to split checklist lines!**
+### Rule 3: Single-Line Checklist in PR Body (No Word-Wrapping)
+The Flathub bot checks every item with strict line-by-line regex:
+```python
+CHECKLIST_PATTERN = re.compile(r"^[ \t]*[-+*][ \t]+\[([ xX])\][ \t]*(.+?)\s*$")
+```
+It splits the PR body with `pr_body.splitlines()` and examines each line independently.
+
+> [!WARNING]
+> **THE WORD-WRAP PITFALL**:
+> Automated code formatters, Markdown linters, and AI text generators frequently hard-wrap long lines at 80 or 100 characters. 
+> If a checklist item wraps onto a second line, the second line lacks `[- [x]]`, truncating the text and causing the bot to fail checklist validation!
+>
+> ❌ **WRONG (Wrapped across two lines)**:
+> ```markdown
+> - [x] The application has a meaningful development history, evidence of
+>   real-world use, and a clear commitment to ongoing maintenance.
+> ```
+> ✅ **CORRECT (One unbroken continuous line)**:
+> ```markdown
+> - [x] The application has a meaningful development history, evidence of real-world use, and a clear commitment to ongoing maintenance, as required by the [development history requirements][history].
+> ```
 
 #### Standard Submission Template:
 ```markdown
@@ -115,7 +133,7 @@ Maintainers: @github_username
 ```
 
 > [!NOTE]
-> The line `- [x] I am an author/developer to the project.` MUST contain the exact words `to the project`, otherwise the bot will flag the PR as an unverified third-party submission.
+> The line `- [x] I am an author/developer to the project.` MUST contain the exact words `to the project`, otherwise the bot flags the PR as an unverified third-party submission.
 
 ---
 
@@ -214,6 +232,43 @@ To verify the app's domain (e.g., `example.org` for `org.example.MyApp`):
 
 ---
 
+### Rule 8: Line Endings: Strict Unix LF (`\n`), NEVER Windows CRLF (`\r\n`)
+
+> [!CAUTION]
+> **CRLF vs LF BREAKAGES ON LINUX**:
+> Developers and AI agents operating on Windows frequently commit files with Windows `CRLF` (`\r\n`) line endings.
+> In a Linux Flatpak build environment, carriage returns (`\r`) cause immediate, catastrophic failures:
+> 
+> 1. **Shell Scripts (`.sh` / wrappers)**:
+>    Linux treats `\r` as a literal character in the shebang:
+>    `/bin/bash^M: bad interpreter: No such file or directory` or syntax errors on commands.
+> 2. **Desktop Entries (`.desktop`)**:
+>    `desktop-file-validate` will fail with:
+>    `error: line contains carriage return character`.
+> 3. **AppStream XML (`.metainfo.xml`)**:
+>    Unintended `\r` can corrupt multi-line paragraph validation in `appstreamcli`.
+> 4. **Manifest Files (`.yaml` / `.json`)**:
+>    Multi-line strings (`|` / `|-`) will preserve `\r`, which breaks sandbox build scripts.
+
+#### How to Guarantee Unix LF:
+1. **Set Git Repository Attributes (`.gitattributes`)**:
+   ```gitattributes
+   * text=auto eol=lf
+   *.sh text eol=lf
+   *.yaml text eol=lf
+   *.xml text eol=lf
+   *.desktop text eol=lf
+   ```
+2. **Sanitize Existing Files Before Committing**:
+   ```bash
+   # From Linux or WSL:
+   sed -i 's/\r$//' <AppID>.yaml <AppID>.metainfo.xml <AppID>.desktop flathub.json
+   # Or with dos2unix:
+   dos2unix <AppID>.yaml <AppID>.metainfo.xml <AppID>.desktop flathub.json
+   ```
+
+---
+
 ## 3. Generic Command Reference for Agents
 
 ### 1. Build and Package Distribution Archive
@@ -228,7 +283,7 @@ sha256sum myapp-linux-x64-v1.0.0.tar.gz
 # Insert SHA256 into <AppID>.yaml under the source section
 ```
 
-### 3. Prepare Submission Branch in Fork
+### 3. Sanitize Line Endings & Prepare Submission Branch in Fork
 ```bash
 git checkout -B add-org.example.MyApp upstream/new-pr
 
@@ -238,6 +293,9 @@ git checkout -B add-org.example.MyApp upstream/new-pr
 # - org.example.MyApp.desktop
 # - flathub.json
 # - icons/
+
+# Guarantee Unix LF endings
+sed -i 's/\r$//' org.example.MyApp.yaml org.example.MyApp.metainfo.xml org.example.MyApp.desktop flathub.json
 
 git add org.example.MyApp.yaml org.example.MyApp.metainfo.xml org.example.MyApp.desktop flathub.json icons/
 git commit -m "Add org.example.MyApp"
@@ -262,6 +320,9 @@ gh pr create \
 | :--- | :--- | :--- |
 | `Could not parse App ID from PR title` | PR title has extra characters, tags, or version numbers. | Rename PR title to strictly: `Add <AppID>` (e.g. `Add org.example.MyApp`). |
 | `PR base branch must be new-pr` | PR targeted `master`. | Edit PR and switch base branch to `new-pr`. |
+| `Checklist requirement unfulfilled / missing` | Word-wrap split a checklist line across multiple lines. | Keep each checklist item on a single unbroken line. |
+| `/bin/bash^M: bad interpreter` | Shell script has Windows CRLF line endings (`\r\n`). | Convert file with `dos2unix <file>` or `sed -i 's/\r$//' <file>`. |
+| `line contains carriage return character` | `.desktop` or metadata file contains `\r\n`. | Convert to Unix LF: `dos2unix <AppID>.desktop`. |
 | `'appstream-missing-screenshots'` | Screenshot `<image>` URL in `metainfo.xml` returned 404 or timed out. | Verify URL with `curl -sI <URL>`. Use raw GitHub link from `screenshots` branch or production HTTPS domain. |
 | `x11-wayland-socket-conflict` | Both `--socket=x11` and `--socket=wayland` present in `finish-args`. | Replace with `--socket=wayland` and `--socket=fallback-x11`. |
 | `unnecessary-filesystem-override` | Requested `--filesystem=xdg-config/<AppID>` or similar. | Remove redundant `--filesystem` lines; sandbox handles this automatically. |
