@@ -1,0 +1,91 @@
+app-id: io.github.thelion.G502ProfileManager
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: g502-gui
+
+finish-args:
+  # Servidor gráfico e IPC (Wayland y X11)
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+
+  # Acceso D-Bus al demonio ratbagd en el host (control del ratón)
+  - --system-talk-name=org.freedesktop.ratbag1
+
+  # Integración con la bandeja del sistema (KDE Plasma / GNOME StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-*
+
+  # Notificaciones de escritorio
+  - --talk-name=org.freedesktop.Notifications
+
+  # Lectura de configuraciones y manifiestos de juegos instalados (Steam / Heroic)
+  - --filesystem=~/.local/share/Steam:ro
+  - --filesystem=~/.var/app/com.valvesoftware.Steam:ro
+  - --filesystem=~/.local/share/Heroic:ro
+  - --filesystem=~/.config/heroic:ro
+
+modules:
+  # Dependencia para ratbagctl (librería evdev)
+  - name: python3-evdev
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "evdev" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/63/fe/a17c106a1f4061ce83f04d14bcedcfb2c38c7793ea56bfb906a6fadae8cb/evdev-1.9.2.tar.gz
+        sha256: 5d3278892ce1f92a74d6bf888cc8525d9f68af85dbe336c95d1c87fb8f423069
+
+  # Libratbag / ratbagctl (herramienta de control D-Bus del ratón)
+  - name: libratbag
+    buildsystem: meson
+    config-opts:
+      - -Ddocumentation=false
+      - -Dtests=false
+      - -Dsystemd=false
+      - -Dlogind-provider=none
+    sources:
+      - type: git
+        url: https://github.com/libratbag/libratbag.git
+        tag: 0.18
+
+  # Aplicación principal Logitech G502 HERO Profile Manager
+  - name: g502-profile-manager
+    buildsystem: simple
+    build-commands:
+      # Instalar archivos de la aplicación
+      - mkdir -p /app/share/g502-profile-manager
+      - cp -r src /app/share/g502-profile-manager/
+
+      # Crear lanzadores ejecutables
+      - mkdir -p /app/bin
+      - |
+        cat << 'LAUNCHER' > /app/bin/g502-gui
+        #!/bin/sh
+        exec python3 /app/share/g502-profile-manager/src/cli.py gui "$@"
+        LAUNCHER
+        chmod +x /app/bin/g502-gui
+      - |
+        cat << 'LAUNCHER' > /app/bin/g502
+        #!/bin/sh
+        exec python3 /app/share/g502-profile-manager/src/cli.py "$@"
+        LAUNCHER
+        chmod +x /app/bin/g502
+
+      # Instalar archivo desktop y metadatos AppStream
+      - install -Dm644 data/io.github.thelion.G502ProfileManager.desktop /app/share/applications/io.github.thelion.G502ProfileManager.desktop
+      - install -Dm644 data/io.github.thelion.G502ProfileManager.metainfo.xml /app/share/metainfo/io.github.thelion.G502ProfileManager.metainfo.xml
+
+      # Instalar icono SVG escalable
+      - install -Dm644 data/icons/io.github.thelion.G502ProfileManager.svg /app/share/icons/hicolor/scalable/apps/io.github.thelion.G502ProfileManager.svg
+
+      # Instalar iconos PNG en todas las resoluciones estándar
+      - for s in 16 22 24 32 48 64 128 256 512; do install -Dm644 data/icons/io.github.thelion.G502ProfileManager_${s}x${s}.png /app/share/icons/hicolor/${s}x${s}/apps/io.github.thelion.G502ProfileManager.png; done
+
+    sources:
+      - type: git
+        url: https://github.com/TheLioN25/g502-profile-manager.git
+        tag: v0.3.0
+        commit: be0f7a3e5c368a950689e4e95df540aabc189b4c
