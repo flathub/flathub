@@ -1,0 +1,54 @@
+# Production Flatpak manifest for Linux Image Writer (local development
+# builds: the source is this repository's working tree).
+#
+# Only the GUI is built and installed; the diagnostic CLI is not.
+# Permissions are the minimum the GUI needs: a display, and the UDisks2 name
+# on the system bus (device list, OpenDevice, Unmount, PowerOff). Images come
+# through the document portal; devices through UDisks2's OpenDevice.
+#
+# Cargo builds offline from cargo-sources.json, generated from Cargo.lock by
+# flatpak-builder-tools' flatpak-cargo-generator.py. Regenerate it whenever
+# Cargo.lock changes.
+#
+# Translations (po/<language>.po, the languages in po/LINGUAS) are compiled
+# into /app/share/locale. flatpak-builder moves them into the app's .Locale
+# extension, which Flatpak installs for the user's configured languages; a
+# single-file bundle of the app alone does not include them.
+app-id: io.github.pc_freedom.linux-image-writer
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: linux-image-writer
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --system-talk-name=org.freedesktop.UDisks2
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: linux-image-writer
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/linux-image-writer/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked --features gui --bin linux-image-writer
+      - install -Dm755 target/release/linux-image-writer -t /app/bin/
+      - install -Dm644 data/io.github.pc_freedom.linux-image-writer.desktop -t /app/share/applications/
+      - install -Dm644 data/io.github.pc_freedom.linux-image-writer.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.pc_freedom.linux-image-writer.svg
+        -t /app/share/icons/hicolor/scalable/apps/
+      - for lang in $(cat po/LINGUAS); do install -d /app/share/locale/$lang/LC_MESSAGES
+        && msgfmt --check -o /app/share/locale/$lang/LC_MESSAGES/linux-image-writer.mo po/$lang.po
+        || exit 1; done
+    sources:
+      - type: git
+        url: https://github.com/PC-FREEDOM/linux-image-writer.git
+        tag: v0.1.0
+        commit: 0059b9b8768e2ee89156c911157578965a64ada8
+      - cargo-sources.json
