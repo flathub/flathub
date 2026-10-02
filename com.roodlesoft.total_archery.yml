@@ -1,0 +1,60 @@
+# Repacks the prebuilt Linux bundle (Flutter isn't built from source here).
+# Per release: update the tarball version in `url` and its sha256 (printed by
+# package.sh as the .sha256 file; the tarball is published to R2 linux/ and
+# served by totalarchery.app/download/linux/<file>).
+# Build locally: flatpak-builder --user --install --force-clean build-dir <this file>
+app-id: com.roodlesoft.total_archery
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: total_archery
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --socket=pulseaudio                    # chrono records microphone audio
+  - --talk-name=org.freedesktop.secrets    # flutter_secure_storage
+  - --system-talk-name=org.freedesktop.NetworkManager   # connectivity monitoring
+modules:
+  # flutter_secure_storage needs libsecret, which the freedesktop runtime lacks.
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      - -Dmanpage=false
+      - -Dvapi=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dcrypto=disabled
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
+        sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
+  - name: totalarchery
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/totalarchery /app/bin
+      - cp -a totalarchery/. /app/lib/totalarchery/
+      - ln -s /app/lib/totalarchery/total_archery /app/bin/total_archery
+      - install -Dm644 com.roodlesoft.total_archery.desktop /app/share/applications/com.roodlesoft.total_archery.desktop
+      - install -Dm644 com.roodlesoft.total_archery.metainfo.xml /app/share/metainfo/com.roodlesoft.total_archery.metainfo.xml
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.roodlesoft.total_archery.png
+    sources:
+      - type: archive
+        url: https://totalarchery.app/download/linux/totalarchery-1.80.99-linux-x64.tar.gz
+        sha256: 764508034de25f54e67171a2329ad17bb7335b78efa176b4f6098d9082fb75cf
+        strip-components: 0
+        # flatpak-external-data-checker (Flathub's bot) reads the same
+        # latest.json the download page uses and opens the version bump PRs.
+        x-checker-data:
+          type: json
+          url: https://totalarchery.app/download/linux/latest.json
+          version-query: .version | split(" ")[0]
+          url-query: '"https://totalarchery.app/download/linux/" + .tarball'
+      - type: file
+        path: com.roodlesoft.total_archery.desktop
+      - type: file
+        path: com.roodlesoft.total_archery.metainfo.xml
+      - type: file
+        path: icon-512.png
