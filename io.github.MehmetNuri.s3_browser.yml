@@ -1,0 +1,71 @@
+# S3 Browser Flathub manifest.
+# Offline dependency sources are stored alongside this manifest.
+app-id: io.github.MehmetNuri.s3_browser
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: s3browser
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  # On Wayland, tray integration uses StatusNotifier; the legacy X11 helper is unavailable.
+  - --socket=fallback-x11
+  - --device=dri
+  # Uploads, downloads, folder sync and backup jobs work on user-chosen local folders.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: s3browser
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/run/build/s3browser/go/bin
+      env:
+        XDG_CACHE_HOME: /run/build/s3browser/flatpak-node/cache
+        npm_config_cache: /run/build/s3browser/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        npm_config_nodedir: /usr/lib/sdk/node24
+        GOROOT: /run/build/s3browser/go
+        GOTOOLCHAIN: local
+        GOPROXY: file:///run/build/s3browser/goproxy
+        GOSUMDB: 'off'
+        GOFLAGS: -modcacherw
+    build-commands:
+      - npm ci --offline
+      - npm --prefix frontend ci --offline
+      - npm run build
+      - . flatpak-node/electron-builder-arch-args.sh && npx --no-install electron-builder --linux dir $ELECTRON_BUILDER_ARCH_ARGS --publish never -c.electronDist=node_modules/electron/dist
+      - mkdir -p /app/main
+      - cp -a dist/linux*unpacked/. /app/main/
+      - install -Dm755 packaging/flathub/s3browser.sh /app/bin/s3browser
+      - install -Dm644 packaging/flathub/io.github.MehmetNuri.s3_browser.desktop -t /app/share/applications
+      - install -Dm644 packaging/flathub/io.github.MehmetNuri.s3_browser.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 packaging/icons/s3browser.svg /app/share/icons/hicolor/scalable/apps/io.github.MehmetNuri.s3_browser.svg
+      # AppStream compose rasterizes 64 and 128 px icons; shipping them avoids an SVG loader dependency.
+      - for size in 64 128 256 512; do install -Dm644 packaging/icons/s3browser-$size.png /app/share/icons/hicolor/${size}x${size}/apps/io.github.MehmetNuri.s3_browser.png; done
+    sources:
+      - type: git
+        url: https://github.com/MehmetNuri/s3-browser.git
+        tag: v1.1.0
+        commit: 1d6351a8c8b24b79177b08cf1ff7e22e495c34a8
+      - type: archive
+        only-arches: [x86_64]
+        url: https://go.dev/dl/go1.27.1.linux-amd64.tar.gz
+        sha256: 63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
+        dest: go
+      - type: archive
+        only-arches: [aarch64]
+        url: https://go.dev/dl/go1.27.1.linux-arm64.tar.gz
+        sha256: 3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
+        dest: go
+      - go-sources.json
+      - generated-sources.json
