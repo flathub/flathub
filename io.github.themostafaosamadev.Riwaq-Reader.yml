@@ -12,24 +12,16 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
-  # The Store feature browses external novel sites, which cannot work without
-  # network access.
+  # The optional Store browses external novel sites. Reading local files is offline.
   - --share=network
   # https://github.com/tauri-apps/tauri/issues/9304
   - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
-  # Download-complete notifications. tauri-plugin-notification uses notify-rust,
-  # which calls org.freedesktop.Notifications on the session bus directly, and
-  # Flatpak filters that bus. Without this name the call is refused, the error
-  # is caught and console.warn'd (src/store/downloadNotifier/transport.ts), and
-  # notifications silently never appear.
+  # notify-rust calls the session bus directly; without this the call is refused
+  # and download notifications silently never appear.
   - --talk-name=org.freedesktop.Notifications
-  # "Open With" needs nothing else here, and the obvious additions are wrong:
-  # `--file-forwarding` is a `flatpak run` option, not a finish-arg, so
-  # build-finish dies with "Unknown option". And a literal `@@ %f @@` in the
-  # desktop file's Exec= builds and exports fine, then makes `flatpak install`
-  # fail with "Invalid Exec argument @@". Flatpak adds --file-forwarding and the
-  # @@ markers itself when it exports a desktop file whose Exec= has a bare %f
-  # (or %u), which is all the desktop file has.
+  # "Open With" needs nothing more. --file-forwarding is a `flatpak run` option,
+  # not a finish-arg, and a literal `@@ %f @@` in Exec= breaks `flatpak install`.
+  # Flatpak adds both itself for a desktop file with a bare %f.
 
 build-options:
   append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
@@ -44,50 +36,23 @@ modules:
         npm_config_offline: 'true'
         npm_config_cache: /run/build/riwaq/flatpak-node/npm-cache
         XDG_CACHE_HOME: /run/build/riwaq/flatpak-node/cache
-        # pnpm 11 always runs an unconditional supply-chain check during
-        # --frozen-lockfile installs: for every registry package it fetches
-        # the registry's current metadata and confirms the lockfile's
-        # tarball URL still matches it (a substitution-attack guard). This
-        # is unconditional -- neither trust-policy=off nor
-        # minimumReleaseAge=0 gates it -- and the node generator vendors
-        # package tarballs, not that metadata, so offline this throws
-        # ERR_PNPM_NO_OFFLINE_META on the first package missing it
-        # (observed: @biomejs/biome). trust-lockfile=true skips the whole
-        # verification pass; that's safe here because --frozen-lockfile
-        # already pins every resolution to the committed, reviewed
-        # lockfile, so there is nothing left for the check to catch.
+        # pnpm 11 re-fetches registry metadata during --frozen-lockfile to check
+        # tarball URLs, which fails offline (ERR_PNPM_NO_OFFLINE_META). Safe to
+        # skip: --frozen-lockfile already pins every resolution to the lockfile.
         pnpm_config_trust_lockfile: 'true'
-        # flatpak-node-generator's own source list appends
-        # "storeDir: <host build path>/flatpak-node/pnpm-store" to the
-        # project's pnpm-workspace.yaml, computed while flatpak-builder is
-        # still applying sources outside the build sandbox (where the module
-        # directory sits at its outer, numbered host path). That path is
-        # unreachable once the real build-commands sandbox remaps the module
-        # to /run/build/riwaq, so the store is pinned to its in-sandbox
-        # location through the pnpm_config_* env var instead, the same way
-        # pnpm_config_trust_lockfile above is set.
+        # flatpak-node-generator writes storeDir into pnpm-workspace.yaml using
+        # the outer host path, which does not exist once the module is remapped
+        # to /run/build/riwaq. Pin it to the in-sandbox location instead.
         pnpm_config_store_dir: /run/build/riwaq/flatpak-node/pnpm-store
     build-commands:
       - node pnpm/bin/pnpm.cjs install --offline --frozen-lockfile
       - node pnpm/bin/pnpm.cjs build
-      # --features tauri/custom-protocol is NOT optional. tauri's build.rs sets
-      # `dev = !custom-protocol`, and in dev mode tauri-codegen embeds
-      # EmbeddedAssets::default() -- empty -- and the app loads devUrl
-      # (localhost:1420) instead of its own frontend. It builds, installs and
-      # opens a window, so every structural check passes while the app is
-      # blank. Proven by running the dev-mode build against a listener on
-      # :1420 and watching it request GET /.
+      # custom-protocol is required: without it tauri builds in dev mode, embeds
+      # no assets and loads devUrl, so the app installs and opens a blank window.
       - cargo build --release --manifest-path src-tauri/Cargo.toml --offline
           --features tauri/custom-protocol
-      # src-tauri/Cargo.toml has [[bin]] name = "Riwaq", which overrides the
-      # [package] name = "riwaq" for the actual build output -- cargo writes
-      # target/release/Riwaq, not target/release/riwaq. This only surfaces
-      # after the whole Rust build succeeds (Linux paths are case-sensitive),
-      # which makes it nasty to rediscover from a partial or cached build.
-      # Install that file, but keep the installed name lowercase: `command:
-      # riwaq` above, the desktop entry's Exec=riwaq, and
-      # StartupWMClass=Riwaq (GTK capitalises the program name) all stay
-      # correct as long as the installed binary itself is lowercase.
+      # [[bin]] name = "Riwaq" overrides the package name, so cargo writes
+      # target/release/Riwaq. Install it lowercase to match `command:` and Exec=.
       - install -Dm755 src-tauri/target/release/Riwaq /app/bin/riwaq
       - install -Dm644 src-tauri/icons/icon.png
           /app/share/icons/hicolor/512x512/apps/io.github.themostafaosamadev.Riwaq-Reader.png
@@ -100,8 +65,7 @@ modules:
         url: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
         tag: v0.6.0
         commit: 56e20c5562e62a0f7528902a6e7dcc7082869684
-      # The node22 extension ships node and npm, not pnpm, and corepack would
-      # fetch it over a network the sandbox does not have.
+      # node22 ships node and npm, not pnpm, and corepack needs a network.
       - type: archive
         url: https://registry.npmjs.org/pnpm/-/pnpm-11.21.0.tgz
         sha256: 87237d37eadb79dc626a0576eb3a52d23d70422c323ae5e00fc05c91f4323780
