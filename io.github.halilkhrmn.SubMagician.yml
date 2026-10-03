@@ -1,0 +1,92 @@
+# SubMagician on Flathub: https://github.com/halilkhrmn/submagician
+# Same as packaging/flatpak/ in that repository, with the app source as a release tag.
+# cargo-sources.json lists every crate of that tag's Cargo.lock (flatpak-cargo-generator).
+id: io.github.halilkhrmn.SubMagician
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: submagician
+rename-desktop-file: submagician.desktop
+rename-icon: submagician
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Searching the subtitle sources, updates check, Whisper model download.
+  - --share=network
+  # Subtitles are saved next to the videos, in folders opened, dropped, watched or passed by the
+  # right-click menu; the player plugins and menu entries go to the player and file manager
+  # folders in the home folder. A portal would give access to picked files only.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  # "Show in folder".
+  - --talk-name=org.freedesktop.FileManager1
+
+modules:
+  # ffmpeg and ffprobe: syncing to the audio, subtitle tracks inside videos, Whisper's audio.
+  # Only the programs; no network, no hardware video, no outside libraries but zlib and bzip2.
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-ffplay
+      - --disable-network
+      - --disable-autodetect
+      - --enable-zlib
+      - --enable-bzlib
+      - --disable-static
+      - --enable-shared
+      - --disable-encoders
+      - --enable-encoder=pcm_f32le,pcm_s16le,subrip,srt,ass,ssa,webvtt,text
+      - --disable-muxers
+      - --enable-muxer=f32le,s16le,wav,srt,ass,webvtt,null
+      - --disable-indevs
+      - --disable-outdevs
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz
+        sha256: 089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304
+        x-checker-data:
+          type: anitya
+          project-id: 5405
+          versions: {<: "8.0"}
+          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+
+  - name: submagician
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/submagician/cargo
+        # whisper.cpp for any x86-64 CPU since 2013 (docs/DECISIONS.md #52).
+        GGML_NATIVE: "OFF"
+        # The SDK has no libclang; whisper-rs-sys ships its bindings.
+        WHISPER_DONT_GENERATE_BINDINGS: "1"
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --locked -p submagician -p submagician-cli
+      - install -Dm755 target/release/submagician /app/bin/submagician
+      - install -Dm755 target/release/submagician-cli /app/bin/submagician-cli
+      - install -Dm644 packaging/linux/submagician.desktop /app/share/applications/submagician.desktop
+      - install -Dm644 crates/app/assets/icon.svg /app/share/icons/hicolor/scalable/apps/submagician.svg
+      - install -Dm644 crates/app/assets/icon.png /app/share/icons/hicolor/256x256/apps/submagician.png
+      - install -Dm644 packaging/linux/io.github.halilkhrmn.SubMagician.metainfo.xml /app/share/metainfo/io.github.halilkhrmn.SubMagician.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/halilkhrmn/submagician.git
+        tag: v0.1.2
+        commit: f2f5c8f18d4534550782d0ea6e19c8deb9816ebc
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - cargo-sources.json
