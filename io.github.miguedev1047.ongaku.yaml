@@ -1,0 +1,77 @@
+app-id: io.github.miguedev1047.ongaku
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: ongaku
+
+finish-args:
+  # Display and windowing
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+
+  # Audio playback (PulseAudio / PipeWire)
+  - --socket=pulseaudio
+
+  # Network access for YouTube streaming, search and audio downloads
+  - --share=network
+
+  # File system access to user music & download directories
+  - --filesystem=xdg-music
+  - --filesystem=xdg-download
+
+  # MPRIS Media controls
+  - --own-name=org.mpris.MediaPlayer2.ongaku
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+build-options:
+  append-path: /usr/lib/sdk/node20/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/ongaku/cargo
+    RUSTUP_HOME: /usr/lib/sdk/rust-stable
+
+modules:
+  - name: ongaku
+    buildsystem: simple
+    build-commands:
+      # Configure yarn offline mirror
+      - echo -e 'yarn-offline-mirror "/run/build/ongaku/flatpak-node/yarn-mirror"\nyarn-offline-mirror-pruning true' > .yarnrc
+
+      # Configure cargo vendored sources
+      - mkdir -p src-tauri/.cargo
+      - |
+        echo -e '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/run/build/ongaku/cargo/vendor"' > src-tauri/.cargo/config.toml
+
+      # Install frontend dependencies and build Tauri application
+      - yarn install --offline --immutable --immutable-cache
+      - yarn run tauri build -- -b deb
+
+      # Unpack generated Debian bundle
+      - ar -x src-tauri/target/release/bundle/deb/*.deb
+      - tar -xf data.tar.*
+
+      # Install executable binary
+      - install -Dm755 usr/bin/ongaku /app/bin/ongaku
+
+      # Install desktop file
+      - install -Dm644 flatpak/io.github.miguedev1047.ongaku.desktop /app/share/applications/io.github.miguedev1047.ongaku.desktop
+
+      # Install application icons with proper Flathub naming
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.miguedev1047.ongaku.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.miguedev1047.ongaku.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.miguedev1047.ongaku.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.miguedev1047.ongaku.png
+
+      # Install AppStream metadata
+      - install -Dm644 flatpak/io.github.miguedev1047.ongaku.metainfo.xml /app/share/metainfo/io.github.miguedev1047.ongaku.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/miguedev1047/ongaku.git
+        tag: v0.1.18
+      - cargo-sources.json
+      - node-sources.json
