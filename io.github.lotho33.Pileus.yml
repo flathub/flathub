@@ -1,0 +1,260 @@
+# Flatpak manifest for Pileus (Linux desktop).
+#
+# Strategy: package the *prebuilt* Linux bundle from
+# .github/workflows/linux.yml (pileus-<version>-linux-x64.tar.gz) instead of
+# rebuilding Flutter inside the manifest — flutter_linux_gtk.so and the
+# media_kit/screen_retriever/window_manager/volume_controller plugin .so's
+# are already compiled there; only `libmpv.so.2` is missing, since CI links
+# against the *system* libmpv (`apt-get install libmpv-dev`), which doesn't
+# exist inside a Flatpak sandbox (confirmed via `readelf -d` on the
+# downloaded tarball's libmedia_kit_video_plugin.so: NEEDED libmpv.so.2,
+# alongside libepoxy.so.0 which org.freedesktop.Platform already ships).
+#
+# The ffmpeg/libass/mpv modules below build exactly that one shared
+# library — NOT the mpv CLI player, NOT mpv's Lua/JS scripting, NOT
+# anything DVD/Blu-ray/OCR/VapourSynth-related. media_kit drives libmpv
+# purely through its C API (MediaKit never shells out to an `mpv` binary
+# or loads mpv user scripts), so none of that applies here. Trimmed down
+# from the public io.mpv.Mpv Flathub manifest (github.com/flathub/io.mpv.Mpv),
+# which builds the full CLI player and is ~15x the module count this needs.
+#
+# The `url`/`sha256` below are kept current per release by
+# `scripts/update-flatpak-manifest.sh <version>` — run that after a release
+# instead of editing them by hand. Remaining one-time work (not per-release)
+# before this is Flathub-submittable: see packaging/README.md.
+#
+#   flatpak-builder --user --install --force-clean build-dir \
+#     packaging/linux/io.github.lotho33.Pileus.yml
+
+app-id: io.github.lotho33.Pileus
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: pileus
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --talk-name=org.freedesktop.ScreenSaver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+
+modules:
+  # ── libmpv for the media_kit backend ──────────────────────────────────
+  # Order matters to flatpak-builder (modules build strictly in listed
+  # order): libass before ffmpeg, since ffmpeg's --enable-libass needs
+  # libass already built and pkg-config-visible, not the other way round.
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - --disable-static
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 64ebcac709d949e6059bdacf5356c3af7848e8e5
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d\.\d{1,3}\.\d{1,2})$
+
+  # ffmpeg: decode/demux only — --disable-programs skips ffmpeg/ffplay/
+  # ffprobe entirely (not needed, libmpv links the libs directly).
+  # libx264/libx265/libmp3lame/libopus/libvorbis are deliberately NOT
+  # built: those --enable-lib* ffmpeg flags add ENCODER support, and
+  # Pileus only ever decodes — ffmpeg's built-in native decoders already
+  # cover H.264/HEVC/MP3/Opus/Vorbis without the external encoder libs.
+  - name: ffmpeg
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg
+    config-opts:
+      - --disable-static
+      - --enable-shared
+      - --disable-programs
+      - --disable-doc
+      - --disable-debug
+      - --enable-gpl
+      - --enable-version3
+      - --enable-gnutls
+      - --enable-libass
+      - --enable-libfreetype
+      - --enable-libxml2
+      - --enable-vaapi
+      - --enable-libdrm
+      - --enable-vulkan
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n7.1
+        commit: 507a51fbe9732f0f6f12f43ce12431e8faa834b7
+        x-checker-data:
+          type: git
+          tag-pattern: ^n(7\.[\d.]+)$
+
+  # Required by mpv's X11 vsync path (-Dx11=enabled below).
+  - name: libXpresent
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/lib/libxpresent.git
+        tag: libXpresent-1.0.2
+        commit: 8f366e72a182082f24f990c1584fd7cf5a421635
+        x-checker-data:
+          type: git
+          tag-pattern: ^libXpresent-([\d.]+)$
+
+  # Required by mpv's DRM output path (-Ddrm=enabled/-Dgbm=enabled below).
+  - name: libdisplay-info
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz
+        sha256: f7331fcaf5527251b84c8fb84238d06cd2f458422ce950c80e86c72927aa8c2b
+
+  # mpv 0.41 made libplacebo a hard build requirement (its GPU-next
+  # renderer, not an optional extra like it used to be) — found this out
+  # from the actual meson configure error, not by guessing.
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: 719cc95244a1f1d648dd72459822e026e6530f22
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      # The one flag that actually matters: build libmpv.so, not the CLI.
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dwerror=false
+      # Display/GL — cover both X11 and Wayland since either could be the
+      # desktop session; egl/gl-x11 for rendering, vaapi/vdpau/vulkan for
+      # hardware decode where the host GPU supports it.
+      - -Dx11=enabled
+      - -Dwayland=enabled
+      - -Dgl=enabled
+      - -Dgl-x11=enabled
+      - -Degl=enabled
+      - -Degl-x11=enabled
+      - -Degl-wayland=enabled
+      - -Ddmabuf-wayland=enabled
+      - -Dvaapi=enabled
+      - -Dvaapi-x11=enabled
+      - -Dvaapi-wayland=enabled
+      - -Dvaapi-drm=enabled
+      - -Dvdpau=enabled
+      - -Dvdpau-gl-x11=enabled
+      - -Ddrm=enabled
+      - -Dgbm=enabled
+      - -Dvulkan=enabled
+      - -Dvector=enabled
+      # Audio — alsa/pulse match this manifest's own
+      # --socket=pulseaudio finish-arg.
+      - -Dalsa=enabled
+      - -Dpulse=enabled
+      - -Diconv=enabled
+      - -Djpeg=enabled
+      # Explicitly disabled rather than left on "auto" — none of their
+      # supporting modules are built here, and an "auto" that silently
+      # resolves to disabled at configure time is exactly the kind of
+      # thing packaging/README.md warns fails silently until playback is
+      # actually tested. Explicit means a missing dep fails the build
+      # loudly instead.
+      - -Dcdda=disabled
+      - -Ddvdnav=disabled
+      - -Dlibarchive=disabled
+      - -Dlibbluray=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Djack=disabled
+      - -Dopenal=disabled
+      - -Dpipewire=disabled
+      - -Dcuda-hwaccel=disabled
+      - -Dcuda-interop=disabled
+      - -Dlcms2=disabled
+      - -Drubberband=disabled
+      - -Duchardet=disabled
+      - -Dvapoursynth=disabled
+      - -Dzimg=disabled
+      - -Ddvbin=disabled
+      - -Dxv=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 2c219aa822df18a1b7fd9abe3e151cd93ad67307
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: pileus
+    buildsystem: simple
+    # Flutter's Linux embedder (fl_dart_project_new, no explicit paths)
+    # resolves `data/` and `lib/*.so` as siblings of the executable's own
+    # directory — exactly the flat bundle/ layout linux.yml's tarball
+    # already is. Splitting them across /app/bin + /app/share + /app/lib
+    # (the original, never-actually-run version of this module) would
+    # have shipped an app that fails to find its own flutter_assets at
+    # launch. Keeping the whole bundle intact under /app/lib/pileus/ and
+    # exec-ing into it from a thin /app/bin/pileus wrapper is the standard
+    # Flatpak pattern for a self-contained bundled app (same idea as how
+    # Electron apps are packaged here).
+    build-commands:
+      - install -Dm755 pileus /app/lib/pileus/pileus
+      - cp -r data /app/lib/pileus/data
+      - test ! -d lib || cp -r lib /app/lib/pileus/lib
+      - mkdir -p /app/bin
+      - printf '#!/bin/sh\nexec /app/lib/pileus/pileus "$@"\n'
+          > /app/bin/pileus
+      - chmod +x /app/bin/pileus
+      - install -Dm644 io.github.lotho33.Pileus.desktop
+          /app/share/applications/io.github.lotho33.Pileus.desktop
+      - install -Dm644 io.github.lotho33.Pileus.metainfo.xml
+          /app/share/metainfo/io.github.lotho33.Pileus.metainfo.xml
+      - install -Dm644 icon-256.png
+          /app/share/icons/hicolor/256x256/apps/io.github.lotho33.Pileus.png
+    # The three small `type: file` sources below fetch from this repo's own
+    # `main` branch (pinned to a commit, not a floating branch ref) rather
+    # than a local `path:` copy — Flathub's submission guidelines ask that
+    # metadata files stay "integrated in the upstream project" and not be
+    # duplicated into the flathub/flathub submission PR itself. Re-pin the
+    # commit here (and re-verify the sha256s) whenever any of these three
+    # files change.
+    sources:
+      - type: archive
+        url: https://github.com/Lotho33/pileus/releases/download/v1.5.7/pileus-1.5.7-linux-x64.tar.gz
+        sha256: 5dafabdb3f86f4430b90619bfbc4c32fa2b969dfef6a0fe8020ec3806cf91101
+      - type: file
+        url: https://raw.githubusercontent.com/Lotho33/pileus/1d4a99d31653109207393af5655ba2d8997825a6/packaging/linux/io.github.lotho33.Pileus.desktop
+        sha256: 70d65ad734cc2661c9328ade960b93087f4975f0e025f994fe4fb506e26f865a
+      - type: file
+        url: https://raw.githubusercontent.com/Lotho33/pileus/1d4a99d31653109207393af5655ba2d8997825a6/packaging/linux/io.github.lotho33.Pileus.metainfo.xml
+        sha256: d3c56cea76688a49ba3ea8a7ec0d80fba4b1b88a346588e850533143a7462ba2
+      - type: file
+        url: https://raw.githubusercontent.com/Lotho33/pileus/1d4a99d31653109207393af5655ba2d8997825a6/packaging/linux/icon-256.png
+        sha256: e062cb4334d40d97b788ba6655cb2ffa893c11268eab4a6a75cb7477f0d1ef15
