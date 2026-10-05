@@ -1,0 +1,73 @@
+# Flatpak 清单（用于 Flathub）
+#
+# 说明：
+#   - 依赖 org.electronjs.Electron2.BaseApp 提供 Electron 运行时，zypak 负责把
+#     应用接到 Flatpak 的沙箱 / 进程模型上，因此不再需要应用自带的 Electron 二进制。
+#   - 源用的是 GitHub Release 里的 tar.gz（electron-builder 的 tar.gz 目标产物）。
+app-id: icu.talklink.KonglingMail
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: kongling-mail
+separate-locales: false
+
+finish-args:
+  # 收发邮件必须联网
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # 附件另存与打开
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # 系统通知与托盘
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.StatusNotifierWatcher
+  # 账户密码保存在系统密钥环（libsecret）
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: kongling-mail
+    buildsystem: simple
+    build-commands:
+      - install -d "${FLATPAK_DEST}/main"
+      - tar -xf kongling-mail.tar.gz -C "${FLATPAK_DEST}/main" --strip-components=1
+      # Flatpak 下更新由 Flatpak 自身负责，移除 electron-updater 的配置，
+      # 避免应用启动后向 GitHub 轮询更新却无法就地替换文件
+      - rm -f "${FLATPAK_DEST}/main/resources/app-update.yml"
+      - install -Dm755 kongling-mail.sh "${FLATPAK_DEST}/bin/kongling-mail"
+      - install -Dm644 icu.talklink.KonglingMail.desktop
+        "${FLATPAK_DEST}/share/applications/icu.talklink.KonglingMail.desktop"
+      - install -Dm644 icu.talklink.KonglingMail.metainfo.xml
+        "${FLATPAK_DEST}/share/metainfo/icu.talklink.KonglingMail.metainfo.xml"
+      - install -Dm644 icu.talklink.KonglingMail.png
+        "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/icu.talklink.KonglingMail.png"
+    sources:
+      - type: file
+        # 注意：electron-builder 对 tar.gz 目标把 ${arch} 展开为 x64（AppImage 是 x86_64）
+        url: https://github.com/PFLcoolme/lingkong-mail/releases/download/v0.3.0/kongling-mail-0.3.0-x64.tar.gz
+        sha256: 7228d299a44929679dcc6bcedae6ec2fb654b4125b7acedb9b87f0faa15bab69
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/PFLcoolme/lingkong-mail/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: >-
+            .assets[]
+            | select(.name == "kongling-mail-" + $version + "-x64.tar.gz")
+            | .browser_download_url
+      - type: file
+        path: icu.talklink.KonglingMail.desktop
+      - type: file
+        path: icu.talklink.KonglingMail.metainfo.xml
+      - type: file
+        path: icu.talklink.KonglingMail.png
+      - type: script
+        dest-filename: kongling-mail.sh
+        commands:
+          - export TMPDIR="${XDG_CACHE_HOME}/tmp"
+          - exec zypak-wrapper /app/main/kongling-mail "$@"
