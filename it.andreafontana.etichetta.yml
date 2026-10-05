@@ -1,0 +1,107 @@
+app-id: it.andreafontana.etichetta
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: etichetta
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.ldc
+  - org.freedesktop.Sdk.Extension.llvm20
+
+build-options:
+  append-path: /usr/lib/sdk/ldc/bin:/usr/lib/sdk/llvm20/bin
+  append-ld-library-path: /usr/lib/sdk/ldc/lib:/usr/lib/sdk/llvm20/lib
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+
+modules:
+  - name: onnxruntime
+    buildsystem: simple
+    sources:
+      - type: archive
+        dest: onnx
+        only-arches: [x86_64]
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-linux-x64-1.30.0.tgz
+        sha256: a5ed5a3cac51fbb2e90da632ae43d19212faaa20e76484e62bcb7c23ddb3b3fd
+
+      - type: archive
+        dest: onnx
+        only-arches: [aarch64]
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-linux-aarch64-1.30.0.tgz
+        sha256: e16a27a8ed330bbc698df7330b0cf56e722f354e3bcc92118682c74ef3c3e3da
+
+      # WebGPU plugin (GPU acceleration through Vulkan): published only as a Python wheel
+      - type: archive
+        archive-type: zip
+        dest: webgpu
+        only-arches: [x86_64]
+        url: https://files.pythonhosted.org/packages/c1/96/2a18a45079250afcd825687aef2895de266d5abc1cff9f52d2dede7598f2/onnxruntime_ep_webgpu-0.4.0-py3-none-manylinux_2_28_x86_64.whl
+        sha256: 5d8c961eda91a88961cad1fb7621f389f006b18497d6ea9ecf96f729f066cbfb
+
+      - type: archive
+        archive-type: zip
+        dest: webgpu
+        only-arches: [aarch64]
+        url: https://files.pythonhosted.org/packages/4e/ca/00c70322c19913c81a6bb2239aca83781b97a818b55c2ec3d25cec72dc4c/onnxruntime_ep_webgpu-0.4.0-py3-none-manylinux_2_28_aarch64.whl
+        sha256: 17f660db53b1a509c63e721ac6784a2daa1c4e91a968523ee9986505ee5b0a55
+
+    build-commands:
+      - mkdir -p /app/lib /app/include
+      - cp -P onnx/lib/libonnxruntime.so* onnx/lib/libonnxruntime_providers_shared.so /app/lib/
+      - cp -r onnx/include/* /app/include/
+      - install -Dm755 webgpu/libonnxruntime_providers_webgpu.so /app/lib/libonnxruntime_providers_webgpu.so
+
+  - name: etichetta
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/libmir/mir-core.git
+        tag: v1.7.4
+        commit: 4397b03a804b0368100e99252016c7b32aa562d1
+        dest: deps/mir-core
+
+      - type: git
+        url: https://github.com/libmir/mir-algorithm.git
+        tag: v3.22.4
+        commit: ecde2eb4ff41dc9d9dc6f71234d0838dccce22b4
+        dest: deps/mir-algorithm
+
+      - type: git
+        url: https://gitlab.com/AntonMeep/silly.git
+        tag: v1.1.1
+        commit: 9c7743d73b7dae6c7ec841fe719d0a04a99096b9
+        dest: deps/silly
+
+      - type: git
+        url: https://github.com/gtkd-developers/GtkD.git
+        tag: v3.10.0
+        commit: cb212656dc641164c36f2727592e41e57ea4dbed
+        dest: deps/gtk-d
+
+      - type: git
+        url: https://github.com/trikko/etichetta.git
+        tag: v0.1.6
+        commit: e4c24f672765c0432c10f57c0791372499bbf317
+    build-commands:
+      # We need ext/onnx to exist for dub.json paths
+      - mkdir -p ext/onnx
+      - cp -r /app/include ext/onnx/include
+      - cp -r /app/lib ext/onnx/lib
+      # Build the app
+      - rm -f dub.selections.json
+      - dub add-local --system deps/mir-core
+      - dub add-local --system deps/mir-algorithm
+      - dub add-local --system deps/silly
+      - dub add-local --system deps/gtk-d
+      - dub build --compiler=ldc2 --build=release --skip-registry=all
+      # Install
+      - install -Dm755 output/bin/etichetta /app/bin/etichetta
+      - install -Dm644 res/etichetta.svg /app/share/icons/hicolor/scalable/apps/it.andreafontana.etichetta.svg
+      - install -Dm644 it.andreafontana.etichetta.desktop /app/share/applications/it.andreafontana.etichetta.desktop
+      - install -Dm644 LICENSE /app/share/licenses/it.andreafontana.etichetta/LICENSE
+      - install -Dm644 it.andreafontana.etichetta.metainfo.xml /app/share/metainfo/it.andreafontana.etichetta.metainfo.xml
