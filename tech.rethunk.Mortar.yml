@@ -1,0 +1,73 @@
+app-id: tech.rethunk.Mortar
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: mortar
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=xdg-config/StardewValley
+  - --filesystem=xdg-data/Steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam/.config/StardewValley
+  - --filesystem=xdg-config/heroic:ro
+  - --filesystem=xdg-data/lutris:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl
+  - --filesystem=~/GOG Games
+  - --filesystem=~/Games/Heroic
+  - --filesystem=xdg-download
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node24
+modules:
+  - name: mortar
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node24/bin
+      env:
+        GOPROXY: file:///run/build/mortar/goproxy
+        GOMODCACHE: /run/build/mortar/gomodcache
+        GOSUMDB: "off"
+        GOTOOLCHAIN: local
+        GOFLAGS: -modcacherw
+        XDG_CACHE_HOME: /run/build/mortar/flatpak-node/cache
+        # package.json pins bun in packageManager, which yarn 1's Corepack guard otherwise refuses to run under.
+        SKIP_YARN_COREPACK_CHECK: "1"
+    build-commands:
+      # The Wails CLI comes from the fork go.mod pins; it generates the frontend's TypeScript bindings.
+      - go mod download github.com/wailsapp/wails/v3
+      - go build -C "$(go list -m -f '{{.Dir}}' github.com/wailsapp/wails/v3)" -o /run/build/mortar/tools/wails3 ./cmd/wails3
+      # The build's HOME is not writable, so `yarn config set` would not persist; a project .yarnrc does.
+      - echo 'yarn-offline-mirror "/run/build/mortar/flatpak-node/yarn-mirror"' >.yarnrc
+      - yarn install --offline --frozen-lockfile --ignore-scripts
+      - PATH="/run/build/mortar/tools:$PATH" yarn run bindings
+      # The catalogs, credits and notices the frontend's full build script regenerates are committed.
+      - cd frontend && ../node_modules/.bin/vite build --mode production
+      - >-
+        go build -buildmode=pie -tags production -trimpath -buildvcs=false -o /app/bin/mortar
+        -ldflags="-w -s -X main.packaged=flatpak -X github.com/Rethunk-Tech/mortar/internal/nxm.packaged=flatpak -extldflags '-Wl,-z,relro,-z,now'"
+      - install -Dm644 build/linux/tech.rethunk.Mortar.desktop /app/share/applications/tech.rethunk.Mortar.desktop
+      - install -Dm644 build/linux/mime/mortar.xml /app/share/mime/packages/tech.rethunk.Mortar.xml
+      - install -Dm644 build/linux/tech.rethunk.Mortar.metainfo.xml /app/share/metainfo/tech.rethunk.Mortar.metainfo.xml
+      - install -Dm644 build/linux/icons/tech.rethunk.Mortar-512.png /app/share/icons/hicolor/512x512/apps/tech.rethunk.Mortar.png
+      - install -Dm644 build/linux/icons/tech.rethunk.Mortar-256.png /app/share/icons/hicolor/256x256/apps/tech.rethunk.Mortar.png
+      - install -Dm644 build/appicon.svg /app/share/icons/hicolor/scalable/apps/tech.rethunk.Mortar.svg
+      - install -Dm644 LICENSE /app/share/doc/mortar/LICENSE
+      - install -Dm644 THIRD_PARTY_NOTICES /app/share/doc/mortar/THIRD_PARTY_NOTICES
+    sources:
+      - type: git
+        url: https://github.com/Rethunk-Tech/mortar.git
+        tag: v0.2.1
+        commit: 'c5f9c2fea58b225595de208c9879aead7fe8bf5f'
+      - type: file
+        path: yarn.lock
+      - go-sources.json
+      - node-sources.json
