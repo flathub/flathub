@@ -1,0 +1,142 @@
+id: io.github.benkl404.Lumen
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lumen
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # Vidéos en ligne (yt-dlp) et recherche de sous-titres
+  - --share=network
+  # Playlist automatique (fichiers voisins) et sous-titres enregistrés à côté de la vidéo,
+  # dans les dossiers habituels des vidéos et sur les disques externes. Ailleurs, le fichier
+  # passe par le portail de documents : il s'ouvre seul, sans ses voisins.
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  # Captures d'écran (enregistrées sur le Bureau)
+  - --filesystem=xdg-desktop
+  # Écran maintenu allumé pendant la lecture
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Contrôle par le bureau (MPRIS) et fenêtre unique
+  - --own-name=org.mpris.MediaPlayer2.lumen
+  - --own-name=org.mpris.MediaPlayer2.lumen.*
+  - --talk-name=org.mpris.MediaPlayer2.lumen
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+
+modules:
+  # Moteur Lua des extensions et du module YouTube de mpv
+  - name: luajit
+    no-autogen: true
+    make-args:
+      - PREFIX=/app
+    make-install-args:
+      - PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/LuaJIT/LuaJIT.git
+        commit: c6ffc141a8762b41703f9287d63d93622a13dd8f
+    cleanup:
+      - /bin
+
+  - name: libass
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  - name: uchardet
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_STATIC=OFF
+      - -DBUILD_BINARY=OFF
+      # Ancienne configuration CMake, refusée par CMake 4 sans cette option
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+        sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=luajit
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  # Lecteur des vidéos en ligne (programme Python autonome)
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp
+        sha256: 1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
+
+  - name: lumen
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/lumen/cargo
+        # Dans le SDK KDE, qmake de Qt 6 s'appelle simplement « qmake »
+        QMAKE: /usr/bin/qmake
+        # libmpv est construite dans /app (module mpv), pas dans le SDK
+        LIBRARY_PATH: /app/lib
+    build-commands:
+      - cargo --offline build --release
+      - install -Dm755 target/release/lumen /app/bin/lumen
+      # Fichiers de bureau au nom de l'identifiant Flatpak
+      - install -Dm644 assets/lumen.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=StartupWMClass --set-value=${FLATPAK_ID}
+          --remove-key=TryExec /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 assets/icons/hicolor/scalable/apps/lumen.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - for size in 16 24 32 48 64 128 256 512; do
+          install -Dm644 assets/icons/hicolor/${size}x${size}/apps/lumen.png
+            /app/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png;
+        done
+      - install -Dm644 assets/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/${FLATPAK_ID}/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/BenKL404/lumen.git
+        tag: v1.0.1
+        commit: 51869f133cc8c9d81909deaff0cbf32b4f5feb4a
+      - cargo-sources.json
