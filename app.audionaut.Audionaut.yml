@@ -1,0 +1,225 @@
+# Flatpak manifest for Audionaut.
+#
+# Local build + install for testing:
+#   flatpak install -y flathub org.gnome.Platform//51 org.gnome.Sdk//51
+#   flatpak-builder --force-clean --user --install build-dir \
+#       Audionaut/Builds/Flatpak/app.audionaut.Audionaut.yml
+#   flatpak run app.audionaut.Audionaut
+#
+# Flathub builds run OFFLINE: every download happens up front from the
+# `sources:` lists below (that is why Essentia's 3rd-party tarballs are
+# pre-seeded and curl is shimmed), and the git source must pin a commit.
+#
+# Verified end to end: builds, installs and runs in the sandbox. Remaining
+# gaps (screenshots, aarch64, Flathub submission) in README.md next to this
+# file.
+
+app-id: app.audionaut.Audionaut
+# GNOME runtime rather than Freedesktop: the LinuxMakefile compile needs
+# webkit2gtk-4.1 and gtk+-x11-3.0 headers (JUCE webview interop — compiled
+# against, dlopened at runtime), which only the GNOME runtime ships.
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: audionaut
+
+finish-args:
+  # JUCE has no Wayland backend yet; X11 (or XWayland) only.
+  - --socket=x11
+  - --share=ipc
+  # OpenGL / video acceleration.
+  - --device=dri
+  # Audio. JUCE's ALSA backend reaches the host through PipeWire's ALSA
+  # plugin (via the Pulse socket) — no raw device access needed. If direct
+  # hw: ALSA devices turn out to be required, that becomes --device=all
+  # (needs justification in the Flathub review, cf. Ardour).
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # GA4 analytics, the Demucs model download, and Ableton Link (LAN UDP
+  # multicast) all ride on plain network access.
+  - --share=network
+  # .audium projects are directory packages and JUCE's file chooser does not
+  # speak the XDG document portal, so grant the home directory. TODO: narrow
+  # this (e.g. to xdg-music) or move to portals if/when JUCE supports them.
+  - --filesystem=home
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.a'
+  - '*.la'
+
+modules:
+  # NOTE: Essentia's waf needs `distutils`, removed from the stdlib in
+  # Python 3.12 — the GNOME 51 SDK satisfies it via its system setuptools
+  # (which ships the distutils shim). On a runtime without that, a
+  # python3-setuptools module + sitecustomize activation is needed again;
+  # see this file's history.
+  - name: audionaut
+    buildsystem: simple
+    # Essentia's ffmpeg needs nasm on x86_64 (present in the SDK). The fftw
+    # build config passes x86 SSE2 flags, so this manifest is x86_64-only
+    # for now — an aarch64 build needs the arm patches from
+    # Audionaut/Builds/build_essentia.sh extended to Linux.
+    only-arches:
+      - x86_64
+    build-options:
+      env:
+        # Essentia's 3rd-party CMakeLists predate CMake 4's minimum-version
+        # floor (also exported by build_essentia.sh; kept here for clarity).
+        CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+    build-commands:
+      # Offline curl shim: Essentia's build_*.sh scripts download their
+      # tarballs with curl; the shim serves them from prefetched-3rdparty/
+      # (seeded by flatpak-builder from the file sources below) instead.
+      - install -Dm755 curl-offline-shim.sh fakebin/curl
+      # Skip 3rd-party libs nothing links: the app pulls chromaprint,
+      # ffmpeg, fftw3f, zlib, samplerate and yaml from this chain, but not
+      # taglib (Essentia's MetadataReader, excluded by --lightweight) or
+      # Essentia's lame (ffmpeg builds with --disable-encoders; the app
+      # vendors its own in ThirdParty/lame). taglib 1.11.1 also cannot
+      # configure under the SDK's CMake 4.x (hard-sets CMP0022 OLD), and
+      # lame's frontend cannot link against the SDK's ncurses.
+      - sed -i '/build_taglib\.sh\|build_lame\.sh/d' Submodules/essentia/packaging/build_3rdparty_static_debian.sh
+      # The SDK has no static glibc (-lm/-latomic), so Essentia's fully
+      # static example binaries cannot link — and only libessentia.a is
+      # needed anyway. --with-static-examples implies BUILD_STATIC +
+      # STATIC_DEPENDENCIES (wscript:111), which also select the 3rd-party
+      # pkg-config dir and skip the un-linkable libessentia.so (ffmpeg's
+      # static libs are non-PIC); pass those two flags directly instead.
+      - sed -i 's| --with-static-examples| --build-static --static-dependencies|' Audionaut/Builds/build_essentia.sh
+      # The SDK ships libva/Vulkan headers, so ffmpeg autodetects them and
+      # libavutil.a ends up referencing vaapi symbols the app link never
+      # provides (the host .deb/AppImage build has no such headers, so this
+      # only bites in the sandbox). Audio-only use — switch them off.
+      - sed -i 's|--enable-pic|--enable-pic --disable-vaapi --disable-vdpau --disable-vulkan|' Submodules/essentia/packaging/debian_3rdparty/build_ffmpeg.sh
+      # Build Essentia (3rd-party static deps, then waf configure + build).
+      # This is the slow step.
+      - PATH="$PWD/fakebin:$PATH" AUDIONAUT_PREFETCH="$PWD/prefetched-3rdparty" bash Audionaut/Builds/build_essentia.sh
+      # Build the app. Each compile job needs well over 1 GB of RAM; cap the
+      # parallelism rather than using FLATPAK_BUILDER_N_JOBS blindly.
+      - make -C Audionaut/Builds/LinuxMakefile CONFIG=Release -j8
+      # Install, renaming desktop entry / icon / MIME definition to the
+      # app id as Flathub requires (and pointing their icon references at it).
+      - install -Dm755 Audionaut/Builds/LinuxMakefile/build/audionaut /app/bin/audionaut
+      - sed 's/^Icon=audionaut$/Icon=app.audionaut.Audionaut/' Audionaut/Resources/audionaut.desktop > app.audionaut.Audionaut.desktop
+      - install -Dm644 app.audionaut.Audionaut.desktop /app/share/applications/app.audionaut.Audionaut.desktop
+      - install -Dm644 Audionaut/Resources/audionaut_logo_512x512.png /app/share/icons/hicolor/512x512/apps/app.audionaut.Audionaut.png
+      - sed 's/icon name="audionaut"/icon name="app.audionaut.Audionaut"/' Audionaut/Builds/Debian/audionaut.xml > app.audionaut.Audionaut.xml
+      - install -Dm644 app.audionaut.Audionaut.xml /app/share/mime/packages/app.audionaut.Audionaut.xml
+      # The metainfo ships next to the manifest (file source below), not from
+      # the pinned git tag — this is also how the Flathub manifest repo works.
+      - install -Dm644 app.audionaut.Audionaut.metainfo.xml /app/share/metainfo/app.audionaut.Audionaut.metainfo.xml
+    sources:
+      # The app, pinned to a release tag. Automatic submodule fetching is
+      # OFF: essentia's test/models submodule (MTG/essentia-models) has Git
+      # LFS disabled upstream, which kills flatpak-builder's recursive
+      # fetch — and it is test-only data anyway, as is test/audio, Catch2,
+      # demucs.cpp's vendor/{demucs,googletest,libnyquist} and farbot's
+      # googletest. The submodules the Linux build really needs are pinned
+      # individually below (commits = `git ls-tree <tag> Submodules/`); every
+      # pinned source disables nested submodules too — none are needed, and
+      # the runners' older flatpak-builder (1.2.x) fails to clone nested
+      # mirrors whose pinned commit sits behind no branch head.
+      # All pins are kept current by sync-pins.py (run automatically by
+      # release-linux.yml; run it by hand when bumping the committed pins).
+      - type: git
+        url: https://github.com/kvoltmer/Audionaut.git
+        tag: v1.6.4
+        commit: 0943a1fe7f0915866fc725ad011a71ea17583da2
+        disable-submodules: true
+
+      - type: git
+        url: https://github.com/juce-framework/JUCE.git
+        commit: 72782788ce18c2d4d760b28e0921d6ffc6431102
+        dest: Submodules/JUCE
+        disable-submodules: true
+      - type: git
+        url: https://github.com/MTG/essentia.git
+        commit: b9fa6cb674ca43dfb94d28d293aeda441c6745db
+        dest: Submodules/essentia
+        disable-submodules: true
+      - type: git
+        url: https://github.com/hogliux/farbot.git
+        commit: d8f132c2e2ac44b379632e452700abe71ca3a92e
+        dest: Submodules/farbot
+        disable-submodules: true
+      - type: git
+        url: https://github.com/nlohmann/json.git
+        commit: f682cd2ef1677e1218d714abb177fa2a93eadccf
+        dest: Submodules/json
+        disable-submodules: true
+      - type: git
+        url: https://github.com/Ableton/link.git
+        commit: 9c9091275e707ab09d09a5a608fcdb84bf0dec85
+        dest: Submodules/link
+        disable-submodules: true
+      - type: git
+        url: https://github.com/chriskohlhoff/asio.git
+        commit: 8806a6803cde7054c3049d3666d3ec36786568c5
+        dest: Submodules/link/modules/asio-standalone
+        disable-submodules: true
+      - type: git
+        url: https://github.com/sevagh/demucs.cpp.git
+        commit: f1206e9adeea103aef4a636b9e62297cf1f8e34e
+        dest: Submodules/demucs.cpp
+        disable-submodules: true
+      - type: git
+        url: https://gitlab.com/libeigen/eigen.git
+        commit: dd8c71e62852b2fe429edb6682ac91fd1c578a26
+        dest: Submodules/demucs.cpp/vendor/eigen
+        disable-submodules: true
+      - type: git
+        url: https://github.com/breakfastquay/rubberband.git
+        commit: e4296ac80b1170018a110bc326fd0d45a0eb27d6
+        dest: Submodules/rubberband
+        disable-submodules: true
+
+      # AppStream metadata, maintained next to this manifest.
+      - type: file
+        path: app.audionaut.Audionaut.metainfo.xml
+
+      # Stand-in for curl during the offline build. The Essentia scripts
+      # invoke `curl -SLO <url>` (or `curl -SL -o <name> <url>`) from inside
+      # their tmp dirs; this copies the pre-seeded tarball into place.
+      - type: script
+        dest-filename: curl-offline-shim.sh
+        commands:
+          - 'out=""; prev=""; url=""'
+          - 'for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; url="$a"; done'
+          - '[ -n "$out" ] || out="$(basename "${url%%\?*}")"'
+          - 'if [ -f "${AUDIONAUT_PREFETCH:?}/$out" ]; then cp "$AUDIONAUT_PREFETCH/$out" "$out"; exit 0; fi'
+          - 'echo "curl shim: $out is not pre-seeded in $AUDIONAUT_PREFETCH" >&2; exit 1'
+
+      # ----- Essentia 3rd-party tarballs (versions from Submodules/essentia/
+      # packaging/build_config.sh — keep in step when bumping the essentia
+      # submodule). URLs are the canonical ones the build scripts use;
+      # hashes verified against fresh downloads on 2026-10-03.
+      - type: file
+        url: https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
+        sha256: d56fbad95abf993f8af608484729e3d87ef611dd85b3380a8bad1d5cbc373a57
+        dest: prefetched-3rdparty
+      - type: file
+        url: http://www.fftw.org/fftw-3.3.2.tar.gz
+        sha256: b1236a780ca6e66fc5f8eda6ef0665d680e8253d9f01d7bf211b714a50032d01
+        dest: prefetched-3rdparty
+      - type: file
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.gz
+        sha256: 9a6e57a446b671012612aaeb9df5126794d5ac8f2015ca220934f99a6a4e0601
+        dest: prefetched-3rdparty
+      - type: file
+        url: https://github.com/libsndfile/libsamplerate/releases/download/0.1.9/libsamplerate-0.1.9.tar.gz
+        sha256: 0a7eb168e2f21353fb6d84da152e4512126f7dc48ccb0be80578c565413444c1
+        dest: prefetched-3rdparty
+      - type: file
+        url: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+        sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+        dest: prefetched-3rdparty
+      - type: file
+        url: http://pyyaml.org/download/libyaml/yaml-0.1.5.tar.gz
+        sha256: fa87ee8fb7b936ec04457bc044cd561155e1000a4d25029867752e543c2d3bef
+        dest: prefetched-3rdparty
+      - type: file
+        url: https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-1.5.1.tar.gz
+        sha256: a1aad8fa3b8b18b78d3755b3767faff9abb67242e01b478ec9a64e190f335e1c
+        dest: prefetched-3rdparty
