@@ -1,0 +1,61 @@
+id: io.github.bujjuisabee.shimelinux
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/openjdk21/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    JAVA_HOME: /usr/lib/sdk/openjdk21
+    CARGO_HOME: /run/build/shimelinux/cargo
+    CARGO_NET_OFFLINE: 'true'
+command: shimelinux
+finish-args:
+  # Required for Java Swing (GUI Toolkit); fallback-x11 causes a HeadlessException
+  - --socket=x11
+  - --share=ipc
+  # Required to create Wayland layer surfaces with the wlr_layer_shell protocol
+  - --socket=wayland
+  # Required for an optional, opt-in feature where Shimeji can interact with windows on KDE Plasma
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.kde.kwin.Scripting
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: gradle
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /run/build/gradle
+      - unzip gradle-9.3.0-bin.zip -d /run/build/gradle
+      - mv /run/build/gradle/gradle-9.3.0/* /run/build/gradle/
+    sources:
+      - type: file
+        url: https://services.gradle.org/distributions/gradle-9.3.0-bin.zip
+        sha256: 0d585f69da091fc5b2beced877feab55a3064d43b8a1d46aeb07996b0915e0e0
+  - name: shimelinux
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/enable.sh
+      - /usr/lib/sdk/openjdk21/install.sh
+      - cp flatpak/build.gradle.kts .
+      - cp flatpak/settings.gradle.kts .
+      - gradle build --no-daemon --offline -PmavenLocalRepository=file://${PWD}/offline-repository
+      - mkdir -p /app/share/java
+      - cp build/libs/* /app/share/java/shimelinux.jar
+      - mkdir -p /app/bin
+      - cp flatpak/shimelinux.sh /app/bin/shimelinux
+      - chmod +x /app/bin/shimelinux
+      - mkdir -p /app/share/applications
+      - cp flatpak/io.github.bujjuisabee.shimelinux.desktop /app/share/applications/io.github.bujjuisabee.shimelinux.desktop
+      - mkdir -p /app/share/icons/hicolor/scalable/apps
+      - cp icon.svg /app/share/icons/hicolor/scalable/apps/io.github.bujjuisabee.shimelinux.svg
+      - mkdir -p /app/share/metainfo
+      - cp flatpak/io.github.bujjuisabee.shimelinux.metainfo.xml /app/share/metainfo
+    sources:
+      - type: git
+        url: https://github.com/BujjuIsABee/shimelinux
+        tag: v1.3.4
+        commit: 20de4f65b3e4e1c4dcbffb030e15ace287830e6c
+      - gradle-sources.json
+      - cargo-sources.json
