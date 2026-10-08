@@ -1,0 +1,81 @@
+# Le manifeste Flatpak du poste — ce que Flathub construit, ce que GNOME
+# Logiciels et KDE Discover installent en un clic.
+#
+# LA BASE FAIT LE GROS DU TRAVAIL : `io.qt.PySide.BaseApp` embarque Qt et
+# PySide6 ; le runtime KDE embarque Python. Seuls notre code et nos
+# dépendances Python (httpx, keyring, platformdirs, matplotlib) sont
+# compilés ici, depuis des roues téléchargées — Flathub n'a pas de réseau au
+# moment de la construction, d'où `python-deps.json`, généré par
+# `flatpak-pip-generator` (voir docs/PAQUETS.md).
+#
+# LES VERSIONS SE SUIVENT : `runtime-version` et `base-version` doivent être
+# celles d'une base qui embarque la PySide6 que `pyproject.toml` demande.
+# `flatpak remote-info flathub io.qt.PySide.BaseApp` dit lesquelles existent.
+#
+# `--share=network` est nécessaire — le poste parle à l'instance — et c'est
+# la seule permission au-delà de l'affichage. Pas d'accès au disque hors du
+# bac à sable : la base locale, le cache et le miroir vivent dans le dossier
+# de données de l'application (platformdirs), que Flatpak donne d'office.
+app-id: com.donskolia.Don
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: don-bureau
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  # Le trousseau du système : c'est là que `keyring` range les jetons OAuth.
+  - --talk-name=org.freedesktop.secrets
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  # Les dépendances Python, hors PySide6 (dans la base) — le fichier est
+  # généré, ne pas l'écrire à la main :
+  #   flatpak-pip-generator --runtime=org.kde.Sdk//6.11 --wheel-arches x86_64,aarch64 \
+  #     --prefer-wheels=numpy,matplotlib,contourpy,kiwisolver,pillow,cffi,cryptography \
+  #     -o deploiement/linux/python-deps httpx keyring platformdirs matplotlib
+  - python-deps.json
+  # Le poste COMPILÉ (Nuitka, module natif), pas ses sources : le code reste
+  # fermé. L'archive se fabrique par `deploiement/linux/archive-compilee.sh`.
+  # Le script réécrit lui-même `path` et `sha256` ci-dessous : sans
+  # empreinte, flatpak-builder garde l'archive précédente en cache. Pour
+  # Flathub, `path` devient `url` (une adresse publique).
+  - name: don-bureau
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/python3.13/site-packages
+      - cp -r don_bureau.*.so don_bureau /app/lib/python3.13/site-packages/
+      - install -Dm755 don-bureau -t /app/bin
+      - install -Dm644 com.donskolia.Don.desktop -t /app/share/applications
+      - install -Dm644 com.donskolia.Don.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 com.donskolia.Don.svg -t /app/share/icons/hicolor/scalable/apps
+    sources:
+      - type: archive
+        url: https://donskolia.com/media/paquets/linux/don-bureau-0.15.4-linux-x86_64.tar.gz
+        sha256: 'b66276fad2933023ec24a33aa070bfa128bba6b20993b62e9edddd3ea72ef7d4'
+      # Le lanceur : ce que `[project.scripts]` produisait avec les sources.
+      #
+      # LES POLICES D'ABORD. Le bac à sable voit les polices de l'hôte avec
+      # le cache que L'HÔTE a écrit ; un fontconfig plus récent (2.17 dans
+      # le runtime 6.11, contre 2.15 sur Ubuntu 26.04) plante en lisant ce
+      # cache dès qu'un caractère demande une police de secours — un « ɔ »
+      # venu du serveur suffit (FcCharSetHasChar, erreur de segmentation).
+      # Le remède : un cache à nous pour les dossiers de l'hôte, refait une
+      # fois (2 s), puis seulement quand l'hôte ou le runtime change.
+      - type: script
+        dest-filename: don-bureau
+        commands:
+          - empreinte="$(fc-cache --version 2>&1) $(stat -c %Y /run/host/fonts-cache /run/host/user-fonts-cache 2>/dev/null)"
+          - temoin="${XDG_CACHE_HOME:-$HOME/.cache}/don-polices"
+          - if [ "$(cat "$temoin" 2>/dev/null)" != "$empreinte" ]; then
+          - '  fc-cache -f /run/host/fonts /run/host/local-fonts /run/host/user-fonts >/dev/null 2>&1'
+          - '  printf %s "$empreinte" > "$temoin"'
+          - fi
+          # `argv[0]` nommé : Qt en tire la classe de fenêtre (X11), que
+          # `StartupWMClass` du .desktop attend. Avec `-c`, elle valait « -c ».
+          - exec python3 -c 'import sys; sys.argv[0] = "don-bureau"; from don_bureau.app import main; raise SystemExit(main())' "$@"
