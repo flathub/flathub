@@ -25,10 +25,7 @@ sdk-extensions:
 
 modules:
   # rsync is not in the SDK, and the build system requires it: pcommand
-  # checkenv insists on it, and the staging steps use it to assemble
-  # build/cmake/*/staged. It is built from a pinned source archive,
-  # which works offline -- flatpak-builder fetches declared sources
-  # outside the build sandbox -- and cleaned out of the finished app.
+  # checkenv insists on it, cleaned out of the finished app.
   # Listed first because it never changes: flatpak-builder rebuilds
   # every module after one that does (python-build-env, on any lock
   # bump).
@@ -50,14 +47,8 @@ modules:
   # lockfile by `make flatpak-build-env`; do not edit by hand.
   - python-build-env.yml
 
-  # Fallback for a runtime whose python is older than the exact 3.14
-  # bombsquad requires: build our own into /app. Headers/bin are
-  # cleaned from the final app but libpython + the stdlib under
-  # /app/lib stay (the game embeds python). No PGO/LTO
-  # (--enable-optimizations/--with-lto) -- this is a nightly debug
-  # canary and those add ~20min per build. Re-enabling it needs no
-  # other change: /app/bin precedes /usr/bin on the build PATH, so uv
-  # picks up that interpreter when it creates the venv.
+  # Fallback for when the game requires a Python version that is
+  # different from the one in the runtime.
 
   # - name: Python
   #   sources:
@@ -77,23 +68,6 @@ modules:
   #     - /include
   #     - /lib/pkgconfig
   #     - /share
-
-  # SDL2 is already provided by the runtime
-
-  # - name: SDL2
-  #   buildsystem: cmake
-  #   builddir: true
-  #   cleanup:
-  #     - /bin
-  #     - /include
-  #     - /lib/pkgconfig
-  #     - /lib/cmake
-  #     - /share
-  #     - "*.a"
-  #   sources:
-  #     - type: git
-  #       url: https://github.com/libsdl-org/SDL
-  #       tag: release-2.32.8
 
   - name: bombsquad
     buildsystem: simple
@@ -120,10 +94,10 @@ modules:
       # the shebangs of whatever machine produced the sources, so clear
       # them out first and let `make env` regenerate them for this venv.
       - make env-clean
-      # Flathub builds lay the prebuilt-inputs archive over a git
-      # checkout, so its files can be older than the checkout around
-      # them, and make would then try to re-download them. Mark the
-      # files it lists fresh, all with one timestamp so none looks
+      # Flatpak builds unpack the prebuilt-inputs archive over a git checkout,
+      # so its files can be older than the checkout around them,
+      # and make would then try to re-download them. Mark the
+      # files it unpacks with one timestamp so none looks
       # newer than another that depends on it. (Local builds have no
       # list and need none; their tree is already consistent.)
       - if [ -f .flatpak-prebuilt-inputs ]; then xargs -d '\n' touch -d "@$(date +%s.%N)" < .flatpak-prebuilt-inputs; fi
