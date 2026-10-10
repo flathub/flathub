@@ -1,0 +1,109 @@
+# dev.velometer.Velometer — the Flathub submission's manifest, route (b):
+# velometer is proprietary and its repository is private, so NOTHING here
+# points at it (Eric, 2026-10-09). Both binaries arrive prebuilt from a public,
+# versioned release on ercwilcom/public, by URL and sha256 — the static
+# `velometer` the release already carries, and the window, built against the
+# GNOME 50 SDK by linux/flathub/package.sh — and git is built from its own
+# public source. This file is a TEMPLATE: linux/flathub/stamp.sh <version>
+# fills in the version and the four checksums from that release's SHA256SUMS
+# and writes the manifest the flathub/dev.velometer.Velometer repository
+# carries. Our own Flatpak (linux/flatpak/, offline cargo sources) stays what
+# CI and the VM build from.
+#
+# ── finish-args, each with its reason (the submission PR asks for the two
+#    exceptions, home-ro-filesystem-access and socket-ssh-auth, with these) ──
+#
+# --filesystem=home:ro
+#     velometer reads what the agents wrote and what git holds, wherever the
+#     user keeps it: ~/.claude/projects, ~/.codex and ~/.gemini (the transcripts),
+#     and every git checkout under the folders the user picks on first run — a
+#     project is wherever its checkout is. Read-only, and nothing measured leaves
+#     the machine. A portal cannot serve this: the files are not chosen one at a
+#     time by a person, they are found, and the transcripts name checkouts by
+#     their real paths.
+#
+# --filesystem=~/.velo:create   --filesystem=~/.cache/velo:create
+#     The config, the estimates, the price feed and the scan cache, shared with
+#     the `velometer` command on the host — one config per user however
+#     velometer is installed. `--persist` would give the window a second, empty
+#     config the command never sees.
+#
+# --share=network
+#     Two uses, neither carrying a measurement: the signed price feed
+#     (prices.velometer.dev, once a day, no query, no cookie, User-Agent
+#     "velometer", off with Update Prices Automatically), and ssh to the other
+#     machines the user registers.
+#
+# --socket=ssh-auth
+#     How that ssh finds the user's key, an encrypted one included. With no
+#     machine registered it is never used.
+#
+# --share=ipc  --socket=wayland  --socket=fallback-x11  --device=dri
+#     GTK4's own.
+app-id: dev.velometer.Velometer
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: velometer-app
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home:ro
+  - --filesystem=~/.velo:create
+  - --filesystem=~/.cache/velo:create
+  - --share=network
+  - --socket=ssh-auth
+modules:
+  # git, because the GNOME runtime has ssh and not git, and commits are `git
+  # log` in each checkout. Only the command: no docs, Perl, Python or Tcl.
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make -j"$FLATPAK_BUILDER_N_JOBS" prefix=/app NO_PERL=1 NO_PYTHON=1 NO_TCLTK=1 NO_GETTEXT=1 NO_RUST=1 NO_INSTALL_HARDLINKS=1 install
+    cleanup:
+      - /share/git-core/templates
+      - /share/perl5
+      - /libexec/git-core/git-gui*
+      - /libexec/git-core/git-citool
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
+        sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
+
+  # The engine: velometer's static Linux binary (musl, no toolchain), the one
+  # every release publishes for the command line.
+  - name: velometer
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 velometer /app/bin/velometer
+    sources:
+      - type: file
+        url: https://github.com/ercwilcom/public/releases/download/velo-v0.14.0/velometer-linux-arm64
+        sha256: 886cdb092592f3d66d3df6cd3b308691870ed42917bfd7ffed84cd4d0e5716ec
+        dest-filename: velometer
+        only-arches: [aarch64]
+      - type: file
+        url: https://github.com/ercwilcom/public/releases/download/velo-v0.14.0/velometer-linux-x64
+        sha256: ca1b72f497473059049e12c79e173d980f9aeafbf44e9c591bb0fef8ad855bb7
+        dest-filename: velometer
+        only-arches: [x86_64]
+
+  # The window, built against org.gnome.Sdk//50 by linux/flathub/package.sh:
+  # bin/velometer-app (its notices compiled in) and share/ — the .desktop
+  # entry, this metainfo and the hicolor icons.
+  - name: velometer-app
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/velometer-app /app/bin/velometer-app
+      - cp -R share /app/
+    sources:
+      - type: archive
+        url: https://github.com/ercwilcom/public/releases/download/velo-v0.14.0/velometer-window-linux-arm64.tar.xz
+        sha256: ad38ed155b31a7237405f644e9a16d27f93115873782595a3523f490a48b17ec
+        only-arches: [aarch64]
+      - type: archive
+        url: https://github.com/ercwilcom/public/releases/download/velo-v0.14.0/velometer-window-linux-x64.tar.xz
+        sha256: 1394f35373f5b333434a65536f88406be28cf1734d1ac0530c132b9347d41beb
+        only-arches: [x86_64]
