@@ -1,0 +1,97 @@
+## ─────────────────────────────────────────────────────────────────────────────
+## Flathub manifest for Vito - Voice In, Text Out
+## Assisted by Claude to create working manifest, each line verified by hand.
+## ─────────────────────────────────────────────────────────────────────────────
+
+app-id: io.github.vinceecniv.vito
+
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+command: vito
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.mpris.MediaPlayer2.*
+
+## Typing on niri, Hyprland and sway (compositors without a RemoteDesktop
+## portal): a startup line links the compositor's socket here, and wtype
+## connects to it.
+  - --filesystem=xdg-run/vito:create
+
+## Read-only: how the host routes its portals, so the GNOME shortcut dialog
+## that never works on niri is skipped.
+  - --filesystem=host-os:ro
+
+## Read-only: the user's own overrides of that portal configuration.
+  - --filesystem=xdg-config/xdg-desktop-portal:ro
+  - --filesystem=xdg-data/xdg-desktop-portal:ro
+
+modules:
+
+## wl-clipboard: copying to the clipboard, needed for paste mode and
+## clipboard-only mode.
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dfishcompletiondir=no
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.2.1
+        commit: 3eb912c274042cd5deed6b478b39908a12f37498
+
+## wtype: typing over the Wayland virtual-keyboard protocol (the niri/Hyprland
+## route above).
+  - name: wtype
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/atx/wtype.git
+        tag: v0.4
+        commit: d71be3a7b3f93b534a2823fd68cabd7ac2a02359
+
+## Vito itself.
+  - name: vito
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        CGO_ENABLED: '1'
+        GOFLAGS: -mod=vendor
+        GOTOOLCHAIN: local
+    build-commands:
+      - VERSION=$(git describe --tags --exact-match | sed 's/^v//');
+        go build -ldflags "-X main.version=$VERSION" -o vito ./cmd/vito &&
+        install -Dm755 vito /app/bin/vito &&
+        install -Dm644 packaging/io.github.vinceecniv.vito.metainfo.xml
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml &&
+        sh packaging/stamp-metainfo.sh
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml "$VERSION"
+## Menu entry, also registers vito:// (the web app starts Vito through it).
+      - install -Dm644 packaging/flatpak/io.github.vinceecniv.vito.desktop
+          /app/share/applications/io.github.vinceecniv.vito.desktop
+      - install -Dm644 web/icon-512.png
+          /app/share/icons/hicolor/512x512/apps/io.github.vinceecniv.vito.png
+      - sed -i 's|<launchable type="desktop-id">vito.desktop</launchable>|<launchable
+          type="desktop-id">io.github.vinceecniv.vito.desktop</launchable>|'
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/vinceecniv/Vito.git
+        tag: v2026.10.6
+        commit: 5e3a054db537da25de5fefbd27d3acbdbd17413b
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - go.mod.yml
