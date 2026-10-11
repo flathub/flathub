@@ -1,0 +1,56 @@
+# Flatpak manifest for Syspeek.
+#
+# Build:
+#   flatpak install flathub org.kde.Sdk//6.9 org.kde.Platform//6.9
+#   flatpak-builder --user --install --force-clean build-dir \
+#     cpp/packaging/flatpak/io.github.codeafridi.Syspeek.yaml
+#   flatpak run io.github.codeafridi.Syspeek
+#
+# Runtime branch: match whatever org.kde.Platform branch Flathub currently
+# ships (6.9 at the time of writing; 6.10/6.11 exist as they roll forward).
+#
+# Syspeek shells out to host tools (docker, kubectl and the compositor focus
+# tools) and reads host /proc. Inside the sandbox it does all of that on the
+# host through flatpak-spawn (see the --talk-name below). Tested in a real
+# sandbox: build, focus detection, CPU/RAM and Docker status all work.
+app-id: io.github.codeafridi.Syspeek
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+command: syspeek
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # KDE focus bridge: the KWin script calls org.syspeek.Focus, owned by the app.
+  - --own-name=org.syspeek.Focus
+  # GNOME focus bridge writes the focused PID to $XDG_RUNTIME_DIR on the host.
+  - --filesystem=xdg-run/syspeek-active-pid:ro
+  # kubectl context.
+  - --filesystem=~/.kube:ro
+  # Host command execution (docker/kubectl/xdotool/...) via flatpak-spawn.
+  - --talk-name=org.freedesktop.Flatpak
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+
+modules:
+  - name: syspeek
+    buildsystem: simple
+    build-commands:
+      - cmake -S cpp -B _build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app
+      - cmake --build _build --target syspeek -j "${FLATPAK_BUILDER_NPROC:-4}"
+      - install -Dm0755 _build/syspeek /app/bin/syspeek
+      - install -Dm0644 cpp/packaging/flatpak/io.github.codeafridi.Syspeek.desktop /app/share/applications/io.github.codeafridi.Syspeek.desktop
+      - install -Dm0644 cpp/packaging/flatpak/io.github.codeafridi.Syspeek.metainfo.xml /app/share/metainfo/io.github.codeafridi.Syspeek.metainfo.xml
+      - install -Dm0644 cpp/packaging/icons/syspeek.svg /app/share/icons/hicolor/scalable/apps/io.github.codeafridi.Syspeek.svg
+    sources:
+      - type: git
+        url: https://github.com/codeafridi/Syspeek.git
+        commit: 7e161b02f4dab5f8875d1bb35a11a85e33378986
