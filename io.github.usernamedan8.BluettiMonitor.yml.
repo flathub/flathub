@@ -1,0 +1,67 @@
+id: io.github.usernamedan8.BluettiMonitor
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: bluetti-monitor
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # bleak talks to BlueZ over the system D-Bus; no raw Bluetooth sockets needed
+  - --system-talk-name=org.bluez
+  # system-tray battery readout
+  - --talk-name=org.kde.StatusNotifierWatcher
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # The app only uses QtCore/QtGui/QtWidgets: drop WebEngine (~250 MB), numpy and PyOpenGL from the base
+  - rm -rf /app/lib/${FLATPAK_ARCH}-linux-gnu/libQt6WebEngine* /app/lib/${FLATPAK_ARCH}-linux-gnu/libQt6Pdf*
+  - rm -rf /app/lib/libexec/QtWebEngineProcess /app/resources /app/qtwebengine_dictionaries /app/translations/qtwebengine_locales
+  - rm -rf /app/lib/python3*/site-packages/PySide6/QtWebEngine* /app/lib/python3*/site-packages/PySide6/QtPdf*
+  - rm -rf /app/lib/python3*/site-packages/numpy* /app/lib/python3*/site-packages/OpenGL* /app/lib/python3*/site-packages/PyOpenGL*
+modules:
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} *.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2
+      - type: file
+        url: https://files.pythonhosted.org/packages/1a/f1/b474e930c4d910328780e3940da76f5aa5cbc48ce1fc14e44d239d9ea9db/cryptography-50.0.2-cp311-abi3-manylinux_2_28_x86_64.whl
+        sha256: 4061c0079120205fb760c58acab6443e217307dcf05e3702cf970e0689972856
+      - type: filea
+        url: https://files.pythonhosted.org/packages/7c/8d/8faf59c288feabba6545998de9c7748c8f995ec953a7b6a07e2c7f84cba4/dbus_fast-5.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: da7835ccc6e8cb2b54516558097156da6dbf6636c27033b427135bad693317fb
+      - type: file
+        url: https://files.pythonhosted.org/packages/90/11/0e6f11117525ff0eec40ebac3d313376f102df93ca44ad9e893ee85e4f89/pycparser-3.11-py3-none-any.whl
+        sha256: 51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80
+      - type: file
+        url: https://files.pythonhosted.org/packages/26/54/05aceb9cd80073805b3ed8522e3196e8cb22f70e741873fa51406c31f4e7/bleak-3.0.2-py3-none-any.whl
+        sha256: 39092feb9e83f1df5ad2f88e837723c7211c982ce9e9cda6235104bc2ebe0d0d
+
+  - name: bluetti-monitor
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/bluetti-monitor
+      - cp -a main.py bluetti_monitor ${FLATPAK_DEST}/share/bluetti-monitor/
+      - python3 -m compileall -q ${FLATPAK_DEST}/share/bluetti-monitor
+      - install -Dm755 bluetti-monitor.sh ${FLATPAK_DEST}/bin/bluetti-monitor
+      - install -Dm644 data/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 data/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - for s in 32 48 64 128 256 512; do install -Dm644 data/icons/$s.png ${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png; done
+    sources:
+      - type: git
+        url: https://github.com/usernamedan8/BluettiMonitor.git
+        tag: v1.1.0
+        commit: 771e063d439d8b65d7a9947698057d878d545d79
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: script
+        dest-filename: bluetti-monitor.sh
+        commands:
+          - exec python3 /app/share/bluetti-monitor/main.py "$@"
