@@ -1,0 +1,83 @@
+app-id: io.github.the_beper.PaletoModkit
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: paleto-modkit
+
+finish-args:
+  # Display and GPU: the egui window on Wayland, with X11 as fallback where Wayland is missing,
+  # and DRI for the GPU
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Sound: playing the game's audio containers (.awc) in the preview talks to the PulseAudio
+  # or PipeWire server (crates/gui/src/audio.rs); without it the preview cannot play
+  - --socket=pulseaudio
+  # Not granted here. Prefix tweaks runs Proton's Wine on the host (flatpak-spawn --host), which
+  # the sandbox cannot run (32-bit processes): the app asks the user to allow it with
+  # `flatpak override --user --talk-name=org.freedesktop.Flatpak io.github.the_beper.PaletoModkit`
+  # and does not offer the tweak until then
+  # Downloads only, all pinned by URL and SHA-256 in the code: CodeWalker's magic.dat (raw.githubusercontent.com) for the converter, and the Winetricks script and the .NET Framework 4.0/4.8 installers (download.microsoft.com, visualstudio.microsoft.com) for the prefix. The app only downloads from these hosts
+  - --share=network
+  # Steam and the game: the app reads the Steam libraries (libraryfolders.vdf), the GTA V Enhanced install, and writes to its compatdata prefix (Proton, .NET, crash logs). A Steam library elsewhere is not visible; the app then shows `flatpak override --filesystem=` hint. Steam installed as a Flatpak is not reachable here (Flathub does not allow another app's data folder): its users grant `~/.var/app/com.valvesoftware.Steam/data/Steam` with `flatpak override --filesystem=`
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.steam:ro
+  # Common place for a game library kept outside Steam
+  - --filesystem=~/Games
+  # Removable and secondary disks where a game library may be mounted
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/paleto-modkit/cargo
+    CARGO_NET_OFFLINE: 'true'
+
+modules:
+  # The Legacy -> Enhanced converter (CodeWalker based), with the .NET runtime bundled; its NuGet packages come from nuget-sources.json (packaging/flatpak-nuget-sources.sh).
+  - name: paleto-cwconv
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet10/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+        DOTNET_NOLOGO: 'true'
+    build-commands:
+      - dotnet publish tools/cwconv/paleto-cwconv.csproj -c Release -r linux-x64 --self-contained true
+        -p:DebugType=none --source ./nuget-sources -o /app/lib/paleto-modkit/cwconv
+    sources:
+      - type: git
+        url: https://github.com/the-beper/PaletoModkit.git
+        tag: v1.2.0
+        commit: 038f8124610dffcbc36b6fba343381c8ff6edb34
+      - nuget-sources.json
+
+  - name: paleto-modkit
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --offline --locked -p paleto-modkit -p paleto-cli
+      - install -Dm755 target/release/paleto-modkit /app/bin/paleto-modkit
+      - install -Dm755 target/release/paleto /app/bin/paleto
+      - install -Dm644 packaging/io.github.the_beper.PaletoModkit.desktop /app/share/applications/io.github.the_beper.PaletoModkit.desktop
+      - install -Dm644 packaging/io.github.the_beper.PaletoModkit.metainfo.xml /app/share/metainfo/io.github.the_beper.PaletoModkit.metainfo.xml
+      - install -Dm644 packaging/io.github.the_beper.PaletoModkit.mime.xml /app/share/mime/packages/io.github.the_beper.PaletoModkit.xml
+      - install -Dm644 packaging/icons/hicolor/scalable/apps/io.github.the_beper.PaletoModkit.svg /app/share/icons/hicolor/scalable/apps/io.github.the_beper.PaletoModkit.svg
+      - install -Dm644 packaging/icons/hicolor/symbolic/apps/io.github.the_beper.PaletoModkit-symbolic.svg /app/share/icons/hicolor/symbolic/apps/io.github.the_beper.PaletoModkit-symbolic.svg
+      - |
+        for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 packaging/icons/hicolor/${s}x${s}/apps/io.github.the_beper.PaletoModkit.png \
+            /app/share/icons/hicolor/${s}x${s}/apps/io.github.the_beper.PaletoModkit.png
+        done
+    sources:
+      - type: git
+        url: https://github.com/the-beper/PaletoModkit.git
+        tag: v1.2.0
+        commit: 038f8124610dffcbc36b6fba343381c8ff6edb34
+      - cargo-sources.json
