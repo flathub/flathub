@@ -1,0 +1,64 @@
+app-id: it.vallaury.Vallaury
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: vallaury
+separate-locales: false
+
+finish-args:
+  # The window: Wayland where there is one, X11 otherwise, with hardware drawing.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Vallaury is a website in a window: it needs the network, and sound for the videos some pages carry.
+  - --share=network
+  - --socket=pulseaudio
+  # Notifications, the icon in the notification area, and the key of this computer kept in the system's secret store.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.secrets
+  - --env=TMPDIR=/var/tmp
+
+modules:
+  - name: vallaury
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        XDG_CACHE_HOME: /run/build/vallaury/flatpak-node/cache
+        npm_config_cache: /run/build/vallaury/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - npm ci --offline --ignore-scripts=false
+      # The window must carry the application id, so that the desktop shows the right icon and name.
+      - |
+        sed -i 's/"desktopName": "vallaury.desktop"/"desktopName": "it.vallaury.Vallaury.desktop"/' package.json
+      - npm run build
+      - |
+        . ./flatpak-node/electron-builder-arch-args.sh
+        # Electron comes from the sources list below (unpacked here), so that nothing is downloaded during the build.
+        mkdir electron-dist
+        unzip -q ./flatpak-node/cache/electron/electron-v*-linux-${ELECTRON_BUILDER_ARCH_ARGS#--}.zip -d electron-dist
+        npx electron-builder --linux --dir --publish never $ELECTRON_BUILDER_ARCH_ARGS -c.electronDist=electron-dist
+      - mkdir -p /app/vallaury
+      - cp -a out/linux-unpacked/. /app/vallaury/
+      - install -Dm755 vallaury.sh /app/bin/vallaury
+      - install -Dm644 flatpak/it.vallaury.Vallaury.desktop /app/share/applications/it.vallaury.Vallaury.desktop
+      - install -Dm644 flatpak/it.vallaury.Vallaury.metainfo.xml /app/share/metainfo/it.vallaury.Vallaury.metainfo.xml
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/512x512/apps/it.vallaury.Vallaury.png
+    sources:
+      - type: git
+        url: https://github.com/Vallaury/vallaury-desktop.git
+        tag: v0.1.3
+        commit: 935c9be7b825009819ad3d0fadf9e248f8e264a8
+      - generated-sources.json
+      - type: script
+        dest-filename: vallaury.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/vallaury/vallaury "$@"
