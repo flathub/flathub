@@ -1,0 +1,83 @@
+app-id: io.github.vinceecniv.vito
+
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+command: vito
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.mpris.MediaPlayer2.*
+  # Vito reads portals.conf (host /usr/share and /etc via /run/host, plus the
+  # user's overrides) to see which backend serves GlobalShortcuts. On niri,
+  # Hyprland and sway that is often GNOME's, which shows a shortcut dialog and
+  # then never delivers a key without GNOME Shell running; Vito then skips the
+  # portal and points the user at the compositor's own key bindings. The bus
+  # proxy hides org.gnome.Shell, so this is the only way to tell from inside the
+  # sandbox. Read-only, nothing else is read; Flatpak refuses narrower paths
+  # under /usr and /etc as reserved. Without it Vito still works, the dialog
+  # just appears once.
+  - --filesystem=host-os:ro
+  - --filesystem=xdg-config/xdg-desktop-portal:ro
+  - --filesystem=xdg-data/xdg-desktop-portal:ro
+
+modules:
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dfishcompletiondir=no
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.2.1
+        commit: 3eb912c274042cd5deed6b478b39908a12f37498
+
+  - name: wtype
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/atx/wtype.git
+        tag: v0.4
+        commit: d71be3a7b3f93b534a2823fd68cabd7ac2a02359
+
+  - name: vito
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        CGO_ENABLED: '1'
+        GOFLAGS: -mod=vendor
+        GOTOOLCHAIN: local
+    build-commands:
+      - VERSION=$(git describe --tags --exact-match | sed 's/^v//');
+        go build -ldflags "-X main.version=$VERSION" -o vito ./cmd/vito &&
+        install -Dm755 vito /app/bin/vito &&
+        install -Dm644 packaging/io.github.vinceecniv.vito.metainfo.xml
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml &&
+        sh packaging/stamp-metainfo.sh
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml "$VERSION"
+      - install -Dm644 packaging/flatpak/io.github.vinceecniv.vito.desktop
+          /app/share/applications/io.github.vinceecniv.vito.desktop
+      - install -Dm644 web/icon-512.png
+          /app/share/icons/hicolor/512x512/apps/io.github.vinceecniv.vito.png
+      - sed -i 's|<launchable type="desktop-id">vito.desktop</launchable>|<launchable
+          type="desktop-id">io.github.vinceecniv.vito.desktop</launchable>|'
+          /app/share/metainfo/io.github.vinceecniv.vito.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/vinceecniv/Vito.git
+        tag: v2026.10.7
+        commit: 28fadc33ab1d7eaa2c467e9b435d9b0c2455f1a9
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - go.mod.yml
