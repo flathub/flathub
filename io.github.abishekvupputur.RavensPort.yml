@@ -1,0 +1,135 @@
+# The Flathub package. This file is the one submitted to github.com/flathub/flathub, next to the
+# three generated source lists it names (nuget-sources.json, go-sources.json and
+# pass-cli-cargo-sources.json). generate-sources.sh writes those, and build.sh builds this manifest
+# against the checkout, lints it and bundles it.
+#
+# Flatpak rather than the snap because the snap needed classic confinement, which the Store
+# refused. The three reasons it was needed come out like this here:
+#
+#   - The 1Password integration socket is an abstract Unix socket, and abstract sockets belong to
+#     the network namespace. --share=network, which the proxy needs anyway, puts the app in the
+#     host's, so the socket and /proc/net/unix both read as they do outside the sandbox.
+#   - The Proton Pass CLI cannot be the user's own copy: running a host binary would take
+#     org.freedesktop.Flatpak, which is a sandbox escape. So pass-cli is built from Proton's source
+#     below and lives at /app/bin, where UnixExecutableProvenance trusts it inside a Flatpak only.
+#     RavensPort hands it the session key with PROTON_PASS_KEY_PROVIDER=env, so pass-cli itself
+#     never touches a keyring (its kernel-keyutils store would be refused by Flatpak's seccomp).
+#   - The Proton Pass session key goes into the login keyring over D-Bus, as on the .deb:
+#     org.freedesktop.secrets, with SECRET_BACKEND=service so libsecret talks to the keyring rather
+#     than to its sandboxed file backend.
+#
+# Everything is built from source with no network, which is what Flathub requires: .NET restores
+# from nuget-sources, Go builds in vendor mode, and cargo builds from a vendored directory.
+id: io.github.abishekvupputur.RavensPort
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: ravensport
+
+finish-args:
+  # The proxy listens on 127.0.0.1 and calls upstream APIs; also what makes 1Password's abstract
+  # socket reachable (see above).
+  - --share=network
+  - --share=ipc
+  # Avalonia draws through X11; under Wayland it runs on XWayland.
+  - --socket=x11
+  - --device=dri
+  # The tray icon, through StatusNotifierItem.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # The login keyring, for the Proton Pass session key.
+  - --talk-name=org.freedesktop.secrets
+  - --env=SECRET_BACKEND=service
+
+modules:
+  # The Proton Pass CLI, GPL-3.0-or-later, built from Proton's own release tag. RavensPort runs it
+  # as a separate program and talks to it over arguments, environment and stdout.
+  - name: pass-cli
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # Where pass-cli-cargo-sources.json writes the vendored crates and the cargo config that
+        # points crates.io, Proton's registry and the git dependencies at them.
+        CARGO_HOME: /run/build/pass-cli/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      # Not --locked: the published Cargo.lock still lists workspace members that are not in the
+      # public source (the mobile SDK), so cargo has to prune it. Pruning needs no network.
+      - cargo build --offline --release -p pass-cli
+      - install -Dm755 target/release/pass-cli /app/bin/pass-cli
+      - install -Dm644 LICENSE /app/share/licenses/io.github.abishekvupputur.RavensPort/pass-cli/LICENSE
+    sources:
+      - type: archive
+        url: https://github.com/protonpass/pass-cli/archive/refs/tags/2.4.2.tar.gz
+        sha256: 75f9212c548e1e8d5358b1ace7b825e6352aad3d7454e4339fd04b261a4f6db2
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/protonpass/pass-cli/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/protonpass/pass-cli/archive/refs/tags/" + $version + ".tar.gz"'
+      - pass-cli-cargo-sources.json
+
+  - name: ravensport
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/golang/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+        # Inside the build directory: each build command runs in a fresh sandbox, and the default
+        # ~/.nuget/packages does not outlive the restore that fills it.
+        NUGET_PACKAGES: /run/build/ravensport/nuget-packages
+        # The Go in the SDK extension, not the toolchain line in go.mod, which would download.
+        GOTOOLCHAIN: local
+        GOFLAGS: -mod=vendor
+        CGO_ENABLED: '1'
+      arch:
+        x86_64:
+          env:
+            RID: linux-x64
+        aarch64:
+          env:
+            RID: linux-arm64
+    build-commands:
+      # The 1Password native, which the App project picks up from the source tree.
+      - cd src/OnePasswordNative && go build -buildmode=c-shared -o libonepassword.so main.go
+      # Restored on its own, for the Linux framework only: publish's own restore covers every
+      # framework the projects declare, and the Windows one needs packages (the Windows SDK
+      # reference) that nuget-sources does not carry. The same restore generate-sources.sh runs.
+      - >-
+        dotnet restore src/RavensPort.App/RavensPort.App.csproj
+        -r "$RID" --source ./nuget-sources
+        -p:TargetFramework=net10.0 -p:SelfContained=true
+        -p:PublishTrimmed=false -p:PublishSingleFile=false
+      # Self-contained, as the .deb is. The framework is named because the project multi-targets
+      # (NETSDK1129).
+      - >-
+        dotnet publish src/RavensPort.App/RavensPort.App.csproj --no-restore
+        -f net10.0 -c Release -r "$RID" --self-contained true
+        -p:PublishSingleFile=false -p:PublishTrimmed=false
+        -o /app/lib/ravensport
+      - test -f /app/lib/ravensport/libonepassword.so
+      - install -Dm755 ravensport.sh /app/bin/ravensport
+      - install -Dm644 packaging/flatpak/$FLATPAK_ID.desktop -t /app/share/applications
+      - install -Dm644 packaging/flatpak/$FLATPAK_ID.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 packaging/flatpak/$FLATPAK_ID.png /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+    sources:
+      # The release to package. Flathub wants the tag and the commit it points at; build.sh
+      # swaps this for the checkout when it builds a branch.
+      - type: git
+        url: https://github.com/abishekvupputur/ravensPort.git
+        tag: v5.0.3
+        commit: 9faf101c4f16ef7db24bb476a7d04daf44fe55db
+      - nuget-sources.json
+      - go-sources.json
+      # A wrapper rather than a symlink: the apphost resolves its runtime relative to its own
+      # directory, as build-deb.sh explains.
+      - type: script
+        dest-filename: ravensport.sh
+        commands:
+          - exec /app/lib/ravensport/RavensPort "$@"
