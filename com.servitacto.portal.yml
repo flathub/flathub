@@ -1,0 +1,105 @@
+# Flatpak manifest — app-id matches the existing appId already used for the
+# Electron build (clients/desktop/package.json's build.appId), kept
+# consistent rather than inventing a second identifier.
+#
+# Uses the "extra-data" module pattern (common for wrapping a pre-built,
+# closed-source Electron/AppImage app rather than building from source —
+# the same pattern several other proprietary apps' community Flatpaks use)
+# instead of electron-builder's own output, since electron-builder has no
+# built-in Flatpak target the way it does for snap. This is the LEAST
+# battle-tested of the four prepared packaging formats — nothing here has
+# been run through flatpak-builder (not installed in this environment) —
+# expect to iterate once it's actually tried.
+#
+# `url` below is a real, live URL — the dist account's public releases
+# bucket (servitacto-public-releases-765148471844, see
+# infra/template-dist.yaml's PublicReleasesBucket), not GitHub.
+#
+# To submit once a real release URL exists: fork/PR to
+# github.com/flathub/flathub, new-pr branch, add this manifest at the repo
+# root as com.servitacto.portal.yml — review is a standard GitHub PR + an
+# automated build check, not a moderation queue.
+app-id: com.servitacto.portal
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+command: servitacto
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+
+modules:
+  - name: servitacto
+    buildsystem: simple
+    # extra-data is NOT fetched by flatpak-builder at build time at all —
+    # confirmed by testing (an earlier version of this manifest tried to
+    # `install` the AppImage directly in build-commands and it was never
+    # present anywhere on disk, with or without --share=network). Per
+    # Flatpak's own module-sources docs: extra-data is downloaded by the
+    # flatpak CLIENT, on the END USER's machine, at INSTALL time — landing
+    # at /app/extra/<filename> — then a special `apply_extra` script
+    # (installed at build time, but only ever RUN at install time, in a
+    # sandbox with no network/host access beyond /app/extra) is what moves
+    # it into its final /app/... location. build-commands below only ever
+    # installs static content that already exists at build time; apply_extra
+    # is the only place servitacto.AppImage's contents are ever touched.
+    build-commands:
+      - install -Dm644 com.servitacto.portal.desktop /app/share/applications/com.servitacto.portal.desktop
+      - install -Dm644 com.servitacto.portal.metainfo.xml /app/share/metainfo/com.servitacto.portal.metainfo.xml
+      # Real icon, installed at build time (unlike the AppImage itself) —
+      # this is NOT behind apply_extra/extra-data, so it lands in a normal,
+      # immutable /app location the icon theme can actually find. The
+      # icon-from-AppImage-extraction trick used by packaging/aur/PKGBUILD
+      # doesn't work for Flatpak (see the apply_extra note below), so this
+      # is a real committed PNG instead — same 1024px source icon already
+      # used by clients/desktop/build/icon.png for every other Linux
+      # target (AppImage/deb/rpm/snap), just resized for the hicolor theme.
+      - install -Dm644 icons/com.servitacto.portal-512.png /app/share/icons/hicolor/512x512/apps/com.servitacto.portal.png
+      - install -Dm644 icons/com.servitacto.portal-128.png /app/share/icons/hicolor/128x128/apps/com.servitacto.portal.png
+      # /app outside of /app/extra is immutable once installed (confirmed by
+      # testing: apply_extra tried to `install` into /app/bin and got
+      # "Read-only file system") — the AppImage has to stay at
+      # /app/extra/servitacto.AppImage forever, referenced from there
+      # directly, not moved into a "normal-looking" /app/bin location.
+      - |
+        install -Dm755 /dev/stdin /app/bin/servitacto <<'WRAPPER'
+        #!/bin/sh
+        exec /app/extra/servitacto.AppImage --no-sandbox --appimage-extract-and-run "$@"
+        WRAPPER
+      # apply_extra only ever needs to make the already-downloaded AppImage
+      # executable in place — the icon is handled above instead, as a
+      # normal build-time file, since apply_extra can't write anywhere the
+      # icon theme would look for it.
+      - |
+        install -Dm755 /dev/stdin /app/bin/apply_extra <<'APPLY'
+        #!/bin/sh
+        chmod +x /app/extra/servitacto.AppImage
+        APPLY
+    sources:
+      # Fetched by the flatpak CLIENT at install time, not by
+      # flatpak-builder here — see the comment above.
+      - type: extra-data
+        filename: servitacto.AppImage
+        url: https://servitacto-public-releases-765148471844.s3.us-east-1.amazonaws.com/desktop/linux/ServiTacto-1.0.3.AppImage
+        # Real hash/size of the AppImage actually produced by
+        # ServiTactoDesktopLinux-dev on 2026-10-14 (version 1.0.3 — bumped
+        # from the stale 1.0.0 referenced here previously; the public dist
+        # bucket only had 1.0.0 until this same session's build run
+        # republished it, via buildspec-linux.yml's own POST_BUILD step).
+        sha256: 383a0ce23064f0dafbc590081a8dea82459fdccc5a323210f0e657c0b67ddf7d
+        size: 117280681
+        only-arches: [x86_64]
+      - type: file
+        path: com.servitacto.portal.desktop
+      - type: file
+        path: com.servitacto.portal.metainfo.xml
+      - type: file
+        path: icons/com.servitacto.portal-512.png
+      - type: file
+        path: icons/com.servitacto.portal-128.png
