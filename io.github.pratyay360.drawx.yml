@@ -1,0 +1,99 @@
+id: io.github.pratyay360.drawx
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+
+command: drawx
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --filesystem=home
+  - --device=dri
+
+modules:
+  - name: drawx
+    buildsystem: simple
+
+    build-options:
+      # Offline build: Node deps are vendored via flatpak/generated-sources.json
+      # (regenerate on every pnpm-lock.yaml bump with:
+      #  python3 -m flatpak_node_generator pnpm pnpm-lock.yaml \
+      #    --pnpm-store-version v11 -o flatpak/generated-sources.json
+      #  run from flatpak-builder-tools/node/).
+      # v11 is required: the lockfile pins pnpm 12, whose store layout is v11
+      # (the generator default v10 is not readable by pnpm 12).
+      # Cargo deps are vendored via flatpak/cargo-sources.json.
+      # Do NOT add network access here; Flathub builds are offline.
+
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin:/run/build/drawx/bin
+      env:
+        CARGO_HOME: /run/build/drawx/cargo
+        XDG_CACHE_HOME: /run/build/drawx/flatpak-node/cache
+        npm_config_cache: /run/build/drawx/flatpak-node/npm-cache
+
+
+    build-commands:
+      # pnpm is NOT shipped by the node24 SDK extension (it only provides
+      # node, npm, yarn v1 and corepack), so install the vendored standalone
+      # pnpm binary (see sources below) into the module build dir, which is
+      # already on PATH via append-path. Do NOT `npm install -g pnpm` or
+      # `corepack prepare` here: the SDK is read-only and the build sandbox
+      # has no network.
+      - install -Dm755 flatpak-node/pnpm-bin/pnpm "$FLATPAK_BUILDER_BUILDDIR/bin/pnpm"
+      - echo "manage-package-manager-versions=false" >> .npmrc
+      - pnpm --version
+      - pnpm install --offline --frozen-lockfile
+      - pnpm exec tauri build --no-bundle
+      - install -Dm755 src-tauri/target/release/drawx /app/bin/drawx
+
+      - install -Dm644 flatpak/io.github.pratyay360.drawx.desktop
+        /app/share/applications/io.github.pratyay360.drawx.desktop
+
+      - install -Dm644 flatpak/io.github.pratyay360.drawx.metainfo.xml
+        /app/share/metainfo/io.github.pratyay360.drawx.metainfo.xml
+
+      - install -Dm644 src-tauri/icons/32x32.png
+        /app/share/icons/hicolor/32x32/apps/io.github.pratyay360.drawx.png
+      - install -Dm644 src-tauri/icons/64x64.png
+        /app/share/icons/hicolor/64x64/apps/io.github.pratyay360.drawx.png
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.pratyay360.drawx.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png
+        /app/share/icons/hicolor/256x256/apps/io.github.pratyay360.drawx.png
+
+    sources:
+
+      - type: git
+        url: https://github.com/pratyay360/drawx.git
+        branch: main
+      #
+      - cargo-sources.json
+      - generated-sources.json
+      #
+      # Standalone pnpm: not shipped by the node24 SDK extension (see
+      # build-commands above). Version must match root pnpm-lock.yaml
+      # packageManagerDependencies (pnpm 12 uses store layout v11).
+      - type: archive
+        url: https://github.com/pnpm/pnpm/releases/download/v12.11.1/pnpm-linux-x64.tar.gz
+        sha256: baac4fc86eae6cb7c7d8658957c386171164b6c04eaa1afaa8b51a4141f3c2d4
+        dest: flatpak-node/pnpm-bin
+        strip-components: 0
+        only-arches: [x86_64]
+      - type: archive
+        url: https://github.com/pnpm/pnpm/releases/download/v12.11.1/pnpm-linux-arm64.tar.gz
+        sha256: a744b43a89afb667793181e787e36e1132144b2a214630d19fce33ed072648a4
+        dest: flatpak-node/pnpm-bin
+        strip-components: 0
+        only-arches: [aarch64]
+      #
+      # Bare filenames are interpreted by flatpak-builder as lists of sources.
+      # Regenerate both on every lockfile bump:
+      #   Cargo: src-tauri/Cargo.lock -> flatpak/cargo-sources.json
+      #   Node:  pnpm-lock.yaml -> flatpak/generated-sources.json
