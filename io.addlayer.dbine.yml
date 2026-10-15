@@ -1,0 +1,182 @@
+# DBine on Flathub. This file is a template: flatpak/render.py fills in
+# v0.1.12 and d293523eb16388b3cd7e95f57e1a25062914787d (and the cloud client IDs, when given) and the
+# `flathub` workflow sends the result to github.com/flathub/io.addlayer.dbine
+# together with cargo-sources.json, node-sources.json and the rendered
+# metainfo. docs/flathub.md.
+id: io.addlayer.dbine
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+  # libclang for bindgen (libgssapi-sys: Kerberos / integrated authentication).
+  - org.freedesktop.Sdk.Extension.llvm22
+command: dbine
+
+finish-args:
+  # Database servers, cloud sync, the local MCP server on 127.0.0.1.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # WebKitGTK's GPU compositing.
+  - --device=dri
+  # The keychain item that encrypts the saved passwords (Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # SSH tunnels and git remotes can authenticate with the user's SSH agent.
+  - --socket=ssh-auth
+  # File databases (SQLite, DuckDB, libSQL) open and write their journal and
+  # WAL files next to the database, which the document portal can't give
+  # (it exposes the chosen file alone). The same folder access is needed for
+  # ~/.ssh (private keys and known_hosts of SSH tunnels), for git projects
+  # and the script library, and for importing connections from other tools'
+  # settings files. Dialogs still go through the file chooser portal.
+  - --filesystem=home
+  # Native libraries shipped inside the app instead of downloaded on first
+  # use (see the libduckdb and llama-cpp modules below).
+  - --env=DBINE_DUCKDB_LIB=/app/lib/libduckdb.so
+  - --env=DBINE_LLAMA_DIR=/app/lib/llama.cpp
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # git for projects, the script library and its remotes: the GNOME
+  # Platform has none (only the Sdk does).
+  - name: git
+    buildsystem: autotools
+    config-opts:
+      - --without-tcltk
+    make-args:
+      - INSTALL_SYMLINKS=1
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+      - NO_PERL=1
+      - NO_PYTHON=1
+      - NO_RUST=1
+    make-install-args:
+      - INSTALL_SYMLINKS=1
+      - NO_TCLTK=1
+      - NO_GETTEXT=1
+      - NO_PERL=1
+      - NO_PYTHON=1
+      - NO_RUST=1
+    cleanup:
+      - /share/gitweb
+      - /share/git-gui
+      - /share/gitk
+      - /lib/perl5
+      - /share/perl5
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
+        sha256: 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+
+  # The ODBC driver manager the ODBC driver loads (libodbc.so.2). Vendor
+  # drivers are registered in ~/.odbcinst.ini.
+  - name: unixodbc
+    config-opts:
+      - --disable-static
+      - --enable-gui=no
+    cleanup:
+      - /bin
+      - /etc
+    sources:
+      - type: archive
+        url: https://github.com/lurcher/unixODBC/releases/download/v2.3.14/unixODBC-2.3.14.tar.gz
+        sha256: 4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771
+
+  # DuckDB's official library, the version the duckdb crate expects
+  # (crates/drivers/duckdb/src/loader.rs: VERSION and the same SHA-256).
+  # DBINE_DUCKDB_LIB points the driver at it: nothing is downloaded.
+  - name: libduckdb
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 libduckdb.so /app/lib/libduckdb.so
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/duckdb/duckdb/releases/download/v1.5.5/libduckdb-linux-amd64.zip
+        sha256: 1fb8ce388157d84a25abe685a8a2520bf00c00321821968e4bb398fd766e7abb
+        strip-components: 0
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/duckdb/duckdb/releases/download/v1.5.5/libduckdb-linux-arm64.zip
+        sha256: abe4f6f005ee0b448a058322f4263584b4bd1b6faf7ab4637b79eeaf978f8e9c
+        strip-components: 0
+
+  # llama.cpp's server for the AI assistant's built-in model, built from
+  # source at the release the app pins (crates/dbine-ai/src/embedded.rs:
+  # ENGINE_TAG). Laid out like the official build (llama-server next to its
+  # CPU backends, RPATH $ORIGIN) in /app/lib/llama.cpp, which
+  # DBINE_LLAMA_DIR points at. The models are still downloaded on demand.
+  - name: llama-cpp
+    buildsystem: simple
+    build-commands:
+      - >-
+        cmake -S . -B build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DBUILD_SHARED_LIBS=ON
+        -DGGML_NATIVE=OFF
+        -DGGML_BACKEND_DL=ON
+        -DGGML_CPU_ALL_VARIANTS=ON
+        -DLLAMA_CURL=OFF
+        -DLLAMA_BUILD_TESTS=OFF
+        -DLLAMA_BUILD_EXAMPLES=OFF
+        -DLLAMA_BUILD_TOOLS=ON
+        -DLLAMA_BUILD_SERVER=ON
+        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+        -DCMAKE_INSTALL_RPATH='$ORIGIN'
+      # Everything: llama-server and the CPU backend variants it loads.
+      - cmake --build build
+      - install -d /app/lib/llama.cpp
+      - install -m755 build/bin/llama-server /app/lib/llama.cpp/
+      - cp -a build/bin/*.so* /app/lib/llama.cpp/
+      # The other tools' libraries: only the server is used.
+      - find /app/lib/llama.cpp -name 'libllama-*-impl.so' ! -name libllama-server-impl.so -delete
+    sources:
+      - type: git
+        url: https://github.com/ggml-org/llama.cpp.git
+        tag: b11213
+        commit: cea74625fa0bd59464a6c6f5ac3c1c1ebfec5344
+
+  - name: dbine
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/llvm22/bin
+      env:
+        CARGO_HOME: /run/build/dbine/cargo
+        CARGO_NET_OFFLINE: 'true'
+        LIBCLANG_PATH: /usr/lib/sdk/llvm22/lib
+        npm_config_cache: /run/build/dbine/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        XDG_CACHE_HOME: /run/build/dbine/flatpak-node/cache
+    build-commands:
+      # The UI (web/dist), embedded in the binary by tauri-build.
+      - cd web && npm ci --offline --no-audit --no-fund && node_modules/.bin/vite build
+      # Every driver built in (no `plugins`), the Flatpak mode, and the
+      # bundled UI instead of the dev server (what `cargo tauri build` adds).
+      - cargo --offline build --release -p dbine --features flatpak,tauri/custom-protocol
+      - install -Dm755 target/release/dbine /app/bin/dbine
+      - install -Dm644 flatpak/io.addlayer.dbine.desktop /app/share/applications/io.addlayer.dbine.desktop
+      - install -Dm644 io.addlayer.dbine.metainfo.xml /app/share/metainfo/io.addlayer.dbine.metainfo.xml
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.addlayer.dbine.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.addlayer.dbine.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.addlayer.dbine.png
+    sources:
+      - type: git
+        url: https://github.com/addlayer-io/dbine.git
+        tag: 'v0.1.12'
+        commit: 'd293523eb16388b3cd7e95f57e1a25062914787d'
+      - cargo-sources.json
+      - node-sources.json
+      # Rendered for this release from flatpak/io.addlayer.dbine.metainfo.xml
+      # and CHANGELOG.md (flatpak/render.py).
+      - type: file
+        path: io.addlayer.dbine.metainfo.xml
