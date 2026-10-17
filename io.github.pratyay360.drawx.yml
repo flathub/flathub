@@ -23,34 +23,29 @@ modules:
 
     build-options:
       # Offline build: Node deps are vendored via flatpak/generated-sources.json
-      # (regenerate on every pnpm-lock.yaml bump with:
-      #  python3 -m flatpak_node_generator pnpm pnpm-lock.yaml \
-      #    --pnpm-store-version v11 -o flatpak/generated-sources.json
-      #  run from flatpak-builder-tools/node/).
-      # v11 is required: the lockfile pins pnpm 12, whose store layout is v11
-      # (the generator default v10 is not readable by pnpm 12).
+      # (regenerate on every bun.lock bump with `mise run flatpak:sources`,
+      # which runs scripts/flatpak-sources.ts).
       # Cargo deps are vendored via flatpak/cargo-sources.json.
       # Do NOT add network access here; Flathub builds are offline.
 
       append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin:/run/build/drawx/bin
       env:
         CARGO_HOME: /run/build/drawx/cargo
-        XDG_CACHE_HOME: /run/build/drawx/flatpak-node/cache
-        npm_config_cache: /run/build/drawx/flatpak-node/npm-cache
-
+        # The vendored npm tarballs are extracted (flatpak-builder, type:
+        # archive) into this Bun cache, which `bun install --offline` reads
+        # in place. Keep in sync with the `dest` in generated-sources.json.
+        BUN_INSTALL_CACHE_DIR: /run/build/drawx/bun_cache
 
     build-commands:
-      # pnpm is NOT shipped by the node24 SDK extension (it only provides
-      # node, npm, yarn v1 and corepack), so install the vendored standalone
-      # pnpm binary (see sources below) into the module build dir, which is
-      # already on PATH via append-path. Do NOT `npm install -g pnpm` or
-      # `corepack prepare` here: the SDK is read-only and the build sandbox
-      # has no network.
-      - install -Dm755 flatpak-node/pnpm-bin/pnpm "$FLATPAK_BUILDER_BUILDDIR/bin/pnpm"
-      - cp -a flatpak-node/pnpm-bin/dist "$FLATPAK_BUILDER_BUILDDIR/bin/dist"
-      - pnpm --version
-      - pnpm install --offline --frozen-lockfile
-      - pnpm exec tauri build --no-bundle
+      # Bun is NOT shipped by the node24 SDK extension (it only provides node,
+      # npm, yarn v1 and corepack), so install the vendored standalone binary
+      # (see sources below) into the module build dir, already on PATH via
+      # append-path. Do NOT `npm install -g bun` or curl bun.sh here: the SDK
+      # is read-only and the build sandbox has no network.
+      - install -Dm755 flatpak-node/bun-bin/bun "$FLATPAK_BUILDER_BUILDDIR/bin/bun"
+      - bun --version
+      - bun install --frozen-lockfile --offline
+      - bun run tauri build --no-bundle
       - install -Dm755 src-tauri/target/release/drawx /app/bin/drawx
 
       - install -Dm644 flatpak/io.github.pratyay360.drawx.desktop
@@ -77,23 +72,24 @@ modules:
       - cargo-sources.json
       - generated-sources.json
       #
-      # Standalone pnpm: not shipped by the node24 SDK extension (see
-      # build-commands above). Version must match root pnpm-lock.yaml
-      # packageManagerDependencies (pnpm 12 uses store layout v11).
+      # Standalone Bun: not shipped by the node24 SDK extension (see
+      # build-commands above). Version must match root package.json
+      # "packageManager" (bun@1.4.1). The zips contain `<arch>/bun`, so the
+      # default strip-components: 1 leaves a bare `bun` for the install step.
       - type: archive
-        url: https://github.com/pnpm/pnpm/releases/download/v11.28.6/pnpm-linux-x64.tar.gz
-        sha256: 10ff3203f3a38d637561182bec457c7abf43658c27c9f4a7d0dd78ac6f4c891c
-        dest: flatpak-node/pnpm-bin
-        strip-components: 0
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.4.1/bun-linux-x64.zip
+        sha256: 74c1c3bee7cd998500c8f969cd8972355ac6a07207e94a39eece1999b56ffabf
+        dest: flatpak-node/bun-bin
+        strip-components: 1
         only-arches: [x86_64]
       - type: archive
-        url: https://github.com/pnpm/pnpm/releases/download/v11.28.6/pnpm-linux-arm64.tar.gz
-        sha256: b3febc1090e252483f4f1d12dcfc9bd27e6e10171885dd4d7dc109ba84183a53
-        dest: flatpak-node/pnpm-bin
-        strip-components: 0
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.4.1/bun-linux-aarch64.zip
+        sha256: 580ce77533108dc6b10bec1721397e4f5aa44e909726da2451d483dfc5e581d6
+        dest: flatpak-node/bun-bin
+        strip-components: 1
         only-arches: [aarch64]
       #
       # Bare filenames are interpreted by flatpak-builder as lists of sources.
       # Regenerate both on every lockfile bump:
       #   Cargo: src-tauri/Cargo.lock -> flatpak/cargo-sources.json
-      #   Node:  pnpm-lock.yaml -> flatpak/generated-sources.json
+      #   Node:  bun.lock -> flatpak/generated-sources.json
