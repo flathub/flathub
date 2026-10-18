@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/main/data/flatpak-manifest.schema.json
+app-id: com.ppplayer.PPPlayer
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: ppplayer
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: .
+
+finish-args:
+  # Windowing & Graphics
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  # Sound
+  - --socket=pulseaudio
+  # Network access for music streaming and artist metadata
+  - --share=network
+  # Media file access
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-videos:ro
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.2/libass-0.17.2.tar.gz
+        sha256: a9afb52bf76a2569263fe2038896774c991b35c0968342a03be708e56ea60c3b
+        x-checker-data:
+          type: anitya
+          project-id: 1560
+          stable-only: true
+          url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.gz
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dopengl=enabled
+      - -Dvulkan=enabled
+      - -Dglslang=disabled
+      - -Dd3d11=disabled
+      - -Ddemos=False
+    sources:
+      - type: archive
+        url: https://code.videolan.org/videolan/libplacebo/-/archive/v6.338.2/libplacebo-v6.338.2.tar.gz
+        sha256: d029adbe55bba8aed7aed2c48b0b66081dddfb9d42683a709342e33aa666c544
+        x-checker-data:
+          type: anitya
+          project-id: 20101
+          stable-only: true
+          url-template: https://code.videolan.org/videolan/libplacebo/-/archive/v$version/libplacebo-v$version.tar.gz
+      - type: patch
+        path: libplacebo-python314.patch
+      - type: archive
+        url: https://github.com/pallets/jinja/archive/refs/tags/3.1.4.tar.gz
+        sha256: ed06f67abd2c8b7697dfb714f80715903ab0507e3c5acc11e92477e4ea51033b
+        dest: 3rdparty/jinja
+        x-checker-data:
+          type: anitya
+          project-id: 3894
+          url-template: https://github.com/pallets/jinja/archive/refs/tags/$version.tar.gz
+      - type: archive
+        url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.6.tar.gz
+        sha256: 61a70234dc7da467cceb07fcdd6dec1213d6143a1b6b19ccc5d7b64cc247ea47
+        dest: 3rdparty/glad
+        x-checker-data:
+          type: anitya
+          project-id: 300234
+          url-template: https://github.com/Dav1dde/glad/archive/refs/tags/v$version.tar.gz
+
+  - name: libmpv
+    cleanup:
+      - /share/bash-completion
+      - /share/zsh
+      - /share/doc
+      - /share/icons
+      - /share/applications
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Ddebug=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
+      - -Dvulkan=enabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
+        sha256: 86d9ef40b6058732f67b46d0bbda24a074fae860b3eaae05bab3145041303066
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          stable-only: true
+          url-template: https://github.com/mpv-player/mpv/archive/refs/tags/v$version.tar.gz
+      - type: patch
+        path: mpv-ffmpeg7.patch
+
+  - name: ppplayer
+    buildsystem: simple
+    build-commands:
+      # Install PPPlayer Flutter release bundle
+      - install -dm755 /app/ppplayer /app/bin /app/lib/ffmpeg
+      - cp -r ppplayer-bundle/* /app/ppplayer/
+      - chmod +x /app/ppplayer/ppplayer
+      - ln -s /app/ppplayer/ppplayer /app/bin/ppplayer
+      # Install Desktop entry, Icon, and AppStream MetaInfo
+      - install -Dm644 com.ppplayer.PPPlayer.desktop /app/share/applications/com.ppplayer.PPPlayer.desktop
+      - install -Dm644 com.ppplayer.PPPlayer.png /app/share/icons/hicolor/256x256/apps/com.ppplayer.PPPlayer.png
+      - install -Dm644 com.ppplayer.PPPlayer.metainfo.xml /app/share/metainfo/com.ppplayer.PPPlayer.metainfo.xml
+    sources:
+      - type: archive
+        dest: ppplayer-bundle
+        url: https://github.com/ppplayer-labs/app/releases/download/v4.0.1/PPPlayer-Linux-x86_64.tar.gz
+        sha256: 0afaa5b47434e562ba75bfe35ecd0bf80849b08e26742f7170e04ffb0f8be57e
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ppplayer-labs/app/releases/latest
+          version-query: .tag_name | sub("v";"")
+          url-query: .assets[] | select(.name=="PPPlayer-Linux-x86_64.tar.gz") | .browser_download_url
+      - type: file
+        path: com.ppplayer.PPPlayer.desktop
+      - type: file
+        path: com.ppplayer.PPPlayer.png
+      - type: file
+        path: com.ppplayer.PPPlayer.metainfo.xml
