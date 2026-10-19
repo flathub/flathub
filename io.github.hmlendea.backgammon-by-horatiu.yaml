@@ -1,0 +1,71 @@
+app-id: io.github.hmlendea.backgammon-by-horatiu
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+separate-locales: false
+command: backgammon-by-horatiu
+
+build-options:
+  append-path: /usr/lib/sdk/dotnet10/bin
+  prepend-ld-library-path: /usr/lib/sdk/dotnet10/lib
+  env:
+    DOTNET_ROOT: /usr/lib/sdk/dotnet10/lib
+    DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+    DOTNET_ROLL_FORWARD: Major
+    NUGET_PACKAGES: /run/build/backgammon-by-horatiu/nuget-packages
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  - --socket=wayland
+  - --socket=fallback-x11
+
+modules:
+  - name: backgammon-by-horatiu
+    buildsystem: simple
+    build-commands:
+      - . /usr/lib/sdk/dotnet10/enable.sh && dotnet tool install dotnet-mgcb --version 3.8.4 --tool-path tools --configfile NuGet.Config
+      - >-
+        . /usr/lib/sdk/dotnet10/enable.sh &&
+        dotnet publish BackgammonByHoratiu/BackgammonByHoratiu.csproj
+        --configuration Release --runtime linux-$(case "$FLATPAK_ARCH" in x86_64) echo x64;; aarch64) echo arm64;; esac)
+        --self-contained true --source "$PWD/nuget-sources"
+        -p:NuGetAudit=false -p:MGCBToolDirectory="$PWD/tools/"
+        --output /app/lib/backgammon-by-horatiu
+      - install -Dm 644 icon.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm 644 BackgammonByHoratiu.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+      - install -Dm 644 fonts/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/liberation-fonts/LICENSE
+      - install -Dm 755 backgammon-by-horatiu.sh /app/bin/backgammon-by-horatiu
+      - desktop-file-edit ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+        --set-key "Exec" --set-value "backgammon-by-horatiu" --set-icon=${FLATPAK_ID}
+    sources:
+      - type: archive
+        url: https://github.com/hmlendea/backgammon-by-horatiu/archive/eae689c3a67caad7c727cec2eab861a920706f63.tar.gz
+        sha256: 69944c4ce3f69fdb37c9f7f4db0f58e6a9c679fff2061eefcb4d9a4f152d139f
+      - type: archive
+        url: https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz
+        sha256: 7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0
+        dest: fonts
+      - type: patch
+        path: fonts.patch
+      - nuget-sources.json
+      - type: file
+        path: io.github.hmlendea.backgammon-by-horatiu.metainfo.xml
+      - type: inline
+        dest-filename: NuGet.Config
+        contents: |
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="offline" value="nuget-sources" />
+            </packageSources>
+          </configuration>
+      - type: script
+        dest-filename: backgammon-by-horatiu.sh
+        commands:
+          - cd /app/lib/backgammon-by-horatiu
+          - exec ./BackgammonByHoratiu "$@"
