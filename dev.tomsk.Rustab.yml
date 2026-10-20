@@ -1,65 +1,23 @@
 # Flatpak manifest for Rustab.
-#
-# STATUS: drafted, not yet built or tested against a real Flatpak sandbox
-# (no `flatpak-builder` run, no sandboxed `pkexec` test) - see
-# docs/FLATPAK.md for the full walkthrough, the two things flagged as
-# genuinely unresolved below, and the step-by-step checklist to work
-# through before this is submission-ready.
-#
-# This manifest assumes https://github.com/t0msk/rustab exists and is
-# public. That has not been verified from this session - this repository
-# currently has zero git remotes configured (confirmed via `git remote -v`),
-# so nothing here has been pushed anywhere yet.
-#
-# Verified against two real, currently-published Tauri+Rust Flatpak
-# manifests on Flathub (pl.fuzjajadrowa.pulsar, io.github.lullabyX.sone)
-# and against docs.flathub.org's current Requirements/MetaInfo guidelines
-# as of 2026-10-16 - see docs/FLATPAK.md for citations.
-
 app-id: dev.tomsk.Rustab
 runtime: org.gnome.Platform
-# '51' confirmed live against Flathub's own API for org.gnome.TextEditor
-# (an official GNOME app kept maximally current) on 2026-10-16. This
-# number moves roughly twice a year (GNOME's release cadence) - re-check
-# before every submission/update, don't trust this comment once it ages.
 runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  # Needed only for the Tailwind CLI build step below (frontend/package.json's
-  # sole devDependency). Pick whatever Node LTS extension is current at
-  # build time - not re-verified here, unlike the runtime-version above.
-  - org.freedesktop.Sdk.Extension.node20
+  - org.freedesktop.Sdk.Extension.node24
 
 command: rustab
 
 finish-args:
-  # WebKitGTK rendering (the frontend is Yew, rendered via WebKitGTK, same
-  # as every other Tauri 2 Linux app):
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
   - --share=ipc
-  # Deliberately NOT included: --share=network. Rustab has no runtime
-  # network functionality (lsblk/blkid/findmnt are local processes) - see
-  # docs/SPEC.md §8. Add it back only if that ever changes.
-  #
-  # THE SINGLE MOST UNCERTAIN LINE IN THIS FILE. Rustab's real-target save
-  # path re-execs itself via `pkexec` (docs/API_CONTRACT.md §4) to reach
-  # the host's polkit daemon. Whether a bare --system-bus-talk is enough
-  # for that to work *at all* from inside the sandbox - let alone for the
-  # elevated process to then actually write to the host's /etc/fstab - is
-  # completely untested. This is Option B from docs/FLATPAK.md's pkexec
-  # section (narrower than granting --filesystem=host): a starting point
-  # for testing, not a proven answer. Do not treat this line as "solved".
-  - --system-bus-talk=org.freedesktop.PolicyKit1
-  # If testing shows the above is insufficient, the next thing to try is
-  # (uncomment, re-test, and update docs/FLATPAK.md with the result):
-  # - --filesystem=/etc/fstab:rw
-  # - --filesystem=xdg-data/rustab:create
+  - --system-talk-name=org.freedesktop.PolicyKit1
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
   env:
     CARGO_HOME: /run/build/rustab/cargo
     CARGO_NET_OFFLINE: 'true'
@@ -68,66 +26,60 @@ modules:
   - name: rustab
     buildsystem: simple
     build-commands:
-      # Rustab has TWO independent Cargo.lock files (the root workspace,
-      # covering fstab-core + src-tauri; and frontend/Cargo.lock, a
-      # separate wasm32-unknown-unknown project) - confirmed by `ls` on
-      # this repo. Both need their own flatpak-cargo-generator output and
-      # both need fetching here; the stale version of this doc's old
-      # inline skeleton only ever accounted for one.
       - cargo --offline fetch --manifest-path Cargo.toml
       - cargo --offline fetch --manifest-path frontend/Cargo.toml
-
-      # --- UNVERIFIED: see docs/FLATPAK.md "The Trunk offline build
-      # --- problem" section. This whole block is a best-effort draft, not
-      # --- a proven offline build chain. ---
-      #
-      # 1. Tailwind CSS, via the npm devDependencies frontend/package.json
-      #    already declares (see Trunk.toml's pre_build hook) - offline,
-      #    from an npm cache this manifest's node-sources.json (not yet
-      #    generated - see below) would need to populate. Tailwind v4 ships
-      #    its CLI as @tailwindcss/cli, hence the package-qualified npx
-      #    invocation; it must stay byte-identical to Trunk.toml's hook.
-      #    Note for whoever generates node-sources.json: v4 pulls in
-      #    platform-specific native binaries (@tailwindcss/oxide-*,
-      #    lightningcss-*) as optional dependencies, so the vendored set
-      #    must include the ones for the build architecture.
       - >-
         cd frontend &&
-        npm ci --offline --cache ../flatpak-node-cache &&
+        npm ci --offline --cache ../flatpak-node/npm-cache &&
         npx @tailwindcss/cli -i styles/input.css -o styles/tailwind.css &&
         cd ..
-      # 2. Trunk itself fetches its OWN tool dependencies (wasm-bindgen-cli,
-      #    sass) the first time it runs, on top of Cargo's. That is a
-      #    second, separate offline-vendoring problem this manifest does
-      #    not yet solve - flagged, not solved, in docs/FLATPAK.md.
-      - cd frontend && trunk build --release && cd ..
+      - mkdir -p wasm-bindgen-cli
+      - tar xzf wasm-bindgen-cli-bin/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz -C wasm-bindgen-cli --strip-components=1
+      - mkdir -p rust-std-wasm32-extracted
+      - tar xzf rust-std-wasm32/rust-std-1.98.0-wasm32-unknown-unknown.tar.gz -C rust-std-wasm32-extracted --strip-components=1
+      - mkdir -p custom-sysroot
+      - cp -rs /usr/lib/sdk/rust-stable/. custom-sysroot/
+      - rm -rf custom-sysroot/lib/rustlib/wasm32-unknown-unknown
+      - cp -r rust-std-wasm32-extracted/rust-std-wasm32-unknown-unknown/lib/rustlib/wasm32-unknown-unknown custom-sysroot/lib/rustlib/
+      - >-
+        RUSTFLAGS="--sysroot=$PWD/custom-sysroot"
+        cargo --offline build --release --target wasm32-unknown-unknown --manifest-path frontend/Cargo.toml
+      - mkdir -p frontend/dist
+      - >-
+        wasm-bindgen-cli/wasm-bindgen --target web --no-typescript
+        --out-dir frontend/dist --out-name rustab
+        frontend/target/wasm32-unknown-unknown/release/rustab-frontend.wasm
+      - cp frontend/styles/tailwind.css frontend/dist/tailwind.css
+      - >-
+        sed
+        -e 's#<link data-trunk rel="css" href="styles/tailwind.css" />#<link rel="stylesheet" href="tailwind.css" />#'
+        -e '/data-trunk rel="copy-file"/d'
+        -e 's#</body>#<script type="module">import init from "./rustab.js"; init();</script></body>#'
+        frontend/index.html > frontend/dist/index.html
       - cargo --offline build --release -p rustab
       - install -Dm755 target/release/rustab /app/bin/rustab
       - install -Dm644 flatpak/dev.tomsk.Rustab.desktop /app/share/applications/dev.tomsk.Rustab.desktop
       - install -Dm644 flatpak/dev.tomsk.Rustab.metainfo.xml /app/share/metainfo/dev.tomsk.Rustab.metainfo.xml
-      # src-tauri/icons/icon.png is 512x512 (confirmed via Pillow against
-      # the actual file in this repo) - the real icon asset directory,
-      # NOT a resources/ directory (which does not exist anywhere in this
-      # repo - the old version of this doc assumed one).
       - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/dev.tomsk.Rustab.png
       - install -Dm644 LICENSE-MIT /app/share/licenses/dev.tomsk.Rustab/LICENSE-MIT
       - install -Dm644 LICENSE-APACHE /app/share/licenses/dev.tomsk.Rustab/LICENSE-APACHE
     sources:
       - type: git
         url: https://github.com/t0msk/rustab.git
-        # Pin to a real tagged release commit/tag once one exists - do
-        # NOT point a Flathub submission at a moving branch like `main`.
-        tag: vX.Y.Z
+        tag: v0.1.0
 
-      # Generated by `flatpak-cargo-generator` (see docs/FLATPAK.md) -
-      # NOT included in this scaffold; must be generated fresh by whoever
-      # submits, against the Cargo.lock that is actually being shipped.
-      # One file per Cargo.lock, per the two-lockfile note above.
       - cargo-sources.json
+      
       - frontend-cargo-sources.json
-
-      # Generated by `flatpak-node-generator` (part of the same
-      # flatpak-builder-tools project) against frontend/package-lock.json
-      # - also not included here, also not yet proven necessary/sufficient
-      # (see the UNVERIFIED block above).
+      
       - node-sources.json
+
+      - type: file
+        url: https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz
+        sha256: 82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e
+        dest: wasm-bindgen-cli-bin
+
+      - type: file
+        url: https://static.rust-lang.org/dist/rust-std-1.98.0-wasm32-unknown-unknown.tar.gz
+        sha256: d2443b4da8d168f152875416ab204fea42f2ed7d9dcce92725d579722e0bdaa5
+        dest: rust-std-wasm32
