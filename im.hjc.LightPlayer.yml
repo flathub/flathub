@@ -1,0 +1,78 @@
+app-id: im.hjc.LightPlayer
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+  - org.freedesktop.Sdk.Extension.llvm22
+command: lmp
+
+build-options:
+  prepend-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/llvm22/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+  prepend-pkg-config-path: /usr/lib/sdk/dotnet10/lib/pkgconfig
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+    DOTNET_NOLOGO: '1'
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --own-name=org.mpris.MediaPlayer2.LightStudioLightPlayer.*
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-pictures:ro
+
+modules:
+  - name: lightplayer
+    buildsystem: simple
+    build-commands:
+      - |
+        set -e
+        case "$FLATPAK_ARCH" in
+          x86_64)  DOTNET_RID=linux-x64;   DOTNET_PLATFORM=x64 ;;
+          aarch64) DOTNET_RID=linux-arm64; DOTNET_PLATFORM=ARM64 ;;
+          *) echo "unsupported Flatpak arch: $FLATPAK_ARCH" >&2; exit 1 ;;
+        esac
+        export NUGET_PACKAGES="$PWD/.nuget-packages"
+        export DOTNET_CLI_HOME="$PWD/.dotnet-home"
+        dotnet publish src/LightStudio.LightPlayer.Desktop/LightStudio.LightPlayer.Desktop.csproj \
+          -c Release -r "$DOTNET_RID" --self-contained true \
+          -p:Flatpak=true -p:Platform="$DOTNET_PLATFORM" \
+          --source ./nuget-sources \
+          -o publish
+        find publish \( -name '*.pdb' -o -name '*.dbg' \) -delete
+        find publish -name '*.resources.dll' -delete
+        find publish -mindepth 1 -type d -empty -delete
+      - mkdir -p /app/lightplayer
+      - cp -a publish/. /app/lightplayer/
+      - chmod +x /app/lightplayer/lmp
+      - mkdir -p /app/bin
+      - ln -s /app/lightplayer/lmp /app/bin/lmp
+      - install -Dm644 packaging/flatpak/im.hjc.LightPlayer.desktop /app/share/applications/im.hjc.LightPlayer.desktop
+      - install -Dm644 im.hjc.LightPlayer.metainfo.xml /app/share/metainfo/im.hjc.LightPlayer.metainfo.xml
+      - install -Dm644 packaging/flatpak/im.hjc.LightPlayer.mime.xml /app/share/mime/packages/im.hjc.LightPlayer.xml
+      - |
+        set -e
+        for size in 16 32 48 64 256; do
+          install -Dm644 "packaging/flatpak/icons/${size}x${size}/im.hjc.LightPlayer.png" \
+            "/app/share/icons/hicolor/${size}x${size}/apps/im.hjc.LightPlayer.png"
+        done
+      - install -Dm644 LICENSE /app/share/licenses/im.hjc.LightPlayer/LICENSE
+      - install -Dm644 THIRDPARTY.txt /app/share/licenses/im.hjc.LightPlayer/THIRDPARTY.txt
+    sources:
+      - type: archive
+        url: https://github.com/hjc4869/LightPlayer/archive/refs/tags/v2.0.0.tar.gz
+        sha256: 8b97a260674031caa87fbf1cf1039215ae145a8fbe35c6e8a539d7e522cddfba
+      - nuget-sources.json
+      - type: file
+        path: nuget.config
+      - type: file
+        path: im.hjc.LightPlayer.metainfo.xml
