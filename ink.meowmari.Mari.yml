@@ -1,0 +1,63 @@
+# How Flathub builds Mari.
+#
+# Flatpak builds run with no network at all, so nothing can be fetched while
+# the build is happening. Every Rust crate and every npm package has to be
+# listed up front in cargo-sources.json and node-sources.json, which are
+# generated from Cargo.lock and package-lock.json. See README.md for the one
+# command that writes them.
+app-id: ink.meowmari.Mari
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+
+# WebKitGTK comes from the GNOME runtime. Rust and Node are bolted on only for
+# the build and are not in the finished app.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+
+command: mari
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The news card at the foot of the sidebar asks meowmari.ink for messages.
+  - --share=network
+  # Mari opens a folder of writing and reads the files in it. The file picker
+  # alone is not enough: once a folder is open Mari lists and saves inside it.
+  - --filesystem=home
+
+modules:
+  - name: mari
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/mari/cargo
+        npm_config_cache: /run/build/mari/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+
+    build-commands:
+      - npm ci --offline
+      - npm run build
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+
+      - install -Dm755 src-tauri/target/release/mari /app/bin/mari
+      - install -Dm644 flatpak/ink.meowmari.Mari.desktop
+        /app/share/applications/ink.meowmari.Mari.desktop
+      - install -Dm644 flatpak/ink.meowmari.Mari.metainfo.xml
+        /app/share/metainfo/ink.meowmari.Mari.metainfo.xml
+      - install -Dm644 flatpak/ink.meowmari.Mari.png
+        /app/share/icons/hicolor/256x256/apps/ink.meowmari.Mari.png
+      - install -Dm644 LICENSE /app/share/licenses/ink.meowmari.Mari/LICENSE
+
+    sources:
+      - type: git
+        url: https://github.com/spacekestrel/mari.git
+        tag: v0.6.0
+        commit: ac0ee63c5bc90905c74931f749a8c0b456c06aef
+      - cargo-sources.json
+      - node-sources.json
