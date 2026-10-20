@@ -1,0 +1,224 @@
+app-id: io.rosettadb.DbtStudio
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+command: rosetta-dbt-studio
+separate-locales: false
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/info
+  - /share/man
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Audio
+  - --socket=pulseaudio
+
+  # Filesystem — dbt projects live in the user's home directory
+  - --filesystem=home
+
+  # Network — required for warehouse connections, AI features, cloud sync
+  - --share=network
+
+  # Desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+
+  # Allows spawning host subprocesses (dbt runner, git).
+  # Requires a Flathub linter exception:
+  # https://docs.flathub.org/docs/for-app-authors/linter#exceptions
+  - --talk-name=org.freedesktop.Flatpak
+
+  # Credential / keychain access (used by git integrations)
+  - --talk-name=org.freedesktop.secrets
+
+  # SSH & GPG — needed for authenticated git operations
+  - --socket=ssh-auth
+  - --socket=gpg-agent
+
+  # Tell the app it is running inside Flatpak so it can skip auto-update UI
+  - --env=ROSETTA_IS_FLATPAK=1
+
+modules:
+  - name: rosetta-dbt-studio
+    buildsystem: simple
+    build-commands:
+      # Unpack the pre-built Electron archive directly into the target dir,
+      # using --strip-components=1 to avoid depending on the archive's internal
+      # folder name (electron-builder uses "Rosetta-DBT-Studio-VERSION-x64/")
+      - mkdir -p /app/lib/rosetta-dbt-studio
+      - tar -xf rosetta-dbt-studio.tar.gz --strip-components=1 -C /app/lib/rosetta-dbt-studio
+
+      # Make the main binary executable
+      - chmod +x /app/lib/rosetta-dbt-studio/rosetta-dbt-studio
+
+      # Launcher wrapper script (sets up env and launches the binary)
+      - install -Dm755 rosetta-dbt-studio.sh /app/bin/rosetta-dbt-studio
+
+      # Desktop entry
+      - install -Dm644 io.rosettadb.DbtStudio.desktop
+          /app/share/applications/io.rosettadb.DbtStudio.desktop
+
+      # Icon (512x512 PNG from assets)
+      - install -Dm644 icon.png
+          /app/share/icons/hicolor/512x512/apps/io.rosettadb.DbtStudio.png
+
+      # AppStream metadata
+      - install -Dm644 io.rosettadb.DbtStudio.appdata.xml
+          /app/share/metainfo/io.rosettadb.DbtStudio.appdata.xml
+
+    sources:
+      # Pre-built Electron app archive — update URL + sha256 on every release.
+      # The x-checker-data block enables the Flathub bot to auto-bump this.
+      - type: file
+        url: https://github.com/rosettadb/dbt-studio/releases/download/1.7.3/Rosetta-DBT-Studio-1.7.3-x64.tar.gz
+        sha256: 6336a91e2621bd7fc5a595a557b16c8514ca39a1ecde5b467cc47db2297837b4
+        dest-filename: rosetta-dbt-studio.tar.gz
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/rosettadb/dbt-studio/releases/latest
+          version-query: .tag_name
+          url-query: >-
+            .assets[]
+            | select(.name | test("Rosetta-DBT-Studio-.*-x64\\.tar\\.gz"))
+            | .browser_download_url
+
+      # Launcher wrapper script
+      - type: script
+        dest-filename: rosetta-dbt-studio.sh
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR}/app/${FLATPAK_ID}"
+          - exec /app/lib/rosetta-dbt-studio/rosetta-dbt-studio "$@"
+
+      # .desktop entry
+      - type: inline
+        dest-filename: io.rosettadb.DbtStudio.desktop
+        contents: |
+          [Desktop Entry]
+          Name=Rosetta DBT Studio
+          Comment=Turn Raw Data into Business Insights—Faster with RosettaDB
+          Exec=rosetta-dbt-studio %U
+          Icon=io.rosettadb.DbtStudio
+          Terminal=false
+          Type=Application
+          Categories=Development;Database;
+          Keywords=dbt;sql;data;analytics;warehouse;rosetta;
+          StartupWMClass=rosetta-dbt-studio
+          MimeType=x-scheme-handler/rosetta;
+
+      # Icon — fetched from source repository (no local path available in Flathub build)
+      - type: file
+        url: https://raw.githubusercontent.com/rosettadb/dbt-studio/main/assets/icon.png
+        sha256: cf04f0fe822930921e4512338ac9a02ffe909ab39de695ef4d7a677b880d07f3
+        dest-filename: icon.png
+
+      # AppStream metadata
+      - type: inline
+        dest-filename: io.rosettadb.DbtStudio.appdata.xml
+        contents: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <component type="desktop-application">
+            <id>io.rosettadb.DbtStudio</id>
+
+            <name>Rosetta DBT Studio</name>
+            <summary>Open-source desktop IDE for dbt Core™ with AI-powered analytics</summary>
+
+            <metadata_license>MIT</metadata_license>
+            <project_license>AGPL-3.0-only</project_license>
+
+            <description>
+              <p>
+                Rosetta DBT Studio is an open-source desktop application that simplifies your
+                data transformation journey with dbt Core™ and brings the power of AI into your
+                analytics engineering workflow.
+              </p>
+              <p>
+                Whether you're just getting started with dbt Core™ or looking to streamline your
+                transformation logic with AI assistance, DBT Studio offers an intuitive interface
+                to help you build, explore, and maintain your data models efficiently.
+              </p>
+              <p>Key features:</p>
+              <ul>
+                <li>Multi-warehouse support: PostgreSQL, Snowflake, BigQuery, Redshift, DuckDB, and more</li>
+                <li>Data Lake Native (DuckLake) with Parquet export</li>
+                <li>Smart SQL editor with dbt autocomplete and Jinja-SQL syntax highlighting</li>
+                <li>AI SQL Assistant — chat with AI directly inside the editor</li>
+                <li>SQL Notebooks with state persistence and data pagination</li>
+                <li>Staging, Enhanced, and Business model layer generators</li>
+                <li>Pipeline visualiser with live interactive graph</li>
+                <li>Built-in Git explorer for committing and managing project changes</li>
+                <li>Run dbt commands (compile, test, run, document) directly from the UI</li>
+                <li>Integrated Python environment — no prior dbt or Python installation needed</li>
+                <li>Rosetta CLI integration for metadata-driven dbt development</li>
+              </ul>
+            </description>
+
+            <launchable type="desktop-id">io.rosettadb.DbtStudio.desktop</launchable>
+
+            <url type="homepage">https://rosettadb.io</url>
+            <url type="bugtracker">https://github.com/rosettadb/dbt-studio/issues</url>
+            <url type="vcs-browser">https://github.com/rosettadb/dbt-studio</url>
+            <url type="help">https://github.com/rosettadb/dbt-studio#readme</url>
+
+            <developer id="io.rosettadb">
+              <name>RosettaLabs</name>
+            </developer>
+
+            <categories>
+              <category>Development</category>
+              <category>Database</category>
+            </categories>
+
+            <keywords>
+              <keyword>dbt</keyword>
+              <keyword>SQL</keyword>
+              <keyword>data</keyword>
+              <keyword>analytics</keyword>
+              <keyword>warehouse</keyword>
+              <keyword>transformation</keyword>
+              <keyword>bigquery</keyword>
+              <keyword>snowflake</keyword>
+              <keyword>postgres</keyword>
+              <keyword>duckdb</keyword>
+              <keyword>rosetta</keyword>
+              <keyword>AI</keyword>
+            </keywords>
+
+            <screenshots>
+              <screenshot type="default">
+                <caption>Main editor and project explorer</caption>
+                <image type="source" width="1080" height="720">
+                  https://raw.githubusercontent.com/rosettadb/dbt-studio/main/image-dbt-studio.png
+                </image>
+              </screenshot>
+            </screenshots>
+
+            <releases>
+              <release version="1.7.3" date="2026-10-14">
+                <description>
+                  <p>See the full release notes at the link below.</p>
+                </description>
+                <url>https://github.com/rosettadb/dbt-studio/releases/tag/1.7.3</url>
+              </release>
+            </releases>
+
+            <content_rating type="oars-1.1" />
+
+            <supports>
+              <control>pointing</control>
+              <control>keyboard</control>
+            </supports>
+
+            <recommends>
+              <display_length compare="ge">1024</display_length>
+            </recommends>
+          </component>
