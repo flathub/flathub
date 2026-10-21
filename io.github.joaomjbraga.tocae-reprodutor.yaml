@@ -1,0 +1,120 @@
+# Manifest Flatpak do Tocaê Reprodutor.
+#
+# Este é o mesmo manifest que vai para o repositório do app no Flathub: o
+# código vem do repositório upstream (neste caso, a tag v0.0.3) e os
+# metadados (desktop file, metainfo, ícone e licença) vêm do diretório do
+# próprio manifest.
+#
+# Construa com:
+#   flatpak run --command=flathub-build org.flatpak.Builder --install \
+#     io.github.joaomjbraga.tocae-reprodutor.yaml
+#
+# Ao publicar uma nova versão: troque a tag em `sources` e a versão do
+# Electron (URL e sha256 do zip) abaixo.
+
+app-id: io.github.joaomjbraga.tocae-reprodutor
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+# O BaseApp do Electron traz o zypak, que integra o sandbox do Chromium ao
+# sandbox do Flatpak. Sem ele o Chromium aborta por causa do chrome-sandbox
+# (o Flatpak não permite binários setuid em /app).
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+# O Node não vem mais no SDK do freedesktop: a partir do 24.08 ele é uma
+# extensão do SDK. O `enable.sh` da extensão já ajusta o PATH e o
+# npm_config_nodedir durante o build.
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: run.sh
+
+finish-args:
+  - --share=ipc
+  - --device=dri
+  # O Wayland nativo do Electron ainda é experimental: o padrão é X11, que
+  # funciona tanto em sessões X11 quanto em Wayland via Xwayland.
+  - --socket=x11
+  - --socket=pulseaudio
+  # O player lê os vídeos direto do disco, por caminho absoluto, através do
+  # protocolo media://. O app nunca escreve fora do seu próprio diretório de
+  # dados, então basta leitura.
+  - --filesystem=host:ro
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: tocae-reprodutor
+    buildsystem: simple
+    build-options:
+      # A extensão do Node monta o runtime em /usr/lib/sdk/node24 durante o
+      # build; o `enable.sh` dela não é executado pelo flatpak-builder.
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        npm_config_cache: /run/build/tocae-reprodutor/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        npm_config_nodedir: /usr/lib/sdk/node24
+        # O postinstall do Electron baixaria o binário pela rede; o zip entra
+        # como fonte do manifesto e é repassado ao electron-builder.
+        npm_config_ignore_scripts: 'true'
+        XDG_CACHE_HOME: /run/build/tocae-reprodutor/flatpak-node/cache
+    build-commands:
+      # Cada build-command roda em um shell próprio, então o passo do build do
+      # app fica num bloco só (com `set -e`) para o `cd` valer.
+      - |
+        set -e
+        cd app
+        npm ci --offline --ignore-scripts
+        npx tsc --noEmit
+        npx vite build
+        npx electron-builder --linux --dir --config.electronDist="$(ls /run/build/tocae-reprodutor/electron-dist/*.zip)"
+      # Electron procura os recursos ao lado do executável, então o app vai
+      # inteiro para /app/lib.
+      - install -d /app/lib/${FLATPAK_ID} /app/bin
+      - cp -a app/release/*/linux-unpacked/. /app/lib/${FLATPAK_ID}/
+      # O app é iniciado pelo zypak, que faz o sandbox do Chromium funcionar
+      # dentro do Flatpak.
+      - |
+        cat > /app/bin/run.sh <<'EOF'
+        #!/bin/sh
+        export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+        exec zypak-wrapper /app/lib/io.github.joaomjbraga.tocae-reprodutor/tocae-reprodutor "$@"
+        EOF
+        chmod +x /app/bin/run.sh
+      - install -Dm0755 io.github.joaomjbraga.tocae-reprodutor.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm0644 io.github.joaomjbraga.tocae-reprodutor.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm0644 io.github.joaomjbraga.tocae-reprodutor.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm0644 LICENSE /app/share/licenses/${FLATPAK_ID}/LICENSE
+    sources:
+      # O código do app vem do repositório upstream, na tag da versão.
+      - type: git
+        url: https://github.com/joaomjbraga/tocae-reprodutor.git
+        tag: v0.0.3
+        commit: 1b61847a697a7605cc4b65c8d2a198468896306c
+        dest: app
+      # Manifesto das dependências do npm, para o build sem rede.
+      - generated-sources.json
+      # Metadados do app: ficam no diretório do manifest (no repositório do
+      # Flathub, é de lá que saem).
+      - type: file
+        path: io.github.joaomjbraga.tocae-reprodutor.desktop
+      - type: file
+        path: io.github.joaomjbraga.tocae-reprodutor.metainfo.xml
+      - type: file
+        path: io.github.joaomjbraga.tocae-reprodutor.png
+      - type: file
+        path: LICENSE
+      # Binário oficial do Electron, usado em vez do download feito pelo
+      # npm durante o build.
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v41.10.7/electron-v41.10.7-linux-x64.zip
+        sha256: 21bf93906685c77f350f618d034f33202f0764aabbfc204e6b724f82196537f9
+        dest: electron-dist
+        dest-filename: electron-v41.10.7-linux-x64.zip
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v41.10.7/electron-v41.10.7-linux-arm64.zip
+        sha256: b2b6528212e1e832889ea1493050ff5be04525cc2b8cb10161dfce83dd502c1f
+        dest: electron-dist
+        dest-filename: electron-v41.10.7-linux-arm64.zip
+        only-arches:
+          - aarch64
