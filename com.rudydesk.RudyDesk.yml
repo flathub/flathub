@@ -1,0 +1,90 @@
+# Flatpak RudyDesk для Flathub.
+#
+# 29.3: в Linux программы ставят из Flathub, а не скачивают с сайтов. Для
+# Flathub подпись кода не нужна (в отличие от Microsoft Store и Homebrew) —
+# это самый дешёвый по затратам каталог из трёх.
+#
+# Сборка не из исходников: программа закрытая, поэтому берётся готовый пакет
+# .deb с нашего сайта через extra-data. Так в Flathub живут Spotify, Zoom и
+# другие закрытые программы: файл скачивается на машине человека при установке,
+# Flathub его не раздаёт.
+#
+# Electron внутри песочницы запускается через zypak: своя песочница Chromium в
+# Flatpak работать не может, и без zypak программа падает при старте.
+id: com.rudydesk.RudyDesk
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: rudydesk
+separate-locales: false
+
+finish-args:
+  # Показ своего экрана и просмотр чужого — через Wayland, а на старых системах
+  # через X11. Именно `fallback-x11`, а не `x11`: сторож Flathub запрещает
+  # просить сразу оба, иначе программа получает доступ к X11 и там, где он не
+  # нужен (а через X11 видно ввод в чужих окнах).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Соединение с сервером и напрямую с другим устройством (WebRTC).
+  - --share=network
+  # Звук в сеансе и голос.
+  - --socket=pulseaudio
+  # Камера для видеосвязи.
+  - --device=all
+  # Передача файлов: человек выбирает их сам в окне выбора.
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # Уведомления о входящем подключении.
+  - --talk-name=org.freedesktop.Notifications
+  # Порталы рабочего стола (снимок экрана, выбор файлов) просить не нужно: они
+  # доступны любой программе в песочнице, а явное разрешение сторож Flathub
+  # считает ошибкой. Доступ к login1 (узнать о блокировке сеанса) тоже убран —
+  # для показа экрана он не нужен, а права даёт лишние.
+  - --env=ELECTRON_TRASH=gio
+
+modules:
+  - name: rudydesk
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 rudydesk.sh /app/bin/rudydesk
+      - install -Dm644 com.rudydesk.RudyDesk.desktop /app/share/applications/com.rudydesk.RudyDesk.desktop
+      - install -Dm644 com.rudydesk.RudyDesk.metainfo.xml /app/share/metainfo/com.rudydesk.RudyDesk.metainfo.xml
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/com.rudydesk.RudyDesk.png
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.rudydesk.RudyDesk.png
+    sources:
+      # Готовый пакет с нашего сайта. Адрес с номером версии: общий адрес
+      # меняется с каждым выпуском, и отпечаток перестал бы сходиться.
+      - type: extra-data
+        filename: rudydesk.deb
+        url: https://rudydesk.com/downloads/v0.2.14/RudyDesk-amd64.deb
+        sha256: 06250901bdd86a432e69719d3aa446e7038565a87ee0dfd190dd094359106263
+        size: 106405024
+        x-checker-data:
+          type: json
+          url: https://rudydesk.com/version
+          version-query: .version
+          url-query: '"https://rudydesk.com/downloads/v" + $version + "/RudyDesk-amd64.deb"'
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          # Распаковка пакета на машине человека при установке.
+          - ar x rudydesk.deb
+          - rm -f rudydesk.deb debian-binary control.tar.*
+          - tar xf data.tar.* ./opt/RudyDesk --strip-components=2
+          - rm -f data.tar.*
+      - type: script
+        dest-filename: rudydesk.sh
+        commands:
+          - exec zypak-wrapper /app/extra/RudyDesk "$@"
+      - type: file
+        path: com.rudydesk.RudyDesk.desktop
+      - type: file
+        path: com.rudydesk.RudyDesk.metainfo.xml
+      - type: file
+        path: icon-256.png
+      - type: file
+        path: icon-512.png
